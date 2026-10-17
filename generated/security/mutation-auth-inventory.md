@@ -17,16 +17,16 @@ Boundary totals: admin-role 181; session-self 359; resource-owner 102; signature
 | POST | `/api/admin/affiliate/partners/:id/reject` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9680` | unknown | unknown |
 | POST | `/api/admin/affiliate/partners/:id/scrape` | admin | admin-role | no | unknown | `server/routes/content.routes.ts:8835` | unknown | unknown |
 | PATCH | `/api/admin/affiliate/reconciliation/:earningId` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:4437` | unknown | unknown |
-| POST | `/api/admin/blog/drafts` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:117` | unknown | unknown |
-| POST | `/api/admin/blog/event-guides` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:134` | unknown | unknown |
-| POST | `/api/admin/blog/posts` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:102` | unknown | unknown |
-| PATCH | `/api/admin/blog/posts/:id` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:162` | unknown | unknown |
-| POST | `/api/admin/blog/posts/:id/publish` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:172` | unknown | unknown |
-| POST | `/api/admin/blog/posts/:id/submit` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:168` | unknown | unknown |
-| POST | `/api/admin/blog/posts/:id/withdraw` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:176` | unknown | unknown |
-| POST | `/api/admin/blog/race-weekends` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:156` | unknown | unknown |
-| POST | `/api/admin/blog/series-follows` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:144` | unknown | unknown |
-| POST | `/api/admin/blog/travelpulse-weekly` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:126` | unknown | unknown |
+| POST | `/api/admin/blog/drafts` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:123` | unknown | unknown |
+| POST | `/api/admin/blog/event-guides` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:140` | unknown | unknown |
+| POST | `/api/admin/blog/posts` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:108` | unknown | unknown |
+| PATCH | `/api/admin/blog/posts/:id` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:168` | unknown | unknown |
+| POST | `/api/admin/blog/posts/:id/publish` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:178` | unknown | unknown |
+| POST | `/api/admin/blog/posts/:id/submit` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:174` | unknown | unknown |
+| POST | `/api/admin/blog/posts/:id/withdraw` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:186` | unknown | unknown |
+| POST | `/api/admin/blog/race-weekends` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:162` | unknown | unknown |
+| POST | `/api/admin/blog/series-follows` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:150` | unknown | unknown |
+| POST | `/api/admin/blog/travelpulse-weekly` | admin | admin-role | no | unknown | `server/routes/blog.routes.ts:132` | unknown | unknown |
 | POST | `/api/admin/bookings/:bookingId/exception-refund` | admin | admin-role | yes | unknown | `server/routes/admin.routes.ts:739` | unknown | unknown |
 | POST | `/api/admin/bookings/:bookingId/lost-chargeback/reconcile` | admin | admin-role | yes | unknown | `server/routes/admin.routes.ts:805` | unknown | unknown |
 | POST | `/api/admin/bookings/:bookingId/out-of-band-refund/clear` | admin | admin-role | yes | unknown | `server/routes/admin.routes.ts:660` | unknown | unknown |
@@ -191,8 +191,8 @@ Boundary totals: admin-role 181; session-self 359; resource-owner 102; signature
 | POST | `/api/auth/reset-password` | other | public-or-system | no | unknown | `server/replit_integrations/auth/emailAuth.ts:417` | unknown | unknown |
 | POST | `/api/auth/send-verification` | other | public-or-system | no | unknown | `server/replit_integrations/auth/emailAuth.ts:450` | unknown | unknown |
 | POST | `/api/auth/verify-email` | other | public-or-system | no | unknown | `server/replit_integrations/auth/emailAuth.ts:488` | unknown | unknown |
-| POST | `/api/blog/posts/:slug/reactions` | other | session-self | no | unknown | `server/routes/blog.routes.ts:215` | unknown | unknown |
-| DELETE | `/api/blog/posts/:slug/reactions/:kind` | other | session-self | no | unknown | `server/routes/blog.routes.ts:221` | unknown | unknown |
+| POST | `/api/blog/posts/:slug/reactions` | other | session-self | no | unknown | `server/routes/blog.routes.ts:225` | unknown | unknown |
+| DELETE | `/api/blog/posts/:slug/reactions/:kind` | other | session-self | no | unknown | `server/routes/blog.routes.ts:231` | unknown | unknown |
 | POST | `/api/bookings` | user-data | session-self | yes | unknown | `server/routes.ts:7575` | unknown | unknown |
 | POST | `/api/bookings/:id/accept-deliverable` | user-data | session-self | yes | unknown | `server/routes/bookings.ts:999` (/:id/accept-deliverable) | unknown | unknown |
 | POST | `/api/bookings/:id/cancel` | user-data | session-self | yes | unknown | `server/routes.ts:8554` | unknown | unknown |
@@ -327,7 +327,7 @@ Boundary totals: admin-role 181; session-self 359; resource-owner 102; signature
 | POST | `/api/expert/ai-tasks/delegate` | user-data | session-self | yes | unknown | `server/routes.ts:12438` | unknown | unknown |
 | POST | `/api/expert/assignments/:assignmentId/accept` | user-data | session-self | yes | unknown | `server/routes/booking-actions.ts:1339` (/expert/assignments/:assignmentId/accept) | unknown | unknown |
 | PATCH | `/api/expert/assignments/:assignmentId/workspace-status` | user-data | resource-owner | yes | verified | `server/routes/booking-actions.ts:1370` (/expert/assignments/:assignmentId/workspace-status) | unknown | unknown |
-| POST | `/api/expert/blog/posts/:id/sign` | user-data | session-self | yes | unknown | `server/routes/blog.routes.ts:188` | unknown | unknown |
+| POST | `/api/expert/blog/posts/:id/sign` | user-data | session-self | yes | unknown | `server/routes/blog.routes.ts:198` | unknown | unknown |
 | POST | `/api/expert/bookings/:id/complete` | user-data | session-self | yes | unknown | `server/routes.ts:8213` | unknown | unknown |
 | POST | `/api/expert/bookings/:id/component-failed` | user-data | session-self | yes | unknown | `server/routes.ts:8308` | unknown | unknown |
 | PATCH | `/api/expert/bookings/:id/status` | user-data | session-self | yes | unknown | `server/routes.ts:8042` | unknown | unknown |

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "generatedBy": "scripts/generate-mutation-auth-coverage.ts",
   "manifest": "generated/security/mutation-auth-manifest.json",
-  "manifestSha256": "618d8fae8f440b18f270446fe64a1db8d6b184798ae21e3cfbf8cbf23f6fd6f5",
+  "manifestSha256": "bd67f81d96b05722e81e6419de75af32b57d7671f8c55439b82dec6213226ec7",
   "evidence": {
     "path": "generated/security/mutation-auth-evidence.json",
     "state": "evidence manifest SHA-256 is stale",
@@ -386,7 +386,7 @@
       "path": "/api/blog/posts/:slug/reactions/:kind",
       "effectivePath": "/api/blog/posts/:slug/reactions/:kind",
       "source": "server/routes/blog.routes.ts",
-      "line": 221,
+      "line": 231,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -1546,7 +1546,7 @@
       "path": "/api/admin/blog/posts/:id",
       "effectivePath": "/api/admin/blog/posts/:id",
       "source": "server/routes/blog.routes.ts",
-      "line": 162,
+      "line": 168,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4046,7 +4046,7 @@
       "path": "/api/admin/blog/drafts",
       "effectivePath": "/api/admin/blog/drafts",
       "source": "server/routes/blog.routes.ts",
-      "line": 117,
+      "line": 123,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4068,7 +4068,7 @@
       "path": "/api/admin/blog/event-guides",
       "effectivePath": "/api/admin/blog/event-guides",
       "source": "server/routes/blog.routes.ts",
-      "line": 134,
+      "line": 140,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4090,7 +4090,7 @@
       "path": "/api/admin/blog/posts",
       "effectivePath": "/api/admin/blog/posts",
       "source": "server/routes/blog.routes.ts",
-      "line": 102,
+      "line": 108,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4112,7 +4112,7 @@
       "path": "/api/admin/blog/posts/:id/publish",
       "effectivePath": "/api/admin/blog/posts/:id/publish",
       "source": "server/routes/blog.routes.ts",
-      "line": 172,
+      "line": 178,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4134,7 +4134,7 @@
       "path": "/api/admin/blog/posts/:id/submit",
       "effectivePath": "/api/admin/blog/posts/:id/submit",
       "source": "server/routes/blog.routes.ts",
-      "line": 168,
+      "line": 174,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4156,7 +4156,7 @@
       "path": "/api/admin/blog/posts/:id/withdraw",
       "effectivePath": "/api/admin/blog/posts/:id/withdraw",
       "source": "server/routes/blog.routes.ts",
-      "line": 176,
+      "line": 186,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4178,7 +4178,7 @@
       "path": "/api/admin/blog/race-weekends",
       "effectivePath": "/api/admin/blog/race-weekends",
       "source": "server/routes/blog.routes.ts",
-      "line": 156,
+      "line": 162,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4200,7 +4200,7 @@
       "path": "/api/admin/blog/series-follows",
       "effectivePath": "/api/admin/blog/series-follows",
       "source": "server/routes/blog.routes.ts",
-      "line": 144,
+      "line": 150,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4222,7 +4222,7 @@
       "path": "/api/admin/blog/travelpulse-weekly",
       "effectivePath": "/api/admin/blog/travelpulse-weekly",
       "source": "server/routes/blog.routes.ts",
-      "line": 126,
+      "line": 132,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -6568,7 +6568,7 @@
       "path": "/api/blog/posts/:slug/reactions",
       "effectivePath": "/api/blog/posts/:slug/reactions",
       "source": "server/routes/blog.routes.ts",
-      "line": 215,
+      "line": 225,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -8430,7 +8430,7 @@
       "path": "/api/expert/blog/posts/:id/sign",
       "effectivePath": "/api/expert/blog/posts/:id/sign",
       "source": "server/routes/blog.routes.ts",
-      "line": 188,
+      "line": 198,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
