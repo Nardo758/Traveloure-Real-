@@ -12658,6 +12658,34 @@ export const tickerItems = pgTable("ticker_items", {
   updatedAt: timestamp("updated_at"),
 });
 
+// §8 phone delivery (migration 388, ledger `2026-10-17-phone-delivery-calendar`): a trip owner's calendar links. Only
+// the token's SHA-256 is stored; a reset revokes the live row and inserts a new one. No DEFAULT, CHECK or FK; the ONE
+// writer is server/services/phone-delivery.service.ts. The UNIQUE hash index is declared here so the deploy keeps it.
+export const calendarFeeds = pgTable("calendar_feeds", {
+  id: varchar("id").primaryKey(),
+  tripId: varchar("trip_id"),
+  userId: varchar("user_id"),
+  tokenSha256: varchar("token_sha256", { length: 64 }),
+  createdAt: timestamp("created_at"),
+  revokedAt: timestamp("revoked_at"),
+  lastFetchedAt: timestamp("last_fetched_at"),
+}, (table) => ({
+  tokenUniq: uniqueIndex("uq_calendar_feeds_token_sha256").on(table.tokenSha256),
+  tripUserIdx: index("idx_calendar_feeds_trip_user").on(table.tripId, table.userId),
+}));
+
+// §8 phone delivery (migration 388): every opt-in / opt-out, per channel per trip, with its time. Append-only.
+export const phoneDeliveryChoices = pgTable("phone_delivery_choices", {
+  id: varchar("id").primaryKey(),
+  tripId: varchar("trip_id"),
+  userId: varchar("user_id"),
+  channel: varchar("channel", { length: 32 }),
+  choice: varchar("choice", { length: 16 }),
+  createdAt: timestamp("created_at"),
+}, (table) => ({
+  tripIdx: index("idx_phone_delivery_choices_trip").on(table.tripId, table.userId, table.channel),
+}));
+
 export const launchWaitlist = pgTable("launch_waitlist", {
   id: varchar("id").primaryKey(),
   email: varchar("email", { length: 255 }),

@@ -1,4 +1,5 @@
 import { useToast } from "@/hooks/use-toast";
+import { PhoneDeliveryButton } from "./PhoneDeliveryDialog";
 import { differenceInDays, format } from "date-fns";
 import { Users, Share2, Download, CheckCircle2, RefreshCw, CalendarPlus, FileText } from "lucide-react";
 import { Link } from "wouter";
@@ -176,6 +177,12 @@ export function HeroControls({
             <FileText className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">PDF</span>
           </a>
+          {/* §8 phone delivery: drawn only for the plan's owner, and only when a channel's admin
+              switch is on — the state read is owner-gated and answers nothing to anyone else. */}
+          <PhoneDeliveryButton
+            tripId={trip.id}
+            className="bg-background/50 backdrop-blur-sm border-0 text-foreground px-2 py-1.5 rounded-lg cursor-pointer text-xs font-semibold flex items-center gap-1 hover:bg-background/70 transition-colors"
+          />
         </>
       ) : (
         <Link href={`/itinerary/${trip.id}`} className="hidden sm:block">

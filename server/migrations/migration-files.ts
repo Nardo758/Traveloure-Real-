@@ -2060,4 +2060,8 @@ export const MIGRATION_FILES = [
   // every column but the key nullable; four seed rows (Marketing's lines, two inactive) ON CONFLICT (id) DO NOTHING.
   // 382/383 are taken by FE-2 (#1475). Declared in shared/schema.ts. Migration 384 SQL approved by Leon — comment 18:26Z on #1481.
   "384_ticker_items.sql",
+  // 388 — calendar_feeds + phone_delivery_choices (§8 phone delivery, ledger 2026-10-17-phone-delivery-calendar). Two NEW
+  // tables born empty: no DEFAULT, CHECK or FK; a UNIQUE index on the token hash and two lookup indexes. 385–387 are
+  // taken by open PRs. Declared in shared/schema.ts. HELD for Leon's SQL comment.
+  "388_calendar_feeds.sql",
 ] as const;

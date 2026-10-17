@@ -2,6 +2,7 @@ import { verifyTripOwnership } from '../utils/trip-ownership';
 import { BOT_FACT_DEFAULT_EXPIRY_SETTING, isValidExpiryDaysSetting } from "@shared/bot-proposals";
 import { WELCOME_VERIFICATION_WINDOW_SETTING, isValidWelcomeVerificationWindowSetting } from "@shared/welcome-verification";
 import { TRAVELER_SIGNUP_MODE_SETTING, TRAVELER_SIGNUP_OPENED_AT_SETTING, LAUNCH_MARKET_SLUG_SETTING, isTravelerSignupModeValue } from "@shared/launch-signup";
+import { PHONE_DELIVERY_SWITCH_KEYS } from "@shared/phone-delivery";
 import { enteredStatus } from "../utils/form-status-transition";
 import { zodErrorBody } from "../utils/zod-error-body";
 import { getUserId } from "../utils/auth";
@@ -8196,7 +8197,8 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
 
       // Boolean flags from /admin/system must be exactly "true"/"false" so the
       // enforcement middleware never misreads a junk value.
-      const BOOLEAN_FLAG_KEYS = ["maintenance_mode", "new_user_registration_enabled", "email_notifications_enabled"];
+      // §8 phone delivery: one switch per channel, all off until an admin turns them on.
+      const BOOLEAN_FLAG_KEYS = ["maintenance_mode", "new_user_registration_enabled", "email_notifications_enabled", ...PHONE_DELIVERY_SWITCH_KEYS];
       if (BOOLEAN_FLAG_KEYS.includes(settingKey) && !["true", "false"].includes(settingValue)) {
         return res.status(400).json({ error: `${settingKey} must be 'true' or 'false'`, got: settingValue });
       }
