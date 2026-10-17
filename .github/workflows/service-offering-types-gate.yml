@@ -35,6 +35,7 @@ name: Service Offering Types Gate
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
   push:
     branches: [main]
@@ -54,7 +55,35 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # CI-1b (c)+(d) (scripts/ci/ci-skip-rules.cjs): decides whether this PR push runs the heavy jobs. A draft or
+  # a docs-only / other-workflow-only push skips them; a job skipped by its `if:` reports success, so every
+  # required check still reports on the merge head. Only an explicit run=false skips: any other event, a file
+  # list it cannot read, or this job failing outright leaves the suites running (fail open).
+  changes:
+    name: changes (skip suites on drafts and docs-only pushes)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - uses: actions/checkout@v5.1.0
+        with:
+          sparse-checkout: scripts/ci
+      - name: Skip rules self-test
+        run: node scripts/ci/ci-skip-rules.cjs --self-test
+      - id: decide
+        name: Decide
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: node scripts/ci/ci-skip-rules.cjs --decide
+
   verify-service-offering-types:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: verify-service-offering-types (HTTP count gate)
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -146,6 +175,8 @@ jobs:
           BASE_URL: http://localhost:5000
 
   earn-page-smoke:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: earn-page-smoke (Playwright DOM gate)
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -245,8 +276,8 @@ jobs:
   report:
     name: report (PR comment)
     runs-on: ubuntu-latest
-    needs: [verify-service-offering-types, earn-page-smoke]
-    if: ${{ always() && github.event_name == 'pull_request' }}
+    needs: [changes, verify-service-offering-types, earn-page-smoke]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' && (always() && github.event_name == 'pull_request') }}
     steps:
       - name: Post pass/fail summary to the PR
         uses: actions/github-script@v7

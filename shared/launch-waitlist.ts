@@ -139,8 +139,9 @@ export function isWaitlistQaEmail(email: string | null | undefined): boolean {
 /** Admin search: at least this many characters, at most this many rows back. */
 /**
  * LW-1h (ledger `2026-10-16-lw1h-waitlist-retention`; Leon, Oct 16, 2026): a waitlist row that never became an
- * account is deleted 12 months after the day traveler sign-up first opened (`traveler_signup_opened_at`). Before
- * sign-up opens there is no clock and nothing is deleted.
+ * account is deleted once 12 months have passed since traveler sign-up first opened (`traveler_signup_opened_at`)
+ * AND 12 months have passed since the row was created — whichever is later (LW-1f-b per-row floor, issue #1486).
+ * Before sign-up opens there is no clock and nothing is deleted.
  */
 export const WAITLIST_RETENTION_MONTHS = 12;
 
