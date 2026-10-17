@@ -2388,6 +2388,11 @@ This document captures architectural decisions to maintain consistency across co
     concierge account, its id in `platform_settings.editorial_user_id` and read only by `getEditorialUserId`
     (`server/services/editorial-account.service.ts`). It earns nothing, advises no plan and is never ranked: the earnings mint
     and the advisor-row author refuse it, and the routable-expert filter and the lead scorer leave it out by id.
+    **AMENDED — THE FOOTER BLOG LINK IS BUILT (decision-maker, Oct 16, 2026 — ED-1 footer addendum; ledger
+    `2026-10-16-blog-footer-count`).** The footer shows Blog only when the count of `published` posts in the post store
+    meets `platform_settings.blog_footer_min_published` (admin-editable, default 5). `GET /api/blog/footer-visible`
+    answers a bare boolean; a failed or absent read is hidden, never shown. The `/blog` route and its `noindex` empty
+    state are unchanged.
 
 57. **A PLAN'S FACTS ARE ROWS WITH PROVENANCE; THE FREE DRAFT IS BUILT AROUND THE OPEN STAY AND ASKS
     WHEN THERE IS NONE (decision-maker dispatch Sep 29, 2026, under R211 — the Part 6 sessions ratify;
