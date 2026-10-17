@@ -4,8 +4,10 @@
  * L1–L2 are pure (the byline decision, source admission). L3–L10 run the service against a disposable
  * database with the byline gate and the partner-host list INJECTED, so the state machine is proven
  * without the storefront graph. Every assertion is a database fact read back after the call.
+ * L11–L14 are the editorial guide (ED-1a); L15–L17 the Traveloure Editorial house account (ED-1b,
+ * migration 385), which earns nothing, advises no plan and is never ranked.
  */
-import { test, before, after } from "node:test";
+import { test, before, after, mock } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
@@ -24,6 +26,8 @@ import {
   withdrawPost,
   type BlogDeps,
 } from "../services/blog-posts.service";
+import { getEditorialUserId, invalidateEditorialAccountCache } from "../services/editorial-account.service";
+import { insertRoutableExpertForm } from "./helpers/routable-expert";
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const ADMIN = `blog-${RUN}-admin`;
@@ -222,4 +226,77 @@ test("L14 the public read: plain editorial byline, no storefront, no platform la
   assert.equal(pub.sources[0].url, "https://kyoto.travel/en/eikando");
   assert.equal(pub.sources[0].checkedAt, CHECKED.toISOString());
   assert.equal(JSON.stringify(pub).includes(ADMIN), false, "no user id on the public read (LD 40)");
+});
+
+// ── ED-1b: the Traveloure Editorial house account (migration 385) ──────────────────────────────────
+async function editorialId(): Promise<string> {
+  invalidateEditorialAccountCache();
+  const id = await getEditorialUserId();
+  assert.ok(id, "migration 385 seeds platform_settings.editorial_user_id");
+  const u = (await db.execute(sql`SELECT password, role, handle FROM users WHERE id = ${id}`)).rows[0] as any;
+  assert.ok(u, "the house account row exists");
+  assert.equal(u.password, null, "never a login");
+  assert.equal(u.role, "user", "not an expert or provider role");
+  assert.equal(u.handle, null, "no storefront handle");
+  return id!;
+}
+
+test("L15 the earnings mint refuses the editorial house account", async () => {
+  const id = await editorialId();
+  const { storage } = await import("../storage");
+  const { logger } = await import("../infrastructure/logger");
+  const warn = mock.method(logger, "warn");
+  try {
+    const bookingId = `blog-${RUN}-booking`;
+    const minted = await storage.mintCompletionEarningsForBooking({
+      id: bookingId, providerId: id, serviceId: `blog-${RUN}-service`, status: "completed",
+      totalAmount: "100.00", platformFee: "10.00", providerEarnings: "90.00", bookingDetails: {},
+      stripePaymentIntentId: "pi_test_editorial",
+    } as any);
+    assert.equal(minted, false);
+    assert.ok(
+      warn.mock.calls.some((c) => String(c.arguments[1] ?? "").includes("editorial house account")),
+      "refused by the editorial check, not by a later gate",
+    );
+    const earned = await db.execute(sql`SELECT 1 FROM expert_earnings WHERE booking_id = ${bookingId}`).catch(() => ({ rows: [] }));
+    assert.equal(earned.rows.length, 0);
+  } finally {
+    warn.mock.restore();
+  }
+});
+
+test("L16 the advisor-row author refuses the editorial house account", async () => {
+  const id = await editorialId();
+  const { upsertTripAdvisorRow } = await import("../services/booking-actions.service");
+  await assert.rejects(
+    upsertTripAdvisorRow({ tripId: `blog-${RUN}-trip`, localExpertId: id, status: "pending" } as any),
+    /Traveloure Editorial house account advises no plan/,
+  );
+  const rows = await db.execute(sql`SELECT 1 FROM trip_expert_advisors WHERE local_expert_id = ${id}`);
+  assert.equal(rows.rows.length, 0);
+});
+
+test("L17 the editorial account never appears in the expert directory or lead scoring", async () => {
+  const id = await editorialId();
+  const { directoryExperts, routableUserIds } = await import("../services/expert-routability");
+  const { leadRoutingService } = await import("../services/lead-routing.service");
+  // Even given a routable application (which migration 385 never creates), it is excluded by id.
+  // OTHER, given the same application, is the control: the exclusion is the account, not the form.
+  await insertRoutableExpertForm(id);
+  await insertRoutableExpertForm(OTHER);
+  await db.execute(sql`UPDATE local_expert_forms SET destinations = '["Kyoto"]'::jsonb WHERE user_id IN (${id}, ${OTHER})`);
+  try {
+    const routable = await routableUserIds([id, OTHER]);
+    assert.equal(routable.has(OTHER), true, "control is routable");
+    assert.equal(routable.has(id), false, "directory/routing filter excludes the editorial account");
+    const listed = await directoryExperts([{ id }, { id: OTHER }]);
+    assert.deepEqual(listed.map((e) => e.id), [OTHER]);
+    for (const requireRoutable of [true, false]) {
+      const scored = await leadRoutingService.scoreExperts({ destination: "kyoto", requireRoutable } as any);
+      assert.equal(scored.some((s: any) => s.expertId === OTHER), true, `control scored (requireRoutable=${requireRoutable})`);
+      assert.equal(scored.some((s: any) => s.expertId === id), false, `editorial never scored (requireRoutable=${requireRoutable})`);
+    }
+  } finally {
+    await db.execute(sql`DELETE FROM local_expert_forms WHERE user_id IN (${id}, ${OTHER})`);
+  }
 });
