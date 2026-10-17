@@ -1,0 +1,8 @@
+run = "bash infra/osrm/start.sh"
+
+[nix]
+channel = "stable-24_05"
+
+[[ports]]
+localPort = 8080
+externalPort = 80
