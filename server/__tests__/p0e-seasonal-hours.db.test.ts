@@ -10,7 +10,7 @@
  *   SH2 summer: the summer hours apply — open on arrival, but it closes before the visit ends
  *   SH3 summer: the summer last entry applies although the winter fact is stored first
  *   SH4 an off-map placeholder ("Late Dinner in Shimogyo") and an off-map real place are told apart
- *   SH5 addition 7: the row's facts carry both seasons and the Places list; the row shows the season
+ *   SH5 addition 7: the row's facts carry both seasons (GH-1: no Places list); the row shows the season
  *       covering its date, and its closing warning names that fact's source
  *   SH6 the row's warning prefers the last entry covering its date ("Last entry 4:30 PM · …")
  *   SH7 the extractor admits a season on an hours row; a malformed one stores no structured hours, nor
@@ -150,7 +150,7 @@ test("SH4 an off-map placeholder and an off-map real place are told apart", asyn
 
 test("SH5 the row reads the season covering its date and warns from that fact", async () => {
   const w = (await factsForTrip(winter))[`${winter}-g`] ?? [];
-  assert.equal(w.filter((f) => f.factType === "hours").length, 3, "both official seasons and the Places list reach the row");
+  assert.equal(w.filter((f) => f.factType === "hours").length, 2, "both official seasons reach the row (GH-1: no Places list is stored)");
   assert.match(itemFactsLine(w, "2027-01-11", "Asia/Tokyo")!.text, /^Mon · 9:00 AM – 4:30 PM · /);
   // The winter last entry (16:00, stored for this place by the other plan) is preferred over the 16:30 close.
   assert.match(itemClosingWarning(w, "2027-01-11", { time: "16:45", durationMinutes: 30 }, "Asia/Tokyo")!.text, /^Last entry 4:00 PM · /);

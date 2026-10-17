@@ -8,7 +8,7 @@
  *   M3  the gate under its cap calls once and records the call (units, sku), success or failure
  *   M4  the recorded cost is the row's unit price × units, in tenths of a cent
  *   M5  Routes: the drive body is Essentials (TRAFFIC_UNAWARE, no departure); the mode body has no preference
- *   M6  Places: Details is Enterprise (Atmosphere for dining) with photos inside it; the ID lookup asks places.id only
+ *   M6  Places: Details is Pro with no hours field (Enterprise + Atmosphere for dining), photos inside it; the ID lookup asks places.id only
  *   M7  the workspace Text Search mask is exactly the eight fields — no photos — and its rows carry no photo URL
  *   M8  the source: no legacy Place Photo / legacy Text Search URL and no TRAFFIC_AWARE request anywhere
  */
@@ -30,7 +30,8 @@ const EXPECTED_TIERS: Record<MapsCallerKey, string> = {
   route_matrix: "compute_route_matrix_pro",
   geocode: "geocoding_essentials",
   places_id_lookup: "text_search_ids_only",
-  places_details: "place_details_enterprise",
+  places_details: "place_details_pro",
+  places_stay_link: "place_details_enterprise",
   places_text_search: "text_search_enterprise",
 };
 
@@ -61,8 +62,8 @@ test("M1: every Maps caller names its tier, its own switch, cap and cost", () =>
   }
   const caps = MAPS_CALLER_KEYS.map((k) => MAPS_CALLERS[k].dailyCapEnv);
   assert.equal(new Set(caps).size, caps.length, "one cap per caller");
-  // The two Places calls share the spine's switch; every other caller has its own.
-  const switches = MAPS_CALLER_KEYS.filter((k) => !k.startsWith("places_id") && !k.startsWith("places_details")).map((k) => MAPS_CALLERS[k].enabledEnv);
+  // The Places calls share the spine's switch (GH-1: the stay link too); every other caller has its own.
+  const switches = MAPS_CALLER_KEYS.filter((k) => !k.startsWith("places_id") && !k.startsWith("places_details") && k !== "places_stay_link").map((k) => MAPS_CALLERS[k].enabledEnv);
   assert.equal(new Set(switches).size, switches.length);
 });
 
@@ -115,7 +116,8 @@ test("M3: under the cap the call runs once and is recorded, success or failure",
 test("M4: the recorded cost — unit price × units, in tenths of a cent; caps and prices are env-overridable", () => {
   assert.equal(mapsCallerCostTenthsOfCent("routes_drive", 1), 5); // $5 / 1,000 = 0.5¢
   assert.equal(mapsCallerCostTenthsOfCent("route_matrix", 100), 1000); // $10 / 1,000 × 100 = $1
-  assert.equal(mapsCallerCostTenthsOfCent("places_details", 1), 20); // 2¢ per call
+  assert.equal(mapsCallerCostTenthsOfCent("places_details", 1), 17); // 1.7¢ per call (Pro, GH-1)
+  assert.equal(mapsCallerCostTenthsOfCent("places_stay_link", 1), 20); // 2¢ per call (Enterprise)
   assert.equal(mapsCallerCostTenthsOfCent("places_text_search", 1), 35);
   process.env.MAPS_GEOCODE_DAILY_CAP = "7";
   process.env.MAPS_GEOCODE_USD_PER_1000 = "4";
@@ -148,10 +150,10 @@ test("M5: Routes — the drive is Essentials (TRAFFIC_UNAWARE, no departure); a 
   assert.equal(MODE_PATH_FIELD_MASK, "routes.polyline.encodedPolyline");
 });
 
-test("M6: Places — Details is Enterprise (+Atmosphere for dining) with photos inside it; the ID lookup asks places.id only", async () => {
+test("M6: Places — Details is Pro with no hours field (+Atmosphere for dining), photos inside it; the ID lookup asks places.id only", async () => {
   const hours = placesFieldMask("stop.hours");
-  assert.equal(hours.sku, "details_enterprise");
-  assert.ok(hours.fields.includes("regularOpeningHours.weekdayDescriptions"), "hours lift it to Enterprise");
+  assert.equal(hours.sku, "details_pro", "GH-1: no hours field, so the highest field left is Pro");
+  assert.equal(hours.fields.some((f) => f.startsWith("regularOpeningHours")), false, "GH-1: Google's hours are never asked");
   assert.ok(hours.fields.includes("photos"), "photos are an Essentials field — the tier is unchanged");
   assert.equal(hours.fields.some((f) => /rating|priceLevel|reviews|editorialSummary/.test(f)), false, "nothing beyond Enterprise");
   const dining = placesFieldMask("dining");
