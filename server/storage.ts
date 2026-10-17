@@ -21,6 +21,7 @@ import { PROCESSING_FEE_RATE, resolveCommissionRates, resolveServiceOwnerShareRa
 // answers "is this the platform's own reserved Booking Concierge account" — read here so the
 // concierge-fee expert-share re-split is skipped when the listing owner is not a person.
 import { isPlatformConciergeUserId } from "./services/platform-concierge.service";
+import { isEditorialUserId } from "./services/editorial-account.service";
 import { notConciergePoolListingSql } from "./services/expert-routability";
 import { notRideListingSql } from "./services/ride-listings";
 // D-32..D-35 (ledger `2026-09-16-d32-d35-bundle-components`): the child-row BIRTH inside the checkout
@@ -3814,6 +3815,12 @@ export class DatabaseStorage implements IStorage {
     const { providerId, serviceId } = booking;
     if (!providerId || !serviceId) {
       console.error(`[mintCompletionEarnings] booking ${booking.id} missing providerId/serviceId — cannot mint`);
+      return false;
+    }
+    // ED-1b (ledger `2026-10-16-ed1b-editorial-house-account`): the Traveloure Editorial house account
+    // earns nothing — an earning minted to it would be a payable no one can draw.
+    if (await isEditorialUserId(providerId)) {
+      logger.warn({ bookingId: booking.id }, "[mintCompletionEarnings] provider is the editorial house account — refusing to mint");
       return false;
     }
     // #1288, second layer: the status writer already refuses to complete a stamped booking; this

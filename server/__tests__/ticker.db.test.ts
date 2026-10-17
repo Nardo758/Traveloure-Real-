@@ -10,6 +10,9 @@
  *   T4  Every write — create, edit, reorder — writes ONE audit row in the same transaction; a refused write writes
  *       none. Reorder must name every line of the market once.
  *   T5  The public read's brief cache is cleared by a write.
+ *   T6  (LW-1f-b, issue #1486) The beta list: the public read carries `betaCities`, the launch city when nothing is
+ *       set; a saved list is read back in order; an unknown or repeated key is refused 400 at save and leaves the
+ *       stored value as it was. The setting is restored afterwards.
  *
  * DISPOSABLE DB ONLY: refuses anything but a local database. Every row it writes it creates and deletes; the four
  * seeded lines are left as they were (the reorder test puts the order back).
@@ -30,7 +33,10 @@ const { pool } = await import("../db");
 const { getSession } = await import("../replit_integrations/auth/replitAuth");
 const { setupEmailAuth } = await import("../replit_integrations/auth/emailAuth");
 const { default: tickerRoutes } = await import("../routes/ticker.routes");
+const { default: adminRoutes } = await import("../routes/admin.routes");
+const { invalidatePlatformFlagCache } = await import("../services/platform-flags");
 const { clearTickerCache } = await import("../services/ticker.service");
+const { launchCityName } = await import("../../shared/ticker");
 
 const DISPOSABLE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0", ""]);
 async function assertDisposableDb(): Promise<void> {
@@ -51,6 +57,7 @@ let market = "";
 let adminCookie = "";
 let adminId = "";
 let memberCookie = "";
+let savedBeta: string | null | undefined;
 
 function scryptHash(password: string): string {
   const salt = crypto.randomBytes(16).toString("hex");
@@ -129,6 +136,7 @@ describe("LW-1f: the ticker rails", () => {
     passport.deserializeUser((user: any, cb) => cb(null, user));
     setupEmailAuth(app);
     app.use(tickerRoutes);
+    app.use(adminRoutes);
     server = http.createServer(app);
     await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
     base = `http://127.0.0.1:${(server.address() as any).port}`;
@@ -139,6 +147,11 @@ describe("LW-1f: the ticker rails", () => {
   });
 
   after(async () => {
+    if (savedBeta !== undefined) {
+      if (savedBeta === null) await pool.query(`DELETE FROM platform_settings WHERE setting_key = 'beta_market_slugs'`);
+      else await pool.query(`UPDATE platform_settings SET setting_value = $1 WHERE setting_key = 'beta_market_slugs'`, [savedBeta]);
+      invalidatePlatformFlagCache("beta_market_slugs");
+    }
     await new Promise<void>((r) => server?.close(() => r()));
     await pool.query(`DELETE FROM ticker_items WHERE text LIKE $1`, [`LW-1f % ${RUN}`]);
     if (postIds.length) await pool.query(`DELETE FROM blog_posts WHERE id = ANY($1)`, [postIds]);
@@ -250,5 +263,34 @@ describe("LW-1f: the ticker rails", () => {
     assert.equal(r.status, 201);
     const now = await call("GET", `/api/public/ticker?market=${market}`, null);
     assert.ok(now.json.items.some((i: any) => i.text === T("fresh")), "visible at once, not after the cache expires");
+  });
+
+  it("T6 — the beta list: default, saved, refused", async () => {
+    const prior = await pool.query(`SELECT setting_value FROM platform_settings WHERE setting_key = 'beta_market_slugs'`);
+    savedBeta = prior.rows[0]?.setting_value ?? null;
+    const betaRead = async () => {
+      clearTickerCache();
+      invalidatePlatformFlagCache("beta_market_slugs");
+      return (await call("GET", `/api/public/ticker?market=${market}`, null)).json.betaCities;
+    };
+    const launchCity = launchCityName(market);
+    await pool.query(`DELETE FROM platform_settings WHERE setting_key = 'beta_market_slugs'`);
+    assert.deepEqual(await betaRead(), [launchCity], "nothing set: the launch city");
+
+    const save = (value: string, cookie = adminCookie) =>
+      call("PATCH", "/api/admin/platform-settings/beta_market_slugs", cookie, { settingValue: value });
+    assert.equal((await save('["kyoto","goa"]', memberCookie)).status, 403);
+    assert.equal((await save('["kyoto","goa"]')).status, 200);
+    assert.deepEqual(await betaRead(), ["Kyoto", "Goa"]);
+
+    const unknown = await save('["kyoto","lisbon"]');
+    assert.equal(unknown.status, 400);
+    assert.equal(unknown.json?.error, "unknown market: lisbon");
+    assert.equal((await save('["goa","goa"]')).status, 400);
+    assert.equal((await save("kyoto")).status, 400);
+    assert.deepEqual(await betaRead(), ["Kyoto", "Goa"], "a refused save leaves the stored list as it was");
+
+    assert.equal((await save("[]")).status, 200);
+    assert.deepEqual(await betaRead(), [launchCity], "an empty list falls back to the launch city");
   });
 });

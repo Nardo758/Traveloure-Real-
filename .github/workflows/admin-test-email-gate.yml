@@ -14,6 +14,7 @@ name: Admin Test-Email UI Gate
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
     paths:
       - 'client/src/pages/admin/system.tsx'
@@ -46,6 +47,7 @@ jobs:
   # setup: pre-warm Playwright browser cache + production build cache.
   # ─────────────────────────────────────────────────────────────────────────
   setup:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: setup (build + browser cache warm-up)
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -85,6 +87,7 @@ jobs:
   # admin-test-email-smoke: Playwright UI gate with real admin session.
   # ─────────────────────────────────────────────────────────────────────────
   admin-test-email-smoke:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: admin-test-email-smoke (Playwright UI gate)
     runs-on: ubuntu-latest
     needs: [setup]
@@ -206,7 +209,7 @@ jobs:
     name: report (PR comment)
     runs-on: ubuntu-latest
     needs: [admin-test-email-smoke]
-    if: ${{ always() && github.event_name == 'pull_request' }}
+    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (always() && github.event_name == 'pull_request') }}
     steps:
       - name: Post pass/fail summary to the PR
         uses: actions/github-script@v7

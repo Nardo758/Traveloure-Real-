@@ -515,3 +515,14 @@ from the provider's payout.
   row `storage.createProviderService` returns. Owner: unassigned. Options once picked up: drop the column
   (migration) if truly unused, or find the intended reader and wire it — either needs a decision first, per
   this file's "propose in this file first" rule.
+
+## 8 · Open — docs clean-up
+
+- **CLAUDE.md carries two Locked Decisions numbered 57 [verified on `main` @ `dfd9783ff`; decision-maker
+  ruled Oct 17, 2026 that it goes on this register].** `57. THE BLOG IS EXPERT-SIGNED…` and
+  `57. A PLAN'S FACTS ARE ROWS WITH PROVENANCE…` both open with "57.", so "LD 57" names two different
+  entries. The blog entry carries the ED-1 editorial-guides and footer amendments, and that is where they
+  stay; the place-facts entry carries the Google/Places rulings and Track A's GH-1 amendment. The clean-up
+  is a renumbering decision: which entry keeps 57, and every citation of the other ("LD 57" in CLAUDE.md,
+  `docs/DECISIONS.md`, briefs, code comments) moves with it. Docs only; no code reads the number.
+  Owner: unassigned.

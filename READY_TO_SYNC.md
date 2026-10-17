@@ -48,7 +48,7 @@ Click "Stop" then "Run" in Replit
 ### CRITICAL: Google Maps API Key
 Your key is **exposed in JavaScript**:
 ```
-AIzaSyAlhW2MsmHjk_W4toxac-sILDb-YLOeg3s
+<redacted>
 ```
 
 **Fix it NOW:**
