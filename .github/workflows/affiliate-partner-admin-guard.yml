@@ -24,8 +24,6 @@ on:
       - 'client/public/.well-known/**'
       - '!.github/workflows/**'
       - '.github/workflows/affiliate-partner-admin-guard.yml'
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:

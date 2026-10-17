@@ -21,8 +21,6 @@ on:
       - 'client/public/.well-known/**'
       - '!.github/workflows/**'
       - '.github/workflows/suite-server-tests.yml'
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:

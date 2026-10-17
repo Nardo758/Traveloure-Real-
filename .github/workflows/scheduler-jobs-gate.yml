@@ -54,8 +54,6 @@ on:
       - 'CLAUDE.md'
       - 'generated/**'
       - 'client/public/.well-known/**'
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:

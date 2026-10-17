@@ -49,8 +49,6 @@ on:
       - 'client/public/.well-known/**'
       - '!.github/workflows/**'
       - '.github/workflows/dev-server-gates.yml'
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:

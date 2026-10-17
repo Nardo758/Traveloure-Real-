@@ -34,8 +34,6 @@ on:
       - 'client/public/.well-known/**'
       - '!.github/workflows/**'
       - '.github/workflows/suite-ai-draft-and-availability.yml'
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:

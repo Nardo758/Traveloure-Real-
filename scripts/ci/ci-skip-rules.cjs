@@ -192,6 +192,13 @@ function checkWorkflow(file, text, required) {
     for (const j of jobs) {
       if (!j.body.includes("github.event.pull_request.draft")) errs.push(`${file}: job ${j.id} does not skip drafts`);
     }
+    // CI-1b (e)1 (ledger `2026-10-17-ci1b-non-required-off-main-push`): a workflow that provides no
+    // required check runs on the PR and not again on the merge push to main.
+    const push = /^  push:\s*\n((?:    .*\n|\s*\n)*)/m.exec(text);
+    if (push) {
+      const br = /^    branches:\s*(.*)$/m.exec(push[1]);
+      if (!br || /\bmain\b/.test(br[1])) errs.push(`${file}: provides no required check, so it may not run on push to main (it ran on the PR)`);
+    }
   }
   return errs;
 }
@@ -253,6 +260,10 @@ function selfTest() {
   assert.deepEqual(checkWorkflow("home-gate.yml", nonOk, req), []);
   assert.equal(checkWorkflow("home-gate.yml", nonOk.replace("github.event.pull_request.draft == false", "true"), req).length, 1, "a job without the draft skip fails");
   assert.equal(checkWorkflow("home-gate.yml", nonOk.replace("      - 'CLAUDE.md'\n", ""), req).length, 1, "a drifted paths list fails");
+  assert.equal(checkWorkflow("home-gate.yml", nonOk.replace("on:\n", "on:\n  push:\n    branches: [main]\n"), req).length, 1, "a non-required workflow on push to main fails");
+  assert.equal(checkWorkflow("home-gate.yml", nonOk.replace("on:\n", "on:\n  push:\n"), req).length, 1, "a non-required workflow on every push fails");
+  assert.deepEqual(checkWorkflow("home-gate.yml", nonOk.replace("on:\n", "on:\n  push:\n    branches: [lane/x]\n"), req), [], "a push trigger on another branch is accepted");
+  assert.deepEqual(checkWorkflow("build.yml", reqOk.replace("on:\n", "on:\n  push:\n    branches: [main]\n"), req), [], "a required workflow keeps its push to main");
   const narrow = `on:\n  pull_request:\n${types}    paths:\n      - 'server/x.ts'\njobs:\n  a:\n    if: github.event.pull_request.draft == false\n`;
   assert.deepEqual(checkWorkflow("narrow.yml", narrow, req), [], "a pre-existing narrow paths list is accepted");
   console.log("ci-skip-rules self-test: all fixtures pass ✅");

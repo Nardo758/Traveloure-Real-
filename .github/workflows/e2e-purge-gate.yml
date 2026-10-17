@@ -22,8 +22,6 @@ on:
       - 'client/public/.well-known/**'
       - '!.github/workflows/**'
       - '.github/workflows/e2e-purge-gate.yml'
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:

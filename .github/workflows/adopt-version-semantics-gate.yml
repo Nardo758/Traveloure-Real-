@@ -42,8 +42,6 @@ on:
       - 'client/public/.well-known/**'
       - '!.github/workflows/**'
       - '.github/workflows/adopt-version-semantics-gate.yml'
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
