@@ -4,6 +4,8 @@
  *
  *   expert posts:   draft ──submit──▶ in_review ──sign──▶ signed ──publish──▶ published ──withdraw──▶ withdrawn
  *   platform posts: draft ──publish──▶ published ──withdraw──▶ withdrawn        (TravelPulse weekly only)
+ *   editorial posts: the same rail as platform posts (ED-1). Publish IS the decision-maker's approval
+ *   and writes an audit row in the same transaction; every source must carry the date it was checked.
  *
  * Rules that must not be weakened:
  *  - The CONTENT HASH covers title + summary + body + every source. It is computed here, server-side,
@@ -23,10 +25,11 @@
 import crypto from "node:crypto";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
-import { blogPosts, blogPostSources, blogPostReactions, cityEvents } from "@shared/schema";
+import { accessAuditLogs, blogPosts, blogPostSources, blogPostReactions, cityEvents } from "@shared/schema";
 import {
   BLOG_IMPRESSION_CONTENT_TYPE,
   BLOG_SLUG_RE,
+  EDITORIAL_BYLINE,
   PLATFORM_POST_LABEL,
   authorshipFor,
   isBlogContentType,
@@ -104,6 +107,23 @@ export function sourceRefusal(
   return null;
 }
 
+/**
+ * ED-1: an editorial post shows each source as a link and the date it was checked, so a source with
+ * no checked date is refused — never published undated, never given a guessed date (§13).
+ */
+function admitEditorialSources(sources: readonly BlogSourceInput[]): void {
+  sources.forEach((s, i) => {
+    if (!(s.retrievedAt instanceof Date) || Number.isNaN(s.retrievedAt.getTime())) {
+      throw new BlogError("source_checked_date_required", 400, `source ${i + 1}: source_checked_date_required`);
+    }
+  });
+}
+
+/** Posts an admin publishes directly (no expert signature): platform and editorial. */
+function isAdminPublished(authorship: string): boolean {
+  return authorship === "platform" || authorship === "editorial";
+}
+
 async function admitSources(sources: BlogSourceInput[], deps: BlogDeps): Promise<void> {
   if (sources.length === 0) return;
   const hosts = await (deps.refusedHosts ?? loadPartnerHosts)();
@@ -144,9 +164,11 @@ export async function createPost(input: CreatePostInput, actorId: string | null,
   const bylineExpertId = input.bylineExpertId ?? null;
   if (authorship === "expert" && !bylineExpertId) throw new BlogError("byline_required", 400);
   if (authorship === "platform" && bylineExpertId) throw new BlogError("platform_post_has_no_byline", 400);
+  if (authorship === "editorial" && bylineExpertId) throw new BlogError("editorial_post_has_no_expert_byline", 400);
   if (authorship === "expert" && !input.marketSlug) throw new BlogError("market_required", 400);
   if (EVENT_TYPES.has(contentType) && !input.cityEventId) throw new BlogError("event_guide_requires_generator", 400);
   const sources = input.sources ?? [];
+  if (authorship === "editorial") admitEditorialSources(sources);
   await admitSources(sources, deps);
   const summary = input.summary ?? null;
   const hash = computeContentSha256({ title: input.title, summary, body: input.body, sources });
@@ -209,6 +231,7 @@ export async function editPost(id: string, patch: EditPostInput, actorId: string
     const body = patch.body ?? row.body;
     let sources: BlogSourceInput[];
     if (patch.sources) {
+      if (row.authorship === "editorial") admitEditorialSources(patch.sources);
       sources = patch.sources;
       await tx.delete(blogPostSources).where(eq(blogPostSources.postId, id));
       if (sources.length) {
@@ -222,7 +245,7 @@ export async function editPost(id: string, patch: EditPostInput, actorId: string
     }
     const hash = computeContentSha256({ title, summary, body, sources });
     const nextStatus =
-      row.status === "draft" ? "draft" : row.authorship === "platform" ? "draft" : "in_review";
+      row.status === "draft" ? "draft" : isAdminPublished(row.authorship) ? "draft" : "in_review";
 
     const [updated] = await tx.update(blogPosts).set({
       title, summary, body,
@@ -251,7 +274,7 @@ async function readStatus(id: string) {
 export async function submitForReview(id: string, deps: BlogDeps = {}) {
   const post = await readStatus(id);
   if (!post) throw new BlogError("not_found", 404);
-  if (post.authorship !== "expert") throw new BlogError("platform_posts_are_not_reviewed", 409);
+  if (post.authorship !== "expert") throw new BlogError(`${post.authorship}_posts_are_not_reviewed`, 409);
   await gateFor(deps, post.bylineExpertId!, post.marketSlug);
   const [row] = await db.update(blogPosts)
     .set({ status: "in_review", updatedAt: new Date() })
@@ -297,7 +320,14 @@ export async function signPost(id: string, expertId: string, reviewedSha256: str
   return row;
 }
 
-export async function publishPost(id: string, adminId: string, deps: BlogDeps = {}) {
+/** Who pressed Publish and from where — written to the audit row an editorial publish carries. */
+export interface PublishAuditContext {
+  actorRole?: string;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+}
+
+export async function publishPost(id: string, adminId: string, deps: BlogDeps = {}, audit: PublishAuditContext = {}) {
   const post = await readStatus(id);
   if (!post) throw new BlogError("not_found", 404);
   const now = new Date();
@@ -313,6 +343,28 @@ export async function publishPost(id: string, adminId: string, deps: BlogDeps = 
       .returning();
     if (!row) throw new BlogError("not_signed_for_this_content", 409);
     return row;
+  }
+  if (post.authorship === "editorial") {
+    // ED-1: Publish IS the approval of this one draft. The flip and its audit row commit together, so
+    // there is never a published editorial post with no record of who approved it.
+    return db.transaction(async (tx) => {
+      const [row] = await tx.update(blogPosts)
+        .set({ status: "published", publishedBy: adminId, publishedAt: now, updatedAt: now })
+        .where(and(eq(blogPosts.id, id), eq(blogPosts.status, "draft"), eq(blogPosts.authorship, "editorial")))
+        .returning();
+      if (!row) throw new BlogError("not_a_draft", 409);
+      await tx.insert(accessAuditLogs).values({
+        actorId: adminId,
+        actorRole: audit.actorRole ?? "admin",
+        action: "blog_editorial_publish",
+        resourceType: "blog_post",
+        resourceId: row.id,
+        metadata: { slug: row.slug, contentSha256: row.contentSha256 },
+        ipAddress: audit.ipAddress ?? null,
+        userAgent: audit.userAgent ?? null,
+      });
+      return row;
+    });
   }
   const [row] = await db.update(blogPosts)
     .set({ status: "published", publishedBy: adminId, publishedAt: now, updatedAt: now })
@@ -336,7 +388,10 @@ export async function withdrawPost(id: string, adminId: string, reason: string |
 
 async function sourcesFor(postId: string) {
   const rows = await db.select().from(blogPostSources).where(eq(blogPostSources.postId, postId)).orderBy(asc(blogPostSources.position));
-  return rows.map((s) => ({ url: s.url, title: s.title, publisher: s.publisher, quote: s.quote }));
+  return rows.map((s) => ({
+    url: s.url, title: s.title, publisher: s.publisher, quote: s.quote,
+    checkedAt: s.retrievedAt ? new Date(s.retrievedAt).toISOString() : null,
+  }));
 }
 
 /**
@@ -363,6 +418,8 @@ export async function toPublicPost(row: any) {
     body: row.body,
     publishedAt: row.published_at,
     byline,
+    // ED-1: plain text, no storefront link and no "Ask the local" — `byline` stays null.
+    editorialByline: row.authorship === "editorial" ? EDITORIAL_BYLINE : null,
     platformLabel: row.authorship === "platform" ? PLATFORM_POST_LABEL : null,
     sources: await sourcesFor(row.id),
     planDoor: row.city_event_id && row.content_type !== "series_follow" ? await planDoorFor(row.city_event_id) : null,

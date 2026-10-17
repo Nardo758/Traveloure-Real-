@@ -16,11 +16,14 @@ export const BLOG_CONTENT_TYPES = [
   "event_weekend_guide",
   "series_follow",
   "race_weekend",
+  // ED-1 (decision-maker, Oct 16, 2026): a guide written by Traveloure Editorial from Marketing's
+  // files, entered and published by an admin. Never generator-born and never expert-signed.
+  "editorial_guide",
 ] as const;
 export type BlogContentType = (typeof BLOG_CONTENT_TYPES)[number];
 
 /** Who wrote it. `platform` is TravelPulse weekly only (ruling 5); everything else carries an expert byline. */
-export const BLOG_AUTHORSHIPS = ["expert", "platform"] as const;
+export const BLOG_AUTHORSHIPS = ["expert", "platform", "editorial"] as const;
 export type BlogAuthorship = (typeof BLOG_AUTHORSHIPS)[number];
 
 /**
@@ -36,7 +39,18 @@ export const PLATFORM_AUTHORED_TYPES: readonly BlogContentType[] = [
   "race_weekend",
 ];
 
+/**
+ * The editorial types (ED-1). An editorial post carries the plain byline "Traveloure Editorial" — no
+ * storefront link and no "Ask the local" — every source carries a link and the date it was checked,
+ * and it publishes only through the admin rail, where Publish is the approval and is audited.
+ */
+export const EDITORIAL_AUTHORED_TYPES: readonly BlogContentType[] = ["editorial_guide"];
+
+/** The byline an editorial post carries. Plain text, never a link. */
+export const EDITORIAL_BYLINE = "Traveloure Editorial";
+
 export function authorshipFor(contentType: BlogContentType): BlogAuthorship {
+  if (EDITORIAL_AUTHORED_TYPES.includes(contentType)) return "editorial";
   return PLATFORM_AUTHORED_TYPES.includes(contentType) ? "platform" : "expert";
 }
 
