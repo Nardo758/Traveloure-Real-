@@ -27,6 +27,7 @@ name: Slip Card Integrity Gate
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
   push:
     branches: [main]
@@ -40,7 +41,35 @@ permissions:
   contents: read
 
 jobs:
+  # CI-1b (c)+(d) (scripts/ci/ci-skip-rules.cjs): decides whether this PR push runs the heavy jobs. A draft or
+  # a docs-only / other-workflow-only push skips them; a job skipped by its `if:` reports success, so every
+  # required check still reports on the merge head. Only an explicit run=false skips: any other event, a file
+  # list it cannot read, or this job failing outright leaves the suites running (fail open).
+  changes:
+    name: changes (skip suites on drafts and docs-only pushes)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - uses: actions/checkout@v5.1.0
+        with:
+          sparse-checkout: scripts/ci
+      - name: Skip rules self-test
+        run: node scripts/ci/ci-skip-rules.cjs --self-test
+      - id: decide
+        name: Decide
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: node scripts/ci/ci-skip-rules.cjs --decide
+
   slip-card-integrity:
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: slip-card-integrity (slip is live, finalized plan is not re-routed, expert must exist)
     runs-on: ubuntu-latest
     steps:

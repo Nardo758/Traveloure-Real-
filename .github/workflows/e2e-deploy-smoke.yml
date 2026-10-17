@@ -24,7 +24,18 @@ name: E2E Deploy Smoke (production · UNAUTHENTICATED)
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
+    # CI-1b (c): docs-only and other-workflow-only changes do not trigger this workflow
+    # (scripts/ci/ci-skip-rules.cjs canonicalPaths; later entries win).
+    paths:
+      - '**'
+      - '!**/*.md'
+      - 'CLAUDE.md'
+      - 'generated/**'
+      - 'client/public/.well-known/**'
+      - '!.github/workflows/**'
+      - '.github/workflows/e2e-deploy-smoke.yml'
   workflow_dispatch:
 
 permissions:
@@ -44,6 +55,7 @@ jobs:
   # secrets.* are NOT accessible in `if:` conditions, so map to job env and
   # publish the answer as an output the dependent jobs gate on.
   config:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: prod smoke config probe
     runs-on: ubuntu-latest
     outputs:
@@ -73,7 +85,7 @@ jobs:
   public-smoke:
     name: public smoke (unauthenticated; non-blocking)
     needs: config
-    if: needs.config.outputs.configured == 'true'
+    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (needs.config.outputs.configured == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -123,7 +135,7 @@ jobs:
   report:
     name: ${{ needs.config.outputs.configured == 'true' && 'prod smoke verdict' || 'PROD SMOKE DID NOT RUN — E2E_BASE_URL not configured' }}
     needs: [config, public-smoke]
-    if: always()
+    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (always()) }}
     runs-on: ubuntu-latest
     steps:
       - name: Summarize

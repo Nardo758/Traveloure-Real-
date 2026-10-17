@@ -135,3 +135,34 @@ test.describe('Landing hero pills open for a guest', () => {
     });
   }
 });
+
+// ── The gated Blog link (ED-1 footer count; ledger `2026-10-16-blog-footer-count`) ──────────────────
+// /blog is not a static footer href (it lives in footerGatedLinks), so the two blocks above never visit it.
+// The server answers whether the footer shows it — a bare boolean from GET /api/blog/footer-visible. When it
+// answers true, the link is drawn and /blog gets the same checks as every other footer destination; when it
+// answers anything else, the link must be absent and the smoke is skipped with the reason stated.
+test.describe('Gated Blog link (published-count gate)', () => {
+  test('/blog is smoked when the gate shows it, and absent when it does not', async ({ page, request }) => {
+    const res = await request.get(`${BASE_URL}/api/blog/footer-visible`);
+    const shown = res.ok() ? (await res.json()) === true : false;
+
+    await page.goto(`${BASE_URL}/`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await expect(page.locator(PUBLIC_FOOTER).first()).toBeAttached({ timeout: 15_000 });
+    const link = page.locator('footer [data-testid="link-footer-blog"]');
+
+    if (!shown) {
+      await expect(link, 'gate closed: the footer must not draw a Blog link').toHaveCount(0);
+      test.skip(true, `the published-count gate answered ${res.ok() ? 'false' : `HTTP ${res.status()}`}, so /blog is not a footer destination`);
+      return;
+    }
+
+    await expect(link, 'gate open: the footer draws the Blog link').toBeVisible({ timeout: 15_000 });
+    await page.goto(`${BASE_URL}/blog`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await page.waitForTimeout(3_000);
+    await expect(page.getByRole('heading', { name: NOT_FOUND_HEADING, exact: true }), '/blog must not render the 404 page').not.toBeVisible({ timeout: 1_000 });
+    expect(new URL(page.url()).pathname, '/blog bounced a guest to "/"').not.toBe('/');
+    await expect(page.locator(PUBLIC_HEADER).first(), '/blog: shared header').toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(PUBLIC_FOOTER).first(), '/blog: shared footer').toBeAttached({ timeout: 15_000 });
+    expect(await page.locator('.console-scope').count(), '/blog: the console shell rendered for a guest').toBe(0);
+  });
+});

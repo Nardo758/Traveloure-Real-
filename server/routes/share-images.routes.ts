@@ -99,7 +99,7 @@ router.get("/api/share-image/service/:id.png", heavyReadRateLimiter, async (req,
   }
 });
 
-// GET /api/share-image/ready-made/:id.png?format=cover|map|story|og[&v=<version>][&download=1]
+// GET /api/share-image/ready-made/:id.png?format=cover|map|story|og[&v=<version>][&download=1][&ref=<code>]
 // Slice B2 (ledger `2026-10-05-rmt-share-images`): the Ready Made Trip's four generated cards
 // (`ready-made-share-image.service.ts`), from ONE data object behind the public gate (approved +
 // active, else 404 — no draft oracle). `feed` is kept as the cover's old name (SocialKitCard). A
@@ -111,9 +111,11 @@ router.get("/api/share-image/ready-made/:id.png", heavyReadRateLimiter, async (r
     if (!(READY_MADE_SHARE_FORMATS as readonly string[]).includes(format)) {
       return res.status(400).json({ message: "Unknown format" });
     }
-    const image = await getReadyMadeShareImage(req.params.id, format);
+    // CP-3: `?ref=<code>` prints the author's own /r/ link on cover and story; any other code serves the /t/ image.
+    const ref = typeof req.query.ref === "string" ? req.query.ref : null;
+    const image = await getReadyMadeShareImage(req.params.id, format, ref);
     if (!image) return res.status(404).json({ message: "Trip not found" });
-    res.setHeader("ETag", `"rmt-${format}-${image.version}"`);
+    res.setHeader("ETag", `"rmt-${format}-${image.version}${image.refCode ? `-${image.refCode}` : ""}"`);
     if (req.query.download === "1") {
       res.setHeader("Content-Disposition", `attachment; filename="traveloure-${image.slug}-${format}.png"`);
     }

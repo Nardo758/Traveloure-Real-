@@ -136,7 +136,7 @@ ADMIN_ALLOWED_IPS=127.0.0.1,YOUR_OFFICE_IP,YOUR_HOME_IP
 ## ⚠️ Still Requires Manual Action
 
 ### 1. Google Maps API Key Rotation (CRITICAL)
-**Current Key (EXPOSED):** `AIzaSyAlhW2MsmHjk_W4toxac-sILDb-YLOeg3s`
+**Current Key (EXPOSED):** `<redacted>`
 
 **Steps to Fix:**
 1. Go to: https://console.cloud.google.com/apis/credentials

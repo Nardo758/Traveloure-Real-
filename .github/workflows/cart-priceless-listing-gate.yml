@@ -19,7 +19,18 @@ name: Cart Priceless Listing Gate
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
+    # CI-1b (c): docs-only and other-workflow-only changes do not trigger this workflow
+    # (scripts/ci/ci-skip-rules.cjs canonicalPaths; later entries win).
+    paths:
+      - '**'
+      - '!**/*.md'
+      - 'CLAUDE.md'
+      - 'generated/**'
+      - 'client/public/.well-known/**'
+      - '!.github/workflows/**'
+      - '.github/workflows/cart-priceless-listing-gate.yml'
   push:
     branches: [main]
   workflow_dispatch:
@@ -33,6 +44,7 @@ permissions:
 
 jobs:
   cart-priceless-listing:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: cart-priceless-listing (ruling 9 row 11; ledger 2026-09-13-cart-priceless-gap)
     runs-on: ubuntu-latest
     # A HANG MUST FAIL, NEVER STALL (the fee-preview-gate precedent): per-step ceilings name the
