@@ -18,7 +18,7 @@ SOURCE_URL="https://download.geofabrik.de/asia/japan/kansai-latest.osm.pbf"
 # minlon,minlat,maxlon,maxlat — Kyoto prefecture (≈134.85–136.06 E, 34.70–35.78 N) + ~0.05° margin,
 # south to 34.33 N for KIX (34.43 N, 135.23 E) and Osaka Bay.
 BBOX="134.80,34.33,136.11,35.83"
-FOOT_BBOX="135.60,34.85,135.90,35.15"
+FOOT_BBOX="135.55,34.85,135.90,35.15"
 WORK="${OSRM_WORK_DIR:-./build}"
 OUT="${OSRM_DATA_DIR:-./data}"
 
