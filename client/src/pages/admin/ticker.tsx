@@ -2,6 +2,8 @@
 // Add, edit, reorder and turn lines on or off, with a preview of the ribbon as the public will see it. Every
 // rule (link shape, a blog line only while its post is published, 90 characters) is decided by the server when you
 // save; this page shows the server's answer. Every save is audit-logged server-side.
+// LW-1f-b (issue #1486): the beta list — the cities that may be called "in beta" — is switched here by hand, one
+// checkbox per operating market, saved through the audited platform-settings save. Nothing works it out from supply.
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin-layout";
@@ -14,7 +16,12 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { TickerRibbon } from "@/components/CityTickerTape";
-import { TICKER_CONTENT_RULE, TICKER_TEXT_MAX, launchCityName, tickerButton } from "@shared/ticker";
+import { Checkbox } from "@/components/ui/checkbox";
+import { OPERATING_MARKETS } from "@shared/operating-markets";
+import {
+  BETA_MARKET_SLUGS_HELP, BETA_MARKET_SLUGS_SETTING, TICKER_CONTENT_RULE, TICKER_TEXT_MAX, betaCityNames, betaLabel,
+  betaMarketSlugs, launchCityName, tickerButton,
+} from "@shared/ticker";
 
 interface AdminTickerItem {
   id: string;
@@ -32,6 +39,62 @@ interface AdminTickerAnswer { marketSlug: string; items: AdminTickerItem[] }
 interface SignupModeAnswer { mode: "waitlist" | "open"; launchMarketSlug: string | null }
 
 const KEY = ["/api/admin/ticker"];
+const SETTINGS_KEY = ["/api/admin/platform-settings"];
+
+/** LW-1f-b: the beta list, switched by hand. Shows what the label will read before saving. */
+function BetaCities({ launchMarketSlug }: { launchMarketSlug: string }) {
+  const settings = useQuery<{ setting_key: string; setting_value: string | null }[]>({ queryKey: SETTINGS_KEY });
+  const stored = settings.data?.find((r) => r.setting_key === BETA_MARKET_SLUGS_SETTING)?.setting_value ?? null;
+  const current = betaMarketSlugs(stored, launchMarketSlug);
+  const [picked, setPicked] = useState<string[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const chosen = picked ?? current;
+  const save = useMutation({
+    mutationFn: () =>
+      apiRequest("PATCH", `/api/admin/platform-settings/${BETA_MARKET_SLUGS_SETTING}`, { settingValue: JSON.stringify(chosen) }),
+    onSuccess: () => {
+      setError(null);
+      setPicked(null);
+      queryClient.invalidateQueries({ queryKey: SETTINGS_KEY });
+      queryClient.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).startsWith("/api/public/ticker") });
+    },
+    onError: (e) => setError(serverMessage(e)),
+  });
+  const toggle = (key: string, on: boolean) =>
+    setPicked(OPERATING_MARKETS.map((m) => m.marketKey).filter((k) => (k === key ? on : chosen.includes(k))));
+  return (
+    <Card>
+      <CardHeader><CardTitle>Beta cities</CardTitle></CardHeader>
+      <CardContent className="space-y-4" data-testid="card-beta-cities">
+        <p className="text-sm text-muted-foreground">{BETA_MARKET_SLUGS_HELP}</p>
+        <div className="flex flex-wrap gap-4">
+          {OPERATING_MARKETS.map((m) => (
+            <label key={m.marketKey} className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={chosen.includes(m.marketKey)}
+                onCheckedChange={(v) => toggle(m.marketKey, v === true)}
+                data-testid={`checkbox-beta-${m.marketKey}`}
+              />
+              {m.cityName}
+            </label>
+          ))}
+        </div>
+        <p className="text-sm" data-testid="text-beta-label-preview">
+          The ribbon will read: {betaLabel(betaCityNames(chosen), launchCityName(launchMarketSlug))}
+        </p>
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        <Button
+          variant="outline"
+          disabled={picked === null || save.isPending}
+          onClick={() => save.mutate()}
+          data-testid="button-beta-save"
+        >
+          Save beta cities
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
 
 /** The server's sentence from an apiRequest error ("409: {\"error\":\"…\"}"). */
 function serverMessage(err: unknown): string {
@@ -166,6 +229,10 @@ export default function AdminTicker() {
     reorder.mutate(ids);
   };
   const city = launchCityName(data?.marketSlug ?? null);
+  const settings = useQuery<{ setting_key: string; setting_value: string | null }[]>({ queryKey: SETTINGS_KEY });
+  const betaCities = betaCityNames(
+    betaMarketSlugs(settings.data?.find((r) => r.setting_key === BETA_MARKET_SLUGS_SETTING)?.setting_value ?? null, data?.marketSlug ?? null),
+  );
   const showing = items.filter((i) => i.showing).map((i) => ({ text: i.text ?? "", href: i.href }));
 
   return (
@@ -180,7 +247,7 @@ export default function AdminTicker() {
               <CardHeader><CardTitle>Preview — what the public sees now</CardTitle></CardHeader>
               <CardContent data-testid="ticker-preview">
                 {city && showing.length > 0 ? (
-                  <TickerRibbon items={showing} cityName={city} button={tickerButton(signup.data?.mode, data.marketSlug, city)} />
+                  <TickerRibbon items={showing} cityName={city} betaCities={betaCities} button={tickerButton(signup.data?.mode, data.marketSlug, city)} />
                 ) : (
                   <p className="text-sm text-muted-foreground">No line is showing, so no ribbon is shown.</p>
                 )}
@@ -217,6 +284,7 @@ export default function AdminTicker() {
                 {items.length === 0 && <p className="text-sm text-muted-foreground">No lines yet.</p>}
               </CardContent>
             </Card>
+            <BetaCities launchMarketSlug={data.marketSlug} />
             <Card>
               <CardHeader><CardTitle>Add a line</CardTitle></CardHeader>
               <CardContent>
