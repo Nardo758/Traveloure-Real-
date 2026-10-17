@@ -52,7 +52,9 @@ export function isSignedForCurrentContent(row: Pick<BlogConsoleRow, "contentSha2
 
 /** The actions a row offers — mirroring the server's from-states, never widening them. */
 export function blogConsoleActions(row: BlogConsoleRow): BlogConsoleAction[] {
-  const platform = row.authorship === "platform";
+  // Platform and editorial posts are published by an admin directly; for editorial, Publish is the
+  // approval (ED-1). Expert posts need the expert's signature first.
+  const platform = row.authorship === "platform" || row.authorship === "editorial";
   switch (row.status) {
     case "draft":
       return platform ? ["publish"] : ["submit"];
@@ -75,7 +77,7 @@ export function canEditBlogPost(status: string): boolean {
  * edit moves nothing. Mirrors `editPost`'s next-status rule.
  */
 export function editConsequence(row: Pick<BlogConsoleRow, "status" | "authorship">): string | null {
-  const platform = row.authorship === "platform";
+  const platform = row.authorship === "platform" || row.authorship === "editorial";
   if (row.status === "signed") {
     return "Saving clears the expert's signature. The post goes back to the expert, who must review and sign this new version before it can be published.";
   }
@@ -115,7 +117,11 @@ const blankToNull = (v: string | null | undefined): string | null => {
   return t ? t : null;
 };
 
-export interface BlogSourceForm { url: string; title: string; publisher: string; quote: string }
+export interface BlogSourceForm {
+  url: string; title: string; publisher: string; quote: string;
+  /** ED-1: the date the source was checked ("YYYY-MM-DD"). Required on an editorial post. */
+  checkedAt?: string;
+}
 
 /** Source rows → the route's `sourceBody` shape. A row with no URL is not a source and is dropped. */
 export function sourcesBody(rows: readonly BlogSourceForm[]) {
@@ -126,6 +132,8 @@ export function sourcesBody(rows: readonly BlogSourceForm[]) {
       title: blankToNull(s.title),
       publisher: blankToNull(s.publisher),
       quote: blankToNull(s.quote),
+      // Sent only when given, so a form without a date sends exactly what it always sent.
+      ...(s.checkedAt?.trim() ? { retrievedAt: s.checkedAt.trim() } : {}),
     }));
 }
 
