@@ -27,7 +27,18 @@ name: Cart Checkout Redirect Gate
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
+    # CI-1b (c): docs-only and other-workflow-only changes do not trigger this workflow
+    # (scripts/ci/ci-skip-rules.cjs canonicalPaths; later entries win).
+    paths:
+      - '**'
+      - '!**/*.md'
+      - 'CLAUDE.md'
+      - 'generated/**'
+      - 'client/public/.well-known/**'
+      - '!.github/workflows/**'
+      - '.github/workflows/cart-checkout-redirect-gate.yml'
   push:
     branches: [main]
   workflow_dispatch:
@@ -49,6 +60,7 @@ jobs:
   # declares the matching route. Typically completes in under 30 seconds.
   # ─────────────────────────────────────────────────────────────────────────
   static-redirect-check:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: static-redirect-check (source analysis)
     runs-on: ubuntu-latest
     # 10, not 5: on 2026-09-03 a cold runner spent over five minutes inside `npm ci` and the job was
@@ -102,6 +114,7 @@ jobs:
   #   → assert trip page renders, not 404.
   # ─────────────────────────────────────────────────────────────────────────
   e2e-cart-redirect:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: e2e-cart-redirect (browser gate)
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -194,7 +207,7 @@ jobs:
     name: report (PR comment)
     runs-on: ubuntu-latest
     needs: [static-redirect-check, e2e-cart-redirect]
-    if: ${{ always() && github.event_name == 'pull_request' }}
+    if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (always() && github.event_name == 'pull_request') }}
     steps:
       - name: Post pass/fail summary to the PR
         uses: actions/github-script@v7
