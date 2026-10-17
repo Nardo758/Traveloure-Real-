@@ -26,10 +26,7 @@ import { nearestAreaName } from "../utils/public-service-listing";
 import { cityNeighborhoodNames } from "./listing-location-access.service";
 import { validateRailsRef, type RailsLinkFacts } from "./rails-attribution.service";
 import { decideWaitlistReferral } from "./waitlist-referral.service";
-<<<<<<< HEAD
 import { everyLocatedPointNonGoogle } from "@shared/item-coord-source";
-=======
->>>>>>> origin/main
 import {
   READY_MADE_SHARE_FORMATS,
   heroCreditLine,
@@ -76,11 +73,7 @@ function num(v: unknown): number | null {
 }
 
 /** The listing's share data WITHOUT the photo bytes, plus its photo source; null when not public. */
-<<<<<<< HEAD
 export async function loadReadyMadeShareInputs(listingId: string): Promise<{ data: Omit<ReadyMadeShareData, "hero">; heroUrl: string | null; heroCredit: string | null; id: string; slug: string; authorId: string; mapServable: boolean } | null> {
-=======
-export async function loadReadyMadeShareInputs(listingId: string): Promise<{ data: Omit<ReadyMadeShareData, "hero">; heroUrl: string | null; heroCredit: string | null; id: string; slug: string; authorId: string } | null> {
->>>>>>> origin/main
   const [listing] = await db.select().from(readyMadeTrips).where(eq(readyMadeTrips.id, listingId)).limit(1);
   if (!listing || listing.status !== "approved" || listing.active !== true) return null;
   const [author] = await db.select({ firstName: users.firstName }).from(users).where(eq(users.id, listing.authorId)).limit(1);
@@ -138,10 +131,7 @@ export async function loadReadyMadeShareInputs(listingId: string): Promise<{ dat
     id: listing.id,
     slug,
     authorId: listing.authorId,
-<<<<<<< HEAD
     mapServable,
-=======
->>>>>>> origin/main
     heroUrl,
     heroCredit: heroUrl ? heroCredit : null,
     data: {
@@ -241,7 +231,6 @@ async function resolveShareImageRef(ref: string, listingId: string, tripAuthorId
   return shareImageRefCode({ link: check.link, valid: check.valid, listingId, tripAuthorId });
 }
 
-<<<<<<< HEAD
 /** GC-1: the map format exists for this listing but is not served (a located stop's point is Google). */
 export const MAP_FORMAT_NOT_SERVED = "map_not_served" as const;
 
@@ -253,11 +242,6 @@ export async function getReadyMadeShareImage(
   const inputs = await loadReadyMadeShareInputs(listingId);
   if (!inputs) return null;
   if (format === "map" && !inputs.mapServable) return MAP_FORMAT_NOT_SERVED;
-=======
-export async function getReadyMadeShareImage(listingId: string, format: ReadyMadeShareFormat, ref?: string | null): Promise<ReadyMadeShareImage | null> {
-  const inputs = await loadReadyMadeShareInputs(listingId);
-  if (!inputs) return null;
->>>>>>> origin/main
   // The version names what the listing says, so `?v=` keeps meaning the listing's version whatever the link.
   const version = shareVersion(inputs);
   // Checked on every request, before the cache, so an expired link stops printing at once; a refused code shares

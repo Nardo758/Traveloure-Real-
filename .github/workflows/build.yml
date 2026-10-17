@@ -622,12 +622,9 @@ jobs:
       # CP-3: the share kit's cover and story downloads carry the expert's own short-link code; map and og never do.
       - name: Share kit links carry the expert's code (CP-3)
         run: npx tsx --test client/src/lib/__tests__/cp3-share-kit-links.test.ts
-<<<<<<< HEAD
       # GC-1: the Leaflet fallback draws no leg lines and shows a list unless every located stop is non-Google.
       - name: Leaflet fallback list and no leg lines (GC-1)
         run: npx tsx --test client/src/lib/__tests__/gc1-leaflet-list.test.ts
-=======
->>>>>>> origin/main
       - name: Maps browser key is its own variable (R312)
         run: npx tsx --test client/src/lib/__tests__/maps-browser-key.test.ts
       - name: Listing save intent pin
