@@ -1127,9 +1127,19 @@ function getOptimalTimeSlot(activity: SequencedActivity): { slot: string; startH
   return { slot: activity.timeSlot || 'afternoon', startHour: 14 };
 }
 
+/** FB-1 step 3b: a start window for one stop (minutes after midnight), from the draft's own `retime` fix. */
+export interface StopTimeWindow {
+  notBeforeMin?: number;
+  notAfterMin?: number;
+}
+
+/** FB-1 step 3b: the window for a stop, keyed by the draft item it keeps; null when it has none. */
+export type StopWindowFor = (activity: SequencedActivity) => StopTimeWindow | null;
+
 // Reorder activities within a day using smart sequencing rules
 export function reorderDayActivities(
-  activities: SequencedActivity[]
+  activities: SequencedActivity[],
+  opts: { windowFor?: StopWindowFor } = {},
 ): SequencingResult {
   if (activities.length <= 1) {
     return {
@@ -1150,17 +1160,23 @@ export function reorderDayActivities(
     appliedRules.push('geographic-clustering');
   }
 
+  // FB-1 step 3b: the model's own start time, captured BEFORE step 1 fills slot defaults — only a time the model
+  // stated is honoured below, never a default this step made up.
+  const modelStart = new Map<SequencedActivity, string | null>();
+
   // Step 1: Assign optimal time slots first
   sequencedActivities = sequencedActivities.map(activity => {
     const { slot, startHour } = getOptimalTimeSlot(activity);
     const duration = activity.duration || 60;
     const endHour = startHour + Math.ceil(duration / 60);
-    return {
+    const filled = {
       ...activity,
       timeSlot: slot,
       startTime: activity.startTime || `${startHour.toString().padStart(2, '0')}:00`,
       endTime: activity.endTime || `${endHour.toString().padStart(2, '0')}:00`
     };
+    modelStart.set(filled, activity.startTime ?? null);
+    return filled;
   });
   
   // Step 2: Sort by optimal start time
@@ -1195,9 +1211,13 @@ export function reorderDayActivities(
     }
   }
   
-  // Step 4: Recalculate times with proper spacing (the ONE spacing rule, shared with the
-  // keep-the-order re-time below — step 5, R-ac).
-  sequencedActivities = spaceDayTimes(sequencedActivities, 8 * 60);
+  // Step 4: Recalculate times with proper spacing. FB-1 step 3b (ledger `2026-10-18-fb1-sequencing-windows`): the
+  // spacing honours the model's own start times and the draft's retime windows; with neither, it is exactly the ONE
+  // spacing rule (`spaceDayTimes(…, 8 * 60)`), which the keep-the-order re-time (step 5, R-ac) still uses unchanged.
+  sequencedActivities = spaceDayTimesHonouring(sequencedActivities, {
+    modelStart: (a) => modelStart.get(a) ?? null,
+    windowFor: opts.windowFor,
+  });
   
   // Step 5: Generate methodology notes
   const methodologyNotes: MethodologyNote[] = [];
@@ -1270,6 +1290,48 @@ export function spaceDayTimes<T extends SequencedActivity>(activities: T[], star
 }
 
 /**
+ * FB-1 step 3b (ledger `2026-10-18-fb1-sequencing-windows`): `spaceDayTimes` that honours a stop's own start time and
+ * its window, in the given order, with the same durations and the same 30-minute gap. Each stop starts at the LATEST of:
+ *   • the cursor — 08:00 for the first stop, else the previous stop's end + 30 (so stops never overlap);
+ *   • the model's own start time, when it stated one (`modelStart`);
+ *   • the window's `notBeforeMin`.
+ * A stop is never moved earlier than the cursor. A stop that lands past its `notAfterMin` is left late — never squeezed;
+ * the version check (FB-1 step 3) holds the version. With no model times and no windows this IS `spaceDayTimes(…, 480)`.
+ * Pure.
+ */
+export function spaceDayTimesHonouring<T extends SequencedActivity>(
+  activities: T[],
+  opts: { modelStart?: (a: T) => string | null; windowFor?: StopWindowFor; dayStartMinutes?: number } = {},
+): T[] {
+  let cursor = opts.dayStartMinutes ?? 8 * 60;
+  return activities.map((activity, index) => {
+    const duration = activity.duration || 60;
+    const ownText = opts.modelStart?.(activity) ?? null;
+    const own = ownText ? timeToMinutes(ownText) : NaN;
+    const window = opts.windowFor?.(activity) ?? null;
+    let start = cursor;
+    if (Number.isFinite(own) && own > start) start = own;
+    if (window?.notBeforeMin != null && window.notBeforeMin > start) start = window.notBeforeMin;
+    const startHour = Math.floor(start / 60);
+    const startMin = start % 60;
+    const endMinutes = start + duration;
+    const endHour = Math.floor(endMinutes / 60);
+    const endMin = endMinutes % 60;
+    const buffer = index < activities.length - 1 ? 30 : 0;
+    cursor = endMinutes + buffer;
+    let timeSlot = 'morning';
+    if (startHour >= 12 && startHour < 17) timeSlot = 'afternoon';
+    else if (startHour >= 17) timeSlot = 'evening';
+    return {
+      ...activity,
+      startTime: `${startHour.toString().padStart(2, '0')}:${startMin.toString().padStart(2, '0')}`,
+      endTime: `${endHour.toString().padStart(2, '0')}:${endMin.toString().padStart(2, '0')}`,
+      timeSlot,
+    };
+  });
+}
+
+/**
  * Step 5 (R-ac) — RE-TIME ONE DAY IN THE TRAVELER'S ORDER. No reordering, no model call: the day
  * starts where its first stop already starts (else 08:00) and each stop keeps its own duration
  * (its duration, else its own start→end, else 60). Pure.
@@ -1299,7 +1361,9 @@ function calculateIntensityVariance(activities: SequencedActivity[]): number {
 
 // Reorder entire itinerary (all days)
 export function reorderItinerary(
-  items: SequencedActivity[]
+  items: SequencedActivity[],
+  /** FB-1 step 3b: each stop's window from the draft's retime fixes (keyed by the draft item the stop keeps). */
+  opts: { windowFor?: StopWindowFor } = {},
 ): {
   reorderedItems: SequencedActivity[];
   allMethodologyNotes: MethodologyNote[];
@@ -1327,7 +1391,7 @@ export function reorderItinerary(
     const dayType = classifyDayType(dayItems);
     const paceExpectation = getPaceExpectationForDayType(dayType);
 
-    const result = reorderDayActivities(dayItems);
+    const result = reorderDayActivities(dayItems, opts);
     reorderedItems.push(...result.activities);
     allMethodologyNotes.push(...result.methodologyNotes);
 

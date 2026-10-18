@@ -8,6 +8,7 @@ import { logger } from "../infrastructure";
 import { db } from "../db";
 import { serpCache } from "@shared/schema";
 import { eq, and, gte } from "drizzle-orm";
+import { serpApiGoogleMapsEnabled } from "../config/serpapi.config";
 
 const CACHE_DURATION_HOURS = 24;
 const SERP_API_BASE_URL = "https://serpapi.com/search.json";
@@ -53,6 +54,8 @@ class VenueSearchService {
   }
 
   private async getCachedResults(cacheKey: string): Promise<VenueResult[] | null> {
+    // EV PR 0: `serp_cache` holds Google Maps results; never read while the gate is off.
+    if (!serpApiGoogleMapsEnabled()) return null;
     try {
       const expirationThreshold = new Date(Date.now() - CACHE_DURATION_HOURS * 60 * 60 * 1000);
       
@@ -79,6 +82,8 @@ class VenueSearchService {
   }
 
   private async cacheResults(cacheKey: string, results: VenueResult[], params: VenueSearchParams): Promise<void> {
+    // EV PR 0: nothing from Google Maps is stored while the gate is off.
+    if (!serpApiGoogleMapsEnabled()) return;
     try {
       await db
         .insert(serpCache)
@@ -109,6 +114,8 @@ class VenueSearchService {
    * Search for venues using SerpAPI Google Maps endpoint
    */
   async searchVenues(params: VenueSearchParams): Promise<VenueResult[]> {
+    // EV PR 0: the SerpAPI `google_maps` path is off unless `SERPAPI_GOOGLE_MAPS_ENABLED=1`.
+    if (!serpApiGoogleMapsEnabled()) return [];
     if (!this.serpApiKey) {
       this.venueLogger.warn("SERP_API_KEY not configured - returning empty results");
       return [];
@@ -224,6 +231,8 @@ class VenueSearchService {
    * Get venue details by place ID
    */
   async getVenueDetails(placeId: string): Promise<VenueResult | null> {
+    // EV PR 0: the SerpAPI `google_maps` path is off unless `SERPAPI_GOOGLE_MAPS_ENABLED=1`.
+    if (!serpApiGoogleMapsEnabled()) return null;
     if (!this.serpApiKey) {
       this.venueLogger.warn("SERP_API_KEY not configured");
       return null;
