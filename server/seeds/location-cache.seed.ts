@@ -61,7 +61,12 @@ function deriveCities(rows: SeedAirport[]): SeedAirport[] {
   return Array.from(byCity.values());
 }
 
-export async function seedLocationCache(): Promise<{ upserted: number; skipped: boolean }> {
+/**
+ * `refresh: false` (the boot call, ledger `2026-10-18-boot-reference-seeding`) inserts only the rows whose
+ * (iata_code, location_type) is absent and never rewrites an existing row. The direct run below keeps the
+ * old refresh (`npx tsx server/seeds/location-cache.seed.ts`).
+ */
+export async function seedLocationCache(opts: { refresh?: boolean } = {}): Promise<{ upserted: number; skipped: boolean }> {
   const rows = airports as SeedAirport[];
   const cities = deriveCities(rows);
   const expectedTotal = rows.length + cities.length;
@@ -117,6 +122,18 @@ export async function seedLocationCache(): Promise<{ upserted: number; skipped: 
   }));
 
   const all = [...airportRows, ...cityRows];
+  if (opts.refresh === false) {
+    const present = await db
+      .select({ iataCode: locationCache.iataCode, locationType: locationCache.locationType })
+      .from(locationCache);
+    const have = new Set(present.map((r) => `${r.locationType}|${r.iataCode}`));
+    const missing = all.filter((r) => !have.has(`${r.locationType}|${r.iataCode}`));
+    for (let i = 0; i < missing.length; i += 500) {
+      const inserted = await db.insert(locationCache).values(missing.slice(i, i + 500)).returning({ id: locationCache.id });
+      upserted += inserted.length;
+    }
+    return { upserted, skipped: missing.length === 0 };
+  }
   for (let i = 0; i < all.length; i += CONCURRENCY) {
     await upsertBatch(all.slice(i, i + CONCURRENCY));
   }
