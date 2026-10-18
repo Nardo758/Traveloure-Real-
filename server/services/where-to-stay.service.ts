@@ -79,6 +79,7 @@ import { listStayLinks } from "./stay-link.service";
 import { stayKindForCacheProvider } from "@shared/liteapi";
 import { routingAdapter } from "./routing/index";
 import { isOpenCoordOrigin } from "@shared/open-coords";
+import { affiliateProductNotPausedWhere } from "./partner-pause.service";
 import { RouteRunMemo } from "./routing/route-memo";
 
 const LODGING_CATEGORY = /hotel|accommodation|lodging|ryokan|stay/i;
@@ -332,7 +333,7 @@ export async function cityHotels(city: string): Promise<Array<StayHotel & { lat:
     db
       .select({ id: affiliateProducts.id, name: affiliateProducts.name, category: affiliateProducts.category, subCategory: affiliateProducts.subCategory, coordinates: affiliateProducts.coordinates })
       .from(affiliateProducts)
-      .where(and(ilike(affiliateProducts.city, city), eq(affiliateProducts.isActive, true), isNotNull(affiliateProducts.coordinates)))
+      .where(and(ilike(affiliateProducts.city, city), eq(affiliateProducts.isActive, true), isNotNull(affiliateProducts.coordinates), affiliateProductNotPausedWhere()))
       .orderBy(asc(affiliateProducts.id))
       .limit(500),
   ]);
@@ -778,7 +779,7 @@ async function bindWhereToStayInner(
       const [row] = await db
         .select({ name: affiliateProducts.name, city: affiliateProducts.city, category: affiliateProducts.category, subCategory: affiliateProducts.subCategory, coordinates: affiliateProducts.coordinates, location: affiliateProducts.location })
         .from(affiliateProducts)
-        .where(and(eq(affiliateProducts.id, binding.hotel.id), eq(affiliateProducts.isActive, true)))
+        .where(and(eq(affiliateProducts.id, binding.hotel.id), eq(affiliateProducts.isActive, true), affiliateProductNotPausedWhere()))
         .limit(1);
       if (!row || !city || (row.city ?? "").toLowerCase() !== city.toLowerCase() || !LODGING_CATEGORY.test(`${row.category ?? ""} ${row.subCategory ?? ""}`)) {
         throw new OptionSetError(404, "not_found", "No such place to stay in this plan's city");

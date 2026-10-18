@@ -1,4 +1,6 @@
-import { getTravelpayoutsToken } from "./travelpayouts-client";
+// PX-1 (ledger `2026-10-18-px1-partner-links`): Viator links and the feed request carry the public marker as
+// `mcid`, never the API token (the AF-2 class, missed here).
+import { getTravelpayoutsMarker, getTravelpayoutsToken } from "./travelpayouts-client";
 import type { CatalogItem } from "../experience-catalog.service";
 import { getCachedFeed, setCachedFeed } from "./travelpayouts-cache";
 
@@ -18,16 +20,16 @@ export async function searchViatorFeedProducts(params: ViatorFeedParams): Promis
   const cacheKey = `viator-feed:${currency}`;
 
   try {
-    const token = getTravelpayoutsToken();
+    const marker = getTravelpayoutsMarker();
     const limit = params.limit || 20;
 
     const cached = await getCachedFeed(BRAND, cacheKey);
     if (cached !== null) {
-      return filterAndMapFeed(cached, params, token, limit);
+      return filterAndMapFeed(cached, params, marker, limit);
     }
 
     const url = new URL("partner-feed.json", VIATOR_FEED_BASE);
-    if (token) url.searchParams.set("mcid", token);
+    url.searchParams.set("mcid", marker);
     url.searchParams.set("currency", currency);
 
     const res = await fetch(url.toString(), {
@@ -44,14 +46,14 @@ export async function searchViatorFeedProducts(params: ViatorFeedParams): Promis
 
     await setCachedFeed(BRAND, cacheKey, items);
 
-    return filterAndMapFeed(items, params, token, limit);
+    return filterAndMapFeed(items, params, marker, limit);
   } catch (err) {
     console.warn("[Viator Feed] Search failed:", err instanceof Error ? err.message : err);
     return [];
   }
 }
 
-function filterAndMapFeed(products: any[], params: ViatorFeedParams, token: string | null, limit: number): CatalogItem[] {
+function filterAndMapFeed(products: any[], params: ViatorFeedParams, marker: string, limit: number): CatalogItem[] {
   let filtered = products;
 
   if (params.destination) {
@@ -84,7 +86,7 @@ function filterAndMapFeed(products: any[], params: ViatorFeedParams, token: stri
     categories: p.tags?.map((t: any) => t.tagName || t) || ["activity"],
     tags: ["discounted", "viator"],
     bookingUrl: p.productUrl || null,
-    affiliateUrl: p.productUrl ? `${p.productUrl}?mcid=${token}` : null,
+    affiliateUrl: p.productUrl ? `${p.productUrl}?mcid=${marker}` : null,
     source: "travelpayouts/viator-feed",
     lastUpdated: new Date(),
   } as CatalogItem));
