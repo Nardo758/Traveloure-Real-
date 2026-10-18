@@ -2168,6 +2168,11 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
           fromLng: leg.fromLng,
           toLat: leg.toLat,
           toLng: leg.toLng,
+          // LG-1 item 4 (LD 65; ledger `2026-10-17-lg1-leg-options-provenance`): a routed leg's minutes go out with
+          // their source and checked date — present only on an engine leg, never on a leg with no provenance.
+          ...((leg as any).routed?.provenance
+            ? { source: String((leg as any).routed.provenance.source), checkedAt: String((leg as any).routed.provenance.checkedAt) }
+            : {}),
         })),
       }));
 
