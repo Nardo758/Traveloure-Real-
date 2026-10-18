@@ -1464,6 +1464,10 @@ jobs:
       - if: ${{ !cancelled() }}
         name: Item OSM re-geocode pins
         run: npx tsx --test server/services/__tests__/item-osm-regeocode.test.ts
+      # LG-1: re-deriving a neighbourhood centroid from its OSM place node (matched / ambiguous / unmatched). Pure.
+      - if: ${{ !cancelled() }}
+        name: Neighbourhood centroid OSM pins
+        run: npx tsx --test server/services/__tests__/neighborhood-centroid-osm.test.ts
       # The client half: the mono relative-day label (a calendar day is read on the VIEWER's
       # calendar, an instant as an instant — no zone invented either way) and the ONE derived
       # greeting sentence, which never says "0 things are due".
