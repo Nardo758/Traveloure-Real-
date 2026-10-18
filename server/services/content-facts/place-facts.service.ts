@@ -1011,6 +1011,18 @@ export interface FeasibilityHours {
   official: boolean;
   /** P0-e item 2: the official fact's own season, when it states one; absent ⇒ every date. */
   season?: { from: string; to: string } | null;
+  /** FB-1 step 2: where the fact came from, for the issue it supports. */
+  sourceUrl?: string | null;
+  provenance?: string | null;
+  /** FB-1 step 2: an official-licence source, or a person's check (an expert or a verifier). */
+  sourceKind?: "official_fact" | "person_checked_fact";
+}
+/** FB-1 step 2: one admitted last-admission fact with where it came from (same order as `lastAdmission`). */
+export interface FeasibilityLastAdmission {
+  value: unknown;
+  checkedAt: string | null;
+  sourceUrl: string | null;
+  provenance: string | null;
 }
 export interface FeasibilityFacts {
   /**
@@ -1021,7 +1033,9 @@ export interface FeasibilityFacts {
   hours: Map<string, FeasibilityHours[]>;
   /** Likewise every unexpired, admitted `last_admission` value per item, in precedence order (`lastAdmissionForDate`). */
   lastAdmission: Map<string, unknown[]>;
-  lastServices: Array<{ lat: number; lng: number; value: unknown }>;
+  /** FB-1 step 2: the same facts as `lastAdmission`, each with its checked date and source. */
+  lastAdmissionFacts: Map<string, FeasibilityLastAdmission[]>;
+  lastServices: Array<{ lat: number; lng: number; value: unknown; checkedAt?: string | null; sourceUrl?: string | null; provenance?: string | null }>;
 }
 
 /**
@@ -1029,7 +1043,10 @@ export interface FeasibilityFacts {
  * them (FD-3; TC-4 ledger `2026-10-11-tc4-live-directions`). Callers match rows to a stop by distance: the
  * optimizer lead's inferred ride and the Trip Card's last-departure line, both from the stop a leg LEAVES.
  */
-export async function lastServicesForMarket(market: string, now: Date = new Date()): Promise<Array<{ lat: number; lng: number; value: unknown }>> {
+export async function lastServicesForMarket(
+  market: string,
+  now: Date = new Date(),
+): Promise<Array<{ lat: number; lng: number; value: unknown; checkedAt: string | null; sourceUrl: string | null; provenance: string | null }>> {
   const services = await db
     .select()
     .from(placeFacts)
@@ -1045,7 +1062,17 @@ export async function lastServicesForMarket(market: string, now: Date = new Date
     );
   return services
     .filter((r) => !isFactStale(r, now) && admitFeasibilityFact(r).ok)
-    .map((r) => ({ lat: Number(r.placeLat), lng: Number(r.placeLng), value: r.value }))
+    .map((r) => {
+      const v = toView(r as FactRow, now);
+      return {
+        lat: Number(r.placeLat),
+        lng: Number(r.placeLng),
+        value: r.value,
+        checkedAt: r.fetchedAt ? new Date(r.fetchedAt as any).toISOString() : null,
+        sourceUrl: r.sourceUrl ?? null,
+        provenance: v?.provenance ?? null,
+      };
+    })
     .filter((x) => Number.isFinite(x.lat) && Number.isFinite(x.lng));
 }
 
@@ -1058,6 +1085,7 @@ export async function feasibilityFactsForTrip(tripId: string, market: string | n
 
   const hours = new Map<string, FeasibilityHours[]>();
   const lastAdmission = new Map<string, unknown[]>();
+  const lastAdmissionFacts = new Map<string, FeasibilityLastAdmission[]>();
   byItem.forEach((rows, itemId) => {
     const ranked = resolveFactPrecedence(
       rows.map((r) => ({ ...r, sourceClass: r.sourceClass, license: r.license })),
@@ -1077,13 +1105,27 @@ export async function feasibilityFactsForTrip(tripId: string, market: string | n
         checkedAt: h.fetchedAt ? new Date(h.fetchedAt as any).toISOString() : null,
         official,
         ...(season ? { season } : {}),
+        sourceUrl: (h as any).sourceUrl ?? null,
+        provenance: v?.provenance ?? null,
+        ...(h.license === "official" ? { sourceKind: "official_fact" as const } : h.verifiedAt ? { sourceKind: "person_checked_fact" as const } : {}),
       });
     }
     if (hs.length) hours.set(itemId, hs);
-    const las = ranked.filter((r) => r.factType === "last_admission" && !isFactStale(r, now) && admitFeasibilityFact(r).ok).map((r) => r.value);
-    if (las.length) lastAdmission.set(itemId, las);
+    const laRows = ranked.filter((r) => r.factType === "last_admission" && !isFactStale(r, now) && admitFeasibilityFact(r).ok);
+    if (laRows.length) {
+      lastAdmission.set(itemId, laRows.map((r) => r.value));
+      lastAdmissionFacts.set(
+        itemId,
+        laRows.map((r) => ({
+          value: r.value,
+          checkedAt: r.fetchedAt ? new Date(r.fetchedAt as any).toISOString() : null,
+          sourceUrl: (r as any).sourceUrl ?? null,
+          provenance: toView(r as any, now, sources)?.provenance ?? null,
+        })),
+      );
+    }
   });
 
   const lastServices = market ? await lastServicesForMarket(market, now) : [];
-  return { hours, lastAdmission, lastServices };
+  return { hours, lastAdmission, lastAdmissionFacts, lastServices };
 }
