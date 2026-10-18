@@ -109,3 +109,39 @@ export function deriveOccasionSource(input: {
   if (!input.occasionChosen) return "none";
   return input.openedAtOccasionStep ? "asked" : "door_prefilled";
 }
+
+/**
+ * §3.14–3.15 (ledger `2026-10-18-teaser-copy-events`; decision-maker, Oct 18, 2026). Two client views of
+ * the free plan's upgrade path, written through the ONE writer `recordSlipEvent`
+ * (`server/services/slip-events.service.ts`) — ids and enums only, never text.
+ *   · `slip_local_teaser_shown` — a FREE plan rendered at least one day's local teaser (FD-1/FD-5) on a
+ *     surface; once per page view. `teaserDays` is the client's count of days carrying a teaser.
+ *   · `slip_routed_legs_cta_tapped` — the traveler tapped the free plan's "Add drive and walk times"
+ *     line (`LEAVE_BY_COPY.needsRoutedLegDoor`).
+ */
+export const SLIP_LOCAL_TEASER_SHOWN_EVENT = "slip_local_teaser_shown";
+export const SLIP_ROUTED_LEGS_CTA_TAPPED_EVENT = "slip_routed_legs_cta_tapped";
+export const LOCAL_TEASER_SURFACES = ["slip", "trip_card"] as const;
+export type LocalTeaserSurface = (typeof LOCAL_TEASER_SURFACES)[number];
+export const ROUTED_LEGS_CTA_SURFACES = ["trip_card"] as const;
+export type RoutedLegsCtaSurface = (typeof ROUTED_LEGS_CTA_SURFACES)[number];
+/** The most days a plan can carry (the trip window's own ceiling is far below it). */
+export const LOCAL_TEASER_MAX_DAYS = 60;
+
+/** The `.strict()` bodies of the two events on `POST /api/trips/:tripId/slip-events` (§19). */
+export const slipLocalTeaserShownBody = z
+  .object({
+    type: z.literal(SLIP_LOCAL_TEASER_SHOWN_EVENT),
+    surface: z.enum(LOCAL_TEASER_SURFACES),
+    teaserDays: z.number().int().min(1).max(LOCAL_TEASER_MAX_DAYS),
+    viewId: z.string().min(1).max(64),
+  })
+  .strict();
+export const slipRoutedLegsCtaTappedBody = z
+  .object({
+    type: z.literal(SLIP_ROUTED_LEGS_CTA_TAPPED_EVENT),
+    surface: z.enum(ROUTED_LEGS_CTA_SURFACES),
+    viewId: z.string().min(1).max(64),
+  })
+  .strict();
+export type SlipClientEvent = z.infer<typeof slipLocalTeaserShownBody> | z.infer<typeof slipRoutedLegsCtaTappedBody>;
