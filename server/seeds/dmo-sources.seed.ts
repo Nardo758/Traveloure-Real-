@@ -238,7 +238,7 @@ export async function seedDmoSources(): Promise<{ upserted: number }> {
   let upserted = 0;
 
   for (const src of [...ALL_DMO_SOURCES, ...PROPOSED_DMO_SOURCES]) {
-    await db
+    const inserted = await db
       .insert(dmoSources)
       .values({
         id: src.id,
@@ -257,25 +257,11 @@ export async function seedDmoSources(): Promise<{ upserted: number }> {
         isActive: src.isActive,
         notes: src.notes ?? null,
       })
-      .onConflictDoUpdate({
-        target: [dmoSources.domain, dmoSources.market],
-        set: {
-          name: src.name,
-          sourceType: src.sourceType,
-          marketRegion: src.marketRegion,
-          apiEndpoint: src.apiEndpoint ?? null,
-          apiDocsUrl: src.apiDocsUrl ?? null,
-          partnerPortalUrl: src.partnerPortalUrl ?? null,
-          scrapeConfig: src.scrapeConfig ?? {},
-          confidence: src.confidence,
-          attributionRequired: src.attributionRequired,
-          attributionText: src.attributionText ?? null,
-          isActive: src.isActive,
-          notes: src.notes ?? null,
-          updatedAt: new Date(),
-        },
-      });
-    upserted += 1;
+      // Boot rule (ledger `2026-10-18-boot-reference-seeding`): insert-if-missing. An existing row is never
+      // rewritten — the old DO UPDATE bumped updated_at on all rows and undid a manual is_active=false.
+      .onConflictDoNothing({ target: [dmoSources.domain, dmoSources.market] })
+      .returning({ id: dmoSources.id });
+    upserted += inserted.length;
   }
 
   return { upserted };

@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { recordCreated } from "./seeds/lib/boot-seed-rules";
 import { experienceTypes, experienceTemplateSteps } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
@@ -612,26 +613,13 @@ export async function seedExperienceTypes(): Promise<{ created: number; existing
         }
       }
       
+      if (inserted) recordCreated("experience_types", inserted.id);
       created++;
       console.log(`Created experience type: ${expType.name} with ${steps?.length || 0} steps`);
     } else {
-      // Update existing records with logistics intelligence data if not set
-      if (!exists.paymentFlowType || !exists.timingComplexity) {
-        await db.update(experienceTypes)
-          .set({
-            paymentFlowType: expType.paymentFlowType,
-            paymentComplexity: expType.paymentComplexity,
-            timingComplexity: expType.timingComplexity,
-            contingencyLevel: expType.contingencyLevel,
-            typicalGroupSizeMin: expType.typicalGroupSizeMin,
-            typicalGroupSizeMax: expType.typicalGroupSizeMax,
-            typicalDurationMinDays: expType.typicalDurationMinDays,
-            typicalDurationMaxDays: expType.typicalDurationMaxDays,
-          })
-          .where(eq(experienceTypes.id, exists.id));
-        updated++;
-        console.log(`Updated logistics for: ${expType.name}`);
-      }
+      // Boot rule (ledger `2026-10-18-boot-reference-seeding`): a row that already exists is never
+      // rewritten at boot. The old "fill logistics if unset" update is gone; a code change to an existing
+      // occasion reaches the database through a script run on purpose, not through every boot.
       existing++;
     }
   }

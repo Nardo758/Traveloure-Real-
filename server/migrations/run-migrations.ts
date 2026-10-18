@@ -24,6 +24,7 @@ import { join } from "path";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { MIGRATION_FILES } from "./migration-files";
+import { MIGRATIONS_LOCK, withAdvisoryXactLock } from "../utils/advisory-lock";
 
 // CJS-safe dirname: never use import.meta.url — it is undefined in the
 // production CJS bundle (dist/index.cjs) and the try/catch does not
@@ -141,6 +142,13 @@ export async function runMigrations(): Promise<MigrationResult> {
   }
 
   // ── NORMAL STARTUP MODE ──────────────────────────────────────────────────────
+  // One instance at a time (ledger `2026-10-18-boot-reference-seeding`): two Autoscale instances booting
+  // together used to race on the same unrecorded file. The second now waits for the first, then reads the
+  // ledger (inside the lock) and applies nothing.
+  return withAdvisoryXactLock(MIGRATIONS_LOCK, () => applyPendingMigrations());
+}
+
+async function applyPendingMigrations(): Promise<MigrationResult> {
   // Ensure the ledger table exists (idempotent DDL).
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS schema_migrations (
