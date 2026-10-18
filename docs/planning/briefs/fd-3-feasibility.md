@@ -6,8 +6,9 @@ Read on `main` at `5e0a0839b` (R404). Ledger row `2026-10-10-fd3-feasibility` (R
 1. **Last admission** is a new `last_admission` fact type, structured (per-weekday time, optional seasonal
    range), `source_class = public`, an official source required; written only from official crawled pages or by
    experts citing one. Never parsed from free-text hours. It joins the facts-recheck set. No migration.
-2. **The free draft's fetch budget stays zero** (A6-3A unchanged). The post-draft Places hours lookup (12 billed)
-   is the only live source; everything else is stored official facts from the registry. A check with nothing stored
+2. **The free draft's fetch budget stays zero** (A6-3A unchanged). ~~The post-draft Places hours lookup (12 billed)
+   is the only live source; everything else is stored official facts from the registry.~~ **Struck Oct 18, 2026 (ledger `2026-10-18-google-hours-spec-strikes`):** Google hours are not stored or read (GH-1, `2026-10-17-gh1-no-google-hours`); hours come from official and person-checked facts only.
+   Every hours fact is a stored official fact from the registry. A check with nothing stored
    says "not checked" for that day — never silent, never padded.
 3. **Last trains** are a named sub-need `transport.local.last_service` (operator, line/station, last departure,
    valid-from/to, official source) from registered operator sources (Kyoto City Bus & Subway, JR West, Hankyu,
@@ -29,10 +30,10 @@ Out of FD-3: registering the operator sources (Supply Scout); FD-5's official-fa
 | Fact types | `shared/content-facts.ts:125-141` | no `last_admission`, no `last_service` |
 | Sub-needs | `shared/content-facts.ts:37-42` | four; the comment at :33-34 refuses free-text "last-service rules" |
 | Writer | `server/services/content-facts/place-facts.service.ts:48-77` `recordFacts` | tags born via `placeFactTags` (`shared/content-tiers.ts:154-159`) |
-| Places hours | `server/services/content-facts/places-adapter.ts:48, 246-248` | `{weekdayDescriptions}`; no last entry |
+| ~~Places hours~~ | ~~`server/services/content-facts/places-adapter.ts:48, 246-248`~~ | ~~`{weekdayDescriptions}`; no last entry~~ — struck Oct 18, 2026: Google hours are not stored or read (GH-1) |
 | Crawled facts | `server/services/content-facts/tavily-extract-adapter.ts:47-52, 211-214, 243, 267-283` | value `{text, quote}`; quote verified on page |
 | Free draft fetch gate | `server/services/content-facts/fresh-fetch.ts:30-35` | free draft ⇒ null |
-| Post-draft lookup | `server/routes/content.routes.ts:5012`; cap `server/config/content-facts.config.ts:57` | Places only |
+| Post-draft lookup | `server/routes/content.routes.ts:5012`; cap `server/config/content-facts.config.ts:57` | Places only — location, address, place id and photo references; ~~hours~~ struck Oct 18, 2026 (GH-1) |
 | TTLs | `server/config/content-facts.config.ts:17-31` | per fact type |
 | Findings | `shared/optimizer-lead.ts:18, 40, 56-152, 359-…`; reader `server/services/optimizer-lead.service.ts:49-120` | hours read ONLY in the Places shape (:79-82) |
 | Re-check | `server/jobs/factsRecheck.ts:69-80`; set `shared/facts-recheck.ts:13-15` | `closed_on_arrival`, `timed_entry_conflict` |
@@ -89,10 +90,11 @@ stored `last_admission` earlier than the ARRIVAL flags `after_last_admission`; a
 crawled hours are ignored.
 
 **Cross-plan boundary (review, Oct 10, 2026).** Official crawled facts (our extraction from an official page) are
-read for the same place id across plans. Google Places hours stay per-plan under LD 57: the cross-plan read takes
+read for the same place id across plans. ~~Google Places hours stay per-plan under LD 57:~~ the cross-plan read takes
 `origin IN (crawled, expert_nugget)` with `license = official` only, so another plan's Places row never feeds a
-finding (pinned by G8). The existing post-draft lookup's place-id cache (R-u) still COPIES a Places answer onto
-this plan's own item with its original expiry — that is LD 57's ratified per-plan copy, unchanged here.
+finding (pinned by G8). ~~The existing post-draft lookup's place-id cache (R-u) still COPIES a Places answer onto
+this plan's own item with its original expiry — that is LD 57's ratified per-plan copy, unchanged here.~~
+**Struck Oct 18, 2026 (ledger `2026-10-18-google-hours-spec-strikes`):** Google hours are not stored or read (GH-1, `2026-10-17-gh1-no-google-hours`); hours come from official and person-checked facts only.
 
 ## 4. Answers (decision-maker, Oct 10, 2026)
 1. The one-prop `SlipView.tsx:2598` edit is allowed; the line renders on the day block everywhere it appears.

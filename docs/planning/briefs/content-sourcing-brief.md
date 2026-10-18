@@ -90,7 +90,7 @@ interface SourceAdapter {
 ```
 
 Implementations, in order of build:
-1. `PlacesAdapter` — Google Places for `stop.hours`, `dining` basics, coordinates. Spine.
+1. `PlacesAdapter` — Google Places for ~~`stop.hours`,~~ `dining` basics, coordinates. Spine. **Struck Oct 18, 2026 (ledger `2026-10-18-google-hours-spec-strikes`):** Google hours are not stored or read (GH-1, `2026-10-17-gh1-no-google-hours`); hours come from official and person-checked facts only.
 2. `TavilyExtractAdapter` — registry-driven: for a place in a live plan, extract from the registered official/editorial pages that cover the need; parse to facts with the model, keep the quote cap and the source URL; spend-capped per plan and per day (evidence-scorer pattern).
 3. `AffiliateFeedAdapter` — wraps what exists: `hotel_cache` (Booking.com), Viator/Musement/Travelpayouts where keyed. 12Go arrives here (via Travelpayouts) with `does_not_cover: [rail_jp, cruise]`.
 4. `ApiAdapter` (future) — one class per partner API (rail, ticketing, reservations). Plugging one in is: register the source with `adapter: api`, implement `fetch`, nothing else changes.
@@ -125,7 +125,7 @@ crawled fact enters a plan → traveler uses it → expert confirms it (one tap 
 | JR West / JR Central official — intercity | tavily_extract (api later) | transport.intercity.rail (its own row) | transport.local, cruise | official |
 | Temple/shrine official pages (per stop, registered individually) | tavily_extract | stop.hours, stop.ticketing | — | official |
 | Kyoto Convention & Visitors Bureau event calendar | tavily_extract / manual | event | — | official |
-| Google Places | api | stop.hours, dining basics, coordinates | ticketing rules, seasonal notices | restricted (display only) |
+| Google Places | api | ~~stop.hours,~~ dining basics, coordinates | stop.hours (struck Oct 18, 2026 — GH-1), ticketing rules, seasonal notices | restricted (display only) |
 | Booking.com (existing) | affiliate_feed | lodging | — | partner |
 | Viator / Musement (existing keys) | affiliate_feed | activity | — | partner |
 | 12Go via Travelpayouts | affiliate_feed | transport.intercity bus/ferry | rail_jp, cruise | partner |
