@@ -67,6 +67,7 @@ import { AddChecksNotice, type AddedStop } from "./AddChecksNotice";
 import { MAP_COMPARE_LINK_LABEL, mapDayChipLabel, mapMovedLine, mapSheetTitle } from "@/lib/map-days";
 import { Link } from "wouter";
 import { MAPS_BROWSER_KEY } from "@/lib/maps-browser-key";
+import { viatorAddBody } from "@shared/viator-item";
 
 const MAPS_API_KEY = MAPS_BROWSER_KEY;
 
@@ -782,7 +783,7 @@ export function MapControlCenter({
                 </li>
               ))}
             </ul>
-            {browseOn && !guest && tab === "activities" && city ? <ViatorLiveRow city={city} tripId={tripId} /> : null}
+            {browseOn && !guest && tab === "activities" && city ? <ViatorLiveRow city={city} tripId={tripId} dayNumber={dayNumber ?? 1} /> : null}
             {browseOn && hosts.length ? (
               <div data-testid="map-browse-hosts">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Local hosts</p>
@@ -864,10 +865,23 @@ function PartnerPriceLink({ productId }: { productId: string }) {
  * and opens Viator's own product page (the API's link, with a campaign value); the open is recorded
  * (§16). No review text is shown. Renders nothing when the search is off or the city is not served.
  */
-function ViatorLiveRow({ city, tripId }: { city: string; tripId: string }) {
+function ViatorLiveRow({ city, tripId, dayNumber }: { city: string; tripId: string; dayNumber: number }) {
+  const { toast } = useToast();
   const url = `/api/viator/live/products?destination=${encodeURIComponent(city)}&surface=browse&limit=10`;
   const { data } = useQuery<ViatorLiveResponse>({ queryKey: [url], staleTime: 0, gcTime: 0, refetchOnWindowFocus: false });
   const rows = viatorLiveCards(data);
+  // VD-1b: "Add to plan" saves the title, the product code and "Partner: Viator" only (`viatorAddBody`) —
+  // no Viator price or description — through the ONE add rail (LD 39).
+  const add = useMutation({
+    mutationFn: async (r: { title: string; productCode: string }) =>
+      (await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, viatorAddBody(r, dayNumber))).json(),
+    onSuccess: (_out: unknown, r) => {
+      void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
+      toast({ title: `Added ${r.title} to day ${dayNumber}` });
+    },
+    onError: (e: any) => toast({ variant: "destructive", title: "Couldn't add that", description: e?.message }),
+  });
   if (!rows.length) return null;
   const record = (productCode: string) => {
     apiRequest("POST", "/api/viator/live/click", { productCode, tripId, surface: "browse" }).catch(() => {});
@@ -895,6 +909,16 @@ function ViatorLiveRow({ city, tripId }: { city: string; tripId: string }) {
               </a>
             ) : null}
             <p className="text-[11px] text-muted-foreground">{PARTNER_COMMISSION_NOTE}</p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-1 h-7 gap-1 text-[11px]"
+              disabled={add.isPending}
+              onClick={() => add.mutate(r)}
+              data-testid={`map-browse-viator-add-${r.productCode}`}
+            >
+              <Plus className="h-3 w-3" /> Add to plan
+            </Button>
           </li>
         ))}
       </ul>
