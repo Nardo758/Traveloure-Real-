@@ -51,7 +51,8 @@ before(async () => {
   await db.execute(sql`INSERT INTO affiliate_partners (id, name, website_url, category, approval_status, is_active)
     VALUES (${PARTNER}, ${`AF-2 partner ${RUN}`}, 'https://partner.example.test', 'transportation', 'approved', true)`);
   await db.execute(sql`INSERT INTO affiliate_products (id, partner_id, name, product_url, affiliate_url)
-    VALUES (${PRODUCT}, ${PARTNER}, 'AF-2 product', 'https://www.getyourguide.com/kyoto/', ${`https://www.getyourguide.com/kyoto/?partner_id=${TOKEN}`})`);
+    VALUES (${PRODUCT}, ${PARTNER}, 'AF-2 product', 'https://www.tiqets.com/kyoto/', ${`https://www.tiqets.com/kyoto/?partner_id=${TOKEN}`})`);
+  // PX-1: the fixture is no longer a GetYourGuide link — GetYourGuide is paused and its rows are hidden.
 });
 
 after(async () => {

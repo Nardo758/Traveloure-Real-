@@ -263,6 +263,7 @@ import { travelPulseScheduler } from "../services/travelpulse-scheduler.service"
 import { trackAnthropicResponse } from "../services/ai-cost-tracker";
 import { sanitizeInput } from "../utils/sanitize";
 import { scrubTravelpayoutsToken } from "../services/travelpayouts/travelpayouts-client";
+import { affiliateProductNotPausedWhere, contentRegistryNotPausedWhere } from "../services/partner-pause.service";
 
 const router = Router();
 
@@ -9061,9 +9062,12 @@ router.get("/api/content/discover", async (req, res) => {
         title: p.name,
         description: p.shortDescription || p.description || "",
         cover_image: p.imageUrl || null,
-        price: p.price ? String(p.price) : null,
-        price_display: p.price ? `${p.currency || "USD"} ${parseFloat(p.price).toFixed(0)}` : null,
-        affiliate_url: p.affiliateUrl || p.productUrl || null,
+        // PX-1 (ruling 3): a partner's STORED price has no source and no as-of time, so no number is
+        // sent — the card offers the partner's current price instead.
+        price: null,
+        price_display: null,
+        // PX-1: a stored link from before AF-2 may hold the API token; it never leaves with it.
+        affiliate_url: scrubTravelpayoutsToken(p.affiliateUrl || p.productUrl || null),
         source: "Affiliate Partner",
         // Item ⑤: canonical origin + disclosure label (was a hardcoded "Affiliate Partner" — G7).
         origin: "affiliate" as const,
@@ -9201,6 +9205,7 @@ router.post("/api/content/affiliate-redirect", async (req, res) => {
             // Partner-level read-gate (migration 121, audit G-SEC): never emit an affiliate URL for a
             // product whose partner is not admin-approved. An unapproved product is treated as absent.
             sql`EXISTS (SELECT 1 FROM ${affiliatePartners} WHERE ${affiliatePartners.id} = ${affiliateProducts.partnerId} AND ${affiliatePartners.approvalStatus} = 'approved')`,
+            affiliateProductNotPausedWhere(), // PX-1: a paused partner's product is treated as absent
           ))
           .limit(1);
         if (!product) return res.status(404).json({ message: "Item not found" });
@@ -9211,7 +9216,7 @@ router.post("/api/content/affiliate-redirect", async (req, res) => {
         const [item] = await db
           .select()
           .from(contentRegistry)
-          .where(eq(contentRegistry.id, itemId))
+          .where(and(eq(contentRegistry.id, itemId), contentRegistryNotPausedWhere()))
           .limit(1);
         if (!item) return res.status(404).json({ message: "Item not found" });
         const meta = (item.metadata as any) || {};
