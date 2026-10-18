@@ -29,15 +29,20 @@ import React from "react";
 import { renderToString } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
-import { ConciergeModule } from "../plancard/ConciergeModule";
-import { BottomActionBar } from "../plancard/BottomActionBar";
-import { EventConciergeRoute } from "../concierge/EventConciergeRoute";
-import { LegSheetBody } from "../plan/LegSheet";
 import { TRAVELER_DOORS_ROUTE, travelerDoors, offeredHandoffKinds } from "@shared/traveler-doors";
 import { HANDOFF_KINDS } from "@shared/handoff";
-import { visibleAuthNav } from "@/lib/nav-config";
 
 (globalThis as any).React = React;
+// Node 20 (CI) has no global `navigator`, and `client/src/lib/navigate.ts` reads it when it loads; Node 22 defines
+// one. Stub it before the components load, so the test behaves the same on both.
+if (typeof (globalThis as any).navigator === "undefined") {
+  Object.defineProperty(globalThis, "navigator", { value: { userAgent: "node" }, configurable: true });
+}
+const { ConciergeModule } = await import("../plancard/ConciergeModule");
+const { BottomActionBar } = await import("../plancard/BottomActionBar");
+const { EventConciergeRoute } = await import("../concierge/EventConciergeRoute");
+const { LegSheetBody } = await import("../plan/LegSheet");
+const { visibleAuthNav } = await import("@/lib/nav-config");
 const text = (html: string) => html.replace(/<!-- -->/g, "").replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
 
 function render(node: React.ReactNode, doors: { eventConcierge: boolean; handoffBooking: boolean }) {
