@@ -32,6 +32,9 @@ name: App Route Coverage Gate
 #                        independently of navbar-links-smoke.
 
 on:
+  # Merge queue (ledger `2026-10-18-merge-queue-triggers`): the queue's run is always a full run.
+  merge_group:
+    types: [checks_requested]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
@@ -42,8 +45,7 @@ on:
 # Cancel in-progress runs for the same ref to avoid redundant gate checks.
 concurrency:
   group: app-routes-gate-${{ github.ref }}
-  cancel-in-progress: true
-
+  cancel-in-progress: ${{ github.event.action != 'ready_for_review' }}
 permissions:
   contents: read
   pull-requests: write
