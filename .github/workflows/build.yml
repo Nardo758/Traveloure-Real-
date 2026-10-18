@@ -1182,6 +1182,9 @@ jobs:
       - if: ${{ !cancelled() }}
         name: Ticker rules and ribbon render
         run: npx tsx --test client/src/lib/__tests__/ticker-rules.test.ts client/src/components/__tests__/ticker-ribbon.test.tsx
+      - if: ${{ !cancelled() }}
+        name: Switched traveler doors (event_concierge, handoff_booking) and their copy
+        run: npx tsx --test client/src/components/__tests__/traveler-doors.test.tsx
       # ── trip-card-honesty ───────────────────────────────────────────
       - name: "── trip-card-honesty (L4 — 2026-09-07-trip-card-honesty)"
         if: ${{ !cancelled() }}

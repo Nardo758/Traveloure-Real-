@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import { Sparkles, ChevronRight } from "lucide-react";
-import { useLegacyConciergeShown } from "@/hooks/use-legacy-concierge";
+import { useTravelerDoors } from "@/hooks/use-traveler-doors";
 
 /**
  * ConciergeModule — the front-and-center "revenue spine" surfaced high in BOTH
@@ -18,9 +18,9 @@ interface ConciergeModuleProps {
 }
 
 export function ConciergeModule({ destination, subtitle, testId }: ConciergeModuleProps) {
-  const { shown } = useLegacyConciergeShown();
+  const { eventConcierge: shown } = useTravelerDoors();
   const intent = `Help me with my ${destination} trip`;
-  // Ledger `2026-10-18-legacy-concierge-hidden`: the old done-for-you concierge's door, off by default.
+  // Ledger `2026-10-18-traveler-doors-hidden`: the old done-for-you concierge's door, off by default.
   if (!shown) return null;
   return (
     <Link

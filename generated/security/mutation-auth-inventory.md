@@ -93,7 +93,7 @@ Boundary totals: admin-role 182; session-self 361; resource-owner 102; signature
 | POST | `/api/admin/gem-candidates/:id/reject` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8706` | unknown | unknown |
 | POST | `/api/admin/gems/:id/verify` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8643` | unknown | unknown |
 | POST | `/api/admin/gems/backfill-photos` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:321` | unknown | unknown |
-| POST | `/api/admin/handoffs/:id/assign` | admin | admin-role | no | unknown | `server/routes/handoff.routes.ts:389` | unknown | unknown |
+| POST | `/api/admin/handoffs/:id/assign` | admin | admin-role | no | unknown | `server/routes/handoff.routes.ts:402` | unknown | unknown |
 | POST | `/api/admin/invoices` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:4935` | unknown | unknown |
 | PATCH | `/api/admin/invoices/:invoiceNumber/status` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:4999` | unknown | unknown |
 | PATCH | `/api/admin/lead-routing-logs/:id/override` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:8357` | unknown | unknown |
@@ -376,15 +376,15 @@ Boundary totals: admin-role 182; session-self 361; resource-owner 102; signature
 | POST | `/api/generated-itineraries` | other | session-self | no | unknown | `server/routes/content.routes.ts:677` | unknown | unknown |
 | POST | `/api/geocode` | other | session-self | no | unknown | `server/routes/content.routes.ts:4434` | unknown | unknown |
 | POST | `/api/grok/match-experts` | other | session-self | no | unknown | `server/routes/content.routes.ts:4492` | unknown | unknown |
-| POST | `/api/handoffs/:id/accept` | other | session-self | no | unknown | `server/routes/handoff.routes.ts:354` | unknown | unknown |
-| POST | `/api/handoffs/:id/approve` | other | session-self | no | unknown | `server/routes/handoff.routes.ts:209` | unknown | unknown |
-| POST | `/api/handoffs/:id/authorized` | other | session-self | no | unknown | `server/routes/handoff.routes.ts:196` | unknown | unknown |
-| POST | `/api/handoffs/:id/changes` | other | session-self | no | unknown | `server/routes/handoff.routes.ts:218` | unknown | unknown |
-| POST | `/api/handoffs/:id/decline` | other | session-self | no | unknown | `server/routes/handoff.routes.ts:368` | unknown | unknown |
-| POST | `/api/handoffs/:id/deliver` | other | session-self | no | unknown | `server/routes/handoff.routes.ts:377` | unknown | unknown |
-| POST | `/api/handoffs/:id/on-trip-support` | other | session-self | no | unknown | `server/routes/handoff.routes.ts:242` | unknown | unknown |
-| POST | `/api/handoffs/:id/on-trip-support/confirm` | other | session-self | no | unknown | `server/routes/handoff.routes.ts:256` | unknown | unknown |
-| POST | `/api/handoffs/:id/withdraw` | other | session-self | no | unknown | `server/routes/handoff.routes.ts:228` | unknown | unknown |
+| POST | `/api/handoffs/:id/accept` | other | session-self | no | unknown | `server/routes/handoff.routes.ts:367` | unknown | unknown |
+| POST | `/api/handoffs/:id/approve` | other | session-self | no | unknown | `server/routes/handoff.routes.ts:222` | unknown | unknown |
+| POST | `/api/handoffs/:id/authorized` | other | session-self | no | unknown | `server/routes/handoff.routes.ts:209` | unknown | unknown |
+| POST | `/api/handoffs/:id/changes` | other | session-self | no | unknown | `server/routes/handoff.routes.ts:231` | unknown | unknown |
+| POST | `/api/handoffs/:id/decline` | other | session-self | no | unknown | `server/routes/handoff.routes.ts:381` | unknown | unknown |
+| POST | `/api/handoffs/:id/deliver` | other | session-self | no | unknown | `server/routes/handoff.routes.ts:390` | unknown | unknown |
+| POST | `/api/handoffs/:id/on-trip-support` | other | session-self | no | unknown | `server/routes/handoff.routes.ts:255` | unknown | unknown |
+| POST | `/api/handoffs/:id/on-trip-support/confirm` | other | session-self | no | unknown | `server/routes/handoff.routes.ts:269` | unknown | unknown |
+| POST | `/api/handoffs/:id/withdraw` | other | session-self | no | unknown | `server/routes/handoff.routes.ts:241` | unknown | unknown |
 | POST | `/api/identity/business/create-inquiry` | user-data | public-or-system | no | unknown | `server/routes/identity.routes.ts:64` (/business/create-inquiry) | unknown | unknown |
 | POST | `/api/identity/create-session` | user-data | session-self | no | unknown | `server/routes/identity.routes.ts:18` (/create-session) | unknown | unknown |
 | POST | `/api/instagram/data-deletion` | other | public-or-system | no | unknown | `server/routes/instagram.ts:636` (/data-deletion) | unknown | unknown |
@@ -601,13 +601,13 @@ Boundary totals: admin-role 182; session-self 361; resource-owner 102; signature
 | POST | `/api/trips/:tripId/emergency-contacts` | user-data | session-self | yes | unknown | `server/routes.ts:13585` | unknown | unknown |
 | POST | `/api/trips/:tripId/emergency/initialize` | user-data | session-self | yes | unknown | `server/routes.ts:13602` | unknown | unknown |
 | PATCH | `/api/trips/:tripId/expert-notes` | user-data | session-self | yes | unknown | `server/routes/booking-actions.ts:1856` (/trips/:tripId/expert-notes) | unknown | unknown |
-| POST | `/api/trips/:tripId/expert-suggestions/accept-all` | user-data | session-self | yes | unknown | `server/routes/handoff.routes.ts:291` | unknown | unknown |
+| POST | `/api/trips/:tripId/expert-suggestions/accept-all` | user-data | session-self | yes | unknown | `server/routes/handoff.routes.ts:304` | unknown | unknown |
 | PATCH | `/api/trips/:tripId/expert-traveler-note` | user-data | session-self | yes | unknown | `server/routes/trips.routes.ts:3473` | unknown | unknown |
 | POST | `/api/trips/:tripId/finalize` | user-data | resource-owner | yes | verified | `server/routes/routing.routes.ts:473` | unknown | unknown |
 | POST | `/api/trips/:tripId/flight-lookup` | user-data | session-self | yes | unknown | `server/routes/trips.routes.ts:1647` | unknown | unknown |
 | POST | `/api/trips/:tripId/generate-presets` | user-data | session-self | yes | unknown | `server/routes/booking-actions.ts:2194` (/trips/:tripId/generate-presets) | unknown | unknown |
-| POST | `/api/trips/:tripId/handoff` | user-data | session-self | yes | unknown | `server/routes/handoff.routes.ts:166` | unknown | unknown |
-| POST | `/api/trips/:tripId/handoff/quote` | user-data | session-self | yes | unknown | `server/routes/handoff.routes.ts:155` | unknown | unknown |
+| POST | `/api/trips/:tripId/handoff` | user-data | session-self | yes | unknown | `server/routes/handoff.routes.ts:176` | unknown | unknown |
+| POST | `/api/trips/:tripId/handoff/quote` | user-data | session-self | yes | unknown | `server/routes/handoff.routes.ts:162` | unknown | unknown |
 | POST | `/api/trips/:tripId/items/:itemId/comments` | user-data | resource-owner | yes | verified | `server/routes/booking-actions.ts:1729` (/trips/:tripId/items/:itemId/comments) | unknown | unknown |
 | POST | `/api/trips/:tripId/items/:itemId/route` | user-data | resource-owner | yes | verified | `server/routes/routing.routes.ts:138` | unknown | unknown |
 | POST | `/api/trips/:tripId/items/:itemId/stay-booking/book` | user-data | session-self | yes | unknown | `server/routes/plan-option-sets.routes.ts:431` | unknown | unknown |

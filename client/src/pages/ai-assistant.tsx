@@ -30,7 +30,7 @@ import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
 import { AiPlannerDraftPanel } from "@/components/ai-planner-draft-panel";
 import { useToast } from "@/hooks/use-toast";
-import { useLegacyConciergeShown } from "@/hooks/use-legacy-concierge";
+import { useTravelerDoors } from "@/hooks/use-traveler-doors";
 
 interface Message {
   id: number;
@@ -48,7 +48,7 @@ interface Conversation {
 }
 
 export default function AIAssistant() {
-  const { shown: conciergeShown } = useLegacyConciergeShown();
+  const { eventConcierge: conciergeShown } = useTravelerDoors();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [selectedConversation, setSelectedConversation] = useState<number | null>(null);
@@ -361,7 +361,7 @@ export default function AIAssistant() {
               </div>
             </div>
             {/* C4: first-class, always-visible human handoff (ruled hybrid). Ledger
-                `2026-10-18-legacy-concierge-hidden`: it files an old-concierge request, so it is off by default. */}
+                `2026-10-18-traveler-doors-hidden`: it files an old-concierge request, so it is off by default. */}
             {conciergeShown ? (
             <Button
               variant="outline"

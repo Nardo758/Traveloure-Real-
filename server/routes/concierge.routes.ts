@@ -34,7 +34,7 @@ import { isAuthenticated } from "../replit_integrations/auth";
 import { chatStorage } from "../replit_integrations/chat/storage";
 import { createRateLimiter } from "../infrastructure/rate-limiter";
 import { getPlatformFlag } from "../services/platform-flags";
-import { LEGACY_CONCIERGE_SETTING } from "@shared/legacy-concierge";
+import { EVENT_CONCIERGE_SETTING, HANDOFF_BOOKING_SETTING } from "@shared/traveler-doors";
 import {
   buildConciergeAdminNotification,
   escalationRequestSchema,
@@ -587,12 +587,16 @@ router.post("/api/concierge/escalations", isAuthenticated, escalationLimiter, as
   }
 });
 
-// ─── GET /api/concierge/availability (ledger `2026-10-18-legacy-concierge-hidden`) ─────────────
-// Whether the old done-for-you concierge's traveler doors are shown. Public, read-only, one boolean;
-// a missing row or a read error answers false (the doors stay hidden).
+// ─── GET /api/traveler-doors (ledger `2026-10-18-traveler-doors-hidden`) ──────────────────────
+// Which switched traveler doors are open: the old done-for-you concierge and the booking hand-off.
+// Public, read-only, two booleans; a missing row or a read error answers false (the door stays hidden).
 
-router.get("/api/concierge/availability", async (_req, res) => {
-  res.json({ enabled: await getPlatformFlag(LEGACY_CONCIERGE_SETTING, false) });
+router.get("/api/traveler-doors", async (_req, res) => {
+  const [eventConcierge, handoffBooking] = await Promise.all([
+    getPlatformFlag(EVENT_CONCIERGE_SETTING, false),
+    getPlatformFlag(HANDOFF_BOOKING_SETTING, false),
+  ]);
+  res.json({ eventConcierge, handoffBooking });
 });
 
 // ─── GET /api/concierge/event-packages (CON-A.P8 / N6) ─────────────────────

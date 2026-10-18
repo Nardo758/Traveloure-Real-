@@ -36,7 +36,7 @@ import { useSavedPayment, formatCardLabel } from "@/hooks/use-saved-payment";
 // Coordination card, so one engagement reads the same on both surfaces (§18 rule 1). The fee RAIL
 // below — quote, /pay, /pay/confirm — is untouched by that lane.
 import { engagementFee, engagementStatusLabel, engagementTitle } from "@/lib/coordination-engagement";
-import { useLegacyConciergeShown } from "@/hooks/use-legacy-concierge";
+import { useTravelerDoors } from "@/hooks/use-traveler-doors";
 
 interface Engagement {
   id: string;
@@ -298,7 +298,7 @@ function EngagementCard({ engagement }: { engagement: Engagement }) {
 }
 
 export default function MyEvents() {
-  const { shown: conciergeShown } = useLegacyConciergeShown();
+  const { eventConcierge: conciergeShown } = useTravelerDoors();
   const { data: engagements, isLoading } = useQuery<Engagement[]>({
     queryKey: ["/api/coordination-states"],
   });
@@ -331,7 +331,7 @@ export default function MyEvents() {
                 <Crown className="w-6 h-6 text-muted-foreground" />
               </div>
               <h2 className="text-lg font-semibold text-foreground mb-1">No events yet</h2>
-              {/* Ledger `2026-10-18-legacy-concierge-hidden`: the old concierge's door, off by default. */}
+              {/* Ledger `2026-10-18-traveler-doors-hidden`: the old concierge's door, off by default. */}
               {conciergeShown ? (
                 <>
                   <p className="text-muted-foreground max-w-md mx-auto mb-6">
