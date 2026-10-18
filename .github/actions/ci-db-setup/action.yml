@@ -48,6 +48,14 @@ runs:
       env:
         DATABASE_URL: ${{ inputs.database-url }}
 
+    - name: Show the old concierge's doors for CI fixtures
+      # Ledger `2026-10-18-legacy-concierge-hidden`: production keeps them hidden (a missing row reads off); the
+      # specs that cover the old concierge flow need them shown. The script refuses any non-local DATABASE_URL.
+      run: npx tsx scripts/ci-legacy-concierge-on.ts
+      shell: bash
+      env:
+        DATABASE_URL: ${{ inputs.database-url }}
+
     - name: Create sessions table (connect-pg-simple workaround)
       # connect-pg-simple 10.0.0 table.sql uses WITH (OIDS=FALSE) which is
       # incompatible with Postgres 12+. Pre-create the table here so that

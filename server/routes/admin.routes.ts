@@ -4,6 +4,7 @@ import { WELCOME_VERIFICATION_WINDOW_SETTING, isValidWelcomeVerificationWindowSe
 import { BLOG_FOOTER_MIN_PUBLISHED_SETTING, isValidBlogFooterMinPublishedSetting } from "@shared/blog-footer";
 import { TRAVELER_SIGNUP_MODE_SETTING, TRAVELER_SIGNUP_OPENED_AT_SETTING, LAUNCH_MARKET_SLUG_SETTING, isTravelerSignupModeValue } from "@shared/launch-signup";
 import { PHONE_DELIVERY_SWITCH_KEYS } from "@shared/phone-delivery";
+import { LEGACY_CONCIERGE_SETTING } from "@shared/legacy-concierge";
 import { BETA_MARKET_SLUGS_SETTING, betaMarketSlugsRefusal } from "@shared/ticker";
 import { enteredStatus } from "../utils/form-status-transition";
 import { zodErrorBody } from "../utils/zod-error-body";
@@ -8200,7 +8201,7 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       // Boolean flags from /admin/system must be exactly "true"/"false" so the
       // enforcement middleware never misreads a junk value.
       // §8 phone delivery: one switch per channel, all off until an admin turns them on.
-      const BOOLEAN_FLAG_KEYS = ["maintenance_mode", "new_user_registration_enabled", "email_notifications_enabled", ...PHONE_DELIVERY_SWITCH_KEYS];
+      const BOOLEAN_FLAG_KEYS = ["maintenance_mode", "new_user_registration_enabled", "email_notifications_enabled", ...PHONE_DELIVERY_SWITCH_KEYS, LEGACY_CONCIERGE_SETTING];
       if (BOOLEAN_FLAG_KEYS.includes(settingKey) && !["true", "false"].includes(settingValue)) {
         return res.status(400).json({ error: `${settingKey} must be 'true' or 'false'`, got: settingValue });
       }

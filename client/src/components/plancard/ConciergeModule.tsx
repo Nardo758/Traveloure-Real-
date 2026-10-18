@@ -1,5 +1,6 @@
 import { Link } from "wouter";
 import { Sparkles, ChevronRight } from "lucide-react";
+import { useLegacyConciergeShown } from "@/hooks/use-legacy-concierge";
 
 /**
  * ConciergeModule — the front-and-center "revenue spine" surfaced high in BOTH
@@ -17,7 +18,10 @@ interface ConciergeModuleProps {
 }
 
 export function ConciergeModule({ destination, subtitle, testId }: ConciergeModuleProps) {
+  const { shown } = useLegacyConciergeShown();
   const intent = `Help me with my ${destination} trip`;
+  // Ledger `2026-10-18-legacy-concierge-hidden`: the old done-for-you concierge's door, off by default.
+  if (!shown) return null;
   return (
     <Link
       href={`/concierge?intent=${encodeURIComponent(intent)}`}

@@ -49,6 +49,7 @@ import {
   type ClientSuggestion,
   type HandoffRead,
 } from "@/lib/handoff-client";
+import { useLegacyConciergeShown } from "@/hooks/use-legacy-concierge";
 
 // The board's buttons (ruling 2): the primary is the coral fill with white text; the quiet one is an
 // outline; navy is the footer card's ground, never a button fill.
@@ -194,6 +195,7 @@ export function SuggestionStrip({ tripId, itemId, suggestions, canAnswer }: { tr
 
 export function HandoffBanner({ tripId, isOwner, bookedInScope = null }: { tripId: string; isOwner: boolean; bookedInScope?: number | null }) {
   const { toast } = useToast();
+  const { shown: conciergeShown } = useLegacyConciergeShown();
   const board = usePlanRowLook() === "board";
   const askExpert = useAskExpert();
   const { data } = useHandoff(tripId, true);
@@ -313,7 +315,8 @@ export function HandoffBanner({ tripId, isOwner, bookedInScope = null }: { tripI
         </p>
       ) : null}
 
-      {isOwner && data.banner?.kind === "fallback_offered" ? (
+      {/* Ledger `2026-10-18-legacy-concierge-hidden`: the concierge fallback opens the old concierge, off by default. */}
+      {isOwner && conciergeShown && data.banner?.kind === "fallback_offered" ? (
         <div className="mt-2 flex flex-wrap gap-2">
           <Button size="sm" variant="outline" asChild data-testid="handoff-fallback-concierge">
             <Link href={`/concierge?tripId=${tripId}`}>Hand it to our concierge</Link>
