@@ -22,6 +22,8 @@ import { AGENT_REQUEST_SENT_TITLE, AGENT_REQUEST_SENT_DESCRIPTION } from "@share
 
 interface UpNextHeroProps {
   tripId: string;
+  /** 9b-c LB9 (ledger `2026-10-18-lb8-lb9-card-wiring`): the plancard's `placeFacts`; a stop's last entry or closing time. */
+  placeFacts?: Record<string, import("@shared/content-facts").FactView[]> | null;
   day: PlanCardDay | undefined;
   legs: PlanCardLegData[];
   /**
@@ -111,10 +113,10 @@ function HeroLeaveByCells({ heroLeaveBy, legs, timezone }: { heroLeaveBy: { time
   );
 }
 
-export function UpNextHero({ tripId, day, legs, timezone = null, datesConfirmed = true }: UpNextHeroProps) {
+export function UpNextHero({ tripId, day, legs, timezone = null, datesConfirmed = true, placeFacts = null }: UpNextHeroProps) {
   const now = useLiveNow();
   const [visited] = useVisitedActivities(tripId, day);
-  const { isLiveDay, upNextActivity, upNextLeg, heroLeaveBy, leaveByRows } = getUpNextInfo(day, legs, now, visited, timezone);
+  const { isLiveDay, upNextActivity, upNextLeg, heroLeaveBy, leaveByRows } = getUpNextInfo(day, legs, now, visited, timezone, placeFacts);
 
   // §13: no hero on a fully-past or not-yet-started day — only the live day with a real
   // upcoming activity renders anything here.

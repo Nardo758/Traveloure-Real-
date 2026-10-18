@@ -52,6 +52,7 @@ import type { PlanCardActivity, PlanCardDay } from "./plancard-types";
 import { slipItemBookingLine } from "@/lib/item-booking-state";
 import { getUpNextInfo, isStayActivity, nowHHMM, useLiveNow, useVisitedActivities } from "./plancard-temporal";
 import { legRuleClass } from "@/lib/leg-rule";
+import { travelRowTitle } from "@/components/plan/AnchorRow";
 import { anchorMissedBanner, leaveByMissed, missedLine, type LeaveByRow } from "@shared/leave-by";
 
 export interface TripCardDaysProps {
@@ -288,7 +289,7 @@ export function TripCardDays(props: TripCardDaysProps) {
   const todayLegs = [...(today?.transports ?? [])].sort((a: any, b: any) => (a.legOrder ?? 0) - (b.legOrder ?? 0)) as any[];
   // R321 (S11-2): the stay is the day's anchor, not a stop — the engine sees the stop list only, so its
   // indices are the rendered rows' and Up next is the next timed stop.
-  const upNext = today ? getUpNextInfo({ ...today, activities: (today.activities ?? []).filter((a) => !isStayActivity(a)) }, todayLegs, now, visited, timeZone) : null;
+  const upNext = today ? getUpNextInfo({ ...today, activities: (today.activities ?? []).filter((a) => !isStayActivity(a)) }, todayLegs, now, visited, timeZone, props.placeFacts ?? null) : null;
   const stored = props.finalCard?.photos ?? {};
   const photoOf = (id: string) => livePhotos[id] ?? stored[id] ?? null;
 
@@ -526,6 +527,16 @@ export function TripCardDays(props: TripCardDaysProps) {
               </Fragment>
             ))}
             {isToday && acts.length > 0 && upNext?.nowLineIndex === acts.length ? <NowLine now={now} /> : null}
+            {/* 9b-c LB8 (ledger `2026-10-18-lb8-lb9-card-wiring`): today's flight departure, measured against its R-i
+                buffered time — the travel row's own title, then its leave-by line from the ONE core. */}
+            {isToday && upNext
+              ? (d.anchorStops ?? []).map((an) => (
+                  <div key={an.id} className="pt-2" data-testid={`card-anchor-stop-${an.id}`}>
+                    <p className="pl-2 text-sm font-semibold">{travelRowTitle("departure", props.destination) ?? an.name}</p>
+                    <LeaveByLine row={upNext.leaveByRows.find((r) => r.stopId === an.id) ?? null} rows={upNext.leaveByRows} nowMinute={upNext.nowMinute} stopName={an.name} stopId={an.id} />
+                  </div>
+                ))
+              : null}
           </DayBlock>
         );
       })}
