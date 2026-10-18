@@ -242,3 +242,19 @@ export function fixLine(issue: PlanIssue): string {
       return "Fix: move a stop off this day.";
   }
 }
+
+/**
+ * FB-1 step 3b: the draft's `retime` fixes as one start window per draft item (minutes after midnight). Several fixes on
+ * one stop combine — the latest `notBefore`, the earliest `notAfter`. Read by the paid run's sequencing.
+ */
+export function retimeWindowsByItem(issues: readonly PlanIssue[]): Map<string, { notBeforeMin?: number; notAfterMin?: number }> {
+  const out = new Map<string, { notBeforeMin?: number; notAfterMin?: number }>();
+  for (const i of issues) {
+    if (i.fix.action !== "retime" || !i.stop) continue;
+    const w = out.get(i.stop.itemId) ?? {};
+    if (i.fix.notBeforeMin != null) w.notBeforeMin = Math.max(w.notBeforeMin ?? -Infinity, i.fix.notBeforeMin);
+    if (i.fix.notAfterMin != null) w.notAfterMin = Math.min(w.notAfterMin ?? Infinity, i.fix.notAfterMin);
+    out.set(i.stop.itemId, w);
+  }
+  return out;
+}
