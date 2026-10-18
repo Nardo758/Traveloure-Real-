@@ -52,6 +52,11 @@ import {
   searchPlaces,
   PARTNER_COMMISSION_NOTE,
   PARTNER_PRICE_LINK_LABEL,
+  VIATOR_ATTRIBUTION_LINE,
+  VIATOR_LINK_LABEL,
+  VIATOR_LIVE_HEADING,
+  viatorLiveCards,
+  type ViatorLiveResponse,
   type BrowseTabKey,
 } from "@/lib/browse-supply";
 import { SceneMapGoogle } from "./map/SceneMapGoogle";
@@ -777,6 +782,7 @@ export function MapControlCenter({
                 </li>
               ))}
             </ul>
+            {browseOn && !guest && tab === "activities" && city ? <ViatorLiveRow city={city} tripId={tripId} /> : null}
             {browseOn && hosts.length ? (
               <div data-testid="map-browse-hosts">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Local hosts</p>
@@ -848,6 +854,50 @@ function PartnerPriceLink({ productId }: { productId: string }) {
       </button>
       <p className="text-[11px] text-muted-foreground" data-testid="map-browse-partner-commission">{PARTNER_COMMISSION_NOTE}</p>
       {failed ? <p className="text-[11px] text-destructive">Couldn't open the partner's page. Try again in a moment.</p> : null}
+    </div>
+  );
+}
+
+/**
+ * VD-1 (ledger `2026-10-18-viator-direct-live`): Viator activities for the plan's city, read LIVE from the
+ * Partner API at request time and never stored. Each card names Viator, states its price as of this read,
+ * and opens Viator's own product page (the API's link, with a campaign value); the open is recorded
+ * (§16). No review text is shown. Renders nothing when the search is off or the city is not served.
+ */
+function ViatorLiveRow({ city, tripId }: { city: string; tripId: string }) {
+  const url = `/api/viator/live/products?destination=${encodeURIComponent(city)}&surface=browse&limit=10`;
+  const { data } = useQuery<ViatorLiveResponse>({ queryKey: [url], staleTime: 0, gcTime: 0, refetchOnWindowFocus: false });
+  const rows = viatorLiveCards(data);
+  if (!rows.length) return null;
+  const record = (productCode: string) => {
+    apiRequest("POST", "/api/viator/live/click", { productCode, tripId, surface: "browse" }).catch(() => {});
+  };
+  return (
+    <div data-testid="map-browse-viator-live">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{VIATOR_LIVE_HEADING}</p>
+      <ul className="space-y-1.5">
+        {rows.map((r) => (
+          <li key={r.id} className="rounded-md border border-border p-2 text-xs" data-testid={`map-browse-viator-${r.productCode}`}>
+            <p className="font-medium">{r.title}</p>
+            {r.priceLine ? <p className="text-muted-foreground" data-testid="map-browse-viator-price">{r.priceLine}</p> : null}
+            {r.ratingLine ? <p className="text-muted-foreground">{r.ratingLine}</p> : null}
+            <p className="text-[11px] text-muted-foreground" data-testid="map-browse-viator-attribution">{VIATOR_ATTRIBUTION_LINE}</p>
+            {r.url ? (
+              <a
+                href={r.url}
+                target="_blank"
+                rel="sponsored noopener noreferrer"
+                className="font-medium underline"
+                onClick={() => record(r.productCode)}
+                data-testid="map-browse-viator-link"
+              >
+                {VIATOR_LINK_LABEL}
+              </a>
+            ) : null}
+            <p className="text-[11px] text-muted-foreground">{PARTNER_COMMISSION_NOTE}</p>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
