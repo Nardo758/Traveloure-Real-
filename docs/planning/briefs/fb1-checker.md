@@ -125,7 +125,23 @@ Both run inside the run, so the existing five-minute deadline covers them.
 
 **Names (ruling 5).** Version A is "Your plan, fixed": the model is told to keep the plan and apply the draft's fixes (by [S#] tag and minute), and the name is the server's. B and C keep their strategy names. The same gate applies to all three. "In season" and "With local picks" are absent.
 
-**Recorded, not changed:** the run's sequencing step (`reorderItinerary`) re-times every day from 08:00 in the version's order, so a model's start time does not survive it. A version therefore cannot fix a timing issue by moving a stop's time — it can only drop, replace or reorder the stop. Honoring the draft's `retime` fixes inside sequencing is a separate decision.
+**Sequencing (step 3b).** The run's sequencing step used to re-time every day from 08:00, so a model's start time never survived. Step 3b changes that (below).
+
+## Step 3b — sequencing honours the model's times and the draft's windows
+
+Decision-maker Leon Dixon, Oct 18, 2026 (step 3b sanctioned as proposed). Ledger row `2026-10-18-fb1-sequencing-windows`.
+
+`reorderDayActivities` (`server/services/smart-sequencing.service.ts`), called only by the paid run's `reorderItinerary`, now spaces each day with `spaceDayTimesHonouring`, beside `spaceDayTimes`. In the day's order, with the same durations and the same 30-minute gap, each stop starts at the latest of:
+
+- the cursor: 08:00 for the first stop, else the previous stop's end + 30. A stop is never moved earlier than this, so stops never overlap;
+- the model's own start time, captured before step 1 fills its slot defaults (a default is never honoured as if the model had said it);
+- the window's `notBeforeMin`.
+
+A stop that lands past its `notAfterMin` is left late, never squeezed; the step 3 gate holds the version.
+
+The windows (`retimeWindowsByItem`, `shared/version-check.ts`) come once per run from the draft's own `retime` fixes, keyed by the draft item a stop keeps (`sourceItemId`). Several fixes on one stop combine into the latest `notBefore` and the earliest `notAfter`. A stop the model added has no window. They apply to all three versions.
+
+Unchanged: `spaceDayTimes` and `retimeDayInOrder` (the traveler's own re-time, R-ac), the anchor step, energy balancing, the legs step and the gate. With no model times and no windows, the result is exactly today's (golden parity).
 
 ## Not in step 3
 
