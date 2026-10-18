@@ -12,8 +12,14 @@
  * "checked <date>" is DATA freshness: the VM's proxy sends the OSM extract's replication timestamp as
  * `X-OSRM-Extract` on every 200, and that is the leg's `checkedAt`. Only when the header is absent or
  * unreadable does the label fall back to the moment of the call.
+ *
+ * LG-1 (ledger `2026-10-17-lg1-osm-place-coords`): it routes ONLY between open coordinates — an OSM point from
+ * `osm_place_coords`, an admin row, a ride's OSM node or an IATA airport (`isOpenCoordOrigin`). A Google point
+ * (an item's own coordinate, a Places fact) or an untagged one is refused before any request:
+ * `no_route` / `coords_not_open`.
  */
 import { OSRM_ROUTES_SOURCE, type RouteAnswer, type RouteOutcome, type RoutePoint, type RoutingAdapter, type RoutingMode } from "@shared/routing-engine";
+import { isOpenCoordOrigin } from "@shared/open-coords";
 import { osrmBaseUrl, osrmCarProfile, osrmFootProfile, osrmTimeoutMs } from "../../config/osrm.config";
 
 export interface OsrmRoutingDeps {
@@ -76,7 +82,13 @@ export class OsrmRoutingAdapter implements RoutingAdapter {
   readonly source = OSRM_ROUTES_SOURCE;
   constructor(private readonly deps: OsrmRoutingDeps = defaultDeps) {}
 
+  /** LG-1: only an open coordinate may be routed by OSRM. */
+  acceptsPoint(p: RoutePoint): boolean {
+    return isOpenCoordOrigin(p.coordOrigin);
+  }
+
   async route(origin: RoutePoint, destination: RoutePoint, mode: RoutingMode, _departAt: Date | null): Promise<RouteOutcome> {
+    if (!this.acceptsPoint(origin) || !this.acceptsPoint(destination)) return { kind: "no_route", unanswered: "coords_not_open" };
     if (mode !== "drive" && mode !== "walk") return { kind: "no_route", unanswered: "unsupported_mode" };
     const base = this.deps.baseUrl();
     if (!base) return { kind: "no_route", unanswered: "failed" };

@@ -1984,13 +1984,20 @@ export function versionLegStops(
     sourceItemId: string | null;
   }>,
   googlePointByPlanItem: ReadonlyMap<string, { lat: number; lng: number; fetchedAt: Date }>,
-  versionRouting?: { placeIdFor: (sourceItemId: string | null | undefined) => string | null } | null,
+  versionRouting?: {
+    placeIdFor: (sourceItemId: string | null | undefined) => string | null;
+    openFor?: (sourceItemId: string | null | undefined) => { lat: number; lng: number; origin: "osm" | "admin" } | null;
+  } | null,
 ): ActivityLocation[] {
   const out: ActivityLocation[] = [];
   items.forEach((item, idx) => {
-    const saved = item.latitude != null && item.longitude != null
-      ? { lat: parseFloat(item.latitude as string), lng: parseFloat(item.longitude as string), googleFetchedAt: null as Date | null }
-      : null;
+    // LG-1: an open coordinate for the stop's plan item (admin row, else OSM match) wins; else the Google point.
+    const open = versionRouting?.openFor?.(item.sourceItemId) ?? null;
+    const saved = open
+      ? { lat: open.lat, lng: open.lng, googleFetchedAt: null as Date | null }
+      : item.latitude != null && item.longitude != null
+        ? { lat: parseFloat(item.latitude as string), lng: parseFloat(item.longitude as string), googleFetchedAt: null as Date | null }
+        : null;
     const g = !saved && item.sourceItemId ? googlePointByPlanItem.get(item.sourceItemId) : undefined;
     const point = saved ?? (g ? { lat: g.lat, lng: g.lng, googleFetchedAt: g.fetchedAt } : null);
     if (!point || !Number.isFinite(point.lat) || !Number.isFinite(point.lng)) return;
@@ -2004,6 +2011,7 @@ export function versionLegStops(
       dayNumber: item.dayNumber,
       order: item.sortOrder ?? idx,
       placeId: versionRouting?.placeIdFor(item.sourceItemId) ?? null,
+      coordOrigin: open ? open.origin : "google",
       ...(point.googleFetchedAt ? { googleFetchedAt: point.googleFetchedAt } : {}),
     });
   });
