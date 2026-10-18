@@ -22,8 +22,9 @@ import { getBand, getExpertSplitRates, PROCESSING_FEE_RATE } from "./commission"
 import { READY_MADE_TRIP_BAND } from "./fee-band-requirements";
 import { availableAtFor, holdWindowDays } from "../config/earnings-hold.config";
 import { resolveTripTimezone } from "./trip-timezone";
-import { buildClonedItineraryItem } from "./itinerary-item-clone";
-import { buildClonedAnchor, buildClonedLeg, isCarriedLeg } from "./ready-made-clone-legs";
+import { buildClonedItineraryItem, previousItemIds, travelFromOpenCoordinates } from "./itinerary-item-clone";
+import { buildClonedAnchor, buildClonedLeg, isCarriedLeg, legFromOpenCoordinates } from "./ready-made-clone-legs";
+import { openPointsForItems } from "./routing/plan-legs-engine.service";
 import { resolveMarketSlug } from "./trend-engine/operating-markets";
 import { logger } from "../infrastructure/logger";
 import { notifyBuyerOfReadyMadeDelivery } from "./ready-made-notifications.service";
@@ -304,12 +305,17 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
     // key is a compile error rather than a silent drop.
     // L1-3: the clone's item ids are minted HERE so the legs and anchors below can be remapped onto
     // them (source id → clone id). The item SHAPE is still `buildClonedItineraryItem`'s alone.
+    // Ledger `2026-10-18-google-writers-open-coords`: an item's travel minutes ride with the copy only when they were
+    // routed between OPEN coordinates (the engine's one resolver, `openPointsForItems`).
+    const openItemIds = new Set((await openPointsForItems(listing.sourceTripId, sourceItems)).keys());
+    const previous = previousItemIds(sourceItems);
     await db.insert(itineraryItems).values(
       sourceItems.map((item) => {
         const id = crypto.randomUUID();
         itemIdMap.set(item.id, id);
+        const travelOpen = travelFromOpenCoordinates(item, previous.get(item.id) ?? null, openItemIds);
         // FD-2 ruling 9: a Ready Made copy is an expert's authored product ⇒ local.
-        return { ...stampItemSourceClass(buildClonedItineraryItem(item, cloneTrip.id) as Record<string, unknown>, { fromLocalInput: true }), id } as any;
+        return { ...stampItemSourceClass(buildClonedItineraryItem(item, cloneTrip.id, { travelOpen }) as Record<string, unknown>, { fromLocalInput: true }), id } as any;
       }),
     );
   }
@@ -319,8 +325,11 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
   const sourceLegs = (
     await db.select().from(transportLegs).where(and(eq(transportLegs.tripId, listing.sourceTripId), isNull(transportLegs.variantId)))
   ).filter(isCarriedLeg);
+  // Ledger `2026-10-18-google-writers-open-coords`: only a leg routed between OPEN coordinates carries its routed
+  // numbers into the copy; every other carried leg becomes the labelled estimate.
+  const openPoints = sourceLegs.length ? await openPointsForItems(listing.sourceTripId, sourceItems) : new Map();
   const clonedLegs = sourceLegs
-    .map((leg) => buildClonedLeg(leg, cloneTrip.id, itemIdMap))
+    .map((leg) => buildClonedLeg(leg, cloneTrip.id, itemIdMap, legFromOpenCoordinates(leg, openPoints)))
     .filter((leg): leg is NonNullable<typeof leg> => leg !== null);
   if (clonedLegs.length > 0) await db.insert(transportLegs).values(clonedLegs);
   // A Ready Made copy is a routed plan (R-e): pairs the author's confirmed legs do not cover are routed. // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)

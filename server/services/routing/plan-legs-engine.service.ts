@@ -26,6 +26,7 @@ import { factPointsForTrip, factsForTrip, placeRefsForTrip } from "../content-fa
 import { stayPointForPlan } from "../stay-reroute.service";
 import { openCoordsForPlaceIds, type OpenPlaceCoord } from "./open-place-coords.service";
 import { acceptedPoint, routingPointFor } from "./open-routing-points";
+import { isOpenCoordOrigin } from "@shared/open-coords";
 import { routingAdapter } from "./index";
 import { RouteRunMemo, routeWithTransitFallback } from "./route-memo";
 import { legDepartureWallClock, planDayIsPast, routedFactsOf } from "./plan-legs";
@@ -119,7 +120,7 @@ async function latestRunLegs(tripId: string): Promise<Array<typeof transportLegs
 }
 
 /** The plan's ride services whose every route point is a seeded OSM node (TC-3) — their item pins are OSM. */
-async function osmRideServiceIds(serviceIds: readonly string[]): Promise<Set<string>> {
+export async function osmRideServiceIds(serviceIds: readonly string[]): Promise<Set<string>> {
   const ids = Array.from(new Set(serviceIds.filter(Boolean)));
   if (ids.length === 0) return new Set();
   const rows = await db
@@ -128,6 +129,39 @@ async function osmRideServiceIds(serviceIds: readonly string[]): Promise<Set<str
     .where(inArray(serviceRoutePoints.serviceId, ids))
     .groupBy(serviceRoutePoints.serviceId);
   return new Set(rows.filter((r) => Number(r.total) > 0 && Number(r.nodes) === Number(r.total)).map((r) => r.serviceId));
+}
+
+/**
+ * LG-1 follow-up (ledger `2026-10-18-google-writers-open-coords`): each item's OPEN routing point — the SAME
+ * `routingPointFor` the engine routes a stop from (§18 rule 1), kept only when its origin is open (an admin or OSM
+ * row for its place id, or a ride's seeded OSM node). An item with none is absent from the map. Read by the writers
+ * that may not use a Google-derived point or minute: the stay pick, Ready-Made clone legs and the intelligence
+ * travel total.
+ */
+export async function openPointsForItems(
+  tripId: string,
+  items: ReadonlyArray<{ id: string; googlePlaceId?: string | null; providerServiceId?: string | null; latitude?: unknown; longitude?: unknown; origin?: string | null; locationName?: string | null; locationAddress?: string | null }>,
+): Promise<Map<string, RoutePoint>> {
+  const out = new Map<string, RoutePoint>();
+  if (!items.length) return out;
+  const placeRefs = await placeRefsForTrip(tripId, items.map((i) => i.id));
+  const placeIdOf = (it: (typeof items)[number]): string | null => it.googlePlaceId || placeRefs.get(it.id)?.placeId || null;
+  const [openCoords, osmRides] = await Promise.all([
+    openCoordsForPlaceIds(items.map(placeIdOf).filter((p): p is string => !!p)),
+    osmRideServiceIds(items.map((it) => it.providerServiceId ?? "").filter(Boolean)),
+  ]);
+  for (const it of items) {
+    const p = routingPointFor({
+      placeId: placeRefs.get(it.id)?.placeId ?? null,
+      lookupPlaceId: placeIdOf(it),
+      open: openCoords,
+      ownPoint: rowCoordinatesTrusted(it as any) ? realPoint(it.latitude, it.longitude) : null,
+      factPoint: null,
+      osmRide: !!it.providerServiceId && osmRides.has(it.providerServiceId),
+    });
+    if (p && isOpenCoordOrigin(p.coordOrigin)) out.set(it.id, p);
+  }
+  return out;
 }
 
 /**

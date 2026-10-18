@@ -78,6 +78,7 @@ import { rerouteAfterStayChange } from "./stay-reroute.service";
 import { listStayLinks } from "./stay-link.service";
 import { stayKindForCacheProvider } from "@shared/liteapi";
 import { routingAdapter } from "./routing/index";
+import { isOpenCoordOrigin } from "@shared/open-coords";
 import { RouteRunMemo } from "./routing/route-memo";
 
 const LODGING_CATEGORY = /hotel|accommodation|lodging|ryokan|stay/i;
@@ -188,10 +189,22 @@ async function chosenStayIsBooked(tripId: string, setId: string): Promise<boolea
  * Ready Made plans (§18 rule 1: one answer to "is this plan paid"). Loaded lazily: the routing module pulls
  * the handoff and entitlement services.
  */
-/** 9b-b: the drive-minutes cost from the engine's adapter, or undefined (straight line) when there is none. */
-export async function osrmStayCost(tripId: string, neighborhoods: readonly StayNeighborhood[], days: readonly StayDay[]): Promise<StayCost | undefined> {
+/**
+ * 9b-b: the drive-minutes cost from the engine's adapter, or undefined (straight line) when there is none.
+ * Ledger `2026-10-18-google-writers-open-coords` (decision-maker, Oct 18, 2026): OSRM between OPEN coordinates only
+ * (`shared/open-coords.ts`), whatever adapter is live. Every centroid and every stop point handed to it must carry an
+ * open origin. A `city_neighborhoods` centroid carries none today (its seed provenance is not OSM-confirmed; the
+ * OSM-derived centroid table is a held follow-up), so the ranking is the straight line until it does.
+ */
+export async function osrmStayCost(
+  tripId: string,
+  neighborhoods: ReadonlyArray<StayNeighborhood & { coordOrigin?: string | null }>,
+  days: ReadonlyArray<{ dayNumber: number; points: ReadonlyArray<{ lat: number; lng: number; coordOrigin?: string | null }> }>,
+): Promise<StayCost | undefined> {
   const adapter = routingAdapter();
   if (!adapter || !neighborhoods.length || !(await planIsRouted(tripId))) return undefined;
+  if (!neighborhoods.every((n) => isOpenCoordOrigin(n.coordOrigin))) return undefined;
+  if (!days.every((d) => d.points.every((p) => isOpenCoordOrigin(p.coordOrigin)))) return undefined;
   const memo = new RouteRunMemo();
   const minutes = new Map<string, number>();
   const key = (n: { lat: number; lng: number }, p: { lat: number; lng: number }) => `${n.lat},${n.lng}|${p.lat},${p.lng}`;
@@ -200,7 +213,10 @@ export async function osrmStayCost(tripId: string, neighborhoods: readonly StayN
       for (const p of d.points) {
         const k = key(n, p);
         if (minutes.has(k)) continue;
-        const r = await memo.route({ origin: { lat: n.lat, lng: n.lng }, destination: { lat: p.lat, lng: p.lng }, mode: "drive", departAt: null, hourBucket: null }, adapter);
+        const r = await memo.route(
+          { origin: { lat: n.lat, lng: n.lng, coordOrigin: n.coordOrigin as any }, destination: { lat: p.lat, lng: p.lng, coordOrigin: p.coordOrigin as any }, mode: "drive", departAt: null, hourBucket: null },
+          adapter,
+        );
         if (r.outcome.kind !== "ok") return undefined;
         minutes.set(k, r.outcome.route.durationMin);
       }
