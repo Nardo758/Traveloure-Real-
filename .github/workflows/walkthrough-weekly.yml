@@ -35,8 +35,7 @@ on:
 
 concurrency:
   group: walkthrough-weekly-${{ github.ref }}
-  cancel-in-progress: true
-
+  cancel-in-progress: ${{ github.event.action != 'ready_for_review' }}
 permissions:
   contents: write        # push the report branch
   pull-requests: write   # open the draft report PR
