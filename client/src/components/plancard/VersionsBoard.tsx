@@ -26,6 +26,7 @@ import type { PlanCardDay } from "@/components/plancard/plancard-types";
 import type { MapVersion } from "@/lib/map-scene";
 import { formatMoneyCents } from "@/lib/optimization-preview";
 import { retimeLine } from "@shared/version-board";
+import { COVERAGE_REDUCED_LINE, NO_VERSION_PASSES_LEAD, fixLine, issueLine } from "@shared/version-check";
 import { feasibilityLine } from "@shared/plan-feasibility";
 import { DayFeasibilityLine } from "@/components/plan/DayBlock";
 import {
@@ -169,6 +170,24 @@ export function VersionsBoard({
   });
 
   if (!view) return null;
+  // FB-1 step 3 ruling 4: no version cleared every problem — the draft's open issues and their fixes. No retry, no
+  // apology, and no held version shown as if it passed.
+  if (view.run && view.versions.length === 0 && view.blocked) {
+    return (
+      <section className="mb-6 space-y-4" data-testid="versions-board" data-board-state="no-version-passes">
+        <h2 className="text-lg font-semibold">Your plan's versions</h2>
+        <p className="text-sm" data-testid="versions-no-pass-lead">{NO_VERSION_PASSES_LEAD}</p>
+        <ul className="space-y-2" data-testid="versions-no-pass-issues">
+          {view.blocked.openIssues.map((issue, i) => (
+            <li key={`${issue.type}-${issue.day}-${issue.stop?.itemId ?? i}`} className="text-sm" data-testid="versions-no-pass-issue">
+              <span>{issueLine(issue)}</span>
+              <span className="block text-xs text-muted-foreground">{fixLine(issue)}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    );
+  }
   if (!view.run || view.versions.length === 0) {
     if (!noRunCta) return null;
     return (
@@ -379,6 +398,12 @@ export function VersionsBoard({
                     </span>
                   ))}
                 </div>
+                {/* FB-1 step 3: a version checked less than the draft passed — and says so. */}
+                {v?.coverageReduced ? (
+                  <p className="text-xs text-muted-foreground" data-testid={`versions-coverage-reduced-${c.label}`}>
+                    {COVERAGE_REDUCED_LINE}
+                  </p>
+                ) : null}
                 {/* V-1: the run's sanity flags — said, never acted on (C1). */}
                 {versionFlagLines(v?.flags).length > 0 ? (
                   <ul className="space-y-1 text-xs text-[color:var(--coral-text)]" data-testid={`versions-flags-${c.label}`}>
