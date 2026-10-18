@@ -41,6 +41,7 @@ import {
   applyEnergyBalancing,
   AnchorConstraint,
   DayBoundaryConstraint,
+  type StopTimeWindow,
 } from "./services/smart-sequencing.service";
 import { calculateTransportLegs, type ActivityLocation, type UserTransportPrefs } from "./services/transport-leg-calculator";
 import {
@@ -65,7 +66,7 @@ import {
 } from "./services/optimizer-activity-geocoder.service";
 import { anchorTimeLabel12h } from "@shared/anchor-time";
 import { checkPlan } from "@shared/plan-check";
-import { FIXED_VERSION_NAME, fixedVersionDescriptor, isShownVariantStatus, type CheckedPlan } from "@shared/version-check";
+import { FIXED_VERSION_NAME, fixedVersionDescriptor, isShownVariantStatus, retimeWindowsByItem, type CheckedPlan } from "@shared/version-check";
 import { gateStoredVersion, recordSequencingCheck } from "./services/version-check.service";
 
 // Anthropic is the optimizer's ONE provider (ledger `2026-09-30-retire-xai`): the Grok primary it
@@ -1374,6 +1375,10 @@ For each empty day, add activities that match the user's experience style (infer
       }
     }
 
+    // FB-1 step 3b: ONE window map per run, from the draft's own `retime` fixes, keyed by draft item id.
+    const draftWindows = draftCheck ? retimeWindowsByItem(draftCheck.result.issues) : new Map<string, StopTimeWindow>();
+    const draftWindowFor = (a: SequencedActivity): StopTimeWindow | null => (a.sourceItemId ? draftWindows.get(a.sourceItemId) ?? null : null);
+
     if (draftCheck) {
       const refOfPlanItem = new Map(Array.from(sourceRefToPlanItemId.entries()).map(([ref, id]) => [id, ref] as const));
       variantA = fixedVersionDescriptor(draftCheck.result.issues, (itemId) => refOfPlanItem.get(itemId) ?? null);
@@ -1595,8 +1600,9 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
         );
       }
 
-      // Apply smart sequencing to reorder activities
-      const sequencingResult = reorderItinerary(completeActivities);
+      // Apply smart sequencing to reorder activities. FB-1 step 3b: it honours the model's start times and the draft's
+      // retime windows (keyed by the draft item a stop keeps) instead of re-timing every day from 08:00.
+      const sequencingResult = reorderItinerary(completeActivities, { windowFor: draftWindowFor });
       let reorderedItems = sequencingResult.reorderedItems;
       const methodologyNotes = [...sequencingResult.allMethodologyNotes];
       const sequencingScore = sequencingResult.overallScore;

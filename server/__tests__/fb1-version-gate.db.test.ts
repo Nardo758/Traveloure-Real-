@@ -2,12 +2,13 @@
  * FB-1 step 3 (ledger `2026-10-18-fb1-version-gate`), end to end on a real database: a PAID run, its model answer
  * injected (`deps.callAI` — the only test seam), every version checked against its draft.
  *
- * One Kyoto plan, Monday 2027-11-08: the Temple at 08:00 (it opens 9:00 — the draft's one issue) and the Market at
- * 12:00 (open 9–17). The run's sequencing step re-times every day from 08:00 in the version's order (see the step 3
- * PR: a stop's model time does not survive it), so each version is built to be what it is AFTER sequencing:
- *   A  a new stop replaces the Temple, then the Market (09:30)          ⇒ shown, named "Your plan, fixed"
- *   B  the Temple, then the Market — as the draft (Temple at 08:00)     ⇒ HELD (unresolved)
- *   C  the Market first (08:00, before it opens), then the Temple       ⇒ HELD (added)
+ * One Kyoto plan, Monday 2027-11-08, with two draft issues: the Temple at 08:00 (it opens 9:00 — fix: start no earlier
+ * than 09:00) and the Shrine at 11:00 (open 8–10 — fix: start by 09:00). The Market at 12:00 is open 9–17. Sequencing
+ * honours the model's start times and the draft's retime windows (FB-1 step 3b), so the model's answer survives:
+ *   A  the Shrine at 08:00, the Temple moved to 09:30, the Market at 12:00   ⇒ shown, named "Your plan, fixed"
+ *   B  the draft's order and times — the Temple's window pushes it to 09:00,
+ *      but the Shrine cannot start by 09:00 after it and is left late       ⇒ HELD (unresolved)
+ *   C  as A, but the Market at 18:00 (after it closes)                        ⇒ HELD (added)
  *
  *   E1  the prompt names version A "Your plan, fixed" and carries the draft's fix, by tag and minute
  *   E2  A is generated and named "Your plan, fixed"; B and C are held — the gate ran after the run's legs step
@@ -43,11 +44,11 @@ const trip = id("trip");
 const NOW = new Date();
 const later = (days: number) => new Date(NOW.getTime() + days * 86_400_000);
 
-const hours = (placeRef: string, itemId: string) =>
+const hours = (placeRef: string, itemId: string, line = "Monday: 9:00 AM – 5:00 PM") =>
   recordFacts(
     [{
       placeRefKind: "place_id", placeRef, placeLat: null, placeLng: null, market: "kyoto", need: "stop.hours", factType: "hours",
-      value: { text: "9:00–17:00", quote: "9:00–17:00", weekdayDescriptions: ["Monday: 9:00 AM – 5:00 PM"] },
+      value: { text: line, quote: line, weekdayDescriptions: [line] },
       origin: "crawled", sourceId: null, sourceUrl: "https://official.example.jp/", license: "official", fetchedAt: NOW, expiresAt: later(30), costCents: 0,
     } as any],
     { planId: trip, itemId },
@@ -103,16 +104,18 @@ before(async () => {
     VALUES (${trip}, ${owner}, 'FB-1 gate', 'Kyoto, Japan', 'kyoto', '2027-11-08', '2027-11-08', 'draft')`);
   await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, day_number, title, item_type, start_time, duration_minutes, origin, sort_order) VALUES
     (${id("t")}, ${trip}, 1, 'Temple', 'activity', '08:00', 60, 'traveler', 1),
-    (${id("m")}, ${trip}, 1, 'Market', 'activity', '12:00', 60, 'traveler', 2)`);
+    (${id("s")}, ${trip}, 1, 'Shrine', 'activity', '11:00', 60, 'traveler', 2),
+    (${id("m")}, ${trip}, 1, 'Market', 'activity', '12:00', 60, 'traveler', 3)`);
   await hours(`ChIJ-fb1g-${RUN}-t`, id("t"));
+  await hours(`ChIJ-fb1g-${RUN}-s`, id("s"), "Monday: 8:00 AM – 10:00 AM");
   await hours(`ChIJ-fb1g-${RUN}-m`, id("m"));
   before1 = await draftRows();
   firstCmp = await newComparison("cmp1");
   firstRun = await run(firstCmp, {
     variants: [
-      versionJson([{ name: "Garden", ref: null as any, at: "08:00" }, { name: "Market", ref: "S2", at: "09:30" }], "anything the model says"),
-      versionJson([{ name: "Temple", ref: "S1", at: "08:00" }, { name: "Market", ref: "S2", at: "09:30" }], "Version B"),
-      versionJson([{ name: "Market", ref: "S2", at: "08:00" }, { name: "Temple", ref: "S1", at: "09:30" }], "Version C"),
+      versionJson([{ name: "Shrine", ref: "S2", at: "08:00" }, { name: "Temple", ref: "S1", at: "09:30" }, { name: "Market", ref: "S3", at: "12:00" }], "anything the model says"),
+      versionJson([{ name: "Temple", ref: "S1", at: "08:00" }, { name: "Shrine", ref: "S2", at: "11:00" }, { name: "Market", ref: "S3", at: "12:00" }], "Version B"),
+      versionJson([{ name: "Shrine", ref: "S2", at: "08:00" }, { name: "Temple", ref: "S1", at: "09:30" }, { name: "Market", ref: "S3", at: "18:00" }], "Version C"),
     ],
   });
 });
@@ -133,6 +136,9 @@ test("E1 the prompt names version A and carries the draft's fix", () => {
 test("E2 A is shown and named; B and C are held", async () => {
   assert.equal(firstRun.result.success, true);
   const vs = await versionsOf(firstCmp);
+  // Step 3b: version A's Temple is where the model put it (09:30), not re-timed from 08:00.
+  const aStops = (await db.execute(sql`SELECT name, start_time FROM itinerary_variant_items WHERE variant_id = ${vs[0].id} ORDER BY sort_order`)).rows as any[];
+  assert.deepEqual(aStops.map((r) => [r.name, r.start_time]), [["Shrine", "08:00"], ["Temple", "09:30"], ["Market", "12:00"]]);
   assert.deepEqual(vs.map((v) => [v.sort_order, v.status]), [[1, "generated"], [2, "held"], [3, "held"]]);
   assert.equal(vs[0].name, "Your plan, fixed", "the server's name, not the model's");
   assert.deepEqual([vs[1].name, vs[2].name], ["Version B", "Version C"]);
@@ -170,7 +176,7 @@ test("E5 the board shows A only; apply-days refuses a held version; inside the d
 
 test("E6 no version passes: the board names that run, shows none, and lists the open issues with fixes", async () => {
   const c = await newComparison("cmp2");
-  const keep = [{ name: "Temple", ref: "S1", at: "08:00" }, { name: "Market", ref: "S2", at: "12:00" }];
+  const keep = [{ name: "Temple", ref: "S1", at: "08:00" }, { name: "Shrine", ref: "S2", at: "11:00" }, { name: "Market", ref: "S3", at: "12:00" }];
   const r = await run(c, { variants: [versionJson(keep, "a"), versionJson(keep, "b"), versionJson(keep, "c")] });
   assert.equal(r.result.success, true);
   assert.deepEqual((await versionsOf(c)).map((v) => v.status), ["held", "held", "held"]);
@@ -178,6 +184,9 @@ test("E6 no version passes: the board names that run, shows none, and lists the 
   assert.equal(board.run?.comparisonId, c, "the latest run, not the earlier run's passing version");
   assert.deepEqual(board.versions, []);
   assert.equal(board.blocked?.heldCount, 3);
-  assert.deepEqual(board.blocked?.openIssues.map((i) => [i.type, i.why, i.stop?.title, i.fix.action]), [["closed_on_arrival", "before_opening", "Temple", "retime"]]);
+  assert.deepEqual(board.blocked?.openIssues.map((i) => [i.type, i.why, i.stop?.title, i.fix.action]), [
+    ["closed_on_arrival", "before_opening", "Temple", "retime"],
+    ["closed_on_arrival", "after_closing", "Shrine", "retime"],
+  ]);
   assert.deepEqual(await draftRows(), before1, "still untouched");
 });
