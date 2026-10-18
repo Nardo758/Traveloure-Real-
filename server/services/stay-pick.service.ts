@@ -9,12 +9,17 @@
  *   · WHEN: Optimize finish, Trip Pass purchase, handoff accept, and the post-debounce stops recompute
  *     (`plan-legs-queue.ts`) — all through `scheduleStayPick`, never on read. A plan whose stops have
  *     not changed since its last pick (`stopsHash`) is not re-scored, so a repeated trigger costs nothing.
- *   · HOW (rulings 1–2): the plan's located stops on its dates; candidates are our own located hotels in
- *     the plan's neighbourhoods (each stop's nearest centroid), in straight-line order; ONE Route Matrix
- *     request per hotel (hotel → every stop, DRIVE) through the Maps billing gate's `route_matrix` caller,
- *     so its ELEMENTS count against `MAPS_ROUTE_MATRIX_DAILY_CAP` like any other call; scored until
- *     `STAY_PICK_ELEMENT_BUDGET` elements are spent. A refused or failed request stops the scoring there
- *     (a paused cap is not retried). The pick comes ONLY from scored hotels.
+ *   · HOW (rulings 1–2, as amended by ledger `2026-10-18-google-writers-open-coords`): the plan's located stops
+ *     on its dates; candidates are our own located hotels in the plan's neighbourhoods (each stop's nearest
+ *     centroid), in straight-line order; ONE row of drive minutes per hotel (hotel → every stop) from the routing
+ *     engine's own adapter (self-hosted OSRM), scored until `STAY_PICK_ELEMENT_BUDGET` elements are spent. A row the
+ *     router could not answer stops the scoring there. The pick comes ONLY from scored hotels.
+ *   · OPEN COORDINATES ONLY (decision-maker, Oct 18, 2026 — the Google-derived writers): the pick was ranked by
+ *     Google Route Matrix; it is now OSRM between OPEN coordinates (`shared/open-coords.ts`) or nothing. Every
+ *     located stop on the plan's dates must have an open point (`openPointsForItems`, the engine's one resolver),
+ *     and a hotel is scored only from an open coordinate of its own — which no hotel source carries today (LiteAPI
+ *     static content, a listing's pin and an affiliate point are none of the four origins), so no new pick is
+ *     written until one does. An earlier pick stays as it was (FB-1's stay scoring replaces it).
  *   · NEVER PRICE OR COMMISSION (ruling 5): candidates leave the loader through `toStayPickCandidate`.
  *   · FU-S1-3: the pick also records its per-day closeness (`stayDayCloseness` against
  *     `stayCloseRoutedMinutes()`), read from the SAME matrix row the ranking used — no extra request.
@@ -25,9 +30,9 @@
  * TEMPORARY, BY RULING: the straight-line prune and the element budget are removed when 9a-ii (self-hosted
  * OSRM as a RoutingAdapter provider for walk/drive) is live.
  */
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { db } from "../db";
-import { trips } from "@shared/schema";
+import { itineraryItems, trips } from "@shared/schema";
 import {
   STAY_PICK_ELEMENT_BUDGET,
   nextStayPick,
@@ -44,22 +49,65 @@ import {
 } from "@shared/stay-pick";
 import { fitItems } from "./plan-option-sets.service";
 import { cityHotels, cityNeighborhoodRows, dayCount, nearestNeighborhoodSlug } from "./where-to-stay.service";
-import { gatedRouteMatrixFetch, type RouteMatrixFetch } from "./travel-time-matrix.service";
+import type { RoutePoint } from "@shared/routing-engine";
 import { stayCloseRoutedMinutes } from "../config/stay-closeness.config";
 
 export type StayPickOutcome =
-  | { skipped: "no_trip" | "free_plan" | "single_day" | "no_located_stops" | "no_candidates" | "unchanged" | "nothing_scored" }
+  | {
+      skipped:
+        | "no_trip"
+        | "free_plan"
+        | "single_day"
+        | "no_located_stops"
+        | "stops_not_open"
+        | "no_candidates"
+        | "no_open_candidates"
+        | "unchanged"
+        | "nothing_scored";
+    }
   | { written: StayPick; elementsSpent: number };
+
+/**
+ * One hotel's drive minutes to each stop, in order (null = the router's own "no route"). Throws when the router
+ * learned nothing (no router, an outage, a refused point) — the scoring stops there, as a refused request did.
+ */
+export type StayRouteRow = (origin: RoutePoint, destinations: readonly RoutePoint[]) => Promise<Array<number | null>>;
 
 export interface StayPickDeps {
   routed?: (tripId: string) => Promise<boolean>;
-  fetchMatrix?: RouteMatrixFetch;
+  /** Default: the routing engine's adapter (self-hosted OSRM), never Google. */
+  routeRow?: StayRouteRow;
+  /** A candidate's OPEN coordinate. Default: none — no hotel source carries one today. */
+  openPointOf?: (c: StayPickCandidate) => RoutePoint | null;
   now?: () => Date;
   budget?: number;
 }
 
-/** The plan's located stops on its dates, and its city. */
-export async function loadStayStops(tripId: string): Promise<{ city: string | null; days: number | null; stops: StayPickStop[] } | null> {
+/** The engine's adapter as a row of drive minutes. A refused point or an unanswered call throws. */
+async function adapterRouteRow(origin: RoutePoint, destinations: readonly RoutePoint[]): Promise<Array<number | null>> {
+  const { routingAdapter } = await import("./routing/index");
+  const adapter = routingAdapter();
+  if (!adapter) throw new Error("no routing adapter");
+  const row: Array<number | null> = [];
+  for (const d of destinations) {
+    if (adapter.acceptsPoint && (!adapter.acceptsPoint(origin) || !adapter.acceptsPoint(d))) throw new Error("coordinates not open");
+    const r = await adapter.route(origin, d, "drive", null);
+    if (r.kind === "ok") row.push(r.route.durationMin);
+    else if (r.kind === "no_route" && !r.unanswered) row.push(null);
+    else throw new Error(r.kind === "paused" ? "routing paused" : `router did not answer (${r.unanswered})`);
+  }
+  return row;
+}
+
+/** A stop at its open routing point (the point keeps its origin for the adapter). */
+export type OpenStayStop = StayPickStop & { point: RoutePoint };
+
+/**
+ * The plan's located stops on its dates, at their OPEN points, and its city. `notOpen` counts the located stops on
+ * the plan's dates that have no open point — any one of them means no pick (ledger
+ * `2026-10-18-google-writers-open-coords`): ranking over a subset would pick for a plan the traveler did not make.
+ */
+export async function loadStayStops(tripId: string): Promise<{ city: string | null; days: number | null; stops: OpenStayStop[]; notOpen: number } | null> {
   const [trip] = await db
     .select({ destination: trips.destination, startDate: trips.startDate, endDate: trips.endDate })
     .from(trips)
@@ -68,15 +116,32 @@ export async function loadStayStops(tripId: string): Promise<{ city: string | nu
   if (!trip) return null;
   const city = (trip.destination ?? "").split(",")[0].trim() || null;
   const days = dayCount(trip.startDate, trip.endDate);
-  const items = await fitItems(tripId);
-  const stops: StayPickStop[] = [];
-  for (const it of items) {
-    if (it.lat === null || it.lng === null) continue;
+  const inDates = (day: number) => days === null || (day >= 1 && day <= days); // on the plan's dates only (ruling 1)
+  const located = (await fitItems(tripId)).filter((it) => it.lat !== null && it.lng !== null && inDates(it.dayNumber ?? 1)).length;
+  const rows = await db
+    .select({
+      id: itineraryItems.id,
+      dayNumber: itineraryItems.dayNumber,
+      latitude: itineraryItems.latitude,
+      longitude: itineraryItems.longitude,
+      googlePlaceId: itineraryItems.googlePlaceId,
+      providerServiceId: itineraryItems.providerServiceId,
+      origin: itineraryItems.origin,
+      locationName: itineraryItems.locationName,
+      locationAddress: itineraryItems.locationAddress,
+    })
+    .from(itineraryItems)
+    .where(and(eq(itineraryItems.tripId, tripId), ne(itineraryItems.itemType, "accommodation")));
+  const { openPointsForItems } = await import("./routing/plan-legs-engine.service");
+  const open = await openPointsForItems(tripId, rows);
+  const stops: OpenStayStop[] = [];
+  for (const it of rows) {
+    const p = open.get(it.id);
     const day = it.dayNumber ?? 1;
-    if (days !== null && (day < 1 || day > days)) continue; // on the plan's dates only (ruling 1)
-    stops.push({ dayNumber: day, lat: it.lat, lng: it.lng });
+    if (!p || !inDates(day)) continue;
+    stops.push({ dayNumber: day, lat: p.lat, lng: p.lng, point: p });
   }
-  return { city, days, stops };
+  return { city, days, stops, notOpen: Math.max(0, located - stops.length) };
 }
 
 /** Our own located hotels in the plan's neighbourhoods, projected to the candidate shape (no money field). */
@@ -93,8 +158,6 @@ export async function loadPaidCandidates(city: string, stops: readonly StayPickS
   });
 }
 
-const parseSeconds = (d?: string) => (d && /^\d+(\.\d+)?s$/.test(d) ? Math.round(Number(d.slice(0, -1))) : null);
-const waypoint = (p: { lat: number; lng: number }) => ({ waypoint: { location: { latLng: { latitude: p.lat, longitude: p.lng } } } });
 
 /** Score, rank and write one plan's pick. Never throws (§15b): every failure is an outcome. */
 export async function computeStayPick(tripId: string, deps: StayPickDeps = {}): Promise<StayPickOutcome> {
@@ -103,6 +166,7 @@ export async function computeStayPick(tripId: string, deps: StayPickDeps = {}): 
   const loaded = await loadStayStops(tripId);
   if (!loaded) return { skipped: "no_trip" };
   if (loaded.days === null || loaded.days < 2) return { skipped: "single_day" };
+  if (loaded.notOpen > 0) return { skipped: "stops_not_open" };
   if (!loaded.stops.length || !loaded.city) return { skipped: "no_located_stops" };
 
   const [row] = await db.select({ stayPick: trips.stayPick }).from(trips).where(eq(trips.id, tripId)).limit(1);
@@ -112,39 +176,34 @@ export async function computeStayPick(tripId: string, deps: StayPickDeps = {}): 
 
   const candidates = await loadPaidCandidates(loaded.city, loaded.stops);
   if (!candidates.length) return { skipped: "no_candidates" };
-  const ordered = straightLineOrder(candidates, loaded.stops);
+  const openPointOf = deps.openPointOf ?? (() => null);
+  const openPoint = new Map<string, RoutePoint>();
+  for (const c of candidates) {
+    const p = openPointOf(c);
+    if (p) openPoint.set(`${c.kind}:${c.id}`, p);
+  }
+  const scorable = candidates.filter((c) => openPoint.has(`${c.kind}:${c.id}`));
+  if (!scorable.length) return { skipped: "no_open_candidates" };
+  const ordered = straightLineOrder(scorable, loaded.stops);
   const plan = planStayScoring(ordered, loaded.stops.length, deps.budget ?? STAY_PICK_ELEMENT_BUDGET);
-  // FU-S1-1 (ledger `2026-10-09-fu-s1-1-stay-pick-cost`): the stay pick has no refresh row, so each
-  // request records its dollars on its own `api_usage_logs` gate row (purpose `stay_pick`, ref = the plan);
-  // its elements still count against `MAPS_ROUTE_MATRIX_DAILY_CAP` through the same `route_matrix` caller.
-  const fetchMatrix = deps.fetchMatrix ?? gatedRouteMatrixFetch({ costHere: { purpose: "stay_pick", ref: tripId } });
+  const routeRow = deps.routeRow ?? adapterRouteRow;
 
-  // The stops in the SAME canonical order the ranking reads, so a returned destinationIndex is its stop.
+  // The stops in the SAME canonical order the ranking reads, so a row's index is its stop.
   const stops = [...loaded.stops].sort((a, b) => a.dayNumber - b.dayNumber || a.lat - b.lat || a.lng - b.lng);
+  const stopPoints: RoutePoint[] = stops.map((s0) => s0.point);
   const minutes = new Map<string, Array<number | null>>();
   let elementsSpent = 0;
   for (const hotel of plan.toScore) {
-    let elements;
+    let row: Array<number | null>;
     try {
-      elements = await fetchMatrix({
-        origins: [waypoint(hotel)],
-        destinations: stops.map(waypoint),
-        travelMode: "DRIVE",
-      });
+      row = await routeRow(openPoint.get(`${hotel.kind}:${hotel.id}`)!, stopPoints);
     } catch (err: any) {
-      // A refused call (cap reached, caller off, no key) or an API error: stop here — what is scored stands.
+      // The router learned nothing (no router, an outage, a refused point): stop here — what is scored stands.
       console.warn(`[stay-pick] ${tripId} scoring stopped after ${minutes.size} hotel(s): ${String(err?.message ?? err).slice(0, 200)}`);
       break;
     }
     elementsSpent += stops.length;
-    const row: Array<number | null> = stops.map(() => null);
-    for (const el of elements) {
-      if (el.originIndex !== 0 || el.destinationIndex == null || el.destinationIndex < 0 || el.destinationIndex >= stops.length) continue;
-      if (el.condition === "ROUTE_NOT_FOUND") continue;
-      const s = parseSeconds(el.duration);
-      if (s !== null) row[el.destinationIndex] = s / 60;
-    }
-    minutes.set(`${hotel.kind}:${hotel.id}`, row);
+    minutes.set(`${hotel.kind}:${hotel.id}`, stops.map((_, i) => (Number.isFinite(row[i] as number) ? (row[i] as number) : null)));
   }
   const scored = plan.toScore.filter((h) => minutes.has(`${h.kind}:${h.id}`));
   if (!scored.length) return { skipped: "nothing_scored" };

@@ -309,6 +309,22 @@ stage `SLIP`:
   `refunds`, never copied.
 - **Emitter:** server, one per rail, after the atomic flip wins; a 409 writes nothing.
 
+### 3.14 Local teaser shown (amendment 2026-10-18, ledger `2026-10-18-teaser-copy-events`; decision-maker)
+- **Fires:** a FREE plan renders at least one day's local teaser (FD-1/FD-5, `localTeaserLine`) on the slip or the
+  Trip Card; once per page view. A view ⇒ client-emitted on the ONE client rail
+  (`POST /api/trips/:tripId/slip-events`).
+- **Lands:** `funnel_events` `slip_local_teaser_shown`, stage `SLIP`, through the ONE writer `recordSlipEvent`
+  (`server/services/slip-events.service.ts`, §2 principle 3 — now built).
+- **Properties:** `surface` (`slip | trip_card`), `teaserDays` (int, the client's count of days that draw a
+  teaser, 1–60), `viewId`; common `viewerRole` and `market` from the server. No title, place or id of a pick.
+- **Dedupe:** at read time — distinct `(tripId, surface, viewId)`; an hourly per-plan cap bounds the rail.
+
+### 3.15 Routed-legs CTA tapped (same amendment)
+- **Fires:** the traveler taps the free plan's "Add drive and walk times" line (`LEAVE_BY_COPY.needsRoutedLegDoor`,
+  shared/leave-by.ts — the ruled words, which replaced "Add travel times") on the Trip Card. Client-emitted.
+- **Lands:** `funnel_events` `slip_routed_legs_cta_tapped`, stage `SLIP`, through `recordSlipEvent`.
+- **Properties:** `surface` (`trip_card`), `viewId`; common `viewerRole` and `market`.
+
 ---
 
 ## 4. Summary
@@ -330,6 +346,8 @@ stage `SLIP`:
 | 11 | finalized | `finalizeTrip` | yes | `trip_finals` + diary | derived | — |
 | 12 | booking created | checkout promotion | yes | `service_bookings` + diary | derived | — |
 | 13 | booking cancelled | cancel rails | yes (no actor) | `service_bookings`/`refunds` + `funnel_events` `slip_booking_cancelled` | derived + actor written | server |
+| 14 | local teaser shown | free plan's day teaser render | WRITTEN (2026-10-18) | `funnel_events` `slip_local_teaser_shown` | written | client |
+| 15 | routed-legs CTA tapped | "Add drive and walk times" tap | WRITTEN (2026-10-18) | `funnel_events` `slip_routed_legs_cta_tapped` | written | client |
 
 ---
 

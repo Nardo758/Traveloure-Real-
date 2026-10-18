@@ -3,7 +3,7 @@
  * docs/planning/briefs/s1-one-stay.md; migration 359).
  *
  *   SD1  a FREE plan: the writer skips with no Maps call, and the read is the straight-line top 3
- *   SD2  a PAID plan (an active Trip Pass ⇒ `planGetsRoutedLegs`): ONE matrix request per hotel to every
+ *   SD2  a PAID plan (an active Trip Pass ⇒ `planGetsRoutedLegs`): ONE row of drive minutes per hotel to every
  *        stop on the plan's dates, scored until 150 ELEMENTS are spent, in straight-line order; the stored
  *        pick is the routed best; scored/candidate counts recorded
  *   SD3  the pick comes ONLY from scored hotels: a hotel past the budget is never picked, however fast
@@ -14,14 +14,21 @@
  *   SD6  the read never computes: a paid plan's where-to-stay view returns the STORED pick and counts and
  *        makes no Maps call
  *   SD7  the tier test is `planGetsRoutedLegs`, not a paid optimizer run (ruling 4)
- *   SD8  FU-S1-1: through the REAL gate, each stay-pick request writes ONE `route_matrix` row on
- *        `api_usage_logs` carrying its elements (the cap's count) AND its dollars at the Essentials list
- *        price, purpose `stay_pick`, ref = the plan; a refresh-style call without a price still records 0
+ *   SD8  ledger `2026-10-18-google-writers-open-coords` (replaces FU-S1-1's Route Matrix cost row): the pick is
+ *        scored by the routing engine's adapter, never Google — with the Route Matrix caller switched on and a
+ *        key present, a pick is written with NO Google request and NO `route_matrix` usage row
  *   SD9  FU-S1-2: the free plan's list read carries ONE `stayLink` per card (Google Maps, no call) and
  *        makes NO Google call — the website is fetched only when the picked card is opened
  *   SD10 FU-S1-3: the routed pick stores its per-day closeness from the SAME matrix the scorer fetched (no
  *        extra request), against the configured minutes, and the read returns it as stored
  *   SD11 FU-S1-3: each free-tier stay carries its straight-line closeness against the configured km
+ *   SD12 ledger `2026-10-18-google-writers-open-coords`: with no hotel open coordinate (the default — no hotel
+ *        source carries one) nothing is scored and no call is made; the earlier pick stays
+ *   SD13 a located stop on the plan's dates with no open point ⇒ no pick
+ *
+ * OPEN COORDINATES (ledger `2026-10-18-google-writers-open-coords`): the paid plans' stops are open through
+ * `open_place_coords` rows carrying by each item's place id; a stop "moves" by moving that row. The hotels' open point
+ * is a TEST-ONLY injection (`OPEN_HOTELS`): no hotel source carries one today, which is SD12.
  *
  * DISPOSABLE DB ONLY: rows keyed by a per-run prefix and deleted afterwards. The Maps call is a fake.
  */
@@ -36,7 +43,7 @@ import { computeStayPick, markStayPickSeen, scheduleStayPick } from "../services
 import { loadWhereToStay } from "../services/where-to-stay.service";
 import { readStayPick, straightLineCloseness } from "@shared/stay-pick";
 import { stayCloseRoutedMinutes, stayCloseStraightKm } from "../config/stay-closeness.config";
-import type { RouteMatrixFetch } from "../services/travel-time-matrix.service";
+import type { StayRouteRow } from "../services/stay-pick.service";
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const id = (k: string) => `stp-${RUN}-${k}`;
@@ -57,21 +64,25 @@ const STOPS: Array<{ day: number; lat: number; lng: number }> = [
 ];
 const eastHotel = (i: number) => ({ id: id(`e${String(i).padStart(2, "0")}`), lat: 35.0 + i * 0.0004, lng: 135.78 + i * 0.0004 });
 
-/** A fake matrix: drive minutes per (hotel, stop), and a log of every request's elements. */
+/** A fake router: drive minutes per (hotel, stop), and a log of every row's elements. */
 function fakeMatrix(minutesFor: (hotelLat: number, hotelLng: number, stopIndex: number) => number | null, opts: { failAfter?: number } = {}) {
   const calls: number[] = [];
-  const fetch: RouteMatrixFetch = async (body: any) => {
-    if (opts.failAfter !== undefined && calls.length >= opts.failAfter) throw new Error("computeRouteMatrix refused by the Maps billing gate: cap");
-    const o = body.origins[0].waypoint.location.latLng;
-    assert.equal(body.origins.length, 1, "one hotel per request");
-    assert.equal(body.travelMode, "DRIVE");
-    calls.push(body.origins.length * body.destinations.length);
-    return body.destinations.map((_: unknown, j: number) => {
-      const m = minutesFor(o.latitude, o.longitude, j);
-      return m === null ? { originIndex: 0, destinationIndex: j, condition: "ROUTE_NOT_FOUND" } : { originIndex: 0, destinationIndex: j, duration: `${m * 60}s`, condition: "ROUTE_EXISTS" };
-    });
+  const fetch: StayRouteRow = async (origin, destinations) => {
+    if (opts.failAfter !== undefined && calls.length >= opts.failAfter) throw new Error("router did not answer");
+    assert.equal(origin.coordOrigin, "admin", "the hotel's open point");
+    assert.ok(destinations.every((d) => d.coordOrigin === "osm"), "every stop at its open point");
+    calls.push(destinations.length);
+    return destinations.map((_, j) => minutesFor(origin.lat, origin.lng, j));
   };
   return { fetch, calls };
+}
+
+/** TEST-ONLY: every hotel at an admin coordinate (no hotel source carries an open coordinate today — SD12). */
+const OPEN_HOTELS = (c: { lat: number; lng: number }) => ({ lat: c.lat, lng: c.lng, coordOrigin: "admin" as const });
+const pid = (t: string, n: number) => `${t}-p${n}`;
+/** Move a stop: its open coordinate (the `open_place_coords` row) is what the pick reads. */
+async function moveStop(t: string, n: number, lat: number) {
+  await db.execute(sql`UPDATE open_place_coords SET lat = ${lat} WHERE google_place_id = ${pid(t, n)}`);
 }
 
 async function storedPick(tripId: string) {
@@ -105,8 +116,12 @@ before(async () => {
       VALUES (${t}, ${ids.owner}, 'S1 plan', ${`${CITY}, Japan`}, '2027-05-01', '2027-05-03', 'planning')`);
     let n = 0;
     for (const s of STOPS) {
-      await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, title, day_number, item_type, latitude, longitude, origin)
-        VALUES (${`${t}-i${n++}`}, ${t}, 'Stop', ${s.day}, 'activity', ${s.lat}, ${s.lng}, 'traveler')`);
+      await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, title, day_number, item_type, latitude, longitude, origin, google_place_id)
+        VALUES (${`${t}-i${n}`}, ${t}, 'Stop', ${s.day}, 'activity', ${s.lat}, ${s.lng}, 'traveler', ${pid(t, n)})`);
+      // The stop's open coordinate (LG-1): an OSM match for its place id, at the same point.
+      await db.execute(sql`INSERT INTO open_place_coords (id, source, google_place_id, lat, lng, osm_type, osm_id, name, matched_by, attribution)
+        VALUES ('osm:node/' || ${pid(t, n)}, 'osm', ${pid(t, n)}, ${s.lat}, ${s.lng}, 'node', ${1000 + n}, 'Stop', 'nominatim_batch', '© OpenStreetMap contributors')`);
+      n++;
     }
     // A stop OUTSIDE the plan's dates (day 9 of a 3-day plan) is never scored against (ruling 1).
     await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, title, day_number, item_type, latitude, longitude, origin)
@@ -122,6 +137,7 @@ after(async () => {
   await db.execute(sql`DELETE FROM hotel_cache WHERE id LIKE ${`stp-${RUN}-%`}`).catch(() => {});
   await db.execute(sql`DELETE FROM city_neighborhoods WHERE id LIKE ${`stp-${RUN}-%`}`).catch(() => {});
   await db.execute(sql`DELETE FROM users WHERE id LIKE ${`stp-${RUN}-%`}`).catch(() => {});
+  await db.execute(sql`DELETE FROM open_place_coords WHERE google_place_id LIKE ${`stp-${RUN}-%`}`).catch(() => {});
   await pool.end();
 });
 
@@ -135,7 +151,7 @@ const byDistance = (fastIds: Set<string> = new Set()) => (lat: number, lng: numb
 
 test("SD1 a free plan: no Maps call, and the read is the straight-line top 3", async () => {
   const m = fakeMatrix(byDistance());
-  assert.deepEqual(await computeStayPick(ids.free, { fetchMatrix: m.fetch }), { skipped: "free_plan" });
+  assert.deepEqual(await computeStayPick(ids.free, { routeRow: m.fetch, openPointOf: OPEN_HOTELS }), { skipped: "free_plan" });
   assert.equal(m.calls.length, 0);
   const view = await loadWhereToStay(ids.free, ids.owner);
   assert.equal(view.eligible, true);
@@ -154,9 +170,9 @@ test("SD2+SD3 a paid plan: 150 elements, whole hotels, pick only from the scored
   const unscored = order[22].id;
   const scoredFast = order[7].id;
   const m = fakeMatrix(byDistance(new Set([unscored, scoredFast])));
-  const out = await computeStayPick(ids.paid, { fetchMatrix: m.fetch });
+  const out = await computeStayPick(ids.paid, { routeRow: m.fetch, openPointOf: OPEN_HOTELS });
   assert.ok("written" in out, JSON.stringify(out));
-  assert.equal(m.calls.length, 21, "floor(150 / 7 stops) hotels, one request each");
+  assert.equal(m.calls.length, 21, "floor(150 / 7 stops) hotels, one row each");
   assert.ok(m.calls.every((e) => e === 7), "each request is the hotel → every stop on the plan's dates (the day-9 stop excluded)");
   assert.equal(out.elementsSpent, 147);
   const pick = await storedPick(ids.paid);
@@ -171,14 +187,14 @@ test("SD2+SD3 a paid plan: 150 elements, whole hotels, pick only from the scored
 
 test("SD4 same stops: no call; moved stops: re-score, changed, and only the owner clears it", async () => {
   const again = fakeMatrix(byDistance());
-  assert.deepEqual(await computeStayPick(ids.paid, { fetchMatrix: again.fetch }), { skipped: "unchanged" });
+  assert.deepEqual(await computeStayPick(ids.paid, { routeRow: again.fetch, openPointOf: OPEN_HOTELS }), { skipped: "unchanged" });
   assert.equal(again.calls.length, 0);
   // Move a stop, and make a different scored hotel the fastest.
-  await db.execute(sql`UPDATE itinerary_items SET latitude = 35.0012 WHERE id = ${`${ids.paid}-i0`}`);
+  await moveStop(ids.paid, 0, 35.0012);
   const before = await storedPick(ids.paid);
   const other = Array.from({ length: 25 }, (_, k) => eastHotel(k).id).find((h) => h !== before!.hotelId && /-e0[0-3]$/.test(h))!;
   const m = fakeMatrix(byDistance(new Set([other])));
-  const out = await scheduleStayPick(ids.paid, { fetchMatrix: m.fetch });
+  const out = await scheduleStayPick(ids.paid, { routeRow: m.fetch, openPointOf: OPEN_HOTELS });
   assert.ok(out && "written" in out);
   const after = await storedPick(ids.paid);
   assert.equal(after!.hotelId, other);
@@ -191,14 +207,14 @@ test("SD4 same stops: no call; moved stops: re-score, changed, and only the owne
 
 test("SD5 a refused call stops the scoring; nothing scored keeps the earlier pick", async () => {
   const m = fakeMatrix(byDistance(), { failAfter: 2 });
-  const out = await computeStayPick(ids.small, { fetchMatrix: m.fetch });
+  const out = await computeStayPick(ids.small, { routeRow: m.fetch, openPointOf: OPEN_HOTELS });
   assert.ok("written" in out);
   const pick = await storedPick(ids.small);
-  assert.equal(pick!.scoredCount, 2, "two hotels scored before the gate refused");
+  assert.equal(pick!.scoredCount, 2, "two hotels scored before the router stopped answering");
   assert.equal(pick!.candidateCount, 25);
-  await db.execute(sql`UPDATE itinerary_items SET latitude = 35.0013 WHERE id = ${`${ids.small}-i1`}`);
+  await moveStop(ids.small, 1, 35.0013);
   const none = fakeMatrix(byDistance(), { failAfter: 0 });
-  assert.deepEqual(await computeStayPick(ids.small, { fetchMatrix: none.fetch }), { skipped: "nothing_scored" });
+  assert.deepEqual(await computeStayPick(ids.small, { routeRow: none.fetch, openPointOf: OPEN_HOTELS }), { skipped: "nothing_scored" });
   assert.deepEqual(await storedPick(ids.small), pick, "a paused day never erases an answer");
 });
 
@@ -226,58 +242,32 @@ test("SD7 the tier test is planGetsRoutedLegs, not a paid optimizer run (ruling 
   assert.equal(await tripGetsRoutedLegs(ids.free), false);
 });
 
-test("SD8 FU-S1-1: each stay-pick request records its elements and its dollars on the usage log", async () => {
-  const saved = {
-    enabled: process.env.MAPS_ROUTE_MATRIX_ENABLED,
-    key: process.env.GOOGLE_MAPS_API_KEY,
-    cap: process.env.MAPS_ROUTE_MATRIX_DAILY_CAP,
-    price: process.env.TRAVEL_MATRIX_ESSENTIALS_PRICE_PER_1000,
-  };
+test("SD8 the pick is scored by the routing engine's adapter, never Google: no request, no route_matrix row", async () => {
+  const keys = ["MAPS_ROUTE_MATRIX_ENABLED", "GOOGLE_MAPS_API_KEY", "MAPS_ROUTE_MATRIX_DAILY_CAP", "TRAVEL_TIME_SERVICE_ENABLED", "ROUTING_ADAPTER_STUB"] as const;
+  const saved = keys.map((k) => process.env[k]);
   const realFetch = globalThis.fetch;
   process.env.MAPS_ROUTE_MATRIX_ENABLED = "1";
   process.env.GOOGLE_MAPS_API_KEY = "sd8-test-key";
   process.env.MAPS_ROUTE_MATRIX_DAILY_CAP = "100000000";
-  process.env.TRAVEL_MATRIX_ESSENTIALS_PRICE_PER_1000 = "5";
+  process.env.TRAVEL_TIME_SERVICE_ENABLED = "1";
+  process.env.ROUTING_ADAPTER_STUB = "1"; // the CI stand-in for the self-hosted OSRM adapter
   let requests = 0;
-  globalThis.fetch = (async (url: any, init: any) => {
-    assert.match(String(url), /computeRouteMatrix/);
+  globalThis.fetch = (async () => {
     requests += 1;
-    const body = JSON.parse(init.body);
-    const out = body.destinations.map((_: unknown, j: number) => ({ originIndex: 0, destinationIndex: j, duration: `${(10 + j) * 60}s`, condition: "ROUTE_EXISTS" }));
-    return new Response(JSON.stringify(out), { status: 200, headers: { "Content-Type": "application/json" } });
+    throw new Error("no network: the stay pick never calls Google");
   }) as any;
   try {
     // The small plan holds a pick from SD5; move a stop so it re-scores. A budget of 14 = two hotels.
-    await db.execute(sql`UPDATE itinerary_items SET latitude = 35.0014 WHERE id = ${`${ids.small}-i2`}`);
-    const out = await computeStayPick(ids.small, { budget: 14 });
+    await moveStop(ids.small, 2, 35.0014);
+    const out = await computeStayPick(ids.small, { budget: 14, openPointOf: OPEN_HOTELS });
     assert.ok("written" in out, JSON.stringify(out));
-    assert.equal(requests, 2);
-    const r: any = await db.execute(sql`
-      SELECT request_count, estimated_cost_cents, success, metadata FROM api_usage_logs
-      WHERE provider = 'google_maps' AND endpoint = 'route_matrix' AND metadata->>'ref' = ${ids.small}
-      ORDER BY created_at`);
-    const rows = r.rows ?? r;
-    assert.equal(rows.length, 2, "one gate row per request");
-    for (const row of rows) {
-      assert.equal(row.request_count, 7, "the elements count against MAPS_ROUTE_MATRIX_DAILY_CAP");
-      assert.equal(row.estimated_cost_cents, 35, "7 elements × $5 / 1,000 = 3.5¢ = 35 tenths of a cent");
-      assert.equal(row.success, true);
-      assert.equal(row.metadata.purpose, "stay_pick");
-      assert.equal(row.metadata.costRecordedOn, "api_usage_logs");
-      assert.equal(row.metadata.sku, "compute_route_matrix_essentials", "DRIVE bills Essentials");
-    }
+    assert.equal(out.elementsSpent, 14);
+    assert.equal(requests, 0, "no outbound request");
+    const r: any = await db.execute(sql`SELECT count(*)::int AS n FROM api_usage_logs WHERE endpoint = 'route_matrix' AND metadata->>'ref' = ${ids.small}`);
+    assert.equal((r.rows ?? r)[0].n, 0, "no Route Matrix usage row");
   } finally {
     globalThis.fetch = realFetch;
-    for (const [k, v] of [
-      ["MAPS_ROUTE_MATRIX_ENABLED", saved.enabled],
-      ["GOOGLE_MAPS_API_KEY", saved.key],
-      ["MAPS_ROUTE_MATRIX_DAILY_CAP", saved.cap],
-      ["TRAVEL_MATRIX_ESSENTIALS_PRICE_PER_1000", saved.price],
-    ] as const) {
-      if (v === undefined) delete process.env[k];
-      else process.env[k] = v;
-    }
-    await db.execute(sql`DELETE FROM api_usage_logs WHERE metadata->>'ref' = ${ids.small}`).catch(() => {});
+    keys.forEach((k, i) => (saved[i] === undefined ? delete process.env[k] : (process.env[k] = saved[i])));
   }
 });
 
@@ -313,12 +303,12 @@ test("SD10 FU-S1-3: the routed pick stores its closeness from the scorer's own m
   const canon = STOPS.slice().sort((a, b) => a.day - b.day || a.lat - b.lat || a.lng - b.lng);
   const perStop = (j: number) => (canon[j].day === 1 ? T : canon[j].day === 2 ? (j === 3 ? T + 1 : T - 1) : null);
   // SD8 already moved this stop; clear the stored pick so the plan re-scores (a pick on unchanged stops is skipped).
-  await db.execute(sql`UPDATE itinerary_items SET latitude = 35.0014 WHERE id = ${`${ids.small}-i2`}`);
+  await moveStop(ids.small, 2, 35.0014);
   await db.execute(sql`UPDATE trips SET stay_pick = NULL WHERE id = ${ids.small}`);
   const m = fakeMatrix((_lat, _lng, j) => perStop(j));
-  const out = await computeStayPick(ids.small, { fetchMatrix: m.fetch });
+  const out = await computeStayPick(ids.small, { routeRow: m.fetch, openPointOf: OPEN_HOTELS });
   assert.ok("written" in out, JSON.stringify(out));
-  assert.equal(m.calls.length, 21, "one request per scored hotel — closeness adds none");
+  assert.equal(m.calls.length, 21, "one row per scored hotel — closeness adds none");
   const pick = await storedPick(ids.small);
   assert.deepEqual(pick!.closeness, { closeDays: 1, locatedDays: 3, basis: "routed" });
   const view = await loadWhereToStay(ids.small, ids.owner);
@@ -338,4 +328,20 @@ test("SD11 FU-S1-3: each free-tier stay carries its straight-line closeness agai
     assert.equal(h.closeness!.locatedDays, 3, "the day-9 stop outside the plan's dates is not a located day");
     assert.equal(h.closeness!.basis, "straight_line");
   }
+});
+
+test("SD12 no hotel open coordinate (the default): nothing scored, no call, the earlier pick stays", async () => {
+  await moveStop(ids.paid, 3, 34.9991);
+  const before = await storedPick(ids.paid);
+  const m = fakeMatrix(byDistance());
+  assert.deepEqual(await computeStayPick(ids.paid, { routeRow: m.fetch }), { skipped: "no_open_candidates" });
+  assert.equal(m.calls.length, 0);
+  assert.deepEqual(await storedPick(ids.paid), before, "FB-1's stay scoring replaces it; this writer does not");
+});
+
+test("SD13 a located stop on the plan's dates with no open point ⇒ no pick", async () => {
+  await db.execute(sql`DELETE FROM open_place_coords WHERE google_place_id = ${pid(ids.paid, 4)}`);
+  const m = fakeMatrix(byDistance());
+  assert.deepEqual(await computeStayPick(ids.paid, { routeRow: m.fetch, openPointOf: OPEN_HOTELS }), { skipped: "stops_not_open" });
+  assert.equal(m.calls.length, 0);
 });

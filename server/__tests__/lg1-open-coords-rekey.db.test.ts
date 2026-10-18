@@ -8,6 +8,7 @@
  *   RK3 the order: an admin row for the place id, then the item's own link, then an open place carrying the place id
  *   RK4 deleting the item deletes its link and nothing else
  *   RK5 390's copy: a 389 row naming its OSM element becomes an open place carrying its place id (idempotent)
+ *   RK6 the writers' open points (`openPointsForItems`) and the FB-1 checker reach an item's linked point too
  *
  * NEGATIVE SPACE (§18d): the adapter is a stub that accepts open origins only; the batch's Nominatim call is not made
  * here — the writer is called directly with what a resolved match carries.
@@ -30,6 +31,8 @@ const { db } = await import("../db");
 const { computePlanLegs } = await import("../services/routing/plan-legs-engine.service");
 const { StubRoutingAdapter } = await import("../services/routing/stub-routing-adapter");
 const { recordOpenCoordForItem, itemsWithOpenCoord, osmOpenCoordId } = await import("../services/routing/open-place-coords.service");
+const { openPointsForItems } = await import("../services/routing/plan-legs-engine.service");
+const { loadOptimizerFindings } = await import("../services/optimizer-lead.service");
 const { isOpenCoordOrigin } = await import("@shared/open-coords");
 
 const RUN = crypto.randomUUID().slice(0, 8);
@@ -132,4 +135,16 @@ test("RK5: 390's copy turns a 389 row naming its OSM element into an open place 
   await db.execute(sql.raw(copy)); // idempotent
   const rows: any[] = ((await db.execute(sql`SELECT * FROM open_place_coords WHERE google_place_id LIKE ${`${pid}%`}`)) as any).rows;
   assert.deepEqual(rows.map((r) => [r.id, r.source, r.google_place_id, r.name]), [[`osm:way/${OSM_BASE + 5}`, "osm", pid, "Legacy"]], "a row with no OSM element has no key and is not copied");
+});
+
+test("RK6: the writers' open points and the FB-1 checker reach an item's linked point", async () => {
+  const items = [
+    { id: id("a"), latitude: String(STORED.a[0]), longitude: String(STORED.a[1]), origin: "traveler" },
+    { id: id("b"), latitude: String(STORED.b[0]), longitude: String(STORED.b[1]), origin: "traveler" },
+  ];
+  const pts = await openPointsForItems(TRIP, items);
+  assert.deepEqual([pts.get(id("a"))?.lat, pts.get(id("b"))?.lat], [OSM.a[0], OSM.b[0]], "each item's linked OSM point, not its stored one");
+  assert.ok([...pts.values()].every((p) => p.coordOrigin === "osm"));
+  const { notChecked } = await loadOptimizerFindings(TRIP);
+  assert.equal(notChecked.some((n) => n.days.includes(1)), false, "day 1's stops have open points through their links");
 });

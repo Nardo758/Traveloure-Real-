@@ -1,4 +1,5 @@
 import { buildGoogleMapsDeepLink, type Place } from "@/lib/maps";
+import { LEAVE_BY_COPY } from "@shared/leave-by";
 
 /**
  * The Trip Card's pure rules (surface spec v1.3.4 §2.5, R-ay; step 6 — ledger
@@ -132,7 +133,7 @@ export function legsCheckedLine(
 }
 
 /** R-e: a plan finalized without a run carries airport legs only, and says how to get the rest. */
-export const CARD_ADD_TRAVEL_TIMES_LINE = "Add travel times · Optimize";
+export const CARD_ADD_TRAVEL_TIMES_LINE = `${LEAVE_BY_COPY.needsRoutedLegDoor} · Optimize`;
 
 /** R321 (S11-2): the stay's line in a Trip Card day header — the stay is the day's anchor, not a stop. */
 export function stayingAtLine(name: string): string {
