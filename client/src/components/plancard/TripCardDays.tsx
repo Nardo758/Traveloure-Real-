@@ -7,7 +7,7 @@
  *   · provenance — "Finalized Oct 3 · built from Version A, run 1 · planned with … · hours re-checked …
  *     · K of N booked"
  *   · the T-3 banner (R-ad) — the `facts-recheck` job's own finding, read, never computed here
- *   · the free plan's line (R-ay / R-e) — "2 stops may not be reachable in time · Add travel times"
+ *   · the free plan's line (R-ay / R-e) — "2 stops may not be reachable in time · Add drive and walk times"
  *   · the day strip, Today first on trip dates; today open
  *   · Navigate — a Google Maps directions deep link per row and per day, no API call (R-ay)
  *   · photos (R-aq) — the day's stored photo, and thumbnails on TODAY's rows only
@@ -52,6 +52,7 @@ import type { PlanCardActivity, PlanCardDay } from "./plancard-types";
 import { slipItemBookingLine } from "@/lib/item-booking-state";
 import { getUpNextInfo, isStayActivity, nowHHMM, useLiveNow, useVisitedActivities } from "./plancard-temporal";
 import { legRuleClass } from "@/lib/leg-rule";
+import { newSlipViewId, recordRoutedLegsCtaTap, useLocalTeaserShown } from "@/lib/slip-funnel-client";
 import { anchorMissedBanner, leaveByMissed, missedLine, type LeaveByRow } from "@shared/leave-by";
 
 export interface TripCardDaysProps {
@@ -258,6 +259,10 @@ function NowLine({ now }: { now: Date }) {
 
 export function TripCardDays(props: TripCardDaysProps) {
   const { tripId, days, timeZone } = props;
+  // §3.14–3.15 (ledger `2026-10-18-teaser-copy-events`): the teaser view and the "Add drive and walk
+  // times" tap on the Trip Card.
+  const [funnelViewId] = useState(newSlipViewId);
+  useLocalTeaserShown(tripId, days, "trip_card", funnelViewId);
   const todayIso = calendarDayOf(props.now ?? new Date(), timeZone);
   const order = cardDayOrder(days, todayIso);
   const [openDay, setOpenDay] = useState<number | null>(() => {
@@ -406,7 +411,11 @@ export function TripCardDays(props: TripCardDaysProps) {
 
       {freeLine || (!props.optimized && props.isOwner) ? (
         <p className="text-xs text-[color:var(--slip-muted)]" data-testid="card-free-line">
-          <Link href={`/plans/${tripId}?optimize=1`} className="underline underline-offset-2">
+          <Link
+            href={`/plans/${tripId}?optimize=1`}
+            className="underline underline-offset-2"
+            onClick={() => recordRoutedLegsCtaTap(tripId, "trip_card", funnelViewId)}
+          >
             {freeLine ?? CARD_ADD_TRAVEL_TIMES_LINE}
           </Link>
         </p>

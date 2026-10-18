@@ -10,6 +10,7 @@
  */
 import { haversineMeters } from "./geo";
 import { anchorWallClockMs } from "./anchor-time";
+import { LEAVE_BY_COPY } from "./leave-by";
 
 /**
  * `leg_unreachable` (Slice A2, ledger `2026-10-05-reachability-from-legs`): a stop the plan's OWN leg
@@ -744,11 +745,12 @@ export function leadDeltaLine(input: {
 }
 
 // ── Step 6 R-ay: the free plan's prompt at Finalize and on its card ───────────────────────────────
-export const ADD_TRAVEL_TIMES = "Add travel times";
+// Ledger `2026-10-18-teaser-copy-events`: the ruled words live ONCE in `LEAVE_BY_COPY` (shared/leave-by.ts).
+export const ADD_TRAVEL_TIMES = LEAVE_BY_COPY.needsRoutedLegDoor;
 
 /**
  * Pure. On Finalize, a plan with no run sees its free findings once more as the prompt ("2 stops may
- * not be reachable in time · Add travel times"); the card carries the same line under its day strip.
+ * not be reachable in time · Add drive and walk times"); the card carries the same line under its day strip.
  * Slice A2 (ledger `2026-10-05-reachability-from-legs`): "reachable in time" counts ONLY the stops the
  * plan's own legs cannot reach (`leg_unreachable` — the leg's confirmed minutes against the draft's
  * gap). A stop reached while closed or a clashing timed entry is not a travel-time fact and is no
