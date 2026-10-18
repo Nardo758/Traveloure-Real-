@@ -194,7 +194,8 @@ test("U1: pure builders", () => {
   assert.equal(isCarriedLeg({ ...base, proposalStatus: "proposed" }), false);
   assert.equal(isCarriedLeg({ ...base, variantId: "v" }), false);
   assert.equal(buildClonedLeg({ ...base, toActivityId: "z" }, "c", map), null);
-  const leg = buildClonedLeg(base, "c", map)!;
+  // Ledger `2026-10-18-google-writers-open-coords`: the routed-numbers path (open coordinates); the estimate is OW2.
+  const leg = buildClonedLeg(base, "c", map, true)!;
   assert.deepEqual([leg.tripId, leg.fromActivityId, leg.toActivityId, leg.origin, (leg as any).linkedProductId], ["c", "A2", "B2", "author_pick", undefined]);
   const anchor = buildClonedAnchor(
     { anchorDatetime: new Date("2027-03-11T15:00:00Z"), dependsOnItemIds: ["a", "q", 3], anchorType: "x" } as any,

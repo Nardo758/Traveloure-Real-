@@ -961,7 +961,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
                 (the workstation embed, the itinerary pages) keeps the day selector below. */}
             {cardSurface ? (
               <>
-                <UpNextHero tripId={trip.id} day={day} legs={dayLegs} timezone={planTimezone} datesConfirmed={planDatesConfirmed} />
+                <UpNextHero tripId={trip.id} day={day} legs={dayLegs} timezone={planTimezone} datesConfirmed={planDatesConfirmed} placeFacts={(plancardData as any)?.placeFacts ?? null} />
                 <TripCardDays
                   tripId={trip.id}
                   destination={trip.destination ?? null}
@@ -1036,6 +1036,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
                   legs={dayLegs}
                   timezone={planTimezone}
                   datesConfirmed={planDatesConfirmed}
+                  placeFacts={(plancardData as any)?.placeFacts ?? null}
                 />
               )}
 

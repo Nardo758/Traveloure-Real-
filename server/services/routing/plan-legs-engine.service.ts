@@ -26,9 +26,10 @@ import { factPointsForTrip, factsForTrip, placeRefsForTrip } from "../content-fa
 import { stayPointForPlan } from "../stay-reroute.service";
 import { openCoordsForPlaceIds, type OpenPlaceCoord } from "./open-place-coords.service";
 import { acceptedPoint, routingPointFor } from "./open-routing-points";
+import { isOpenCoordOrigin } from "@shared/open-coords";
 import { routingAdapter } from "./index";
 import { RouteRunMemo, routeWithTransitFallback } from "./route-memo";
-import { legDepartureWallClock, planDayIsPast, routedFactsOf } from "./plan-legs";
+import { flightAnchorClock, legDepartureWallClock, planDayIsPast, routedFactsOf } from "./plan-legs";
 import { tripGetsRoutedLegs, tripLegsShown } from "./plan-routed-legs.service";
 import { desiredPlanLegs, diffPlanLegs, legPairKey, planLegsSkipReason, selectedModeOf, type AirportStop, type PlanLegsSkipReason, type DesiredLeg, type ExistingEngineLeg, type PlanStop } from "./plan-legs";
 
@@ -131,6 +132,39 @@ export async function osmRideServiceIds(serviceIds: readonly string[]): Promise<
 }
 
 /**
+ * LG-1 follow-up (ledger `2026-10-18-google-writers-open-coords`): each item's OPEN routing point — the SAME
+ * `routingPointFor` the engine routes a stop from (§18 rule 1), kept only when its origin is open (an admin or OSM
+ * row for its place id, or a ride's seeded OSM node). An item with none is absent from the map. Read by the writers
+ * that may not use a Google-derived point or minute: the stay pick, Ready-Made clone legs and the intelligence
+ * travel total.
+ */
+export async function openPointsForItems(
+  tripId: string,
+  items: ReadonlyArray<{ id: string; googlePlaceId?: string | null; providerServiceId?: string | null; latitude?: unknown; longitude?: unknown; origin?: string | null; locationName?: string | null; locationAddress?: string | null }>,
+): Promise<Map<string, RoutePoint>> {
+  const out = new Map<string, RoutePoint>();
+  if (!items.length) return out;
+  const placeRefs = await placeRefsForTrip(tripId, items.map((i) => i.id));
+  const placeIdOf = (it: (typeof items)[number]): string | null => it.googlePlaceId || placeRefs.get(it.id)?.placeId || null;
+  const [openCoords, osmRides] = await Promise.all([
+    openCoordsForPlaceIds(items.map(placeIdOf).filter((p): p is string => !!p)),
+    osmRideServiceIds(items.map((it) => it.providerServiceId ?? "").filter(Boolean)),
+  ]);
+  for (const it of items) {
+    const p = routingPointFor({
+      placeId: placeRefs.get(it.id)?.placeId ?? null,
+      lookupPlaceId: placeIdOf(it),
+      open: openCoords,
+      ownPoint: rowCoordinatesTrusted(it as any) ? realPoint(it.latitude, it.longitude) : null,
+      factPoint: null,
+      osmRide: !!it.providerServiceId && osmRides.has(it.providerServiceId),
+    });
+    if (p && isOpenCoordOrigin(p.coordOrigin)) out.set(it.id, p);
+  }
+  return out;
+}
+
+/**
  * Step 9b FU-9A-2 (ledger `2026-10-07-step9b-optimizer-and-rechecks`): the plan's flight anchors that
  * carry an airport point — stamped ONLY from an IATA code (`server/services/airport-coords.ts`); a
  * typed airport name has none and stays the fixed-buffer, minutes-free airport leg. The anchor's
@@ -146,15 +180,11 @@ async function airportStopsForPlan(tripId: string, tripStart: string | null): Pr
   for (const a of rows) {
     const p = realPoint(a.latitude, a.longitude);
     if (!p || !a.anchorDatetime) continue;
-    const iso = new Date(a.anchorDatetime).toISOString();
-    const dayNumber = Math.round((Date.parse(`${iso.slice(0, 10)}T00:00:00Z`) - Date.parse(`${tripStart}T00:00:00Z`)) / 86_400_000) + 1;
+    // LB8 (ledger `2026-10-18-lb8-lb9-card-wiring`): the ONE flight-anchor clock the Trip Card's leave-by reads too.
+    const { dayNumber, direction, wallClock } = flightAnchorClock(a, tripStart);
     if (dayNumber < 1) continue;
-    const arrival = a.anchorType === "flight_arrival";
-    const at = Number(iso.slice(11, 13)) * 60 + Number(iso.slice(14, 16));
-    const t = arrival ? at + Number(a.bufferAfter ?? 0) : at - Number(a.bufferBefore ?? 0);
-    const wallClock = t >= 0 && t < 24 * 60 ? `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}` : null;
     // LG-1: an airport point is stamped only from an IATA code (never Google), so it is an open coordinate.
-    out.push({ id: `anchor:${a.id}`, name: a.location ?? "Airport", dayNumber, direction: arrival ? "arrival" : "departure", point: { ...p, coordOrigin: "iata" }, wallClock });
+    out.push({ id: `anchor:${a.id}`, name: a.location ?? "Airport", dayNumber, direction, point: { ...p, coordOrigin: "iata" }, wallClock });
   }
   return out;
 }
