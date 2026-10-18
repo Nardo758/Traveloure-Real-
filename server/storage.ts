@@ -171,6 +171,12 @@ import {
   type HumanPurchaseBookingAgentStatus,
 } from "@shared/booking-agent-vocabulary";
 import { eq, ilike, and, not, desc, or, count, gt, gte, lte, avg, inArray, asc, isNotNull, isNull, ne, sql as sqlOp, getTableColumns } from "drizzle-orm";
+import { HELD_VARIANT_STATUS } from "@shared/version-check";
+
+/** FB-1 step 3: a version is shown unless it is held. NULL status is shown (IS DISTINCT FROM, never `<>`). */
+function variantIsShownSql() {
+  return sqlOp`${itineraryVariants.status} IS DISTINCT FROM ${HELD_VARIANT_STATUS}`;
+}
 type PayoutClaimResult<T> = {
   payout?: T;
   reason?: 'insufficient_releasable_earnings' | 'already_processing' | 'terminal';
@@ -8720,7 +8726,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getItineraryVariantById(id: string): Promise<any | null> {
-    const [row] = await db.select().from(itineraryVariants).where(eq(itineraryVariants.id, id)).limit(1);
+    // FB-1 step 3: a held version (failed the plan check) is never returned to a caller that names it.
+    const [row] = await db.select().from(itineraryVariants).where(and(eq(itineraryVariants.id, id), variantIsShownSql())).limit(1);
     return row ?? null;
   }
 
@@ -8997,7 +9004,7 @@ export class DatabaseStorage implements IStorage {
 
   async getLatestVariantByComparisonId(comparisonId: string): Promise<{ id: string } | null> {
     const [row] = await db.select({ id: itineraryVariants.id }).from(itineraryVariants)
-      .where(eq(itineraryVariants.comparisonId, comparisonId))
+      .where(and(eq(itineraryVariants.comparisonId, comparisonId), variantIsShownSql()))
       .orderBy(desc(itineraryVariants.createdAt))
       .limit(1);
     return row ?? null;
@@ -9081,7 +9088,7 @@ export class DatabaseStorage implements IStorage {
 
   async getTopAiVariantByComparison(comparisonId: string): Promise<any | null> {
     const [row] = await db.select().from(itineraryVariants)
-      .where(and(eq(itineraryVariants.comparisonId, comparisonId), eq(itineraryVariants.source, "ai_optimized")))
+      .where(and(eq(itineraryVariants.comparisonId, comparisonId), eq(itineraryVariants.source, "ai_optimized"), variantIsShownSql()))
       .orderBy(desc(itineraryVariants.optimizationScore))
       .limit(1);
     return row ?? null;

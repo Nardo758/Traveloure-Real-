@@ -34,7 +34,7 @@ import {
 import { checkPlan, feasibilityView, type PlanCheckInput } from "@shared/plan-check";
 import { planDayIsPast } from "@shared/plan-timing";
 import { factPointsForTrip, feasibilityFactsForTrip, placeRefsForTrip } from "./content-facts/place-facts.service";
-import { openCoordsForPlaceIds } from "./routing/open-place-coords.service";
+import { openCoordsForItemIds, openCoordsForPlaceIds } from "./routing/open-place-coords.service";
 import { routingPointFor } from "./routing/open-routing-points";
 import { osmRideServiceIds } from "./routing/plan-legs-engine.service";
 import { isOpenCoordOrigin } from "@shared/open-coords";
@@ -90,7 +90,8 @@ export async function loadPlanCheckInput(tripId: string): Promise<{ input: PlanC
     .orderBy(asc(itineraryItems.dayNumber), asc(itineraryItems.startTime), asc(itineraryItems.sortOrder));
   const items = rows.filter((r) => r.dayNumber != null && r.itemType !== "accommodation");
 
-  // Each stop's OPEN point (LG-1): an admin row, else an OSM match for its Google place id, else a ride's OSM node.
+  // Each stop's OPEN point (LG-1): an admin row, else the open row linked to the item (390), else an OSM match for its
+  // Google place id, else a ride's OSM node.
   // A Google point (the row's own, or a Places fact) comes back tagged `google` and is dropped.
   const [placeRefs, factPoints, facts, anchors, energy, legs] = await Promise.all([
     placeRefsForTrip(tripId, items.map((r) => r.id)),
@@ -101,8 +102,9 @@ export async function loadPlanCheckInput(tripId: string): Promise<{ input: PlanC
     tripLegsShown(tripId),
   ]);
   const placeIdOf = (r: any): string | null => (r.googlePlaceId as string | null) || placeRefs.get(r.id)?.placeId || null;
-  const [openCoords, osmRides] = await Promise.all([
+  const [openCoords, itemOpen, osmRides] = await Promise.all([
     openCoordsForPlaceIds(items.map(placeIdOf).filter((p): p is string => !!p)),
+    openCoordsForItemIds(items.map((r) => r.id)),
     osmRideServiceIds(items.map((r) => r.providerServiceId).filter((x): x is string => !!x)),
   ]);
   const openPoint = (r: (typeof items)[number]): { lat: number; lng: number } | null => {
@@ -111,6 +113,7 @@ export async function loadPlanCheckInput(tripId: string): Promise<{ input: PlanC
       placeId: placeRefs.get(r.id)?.placeId ?? null,
       lookupPlaceId: placeIdOf(r),
       open: openCoords,
+      itemOpen: itemOpen.get(r.id) ?? null,
       ownPoint: own && Number.isFinite(own.lat) && Number.isFinite(own.lng) ? own : null,
       factPoint: factPoints.get(r.id) ?? null,
       osmRide: !!r.providerServiceId && osmRides.has(r.providerServiceId),

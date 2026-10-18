@@ -16,6 +16,7 @@ import {
 import { eq, and, gte, desc, sql } from "drizzle-orm";
 import { logger } from "../infrastructure";
 import { reportProviderResult, outcomeFromHttpStatus } from "./provider-health.service";
+import { serpApiGoogleMapsEnabled } from "../config/serpapi.config";
 
 const CACHE_DURATION_HOURS = 24;
 const MIN_RATING_FILTER = 3.5;
@@ -110,6 +111,8 @@ class SerpService {
   }
 
   private async getCachedResults(cacheKey: string): Promise<EnrichedVenue[] | null> {
+    // EV PR 0: `serp_cache` holds Google Maps results; never read while the gate is off.
+    if (!serpApiGoogleMapsEnabled()) return null;
     try {
       const expirationThreshold = new Date(Date.now() - CACHE_DURATION_HOURS * 60 * 60 * 1000);
       
@@ -142,6 +145,8 @@ class SerpService {
     location: string, 
     category?: string
   ): Promise<void> {
+    // EV PR 0: nothing from Google Maps is stored while the gate is off.
+    if (!serpApiGoogleMapsEnabled()) return;
     try {
       await db
         .insert(serpCache)
@@ -400,6 +405,8 @@ class SerpService {
   }
 
   private async makeRequest(params: Record<string, string>): Promise<SerpApiResponse | null> {
+    // EV PR 0: every SerpAPI call here is the `google_maps` engine; off unless the operator turns it on.
+    if (!serpApiGoogleMapsEnabled()) return null;
     if (!this.apiKey) {
       console.warn('[SERP] API key not configured');
       return null;
