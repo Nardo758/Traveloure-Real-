@@ -3,8 +3,8 @@
  * `2026-10-03-surface-step4-optimizer-lead`). Reads what the plan already holds and hands it to the
  * pure rules in `shared/optimizer-lead.ts` — no model call, no network.
  *
- *   items    the plan's rows: day, draft time, title. For the two path findings a stop's point is ONLY its
- *            open, non-Google coordinate (FB-1 step 1; LG-1's tables) — a day without one is `notChecked`
+ *   items    the plan's rows: day, draft time, title. A stop's point is ONLY its open, non-Google
+ *            coordinate (FB-1 steps 1–2; LG-1's rule) — for the path findings and the rides alike
  *   hours    the plan's stored opening-hours facts (`factsForTrip`), with their own checkedAt
  *   anchors  the plan's temporal anchors (the ONE overlap rule validate-schedule uses)
  *   energy   the plan's `energy_tracking` rows (its pace verdict per day)
@@ -16,31 +16,22 @@
  */
 import { tripLegsShown } from "./routing/plan-routed-legs.service";
 import { legIsRouted } from "./routing/plan-legs";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "../db";
 import { itineraryItems, trips } from "@shared/schema";
 import { rowCoordinatesTrusted } from "@shared/ai-place-text";
 import {
   afterLastAdmission,
-  cityCrossings,
   closedOnArrival,
   closesBeforeVisitEnd,
-  lastServiceMissed,
-  visitEndMinutes,
-  type RideCheck,
-  leadFindings,
-  paceOver,
-  timedEntryConflicts,
-  walkingSavedKm,
-  openPathDays,
-  pathNotChecked,
-  type Finding,
-  type NotChecked,
-  type HoursFact,
-  planLegCoverage,
-  type LegCoverage,
   findingStopLines,
+  parseDayHours,
+  planLegCoverage,
+  type Finding,
+  type LegCoverage,
+  type NotChecked,
 } from "@shared/optimizer-lead";
+import { checkPlan, feasibilityView, type PlanCheckInput } from "@shared/plan-check";
 import { planDayIsPast } from "@shared/plan-timing";
 import { factPointsForTrip, feasibilityFactsForTrip, placeRefsForTrip } from "./content-facts/place-facts.service";
 import { openCoordsForPlaceIds } from "./routing/open-place-coords.service";
@@ -49,14 +40,10 @@ import { osmRideServiceIds } from "./routing/plan-legs-engine.service";
 import { isOpenCoordOrigin } from "@shared/open-coords";
 import { loadMarketAreaNames } from "./content-facts/market-areas";
 import { unnamedPlaceReason } from "@shared/place-name-gate";
-import { hoursFactForDate, lastAdmissionForDate, lastServiceMinutes, parseLastService, SERVICE_DAY_START_MIN } from "@shared/feasibility-facts";
-import { isRideMode, type DayFeasibility } from "@shared/plan-feasibility";
-import { parseDayHours } from "@shared/optimizer-lead";
-import { haversineMeters } from "@shared/geo";
-import { ROUTED_WALK_MAX_METERS, defaultRoutedMode, marketHasTransitCoverage } from "@shared/routing-engine";
+import { type DayFeasibility } from "@shared/plan-feasibility";
+import { marketHasTransitCoverage } from "@shared/routing-engine";
 import { TRANSPORT_PROFILES } from "../data/transport-profiles";
 import { storage } from "../storage";
-import { legUnreachableFinding, unreachableStops } from "@shared/leg-reachability";
 
 function addDays(iso: string, n: number): string {
   const d = new Date(`${iso}T00:00:00Z`);
@@ -69,9 +56,16 @@ function isoOf(v: unknown): string | null {
   return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : null;
 }
 
-export async function loadOptimizerFindings(tripId: string): Promise<{ findings: Finding[]; hasPricedItems: boolean; notChecked: NotChecked[] }> {
+/**
+ * FB-1 step 2 (ledger `2026-10-18-fb1-pure-checker`): the ONE read of a trip's plan-check input. The decision is
+ * `checkPlan` (shared/plan-check.ts, pure); the preview's findings, the day line and a stop's hours all read it
+ * through here, so they can never disagree (§18 rule 1). A stop's point is its OPEN coordinate only — LG-1's rule
+ * (`routingPointFor` + `isOpenCoordOrigin`), never a Google point (FB-1 steps 1 and 2).
+ */
+export async function loadPlanCheckInput(tripId: string): Promise<{ input: PlanCheckInput; hasPricedItems: boolean; found: boolean }> {
   const [trip] = await db.select({ startDate: trips.startDate, marketSlug: trips.marketSlug }).from(trips).where(eq(trips.id, tripId)).limit(1);
   const start = isoOf(trip?.startDate);
+  const market = trip?.marketSlug ?? null;
   const rows = await db
     .select({
       id: itineraryItems.id,
@@ -96,81 +90,76 @@ export async function loadOptimizerFindings(tripId: string): Promise<{ findings:
     .orderBy(asc(itineraryItems.dayNumber), asc(itineraryItems.startTime), asc(itineraryItems.sortOrder));
   const items = rows.filter((r) => r.dayNumber != null && r.itemType !== "accommodation");
 
-  // a. stored hours, each with its own checkedAt. A hard closure counts only from an OFFICIAL source
-  // (R-p): a non-Places fact the registry may publish. FD-3 (ledger `2026-10-10-fd3-feasibility`): read
-  // through the ONE feasibility reader, so an official crawled row carrying structured hours is read too,
-  // ahead of Places for a hard fact, and an untagged row never is.
-  const ctx = await feasibilityContext(tripId, items, start, trip?.marketSlug ?? null);
-  const { hours, timed } = ctx;
-
-  // b. the plan's anchors against its timed items — the validate-schedule rule.
-  const anchors = await storage.getTemporalAnchors(tripId);
-  const scheduled = items.map((r) => ({
-    title: r.title,
-    dayNumber: r.dayNumber,
-    date: start ? addDays(start, r.dayNumber! - 1) : null,
-    startTime: r.startTime ?? null,
-    endTime: r.endTime ?? null,
-  }));
-
-  // c / d. FB-1 step 1 (ledger `2026-10-17-fb1-checker-open-coords`): each day's stops in the draft's own order, read
-  // ONLY at an open coordinate, decided by LG-1's own rule — `routingPointFor` (an admin row, else an OSM match for
-  // the place id, else a ride's OSM node) and `isOpenCoordOrigin`. A Google point (the row's own, or a Places fact)
-  // comes back tagged `google` and is dropped; a day with any stop lacking an open point is not checked.
-  const [placeRefs, factPoints] = await Promise.all([placeRefsForTrip(tripId, items.map((r) => r.id)), factPointsForTrip(tripId)]);
+  // Each stop's OPEN point (LG-1): an admin row, else an OSM match for its Google place id, else a ride's OSM node.
+  // A Google point (the row's own, or a Places fact) comes back tagged `google` and is dropped.
+  const [placeRefs, factPoints, facts, anchors, energy, legs] = await Promise.all([
+    placeRefsForTrip(tripId, items.map((r) => r.id)),
+    factPointsForTrip(tripId),
+    feasibilityFactsForTrip(tripId, market),
+    storage.getTemporalAnchors(tripId),
+    storage.getEnergyTracking(tripId),
+    tripLegsShown(tripId),
+  ]);
   const placeIdOf = (r: any): string | null => (r.googlePlaceId as string | null) || placeRefs.get(r.id)?.placeId || null;
   const [openCoords, osmRides] = await Promise.all([
     openCoordsForPlaceIds(items.map(placeIdOf).filter((p): p is string => !!p)),
-    osmRideServiceIds(items.map((r) => r.providerServiceId).filter((s): s is string => !!s)),
+    osmRideServiceIds(items.map((r) => r.providerServiceId).filter((x): x is string => !!x)),
   ]);
-  const { days, notCheckedDays } = openPathDays(
-    items.map((r) => {
-      const own = rowCoordinatesTrusted(r as any) && r.lat != null && r.lng != null ? { lat: Number(r.lat), lng: Number(r.lng) } : null;
-      const p = routingPointFor({
-        placeId: placeRefs.get(r.id)?.placeId ?? null,
-        lookupPlaceId: placeIdOf(r),
-        open: openCoords,
-        ownPoint: own && Number.isFinite(own.lat) && Number.isFinite(own.lng) ? own : null,
-        factPoint: factPoints.get(r.id) ?? null,
-        osmRide: !!r.providerServiceId && osmRides.has(r.providerServiceId),
-      });
-      return { dayNumber: r.dayNumber!, open: p && isOpenCoordOrigin(p.coordOrigin) ? { lat: p.lat, lng: p.lng } : null };
-    }),
-  );
-  const notChecked: NotChecked[] = pathNotChecked(notCheckedDays);
+  const openPoint = (r: (typeof items)[number]): { lat: number; lng: number } | null => {
+    const own = rowCoordinatesTrusted(r as any) && r.lat != null && r.lng != null ? { lat: Number(r.lat), lng: Number(r.lng) } : null;
+    const p = routingPointFor({
+      placeId: placeRefs.get(r.id)?.placeId ?? null,
+      lookupPlaceId: placeIdOf(r),
+      open: openCoords,
+      ownPoint: own && Number.isFinite(own.lat) && Number.isFinite(own.lng) ? own : null,
+      factPoint: factPoints.get(r.id) ?? null,
+      osmRide: !!r.providerServiceId && osmRides.has(r.providerServiceId),
+    });
+    return p && isOpenCoordOrigin(p.coordOrigin) ? { lat: p.lat, lng: p.lng } : null;
+  };
 
-  // e. the plan's own energy verdicts.
-  const energy = await storage.getEnergyTracking(tripId);
-
-  // f. reachability: the plan's OWN legs (the rows the traveler sees) against its own times. Step 9a
-  // (ledger `2026-10-07-step9a-routing-engine`): the same read rule as the plan — on a routed plan its
-  // engine legs count, so the paid lead says how many legs don't fit.
-  const legs = await tripLegsShown(tripId);
-  const reach = unreachableStops(
-    items.map((r) => ({ id: r.id, title: r.title, dayNumber: r.dayNumber, startTime: r.startTime, endTime: r.endTime, durationMinutes: r.durationMinutes ?? null })),
-    // Step 9b (L9 as amended, D4 — ledger `2026-10-07-step9b-optimizer-and-rechecks`): each leg says
-    // whether its minutes are routed, through the ONE `legIsRouted`; the finding drops "est." only
-    // when every leg it counts is.
-    legs.map((l: any) => ({ id: l.id, dayNumber: l.dayNumber, fromActivityId: l.fromActivityId, toActivityId: l.toActivityId, estimatedDurationMinutes: l.estimatedDurationMinutes, routed: legIsRouted(l) })),
-  );
-
-  const findings = leadFindings([
-    legUnreachableFinding(reach.unreachable),
-    closedOnArrival(timed, hours, start),
-    afterLastAdmission(timed, ctx.lastEntry),
-    closesBeforeVisitEnd(timed, hours, start),
-    lastServiceMissed(ctx.rides.filter((r) => r.lastDepartures.length > 0)),
-    timedEntryConflicts(anchors as any, scheduled),
-    cityCrossings(days),
-    walkingSavedKm(days),
-    paceOver(energy.map((e) => ({ dayNumber: e.dayNumber, recoveryNeeded: e.recoveryNeeded ?? null }))),
-  ]);
+  const profile = (TRANSPORT_PROFILES as Record<string, { availableModes: Array<{ mode: string; available?: boolean }> }>)[(market ?? "").toLowerCase()];
+  const input: PlanCheckInput = {
+    tripStartIso: start,
+    transitCoverage: marketHasTransitCoverage(profile?.availableModes),
+    stops: items.map((r) => ({
+      id: r.id,
+      title: r.title,
+      dayNumber: r.dayNumber!,
+      startTime: r.startTime ?? null,
+      endTime: r.endTime ?? null,
+      durationMinutes: r.durationMinutes ?? null,
+      point: openPoint(r),
+    })),
+    hours: facts.hours,
+    lastAdmission: facts.lastAdmissionFacts,
+    lastServices: facts.lastServices,
+    anchors: anchors as any,
+    // Step 9b (L9 as amended, D4): each leg says whether its minutes are routed, through the ONE `legIsRouted`.
+    legs: (legs as any[]).map((l) => ({
+      id: l.id,
+      dayNumber: l.dayNumber,
+      fromActivityId: l.fromActivityId ?? null,
+      toActivityId: l.toActivityId ?? null,
+      estimatedDurationMinutes: l.estimatedDurationMinutes ?? null,
+      mode: l.userSelectedMode ?? l.selectedMode ?? l.recommendedMode ?? null,
+      routed: legIsRouted(l),
+      checkedAt: l.legCheckedAt ? new Date(l.legCheckedAt).toISOString() : null,
+    })),
+    energy: energy.map((e: any) => ({ dayNumber: e.dayNumber, recoveryNeeded: e.recoveryNeeded ?? null })),
+  };
   // A PRICED item is one carrying a real price: a catalog listing or a booking — never an AI draft's
   // estimated cost, which is a guess, not a price (§13).
   const hasPricedItems = items.some((r) => !!r.providerServiceId || !!r.bookingId);
-  return { findings, hasPricedItems, notChecked };
+  return { input, hasPricedItems, found: !!trip };
 }
 
+/** The free preview's findings: `checkPlan` over the trip's input — the card's three, plus what was not checked. */
+export async function loadOptimizerFindings(tripId: string): Promise<{ findings: Finding[]; hasPricedItems: boolean; notChecked: NotChecked[] }> {
+  const { input, hasPricedItems } = await loadPlanCheckInput(tripId);
+  const { findings, notChecked } = checkPlan(input);
+  return { findings, hasPricedItems, notChecked };
+}
 
 /**
  * P0-d item 1 (ledger `2026-10-12-p0d-coverage-bridges`): does every consecutive pair of stops on every
@@ -209,138 +198,14 @@ export async function loadLegCoverage(tripId: string, now: Date = new Date()): P
   return { coverage, routedPlan };
 }
 
-// ── FD-3: the feasibility context, shared by the findings and the day line (ledger `2026-10-10-fd3-feasibility`) ──
-
-/** A plan row as the feasibility checks read it — in plan order (day, start, sort order). */
-type FeasibilityItem = {
-  id: string;
-  title: string;
-  dayNumber: number | null;
-  startTime: string | null;
-  endTime: string | null;
-  durationMinutes: number | null;
-  lat: unknown;
-  lng: unknown;
-  origin?: string | null;
-  locationName?: string | null;
-  locationAddress?: string | null;
-};
-
-interface FeasibilityContext {
-  hours: Map<string, HoursFact>;
-  timed: Array<{ id: string; title: string; dayNumber: number; dateIso: string | null; startTime: string | null; endTime: string | null; durationMinutes: number | null }>;
-  /** Item → the last-entry minute that applies on its date (ruling 1). */
-  lastEntry: Map<string, number>;
-  /** Every ride the plan takes; `lastDepartures` empty ⇒ not checked (ruling 2). */
-  rides: RideCheck[];
-}
-
-/**
- * ONE assembly of the feasibility inputs (§18 rule 1): the findings above and `loadDayFeasibility` below
- * read the same hours, last entries and rides, so the day line and the findings can never disagree.
- */
-async function feasibilityContext(tripId: string, items: FeasibilityItem[], start: string | null, market: string | null): Promise<FeasibilityContext> {
-  const facts = await feasibilityFactsForTrip(tripId, market);
-  const timed = items
-    .filter((r) => r.dayNumber != null)
-    .map((r) => ({
-      id: r.id,
-      title: r.title,
-      dayNumber: r.dayNumber!,
-      dateIso: start ? addDays(start, r.dayNumber! - 1) : null,
-      startTime: r.startTime ?? null,
-      endTime: r.endTime ?? null,
-      durationMinutes: r.durationMinutes ?? null,
-    }));
-  // P0-e item 2: the hours and the last entry that apply on THIS stop's date, from every stored candidate.
-  const hours = new Map<string, HoursFact>();
-  const lastEntry = new Map<string, number>();
-  for (const it of timed) {
-    const h = hoursFactForDate(facts.hours.get(it.id) ?? [], it.dateIso);
-    if (h) hours.set(it.id, h);
-    const m = it.dateIso ? lastAdmissionForDate(facts.lastAdmission.get(it.id) ?? [], it.dateIso) : null;
-    if (m !== null) lastEntry.set(it.id, m);
-  }
-
-  // Rides (ruling 3). A free plan stores no estimated legs, so the ride is derived the way the routing
-  // engine picks its default mode (`defaultRoutedMode`): between two consecutive LOCATED stops of a day,
-  // walk up to 1.2 km straight line, else transit where the market's profile lists it. A leg the plan
-  // actually shows for that pair (an expert-confirmed or routed leg) wins with its own mode. The ride
-  // departs when the stop it leaves ends (its end time, else start + duration); no end ⇒ unchecked.
-  const legs = await tripLegsShown(tripId);
-  const shownMode = new Map<string, string | null>();
-  for (const l of legs as any[]) shownMode.set(`${l.dayNumber}|${l.fromActivityId}|${l.toActivityId}`, l.userSelectedMode ?? l.selectedMode ?? l.recommendedMode ?? null);
-  const points = await factPointsForTrip(tripId);
-  const pointOf = (r: FeasibilityItem): { lat: number; lng: number } | null => {
-    const own = rowCoordinatesTrusted(r as any) && r.lat != null && r.lng != null ? { lat: Number(r.lat), lng: Number(r.lng) } : null;
-    return own && Number.isFinite(own.lat) && Number.isFinite(own.lng) ? own : points.get(r.id) ?? null;
-  };
-  const profile = (TRANSPORT_PROFILES as Record<string, { availableModes: Array<{ mode: string; available?: boolean }> }>)[(market ?? "").toLowerCase()];
-  const transitCoverage = marketHasTransitCoverage(profile?.availableModes);
-  const byId = new Map(timed.map((t) => [t.id, t]));
-  const services = facts.lastServices
-    .map((s) => ({ ...s, v: parseLastService(s.value) }))
-    .filter((s): s is typeof s & { v: NonNullable<typeof s.v> } => s.v !== null);
-  const rides: RideCheck[] = [];
-  const byDay = new Map<number, FeasibilityItem[]>();
-  for (const r of items) {
-    if (r.dayNumber == null) continue;
-    byDay.set(r.dayNumber, [...(byDay.get(r.dayNumber) ?? []), r]);
-  }
-  byDay.forEach((list, dayNumber) => {
-    const located = list.map((r) => ({ r, p: pointOf(r) })).filter((x): x is { r: FeasibilityItem; p: { lat: number; lng: number } } => x.p !== null);
-    for (let i = 0; i + 1 < located.length; i++) {
-      const a = located[i];
-      const b = located[i + 1];
-      const key = `${dayNumber}|${a.r.id}|${b.r.id}`;
-      const inferred = !shownMode.has(key);
-      const mode = inferred ? defaultRoutedMode(a.p, b.p, transitCoverage) : shownMode.get(key) ?? null;
-      if (!isRideMode(mode)) continue;
-      const from = byId.get(a.r.id);
-      let departMin = from ? visitEndMinutes(from) : null;
-      if (departMin !== null && departMin < SERVICE_DAY_START_MIN) departMin += 24 * 60;
-      const dateIso = from?.dateIso ?? null;
-      const lastDepartures =
-        departMin === null || !dateIso
-          ? []
-          : services
-              .filter((s) => haversineMeters(a.p.lat, a.p.lng, s.lat, s.lng) <= ROUTED_WALK_MAX_METERS)
-              .map((s) => lastServiceMinutes(s.v, dateIso))
-              .filter((m): m is number => m !== null);
-      rides.push({ dayNumber, departMin: departMin ?? -1, lastDepartures, inferred });
-    }
-  });
-  return { hours, timed, lastEntry, rides };
-}
-
 /**
  * FD-3 §3d: each plan day's honest counts — what was checked, of what. Read behind the caller's own plan
- * gate (the plancard). Only counts leave it.
+ * gate (the plancard). Only counts leave it. Reads the SAME feasibility view the findings do (FB-1 step 2).
  */
 export async function loadDayFeasibility(tripId: string): Promise<Map<number, DayFeasibility>> {
-  const [trip] = await db.select({ startDate: trips.startDate, marketSlug: trips.marketSlug }).from(trips).where(eq(trips.id, tripId)).limit(1);
-  if (!trip) return new Map();
-  const start = isoOf(trip.startDate);
-  const rows = await db
-    .select({
-      id: itineraryItems.id,
-      title: itineraryItems.title,
-      dayNumber: itineraryItems.dayNumber,
-      startTime: itineraryItems.startTime,
-      endTime: itineraryItems.endTime,
-      durationMinutes: itineraryItems.durationMinutes,
-      itemType: itineraryItems.itemType,
-      lat: itineraryItems.latitude,
-      lng: itineraryItems.longitude,
-      origin: itineraryItems.origin,
-      locationName: itineraryItems.locationName,
-      locationAddress: itineraryItems.locationAddress,
-    })
-    .from(itineraryItems)
-    .where(eq(itineraryItems.tripId, tripId))
-    .orderBy(asc(itineraryItems.dayNumber), asc(itineraryItems.startTime), asc(itineraryItems.sortOrder));
-  const items = rows.filter((r) => r.dayNumber != null && r.itemType !== "accommodation");
-  const ctx = await feasibilityContext(tripId, items as FeasibilityItem[], start, trip.marketSlug ?? null);
+  const { input, found } = await loadPlanCheckInput(tripId);
+  if (!found) return new Map();
+  const ctx = feasibilityView(input);
   const out = new Map<number, DayFeasibility>();
   const day = (n: number) => {
     let d = out.get(n);
@@ -372,7 +237,7 @@ export async function loadDayFeasibility(tripId: string): Promise<Map<number, Da
 }
 
 /**
- * AP-1 (ledger `2026-10-13-ap1-save-then-warn`): ONE stop's hours, read from the SAME feasibility context the
+ * AP-1 (ledger `2026-10-13-ap1-save-then-warn`): ONE stop's hours, read from the SAME feasibility view the
  * findings and the day line read (§18 rule 1). `lines` are the findings' own stop lines for this item; a stop
  * the hours or last entry cover with no conflict has none. Read behind the caller's own plan gate.
  */
@@ -380,41 +245,27 @@ export async function loadStopHours(
   tripId: string,
   itemId: string,
 ): Promise<{ found: boolean; hasTime: boolean; checked: boolean; lines: string[]; caveat?: string }> {
-  const [trip] = await db.select({ startDate: trips.startDate, marketSlug: trips.marketSlug }).from(trips).where(eq(trips.id, tripId)).limit(1);
-  if (!trip) return { found: false, hasTime: false, checked: false, lines: [] };
-  const start = isoOf(trip.startDate);
-  const rows = await db
-    .select({
-      id: itineraryItems.id,
-      title: itineraryItems.title,
-      dayNumber: itineraryItems.dayNumber,
-      startTime: itineraryItems.startTime,
-      endTime: itineraryItems.endTime,
-      durationMinutes: itineraryItems.durationMinutes,
-      itemType: itineraryItems.itemType,
-      lat: itineraryItems.latitude,
-      lng: itineraryItems.longitude,
-      origin: itineraryItems.origin,
-      locationName: itineraryItems.locationName,
-      locationAddress: itineraryItems.locationAddress,
-    })
+  const [row] = await db
+    .select({ id: itineraryItems.id })
     .from(itineraryItems)
-    .where(eq(itineraryItems.tripId, tripId))
-    .orderBy(asc(itineraryItems.dayNumber), asc(itineraryItems.startTime), asc(itineraryItems.sortOrder));
-  const items = rows.filter((r) => r.dayNumber != null && r.itemType !== "accommodation");
-  const own = items.find((r) => r.id === itemId);
-  if (!own) return { found: rows.some((r) => r.id === itemId), hasTime: false, checked: false, lines: [] };
-  const ctx = await feasibilityContext(tripId, items as FeasibilityItem[], start, trip.marketSlug ?? null);
+    .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId)))
+    .limit(1);
+  const { input, found } = await loadPlanCheckInput(tripId);
+  if (!found) return { found: false, hasTime: false, checked: false, lines: [] };
+  const own = input.stops.find((r) => r.id === itemId);
+  if (!own) return { found: !!row, hasTime: false, checked: false, lines: [] };
+  const ctx = feasibilityView(input);
   const it = ctx.timed.find((t) => t.id === itemId);
   if (!it || !it.startTime) return { found: true, hasTime: false, checked: false, lines: [] };
   const h = ctx.hours.get(itemId);
   const hoursChecked = !!(h && it.dateIso && parseDayHours(h.weekdayDescriptions, new Date(`${it.dateIso}T00:00:00Z`).getUTCDay()));
   const checked = hoursChecked || ctx.lastEntry.has(itemId);
   const one = [it];
-  const found = [closedOnArrival(one, ctx.hours, start), afterLastAdmission(one, ctx.lastEntry), closesBeforeVisitEnd(one, ctx.hours, start)].filter(
+  const lastMinute = new Map<string, number>(Array.from(ctx.lastEntry.entries()).map(([k, v]) => [k, v.minute]));
+  const found2 = [closedOnArrival(one, ctx.hours, input.tripStartIso), afterLastAdmission(one, lastMinute), closesBeforeVisitEnd(one, ctx.hours, input.tripStartIso)].filter(
     (f): f is Finding => f !== null,
   );
-  const lines = found.flatMap((f) => findingStopLines(f));
-  const caveat = found.find((f) => f.caveat)?.caveat;
+  const lines = found2.flatMap((f) => findingStopLines(f));
+  const caveat = found2.find((f) => f.caveat)?.caveat;
   return { found: true, hasTime: true, checked, lines, ...(caveat ? { caveat } : {}) };
 }
