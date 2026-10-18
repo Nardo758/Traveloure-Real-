@@ -1,5 +1,6 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { claimFreeDraft, promoteFreeDraft, releaseFreeDraft, freeDraftRefusalBody, freeDraftStatus, FREE_DRAFT_REFUSAL_STATUS } from "../services/free-draft-cap.service";
+import { optimizedItinerariesGate } from "../config/optimized-itineraries.config";
 import { freeDraftCopy } from "@shared/free-draft-cap";
 import { zodErrorBody } from "../utils/zod-error-body";
 import { getTripRole } from "../utils/trip-role";
@@ -5172,6 +5173,9 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
   // Trip Optimization Framework: Generate 3 itinerary variations with real-time intelligence
 
 router.post("/api/ai/generate-optimized-itineraries", isAuthenticated, async (req, res) => {
+    // FB-1 step 0: off unless the flag is set — 410 before any read, write or model call.
+    const retired = optimizedItinerariesGate();
+    if (retired) return res.status(retired.status).json(retired.body);
     try {
       const userId = getUserId(req)!;
       const { 

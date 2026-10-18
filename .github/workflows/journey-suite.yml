@@ -215,6 +215,9 @@ jobs:
           JOURNEY_DB_WRITES_OK: '1'
           # Declared Stripe availability decided above (1 = the app was booted with a stub key).
           JOURNEY_STRIPE_UNAVAILABLE: ${{ steps.stripe-gate.outputs.stripe_unavailable }}
+          # The spec process confirms checkout PaymentIntents in Stripe TEST mode (#1240 cart contract);
+          # the helper uses it only when it starts sk_test_.
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
 
       - name: One-click checkout proof (B2 — live Stripe test mode, skips visibly without the secret)
         # Runs the OC1–OC4 suite against the REAL Stripe test API. With only the stub key the
