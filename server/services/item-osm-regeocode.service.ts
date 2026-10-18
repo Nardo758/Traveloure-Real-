@@ -342,39 +342,40 @@ export function classifyRegeocodeHitsV2(item: RegeocodeItem, itemTokens: Readonl
   };
 }
 
+/**
+ * LG-1 step 1c: what an item is looked up as — the SAME plan the v2 Nominatim lookup and the Wikidata lookup both
+ * use (§18 rule 1). `skip` when the item names no place: a v1-skipped title with no place phrase (`no_place_phrase`),
+ * or one whose phrase has no name tokens (its v1 reason). Pure.
+ */
+export type V2QueryPlan =
+  | { skip: "no_named_tokens" | "area_title" | "no_place_phrase"; v1Skip: "no_named_tokens" | "area_title" }
+  | { skip: null; place: string; queryBasis: "item" | "place_phrase"; itemTokens: Set<string>; v1Skip: "no_named_tokens" | "area_title" | null };
+
+export function v2QueryPlan(item: RegeocodeItem): V2QueryPlan {
+  const v1Skip = unnamedPlaceReason(item, item.destination);
+  if (v1Skip) {
+    const phrase = placePhraseOf(item.title);
+    const phraseTokens = phrase ? normalisedNameTokens(phrase, item.destination) : new Set<string>();
+    if (!phrase || phraseTokens.size === 0) return { skip: phrase ? v1Skip : "no_place_phrase", v1Skip };
+    return { skip: null, place: phrase, queryBasis: "place_phrase", itemTokens: phraseTokens, v1Skip };
+  }
+  let itemTokens = normalisedNameTokens(item.title, item.destination);
+  normalisedNameTokens(item.locationName, item.destination).forEach((t) => itemTokens.add(t));
+  if (hasAlternativeClause(item.title)) itemTokens = normalisedNameTokens(visitedPlaceTitle(item.title), item.destination);
+  return { skip: null, place: (item.locationName ?? "").trim() || placeLookupText(item.title), queryBasis: "item", itemTokens, v1Skip: null };
+}
+
 /** One item, v2. Never throws. The caller spaces calls by `NOMINATIM_MIN_INTERVAL_MS`. */
 export async function regeocodeItemV2(
   item: RegeocodeItem,
   spine: readonly SpineNeighbourhood[],
   fetchImpl: FetchLike = (url, init) => fetch(url, init) as any,
 ): Promise<RegeocodeV2Result> {
-  const v1Skip = unnamedPlaceReason(item, item.destination);
-  let place: string;
-  let queryBasis: "item" | "place_phrase";
-  let itemTokens: Set<string>;
-  if (v1Skip) {
-    const phrase = placePhraseOf(item.title);
-    const phraseTokens = phrase ? normalisedNameTokens(phrase, item.destination) : new Set<string>();
-    if (!phrase || phraseTokens.size === 0) {
-      return {
-        outcome: { kind: "unresolved", reason: phrase ? v1Skip : "no_place_phrase" },
-        requested: false,
-        queryBasis: null,
-        query: null,
-        viewboxSource: null,
-        v1Skip,
-      };
-    }
-    place = phrase;
-    queryBasis = "place_phrase";
-    itemTokens = phraseTokens;
-  } else {
-    place = (item.locationName ?? "").trim() || placeLookupText(item.title);
-    queryBasis = "item";
-    itemTokens = normalisedNameTokens(item.title, item.destination);
-    normalisedNameTokens(item.locationName, item.destination).forEach((t) => itemTokens.add(t));
-    if (hasAlternativeClause(item.title)) itemTokens = normalisedNameTokens(visitedPlaceTitle(item.title), item.destination);
+  const plan = v2QueryPlan(item);
+  if (plan.skip) {
+    return { outcome: { kind: "unresolved", reason: plan.skip }, requested: false, queryBasis: null, query: null, viewboxSource: null, v1Skip: plan.v1Skip };
   }
+  const { place, queryBasis, itemTokens, v1Skip } = plan;
   const query = [place, item.destination].filter((p) => (p ?? "").trim().length > 0).join(", ");
   const hint = spineViewbox(itemTokens, item.destination, spine);
   const params: Record<string, string> = {
