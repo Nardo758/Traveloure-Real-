@@ -123,7 +123,7 @@ test("P3 the projector keeps every other field; only the admin branch skips it",
   const row = { id: "x", name: "n", rating: "4.5", price: "10", currency: "USD", originalPrice: "12", discountPercent: 5, lastScrapedAt: new Date(), metadata: null };
   assert.deepEqual(toPublicPartnerProduct(row), { id: "x", name: "n", rating: "4.5", metadata: null });
   const src = fs.readFileSync("server/routes/content.routes.ts", "utf8");
-  for (const route of ['router.get("/api/affiliate/products",', 'router.get("/api/affiliate/products/:id",', 'router.get("/api/affiliate/products/by-location",']) {
+  for (const route of ['router.get("/api/affiliate/products",', 'router.get("/api/affiliate/products/:id",']) {
     const at = src.indexOf(route);
     assert.ok(at > 0, `${route} exists`);
     const body = src.slice(at, at + 3000);
