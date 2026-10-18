@@ -424,6 +424,48 @@ export function directionReversals(points: DayPath["points"]): number {
   return reversals;
 }
 
+/**
+ * FB-1 step 1 (decision-maker, Oct 17, 2026 — ledger `2026-10-17-fb1-checker-open-coords`): the two path findings
+ * (`city_crossing`, `walking_saved_km`) read a stop's point ONLY when it is an open, non-Google coordinate (LG-1's
+ * `osm_place_coords` / `admin_place_coords`, `openCoordsForPlaceIds`). A day is checked only when EVERY stop on it has
+ * one; any other day is NOT CHECKED, and says so — never read as "fine" (§13).
+ */
+export const PATH_FINDING_KINDS = ["city_crossing", "walking_saved_km"] as const;
+export type NotCheckedReason = "no_open_coordinates";
+
+export interface NotChecked {
+  kind: FindingKind;
+  reason: NotCheckedReason;
+  /** The days the finding could not be checked on. */
+  days: number[];
+}
+
+/** Pure. Splits the plan's stops into the days the path findings may read and the days they may not. */
+export function openPathDays(
+  stops: ReadonlyArray<{ dayNumber: number; open: { lat: number; lng: number } | null }>,
+): { days: DayPath[]; notCheckedDays: number[] } {
+  const byDay = new Map<number, Array<{ lat: number; lng: number } | null>>();
+  for (const s of stops) {
+    const list = byDay.get(s.dayNumber) ?? [];
+    list.push(s.open);
+    byDay.set(s.dayNumber, list);
+  }
+  const days: DayPath[] = [];
+  const notCheckedDays: number[] = [];
+  for (const [dayNumber, pts] of Array.from(byDay.entries()).sort((a, b) => a[0] - b[0])) {
+    if (pts.every((p) => p != null)) days.push({ dayNumber, points: pts as Array<{ lat: number; lng: number }> });
+    else notCheckedDays.push(dayNumber);
+  }
+  return { days, notCheckedDays };
+}
+
+/** Pure. The path findings' "not checked" entries — one per kind, naming the days; none when every day was checked. */
+export function pathNotChecked(notCheckedDays: readonly number[]): NotChecked[] {
+  if (notCheckedDays.length === 0) return [];
+  const days = [...notCheckedDays].sort((a, b) => a - b);
+  return PATH_FINDING_KINDS.map((kind) => ({ kind, reason: "no_open_coordinates" as const, days }));
+}
+
 /** c. Days that cross the city more than once (straight line, est.). */
 export function cityCrossings(days: readonly DayPath[]): Finding | null {
   const hit = days.filter((d) => directionReversals(d.points) > CITY_CROSSING_REVERSALS).map((d) => d.dayNumber);

@@ -3,8 +3,8 @@
  * `2026-10-03-surface-step4-optimizer-lead`). Reads what the plan already holds and hands it to the
  * pure rules in `shared/optimizer-lead.ts` — no model call, no network.
  *
- *   items    the plan's rows: day, draft time, title; a stop's point is its trusted row coordinate,
- *            else Google's live location fact (LD 57 — read, never copied)
+ *   items    the plan's rows: day, draft time, title. For the two path findings a stop's point is ONLY its
+ *            open, non-Google coordinate (FB-1 step 1; LG-1's tables) — a day without one is `notChecked`
  *   hours    the plan's stored opening-hours facts (`factsForTrip`), with their own checkedAt
  *   anchors  the plan's temporal anchors (the ONE overlap rule validate-schedule uses)
  *   energy   the plan's `energy_tracking` rows (its pace verdict per day)
@@ -32,15 +32,21 @@ import {
   paceOver,
   timedEntryConflicts,
   walkingSavedKm,
-  type DayPath,
+  openPathDays,
+  pathNotChecked,
   type Finding,
+  type NotChecked,
   type HoursFact,
   planLegCoverage,
   type LegCoverage,
   findingStopLines,
 } from "@shared/optimizer-lead";
 import { planDayIsPast } from "@shared/plan-timing";
-import { factPointsForTrip, feasibilityFactsForTrip } from "./content-facts/place-facts.service";
+import { factPointsForTrip, feasibilityFactsForTrip, placeRefsForTrip } from "./content-facts/place-facts.service";
+import { openCoordsForPlaceIds } from "./routing/open-place-coords.service";
+import { routingPointFor } from "./routing/open-routing-points";
+import { osmRideServiceIds } from "./routing/plan-legs-engine.service";
+import { isOpenCoordOrigin } from "@shared/open-coords";
 import { loadMarketAreaNames } from "./content-facts/market-areas";
 import { unnamedPlaceReason } from "@shared/place-name-gate";
 import { hoursFactForDate, lastAdmissionForDate, lastServiceMinutes, parseLastService, SERVICE_DAY_START_MIN } from "@shared/feasibility-facts";
@@ -63,7 +69,7 @@ function isoOf(v: unknown): string | null {
   return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : null;
 }
 
-export async function loadOptimizerFindings(tripId: string): Promise<{ findings: Finding[]; hasPricedItems: boolean }> {
+export async function loadOptimizerFindings(tripId: string): Promise<{ findings: Finding[]; hasPricedItems: boolean; notChecked: NotChecked[] }> {
   const [trip] = await db.select({ startDate: trips.startDate, marketSlug: trips.marketSlug }).from(trips).where(eq(trips.id, tripId)).limit(1);
   const start = isoOf(trip?.startDate);
   const rows = await db
@@ -83,6 +89,7 @@ export async function loadOptimizerFindings(tripId: string): Promise<{ findings:
       durationMinutes: itineraryItems.durationMinutes,
       providerServiceId: itineraryItems.providerServiceId,
       bookingId: itineraryItems.bookingId,
+      googlePlaceId: itineraryItems.googlePlaceId,
     })
     .from(itineraryItems)
     .where(eq(itineraryItems.tripId, tripId))
@@ -106,18 +113,31 @@ export async function loadOptimizerFindings(tripId: string): Promise<{ findings:
     endTime: r.endTime ?? null,
   }));
 
-  // c / d. each day's LOCATED stops in the draft's own order (trusted row point, else the live fact).
-  const points = await factPointsForTrip(tripId);
-  const byDay = new Map<number, DayPath["points"][number][]>();
-  for (const r of items) {
-    const own = rowCoordinatesTrusted(r as any) && r.lat != null && r.lng != null ? { lat: Number(r.lat), lng: Number(r.lng) } : null;
-    const p = own && Number.isFinite(own.lat) && Number.isFinite(own.lng) ? own : points.get(r.id) ?? null;
-    if (!p) continue;
-    const list = byDay.get(r.dayNumber!) ?? [];
-    list.push(p);
-    byDay.set(r.dayNumber!, list);
-  }
-  const days: DayPath[] = Array.from(byDay.entries()).map(([dayNumber, pts]) => ({ dayNumber, points: pts }));
+  // c / d. FB-1 step 1 (ledger `2026-10-17-fb1-checker-open-coords`): each day's stops in the draft's own order, read
+  // ONLY at an open coordinate, decided by LG-1's own rule — `routingPointFor` (an admin row, else an OSM match for
+  // the place id, else a ride's OSM node) and `isOpenCoordOrigin`. A Google point (the row's own, or a Places fact)
+  // comes back tagged `google` and is dropped; a day with any stop lacking an open point is not checked.
+  const [placeRefs, factPoints] = await Promise.all([placeRefsForTrip(tripId, items.map((r) => r.id)), factPointsForTrip(tripId)]);
+  const placeIdOf = (r: any): string | null => (r.googlePlaceId as string | null) || placeRefs.get(r.id)?.placeId || null;
+  const [openCoords, osmRides] = await Promise.all([
+    openCoordsForPlaceIds(items.map(placeIdOf).filter((p): p is string => !!p)),
+    osmRideServiceIds(items.map((r) => r.providerServiceId).filter((s): s is string => !!s)),
+  ]);
+  const { days, notCheckedDays } = openPathDays(
+    items.map((r) => {
+      const own = rowCoordinatesTrusted(r as any) && r.lat != null && r.lng != null ? { lat: Number(r.lat), lng: Number(r.lng) } : null;
+      const p = routingPointFor({
+        placeId: placeRefs.get(r.id)?.placeId ?? null,
+        lookupPlaceId: placeIdOf(r),
+        open: openCoords,
+        ownPoint: own && Number.isFinite(own.lat) && Number.isFinite(own.lng) ? own : null,
+        factPoint: factPoints.get(r.id) ?? null,
+        osmRide: !!r.providerServiceId && osmRides.has(r.providerServiceId),
+      });
+      return { dayNumber: r.dayNumber!, open: p && isOpenCoordOrigin(p.coordOrigin) ? { lat: p.lat, lng: p.lng } : null };
+    }),
+  );
+  const notChecked: NotChecked[] = pathNotChecked(notCheckedDays);
 
   // e. the plan's own energy verdicts.
   const energy = await storage.getEnergyTracking(tripId);
@@ -148,7 +168,7 @@ export async function loadOptimizerFindings(tripId: string): Promise<{ findings:
   // A PRICED item is one carrying a real price: a catalog listing or a booking — never an AI draft's
   // estimated cost, which is a guess, not a price (§13).
   const hasPricedItems = items.some((r) => !!r.providerServiceId || !!r.bookingId);
-  return { findings, hasPricedItems };
+  return { findings, hasPricedItems, notChecked };
 }
 
 

@@ -119,7 +119,7 @@ async function latestRunLegs(tripId: string): Promise<Array<typeof transportLegs
 }
 
 /** The plan's ride services whose every route point is a seeded OSM node (TC-3) — their item pins are OSM. */
-async function osmRideServiceIds(serviceIds: readonly string[]): Promise<Set<string>> {
+export async function osmRideServiceIds(serviceIds: readonly string[]): Promise<Set<string>> {
   const ids = Array.from(new Set(serviceIds.filter(Boolean)));
   if (ids.length === 0) return new Set();
   const rows = await db
