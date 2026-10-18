@@ -24,6 +24,7 @@
  */
 import { haversineMeters } from "./geo";
 import { metersPerMinute, type LegMode } from "./travel-speeds";
+import { isOpenCoordOrigin, type CoordOrigin } from "./open-coords";
 
 export type RoutingMode = LegMode;
 
@@ -32,6 +33,11 @@ export interface RoutePoint {
   lng: number;
   /** The Google place ID when one is known (an unexpired Places fact); else null. */
   placeId?: string | null;
+  /**
+   * LG-1: where the coordinate came from (`shared/open-coords.ts`). The OSRM adapter routes only between
+   * `isOpenCoordOrigin` points; an untagged point is treated as Google.
+   */
+  coordOrigin?: CoordOrigin | null;
 }
 
 export interface RouteFare {
@@ -64,8 +70,10 @@ export interface RouteAnswer {
  * that mode, e.g. OSRM and transit) or `failed` (the call itself failed: timeout, non-200, unreadable body).
  * Without `unanswered` it is the source's own answer: there is no route. A re-check reads an unanswered
  * `no_route` as "learned nothing" and keeps the leg's last label (§13); every other caller is unchanged.
+ * LG-1: `coords_not_open` — the OSRM adapter was handed a point that is not an open coordinate
+ * (`shared/open-coords.ts`) and asked nothing.
  */
-export type RouteUnanswered = "unsupported_mode" | "failed";
+export type RouteUnanswered = "unsupported_mode" | "failed" | "coords_not_open";
 
 /**
  * 9b-d (Leon's ruling, Oct 17, 2026): the `source` an ENGINE row carries when the router's own answer was
@@ -80,6 +88,11 @@ export interface RoutingAdapter {
   /** The provenance `source` this adapter stamps. */
   readonly source: string;
   route(origin: RoutePoint, destination: RoutePoint, mode: RoutingMode, departAt: Date | null): Promise<RouteOutcome>;
+  /**
+   * LG-1: may this adapter be given this point at all? Absent ⇒ every point. The OSRM adapter answers true only
+   * for an open origin; the engine treats a refused stop as unlocated for routing (no routed leg in or out).
+   */
+  acceptsPoint?(p: RoutePoint): boolean;
 }
 
 /** The ONLY fields a route carries anywhere it is kept (decision-maker, Oct 7, 2026). */
@@ -119,11 +132,17 @@ export function toRouteFacts(route: RouteAnswer): RouteAnswer {
 
 // ── The leg key (L2, amended by step 9a ruling 4) — the in-run memo's key and the pair diff's ────
 
-/** A stop's key: its place ID when known, else its coordinate rounded to 4 decimals. Mixed keys are fine. */
+/**
+ * A stop's key: its place ID when known, else its coordinate rounded to 4 decimals. Mixed keys are fine.
+ * LG-1: a point from an open source carries its origin (`place:<id>~osm`), so a leg computed between Google points
+ * for the same place never matches one computed between open points — the pair diff recomputes it. A Google or
+ * untagged point keeps the key it always had.
+ */
 export function routePointKey(p: RoutePoint): string {
   const id = typeof p.placeId === "string" ? p.placeId.trim() : "";
-  if (id) return `place:${id}`;
-  return `pt:${p.lat.toFixed(4)},${p.lng.toFixed(4)}`;
+  const suffix = isOpenCoordOrigin(p.coordOrigin) ? `~${p.coordOrigin}` : "";
+  if (id) return `place:${id}${suffix}`;
+  return `pt:${p.lat.toFixed(4)},${p.lng.toFixed(4)}${suffix}`;
 }
 
 /**

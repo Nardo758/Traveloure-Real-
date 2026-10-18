@@ -24,6 +24,7 @@ import { affiliatePartners, affiliateProducts } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { storage } from "../storage";
 import { getTravelpayoutsToken } from "./travelpayouts/travelpayouts-client";
+import { getYourGuidePaused } from "./partner-pause.service";
 
 // Minimal shape we read from any Travelpayouts network item (decoupled from the per-network union
 // types). Fields are read defensively — a missing field just yields a NULL column (§13, never faked).
@@ -230,10 +231,14 @@ export async function upsertCatalogItem(partnerId: string, item: CatalogInput): 
 // ─── Ingest a network for a city (deploy-only live fetch) ───────────────────────────────────────
 
 export async function ingestNetwork(networkKey: string, city: string): Promise<{
-  ready: boolean; network: string; created: number; updated: number; skipped: number; scanned: number;
+  ready: boolean; network: string; created: number; updated: number; skipped: number; scanned: number; paused?: true;
 }> {
   const net = CATALOG_NETWORKS.find(n => n.key === networkKey);
   if (!net) throw new Error(`Unknown catalog network: ${networkKey}`);
+  // PX-1: GetYourGuide is paused — the sync skips it before any partner row or fetch.
+  if (net.key === "getyourguide" && getYourGuidePaused()) {
+    return { ready: false, network: networkKey, created: 0, updated: 0, skipped: 0, scanned: 0, paused: true };
+  }
   // §13 key-gate: no token ⇒ zero writes, never fabricates.
   if (!getTravelpayoutsToken()) {
     return { ready: false, network: networkKey, created: 0, updated: 0, skipped: 0, scanned: 0 };

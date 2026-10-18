@@ -17,6 +17,8 @@
  *   OS7  a transit ask through the engine's one fallback becomes an OSRM drive
  *   OS8  "checked" is the extract date the proxy states in X-OSRM-Extract; the call time only when the
  *        header is absent or unreadable; the default request timeout is 15 s (cold mmap page-in)
+ *   OS9  LG-1: only open coordinates are routed — an OSM, admin, ride-node or IATA point; a Google point or an
+ *        untagged one is refused before any request (`no_route` / `coords_not_open`)
  *
  * Run: npx tsx --test server/__tests__/osrm-routing-adapter.test.ts
  */
@@ -34,8 +36,9 @@ import {
 import { OSRM_EXTRACT_HEADER, OsrmRoutingAdapter, osrmCheckedAt, osrmRouteUrl, parseOsrmResponse } from "../services/routing/osrm-routing-adapter";
 import { RouteRunMemo, routeWithTransitFallback } from "../services/routing/route-memo";
 
-const GION = { lat: 35.0037, lng: 135.7788, placeId: "ChIJgion" };
-const KIYOMIZU = { lat: 34.9949, lng: 135.785 };
+// LG-1: the fixture points are open coordinates (an OSM match and an admin row); OS9 covers the refusal.
+const GION = { lat: 35.0037, lng: 135.7788, placeId: "ChIJgion", coordOrigin: "osm" as const };
+const KIYOMIZU = { lat: 34.9949, lng: 135.785, coordOrigin: "admin" as const };
 const NOW = new Date("2026-10-12T00:40:00Z");
 const BASE = "http://osrm.internal:5000";
 
@@ -220,4 +223,21 @@ test("OS8: checked is the extract date from X-OSRM-Extract, else the call time; 
     if (saved === undefined) delete process.env.OSRM_TIMEOUT_MS;
     else process.env.OSRM_TIMEOUT_MS = saved;
   }
+});
+
+test("OS9: only open coordinates are routed — a Google or untagged point is refused before any request", async () => {
+  const { adapter, urls } = osrmWith();
+  for (const origin of ["osm", "admin", "osm_node", "iata"] as const) {
+    const out = await adapter.route({ ...GION, coordOrigin: origin }, KIYOMIZU, "walk", null);
+    assert.equal(out.kind, "ok", `${origin} is routed`);
+  }
+  const before = urls.length;
+  const google = await adapter.route({ ...GION, coordOrigin: "google" }, KIYOMIZU, "walk", null);
+  assert.deepEqual(google, { kind: "no_route", unanswered: "coords_not_open" });
+  const untagged = await adapter.route(GION, { lat: KIYOMIZU.lat, lng: KIYOMIZU.lng }, "drive", null);
+  assert.deepEqual(untagged, { kind: "no_route", unanswered: "coords_not_open" });
+  assert.equal(urls.length, before, "a refused point makes no request");
+  assert.equal(adapter.acceptsPoint({ lat: 1, lng: 1, coordOrigin: "google" }), false);
+  assert.equal(adapter.acceptsPoint({ lat: 1, lng: 1 }), false);
+  assert.equal(adapter.acceptsPoint({ lat: 1, lng: 1, coordOrigin: "osm" }), true);
 });

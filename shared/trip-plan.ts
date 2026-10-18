@@ -550,6 +550,12 @@ export interface TripPlanLeg {
    */
   routedOptions?: import("./leg-options").LegOptionView[];
   routedOptionsChecked?: true;
+  /**
+   * LG-1 item 4 (LD 65): `routed.provenance` at the top of the leg — the source that answered (`osrm`, `stub`) and
+   * when (ISO). Present only on an engine leg, exactly when `routed` is.
+   */
+  source?: string;
+  checkedAt?: string;
 }
 
 export interface TripPlanLegRouted {
