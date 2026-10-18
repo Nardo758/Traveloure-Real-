@@ -1,4 +1,6 @@
 import type { Express, RequestHandler } from "express";
+import { admitViatorAdd } from "./services/viator-item-admission";
+import { viatorDirectEnabled } from "./config/viator.config";
 import { tripGetsRoutedLegs } from "./services/routing/plan-routed-legs.service";
 import { enqueuePlanLegRecompute } from "./services/routing/plan-legs-queue";
 import { decorateComparison, openSetSlotsForRun } from "./services/version-options.service";
@@ -13440,6 +13442,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "That partner item could not be found or is no longer available.", reason: resolvedAffiliate.reason });
       }
       if (resolvedAffiliate.action === "set") itemData.affiliateProductId = resolvedAffiliate.value;
+      // VD-1b (ledger `2026-10-18-viator-add-to-plan`): an add from a live Viator card stores the title, the
+      // product code (stamped by storage onto content_type/content_id) and "Partner: Viator" ONLY — never a
+      // Viator price, description or coordinate — so the item re-fetches Viator live. Off with the live search.
+      const viatorAdd = admitViatorAdd(req.body, itemData as Record<string, unknown>, viatorDirectEnabled());
+      if (!viatorAdd.ok) return res.status(400).json({ message: viatorAdd.message });
+      const viatorProductCode = viatorAdd.viatorProductCode;
       // ── THE AUTHORING CONTRACT (decision-maker ruling 2026-09-15, punchlist D-4 option A;
       // ledger `2026-09-15-d4-item-kind-contract`) ────────────────────────────────────────────
       // A READY-MADE AUTHOR MAY NOT PUBLISH A PRICED ITEM THAT NAMES NO BOOKABLE THING. Checkout
@@ -13468,7 +13476,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // expert's own authoring build is the AUTHOR branch, never `isAdvisor`, and writes directly.
       if (isAdvisor) {
         const { fileExpertSuggestion } = await import("./services/expert-suggestions.service");
-        const suggestion = await fileExpertSuggestion({ tripId, expertId: userId, kind: "add", payload: { item: itemData } });
+        const suggestion = await fileExpertSuggestion({
+          tripId, expertId: userId, kind: "add",
+          payload: { item: viatorProductCode ? { ...itemData, viatorProductCode } : itemData },
+        });
         return res.status(202).json({ suggested: true, suggestion });
       }
       const gemWrite = pendingGemId
@@ -13479,7 +13490,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         : null;
       // GC-1 (migration 387): the body may mark its coordinate as Google (`places` | `geocode_google`) and
       // nothing else; absent ⇒ NULL, which reads as Google.
-      const item = gemWrite?.item ?? await storage.createItineraryItem(itemData, { coordSource: admitItemCoordSource(req.body) });
+      const item = gemWrite?.item ?? await storage.createItineraryItem(itemData, {
+        coordSource: viatorProductCode ? undefined : admitItemCoordSource(req.body),
+        ...(viatorProductCode ? { viatorProductCode } : {}),
+      });
       if (!gemWrite || gemWrite.created) {
         logItineraryChange(tripId, userName, `Added "${item.title}"`, "add", owned ? "owner" : "expert", item.id);
       }

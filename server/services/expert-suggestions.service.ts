@@ -123,7 +123,14 @@ async function defaultPort(): Promise<SuggestionApplyPort> {
   const { itineraryIntelligenceService } = await import("./itinerary-intelligence.service");
   const legs = await import("./trip-transport-legs.service");
   return {
-    createItem: (v) => storage.createItineraryItem(v as any) as any,
+    // VD-1b: a filed Viator add carries its admitted code beside the item; the replay stamps it the same way.
+    createItem: (v) => {
+      const { viatorProductCode, ...item } = v as Record<string, unknown>;
+      return storage.createItineraryItem(
+        item as any,
+        typeof viatorProductCode === "string" ? { viatorProductCode } : undefined,
+      ) as any;
+    },
     updateItem: (id, u) => storage.updateItineraryItem(id, u as any),
     deleteItem: (id, actor) => storage.deleteItineraryItem(id, actor as any),
     resortDay: (t, d) => resortDayByTime(t, d),
