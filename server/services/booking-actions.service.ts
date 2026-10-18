@@ -329,15 +329,44 @@ export async function insertSharedTrip(values: {
   `);
 }
 
-export async function getSharedTripByVariantToken(token: string): Promise<any | null> {
+/** FD-4: the ONLY fields a variant share read carries — no user id, trip id, AI reasoning, cost or other column. */
+export interface SharedVariantTripView {
+  name: string | null;
+  description: string | null;
+  destination: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  expiresAt: string | null;
+}
+
+/**
+ * FD-4 (ledger `2026-10-18-fd4-share-projection`): an ALLOWLIST projection. The read used to return the raw
+ * `SELECT st.*, iv.*, ic.*` row — `user_id`, `trip_id`, `ai_reasoning`, costs and colliding column names
+ * included. A column added to any of the three tables later is not published by default.
+ */
+export function projectSharedVariantTrip(row: any): SharedVariantTripView {
+  const str = (v: unknown) => (v === null || v === undefined || v === "" ? null : String(v));
+  return {
+    name: str(row?.variant_name),
+    description: str(row?.variant_description),
+    destination: str(row?.destination),
+    startDate: str(row?.start_date),
+    endDate: str(row?.end_date),
+    expiresAt: row?.expires_at ? new Date(row.expires_at).toISOString() : null,
+  };
+}
+
+export async function getSharedTripByVariantToken(token: string): Promise<SharedVariantTripView | null> {
   const result = await db.execute(sql`
-    SELECT st.*, iv.*, ic.*
+    SELECT iv.name AS variant_name, iv.description AS variant_description,
+           ic.destination, ic.start_date, ic.end_date, st.expires_at
     FROM shared_trips st
     JOIN itinerary_variants iv ON st.variant_id = iv.id
     JOIN itinerary_comparisons ic ON st.comparison_id = ic.id
     WHERE st.share_token = ${token} AND st.expires_at > NOW()
   `);
-  return result.rows?.[0] ?? null;
+  const row = result.rows?.[0];
+  return row ? projectSharedVariantTrip(row) : null;
 }
 
 export async function incrementSharedTripViews(token: string): Promise<void> {

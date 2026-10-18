@@ -216,10 +216,13 @@ test("L5 — trips/shared/:token: the local stop is counted, never named", async
   assert.equal(day1.localCount, 1);
 });
 
-test("L6 — shared-trips/:token carries nothing local", async () => {
+test("L6 — shared-trips/:token carries nothing local and only its allowlisted fields", async () => {
   const { status, raw, body } = await get(`/api/shared-trips/${tokens.sharedVariant}`);
   assert.equal(status, 200, raw);
   assertNothingLocal(raw, body, "shared-trips");
+  assert.deepEqual(Object.keys(body.shared).sort(), ["description", "destination", "endDate", "expiresAt", "name", "startDate"]);
+  assert.equal(body.shared.name, `Variant ${RUN}`);
+  assert.ok(!raw.includes(ownerId), "the sharer's user id LEAKED on shared-trips");
 });
 
 test("L7 — saved-places share: a local gem is counted, a listing is shown", async () => {
