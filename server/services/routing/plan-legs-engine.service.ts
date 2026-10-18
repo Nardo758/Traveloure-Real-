@@ -24,7 +24,7 @@ import { TRANSPORT_PROFILES } from "../../data/transport-profiles";
 import { formatDistance } from "../transport-leg-calculator";
 import { factPointsForTrip, factsForTrip, placeRefsForTrip } from "../content-facts/place-facts.service";
 import { stayPointForPlan } from "../stay-reroute.service";
-import { openCoordsForPlaceIds, type OpenPlaceCoord } from "./open-place-coords.service";
+import { openCoordsForItemIds, openCoordsForPlaceIds, type OpenPlaceCoord } from "./open-place-coords.service";
 import { acceptedPoint, routingPointFor } from "./open-routing-points";
 import { routingAdapter } from "./index";
 import { RouteRunMemo, routeWithTransitFallback } from "./route-memo";
@@ -186,8 +186,10 @@ export async function loadPlanLegContext(
   // refreshes or clears it. The trusted row point needs no record.
   const googleFetchedAt = new Map<string, Date>();
   const placeIdOf = (it: any): string | null => (it.googlePlaceId as string | null) || placeRefs.get(it.id)?.placeId || null;
-  const [openCoords, osmRides] = await Promise.all([
+  const [openCoords, itemOpen, osmRides] = await Promise.all([
     openCoordsForPlaceIds([...items.map(placeIdOf), stayPoint ? placeIdOf(items.find((i: any) => i.id === stayPoint.itemId) ?? { id: stayPoint.itemId }) : null].filter((p): p is string => !!p)),
+    // LG-1 re-key (migration 390): the open place each item is linked to — reached without a Google place id.
+    openCoordsForItemIds([...items.map((it: any) => it.id as string), ...(stayPoint ? [stayPoint.itemId] : [])]),
     osmRideServiceIds(items.map((it: any) => it.providerServiceId).filter(Boolean)),
   ]);
   const pointFor = (it: any): RoutePoint | null => {
@@ -198,6 +200,7 @@ export async function loadPlanLegContext(
         placeId: placeRefs.get(it.id)?.placeId ?? null,
         lookupPlaceId: placeIdOf(it),
         open: openCoords,
+        itemOpen: itemOpen.get(it.id) ?? null,
         ownPoint: own,
         factPoint: fact,
         osmRide: !!it.providerServiceId && osmRides.has(it.providerServiceId),
@@ -237,6 +240,7 @@ export async function loadPlanLegContext(
           placeId: placeRefs.get(stayPoint.itemId)?.placeId ?? null,
           lookupPlaceId: placeIdOf(stayItem),
           open: openCoords,
+          itemOpen: itemOpen.get(stayPoint.itemId) ?? null,
           ownPoint: { lat: stayPoint.lat, lng: stayPoint.lng },
           factPoint: null,
           osmRide: false,
@@ -702,7 +706,10 @@ export async function versionRoutingFor(comparisonId: string): Promise<{
   const items = await storage.getItineraryItems(tripId);
   const refs = await placeRefsForTrip(tripId, items.map((i) => i.id));
   const placeIdOf = new Map(items.map((i: any) => [i.id, ((i.googlePlaceId as string | null) || refs.get(i.id)?.placeId || null) as string | null] as const));
-  const open = await openCoordsForPlaceIds(Array.from(placeIdOf.values()).filter((p): p is string => !!p));
+  const [open, itemOpen] = await Promise.all([
+    openCoordsForPlaceIds(Array.from(placeIdOf.values()).filter((p): p is string => !!p)),
+    openCoordsForItemIds(items.map((i: any) => i.id as string)),
+  ]);
   const profile = (TRANSPORT_PROFILES as Record<string, { availableModes: Array<{ mode: string; available?: boolean }>; apiTransitCoverage?: boolean }>)[(trip.marketSlug ?? "").toLowerCase()];
   const transit = marketTransitRouting(profile);
   return {
@@ -715,9 +722,12 @@ export async function versionRoutingFor(comparisonId: string): Promise<{
       timezone: trip.timezone ?? null,
     },
     placeIdFor: (id) => (id ? refs.get(id)?.placeId ?? null : null),
+    // The same order as `routingPointFor`: an admin row for the place id, the item's own open place, a place-id match.
     openFor: (id) => {
-      const pid = id ? placeIdOf.get(id) ?? null : null;
-      return pid ? open.get(pid) ?? null : null;
+      if (!id) return null;
+      const pid = placeIdOf.get(id) ?? null;
+      const byPlace = pid ? open.get(pid) ?? null : null;
+      return byPlace?.origin === "admin" ? byPlace : itemOpen.get(id) ?? byPlace;
     },
   };
 }

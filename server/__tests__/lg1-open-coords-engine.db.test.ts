@@ -34,6 +34,9 @@ const id = (s: string) => `lg1-${RUN}-${s}`;
 const owner = id("owner");
 const TRIP = id("trip");
 const pid = (k: string) => `ChIJ-lg1-${RUN}-${k}`;
+// A per-run OSM element id range, so concurrent runs never share an open place.
+const OSM_BASE = 9_000_000_000 + Math.floor(Math.random() * 1_000_000) * 10;
+const osmId = (n: number) => `osm:node/${OSM_BASE + n}`;
 
 class OpenOnlyStub extends StubRoutingAdapter {
   seen: Array<{ coordOrigin?: string | null }> = [];
@@ -73,16 +76,17 @@ before(async () => {
     await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, title, item_type, day_number, sort_order, latitude, longitude, start_time, end_time, origin, google_place_id)
       VALUES (${`${TRIP}-${k}`}, ${TRIP}, ${`Stop ${k.toUpperCase()}`}, 'activity', 1, ${order}, ${String(lat)}, ${String(lng)}, ${start}, ${end}, 'traveler', ${pid(k)})`);
   }
-  for (const k of ["a", "c"] as const) {
-    await db.execute(sql`INSERT INTO osm_place_coords (place_id, lat, lng, osm_type, osm_id, osm_name, matched_by, attribution, matched_at)
-      VALUES (${pid(k)}, ${String(OSM[k][0])}, ${String(OSM[k][1])}, 'node', 1, ${`Stop ${k}`}, 'nominatim_batch', '© OpenStreetMap contributors', now())`);
+  // Migration 390: an open place keyed by its own OSM element, carrying the item's place id as an attribute.
+  for (const [n, k] of [[1, "a"], [2, "c"]] as const) {
+    await db.execute(sql`INSERT INTO open_place_coords (id, source, osm_type, osm_id, lat, lng, name, google_place_id, matched_by, attribution, matched_at)
+      VALUES (${osmId(n)}, 'osm', 'node', ${OSM_BASE + n}, ${String(OSM[k][0])}, ${String(OSM[k][1])}, ${`Stop ${k}`}, ${pid(k)}, 'nominatim_batch', '© OpenStreetMap contributors', now())`);
   }
 });
 
 after(async () => {
   await db.execute(sql`DELETE FROM trips WHERE id = ${TRIP}`);
   await db.execute(sql`DELETE FROM users WHERE id = ${owner}`);
-  await db.execute(sql`DELETE FROM osm_place_coords WHERE place_id LIKE ${`ChIJ-lg1-${RUN}-%`}`);
+  await db.execute(sql`DELETE FROM open_place_coords WHERE google_place_id LIKE ${`ChIJ-lg1-${RUN}-%`}`);
   await db.execute(sql`DELETE FROM admin_place_coords WHERE place_id LIKE ${`ChIJ-lg1-${RUN}-%`}`);
 });
 
