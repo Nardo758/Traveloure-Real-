@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildDayIcs, dayIcsDate } from "../day-map-actions";
+import { buildDayIcs, dayIcsDate } from "../day-ics";
 import type { PlanCardActivity, PlanCardDay } from "../plancard-types";
 
 const act = (over: Partial<PlanCardActivity>): PlanCardActivity =>
