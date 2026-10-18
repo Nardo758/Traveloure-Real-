@@ -22,8 +22,7 @@ permissions:
 
 concurrency:
   group: viator-sandbox-contract
-  cancel-in-progress: true
-
+  cancel-in-progress: ${{ github.event.action != 'ready_for_review' }}
 jobs:
   contract:
     runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}

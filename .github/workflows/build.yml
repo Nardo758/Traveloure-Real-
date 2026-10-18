@@ -12,6 +12,9 @@ name: Build Smoke
 # 2026-08-05 @ ea0bbc05, and the number only ever moves DOWN.
 
 on:
+  # Merge queue (ledger `2026-10-18-merge-queue-triggers`): the queue's run is always a full run.
+  merge_group:
+    types: [checks_requested]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
@@ -28,7 +31,7 @@ permissions:
 # with no green record.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'ready_for_review' }}
 
 jobs:
   # Status context (for branch-protection required checks):
