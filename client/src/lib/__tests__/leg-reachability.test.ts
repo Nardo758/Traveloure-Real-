@@ -73,7 +73,7 @@ describe("R4 the finding and the Finish line", () => {
     });
     const findings = leadFindings([{ kind: "closed_on_arrival", count: 3, days: [2] }, f]);
     assert.equal(findings[0].kind, "leg_unreachable", "a travel-time problem reads first");
-    assert.equal(freeFindingsPromptLine(findings), "2 stops may not be reachable in time · Add travel times");
+    assert.equal(freeFindingsPromptLine(findings), "2 stops may not be reachable in time · Add drive and walk times");
     // S12-4: the Finish card names them, one line each with its day.
     assert.deepEqual(unreachableStopLines(findings), ["Day 1 · B", "Day 1 · C"]);
     assert.deepEqual(unreachableStopLines([{ kind: "closed_on_arrival", count: 1, days: [1] }]), []);
