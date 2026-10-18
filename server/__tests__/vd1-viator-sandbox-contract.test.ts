@@ -65,7 +65,13 @@ test("C1 Viator's destinations list names 332 as Kyoto", { skip }, async () => {
 });
 
 test("C2 a live sandbox search for Kyoto answers ok with campaign-tagged viator.com links", { skip }, async () => {
-  const res = await searchViatorLive({ city: "Kyoto", surface: "browse", count: 5 }, { env });
+  let res = await searchViatorLive({ city: "Kyoto", surface: "browse", count: 5 }, { env });
+  // Viator answers 429 when the sandbox rate-limits; that one answer is retried once, after a pause.
+  // Any other failure fails the test with its cause.
+  if (res.status === "error" && res.failure?.httpStatus === 429) {
+    await new Promise((r) => setTimeout(r, 3000));
+    res = await searchViatorLive({ city: "Kyoto", surface: "browse", count: 5 }, { env });
+  }
   if (res.status !== "ok") {
     // Ask once more directly, only to say why (the service deliberately returns a bare status).
     try {
@@ -74,9 +80,9 @@ test("C2 a live sandbox search for Kyoto answers ok with campaign-tagged viator.
         headers: { ...HEADERS(), "Content-Type": "application/json" },
         body: JSON.stringify({ filtering: { destination: VIATOR_DESTINATION_IDS.kyoto }, sorting: { sort: "DEFAULT" }, pagination: { start: 1, count: 5 }, currency: "USD" }),
       });
-      annotate("C2", `service status ${res.status}; POST /products/search: ${raw.ok ? `HTTP ${raw.status}` : await viatorError(raw)}`);
+      annotate("C2", `service status ${res.status} (${JSON.stringify(res.failure ?? null)}); POST /products/search: ${raw.ok ? `HTTP ${raw.status}` : await viatorError(raw)}`);
     } catch (err) {
-      annotate("C2", `service status ${res.status}; POST /products/search did not answer: ${(err as any)?.cause?.code ?? (err as any)?.name ?? "error"}`);
+      annotate("C2", `service status ${res.status} (${JSON.stringify(res.failure ?? null)}); POST /products/search did not answer: ${(err as any)?.cause?.code ?? (err as any)?.name ?? "error"}`);
     }
   }
   assert.equal(res.status, "ok");
