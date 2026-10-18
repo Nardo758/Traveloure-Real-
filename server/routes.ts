@@ -51,6 +51,7 @@ import path from "path";
 import { storage, ExpertApplicationExistsError, stampItemSourceClass, type BookingStatusNotification } from "./storage";
 import { claimFreeDraft, promoteFreeDraft, releaseFreeDraft, freeDraftRefusalBody, FREE_DRAFT_REFUSAL_STATUS } from "./services/free-draft-cap.service";
 import { isFreeDraftEligible } from "@shared/content-tiers";
+import { freeDraftGemContext } from "@shared/share-projection";
 import { admitItemCoordSource } from "@shared/item-coord-source";
 import { assessServiceDeletion } from "./services/service-delete-guard.service";
 import { itineraryItemRebuildDeletable } from "./services/itinerary-rebuild-guard";
@@ -386,7 +387,6 @@ import { resolveBookingConciergeItems } from "./services/booking-concierge.servi
 // SS-5c protected-title soft warning (ruling 69 disposition 5) — advisory only, never a block.
 import { detectProtectedTitleClaims } from "@shared/service-attestations";
 import { calculateCommission, BookingType } from "./utils/commissionCalculator";
-import { ensureDefaultBookingFeeConfig } from "./services/booking-fee-bootstrap";
 // Ready-made authoring mode (brief §2): explicit present-value author check. Never getTripRole.
 import { isTripAuthor } from "./utils/trip-authorship";
 // The item-mutation predicate (LD 42 D17): the optimizer RUN is an item write and is authorized
@@ -1034,184 +1034,9 @@ export async function registerRoutes(
   // Chat / Conversations routes (GET/POST/PATCH/DELETE /api/conversations)
   registerChatRoutes(app);
 
-  // ─── Seed canonical service templates (per-title idempotent) ───────────────
-  // The six templates previously hardcoded in the frontend are promoted to DB
-  // rows so there is a single canonical source. Each template is checked by
-  // title individually so partial/legacy DB state is handled correctly.
-  (async () => {
-    try {
-      const CANONICAL_TEMPLATES = [
-        {
-          title: "Quick Consultation",
-          description: "15-minute video call to answer quick travel questions and provide immediate guidance",
-          serviceType: "consultation",
-          deliveryMethod: "video",
-          deliveryTimeframe: "15 min",
-          suggestedPrice: "29",
-          requirements: JSON.stringify(["Travel question or topic to discuss"]),
-          whatIncluded: JSON.stringify(["15-min video call", "Personalized advice", "Follow-up summary email"]),
-          isActive: true,
-          sortOrder: 1,
-        },
-        {
-          title: "Cart Review & Optimization",
-          description: "Expert review of your travel cart to find savings and better alternatives",
-          serviceType: "review",
-          // 'pdf' per the canonical deliveryMethodEnum (migration 109 CHECK); was 'document'
-          deliveryMethod: "pdf",
-          deliveryTimeframe: "24 hours",
-          suggestedPrice: "49",
-          requirements: JSON.stringify(["Cart link or selections", "Budget constraints"]),
-          whatIncluded: JSON.stringify(["Written recommendations", "Alternative suggestions", "Savings estimate"]),
-          isActive: true,
-          sortOrder: 2,
-        },
-        {
-          title: "Full Trip Planning",
-          description: "Comprehensive trip planning from start to finish with personalized itinerary",
-          serviceType: "planning",
-          deliveryMethod: "hybrid",
-          deliveryTimeframe: "3-5 days",
-          suggestedPrice: "249",
-          requirements: JSON.stringify(["Destination", "Dates", "Budget", "Interests", "Travel style"]),
-          whatIncluded: JSON.stringify(["Full itinerary", "Booking links", "Restaurant reservations", "Daily schedule", "Packing list"]),
-          isActive: true,
-          sortOrder: 3,
-        },
-        {
-          title: "Destination Deep Dive",
-          description: "In-depth guide to a specific destination with local insights and hidden gems",
-          serviceType: "custom",
-          // 'pdf' per the canonical deliveryMethodEnum (migration 109 CHECK); was 'document'
-          deliveryMethod: "pdf",
-          deliveryTimeframe: "48 hours",
-          suggestedPrice: "79",
-          requirements: JSON.stringify(["Destination", "Travel dates", "Interests"]),
-          whatIncluded: JSON.stringify(["PDF guide", "Local recommendations", "Maps", "Insider tips", "Safety advice"]),
-          isActive: true,
-          sortOrder: 4,
-        },
-        {
-          title: "Honeymoon Planning Package",
-          description: "Romantic trip planning with special touches and memorable experiences",
-          serviceType: "planning",
-          deliveryMethod: "hybrid",
-          deliveryTimeframe: "5-7 days",
-          suggestedPrice: "399",
-          requirements: JSON.stringify(["Couple preferences", "Budget", "Dates", "Special requests"]),
-          whatIncluded: JSON.stringify(["Custom itinerary", "Romantic experiences", "Special arrangements", "Booking assistance"]),
-          isActive: true,
-          sortOrder: 5,
-        },
-        {
-          title: "Group Trip Coordinator",
-          description: "Organize and coordinate travel for groups with complex logistics",
-          serviceType: "planning",
-          deliveryMethod: "video",
-          deliveryTimeframe: "1 week",
-          suggestedPrice: "349",
-          requirements: JSON.stringify(["Group size", "Budget per person", "Destination preferences", "Special needs"]),
-          whatIncluded: JSON.stringify(["Group logistics", "Shared itinerary", "Booking coordination", "Communication support"]),
-          isActive: true,
-          sortOrder: 6,
-        },
-      ];
-
-      // Check each template by title individually (truly idempotent)
-      const existing = await storage.getServiceTemplates();
-      const existingTitles = new Set(existing.map((t: any) => t.title));
-      let inserted = 0;
-      for (const tpl of CANONICAL_TEMPLATES) {
-        if (!existingTitles.has(tpl.title)) {
-          await storage.createServiceTemplate(tpl as any);
-          inserted++;
-        }
-      }
-      if (inserted > 0) {
-        console.log(`[Seed] Inserted ${inserted} canonical service template(s) into DB.`);
-      }
-    } catch (err) {
-      console.warn("[Seed] Could not seed service templates:", err);
-    }
-  })();
-
-  // ─── Bootstrap booking_fee_configs 'default' row (create-only, never updates) ──
-  // Task #1036 / ruling 32: the bootstrap that CREATES the source of truth lives in
-  // server/services/booking-fee-bootstrap.ts (surface declaration + clobber-safety
-  // documented there; DB-backed test proves it never overwrites admin edits). The
-  // one-time legacy 70/30 → 75/25 backfill moved to migration 175.
-  (async () => {
-    try {
-      await ensureDefaultBookingFeeConfig();
-    } catch (err) {
-      console.warn("[Seed] Could not bootstrap booking_fee_configs:", err);
-    }
-  })();
-
-  // ─── Seed 6 canonical templates into expert_service_offerings (per-name idempotent) ──
-  // expert_service_offerings is the canonical template catalog. The 6 service
-  // creation templates are seeded here so the table is no longer disconnected
-  // from the template UI and from-template flow.
-  // Migration 030 restored expert_service_categories with FK constraint.
-  // We look up the "Itinerary Planning" category at runtime rather than
-  // hardcoding a UUID, so the seed survives across environments.
-  (async () => {
-    try {
-      // Look up a real category from expert_service_categories (migration 030)
-      let categoryId: string | null = null;
-      const categoryRows = await db.select({ id: expertServiceCategories.id })
-        .from(expertServiceCategories)
-        .where(eq(expertServiceCategories.name, 'Itinerary Planning'))
-        .limit(1);
-      if (categoryRows.length > 0) {
-        categoryId = categoryRows[0].id;
-      } else {
-        // Fallback: create the category if it doesn't exist (idempotent)
-        const [newCategory] = await db.insert(expertServiceCategories).values({
-          name: 'Itinerary Planning',
-          isDefault: true,
-          sortOrder: 0,
-        }).returning();
-        categoryId = newCategory.id;
-      }
-
-      // Defensive: if we still don't have a category, skip seeding (FK will fail)
-      if (!categoryId) {
-        console.warn("[Seed] No expert_service_categories row available; skipping expert_service_offerings seed.");
-        return;
-      }
-
-      const CANONICAL_OFFERINGS = [
-        { name: "Quick Consultation",         description: "15-minute video call to answer quick travel questions and provide immediate guidance",         price: "29.00",  sortOrder: 101 },
-        { name: "Cart Review & Optimization", description: "Expert review of your travel cart to find savings and better alternatives",                   price: "49.00",  sortOrder: 102 },
-        { name: "Full Trip Planning",         description: "Comprehensive trip planning from start to finish with personalized itinerary",                price: "249.00", sortOrder: 103 },
-        { name: "Destination Deep Dive",      description: "In-depth guide to a specific destination with local insights and hidden gems",                price: "79.00",  sortOrder: 104 },
-        { name: "Honeymoon Planning Package", description: "Romantic trip planning with special touches and memorable experiences",                      price: "399.00", sortOrder: 105 },
-        { name: "Group Trip Coordinator",     description: "Organize and coordinate travel for groups with complex logistics",                           price: "349.00", sortOrder: 106 },
-      ];
-      const existingEso = await db.select({ name: expertServiceOfferings.name }).from(expertServiceOfferings);
-      const existingEsoNames = new Set(existingEso.map((o: any) => o.name));
-      let esoInserted = 0;
-      for (const offering of CANONICAL_OFFERINGS) {
-        if (!existingEsoNames.has(offering.name)) {
-          await db.insert(expertServiceOfferings).values({
-            categoryId,
-            name: offering.name,
-            description: offering.description,
-            price: offering.price,
-            isDefault: true,
-            sortOrder: offering.sortOrder,
-          });
-          esoInserted++;
-        }
-      }
-      if (esoInserted > 0) {
-        console.log(`[Seed] Inserted ${esoInserted} canonical template(s) into expert_service_offerings.`);
-      }
-    } catch (err) {
-      console.warn("[Seed] Could not seed expert_service_offerings:", err);
-    }
-  })();
+  // The canonical service templates, the booking_fee_configs default row and the canonical
+  // expert_service_offerings used to be seeded here, unlocked, on every boot. They now run inside the boot
+  // seeding lock (ledger `2026-10-18-boot-reference-seeding`): server/seeds/canonical-service-templates.seed.ts.
 
   // Pricing display bundle (Phase 1 of the /pricing rebuild lane) — public, read-only.
   app.use(pricingRoutes);
@@ -12272,13 +12097,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           aiSeasonalHighlights: city.aiSeasonalHighlights,
           aiUpcomingEvents: city.aiUpcomingEvents,
           // FD-1 tier filter: quick-start is a FREE draft (FD-2 ruling 5), so it takes public gems only.
-          hiddenGems: cityIntelligence.hiddenGems?.filter((g: any) => isFreeDraftEligible(g)).slice(0, 5).map((g: any) => ({
-            // travel_pulse_hidden_gems has no `name` column — the field is placeName
-            // (fixed Aug 29 2026: g.name fed the model undefined gem names).
-            name: g.placeName,
-            description: g.description,
-            gemScore: g.gemScore,
-          })),
+          // travel_pulse_hidden_gems has no `name` column — the field is placeName (fixed Aug 29 2026).
+          // FD-4: the ONE free-draft gem projection, pinned by share-projection.test.ts.
+          hiddenGems: freeDraftGemContext(cityIntelligence.hiddenGems as any, (g) => isFreeDraftEligible(g as any)),
           happeningNow: cityIntelligence.happeningNow?.slice(0, 5).map((h: any) => ({
             name: h.name,
             type: h.type,

@@ -336,9 +336,10 @@ export const MANUAL_CITY_EVENTS: readonly CityEventSeedEntry[] = [
   },
 ];
 
-export async function seedManualCityEvents() {
+/** `venueLookup: false` (the boot call) makes no Nominatim request; the direct run below keeps the lookups. */
+export async function seedManualCityEvents(opts: { venueLookup?: boolean } = {}) {
   const { seedCityEvents } = await import("../services/city-events.service");
-  return seedCityEvents(MANUAL_CITY_EVENTS);
+  return seedCityEvents(MANUAL_CITY_EVENTS, opts.venueLookup === false ? { venueLookup: false } : {});
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

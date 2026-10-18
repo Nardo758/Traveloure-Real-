@@ -30,6 +30,12 @@ const CITY = `Kyotest ${RUN}`;
 
 async function save(userId: string, id: string, name: string, city: string | null): Promise<string> {
   const rowId = crypto.randomUUID();
+  // FD-4 (ledger `2026-10-18-fd4-share-projection`): a saved gem is named on a share only when its gem row is
+  // tagged public, so each fixture gem has one.
+  await db.execute(sql`
+    INSERT INTO travel_pulse_hidden_gems (id, city, place_name, source_class)
+    VALUES (${id}, ${city ?? "Nowhere"}, ${name}, 'public')
+    ON CONFLICT (id) DO NOTHING`);
   await db.execute(sql`
     INSERT INTO saved_items (id, user_id, content_type, content_id, content_name, content_image, city)
     VALUES (${rowId}, ${userId}, 'gem', ${id}, ${name}, ${"https://img.test/" + id + ".jpg"}, ${city})`);
@@ -45,6 +51,7 @@ before(async () => {
 });
 
 after(async () => {
+  await db.execute(sql`DELETE FROM travel_pulse_hidden_gems WHERE id LIKE ${`%-${RUN}`}`);
   await db.execute(sql`DELETE FROM users WHERE id IN (${owner}, ${other})`);
 });
 

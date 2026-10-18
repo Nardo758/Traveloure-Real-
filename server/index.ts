@@ -14,7 +14,10 @@ import { describeLegacyBookingsCutoff } from "./config/legacy-bookings.config";
 import { retiredMapsBrowserKeyWarning } from "@shared/maps-browser-key-retired";
 import { seedCategories } from "./seed-categories";
 import { seedExperienceTypes } from "./seed-experience-types";
-import { seedExpertServices, seedProviderServiceListings, seedMockExperts, seedProviderServices } from "./seed-expert-services";
+import { seedExpertServices, seedMockExperts, seedProviderServices } from "./seed-expert-services";
+import { seedCanonicalServiceTemplates, seedCanonicalExpertOfferings } from "./seeds/canonical-service-templates.seed";
+import { ensureDefaultBookingFeeConfig } from "./services/booking-fee-bootstrap";
+import { BOOT_SEED_LOCK, withAdvisoryXactLock } from "./utils/advisory-lock";
 import { seedDestinationCalendar } from "./seed-destination-calendar";
 import { seedExperienceTemplateTabs } from "./seeds/experience-template-tabs.seed";
 import { seedLandingMomentDemo } from "./seeds/landing-moment-demo.seed";
@@ -29,11 +32,10 @@ import { seedDmoSources } from "./seeds/dmo-sources.seed";
 import { seedDmoKyotoHeritage } from "./seeds/dmo-kyoto-heritage.seed";
 import { seedRoleScopedTemplates } from "./seeds/role-scoped-templates.seed";
 import { seedTripOwnership } from "./seeds/trip-ownership.seed";
-import { seedE2EAccounts, purgeE2EAccountsFromProd } from "./seeds/e2e-test-accounts.seed";
+import { seedE2EAccounts } from "./seeds/e2e-test-accounts.seed";
 import { seedLocationCache } from "./seeds/location-cache.seed";
 import { demoSeedsAllowed, demoSeedSkipMessage } from "./seeds/lib/demo-seed-gate";
 import { storage } from "./storage";
-import { gemDiscoveryService } from "./services/gem-discovery.service";
 import { setupWebSocket } from "./websocket";
 import { getSession } from "./replit_integrations/auth";
 import { cacheSchedulerService } from "./services/cache-scheduler.service";
@@ -276,6 +278,20 @@ app.get("/api/version", (_req: Request, res: Response) => {
 async function runDatabaseSeeding() {
   seedingStartTime = Date.now();
   logger.info("Database seeding started");
+  // One instance at a time (ledger `2026-10-18-boot-reference-seeding`): a second instance waits here, then
+  // finds every insert-if-missing already done.
+  await withAdvisoryXactLock(BOOT_SEED_LOCK, () => seedAtBoot());
+  seedingDurationMs = Date.now() - seedingStartTime;
+  seedingComplete = true;
+  logger.info({ durationMs: seedingDurationMs }, "Database seeding complete");
+}
+
+/**
+ * Boot writes REFERENCE data only, insert-if-missing, never rewriting a row that existed before this boot
+ * (ledger `2026-10-18-boot-reference-seeding`). Content, demo data and backfills run here only in dev/CI
+ * (`demoSeedsAllowed()`); in production they are `npx tsx scripts/seed-boot-content.ts`, run on purpose.
+ */
+async function seedAtBoot() {
 
   // DISABLED: ESO backfill (see architectural decision in CLAUDE.md).
   //
@@ -328,9 +344,57 @@ async function runDatabaseSeeding() {
   }
 
   try {
-    await seedProviderServiceListings();
+    const n = await seedRoleScopedTemplates();
+    if (n.inserted > 0) logger.info({ count: n.inserted }, "Seeded role-scoped expert service templates");
   } catch (err) {
-    logger.error({ err }, "Failed to seed custom services");
+    logger.error({ err }, "Failed to seed role-scoped templates");
+  }
+
+  try {
+    const templates = await seedCanonicalServiceTemplates();
+    if (templates > 0) logger.info({ count: templates }, "Seeded canonical service templates");
+    const offerings = await seedCanonicalExpertOfferings();
+    if (offerings > 0) logger.info({ count: offerings }, "Seeded canonical expert service offerings");
+  } catch (err) {
+    logger.error({ err }, "Failed to seed canonical service templates");
+  }
+
+  try {
+    await ensureDefaultBookingFeeConfig();
+  } catch (err) {
+    logger.error({ err }, "Failed to bootstrap booking_fee_configs");
+  }
+
+  try {
+    // Mirror the in-code DMO source registry into dmo_sources (insert-if-missing).
+    const dmoResult = await seedDmoSources();
+    if (dmoResult.upserted > 0) logger.info({ count: dmoResult.upserted }, "Seeded DMO sources registry");
+    const dmoHeritageResult = await seedDmoKyotoHeritage();
+    if (dmoHeritageResult.upserted > 0) logger.info({ count: dmoHeritageResult.upserted }, "Seeded DMO Kyoto heritage stubs");
+  } catch (err) {
+    logger.error({ err }, "Failed to seed DMO sources");
+  }
+
+  try {
+    const locationResult = await seedLocationCache({ refresh: false });
+    if (locationResult.upserted > 0) logger.info({ count: locationResult.upserted }, "Seeded IATA airport/city location cache");
+  } catch (err) {
+    logger.error({ err }, "Failed to seed location cache");
+  }
+
+  // expert_neighborhoods one-writer guard (migration 272; ruling 2026-08-29-neighborhood-claims). Read-only.
+  try {
+    if (!(await isRatifyOnlyTriggerPresent())) {
+      logger.error("expert_neighborhoods_ratify_only_trg is MISSING — expert_neighborhoods has lost its one-writer guard (migration 272)");
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to verify the expert_neighborhoods one-writer trigger");
+  }
+
+  // ── Everything below is content, demo data or a backfill: dev/CI only. ──────────────────────
+  if (!demoSeedsAllowed()) {
+    logger.info("Boot seeding: reference data only (production). Content and backfills: npx tsx scripts/seed-boot-content.ts");
+    return;
   }
 
   // DEMO/FICTIONAL seeders below this line are gated by the ONE shared
@@ -410,24 +474,16 @@ async function runDatabaseSeeding() {
   // neighbourhood can resolve.
   try {
     const { seedManualCityEvents } = await import("./seeds/city-events.manual");
-    const eventsResult = await seedManualCityEvents();
+    // Boot removals (ledger `2026-10-18-boot-removals`): no Nominatim lookup at boot. A new row with no
+    // hand-typed point lands unlocated and flagged; `npx tsx server/seeds/city-events.manual.ts` runs the
+    // lookups on purpose.
+    const eventsResult = await seedManualCityEvents({ venueLookup: false });
     healthEgress.nominatim = eventsResult.nominatim;
     if (eventsResult.inserted > 0 || eventsResult.filled > 0 || eventsResult.renamed > 0 || eventsResult.refused.length > 0 || eventsResult.deferred.length > 0) {
       logger.info({ inserted: eventsResult.inserted, filled: eventsResult.filled, renamed: eventsResult.renamed, refused: eventsResult.refused, located: eventsResult.located, unlocated: eventsResult.unlocated, deferred: eventsResult.deferred }, "Seeded city events");
     }
   } catch (err) {
     logger.error({ err }, "Failed to seed city events");
-  }
-
-  // expert_neighborhoods one-writer guard (migration 272; ruling 2026-08-29-neighborhood-claims).
-  // The trigger is not a drizzle-managed object, so if a deploy push ever removed it the migration
-  // (already stamped) would never recreate it — say so loudly rather than silently losing the guard.
-  try {
-    if (!(await isRatifyOnlyTriggerPresent())) {
-      logger.error("expert_neighborhoods_ratify_only_trg is MISSING — expert_neighborhoods has lost its one-writer guard (migration 272)");
-    }
-  } catch (err) {
-    logger.error({ err }, "Failed to verify the expert_neighborhoods one-writer trigger");
   }
 
   // seedLandingHeroDemo is intentionally NOT wrapped in `if (demoSeedsAllowed())`
@@ -497,53 +553,12 @@ async function runDatabaseSeeding() {
   }
 
   try {
-    // Mirror the in-code DMO source registry into dmo_sources so scrape jobs
-    // (dmo_scrape_jobs.source_id FK) resolve. Idempotent upsert; source definitions
-    // are inert scaffolding until a Kyoto-scoped scrape job runs (§12).
-    const dmoResult = await seedDmoSources();
-    if (dmoResult.upserted > 0) {
-      logger.info({ count: dmoResult.upserted }, "Seeded DMO sources registry");
-    }
-  } catch (err) {
-    logger.error({ err }, "Failed to seed DMO sources");
-  }
-
-  try {
-    // D1: bootstrap the DMO pipeline with real, born-hidden Kyoto UNESCO heritage
-    // stubs (experts enrich before publish). Runs after dmo_sources (FK on source_id).
-    const dmoHeritageResult = await seedDmoKyotoHeritage();
-    if (dmoHeritageResult.upserted > 0) {
-      logger.info({ count: dmoHeritageResult.upserted }, "Seeded DMO Kyoto heritage stubs");
-    }
-  } catch (err) {
-    logger.error({ err }, "Failed to seed DMO Kyoto heritage");
-  }
-
-  try {
-    const roleTplResult = await seedRoleScopedTemplates();
-    if (roleTplResult.inserted > 0) {
-      logger.info({ count: roleTplResult.inserted }, "Seeded role-scoped expert service templates");
-    }
-  } catch (err) {
-    logger.error({ err }, "Failed to seed role-scoped templates");
-  }
-
-  try {
     const ownershipResult = await seedTripOwnership();
     if (ownershipResult.inserted > 0) {
       logger.info({ count: ownershipResult.inserted }, "Seeded trip owner collaborator rows");
     }
   } catch (err) {
     logger.error({ err }, "Failed to seed trip ownership collaborators");
-  }
-
-  try {
-    const locationResult = await seedLocationCache();
-    if (locationResult.upserted > 0) {
-      logger.info({ count: locationResult.upserted }, "Seeded IATA airport/city location cache");
-    }
-  } catch (err) {
-    logger.error({ err }, "Failed to seed location cache");
   }
 
   // E2E test accounts — FAIL-SAFE gate (dispatch P0 fix, Jul 28 2026).
@@ -564,15 +579,11 @@ async function runDatabaseSeeding() {
     } catch (err) {
       logger.error({ err }, "Failed to seed E2E test accounts");
     }
-  } else {
-    // Production (or anything not explicitly allowed): purge any test accounts
-    // present. Idempotent — no-op once clean.
-    try {
-      await purgeE2EAccountsFromProd();
-    } catch (err) {
-      logger.error({ err }, "Failed to purge E2E test accounts from prod DB");
-    }
   }
+  // Boot removals (ledger `2026-10-18-boot-removals`): production no longer purges test accounts at boot —
+  // it rewrote every @traveloure.test password and retried blocked deletes on every start. Production still
+  // never SEEDS them (the gate above). The purge runs on purpose:
+  //   npx tsx server/seeds/e2e-test-accounts.seed.ts --purge
 
   try {
     const backfillResult = await storage.backfillAffiliateProviderMetadata();
@@ -583,9 +594,6 @@ async function runDatabaseSeeding() {
     logger.error({ err }, "Failed to backfill affiliate provider metadata");
   }
 
-  seedingDurationMs = Date.now() - seedingStartTime;
-  seedingComplete = true;
-  logger.info({ durationMs: seedingDurationMs }, "Database seeding complete");
 }
 
 // ── Production: bind port immediately so the Cloud Run startup health probe
@@ -995,18 +1003,10 @@ if (process.env.NODE_ENV === "production") {
       }).catch((err) => logger.error({ err }, "Admin bootstrap import failed"));
     }
 
+    // Boot removals (ledger `2026-10-18-boot-removals`): the Unsplash gem-photo backfill no longer runs at
+    // boot — it called an external API on every start for every gem still without a photo. An admin runs
+    // it on purpose: POST /api/admin/gems/backfill-photos.
     runDatabaseSeeding()
-      .then(() => {
-        gemDiscoveryService.backfillGemPhotos()
-          .then(({ processed, updated, failed }) => {
-            if (processed > 0) {
-              logger.info({ processed, updated, failed }, "Gem photo backfill complete");
-            }
-          })
-          .catch(err => {
-            logger.error({ err }, "Gem photo backfill failed");
-          });
-      })
       .catch(err => {
         logger.error({ err }, "FATAL: Database seeding failed — shutting down");
         process.exit(1);

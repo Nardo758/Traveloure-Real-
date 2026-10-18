@@ -12,6 +12,7 @@
  */
 import { db } from "../db";
 import { expertServiceCategories, expertServiceOfferings } from "@shared/schema";
+import { noSeederOnlyKeyPresent } from "./lib/boot-seed-rules";
 import { eq, and, isNull } from "drizzle-orm";
 
 interface RoleTemplate {
@@ -126,9 +127,16 @@ const ROLE_TEMPLATES: RoleTemplate[] = [
   },
 ];
 
+/** The offering names only this seeder creates — the boot gate's keys. */
+export const ROLE_TEMPLATE_SEEDER_ONLY_NAMES: readonly string[] = ROLE_TEMPLATES.map((t) => t.name);
+
 export async function seedRoleScopedTemplates(): Promise<{ inserted: number; skipped: number }> {
   let inserted = 0;
   let skipped = 0;
+  // Boot rule (ledger `2026-10-18-boot-reference-seeding`): seeds only while none of its templates is present.
+  if (!(await noSeederOnlyKeyPresent(expertServiceOfferings, expertServiceOfferings.name, ROLE_TEMPLATE_SEEDER_ONLY_NAMES))) {
+    return { inserted: 0, skipped: ROLE_TEMPLATES.length };
+  }
 
   // Resolve (or create) the canonical category for role-scoped templates
   let categoryRow = await db

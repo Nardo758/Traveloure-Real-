@@ -43,6 +43,8 @@ import {
 import { isPlanAnchorItemType } from "@shared/draft-basis";
 import { itineraryItemIsMachineProtected } from "@shared/itinerary-item-lock";
 import { optionPickOf } from "@shared/version-options";
+import { CHECK_METRIC_PREFIX, HELD_VARIANT_STATUS, isShownVariantStatus, isVersionStayPick } from "@shared/version-check";
+import { checkPlan, type PlanIssue } from "@shared/plan-check";
 import { itineraryItemNotMachineProtected } from "./itinerary-rebuild-guard";
 import { choosePickInTx, openSetHeldItemIds } from "./version-adopt.service";
 import { planRole } from "./plan-option-sets.service";
@@ -64,18 +66,24 @@ const num = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
-/** The plan's latest run: its AI versions in run order. Null when the plan has none. */
+/**
+ * The plan's latest run: its AI versions in run order. Null when the plan has none.
+ * FB-1 step 3: the run is found counting HELD versions too, so a run whose every version failed the check is still
+ * the latest run (never the previous run's versions shown in its place); `variants` are the shown ones only and
+ * `held` the ones the check held.
+ */
 export async function latestRun(tripId: string): Promise<{
   comparisonId: string;
   runId: string | null;
   runAt: Date;
   variants: Array<typeof itineraryVariants.$inferSelect>;
+  held: Array<typeof itineraryVariants.$inferSelect>;
 } | null> {
   const rows = await db
     .select({ v: itineraryVariants })
     .from(itineraryVariants)
     .innerJoin(itineraryComparisons, eq(itineraryComparisons.id, itineraryVariants.comparisonId))
-    .where(and(eq(itineraryComparisons.tripId, tripId), eq(itineraryVariants.source, "ai_optimized"), eq(itineraryVariants.status, "generated")))
+    .where(and(eq(itineraryComparisons.tripId, tripId), eq(itineraryVariants.source, "ai_optimized"), inArray(itineraryVariants.status, ["generated", HELD_VARIANT_STATUS])))
     .orderBy(desc(itineraryVariants.createdAt))
     .limit(12);
   if (!rows.length) return null;
@@ -92,7 +100,13 @@ export async function latestRun(tripId: string): Promise<{
     .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
     .slice(0, 3);
   const runAt = new Date(Math.min(...sameRun.map((v) => new Date(v.createdAt as any).getTime())));
-  return { comparisonId: newest.comparisonId, runId: newest.runId ?? null, runAt, variants: sameRun };
+  return {
+    comparisonId: newest.comparisonId,
+    runId: newest.runId ?? null,
+    runAt,
+    variants: sameRun.filter((v) => isShownVariantStatus(v.status)),
+    held: sameRun.filter((v) => !isShownVariantStatus(v.status)),
+  };
 }
 
 async function planStops(tripId: string, exec: any = db): Promise<Array<BoardStop & { routingStatus: string | null; title: string }>> {
@@ -131,8 +145,8 @@ async function versionStops(variantIds: string[], exec: any = db) {
   return rows as Array<typeof itineraryVariantItems.$inferSelect>;
 }
 
-const isStayPick = (r: { sortOrder: number | null; serviceType: string | null; metadata: unknown }) =>
-  (r.sortOrder ?? 0) < 0 || !!optionPickOf(r.metadata) || isPlanAnchorItemType(r.serviceType);
+// FB-1 step 3: the ONE stay-pick rule lives in shared/version-check.ts, read by the board and the version check alike.
+const isStayPick = isVersionStayPick;
 
 function toBoardStop(r: typeof itineraryVariantItems.$inferSelect): BoardStop {
   return {
@@ -212,6 +226,16 @@ export interface VersionFlag {
   stopNames: string[];
 }
 
+/** FB-1 step 3: the versions whose `check_coverage_reduced` row says fewer checks ran than on the draft. */
+async function versionCoverageReduced(variantIds: string[]): Promise<Set<string>> {
+  if (!variantIds.length) return new Set();
+  const rows = await db
+    .select({ variantId: itineraryVariantMetrics.variantId, value: itineraryVariantMetrics.value })
+    .from(itineraryVariantMetrics)
+    .where(and(inArray(itineraryVariantMetrics.variantId, variantIds), eq(itineraryVariantMetrics.metricKey, `${CHECK_METRIC_PREFIX}coverage_reduced`)));
+  return new Set(rows.filter((r) => num(r.value) === 1).map((r) => r.variantId));
+}
+
 async function versionFlags(variantIds: string[]): Promise<Map<string, VersionFlag[]>> {
   const out = new Map<string, VersionFlag[]>();
   if (!variantIds.length) return out;
@@ -268,9 +292,16 @@ export interface VersionsBoardView {
     anchor: { name: string; type: string | null; lat: number | null; lng: number | null } | null;
     /** V-1: the version's sanity flags; empty when none fired (or the run predates them). */
     flags: VersionFlag[];
+    /** FB-1 step 3: fewer checks ran on this version than on the draft (it passed, and says so). */
+    coverageReduced: boolean;
     stops: BoardStop[];
     days: DayDiff[];
   }>;
+  /**
+   * FB-1 step 3 (ruling 4): present only when the run's every version was held — the draft's own open issues, each
+   * with its one fix, for "We couldn't make a version of this plan that clears every problem." Never a partial version.
+   */
+  blocked?: { heldCount: number; openIssues: PlanIssue[] };
   retimes: { limit: number; used: Record<string, number>; windowEndsAt: string | null; free: Record<string, boolean>; unlimited?: boolean };
 }
 
@@ -297,6 +328,14 @@ export async function loadVersionsBoard(tripId: string, now = new Date(), viewer
   const anchorOf = (v: (typeof run.variants)[number]) =>
     v.anchorName ? { name: v.anchorName, type: v.anchorType ?? null, lat: num(v.anchorLat), lng: num(v.anchorLng) } : null;
   const flags = await versionFlags(run.variants.map((v) => v.id));
+  const reduced = await versionCoverageReduced(run.variants.map((v) => v.id));
+  // FB-1 step 3 ruling 4: no version cleared every problem ⇒ the draft's own open issues and fixes.
+  let blocked: VersionsBoardView["blocked"];
+  if (run.variants.length === 0 && run.held.length > 0) {
+    const { loadPlanCheckInput } = await import("./optimizer-lead.service");
+    const { input } = await loadPlanCheckInput(tripId);
+    blocked = { heldCount: run.held.length, openIssues: checkPlan(input).issues };
+  }
   return {
     run: {
       comparisonId: run.comparisonId,
@@ -307,15 +346,18 @@ export async function loadVersionsBoard(tripId: string, now = new Date(), viewer
     plan: { stops: plan },
     versions: versions.map(({ v, i, stops }) => ({
       variantId: v.id,
-      label: versionLabel(i),
+      // FB-1 step 3: the label follows the version's own slot, so a held A never relabels B as "A".
+      label: versionLabel(v.sortOrder != null && v.sortOrder >= 1 ? v.sortOrder - 1 : i),
       name: v.name,
       badge: badges.get(v.id) ?? null,
       recommended: recommendedId === v.id,
       anchor: anchorOf(v),
       flags: flags.get(v.id) ?? [],
+      coverageReduced: reduced.has(v.id),
       stops,
       days: diffVersionDays(plan, stops),
     })),
+    ...(blocked ? { blocked } : {}),
     retimes: { limit, used, windowEndsAt: new Date(run.runAt.getTime() + 24 * 3600_000).toISOString(), free, unlimited },
   };
 }

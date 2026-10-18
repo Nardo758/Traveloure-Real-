@@ -188,6 +188,8 @@ export async function seedCityEvents(
     partnerHosts?: () => Promise<string[]>;
     resolveVenue?: (q: VenueQuery) => Promise<VenueCoordinate | null | "unreachable">;
     sleep?: (ms: number) => Promise<void>;
+    /** false ⇒ no network lookup at all (the boot call, ledger `2026-10-18-boot-removals`). */
+    venueLookup?: boolean;
   } = {},
 ): Promise<{
   inserted: number;
@@ -210,8 +212,12 @@ export async function seedCityEvents(
   const partnerHosts = await (deps.partnerHosts ?? loadPartnerHosts)();
   // CITY_EVENTS_VENUE_LOOKUP=0 turns the network lookup off (tests, an offline boot): rows then land
   // unlocated and are flagged, exactly as a no-match does.
-  const lookupOn = process.env.CITY_EVENTS_VENUE_LOOKUP !== "0";
-  const resolveVenue = deps.resolveVenue ?? (lookupOn ? (q: VenueQuery) => resolveVenueFromOsm(q) : async () => null);
+  const lookupOn = deps.venueLookup !== false && process.env.CITY_EVENTS_VENUE_LOOKUP !== "0";
+  // `venueLookup: false` overrides any resolver: the boot call makes no request at all.
+  const resolveVenue =
+    deps.venueLookup === false
+      ? async () => null
+      : deps.resolveVenue ?? (lookupOn ? (q: VenueQuery) => resolveVenueFromOsm(q) : async () => null);
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   let lookups = 0;
   let inserted = 0;
@@ -245,6 +251,12 @@ export async function seedCityEvents(
     // next boot retries, the same posture as a deferred insert.
     const stored = exists[0];
     if (stored && built.row.source === "manual" && stored.venueLat == null && !handTyped && stored.venue !== built.row.venue) {
+      // No lookup allowed (the boot call): the rename waits for a run that may look the venue up.
+      if (deps.venueLookup === false) {
+        deferred.push(entry.sourceId);
+        skipped += 1;
+        continue;
+      }
       const hit = await lookUp();
       if (hit === "unreachable") {
         deferred.push(entry.sourceId);
@@ -274,6 +286,12 @@ export async function seedCityEvents(
       continue;
     }
     if (exists.length === 0 && !handTyped) {
+      // No lookup allowed (the boot call): defer, exactly as an unreachable OpenStreetMap does — a row is
+      // never inserted unlocated just because this run may not ask (the Oct 1, 2026 ruling).
+      if (deps.venueLookup === false) {
+        deferred.push(entry.sourceId);
+        continue;
+      }
       const hit = await lookUp();
       if (hit === "unreachable") {
         deferred.push(entry.sourceId);

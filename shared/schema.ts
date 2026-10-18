@@ -2243,7 +2243,9 @@ export type InsertConversationContext = z.infer<typeof insertConversationContext
 
 // === AI Itinerary Optimization ===
 
-export const itineraryVariantStatusEnum = ["pending", "generating", "generated", "failed", "selected"] as const;
+// FB-1 step 3: `held` = a paid version that failed the plan check — stored with its findings, never shown or adopted
+// (app-enforced value set; the column is text, so no migration).
+export const itineraryVariantStatusEnum = ["pending", "generating", "generated", "failed", "selected", "held"] as const;
 export const itineraryVariantSourceEnum = ["user", "ai_optimized"] as const;
 
 export const itineraryComparisons = pgTable("itinerary_comparisons", {
