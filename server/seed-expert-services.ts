@@ -2,6 +2,7 @@ import { db } from "./db";
 import { expertServiceCategories, expertServiceOfferings, users, localExpertForms } from "@shared/schema";
 import { eq, inArray } from "drizzle-orm";
 import { demoSeedsAllowed, demoSeedSkipMessage } from "./seeds/lib/demo-seed-gate";
+import { noSeederOnlyKeyPresent } from "./seeds/lib/boot-seed-rules";
 import { demoSeedDatabaseAllowed, demoSeedDatabaseSkipMessage } from "./seeds/lib/demo-seed-gate";
 
 const expertServiceData = [
@@ -77,8 +78,17 @@ const expertServiceData = [
   },
 ];
 
+/** The offering names only this seeder creates (no migration does) — the boot gate's keys. */
+export const EXPERT_SERVICE_SEEDER_ONLY_NAMES: readonly string[] = expertServiceData.flatMap((c) => c.subServices.map((s) => s.name));
+
 export async function seedExpertServices() {
   console.log("Seeding expert service categories and offerings...");
+  // Boot rule (ledger `2026-10-18-boot-reference-seeding`): an admin can delete an offering, so this seeds
+  // only while none of its own offerings is present — a deleted one never comes back at boot.
+  if (!(await noSeederOnlyKeyPresent(expertServiceOfferings, expertServiceOfferings.name, EXPERT_SERVICE_SEEDER_ONLY_NAMES))) {
+    console.log("Expert service categories and offerings already seeded — skipping.");
+    return;
+  }
 
   // Deploy-speed fast path: two aggregate queries decide whether the
   // per-category / per-service existence loops can be skipped entirely.

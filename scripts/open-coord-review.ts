@@ -1,21 +1,21 @@
 /**
- * LG-2 Ask 1 (ledger `2026-10-18-lg2-open-coord-review`; migration 391): pull untrustworthy open coordinates out of
- * routing into `open_coord_review`. Moves, never deletes.
+ * LG-2 Ask 1 (ledger `2026-10-18-lg2-open-coord-review`; migration 391): pull untrustworthy item → open place links out
+ * of routing into `itinerary_item_open_coords_review`. The open places themselves are never moved.
  *
  *   npx tsx scripts/open-coord-review.ts                     # dry run: counts only, nothing written
- *   npx tsx scripts/open-coord-review.ts --apply             # move every flagged row (and its item links) to review
- *   npx tsx scripts/open-coord-review.ts --restore <reviewId> --by <name>   # put one reviewed row back
+ *   npx tsx scripts/open-coord-review.ts --apply             # pull every flagged link into review
+ *   npx tsx scripts/open-coord-review.ts --restore <reviewId> --by <name>   # put one checked link back (once)
  *
- * Output is COUNTS ONLY (checked, pulled by reason, links moved) — no place names or coordinates. Refuses to run
+ * Output is COUNTS ONLY (links checked, pulled by reason) — no place names or coordinates. Refuses to run
  * without the admin setting `open_coord_max_drift_m` (no code fallback).
  */
 import {
   loadMaxDriftM,
-  moveOpenCoordToReview,
+  pullOpenCoordLink,
   OPEN_COORD_MAX_DRIFT_SETTING,
   OPEN_COORD_REVIEW_REASONS,
   planOpenCoordReview,
-  restoreOpenCoordReview,
+  restoreOpenCoordLink,
 } from "../server/services/routing/open-coord-review.service";
 
 const arg = (flag: string): string | null => {
@@ -27,7 +27,7 @@ async function main(): Promise<void> {
   const by = arg("--by") ?? "open-coord-review script";
   const restoreId = arg("--restore");
   if (restoreId) {
-    console.log(JSON.stringify(await restoreOpenCoordReview(restoreId, by)));
+    console.log(JSON.stringify(await restoreOpenCoordLink(restoreId, by)));
     return;
   }
   const maxDriftM = await loadMaxDriftM();
@@ -44,18 +44,15 @@ async function main(): Promise<void> {
     console.log(JSON.stringify({ checked, toPull: pull.length, byReason }, null, 2));
     return;
   }
-  let moved = 0;
-  let links = 0;
+  let pulled = 0;
   let skipped = 0;
   for (const p of pull) {
-    const r = await moveOpenCoordToReview(p, by);
-    if (r.moved) {
-      moved += 1;
-      links += r.links;
-    } else skipped += 1;
+    const r = await pullOpenCoordLink(p, by);
+    if (r.pulled) pulled += 1;
+    else skipped += 1;
   }
   console.log(`APPLIED. ${OPEN_COORD_MAX_DRIFT_SETTING} = ${maxDriftM}.`);
-  console.log(JSON.stringify({ checked, moved, linksMoved: links, skippedAlreadyGone: skipped, byReason }, null, 2));
+  console.log(JSON.stringify({ checked, pulled, skippedAlreadyGone: skipped, byReason }, null, 2));
 }
 
 main()

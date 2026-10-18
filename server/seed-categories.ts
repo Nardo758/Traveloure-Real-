@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { serviceCategories } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { noSeederOnlyKeyPresent } from "./seeds/lib/boot-seed-rules";
 
 const coreCategories = [
   { name: "Photography & Videography", slug: "photography-videography", description: "Portrait, event, engagement, family, architectural photography and travel videos, drone footage", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["portfolio", "insurance"], priceRange: { min: 150, max: 1000 }, sortOrder: 1 , commissionBandKey: "limited" },
@@ -53,9 +54,30 @@ const coreCategories = [
   // bundle-key-colliding category is seeded again.
 ];
 
+/**
+ * Boot rule (ledger `2026-10-18-boot-reference-seeding`): an admin can delete a category, so this runs only
+ * while NONE of the slugs that only this seeder creates is present (migrations 034/289 create the others).
+ * Pinned against the migrations by server/__tests__/boot-seed-rules.test.ts.
+ */
+export const CATEGORY_SEEDER_ONLY_SLUGS: readonly string[] = [
+  "taskrabbit-services",
+  "health-wellness",
+  "pets-animals",
+  "technology-connectivity",
+  "language-translation",
+  "specialty-services",
+  "visa-assistance",
+];
+
+/** The slugs this seeder writes, for the pin. */
+export const CATEGORY_SEED_SLUGS: readonly string[] = coreCategories.map((c) => c.slug);
+
 export async function seedCategories(): Promise<{ created: number; existing: number }> {
   let created = 0;
   let existing = 0;
+  if (!(await noSeederOnlyKeyPresent(serviceCategories, serviceCategories.slug, CATEGORY_SEEDER_ONLY_SLUGS))) {
+    return { created: 0, existing: coreCategories.length };
+  }
 
   for (const cat of coreCategories) {
     const exists = await db.select().from(serviceCategories)

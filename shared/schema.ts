@@ -12749,17 +12749,23 @@ export const itineraryItemOpenCoords = pgTable("itinerary_item_open_coords", {
   matchedAt: timestamp("matched_at"),
 });
 
-// Open coordinates pulled out of routing for review (migration 391, LG-2 Ask 1). The open_place_coords row and its
-// item links are snapshots; restoring puts them back. No FK: the moved row is no longer in open_place_coords.
-export const openCoordReview = pgTable("open_coord_review", {
+// Item → open place links pulled out of routing for a person to check (migration 391, LG-2 Ask 1). The open place
+// itself is never moved. No FK: the pulled link no longer exists. Restoring puts the link back once.
+export const itineraryItemOpenCoordsReview = pgTable("itinerary_item_open_coords_review", {
   id: varchar("id", { length: 64 }).primaryKey(),
+  itemId: varchar("item_id"),
   openCoordId: varchar("open_coord_id", { length: 64 }),
+  osmType: varchar("osm_type", { length: 16 }),
+  osmId: bigint("osm_id", { mode: "number" }),
+  displayName: text("display_name"),
+  itemLat: decimal("item_lat", { precision: 10, scale: 7 }),
+  itemLng: decimal("item_lng", { precision: 10, scale: 7 }),
+  distanceM: integer("distance_m"),
   reason: varchar("reason", { length: 32 }),
-  driftM: integer("drift_m"),
-  openRow: jsonb("open_row"),
-  itemLinks: jsonb("item_links"),
-  movedAt: timestamp("moved_at"),
-  movedBy: varchar("moved_by", { length: 255 }),
+  linkSource: varchar("link_source", { length: 16 }),
+  linkMatchedAt: timestamp("link_matched_at"),
+  removedAt: timestamp("removed_at"),
+  removedBy: varchar("removed_by", { length: 255 }),
   restoredAt: timestamp("restored_at"),
   restoredBy: varchar("restored_by", { length: 255 }),
 });

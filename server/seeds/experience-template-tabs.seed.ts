@@ -10,6 +10,19 @@ import {
 } from "@shared/schema";
 import { eq, inArray, and, sql } from "drizzle-orm";
 import { SELECTION_CONTROL_SEED } from "@shared/selection-control-seed";
+import { createdIds, recordCreated } from "./lib/boot-seed-rules";
+
+// Boot rule (ledger `2026-10-18-boot-reference-seeding`): every UPDATE below finishes a row THIS boot
+// created and touches no other — a row that existed before this boot is never rewritten. `false` when
+// nothing was created, so a steady-state boot issues no UPDATE that can match.
+const onlyCreatedTypes = () => {
+  const ids = createdIds("experience_types");
+  return ids.length ? inArray(experienceTypes.id, ids) : sql`false`;
+};
+const onlyCreatedTabs = () => {
+  const ids = createdIds("experience_template_tabs");
+  return ids.length ? inArray(experienceTemplateTabs.id, ids) : sql`false`;
+};
 import { cancellationTierFilterLabel, type CancellationPolicyType } from "@shared/cancellation-schedule";
 
 interface FilterOption {
@@ -98,6 +111,7 @@ async function getOrCreateExperienceType(slug: string, name: string): Promise<st
     isActive: true,
     sortOrder: 0,
   }).returning();
+  recordCreated("experience_types", created.id);
   return created.id;
 }
 
@@ -121,6 +135,7 @@ async function seedTabWithFilters(experienceTypeId: string, tab: TabDef, sortOrd
     isActive: true,
   }).returning();
 
+  recordCreated("experience_template_tabs", createdTab.id);
   console.log(`  Created tab: ${tab.name}`);
 
   for (let filterIdx = 0; filterIdx < tab.filters.length; filterIdx++) {
@@ -202,6 +217,7 @@ export async function relabelCancellationFilterOptions(): Promise<number> {
 async function backfillSelectionControls(experienceTypeId: string, templateSlug: string) {
   const tabControls = SELECTION_CONTROL_SEED[templateSlug];
   if (!tabControls) return;
+  if (createdIds("experience_template_tabs").length === 0) return;
 
   for (const [tabSlug, selectionControls] of Object.entries(tabControls)) {
     const [tab] = await db.select().from(experienceTemplateTabs)
@@ -214,8 +230,7 @@ async function backfillSelectionControls(experienceTypeId: string, templateSlug:
     const existingConfig = (tab.controlConfig as Record<string, unknown> | null) ?? {};
     await db.update(experienceTemplateTabs)
       .set({ controlConfig: { ...existingConfig, selectionControls } })
-      .where(eq(experienceTemplateTabs.id, tab.id));
-    console.log(`  Selection controls -> ${templateSlug}/${tabSlug} (${selectionControls.length})`);
+      .where(and(eq(experienceTemplateTabs.id, tab.id), onlyCreatedTabs()));
   }
 }
 
@@ -4826,12 +4841,8 @@ const sportsEventTabs: TabDef[] = [
 
 export async function seedExperienceTemplateTabs() {
   console.log("Seeding experience template tabs and filters...");
-  try {
-    const relabelled = await relabelCancellationFilterOptions();
-    if (relabelled > 0) console.log(`  Cancellation filter labels corrected from the schedule: ${relabelled} row(s)`);
-  } catch (err) {
-    console.error("[seed] cancellation filter relabel failed (non-fatal):", (err as any)?.message);
-  }
+  // Boot rule (ledger `2026-10-18-boot-reference-seeding`): the cancellation-label relabel rewrites existing
+  // rows, so it no longer runs at boot — `npx tsx scripts/seed-boot-content.ts --only=cancellation-labels`.
 
   const templates: Array<{
     slug: string;
@@ -5111,6 +5122,7 @@ export async function seedExperienceTemplateTabs() {
  */
 async function updateExperienceTypeNames(templates: Array<{ slug: string; name: string }>) {
   const nameBySlug = new Map(templates.map((t) => [t.slug, t.name]));
+  if (createdIds("experience_types").length === 0) return;
   try {
     const rows = await db
       .select({ slug: experienceTypes.slug, name: experienceTypes.name })
@@ -5123,14 +5135,16 @@ async function updateExperienceTypeNames(templates: Array<{ slug: string; name: 
       return;
     }
 
+    let changed = 0;
     for (const row of stale) {
-      await db
+      const r = await db
         .update(experienceTypes)
         .set({ name: nameBySlug.get(row.slug)! })
-        .where(eq(experienceTypes.slug, row.slug));
-      console.log(`Experience type renamed: "${row.name}" -> "${nameBySlug.get(row.slug)}" (${row.slug})`);
+        .where(and(eq(experienceTypes.slug, row.slug), onlyCreatedTypes()))
+        .returning({ id: experienceTypes.id });
+      changed += r.length;
     }
-    console.log(`Experience type names reconciled (${stale.length} row(s) updated).`);
+    if (changed > 0) console.log(`Experience type names set on new rows (${changed} row(s)).`);
   } catch (err) {
     // Never fail a boot over a display name. A row that keeps its old name renders the old label,
     // which is stale but honest — it is still the name of a real row (§13).
@@ -5157,6 +5171,7 @@ async function updateExperienceTypeSwitches(
   templates: Array<{ slug: string; switches: OccasionSwitches }>,
 ) {
   const bySlug = new Map(templates.map((t) => [t.slug, t.switches]));
+  if (createdIds("experience_types").length === 0) return;
   try {
     const rows = await db
       .select({
@@ -5188,9 +5203,10 @@ async function updateExperienceTypeSwitches(
       return;
     }
 
+    let changed = 0;
     for (const row of stale) {
       const sw = bySlug.get(row.slug)!;
-      await db
+      const r = await db
         .update(experienceTypes)
         .set({
           defaultStops: sw.stops,
@@ -5200,9 +5216,11 @@ async function updateExperienceTypeSwitches(
           vocabulary: sw.vocabulary,
           defaultVisibility: sw.visibility,
         })
-        .where(eq(experienceTypes.slug, row.slug));
+        .where(and(eq(experienceTypes.slug, row.slug), onlyCreatedTypes()))
+        .returning({ id: experienceTypes.id });
+      changed += r.length;
     }
-    console.log(`Experience type occasion switches seeded (${stale.length} row(s) updated).`);
+    if (changed > 0) console.log(`Experience type occasion switches set on new rows (${changed} row(s)).`);
   } catch (err) {
     // Columns may not exist yet in an environment that has not run migration 276 — the switches
     // stay NULL, which every reader must already treat as "not set" and render as the plain-trip
@@ -5253,6 +5271,7 @@ async function updateExperienceTypeRoles(
   templates: Array<{ slug: string; rolesNeeded: readonly OccasionRoleKey[] }>,
 ) {
   const bySlug = new Map(templates.map((t) => [t.slug, t.rolesNeeded]));
+  if (createdIds("experience_types").length === 0) return;
   try {
     const rows = await db
       .select({ slug: experienceTypes.slug, rolesNeeded: experienceTypes.rolesNeeded })
@@ -5273,13 +5292,16 @@ async function updateExperienceTypeRoles(
       return;
     }
 
+    let changed = 0;
     for (const row of stale) {
-      await db
+      const r = await db
         .update(experienceTypes)
         .set({ rolesNeeded: [...bySlug.get(row.slug)!] })
-        .where(eq(experienceTypes.slug, row.slug));
+        .where(and(eq(experienceTypes.slug, row.slug), onlyCreatedTypes()))
+        .returning({ id: experienceTypes.id });
+      changed += r.length;
     }
-    console.log(`Experience type roles_needed seeded (${stale.length} row(s) updated).`);
+    if (changed > 0) console.log(`Experience type roles_needed set on new rows (${changed} row(s)).`);
   } catch (err) {
     // The column may not exist yet in an environment that has not run migration 280. roles_needed
     // stays NULL, which every reader must treat as NOT SET — omitting the hire prompt entirely and
@@ -5290,6 +5312,7 @@ async function updateExperienceTypeRoles(
 }
 
 async function updateExperienceTypeHeroConfigs() {
+  if (createdIds("experience_types").length === 0 && createdIds("experience_template_tabs").length === 0) return;
   type HeroConfig = {
     headcountLabel?: string;
     showKids?: boolean;
@@ -5588,7 +5611,7 @@ async function updateExperienceTypeHeroConfigs() {
             locationLabel: cfg.locationLabel,
             ...(cfg.contextFields !== undefined ? { contextFields: cfg.contextFields } : {}),
           })
-          .where(eq(experienceTypes.slug, slug));
+          .where(and(eq(experienceTypes.slug, slug), onlyCreatedTypes()));
       } catch {
         // Row may not exist yet in this environment; skip silently
       }
@@ -5651,7 +5674,7 @@ async function updateExperienceTypeHeroConfigs() {
       .from(experienceTypes)
       .where(and(inArray(experienceTypes.slug, INACTIVE_SLUGS), eq(experienceTypes.isActive, true)));
     for (const row of stillActive) {
-      await db.update(experienceTypes).set({ isActive: false }).where(eq(experienceTypes.slug, row.slug));
+      await db.update(experienceTypes).set({ isActive: false }).where(and(eq(experienceTypes.slug, row.slug), onlyCreatedTypes()));
     }
   } catch {
     // Skip silently if table/column not present
@@ -5681,7 +5704,7 @@ async function updateExperienceTypeHeroConfigs() {
         await db
           .update(experienceTemplateTabs)
           .set({ tabType })
-          .where(eq(experienceTemplateTabs.slug, tabSlug));
+          .where(and(eq(experienceTemplateTabs.slug, tabSlug), onlyCreatedTabs()));
       } catch {
         // Column may not exist in older environments; skip silently
       }
@@ -5742,7 +5765,7 @@ async function updateExperienceTypeHeroConfigs() {
         await db
           .update(experienceTemplateTabs)
           .set({ controlConfig: { ...existing, ...config } })
-          .where(eq(experienceTemplateTabs.id, tab.id));
+          .where(and(eq(experienceTemplateTabs.id, tab.id), onlyCreatedTabs()));
       }
     };
 

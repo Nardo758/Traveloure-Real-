@@ -1,37 +1,39 @@
 /**
- * LG-2 Ask 1 (ledger `2026-10-18-lg2-open-coord-review`; migration 391): open coordinates that cannot be trusted are
- * MOVED out of routing into `open_coord_review`, never deleted.
+ * LG-2 Ask 1 (ledger `2026-10-18-lg2-open-coord-review`; migration 391): item → open place LINKS that cannot be trusted
+ * are pulled out of routing into `itinerary_item_open_coords_review`. The open place (`open_place_coords`) is never moved
+ * or changed; only the link leaves.
  *
- * A row is pulled when either holds (decision-maker's rulings):
- *   · it names a ward/city, a neighbourhood or a street — pulled regardless of distance (`admin` | `neighbourhood` |
- *     `street`), or
- *   · it sits more than `open_coord_max_drift_m` (platform_settings; admin-editable, Leon's value 500) from the point of
- *     a plan item it stands for (`drift`) — the item's own stored point, for each item linked to it or carrying its
- *     Google place id.
+ * A link is pulled when one holds (decision-maker's rulings; checked in this order, the first names the reason):
+ *   · the open place names a ward/city, a neighbourhood or a street — pulled regardless of distance (`admin` |
+ *     `neighbourhood` | `street`);
+ *   · the open place's name and the item's name do not contain one another (`name_mismatch`, Ask 1's containment rule):
+ *     folded to letters and digits, the place's name (or its part before a comma or bracket) must appear in the item's
+ *     title or location name, or the item's name in the place's;
+ *   · the open place sits more than `open_coord_max_drift_m` (platform_settings; admin-editable, Leon's value 500) from
+ *     the item's own stored point (`drift`).
  *
- * The kinds are read from the row's NAME: `open_place_coords` stores no OSM class, and re-asking OSM is out (batch runs
- * against public Nominatim are over). The name rules lean towards pulling: a pulled row only makes an item honestly
- * unrouted until a person restores it, while a wrong point routes a traveller to the wrong place (§13).
+ * The kinds are read from the place's NAME: `open_place_coords` stores no OSM class and public Nominatim is not
+ * re-asked; the class is stored on the post-Oct-21 geocoder run. The rules lean towards pulling: a pulled link only
+ * makes an item honestly unrouted until a person restores it, while a wrong point routes a traveller to the wrong place.
  *
- * The move is one transaction per row: the row and all its item links are copied verbatim into ONE review row, then
- * the row is deleted (its links go with it, ON DELETE CASCADE). `restoreOpenCoordReview` puts both back, once.
- * Admin rows (`admin_place_coords`) are a person's own placement and are never touched here.
+ * A pulled item also stops reaching an OSM place through its Google place id (`pulledOpenItems` → `routingPointFor`'s
+ * `itemPulled`), or the same place would come straight back; an admin point for its place id still wins.
  */
 import crypto from "node:crypto";
-import { eq, inArray, isNull, and, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, isNotNull } from "drizzle-orm";
 import { db } from "../../db";
 import {
   cityNeighborhoods,
   itineraryItemOpenCoords,
+  itineraryItemOpenCoordsReview,
   itineraryItems,
-  openCoordReview,
   openPlaceCoords,
   platformSettingsTable,
 } from "@shared/schema";
 import { metresBetween } from "../item-osm-regeocode.service";
 
 export const OPEN_COORD_MAX_DRIFT_SETTING = "open_coord_max_drift_m";
-export const OPEN_COORD_REVIEW_REASONS = ["admin", "neighbourhood", "street", "drift"] as const;
+export const OPEN_COORD_REVIEW_REASONS = ["admin", "neighbourhood", "street", "name_mismatch", "drift"] as const;
 export type OpenCoordReviewReason = (typeof OPEN_COORD_REVIEW_REASONS)[number];
 
 /** Pure. Lower-case letters and digits only (macrons folded), so "Higashiyama-ku" and "higashiyama ku" compare equal. */
@@ -48,11 +50,11 @@ const ADMIN_NAME = /(^|[\s-])(ward|city|prefecture|town|village|district|ku|shi|
 // A street, road or lane, in English or Japanese (dōri / dori / kōji / koji / 通 / 小路).
 const STREET_NAME = /(^|[\s-])(street|st\.?|road|rd\.?|avenue|ave\.?|lane|alley|dori|doori|koji|kouji)$|(dori|koji|kouji)$|通り?$|小路$/i;
 
-/** Pure. The kind a row's name says it is, or null. A neighbourhood is a name the spine (`city_neighborhoods`) carries. */
+/** Pure. The kind a place's name says it is, or null. A neighbourhood is a name the spine (`city_neighborhoods`) carries. */
 export function kindFromName(
   name: string | null | undefined,
   neighbourhoodNames: ReadonlySet<string>,
-): Exclude<OpenCoordReviewReason, "drift"> | null {
+): "admin" | "neighbourhood" | "street" | null {
   const raw = (name ?? "").normalize("NFKD").replace(/[̀-ͯ]/g, "").trim();
   if (!raw) return null;
   if (neighbourhoodNames.has(foldName(raw))) return "neighbourhood";
@@ -61,32 +63,41 @@ export function kindFromName(
   return null;
 }
 
-export interface ReviewCandidateInput {
-  id: string;
-  name: string | null;
-  lat: number | null;
-  lng: number | null;
-  /** The stored points of the plan items this row stands for. */
-  itemPoints: Array<{ lat: number; lng: number }>;
+/**
+ * Pure. Ask 1's containment rule: the place's name (whole, or its part before a comma or bracket) appears in the item's
+ * title or location name, or one of those appears in the place's name. Empty names never match.
+ */
+export function namesContainEachOther(placeName: string | null | undefined, itemNames: ReadonlyArray<string | null | undefined>): boolean {
+  const place = [foldName(placeName), foldName((placeName ?? "").split(/[,(（]/)[0])].filter((s) => s.length >= 2);
+  const items = itemNames.map(foldName).filter((s) => s.length >= 2);
+  return place.some((p) => items.some((i) => i.includes(p) || p.includes(i)));
 }
 
-/** Pure. Why a row is pulled (kind first, then drift), and its largest drift in whole metres when one is measurable. */
-export function classifyOpenCoordRow(
-  row: ReviewCandidateInput,
+export interface ReviewLinkInput {
+  displayName: string | null;
+  placeLat: number | null;
+  placeLng: number | null;
+  itemTitle: string | null;
+  itemLocationName: string | null;
+  itemLat: number | null;
+  itemLng: number | null;
+}
+
+/** Pure. Why a link is pulled (first reason in order), and the distance in whole metres when both points exist. */
+export function classifyOpenCoordLink(
+  link: ReviewLinkInput,
   neighbourhoodNames: ReadonlySet<string>,
   maxDriftM: number,
-): { reason: OpenCoordReviewReason | null; driftM: number | null } {
-  let driftM: number | null = null;
-  if (row.lat != null && row.lng != null) {
-    for (const p of row.itemPoints) {
-      const d = Math.round(metresBetween(row.lat, row.lng, p.lat, p.lng));
-      if (driftM == null || d > driftM) driftM = d;
-    }
-  }
-  const kind = kindFromName(row.name, neighbourhoodNames);
-  if (kind) return { reason: kind, driftM };
-  if (driftM != null && driftM > maxDriftM) return { reason: "drift", driftM };
-  return { reason: null, driftM };
+): { reason: OpenCoordReviewReason | null; distanceM: number | null } {
+  const distanceM =
+    link.placeLat != null && link.placeLng != null && link.itemLat != null && link.itemLng != null
+      ? Math.round(metresBetween(link.placeLat, link.placeLng, link.itemLat, link.itemLng))
+      : null;
+  const kind = kindFromName(link.displayName, neighbourhoodNames);
+  if (kind) return { reason: kind, distanceM };
+  if (!namesContainEachOther(link.displayName, [link.itemTitle, link.itemLocationName])) return { reason: "name_mismatch", distanceM };
+  if (distanceM != null && distanceM > maxDriftM) return { reason: "drift", distanceM };
+  return { reason: null, distanceM };
 }
 
 /** The admin setting, or null when absent or not a positive number (the pull then refuses: no code fallback). */
@@ -106,132 +117,145 @@ const num = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
-export interface ReviewPlanRow {
-  id: string;
+export interface ReviewPlanLink {
+  itemId: string;
+  openCoordId: string;
   reason: OpenCoordReviewReason;
-  driftM: number | null;
+  distanceM: number | null;
 }
 
-/** Every live open row, classified. Rows not pulled are counted, not listed. */
-export async function planOpenCoordReview(maxDriftM: number): Promise<{ checked: number; pull: ReviewPlanRow[] }> {
-  const rows = await db
-    .select({ id: openPlaceCoords.id, name: openPlaceCoords.name, lat: openPlaceCoords.lat, lng: openPlaceCoords.lng, googlePlaceId: openPlaceCoords.googlePlaceId })
-    .from(openPlaceCoords);
-  if (rows.length === 0) return { checked: 0, pull: [] };
-
+/** Every live link, classified (a pair already restored after a check is skipped). Links not pulled are counted, not listed. */
+export async function planOpenCoordReview(maxDriftM: number): Promise<{ checked: number; pull: ReviewPlanLink[] }> {
+  const links = await db
+    .select({
+      itemId: itineraryItemOpenCoords.itemId,
+      openCoordId: openPlaceCoords.id,
+      displayName: openPlaceCoords.name,
+      placeLat: openPlaceCoords.lat,
+      placeLng: openPlaceCoords.lng,
+      itemTitle: itineraryItems.title,
+      itemLocationName: itineraryItems.locationName,
+      itemLat: itineraryItems.latitude,
+      itemLng: itineraryItems.longitude,
+    })
+    .from(itineraryItemOpenCoords)
+    .innerJoin(openPlaceCoords, eq(openPlaceCoords.id, itineraryItemOpenCoords.openCoordId))
+    .innerJoin(itineraryItems, eq(itineraryItems.id, itineraryItemOpenCoords.itemId));
+  if (links.length === 0) return { checked: 0, pull: [] };
   const neighbourhoodNames = new Set(
     (await db.select({ name: cityNeighborhoods.name }).from(cityNeighborhoods)).map((n) => foldName(n.name)).filter(Boolean),
   );
-
-  // Item points, by link and by Google place id.
-  const linked = await db
-    .select({ openCoordId: itineraryItemOpenCoords.openCoordId, lat: itineraryItems.latitude, lng: itineraryItems.longitude })
-    .from(itineraryItemOpenCoords)
-    .innerJoin(itineraryItems, eq(itineraryItems.id, itineraryItemOpenCoords.itemId));
-  const placeIds = rows.map((r) => r.googlePlaceId).filter((p): p is string => !!p);
-  const byPlace = placeIds.length
-    ? await db
-        .select({ placeId: itineraryItems.googlePlaceId, lat: itineraryItems.latitude, lng: itineraryItems.longitude })
-        .from(itineraryItems)
-        .where(inArray(itineraryItems.googlePlaceId, placeIds))
-    : [];
-  const pointsFor = new Map<string, Array<{ lat: number; lng: number }>>();
-  const add = (key: string | null, lat: unknown, lng: unknown) => {
-    const a = num(lat);
-    const b = num(lng);
-    if (!key || a == null || b == null) return;
-    pointsFor.set(key, [...(pointsFor.get(key) ?? []), { lat: a, lng: b }]);
-  };
-  for (const l of linked) add(l.openCoordId, l.lat, l.lng);
-  const rowIdsByPlace = new Map<string, string[]>();
-  for (const r of rows) if (r.googlePlaceId) rowIdsByPlace.set(r.googlePlaceId, [...(rowIdsByPlace.get(r.googlePlaceId) ?? []), r.id]);
-  for (const p of byPlace) for (const id of rowIdsByPlace.get(p.placeId ?? "") ?? []) add(id, p.lat, p.lng);
-
-  const pull: ReviewPlanRow[] = [];
-  for (const r of rows) {
-    const c = classifyOpenCoordRow(
-      { id: r.id, name: r.name, lat: num(r.lat), lng: num(r.lng), itemPoints: pointsFor.get(r.id) ?? [] },
+  // A link a person checked and restored is not pulled again for the same place.
+  const restored = new Set(
+    (
+      await db
+        .select({ itemId: itineraryItemOpenCoordsReview.itemId, openCoordId: itineraryItemOpenCoordsReview.openCoordId })
+        .from(itineraryItemOpenCoordsReview)
+        .where(isNotNull(itineraryItemOpenCoordsReview.restoredAt))
+    ).map((r) => `${r.itemId}|${r.openCoordId}`),
+  );
+  const pull: ReviewPlanLink[] = [];
+  for (const l of links) {
+    if (restored.has(`${l.itemId}|${l.openCoordId}`)) continue;
+    const c = classifyOpenCoordLink(
+      {
+        displayName: l.displayName,
+        placeLat: num(l.placeLat),
+        placeLng: num(l.placeLng),
+        itemTitle: l.itemTitle,
+        itemLocationName: l.itemLocationName,
+        itemLat: num(l.itemLat),
+        itemLng: num(l.itemLng),
+      },
       neighbourhoodNames,
       maxDriftM,
     );
-    if (c.reason) pull.push({ id: r.id, reason: c.reason, driftM: c.driftM });
+    if (c.reason && l.openCoordId) pull.push({ itemId: l.itemId, openCoordId: l.openCoordId, reason: c.reason, distanceM: c.distanceM });
   }
-  return { checked: rows.length, pull };
+  return { checked: links.length, pull };
 }
 
 /**
- * Move one row and its item links into review, in one transaction. A row already gone (moved by a concurrent run) is
- * skipped: `moved` is false and nothing is written.
+ * Pull one link: record it with what a person needs to check it, then remove it, in one transaction. A link that is
+ * gone, or now names a different place, is skipped: `pulled` is false and nothing is written.
  */
-export async function moveOpenCoordToReview(plan: ReviewPlanRow, movedBy: string): Promise<{ moved: boolean; links: number; reviewId: string | null }> {
+export async function pullOpenCoordLink(plan: ReviewPlanLink, removedBy: string): Promise<{ pulled: boolean; reviewId: string | null }> {
   return db.transaction(async (tx) => {
-    const [row] = await tx.select().from(openPlaceCoords).where(eq(openPlaceCoords.id, plan.id)).for("update");
-    if (!row) return { moved: false, links: 0, reviewId: null };
-    const links = await tx.select().from(itineraryItemOpenCoords).where(eq(itineraryItemOpenCoords.openCoordId, plan.id));
+    const [link] = await tx
+      .select()
+      .from(itineraryItemOpenCoords)
+      .where(and(eq(itineraryItemOpenCoords.itemId, plan.itemId), eq(itineraryItemOpenCoords.openCoordId, plan.openCoordId)))
+      .for("update");
+    if (!link) return { pulled: false, reviewId: null };
+    const [place] = await tx.select().from(openPlaceCoords).where(eq(openPlaceCoords.id, plan.openCoordId));
+    const [item] = await tx.select({ lat: itineraryItems.latitude, lng: itineraryItems.longitude }).from(itineraryItems).where(eq(itineraryItems.id, plan.itemId));
     const reviewId = `rev_${crypto.randomUUID()}`;
-    await tx.insert(openCoordReview).values({
+    await tx.insert(itineraryItemOpenCoordsReview).values({
       id: reviewId,
-      openCoordId: row.id,
+      itemId: plan.itemId,
+      openCoordId: plan.openCoordId,
+      osmType: place?.osmType ?? null,
+      osmId: place?.osmId ?? null,
+      displayName: place?.name ?? null,
+      itemLat: item?.lat ?? null,
+      itemLng: item?.lng ?? null,
+      distanceM: plan.distanceM,
       reason: plan.reason,
-      driftM: plan.driftM,
-      openRow: { ...row, matchedAt: row.matchedAt ? row.matchedAt.toISOString() : null },
-      itemLinks: links.map((l) => ({ ...l, matchedAt: l.matchedAt ? l.matchedAt.toISOString() : null })),
-      movedAt: new Date(),
-      movedBy,
+      linkSource: link.source ?? null,
+      linkMatchedAt: link.matchedAt ?? null,
+      removedAt: new Date(),
+      removedBy,
     });
-    // The row's delete removes its links (ON DELETE CASCADE); they are already in the snapshot.
-    await tx.delete(openPlaceCoords).where(eq(openPlaceCoords.id, plan.id));
-    return { moved: true, links: links.length, reviewId };
+    await tx.delete(itineraryItemOpenCoords).where(eq(itineraryItemOpenCoords.itemId, plan.itemId));
+    return { pulled: true, reviewId };
   });
 }
 
 /**
- * Put a reviewed row back, once. The row comes back unless an open place with its id exists again (then that one is
- * kept); each link comes back when its item still exists and has no link of its own. The review row keeps its record
- * and is stamped restored.
+ * Put a checked link back, once. The link returns when its item and its open place still exist and the item has no
+ * other link; the review row is stamped restored either way, so a second restore is refused.
  */
-export async function restoreOpenCoordReview(
+export async function restoreOpenCoordLink(
   reviewId: string,
   restoredBy: string,
-): Promise<{ restored: boolean; rowRestored: boolean; linksRestored: number; reason?: "not_found" | "already_restored" }> {
+): Promise<{ restored: boolean; linkRestored: boolean; reason?: "not_found" | "already_restored" }> {
   return db.transaction(async (tx) => {
     const [claimed] = await tx
-      .update(openCoordReview)
+      .update(itineraryItemOpenCoordsReview)
       .set({ restoredAt: new Date(), restoredBy })
-      .where(and(eq(openCoordReview.id, reviewId), isNull(openCoordReview.restoredAt)))
+      .where(and(eq(itineraryItemOpenCoordsReview.id, reviewId), isNull(itineraryItemOpenCoordsReview.restoredAt)))
       .returning();
     if (!claimed) {
-      const [exists] = await tx.select({ id: openCoordReview.id }).from(openCoordReview).where(eq(openCoordReview.id, reviewId));
-      return { restored: false, rowRestored: false, linksRestored: 0, reason: exists ? "already_restored" : "not_found" };
+      const [exists] = await tx.select({ id: itineraryItemOpenCoordsReview.id }).from(itineraryItemOpenCoordsReview).where(eq(itineraryItemOpenCoordsReview.id, reviewId));
+      return { restored: false, linkRestored: false, reason: exists ? "already_restored" : "not_found" };
     }
-    const r = claimed.openRow as Record<string, any>;
+    const [item] = await tx.select({ id: itineraryItems.id }).from(itineraryItems).where(eq(itineraryItems.id, claimed.itemId ?? ""));
+    const [place] = await tx.select({ id: openPlaceCoords.id }).from(openPlaceCoords).where(eq(openPlaceCoords.id, claimed.openCoordId ?? ""));
+    if (!item || !place) return { restored: true, linkRestored: false };
     const inserted = await tx
-      .insert(openPlaceCoords)
-      .values({
-        id: r.id,
-        source: r.source ?? null,
-        osmType: r.osmType ?? null,
-        osmId: r.osmId ?? null,
-        wikidataQid: r.wikidataQid ?? null,
-        lat: r.lat ?? null,
-        lng: r.lng ?? null,
-        name: r.name ?? null,
-        googlePlaceId: r.googlePlaceId ?? null,
-        matchedBy: r.matchedBy ?? null,
-        attribution: r.attribution ?? null,
-        matchedAt: r.matchedAt ? new Date(r.matchedAt) : null,
-      })
+      .insert(itineraryItemOpenCoords)
+      .values({ itemId: item.id, openCoordId: place.id, source: claimed.linkSource, matchedAt: claimed.linkMatchedAt })
       .onConflictDoNothing()
-      .returning({ id: openPlaceCoords.id });
-    let linksRestored = 0;
-    for (const l of (claimed.itemLinks as Array<Record<string, any>>) ?? []) {
-      const res = await tx.execute(sql`
-        INSERT INTO itinerary_item_open_coords (item_id, open_coord_id, source, matched_at)
-        SELECT ${l.itemId}, ${r.id}, ${l.source ?? null}, ${l.matchedAt ? new Date(l.matchedAt) : null}
-        WHERE EXISTS (SELECT 1 FROM itinerary_items WHERE id = ${l.itemId})
-        ON CONFLICT (item_id) DO NOTHING`);
-      linksRestored += (res as any).rowCount ?? 0;
-    }
-    return { restored: true, rowRestored: inserted.length > 0, linksRestored };
+      .returning({ itemId: itineraryItemOpenCoords.itemId });
+    return { restored: true, linkRestored: inserted.length > 0 };
   });
+}
+
+/**
+ * The items whose link is pulled and not yet restored. Such an item does not fall back to an OSM place through its Google
+ * place id (`routingPointFor` `itemPulled`). Never throws: a failed read is "none pulled".
+ */
+export async function pulledOpenItems(itemIds: readonly string[]): Promise<Set<string>> {
+  const ids = Array.from(new Set(itemIds.filter((p) => typeof p === "string" && p.length > 0)));
+  if (ids.length === 0) return new Set();
+  try {
+    const rows = await db
+      .select({ itemId: itineraryItemOpenCoordsReview.itemId })
+      .from(itineraryItemOpenCoordsReview)
+      .where(and(inArray(itineraryItemOpenCoordsReview.itemId, ids), isNotNull(itineraryItemOpenCoordsReview.removedAt), isNull(itineraryItemOpenCoordsReview.restoredAt)));
+    return new Set(rows.map((r) => r.itemId).filter((x): x is string => !!x));
+  } catch (err: any) {
+    console.error(`[open-coords] review read failed: ${String(err?.message ?? err).slice(0, 200)}`);
+    return new Set();
+  }
 }
