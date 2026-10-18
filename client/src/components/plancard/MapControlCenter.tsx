@@ -50,6 +50,8 @@ import {
   partnerPlaces,
   placesInTab,
   searchPlaces,
+  PARTNER_COMMISSION_NOTE,
+  PARTNER_PRICE_LINK_LABEL,
   type BrowseTabKey,
 } from "@/lib/browse-supply";
 import { SceneMapGoogle } from "./map/SceneMapGoogle";
@@ -714,6 +716,7 @@ export function MapControlCenter({
                     .filter(Boolean)
                     .join(" · ")}
                 </p>
+                {selectedBrowse.kind === "partner" ? <PartnerPriceLink productId={selectedBrowse.id} /> : null}
                 {(() => {
                   if (guest) {
                     // Step 8d: the guest's one add is handed back — the page carries it through sign-in.
@@ -816,6 +819,35 @@ export function MapControlCenter({
         ) : null}
         {!center && !geocoding ? <MapPin className="hidden" aria-hidden="true" /> : null}
       </div>
+    </div>
+  );
+}
+
+/**
+ * PX-1 (ruling 3): a partner place shows no stored price. "See current price" opens the partner's own
+ * page through the TRACKED redirect (`POST /api/content/affiliate-redirect` — it records the click and
+ * resolves the link server-side, §16), and the commission is said out loud beside it.
+ */
+function PartnerPriceLink({ productId }: { productId: string }) {
+  const [failed, setFailed] = useState(false);
+  const open = async () => {
+    setFailed(false);
+    try {
+      const res = await apiRequest("POST", "/api/content/affiliate-redirect", { itemId: productId, itemType: "affiliate" });
+      const data = (await res.json()) as { url?: string };
+      if (data?.url) window.open(data.url, "_blank", "noopener,noreferrer");
+      else setFailed(true);
+    } catch {
+      setFailed(true);
+    }
+  };
+  return (
+    <div className="space-y-0.5" data-testid="map-browse-partner-price">
+      <button type="button" className="text-xs font-medium underline" onClick={open} data-testid="map-browse-partner-price-link">
+        {PARTNER_PRICE_LINK_LABEL}
+      </button>
+      <p className="text-[11px] text-muted-foreground" data-testid="map-browse-partner-commission">{PARTNER_COMMISSION_NOTE}</p>
+      {failed ? <p className="text-[11px] text-destructive">Couldn't open the partner's page. Try again in a moment.</p> : null}
     </div>
   );
 }

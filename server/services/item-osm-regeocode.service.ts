@@ -50,7 +50,17 @@ export interface RegeocodeItem {
 }
 
 export type RegeocodeOutcome =
-  | { kind: "resolved"; lat: number; lng: number; matchedName: string; matches: number; metresFromStored: number | null }
+  | {
+      kind: "resolved";
+      lat: number;
+      lng: number;
+      matchedName: string;
+      matches: number;
+      metresFromStored: number | null;
+      /** LG-1: the matched OSM element (v2), recorded with the coordinate. */
+      osmType?: string | null;
+      osmId?: number | null;
+    }
   | { kind: "ambiguous"; matches: number; names: string[]; spreadM: number }
   | { kind: "unresolved"; reason: "no_named_tokens" | "area_title" | "no_match" | "no_results" }
   | { kind: "unreachable" };
@@ -296,12 +306,15 @@ export interface RegeocodeV2Result {
 /** Pure. Classify answers against already-normalised item tokens. */
 export function classifyRegeocodeHitsV2(item: RegeocodeItem, itemTokens: ReadonlySet<string>, hits: readonly any[]): RegeocodeV2Outcome {
   if (hits.length === 0) return { kind: "unresolved", reason: "no_results" };
-  const matching: Array<{ lat: number; lng: number; name: string }> = [];
+  const matching: Array<{ lat: number; lng: number; name: string; osmType: string | null; osmId: number | null }> = [];
   for (const hit of hits) {
     const name = answerNames(hit).find((n) => matchNormalisedName(n, itemTokens, item.destination));
     const lat = Number(hit?.lat);
     const lng = Number(hit?.lon);
-    if (name && Number.isFinite(lat) && Number.isFinite(lng)) matching.push({ lat, lng, name });
+    const osmId = Number(hit?.osm_id);
+    if (name && Number.isFinite(lat) && Number.isFinite(lng)) {
+      matching.push({ lat, lng, name, osmType: typeof hit?.osm_type === "string" ? hit.osm_type : null, osmId: Number.isFinite(osmId) ? osmId : null });
+    }
   }
   if (matching.length === 0) return { kind: "unresolved", reason: "no_match" };
   const first = matching[0];
@@ -310,7 +323,16 @@ export function classifyRegeocodeHitsV2(item: RegeocodeItem, itemTokens: Readonl
     return { kind: "ambiguous", matches: matching.length, names: Array.from(new Set(matching.map((m) => m.name))), spreadM };
   }
   const stored = item.storedLat != null && item.storedLng != null ? metresBetween(item.storedLat, item.storedLng, first.lat, first.lng) : null;
-  return { kind: "resolved", lat: first.lat, lng: first.lng, matchedName: first.name, matches: matching.length, metresFromStored: stored };
+  return {
+    kind: "resolved",
+    lat: first.lat,
+    lng: first.lng,
+    matchedName: first.name,
+    matches: matching.length,
+    metresFromStored: stored,
+    osmType: first.osmType,
+    osmId: first.osmId,
+  };
 }
 
 /** One item, v2. Never throws. The caller spaces calls by `NOMINATIM_MIN_INTERVAL_MS`. */

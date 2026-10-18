@@ -12694,6 +12694,32 @@ export const phoneDeliveryChoices = pgTable("phone_delivery_choices", {
   tripIdx: index("idx_phone_delivery_choices_trip").on(table.tripId, table.userId, table.channel),
 }));
 
+// LG-1 (migration 389; ledger `2026-10-17-lg1-osm-place-coords`): routing coordinates that did not come from Google,
+// keyed by the Google place id. ODbL: OSM points live in their OWN table, apart from place_facts and itinerary_items,
+// each credited "© OpenStreetMap contributors". ONE writer each (server/services/routing/open-place-coords.service.ts).
+export const osmPlaceCoords = pgTable("osm_place_coords", {
+  placeId: varchar("place_id", { length: 255 }).primaryKey(),
+  lat: decimal("lat", { precision: 10, scale: 7 }),
+  lng: decimal("lng", { precision: 10, scale: 7 }),
+  osmType: varchar("osm_type", { length: 16 }),
+  osmId: bigint("osm_id", { mode: "number" }),
+  osmName: text("osm_name"),
+  matchedBy: varchar("matched_by", { length: 32 }),
+  attribution: text("attribution"),
+  matchedAt: timestamp("matched_at"),
+});
+
+// An admin-entered coordinate, read from the place's official site (LG-1 interim for curated stops).
+export const adminPlaceCoords = pgTable("admin_place_coords", {
+  placeId: varchar("place_id", { length: 255 }).primaryKey(),
+  lat: decimal("lat", { precision: 10, scale: 7 }),
+  lng: decimal("lng", { precision: 10, scale: 7 }),
+  sourceUrl: text("source_url"),
+  enteredBy: varchar("entered_by"),
+  enteredAt: timestamp("entered_at"),
+  note: text("note"),
+});
+
 export const launchWaitlist = pgTable("launch_waitlist", {
   id: varchar("id").primaryKey(),
   email: varchar("email", { length: 255 }),

@@ -20,6 +20,10 @@ import { SlipHeaderMeta, type SlipHeaderMetaProps } from "../SlipHeaderMeta";
 
 (globalThis as any).React = React;
 
+// Pinned to one zone so the run does not depend on the machine's: CI runs in UTC, and in a zone west
+// of UTC M1b's midnight-UTC timestamp formats as the day before. The zone is fixed here, never inferred.
+process.env.TZ = "UTC";
+
 function metaText(over: Partial<SlipHeaderMetaProps> = {}): string {
   const props: SlipHeaderMetaProps = {
     tripId: "d3a29ec0",
