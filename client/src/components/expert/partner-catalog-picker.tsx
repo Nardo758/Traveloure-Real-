@@ -11,7 +11,7 @@ import { Search, Plus, Check, Clock } from "lucide-react";
 // `parsePartnerSource`/`PARTNER_NETWORKS` live in the dependency-free client/src/lib/
 // partner-source.ts (workspace.tsx and server-side/test code import from there directly — this
 // component's own `@/components/ui/*` + React imports don't resolve outside a bundler).
-import { PARTNER_NETWORKS, buildPartnerDescription } from "@/lib/partner-source";
+import { PARTNER_NETWORKS, partnerAddFields } from "@/lib/partner-source";
 import { usePublishMapCandidates, isRealLatLng } from "@/lib/map-candidates";
 
 /**
@@ -91,7 +91,7 @@ export function PartnerCatalogPickerCore({
     queryFn: async () => {
       const res = await apiRequest(
         "GET",
-        `${network.path}?destination=${encodeURIComponent(destination)}&city=${encodeURIComponent(destination)}&limit=20`,
+        `${network.path}?destination=${encodeURIComponent(destination)}&city=${encodeURIComponent(destination)}&limit=20${network.live ? "&surface=expert_picker" : ""}`,
       );
       const json = await res.json();
       // §16 strip: rebuild each row from display fields only — bookingUrl/affiliateUrl on the
@@ -114,15 +114,15 @@ export function PartnerCatalogPickerCore({
 
   const addMutation = useMutation({
     mutationFn: async (item: PartnerCatalogItem) => {
-      const description = buildPartnerDescription(network.label, item.description);
+      // `estimated_cost` is a decimal(10,2) column — insertItineraryItemSchema (drizzle-zod) expects a
+      // STRING. A live source (Viator, VD-1) carries no partner price or description into the write.
+      const { description, estimatedCost } = partnerAddFields(network, item);
       if (isAuthoring) {
         const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, {
           title: item.title,
           itemType: "activity",
           description,
-          // `estimated_cost` is a decimal(10,2) column — insertItineraryItemSchema (drizzle-zod)
-          // expects a STRING, matching the same drift guard as transport-picker.tsx.
-          estimatedCost: item.price != null ? String(item.price) : undefined,
+          estimatedCost,
           dayNumber,
           ...(item.latitude != null && item.longitude != null
             ? { latitude: String(item.latitude), longitude: String(item.longitude) }
@@ -138,7 +138,7 @@ export function PartnerCatalogPickerCore({
         dayNumber,
         title: item.title,
         description,
-        estimatedCost: item.price != null ? String(item.price) : undefined,
+        estimatedCost,
       });
       return { res: await res.json(), viaSuggestion: true as const };
     },
@@ -219,7 +219,10 @@ export function PartnerCatalogPickerCore({
           data-testid="text-partner-catalog-availability"
         >
           <Clock className="w-3 h-3 shrink-0" />
-          <span>Fetched {formatFetchedAt(dataUpdatedAt)} · Availability confirmed at booking</span>
+          <span>
+            {network.live ? `Live from ${network.label} · prices as of ` : "Fetched "}
+            {formatFetchedAt(dataUpdatedAt)} · Availability confirmed at booking
+          </span>
         </div>
       )}
 

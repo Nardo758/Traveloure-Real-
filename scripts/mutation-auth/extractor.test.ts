@@ -277,10 +277,13 @@ test("resolves named re-exports used by authentication registration helpers", ()
  * inside the service (anyone else is 404). The feed itself, GET /cal/:file, is a read and is not counted here.
  * 707 / 698 → 708 / 699 (ledger `2026-10-17-lg1-leg-options-provenance`): POST /api/trips/:tripId/legs/:legId/options —
  * the dispatched path for the existing leg-options handler (the same plan WRITE gate as …/transport-legs/…/options).
+ * 709 / 700 → 710 / 701 (ledger `2026-10-18-viator-direct-live`): POST /api/viator/live/click — records an outbound
+ * open of a live Viator card on `affiliate_clicks` (ids only), behind `isAuthenticated`.
  * 708 / 699 → 709 / 700 (ledger `2026-10-17-lg1-osm-place-coords`): PUT /api/admin/place-coords/:placeId — an admin's
  * routing coordinate from the official site, under the §2 blanket admin guard, strict allowlist body.
- * 709 / 700 → 708 / 700 (ledger `2026-10-18-fd4-share-projection`): the shadowed POST /api/quick-start-itinerary twin in
- * server/routes/trips.routes.ts is deleted (§18c); the live route in server/routes.ts is unchanged, so unique paths stay 700.
+ *
+ * 710 / 701 → 709 / 701 (ledger `2026-10-18-fd4-share-projection`): the shadowed POST /api/quick-start-itinerary twin in
+ * server/routes/trips.routes.ts is deleted (§18c); the live route in server/routes.ts is unchanged, so unique paths stay 701.
  *
  * THE COUNTS ARE THE POINT: they exist so a route appearing or vanishing from
  * the mounted graph fails here. Now that the file is wired into CI, changing a
@@ -289,8 +292,8 @@ test("resolves named re-exports used by authentication registration helpers", ()
 test("current mounted graph parity includes auth helpers and shared api paths", () => {
   const root = process.cwd();
   const result = extractMountedMutations(path.join(root, "server/routes.ts"), root);
-  assert.equal(result.mutations.length, 708);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 700);
+  assert.equal(result.mutations.length, 709);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 701);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -300,10 +303,10 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "generated/security/mutation-auth-manifest.json"), "utf8"));
   const markdown = fs.readFileSync(path.join(root, "generated/security/mutation-auth-inventory.md"), "utf8");
   const endpointRows = markdown.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| ---")).slice(1);
-  assert.equal(endpointRows.length, 700);
-  // 708 / 700 (ledger `2026-10-18-fd4-share-projection`): the shadowed quick-start twin is deleted; unique paths stay 700.
-  assert.equal(manifest.rawRegistrationCount, 708);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 700);
+  assert.equal(endpointRows.length, 701);
+  // 709 / 701 (ledger `2026-10-18-fd4-share-projection`): the shadowed quick-start twin is deleted; unique paths stay 701.
+  assert.equal(manifest.rawRegistrationCount, 709);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 701);
   // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R274): user-data,
   // session-self; the owner/delegate check runs in the service before any write.
   // + POST /api/admin/content-sources/:id/public-ok (ledger `2026-10-03-official-facts-public-ok`, R278):
@@ -341,7 +344,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // + POST /api/trips/:tripId/legs/:legId/options (LG-1 item 4): user-data, session-self by the text heuristic; the
   // handler runs authorizeTripLogistics with requireWriteAccess.
   // + PUT /api/admin/place-coords/:placeId (LG-1): admin, behind the blanket /api/admin guard.
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 182, "user-data": 245, other: 242 });
+  // + POST /api/viator/live/click (VD-1): other, session-self — isAuthenticated, the user from the session.
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 182, "user-data": 245, other: 243 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
@@ -371,8 +375,9 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // + the three /api/trips/:tripId/phone-delivery writes (§8 phone delivery): session-self 356 → 359.
   // + POST /api/trips/:tripId/legs/:legId/options (LG-1 item 4): session-self 359 → 360.
   // + PUT /api/admin/place-coords/:placeId (LG-1): admin-role 181 → 182.
+  // + POST /api/viator/live/click (VD-1): session-self 360 → 361.
   assert.deepEqual(manifest.boundaryTotals, {
-    "admin-role": 182, "session-self": 360, "resource-owner": 102,
+    "admin-role": 182, "session-self": 361, "resource-owner": 102,
     signature: 6, "public-or-system": 50, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [

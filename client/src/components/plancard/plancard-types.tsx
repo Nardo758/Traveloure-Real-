@@ -473,6 +473,12 @@ export interface PlanCardDay {
   feasibility?: import("@shared/plan-feasibility").DayFeasibility;
   /** FD-1/FD-5 (ledger `2026-10-10-fd5-coverage-targets`): a free plan's gated count-only teaser; absent ⇒ none. */
   localTeaser?: import("@shared/free-draft-cap").LocalTeaser;
+  /**
+   * 9b-c LB8 (ledger `2026-10-18-lb8-lb9-card-wiring`): the day's flight departures — `id` = the airport leg's end
+   * (`anchor:<anchorId>`), `bufferedTime` = take-off − its R-i buffer ("HH:MM", plan zone; null across midnight),
+   * `located` = the anchor carries an airport point. Absent ⇒ no departure that day.
+   */
+  anchorStops?: Array<{ id: string; name: string; bufferedTime: string | null; located: boolean }>;
 }
 
 /**

@@ -46,6 +46,7 @@ test("F1: the named switches, booleans, '1' is on", () => {
     TRAVEL_TIME_SERVICE_ENABLED: false,
     ROUTING_ADAPTER_STUB: false,
     GETYOURGUIDE_ENABLED: false,
+    VIATOR_DIRECT_ENABLED: false,
   });
   for (const v of Object.values(healthFlags({}))) assert.equal(typeof v, "boolean");
 });

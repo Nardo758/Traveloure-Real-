@@ -129,6 +129,26 @@ export interface AirportStop {
   wallClock: string | null;
 }
 
+/**
+ * Pure. A flight anchor's plan day and the wall clock the traveler moves at — an arrival's landing + its
+ * buffer (they leave the airport then), a departure's take-off − its buffer (R-i: they must BE at the airport
+ * then). The anchor datetime is the plan's wall clock (R316), so its date and time are read as written. ONE
+ * rule for the engine's airport legs and the Trip Card's leave-by (LB8, ledger `2026-10-18-lb8-lb9-card-wiring`).
+ * `dayNumber` < 1 ⇒ before the plan; `wallClock` null when the buffer crosses midnight.
+ */
+export function flightAnchorClock(
+  a: { anchorType: string; anchorDatetime: Date | string; bufferBefore?: number | null; bufferAfter?: number | null },
+  tripStart: string,
+): { dayNumber: number; direction: "arrival" | "departure"; wallClock: string | null } {
+  const iso = new Date(a.anchorDatetime).toISOString();
+  const dayNumber = Math.round((Date.parse(`${iso.slice(0, 10)}T00:00:00Z`) - Date.parse(`${tripStart}T00:00:00Z`)) / 86_400_000) + 1;
+  const arrival = a.anchorType === "flight_arrival";
+  const at = Number(iso.slice(11, 13)) * 60 + Number(iso.slice(14, 16));
+  const t = arrival ? at + Number(a.bufferAfter ?? 0) : at - Number(a.bufferBefore ?? 0);
+  const wallClock = t >= 0 && t < 24 * 60 ? `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}` : null;
+  return { dayNumber, direction: arrival ? "arrival" : "departure", wallClock };
+}
+
 export function desiredPlanLegs(
   stops: readonly PlanStop[],
   opts: {

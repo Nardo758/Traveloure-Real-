@@ -7,7 +7,9 @@ import {
   type InsertItineraryItem
 } from "@shared/schema";
 import { eq, and, asc, desc } from "drizzle-orm";
-import { normalizeLegMode, TRAVEL_SPEEDS_KMH } from "@shared/travel-speeds";
+import { normalizeLegMode, straightLineMinutes, TRAVEL_SPEEDS_KMH } from "@shared/travel-speeds";
+import { haversineMeters } from "@shared/geo";
+import { previousItemIds, travelFromOpenCoordinates } from "./itinerary-item-clone";
 import {
   createCircuitBreaker,
   aiLogger,
@@ -79,6 +81,11 @@ export interface DaySchedule {
   items: ItineraryItem[];
   totalDurationMinutes: number;
   travelTimeMinutes: number;
+  /**
+   * Ledger `2026-10-18-google-writers-open-coords`: true when any minute in `travelTimeMinutes` is the labelled
+   * straight-line estimate — a stored travel time not routed between open coordinates is never summed as-is.
+   */
+  travelTimeEstimated: boolean;
   energyProfile: "relaxed" | "balanced" | "intense";
   hasWeatherRisk: boolean;
 }
@@ -134,6 +141,13 @@ export class ItineraryIntelligenceService {
 
   async getDaySchedules(tripId: string): Promise<DaySchedule[]> {
     const items = await this.getItems(tripId);
+    // Ledger `2026-10-18-google-writers-open-coords` (decision-maker, Oct 18, 2026): a stored travel time counts
+    // as-is only when it was routed between OPEN coordinates (the engine's one resolver); any other is replaced by
+    // the labelled straight-line estimate between the two items, and the day says so (`travelTimeEstimated`).
+    const { openPointsForItems } = await import("./routing/plan-legs-engine.service");
+    const openItemIds = new Set((await openPointsForItems(tripId, items)).keys());
+    const previous = previousItemIds(items);
+    const byId = new Map(items.map((i) => [i.id, i]));
     const dayMap = new Map<number, ItineraryItem[]>();
 
     for (const item of items) {
@@ -151,12 +165,25 @@ export class ItineraryIntelligenceService {
       let travelTime = 0;
       let totalEnergy = 0;
       let hasWeatherRisk = false;
+      let travelEstimated = false;
 
       for (const item of dayItems) {
         totalDuration += item.durationMinutes || 0;
-        const travel = item.travelFromPrevious as { duration?: number } | null;
-        if (travel?.duration) {
-          travelTime += travel.duration;
+        const travel = item.travelFromPrevious as { duration?: number; durationMinutes?: number; mode?: string } | null;
+        const stored = Number(travel?.durationMinutes ?? travel?.duration);
+        if (travel && Number.isFinite(stored) && stored > 0) {
+          const prevId = previous.get(item.id) ?? null;
+          if (travelFromOpenCoordinates(item, prevId, openItemIds)) {
+            travelTime += stored;
+          } else {
+            const prev = prevId ? byId.get(prevId) : undefined;
+            const pts = [prev?.latitude, prev?.longitude, item.latitude, item.longitude].map(Number);
+            if (prev && pts.every((v) => Number.isFinite(v)) && [prev.latitude, prev.longitude, item.latitude, item.longitude].every((v) => v != null)) {
+              const meters = haversineMeters(pts[0], pts[1], pts[2], pts[3]);
+              travelTime += straightLineMinutes(meters, normalizeLegMode(travel.mode) ?? "drive");
+              travelEstimated = true;
+            }
+          }
         }
         if (item.energyLevel) {
           totalEnergy += ENERGY_WEIGHTS[item.energyLevel as keyof typeof ENERGY_WEIGHTS] || 2;
@@ -176,6 +203,7 @@ export class ItineraryIntelligenceService {
         items: dayItems.sort((a: ItineraryItem, b: ItineraryItem) => (a.sortOrder || 0) - (b.sortOrder || 0)),
         totalDurationMinutes: totalDuration + travelTime,
         travelTimeMinutes: travelTime,
+        travelTimeEstimated: travelEstimated,
         energyProfile,
         hasWeatherRisk,
       });

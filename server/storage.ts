@@ -1,4 +1,5 @@
 import { toPublicListing } from "./utils/public-service-listing";
+import { VIATOR_ITEM_CONTENT_TYPE } from "@shared/viator-item";
 import { db } from "./db";
 import { scrubStoredTransportOption } from "./services/transport-option-client";
 import { enqueuePlanLegRecompute } from "./services/routing/plan-legs-queue";
@@ -1089,7 +1090,7 @@ export interface IStorage {
 
   getItineraryItems(tripId: string): Promise<any[]>;
 
-  createItineraryItem(item: any, opts?: { fromLocalInput?: boolean; coordSource?: GoogleCoordSource }): Promise<any>;
+  createItineraryItem(item: any, opts?: { fromLocalInput?: boolean; coordSource?: GoogleCoordSource; viatorProductCode?: string }): Promise<any>;
   createPendingBillboardGemItemIfAbsent(
     item: InsertItineraryItem & { tripId: string },
     gemId: string,
@@ -8106,9 +8107,15 @@ export class DatabaseStorage implements IStorage {
   // caller that sets it at create time (see the schema comment).
   async createItineraryItem(
     item: InsertItineraryItem & { tripId: string },
-    opts: { fromLocalInput?: boolean; coordSource?: GoogleCoordSource } = {},
+    opts: { fromLocalInput?: boolean; coordSource?: GoogleCoordSource; viatorProductCode?: string } = {},
   ): Promise<ItineraryItem> {
     const safeItem = withItemCoordSource(stampItemSourceClass(stripItineraryItemRoutingFields(item as Record<string, unknown>), opts), opts.coordSource);
+    // VD-1b (ledger `2026-10-18-viator-add-to-plan`): the content pair is stamped HERE, after the strip, from a
+    // code the create rail admitted (`itineraryItemViatorLinkSchema`) — never from the body.
+    if (opts.viatorProductCode) {
+      (safeItem as any).contentType = VIATOR_ITEM_CONTENT_TYPE;
+      (safeItem as any).contentId = opts.viatorProductCode;
+    }
     const [created] = await db.insert(itineraryItems).values(safeItem as any).returning();
     enqueuePlanLegRecompute(created?.tripId); // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)
     return created;
