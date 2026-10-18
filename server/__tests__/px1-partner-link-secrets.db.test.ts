@@ -143,6 +143,7 @@ test("S1 no partner search builder returns a link containing a configured secret
   assert.ok(SECRET_ENV_NAMES.includes("TRAVELPAYOUTS_TOKEN"), "the Travelpayouts token is among the names read");
   const dir = path.join(ROOT, "server/services/travelpayouts");
   let ran = 0;
+  const ranFiles = new Set<string>();
   for (const f of fs.readdirSync(dir).filter((n) => n.endsWith(".service.ts"))) {
     const mod = await import(path.join(dir, f));
     for (const [name, fn] of Object.entries(mod)) {
@@ -155,12 +156,18 @@ test("S1 no partner search builder returns a link containing a configured secret
         continue; // a builder that throws returned nothing to leak
       }
       ran++;
+      ranFiles.add(f.replace(/\.service\.ts$/, ""));
       for (const link of linkStrings(out)) {
         for (const v of secretValues()) assert.ok(!link.includes(v), `${f} ${name} put a secret in a link`);
       }
     }
   }
   assert.ok(ran >= 15, `the partner builders ran (${ran})`);
+  // PX-1b (decision-maker, Oct 18, 2026): the eight integrations whose API keeps its partner-required
+  // auth are each among the builders this check ran (aviasales is `tpFetch`'s caller).
+  for (const name of ["airalo", "omio", "kiwitaxi", "discovercars", "tiqets", "stasher", "busbud", "aviasales"]) {
+    assert.ok(ranFiles.has(name), `${name}'s builder is covered`);
+  }
   const { affiliateService } = await import("../services/affiliate.service");
   for (const p of ["viator", "booking", "twelvego"]) {
     const link = await affiliateService.getDeepLink(p, "P7").catch(() => null);
