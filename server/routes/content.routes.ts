@@ -1,4 +1,5 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { toPublicPartnerProducts } from "../services/public-partner-product";
 import { claimFreeDraft, promoteFreeDraft, releaseFreeDraft, freeDraftRefusalBody, freeDraftStatus, FREE_DRAFT_REFUSAL_STATUS } from "../services/free-draft-cap.service";
 import { optimizedItinerariesGate } from "../config/optimized-itineraries.config";
 import { freeDraftCopy } from "@shared/free-draft-cap";
@@ -8690,8 +8691,9 @@ router.get("/api/discovery/jobs", isAuthenticated, async (req, res) => {
   // §16: registry-product DTOs for travelers carry NO partner URLs. The rail re-resolves the URL
   // from the affiliate_products row by id (affiliateProductId), and informational outbound goes
   // through the tracked /api/content/affiliate-redirect — neither needs the URL client-side.
-  const stripProductUrls = <T extends { affiliateUrl?: any; productUrl?: any }>(products: T[]) =>
-    products.map(({ affiliateUrl: _a, productUrl: _p, ...rest }) => rest);
+  // PX-2 (ledger `2026-10-18-public-partner-price-strip`): the stored price, its currency and its scrape
+  // time leave the public DTO the same way (`toPublicPartnerProducts`); admin reads keep every field.
+  const stripProductUrls = <T extends Record<string, unknown>>(products: T[]) => toPublicPartnerProducts(products);
 
   // Get partner categories
 
