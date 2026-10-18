@@ -21,6 +21,13 @@
  * could read from a source row. §19: every body is a `.strict()` object. LD 40: a set, option or
  * plan that does not exist or is not yours is ONE 404. The rules live in the service.
  */
+import {
+  SLIP_LOCAL_TEASER_SHOWN_EVENT,
+  SLIP_ROUTED_LEGS_CTA_TAPPED_EVENT,
+  slipLocalTeaserShownBody,
+  slipRoutedLegsCtaTappedBody,
+} from "@shared/slip-funnel-events";
+import { recordSlipEvent } from "../services/slip-events.service";
 import { Router } from "express";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -112,6 +119,10 @@ const slipEventBody = z.discriminatedUnion("type", [
       question: z.string().trim().min(1).max(500).optional(),
     })
     .strict(),
+  // §3.14–3.15 (ledger `2026-10-18-teaser-copy-events`): the free plan's teaser view and its
+  // "Add drive and walk times" tap, through the ONE writer `recordSlipEvent`.
+  slipLocalTeaserShownBody,
+  slipRoutedLegsCtaTappedBody,
 ] as any);
 
 function fail(res: any, err: unknown, what: string) {
@@ -267,7 +278,9 @@ router.post("/api/trips/:tripId/slip-events", isAuthenticated, async (req: any, 
   if (!parsed.success) return badBody(res);
   try {
     const body = parsed.data as any;
-    if (body.type === "slip_plan_fit_shown") {
+    if (body.type === SLIP_LOCAL_TEASER_SHOWN_EVENT || body.type === SLIP_ROUTED_LEGS_CTA_TAPPED_EVENT) {
+      await recordSlipEvent({ tripId: req.params.tripId, userId: getUserId(req)!, event: body });
+    } else if (body.type === "slip_plan_fit_shown") {
       const { type: _type, ...event } = body;
       await recordPlanFitShown({ tripId: req.params.tripId, userId: getUserId(req)!, ...event });
     } else {
