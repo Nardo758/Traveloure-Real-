@@ -90,8 +90,45 @@ How each `retime` is set:
 - `after_last_service` — `notAfterMin` = the latest last departure minus the visit's length;
 - `leg_too_long` — `notBeforeMin` = the stop's start plus the minutes the leg is short by.
 
-## Not in step 2
+## Step 3 — the paid versions are gated
 
-- Running the checker on paid versions, hiding or regenerating a version, and the metric rows: step 3.
+Decision-maker Leon Dixon, Oct 18, 2026 (step 3 rulings 1–5). Ledger row `2026-10-18-fb1-version-gate`. Pure rules: `shared/version-check.ts`; run wiring: `server/services/version-check.service.ts`.
+
+**When it runs.** Once per paid run, the draft is checked (`loadPlanCheckInput` + `checkPlan`). Then each version is checked twice:
+
+- after sequencing, in memory — recorded as `check_unresolved_after_sequencing` and `check_added_after_sequencing`;
+- after its legs are written (the legs step re-times the stops) — this check decides.
+
+Both run inside the run, so the existing five-minute deadline covers them.
+
+**A version's input.** A version stop that keeps a draft item (`sourceItemId`) inherits that item's open point and stored facts. A stop the version added has neither, so its checks do not run. The plan's anchors and the market's last departures apply unchanged. A version has no energy rows, so pace is not checkable on it.
+
+**The verdict (ruling 2).**
+
+- A stop issue is matched by the place it is about (the draft item the stop keeps), whatever day it moved to. A day issue is matched by its day.
+- **Unresolved:** a draft issue the version still has. **Added:** a version issue the draft did not have. Either fails the version.
+- **Not checked never fails.** A version on which fewer checks ran than on the draft (`checkCoverage`), or on which a draft finding kind could not run at all, still passes — and says so ("Fewer checks could run on this version than on your plan.").
+
+**Held (ruling 1).** A failing version is stored with status `held` (text column; no migration). It is never shown, named or adopted: the board, apply-days, swap-in, the comparison read, the top-version fallback of apply-to-trip and the read-by-id all leave it out. The latest run is found counting held versions, so a run whose every version failed never shows the previous run's versions in its place. Regeneration is step 3b, after a week of data.
+
+**Metric rows (ruling 3)** in `itinerary_variant_metrics`, every key starting `check_`:
+
+| Key | Value | Description |
+|---|---|---|
+| `check_<kind>` | the finding's count on the version | the why codes |
+| `check_unresolved` | draft issues still present | the why codes |
+| `check_added` | issues the draft did not have | the why codes |
+| `check_coverage_reduced` | 1 when fewer checks ran than on the draft, else 0 | "checks N of the draft's M" and any kind not checkable |
+| `check_unresolved_after_sequencing`, `check_added_after_sequencing` | the same, after sequencing | the why codes |
+
+**No version passes (ruling 4).** The board shows no version, the lead line "We couldn’t make a version of this plan that clears every problem. Here’s what’s still in the way:", and the draft's open issues, each with its one fix. No retry, no apology, and no held version shown as if it passed.
+
+**Names (ruling 5).** Version A is "Your plan, fixed": the model is told to keep the plan and apply the draft's fixes (by [S#] tag and minute), and the name is the server's. B and C keep their strategy names. The same gate applies to all three. "In season" and "With local picks" are absent.
+
+**Recorded, not changed:** the run's sequencing step (`reorderItinerary`) re-times every day from 08:00 in the version's order, so a model's start time does not survive it. A version therefore cannot fix a timing issue by moving a stop's time — it can only drop, replace or reorder the stop. Honoring the draft's `retime` fixes inside sequencing is a separate decision.
+
+## Not in step 3
+
+- Regenerating a held version: step 3b.
 - "Your plan, fixed" by tap: step 4.
-- Any screen reading `issues` or `notChecked`: the FB-1 copy lane, after step 3.
+- The count lines and "Not checked yet" wording on the free card: the FB-1 copy lane.
