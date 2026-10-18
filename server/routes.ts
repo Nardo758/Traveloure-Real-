@@ -264,6 +264,7 @@ import feedbackRoutes from "./routes/feedback.routes";
 import handoffRoutes from "./routes/handoff.routes";
 import versionsRoutes from "./routes/versions.routes";
 import adminMarketsRoutes from "./routes/admin-markets.routes";
+import adminPlaceCoordsRoutes from "./routes/admin-place-coords.routes";
 import { dedupedRequest, callWithCircuitBreaker } from "./utils/requestDeduplication";
 import { aiFailureResponse, isNonRetryableAiError, reportAiUpstreamError } from "./services/ai-upstream-errors";
 import adminRoutes from "./routes/admin.routes";
@@ -1290,6 +1291,8 @@ export async function registerRoutes(
   // Surface step 5: the versions board — read, per-day apply, day re-time (R-ac).
   app.use(versionsRoutes);
   app.use(adminMarketsRoutes);
+  // LG-1: admin-entered routing coordinates (§2 blanket guard on /api/admin).
+  app.use(adminPlaceCoordsRoutes);
 
   // Optimization routes - heuristic preview + payment-gated AI optimization
   app.use(optimizationRoutes);

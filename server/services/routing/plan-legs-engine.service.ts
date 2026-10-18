@@ -12,7 +12,7 @@
  */
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../../db";
-import { itineraryVariants, temporalAnchors, transportLegs } from "@shared/schema";
+import { itineraryVariants, serviceRoutePoints, temporalAnchors, transportLegs } from "@shared/schema";
 import { rowCoordinatesTrusted } from "@shared/ai-place-text";
 import { CACHEABLE_ROUTE_SOURCES, STRAIGHT_LINE_EST_SOURCE, marketTransitRouting, routedLegReason, routeLegKey, type RoutePoint, type RoutingAdapter } from "@shared/routing-engine";
 import { LEG_MODE_STORED, normalizeLegMode, straightLineMinutes } from "@shared/travel-speeds";
@@ -24,6 +24,8 @@ import { TRANSPORT_PROFILES } from "../../data/transport-profiles";
 import { formatDistance } from "../transport-leg-calculator";
 import { factPointsForTrip, factsForTrip, placeRefsForTrip } from "../content-facts/place-facts.service";
 import { stayPointForPlan } from "../stay-reroute.service";
+import { openCoordsForPlaceIds, type OpenPlaceCoord } from "./open-place-coords.service";
+import { acceptedPoint, routingPointFor } from "./open-routing-points";
 import { routingAdapter } from "./index";
 import { RouteRunMemo, routeWithTransitFallback } from "./route-memo";
 import { legDepartureWallClock, planDayIsPast, routedFactsOf } from "./plan-legs";
@@ -116,6 +118,18 @@ async function latestRunLegs(tripId: string): Promise<Array<typeof transportLegs
   }
 }
 
+/** The plan's ride services whose every route point is a seeded OSM node (TC-3) — their item pins are OSM. */
+export async function osmRideServiceIds(serviceIds: readonly string[]): Promise<Set<string>> {
+  const ids = Array.from(new Set(serviceIds.filter(Boolean)));
+  if (ids.length === 0) return new Set();
+  const rows = await db
+    .select({ serviceId: serviceRoutePoints.serviceId, nodes: sql<number>`count(${serviceRoutePoints.osmNodeId})::int`, total: sql<number>`count(*)::int` })
+    .from(serviceRoutePoints)
+    .where(inArray(serviceRoutePoints.serviceId, ids))
+    .groupBy(serviceRoutePoints.serviceId);
+  return new Set(rows.filter((r) => Number(r.total) > 0 && Number(r.nodes) === Number(r.total)).map((r) => r.serviceId));
+}
+
 /**
  * Step 9b FU-9A-2 (ledger `2026-10-07-step9b-optimizer-and-rechecks`): the plan's flight anchors that
  * carry an airport point — stamped ONLY from an IATA code (`server/services/airport-coords.ts`); a
@@ -139,7 +153,8 @@ async function airportStopsForPlan(tripId: string, tripStart: string | null): Pr
     const at = Number(iso.slice(11, 13)) * 60 + Number(iso.slice(14, 16));
     const t = arrival ? at + Number(a.bufferAfter ?? 0) : at - Number(a.bufferBefore ?? 0);
     const wallClock = t >= 0 && t < 24 * 60 ? `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}` : null;
-    out.push({ id: `anchor:${a.id}`, name: a.location ?? "Airport", dayNumber, direction: arrival ? "arrival" : "departure", point: p, wallClock });
+    // LG-1: an airport point is stamped only from an IATA code (never Google), so it is an open coordinate.
+    out.push({ id: `anchor:${a.id}`, name: a.location ?? "Airport", dayNumber, direction: arrival ? "arrival" : "departure", point: { ...p, coordOrigin: "iata" }, wallClock });
   }
   return out;
 }
@@ -149,7 +164,15 @@ async function airportStopsForPlan(tripId: string, tripStart: string | null): Pr
  * and the engine legs it holds. ONE loader for the recompute and for a leg's options ask (step 9c D1,
  * ledger `2026-10-07-step9c-leg-options`), so an option is keyed exactly as the recompute would key it.
  */
-export async function loadPlanLegContext(tripId: string, trip: NonNullable<Awaited<ReturnType<typeof storage.getTrip>>>) {
+export async function loadPlanLegContext(
+  tripId: string,
+  trip: NonNullable<Awaited<ReturnType<typeof storage.getTrip>>>,
+  opts: { acceptsPoint?: (p: RoutePoint) => boolean } = {},
+) {
+  // LG-1: which points the routing adapter may be given — the caller's adapter, else the live one. OSRM takes open
+  // coordinates only; a refused stop is unlocated for routing (no routed leg in or out — bridged like any other).
+  const liveAdapter = opts.acceptsPoint ? null : routingAdapter();
+  const acceptsPoint = opts.acceptsPoint ?? (liveAdapter?.acceptsPoint ? (p: RoutePoint) => liveAdapter.acceptsPoint!(p) : undefined);
   const items = await storage.getItineraryItems(tripId);
   const [factPoints, factViews, placeRefs, stayPoint, existingRows] = await Promise.all([
     factPointsForTrip(tripId),
@@ -162,17 +185,32 @@ export async function loadPlanLegContext(tripId: string, trip: NonNullable<Await
   // on the leg — recorded as `coord_source='google'` with the fact's fetch time, so the daily leg job
   // refreshes or clears it. The trusted row point needs no record.
   const googleFetchedAt = new Map<string, Date>();
+  const placeIdOf = (it: any): string | null => (it.googlePlaceId as string | null) || placeRefs.get(it.id)?.placeId || null;
+  const [openCoords, osmRides] = await Promise.all([
+    openCoordsForPlaceIds([...items.map(placeIdOf), stayPoint ? placeIdOf(items.find((i: any) => i.id === stayPoint.itemId) ?? { id: stayPoint.itemId }) : null].filter((p): p is string => !!p)),
+    osmRideServiceIds(items.map((it: any) => it.providerServiceId).filter(Boolean)),
+  ]);
   const pointFor = (it: any): RoutePoint | null => {
     const own = rowCoordinatesTrusted(it) ? realPoint(it.latitude, it.longitude) : null;
     const fact = own ? null : factPoints.get(it.id) ?? null;
-    if (fact) {
+    const p = acceptedPoint(
+      routingPointFor({
+        placeId: placeRefs.get(it.id)?.placeId ?? null,
+        lookupPlaceId: placeIdOf(it),
+        open: openCoords,
+        ownPoint: own,
+        factPoint: fact,
+        osmRide: !!it.providerServiceId && osmRides.has(it.providerServiceId),
+      }),
+      acceptsPoint,
+    );
+    if (p && p.coordOrigin === "google" && fact && p.lat === fact.lat && p.lng === fact.lng) {
       const g = (factViews[it.id] ?? []).find(
         (f: any) => !f.stale && f.factType === "location" && f.origin === "places_api" && Number((f.value as any)?.lat) === fact.lat && Number((f.value as any)?.lng) === fact.lng,
       ) as any;
       if (g?.checkedAt) googleFetchedAt.set(it.id, new Date(g.checkedAt));
     }
-    const p = own ?? fact;
-    return p ? { ...p, placeId: placeRefs.get(it.id)?.placeId ?? null } : null;
+    return p;
   };
   const stops: PlanStop[] = items.map((it: any) => ({
     id: it.id,
@@ -180,19 +218,40 @@ export async function loadPlanLegContext(tripId: string, trip: NonNullable<Await
     dayNumber: it.dayNumber,
     point: pointFor(it),
     // TC-3a (migration 368): a ride's exit pin — the origin of the leg that follows it.
-    exitPoint: realPoint(it.exitLatitude, it.exitLongitude),
+    // LG-1: the exit pin is the ride's last seeded OSM node — open only when the ride's points are all OSM nodes.
+    exitPoint: acceptedPoint(
+      (() => {
+        const e = realPoint(it.exitLatitude, it.exitLongitude);
+        return e ? { ...e, coordOrigin: it.providerServiceId && osmRides.has(it.providerServiceId) ? ("osm_node" as const) : ("google" as const) } : null;
+      })(),
+      acceptsPoint,
+    ),
     startTime: it.startTime || null,
     endTime: it.endTime || null,
     durationMinutes: it.durationMinutes ?? null,
   }));
-  if (stayPoint?.source === "google" && stayPoint.fetchedAt) googleFetchedAt.set(stayPoint.itemId, stayPoint.fetchedAt);
+  const stayItem: any = stayPoint ? items.find((i: any) => i.id === stayPoint.itemId) ?? { id: stayPoint.itemId } : null;
+  const stayRoutePoint = stayPoint
+    ? acceptedPoint(
+        routingPointFor({
+          placeId: placeRefs.get(stayPoint.itemId)?.placeId ?? null,
+          lookupPlaceId: placeIdOf(stayItem),
+          open: openCoords,
+          ownPoint: { lat: stayPoint.lat, lng: stayPoint.lng },
+          factPoint: null,
+          osmRide: false,
+        }),
+        acceptsPoint,
+      )
+    : null;
+  if (stayPoint?.source === "google" && stayPoint.fetchedAt && stayRoutePoint?.coordOrigin === "google") googleFetchedAt.set(stayPoint.itemId, stayPoint.fetchedAt);
   const stay =
-    stayPoint
+    stayPoint && stayRoutePoint
       ? {
           id: stayPoint.itemId,
           name: stayPoint.name,
           dayNumber: 0,
-          point: { lat: stayPoint.lat, lng: stayPoint.lng, placeId: placeRefs.get(stayPoint.itemId)?.placeId ?? null },
+          point: stayRoutePoint,
           startTime: null,
           endTime: null,
           durationMinutes: null,
@@ -223,7 +282,7 @@ export async function loadPlanLegContext(tripId: string, trip: NonNullable<Await
     stay,
     hasTransitCoverage,
     selectedMode: (k) => picked.get(k) ?? null,
-    airports: await airportStopsForPlan(tripId, trip.startDate ? String(trip.startDate).slice(0, 10) : null),
+    airports: (await airportStopsForPlan(tripId, trip.startDate ? String(trip.startDate).slice(0, 10) : null)).filter((a) => acceptedPoint(a.point, acceptsPoint)),
   });
 
   const tripStart = trip.startDate ? String(trip.startDate).slice(0, 10) : null;
@@ -271,7 +330,9 @@ async function computePlanLegsCore(
   if (skipReason || !adapter || !trip) return { skipped: skipReason ?? "no_trip" };
   if (!trip.datesConfirmedAt) return { skipped: "dates_not_confirmed" };
 
-  const { desired, skipped, engineRows, existingRows, confirmedPairs, existing, picked, googleFetchedAt, departAt, transitApiUncovered } = await loadPlanLegContext(tripId, trip);
+  const { desired, skipped, engineRows, existingRows, confirmedPairs, existing, picked, googleFetchedAt, departAt, transitApiUncovered } = await loadPlanLegContext(tripId, trip, {
+    acceptsPoint: adapter.acceptsPoint ? (p) => adapter.acceptsPoint!(p) : () => true,
+  });
   // P0 ruling 3: a day that is already over is never routed — its legs are frozen (not asked, not
   // recomputed, not deleted), so neither side of the diff sees that day.
   const now = deps.now ? deps.now() : new Date();
@@ -628,6 +689,8 @@ export async function planLegGapsByDay(tripId: string, now: Date = new Date()): 
 export async function versionRoutingFor(comparisonId: string): Promise<{
   ctx: import("../transport-leg-calculator").VersionRoutingContext;
   placeIdFor: (sourceItemId: string | null | undefined) => string | null;
+  /** LG-1: the open coordinate (admin row, else OSM match) for a version stop's plan item, else null. */
+  openFor: (sourceItemId: string | null | undefined) => OpenPlaceCoord | null;
 } | null> {
   const adapter = routingAdapter();
   if (!adapter) return null;
@@ -638,6 +701,8 @@ export async function versionRoutingFor(comparisonId: string): Promise<{
   if (!trip) return null;
   const items = await storage.getItineraryItems(tripId);
   const refs = await placeRefsForTrip(tripId, items.map((i) => i.id));
+  const placeIdOf = new Map(items.map((i: any) => [i.id, ((i.googlePlaceId as string | null) || refs.get(i.id)?.placeId || null) as string | null] as const));
+  const open = await openCoordsForPlaceIds(Array.from(placeIdOf.values()).filter((p): p is string => !!p));
   const profile = (TRANSPORT_PROFILES as Record<string, { availableModes: Array<{ mode: string; available?: boolean }>; apiTransitCoverage?: boolean }>)[(trip.marketSlug ?? "").toLowerCase()];
   const transit = marketTransitRouting(profile);
   return {
@@ -650,6 +715,10 @@ export async function versionRoutingFor(comparisonId: string): Promise<{
       timezone: trip.timezone ?? null,
     },
     placeIdFor: (id) => (id ? refs.get(id)?.placeId ?? null : null),
+    openFor: (id) => {
+      const pid = id ? placeIdOf.get(id) ?? null : null;
+      return pid ? open.get(pid) ?? null : null;
+    },
   };
 }
 
@@ -669,19 +738,25 @@ export async function recalculateVariantLegs(
   if (!comparison) return { refused: "not_found" };
   if (!comparison.tripId || !(await tripGetsRoutedLegs(comparison.tripId))) return { refused: "routed_legs_not_included" };
   const items = await storage.getItineraryVariantItemsByVariantId(variantId);
-  const activities = items
-    .filter((item) => item.latitude && item.longitude)
-    .map((item, idx) => ({
-      id: item.id,
-      name: item.name,
-      lat: parseFloat(item.latitude as any),
-      lng: parseFloat(item.longitude as any),
-      scheduledTime: item.startTime || `09:${String((idx * 30) % 60).padStart(2, "0")}`,
-      dayNumber: item.dayNumber,
-      order: item.sortOrder || idx,
-    }));
-  const routing = (await versionRoutingFor(comparison.id))?.ctx ?? null;
+  const version = await versionRoutingFor(comparison.id);
+  const routing = version?.ctx ?? null;
   if (!routing) return { refused: "routing_engine_off" };
+  // LG-1: a stop whose plan item has an open coordinate routes from it; any other point is Google (OSRM refuses it).
+  const activities = items
+    .filter((item) => (item.latitude && item.longitude) || version?.openFor((item as any).sourceItemId))
+    .map((item, idx) => {
+      const open = version?.openFor((item as any).sourceItemId) ?? null;
+      return {
+        id: item.id,
+        name: item.name,
+        lat: open ? open.lat : parseFloat(item.latitude as any),
+        lng: open ? open.lng : parseFloat(item.longitude as any),
+        coordOrigin: open ? open.origin : ("google" as const),
+        scheduledTime: item.startTime || `09:${String((idx * 30) % 60).padStart(2, "0")}`,
+        dayNumber: item.dayNumber,
+        order: item.sortOrder || idx,
+      };
+    });
   const { calculateTransportLegs } = await import("../transport-leg-calculator");
   const legs = await calculateTransportLegs(variantId, activities, comparison.destination || "", userPrefs as any, routing);
   return { legs };
