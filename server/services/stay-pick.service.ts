@@ -40,6 +40,7 @@ import {
   rankStays,
   readStayPick,
   stayDayCloseness,
+  stayPickIsShown,
   stayStopsHash,
   straightLineOrder,
   toStayPickCandidate,
@@ -170,7 +171,10 @@ export async function computeStayPick(tripId: string, deps: StayPickDeps = {}): 
   if (!loaded.stops.length || !loaded.city) return { skipped: "no_located_stops" };
 
   const [row] = await db.select({ stayPick: trips.stayPick }).from(trips).where(eq(trips.id, tripId)).limit(1);
-  const prev = readStayPick(row?.stayPick);
+  // A Google-ranked pick (no `router`) is not shown and is no basis for "unchanged" or "changed": the next
+  // OSRM score replaces it as a first pick (ledger `2026-10-18-stay-pick-est-fallback`). Its row is not deleted.
+  const stored = readStayPick(row?.stayPick);
+  const prev = stayPickIsShown(stored) ? stored : null;
   const hash = stayStopsHash(loaded.stops);
   if (prev && prev.stopsHash === hash) return { skipped: "unchanged" };
 
@@ -221,6 +225,7 @@ export async function computeStayPick(tripId: string, deps: StayPickDeps = {}): 
     stopsHash: hash,
     computedAt: (deps.now?.() ?? new Date()).toISOString(),
     closeness,
+    router: "osrm",
   });
   await db.update(trips).set({ stayPick: next }).where(eq(trips.id, tripId));
   return { written: next, elementsSpent };
