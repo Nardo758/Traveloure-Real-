@@ -64,6 +64,9 @@ import {
   resolveOptimizerActivityCoordinates,
 } from "./services/optimizer-activity-geocoder.service";
 import { anchorTimeLabel12h } from "@shared/anchor-time";
+import { checkPlan } from "@shared/plan-check";
+import { FIXED_VERSION_NAME, fixedVersionDescriptor, isShownVariantStatus, type CheckedPlan } from "@shared/version-check";
+import { gateStoredVersion, recordSequencingCheck } from "./services/version-check.service";
 
 // Anthropic is the optimizer's ONE provider (ledger `2026-09-30-retire-xai`): the Grok primary it
 // used to try first is gone, so a failure here is the real failure, reported as one.
@@ -887,7 +890,12 @@ export async function generateOptimizedItineraries(
    * the run is recorded (insert-only) immediately before the model call and every version this call
    * writes names it (`run_id`). Passed only when `OPTIMIZER_RUN_RECORDS_ENABLED` is on.
    */
-  runRecord?: RunRecordContext
+  runRecord?: RunRecordContext,
+  /**
+   * FB-1 step 3: tests only — the model call, injected so a run can be driven end to end without a provider.
+   * Production passes nothing and the real `callAI` runs.
+   */
+  deps: { callAI?: (systemPrompt: string, userPrompt: string) => Promise<string> } = {},
 ): Promise<{ success: boolean; error?: string }> {
   let attemptStartedAt = new Date();
   let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
@@ -948,9 +956,24 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
     // Look up logistics context from experience type
     let logisticsContextSection = '';
     const [compRecord] = await db
-      .select({ experienceTypeSlug: itineraryComparisons.experienceTypeSlug })
+      .select({ experienceTypeSlug: itineraryComparisons.experienceTypeSlug, tripId: itineraryComparisons.tripId })
       .from(itineraryComparisons)
       .where(eq(itineraryComparisons.id, comparisonId));
+
+    // FB-1 step 3 (ledger `2026-10-18-fb1-version-gate`): the draft's own check, once per run — every version is
+    // compared with it. Read through the ONE trip input (`loadPlanCheckInput`); no plan ⇒ no gate (a run with no
+    // trip has nothing to compare against), and a failed read leaves the run ungated rather than failing it (§15b).
+    const planTripId = tripId ?? compRecord?.tripId ?? null;
+    let draftCheck: CheckedPlan | null = null;
+    if (planTripId) {
+      try {
+        const { loadPlanCheckInput } = await import("./services/optimizer-lead.service");
+        const { input } = await loadPlanCheckInput(planTripId);
+        draftCheck = { input, result: checkPlan(input) };
+      } catch (err) {
+        console.error("[optimizer] draft check failed (versions left ungated):", (err as Error)?.message ?? err);
+      }
+    }
     if (compRecord?.experienceTypeSlug) {
       const [expType] = await db
         .select()
@@ -1049,8 +1072,11 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
     }
 
     // ── Adaptive variant strategy (style-matched) ─────────────────────────────
-    const [variantA, variantB] = selectVariantStrategy(tripPreferences);
-    const variantC = selectThirdVariantStrategy(variantA, variantB);
+    const [strategyA, variantB] = selectVariantStrategy(tripPreferences);
+    const variantC = selectThirdVariantStrategy(strategyA, variantB);
+    // FB-1 step 3 ruling 5: version A is "Your plan, fixed" when the draft was checked (set below, once the
+    // stops' [S#] tags exist); B and C keep their strategy names.
+    let variantA: VariantDescriptor = strategyA;
 
     // The entry stamp identifies this attempt and is never refreshed by preprocessing.
 
@@ -1348,6 +1374,11 @@ For each empty day, add activities that match the user's experience style (infer
       }
     }
 
+    if (draftCheck) {
+      const refOfPlanItem = new Map(Array.from(sourceRefToPlanItemId.entries()).map(([ref, id]) => [id, ref] as const));
+      variantA = fixedVersionDescriptor(draftCheck.result.issues, (itemId) => refOfPlanItem.get(itemId) ?? null);
+    }
+
     const prompt = `You are a travel optimization AI. Analyze the user's itinerary and generate 3 optimized alternatives.
 
 DESTINATION: ${destination} | DATES: ${startDate} to ${endDate} | TRAVELERS: ${travelers || 1} | BUDGET: ${budget ? `$${budget}` : "Open"}${logisticsContextSection}${cityIntelligenceSection}${travelerProfileSection}${anchorPromptSection}${fixedCommitmentSection}${marqueeSection}${emptyDaySection}
@@ -1450,7 +1481,7 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
       });
     }
 
-    const content = await callAI(
+    const content = await (deps.callAI ?? callAI)(
       "You are a travel optimization expert. Always respond with valid JSON only, no markdown or explanation outside the JSON. Keep descriptions and reasoning brief (under 50 words each) to fit within token limits.",
       prompt
     );
@@ -1670,7 +1701,8 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
         .insert(itineraryVariants)
         .values({
           comparisonId,
-          name: variant.name,
+          // FB-1 step 3 ruling 5: version A's name is the server's, never the model's.
+          name: v === 0 && draftCheck ? FIXED_VERSION_NAME : variant.name,
           description: variant.description,
           source: "ai_optimized",
           status: "generated",
@@ -1692,6 +1724,24 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
             chosenAnchors[v]?.medianMeters != null ? Math.round(chosenAnchors[v].medianMeters as number) : null,
         })
         .returning();
+
+      // FB-1 step 3: the check after sequencing (in memory — before the legs step re-times the stops). Recorded only;
+      // the decision is the check after legs, below.
+      if (draftCheck) {
+        await recordSequencingCheck(
+          newVariant.id,
+          draftCheck,
+          reorderedItems.map((item, i) => ({
+            id: `seq:${i}`,
+            name: item.name,
+            dayNumber: item.dayNumber ?? null,
+            startTime: item.startTime ?? null,
+            endTime: item.endTime ?? null,
+            duration: item.duration ?? null,
+            sourceItemId: item.sourceItemId ?? null,
+          })),
+        );
+      }
 
       // A7 (§F2 (2)): the version's pick — the stay it was built around, marked with its option so
       // adopting the version (or this one stop) CHOOSES that set. Absent = the set stays undecided.
@@ -1933,6 +1983,11 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
       } catch (legErr) {
         console.error("Transport leg calculation error (non-critical):", legErr);
       }
+
+      // FB-1 step 3 (rulings 1–3): THE GATE, after legs — the stored, re-timed version against its draft. A version
+      // that leaves a draft issue unresolved or adds one is HELD (never shown or adopted); its findings are metric
+      // rows. Inside the run, so the five-minute deadline covers it. Never throws.
+      if (draftCheck) await gateStoredVersion(newVariant.id, draftCheck);
     }));
 
     // ── Trip segmentation recommendation (WP-C follow-up, docs/briefs/TRIP_SEGMENTATION_DESIGN.md
@@ -2173,11 +2228,12 @@ export async function getComparisonWithVariants(comparisonId: string) {
 
   if (!comparison) return null;
 
-  const variants = await db
+  // FB-1 step 3: a held version is not part of the comparison a client reads.
+  const variants = (await db
     .select()
     .from(itineraryVariants)
     .where(eq(itineraryVariants.comparisonId, comparisonId))
-    .orderBy(itineraryVariants.sortOrder);
+    .orderBy(itineraryVariants.sortOrder)).filter((v) => isShownVariantStatus(v.status));
 
   const variantsWithDetails = await Promise.all(
     variants.map(async (variant) => {
