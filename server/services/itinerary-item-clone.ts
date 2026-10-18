@@ -52,6 +52,7 @@
  * so the author's stored value does not mean the same thing on the buyer's plan. It is stamped
  * server-side by `clonedItemOrigin` below, whose header states the rule and the reason.
  */
+import { CACHEABLE_ROUTE_SOURCES } from "@shared/routing-engine";
 import { getTableColumns } from "drizzle-orm";
 import { itineraryItems } from "@shared/schema";
 
@@ -251,11 +252,18 @@ export function cloneFieldCoverage(): { undecided: string[]; unknown: string[] }
 export function buildClonedItineraryItem(
   source: ItineraryItemRow,
   cloneTripId: string,
+  /**
+   * Ledger `2026-10-18-google-writers-open-coords` (decision-maker, Oct 18, 2026): may the copy carry this item's
+   * `travelFromPrevious` minutes? Only when they were routed between OPEN coordinates (`travelFromOpenCoordinates`).
+   * Otherwise (the default) the copy carries none, and every reader falls back to the labelled estimate.
+   */
+  opts: { travelOpen?: boolean } = {},
 ): typeof itineraryItems.$inferInsert {
   const carried: Record<string, unknown> = {};
   for (const field of CLONE_CARRIED_FIELDS) {
     carried[field] = source[field];
   }
+  if (!opts.travelOpen) carried.travelFromPrevious = null;
   return {
     ...(carried as Omit<typeof itineraryItems.$inferInsert, "tripId" | "routingStatus" | "origin">),
     tripId: cloneTripId,
@@ -266,4 +274,35 @@ export function buildClonedItineraryItem(
     // `clonedItemOrigin` above. Derived from the source row, never copied and never client-set.
     origin: clonedItemOrigin(source),
   };
+}
+
+/**
+ * Ledger `2026-10-18-google-writers-open-coords`: were an item's stored `travelFromPrevious` minutes routed between
+ * OPEN coordinates? True only when the writer's provider is a non-Google routing source (`CACHEABLE_ROUTE_SOURCES`)
+ * AND both this item and the previous item on its day (by sort order) have an open point. Pure.
+ */
+export function travelFromOpenCoordinates(
+  item: Pick<ItineraryItemRow, "id" | "travelFromPrevious">,
+  previousItemId: string | null,
+  openItemIds: ReadonlySet<string>,
+): boolean {
+  const provider = (item.travelFromPrevious as { provider?: unknown } | null)?.provider;
+  return (
+    typeof provider === "string" &&
+    CACHEABLE_ROUTE_SOURCES.has(provider) &&
+    !!previousItemId &&
+    openItemIds.has(previousItemId) &&
+    openItemIds.has(item.id)
+  );
+}
+
+/** The item before each item on its day (by sort order, then id), or null for a day's first. Pure. */
+export function previousItemIds(items: ReadonlyArray<Pick<ItineraryItemRow, "id" | "dayNumber" | "sortOrder">>): Map<string, string | null> {
+  const out = new Map<string, string | null>();
+  const sorted = [...items].sort((a, b) => (a.dayNumber ?? 0) - (b.dayNumber ?? 0) || (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.id.localeCompare(b.id));
+  for (let i = 0; i < sorted.length; i++) {
+    const prev = i > 0 && (sorted[i - 1].dayNumber ?? 0) === (sorted[i].dayNumber ?? 0) ? sorted[i - 1].id : null;
+    out.set(sorted[i].id, prev);
+  }
+  return out;
 }
