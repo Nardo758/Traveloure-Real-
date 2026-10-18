@@ -62,8 +62,8 @@ before(async () => {
   for (const [k, day, start, mins, lat, lng, sort] of STOPS) {
     await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, day_number, title, item_type, start_time, duration_minutes, latitude, longitude, origin, sort_order, google_place_id)
       VALUES (${id(k)}, ${trip}, ${day}, ${`Stop ${k.toUpperCase()}`}, 'activity', ${start}, ${mins}, ${String(lat)}, ${String(lng)}, 'traveler', ${sort}, ${pid(k)})`);
-    await db.execute(sql`INSERT INTO osm_place_coords (place_id, lat, lng, osm_type, osm_id, osm_name, matched_by, attribution, matched_at)
-      VALUES (${pid(k)}, ${String(lat)}, ${String(lng)}, 'node', 1, ${k}, 'nominatim_batch', '© OpenStreetMap contributors', now())`);
+    await db.execute(sql`INSERT INTO open_place_coords (id, source, google_place_id, lat, lng, osm_type, osm_id, name, matched_by, attribution, matched_at)
+      VALUES ('osm:node/' || ${pid(k)}, 'osm', ${pid(k)}, ${String(lat)}, ${String(lng)}, 'node', 1, ${k}, 'nominatim_batch', '© OpenStreetMap contributors', now())`);
   }
   await recordFacts([fact({ sourceUrl: "https://temple-b.example.jp/", value: { text: "9:00–16:00", quote: "9:00–16:00", weekdayDescriptions: ["Monday: 9:00 AM – 4:00 PM"] } })], { planId: trip, itemId: id("b") });
   await recordFacts([fact({ placeRef: pid("a"), sourceUrl: "https://arashiyama.example.jp/", value: { text: "9:00–17:00", quote: "9:00–17:00", weekdayDescriptions: ["Monday: 9:00 AM – 5:00 PM"] } })], { planId: trip, itemId: id("a") });
@@ -84,7 +84,7 @@ before(async () => {
 
 after(async () => {
   await db.execute(sql`DELETE FROM place_facts WHERE plan_id IN (${trip}, ${other}) OR place_ref LIKE ${`%${RUN}%`}`);
-  await db.execute(sql`DELETE FROM osm_place_coords WHERE place_id LIKE ${`ChIJ-fb1p-${RUN}-%`}`);
+  await db.execute(sql`DELETE FROM open_place_coords WHERE google_place_id LIKE ${`ChIJ-fb1p-${RUN}-%`}`);
   await db.execute(sql`DELETE FROM trips WHERE id IN (${trip}, ${other})`);
   await db.execute(sql`DELETE FROM users WHERE id = ${owner}`);
   await pool.end();
@@ -148,7 +148,7 @@ test("P4 every issue names type, day, why, source, checked date and one fix", as
 });
 
 test("P5 a stop with no open point takes no ride: last_service_missed is not raised from a Google point", async () => {
-  await db.execute(sql`DELETE FROM osm_place_coords WHERE place_id = ${pid("k")}`);
+  await db.execute(sql`DELETE FROM open_place_coords WHERE google_place_id = ${pid("k")}`);
   try {
     const { checkPlan } = await import("@shared/plan-check");
     const { input } = await lead.loadPlanCheckInput(trip);
@@ -160,7 +160,7 @@ test("P5 a stop with no open point takes no ride: last_service_missed is not rai
     const day1 = (await lead.loadDayFeasibility(trip)).get(1);
     assert.equal(day1?.rides, 1, "the day line reads the same view");
   } finally {
-    await db.execute(sql`INSERT INTO osm_place_coords (place_id, lat, lng, osm_type, osm_id, osm_name, matched_by, attribution, matched_at)
-      VALUES (${pid("k")}, '34.9949', '135.785', 'node', 1, 'k', 'nominatim_batch', '© OpenStreetMap contributors', now())`);
+    await db.execute(sql`INSERT INTO open_place_coords (id, source, google_place_id, lat, lng, osm_type, osm_id, name, matched_by, attribution, matched_at)
+      VALUES ('osm:node/' || ${pid("k")}, 'osm', ${pid("k")}, '34.9949', '135.785', 'node', 1, 'k', 'nominatim_batch', '© OpenStreetMap contributors', now())`);
   }
 });

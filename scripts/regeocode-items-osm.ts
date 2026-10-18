@@ -1,18 +1,20 @@
 /**
  * 9b-e — re-geocode plan items through OpenStreetMap (Nominatim). v1 and v2 are DRY RUNS that report what a write
- * would do; only `--v2 --apply` writes, and only to `osm_place_coords` (LG-1 — never a `coord_source` stamp on the
- * Google row).
+ * would do; only `--v2 --apply` writes, and only to `open_place_coords` and `itinerary_item_open_coords` (LG-1,
+ * re-keyed by 390 — never a `coord_source` stamp on the Google row).
  *
  *   npx tsx scripts/regeocode-items-osm.ts         # v1 (step 1)
  *   npx tsx scripts/regeocode-items-osm.ts --v2    # v2 (step 1b): normalised names, place phrases, spine viewbox
- *   npx tsx scripts/regeocode-items-osm.ts --v2 --apply   # LG-1: the ONE-OFF write into osm_place_coords
+ *   npx tsx scripts/regeocode-items-osm.ts --v2 --apply   # LG-1: the ONE-OFF write (open_place_coords + item links)
  *
- * --apply (LG-1, ledger `2026-10-17-lg1-osm-place-coords`): a resolved match is written to `osm_place_coords` keyed by
- * the item's Google place id (`itinerary_items.google_place_id`, else its unexpired place_id fact) through the ONE
- * writer, credited "© OpenStreetMap contributors". Nothing is written to place_facts or itinerary_items (ODbL). Each
- * place id is asked once; a place already in the table is skipped without a request, so a re-run resumes. An item
- * with no place id, an ambiguous match and an unresolved one write nothing. One-off batch at 1 request/s — never a
- * runtime Nominatim call. Run by Replit after "Migration 389" is applied; the output is plan content, never committed.
+ * --apply (LG-1, ledger `2026-10-17-lg1-osm-place-coords`; re-keyed by migration 390, ledger
+ * `2026-10-18-lg1-open-coords-rekey`): a resolved match is written through the ONE writer, `recordOpenCoordForItem` —
+ * the open place keyed by its own OSM element ('osm:<type>/<id>', insert-once, credited "© OpenStreetMap contributors")
+ * and the item linked to it (`itinerary_item_open_coords`). The item's Google place id, when it has one, is recorded on
+ * the row as an attribute; an item without one is written all the same. Nothing is written to place_facts or
+ * itinerary_items (ODbL). An item already linked is skipped without a request, so a re-run resumes. A match that names
+ * no OSM element, an ambiguous match and an unresolved one write nothing. One-off batch at 1 request/s — never a
+ * runtime Nominatim call. Run by Replit after migration 390 is applied; the output is plan content, never committed.
  *
  * v2 reads `city_neighborhoods` (names, centroids, radii) for the viewbox hint and prints per-reason unresolved
  * counts, the query basis and viewbox source counts, and twenty samples.
@@ -24,10 +26,11 @@
  */
 import { and, eq, inArray, isNotNull, or } from "drizzle-orm";
 import { db } from "../server/db";
-import { cityNeighborhoods, itineraryItems, osmPlaceCoords, trips } from "../shared/schema";
+import { cityNeighborhoods, itineraryItems, trips } from "../shared/schema";
 import { placeRefsForTrip } from "../server/services/content-facts/place-facts.service";
-import { recordOsmPlaceCoord } from "../server/services/routing/open-place-coords.service";
+import { itemsWithOpenCoord, recordOpenCoordForItem } from "../server/services/routing/open-place-coords.service";
 import {
+  metresBetween,
   NOMINATIM_MIN_INTERVAL_MS,
   regeocodeItem,
   regeocodeItemV2,
@@ -79,17 +82,10 @@ async function loadItemsV2(): Promise<Array<RegeocodeItem & { tripId: string; pl
 
 async function mainV2(apply: boolean): Promise<void> {
   const items = await loadItemsV2();
-  const knownPlaceIds = new Set<string>();
-  if (apply) {
-    const ids = Array.from(new Set(items.map((i) => i.placeId).filter((p): p is string => !!p)));
-    for (let i = 0; i < ids.length; i += 500) {
-      const chunk = ids.slice(i, i + 500);
-      const rows = await db.select({ placeId: osmPlaceCoords.placeId }).from(osmPlaceCoords).where(inArray(osmPlaceCoords.placeId, chunk));
-      rows.forEach((r) => knownPlaceIds.add(r.placeId));
-    }
-  }
-  const writes = { written: 0, alreadyPresent: 0, noPlaceId: 0, samePlaceThisRun: 0, resolvedWithPlaceId: 0 };
-  const askedPlaceIds = new Set<string>();
+  // LG-1 re-key (migration 390): an item is written through its own link row, not a Google place id, so an item that
+  // already has one is skipped without a request (a re-run resumes) and an item with no place id is no longer skipped.
+  const linked = apply ? await itemsWithOpenCoord(items.map((i) => i.id)) : new Set<string>();
+  const writes = { written: 0, alreadyLinked: 0, newOpenPlaces: 0, linkedToExistingPlace: 0, noOsmId: 0, resolved: 0, resolvedWithoutPlaceId: 0 };
   const spine: SpineNeighbourhood[] = (
     await db
       .select({
@@ -116,29 +112,20 @@ async function mainV2(apply: boolean): Promise<void> {
   let lastRequestAt = 0;
 
   for (const item of items) {
-    if (apply) {
-      if (!item.placeId) {
-        writes.noPlaceId += 1;
-        continue;
-      }
-      if (knownPlaceIds.has(item.placeId)) {
-        writes.alreadyPresent += 1;
-        continue;
-      }
-      if (askedPlaceIds.has(item.placeId)) {
-        writes.samePlaceThisRun += 1;
-        continue;
-      }
-      askedPlaceIds.add(item.placeId);
+    if (apply && linked.has(item.id)) {
+      writes.alreadyLinked += 1;
+      continue;
     }
     const wait = lastRequestAt + NOMINATIM_MIN_INTERVAL_MS - Date.now();
     if (wait > 0) await sleep(wait);
     const r = await regeocodeItemV2(item, spine);
-    if (r.outcome.kind === "resolved" && item.placeId) {
-      writes.resolvedWithPlaceId += 1;
+    if (r.outcome.kind === "resolved") {
+      writes.resolved += 1;
+      if (!item.placeId) writes.resolvedWithoutPlaceId += 1;
       if (apply) {
-        const inserted = await recordOsmPlaceCoord({
-          placeId: item.placeId,
+        const w = await recordOpenCoordForItem({
+          itemId: item.id,
+          googlePlaceId: item.placeId,
           lat: r.outcome.lat,
           lng: r.outcome.lng,
           osmType: r.outcome.osmType ?? null,
@@ -146,8 +133,10 @@ async function mainV2(apply: boolean): Promise<void> {
           osmName: r.outcome.matchedName,
           matchedAt: new Date(),
         });
-        if (inserted) writes.written += 1;
-        else writes.alreadyPresent += 1;
+        if (w.reason === "no_osm_id") writes.noOsmId += 1;
+        if (w.linked) writes.written += 1;
+        if (w.rowInserted) writes.newOpenPlaces += 1;
+        else if (w.linked) writes.linkedToExistingPlace += 1;
       }
     }
     if (r.requested) {
@@ -178,7 +167,7 @@ async function mainV2(apply: boolean): Promise<void> {
   const sample = [...unresolvedSample, ...pick("ambiguous", 3), ...pick("resolved", 5), ...pick("unreachable", 2)].slice(0, 20);
 
   const pct = counts.requested > 0 ? Math.round((counts.resolved / counts.requested) * 1000) / 10 : 0;
-  console.log(apply ? "APPLY (v2) — resolved matches written to osm_place_coords only." : "DRY RUN (v2) — nothing written.");
+  console.log(apply ? "APPLY (v2) — resolved matches written to open_place_coords + itinerary_item_open_coords only." : "DRY RUN (v2) — nothing written.");
   console.log(JSON.stringify({ counts, resolvedOfRequestedPct: pct, resolvedBy, unresolvedBy, viewboxBy, writes }, null, 2));
   for (const { item, r } of sample) {
     console.log(
@@ -191,6 +180,24 @@ async function mainV2(apply: boolean): Promise<void> {
         queryBasis: r.queryBasis,
         viewbox: r.viewboxSource,
         outcome: r.outcome,
+      }),
+    );
+  }
+  // EVERY ambiguous item, with each candidate and how far apart they are, for a person to pick one. Nothing is written
+  // for these. Plan content — post it in chat, never commit it.
+  const ambiguous = results.filter((x) => x.r.outcome.kind === "ambiguous");
+  if (ambiguous.length) console.log(`AMBIGUOUS (${ambiguous.length}) — not written; a person picks one:`);
+  for (const { item, r } of ambiguous) {
+    const o = r.outcome as Extract<RegeocodeV2Result["outcome"], { kind: "ambiguous" }>;
+    const c = o.candidates ?? [];
+    const apart = c.length >= 2 ? Math.round(Math.max(...c.flatMap((a) => c.map((b) => metresBetween(a.lat, a.lng, b.lat, b.lng))))) : null;
+    console.log(
+      JSON.stringify({
+        item: item.id.slice(0, 8),
+        title: item.title,
+        query: r.query,
+        candidates: c.map((x) => ({ name: x.name, lat: x.lat, lng: x.lng, osm: x.osmType && x.osmId ? `${x.osmType}/${x.osmId}` : null })),
+        metresApart: apart,
       }),
     );
   }

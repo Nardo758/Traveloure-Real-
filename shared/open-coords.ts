@@ -3,8 +3,9 @@
  * from. Under the strict Google-terms reading Leon adopted, Google content is never combined with a non-Google
  * service, so the self-hosted OSRM router is given only coordinates that did not come from Google:
  *
- *   osm       — `osm_place_coords`: an OpenStreetMap point matched once, by batch, to a Google place id
- *               (the one thing kept from Google). ODbL: a table of its own, credited "© OpenStreetMap contributors".
+ *   osm       — `open_place_coords` (migration 390): an OpenStreetMap point matched once, by batch, keyed by its own
+ *               OSM element and linked to the plan item (`itinerary_item_open_coords`); the item's Google place id,
+ *               when it has one, is an attribute. ODbL: tables of their own, credited "© OpenStreetMap contributors".
  *   admin     — `admin_place_coords`: a coordinate a Traveloure admin entered from the place's official site.
  *   osm_node  — a ride's boarding or exit pin, seeded from the OSM node the official read names (TC-3, migration 369).
  *   iata      — an airport point from the committed IATA table (`server/data/iata-airports.json`), never Google.
@@ -26,7 +27,7 @@ export function isOpenCoordOrigin(origin: string | null | undefined): origin is 
 /** The credit every OSM-derived coordinate carries wherever it is stored or shown. */
 export const OSM_COORD_ATTRIBUTION = "© OpenStreetMap contributors";
 
-/** The one way a batch match is recorded (`osm_place_coords.matched_by`). */
+/** The one way a batch match is recorded (`open_place_coords.matched_by`). */
 export const OSM_COORD_MATCHED_BY_NOMINATIM_BATCH = "nominatim_batch";
 
 /**
