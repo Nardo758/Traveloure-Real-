@@ -29,11 +29,10 @@ import { seedDmoSources } from "./seeds/dmo-sources.seed";
 import { seedDmoKyotoHeritage } from "./seeds/dmo-kyoto-heritage.seed";
 import { seedRoleScopedTemplates } from "./seeds/role-scoped-templates.seed";
 import { seedTripOwnership } from "./seeds/trip-ownership.seed";
-import { seedE2EAccounts, purgeE2EAccountsFromProd } from "./seeds/e2e-test-accounts.seed";
+import { seedE2EAccounts } from "./seeds/e2e-test-accounts.seed";
 import { seedLocationCache } from "./seeds/location-cache.seed";
 import { demoSeedsAllowed, demoSeedSkipMessage } from "./seeds/lib/demo-seed-gate";
 import { storage } from "./storage";
-import { gemDiscoveryService } from "./services/gem-discovery.service";
 import { setupWebSocket } from "./websocket";
 import { getSession } from "./replit_integrations/auth";
 import { cacheSchedulerService } from "./services/cache-scheduler.service";
@@ -410,7 +409,10 @@ async function runDatabaseSeeding() {
   // neighbourhood can resolve.
   try {
     const { seedManualCityEvents } = await import("./seeds/city-events.manual");
-    const eventsResult = await seedManualCityEvents();
+    // Boot removals (ledger `2026-10-18-boot-removals`): no Nominatim lookup at boot. A new row with no
+    // hand-typed point lands unlocated and flagged; `npx tsx server/seeds/city-events.manual.ts` runs the
+    // lookups on purpose.
+    const eventsResult = await seedManualCityEvents({ venueLookup: false });
     healthEgress.nominatim = eventsResult.nominatim;
     if (eventsResult.inserted > 0 || eventsResult.filled > 0 || eventsResult.renamed > 0 || eventsResult.refused.length > 0 || eventsResult.deferred.length > 0) {
       logger.info({ inserted: eventsResult.inserted, filled: eventsResult.filled, renamed: eventsResult.renamed, refused: eventsResult.refused, located: eventsResult.located, unlocated: eventsResult.unlocated, deferred: eventsResult.deferred }, "Seeded city events");
@@ -564,15 +566,11 @@ async function runDatabaseSeeding() {
     } catch (err) {
       logger.error({ err }, "Failed to seed E2E test accounts");
     }
-  } else {
-    // Production (or anything not explicitly allowed): purge any test accounts
-    // present. Idempotent — no-op once clean.
-    try {
-      await purgeE2EAccountsFromProd();
-    } catch (err) {
-      logger.error({ err }, "Failed to purge E2E test accounts from prod DB");
-    }
   }
+  // Boot removals (ledger `2026-10-18-boot-removals`): production no longer purges test accounts at boot —
+  // it rewrote every @traveloure.test password and retried blocked deletes on every start. Production still
+  // never SEEDS them (the gate above). The purge runs on purpose:
+  //   npx tsx server/seeds/e2e-test-accounts.seed.ts --purge
 
   try {
     const backfillResult = await storage.backfillAffiliateProviderMetadata();
@@ -995,18 +993,10 @@ if (process.env.NODE_ENV === "production") {
       }).catch((err) => logger.error({ err }, "Admin bootstrap import failed"));
     }
 
+    // Boot removals (ledger `2026-10-18-boot-removals`): the Unsplash gem-photo backfill no longer runs at
+    // boot — it called an external API on every start for every gem still without a photo. An admin runs
+    // it on purpose: POST /api/admin/gems/backfill-photos.
     runDatabaseSeeding()
-      .then(() => {
-        gemDiscoveryService.backfillGemPhotos()
-          .then(({ processed, updated, failed }) => {
-            if (processed > 0) {
-              logger.info({ processed, updated, failed }, "Gem photo backfill complete");
-            }
-          })
-          .catch(err => {
-            logger.error({ err }, "Gem photo backfill failed");
-          });
-      })
       .catch(err => {
         logger.error({ err }, "FATAL: Database seeding failed — shutting down");
         process.exit(1);
