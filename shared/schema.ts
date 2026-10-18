@@ -12749,6 +12749,21 @@ export const itineraryItemOpenCoords = pgTable("itinerary_item_open_coords", {
   matchedAt: timestamp("matched_at"),
 });
 
+// Open coordinates pulled out of routing for review (migration 391, LG-2 Ask 1). The open_place_coords row and its
+// item links are snapshots; restoring puts them back. No FK: the moved row is no longer in open_place_coords.
+export const openCoordReview = pgTable("open_coord_review", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  openCoordId: varchar("open_coord_id", { length: 64 }),
+  reason: varchar("reason", { length: 32 }),
+  driftM: integer("drift_m"),
+  openRow: jsonb("open_row"),
+  itemLinks: jsonb("item_links"),
+  movedAt: timestamp("moved_at"),
+  movedBy: varchar("moved_by", { length: 255 }),
+  restoredAt: timestamp("restored_at"),
+  restoredBy: varchar("restored_by", { length: 255 }),
+});
+
 export const launchWaitlist = pgTable("launch_waitlist", {
   id: varchar("id").primaryKey(),
   email: varchar("email", { length: 255 }),
