@@ -71,8 +71,7 @@ on:
 # Cancel in-progress runs for the same ref — this check is idempotent.
 concurrency:
   group: ci-db-setup-lint-${{ github.ref }}
-  cancel-in-progress: true
-
+  cancel-in-progress: ${{ github.event.action != 'ready_for_review' }}
 permissions:
   contents: read
 

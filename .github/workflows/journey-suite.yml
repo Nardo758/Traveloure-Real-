@@ -51,8 +51,7 @@ on:
 # Cancel in-progress runs for the same ref to avoid redundant runs.
 concurrency:
   group: journey-suite-${{ github.ref }}
-  cancel-in-progress: true
-
+  cancel-in-progress: ${{ github.event.action != 'ready_for_review' }}
 permissions:
   contents: read
 

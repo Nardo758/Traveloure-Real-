@@ -214,6 +214,20 @@ function checkMergeGroup(file, text, required) {
   return /^  merge_group:/m.test(text) ? [] : [`${file}: provides a required check but has no merge_group: trigger (the merge queue would wait for it forever)`];
 }
 
+// Ready-for-review never cancels (ledger `2026-10-18-merge-queue-triggers`): marking a draft ready starts a new run in
+// the same concurrency group, and a cancel-in-progress that is true for it cancels the run already in flight (that is
+// how #1551 ended up with cancelled duplicates of required checks). Every cancel-in-progress is `false` or an
+// expression that excludes `ready_for_review`. NEGATIVE SPACE: it reads the text; it does not evaluate the expression.
+function checkReadyForReviewCancel(file, text) {
+  const errs = [];
+  for (const m of text.matchAll(/^\s*cancel-in-progress:\s*(.*?)\s*$/gm)) {
+    if (m[1] !== "false" && !m[1].includes("github.event.action != 'ready_for_review'")) {
+      errs.push(`${file}: cancel-in-progress must exclude ready_for_review (found ${m[1]})`);
+    }
+  }
+  return errs;
+}
+
 // Runner selection (CI runner Phase 1). Every job's runner is this ONE expression: a self-hosted label
 // from the repository variable CI_RUNNER, but ONLY when the event says the repository is private — a
 // public repository runs fork PRs, and a fork's code must never reach a self-hosted machine. Unset
@@ -235,7 +249,7 @@ function runCheck(root = process.cwd()) {
   const errs = [];
   for (const f of fs.readdirSync(dir).filter((f) => f.endsWith(".yml")).sort()) {
     const text = fs.readFileSync(path.join(dir, f), "utf8");
-    errs.push(...checkWorkflow(f, text, required), ...checkMergeGroup(f, text, required), ...checkRunsOn(f, text));
+    errs.push(...checkWorkflow(f, text, required), ...checkMergeGroup(f, text, required), ...checkRunsOn(f, text), ...checkReadyForReviewCancel(f, text));
   }
   if (errs.length) {
     errs.forEach((e) => console.error(`::error::${e}`));
@@ -298,6 +312,10 @@ function selfTest() {
   assert.equal(checkMergeGroup("build.yml", reqOk, req).length, 1, "a required workflow without merge_group fails");
   assert.deepEqual(checkMergeGroup("build.yml", reqOk.replace("on:\n", "on:\n  merge_group:\n    types: [checks_requested]\n"), req), [], "a required workflow with merge_group passes");
   assert.deepEqual(checkMergeGroup("home-gate.yml", nonOk, req), [], "a non-required workflow needs no merge_group");
+  assert.equal(checkReadyForReviewCancel("x.yml", "concurrency:\n  cancel-in-progress: true\n").length, 1, "an unconditional cancel fails");
+  assert.equal(checkReadyForReviewCancel("x.yml", "concurrency:\n  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n").length, 1, "a PR-only cancel that still fires on ready_for_review fails");
+  assert.deepEqual(checkReadyForReviewCancel("x.yml", "concurrency:\n  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'ready_for_review' }}\n"), [], "excluding ready_for_review passes");
+  assert.deepEqual(checkReadyForReviewCancel("x.yml", "concurrency:\n  cancel-in-progress: false\n"), [], "false passes");
   assert.deepEqual(checkRunsOn("a.yml", `jobs:\n  a:\n    runs-on: ${RUNS_ON}\n`), [], "the one runner expression passes");
   assert.equal(checkRunsOn("a.yml", "jobs:\n  a:\n    runs-on: ubuntu-latest\n").length, 1, "a hard-coded hosted label fails");
   assert.equal(checkRunsOn("a.yml", "jobs:\n  a:\n    runs-on: self-hosted\n").length, 1, "a hard-coded self-hosted label fails");
