@@ -61,6 +61,9 @@ function isWorkflow(p) {
 
 /** The ONE decision. `files` null = unknown ⇒ run (fail open). */
 function decide({ event, draft, files, workflowFile }) {
+  // Merge queue (ledger `2026-10-18-merge-queue-triggers`): a merge_group run tests the PR on top of current
+  // main and is ALWAYS a full run — never skipped as draft or docs-only.
+  if (event === "merge_group") return { run: true, reason: "merge queue — full run" };
   if (event !== "pull_request") return { run: true, reason: `event ${event}` };
   if (draft) return { run: false, reason: "draft PR" };
   if (!Array.isArray(files) || files.length === 0) return { run: true, reason: "changed files unknown — running (fail open)" };
@@ -202,6 +205,15 @@ function checkWorkflow(file, text, required) {
   }
   return errs;
 }
+// Merge queue (ledger `2026-10-18-merge-queue-triggers`): a workflow that provides a required check must also
+// run for the merge queue, or a queued PR waits forever for a check that never reports.
+// NEGATIVE SPACE: this reads the trigger block only; it cannot see whether the ruleset has the queue on.
+function checkMergeGroup(file, text, required) {
+  if (prBlock(text) === null) return [];
+  if (!jobsOf(text).some((j) => required.has(j.name))) return [];
+  return /^  merge_group:/m.test(text) ? [] : [`${file}: provides a required check but has no merge_group: trigger (the merge queue would wait for it forever)`];
+}
+
 // Runner selection (CI runner Phase 1). Every job's runner is this ONE expression: a self-hosted label
 // from the repository variable CI_RUNNER, but ONLY when the event says the repository is private — a
 // public repository runs fork PRs, and a fork's code must never reach a self-hosted machine. Unset
@@ -223,7 +235,7 @@ function runCheck(root = process.cwd()) {
   const errs = [];
   for (const f of fs.readdirSync(dir).filter((f) => f.endsWith(".yml")).sort()) {
     const text = fs.readFileSync(path.join(dir, f), "utf8");
-    errs.push(...checkWorkflow(f, text, required), ...checkRunsOn(f, text));
+    errs.push(...checkWorkflow(f, text, required), ...checkMergeGroup(f, text, required), ...checkRunsOn(f, text));
   }
   if (errs.length) {
     errs.forEach((e) => console.error(`::error::${e}`));
@@ -249,6 +261,7 @@ function selfTest() {
   assert.equal(pr([".github/actions/start-postgres/action.yml"]).run, true, "a composite action is code");
   assert.equal(pr(null).run, true, "unknown files fail open");
   assert.equal(pr([]).run, true, "empty list fails open");
+  assert.equal(decide({ event: "merge_group", draft: true, files: ["docs/a.md"] }).run, true, "a merge_group run is always full");
   // canonicalPaths + GitHub semantics
   const p = canonicalPaths("home-gate.yml");
   assert.equal(pathsMatch(p, "docs/x.md"), false);
@@ -282,6 +295,9 @@ function selfTest() {
   assert.deepEqual(checkWorkflow("build.yml", reqOk.replace("on:\n", "on:\n  push:\n    branches: [main]\n"), req), [], "a required workflow keeps its push to main");
   const narrow = `on:\n  pull_request:\n${types}    paths:\n      - 'server/x.ts'\njobs:\n  a:\n    if: github.event.pull_request.draft == false\n`;
   assert.deepEqual(checkWorkflow("narrow.yml", narrow, req), [], "a pre-existing narrow paths list is accepted");
+  assert.equal(checkMergeGroup("build.yml", reqOk, req).length, 1, "a required workflow without merge_group fails");
+  assert.deepEqual(checkMergeGroup("build.yml", reqOk.replace("on:\n", "on:\n  merge_group:\n    types: [checks_requested]\n"), req), [], "a required workflow with merge_group passes");
+  assert.deepEqual(checkMergeGroup("home-gate.yml", nonOk, req), [], "a non-required workflow needs no merge_group");
   assert.deepEqual(checkRunsOn("a.yml", `jobs:\n  a:\n    runs-on: ${RUNS_ON}\n`), [], "the one runner expression passes");
   assert.equal(checkRunsOn("a.yml", "jobs:\n  a:\n    runs-on: ubuntu-latest\n").length, 1, "a hard-coded hosted label fails");
   assert.equal(checkRunsOn("a.yml", "jobs:\n  a:\n    runs-on: self-hosted\n").length, 1, "a hard-coded self-hosted label fails");
@@ -289,7 +305,7 @@ function selfTest() {
   console.log("ci-skip-rules self-test: all fixtures pass ✅");
 }
 
-module.exports = { RUNS_ON, checkRunsOn, GATE, decide, canonicalPaths, pathsMatch, isDocs, checkWorkflow, ALWAYS_JOBS, READS_WORKFLOWS, PR_TYPES };
+module.exports = { RUNS_ON, checkRunsOn, checkMergeGroup, GATE, decide, canonicalPaths, pathsMatch, isDocs, checkWorkflow, ALWAYS_JOBS, READS_WORKFLOWS, PR_TYPES };
 
 if (require.main === module) {
   const arg = process.argv[2];

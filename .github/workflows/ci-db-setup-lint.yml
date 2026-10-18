@@ -58,6 +58,9 @@ name: CI DB Setup Lint
 #     safe to mark as a REQUIRED branch-protection check immediately.
 
 on:
+  # Merge queue (ledger `2026-10-18-merge-queue-triggers`): the queue's run is always a full run.
+  merge_group:
+    types: [checks_requested]
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]

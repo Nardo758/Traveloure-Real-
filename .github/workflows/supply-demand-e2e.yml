@@ -17,6 +17,9 @@
 name: Supply-Demand E2E
 
 on:
+  # Merge queue (ledger `2026-10-18-merge-queue-triggers`): the queue's run is always a full run.
+  merge_group:
+    types: [checks_requested]
   workflow_dispatch:
   schedule:
     - cron: '17 3 * * *'

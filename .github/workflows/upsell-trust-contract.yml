@@ -20,6 +20,9 @@ name: Upsell Trust Contract
 #     satisfies db.ts's load-time guard; no actual connection is made.
 
 on:
+  # Merge queue (ledger `2026-10-18-merge-queue-triggers`): the queue's run is always a full run.
+  merge_group:
+    types: [checks_requested]
   push:
     branches: [main, develop]
   pull_request:
