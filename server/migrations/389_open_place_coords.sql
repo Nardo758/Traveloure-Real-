@@ -1,5 +1,5 @@
--- 389 — osm_place_coords + admin_place_coords (LG-1; ledger `2026-10-17-lg1-osm-place-coords`). HELD for the
--- founder's comment on its PR.
+-- 389 — osm_place_coords + admin_place_coords (LG-1; ledger `2026-10-17-lg1-osm-place-coords`).
+-- founder comment: #1525 2026-10-18T00:38:38Z.
 --
 -- Routing coordinates that did not come from Google, keyed by the Google place id (the one thing kept from Google).
 -- Two NEW tables, born empty: a primary key on place_id and nothing else — no DEFAULT, no CHECK, no FK, no other
