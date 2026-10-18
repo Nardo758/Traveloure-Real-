@@ -111,6 +111,61 @@ export const PARTNER_PRICE_LINK_LABEL = "See current price";
 /** Said beside it, because the partner link earns us a commission. */
 export const PARTNER_COMMISSION_NOTE = "Traveloure earns a commission on this booking";
 
+// ── VD-1: LIVE VIATOR ROW (ledger `2026-10-18-viator-direct-live`) ───────────────────────────────
+
+export const VIATOR_LIVE_HEADING = "Viator · live";
+export const VIATOR_ATTRIBUTION_LINE = "From Viator";
+export const VIATOR_LINK_LABEL = "View on Viator";
+
+/** The server's live answer (`GET /api/viator/live/products`). */
+export interface ViatorLiveResponse {
+  status?: string;
+  asOf?: string | null;
+  items?: Array<{
+    id?: string;
+    productCode?: string;
+    title?: string;
+    price?: number | null;
+    currency?: string | null;
+    rating?: number | null;
+    reviewCount?: number | null;
+    productUrl?: string | null;
+  }>;
+}
+
+export interface ViatorLiveCard {
+  id: string;
+  productCode: string;
+  title: string;
+  /** "From USD 45 · price as of 15:42" — only when Viator stated a price AND the read time is known. */
+  priceLine: string | null;
+  ratingLine: string | null;
+  url: string | null;
+}
+
+/** Pure. Nothing but an `ok` answer draws a card; a price is never shown without its as-of time (§13). */
+export function viatorLiveCards(res: ViatorLiveResponse | null | undefined, locale?: string): ViatorLiveCard[] {
+  if (!res || res.status !== "ok" || !Array.isArray(res.items)) return [];
+  const asOf = res.asOf ? new Date(res.asOf) : null;
+  const asOfText = asOf && !Number.isNaN(asOf.getTime()) ? asOf.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }) : null;
+  return res.items
+    .filter((i) => typeof i.productCode === "string" && i.productCode)
+    .map((i) => ({
+      id: String(i.id ?? `viator-${i.productCode}`),
+      productCode: String(i.productCode),
+      title: String(i.title ?? "Activity"),
+      priceLine:
+        typeof i.price === "number" && Number.isFinite(i.price) && i.price > 0 && i.currency && asOfText
+          ? `From ${i.currency} ${i.price} · price as of ${asOfText}`
+          : null,
+      ratingLine:
+        typeof i.rating === "number" && typeof i.reviewCount === "number" && i.reviewCount > 0
+          ? `${i.rating.toFixed(1)} rating · ${i.reviewCount} reviews on Viator`
+          : null,
+      url: typeof i.productUrl === "string" && i.productUrl.startsWith("https://") ? i.productUrl : null,
+    }));
+}
+
 // ── STEP 8b-2: TABS, SEARCH AND BUDGET (brief item 14/15; rulings 8 and 10) ─────────────────────────
 
 /** The four `aff_*` keys are affiliate SOURCES, not hireable roles (Locked Decision 31): never a tab. */
