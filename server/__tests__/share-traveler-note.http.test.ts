@@ -5,7 +5,7 @@
  * leak through any key or depth fails.
  *
  *   N1 — `GET /api/itinerary-share/:token`, ANONYMOUS "view" link: no note.
- *   N2 — the same rail, the plan's TRAVELER (trip owner, session): the note, unchanged.
+ *   N2 — the same rail, the plan's TRAVELER (trip owner, session): no note (FD-4 — no expert note on any share rail).
  *   N3 — the same rail, a signed-in non-traveler holding a "suggest" link: no note.
  *   N4 — `GET /api/trips/:id?token=`, ANONYMOUS with the trip's share token: no note.
  *   N5 — `GET /api/trips/:id?token=`, a signed-in stranger with the token: no note.
@@ -176,20 +176,23 @@ test("N1 — itinerary-share, anonymous view link: no note", async () => {
   const { status, raw, body } = await get(`/api/itinerary-share/${tokens.view}`);
   assert.equal(status, 200, raw);
   assertNoNote(raw, "itinerary-share (anonymous)");
-  assert.equal(body.expertTravelerNote, null);
+  assert.equal("expertTravelerNote" in body, false);
 });
 
-test("N2 — itinerary-share, the plan's traveler: the note", async () => {
+test("N2 — itinerary-share, the plan's traveler: no note on a share rail", async () => {
   const { status, raw, body } = await get(`/api/itinerary-share/${tokens.view}`, cookies.owner);
   assert.equal(status, 200, raw);
-  assert.equal(body.expertTravelerNote, NOTE);
+  // FD-4 (ledger `2026-10-18-fd4-share-projection`): no expert note on any share rail; N6 proves the
+  // traveler still reads it on the trip GET.
+  assertNoNote(raw, "itinerary-share (the plan's traveler)");
+  assert.equal("expertTravelerNote" in body, false);
 });
 
 test("N3 — itinerary-share, a signed-in non-traveler on a suggest link: no note", async () => {
   const { status, raw, body } = await get(`/api/itinerary-share/${tokens.suggest}`, cookies.expert);
   assert.equal(status, 200, raw);
   assertNoNote(raw, "itinerary-share (suggest link)");
-  assert.equal(body.expertTravelerNote, null);
+  assert.equal("expertTravelerNote" in body, false);
 });
 
 test("N4 — trip GET with the share token, anonymous: no note", async () => {

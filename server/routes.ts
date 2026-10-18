@@ -51,6 +51,7 @@ import path from "path";
 import { storage, ExpertApplicationExistsError, stampItemSourceClass, type BookingStatusNotification } from "./storage";
 import { claimFreeDraft, promoteFreeDraft, releaseFreeDraft, freeDraftRefusalBody, FREE_DRAFT_REFUSAL_STATUS } from "./services/free-draft-cap.service";
 import { isFreeDraftEligible } from "@shared/content-tiers";
+import { freeDraftGemContext } from "@shared/share-projection";
 import { admitItemCoordSource } from "@shared/item-coord-source";
 import { assessServiceDeletion } from "./services/service-delete-guard.service";
 import { itineraryItemRebuildDeletable } from "./services/itinerary-rebuild-guard";
@@ -12272,13 +12273,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           aiSeasonalHighlights: city.aiSeasonalHighlights,
           aiUpcomingEvents: city.aiUpcomingEvents,
           // FD-1 tier filter: quick-start is a FREE draft (FD-2 ruling 5), so it takes public gems only.
-          hiddenGems: cityIntelligence.hiddenGems?.filter((g: any) => isFreeDraftEligible(g)).slice(0, 5).map((g: any) => ({
-            // travel_pulse_hidden_gems has no `name` column — the field is placeName
-            // (fixed Aug 29 2026: g.name fed the model undefined gem names).
-            name: g.placeName,
-            description: g.description,
-            gemScore: g.gemScore,
-          })),
+          // travel_pulse_hidden_gems has no `name` column — the field is placeName (fixed Aug 29 2026).
+          // FD-4: the ONE free-draft gem projection, pinned by share-projection.test.ts.
+          hiddenGems: freeDraftGemContext(cityIntelligence.hiddenGems as any, (g) => isFreeDraftEligible(g as any)),
           happeningNow: cityIntelligence.happeningNow?.slice(0, 5).map((h: any) => ({
             name: h.name,
             type: h.type,

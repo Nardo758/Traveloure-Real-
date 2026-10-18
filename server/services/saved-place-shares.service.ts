@@ -12,9 +12,10 @@
  * One 404 for "no such share", "revoked" and "not yours".
  */
 import crypto from "node:crypto";
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
-import { savedItems, savedPlaceShares } from "@shared/schema";
+import { savedItems, savedPlaceShares, travelPulseHiddenGems } from "@shared/schema";
+import { localCountEntry } from "@shared/share-projection";
 import { savedCityKey, type SharedSavedPlaces } from "@shared/saved-items";
 
 export interface OwnedShare {
@@ -112,9 +113,23 @@ export async function readSharedSavedPlaces(token: string): Promise<SharedSavedP
     .where(and(eq(savedPlaceShares.token, token), isNull(savedPlaceShares.revokedAt)))
     .limit(1);
   if (!share) return null;
-  const places = await savedPlacesInCity(share.userId, share.cityKey);
+  const all = await savedPlacesInCity(share.userId, share.cityKey);
+  // FD-4 (ledger `2026-10-18-fd4-share-projection`): a saved GEM is named on a share only when its gem row is
+  // tagged `public`; a local, untagged or missing gem is counted, never named (fail closed). Hotels,
+  // activities and services are platform or partner listings and are unchanged.
+  const gemIds = all.filter((p) => p.contentType === "gem").map((p) => p.contentId);
+  const publicGemIds = new Set<string>();
+  if (gemIds.length > 0) {
+    const rows = await db
+      .select({ id: travelPulseHiddenGems.id, sourceClass: travelPulseHiddenGems.sourceClass })
+      .from(travelPulseHiddenGems)
+      .where(inArray(travelPulseHiddenGems.id, gemIds));
+    for (const r of rows) if (r.sourceClass === "public") publicGemIds.add(String(r.id));
+  }
+  const places = all.filter((p) => p.contentType !== "gem" || publicGemIds.has(p.contentId));
   return {
     city: share.cityLabel,
+    ...localCountEntry(all.length - places.length),
     places: places.map((p) => ({
       contentType: p.contentType,
       contentName: p.contentName,

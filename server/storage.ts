@@ -154,7 +154,6 @@ import {
   sharedItineraries, mapsExportCache,
   transportLegs, transportBookingOptions, affiliateClicks,
   expertUpdatedItineraries,
-  aiGeneratedItineraries,
   tripAnalyticsEnhanced,
   bundleComponents,
   vendorContracts,
@@ -1335,7 +1334,6 @@ export interface IStorage {
   replaceUserCartWithVariantItems(userId: string, variantItems: Array<{ providerServiceId: string | null; dayNumber: number | null; timeSlot: string | null }>): Promise<number>;
   // === AI-generated itinerary ===
 
-  saveAiGeneratedItinerary(data: any): Promise<any>;
   // === Shared itinerary & maps export ===
 
   createSharedItinerary(data: any): Promise<void>;
@@ -8758,12 +8756,6 @@ export class DatabaseStorage implements IStorage {
       }
     }
     return inserted;
-  }
-
-  // === AI-generated itinerary ===
-  async saveAiGeneratedItinerary(data: any): Promise<any> {
-    const [saved] = await db.insert(aiGeneratedItineraries).values(data).returning();
-    return saved;
   }
 
   // === Shared itinerary & maps export ===

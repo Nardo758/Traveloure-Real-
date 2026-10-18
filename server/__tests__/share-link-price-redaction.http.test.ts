@@ -58,6 +58,10 @@ const ids = {
   comparison: `slp-${RUN}-cmp`,
   variant: `slp-${RUN}-var`,
   item: `slp-${RUN}-itm`,
+  item2: `slp-${RUN}-itm2`,
+  trip: `slp-${RUN}-trip`,
+  planItem: `slp-${RUN}-pitm`,
+  planItem2: `slp-${RUN}-pitm2`,
   leg: `slp-${RUN}-leg`,
   shareView: `slp-${RUN}-shr-view`,
   shareSuggest: `slp-${RUN}-shr-sug`,
@@ -140,9 +144,19 @@ before(async () => {
   cookies.owner = await loginCookie(emails.owner);
   cookies.expert = await loginCookie(emails.expert);
 
+  // FD-4: a share shows only stops traceable to a plan row tagged public, so the fixture's stops are.
   await db.execute(sql`
-    INSERT INTO itinerary_comparisons (id, user_id, title, destination, start_date, end_date, status)
-    VALUES (${ids.comparison}, ${userIds.owner}, ${`Price gate ${RUN}`}, 'Kyoto', '2026-10-01', '2026-10-04', 'completed')
+    INSERT INTO trips (id, user_id, title, destination, start_date, end_date)
+    VALUES (${ids.trip}, ${userIds.owner}, ${`Price gate ${RUN}`}, 'Kyoto', '2026-10-01', '2026-10-04')
+  `);
+  await db.execute(sql`
+    INSERT INTO itinerary_items (id, trip_id, title, day_number, sort_order, source_class) VALUES
+      (${ids.planItem}, ${ids.trip}, ${`Fushimi Inari ${RUN}`}, 1, 0, 'public'),
+      (${ids.planItem2}, ${ids.trip}, ${`Tofuku-ji ${RUN}`}, 1, 1, 'public')
+  `);
+  await db.execute(sql`
+    INSERT INTO itinerary_comparisons (id, user_id, trip_id, title, destination, start_date, end_date, status)
+    VALUES (${ids.comparison}, ${userIds.owner}, ${ids.trip}, ${`Price gate ${RUN}`}, 'Kyoto', '2026-10-01', '2026-10-04', 'completed')
   `);
   await db.execute(sql`
     INSERT INTO itinerary_variants (id, comparison_id, name, description, total_cost, optimization_score)
@@ -150,17 +164,19 @@ before(async () => {
   `);
   await db.execute(sql`
     INSERT INTO itinerary_variant_items
-      (id, variant_id, day_number, start_time, end_time, name, description, price, location, latitude, longitude, duration, sort_order)
+      (id, variant_id, day_number, start_time, end_time, name, description, price, location, latitude, longitude, duration, sort_order, source_item_id)
     VALUES
       (${ids.item}, ${ids.variant}, 1, '09:00', '11:00', ${`Fushimi Inari ${RUN}`}, 'fixture activity',
-       ${MARKERS.activityPrice}, 'Kyoto', 34.9671, 135.7727, 120, 0)
+       ${MARKERS.activityPrice}, 'Kyoto', 34.9671, 135.7727, 120, 0, ${ids.planItem}),
+      (${ids.item2}, ${ids.variant}, 1, '12:00', '13:00', ${`Tofuku-ji ${RUN}`}, 'fixture activity',
+       NULL, 'Kyoto', 34.9767, 135.7739, 60, 1, ${ids.planItem2})
   `);
   await db.execute(sql`
     INSERT INTO transport_legs
-      (id, variant_id, day_number, leg_order, from_name, from_lat, from_lng, to_name, to_lat, to_lng,
+      (id, variant_id, day_number, leg_order, from_activity_id, from_name, from_lat, from_lng, to_activity_id, to_name, to_lat, to_lng,
        distance_meters, distance_display, recommended_mode, estimated_duration_minutes, estimated_cost_usd, energy_cost)
     VALUES
-      (${ids.leg}, ${ids.variant}, 1, 1, 'Hotel', 34.9850, 135.7587, 'Fushimi Inari', 34.9671, 135.7727,
+      (${ids.leg}, ${ids.variant}, 1, 1, ${ids.item}, ${`Fushimi Inari ${RUN}`}, 34.9671, 135.7727, ${ids.item2}, ${`Tofuku-ji ${RUN}`}, 34.9767, 135.7739,
        5400, '5.4 km', 'transit', 18, ${MARKERS.legCost}, 20)
   `);
   await db.execute(sql`
@@ -177,9 +193,11 @@ before(async () => {
 after(async () => {
   await db.execute(sql`DELETE FROM shared_itineraries WHERE id IN (${ids.shareView}, ${ids.shareSuggest})`);
   await db.execute(sql`DELETE FROM transport_legs WHERE id = ${ids.leg}`);
-  await db.execute(sql`DELETE FROM itinerary_variant_items WHERE id = ${ids.item}`);
+  await db.execute(sql`DELETE FROM itinerary_variant_items WHERE id IN (${ids.item}, ${ids.item2})`);
   await db.execute(sql`DELETE FROM itinerary_variants WHERE id = ${ids.variant}`);
   await db.execute(sql`DELETE FROM itinerary_comparisons WHERE id = ${ids.comparison}`);
+  await db.execute(sql`DELETE FROM itinerary_items WHERE trip_id = ${ids.trip}`);
+  await db.execute(sql`DELETE FROM trips WHERE id = ${ids.trip}`);
   await db.execute(sql`DELETE FROM users WHERE id IN (${userIds.owner}, ${userIds.expert})`);
 });
 
@@ -219,7 +237,7 @@ test("S3 — the ITINERARY survives redaction for the anonymous holder", async (
   assert.equal(day.activities[0].name, `Fushimi Inari ${RUN}`);
   assert.equal(day.activities[0].lat, 34.9671);
   assert.equal(day.activities[0].startTime, "09:00");
-  assert.equal(day.transportLegs[0].fromName, "Hotel");
+  assert.equal(day.transportLegs[0].fromName, `Fushimi Inari ${RUN}`);
   assert.equal(day.transportLegs[0].estimatedDurationMinutes, 18);
   assert.equal(day.transportLegs[0].energyCost, 20, "energyCost is a fatigue score, not money");
   assert.equal(body.variant.transportSummary.totalLegs, 1);
