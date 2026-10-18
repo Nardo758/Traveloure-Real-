@@ -1,4 +1,4 @@
-export { logger, httpLogger, createChildLogger, aiLogger, cacheLogger, apiLogger, dbLogger } from "./logger";
+export { logger, httpLogger, createChildLogger, aiLogger, cacheLogger, apiLogger, dbLogger, installConsoleRedaction } from "./logger";
 export { createHealthRouter } from "./health";
 export {
   createRateLimiter,

@@ -1,6 +1,19 @@
 import { db } from "../db";
+import { redactSecretsInText } from "../infrastructure/logger";
 import { apiUsageLogs } from "@shared/schema";
 import { eq, desc, sql, gte, and } from "drizzle-orm";
+
+/** PX-1b: a JSON value with every string passed through the log redaction (never a token stored). */
+function redactPersistedJson<T>(value: T): T {
+  if (typeof value === "string") return redactSecretsInText(value) as T;
+  if (Array.isArray(value)) return value.map(redactPersistedJson) as T;
+  if (value && typeof value === "object") {
+    const o: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) o[k] = redactPersistedJson(v);
+    return o as T;
+  }
+  return value;
+}
 
 export interface ApiUsageLogParams {
   provider: string;
@@ -71,9 +84,10 @@ export class ApiUsageService {
         costPerCallCents: params.costPerCallCents,
         responseTimeMs: params.responseTimeMs || 0,
         success: params.success ?? true,
-        errorMessage: params.errorMessage || null,
+        // PX-1b: a partner error message may quote the request URL — masked before it is stored.
+        errorMessage: params.errorMessage ? redactSecretsInText(params.errorMessage) : null,
         resultCount: params.resultCount || 0,
-        metadata: params.metadata || {},
+        metadata: params.metadata ? redactPersistedJson(params.metadata) : {},
       });
     } catch (error) {
       console.error('[ApiUsageService] Failed to log API call:', error);
