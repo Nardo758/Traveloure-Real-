@@ -298,7 +298,25 @@ export const PLACES_ATTRIBUTION = "Google Maps";
  * "Google Maps · checked 29 Sep 2026". The source name comes from the fact's own row; an origin
  * with no name says what it is ("Your expert", "Traveloure").
  */
-export function factProvenanceLine(fact: FactLike & { sourceName?: string | null }, now: Date = new Date()): string {
+/**
+ * LG-1 item 5 (decision-maker, Oct 17, 2026): a "checked" date is the calendar day in the PLAN's zone (Asia/Tokyo for
+ * Kyoto) — the same day the slip's facts line and the routed-leg label draw. No zone ⇒ the UTC day, as before (a plan
+ * with no `trips.timezone` claims none, LD 30). An unknown zone falls back to UTC rather than throwing.
+ */
+export function checkedDayLabel(at: Date, timeZone?: string | null, opts: { year?: boolean } = {}): string {
+  const fmt = (tz: string) =>
+    at.toLocaleDateString("en-GB", { day: "numeric", month: "short", ...(opts.year === false ? {} : { year: "numeric" }), timeZone: tz });
+  if (timeZone) {
+    try {
+      return fmt(timeZone);
+    } catch {
+      /* an unknown zone reads as UTC */
+    }
+  }
+  return fmt("UTC");
+}
+
+export function factProvenanceLine(fact: FactLike & { sourceName?: string | null }, now: Date = new Date(), timeZone?: string | null): string {
   const name =
     fact.sourceName?.trim() ||
     (fact.origin === "places_api"
@@ -313,8 +331,7 @@ export function factProvenanceLine(fact: FactLike & { sourceName?: string | null
   const at = toMs(fact.fetchedAt);
   const verified = fact.origin === "expert_nugget" && fact.verifiedAt ? " · verified" : "";
   if (at === null) return `${name}${verified}`;
-  const d = new Date(at);
-  const label = d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+  const label = checkedDayLabel(new Date(at), timeZone);
   return `${name}${verified} · checked ${label}${isFactStale(fact, now) ? " (may have changed)" : ""}`;
 }
 
@@ -333,6 +350,7 @@ export interface PublicFactAttribution {
 }
 export function publicFactAttribution(
   fact: FactLike & { sourceName?: string | null; sourceUrl?: string | null },
+  timeZone?: string | null,
 ): PublicFactAttribution | null {
   if (!isOfficialPublicFact(fact)) return null;
   const name = fact.sourceName?.trim();
@@ -340,7 +358,7 @@ export function publicFactAttribution(
   if (!name || !url) return null;
   const at = toMs(fact.fetchedAt);
   if (at === null) return null;
-  const checked = `checked ${new Date(at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })}`;
+  const checked = `checked ${checkedDayLabel(new Date(at), timeZone)}`;
   return { label: `from ${name}`, sourceName: name, sourceUrl: url, checked };
 }
 

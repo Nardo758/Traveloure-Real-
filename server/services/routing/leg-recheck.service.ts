@@ -24,6 +24,7 @@ import { transportLegs } from "@shared/schema";
 import { normalizeLegMode } from "@shared/travel-speeds";
 import { addCalendarDays, zonedWallClockToInstant } from "@shared/plan-timing";
 import { STRAIGHT_LINE_EST_SOURCE, type RoutingAdapter, type RoutingMode } from "@shared/routing-engine";
+import type { CoordOrigin } from "@shared/open-coords";
 import { FACTS_RECHECK_NOTICE_TYPE } from "@shared/facts-recheck";
 import { classifyLegRecheck, legRecheckDedupeKey, legRecheckNoticeLine, LEG_RECHECK_KIND, type LegCheckStatus } from "@shared/leg-recheck";
 import { storage } from "../../storage";
@@ -45,6 +46,9 @@ export interface RecheckLeg {
   wasMin: number;
   /** The departure wall clock ("HH:MM") the plan's own times give this leg, or null. */
   wallClock: string | null;
+  /** LG-1: where each end's coordinate came from (`shared/open-coords.ts`); absent ⇒ untagged (OSRM refuses it). */
+  fromOrigin?: CoordOrigin | null;
+  toOrigin?: CoordOrigin | null;
 }
 
 export interface LegRecheckResult {
@@ -115,7 +119,12 @@ export async function recheckPlanLegs(input: LegRecheckInput, deps: LegRecheckDe
     const departAt = input.startDate
       ? zonedWallClockToInstant(addCalendarDays(input.startDate.slice(0, 10), leg.dayNumber - 1), legDepartureWallClock(leg.wallClock), input.timezone)
       : null;
-    const outcome = await adapter.route({ lat: leg.fromLat, lng: leg.fromLng }, { lat: leg.toLat, lng: leg.toLng }, leg.mode, departAt);
+    const outcome = await adapter.route(
+      { lat: leg.fromLat, lng: leg.fromLng, coordOrigin: leg.fromOrigin ?? null },
+      { lat: leg.toLat, lng: leg.toLng, coordOrigin: leg.toOrigin ?? null },
+      leg.mode,
+      departAt,
+    );
     // 9b-d: a `no_route` that went UNANSWERED learned nothing. The claim goes back and the leg keeps its
     // last label (§13 — an outage is never "no route"). A failed call stops the pass (the source is down;
     // the next trigger asks again); a mode the source does not serve (OSRM and transit) skips that leg only.
@@ -163,6 +172,12 @@ export async function recheckPlanLegs(input: LegRecheckInput, deps: LegRecheckDe
 /** The legs the plan SHOWS (the one read rule), with points, a routable mode and positive minutes. */
 async function shownRecheckLegs(tripId: string): Promise<RecheckLeg[]> {
   const items = await storage.getItineraryItems(tripId);
+  // LG-1: each leg is re-asked between the points the plan would route NOW — the engine's own desired legs, so an
+  // end that is no longer an open coordinate is never sent to OSRM (the leg is skipped; the engine removes it).
+  const trip = await storage.getTrip(tripId);
+  const { loadPlanLegContext } = await import("./plan-legs-engine.service");
+  const { legPairKey } = await import("./plan-legs");
+  const desiredByPair = trip ? new Map((await loadPlanLegContext(tripId, trip)).desired.map((d) => [d.pairKey, d] as const)) : new Map();
   const byId = new Map(items.map((i: any) => [i.id, i] as const));
   const out: RecheckLeg[] = [];
   for (const l of (await tripLegsShown(tripId)) as any[]) {
@@ -180,19 +195,23 @@ async function shownRecheckLegs(tripId: string): Promise<RecheckLeg[]> {
       : to?.startTime
         ? String(to.startTime).slice(0, 5)
         : null;
+    const desired = desiredByPair.get(legPairKey(l.dayNumber, l.fromActivityId ?? null, l.toActivityId ?? null));
+    if (!desired) continue;
     out.push({
       id: l.id,
       dayNumber: l.dayNumber,
       fromActivityId: l.fromActivityId ?? null,
       toActivityId: l.toActivityId ?? null,
       toName: l.toName ?? to?.title ?? null,
-      fromLat: pts[0],
-      fromLng: pts[1],
-      toLat: pts[2],
-      toLng: pts[3],
+      fromLat: desired.origin.lat,
+      fromLng: desired.origin.lng,
+      toLat: desired.to.point.lat,
+      toLng: desired.to.point.lng,
       mode,
       wasMin,
       wallClock,
+      fromOrigin: desired.origin.coordOrigin ?? null,
+      toOrigin: desired.to.point.coordOrigin ?? null,
     });
   }
   return out;

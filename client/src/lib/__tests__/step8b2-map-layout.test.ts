@@ -28,6 +28,8 @@ import {
   partnerPlaces,
   placesInTab,
   searchPlaces,
+  PARTNER_COMMISSION_NOTE,
+  PARTNER_PRICE_LINK_LABEL,
 } from "../browse-supply";
 import { buildMapScene } from "../map-scene";
 import { mapDayChips, tripWindowDayCount } from "../map-days";
@@ -114,9 +116,10 @@ test("M3: Budget matches only one shown USD amount, and counts what it leaves ou
     ]),
   ];
   const out = applyBudget(places, 50);
-  assert.deepEqual(out.shown.map((p) => p.id).sort(), ["cheap", "usd"]);
+  // PX-1 (ruling 3): a partner place's stored price is never read, so both partner rows are "no USD price".
+  assert.deepEqual(out.shown.map((p) => p.id).sort(), ["cheap"]);
   assert.equal(out.byQuote, 2, "quote-only and range are counted by quote");
-  assert.equal(out.noUsdPrice, 3, "hidden, missing and another currency are counted");
+  assert.equal(out.noUsdPrice, 4, "hidden, missing, and every partner place (stored price unread) are counted");
   assert.deepEqual(applyBudget(places, null), { shown: places, byQuote: 0, noUsdPrice: 0 }, "no limit ⇒ no filter");
 });
 
@@ -142,6 +145,17 @@ test("M4: the five tabs, in order; Services never shows an affiliate source; no 
   assert.deepEqual(searchPlaces(placesInTab(all, "activities"), "GUI").map((p) => p.id), ["c-guide"]);
   // "Find a host" narrows within the tab to its one key.
   assert.deepEqual(placesInTab(all, "activities", "tour_guide").filter((p) => p.kind === "listing").map((p) => p.id), ["c-guide"]);
+});
+
+test("M5b (PX-1): a partner place shows no stored price; the card offers the current price and says the commission", () => {
+  const [p] = partnerPlaces([{ id: "usd", name: "USD tour", category: "tour", price: "30", currency: "USD" }]);
+  assert.equal(p.priceLabel, null, "no stored partner price number");
+  assert.deepEqual(p.budget, { kind: "unpriced" });
+  assert.equal(PARTNER_PRICE_LINK_LABEL, "See current price");
+  assert.equal(PARTNER_COMMISSION_NOTE, "Traveloure earns a commission on this booking");
+  const card = readFileSync(path.join(process.cwd(), "client/src/components/plancard/MapControlCenter.tsx"), "utf8");
+  assert.ok(card.includes('selectedBrowse.kind === "partner" ? <PartnerPriceLink'), "the partner card mounts the link");
+  assert.ok(card.includes('"/api/content/affiliate-redirect"'), "through the tracked redirect, never a raw link");
 });
 
 test("M5: a hidden or quote-only listing reads 'By quote', never '$N'; a stated unit is shown", () => {

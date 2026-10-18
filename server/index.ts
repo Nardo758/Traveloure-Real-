@@ -72,7 +72,10 @@ import {
   searchRateLimiter,
   authRateLimiter,
   adminRateLimiter,
+  installConsoleRedaction,
 } from "./infrastructure";
+// PX-1b (ledger `2026-10-18-partner-token-redaction`): no token in a logged URL or error reaches stdout.
+installConsoleRedaction();
 import { queryCounterMiddleware } from "./utils/queryCounter";
 import { internalJobsLimiter } from "./middleware/internal-jobs-limiter";
 import { botLimiter } from "./middleware/bot-limiter";

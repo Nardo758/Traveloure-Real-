@@ -32,7 +32,8 @@
  * A refusal is a 400 naming the reason, never a silent drop: an item that quietly landed with no
  * partner link would look identical to one Discover never offered a link for in the first place.
  */
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { affiliateProductNotPausedWhere } from "./partner-pause.service";
 import { db } from "../db";
 import { affiliateProducts } from "@shared/schema";
 
@@ -60,7 +61,8 @@ export async function resolveItemAffiliateLink(
   const [product] = await db
     .select({ id: affiliateProducts.id, isActive: affiliateProducts.isActive })
     .from(affiliateProducts)
-    .where(eq(affiliateProducts.id, value))
+    // PX-1: a paused partner's product reads as absent (the same reason as a missing one).
+    .where(and(eq(affiliateProducts.id, value), affiliateProductNotPausedWhere()))
     .limit(1);
 
   // A nonexistent id and a deactivated one get the SAME reason on purpose: a caller must not be

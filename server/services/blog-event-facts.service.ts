@@ -32,6 +32,7 @@ import { asFactOrigin, mustOmitOnPublicPage, publicFactAttribution } from "@shar
 import { ticketUrlRefusal } from "@shared/city-events";
 import type { TravelTime } from "@shared/travel-time";
 import { toCityEventCard } from "./city-events.service";
+import { MARKET_TIMEZONES } from "./trend-engine/operating-markets";
 import { loadPartnerHosts } from "./partner-hosts.service";
 import { loadEstimateReader, loadMarketCentroids } from "./travel-time-matrix.service";
 
@@ -147,7 +148,8 @@ export async function loadEventGuideFacts(eventId: string, deps: EventFactsDeps 
     const text = factText(f.value);
     if (text === "") continue;
     venueFacts.push({ factType: f.factType, text });
-    const credit = publicFactAttribution(view);
+    // LG-1 item 5: the checked day in the event's market zone (none known ⇒ the UTC day).
+    const credit = publicFactAttribution(view, card.marketKey ? MARKET_TIMEZONES[card.marketKey] ?? null : null);
     if (credit) attributedFacts.push({ factType: f.factType, text, ...credit });
     if (credit && !venueFactSources.some((s) => s.url === credit.sourceUrl)) {
       venueFactSources.push({ url: credit.sourceUrl, title: credit.label, publisher: credit.checked, retrievedAt: new Date(f.fetchedAt) });

@@ -2,6 +2,7 @@
 import { getTravelpayoutsMarker, getTravelpayoutsToken } from "./travelpayouts-client";
 import type { CatalogItem } from "../experience-catalog.service";
 import { reportProviderResult, outcomeFromHttpStatus } from "../provider-health.service";
+import { getYourGuidePaused } from "../partner-pause.service";
 
 const GYG_FEED_URL = "https://partner.getyourguide.com/api/v3/tours";
 
@@ -12,6 +13,10 @@ export interface GetYourGuideSearchParams {
 }
 
 export async function searchGetYourGuide(params: GetYourGuideSearchParams): Promise<CatalogItem[]> {
+  // PX-1: paused (decision-maker, Oct 17, 2026). This call authenticates with the Travelpayouts API
+  // token, so while paused it makes no request at all — the sync, the live search and the deals feed
+  // all reach GetYourGuide only through here.
+  if (getYourGuidePaused()) return [];
   const token = getTravelpayoutsToken();
   if (!token) return [];
 
