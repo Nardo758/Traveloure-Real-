@@ -83,6 +83,7 @@ export async function loadPlanCheckInput(tripId: string): Promise<{ input: PlanC
       durationMinutes: itineraryItems.durationMinutes,
       providerServiceId: itineraryItems.providerServiceId,
       bookingId: itineraryItems.bookingId,
+      routingStatus: itineraryItems.routingStatus,
       googlePlaceId: itineraryItems.googlePlaceId,
     })
     .from(itineraryItems)
@@ -133,10 +134,14 @@ export async function loadPlanCheckInput(tripId: string): Promise<{ input: PlanC
       endTime: r.endTime ?? null,
       durationMinutes: r.durationMinutes ?? null,
       point: openPoint(r),
+      // A reservation rule is not flagged on a booked stop (ledger `2026-10-18-closure-ticketing-feasibility`).
+      booked: !!r.bookingId || r.routingStatus === "purchased",
     })),
     hours: facts.hours,
     lastAdmission: facts.lastAdmissionFacts,
     lastServices: facts.lastServices,
+    closures: facts.closures,
+    ticketingRules: facts.ticketingRules,
     anchors: anchors as any,
     // Step 9b (L9 as amended, D4): each leg says whether its minutes are routed, through the ONE `legIsRouted`.
     legs: (legs as any[]).map((l) => ({
@@ -263,11 +268,11 @@ export async function loadStopHours(
   const h = ctx.hours.get(itemId);
   const hoursChecked = !!(h && it.dateIso && parseDayHours(h.weekdayDescriptions, new Date(`${it.dateIso}T00:00:00Z`).getUTCDay()));
   const checked = hoursChecked || ctx.lastEntry.has(itemId);
-  const one = [it];
-  const lastMinute = new Map<string, number>(Array.from(ctx.lastEntry.entries()).map(([k, v]) => [k, v.minute]));
-  const found2 = [closedOnArrival(one, ctx.hours, input.tripStartIso), afterLastAdmission(one, lastMinute), closesBeforeVisitEnd(one, ctx.hours, input.tripStartIso)].filter(
-    (f): f is Finding => f !== null,
-  );
+  // The SAME check the card reads (closures and reservations included — ledger
+  // `2026-10-18-closure-ticketing-feasibility`), narrowed to this stop's own lines.
+  const found2 = checkPlan(input)
+    .allFindings.map((f) => ({ ...f, stops: (f.stops ?? []).filter((x) => x.itemId === itemId) }))
+    .filter((f) => f.stops.length > 0);
   const lines = found2.flatMap((f) => findingStopLines(f));
   const caveat = found2.find((f) => f.caveat)?.caveat;
   return { found: true, hasTime: true, checked, lines, ...(caveat ? { caveat } : {}) };

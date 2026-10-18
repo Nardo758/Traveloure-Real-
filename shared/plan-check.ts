@@ -36,7 +36,7 @@ import {
   type RideCheck,
 } from "./optimizer-lead";
 import { legUnreachableFinding, unreachableStops, wallClockMinutes } from "./leg-reachability";
-import { hoursFactForDate, lastAdmissionMinutes, lastServiceMinutes, parseLastAdmission, parseLastService, SERVICE_DAY_START_MIN } from "./feasibility-facts";
+import { closureForDate, hoursFactForDate, lastAdmissionMinutes, lastServiceMinutes, parseLastAdmission, parseLastService, parseTicketingRule, SERVICE_DAY_START_MIN } from "./feasibility-facts";
 import { isRideMode } from "./plan-feasibility";
 import { haversineMeters } from "./geo";
 import { ROUTED_WALK_MAX_METERS, defaultRoutedMode } from "./routing-engine";
@@ -53,6 +53,8 @@ export interface PlanCheckStop {
   durationMinutes: number | null;
   /** The stop's OPEN coordinate (LG-1: an admin row, an OSM match, a ride's OSM node) — null otherwise, never Google. */
   point: { lat: number; lng: number } | null;
+  /** The stop is already booked (a booking id, or a purchased item) — a reservation rule is then not flagged. */
+  booked?: boolean;
 }
 
 /** Where a fact came from, for the issue it supports. */
@@ -105,6 +107,13 @@ export interface PlanCheckInput {
   lastAdmission: ReadonlyMap<string, readonly PlanCheckLastAdmission[]>;
   /** The market's official last departures, each at its station's point. */
   lastServices: readonly PlanCheckLastService[];
+  /**
+   * Every admitted official `closure` fact per stop, in precedence order (ledger
+   * `2026-10-18-closure-ticketing-feasibility`). Absent ⇒ no closure is known (never "open").
+   */
+  closures?: ReadonlyMap<string, readonly PlanCheckLastAdmission[]>;
+  /** Every admitted official `ticketing_rule` fact per stop, in precedence order (same ledger). */
+  ticketingRules?: ReadonlyMap<string, readonly PlanCheckLastAdmission[]>;
   anchors: readonly AnchorWindow[];
   legs: readonly PlanCheckLeg[];
   energy: ReadonlyArray<{ dayNumber: number; recoveryNeeded: boolean | null }>;
@@ -138,6 +147,10 @@ export interface FeasibilityView {
   /** The last-entry minute that applies on each stop's date, with the fact it came from. */
   lastEntry: Map<string, { minute: number; fact: PlanCheckLastAdmission }>;
   rides: CheckedRide[];
+  /** The closure fact that closes each stop on its date, when one does. */
+  closure: Map<string, PlanCheckLastAdmission>;
+  /** The ticketing rule that says each stop needs a reservation, when one does. */
+  reservation: Map<string, PlanCheckLastAdmission>;
 }
 
 function addDays(iso: string, n: number): string {
@@ -175,11 +188,17 @@ export function feasibilityView(input: PlanCheckInput): FeasibilityView {
   }));
   const hours = new Map<string, PlanCheckHours>();
   const lastEntry = new Map<string, { minute: number; fact: PlanCheckLastAdmission }>();
+  const closure = new Map<string, PlanCheckLastAdmission>();
+  const reservation = new Map<string, PlanCheckLastAdmission>();
   for (const it of timed) {
     const h = hoursFactForDate(input.hours.get(it.id) ?? [], it.dateIso);
     if (h) hours.set(it.id, h);
     const m = it.dateIso ? lastEntryFor(input.lastAdmission.get(it.id) ?? [], it.dateIso) : null;
     if (m) lastEntry.set(it.id, m);
+    const c = closureForDate(input.closures?.get(it.id) ?? [], it.dateIso);
+    if (c) closure.set(it.id, c);
+    const r = (input.ticketingRules?.get(it.id) ?? []).find((f) => parseTicketingRule(f.value) !== null);
+    if (r) reservation.set(it.id, r);
   }
 
   const shownMode = new Map<string, string | null>();
@@ -225,7 +244,7 @@ export function feasibilityView(input: PlanCheckInput): FeasibilityView {
       });
     }
   });
-  return { timed, hours, lastEntry, rides };
+  return { timed, hours, lastEntry, rides, closure, reservation };
 }
 
 // ── issues ─────────────────────────────────────────────────────────────────────────────────────
@@ -301,6 +320,51 @@ function visitLength(t: TimedStop | undefined): number | null {
 }
 
 /**
+ * Pure. `closed_on_arrival` with the stops an official CLOSURE fact closes on their date added (ledger
+ * `2026-10-18-closure-ticketing-feasibility`): the reason is `closed_day`, the fix `move_day`, and a stop the hours
+ * already counted is not counted twice. A closure needs a date, not a start time.
+ */
+function withClosures(hoursFinding: Finding | null, ctx: FeasibilityView): Finding | null {
+  if (!ctx.closure.size) return hoursFinding;
+  const stops = [...(hoursFinding?.stops ?? [])];
+  const days = new Set<number>(hoursFinding?.days ?? []);
+  const seen = new Set(stops.map((s) => s.itemId));
+  let added = 0;
+  for (const t of ctx.timed) {
+    if (!ctx.closure.has(t.id) || seen.has(t.id)) continue;
+    const startMin = wallClockMinutes(t.startTime);
+    stops.push({ itemId: t.id, title: t.title ?? "This stop", day: t.dayNumber, reason: "closed_day", ...(startMin !== null ? { startMin } : {}) });
+    days.add(t.dayNumber);
+    added += 1;
+  }
+  if (!added) return hoursFinding;
+  return {
+    ...(hoursFinding ?? {}),
+    kind: "closed_on_arrival",
+    count: (hoursFinding?.count ?? 0) + added,
+    days: Array.from(days).sort((x, y) => x - y),
+    stops,
+  };
+}
+
+/**
+ * Pure. `reservation_required` (same ledger): the stops whose official ticketing rule says entry needs a
+ * reservation and that are not booked yet. A FLAG ONLY — it raises no issue and carries no fix, so it never gates a
+ * version and never reorders a day.
+ */
+function reservationRequired(input: PlanCheckInput, ctx: FeasibilityView): Finding | null {
+  const booked = new Set(input.stops.filter((s) => s.booked).map((s) => s.id));
+  const stops = ctx.timed
+    .filter((t) => ctx.reservation.has(t.id) && !booked.has(t.id))
+    .map((t) => {
+      const startMin = wallClockMinutes(t.startTime);
+      return { itemId: t.id, title: t.title ?? "This stop", day: t.dayNumber, reason: "reservation_required" as const, ...(startMin !== null ? { startMin } : {}) };
+    });
+  if (!stops.length) return null;
+  return { kind: "reservation_required", count: stops.length, days: Array.from(new Set(stops.map((s) => s.day))).sort((x, y) => x - y), stops };
+}
+
+/**
  * Pure. THE PLAN CHECK. Findings are the existing rules over the same inputs the trip loader used to read itself;
  * `findings` is exactly what the free preview returned before the split (the parity test pins it).
  */
@@ -325,12 +389,15 @@ export function checkPlan(input: PlanCheckInput): PlanCheckResult {
     input.legs.map((l) => ({ id: l.id, dayNumber: l.dayNumber, fromActivityId: l.fromActivityId, toActivityId: l.toActivityId, estimatedDurationMinutes: l.estimatedDurationMinutes, routed: l.routed })),
   );
 
+  const hoursClosed = closedOnArrival(ctx.timed, hoursFacts, start);
+  const closedByHours = new Set((hoursClosed?.stops ?? []).map((s) => s.itemId));
   const found = [
     legUnreachableFinding(reach.unreachable),
-    closedOnArrival(ctx.timed, hoursFacts, start),
+    withClosures(hoursClosed, ctx),
     afterLastAdmission(ctx.timed, lastMinute),
     closesBeforeVisitEnd(ctx.timed, hoursFacts, start),
     lastServiceMissed(ctx.rides.filter((r) => r.lastDepartures.length > 0)),
+    reservationRequired(input, ctx),
     timedEntryConflicts(input.anchors as AnchorWindow[], scheduled),
     cityCrossings(days),
     walkingSavedKm(days),
@@ -358,13 +425,15 @@ export function checkPlan(input: PlanCheckInput): PlanCheckResult {
           else if (why === "after_last_entry") fix = { action: "retime", itemId: s.itemId, day: s.day, notAfterMin: s.atMin! };
           // after_closing / closes_early: start early enough to finish by the close (by the close, when no length is stated).
           else fix = { action: "retime", itemId: s.itemId, day: s.day, notAfterMin: s.atMin! - (len ?? 0) };
-          const fact: FactProvenance | undefined = why === "after_last_entry" ? lastEntry?.fact : hours;
+          // A closed day counted from an official closure fact (not the hours) cites that fact.
+          const closure = f.kind === "closed_on_arrival" && !closedByHours.has(s.itemId) ? ctx.closure.get(s.itemId) : undefined;
+          const fact: FactProvenance | undefined = why === "after_last_entry" ? lastEntry?.fact : closure ?? hours;
           issues.push({
             type: f.kind,
             day: s.day,
             stop: { itemId: s.itemId, title: s.title },
             why,
-            source: why === "after_last_entry" ? { kind: "official_fact", url: fact?.sourceUrl ?? null, provenance: fact?.provenance ?? null } : hoursSource(hours),
+            source: why === "after_last_entry" || closure ? { kind: "official_fact", url: fact?.sourceUrl ?? null, provenance: fact?.provenance ?? null } : hoursSource(hours),
             checkedAt: fact?.checkedAt ?? null,
             fix,
           });

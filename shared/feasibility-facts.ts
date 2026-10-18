@@ -2,10 +2,13 @@
  * FD-3 — FEASIBILITY FACTS, the pure half (decision-maker rulings, Oct 10, 2026; ledger
  * `2026-10-10-fd3-feasibility`; brief docs/planning/briefs/fd-3-feasibility.md).
  *
- * Two STRUCTURED operational facts and the ONE admission rule every writer of them calls (§18 rule 1):
+ * Four STRUCTURED operational facts and the ONE admission rule every writer of them calls (§18 rule 1):
  *   · `last_admission` — the latest entry time per weekday, optionally only within a seasonal range;
  *   · `last_service`   — an operator's last departure on a line or at a station, per weekday, valid
- *                        between two dates (sub-need `transport.local.last_service`).
+ *                        between two dates (sub-need `transport.local.last_service`);
+ *   · `closure`        — dates, date ranges and weekdays a stop is closed (EV-P0, ledger
+ *                        `2026-10-18-closure-ticketing-feasibility`);
+ *   · `ticketing_rule` — a stop that admits only with a reservation (same ledger).
  * Both are written ONLY from an official source (an official crawled page, or an expert citing one);
  * neither is ever parsed from free-text hours (ruling 1). Both carry `source_class = public` and
  * `reuse_class = link_only` (rulings 1/3) whatever the writer.
@@ -15,7 +18,7 @@
 
 import { PAGE_READ_ORIGINS } from "./content-facts";
 
-export const FEASIBILITY_FACT_TYPES = ["last_admission", "last_service"] as const;
+export const FEASIBILITY_FACT_TYPES = ["last_admission", "last_service", "closure", "ticketing_rule"] as const;
 export type FeasibilityFactType = (typeof FEASIBILITY_FACT_TYPES)[number];
 
 export function isFeasibilityFactType(v: unknown): v is FeasibilityFactType {
@@ -174,6 +177,114 @@ export function lastServiceMinutes(v: LastServiceValue, dateIso: string): number
 /** A departure before this minute is read as the previous evening's service. */
 export const SERVICE_DAY_START_MIN = 4 * 60;
 
+// ── closure ──────────────────────────────────────────────────────────────────────────────────────
+
+export interface ClosureValue {
+  /** Single closed days, "YYYY-MM-DD". */
+  closedDates: string[];
+  /** Closed spans, inclusive "YYYY-MM-DD" bounds (e.g. Dec 29 – Jan 3). */
+  closedRanges: Array<{ from: string; to: string }>;
+  /** Weekdays it is closed every week (0 = Sunday). */
+  closedWeekdays?: number[];
+}
+
+/** Pure. The structured closure, or null when it does not parse or states no closed day — never a guess (§13). */
+export function parseClosure(v: unknown): ClosureValue | null {
+  const x = v as any;
+  const datesIn = x?.closedDates ?? [];
+  const rangesIn = x?.closedRanges ?? [];
+  const weekdaysIn = x?.closedWeekdays;
+  if (!Array.isArray(datesIn) || !Array.isArray(rangesIn)) return null;
+  if (!datesIn.every((d: unknown) => typeof d === "string" && ISO_DATE.test(d))) return null;
+  const ranges: ClosureValue["closedRanges"] = [];
+  for (const r of rangesIn) {
+    if (!r || !ISO_DATE.test(String(r.from ?? "")) || !ISO_DATE.test(String(r.to ?? "")) || r.from > r.to) return null;
+    ranges.push({ from: r.from, to: r.to });
+  }
+  let weekdays: number[] | undefined;
+  if (weekdaysIn != null) {
+    if (!Array.isArray(weekdaysIn) || !weekdaysIn.length || !weekdaysIn.every((d: unknown) => Number.isInteger(d) && (d as number) >= 0 && (d as number) <= 6)) return null;
+    weekdays = Array.from(new Set<number>(weekdaysIn)).sort((a, b) => a - b);
+  }
+  if (!datesIn.length && !ranges.length && !weekdays) return null;
+  return { closedDates: Array.from(new Set<string>(datesIn)).sort(), closedRanges: ranges, ...(weekdays ? { closedWeekdays: weekdays } : {}) };
+}
+
+/** Pure. Is the stop closed on that calendar date? An unparseable date is never "closed" (§13). */
+export function closedOnDate(v: ClosureValue, dateIso: string): boolean {
+  if (!ISO_DATE.test(dateIso)) return false;
+  if (v.closedDates.includes(dateIso)) return true;
+  if (v.closedRanges.some((r) => dateIso >= r.from && dateIso <= r.to)) return true;
+  return !!v.closedWeekdays?.includes(new Date(`${dateIso}T00:00:00Z`).getUTCDay());
+}
+
+/** Pure. The first closure candidate that closes the stop on that date, else null. */
+export function closureForDate<T extends { value: unknown }>(candidates: readonly T[], dateIso: string | null): T | null {
+  if (!dateIso) return null;
+  for (const c of candidates) {
+    const v = parseClosure(c.value);
+    if (v && closedOnDate(v, dateIso)) return c;
+  }
+  return null;
+}
+
+// ── ticketing_rule ───────────────────────────────────────────────────────────────────────────────
+
+export interface TicketingRuleValue {
+  /** The stop admits only with a reservation. A rule that says otherwise is not stored. */
+  reservationRequired: true;
+  /** Days ahead the page says a reservation must be made, when it says. */
+  bookAheadDays?: number;
+  /** Entry is at a booked time slot. */
+  timedEntry?: boolean;
+}
+
+/** Pure. The structured rule, or null — only a page that says a reservation is required is a rule (§13). */
+export function parseTicketingRule(v: unknown): TicketingRuleValue | null {
+  const x = v as any;
+  if (x?.reservationRequired !== true) return null;
+  const out: TicketingRuleValue = { reservationRequired: true };
+  if (x.bookAheadDays != null) {
+    if (!Number.isInteger(x.bookAheadDays) || x.bookAheadDays < 0 || x.bookAheadDays > 365) return null;
+    out.bookAheadDays = x.bookAheadDays;
+  }
+  if (x.timedEntry != null) {
+    if (typeof x.timedEntry !== "boolean") return null;
+    out.timedEntry = x.timedEntry;
+  }
+  return out;
+}
+
+/** Pure. The structured value for a feasibility type — the ONE parse every writer and reader calls. */
+export function parseFeasibilityValue(factType: FeasibilityFactType, raw: unknown): unknown | null {
+  switch (factType) {
+    case "last_admission": return parseLastAdmission(raw);
+    case "last_service": return parseLastService(raw);
+    case "closure": return parseClosure(raw);
+    case "ticketing_rule": return parseTicketingRule(raw);
+  }
+}
+
+// ── the date in the quote ────────────────────────────────────────────────────────────────────────
+
+const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+
+/**
+ * Pure. Does the page's own quote state this calendar day? "2026-12-29" is found as "12月29日", "12/29",
+ * "29 Dec", "Dec 29", "December 29" or the ISO form. A date the quote does not print is refused.
+ */
+export function dateAppearsIn(quote: string, iso: string): boolean {
+  if (!ISO_DATE.test(iso)) return false;
+  const m = Number(iso.slice(5, 7));
+  const d = Number(iso.slice(8, 10));
+  const q = quote.normalize("NFKC").toLowerCase().replace(/\s+/g, " ");
+  const name = MONTHS[m - 1];
+  const short = name.slice(0, 3);
+  const forms = [iso, `${m}月${d}日`, `${m}/${d}`, `${String(m).padStart(2, "0")}/${String(d).padStart(2, "0")}`,
+    `${short} ${d}`, `${short}. ${d}`, `${name} ${d}`, `${d} ${short}`, `${d} ${name}`];
+  return forms.some((f) => new RegExp(`(^|[^0-9])${f.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}([^0-9]|$)`).test(q));
+}
+
 // ── the time in the quote ────────────────────────────────────────────────────────────────────────
 
 /**
@@ -196,12 +307,12 @@ export function timeAppearsIn(quote: string, hhmm: string): boolean {
 
 // ── THE ONE ADMISSION RULE ───────────────────────────────────────────────────────────────────────
 
-export type FeasibilityRefusal = "not_feasibility_type" | "bad_value" | "not_official" | "no_source_url" | "origin_not_allowed" | "time_not_in_quote";
+export type FeasibilityRefusal = "not_feasibility_type" | "bad_value" | "not_official" | "no_source_url" | "origin_not_allowed" | "time_not_in_quote" | "date_not_in_quote" | "number_not_in_quote";
 
 /**
  * Pure. May this draft be stored as a feasibility fact? Rulings 1/3/5: the value parses; the writer is an
  * official crawled page or an expert; the license is `official`; there is an https source url. When a
- * quote travels with the value (the crawled path), every structured time must appear in it.
+ * quote travels with the value (the crawled path), every structured time, date and day count must appear in it.
  */
 export function admitFeasibilityFact(d: {
   factType: string;
@@ -215,6 +326,23 @@ export function admitFeasibilityFact(d: {
   if (d.license !== "official") return { ok: false, reason: "not_official" };
   if (typeof d.sourceUrl !== "string" || !/^https:\/\/\S+$/i.test(d.sourceUrl)) return { ok: false, reason: "no_source_url" };
   const quote = typeof (d.value as any)?.quote === "string" ? ((d.value as any).quote as string) : null;
+  if (d.factType === "closure") {
+    const v = parseClosure(d.value);
+    if (!v) return { ok: false, reason: "bad_value" };
+    if (quote !== null) {
+      const dates = [...v.closedDates, ...v.closedRanges.flatMap((r) => [r.from, r.to])];
+      if (dates.some((x) => !dateAppearsIn(quote, x))) return { ok: false, reason: "date_not_in_quote" };
+    }
+    return { ok: true };
+  }
+  if (d.factType === "ticketing_rule") {
+    const v = parseTicketingRule(d.value);
+    if (!v) return { ok: false, reason: "bad_value" };
+    if (quote !== null && v.bookAheadDays != null && !new RegExp(`(^|[^0-9])${v.bookAheadDays}([^0-9]|$)`).test(quote.normalize("NFKC"))) {
+      return { ok: false, reason: "number_not_in_quote" };
+    }
+    return { ok: true };
+  }
   if (d.factType === "last_admission") {
     const v = parseLastAdmission(d.value);
     if (!v) return { ok: false, reason: "bad_value" };

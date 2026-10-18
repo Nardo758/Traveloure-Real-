@@ -1046,6 +1046,10 @@ export interface FeasibilityFacts {
   /** FB-1 step 2: the same facts as `lastAdmission`, each with its checked date and source. */
   lastAdmissionFacts: Map<string, FeasibilityLastAdmission[]>;
   lastServices: Array<{ lat: number; lng: number; value: unknown; checkedAt?: string | null; sourceUrl?: string | null; provenance?: string | null }>;
+  /** Every unexpired, admitted `closure` fact per item, in precedence order (ledger `2026-10-18-closure-ticketing-feasibility`). */
+  closures: Map<string, FeasibilityLastAdmission[]>;
+  /** Every unexpired, admitted `ticketing_rule` fact per item, in precedence order (same ledger). */
+  ticketingRules: Map<string, FeasibilityLastAdmission[]>;
 }
 
 /**
@@ -1090,14 +1094,31 @@ export async function feasibilityFactsForTrip(tripId: string, market: string | n
   const own = (await rowsForTrip(tripId)).filter((r) => r.sourceClass != null);
   const timeZone = await planTimeZone(tripId);
   const placeOf = await itemPlaceIdsForTrip(tripId, own);
-  const stored = await storedOfficialFacts(Array.from(new Set(placeOf.values())), ["hours", "last_admission"]);
+  const stored = await storedOfficialFacts(Array.from(new Set(placeOf.values())), ["hours", "last_admission", "closure", "ticketing_rule"]);
   const sources = await sourcesFor([...own, ...stored]);
   const byItem = withStoredOfficial(own, placeOf, stored);
 
   const hours = new Map<string, FeasibilityHours[]>();
   const lastAdmission = new Map<string, unknown[]>();
   const lastAdmissionFacts = new Map<string, FeasibilityLastAdmission[]>();
+  const closures = new Map<string, FeasibilityLastAdmission[]>();
+  const ticketingRules = new Map<string, FeasibilityLastAdmission[]>();
+  const admittedOf = (rows: FactRow[], type: string): FeasibilityLastAdmission[] =>
+    rows
+      .filter((r) => r.factType === type && !isFactStale(r, now) && admitFeasibilityFact(r).ok)
+      .map((r) => ({
+        value: r.value,
+        checkedAt: r.fetchedAt ? new Date(r.fetchedAt as any).toISOString() : null,
+        sourceUrl: (r as any).sourceUrl ?? null,
+        provenance: toView(r as any, now, sources)?.provenance ?? null,
+      }));
   byItem.forEach((rows, itemId) => {
+    // Closures and ticketing rules are hard facts: official before anything else (`resolveFactPrecedence`).
+    const hard = resolveFactPrecedence(rows.map((r) => ({ ...r, sourceClass: r.sourceClass, license: r.license })), "closure");
+    const cl = admittedOf(hard, "closure");
+    if (cl.length) closures.set(itemId, cl);
+    const tr = admittedOf(hard, "ticketing_rule");
+    if (tr.length) ticketingRules.set(itemId, tr);
     const ranked = resolveFactPrecedence(
       rows.map((r) => ({ ...r, sourceClass: r.sourceClass, license: r.license })),
       "hours",
@@ -1138,5 +1159,5 @@ export async function feasibilityFactsForTrip(tripId: string, market: string | n
   });
 
   const lastServices = market ? await lastServicesForMarket(market, now) : [];
-  return { hours, lastAdmission, lastAdmissionFacts, lastServices };
+  return { hours, lastAdmission, lastAdmissionFacts, lastServices, closures, ticketingRules };
 }

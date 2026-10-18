@@ -14,6 +14,7 @@
  *     terms say otherwise is a later per-source admin override, never decided here.
  */
 import { isPageReadOrigin } from "./content-facts";
+import { isFeasibilityFactType } from "./feasibility-facts";
 
 export const SOURCE_CLASSES = ["public", "local"] as const;
 export type SourceClass = (typeof SOURCE_CLASSES)[number];
@@ -157,9 +158,10 @@ export function placeFactTags(
   license: string | null | undefined,
   factType?: string | null,
 ): { sourceClass: SourceClass; reuseClass: ReuseClass } | null {
-  // FD-3 rulings 1/3 (ledger `2026-10-10-fd3-feasibility`): a feasibility fact is public + link_only whoever
+  // FD-3 rulings 1/3 (ledger `2026-10-10-fd3-feasibility`; closure and ticketing_rule joined the set, ledger
+  // `2026-10-18-closure-ticketing-feasibility`): a feasibility fact is public + link_only whoever
   // wrote it — an expert citing an official page writes the official fact, not a local note.
-  if ((factType === "last_admission" || factType === "last_service") && (isPageReadOrigin(origin) || origin === "expert_nugget") && license === "official") {
+  if (isFeasibilityFactType(factType) && (isPageReadOrigin(origin) || origin === "expert_nugget") && license === "official") {
     return { sourceClass: "public", reuseClass: "link_only" };
   }
   if (origin === "expert_nugget") return { sourceClass: "local", reuseClass: "reusable" };

@@ -48,6 +48,8 @@ export function versionCheckInput(
   const sourceOf = new Map<string, string | null>();
   const hours = new Map<string, NonNullable<ReturnType<PlanCheckInput["hours"]["get"]>>>();
   const lastAdmission = new Map<string, NonNullable<ReturnType<PlanCheckInput["lastAdmission"]["get"]>>>();
+  const closures = new Map<string, NonNullable<ReturnType<NonNullable<PlanCheckInput["closures"]>["get"]>>>();
+  const ticketingRules = new Map<string, NonNullable<ReturnType<NonNullable<PlanCheckInput["ticketingRules"]>["get"]>>>();
   const out: PlanCheckStop[] = [];
   for (const r of stops) {
     if (r.dayNumber == null) continue;
@@ -57,6 +59,10 @@ export function versionCheckInput(
     if (h) hours.set(r.id, h);
     const la = source ? draft.lastAdmission.get(source) : undefined;
     if (la) lastAdmission.set(r.id, la);
+    const cl = source ? draft.closures?.get(source) : undefined;
+    if (cl) closures.set(r.id, cl);
+    const tr = source ? draft.ticketingRules?.get(source) : undefined;
+    if (tr) ticketingRules.set(r.id, tr);
     out.push({
       id: r.id,
       title: r.name,
@@ -65,6 +71,7 @@ export function versionCheckInput(
       endTime: r.endTime ?? null,
       durationMinutes: r.duration ?? null,
       point: source ? draftStop.get(source)!.point : null,
+      booked: source ? draftStop.get(source)!.booked : undefined,
     });
   }
   return {
@@ -75,6 +82,8 @@ export function versionCheckInput(
       hours,
       lastAdmission,
       lastServices: draft.lastServices,
+      closures,
+      ticketingRules,
       anchors: draft.anchors,
       legs,
       energy: [],

@@ -84,9 +84,9 @@ export function findingBadge(f: Finding): { badge: string; rest: string } {
   return line.startsWith(lead) ? { badge: String(f.count), rest: line.slice(lead.length) } : { badge: "↓", rest: line };
 }
 
-/** Badge fill by finding: problems coral (ruling 2's one primary colour), crossings gold, gains green. */
+/** Badge fill by finding: problems coral (ruling 2's one primary colour), crossings and reservations gold, gains green. */
 function badgeClass(kind: Finding["kind"]): string {
-  if (kind === "city_crossing" || kind === "pace_over") return "bg-[color:var(--slip-gold)] text-[color:var(--slip-ink)]";
+  if (kind === "city_crossing" || kind === "pace_over" || kind === "reservation_required") return "bg-[color:var(--slip-gold)] text-[color:var(--slip-ink)]";
   if (kind === "walking_saved_km") return "bg-[color:var(--slip-green)] text-[color:var(--slip-ink)]";
   return "bg-[color:var(--slip-primary)] text-[color:var(--slip-primary-ink)]";
 }

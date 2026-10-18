@@ -38,7 +38,7 @@ import { TAVILY_PRICE_PER_EXTRACT_USD, TAVILY_PRICE_PER_SEARCH_USD } from "../..
 import type { TavilyLoggingClient } from "../tavily-client";
 import { CONTENT_FACTS_USAGE_PURPOSE } from "./fresh-fetch";
 import { REFRESH_ORIGIN, refreshExpiresAt, refreshPlaceRef, stationPointValue, type StationPoint } from "@shared/official-refresh";
-import { admitFeasibilityFact, hoursSeason, isFeasibilityFactType, parseLastAdmission, parseLastService } from "@shared/feasibility-facts";
+import { admitFeasibilityFact, hoursSeason, isFeasibilityFactType, parseFeasibilityValue } from "@shared/feasibility-facts";
 import { parseDayHours } from "@shared/optimizer-lead";
 
 /** What one lookup costs in cents: one search plus one extract, derived from config (§8). */
@@ -407,13 +407,15 @@ export interface ExtractedFact {
 const STRUCTURED_FIELDS_INSTRUCTION =
   "For factType last_admission, add fields {byWeekday:{\"0\"..\"6\": \"HH:MM\" 24-hour, 0 = Sunday}, season?:{from:\"MM-DD\",to:\"MM-DD\"}} — the LATEST ENTRY time the page states, with the quote containing that time. " +
   "For factType last_service, add fields {operator, line, station, direction?, lastDeparture:\"HH:MM\", weekdays:[0-6], validFrom:\"YYYY-MM-DD\", validTo:\"YYYY-MM-DD\"} — the LAST DEPARTURE the page states, with the quote containing that time. " +
+  "For factType closure, add fields {closedDates:[\"YYYY-MM-DD\"], closedRanges:[{from:\"YYYY-MM-DD\",to:\"YYYY-MM-DD\"}], closedWeekdays?:[0-6]} — only the closed days the page states, with the quote printing every date. " +
+  "For factType ticketing_rule, add fields {reservationRequired:true, bookAheadDays?:n, timedEntry?:true} — only when the page says entry requires a reservation, with the quote stating it. " +
   "For factType hours you may add fields {weekdayDescriptions:[\"Monday: 9:00 AM – 5:00 PM\", …], season?:{from:\"MM-DD\",to:\"MM-DD\"}} using exactly that line form — \"Monday: Closed\" for a closed day, \"Monday: Open 24 hours\" for all day — with season only when the page states the hours apply to part of the year. For hours the quote is ONLY the opening times as printed on the page (for example \"8:30–17:00\"), never the surrounding prose. Omit fields you cannot read from the page.";
 
 /** Pure. The fact's structured fields: an object to store, null for none, or "refused". */
 export function structuredFields(factType: string, raw: unknown, quote: string): Record<string, unknown> | null | "refused" {
   if (isFeasibilityFactType(factType)) {
     if (!raw || typeof raw !== "object") return "refused";
-    const value = factType === "last_admission" ? parseLastAdmission(raw) : parseLastService(raw);
+    const value = parseFeasibilityValue(factType, raw);
     if (!value) return "refused";
     const verdict = admitFeasibilityFact({ factType, value: { ...value, quote }, origin: "crawled", license: "official", sourceUrl: "https://page.invalid/" });
     return verdict.ok ? (value as unknown as Record<string, unknown>) : "refused";

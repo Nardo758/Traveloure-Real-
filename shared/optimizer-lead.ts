@@ -24,6 +24,9 @@ export type FindingKind =
   | "after_last_admission"
   | "closes_before_visit_end"
   | "last_service_missed"
+  // EV-P0 (ledger `2026-10-18-closure-ticketing-feasibility`): a planned, unbooked stop whose official ticketing
+  // rule says entry needs a reservation. A flag only — no fix, never a reorder, never a version-gate issue.
+  | "reservation_required"
   | "timed_entry_conflict"
   | "city_crossing"
   | "walking_saved_km"
@@ -60,6 +63,7 @@ export const FINDING_ORDER: readonly FindingKind[] = [
   "after_last_admission",
   "closes_before_visit_end",
   "last_service_missed",
+  "reservation_required",
   "timed_entry_conflict",
   "city_crossing",
   "walking_saved_km",
@@ -129,7 +133,7 @@ export function parseDayHours(descriptions: readonly string[] | null | undefined
 }
 
 /** P0-e item 2: why an hours finding counts a stop. */
-export type HoursStopReason = "before_opening" | "after_closing" | "closed_day" | "closes_early" | "after_last_entry";
+export type HoursStopReason = "before_opening" | "after_closing" | "closed_day" | "closes_early" | "after_last_entry" | "reservation_required";
 
 export interface TimedItem {
   id: string;
@@ -557,6 +561,9 @@ export function findingLine(f: Finding): string {
       return f.inferred
         ? `${n(f.count, "ride may leave", "rides may leave")} after the last train or bus`
         : `${n(f.count, "ride leaves", "rides leave")} after the last train or bus`;
+    // FOUNDER WORDING REVIEW on the PR (ledger `2026-10-18-closure-ticketing-feasibility`).
+    case "reservation_required":
+      return `${n(f.count, "stop needs", "stops need")} a reservation before you go`;
     case "timed_entry_conflict":
       return `${n(f.count, "timed entry clashes", "timed entries clash")} with your fixed times`;
     case "city_crossing":
@@ -625,6 +632,9 @@ export function findingStopLines(f: Finding): string[] {
           return at ? `${head} closes at ${at}, before your visit ends` : `${head} closes before your visit ends`;
         case "after_last_entry":
           return `${head} arrives after last entry${at ? ` (${at})` : ""}`;
+        // FOUNDER WORDING REVIEW on the PR.
+        case "reservation_required":
+          return `${head} needs a reservation`;
         default:
           return head;
       }
