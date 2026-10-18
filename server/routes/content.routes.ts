@@ -9356,32 +9356,6 @@ router.post("/api/affiliates/track", async (req, res) => {
     }
   });
 
-  // Admin: Affiliate reconciliation
-
-router.get("/api/affiliate/products/by-location", async (req, res) => {
-    try {
-      const { city, country, category, limit } = req.query;
-      
-      if (!city && !country) {
-        return res.status(400).json({ message: "city or country is required" });
-      }
-
-      const isAdmin = await isRequestAdmin(req);
-      const result = await affiliateScraperService.getProducts({
-        city: city as string,
-        country: country as string,
-        category: category as string,
-        approvedOnly: !isAdmin, // traveler-facing location feed → approved partners only
-        limit: limit ? parseInt(limit as string) : 10,
-      });
-
-      // §16: see /api/affiliate/products — public DTOs carry no partner URLs.
-      res.json(isAdmin ? result : { ...result, products: stripProductUrls(result.products) });
-    } catch (error: any) {
-      res.status(500).json({ message: "Failed to get products by location", error: error.message });
-    }
-  });
-
   // === Content Tracking System API ===
 
   // Get content tracking summary (admin only)
