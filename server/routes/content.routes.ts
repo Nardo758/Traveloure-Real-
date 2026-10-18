@@ -1,4 +1,5 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { toPublicPartnerProducts } from "../services/public-partner-product";
 import { claimFreeDraft, promoteFreeDraft, releaseFreeDraft, freeDraftRefusalBody, freeDraftStatus, FREE_DRAFT_REFUSAL_STATUS } from "../services/free-draft-cap.service";
 import { optimizedItinerariesGate } from "../config/optimized-itineraries.config";
 import { freeDraftCopy } from "@shared/free-draft-cap";
@@ -1575,23 +1576,46 @@ router.get("/api/catalog/wegotrip", isAuthenticated, async (req, res) => {
 
   // Activities: Viator discounted feed
 
-router.get("/api/catalog/viator-feed", isAuthenticated, async (req, res) => {
-    try {
-      const { searchViatorFeedProducts } = await import("../services/travelpayouts/viator-feed.service");
-      const { destination, currency, limit } = req.query;
+// VD-1 (ledger `2026-10-18-viator-direct-live`): the Travelpayouts Viator feed is RETIRED. Viator is
+// live only, through `/api/viator/live/products`.
+router.get("/api/catalog/viator-feed", isAuthenticated, (_req, res) => {
+  res.status(410).json({ message: "The Viator feed is retired; Viator results are live only.", items: [], total: 0 });
+});
 
-      const items = await searchViatorFeedProducts({
-        destination: destination as string,
-        currency: currency as string,
-        limit: limit ? parseInt(limit as string) : 20,
-      });
+// VD-1: live Viator product search (Partner API, Basic Access). Nothing is stored; the price is as of
+// this request; every item names Viator. Off unless VIATOR_DIRECT_ENABLED=1; Kyoto only.
+router.get("/api/viator/live/products", isAuthenticated, async (req, res) => {
+  const { searchViatorLive } = await import("../services/viator-live.service");
+  const city = typeof req.query.destination === "string" ? req.query.destination : typeof req.query.city === "string" ? req.query.city : "";
+  const surface = req.query.surface === "browse" ? "browse" : "expert_picker";
+  const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : undefined;
+  const result = await searchViatorLive({ city, surface, count: Number.isFinite(limit) ? limit : undefined });
+  res.set("Cache-Control", "no-store");
+  res.json({ ...result, total: result.items.length });
+});
 
-      res.json({ items: await vaultAndStripItems(items), total: items.length });
-    } catch (error) {
-      console.error("Viator feed error:", error);
-      res.status(500).json({ message: "Failed to fetch Viator feed" });
-    }
-  });
+// VD-1 / §16: an outbound open of a live Viator card is recorded (ids only — no Viator content).
+const viatorLiveClickBody = z.object({
+  productCode: z.string().regex(/^[A-Za-z0-9_-]{1,40}$/),
+  tripId: z.string().max(64).optional(),
+  surface: z.enum(["browse", "expert_picker"]),
+}).strict();
+router.post("/api/viator/live/click", isAuthenticated, async (req, res) => {
+  const parsed = viatorLiveClickBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: "Invalid click" });
+  try {
+    await db.insert(affiliateClicks).values({
+      userId: getUserId(req)!,
+      tripId: parsed.data.tripId ?? null,
+      clickContentType: `viator_live_${parsed.data.surface}`,
+      clickContentId: parsed.data.productCode,
+      initiatedBy: "user",
+    } as any);
+  } catch (err) {
+    console.warn("[viator-live] click not recorded:", (err as any)?.code ?? "error");
+  }
+  res.status(204).end();
+});
 
   // Ground transport: Omio
 
@@ -8667,8 +8691,9 @@ router.get("/api/discovery/jobs", isAuthenticated, async (req, res) => {
   // §16: registry-product DTOs for travelers carry NO partner URLs. The rail re-resolves the URL
   // from the affiliate_products row by id (affiliateProductId), and informational outbound goes
   // through the tracked /api/content/affiliate-redirect — neither needs the URL client-side.
-  const stripProductUrls = <T extends { affiliateUrl?: any; productUrl?: any }>(products: T[]) =>
-    products.map(({ affiliateUrl: _a, productUrl: _p, ...rest }) => rest);
+  // PX-2 (ledger `2026-10-18-public-partner-price-strip`): the stored price, its currency and its scrape
+  // time leave the public DTO the same way (`toPublicPartnerProducts`); admin reads keep every field.
+  const stripProductUrls = <T extends Record<string, unknown>>(products: T[]) => toPublicPartnerProducts(products);
 
   // Get partner categories
 

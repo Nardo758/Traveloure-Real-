@@ -146,6 +146,34 @@ export function itemClosingWarning(
   return sourcedWarning(`Closes ${clockLabel(close)}`, hours, timeZone);
 }
 
+/**
+ * 9b-c LB9 (ledger `2026-10-18-lb8-lb9-card-wiring`): the time a stop's leave-by measures against when the
+ * planned start is too late — the SAME two facts `itemClosingWarning` reads above, never a second rule: a
+ * last-entry fact covering the date wins; otherwise the shown hours' closing time for a stop reached after
+ * the day's last close. "HH:MM" in the plan's zone, the kind naming which. Null when neither fact says
+ * anything for the date (§13: no guessed limit).
+ */
+export function stopEntryLimit(
+  facts: readonly FactView[] | undefined,
+  dateIso: string | null,
+  startTime: string | null | undefined,
+): { time: string; kind: "last_entry" | "closing" } | null {
+  if (!dateIso || !/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) return null;
+  const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+  for (const f of facts ?? []) {
+    if (f.factType !== "last_admission") continue;
+    const last = lastAdmissionForDate([f.value], dateIso);
+    if (last !== null) return { time: hhmm(last), kind: "last_entry" };
+  }
+  const start = rowMinutes(startTime);
+  if (start === null) return null;
+  const hours = shownHoursFact(facts, dateIso);
+  if (!hours) return null;
+  const lines = Array.isArray(hours.value?.weekdayDescriptions) ? (hours.value.weekdayDescriptions as unknown[]).map(String) : [];
+  const close = rowClosingMinute(lines, new Date(`${dateIso}T12:00:00Z`).getUTCDay(), start, null);
+  return close === null ? null : { time: hhmm(close), kind: "closing" };
+}
+
 /** The warning's lead, then the fact's own source and check date, and its caveat when stale. */
 function sourcedWarning(lead: string, fact: FactView, timeZone?: string | null): { text: string; sourceUrl: string | null } {
   const checked = factCheckedLabel(fact.checkedAt, timeZone) ?? provenanceCheckedLabel(fact.provenance);

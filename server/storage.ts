@@ -1,4 +1,5 @@
 import { toPublicListing } from "./utils/public-service-listing";
+import { VIATOR_ITEM_CONTENT_TYPE } from "@shared/viator-item";
 import { db } from "./db";
 import { scrubStoredTransportOption } from "./services/transport-option-client";
 import { enqueuePlanLegRecompute } from "./services/routing/plan-legs-queue";
@@ -153,7 +154,6 @@ import {
   sharedItineraries, mapsExportCache,
   transportLegs, transportBookingOptions, affiliateClicks,
   expertUpdatedItineraries,
-  aiGeneratedItineraries,
   tripAnalyticsEnhanced,
   bundleComponents,
   vendorContracts,
@@ -171,6 +171,12 @@ import {
   type HumanPurchaseBookingAgentStatus,
 } from "@shared/booking-agent-vocabulary";
 import { eq, ilike, and, not, desc, or, count, gt, gte, lte, avg, inArray, asc, isNotNull, isNull, ne, sql as sqlOp, getTableColumns } from "drizzle-orm";
+import { HELD_VARIANT_STATUS } from "@shared/version-check";
+
+/** FB-1 step 3: a version is shown unless it is held. NULL status is shown (IS DISTINCT FROM, never `<>`). */
+function variantIsShownSql() {
+  return sqlOp`${itineraryVariants.status} IS DISTINCT FROM ${HELD_VARIANT_STATUS}`;
+}
 type PayoutClaimResult<T> = {
   payout?: T;
   reason?: 'insufficient_releasable_earnings' | 'already_processing' | 'terminal';
@@ -1090,7 +1096,7 @@ export interface IStorage {
 
   getItineraryItems(tripId: string): Promise<any[]>;
 
-  createItineraryItem(item: any, opts?: { fromLocalInput?: boolean; coordSource?: GoogleCoordSource }): Promise<any>;
+  createItineraryItem(item: any, opts?: { fromLocalInput?: boolean; coordSource?: GoogleCoordSource; viatorProductCode?: string }): Promise<any>;
   createPendingBillboardGemItemIfAbsent(
     item: InsertItineraryItem & { tripId: string },
     gemId: string,
@@ -1328,7 +1334,6 @@ export interface IStorage {
   replaceUserCartWithVariantItems(userId: string, variantItems: Array<{ providerServiceId: string | null; dayNumber: number | null; timeSlot: string | null }>): Promise<number>;
   // === AI-generated itinerary ===
 
-  saveAiGeneratedItinerary(data: any): Promise<any>;
   // === Shared itinerary & maps export ===
 
   createSharedItinerary(data: any): Promise<void>;
@@ -8108,9 +8113,15 @@ export class DatabaseStorage implements IStorage {
   // caller that sets it at create time (see the schema comment).
   async createItineraryItem(
     item: InsertItineraryItem & { tripId: string },
-    opts: { fromLocalInput?: boolean; coordSource?: GoogleCoordSource } = {},
+    opts: { fromLocalInput?: boolean; coordSource?: GoogleCoordSource; viatorProductCode?: string } = {},
   ): Promise<ItineraryItem> {
     const safeItem = withItemCoordSource(stampItemSourceClass(stripItineraryItemRoutingFields(item as Record<string, unknown>), opts), opts.coordSource);
+    // VD-1b (ledger `2026-10-18-viator-add-to-plan`): the content pair is stamped HERE, after the strip, from a
+    // code the create rail admitted (`itineraryItemViatorLinkSchema`) — never from the body.
+    if (opts.viatorProductCode) {
+      (safeItem as any).contentType = VIATOR_ITEM_CONTENT_TYPE;
+      (safeItem as any).contentId = opts.viatorProductCode;
+    }
     const [created] = await db.insert(itineraryItems).values(safeItem as any).returning();
     enqueuePlanLegRecompute(created?.tripId); // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)
     return created;
@@ -8715,7 +8726,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getItineraryVariantById(id: string): Promise<any | null> {
-    const [row] = await db.select().from(itineraryVariants).where(eq(itineraryVariants.id, id)).limit(1);
+    // FB-1 step 3: a held version (failed the plan check) is never returned to a caller that names it.
+    const [row] = await db.select().from(itineraryVariants).where(and(eq(itineraryVariants.id, id), variantIsShownSql())).limit(1);
     return row ?? null;
   }
 
@@ -8744,12 +8756,6 @@ export class DatabaseStorage implements IStorage {
       }
     }
     return inserted;
-  }
-
-  // === AI-generated itinerary ===
-  async saveAiGeneratedItinerary(data: any): Promise<any> {
-    const [saved] = await db.insert(aiGeneratedItineraries).values(data).returning();
-    return saved;
   }
 
   // === Shared itinerary & maps export ===
@@ -8998,7 +9004,7 @@ export class DatabaseStorage implements IStorage {
 
   async getLatestVariantByComparisonId(comparisonId: string): Promise<{ id: string } | null> {
     const [row] = await db.select({ id: itineraryVariants.id }).from(itineraryVariants)
-      .where(eq(itineraryVariants.comparisonId, comparisonId))
+      .where(and(eq(itineraryVariants.comparisonId, comparisonId), variantIsShownSql()))
       .orderBy(desc(itineraryVariants.createdAt))
       .limit(1);
     return row ?? null;
@@ -9082,7 +9088,7 @@ export class DatabaseStorage implements IStorage {
 
   async getTopAiVariantByComparison(comparisonId: string): Promise<any | null> {
     const [row] = await db.select().from(itineraryVariants)
-      .where(and(eq(itineraryVariants.comparisonId, comparisonId), eq(itineraryVariants.source, "ai_optimized")))
+      .where(and(eq(itineraryVariants.comparisonId, comparisonId), eq(itineraryVariants.source, "ai_optimized"), variantIsShownSql()))
       .orderBy(desc(itineraryVariants.optimizationScore))
       .limit(1);
     return row ?? null;

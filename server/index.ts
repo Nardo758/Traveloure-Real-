@@ -475,7 +475,8 @@ async function seedAtBoot() {
   try {
     const { seedManualCityEvents } = await import("./seeds/city-events.manual");
     // Boot removals (ledger `2026-10-18-boot-removals`): no Nominatim lookup at boot. A new row with no
-    // hand-typed point is deferred, never inserted unlocated.
+    // hand-typed point lands unlocated and flagged; `npx tsx server/seeds/city-events.manual.ts` runs the
+    // lookups on purpose.
     const eventsResult = await seedManualCityEvents({ venueLookup: false });
     healthEgress.nominatim = eventsResult.nominatim;
     if (eventsResult.inserted > 0 || eventsResult.filled > 0 || eventsResult.renamed > 0 || eventsResult.refused.length > 0 || eventsResult.deferred.length > 0) {

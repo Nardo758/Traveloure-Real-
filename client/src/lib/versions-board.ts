@@ -11,6 +11,7 @@
  *   · A re-time counts against the version the day was adopted from (its rows' provenance); past
  *     the free limit the board says it is a paid run BEFORE anything happens.
  */
+import type { PlanIssue } from "@shared/plan-check";
 import {
   BADGE_LABELS,
   daySummary,
@@ -33,6 +34,8 @@ export interface BoardVersion {
   anchor: { name: string; type?: string | null; lat: number | null; lng: number | null } | null;
   /** V-1: the version's sanity flags from its run; absent on an older payload ⇒ none. */
   flags?: VersionFlag[];
+  /** FB-1 step 3: fewer checks ran on this version than on the draft; absent on an older payload ⇒ false. */
+  coverageReduced?: boolean;
   stops: BoardStop[];
   days: DayDiff[];
 }
@@ -48,6 +51,8 @@ export interface VersionsBoardView {
   run: { comparisonId: string; runId: string | null; runAt: string; charge?: RunCharge | null } | null;
   plan: { stops: BoardStop[] };
   versions: BoardVersion[];
+  /** FB-1 step 3 (ruling 4): the run's every version was held — the draft's open issues, each with its fix. */
+  blocked?: { heldCount: number; openIssues: PlanIssue[] };
   retimes: { limit: number; used: Record<string, number>; windowEndsAt: string | null; free: Record<string, boolean>; unlimited?: boolean };
 }
 

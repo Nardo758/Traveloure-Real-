@@ -127,10 +127,16 @@ before(async () => {
   // if read, would put the 10:00 arrival at closing time.
   await recordFacts([fact({ placeRef: P4, factType: "location", value: { lat: 35.01, lng: 135.76 } })], { planId: trip, itemId: id("d2") });
   await recordFacts([fact({ placeRef: P4, value: { weekdayDescriptions: ["Tuesday: 9:00 AM – 10:00 AM"] } })], { planId: other, itemId: null });
+  // FB-1 step 2: a ride is read only between OPEN coordinates (LG-1) — the three day-1 stops' OSM points, at their row points.
+  for (const [placeId, lat, lng] of [[P2, "35.0000", "135.7820"], [P1, "34.9949", "135.7850"], [P3, "35.0094", "135.6680"]] as const) {
+    await db.execute(sql`INSERT INTO open_place_coords (id, source, google_place_id, lat, lng, osm_type, osm_id, name, matched_by, attribution, matched_at)
+      VALUES ('osm:node/' || ${placeId}, 'osm', ${placeId}, ${lat}, ${lng}, 'node', 1, ${placeId}, 'nominatim_batch', '© OpenStreetMap contributors', now())`);
+  }
 });
 
 after(async () => {
   await db.execute(sql`DELETE FROM place_facts WHERE plan_id IN (${trip}, ${other}) OR place_ref IN (${P1}, ${P2}, ${P3}, ${P4}, 'Kiyomizu-gojo')`);
+  await db.execute(sql`DELETE FROM open_place_coords WHERE google_place_id IN (${P1}, ${P2}, ${P3})`);
   await db.execute(sql`DELETE FROM itinerary_items WHERE trip_id = ${trip}`);
   await db.execute(sql`DELETE FROM trips WHERE id IN (${trip}, ${other})`);
   await db.execute(sql`DELETE FROM users WHERE id = ${owner}`);

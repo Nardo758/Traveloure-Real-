@@ -2,6 +2,7 @@ import { db } from "../db";
 import { hotelCache, hotelOfferCache, activityCache, locationCache } from "@shared/schema";
 import { eq, and, gte, lte, ilike, or, sql, inArray } from "drizzle-orm";
 import { ViatorProduct, viatorService } from "./viator.service";
+import { viatorDirectEnabled } from "../config/viator.config";
 import { hotelCacheExpiredDeletable } from "./hotel-cache-retention";
 
 const CACHE_DURATION_HOURS = 24;
@@ -309,6 +310,9 @@ export class CacheService {
   private coordinateRefreshAttempts = new Map<string, number>();
 
   async getActivitiesWithCache(destination: string, currency: string = "USD", count: number = 20): Promise<{ data: any[]; fromCache: boolean; lastUpdated?: Date }> {
+    // VD-1 (ledger `2026-10-18-viator-direct-live`): with the live Viator search on, Viator is never
+    // fetched into or served from `activity_cache` (Basic Access content is live only). Rows are kept.
+    if (viatorDirectEnabled()) return { data: [], fromCache: false };
     const cached = await this.getCachedActivities(destination);
 
     if (cached.length > 0) {
@@ -416,6 +420,8 @@ export class CacheService {
   }
 
   async verifyActivityAvailability(productCode: string, travelDate?: string): Promise<{ available: boolean; currentPrice?: number; priceChanged?: boolean; cachedPrice?: number }> {
+    // VD-1: no Viator call against a stored row while the live search is on.
+    if (viatorDirectEnabled()) return { available: false };
     try {
       const cached = await db.select()
         .from(activityCache)
@@ -493,9 +499,12 @@ export class CacheService {
       .where(hotelCacheExpiredDeletable(now))
       .returning({ id: hotelCache.id });
 
-    const deletedActivities = await db.delete(activityCache)
-      .where(lte(activityCache.expiresAt, now))
-      .returning();
+    // VD-1: while the live Viator search is on, `activity_cache` rows are kept, not deleted.
+    const deletedActivities = viatorDirectEnabled()
+      ? []
+      : await db.delete(activityCache)
+          .where(lte(activityCache.expiresAt, now))
+          .returning();
 
     return {
       hotels: deletedHotels.length,
