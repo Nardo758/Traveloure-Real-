@@ -5,8 +5,7 @@
  *   S1 every secret-named env var the server reads is set to a random value AT TEST TIME (never a
  *      literal); every partner search builder runs against a fetch stub, and no link it returns
  *      contains any of those values
- *   S2 the Viator feed: links and the feed request carry the public marker as `mcid` — no secret in
- *      the request's URL and none in any link
+ *   S2 the Travelpayouts Viator feed is retired (VD-1): no service file, no sync network
  *   S3 static second layer: no link-building line in `server/` interpolates the Travelpayouts token or
  *      a secret-named env var
  *   S4 GetYourGuide paused: the search makes NO request (the token is never sent), the sync skips it,
@@ -143,6 +142,7 @@ test("S1 no partner search builder returns a link containing a configured secret
   assert.ok(SECRET_ENV_NAMES.includes("TRAVELPAYOUTS_TOKEN"), "the Travelpayouts token is among the names read");
   const dir = path.join(ROOT, "server/services/travelpayouts");
   let ran = 0;
+  const ranFiles = new Set<string>();
   for (const f of fs.readdirSync(dir).filter((n) => n.endsWith(".service.ts"))) {
     const mod = await import(path.join(dir, f));
     for (const [name, fn] of Object.entries(mod)) {
@@ -155,12 +155,18 @@ test("S1 no partner search builder returns a link containing a configured secret
         continue; // a builder that throws returned nothing to leak
       }
       ran++;
+      ranFiles.add(f.replace(/\.service\.ts$/, ""));
       for (const link of linkStrings(out)) {
         for (const v of secretValues()) assert.ok(!link.includes(v), `${f} ${name} put a secret in a link`);
       }
     }
   }
   assert.ok(ran >= 15, `the partner builders ran (${ran})`);
+  // PX-1b (decision-maker, Oct 18, 2026): the eight integrations whose API keeps its partner-required
+  // auth are each among the builders this check ran (aviasales is `tpFetch`'s caller).
+  for (const name of ["airalo", "omio", "kiwitaxi", "discovercars", "tiqets", "stasher", "busbud", "aviasales"]) {
+    assert.ok(ranFiles.has(name), `${name}'s builder is covered`);
+  }
   const { affiliateService } = await import("../services/affiliate.service");
   for (const p of ["viator", "booking", "twelvego"]) {
     const link = await affiliateService.getDeepLink(p, "P7").catch(() => null);
@@ -171,19 +177,12 @@ test("S1 no partner search builder returns a link containing a configured secret
   }
 });
 
-test("S2 the Viator feed: marker as mcid on the request and every link; no secret in the request URL", async () => {
-  await db.execute(sql`DELETE FROM travelpayouts_cache WHERE cache_key LIKE ${"%viator-feed%"}`).catch(() => {});
-  stubFetch();
-  const { searchViatorFeedProducts } = await import("../services/travelpayouts/viator-feed.service");
-  const items = await searchViatorFeedProducts({ destination: "Kyoto", limit: 5 });
-  assert.ok(items.length > 0, "the stub feed mapped");
-  for (const it of items) assert.equal(new URL(it.affiliateUrl!).searchParams.get("mcid"), process.env.TRAVELPAYOUTS_MARKER);
-  const feedRequests = requests.filter((u) => u.includes("viator.com"));
-  assert.ok(feedRequests.length >= 1, "the feed was requested");
-  for (const u of feedRequests) {
-    assert.equal(new URL(u).searchParams.get("mcid"), process.env.TRAVELPAYOUTS_MARKER);
-    for (const v of secretValues()) assert.ok(!u.includes(v), "no secret in the feed request URL");
-  }
+// VD-1 (ledger `2026-10-18-viator-direct-live`): the Travelpayouts Viator feed this case covered is
+// RETIRED. S2 now pins that it is gone; the live Viator path's links are pinned by vd1-viator-live V2.
+test("S2 the Travelpayouts Viator feed is retired: no service, no sync network", async () => {
+  assert.equal(fs.existsSync(path.join(ROOT, "server/services/travelpayouts/viator-feed.service.ts")), false);
+  const { CATALOG_NETWORKS } = await import("../services/catalog-ingest.service");
+  assert.ok(!CATALOG_NETWORKS.some((n) => /viator/i.test(n.key) || /viator/i.test(n.partnerName)), "Viator is never synced");
 });
 
 test("S3 no link-building line in server/ interpolates the token or a secret-named env var", () => {

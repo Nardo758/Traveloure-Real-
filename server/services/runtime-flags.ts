@@ -39,6 +39,8 @@ export const HEALTH_FLAG_NAMES = [
   "ROUTING_ADAPTER_STUB",
   // PX-1 (ledger `2026-10-18-px1-partner-links`): GetYourGuide is paused unless this is "1".
   "GETYOURGUIDE_ENABLED",
+  // VD-1 (ledger `2026-10-18-viator-direct-live`): the live Viator Partner API search is off unless "1".
+  "VIATOR_DIRECT_ENABLED",
 ] as const;
 
 export type HealthFlags = Record<(typeof HEALTH_FLAG_NAMES)[number], boolean>;

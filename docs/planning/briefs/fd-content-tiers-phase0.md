@@ -25,7 +25,7 @@ in §B were **ruled Oct 9, 2026** and are recorded there. The migration SQL in �
 | `plan_options` (open sets, incl. `expert_recommendation`) | `shared/draft-basis.ts:155-173` | an expert-recommended option is `local` |
 | `temporal_anchors`, `day_boundaries`, `trips`, events | prompt blocks | the traveler's own answers; neither class |
 
-- **After the draft commits.** `enrichPlanItems` writes `places_api` facts (license `restricted`), and where-to-stay
+- **After the draft commits.** `enrichPlanItems` writes `places_api` facts (license `restricted`; ~~hours~~ — **Struck Oct 18, 2026 (ledger `2026-10-18-google-hours-spec-strikes`):** Google hours are not stored or read (GH-1, `2026-10-17-gh1-no-google-hours`); hours come from official and person-checked facts only.), and where-to-stay
   reads `city_neighborhoods.description` (ruled `public`, B4), hotels and listings.
 - **Sibling generators that DO read gems:**
   - quick-start: `trips.routes.ts:917`, `routes.ts:12141`
@@ -98,7 +98,7 @@ license value, the default reuse class is:
 
 | `license` / `license_class` | `reuse_class` | Why |
 |---|---|---|
-| `restricted` (Google Places) | `display_in_plan` | Shown inside the plan with attribution, never reused (LD 57). |
+| `restricted` (Google Places) | `display_in_plan` | Shown inside the plan with attribution, never reused (LD 57). ~~Google hours~~ struck Oct 18, 2026: not stored or read (GH-1). |
 | `official` (JNTO-type, an official site) | `link_only` | Ruling 2: link-only unless the source's own terms say otherwise. |
 | `editorial` | `link_only` | Attributed quote + link; never republished. |
 | `partner` | `internal` | Partner content stays server-side (§16). |
@@ -151,6 +151,9 @@ ALTER TABLE itinerary_items          ADD COLUMN IF NOT EXISTS source_class varch
 `author_id` (Ready Made), `verified_by` (`place_facts`; and, new, gems — ruling 3). `author_label` holds
 "Traveloure team" only on rows a person on the team seeded; never on machine output. `authored_at` reuses `created_at`
 / `detected_at`, except on `city_neighborhoods`, which has none.
+
+> **Struck Oct 18, 2026 (ledger `2026-10-18-google-hours-spec-strikes`):** Google hours are not stored or read (GH-1, `2026-10-17-gh1-no-google-hours`); hours come from official and person-checked facts only. Migration 362 ran as written below and is kept as the record; its `places_api` UPDATE no longer
+> makes a Google hours fact readable, because no reader reads one (`notGoogleHoursRow`).
 
 ```sql
 -- 362_content_tier_backfill.sql — data only. Idempotent: every UPDATE is guarded by source_class IS NULL,

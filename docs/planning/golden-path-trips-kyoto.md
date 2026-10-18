@@ -172,7 +172,7 @@ outward from the hotel set".
 - **Built (A5, ledger `2026-09-29-a5-draft-open-set`, under R211):** the held slot and the geography hint are
   live. Appendix B Q2's default is what shipped (the hotels are a hint, never a choice). On an EMPTY slip plan-fit
   cannot rank (no stops yet), so the draft is built around every located option and says so. Drafted stops gain
-  Places facts (hours, dining basics, coordinates) when the spine is switched on, and the fit lines then have stops to
+  Places facts (~~hours,~~ dining basics, coordinates — hours struck Oct 18, 2026: Google hours are not stored or read, GH-1) when the spine is switched on, and the fit lines then have stops to
   score against.
 - **Amended (smoke test 4, ledger `2026-10-02-smoke4-draft-fixes`):** with no hotel and no set the draft no longer
   asks first — "Draft it with AI" always drafts (`none_asked`, no hotel wording: day 1 is the arrival, the last day the

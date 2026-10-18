@@ -48,7 +48,18 @@ export interface OptimizerGeocodeBudget {
   used(): number;
 }
 
-const SUCCESS_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+/**
+ * FB-1 step 1 (decision-maker, Oct 17, 2026 — ledger `2026-10-17-fb1-checker-open-coords`): a Google geocode is kept
+ * 30 days (was 90). A row is also refused at READ once it was last written more than 30 days ago, so a row stored
+ * under the old 90-day expiry stops being served at 30 days without a migration.
+ */
+export const GEOCODE_SUCCESS_TTL_DAYS = 30;
+const SUCCESS_TTL_MS = GEOCODE_SUCCESS_TTL_DAYS * 24 * 60 * 60 * 1000;
+
+/** The oldest write a cache read may still serve. */
+export function geocodeCacheReadableSince(now: Date): Date {
+  return new Date(now.getTime() - SUCCESS_TTL_MS);
+}
 const MISS_TTL_MS = 24 * 60 * 60 * 1000;
 const inFlightGeocodes = new Map<string, Promise<GeocodeResult | null>>();
 
@@ -77,6 +88,7 @@ const databaseCache: GeocodeCacheAdapter = {
         eq(optimizerGeocodeCache.provider, provider),
         eq(optimizerGeocodeCache.queryHash, queryHash),
         gt(optimizerGeocodeCache.expiresAt, new Date()),
+        gt(optimizerGeocodeCache.updatedAt, geocodeCacheReadableSince(new Date())),
       ))
       .limit(1);
     return row ?? null;

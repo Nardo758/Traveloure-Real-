@@ -25,7 +25,85 @@ export const LOGGED_REQUEST_HEADERS = [
   "x-forwarded-for",
 ] as const;
 
-const CREDENTIAL_QUERY_KEY = /(token|secret|key|signature|password|passwd|auth|code|session|jwt|otp)/i;
+// PX-1b (ledger `2026-10-18-partner-token-redaction`): `affiliate_id` joins the list — DiscoverCars' API
+// takes the Travelpayouts token under that name, so the name alone must be enough to mask it.
+const CREDENTIAL_QUERY_KEY = /(token|secret|key|signature|password|passwd|auth|code|session|jwt|otp|affiliate_id)/i;
+
+/** Env names that hold a credential (the same shape the PX-1 link test reads from the source). */
+const SECRET_ENV_NAME = /(TOKEN|SECRET|PASSWORD|API_KEY|_KEY)$/;
+/** Shorter values are not masked by value: too likely to match ordinary text. Names still mask them. */
+const MIN_MASKED_SECRET_LENGTH = 8;
+
+function configuredSecretValues(env: NodeJS.ProcessEnv = process.env): string[] {
+  const out: string[] = [];
+  for (const [name, value] of Object.entries(env)) {
+    if (value && SECRET_ENV_NAME.test(name) && value.length >= MIN_MASKED_SECRET_LENGTH) out.push(value);
+  }
+  return out.sort((x, y) => y.length - x.length);
+}
+
+/**
+ * Text with every credential-looking query value masked AND every configured secret's value masked,
+ * wherever it appears (a URL quoted in an error message, a partner's echoed request). Never throws.
+ */
+export function redactSecretsInText(text: string, env: NodeJS.ProcessEnv = process.env): string {
+  if (typeof text !== "string" || text.length === 0) return text;
+  let out = text.replace(/([?&])([^=&\s"'<>]+)=([^&\s"'<>]*)/g, (m, sep: string, k: string) => {
+    let name = k;
+    try {
+      name = decodeURIComponent(k);
+    } catch {
+      /* keep the raw key */
+    }
+    return CREDENTIAL_QUERY_KEY.test(name) ? `${sep}${k}=[REDACTED]` : m;
+  });
+  for (const v of configuredSecretValues(env)) {
+    if (out.includes(v)) out = out.split(v).join("[REDACTED]");
+  }
+  return out;
+}
+
+/** One log argument with secrets masked: strings, Error messages/stacks, and plain objects (one level). */
+export function redactLogArg(arg: unknown): unknown {
+  if (typeof arg === "string") return redactSecretsInText(arg);
+  // An argument with nothing to mask is passed through untouched (an Error keeps its cause and code).
+  if (arg instanceof Error) {
+    const message = redactSecretsInText(arg.message);
+    const stack = arg.stack ? redactSecretsInText(arg.stack) : arg.stack;
+    if (message === arg.message && stack === arg.stack) return arg;
+    const copy = new Error(message);
+    copy.name = arg.name;
+    copy.stack = stack;
+    return copy;
+  }
+  if (arg && typeof arg === "object" && !Array.isArray(arg) && Object.getPrototypeOf(arg) === Object.prototype) {
+    let changed = false;
+    const o: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(arg as Record<string, unknown>)) {
+      const r = typeof v === "string" || v instanceof Error ? redactLogArg(v) : v;
+      if (r !== v) changed = true;
+      o[k] = r;
+    }
+    return changed ? o : arg;
+  }
+  return arg;
+}
+
+const CONSOLE_METHODS = ["log", "info", "warn", "error", "debug"] as const;
+let consoleRedactionInstalled = false;
+
+/**
+ * Wrap `console.*` so a token in a logged URL or error never reaches the process output. Idempotent;
+ * installed once at boot (`server/index.ts`). pino output is redacted by `hooks.logMethod` below.
+ */
+export function installConsoleRedaction(target: Console = console): void {
+  if (target === console && consoleRedactionInstalled) return;
+  for (const m of CONSOLE_METHODS) {
+    const original = target[m].bind(target);
+    (target as any)[m] = (...args: unknown[]) => original(...args.map(redactLogArg));
+  }
+  if (target === console) consoleRedactionInstalled = true;
+}
 
 /** The URL with credential-looking query values replaced by [REDACTED]. Never throws. */
 export function redactUrlForLog(url: string | undefined): string | undefined {
@@ -56,6 +134,13 @@ export function safeRequestSerializer(req: any) {
   return { ...base, url: redactUrlForLog(base?.url), headers };
 }
 
+/** PX-1b: every string, Error and plain-object argument of a pino call is passed through `redactLogArg`. */
+export const loggerHooks = {
+  logMethod(this: unknown, inputArgs: unknown[], method: (...args: unknown[]) => void) {
+    return method.apply(this, inputArgs.map(redactLogArg) as any);
+  },
+};
+
 export const logger = pino({
   level: process.env.LOG_LEVEL || "info",
   transport: isDevelopment
@@ -68,6 +153,7 @@ export const logger = pino({
         },
       }
     : undefined,
+  hooks: loggerHooks,
   redact: {
     paths: [
       "req.headers.authorization",

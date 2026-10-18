@@ -29,7 +29,7 @@ import { acceptedPoint, routingPointFor } from "./open-routing-points";
 import { isOpenCoordOrigin } from "@shared/open-coords";
 import { routingAdapter } from "./index";
 import { RouteRunMemo, routeWithTransitFallback } from "./route-memo";
-import { legDepartureWallClock, planDayIsPast, routedFactsOf } from "./plan-legs";
+import { flightAnchorClock, legDepartureWallClock, planDayIsPast, routedFactsOf } from "./plan-legs";
 import { tripGetsRoutedLegs, tripLegsShown } from "./plan-routed-legs.service";
 import { desiredPlanLegs, diffPlanLegs, legPairKey, planLegsSkipReason, selectedModeOf, type AirportStop, type PlanLegsSkipReason, type DesiredLeg, type ExistingEngineLeg, type PlanStop } from "./plan-legs";
 
@@ -180,15 +180,11 @@ async function airportStopsForPlan(tripId: string, tripStart: string | null): Pr
   for (const a of rows) {
     const p = realPoint(a.latitude, a.longitude);
     if (!p || !a.anchorDatetime) continue;
-    const iso = new Date(a.anchorDatetime).toISOString();
-    const dayNumber = Math.round((Date.parse(`${iso.slice(0, 10)}T00:00:00Z`) - Date.parse(`${tripStart}T00:00:00Z`)) / 86_400_000) + 1;
+    // LB8 (ledger `2026-10-18-lb8-lb9-card-wiring`): the ONE flight-anchor clock the Trip Card's leave-by reads too.
+    const { dayNumber, direction, wallClock } = flightAnchorClock(a, tripStart);
     if (dayNumber < 1) continue;
-    const arrival = a.anchorType === "flight_arrival";
-    const at = Number(iso.slice(11, 13)) * 60 + Number(iso.slice(14, 16));
-    const t = arrival ? at + Number(a.bufferAfter ?? 0) : at - Number(a.bufferBefore ?? 0);
-    const wallClock = t >= 0 && t < 24 * 60 ? `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}` : null;
     // LG-1: an airport point is stamped only from an IATA code (never Google), so it is an open coordinate.
-    out.push({ id: `anchor:${a.id}`, name: a.location ?? "Airport", dayNumber, direction: arrival ? "arrival" : "departure", point: { ...p, coordOrigin: "iata" }, wallClock });
+    out.push({ id: `anchor:${a.id}`, name: a.location ?? "Airport", dayNumber, direction, point: { ...p, coordOrigin: "iata" }, wallClock });
   }
   return out;
 }
