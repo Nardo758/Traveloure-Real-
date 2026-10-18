@@ -179,6 +179,7 @@ import { MapControlCenter } from "./MapControlCenter";
 // actually holds bookable rows. The component itself decides visibility from the vault read.
 import { SavePaymentMethodPrompt } from "@/components/payment/SavePaymentMethodPrompt";
 import { mapDayChips } from "@/lib/map-days";
+import { newSlipViewId, useLocalTeaserShown } from "@/lib/slip-funnel-client";
 import {
   EXPERT_NOTE_TINT,
   OPTIMIZED_TINT,
@@ -1508,6 +1509,9 @@ export function useSlipViewModel({
 }) {
   const days: PlanCardDay[] = data.days ?? [];
   const isOwner = data.tripRole === "owner";
+  // §3.14 (ledger `2026-10-18-teaser-copy-events`): the free plan's local teaser was seen on the slip.
+  const [funnelViewId] = useState(newSlipViewId);
+  useLocalTeaserShown(tripId, days, "slip", funnelViewId);
   const isExpertViewer = data.tripRole === "expert";
   // RC-5 (ledger `2026-09-25-rc345-active-plan`): opening YOUR plan makes it the active plan — the
   // one every "Add to plan" targets. ONE rule (`activateOpenedPlan`), shared with the Trip Card;
