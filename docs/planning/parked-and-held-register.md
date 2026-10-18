@@ -52,12 +52,12 @@ Maintained by the architect session. One line per item: what, why, and the condi
 | Leaflet layering (FU-8D-4) and slip-map version redraw (golden-path §6.5) re-proofs return with 9b-e non-Google coordinates (added Oct 17; GC-1) | 9b-e lane | 9b-e writes a non-Google item coordinate source; then `playwright/tests/journeys/j-map-dialog-click.spec.ts` waits on the Leaflet map again and its dialog sweep re-proves the stacking context, and `j-kyoto-trips-golden-path.spec.ts` §6 step 5 re-proves the version redraw (moved pin, ghost) on the Leaflet path. |
 | A plan with no stops shows no day cards, so there is no "Add something to this day" and a traveler cannot add a named place by hand until the AI draft or Browse has created a day (added Oct 17; Chrome on b129c53, no fix now) | Planning surface | Proposed fix: a day card for each plan date, empty. |
 | The Replit Scheduled Deployment's cadence runner pulls `origin/main` at run time, not the deployed build, so after a merge it posts routes production does not serve yet (seen Oct 17: `routing-recheck` 404 after #1501 merged, before deploy) (added Oct 17) | Ops | Fix later: pin the runner's checkout to `/api/health` `build.commit`. |
-| The plan card's "Add to Calendar" .ics download (`addDayToCalendar`, `client/src/components/plancard/day-map-actions.ts`) writes a made-up 09:00 start and one-hour end for an untimed item (added Oct 18; Launch finding) | Launch session, after PX-1 | Fix ready on branch `claude/ics-untimed-all-day`: an untimed item becomes an all-day event (`DTSTART;VALUE=DATE`), with no invented time. Opens as a small PR after PX-1 lands; this row moves to Closed when it ships. |
 
 ## Closed (moved here when done)
 
 | Item | Closed by |
 |---|---|
+| The plan card's "Add to Calendar" .ics download wrote a made-up 09:00 start and one-hour end for an untimed item (added Oct 18) | ledger `2026-10-18-ics-untimed-all-day` |
 | Waitlist retention job (Leon, Oct 16: 12 months from the day traveler sign-up first opens, never-converted rows only) | LW-1h (ledger `2026-10-16-lw1h-waitlist-retention`) |
 | `origin='superseded'` interim marker → `superseded_at` | TC-3a #1401 (migration 368) |
 | S1-c Places hotel seed | Cancelled Oct 9 — LiteAPI replaced it |

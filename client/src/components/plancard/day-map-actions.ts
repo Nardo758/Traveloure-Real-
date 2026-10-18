@@ -9,6 +9,9 @@
  */
 import { openInMaps } from "@/lib/navigate";
 import type { PlanCardActivity, PlanCardDay } from "./plancard-types";
+import { buildDayIcs, dayIcsDate } from "./day-ics";
+
+export { buildDayIcs, dayIcsDate };
 
 export function getActivityLoc(a: PlanCardActivity, tripDestination: string): string {
   if (a.lat != null && a.lng != null) return `${a.lat},${a.lng}`;
@@ -46,31 +49,14 @@ export function addDayToCalendar(day: PlanCardDay | undefined, tripDestination: 
   const activities = day.activities || [];
   if (activities.length === 0) return;
 
-  const dateStr = day.date?.replace(/-/g, "") || new Date().toISOString().slice(0, 10).replace(/-/g, "");
-  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Traveloure//PlanCard//EN"];
+  const dateStr = dayIcsDate(day);
+  if (!dateStr) {
+    console.warn(`[calendar] day ${day.dayNum} has no date; no .ics written rather than filing it under today`);
+    return;
+  }
+  const ics = buildDayIcs(activities, dateStr, tripDestination);
 
-  activities.forEach((act) => {
-    const timeMatch = act.time?.match(/(\d{1,2}):(\d{2})/);
-    const startHour = timeMatch ? timeMatch[1].padStart(2, "0") : "09";
-    const startMin = timeMatch ? timeMatch[2] : "00";
-    const startTime = `${dateStr}T${startHour}${startMin}00`;
-    const endHourNum = Math.min(23, parseInt(startHour) + 1);
-    const endTime = `${dateStr}T${endHourNum.toString().padStart(2, "0")}${startMin}00`;
-
-    lines.push(
-      "BEGIN:VEVENT",
-      `DTSTART:${startTime}`,
-      `DTEND:${endTime}`,
-      `SUMMARY:${act.name}`,
-      `LOCATION:${act.location}`,
-      `DESCRIPTION:${act.type} - ${tripDestination}`,
-      "END:VEVENT",
-    );
-  });
-
-  lines.push("END:VCALENDAR");
-
-  const blob = new Blob([lines.join("\r\n")], { type: "text/calendar;charset=utf-8" });
+  const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
