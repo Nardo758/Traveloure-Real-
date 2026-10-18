@@ -19,6 +19,7 @@ import { isEditorialUserId } from "./editorial-account.service";
 import { AdvisorNotRoutableError, isExpertIdRoutable, isRoutableExpert, publicExpertSql } from "./expert-routability";
 import { isExpertRole } from "@shared/roles";
 import { logger } from "../infrastructure/logger";
+import { localCountEntry } from "@shared/share-projection";
 import {
   EXPERT_REVIEW_EXPERT_SHARE_BAND,
   EXPERT_REVIEW_FLAT_BAND,
@@ -431,7 +432,7 @@ export async function getTripByShareToken(token: string): Promise<{ row: any; sh
   // deliberately dropped from this ORDER BY. sort_order/created_at remain as the stable tiebreak
   // for the JS-side chronological re-sort applied below (parseActivityTimeToMinutes).
   const itemsResult = await db.execute(sql`
-    SELECT title, description, item_type, day_number, start_time, location_name, estimated_cost, routing_status
+    SELECT title, description, item_type, day_number, start_time, location_name, estimated_cost, routing_status, source_class
     FROM itinerary_items
     WHERE trip_id = ${String(row.id)}
     ORDER BY day_number ASC, sort_order ASC, created_at ASC
@@ -445,16 +446,23 @@ export async function getTripByShareToken(token: string): Promise<{ row: any; sh
     location_name: string | null;
     estimated_cost: string | null;
     routing_status: string | null;
+    source_class: string | null;
   }>;
 
   if (items.length > 0) {
     // Synthesize itinerary_data from live itinerary_items so the share page always
     // reflects the current plan.
-    const dayMap = new Map<number, { day: number; title: string; activities: any[] }>();
+    // FD-4 (ledger `2026-10-18-fd4-share-projection`): only a stop tagged `public` is shown; a `local` or
+    // untagged stop is counted on its day (`localCount`, present only above zero), never named.
+    const dayMap = new Map<number, { day: number; title: string; activities: any[]; hidden: number }>();
     for (const item of items) {
       const dayNum = item.day_number;
       if (!dayMap.has(dayNum)) {
-        dayMap.set(dayNum, { day: dayNum, title: `Day ${dayNum}`, activities: [] });
+        dayMap.set(dayNum, { day: dayNum, title: `Day ${dayNum}`, activities: [], hidden: 0 });
+      }
+      if (item.source_class !== "public") {
+        dayMap.get(dayNum)!.hidden++;
+        continue;
       }
       // CC-2b: a public viewer must never see a price on an item that hasn't actually been
       // purchased (e.g. a cart-pending `ready_for_checkout` item) — showing a price there implies
@@ -472,8 +480,9 @@ export async function getTripByShareToken(token: string): Promise<{ row: any; sh
     }
     const days = Array.from(dayMap.values())
       .sort((a, b) => a.day - b.day)
-      .map((d) => ({
+      .map(({ hidden, ...d }) => ({
         ...d,
+        ...localCountEntry(hidden),
         // CC-3: chronological re-sort (see parseActivityTimeToMinutes) — Array#sort is stable in
         // Node/V8, so equal-time (including absent-time) activities keep the SQL-supplied
         // (sort_order, created_at) order rather than being shuffled.
@@ -483,8 +492,12 @@ export async function getTripByShareToken(token: string): Promise<{ row: any; sh
       }));
     row.itinerary_data = { days };
   }
-  // If no itinerary_items exist, row.itinerary_data already holds the
-  // generated_itineraries snapshot (or null) from the JOIN above.
+  // If no itinerary_items exist, row.itinerary_data holds the generated_itineraries snapshot (or null)
+  // from the JOIN above. FD-4: that snapshot carries no source_class, so none of its stops can be shown as
+  // public (fail closed) — each day keeps its number and title and counts its stops.
+  else {
+    row.itinerary_data = projectUnclassifiedItineraryData(row.itinerary_data);
+  }
 
   return { row, sharedTripId: String(row.shared_trip_id) };
 }
@@ -1178,4 +1191,20 @@ export async function getTravelerProfile(tripId: string): Promise<any | null> {
     LIMIT 1
   `);
   return result.rows?.[0] ?? null;
+}
+
+/**
+ * FD-4: a generated_itineraries snapshot on a share read. Its stops are unclassifiable, so each day becomes
+ * `{ day, title, activities: [], localCount? }`; a value with no `days` array becomes null (§13 — never guessed).
+ */
+export function projectUnclassifiedItineraryData(data: unknown): { days: any[] } | null {
+  const days = (data as any)?.days;
+  if (!Array.isArray(days)) return null;
+  return {
+    days: days.map((d: any, i: number) => {
+      const day = typeof d?.day === "number" ? d.day : typeof d?.dayNumber === "number" ? d.dayNumber : i + 1;
+      const stops = Array.isArray(d?.activities) ? d.activities.length : 0;
+      return { day, title: `Day ${day}`, activities: [], ...localCountEntry(stops) };
+    }),
+  };
 }

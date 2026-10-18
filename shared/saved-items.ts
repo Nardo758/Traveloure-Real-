@@ -47,4 +47,6 @@ export const shareSavedCityBodySchema = z
 export interface SharedSavedPlaces {
   city: string;
   places: Array<{ contentType: string; contentName: string; contentImage: string | null }>;
+  /** FD-4: saved gems not shown because they are not tagged public; present only above zero. */
+  localCount?: number;
 }
