@@ -82,13 +82,8 @@ export const CATALOG_NETWORKS: NetworkDef[] = [
     fetch: async (city) => (await import("./travelpayouts/klook.service")).searchKlook({ destination: city, limit: 40 }),
   },
   // U3 fan-out — the rest of the CITY-BASED catalog networks (activities/tours/hotels/services).
-  {
-    key: "viator-feed",
-    partnerName: "Viator",
-    websiteUrl: "https://www.viator.com",
-    category: "activity",
-    fetch: async (city) => (await import("./travelpayouts/viator-feed.service")).searchViatorFeedProducts({ destination: city, limit: 40 }),
-  },
+  // VD-1 (ledger `2026-10-18-viator-direct-live`): the Travelpayouts Viator feed is RETIRED and no longer
+  // synced. Viator is shown live only (`viator-live.service.ts`); its stored rows are kept and hidden.
   {
     key: "wegotrip",
     partnerName: "WeGoTrip",
@@ -125,7 +120,7 @@ export const CATALOG_NETWORKS: NetworkDef[] = [
   // (discovercars/rentalcars). These are
   // per-query/per-route, not a browseable city catalog, so they stay the parallel live-passthrough.
   // Fever events flow through their own `destination_events` pipeline, not affiliate_products.
-  // Viator-direct (viator.service.ts) is the U5 dedup target of this "viator-feed" path — not added.
+  // Viator is never ingested: Basic Access content is shown live only (VD-1).
 ];
 
 // ─── Partner seed (U1) ──────────────────────────────────────────────────────────────────────────

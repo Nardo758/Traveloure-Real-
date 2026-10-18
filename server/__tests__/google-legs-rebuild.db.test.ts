@@ -11,7 +11,8 @@
  *   GR5 a stored Google answer never seeds the run memo; the leg resolver never reads the matrix and never
  *       answers from Google — no adapter ⇒ the labelled straight-line estimate
  *   GR6 a Ready Made copy keeps its leg's source and routed departure
- *   GR7 where-to-stay's cost: the engine's adapter (drive minutes) on a routed plan, none (straight line) without one
+ *   GR7 where-to-stay's cost: the engine's adapter (drive minutes) on a routed plan between open coordinates, none
+ *       (straight line) without an adapter or when any point is not open (ledger `2026-10-18-google-writers-open-coords`)
  *   GR8 a re-check notice stores no minutes; the card's line reads "has changed (was N min)" from the plan's leg
  *
  * NEGATIVE SPACE (§18d): the adapter is the CI stub (no OSRM, no Google); the real Kyoto leg is the 9b-a smoke.
@@ -184,15 +185,19 @@ test("GR6: a Ready Made copy keeps its leg's source and routed departure", () =>
     { tripId: T, variantId: null, proposalStatus: "confirmed", fromActivityId: "a", toActivityId: "b", source: "osrm", routedDepartureLocal: "10:00" } as any,
     "copy",
     new Map([["a", "a2"], ["b", "b2"]]),
+    true, // ledger `2026-10-18-google-writers-open-coords`: routed between open coordinates (OW1–OW3 cover the rest)
   )!;
   assert.deepEqual([out.source, out.routedDepartureLocal], ["osrm", "10:00"]);
 });
 
 test("GR7: where-to-stay's cost is the adapter's drive minutes on a routed plan, and none without an adapter", async () => {
-  const hoods = [{ slug: "n1", name: "N1", lat: P(0.005, 0).lat, lng: P(0.005, 0).lng }] as any;
-  const days = [{ dayNumber: 1, points: [P(0, 0), P(0.02, 0.02)] }];
+  // Ledger `2026-10-18-google-writers-open-coords`: OSRM between OPEN coordinates only — every point carries its origin.
+  const hoods = [{ slug: "n1", name: "N1", lat: P(0.005, 0).lat, lng: P(0.005, 0).lng, coordOrigin: "admin" }] as any;
+  const days = [{ dayNumber: 1, points: [{ ...P(0, 0), coordOrigin: "osm" }, { ...P(0.02, 0.02), coordOrigin: "osm" }] }];
   const cost = await osrmStayCost(T, hoods, days);
   assert.ok(cost, "the stub adapter answers on a routed plan");
+  assert.equal(await osrmStayCost(T, [{ ...hoods[0], coordOrigin: undefined }], days), undefined, "a centroid with no open origin ⇒ the straight line");
+  assert.equal(await osrmStayCost(T, hoods, [{ dayNumber: 1, points: [P(0, 0)] }]), undefined, "a stop with no open origin ⇒ the straight line");
   assert.ok(Number(cost!(hoods[0], P(0, 0))) > 0);
   process.env.ROUTING_ADAPTER_STUB = "0";
   try {
