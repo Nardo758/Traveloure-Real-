@@ -41,26 +41,43 @@ export function openDayInMaps(day: PlanCardDay | undefined, tripDestination: str
   openInMaps({ waypoints: buildWaypoints(acts), mode, app });
 }
 
-export function addDayToCalendar(day: PlanCardDay | undefined, tripDestination: string) {
-  if (!day) return;
-  const activities = day.activities || [];
-  if (activities.length === 0) return;
+/** A YYYYMMDD date plus a minute offset, as "YYYYMMDDTHHMMSS" floating time (no zone, LD 30). */
+function floatingStamp(dateStr: string, minutes: number): string {
+  const y = Number(dateStr.slice(0, 4));
+  const m = Number(dateStr.slice(4, 6));
+  const d = Number(dateStr.slice(6, 8));
+  const iso = new Date(Date.UTC(y, m - 1, d, 0, minutes)).toISOString();
+  return `${iso.slice(0, 10).replace(/-/g, "")}T${iso.slice(11, 13)}${iso.slice(14, 16)}00`;
+}
 
-  const dateStr = day.date?.replace(/-/g, "") || new Date().toISOString().slice(0, 10).replace(/-/g, "");
+/** The calendar day after a YYYYMMDD date, as YYYYMMDD (all-day DTEND is exclusive, RFC 5545). */
+function nextDateStr(dateStr: string): string {
+  return floatingStamp(dateStr, 24 * 60).slice(0, 8);
+}
+
+/**
+ * Builds the day's VCALENDAR text. Nothing is invented (§13):
+ * - an item with no "HH:MM" time is an ALL-DAY event on its date (`DTSTART;VALUE=DATE`);
+ * - a timed item with a known duration ends at start + duration;
+ * - a timed item with no duration carries DTSTART only — no made-up end.
+ */
+export function buildDayIcs(activities: PlanCardActivity[], dateStr: string, tripDestination: string): string {
   const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Traveloure//PlanCard//EN"];
 
   activities.forEach((act) => {
     const timeMatch = act.time?.match(/(\d{1,2}):(\d{2})/);
-    const startHour = timeMatch ? timeMatch[1].padStart(2, "0") : "09";
-    const startMin = timeMatch ? timeMatch[2] : "00";
-    const startTime = `${dateStr}T${startHour}${startMin}00`;
-    const endHourNum = Math.min(23, parseInt(startHour) + 1);
-    const endTime = `${dateStr}T${endHourNum.toString().padStart(2, "0")}${startMin}00`;
-
+    lines.push("BEGIN:VEVENT");
+    if (timeMatch) {
+      const startMinutes = parseInt(timeMatch[1], 10) * 60 + parseInt(timeMatch[2], 10);
+      lines.push(`DTSTART:${floatingStamp(dateStr, startMinutes)}`);
+      const duration = act.durationMinutes;
+      if (typeof duration === "number" && Number.isFinite(duration) && duration > 0) {
+        lines.push(`DTEND:${floatingStamp(dateStr, startMinutes + duration)}`);
+      }
+    } else {
+      lines.push(`DTSTART;VALUE=DATE:${dateStr}`, `DTEND;VALUE=DATE:${nextDateStr(dateStr)}`);
+    }
     lines.push(
-      "BEGIN:VEVENT",
-      `DTSTART:${startTime}`,
-      `DTEND:${endTime}`,
       `SUMMARY:${act.name}`,
       `LOCATION:${act.location}`,
       `DESCRIPTION:${act.type} - ${tripDestination}`,
@@ -69,8 +86,28 @@ export function addDayToCalendar(day: PlanCardDay | undefined, tripDestination: 
   });
 
   lines.push("END:VCALENDAR");
+  return lines.join("\r\n");
+}
 
-  const blob = new Blob([lines.join("\r\n")], { type: "text/calendar;charset=utf-8" });
+/** The day's date as YYYYMMDD, or null when the day has none — never today's date in its place. */
+export function dayIcsDate(day: PlanCardDay): string | null {
+  const dateStr = day.date?.replace(/-/g, "") ?? "";
+  return /^\d{8}$/.test(dateStr) ? dateStr : null;
+}
+
+export function addDayToCalendar(day: PlanCardDay | undefined, tripDestination: string) {
+  if (!day) return;
+  const activities = day.activities || [];
+  if (activities.length === 0) return;
+
+  const dateStr = dayIcsDate(day);
+  if (!dateStr) {
+    console.warn(`[calendar] day ${day.dayNum} has no date; no .ics written rather than filing it under today`);
+    return;
+  }
+  const ics = buildDayIcs(activities, dateStr, tripDestination);
+
+  const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
