@@ -38,8 +38,7 @@ on:
 
 concurrency:
   group: journey-4-5-${{ github.ref }}
-  cancel-in-progress: true
-
+  cancel-in-progress: ${{ github.event.action != 'ready_for_review' }}
 permissions:
   contents: read
 
