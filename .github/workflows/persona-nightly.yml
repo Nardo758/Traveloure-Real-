@@ -213,6 +213,9 @@ jobs:
           CI: 'true'
           JOURNEY_DB_WRITES_OK: '1'
           JOURNEY_STRIPE_UNAVAILABLE: ${{ steps.stripe-gate.outputs.stripe_unavailable }}
+          # The spec process confirms checkout PaymentIntents in Stripe TEST mode (#1240 cart contract);
+          # the helper uses it only when it starts sk_test_. The live-key refusal above still applies.
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
 
       - name: 1/2 — journey-guest
         id: run-journey-guest-1
@@ -308,6 +311,9 @@ jobs:
           CI: 'true'
           JOURNEY_DB_WRITES_OK: '1'
           JOURNEY_STRIPE_UNAVAILABLE: ${{ steps.stripe-gate.outputs.stripe_unavailable }}
+          # The spec process confirms checkout PaymentIntents in Stripe TEST mode (#1240 cart contract);
+          # the helper uses it only when it starts sk_test_. The live-key refusal above still applies.
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
 
       - name: 2/2 — journey-guest (idempotence pass)
         id: run-journey-guest-2
