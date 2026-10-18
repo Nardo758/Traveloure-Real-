@@ -20,6 +20,9 @@ name: Upsell Trust Contract
 #     satisfies db.ts's load-time guard; no actual connection is made.
 
 on:
+  # Merge queue (ledger `2026-10-18-merge-queue-triggers`): the queue's run is always a full run.
+  merge_group:
+    types: [checks_requested]
   push:
     branches: [main, develop]
   pull_request:
@@ -37,7 +40,7 @@ permissions:
 # with no green record.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'ready_for_review' }}
 
 jobs:
   # CI-1b (c)+(d) (scripts/ci/ci-skip-rules.cjs): decides whether this PR push runs the heavy jobs. A draft or
