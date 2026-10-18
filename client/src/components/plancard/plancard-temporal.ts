@@ -26,8 +26,11 @@ import {
   type LeaveByLeg,
   type LeaveByMode,
   type LeaveByRow,
+  type LeaveByStop,
 } from "@shared/leave-by";
 import { routeProvenanceLabel } from "@shared/routing-engine";
+import type { FactView } from "@shared/content-facts";
+import { stopEntryLimit } from "@/lib/place-facts";
 
 export type TemporalState = "past" | "upcoming" | "future";
 
@@ -310,18 +313,55 @@ function stopDuration(a: PlanCardActivity): number | null {
 
 const located = (a: any) => Number.isFinite(Number(a?.lat)) && Number.isFinite(Number(a?.lng)) && a?.lat != null && a?.lng != null;
 
-/** 9b-c: the live day's leave-by rows — every stop (stays excluded), each with the leg INTO it (LB3b for stop 1). */
-export function leaveByRowsForDay(day: PlanCardDay | undefined, legs: readonly any[], timezone?: string | null, config?: LeaveByConfig): LeaveByRow[] {
+/**
+ * 9b-c: the live day's leave-by rows — every stop (stays excluded), each with the leg INTO it (LB3b for stop 1).
+ * LB9 (ledger `2026-10-18-lb8-lb9-card-wiring`): a stop's last entry, else its closing time, from `placeFacts`
+ * through the ONE `stopEntryLimit` the slip's closing warning shares. LB8: the day's flight departures
+ * (`day.anchorStops`) join the list at their buffered time, measured against it with no mode buffer; the leg into
+ * one is the engine's airport leg, found by its end (it leaves the stay, else the day's last stop).
+ */
+export function leaveByRowsForDay(
+  day: PlanCardDay | undefined,
+  legs: readonly any[],
+  timezone?: string | null,
+  config?: LeaveByConfig,
+  placeFacts?: Record<string, FactView[]> | null,
+): LeaveByRow[] {
   const acts = day?.activities ?? [];
   const stay = acts.find((a) => isStayActivity(a)) ?? null;
   const stops = acts.filter((a) => !isStayActivity(a));
-  if (!stops.length) return [];
+  const anchors = (day?.anchorStops ?? []).filter((a) => a && typeof a.id === "string");
+  if (!stops.length && !anchors.length) return [];
+  const dateIso = machineDay(day);
   const into = (stopId: string, fromId: string | null) =>
     legs.find((l) => (l?.toActivityId ?? l?.to) === stopId && (fromId == null || (l?.fromActivityId ?? l?.from) === fromId)) ?? null;
-  const legRows = stops.map((s, k) => leaveByLegOf(k === 0 ? (stay ? into(s.id, stay.id) : null) : into(s.id, stops[k - 1].id), timezone));
+  type Entry = { stop: LeaveByStop; leg: LeaveByLeg | null; at: number | null; seq: number };
+  const entries: Entry[] = stops.map((s, k) => ({
+    stop: {
+      id: s.id,
+      name: s.name,
+      start: s.time ?? null,
+      durationMin: stopDuration(s),
+      located: located(s),
+      lastEntry: stopEntryLimit(placeFacts?.[s.id], dateIso, s.time ?? null),
+    },
+    leg: leaveByLegOf(k === 0 ? (stay ? into(s.id, stay.id) : null) : into(s.id, stops[k - 1].id), timezone),
+    at: wallClockMinutes(s.time ?? null),
+    seq: k,
+  }));
+  anchors.forEach((a, i) => {
+    entries.push({
+      stop: { id: a.id, name: a.name, start: null, durationMin: null, located: !!a.located, anchorBuffered: a.bufferedTime ?? null },
+      leg: leaveByLegOf(into(a.id, null), timezone),
+      at: wallClockMinutes(a.bufferedTime ?? null),
+      seq: stops.length + i,
+    });
+  });
+  // A departure sorts by its buffered time among the stops; an untimed one goes last (stable otherwise).
+  if (anchors.length) entries.sort((x, y) => (x.at ?? Infinity) - (y.at ?? Infinity) || x.seq - y.seq);
   return deriveLeaveBy({
-    stops: stops.map((a) => ({ id: a.id, name: a.name, start: a.time ?? null, durationMin: stopDuration(a), located: located(a) })),
-    legs: legRows,
+    stops: entries.map((e) => e.stop),
+    legs: entries.map((e) => e.leg),
     stayLocated: !!stay && located(stay),
     config,
   });
@@ -359,6 +399,8 @@ export function getUpNextInfo<TLeg extends InlineTransportLegData = InlineTransp
   visited: Set<string>,
   /** `trips.timezone` — Locked Decision 30. NULL ⇒ the device's date/clock, stated in `parseActivityTime`. */
   timezone?: string | null,
+  /** 9b-c LB9: the plancard's `placeFacts` (keyed by item id) — a stop's last entry or closing time. Absent ⇒ none. */
+  placeFacts?: Record<string, FactView[]> | null,
 ): UpNextInfo<TLeg> {
   // "Today" is the plan's zone's today when a zone was captured; the DEVICE's otherwise — the
   // pre-existing behaviour, kept explicitly at the call site. (`calendarDayOf` answers UTC for an
@@ -400,7 +442,7 @@ export function getUpNextInfo<TLeg extends InlineTransportLegData = InlineTransp
     : null;
   // 9b-c (LB1–LB9): every stop's row from the ONE core, on the live day only; the up-next stop's time is its row's.
   void intoLeg;
-  const leaveByRows = isLiveDay ? leaveByRowsForDay(day, legs as any[], timezone) : [];
+  const leaveByRows = isLiveDay ? leaveByRowsForDay(day, legs as any[], timezone, undefined, placeFacts) : [];
   const upNextRow = upNextActivity ? leaveByRows.find((r) => r.stopId === upNextActivity.id) : undefined;
   const leaveBy = upNextRow?.kind === "leave_by" ? upNextRow.time : null;
   const nowMinute = isLiveDay ? nowMinuteIn(now, timezone) : null;

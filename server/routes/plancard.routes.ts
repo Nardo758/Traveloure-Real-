@@ -48,6 +48,7 @@ import { travelTimeServiceEnabled } from "../config/travel-time.config";
 import { isManagingEaForTrip } from "../services/ea-plan-delegate.service";
 import { isTripPayer } from "../services/balance-payer.service";
 import { tripHasWriteAccessAdvisor } from "../utils/trip-advisor";
+import { departureAnchorStopsByDay } from "../services/routing/card-anchor-stops";
 import { planRole } from "../services/plan-option-sets.service";
 import { choosePickInTx, openSetHeldItemIds, recordVersionAdopted, type PickOutcome } from "../services/version-adopt.service";
 import { optionPickOf } from "@shared/version-options";
@@ -949,6 +950,13 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       return new Map();
     });
 
+    // 9b-c LB8 (ledger `2026-10-18-lb8-lb9-card-wiring`): the day's flight departures with their R-i buffered time,
+    // so the card's leave-by can measure against them. Present only on a day that has one; never fails the read.
+    const anchorStops = await departureAnchorStopsByDay(tripId, plan.plancard.trip?.startDate ?? null).catch((err) => {
+      console.error(`[plancard] anchor stops failed plan_id=${tripId}:`, (err as Error)?.message ?? err);
+      return new Map();
+    });
+
     res.json({
       // Pre-existing plancard response contract — key names and shapes unchanged.
       tripRole: plan.plancard.tripRole,
@@ -965,6 +973,7 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
             ? { transports: d.transports.map((tr: any) => (liveLegs.has(tr?.id) ? { ...tr, ...liveLegs.get(tr.id) } : tr)) }
             : {}),
           ...(t ? { localTeaser: t } : {}),
+          ...(anchorStops.get(d.dayNumber)?.length ? { anchorStops: anchorStops.get(d.dayNumber) } : {}),
           ...(f ? { feasibility: f } : {}),
           ...(rt && rt.rides > 0 ? { rideTeaser: rt } : {}),
           ...(rs && rs.length ? { rideSuggestions: rs.map(({ score: _score, ...s }) => s) } : {}),
