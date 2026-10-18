@@ -1,0 +1,48 @@
+name: Viator sandbox contract (nightly)
+
+# VD-1 (ledger `2026-10-18-viator-contract-nightly`; decision-maker, Oct 18, 2026): the live check against
+# Viator's SANDBOX — C1 (Kyoto is destination 332) and C2 (a live Kyoto search answers with
+# campaign-tagged viator.com links). It calls a third party, so it never runs on a pull request: when the
+# sandbox answers 500 it would turn every PR red for a reason no PR can fix. The PR suite keeps V1–V5
+# (`server/__tests__/vd1-viator-live.db.test.ts`), which run on fixtures.
+#
+# Nightly and on demand. `continue-on-error` keeps a sandbox outage from failing the workflow run, but the
+# step's own result and its annotations still show: each failure is written as `::error` (the HTTP status
+# and Viator's own code/message, never the key) and re-printed bare below, because node:test prefixes test
+# output with "# ". The sandbox key exists only in this workflow. Without it the test SKIPS and says so —
+# a skip is not a pass.
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: viator-sandbox-contract
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5.1.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Viator sandbox contract (C1–C2)
+        env:
+          VIATOR_SANDBOX_API_KEY: ${{ secrets.VIATOR_SANDBOX_API_KEY }}
+        shell: bash
+        run: |
+          status=0
+          npx tsx --test --test-force-exit server/__tests__/vd1-viator-sandbox-contract.test.ts > /tmp/viator-contract.out 2>&1 || status=$?
+          cat /tmp/viator-contract.out
+          grep -o '::error.*' /tmp/viator-contract.out || true
+          exit $status
