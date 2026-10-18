@@ -110,7 +110,8 @@ export function localTeaserLine(t: LocalTeaser | null | undefined): string | nul
  * and local notes the paid tier would add AROUND THAT DAY — counts only, never a title, place or id.
  *   · a day's area = the neighbourhoods its LOCATED stops fall in (nearest centroid in the plan's city);
  *   · localPicks = draft-eligible LOCAL gems in those neighbourhoods, not already on the plan;
- *   · localNotes = live LOCAL expert notes (nuggets) about those neighbourhoods (ruling 2).
+ *   · localNotes = live LOCAL expert notes (nuggets) about those neighbourhoods, not already on the plan
+ *     (a note whose promoted gem is on the plan) — the same filter as the picks (ruling 2).
  * A day with no located stop, or no neighbourhood, is NOT COMPUTED and absent (§13); zero is absent too.
  */
 export interface TeaserNeighbourhood { id: string; slug: string; name: string; lat: number | null; lng: number | null }
@@ -118,12 +119,12 @@ export interface TeaserInput {
   items: Array<{ dayNumber: number; lat: number | null; lng: number | null; gemId: string | null }>;
   neighbourhoods: readonly TeaserNeighbourhood[];
   gems: Array<{ id: string; neighbourhoodSlug: string | null }>;
-  notes: Array<{ neighbourhoodId: string | null; neighbourhoodName: string | null }>;
+  notes: Array<{ neighbourhoodId: string | null; neighbourhoodName: string | null; promotedGemId?: string | null }>;
   /**
    * FD-5 (ledger `2026-10-10-fd5-coverage-targets`, rulings 3/4): per neighbourhood SLUG, its targets by day
    * type, and each plan day's type. A day's teaser counts only the neighbourhoods at or above their own
-   * target for that day type, measured on the neighbourhood's whole live local content (not the plan's
-   * remainder); none at target ⇒ the day carries nothing. Never summed across neighbourhoods. A slug with no
+   * target for that day type, measured on the neighbourhood's live local content NOT already on the plan
+   * (EV PR 3: the same remainder the counts show); none at target ⇒ the day carries nothing. Never summed across neighbourhoods. A slug with no
    * target has no gate; absent `gate` ⇒ FD-1's behaviour.
    */
   gate?: {
@@ -135,6 +136,9 @@ export interface TeaserInput {
 export function localTeasersByDay(input: TeaserInput): Map<number, LocalTeaser> {
   const out = new Map<number, LocalTeaser>();
   const onPlan = new Set(input.items.map((i) => i.gemId).filter((g): g is string => !!g));
+  // EV PR 3: one off-plan filter for picks and notes, read by the target check and the counts alike.
+  const gems = input.gems.filter((g) => !onPlan.has(g.id));
+  const notes = input.notes.filter((n) => !(n.promotedGemId && onPlan.has(n.promotedGemId)));
   const byDay = new Map<number, Map<string, TeaserNeighbourhood>>();
   for (const it of input.items) {
     if (it.lat == null || it.lng == null || !Number.isFinite(it.lat) || !Number.isFinite(it.lng)) continue;
@@ -143,10 +147,10 @@ export function localTeasersByDay(input: TeaserInput): Map<number, LocalTeaser> 
     if (!byDay.has(it.dayNumber)) byDay.set(it.dayNumber, new Map());
     byDay.get(it.dayNumber)!.set(area.id, area);
   }
-  // FD-5: each neighbourhood's own totals, the census's measure (shared/coverage-targets.ts).
+  // FD-5: each neighbourhood's own off-plan totals (shared/coverage-targets.ts).
   const totals = (a: TeaserNeighbourhood) => ({
-    localPicks: input.gems.filter((g) => g.neighbourhoodSlug && g.neighbourhoodSlug.toLowerCase() === a.slug.toLowerCase()).length,
-    localNotes: input.notes.filter((n) => (n.neighbourhoodId && n.neighbourhoodId === a.id) || (n.neighbourhoodName && n.neighbourhoodName.trim().toLowerCase() === a.name.trim().toLowerCase())).length,
+    localPicks: gems.filter((g) => g.neighbourhoodSlug && g.neighbourhoodSlug.toLowerCase() === a.slug.toLowerCase()).length,
+    localNotes: notes.filter((n) => (n.neighbourhoodId && n.neighbourhoodId === a.id) || (n.neighbourhoodName && n.neighbourhoodName.trim().toLowerCase() === a.name.trim().toLowerCase())).length,
   });
   for (const [day, allAreas] of Array.from(byDay.entries())) {
     const gate = input.gate;
@@ -157,9 +161,9 @@ export function localTeasersByDay(input: TeaserInput): Map<number, LocalTeaser> 
     const slugs = new Set(Array.from(areas.values()).map((a) => a.slug.toLowerCase()));
     const ids = new Set(Array.from(areas.keys()));
     const names = new Set(Array.from(areas.values()).map((a) => a.name.trim().toLowerCase()));
-    const picks = input.gems.filter((g) => g.neighbourhoodSlug && slugs.has(g.neighbourhoodSlug.toLowerCase()) && !onPlan.has(g.id)).length;
-    const notes = input.notes.filter((n) => (n.neighbourhoodId && ids.has(n.neighbourhoodId)) || (n.neighbourhoodName && names.has(n.neighbourhoodName.trim().toLowerCase()))).length;
-    const teaser = localTeaserForDay({ localPicks: picks, localNotes: notes });
+    const picks = gems.filter((g) => g.neighbourhoodSlug && slugs.has(g.neighbourhoodSlug.toLowerCase())).length;
+    const noteCount = notes.filter((n) => (n.neighbourhoodId && ids.has(n.neighbourhoodId)) || (n.neighbourhoodName && names.has(n.neighbourhoodName.trim().toLowerCase()))).length;
+    const teaser = localTeaserForDay({ localPicks: picks, localNotes: noteCount });
     if (teaser) out.set(day, teaser);
   }
   return out;

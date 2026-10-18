@@ -100,3 +100,42 @@ test("CT8 — a place fact is born tagged from its origin and license", () => {
   assert.deepEqual(placeFactTags("expert_nugget", null), { sourceClass: "local", reuseClass: "reusable" });
   assert.equal(placeFactTags("gem", null), null);
 });
+
+import { FACT_ORIGINS, PAGE_READ_ORIGINS } from "../content-facts";
+
+// EV-P0 PR 3 (ledger `2026-10-18-fact-tags-exhaustive`): the pinned table. Every origin in FACT_ORIGINS has a
+// row here, so a new origin fails this test until someone decides its tier and pins it (§13).
+const PINNED_FACT_TAGS: Record<string, { sourceClass: string; reuseClass: string } | null> = {
+  platform_listing: null,
+  expert_nugget: { sourceClass: "local", reuseClass: "reusable" },
+  gem: null,
+  event: null,
+  hotel_cache: null,
+  places_api: { sourceClass: "public", reuseClass: "display_in_plan" },
+  crawled: { sourceClass: "public", reuseClass: "link_only" },
+  traveler_note: null,
+  official_refresh: { sourceClass: "public", reuseClass: "link_only" },
+  bot_proposal: { sourceClass: "public", reuseClass: "link_only" },
+};
+
+test("CT9 — placeFactTags is pinned for every origin, with an official licence", () => {
+  assert.deepEqual([...FACT_ORIGINS].sort(), Object.keys(PINNED_FACT_TAGS).sort(), "every FACT_ORIGINS entry is pinned, and nothing else");
+  for (const o of FACT_ORIGINS) {
+    const lic = o === "places_api" ? "restricted" : "official";
+    assert.deepEqual(placeFactTags(o, lic), PINNED_FACT_TAGS[o], o);
+  }
+  assert.equal(placeFactTags("not_an_origin", "official"), null, "an unknown origin has no tier");
+  assert.equal(placeFactTags(null, "official"), null);
+});
+
+test("CT10 — every page-read origin follows the licence mapping, and an official feasibility fact is public whoever wrote it", () => {
+  for (const o of PAGE_READ_ORIGINS) {
+    assert.deepEqual(placeFactTags(o, "partner"), { sourceClass: "public", reuseClass: "internal" }, o);
+    assert.deepEqual(placeFactTags(o, "restricted"), { sourceClass: "public", reuseClass: "display_in_plan" }, o);
+  }
+  for (const ft of ["last_admission", "last_service"]) {
+    assert.deepEqual(placeFactTags("expert_nugget", "official", ft), { sourceClass: "public", reuseClass: "link_only" }, ft);
+    assert.deepEqual(placeFactTags("expert_nugget", null, ft), { sourceClass: "local", reuseClass: "reusable" }, `${ft} without an official licence stays local`);
+    assert.equal(placeFactTags("gem", "official", ft), null, "a gem never becomes a feasibility fact");
+  }
+});

@@ -2084,4 +2084,7 @@ export const MIGRATION_FILES = [
   // (item → open place, one per item, FKs ON DELETE CASCADE). Two NEW tables; the 389 rows naming their OSM element are
   // copied in (ON CONFLICT DO NOTHING). LG-1 re-key, ledger 2026-10-18-lg1-open-coords-rekey. Declared in shared/schema.ts.
   "390_open_coords_rekey.sql",
+  // EV-P0 PR 3: data only — re-tags official last-entry / last-train expert rows that 362 tagged local to
+  // public + link_only, what placeFactTags answers. Idempotent. Ledger 2026-10-18-fact-tags-exhaustive.
+  "391_place_facts_feasibility_retag.sql",
 ] as const;
