@@ -73,7 +73,8 @@ async function ask(tripId: string, legId: string, deps: { adapter?: RoutingAdapt
 
   const trip = await storage.getTrip(tripId);
   if (!trip) return { refused: "not_found" };
-  const ctx = await loadPlanLegContext(tripId, trip);
+  // LG-1: keyed to the points THIS adapter may route (OSRM: open coordinates only).
+  const ctx = await loadPlanLegContext(tripId, trip, { acceptsPoint: adapter.acceptsPoint ? (p) => adapter.acceptsPoint!(p) : () => true });
   const desired = ctx.desired.find((d) => d.pairKey === legPairKey(leg.dayNumber, leg.fromActivityId, leg.toActivityId));
   // The stored leg must be the one the plan would compute now; otherwise a recompute is due and the
   // options would be keyed to stale points.
