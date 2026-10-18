@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { viatorDirectEnabled } from "../config/viator.config";
 import { hotelCache, activityCache, hotelOfferCache, restaurantCache } from "@shared/schema";
 import { eq, desc } from "drizzle-orm";
 import { cacheService } from "./cache.service";
@@ -605,6 +606,8 @@ class CacheSchedulerService {
   private async refreshStaleActivities(): Promise<{ refreshed: number; errors: string[] }> {
     const errors: string[] = [];
     let refreshed = 0;
+    // VD-1 (ledger `2026-10-18-viator-direct-live`): no background Viator re-fetch while the live search is on.
+    if (viatorDirectEnabled()) return { refreshed, errors };
 
     try {
       // Find unique destinations with stale data (lastUpdated is null OR older than threshold)
