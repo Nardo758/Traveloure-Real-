@@ -68,15 +68,15 @@ before(async () => {
     (${id("a")}, ${TRIP}, 'A', 'activity', 1, 0, ${A.lat}, ${A.lng}, 'traveler', ${id("pa")}, NULL),
     (${id("b")}, ${TRIP}, 'B', 'activity', 1, 1, ${B.lat}, ${B.lng}, 'traveler', ${id("pb")}, ${JSON.stringify({ mode: "walking", durationMinutes: 42, provider: "osrm" })}::jsonb),
     (${id("c")}, ${TRIP}, 'C', 'activity', 1, 2, ${C.lat}, ${C.lng}, 'traveler', ${id("pc")}, ${JSON.stringify({ mode: "driving", durationMinutes: 99, provider: "osrm" })}::jsonb)`);
-  await db.execute(sql`INSERT INTO osm_place_coords (place_id, lat, lng, osm_type, osm_id, osm_name, matched_by, attribution) VALUES
-    (${id("pa")}, ${A.lat}, ${A.lng}, 'node', 1, 'A', 'nominatim_batch', '© OpenStreetMap contributors'),
-    (${id("pb")}, 35.5, 135.5, 'node', 2, 'B', 'nominatim_batch', '© OpenStreetMap contributors')`);
+  await db.execute(sql`INSERT INTO open_place_coords (id, source, google_place_id, lat, lng, osm_type, osm_id, name, matched_by, attribution) VALUES
+    ('osm:node/' || ${id("pa")}, 'osm', ${id("pa")}, ${A.lat}, ${A.lng}, 'node', 1, 'A', 'nominatim_batch', '© OpenStreetMap contributors'),
+    ('osm:node/' || ${id("pb")}, 'osm', ${id("pb")}, 35.5, 135.5, 'node', 2, 'B', 'nominatim_batch', '© OpenStreetMap contributors')`);
   await db.execute(sql`INSERT INTO admin_place_coords (place_id, lat, lng, source_url, entered_by) VALUES (${id("pb")}, ${B.lat}, ${B.lng}, 'https://example.org/b', ${owner})`);
 });
 
 after(async () => {
   await db.execute(sql`DELETE FROM trips WHERE id = ${TRIP}`);
-  await db.execute(sql`DELETE FROM osm_place_coords WHERE place_id LIKE ${`gw-${RUN}-%`}`);
+  await db.execute(sql`DELETE FROM open_place_coords WHERE google_place_id LIKE ${`gw-${RUN}-%`}`);
   await db.execute(sql`DELETE FROM admin_place_coords WHERE place_id LIKE ${`gw-${RUN}-%`}`);
   await db.execute(sql`DELETE FROM users WHERE id = ${owner}`);
 });

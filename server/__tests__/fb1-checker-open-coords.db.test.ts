@@ -3,7 +3,7 @@
  * real database (needs LG-1's migration 389).
  *   F1  stops carrying ONLY Google points (trusted row coordinates, which used to be read) yield neither path
  *       finding, and both sit in `notChecked` with the reason and the day
- *   F2  the same stops with OSM rows (`osm_place_coords`) yield city_crossing and walking_saved_km, and nothing is
+ *   F2  the same stops with OSM rows (`open_place_coords`) yield city_crossing and walking_saved_km, and nothing is
  *       not checked
  *   F3  a second day with one Google-only stop is not checked while the open day is still read
  *   F4  a ride whose route points are all seeded OSM nodes (TC-3) counts at its own pin — LG-1's `osm_node` origin —
@@ -50,7 +50,7 @@ after(async () => {
   await db.execute(sql`DELETE FROM trips WHERE id = ${TRIP}`);
   await db.execute(sql`DELETE FROM provider_services WHERE id = ${id("ride")}`);
   await db.execute(sql`DELETE FROM users WHERE id = ${owner}`);
-  await db.execute(sql`DELETE FROM osm_place_coords WHERE place_id LIKE ${`ChIJ-fb1c-${RUN}-%`}`);
+  await db.execute(sql`DELETE FROM open_place_coords WHERE google_place_id LIKE ${`ChIJ-fb1c-${RUN}-%`}`);
 });
 
 const kinds = (fs: Array<{ kind: string }>) => fs.map((f) => f.kind);
@@ -67,8 +67,8 @@ test("F1 Google points only: neither path finding, both not checked", async () =
 
 test("F2 OSM points: both path findings, nothing not checked", async () => {
   for (const k of ["a", "b", "c", "d"]) {
-    await db.execute(sql`INSERT INTO osm_place_coords (place_id, lat, lng, osm_type, osm_id, osm_name, matched_by, attribution, matched_at)
-      VALUES (${pid(k)}, ${String(OSM[k][0])}, ${String(OSM[k][1])}, 'node', 1, ${`Stop ${k}`}, 'nominatim_batch', '© OpenStreetMap contributors', now())`);
+    await db.execute(sql`INSERT INTO open_place_coords (id, source, google_place_id, lat, lng, osm_type, osm_id, name, matched_by, attribution, matched_at)
+      VALUES ('osm:node/' || ${pid(k)}, 'osm', ${pid(k)}, ${String(OSM[k][0])}, ${String(OSM[k][1])}, 'node', 1, ${`Stop ${k}`}, 'nominatim_batch', '© OpenStreetMap contributors', now())`);
   }
   const { findings, notChecked } = await loadOptimizerFindings(TRIP);
   assert.ok(kinds(findings).includes("city_crossing"), JSON.stringify(findings));
