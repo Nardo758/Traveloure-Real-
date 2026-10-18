@@ -23,6 +23,7 @@ import { isBookingPath, resolveBookingPath, type BookingPath, type PartnerCovera
 import { planDayIsPast } from "@shared/plan-timing";
 import { optimizerCatalogLivenessWhere } from "./optimizer-baseline.service";
 import { liteapiBookableItemIds } from "./liteapi-booking.service";
+import { affiliateProductNotPausedWhere } from "./partner-pause.service";
 
 export interface BookingPathTrip {
   id: string;
@@ -72,6 +73,7 @@ async function coveredPartnerProductIds(ids: string[]): Promise<Set<string>> {
       and(
         inArray(affiliateProducts.id, ids),
         eq(affiliateProducts.isActive, true),
+        affiliateProductNotPausedWhere(), // PX-1
         eq(affiliatePartners.isActive, true),
         eq(affiliatePartners.approvalStatus, "approved"),
         isNotNull(affiliatePartners.affiliateLinkTemplate),

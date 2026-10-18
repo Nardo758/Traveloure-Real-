@@ -98,16 +98,18 @@ export function partnerPlaces(rows: ReadonlyArray<any> | null | undefined, categ
       lng: coord(r.coordinates?.lng),
       category: r.category ?? null,
       partnerText: `${r.category ?? ""} ${r.subCategory ?? ""}`.toLowerCase(),
-      priceLabel: coord(r.price) != null ? `${r.currency && r.currency !== "USD" ? `${r.currency} ` : "$"}${Number(r.price).toFixed(0)}` : null,
-      budget: partnerBudget(r),
+      // PX-1 (decision-maker, Oct 17, 2026, ruling 3): a partner place's STORED price has no source and
+      // no as-of time, so it is never shown and never filters the budget. The card offers the
+      // partner's current price instead (`PARTNER_PRICE_LINK_LABEL`). Provider listings keep theirs.
+      priceLabel: null,
+      budget: { kind: "unpriced" },
     }));
 }
 
-function partnerBudget(r: any): BrowseBudget {
-  const n = coord(r.price);
-  if (n == null || n <= 0 || r.currency !== "USD") return { kind: "unpriced" };
-  return { kind: "usd", amount: n };
-}
+/** The partner card's price line: the partner's own current price, behind the tracked redirect. */
+export const PARTNER_PRICE_LINK_LABEL = "See current price";
+/** Said beside it, because the partner link earns us a commission. */
+export const PARTNER_COMMISSION_NOTE = "Traveloure earns a commission on this booking";
 
 // ── STEP 8b-2: TABS, SEARCH AND BUDGET (brief item 14/15; rulings 8 and 10) ─────────────────────────
 
