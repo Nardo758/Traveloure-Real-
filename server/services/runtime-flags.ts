@@ -37,6 +37,8 @@ export const HEALTH_FLAG_NAMES = [
   // adapter's switch, so a production read can show whether legs are being routed at all.
   "TRAVEL_TIME_SERVICE_ENABLED",
   "ROUTING_ADAPTER_STUB",
+  // PX-1 (ledger `2026-10-18-px1-partner-links`): GetYourGuide is paused unless this is "1".
+  "GETYOURGUIDE_ENABLED",
 ] as const;
 
 export type HealthFlags = Record<(typeof HEALTH_FLAG_NAMES)[number], boolean>;

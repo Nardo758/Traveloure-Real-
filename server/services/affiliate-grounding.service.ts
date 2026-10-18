@@ -11,6 +11,7 @@ import { affiliateProducts } from "@shared/schema";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { sharedCache } from "./shared-cache.service";
 import { isAffiliateGroundingBookingType } from "./slip-grounding-match";
+import { affiliateProductNotPausedWhere } from "./partner-pause.service";
 
 // Lane 2b — best-effort live-feed reconcile freshness window. A city ingested within this window is
 // treated as fresh (registry current), so at most one reconcile per city per window regardless of
@@ -64,7 +65,7 @@ export async function getAffiliateProductsForMarket(
       isActive: affiliateProducts.isActive,
     })
     .from(affiliateProducts)
-    .where(and(eq(affiliateProducts.isActive, true), isNotNull(affiliateProducts.name)))
+    .where(and(eq(affiliateProducts.isActive, true), isNotNull(affiliateProducts.name), affiliateProductNotPausedWhere()))
     .limit(1000);
 
   const needle = city.toLowerCase();
@@ -147,7 +148,7 @@ export async function getAffiliateProductById(id: string): Promise<GroundableAff
       affiliateUrl: affiliateProducts.affiliateUrl,
     })
     .from(affiliateProducts)
-    .where(eq(affiliateProducts.id, id))
+    .where(and(eq(affiliateProducts.id, id), affiliateProductNotPausedWhere()))
     .limit(1);
   if (!r) return null;
   if (!isAffiliateGroundingBookingType(r.bookingType)) return null;
@@ -179,7 +180,7 @@ export async function getAffiliateProductsByIds(ids: string[]): Promise<Map<stri
       affiliateUrl: affiliateProducts.affiliateUrl,
     })
     .from(affiliateProducts)
-    .where(inArray(affiliateProducts.id, ids));
+    .where(and(inArray(affiliateProducts.id, ids), affiliateProductNotPausedWhere()));
   for (const r of rows) {
     if (!isAffiliateGroundingBookingType(r.bookingType)) continue;
     const coord = r.coordinates as { lat?: number; lng?: number } | null;

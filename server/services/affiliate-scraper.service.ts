@@ -21,6 +21,7 @@ import { ROBOTS_TXT_USER_AGENT, ROBOTS_TXT_USER_AGENT_TOKEN } from "../config/ro
 import { claudeService } from "./claude.service";
 import { pageExtractAllowed } from "@shared/affiliate-extract";
 import { scrubTravelpayoutsToken } from "./travelpayouts/travelpayouts-client";
+import { affiliateProductNotPausedWhere, isPausedPartnerProduct } from "./partner-pause.service";
 
 /**
  * Refusal: this partner's program has not been recorded as allowing page extraction (ledger
@@ -584,6 +585,8 @@ ${truncatedHtml}`;
     // Partner-level approval read-gate: a product is public only if its partner is approved.
     if (options?.approvedOnly) {
       conditions.push(sql`EXISTS (SELECT 1 FROM ${affiliatePartners} WHERE ${affiliatePartners.id} = ${affiliateProducts.partnerId} AND ${affiliatePartners.approvalStatus} = 'approved')`);
+      // PX-1: public reads never return a paused partner's rows (the admin console still lists them).
+      conditions.push(affiliateProductNotPausedWhere());
     }
 
     if (options?.partnerId) {
@@ -629,6 +632,8 @@ ${truncatedHtml}`;
     if (options?.approvedOnly) {
       const partner = await this.getPartnerById(product.partnerId);
       if (!partner || partner.approvalStatus !== "approved") return null;
+      // PX-1: a paused partner's product reads as absent on a public path.
+      if (isPausedPartnerProduct({ ...product, partnerName: partner.name, partnerWebsiteUrl: partner.websiteUrl })) return null;
     }
     return product;
   }
@@ -678,7 +683,7 @@ ${truncatedHtml}`;
 
     if (data.partnerId) {
       const partner = await this.getPartnerById(data.partnerId, gate);
-      if (partner) {
+      if (partner && !(gate.approvedOnly && isPausedPartnerProduct({ partnerName: partner.name, partnerWebsiteUrl: partner.websiteUrl }))) {
         return { affiliateUrl: partner.websiteUrl };
       }
     }

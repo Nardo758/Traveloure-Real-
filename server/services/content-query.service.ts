@@ -4,6 +4,7 @@
  * Routes → this service (or storage) → db. No raw db calls in route handlers.
  */
 
+import { affiliateProductNotPausedWhere, contentRegistryNotPausedWhere } from "./partner-pause.service";
 import { stampItemSourceClass } from "@shared/content-tiers";
 import { canonicalWithinFlightWindows, daysWithinFlightWindows } from "../utils/draft-flight-windows";
 import { db } from "../db";
@@ -681,6 +682,7 @@ export async function getAffiliateProductsByIds(ids: string[]): Promise<any[]> {
       // product whose partner is not admin-approved. This mirrors getAffiliateProductsByLocation —
       // the two public read paths must gate identically (audit G-SEC).
       sql`EXISTS (SELECT 1 FROM ${affiliatePartners} WHERE ${affiliatePartners.id} = ${affiliateProducts.partnerId} AND ${affiliatePartners.approvalStatus} = 'approved')`,
+      affiliateProductNotPausedWhere(), // PX-1: a paused partner's rows are never returned
       inArray(affiliateProducts.id, ids),
     ));
 }
@@ -690,6 +692,7 @@ export async function getContentRegistryByIds(ids: string[]): Promise<any[]> {
   const rows = await db.select().from(contentRegistry)
     .where(and(
       eq(contentRegistry.status, "published"),
+      contentRegistryNotPausedWhere(), // PX-1: a paused partner's mirrored rows are never returned
       inArray(contentRegistry.id, ids),
     ));
   // Hard invariant: never return 'sourced' (DMO) content to a traveler surface, even if an admin
@@ -707,6 +710,7 @@ export async function getAffiliateProductsByLocation(params: {
     eq(affiliateProducts.isActive, true),
     // Phase 4 partner-level read-gate: only surface products whose partner is admin-approved.
     sql`EXISTS (SELECT 1 FROM ${affiliatePartners} WHERE ${affiliatePartners.id} = ${affiliateProducts.partnerId} AND ${affiliatePartners.approvalStatus} = 'approved')`,
+    affiliateProductNotPausedWhere(), // PX-1
     or(
       ilike(affiliateProducts.city, `%${params.city}%`),
       ilike(affiliateProducts.country, `%${params.country}%`),
@@ -743,6 +747,7 @@ export async function getContentRegistryByLocation(params: {
 
   const conditions = [
     eq(contentRegistry.status, "published"),
+    contentRegistryNotPausedWhere(), // PX-1
     locationFilter,
     inArray(contentRegistry.contentType, travelerTypes as any),
     ...(params.excludeIds?.length
