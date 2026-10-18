@@ -764,8 +764,8 @@ function ShareKitCard({ service, serviceId }: { service: OwnerService | null; se
 
         {/* noteQuiet — shown regardless of state */}
         <p style={T.noteQuiet}>
-          The Route frame draws the same stops you authored on the map —{" "}
-          <strong style={{ color: INK }}>sequence, not travel routing</strong>. No distance or duration is invented for a share image.
+          {/* C1 trace (Oct 17): since CP-1 the Route frame draws no stops — only the count and the areas. */}
+          The Route frame shows your stop count and the areas you authored — no map, no travel routing.
         </p>
       </div>
     </div>
