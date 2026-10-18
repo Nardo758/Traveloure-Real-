@@ -61,7 +61,14 @@ export type RegeocodeOutcome =
       osmType?: string | null;
       osmId?: number | null;
     }
-  | { kind: "ambiguous"; matches: number; names: string[]; spreadM: number }
+  | {
+      kind: "ambiguous";
+      matches: number;
+      names: string[];
+      spreadM: number;
+      /** Each matching answer, so a person can pick one (v2; plan content, never committed). */
+      candidates?: Array<{ name: string; lat: number; lng: number; osmType: string | null; osmId: number | null }>;
+    }
   | { kind: "unresolved"; reason: "no_named_tokens" | "area_title" | "no_match" | "no_results" }
   | { kind: "unreachable" };
 
@@ -320,7 +327,7 @@ export function classifyRegeocodeHitsV2(item: RegeocodeItem, itemTokens: Readonl
   const first = matching[0];
   const spreadM = Math.max(...matching.map((m) => metresBetween(first.lat, first.lng, m.lat, m.lng)));
   if (spreadM > RESOLVED_CLUSTER_M) {
-    return { kind: "ambiguous", matches: matching.length, names: Array.from(new Set(matching.map((m) => m.name))), spreadM };
+    return { kind: "ambiguous", matches: matching.length, names: Array.from(new Set(matching.map((m) => m.name))), spreadM, candidates: matching };
   }
   const stored = item.storedLat != null && item.storedLng != null ? metresBetween(item.storedLat, item.storedLng, first.lat, first.lng) : null;
   return {

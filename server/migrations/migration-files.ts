@@ -2080,4 +2080,8 @@ export const MIGRATION_FILES = [
   // empty, keyed by the Google place id: a primary key only — no DEFAULT, CHECK, FK or other index. OSM points kept
   // apart from place_facts/itinerary_items (ODbL share-alike). Declared in shared/schema.ts. founder comment: #1525 2026-10-18T00:38:38Z.
   "389_open_place_coords.sql",
+  // 390 — open_place_coords (keyed by the open source's own id, Google place id nullable) + itinerary_item_open_coords
+  // (item → open place, one per item, FKs ON DELETE CASCADE). Two NEW tables; the 389 rows naming their OSM element are
+  // copied in (ON CONFLICT DO NOTHING). LG-1 re-key, ledger 2026-10-18-lg1-open-coords-rekey. Declared in shared/schema.ts.
+  "390_open_coords_rekey.sql",
 ] as const;

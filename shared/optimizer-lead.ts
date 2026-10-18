@@ -428,7 +428,7 @@ export function directionReversals(points: DayPath["points"]): number {
 /**
  * FB-1 step 1 (decision-maker, Oct 17, 2026 — ledger `2026-10-17-fb1-checker-open-coords`): the two path findings
  * (`city_crossing`, `walking_saved_km`) read a stop's point ONLY when it is an open, non-Google coordinate (LG-1's
- * `osm_place_coords` / `admin_place_coords`, `openCoordsForPlaceIds`). A day is checked only when EVERY stop on it has
+ * `open_place_coords` / `admin_place_coords`, `openCoordsForItemIds` / `openCoordsForPlaceIds`). A day is checked only when EVERY stop on it has
  * one; any other day is NOT CHECKED, and says so — never read as "fine" (§13).
  */
 export const PATH_FINDING_KINDS = ["city_crossing", "walking_saved_km"] as const;

@@ -12699,6 +12699,8 @@ export const phoneDeliveryChoices = pgTable("phone_delivery_choices", {
 // LG-1 (migration 389; ledger `2026-10-17-lg1-osm-place-coords`): routing coordinates that did not come from Google,
 // keyed by the Google place id. ODbL: OSM points live in their OWN table, apart from place_facts and itinerary_items,
 // each credited "© OpenStreetMap contributors". ONE writer each (server/services/routing/open-place-coords.service.ts).
+// LG-1 re-key (migration 390): no longer written or read — its rows naming an OSM element were copied into
+// `open_place_coords`. Kept (declared) so the deploy push never drops it.
 export const osmPlaceCoords = pgTable("osm_place_coords", {
   placeId: varchar("place_id", { length: 255 }).primaryKey(),
   lat: decimal("lat", { precision: 10, scale: 7 }),
@@ -12720,6 +12722,31 @@ export const adminPlaceCoords = pgTable("admin_place_coords", {
   enteredBy: varchar("entered_by"),
   enteredAt: timestamp("entered_at"),
   note: text("note"),
+});
+
+// LG-1 re-key (migration 390; ledger `2026-10-18-lg1-open-coords-rekey`): an open place keyed by its OWN source's id
+// ('osm:<type>/<id>', later 'wikidata:<Qid>'); the Google place id is a nullable attribute. Credited per row.
+export const openPlaceCoords = pgTable("open_place_coords", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  source: varchar("source", { length: 16 }),
+  osmType: varchar("osm_type", { length: 16 }),
+  osmId: bigint("osm_id", { mode: "number" }),
+  wikidataQid: varchar("wikidata_qid", { length: 32 }),
+  lat: decimal("lat", { precision: 10, scale: 7 }),
+  lng: decimal("lng", { precision: 10, scale: 7 }),
+  name: text("name"),
+  googlePlaceId: varchar("google_place_id", { length: 255 }),
+  matchedBy: varchar("matched_by", { length: 32 }),
+  attribution: text("attribution"),
+  matchedAt: timestamp("matched_at"),
+});
+
+// Which open place a plan item is (one per item). Both FKs ON DELETE CASCADE (migration 390).
+export const itineraryItemOpenCoords = pgTable("itinerary_item_open_coords", {
+  itemId: varchar("item_id").primaryKey().references(() => itineraryItems.id, { onDelete: "cascade" }),
+  openCoordId: varchar("open_coord_id", { length: 64 }).references(() => openPlaceCoords.id, { onDelete: "cascade" }),
+  source: varchar("source", { length: 16 }),
+  matchedAt: timestamp("matched_at"),
 });
 
 export const launchWaitlist = pgTable("launch_waitlist", {

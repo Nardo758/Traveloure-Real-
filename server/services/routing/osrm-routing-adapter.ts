@@ -14,7 +14,7 @@
  * unreadable does the label fall back to the moment of the call.
  *
  * LG-1 (ledger `2026-10-17-lg1-osm-place-coords`): it routes ONLY between open coordinates — an OSM point from
- * `osm_place_coords`, an admin row, a ride's OSM node or an IATA airport (`isOpenCoordOrigin`). A Google point
+ * `open_place_coords` (linked to the item, migration 390), an admin row, a ride's OSM node or an IATA airport (`isOpenCoordOrigin`). A Google point
  * (an item's own coordinate, a Places fact) or an untagged one is refused before any request:
  * `no_route` / `coords_not_open`.
  */
