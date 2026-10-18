@@ -69,6 +69,20 @@ for this audit. Only this report was written.
 
 ## 1. Evidence rules and source register
 
+**17 October source-intake supplement:** See
+`docs/engineer/automation/automation-source-recovery-draft.md` for the newly supplied flow-plan
+instructions, DRAFT non-email ladder, manual-sheet provenance gap and remaining
+source requests. **Owner disposition: PARTIAL WITH DOCUMENTED GAPS — PARKED.**
+The owner has now supplied Appendix D1–D12 (`docs/engineer/automation/automation-decision-register.md`), authorized
+a newly recreated manual sheet from the E2E plan, and directed that missing
+source-dependent rows be **SOURCE PENDING**, separately listed and excluded
+from percentages (neither zero nor done). Do not search for the old manual
+sheet or retry source recovery. Non-email criteria are DRAFT V1 for tracking
+only. The 7 October readiness source remains pending. These instructions,
+updated deferrals and draft scores supersede affected historical scope/rules;
+the dated figures below are not current tracker percentages. See
+`docs/engineer/automation/automation-flow-tracker.md` for the known-scope report.
+
 ### Reading the levels
 
 The requested ladder is retained without substituting “tests passed” for
