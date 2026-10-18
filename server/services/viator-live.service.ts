@@ -42,6 +42,8 @@ export type ViatorLiveStatus = "ok" | "disabled" | "unconfigured" | "unsupported
 
 export interface ViatorLiveResult {
   status: ViatorLiveStatus;
+  /** Set only with `status: "error"`: what failed — never a key, never Viator's body. */
+  failure?: { kind: "http" | "network" | "parse"; httpStatus?: number };
   items: ViatorLiveItem[];
   /** When the prices were read (ISO). Set only when Viator answered. */
   asOf: string | null;
@@ -136,14 +138,20 @@ export async function searchViatorLive(
     });
     if (!res.ok) {
       console.warn(`[viator-live] search answered ${res.status}`);
-      return empty("error");
+      return { ...empty("error"), failure: { kind: "http", httpStatus: res.status } };
     }
-    const data: any = await res.json();
+    let data: any;
+    try {
+      data = await res.json();
+    } catch {
+      console.warn("[viator-live] search answer was not JSON");
+      return { ...empty("error"), failure: { kind: "parse", httpStatus: res.status } };
+    }
     const products: any[] = Array.isArray(data?.products) ? data.products : [];
     const items = products.map((p) => toViatorLiveItem(p, params.surface)).filter((i): i is ViatorLiveItem => i != null);
     return { status: "ok", items, asOf: (deps.now ?? (() => new Date()))().toISOString(), attribution: VIATOR_ATTRIBUTION };
   } catch (err) {
     console.warn(`[viator-live] search failed: ${(err as any)?.name ?? "error"}`);
-    return empty("error");
+    return { ...empty("error"), failure: { kind: "network" } };
   }
 }
