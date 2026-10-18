@@ -6,6 +6,11 @@
  *   npx tsx scripts/regeocode-items-osm.ts         # v1 (step 1)
  *   npx tsx scripts/regeocode-items-osm.ts --v2    # v2 (step 1b): normalised names, place phrases, spine viewbox
  *   npx tsx scripts/regeocode-items-osm.ts --v2 --apply   # LG-1: the ONE-OFF write (open_place_coords + item links)
+ *   npx tsx scripts/regeocode-items-osm.ts --wikidata     # LG-1 step 1c: READ-ONLY Wikidata search for Kyoto items
+ *                                                          # Nominatim could not place (no_results / no_match)
+ *
+ * Every v2 run (dry or --apply) ends with EVERY ambiguous item and its candidates (names, points, metres apart), for a
+ * person to pick one — plan content, posted in chat, never committed.
  *
  * --apply (LG-1, ledger `2026-10-17-lg1-osm-place-coords`; re-keyed by migration 390, ledger
  * `2026-10-18-lg1-open-coords-rekey`): a resolved match is written through the ONE writer, `recordOpenCoordForItem` —
@@ -28,7 +33,8 @@ import { and, eq, inArray, isNotNull, or } from "drizzle-orm";
 import { db } from "../server/db";
 import { cityNeighborhoods, itineraryItems, trips } from "../shared/schema";
 import { placeRefsForTrip } from "../server/services/content-facts/place-facts.service";
-import { itemsWithOpenCoord, recordOpenCoordForItem } from "../server/services/routing/open-place-coords.service";
+import { itemsWithOpenCoord, openCoordsForPlaceIds, recordOpenCoordForItem } from "../server/services/routing/open-place-coords.service";
+import { lookupItemWikidata, verifyWikidataRegion, WIKIDATA_MIN_INTERVAL_MS, WIKIDATA_REGION, type WikidataOutcome } from "../server/services/item-wikidata-lookup.service";
 import {
   metresBetween,
   NOMINATIM_MIN_INTERVAL_MS,
@@ -38,6 +44,7 @@ import {
   type RegeocodeOutcome,
   type RegeocodeV2Result,
   type SpineNeighbourhood,
+  v2QueryPlan,
 } from "../server/services/item-osm-regeocode.service";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -203,9 +210,93 @@ async function mainV2(apply: boolean): Promise<void> {
   }
 }
 
+/**
+ * LG-1 step 1c — READ-ONLY. For Kyoto items with no open coordinate yet: the v2 Nominatim lookup again (1 req/s), and
+ * for each `no_results` / `no_match` a Wikidata label search (`item-wikidata-lookup.service.ts`, serial, ≥1.1 s apart).
+ * Reports the resolved count, twenty samples and the remainder that names no place. Writes nothing.
+ */
+async function mainWikidata(): Promise<void> {
+  const region = await verifyWikidataRegion();
+  if (!region.ok) {
+    console.error(`REFUSED: ${WIKIDATA_REGION.qid} reads "${region.label ?? "unreachable"}", not "${WIKIDATA_REGION.enLabel}". Nothing searched.`);
+    process.exitCode = 1;
+    return;
+  }
+  const all = await loadItemsV2();
+  const kyoto = all.filter((i) => /kyoto/i.test(i.destination ?? ""));
+  // Already open: the item is linked to an open place (390), or its place id has an admin or open row.
+  const linked = await itemsWithOpenCoord(kyoto.map((i) => i.id));
+  const byPlace = await openCoordsForPlaceIds(kyoto.map((i) => i.placeId).filter((p): p is string => !!p));
+  const spine: SpineNeighbourhood[] = (
+    await db
+      .select({ name: cityNeighborhoods.name, city: cityNeighborhoods.city, centroidLat: cityNeighborhoods.centroidLat, centroidLng: cityNeighborhoods.centroidLng, radiusKm: cityNeighborhoods.radiusKm })
+      .from(cityNeighborhoods)
+  ).map((n) => ({ name: n.name, city: n.city, centroidLat: Number(n.centroidLat), centroidLng: Number(n.centroidLng), radiusKm: n.radiusKm == null ? null : Number(n.radiusKm) }));
+
+  const counts = { kyotoItems: kyoto.length, otherMarketItems: all.length - kyoto.length, alreadyOpen: 0, noPlaceId: 0, nominatimAsked: 0, wikidataAsked: 0 };
+  const nominatimBy: Record<string, number> = {};
+  const wikidataBy: Record<string, number> = {};
+  const rows: Array<{ item: RegeocodeItem & { placeId: string | null }; nominatim: string; search: string | null; outcome: WikidataOutcome | null }> = [];
+  let lastNominatim = 0;
+  let lastWikidata = 0;
+  for (const item of kyoto) {
+    if (linked.has(item.id) || (item.placeId && byPlace.has(item.placeId))) {
+      counts.alreadyOpen += 1;
+      continue;
+    }
+    if (!item.placeId) counts.noPlaceId += 1; // reported only: since 390 an item with no place id is written through its link
+    const plan = v2QueryPlan(item);
+    let nominatim: string;
+    if (plan.skip) {
+      nominatim = plan.skip;
+    } else {
+      const wait = lastNominatim + NOMINATIM_MIN_INTERVAL_MS - Date.now();
+      if (wait > 0) await sleep(wait);
+      const r = await regeocodeItemV2(item, spine);
+      lastNominatim = Date.now();
+      counts.nominatimAsked += 1;
+      nominatim = r.outcome.kind === "unresolved" ? r.outcome.reason : r.outcome.kind;
+    }
+    nominatimBy[nominatim] = (nominatimBy[nominatim] ?? 0) + 1;
+    let outcome: WikidataOutcome | null = null;
+    let search: string | null = null;
+    if (nominatim === "no_results" || nominatim === "no_match") {
+      const wait = lastWikidata + WIKIDATA_MIN_INTERVAL_MS - Date.now();
+      if (wait > 0) await sleep(wait);
+      const w = await lookupItemWikidata(item);
+      lastWikidata = Date.now();
+      if (w.requested) counts.wikidataAsked += 1;
+      outcome = w.outcome;
+      search = w.search;
+      const k = w.outcome.kind === "unresolved" ? `unresolved:${w.outcome.reason}` : w.outcome.kind;
+      wikidataBy[k] = (wikidataBy[k] ?? 0) + 1;
+    }
+    rows.push({ item, nominatim, search, outcome });
+  }
+  const resolved = rows.filter((r) => r.outcome?.kind === "resolved");
+  // The remainder that stays unrouted by design (LB3 "Not on the map yet"): items that name no place, plus what
+  // Wikidata could not place; ambiguous and unreachable rows are counted apart (a person, or a re-run, may still place them).
+  const nonPlace = rows.filter((r) => ["no_place_phrase", "no_named_tokens", "area_title"].includes(r.nominatim)).length;
+  const wikidataMissed = rows.filter((r) => r.outcome?.kind === "unresolved").length;
+  console.log(`DRY RUN (Wikidata, step 1c) — nothing written. Region ${WIKIDATA_REGION.qid} = "${region.label}".`);
+  console.log(JSON.stringify({ counts, nominatimBy, wikidataBy, wikidataResolved: resolved.length, remainder: { nonPlace, wikidataMissed } }, null, 2));
+  const sample = [
+    ...resolved.slice(0, 12),
+    ...rows.filter((r) => r.outcome?.kind === "ambiguous").slice(0, 3),
+    ...rows.filter((r) => r.outcome?.kind === "unresolved").slice(0, 5),
+  ].slice(0, 20);
+  for (const r of sample) {
+    console.log(JSON.stringify({ item: r.item.id.slice(0, 8), title: r.item.title, locationName: r.item.locationName, nominatim: r.nominatim, search: r.search, outcome: r.outcome }));
+  }
+}
+
 async function main(): Promise<void> {
   const apply = process.argv.includes("--apply");
   if (apply && !process.argv.includes("--v2")) throw new Error("--apply runs only with --v2");
+  if (process.argv.includes("--wikidata")) {
+    if (apply) throw new Error("--wikidata is read-only in step 1c; it never runs with --apply");
+    return mainWikidata();
+  }
   if (process.argv.includes("--v2")) return mainV2(apply);
   const rows = await db
     .select({
