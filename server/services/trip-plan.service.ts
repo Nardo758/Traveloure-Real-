@@ -339,6 +339,9 @@ function buildTripPlanLegCore(leg: any, booking?: LegBookingInfo | null): TripPl
       : {}),
     // Step 9a (ledger `2026-10-07-step9a-routing-engine`): present only on an engine leg.
     ...(routedFactsOf(leg) ? { routed: routedFactsOf(leg)! } : {}),
+    // LG-1 item 4 (LD 65; ledger `2026-10-17-lg1-leg-options-provenance`): the same provenance at the top of the leg,
+    // so every surface that projects legs (share, Trip Card) can keep it with two named keys. Engine legs only.
+    ...(routedFactsOf(leg) ? { source: routedFactsOf(leg)!.provenance.source, checkedAt: routedFactsOf(leg)!.provenance.checkedAt } : {}),
     // Step 9c (ledger `2026-10-07-step9c-leg-options`): an engine leg's mode options, current first.
     ...(routedFactsOf(leg) && routedLegOptions(leg) ? { routedOptions: routedLegOptions(leg)! } : {}),
     ...(routedFactsOf(leg) && legOptionsChecked(leg.alternativeModes) ? { routedOptionsChecked: true as const } : {}),
