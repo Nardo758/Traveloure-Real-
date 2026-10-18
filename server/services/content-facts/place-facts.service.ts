@@ -15,7 +15,7 @@ import { canonicalAreaLine } from "@shared/place-address";
 import crypto from "node:crypto";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../../db";
-import { contentSources, itineraryItems, placeFacts } from "@shared/schema";
+import { contentSources, itineraryItems, placeFacts, trips } from "@shared/schema";
 import {
   asFactOrigin,
   PAGE_READ_ORIGINS,
@@ -601,7 +601,17 @@ async function sourcesFor(rows: FactRow[]): Promise<Map<string, SourceFacts>> {
   return new Map(found.map((s) => [s.id, { name: s.name, licenseClass: s.licenseClass, publicOk: s.publicOk }]));
 }
 
-function toView(r: FactRow, now: Date, sources: Map<string, SourceFacts> = new Map()): FactView | null {
+/** LG-1 item 5: the plan's zone, for the "checked" day on every provenance line. Never throws (null ⇒ UTC day). */
+async function planTimeZone(tripId: string): Promise<string | null> {
+  try {
+    const [t] = await db.select({ timezone: trips.timezone }).from(trips).where(eq(trips.id, tripId)).limit(1);
+    return t?.timezone ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function toView(r: FactRow, now: Date, sources: Map<string, SourceFacts> = new Map(), timeZone: string | null = null): FactView | null {
   const origin = asFactOrigin(r.origin);
   if (!origin) return null;
   const src = r.sourceId ? sources.get(r.sourceId) : undefined;
@@ -623,7 +633,7 @@ function toView(r: FactRow, now: Date, sources: Map<string, SourceFacts> = new M
     value: r.value as Record<string, unknown>,
     origin,
     sourceUrl: r.sourceUrl ?? null,
-    provenance: factProvenanceLine(f, now),
+    provenance: factProvenanceLine(f, now, timeZone),
     checkedAt: r.fetchedAt ? new Date(r.fetchedAt as any).toISOString() : null,
     stale: isFactStale(f, now),
     publishable: isPublishable(f),
@@ -716,7 +726,7 @@ function officialSeason(r: FactRow): { from: string; to: string } | null {
 }
 
 export async function factsForTrip(tripId: string, now: Date = new Date()): Promise<Record<string, FactView[]>> {
-  const rows = await rowsForTrip(tripId);
+  const [rows, timeZone] = await Promise.all([rowsForTrip(tripId), planTimeZone(tripId)]);
   // P0-e addition 7 (decision-maker, Oct 12, 2026): a row's hours are the SAME facts the feasibility checks
   // read — the plan's own rows plus the official rows stored for the item's place id, official first
   // (`resolveFactPrecedence`) — so an official hours fact replaces the Google line, and the row's closing
@@ -751,7 +761,7 @@ export async function factsForTrip(tripId: string, now: Date = new Date()): Prom
       // The same official fact stored by two plans is shown once.
       const key = JSON.stringify([r.origin, r.sourceId, (r.value as any)?.weekdayDescriptions ?? (r.value as any)?.text ?? r.id, (r.value as any)?.season ?? null]);
       if (shown.has(key)) continue;
-      const v = toView(r, now, sources);
+      const v = toView(r, now, sources, timeZone);
       if (!v) continue;
       shown.add(key);
       views.push(v);
@@ -769,7 +779,7 @@ export async function factsForTrip(tripId: string, now: Date = new Date()): Prom
       if (isFactStale(r, now) || !admitFeasibilityFact(r).ok) continue;
       const key = JSON.stringify([r.sourceId, (r.value as any)?.byWeekday ?? null, (r.value as any)?.season ?? null]);
       if (entryShown.has(key)) continue;
-      const v = toView(r, now, sources);
+      const v = toView(r, now, sources, timeZone);
       if (!v) continue;
       entryShown.add(key);
       views.push(v);
@@ -777,7 +787,7 @@ export async function factsForTrip(tripId: string, now: Date = new Date()): Prom
     seen.add("last_admission");
     for (const r of rankFactsByOrigin(list.filter((x) => x.factType !== "hours"), now)) {
       if (seen.has(r.factType)) continue;
-      const v = toView(r, now, sources);
+      const v = toView(r, now, sources, timeZone);
       if (!v) continue;
       seen.add(r.factType);
       views.push(v);
@@ -1051,6 +1061,7 @@ export async function lastServicesForMarket(market: string, now: Date = new Date
 
 export async function feasibilityFactsForTrip(tripId: string, market: string | null, now: Date = new Date()): Promise<FeasibilityFacts> {
   const own = (await rowsForTrip(tripId)).filter((r) => r.sourceClass != null);
+  const timeZone = await planTimeZone(tripId);
   const placeOf = await itemPlaceIdsForTrip(tripId, own);
   const stored = await storedOfficialFacts(Array.from(new Set(placeOf.values())), ["hours", "last_admission"]);
   const sources = await sourcesFor([...own, ...stored]);
@@ -1066,7 +1077,7 @@ export async function feasibilityFactsForTrip(tripId: string, market: string | n
     const hs: FeasibilityHours[] = [];
     for (const h of ranked) {
       if (h.factType !== "hours" || !Array.isArray((h.value as any)?.weekdayDescriptions)) continue;
-      const v = toView(h, now, sources);
+      const v = toView(h, now, sources, timeZone);
       const official = h.origin !== "places_api" && v?.publishable === true;
       // P0-e item 2: only an OFFICIAL-licence fact may state a season (a Places list never does); a malformed
       // season makes the fact unusable rather than all-year.
