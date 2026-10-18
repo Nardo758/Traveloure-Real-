@@ -38,8 +38,8 @@ export function mergeOpenCoords(
 }
 
 /**
- * LG-1 (ledger `2026-10-17-lg1-osm-place-coords`): the point the engine routes a stop from. An open coordinate for its
- * Google place id (an admin row, else an OSM match) wins; a ride's own pin is its OSM node (TC-3, migration 369);
+ * LG-1 (ledger `2026-10-17-lg1-osm-place-coords`; re-keyed by 390): the point the engine routes a stop from. An admin row
+ * for its Google place id wins, then the open place the item is linked to, then an open place carrying its place id; a ride's own pin is its OSM node (TC-3, migration 369);
  * anything else is the stop's Google point (its row coordinate or a Places fact), tagged `google`. Pure.
  */
 export function routingPointFor(input: {
@@ -48,13 +48,19 @@ export function routingPointFor(input: {
   /** The id the open tables are keyed by: the item's own `google_place_id`, else the fact's. Defaults to `placeId`. */
   lookupPlaceId?: string | null;
   open: ReadonlyMap<string, OpenPlaceCoord>;
+  /**
+   * LG-1 re-key (migration 390): the open place this ITEM is linked to (`itinerary_item_open_coords`), which an item with
+   * no Google place id reaches only this way. An admin row for its place id still wins; a place-id match comes after.
+   */
+  itemOpen?: OpenPlaceCoord | null;
   ownPoint: { lat: number; lng: number } | null;
   factPoint: { lat: number; lng: number } | null;
   osmRide: boolean;
 }): RoutePoint | null {
   const placeId = input.placeId?.trim() || null;
   const lookup = (input.lookupPlaceId ?? input.placeId)?.trim() || null;
-  const open = lookup ? input.open.get(lookup) : undefined;
+  const byPlace = lookup ? input.open.get(lookup) : undefined;
+  const open = byPlace?.origin === "admin" ? byPlace : input.itemOpen ?? byPlace;
   if (open) return { lat: open.lat, lng: open.lng, placeId, coordOrigin: open.origin };
   if (input.osmRide && input.ownPoint) return { ...input.ownPoint, placeId, coordOrigin: "osm_node" };
   const p = input.ownPoint ?? input.factPoint;

@@ -27,7 +27,7 @@
  *   SD13 a located stop on the plan's dates with no open point ⇒ no pick
  *
  * OPEN COORDINATES (ledger `2026-10-18-google-writers-open-coords`): the paid plans' stops are open through
- * `osm_place_coords` rows keyed by each item's place id; a stop "moves" by moving that row. The hotels' open point
+ * `open_place_coords` rows carrying by each item's place id; a stop "moves" by moving that row. The hotels' open point
  * is a TEST-ONLY injection (`OPEN_HOTELS`): no hotel source carries one today, which is SD12.
  *
  * DISPOSABLE DB ONLY: rows keyed by a per-run prefix and deleted afterwards. The Maps call is a fake.
@@ -80,9 +80,9 @@ function fakeMatrix(minutesFor: (hotelLat: number, hotelLng: number, stopIndex: 
 /** TEST-ONLY: every hotel at an admin coordinate (no hotel source carries an open coordinate today — SD12). */
 const OPEN_HOTELS = (c: { lat: number; lng: number }) => ({ lat: c.lat, lng: c.lng, coordOrigin: "admin" as const });
 const pid = (t: string, n: number) => `${t}-p${n}`;
-/** Move a stop: its open coordinate (the `osm_place_coords` row) is what the pick reads. */
+/** Move a stop: its open coordinate (the `open_place_coords` row) is what the pick reads. */
 async function moveStop(t: string, n: number, lat: number) {
-  await db.execute(sql`UPDATE osm_place_coords SET lat = ${lat} WHERE place_id = ${pid(t, n)}`);
+  await db.execute(sql`UPDATE open_place_coords SET lat = ${lat} WHERE google_place_id = ${pid(t, n)}`);
 }
 
 async function storedPick(tripId: string) {
@@ -119,8 +119,8 @@ before(async () => {
       await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, title, day_number, item_type, latitude, longitude, origin, google_place_id)
         VALUES (${`${t}-i${n}`}, ${t}, 'Stop', ${s.day}, 'activity', ${s.lat}, ${s.lng}, 'traveler', ${pid(t, n)})`);
       // The stop's open coordinate (LG-1): an OSM match for its place id, at the same point.
-      await db.execute(sql`INSERT INTO osm_place_coords (place_id, lat, lng, osm_type, osm_id, osm_name, matched_by, attribution)
-        VALUES (${pid(t, n)}, ${s.lat}, ${s.lng}, 'node', ${1000 + n}, 'Stop', 'nominatim_batch', '© OpenStreetMap contributors')`);
+      await db.execute(sql`INSERT INTO open_place_coords (id, source, google_place_id, lat, lng, osm_type, osm_id, name, matched_by, attribution)
+        VALUES ('osm:node/' || ${pid(t, n)}, 'osm', ${pid(t, n)}, ${s.lat}, ${s.lng}, 'node', ${1000 + n}, 'Stop', 'nominatim_batch', '© OpenStreetMap contributors')`);
       n++;
     }
     // A stop OUTSIDE the plan's dates (day 9 of a 3-day plan) is never scored against (ruling 1).
@@ -137,7 +137,7 @@ after(async () => {
   await db.execute(sql`DELETE FROM hotel_cache WHERE id LIKE ${`stp-${RUN}-%`}`).catch(() => {});
   await db.execute(sql`DELETE FROM city_neighborhoods WHERE id LIKE ${`stp-${RUN}-%`}`).catch(() => {});
   await db.execute(sql`DELETE FROM users WHERE id LIKE ${`stp-${RUN}-%`}`).catch(() => {});
-  await db.execute(sql`DELETE FROM osm_place_coords WHERE place_id LIKE ${`stp-${RUN}-%`}`).catch(() => {});
+  await db.execute(sql`DELETE FROM open_place_coords WHERE google_place_id LIKE ${`stp-${RUN}-%`}`).catch(() => {});
   await pool.end();
 });
 
@@ -340,7 +340,7 @@ test("SD12 no hotel open coordinate (the default): nothing scored, no call, the 
 });
 
 test("SD13 a located stop on the plan's dates with no open point ⇒ no pick", async () => {
-  await db.execute(sql`DELETE FROM osm_place_coords WHERE place_id = ${pid(ids.paid, 4)}`);
+  await db.execute(sql`DELETE FROM open_place_coords WHERE google_place_id = ${pid(ids.paid, 4)}`);
   const m = fakeMatrix(byDistance());
   assert.deepEqual(await computeStayPick(ids.paid, { routeRow: m.fetch, openPointOf: OPEN_HOTELS }), { skipped: "stops_not_open" });
   assert.equal(m.calls.length, 0);
