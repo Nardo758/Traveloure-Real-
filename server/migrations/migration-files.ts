@@ -2084,4 +2084,7 @@ export const MIGRATION_FILES = [
   // (item → open place, one per item, FKs ON DELETE CASCADE). Two NEW tables; the 389 rows naming their OSM element are
   // copied in (ON CONFLICT DO NOTHING). LG-1 re-key, ledger 2026-10-18-lg1-open-coords-rekey. Declared in shared/schema.ts.
   "390_open_coords_rekey.sql",
+  // 393 — DATA ONLY: two Gion itinerary_items (full ids) renamed "Gion District Walk" while their title still
+  // contains "geisha spotting". Idempotent. LG-2 Ask 9, ledger 2026-10-18-lg2-banned-phrases. (391/392 are #1556/#1559.)
+  "393_gion_district_walk_titles.sql",
 ] as const;
