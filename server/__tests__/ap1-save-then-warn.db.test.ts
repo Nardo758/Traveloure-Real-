@@ -186,8 +186,10 @@ test("S2 one hand_add outcome row; a place any plan holds is reused at no charge
 
 test("S3 a stored official hours fact covers the place: no billed call, the stop reads the official hours", async () => {
   const pid = id("place-nanzen");
-  await db.execute(sql`INSERT INTO place_facts (id, place_ref_kind, place_ref, need, fact_type, value, origin, license, fetched_at, source_class, reuse_class, source_url)
-    VALUES (${id("official")}, 'place_id', ${pid}, 'stop.hours', 'hours', ${JSON.stringify({ weekdayDescriptions: WINTER })}::jsonb, 'crawled', 'official', now(), 'public', 'link_only', 'https://www.nanzen.net/')`);
+  // CS-1 item 3 (ledger `2026-10-19-cs1-fact-review`): a machine-read hours fact is read only once a person reviewed it
+  // (`verified_by` references a user; the fixture's own account stands in for the reviewer).
+  await db.execute(sql`INSERT INTO place_facts (id, place_ref_kind, place_ref, need, fact_type, value, origin, license, fetched_at, source_class, reuse_class, source_url, verified_by)
+    VALUES (${id("official")}, 'place_id', ${pid}, 'stop.hours', 'hours', ${JSON.stringify({ weekdayDescriptions: WINTER })}::jsonb, 'crawled', 'official', now(), 'public', 'link_only', 'https://www.nanzen.net/', ${OWNER})`);
   const fake = placesFake();
   const item = await add(TRIP, "Nanzen-ji", 3, "17:30");
   await startHandAddLookup(TRIP, item.id, { adapters: [fake.adapter] });
