@@ -25,6 +25,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { deliveryDisplay } from "@/lib/email-delivery-status";
+import { BUSY_BUS_MARKETS, SEASON_WINDOWS_HELP, seasonWindowsSettingKey } from "@shared/busy-bus";
+import { OPERATING_MARKETS } from "@shared/operating-markets";
 import { parseTravelerSignupMode, TRAVELER_SIGNUP_MODE_SETTING, type TravelerSignupMode } from "@shared/launch-signup";
 
 interface PlatformSettingRow {
@@ -497,6 +499,10 @@ export default function AdminSystem() {
           </Card>
         </div>
 
+        {BUSY_BUS_MARKETS.map((market) => (
+          <SeasonWindowsCard key={market} market={market} rows={settingsRows} />
+        ))}
+
         {/* Security & Backup — infrastructure monitoring is not wired to live data yet.
             The previous cards asserted fabricated status (2FA "Enabled", SSL "245 days",
             "Last backup Today 3AM") that an admin could dangerously act on. Gated honestly
@@ -525,5 +531,58 @@ export default function AdminSystem() {
         </Card>
       </div>
     </AdminLayout>
+  );
+}
+
+/**
+ * FB-1 step 5d (ledger `2026-10-19-fb1-busy-bus`): a market's peak windows, `season_windows_<market>` — read by the
+ * busy-bus day line (weekends inside a window) and SH-1's "In season" badge. No code default: empty means none. The
+ * server validates the JSON on save and the save is audit-logged.
+ */
+function SeasonWindowsCard({ market, rows }: { market: string; rows: PlatformSettingRow[] | undefined }) {
+  const queryClient = useQueryClient();
+  const key = seasonWindowsSettingKey(market);
+  const stored = rows?.find((r) => r.setting_key === key)?.setting_value ?? "";
+  const [draft, setDraft] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const value = draft ?? stored;
+  const city = OPERATING_MARKETS.find((m) => m.marketKey === market)?.cityName ?? market;
+  const save = useMutation({
+    mutationFn: () => apiRequest("PATCH", `/api/admin/platform-settings/${key}`, { settingValue: value.trim() === "" ? "[]" : value.trim() }),
+    onSuccess: () => {
+      setError(null);
+      setDraft(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/platform-settings"] });
+    },
+    onError: (e) => {
+      const raw = e instanceof Error ? e.message : String(e);
+      const body = raw.replace(/^\d{3}:\s*/, "");
+      try {
+        setError(JSON.parse(body).error ?? body);
+      } catch {
+        setError(body);
+      }
+    },
+  });
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Season windows — {city}</CardTitle>
+        <CardDescription>{SEASON_WINDOWS_HELP}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3" data-testid={`card-season-windows-${market}`}>
+        <textarea
+          className="w-full min-h-[96px] rounded-md border p-2 font-mono text-sm"
+          value={value}
+          placeholder='[{"from":"2027-03-25","to":"2027-04-10"}]'
+          onChange={(e) => setDraft(e.target.value)}
+          data-testid={`input-season-windows-${market}`}
+        />
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        <Button variant="outline" disabled={draft === null || save.isPending} onClick={() => save.mutate()} data-testid={`button-season-windows-save-${market}`}>
+          Save season windows
+        </Button>
+      </CardContent>
+    </Card>
   );
 }

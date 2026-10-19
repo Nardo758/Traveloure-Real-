@@ -475,6 +475,8 @@ export interface PlanCardDay {
   feasibility?: import("@shared/plan-feasibility").DayFeasibility;
   /** FD-1/FD-5 (ledger `2026-10-10-fd5-coverage-targets`): a free plan's gated count-only teaser; absent ⇒ none. */
   localTeaser?: import("@shared/free-draft-cap").LocalTeaser;
+  /** FB-1 step 5d (ledger `2026-10-19-fb1-busy-bus`): a Kyoto plan's busy-bus day, confirmed dates only; absent ⇒ none. */
+  busyBus?: { reason: import("@shared/busy-bus").BusyBusReason };
   /** FB-1: the in-season count for this day — present only when non-zero (empty until FB-1 step 8). */
   inSeason?: { count: number; href: string };
   /**

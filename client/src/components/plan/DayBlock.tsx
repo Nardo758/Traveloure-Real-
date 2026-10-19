@@ -12,6 +12,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { usePlanRowLook } from "./row-look";
 import { feasibilityLine, type DayFeasibility } from "@shared/plan-feasibility";
 import { localTeaserLine, type LocalTeaser } from "@shared/free-draft-cap";
+import { busyBusDayLine, type BusyBusReason } from "@shared/busy-bus";
 
 export interface DayBlockProps {
   /** Stable key for testids — the plan day number, or the slot key for an event-only slot. */
@@ -43,6 +44,9 @@ export interface DayBlockProps {
    * `localTeaserLine` (shared). Absent or zero ⇒ nothing.
    */
   localTeaser?: LocalTeaser | null;
+  /** FB-1 step 5d (ledger `2026-10-19-fb1-busy-bus`): the server's busy-bus reason for the day, drawn as
+   *  `busyBusDayLine` (shared). Absent ⇒ nothing. */
+  busyBus?: { reason: BusyBusReason } | null;
   /** FB-1 step 4 (ledger `2026-10-19-fb1-fixed-by-tap`): the slip's "Use the fixed day" control, drawn under the
    *  feasibility line. Only the slip passes it (ruling (b)); absent ⇒ nothing. */
   fixControl?: ReactNode;
@@ -51,9 +55,10 @@ export interface DayBlockProps {
   children: ReactNode;
 }
 
-export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, onOpenChange, photo = null, aside = null, domId, thumb = null, feasibility = null, localTeaser = null, fixControl = null, hook = null, children }: DayBlockProps) {
+export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, onOpenChange, photo = null, aside = null, domId, thumb = null, feasibility = null, localTeaser = null, busyBus = null, fixControl = null, hook = null, children }: DayBlockProps) {
   const feasibilityText = feasibilityLine(feasibility);
   const teaserText = localTeaserLine(localTeaser);
+  const busyBusText = busyBus?.reason ? busyBusDayLine(busyBus.reason) : null;
   const look = usePlanRowLook();
   const [ownOpen, setOwnOpen] = useState(defaultOpen);
   const isOpen = open ?? ownOpen;
@@ -99,6 +104,7 @@ export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, on
           <div className="pb-1" data-testid={`slip-day-body-${dayKey}`}>
             <DayFeasibilityLine dayKey={dayKey} text={feasibilityText} className="px-4 pb-1.5 text-xs text-[color:var(--slip-muted)]" />
             <DayLocalTeaserLine dayKey={dayKey} text={teaserText} className="px-4 pb-1.5 text-xs text-[color:var(--slip-muted)]" />
+            <DayBusyBusLine dayKey={dayKey} text={busyBusText} className="px-4 pb-1.5 text-xs text-[color:var(--slip-muted)]" />
             {fixControl ? <div className="px-4 pb-1.5" data-testid={`slip-day-fix-${dayKey}`}>{fixControl}</div> : null}
             {children}
             {hook}
@@ -137,6 +143,7 @@ export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, on
           {photo ? <div className="px-3 pt-1 pb-2">{photo}</div> : null}
           <DayFeasibilityLine dayKey={dayKey} text={feasibilityText} className="px-3 pl-8 pb-1 text-xs text-muted-foreground" />
           <DayLocalTeaserLine dayKey={dayKey} text={teaserText} className="px-3 pl-8 pb-1 text-xs text-muted-foreground" />
+          <DayBusyBusLine dayKey={dayKey} text={busyBusText} className="px-3 pl-8 pb-1 text-xs text-muted-foreground" />
           {fixControl ? <div className="px-3 pl-8 pb-1" data-testid={`slip-day-fix-${dayKey}`}>{fixControl}</div> : null}
           {children}
           {hook}
@@ -161,6 +168,16 @@ export function DayLocalTeaserLine({ dayKey, text, className }: { dayKey: string
   if (!text) return null;
   return (
     <p className={className} data-testid={`slip-day-local-teaser-${dayKey}`}>
+      {text}
+    </p>
+  );
+}
+
+/** FB-1 step 5d: the day's busy-bus line, or nothing. One testid on every surface. */
+export function DayBusyBusLine({ dayKey, text, className }: { dayKey: string; text: string | null; className?: string }) {
+  if (!text) return null;
+  return (
+    <p className={className} data-testid={`slip-day-busy-bus-${dayKey}`}>
       {text}
     </p>
   );
