@@ -727,18 +727,13 @@ export default function StorefrontPage() {
   const firstName = earner.businessName ? displayName : earner.name.split(" ")[0];
   // §3.10 eyebrow: SERVICE PROVIDER STOREFRONT / LOCAL EXPERT STOREFRONT (uppercased in CSS).
   const eyebrowLabel = isProviderRole(earner.role) ? "Service provider storefront" : "Local expert storefront";
-  // Two different claims, never swapped (§13): "Verified business" only when the BUSINESS is
-  // verified (Stripe-derived `businessVerified`); "Identity verified" when only the person is.
-  const verifiedBadge = earner.businessVerified
-    ? { label: "Verified business", title: "This business has been verified" }
-    : earner.verified
-      ? { label: "Identity verified", title: "This earner's identity has been verified" }
-      : null;
+  // SH-1 item 1: no "Verified business" / "Identity verified" badge — nothing behind it stores a checked date and an
+  // official source. (An "Identity checked" badge is a later lane, after a real Connect ID check.)
   const storefrontTitle = isProviderRole(earner.role)
     ? `${displayName} — Book local services`
     : `${earner.name} — Book local experiences`;
   const storefrontDescription = isProviderRole(earner.role)
-    ? `${earner.bio ? `${earner.bio} ` : ""}${services.length} bookable service${services.length === 1 ? "" : "s"} from ${displayName} on Traveloure. Secure checkout, verified reviews.`
+    ? `${earner.bio ? `${earner.bio} ` : ""}${services.length} bookable service${services.length === 1 ? "" : "s"} from ${displayName} on Traveloure. Secure checkout, traveler reviews.`
     : earner.bio ?? `Bookable experiences from ${earner.name} on Traveloure.`;
   const aboutGroups = [
     { label: "Specialties", values: Array.from(new Set(earner.specialties ?? [])) },
@@ -951,22 +946,10 @@ export default function StorefrontPage() {
               )}
             </div>
 
-            {/* Right column: the verified badge at the top, the two actions pinned to the bottom so
+            {/* Right column: the two actions pinned to the bottom so
                 they line up with the figures. On a phone they stack full-width under the identity. */}
             <div className="col-span-2 sm:col-span-1 flex flex-col justify-between gap-4 sm:pt-4">
-              <div className="flex sm:justify-end">
-                {verifiedBadge && (
-                  <span
-                    className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold shrink-0"
-                    style={{ borderWidth: 1, borderStyle: "solid", borderColor: "var(--earn-green-ink)", background: "var(--earn-teal-wash)", color: "var(--earn-green-ink)" }}
-                    data-testid="badge-storefront-verified"
-                    title={verifiedBadge.title}
-                  >
-                    <ShieldCheck className="w-3 h-3" />
-                    {verifiedBadge.label}
-                  </span>
-                )}
-              </div>
+              <div className="flex sm:justify-end" />
               <div className="flex flex-col gap-2">
                 {isOwnStorefront ? (
                   <Link href={isProviderRole(earner.role) ? "/provider/settings?tab=profile" : "/expert/settings?tab=profile"} className="w-full">

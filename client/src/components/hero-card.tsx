@@ -130,12 +130,6 @@ export function HeroCard({ city, happeningNow, liveActivity, alerts }: HeroCardP
                   <p className="text-2xl font-bold">{liveActivity.recentSearches}</p>
                 </div>
               )}
-              {liveActivity.trendingNow && liveActivity.trendingNow.length > 0 && (
-                <div className="md:col-span-1 col-span-2">
-                  <p className="text-xs text-muted-foreground">Trending</p>
-                  <p className="text-sm font-semibold truncate">{liveActivity.trendingNow[0]}</p>
-                </div>
-              )}
             </div>
           </CardContent>
         </Card>

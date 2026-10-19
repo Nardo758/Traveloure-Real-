@@ -72,7 +72,7 @@ const REVIEW_CONTEXTS = {
       "Every recommendation was spot-on",
       "The restaurant reservations were amazing",
       "The custom map made navigation so easy",
-      "All the insider tips proved invaluable",
+      "All the local tips proved invaluable",
       "The pacing of the itinerary was perfect",
     ],
     result: [
@@ -105,7 +105,7 @@ const REVIEW_CONTEXTS = {
   consultation: {
     specific: [
       "The expert really listened to our needs",
-      "Got so many insider tips in one call",
+      "Got so many local tips in one call",
       "The personalized recommendations were gold",
       "Learned things I'd never find online",
       "The expert's local knowledge was incredible",
@@ -113,7 +113,7 @@ const REVIEW_CONTEXTS = {
     result: [
       "we felt confident planning our trip",
       "it saved us hours of research",
-      "we discovered amazing hidden gems",
+      "we discovered amazing local picks",
       "the advice was worth 10x the price",
       "our trip was so much better because of this",
     ],
@@ -303,7 +303,7 @@ export async function seedReviewsAndBookings(
       "The service was good but could be better. Some recommendations didn't quite fit our style, but the main content was solid.",
       "Really impressive attention to detail. The expert clearly knows their stuff and it shows in every recommendation. Best money we've spent!",
       "Solid service. Got what we paid for. A couple things could have been clearer, but overall satisfied with the outcome.",
-      "Absolutely loved this! Made our trip so much easier and more enjoyable. Can't thank the expert enough for all the insider tips.",
+      "Absolutely loved this! Made our trip so much easier and more enjoyable. Can't thank the expert enough for all the local tips.",
       "Decent service but felt a bit generic. Some good suggestions but also some misses. Average experience overall.",
       "Outstanding from start to finish! The expert was responsive, knowledgeable, and genuinely cared about making our trip perfect. 10/10!",
     ];
@@ -513,14 +513,14 @@ export async function seedInfluencerContent(experts: any[]) {
     // Amélie's Content (Paris)
     {
       influencerId: influencerExperts.find(e => e.email.includes('amelie'))?.id,
-      title: "Hidden Paris: 12 Secret Courtyards and Gardens Parisians Love",
-      description: "Escape the tourist crowds and discover Paris's most charming hidden courtyards and secret gardens. These peaceful oases are where locals actually relax.",
+      title: "Hidden Paris: 12 Courtyards and Gardens Parisians Love",
+      description: "Escape the tourist crowds and discover Paris's most charming hidden courtyards and gardens. These peaceful oases are where locals actually relax.",
       category: "Travel Guides",
       contentType: "guide",
       platform: "instagram",
       imageUrl: "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=800",
       destinations: ["Paris", "France"],
-      experiences: ["Hidden Gems", "Local Experiences"],
+      experiences: ["Local Picks", "Local Experiences"],
       tags: ["paris", "hidden-gems", "secret-paris", "france"],
       viewCount: 32100,
       saveCount: 2847,

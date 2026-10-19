@@ -396,8 +396,8 @@ export default function ExpertsPage() {
       : {
           title: "Local Travel Experts",
           description:
-            "Connect with local experts who know their destinations inside out. Get personalized recommendations, bookable services, and insider access.",
-          keywords: ["local expert", "local guide", "insider travel tips", "personalized travel"],
+            "Connect with local experts who know their destinations inside out. Get personalized recommendations, bookable services, and local knowledge.",
+          keywords: ["local expert", "local guide", "local travel tips", "personalized travel"],
         };
 
   return (
@@ -442,7 +442,7 @@ export default function ExpertsPage() {
                     ? "Experienced trip planners who handle every detail — from itineraries to bookings — so you can just enjoy the journey."
                     : selectedRole === "event_planner"
                     ? "Specialist event planners for weddings, proposals, and group celebrations. Let an expert make it unforgettable."
-                    : "Connect with local experts who know their destinations inside out. Get personalized recommendations and insider access."}
+                    : "Connect with local experts who know their destinations inside out. Get personalized recommendations and local knowledge."}
                 </p>
               </div>
             </div>

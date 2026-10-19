@@ -73,7 +73,7 @@ export const PROPOSED_DMO_SOURCES: DMOSourceDefinition[] = [
     attributionRequired: false,
     isActive: true,
     scrapeConfig: { rateLimit: 1, paths: ["/en/"], respectRobotsTxt: true, language: "en" },
-    notes: "Osaka's certified DMO (Osaka Convention & Tourism Bureau). Has a downloadable guidebook/resources section (octb.osaka-info.jp) but no confirmed trade-registration program, so kept at 'scraped'.",
+    notes: "Osaka's DMO (Osaka Convention & Tourism Bureau). Has a downloadable guidebook/resources section (octb.osaka-info.jp) but no confirmed trade-registration program, so kept at 'scraped'.",
   },
   {
     id: "dmo-es-barcelonaturisme",

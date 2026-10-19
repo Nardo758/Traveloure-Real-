@@ -174,7 +174,7 @@ export default function PricingPage() {
   });
 
   const stub = (label: string) =>
-    toast({ title: `${label} — coming soon`, description: "This purchase flow isn't live yet." });
+    toast({ title: `${label} — not available yet`, description: "This purchase flow isn't live yet." });
 
   const beginPlusCheckout = async () => {
     setPlusCheckoutPending(true);
@@ -530,14 +530,14 @@ export default function PricingPage() {
               <button
                 onClick={() =>
                   toast({
-                    title: "Plus is coming soon",
+                    title: "Plus isn't available yet",
                     description: "We're finishing Plus for your city. Check back shortly.",
                   })
                 }
                 data-testid="button-join-plus-waitlist"
                 className={`mt-5 ${PAGE_ACTION.secondary}`}
               >
-                Join Plus · Coming soon
+                Join Plus · Not available yet
               </button>
             )}
             <p className="text-[11px] text-[color:var(--earn-faint)] mt-3" style={{ fontFamily: EARN_MONO }}>

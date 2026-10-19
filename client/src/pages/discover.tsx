@@ -463,8 +463,6 @@ function ServiceCard({
   const price = Number.isFinite(priceValue) && priceValue > 0 ? priceValue : null;
   const reviewCount = service.reviewCount || 0;
   const location = service.location || "Remote";
-  // §13: a "Verified local" line is a claim, shown only once the service has real reviews.
-  const isVerified = reviewCount >= 3;
   // E1 (cosmetic-public-surfaces dispatch): a seed row with no category fell through to the raw
   // `deliveryMethodEnum` token ("in_person", "pdf") as the visible "service type" text. Humanize
   // it through the one shared mapper rather than printing the wire value; an unrecognized method
@@ -524,14 +522,6 @@ function ServiceCard({
 
         {/* Body */}
         <div className="p-3.5 flex-1 flex flex-col">
-          {isVerified && (
-            <div
-              className="flex items-center gap-1 text-[11px] font-semibold text-[color:var(--earn-green-ink)] mb-1"
-              style={{ fontFamily: EARN_MONO }}
-            >
-              <Check className="w-3 h-3" /> Verified local
-            </div>
-          )}
           <h4
             className="text-[15px] font-semibold leading-snug line-clamp-1"
             style={HEADING_STYLE}
@@ -696,9 +686,9 @@ const SURFACE_META: Record<MarketplaceSurface, { icon: LucideIcon; title: string
   travelpulse: {
     icon: Palmtree,
     title: "Destinations",
-    subtitle: "Explore destinations & trending cities.",
+    subtitle: "Explore destinations and cities.",
     url: "/destinations",
-    seoTitle: "Destinations — Trending Cities & Travel Intel",
+    seoTitle: "Destinations — Cities & Travel Intel",
   },
   packages: {
     icon: Gem,
@@ -1737,7 +1727,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                             </Badge>
                           )}
                           {expert.isExpert && (
-                            <Badge variant="outline" className="text-xs">Verified Expert</Badge>
+                            <Badge variant="outline" className="text-xs">Expert</Badge>
                           )}
                         </div>
                         <Button

@@ -157,7 +157,6 @@ export function CityCard(props: CityCardProps) {
   const avgPriceNum = avgPrice != null && avgPrice !== "" ? Number(avgPrice) : NaN;
   const showAvgPrice = isPositive(avgPriceNum);
   const showScore = isPositive(score);
-  const showTrending = isPositive(trendingSpots);
   const showGems = isPositive(hiddenGems);
   const countSegments = [
     eventsCount > 0 ? `🎆 ${eventsCount} ${eventsCount === 1 ? "event" : "events"}` : null,
@@ -214,9 +213,7 @@ export function CityCard(props: CityCardProps) {
           {variant === "pulse" ? (
             isHot ? (
               <span className="px-2 py-0.5 rounded-md bg-[var(--earn-coral-ink)] text-white text-[11px] font-bold flex items-center gap-1"><Zap className="w-3 h-3 fill-white" />Hot</span>
-            ) : (
-              <span className="px-2 py-0.5 rounded-md bg-white/95 text-[var(--earn-gold-ink)] text-[11px] font-bold flex items-center gap-1"><TrendingUp className="w-3 h-3" />Trending</span>
-            )
+            ) : null
           ) : (
             trendLabel && <span className="px-2 py-0.5 rounded-md bg-white/95 text-[var(--earn-gold-ink)] text-[11px] font-bold">☀️ {trendLabel}</span>
           )}
@@ -279,10 +276,9 @@ export function CityCard(props: CityCardProps) {
 
         {/* stat footer */}
         {variant === "pulse" ? (
-          (showScore || showTrending || showGems) && (
+          (showScore || showGems) && (
             <div className="flex items-center justify-between text-[11px] text-[var(--earn-muted)] border-t border-[color:var(--earn-border)] pt-2.5 mt-auto tabular-nums">
               {showScore && <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[var(--earn-green)]" />Pulse {score}</span>}
-              {showTrending && <span className="flex items-center gap-1"><TrendingUp className="w-3 h-3" />{trendingSpots} trending</span>}
               {showGems && <span className="flex items-center gap-1"><Gem className="w-3 h-3 text-[var(--earn-teal)]" />{hiddenGems} gems</span>}
             </div>
           )

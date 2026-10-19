@@ -43,11 +43,11 @@ interface ServiceSeed {
 
 // Kyoto gems distributed across neighborhoods (realistic sample)
 const KYOTO_GEMS: GemSeed[] = [
-  // Gion (historic geisha district)
+  // Gion
   {
     placeName: "Gion Corner (Gion-Kaburenjo)",
     placeType: "cultural",
-    description: "Traditional geisha performance venue showcasing traditional arts",
+    description: "Evening show of traditional Kyoto performing arts at Gion Corner",
     whyLocalsLoveIt: "Authentic cultural experience without the tourist crush of peak hours",
     priceRange: "$$",
     neighborhood: "gion",
@@ -58,7 +58,7 @@ const KYOTO_GEMS: GemSeed[] = [
   {
     placeName: "Hanami Koji Street",
     placeType: "street",
-    description: "Atmospheric lane lined with wooden machiya teahouses and geisha bars",
+    description: "Atmospheric lane lined with wooden machiya teahouses",
     whyLocalsLoveIt: "Quintessential Kyoto evening wandering, best at dusk",
     priceRange: "$$",
     neighborhood: "gion",
@@ -179,7 +179,7 @@ const KYOTO_GEMS: GemSeed[] = [
 const KYOTO_SERVICES: ServiceSeed[] = [
   {
     serviceName: "Gion Walking Tour with Photographer",
-    description: "Guided photography tour through Gion's atmospheric lanes with geisha expert",
+    description: "Guided photography tour through Gion's atmospheric lanes",
     neighborhood: "gion",
     priceMin: 150,
     priceMax: 250,

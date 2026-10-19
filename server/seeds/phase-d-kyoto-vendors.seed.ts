@@ -47,7 +47,7 @@ const KANSAI_BIZLANG_EMAIL = "kyoto-interpreter@traveloure.test";
 // The quoted translation listing's copy (ledger `2026-09-23-kansai-translation-quoted`), stated once
 // for the definition below and for the one-time repair of an existing demo row.
 const TRANSLATION_DESCRIPTION =
-  "Professional certified translation of business documents: contracts, MOUs, technical manuals, financial reports, and marketing materials. Quoted per document by length (the standard rate unit is 400 Japanese characters, about 200 English words). Certification included. Typical turnaround 3–5 business days; express 24-hour service available.";
+  "Professional translation of business documents: contracts, MOUs, technical manuals, financial reports, and marketing materials. Quoted per document by length (the standard rate unit is 400 Japanese characters, about 200 English words). Certification included. Typical turnaround 3–5 business days; express 24-hour service available.";
 
 
 // ─── Category placeholders (vendor arrays reference these at module load time) ─
@@ -170,7 +170,7 @@ const WEDDING_VENDORS: VendorDef[] = [
     email: "kyoto-bridal@traveloure.test",
     firstName: "Hana",
     lastName: "Yoshida",
-    businessName: "Maiko Bridal Studio",
+    businessName: "QA Bridal Studio",
     businessType: "Bridal Services",
     mobile: "+81-75-551-0101",
     address: "14 Hanamikoji, Gion, Kyoto 605-0074",
@@ -213,7 +213,7 @@ const WEDDING_VENDORS: VendorDef[] = [
       {
         serviceName: "Bridal Hair & Make-up (Wafū Style)",
         shortDescription: "Traditional Japanese bridal beauty for ceremony or shoot day.",
-        description: "Authentic wafū (Japanese-style) bridal hair and make-up by certified Kyoto cosmetologists. Includes shimada wig fitting or up-do, oshiroi (white powder) application, and floral kanzashi placement. 2-hour preparation slot.",
+        description: "Authentic wafū (Japanese-style) bridal hair and make-up by Kyoto cosmetologists. Includes shimada wig fitting or up-do, oshiroi (white powder) application, and floral kanzashi placement. 2-hour preparation slot.",
         serviceType: "specialty",
         categoryId: CAT.BEAUTY_STYLING,
         price: "280",
@@ -236,15 +236,15 @@ const WEDDING_VENDORS: VendorDef[] = [
     businessType: "Wedding & Ceremony Planning",
     mobile: "+81-75-552-0202",
     address: "3-8 Chayamachi, Higashiyama, Kyoto 605-0862",
-    description: "Full-service wedding ceremony coordination for intimate to mid-size ceremonies at Kyoto's licensed temples, gardens, and historic machiya. Specialists in Shinto rites, garden ceremonies, and bespoke elopements.",
+    description: "Full-service wedding ceremony coordination for intimate to mid-size ceremonies at Kyoto's temples, gardens, and historic machiya. Specialists in Shinto rites, garden ceremonies, and bespoke elopements.",
     website: "https://kyoto-ceremony.traveloure.test",
     instagramLink: "https://instagram.com/kyoto_ceremony_co",
     photo1: IMG.ceremony,
     services: [
       {
         serviceName: "Temple Garden Wedding Coordination",
-        shortDescription: "Licensed Shinto ceremony at a Kyoto temple garden — full planning.",
-        description: "End-to-end coordination of an intimate garden or Shinto ceremony at one of Kyoto's licensed venues. Includes shrine liaison, rehearsal, officiant arrangement, ceremony script translation, guest seating, and day-of coordination for up to 30 guests.",
+        shortDescription: "Shinto ceremony at a Kyoto temple garden — full planning.",
+        description: "End-to-end coordination of an intimate garden or Shinto ceremony at one of Kyoto's venues. Includes shrine liaison, rehearsal, officiant arrangement, ceremony script translation, guest seating, and day-of coordination for up to 30 guests.",
         serviceType: "experience",
         categoryId: CAT.EVENTS_CELEBRATIONS,
         price: "2800",
@@ -252,7 +252,7 @@ const WEDDING_VENDORS: VendorDef[] = [
         deliveryMethod: "in_person",
         neighborhood: "higashiyama",
         serviceImage: IMG.ceremony,
-        whatIncluded: ["Licensed temple/garden venue coordination", "Shinto officiant & translation", "Ceremony rehearsal", "Day-of coordination (6 hours)", "Vendor liaison (florist, photographer, caterer)", "Up to 30 guests"],
+        whatIncluded: ["Temple/garden venue coordination", "Shinto officiant & translation", "Ceremony rehearsal", "Day-of coordination (6 hours)", "Vendor liaison (florist, photographer, caterer)", "Up to 30 guests"],
         location: "Higashiyama / Arashiyama, Kyoto",
         isFeatured: true,
         contentAffinityTags: ["wedding", "ceremony", "temple"],
@@ -385,7 +385,7 @@ const WEDDING_VENDORS: VendorDef[] = [
       {
         serviceName: "Pre-Wedding Shoot in Arashiyama",
         shortDescription: "2-hour golden-hour session in bamboo grove or riverbank.",
-        description: "Pre-wedding or anniversary session in Arashiyama: bamboo grove, Togetsukyo bridge, or Jojakko-ji garden. Best at sunrise or golden hour. Includes kimono coordination if booked alongside Maiko Bridal Studio. 80+ edited images delivered within 10 days.",
+        description: "Pre-wedding or anniversary session in Arashiyama: bamboo grove, Togetsukyo bridge, or Jojakko-ji garden. Best at sunrise or golden hour. Includes kimono coordination if booked alongside QA Bridal Studio. 80+ edited images delivered within 10 days.",
         serviceType: "experience",
         categoryId: CAT.PHOTOGRAPHY_VIDEO,
         price: "780",
@@ -401,7 +401,7 @@ const WEDDING_VENDORS: VendorDef[] = [
       {
         serviceName: "Ceremony Highlight Video (Short-form)",
         shortDescription: "3–5 minute cinematic highlight reel of your ceremony.",
-        description: "Cinematic short-form highlight video shot in 4K during your ceremony (up to 3 hours). Delivered within 4 weeks with licensed background music. Perfect for sharing on social media and preserving memories.",
+        description: "Cinematic short-form highlight video shot in 4K during your ceremony (up to 3 hours). Delivered within 4 weeks with background music. Perfect for sharing on social media and preserving memories.",
         serviceType: "experience",
         categoryId: CAT.PHOTOGRAPHY_VIDEO,
         price: "1100",
@@ -409,7 +409,7 @@ const WEDDING_VENDORS: VendorDef[] = [
         deliveryMethod: "in_person",
         neighborhood: "gion",
         serviceImage: IMG.wedding_ph,
-        whatIncluded: ["3-hour ceremony filming", "3-5 min 4K highlight video", "Licensed music", "Digital delivery"],
+        whatIncluded: ["3-hour ceremony filming", "3-5 min 4K highlight video", "Music", "Digital delivery"],
         location: "All Kyoto venues",
         contentAffinityTags: ["wedding", "video", "ceremony"],
       },
@@ -544,7 +544,7 @@ const CORPORATE_VENDORS: VendorDef[] = [
       {
         serviceName: "Zen Mindfulness Retreat (Half-Day)",
         shortDescription: "Zazen meditation, garden walk & mindful lunch at an Arashiyama temple.",
-        description: "4-hour team mindfulness experience at a private Arashiyama temple. Certified Zen priest guides 45-minute zazen session, followed by a contemplative garden walk, mindful garden clean-up (sōji), and a shōjin ryōri (Buddhist plant-based) lunch. Up to 20 participants. Research shows Zen practices measurably reduce team burnout.",
+        description: "4-hour team mindfulness experience at a private Arashiyama temple. Zen priest guides 45-minute zazen session, followed by a contemplative garden walk, mindful garden clean-up (sōji), and a shōjin ryōri (Buddhist plant-based) lunch. Up to 20 participants. Research shows Zen practices measurably reduce team burnout.",
         serviceType: "experience",
         categoryId: CAT.CULTURAL_EDUCATIONAL,
         price: "280",
@@ -560,7 +560,7 @@ const CORPORATE_VENDORS: VendorDef[] = [
       {
         serviceName: "Sado Tea Ceremony Team Workshop",
         shortDescription: "Collaborative matcha preparation — learn to make and serve tea as a team.",
-        description: "2-hour sado (tea ceremony) team workshop in a licensed Urasenke-affiliated tearoom. Participants learn chakin (whisk) technique, tatami etiquette, and take turns serving each other. Builds attention, patience, and cross-cultural appreciation. Up to 16 participants. Vegetarian wagashi sweets included.",
+        description: "2-hour sado (tea ceremony) team workshop in an Urasenke-affiliated tearoom. Participants learn chakin (whisk) technique, tatami etiquette, and take turns serving each other. Builds attention, patience, and cross-cultural appreciation. Up to 16 participants. Vegetarian wagashi sweets included.",
         serviceType: "experience",
         categoryId: CAT.CULTURAL_EDUCATIONAL,
         price: "180",
@@ -614,14 +614,14 @@ const CORPORATE_VENDORS: VendorDef[] = [
     businessType: "Business Interpretation & Translation",
     mobile: "+81-75-558-0808",
     address: "Kawaramachi Business Centre, Nakagyo, Kyoto 604-0000",
-    description: "JAIS-certified business interpreters and translators serving international companies operating in Kyoto and the Kansai region. Specialising in manufacturing, hospitality, and tech sectors.",
+    description: "Business interpreters and translators serving international companies operating in Kyoto and the Kansai region. Specialising in manufacturing, hospitality, and tech sectors.",
     website: "https://kansai-bizlang.traveloure.test",
     photo1: IMG.interpret,
     services: [
       {
         serviceName: "Business Meeting Interpretation (Full Day)",
         shortDescription: "Consecutive or simultaneous interpretation for business meetings — full day.",
-        description: "Full-day (8 hours) business meeting interpretation in English–Japanese by a JAIS-certified interpreter. Covers consecutive interpretation for negotiations, factory tours, executive briefings, and site visits in Kyoto and surrounding Kansai prefectures. Half-day (4 hours) option available at 60% of rate.",
+        description: "Full-day (8 hours) business meeting interpretation in English–Japanese by an interpreter. Covers consecutive interpretation for negotiations, factory tours, executive briefings, and site visits in Kyoto and surrounding Kansai prefectures. Half-day (4 hours) option available at 60% of rate.",
         serviceType: "specialty",
         categoryId: CAT.LANGUAGE_TRANSLATION,
         price: "680",
@@ -629,7 +629,7 @@ const CORPORATE_VENDORS: VendorDef[] = [
         deliveryMethod: "in_person",
         neighborhood: "kawaramachi-sanjo",
         serviceImage: IMG.interpret,
-        whatIncluded: ["8-hour interpretation", "JAIS-certified interpreter", "Pre-meeting briefing (30 min)", "Travel within Kyoto included", "Meeting notes summary"],
+        whatIncluded: ["8-hour interpretation", "Interpreter", "Pre-meeting briefing (30 min)", "Travel within Kyoto included", "Meeting notes summary"],
         location: "Kyoto & Kansai region",
         isFeatured: true,
         contentAffinityTags: ["corporate", "interpretation", "business"],
@@ -651,7 +651,7 @@ const CORPORATE_VENDORS: VendorDef[] = [
       },
       {
         serviceName: "Business Document Translation",
-        shortDescription: "Certified Japanese–English business document translation.",
+        shortDescription: "Japanese–English business document translation.",
         description: TRANSLATION_DESCRIPTION,
         serviceType: "specialty",
         categoryId: CAT.LANGUAGE_TRANSLATION,
@@ -665,7 +665,7 @@ const CORPORATE_VENDORS: VendorDef[] = [
         deliveryMethod: "async_messaging",
         neighborhood: "kawaramachi-sanjo",
         serviceImage: IMG.interpret,
-        whatIncluded: ["Certified translation", "Proofreading by second translator", "PDF & Word delivery", "Express option available"],
+        whatIncluded: ["Translation", "Proofreading by second translator", "PDF & Word delivery", "Express option available"],
         location: "Remote",
         contentAffinityTags: ["corporate", "translation", "documents"],
       },

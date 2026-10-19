@@ -3018,6 +3018,14 @@ jobs:
       - run: npm ci
       - name: shared/__tests__ (all)
         run: npx tsx --test shared/__tests__/*.test.ts*
+      # SH-1 item 1 (ledger 2026-10-19-sh1-banned-copy): the site never-say scan over seed, UI, i18n and email copy.
+      # Fixtures first (§18d), then the scan against scripts/never-say-baseline.json, which only shrinks. NEGATIVE
+      # SPACE: it reads source string literals / JSX text / JSON values only — not copy built at runtime, not rows no
+      # seed writes, not server route strings outside the email templates.
+      - name: never-say-copy · predicate self-test
+        run: npx tsx scripts/check-never-say-copy.ts --self-test
+      - name: never-say-copy · seed, UI and email copy within the baseline
+        run: npx tsx scripts/check-never-say-copy.ts
 
   unit-suite-client-lib:
     needs: [changes]

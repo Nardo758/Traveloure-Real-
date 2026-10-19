@@ -217,7 +217,8 @@ function useBillboardCopy() {
   return {
     slotLabels: [
       t("hero.billboard.slotLocalExpert", "Local expert").toUpperCase(),
-      t("hero.billboard.slotHiddenGem", "Hidden gem").toUpperCase(),
+      // SH-1 item 1: slot 2 carries no "hidden gem" claim — its eyebrow is the market's city (`slotLabel`).
+      null,
       t("hero.billboard.slotBookOnTraveloure", "Book on Traveloure").toUpperCase(),
     ] as const,
     startThisPlan: t("hero.startAPlan", "Start a plan"),
@@ -292,8 +293,8 @@ function CuratedTileCard({
   const market = OPERATING_MARKETS.find((m) => m.marketKey === tile.marketKey);
   const copy = useBillboardCopy();
   if (!market) return null;
-  const slotLabel = copy.slotLabels[slotIndex as 0 | 1 | 2];
-  if (!slotLabel) throw new Error(`Unknown billboard slot ${slotIndex}`);
+  if (slotIndex < 0 || slotIndex > 2) throw new Error(`Unknown billboard slot ${slotIndex}`);
+  const slotLabel = slotIndex === 1 ? market.cityName.toUpperCase() : copy.slotLabels[slotIndex as 0 | 2]!;
   return (
     <BillboardCardFrame
       tileKey={tile.key}
@@ -438,14 +439,7 @@ function GemTileCard({
         !fallbackFailed && <TilePhoto src={tile.imagePath} onFail={() => setFallbackFailed(true)} />
       )}
       representativeCity={!usesGemPhoto && !fallbackFailed ? market.cityName : undefined}
-      badge={<span
-        className="absolute right-2.5 top-2.5 z-10 rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[color:var(--landing-photo-badge-ink)]"
-        aria-label={`Score ${slot.gem.score}`}
-        data-testid={`hero-billboard-gem-score-${tile.key}`}
-      >
-        {slot.gem.score}
-      </span>}
-      label={copy.slotLabels[1]}
+      label={market.cityName.toUpperCase()}
       headline={slot.gem.name}
       actions={<button
         type="button"

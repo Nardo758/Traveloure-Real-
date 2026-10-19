@@ -1019,12 +1019,12 @@ const bachelorUniversalFilters: UniversalFilterDef[] = [
     ]
   },
   {
-    name: "Expert Verified",
+    name: "Expert pick",
     slug: "expert_verified",
     filterType: "toggle",
     icon: "BadgeCheck",
     options: [
-      { label: "Expert Verified", value: "true" },
+      { label: "Expert pick", value: "true" },
     ]
   },
   {
@@ -1359,7 +1359,7 @@ const anniversaryTabs: TabDef[] = [
           { label: "Scenic Views", value: "scenic" },
           { label: "Intimate/Cozy", value: "intimate" },
           { label: "Seaside Casual", value: "seaside" },
-          { label: "Hidden Gem", value: "hidden_gem" },
+          { label: "Local Pick", value: "hidden_gem" },
         ]
       },
       {
@@ -1680,12 +1680,12 @@ const anniversaryUniversalFilters: UniversalFilterDef[] = [
     ]
   },
   {
-    name: "Expert Verified",
+    name: "Expert pick",
     slug: "expert_verified",
     filterType: "toggle",
     icon: "BadgeCheck",
     options: [
-      { label: "Expert Verified", value: "true" },
+      { label: "Expert pick", value: "true" },
     ]
   },
 ];
@@ -3573,7 +3573,7 @@ const proposalTabs: TabDef[] = [
         filterType: "single_select",
         icon: "Eye",
         options: [
-          { label: "Hidden from Partner (Secret)", value: "hidden" },
+          { label: "Hidden from Partner", value: "hidden" },
           { label: "Collaborator Access Only", value: "collaborators_only" },
         ]
       },

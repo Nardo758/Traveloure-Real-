@@ -144,7 +144,7 @@ function pill(content: string, bg: string, color: string, size: number, pad = "1
 export function storyProofLines(data: ReadyMadeShareData): string[] {
   const out = [`${data.durationDays} ${data.durationDays === 1 ? "day" : "days"} · ${data.stopCount} ${data.stopCount === 1 ? "stop" : "stops"} in ${data.market}`];
   if (data.confirmedLegCount > 0) out.push(`${data.confirmedLegCount} travel ${data.confirmedLegCount === 1 ? "time" : "times"} confirmed by ${data.expertName}`);
-  out.push(data.localVerified ? `Built by ${data.expertName}, a verified local` : `Built by ${data.expertName}, a Traveloure expert`);
+  out.push(data.localVerified ? `Built by ${data.expertName}, a local` : `Built by ${data.expertName}, a Traveloure expert`);
   return out;
 }
 
@@ -293,7 +293,7 @@ export function buildOg(data: ReadyMadeShareData): El {
       logo(170, false),
       text(clamp(data.title, 56), { fontWeight: 700, fontSize: 38, lineHeight: 1.1, color: NAVY, marginTop: 30, marginBottom: 12 }),
       text(`${data.durationDays} ${data.durationDays === 1 ? "day" : "days"} · ${data.market}`, { fontSize: 22, color: MUTED, marginBottom: 8 }),
-      text(data.localVerified ? `by ${data.expertName} · verified local` : `by ${data.expertName}`, { fontSize: 22, color: MUTED, marginBottom: 22 }),
+      text(data.localVerified ? `by ${data.expertName}, a local` : `by ${data.expertName}`, { fontSize: 22, color: MUTED, marginBottom: 22 }),
       data.priceLine ? text(data.priceLine, { fontWeight: 700, fontSize: 24, color: INK, marginBottom: 20 }) : h("div", { display: "flex" }),
       h("div", { display: "flex" }, pill("Get this trip", CORAL, WHITE, 24, "12px 26px")),
     ]),

@@ -1,0 +1,13 @@
+// Fixture: every one of these is copy and must be flagged.
+export function Card() {
+  const title = "A hidden gem near the station";
+  const note = `The secret garden is ${"open"} daily`;
+  return (
+    <div>
+      <p>Trending in Kyoto</p>
+      <p>{"See a geisha in Gion"}</p>
+      <span title="Meet a maiko">x</span>
+      <p>Verified by our team</p>
+    </div>
+  );
+}

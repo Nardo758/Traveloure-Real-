@@ -173,7 +173,7 @@ export async function seedExpertServices() {
 const mockProviderServiceListings = [
   {
     title: "Private Food Tour in Barcelona",
-    description: "Experience the authentic flavors of Barcelona with a personalized culinary journey through the city's hidden gems. Includes tapas bars, local markets, and wine pairings.",
+    description: "Experience the authentic flavors of Barcelona with a personalized culinary journey through the city's local picks. Includes tapas bars, local markets, and wine pairings.",
     categoryName: "Customized Travel Experiences",
     price: "150.00",
     duration: "4 hours",
@@ -195,7 +195,7 @@ const mockProviderServiceListings = [
   },
   {
     title: "Authentic Japanese Tea Ceremony Experience",
-    description: "Immerse yourself in the traditional art of Japanese tea ceremony with a certified tea master. Learn the history, etiquette, and philosophy behind this ancient practice.",
+    description: "Immerse yourself in the traditional art of Japanese tea ceremony with a tea master. Learn the history, etiquette, and philosophy behind this ancient practice.",
     categoryName: "Cultural Immersion",
     price: "85.00",
     duration: "2 hours",
@@ -253,7 +253,7 @@ const mockExperts = [
     firstName: "Maria",
     lastName: "Santos",
     email: "maria.santos@example.com",
-    bio: "Local expert specializing in authentic Portuguese experiences. 10+ years guiding travelers through hidden gems of Lisbon and the Algarve coast.",
+    bio: "Local expert specializing in authentic Portuguese experiences. 10+ years guiding travelers through Lisbon and the Algarve coast.",
     specialties: ["Cultural Tours", "Food & Wine", "Historical Sites", "Local Cuisine"],
     city: "Lisbon",
     country: "Portugal",
@@ -298,7 +298,7 @@ const mockExperts = [
     firstName: "Carlos",
     lastName: "Mendez",
     email: "carlos.mendez@example.com",
-    bio: "Adventure travel expert based in Costa Rica. Certified guide for rainforest expeditions, wildlife photography, and sustainable eco-tourism.",
+    bio: "Adventure travel expert based in Costa Rica. Guide for rainforest expeditions, wildlife photography, and sustainable eco-tourism.",
     specialties: ["Adventure Travel", "Wildlife Tours", "Eco-Tourism", "Nature Photography"],
     city: "San Jose",
     country: "Costa Rica",
@@ -403,7 +403,7 @@ const mockExperts = [
     firstName: "Yuki",
     lastName: "Nakamura",
     email: "yuki.nakamura@example.com",
-    bio: "Kyoto-born travel curator specializing in traditional Japanese arts, temple stays, geisha district walking tours, and seasonal experiences like cherry blossom and autumn foliage viewing.",
+    bio: "Kyoto-born travel curator specializing in traditional Japanese arts, temple stays, and seasonal experiences like cherry blossom and autumn foliage viewing.",
     specialties: ["Temple & Shrine Tours", "Tea Ceremony", "Traditional Arts", "Seasonal Experiences"],
     city: "Kyoto",
     country: "Japan",
@@ -625,7 +625,7 @@ const mockProviderServicesData = [
   {
     serviceName: "Private City Tour with Local Guide",
     shortDescription: "Personalized exploration of the city with a knowledgeable local",
-    description: "Discover hidden gems and iconic landmarks with a passionate local guide who customizes the tour based on your interests.",
+    description: "Discover local picks and iconic landmarks with a passionate local guide who customizes the tour based on your interests.",
     serviceType: "experience",
     price: "125.00",
     location: "New York, USA",

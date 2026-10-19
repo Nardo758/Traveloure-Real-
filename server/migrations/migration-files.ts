@@ -2094,4 +2094,9 @@ export const MIGRATION_FILES = [
   // 393 — DATA ONLY: two Gion itinerary_items (full ids) renamed "Gion District Walk" while their title still
   // contains "geisha spotting". Idempotent. LG-2 Ask 9, ledger 2026-10-18-lg2-banned-phrases.
   "393_gion_district_walk_titles.sql",
+  // 398 — DATA ONLY: SH-1 item 1 seed copy. Carries the never-say edits made to the insert-only seeders onto rows they
+  // already wrote: each UPDATE is matched by the row's id/slug (or its seeder key) AND only while the exact old text is
+  // present, so it is idempotent and never clobbers a hand edit. 394–397 are taken by open PRs (397_users_is_test.sql
+  // is to sit before this entry). HELD for Leon's comment. Ledger 2026-10-19-sh1-banned-copy.
+  "398_sh1_seed_copy.sql",
 ] as const;

@@ -58,7 +58,7 @@ function page(over: Partial<EventPagePayload> = {}): EventPagePayload {
       { factType: "hours", text: "Gates open at 11:00.", label: "from Kyoto Official", sourceUrl: "https://kyoto.example/hours", checked: "checked 2 Oct 2026" },
     ],
     moreInCity: [{ sourceId: "gion-matsuri-2027", title: "Gion Matsuri", venue: "Gion", firstDate: "2027-07-01", lastDate: "2027-07-31" }],
-    verifiedLocals: 3,
+    cityLocals: 3,
     ...over,
   };
 }
@@ -70,15 +70,15 @@ const render = (p: EventPagePayload, onPlanAround = () => {}) =>
 describe("event page", () => {
   it("ED1 every stated fact renders", () => {
     const html = render(page());
-    for (const s of ["Kyoto Jazz Weekend", "Music", "Expo Commemorative Park", "Suita", "outside the city", "Starts in 12 days", "kyotojazz.example", "Gates open at 11:00.", "from Kyoto Official", "checked 2 Oct 2026", "More in Kyoto", "Gion Matsuri", "/events/gion-matsuri-2027", "3 verified locals in Kyoto"]) {
+    for (const s of ["Kyoto Jazz Weekend", "Music", "Expo Commemorative Park", "Suita", "outside the city", "Starts in 12 days", "kyotojazz.example", "Gates open at 11:00.", "from Kyoto Official", "checked 2 Oct 2026", "More in Kyoto", "Gion Matsuri", "/events/gion-matsuri-2027", "3 Kyoto locals"]) {
       assert.ok(html.includes(s), s);
     }
     assert.ok(html.includes('rel="nofollow noopener noreferrer"'));
   });
 
   it("ED2 absent stays absent", () => {
-    const html = render(page({ event: event({ vertical: null, venueLocality: null }), organizer: null, goodToKnow: [], moreInCity: [], verifiedLocals: null }));
-    for (const id of ["event-detail-vertical", "event-detail-organizer", "event-detail-good-to-know", "event-detail-more", "event-detail-verified"]) {
+    const html = render(page({ event: event({ vertical: null, venueLocality: null }), organizer: null, goodToKnow: [], moreInCity: [], cityLocals: null }));
+    for (const id of ["event-detail-vertical", "event-detail-organizer", "event-detail-good-to-know", "event-detail-more", "event-detail-locals"]) {
       assert.equal(html.includes(id), false, id);
     }
     assert.equal(html.includes("Good to know"), false);

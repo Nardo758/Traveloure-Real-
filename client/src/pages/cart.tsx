@@ -2077,7 +2077,7 @@ export default function CartPage() {
                     // Discover badge/copy, which is simply false for something that came from the
                     // traveler's own trip plan, not a Discover save.
                     const isTripRoutedItem = item.contentType === "itinerary_item";
-                    const contentTypeLabel = isTripRoutedItem ? "From your trip" : item.contentType === "gem" ? "Hidden Gem" : item.contentType === "hotel" ? "Hotel" : item.contentType === "activity" ? "Activity" : item.contentType === "event" ? "Event" : "Discover Item";
+                    const contentTypeLabel = isTripRoutedItem ? "From your trip" : item.contentType === "gem" ? "Local Pick" : item.contentType === "hotel" ? "Hotel" : item.contentType === "activity" ? "Activity" : item.contentType === "event" ? "Event" : "Discover Item";
 
                     if (isContent && contentDisplay) {
                       return (
