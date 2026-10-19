@@ -36,6 +36,7 @@ import { planDayIsPast } from "@shared/plan-timing";
 import { factPointsForTrip, feasibilityFactsForTrip, placeRefsForTrip } from "./content-facts/place-facts.service";
 import { openCoordsForItemIds, openCoordsForPlaceIds } from "./routing/open-place-coords.service";
 import { pulledOpenItems } from "./routing/open-coord-review.service";
+import { meetingOrStayItem } from "@shared/meeting-point-items";
 import { routingPointFor } from "./routing/open-routing-points";
 import { osmRideServiceIds } from "./routing/plan-legs-engine.service";
 import { isOpenCoordOrigin } from "@shared/open-coords";
@@ -120,6 +121,8 @@ export async function loadPlanCheckInput(tripId: string): Promise<{ input: PlanC
       ownPoint: own && Number.isFinite(own.lat) && Number.isFinite(own.lng) ? own : null,
       factPoint: factPoints.get(r.id) ?? null,
       osmRide: !!r.providerServiceId && osmRides.has(r.providerServiceId),
+      // LG-2 Ask 5: a check-in, arrival or private tour has a point only when a person chose one.
+      meetingOrStay: meetingOrStayItem(r.title),
     });
     return p && isOpenCoordOrigin(p.coordOrigin) ? { lat: p.lat, lng: p.lng } : null;
   };
