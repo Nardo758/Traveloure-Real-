@@ -3112,8 +3112,8 @@ jobs:
       # `2026-10-18-fact-tags-exhaustive`): tags, backfill, draft gate, verification, census. D1–D8.
       - name: FD-2 content tiers — tags, backfill, draft gate, verification, census
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/content-tiers.db.test.ts
-      # EV-P0 PR 3: nothing untagged reaches a draft — every draft reader, both writers, the official confirm, 391. T1–T6.
-      - name: nothing untagged reaches a draft — draft readers, writers, official confirm, 391 re-tag
+      # EV-P0 PR 3: nothing untagged reaches a draft — every draft reader, both writers, the official confirm, 394. T1–T6.
+      - name: nothing untagged reaches a draft — draft readers, writers, official confirm, 394 re-tag
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/draft-readers-tagged.db.test.ts
       - name: nightly QA invariant runner isolation
         run: npx tsx --test --test-concurrency=1 server/services/__tests__/runtime-health-h5.test.ts

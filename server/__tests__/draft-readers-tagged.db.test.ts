@@ -9,7 +9,7 @@
  *   T4  both fact writers refuse an untagged row: `recordFacts` stores nothing for an origin with no ruled tier
  *   T5  an expert confirming an OFFICIAL fact leaves it in the checks (linked, never superseded); a second confirm
  *       is refused
- *   T6  migration 391 (run in a ROLLED-BACK transaction): an official last-entry expert row 362 tagged local becomes
+ *   T6  migration 394 (run in a ROLLED-BACK transaction): an official last-entry expert row 362 tagged local becomes
  *       public + link_only, exactly what placeFactTags answers; other local rows are untouched; a second run is 0 rows
  *
  * The test reads every row a reader returns and fails on an untagged one; it never filters a row out to pass.
@@ -157,12 +157,12 @@ test("T5 — confirming an official fact keeps it in the checks; a second confir
   );
 });
 
-test("T6 — migration 391 re-tags official last-entry expert rows to what placeFactTags answers, idempotently", async () => {
+test("T6 — migration 394 re-tags official last-entry expert rows to what placeFactTags answers, idempotently", async () => {
   const la = { placeRefKind: "free_text", placeRef: id("retag"), origin: "expert_nugget", factType: "last_admission", value: { byWeekday: { "1": "16:00" }, quote: "Last entry 16:00" }, sourceClass: "local", reuseClass: "reusable" };
   await insertFact("r-official", { ...la, license: "official" });
   await insertFact("r-unlicensed", { ...la, license: null });
   await insertFact("r-hours", { ...la, license: "official", factType: "hours", value: { text: "9-5" } });
-  const file = fs.readFileSync(path.join(process.cwd(), "server/migrations/391_place_facts_feasibility_retag.sql"), "utf8");
+  const file = fs.readFileSync(path.join(process.cwd(), "server/migrations/394_place_facts_feasibility_retag.sql"), "utf8");
   const client = await pool.connect();
   try {
     await client.query("BEGIN");

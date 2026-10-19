@@ -2086,5 +2086,5 @@ export const MIGRATION_FILES = [
   "390_open_coords_rekey.sql",
   // EV-P0 PR 3: data only — re-tags official last-entry / last-train expert rows that 362 tagged local to
   // public + link_only, what placeFactTags answers. Idempotent. Ledger 2026-10-18-fact-tags-exhaustive.
-  "391_place_facts_feasibility_retag.sql",
+  "394_place_facts_feasibility_retag.sql",
 ] as const;
