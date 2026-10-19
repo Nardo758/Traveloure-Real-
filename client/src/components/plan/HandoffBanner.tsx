@@ -49,6 +49,7 @@ import {
   type ClientSuggestion,
   type HandoffRead,
 } from "@/lib/handoff-client";
+import { useTravelerDoors } from "@/hooks/use-traveler-doors";
 
 // The board's buttons (ruling 2): the primary is the coral fill with white text; the quiet one is an
 // outline; navy is the footer card's ground, never a button fill.
@@ -194,6 +195,10 @@ export function SuggestionStrip({ tripId, itemId, suggestions, canAnswer }: { tr
 
 export function HandoffBanner({ tripId, isOwner, bookedInScope = null }: { tripId: string; isOwner: boolean; bookedInScope?: number | null }) {
   const { toast } = useToast();
+  const doors = useTravelerDoors();
+  // The fallback leads to /concierge, so it needs BOTH switches: `handoff_booking` (this door) and `event_concierge`
+  // (where it lands — off, /concierge sends the visit home).
+  const conciergeFallbackShown = doors.handoffBooking && doors.eventConcierge;
   const board = usePlanRowLook() === "board";
   const askExpert = useAskExpert();
   const { data } = useHandoff(tripId, true);
@@ -313,7 +318,8 @@ export function HandoffBanner({ tripId, isOwner, bookedInScope = null }: { tripI
         </p>
       ) : null}
 
-      {isOwner && data.banner?.kind === "fallback_offered" ? (
+      {/* Ledger `2026-10-18-traveler-doors-hidden`: "Hand it to our concierge", off by default. */}
+      {isOwner && conciergeFallbackShown && data.banner?.kind === "fallback_offered" ? (
         <div className="mt-2 flex flex-wrap gap-2">
           <Button size="sm" variant="outline" asChild data-testid="handoff-fallback-concierge">
             <Link href={`/concierge?tripId=${tripId}`}>Hand it to our concierge</Link>

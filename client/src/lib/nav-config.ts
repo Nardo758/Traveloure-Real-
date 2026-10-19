@@ -13,6 +13,7 @@
 
 import type { PlanningSource } from "@/contexts/PlanningContext";
 import { OCCASION_GROUP_LABELS, OCCASION_GROUP_ORDER } from "@shared/experience-group";
+import type { TravelerDoors } from "@shared/traveler-doors";
 
 /**
  * Ruling 60 Phase A (chrome i18n): every label-bearing entry gains an OPTIONAL `i18nKey` into
@@ -106,6 +107,8 @@ export interface NavGroupConfig {
 export interface AuthNavConfig {
   href: string;
   label: string;
+  /** A switched door (ledger `2026-10-18-traveler-doors-hidden`): the entry shows only while that switch is on. */
+  door?: keyof TravelerDoors;
 }
 
 export const navGroupsConfig: NavGroupConfig[] = [
@@ -231,9 +234,14 @@ export const authNavConfig: AuthNavConfig[] = [
   // rendered nowhere — authNavItems has no render site) points at the default
   // surface so it can never resurrect a hub.
   { href: "/destinations", label: "Marketplace" },
-  { href: "/concierge", label: "Concierge" },
+  { href: "/concierge", label: "Concierge", door: "eventConcierge" },
   { href: "/chat", label: "Expert Chat" },
 ];
+
+/** The auth nav entries to draw: a switched door appears only while its switch is on. */
+export function visibleAuthNav(doors: TravelerDoors, items: readonly AuthNavConfig[] = authNavConfig): AuthNavConfig[] {
+  return items.filter((i) => !i.door || doors[i.door]);
+}
 
 /**
  * footer-config.ts (inline) — single source of truth for every href that
