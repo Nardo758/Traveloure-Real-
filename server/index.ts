@@ -713,6 +713,10 @@ if (process.env.NODE_ENV === "production") {
     process.exit(1);
   }
 
+  // CS-1 item 1: load the per-place no_photos list before requests arrive, so the synchronous listing readers
+  // (`normalizeServiceImage`) have it. A failed load is logged; the async readers still read the table themselves.
+  await import("./services/place-photo-blocks.service").then((m) => m.warmPhotoBlocks());
+
   // D-12's legacy-rail cutoff, stated at boot (ledger `2026-09-25-legacy-cutoff-boot-line`).
   // A FUTURE cutoff and an UNSET one behave identically until the date passes — both allow writes,
   // and the only reader is `POST /api/bookings/process-cart` — so an operator who restarted to load

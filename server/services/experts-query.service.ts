@@ -7,6 +7,7 @@
 import { expertNuggetTags } from "@shared/content-tiers";
 import { db } from "../db";
 import { eq, and, desc, asc, like, sql, isNull } from "drizzle-orm";
+import { hideBlockedListingImages } from "./place-photo-blocks.service";
 import {
   users, localExpertForms, serviceProviderForms, expertServiceOfferings,
   aiInteractions, notifications, providerServices, serviceCategories,
@@ -569,6 +570,7 @@ export async function getVisaAssistanceServices(limit = 6): Promise<any[]> {
       location: providerServices.location,
       deliveryMethod: providerServices.deliveryMethod,
       serviceImage: providerServices.serviceImage,
+      city: providerServices.city,
       categoryId: providerServices.categoryId,
       providerFirstName: users.firstName,
       providerLastName: users.lastName,
@@ -580,7 +582,8 @@ export async function getVisaAssistanceServices(limit = 6): Promise<any[]> {
     .orderBy(desc(providerServices.bookingsCount))
     .limit(limit);
   return rows.map((r) => ({
-    ...r,
+    // CS-1 item 1: no cover photo of a place under a no_photos block.
+    ...hideBlockedListingImages(r),
     providerName: [r.providerFirstName, r.providerLastName].filter(Boolean).join(" ") || "Visa Specialist",
   }));
 }

@@ -33,6 +33,7 @@ import {
 } from "@shared/schema";
 import { expandDemandType } from "./demand-service-synonyms";
 import { featuredAdjustedScore } from "./featured-sort";
+import { visibleListingImage } from "./place-photo-blocks.service";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -324,7 +325,7 @@ function scoreCandidate(
     isFeatured: !!candidate.isFeatured,
     averageRating: rating,
     reviewCount,
-    imageUrl: candidate.serviceImage,
+    imageUrl: visibleListingImage({ serviceName: candidate.serviceName, location: candidate.location, city: source.city || null, serviceImage: candidate.serviceImage }), // CS-1 item 1
     matchScore: Math.round(score),
     matchReasons: reasons,
     trackingNumber: candidate.trackingNumber,

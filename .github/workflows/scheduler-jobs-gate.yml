@@ -128,10 +128,8 @@ jobs:
       # Regenerate / Optimize apply / Optimize input / the Moment default all honour a lock. K1–K7.
       - name: Item locks — Keep this, never moved or removed by a machine
         run: npx tsx --test --test-force-exit server/__tests__/item-locks.db.test.ts
-      # FD-2 (ledger `2026-10-09-fd2-content-tier-tags`, migrations 361/362): content-tier tags — the item stamp
-      # ignores a client value (ruling 9), the 362 backfill, the draft gem gate, gem verification, the census. D1–D8.
-      - name: FD-2 content tiers — tags, backfill, draft gate, verification, census
-        run: npx tsx --test --test-force-exit server/__tests__/content-tiers.db.test.ts
+      # FD-2's content-tiers DB suite (D1–D8) moved to build.yml's required suite-server-services job
+      # (EV-P0 PR 3, ledger `2026-10-18-fact-tags-exhaustive`).
       # FD-1 (ledger `2026-10-09-fd1-free-draft-cap`, migration 363): the free-draft cap — 3/30 days, one per plan,
       # our failures never count, paid tier and QA exempt, the parallel-claim guard — and the count-only teaser. F1–F9.
       - name: FD-1 free-draft cap and teaser — claim, release, one per plan, QA, race, counts-only teaser
@@ -167,6 +165,10 @@ jobs:
         run: npx tsx --test --test-force-exit server/__tests__/paid-run-fresh-fetch.test.ts
       - name: A6 content source registry — born inactive, edit strips terms, allowlisted activation
         run: npx tsx --test --test-force-exit server/__tests__/content-sources.db.test.ts
+      # CS-1 item 1 (ledger `2026-10-18-cs1-source-signoff`, migration 395): source sign-off, terms class
+      # (link-out forces manual), and per-place no_photos on both keys at upload and read. SB1–SB5, PB1–PB6.
+      - name: CS-1 source sign-off and per-place no_photos — approver only, link-out never read, blocks on both keys
+        run: npx tsx --test --test-force-exit server/__tests__/source-signoff-photo-blocks.db.test.ts
       # Places named-place gate (ledger `2026-09-30-places-named-gate`, production smoke test 3):
       # generic titles are never looked up, a mismatched answer is never attached, and the per-draft
       # cap reaches every day. G1–G4, fake Places API only.
