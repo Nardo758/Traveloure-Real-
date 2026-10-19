@@ -189,6 +189,30 @@ finding whose fix is `retime` is a tap on the slip. The other fix kinds stay fla
 - **Words** (founder wording review on the PR): "Move <stop> to <time>", "Confirm" / "Cancel", and the step 4
   counts line ("Day 2 updated: 2 stops moved").
 
+## Step 5c — `timed_entry_required`
+
+Decision-maker Leon Dixon, Oct 19, 2026 (rulings 1–5).
+
+- **Name** (ruling 1): `timed_entry_required` for the fact type, the issue type and the reason — clear of the existing
+  `timed_entry_conflict`, which is the stop-overlaps-a-fixed-time rule.
+- **Value** (ruling 4): `{ required: true, opensDaysAhead?: N }`. `opensDaysAhead` is kept only when the page prints N
+  (`numberAppearsIn`; refused with `days_not_in_quote`). No time is kept.
+- **Admission:** the `last_admission` rule (`admitFeasibilityFact`): an official page read or an expert, `official`
+  licence, https source. Tagged public + link_only, publishable with the link; 30-day TTL like the other operational facts.
+  The crawler is not asked for it.
+- **Checker:** one `timed_entry_required` issue per stop carrying an admitted fact, fix `book_ahead`, the fact's official
+  link as its source. It is not a card finding (no `FINDING_ORDER` entry; the Optimize card is unchanged).
+- **Flag-only** (ruling 2), through ONE predicate, `isFlagOnlyIssue`: shown on every version (a version keeping the place
+  carries the fact), and excluded from the step 3 gate's unresolved, added and not-checkable lists (coverage never counted
+  it), "Your plan, fixed"'s flagged days, the paid run's change list (`fixedVersionDescriptor`), free retime's
+  no-new-problem test, and the held-versions "still in the way" list.
+- **Where it shows** (ruling 3): the slip's per-stop warning, linked to the official site. Not on the day line (ruling 5).
+- **Words** (founder wording review on the PR): "Entry needs a timed slot, reserved on the official site.", "Slots open N
+  days ahead." (only when stated), the fix line "Fix: reserve a slot on the official site.", the issue line "needs a timed
+  slot reserved on the official site", and the item-sheet label "Timed entry".
+- **Bots:** a separate PR after Events' #1571 (the entered expiry on approval) and Leon's yes; bot facts expire in the
+  market's zone.
+
 ## Step 5b — `closed_dates`
 
 Decision-maker Leon Dixon, Oct 19, 2026.

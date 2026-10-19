@@ -159,7 +159,7 @@ export function placeFactTags(
 ): { sourceClass: SourceClass; reuseClass: ReuseClass } | null {
   // FD-3 rulings 1/3 (ledger `2026-10-10-fd3-feasibility`): a feasibility fact is public + link_only whoever
   // wrote it — an expert citing an official page writes the official fact, not a local note.
-  if ((factType === "last_admission" || factType === "last_service" || factType === "closed_dates") && (isPageReadOrigin(origin) || origin === "expert_nugget") && license === "official") {
+  if ((factType === "last_admission" || factType === "last_service" || factType === "closed_dates" || factType === "timed_entry_required") && (isPageReadOrigin(origin) || origin === "expert_nugget") && license === "official") {
     return { sourceClass: "public", reuseClass: "link_only" };
   }
   if (origin === "expert_nugget") return { sourceClass: "local", reuseClass: "reusable" };

@@ -27,7 +27,10 @@ export type FindingKind =
   | "timed_entry_conflict"
   | "city_crossing"
   | "walking_saved_km"
-  | "pace_over";
+  | "pace_over"
+  // FB-1 step 5c: an ISSUE type only — never a card finding, never in FINDING_ORDER (ruling 3: the slip's per-stop
+  // warning only). Flag-only (`isFlagOnlyIssue`).
+  | "timed_entry_required";
 
 export interface Finding {
   kind: FindingKind;
@@ -559,6 +562,9 @@ export function findingLine(f: Finding): string {
         : `${n(f.count, "ride leaves", "rides leave")} after the last train or bus`;
     case "timed_entry_conflict":
       return `${n(f.count, "timed entry clashes", "timed entries clash")} with your fixed times`;
+    // Never built as a card finding (ruling 3); a line only because the switch is exhaustive.
+    case "timed_entry_required":
+      return `${n(f.count, "stop needs", "stops need")} a timed slot reserved on the official site`;
     case "city_crossing":
       return `${n(f.count, "day crosses", "days cross")} the city more than once (est.)`;
     case "walking_saved_km":

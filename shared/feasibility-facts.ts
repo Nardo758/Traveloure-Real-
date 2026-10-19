@@ -17,7 +17,9 @@ import { PAGE_READ_ORIGINS } from "./content-facts";
 
 // FB-1 step 5b (ledger `2026-10-19-fb1-closed-dates`): `closed_dates` — the dates a place states it is closed,
 // admitted on the `last_admission` rule (decision-maker, Oct 19, 2026).
-export const FEASIBILITY_FACT_TYPES = ["last_admission", "last_service", "closed_dates"] as const;
+// FB-1 step 5c (ledger `2026-10-19-fb1-timed-entry`): `timed_entry_required` — entry needs a timed slot reserved on the
+// official site, optionally with how many days ahead slots open; admitted on the same rule.
+export const FEASIBILITY_FACT_TYPES = ["last_admission", "last_service", "closed_dates", "timed_entry_required"] as const;
 export type FeasibilityFactType = (typeof FEASIBILITY_FACT_TYPES)[number];
 
 export function isFeasibilityFactType(v: unknown): v is FeasibilityFactType {
@@ -243,6 +245,28 @@ export function dateAppearsIn(quote: string, iso: string): boolean {
   return words.some((f) => new RegExp(`(^|[^0-9a-z])${f.replace(/\./g, "\\.")}($|[^0-9])`).test(q));
 }
 
+// ── timed_entry_required (FB-1 step 5c) ─────────────────────────────────────────────────────────
+
+/** Entry needs a timed slot reserved on the official site; `opensDaysAhead` only when the page states it. No time. */
+export interface TimedEntryRequiredValue {
+  required: true;
+  opensDaysAhead?: number;
+}
+
+/** Pure. The structured value, or null when it does not parse — never a repaired guess (§13). */
+export function parseTimedEntryRequired(v: unknown): TimedEntryRequiredValue | null {
+  if ((v as any)?.required !== true) return null;
+  const n = (v as any)?.opensDaysAhead;
+  if (n == null) return { required: true };
+  if (!Number.isInteger(n) || n < 1 || n > 400) return null;
+  return { required: true, opensDaysAhead: n };
+}
+
+/** Pure. Does the quote print this whole number (never as part of a longer one)? */
+export function numberAppearsIn(quote: string, n: number): boolean {
+  return new RegExp(`(^|[^0-9])${n}($|[^0-9])`).test(quote.normalize("NFKC"));
+}
+
 // ── the time in the quote ────────────────────────────────────────────────────────────────────────
 
 /**
@@ -265,12 +289,13 @@ export function timeAppearsIn(quote: string, hhmm: string): boolean {
 
 // ── THE ONE ADMISSION RULE ───────────────────────────────────────────────────────────────────────
 
-export type FeasibilityRefusal = "not_feasibility_type" | "bad_value" | "not_official" | "no_source_url" | "origin_not_allowed" | "time_not_in_quote" | "date_not_in_quote";
+export type FeasibilityRefusal = "not_feasibility_type" | "bad_value" | "not_official" | "no_source_url" | "origin_not_allowed" | "time_not_in_quote" | "date_not_in_quote" | "days_not_in_quote";
 
 /** Pure. The structured value of a feasibility fact by its type, or null. */
-export function parseFeasibilityValue(factType: FeasibilityFactType, v: unknown): LastAdmissionValue | LastServiceValue | ClosedDatesValue | null {
+export function parseFeasibilityValue(factType: FeasibilityFactType, v: unknown): LastAdmissionValue | LastServiceValue | ClosedDatesValue | TimedEntryRequiredValue | null {
   if (factType === "last_admission") return parseLastAdmission(v);
   if (factType === "last_service") return parseLastService(v);
+  if (factType === "timed_entry_required") return parseTimedEntryRequired(v);
   return parseClosedDates(v);
 }
 
@@ -298,6 +323,12 @@ export function admitFeasibilityFact(d: {
     if (quote !== null) {
       for (const t of Object.values(v.byWeekday)) if (t && !timeAppearsIn(quote, t)) return { ok: false, reason: "time_not_in_quote" };
     }
+    return { ok: true };
+  }
+  if (d.factType === "timed_entry_required") {
+    const v = parseTimedEntryRequired(d.value);
+    if (!v) return { ok: false, reason: "bad_value" };
+    if (quote !== null && v.opensDaysAhead != null && !numberAppearsIn(quote, v.opensDaysAhead)) return { ok: false, reason: "days_not_in_quote" };
     return { ok: true };
   }
   if (d.factType === "closed_dates") {
