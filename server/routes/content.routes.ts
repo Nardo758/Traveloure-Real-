@@ -85,7 +85,8 @@ import { buildAttributedAffiliateUrl } from "../services/affiliate-attribution.s
 import { dispatchPaymentTrigger } from "../automations/payments/runtime";
 // §16: live-feed DTOs never ship partner URLs to the client — they are vaulted server-side and
 // replaced with opaque bookingTokens the booking-agent rail resolves back (affiliate-url-vault).
-import { vaultAndStripItems, mintBookingTokens, type VaultedBooking } from "../services/affiliate-url-vault.service";
+import { vaultAndStripItems, mintBookingTokens, resolveBookingToken, type VaultedBooking } from "../services/affiliate-url-vault.service";
+import { toPublicFeverEvents, toPublicFeverEvent, FEVER_PROVIDER } from "../services/fever-public";
 import { getProviderHealth } from "../services/provider-health.service";
 import { getBuildInfo } from "../services/build-info";
 import { readMigrationState } from "../services/migration-state";
@@ -6844,15 +6845,17 @@ router.get("/api/fever/events", async (req, res) => {
         return res.status(400).json({ error: "City parameter is required" });
       }
 
+      // SH-1 Q7.3: a chosen price band leaves Fever events out — their prices are the partner's, never ours.
+      if (minPrice !== undefined || maxPrice !== undefined || free === 'true') {
+        return res.json({ events: [], total: 0, page: 1, totalPages: 0, city: null, excluded: "partner_priced" });
+      }
+
       const result = await feverService.searchEvents({
         city,
         query: query as string | undefined,
         category: category as string | undefined,
         startDate: startDate as string | undefined,
         endDate: endDate as string | undefined,
-        minPrice: minPrice ? Number(minPrice) : undefined,
-        maxPrice: maxPrice ? Number(maxPrice) : undefined,
-        isFree: free === 'true',
         page: page ? Number(page) : 1,
         limit: limit ? Number(limit) : 20,
         sortBy: sortBy as 'date' | 'popularity' | 'price' | 'rating' | undefined,
@@ -6862,7 +6865,8 @@ router.get("/api/fever/events", async (req, res) => {
         return res.status(404).json({ error: "No events found or city not supported" });
       }
 
-      res.json(result);
+      // SH-1 Q7.4: no Fever amount or partner URL reaches a traveler.
+      res.json({ ...result, events: await toPublicFeverEvents(result.events) });
     } catch (error) {
       console.error("[Fever] Event search error:", error);
       res.status(500).json({ error: "Failed to search Fever events" });
@@ -6880,7 +6884,7 @@ router.get("/api/fever/events/:eventId", async (req, res) => {
         return res.status(404).json({ error: "Event not found" });
       }
 
-      res.json(event);
+      res.json(await toPublicFeverEvent(event));
     } catch (error) {
       console.error("[Fever] Event details error:", error);
       res.status(500).json({ error: "Failed to get event details" });
@@ -6899,7 +6903,7 @@ router.get("/api/fever/cities/:cityCode/upcoming", async (req, res) => {
         category: category as string | undefined,
       });
 
-      res.json({ events, count: events.length });
+      res.json({ events: await toPublicFeverEvents(events), count: events.length });
     } catch (error) {
       console.error("[Fever] Upcoming events error:", error);
       res.status(500).json({ error: "Failed to get upcoming events" });
@@ -6908,20 +6912,10 @@ router.get("/api/fever/cities/:cityCode/upcoming", async (req, res) => {
 
   // Get free events for a city
 
-router.get("/api/fever/cities/:cityCode/free", async (req, res) => {
-    try {
-      const { cityCode } = req.params;
-      const { limit } = req.query;
-
-      const events = await feverService.getFreeEvents(cityCode, {
-        limit: limit ? Number(limit) : 20,
-      });
-
-      res.json({ events, count: events.length });
-    } catch (error) {
-      console.error("[Fever] Free events error:", error);
-      res.status(500).json({ error: "Failed to get free events" });
-    }
+router.get("/api/fever/cities/:cityCode/free", async (_req, res) => {
+    // SH-1 Q7.2/Q7.3: "Free" is an amount, and a price filter leaves Fever events out — so this list is always
+    // empty. Kept as an answer rather than deleted so an old client gets a list, not the SPA's 200-HTML.
+    res.json({ events: [], count: 0, excluded: "partner_priced" });
   });
 
   // Get events by date range for a city
@@ -6945,7 +6939,7 @@ router.get("/api/fever/cities/:cityCode/dates", async (req, res) => {
         }
       );
 
-      res.json({ events, count: events.length });
+      res.json({ events: await toPublicFeverEvents(events), count: events.length });
     } catch (error) {
       console.error("[Fever] Date range events error:", error);
       res.status(500).json({ error: "Failed to get events by date range" });
@@ -7002,7 +6996,9 @@ router.get("/api/travelpulse/fever-events/:cityName", async (req, res) => {
         });
 
         if (result?.events) {
-          feverEvents = result.events.map(event => ({
+          // SH-1 Q7.4: no Fever amount, "Free" or partner URL — the token goes through the tracked redirect.
+          const publicEvents = await toPublicFeverEvents(result.events);
+          feverEvents = result.events.map((event, i) => ({
             id: `fever-${event.id}`,
             source: 'fever',
             title: event.title,
@@ -7014,11 +7010,10 @@ router.get("/api/travelpulse/fever-events/:cityName", async (req, res) => {
             startMonth: currentMonth,
             endMonth: currentMonth,
             // TravelPulse PR 1: no hard-coded crowd claim (a constant 'moderate' was never measured).
-            pricing: event.pricing,
-            bookingUrl: event.affiliateUrl || event.bookingUrl,
+            priceSource: publicEvents[i].priceSource,
+            bookingToken: publicEvents[i].bookingToken,
             imageUrl: event.imageUrl,
             rating: event.rating,
-            isFree: event.isFree,
             tags: event.tags,
           }));
         }
@@ -7084,7 +7079,7 @@ router.get("/api/fever/cache/events/:cityCode", async (req, res) => {
       const events = await partnerEventsCacheService.getEventsOrRefresh(cityCode);
       
       res.json({
-        events,
+        events: await toPublicFeverEvents(events),
         count: events.length,
         fromCache: true,
         cityCode: cityCode.toUpperCase(),
@@ -9240,6 +9235,13 @@ router.post("/api/content/affiliate-redirect", async (req, res) => {
         if (!product) return res.status(404).json({ message: "Item not found" });
         affiliateUrl = product.affiliateUrl || product.productUrl || null;
         trackPayload.productId = product.id;  // valid FK → affiliate_products.id
+      } else if (itemType === "booking_token") {
+        // SH-1 Q7.1: a Fever event's "See current price" — the opaque, expiring token minted by
+        // `toPublicFeverEvents` is resolved here, server-side, and the click is recorded below. Only a Fever token is
+        // accepted; an expired, unknown or other-provider token is one 404.
+        const entry = typeof itemId === "string" ? await resolveBookingToken(itemId) : null;
+        if (!entry || entry.provider !== FEVER_PROVIDER) return res.status(404).json({ message: "Item not found" });
+        affiliateUrl = entry.url;
       } else {
         // content_registry
         const [item] = await db
