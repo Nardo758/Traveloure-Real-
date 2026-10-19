@@ -27,6 +27,7 @@ import {
 } from "@shared/launch-signup";
 import { WELCOME_VERIFICATION_WINDOW_SETTING, parseWelcomeVerificationWindowDays } from "@shared/welcome-verification";
 import { BETA_MARKET_SLUGS_SETTING, betaMarketSlugs } from "@shared/ticker";
+import { EXPERT_HOOK_CITIES_SETTING, expertHookCities } from "@shared/expert-hook";
 import { BLOG_FOOTER_MIN_PUBLISHED_SETTING, parseBlogFooterMinPublished } from "@shared/blog-footer";
 
 const TTL_MS = 15_000;
@@ -144,5 +145,18 @@ export async function getBlogFooterMinPublished(): Promise<number> {
   } catch (err) {
     console.error(`[platform-flags] read failed for ${BLOG_FOOTER_MIN_PUBLISHED_SETTING}, using the default:`, err);
     return parseBlogFooterMinPublished(null);
+  }
+}
+
+/**
+ * FB-1 expert hook (ledger `2026-10-18-fb1-expert-hook`): the cities whose hook names a local and may offer the chooser.
+ * A missing row, a read error or an invalid value ⇒ none (the switch defaults off). Cached like the flags.
+ */
+export async function getExpertHookCities(): Promise<string[]> {
+  try {
+    return expertHookCities(await getSettingValue(EXPERT_HOOK_CITIES_SETTING));
+  } catch (err) {
+    console.error(`[platform-flags] read failed for ${EXPERT_HOOK_CITIES_SETTING}, treating as none:`, err);
+    return [];
   }
 }
