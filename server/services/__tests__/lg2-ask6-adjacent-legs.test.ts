@@ -1,10 +1,10 @@
 /**
- * LG-2 Ask 6 (decision-maker, Oct 19, 2026; production evidence on 44cec3fe, QA plan 330f594a): a leg connects
+ * LG-2 Ask 6 (decision-maker, Oct 19, 2026; production evidence on 44cec3fe): a leg connects
  * ADJACENT stops only. If either end has no open coordinate, the leg exists with no time and reads "Travel time not
  * checked yet" — no estimate, no skip to the next located stop — and the day's check cannot pass with one.
  *
- *   A1 the skip case: Soba Restaurant → Fushimi Inari (no point) → Tofuku-ji gives NO Soba → Tofuku-ji leg; both
- *      adjacent pairs are reported
+ *   A1 the skip case: located → no point → located gives NO leg from the first to the third; both adjacent pairs
+ *      are reported (synthetic Kyoto fixture names)
  *   A2 the stay: a day whose first stop has no point gets no stay leg around it
  *   A3 the slip draws "Travel time not checked yet" for a reported pair, and nothing from an earlier stop
  *   A4 the day-check case: the plan check names the day as not checked for reachability, and the day line says so
@@ -31,7 +31,7 @@ const stop = (id: string, name: string, point: { lat: number; lng: number } | nu
   durationMinutes: null,
 });
 
-// The production shape: a located stop, a stop with no open point, a located stop.
+// The shape the rule fixes (synthetic fixture): a located stop, a stop with no open point, a located stop.
 const SOBA = stop("soba", "Soba Restaurant", P(34.9671, 135.7727));
 const INARI = stop("inari", "Fushimi Inari", null);
 const TOFUKU = stop("tofuku", "Tofuku-ji", P(34.9767, 135.7738));
