@@ -147,6 +147,7 @@ after(async () => {
     await db.execute(sql`DELETE FROM transport_legs WHERE trip_id IN (${TRIP}, ${FREE}, ${OTHER})`);
     await db.execute(sql`DELETE FROM itinerary_items WHERE trip_id IN (${TRIP}, ${FREE}, ${OTHER})`);
     await db.execute(sql`DELETE FROM trips WHERE id IN (${TRIP}, ${FREE}, ${OTHER})`);
+    await db.execute(sql`DELETE FROM content_sources WHERE id = ${id("src")}`);
     await db.execute(sql`DELETE FROM users WHERE id IN (${OWNER}, ${STRANGER})`);
   } finally {
     await pool.end();
@@ -188,8 +189,13 @@ test("S3 a stored official hours fact covers the place: no billed call, the stop
   const pid = id("place-nanzen");
   // CS-1 item 3 (ledger `2026-10-19-cs1-fact-review`): a machine-read hours fact is read only once a person reviewed it
   // (`verified_by` references a user; the fixture's own account stands in for the reviewer).
-  await db.execute(sql`INSERT INTO place_facts (id, place_ref_kind, place_ref, need, fact_type, value, origin, license, fetched_at, source_class, reuse_class, source_url, verified_by)
-    VALUES (${id("official")}, 'place_id', ${pid}, 'stop.hours', 'hours', ${JSON.stringify({ weekdayDescriptions: WINTER })}::jsonb, 'crawled', 'official', now(), 'public', 'link_only', 'https://www.nanzen.net/', ${OWNER})`);
+  // CS-1 item 2 (ledger `2026-10-19-cs1-live-facts`): a machine-read fact needs an expiry to be live; this one expires
+  // within its source's refresh interval, which the fixture sets on the source row.
+  const SOURCE_INTERVAL_DAYS = 14;
+  await db.execute(sql`INSERT INTO content_sources (id, name, homepage, market, adapter, covers, does_not_cover, license_class, refresh_interval_days, active)
+    VALUES (${id("src")}, 'Nanzen-ji', 'https://www.nanzen.net/', 'kyoto', 'manual', ARRAY['stop.hours'], ARRAY[]::text[], 'official', ${SOURCE_INTERVAL_DAYS}, false)`);
+  await db.execute(sql`INSERT INTO place_facts (id, place_ref_kind, place_ref, need, fact_type, value, origin, license, fetched_at, source_class, reuse_class, source_url, verified_by, source_id, expires_at)
+    VALUES (${id("official")}, 'place_id', ${pid}, 'stop.hours', 'hours', ${JSON.stringify({ weekdayDescriptions: WINTER })}::jsonb, 'crawled', 'official', now(), 'public', 'link_only', 'https://www.nanzen.net/', ${OWNER}, ${id("src")}, now() + make_interval(days => ${SOURCE_INTERVAL_DAYS}))`);
   const fake = placesFake();
   const item = await add(TRIP, "Nanzen-ji", 3, "17:30");
   await startHandAddLookup(TRIP, item.id, { adapters: [fake.adapter] });
