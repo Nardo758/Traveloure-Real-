@@ -2094,4 +2094,7 @@ export const MIGRATION_FILES = [
   // 393 — DATA ONLY: two Gion itinerary_items (full ids) renamed "Gion District Walk" while their title still
   // contains "geisha spotting". Idempotent. LG-2 Ask 9, ledger 2026-10-18-lg2-banned-phrases.
   "393_gion_district_walk_titles.sql",
+  // EV-P0 PR 3: data only — re-tags official last-entry / last-train expert rows that 362 tagged local to
+  // public + link_only, what placeFactTags answers. Idempotent. Ledger 2026-10-18-fact-tags-exhaustive.
+  "394_place_facts_feasibility_retag.sql",
 ] as const;
