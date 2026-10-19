@@ -143,6 +143,29 @@ The windows (`retimeWindowsByItem`, `shared/version-check.ts`) come once per run
 
 Unchanged: `spaceDayTimes` and `retimeDayInOrder` (the traveler's own re-time, R-ac), the anchor step, energy balancing, the legs step and the gate. With no model times and no windows, the result is exactly today's (golden parity).
 
+## Step 4 — "Your plan, fixed" by tap
+
+Decision-maker Leon Dixon, Oct 19, 2026 (step 4 rulings (a)–(d), and follow-up rulings (1)–(3) the same day). Ledger row `2026-10-19-fb1-fixed-by-tap`. Service: `server/services/fixed-plan.service.ts`; words: `client/src/lib/fixed-plan.ts`.
+
+**Flag-only.** The checker and the run never adopt anything. A day of version A ("Your plan, fixed") reaches the plan only through a traveler's tap on the slip, which posts `POST /api/trips/:tripId/versions/apply-days` with `unchangedSinceRun: true`. The days go through the one adopt writer, `applyDays`. A pin test (`fb1-apply-days-callers`) fails if anything else calls it.
+
+**Confirm before apply.** A tap first sends `preview: true`: `applyDays` runs the same diff inside its transaction and rolls it back. The slip shows each day's counts ("Day 2 updated: 2 stops moved, 1 added, 1 removed") with Confirm and Cancel. Nothing is written before Confirm.
+
+**Which days (read).** `GET /api/trips/:tripId/versions/fixed` names version A and the plan's flagged days — days with an issue in the current check — each `fixable` or `changed`. No shown "Your plan, fixed" ⇒ `null`.
+
+**Changed (ruling (a)(i)).** A day the traveler changed after the run STARTED is refused, never overwritten. The start is the run's baseline ("Your Plan") version, written before the model call; its items record each plan item's day then. A day is changed when:
+- an item on it now was created or written after the start (an add, an edit, a re-time, a move in);
+- an item the baseline had on it is gone or now on another day (a delete, a move out).
+
+Every day is changed when an item the baseline does not know (a fixed commitment) was removed after the start — its day is unknowable. No baseline to read ⇒ every day is changed.
+
+**Machine writes are not edits.** A writer that re-times items on its own does not bump `updated_at`. The one that did — the legacy leg schedule writer in `trip-transport-legs.service.ts` (run by "generate legs"; it never runs on a routed plan, the only kind with versions) — no longer does. The other machine writers (place facts, coordinates, sort order, the Moment lock) already left it alone.
+
+**The two taps (rulings (b), (c)).** Slip only; the Trip Card is the finalized read-out.
+- One day: "Use the fixed day", under the day's feasibility line. A changed day shows "You’ve changed this day since these versions were made, so we didn’t replace it." and the slip's existing "Compare versions" link to the board instead; its tap would be a 409 `day_changed`.
+- Whole plan: "Use all fixed days", above the days, while at least one flagged day is fixable. It sends every flagged day; the server applies the unchanged ones and names the rest: "Updated 3 days. Skipped Day 2 because you’ve changed it."
+
+**Unchanged:** the board's own adopt (it never sends the flag), the gate.
 ## Step 5a — prompt cleanup
 
 Decision-maker Leon Dixon, Oct 19, 2026 (prompt cleanup rulings (a)–(c)). Ledger row `2026-10-19-fb1-prompt-cleanup`.
