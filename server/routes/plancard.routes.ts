@@ -12,6 +12,7 @@ import { savedItemQuestions } from "../services/expert-door.service";
 import { getUserId } from "../utils/auth";
 import { storage, stampItemSourceClass } from "../storage";
 import { localTeasersForTrip } from "../services/local-teaser.service";
+import { busyBusForTrip } from "../services/busy-bus.service";
 import { expertHookForTrip, inSeasonAdditionsForTrip } from "../services/expert-hook.service";
 import { rideRecommendationsForTrip } from "../services/ride-recommender.service";
 import { liveLegFactsForTrip } from "../services/live-directions.service";
@@ -940,6 +941,9 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     // FD-1 (ledger `2026-10-09-fd1-free-draft-cap`): on a FREE plan only, per day, the count of local picks and
     // notes the paid tier would add — counts only; a day not computed, or zero, carries no key (§13).
     const localTeasers = await localTeasersForTrip(tripId);
+    // FB-1 step 5d (ledger `2026-10-19-fb1-busy-bus`): per day, why Kyoto's buses are busy — a holiday span, a national
+    // holiday or a peak-season weekend — on a Kyoto plan with confirmed dates. Every tier; a failure is no key (§13).
+    const busyBus = await busyBusForTrip(tripId);
     // FB-1 expert hook (ledger `2026-10-18-fb1-expert-hook`): the OWNER of a FREE plan gets the switch state and whether
     // the chooser has anyone in it; anyone else, a paid plan or a failure gets no key (§13). The in-season count is per
     // day and present only when non-zero — empty until FB-1 step 8.
@@ -996,6 +1000,7 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
             ? { transports: d.transports.map((tr: any) => (liveLegs.has(tr?.id) ? { ...tr, ...liveLegs.get(tr.id) } : tr)) }
             : {}),
           ...(t ? { localTeaser: t } : {}),
+          ...(busyBus.get(d.dayNumber) ? { busyBus: busyBus.get(d.dayNumber) } : {}),
           ...(inSeason.get(d.dayNumber)?.count ? { inSeason: inSeason.get(d.dayNumber) } : {}),
           ...(anchorStops.get(d.dayNumber)?.length ? { anchorStops: anchorStops.get(d.dayNumber) } : {}),
           ...(f ? { feasibility: f } : {}),

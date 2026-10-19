@@ -212,6 +212,24 @@ Decision-maker Leon Dixon, Oct 19, 2026.
   the existing fix line "Fix: move it to another day."
 - **Bots** may not propose it yet (BOT-1's kinds are unchanged, pending Leon's yes).
 
+## Step 5d — the Kyoto busy-bus day
+
+Decision-maker Leon Dixon, Oct 19, 2026.
+
+- **The day line** ships now, on every tier, wherever a plan day renders (`DayBlock`): "Busy day for [city] buses
+  ([reason]). Leave extra time for any bus legs today." The city is the market's name from `OPERATING_MARKETS`
+  ("Kyoto"), sent on the plancard day, never a literal. The leg line is held until a router can name a bus.
+- **Reasons, in order:** New Year (Dec 29 – Jan 3), Golden Week (Apr 29 – May 5), Obon (Aug 13 – 16); then a national
+  or substitute holiday from the committed Cabinet Office list (`server/data/japan-holidays.json`, 2026–2027), both
+  read "national holiday"; then a Saturday or Sunday inside a season window ("peak season weekend").
+- **No guess:** a year the list does not cover, a plan whose dates are not confirmed, or a market other than Kyoto
+  carries no flag.
+- **Season windows** are `platform_settings.season_windows_<market>`, edited on `/admin/system`: a JSON list of at most
+  4 `{"from":"YYYY-MM-DD","to":"YYYY-MM-DD"}` windows, validated on save. Empty means none, so weekends are not flagged
+  until windows are entered. SH-1's "In season" badge reads the same key.
+- **Words** (founder wording review on the PR): the day line and the five reasons "New Year", "Golden Week", "Obon",
+  "national holiday", "peak season weekend".
+
 ## Step 5a — prompt cleanup
 
 Decision-maker Leon Dixon, Oct 19, 2026 (prompt cleanup rulings (a)–(c)). Ledger row `2026-10-19-fb1-prompt-cleanup`.

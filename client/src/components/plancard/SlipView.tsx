@@ -2693,6 +2693,7 @@ export function SlipView({
                 open={dayIsOpen(slot.key, slotIdx, slotItems)}
                 onOpenChange={(o) => setDayOpen((m) => ({ ...m, [slot.key]: o }))}
                 feasibility={day?.feasibility ?? null}
+                busyBus={day?.busyBus ?? null}
                 // FB-1: on a free plan the owner's hook section carries the FD-5 counts in place of its plain line,
                 // so the day does not also draw them at the top.
                 localTeaser={isOwner && data.expertHook ? null : day?.localTeaser ?? null}
