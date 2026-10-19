@@ -23,16 +23,36 @@ export async function expertHookForTrip(tripId: string, userId: string | null | 
     if (!(await verifyTripOwnership(tripId, userId))) return null;
     const { tripGetsRoutedLegs } = await import("./routing/plan-routed-legs.service");
     if (await tripGetsRoutedLegs(tripId)) return null;
-    const { planMarketForTrip, chooserHasExperts } = await import("./expert-door.service");
+    const { planMarketForTrip } = await import("./expert-door.service");
     const market = await planMarketForTrip(tripId);
-    const cities = await getExpertHookCities();
-    const switchOn = !!market.key && cities.includes(market.key);
-    const canAsk = switchOn ? await chooserHasExperts(market.key!) : false;
+    const { switchOn, canAsk } = await expertAvailabilityForMarket(market.key);
     return { switchOn, cityName: market.cityName, canAsk };
   } catch (err: any) {
     console.warn(`[expert-hook] ${tripId}: not computed: ${String(err?.message ?? err).slice(0, 200)}`);
     return null;
   }
+}
+
+/**
+ * SH-1 item 11 (rulings Q11.1–Q11.3): THE one answer to "does this market have an expert to ask?", read by the in-plan
+ * hook above and by every expert call-to-action on the site (`GET /api/expert-availability`). The city's switch must be
+ * on AND its chooser must have someone in it (`chooserHasExperts`). No market ⇒ no.
+ */
+export async function expertAvailabilityForMarket(marketKey: string | null | undefined): Promise<{ switchOn: boolean; canAsk: boolean }> {
+  if (!marketKey) return { switchOn: false, canAsk: false };
+  const cities = await getExpertHookCities();
+  const switchOn = cities.includes(marketKey);
+  if (!switchOn) return { switchOn, canAsk: false };
+  const { chooserHasExperts } = await import("./expert-door.service");
+  return { switchOn, canAsk: await chooserHasExperts(marketKey) };
+}
+
+/** Q11.3: a call-to-action that names no city shows when ANY switched-on market answers yes. */
+export async function anyMarketHasExperts(): Promise<boolean> {
+  for (const key of await getExpertHookCities()) {
+    if ((await expertAvailabilityForMarket(key)).canAsk) return true;
+  }
+  return false;
 }
 
 /** Per day, `{ count, href }` for the in-season line. Empty until FB-1 step 8 — see the file note. */
