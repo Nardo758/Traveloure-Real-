@@ -260,7 +260,7 @@ async function mainWikidata(): Promise<void> {
     nominatimBy[nominatim] = (nominatimBy[nominatim] ?? 0) + 1;
     let outcome: WikidataOutcome | null = null;
     let search: string | null = null;
-    if (nominatim === "no_results" || nominatim === "no_match") {
+    if (nominatim === "no_results" || nominatim === "no_match" || nominatim === "not_a_place") {
       const wait = lastWikidata + WIKIDATA_MIN_INTERVAL_MS - Date.now();
       if (wait > 0) await sleep(wait);
       const w = await lookupItemWikidata(item);
