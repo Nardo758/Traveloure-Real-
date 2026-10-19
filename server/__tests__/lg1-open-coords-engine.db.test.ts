@@ -3,7 +3,8 @@
  * `2026-10-17-lg1-osm-place-coords`; migration 389), end to end against a real database.
  *
  *   LG1  an adapter with the OSRM rule is never handed a Google point: a stop whose place has no OSM/admin row gets
- *        no routed leg in or out, and no leg goes round it (LG-2 Ask 6); the adapter is never handed a Google point
+ *        no routed leg in or out, and no leg goes round it (LG-2 Ask 6); the adapter IS called for the located stops
+ *        (a fourth stop d, for this test only, gives c>d) and every leg end is the OSM coordinate
  *   LG2  an admin row for that stop's place id makes it routable on the next recompute, from the admin coordinate;
  *        the two legs through it are routed
  *   LG3  an admin row wins over an OSM match for the same place id
@@ -52,6 +53,9 @@ class OpenOnlyStub extends StubRoutingAdapter {
 const STORED = { a: [35.0037, 135.7788], b: [35.0001, 135.781], c: [34.9949, 135.785] } as const;
 const OSM = { a: [35.00365, 135.77851], c: [34.99486, 135.78504] } as const;
 const ADMIN_B = [35.00021, 135.78111] as const;
+// LG1's own fourth stop (Ask 6): stored and OSM points differ, like the others.
+const STORED_D = [34.9901, 135.7901] as const;
+const OSM_D = [34.99009, 135.79012] as const;
 
 async function legs(): Promise<any[]> {
   return (await db.execute(sql`SELECT * FROM transport_legs WHERE trip_id = ${TRIP} AND variant_id IS NULL ORDER BY day_number, leg_order`)).rows as any[];
@@ -90,11 +94,27 @@ after(async () => {
 });
 
 test("LG1: a Google-only stop gets no routed leg; every leg end is the OSM point", async () => {
-  const adapter = new OpenOnlyStub();
-  await computePlanLegs(TRIP, { adapter });
-  const rows = await legs();
-  assert.deepEqual(pairs(rows), [], "LG-2 Ask 6: no leg in or out of b, and none goes round it");
-  assert.ok(adapter.seen.every((p) => isOpenCoordOrigin(p.coordOrigin)), "the adapter was never handed a Google point");
+  // LG-2 Ask 6: legs are adjacent-only, so a·b·c alone (b Google-only) has no located pair. A fourth located stop d,
+  // for this test only, gives c>d — the leg proving the adapter IS called for located stops, from their OSM points.
+  await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, title, item_type, day_number, sort_order, latitude, longitude, start_time, end_time, origin, google_place_id)
+    VALUES (${`${TRIP}-d`}, ${TRIP}, 'Stop D', 'activity', 1, 3, ${String(STORED_D[0])}, ${String(STORED_D[1])}, '15:00', '16:00', 'traveler', ${pid("d")})`);
+  await db.execute(sql`INSERT INTO open_place_coords (id, source, osm_type, osm_id, lat, lng, name, google_place_id, matched_by, attribution, matched_at)
+    VALUES (${osmId(3)}, 'osm', 'node', ${OSM_BASE + 3}, ${String(OSM_D[0])}, ${String(OSM_D[1])}, 'Stop d', ${pid("d")}, 'nominatim_batch', '© OpenStreetMap contributors', now())`);
+  try {
+    const adapter = new OpenOnlyStub();
+    await computePlanLegs(TRIP, { adapter });
+    const rows = await legs();
+    assert.deepEqual(pairs(rows), ["c>d"], "LG-2 Ask 6: no leg in or out of b, and none goes round it; c>d is routed");
+    assert.ok(adapter.seen.length > 0, "the adapter is called for the located stops");
+    assert.ok(adapter.seen.every((p) => isOpenCoordOrigin(p.coordOrigin)), "the adapter was never handed a Google point");
+    assert.equal(Number(rows[0].from_lat), OSM.c[0]);
+    assert.equal(Number(rows[0].from_lng), OSM.c[1]);
+    assert.equal(Number(rows[0].to_lat), OSM_D[0]);
+  } finally {
+    await db.execute(sql`DELETE FROM transport_legs WHERE trip_id = ${TRIP}`);
+    await db.execute(sql`DELETE FROM itinerary_items WHERE id = ${`${TRIP}-d`}`);
+    await db.execute(sql`DELETE FROM open_place_coords WHERE id = ${osmId(3)}`);
+  }
 });
 
 test("LG2: an admin row makes the stop routable from the admin coordinate", async () => {

@@ -189,6 +189,29 @@ finding whose fix is `retime` is a tap on the slip. The other fix kinds stay fla
 - **Words** (founder wording review on the PR): "Move <stop> to <time>", "Confirm" / "Cancel", and the step 4
   counts line ("Day 2 updated: 2 stops moved").
 
+## Step 5b — `closed_dates`
+
+Decision-maker Leon Dixon, Oct 19, 2026.
+
+- **One type.** `closed_dates` replaces the unread `closure` fact type, which nothing wrote with an end date and no
+  checker read. `closure` is dropped from the crawler's extract list for `stop.hours`, and `closed_dates` is not added
+  to it. Rows already stored as `closure` stay as they are; nothing reads them.
+- **The value** is a list of inclusive from–to ranges, `{ ranges: [{ from: "YYYY-MM-DD", to: "YYYY-MM-DD" }] }`. A
+  single day is a one-day range. A malformed value is refused, never repaired.
+- **Expiry.** `recordFacts` sets `expires_at` to midnight, in the plan's time zone (else the market's), of the day after
+  the last closed date, whatever the writer sent. With no zone at all the fact is not stored.
+- **Admission** is the `last_admission` rule (`admitFeasibilityFact`): an official page read or an expert, an
+  `official` licence, an https source, and — when a quote travels with the value — every date that bounds a range
+  printed in the quote (`dateAppearsIn`: ISO, `2027/12/29`, `12/29`, `12月29日`, `December 29`, `29 Dec`, …; a numeric
+  form is never read inside a longer number). Tagged public + link_only, and public with the link like `closure` was.
+- **The checker.** A stop whose own date (trip start + day − 1) a stored fact names is counted in `closed_on_arrival`
+  with reason `closed_date` and fix `move_day`, whether or not it states a time; it replaces any hours reason for that
+  stop. The step 3 gate counts it like every other issue. A version copies the draft stop's facts.
+- **Words** (founder wording review on the PR): the card line "Closed on Monday, November 8. Move this stop to another
+  day." (Marketing's "Closed on [date]. Move this stop to another day."), the issue line "is closed on that date", and
+  the existing fix line "Fix: move it to another day."
+- **Bots** may not propose it yet (BOT-1's kinds are unchanged, pending Leon's yes).
+
 ## Step 5a — prompt cleanup
 
 Decision-maker Leon Dixon, Oct 19, 2026 (prompt cleanup rulings (a)–(c)). Ledger row `2026-10-19-fb1-prompt-cleanup`.

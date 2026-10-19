@@ -13,7 +13,7 @@
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "../db";
 import { itineraryVariantItems, itineraryVariantMetrics, itineraryVariants, transportLegs } from "@shared/schema";
-import type { PlanCheckInput, PlanCheckStop } from "@shared/plan-check";
+import type { PlanCheckInput, PlanCheckLastAdmission, PlanCheckStop } from "@shared/plan-check";
 import {
   HELD_VARIANT_STATUS,
   gateVersion,
@@ -48,6 +48,7 @@ export function versionCheckInput(
   const sourceOf = new Map<string, string | null>();
   const hours = new Map<string, NonNullable<ReturnType<PlanCheckInput["hours"]["get"]>>>();
   const lastAdmission = new Map<string, NonNullable<ReturnType<PlanCheckInput["lastAdmission"]["get"]>>>();
+  const closedDates = new Map<string, readonly PlanCheckLastAdmission[]>();
   const out: PlanCheckStop[] = [];
   for (const r of stops) {
     if (r.dayNumber == null) continue;
@@ -57,6 +58,8 @@ export function versionCheckInput(
     if (h) hours.set(r.id, h);
     const la = source ? draft.lastAdmission.get(source) : undefined;
     if (la) lastAdmission.set(r.id, la);
+    const cd = source ? draft.closedDates?.get(source) : undefined;
+    if (cd) closedDates.set(r.id, cd);
     out.push({
       id: r.id,
       title: r.name,
@@ -74,6 +77,7 @@ export function versionCheckInput(
       stops: out,
       hours,
       lastAdmission,
+      closedDates,
       lastServices: draft.lastServices,
       anchors: draft.anchors,
       legs,

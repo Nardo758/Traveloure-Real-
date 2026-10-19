@@ -44,7 +44,7 @@ export interface Finding {
    * S12-4: the stops a finding counts, by name and day, so a card can name them — `leg_unreachable`, and
    * (P0-e item 2) the three hours findings, which also carry WHY and the time that tripped it.
    */
-  stops?: Array<{ itemId: string; title: string; day: number; reason?: HoursStopReason; atMin?: number; startMin?: number }>;
+  stops?: Array<{ itemId: string; title: string; day: number; reason?: HoursStopReason; atMin?: number; startMin?: number; /** FB-1 step 5b: `closed_date` only — the stop's own date. */ dateIso?: string }>;
   /**
    * Step 9b (L9 as amended, ledger `2026-10-07-step9b-optimizer-and-rechecks`): present ONLY on a
    * finding that reads leg durations (`leg_unreachable`) — true when every leg it counts was routed.
@@ -129,7 +129,7 @@ export function parseDayHours(descriptions: readonly string[] | null | undefined
 }
 
 /** P0-e item 2: why an hours finding counts a stop. */
-export type HoursStopReason = "before_opening" | "after_closing" | "closed_day" | "closes_early" | "after_last_entry";
+export type HoursStopReason = "before_opening" | "after_closing" | "closed_day" | "closed_date" | "closes_early" | "after_last_entry";
 
 export interface TimedItem {
   id: string;
@@ -633,6 +633,16 @@ export function clockLabel(min: number): string {
  * hours finding counts, naming the stop, its day and the time that tripped it. Pure; a finding without
  * stops (or another kind) has no lines.
  */
+/**
+ * FB-1 step 5b (Marketing's wording, FOUNDER WORDING REVIEW on the PR): "Closed on [date]. Move this stop to another day."
+ * The date reads "Monday, November 8"; a stop with no date reads "Closed that date".
+ */
+export function closedOnDateLine(dateIso: string | null | undefined): string {
+  if (!dateIso || !/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) return "Closed that date. Move this stop to another day.";
+  const label = new Date(`${dateIso}T00:00:00Z`).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" });
+  return `Closed on ${label}. Move this stop to another day.`;
+}
+
 export function findingStopLines(f: Finding): string[] {
   return (f.stops ?? [])
     .filter((s) => s.reason)
@@ -647,6 +657,9 @@ export function findingStopLines(f: Finding): string[] {
           return `${head} starts before opening${at ? ` (${at})` : ""}`;
         case "closed_day":
           return `${head} is closed that day`;
+        // FB-1 step 5b: Marketing's line (FOUNDER WORDING REVIEW on the PR).
+        case "closed_date":
+          return `${head}: ${closedOnDateLine(s.dateIso)}`;
         case "closes_early":
           return at ? `${head} closes at ${at}, before your visit ends` : `${head} closes before your visit ends`;
         case "after_last_entry":

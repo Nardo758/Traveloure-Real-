@@ -41,7 +41,9 @@ import { isPointOfInterest, matchNamesItem, namedPlaceTokens, placeLookupText, t
 import { loadMarketAreaNames } from "./market-areas";
 import { mayFetchFresh, resolveFreshFetchBudget, type FreshFetchContext } from "./fresh-fetch";
 import { placeFactTags, resolveFactPrecedence } from "@shared/content-tiers";
-import { admitFeasibilityFact, hoursSeason, isFeasibilityFactType } from "@shared/feasibility-facts";
+import { admitFeasibilityFact, closedDatesExpiryDay, hoursSeason, isFeasibilityFactType, parseClosedDates } from "@shared/feasibility-facts";
+import { zonedMidnight } from "@shared/plan-timing";
+import { MARKET_TIMEZONES } from "../trend-engine/operating-markets";
 import { REFRESH_ORIGIN, admitRefreshFact } from "@shared/official-refresh";
 import { BOT_FACT_ORIGIN, admitBotFact } from "@shared/bot-proposals";
 import { lookupErrorCode, type PlaceLookupCapReason, type PlaceLookupOutcomeRow, type PlaceLookupSkipReason, type PlaceLookupTrigger } from "@shared/place-lookup-outcomes";
@@ -92,9 +94,23 @@ export async function recordFacts(
     if (!verdict.ok) console.info(`[place-facts] refused fact_type=${d.factType} reason=${verdict.reason} plan_id=${ctx.planId ?? "none"} item_id=${ctx.itemId ?? "none"}`);
     return verdict.ok;
   });
-  if (!drafts.length) return 0;
+  // FB-1 step 5b (ledger `2026-10-19-fb1-closed-dates`): a `closed_dates` fact expires at midnight, in the plan's
+  // time zone (else its market's), of the day after its last closed date — whatever the writer sent. No zone ⇒ not stored.
+  const kept: FactDraft[] = [];
+  for (const d of drafts) {
+    if (d.factType !== "closed_dates") { kept.push(d); continue; }
+    const v = parseClosedDates(d.value);
+    const zone = (ctx.planId ? await planTimeZone(ctx.planId) : null) ?? (d.market ? MARKET_TIMEZONES[d.market.toLowerCase()] ?? null : null);
+    if (!v || !zone) {
+      console.info(`[place-facts] refused fact_type=closed_dates reason=${v ? "no_time_zone" : "bad_value"} plan_id=${ctx.planId ?? "none"} item_id=${ctx.itemId ?? "none"}`);
+      continue;
+    }
+    const day = closedDatesExpiryDay(v);
+    kept.push({ ...d, expiresAt: zonedMidnight(Number(day.slice(0, 4)), Number(day.slice(5, 7)), Number(day.slice(8, 10)), zone) });
+  }
+  if (!kept.length) return 0;
   await exec.insert(placeFacts).values(
-    drafts.map((d) => ({
+    kept.map((d) => ({
       id: d.id ?? crypto.randomUUID(),
       placeRefKind: d.placeRefKind,
       placeRef: d.placeRef,
@@ -121,7 +137,7 @@ export async function recordFacts(
       reuseClass: placeFactTags(d.origin, d.license, d.factType)?.reuseClass ?? null,
     })),
   );
-  return drafts.length;
+  return kept.length;
 }
 
 type FactRow = typeof placeFacts.$inferSelect;
@@ -1045,6 +1061,8 @@ export interface FeasibilityFacts {
   lastAdmission: Map<string, unknown[]>;
   /** FB-1 step 2: the same facts as `lastAdmission`, each with its checked date and source. */
   lastAdmissionFacts: Map<string, FeasibilityLastAdmission[]>;
+  /** FB-1 step 5b: every unexpired, admitted `closed_dates` fact per item, with its checked date and source. */
+  closedDates: Map<string, FeasibilityLastAdmission[]>;
   lastServices: Array<{ lat: number; lng: number; value: unknown; checkedAt?: string | null; sourceUrl?: string | null; provenance?: string | null }>;
 }
 
@@ -1090,13 +1108,14 @@ export async function feasibilityFactsForTrip(tripId: string, market: string | n
   const own = (await rowsForTrip(tripId)).filter((r) => r.sourceClass != null);
   const timeZone = await planTimeZone(tripId);
   const placeOf = await itemPlaceIdsForTrip(tripId, own);
-  const stored = await storedOfficialFacts(Array.from(new Set(placeOf.values())), ["hours", "last_admission"]);
+  const stored = await storedOfficialFacts(Array.from(new Set(placeOf.values())), ["hours", "last_admission", "closed_dates"]);
   const sources = await sourcesFor([...own, ...stored]);
   const byItem = withStoredOfficial(own, placeOf, stored);
 
   const hours = new Map<string, FeasibilityHours[]>();
   const lastAdmission = new Map<string, unknown[]>();
   const lastAdmissionFacts = new Map<string, FeasibilityLastAdmission[]>();
+  const closedDates = new Map<string, FeasibilityLastAdmission[]>();
   byItem.forEach((rows, itemId) => {
     const ranked = resolveFactPrecedence(
       rows.map((r) => ({ ...r, sourceClass: r.sourceClass, license: r.license })),
@@ -1135,8 +1154,21 @@ export async function feasibilityFactsForTrip(tripId: string, market: string | n
         })),
       );
     }
+    // FB-1 step 5b: every unexpired, admitted `closed_dates` fact for the item, official first.
+    const cdRows = ranked.filter((r) => r.factType === "closed_dates" && !isFactStale(r, now) && admitFeasibilityFact(r).ok);
+    if (cdRows.length) {
+      closedDates.set(
+        itemId,
+        cdRows.map((r) => ({
+          value: r.value,
+          checkedAt: r.fetchedAt ? new Date(r.fetchedAt as any).toISOString() : null,
+          sourceUrl: (r as any).sourceUrl ?? null,
+          provenance: toView(r as any, now, sources)?.provenance ?? null,
+        })),
+      );
+    }
   });
 
   const lastServices = market ? await lastServicesForMarket(market, now) : [];
-  return { hours, lastAdmission, lastAdmissionFacts, lastServices };
+  return { hours, lastAdmission, lastAdmissionFacts, closedDates, lastServices };
 }

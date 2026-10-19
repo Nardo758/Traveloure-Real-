@@ -38,7 +38,7 @@ import { TAVILY_PRICE_PER_EXTRACT_USD, TAVILY_PRICE_PER_SEARCH_USD } from "../..
 import type { TavilyLoggingClient } from "../tavily-client";
 import { CONTENT_FACTS_USAGE_PURPOSE } from "./fresh-fetch";
 import { REFRESH_ORIGIN, refreshExpiresAt, refreshPlaceRef, stationPointValue, type StationPoint } from "@shared/official-refresh";
-import { admitFeasibilityFact, hoursSeason, isFeasibilityFactType, parseLastAdmission, parseLastService } from "@shared/feasibility-facts";
+import { admitFeasibilityFact, hoursSeason, isFeasibilityFactType, parseFeasibilityValue } from "@shared/feasibility-facts";
 import { parseDayHours } from "@shared/optimizer-lead";
 
 /** What one lookup costs in cents: one search plus one extract, derived from config (§8). */
@@ -62,7 +62,8 @@ export const FACT_TYPES_FOR_NEED: Readonly<Record<ContentNeed, readonly FactType
   "transport.local": ["transit", "price", "last_service"],
   "transport.cruise": ["transit", "price"],
   // FD-3 ruling 1: the latest entry, as a STRUCTURED `last_admission` fact.
-  "stop.hours": ["hours", "closure", "last_admission"],
+  // FB-1 step 5b: `closure` is dropped from the extract list (decision-maker, Oct 19, 2026); `closed_dates` is not added.
+  "stop.hours": ["hours", "last_admission"],
   "stop.ticketing": ["ticketing_rule", "price", "last_admission"],
   dining: ["hours", "price", "tip"],
   activity: ["description", "price", "tip"],
@@ -413,7 +414,7 @@ const STRUCTURED_FIELDS_INSTRUCTION =
 export function structuredFields(factType: string, raw: unknown, quote: string): Record<string, unknown> | null | "refused" {
   if (isFeasibilityFactType(factType)) {
     if (!raw || typeof raw !== "object") return "refused";
-    const value = factType === "last_admission" ? parseLastAdmission(raw) : parseLastService(raw);
+    const value = parseFeasibilityValue(factType, raw);
     if (!value) return "refused";
     const verdict = admitFeasibilityFact({ factType, value: { ...value, quote }, origin: "crawled", license: "official", sourceUrl: "https://page.invalid/" });
     return verdict.ok ? (value as unknown as Record<string, unknown>) : "refused";

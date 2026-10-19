@@ -4,7 +4,7 @@
  * checked yet" — no estimate, no skip to the next located stop — and the day's check cannot pass with one.
  *
  *   A1 the skip case: located → no point → located gives NO leg from the first to the third; both adjacent pairs
- *      are reported (synthetic Kyoto fixture names)
+ *      are reported (synthetic stops and coordinates)
  *   A2 the stay: a day whose first stop has no point gets no stay leg around it
  *   A3 the slip draws "Travel time not checked yet" for a reported pair, and nothing from an earlier stop
  *   A4 the day-check case: the plan check names the day as not checked for reachability, and the day line says so
@@ -31,29 +31,30 @@ const stop = (id: string, name: string, point: { lat: number; lng: number } | nu
   durationMinutes: null,
 });
 
-// The shape the rule fixes (synthetic fixture): a located stop, a stop with no open point, a located stop.
-const SOBA = stop("soba", "Soba Restaurant", P(34.9671, 135.7727));
-const INARI = stop("inari", "Fushimi Inari", null);
-const TOFUKU = stop("tofuku", "Tofuku-ji", P(34.9767, 135.7738));
+// The shape the rule fixes (synthetic fixture, obviously fake coordinates): a located stop, a stop with no open
+// point, a located stop.
+const A = stop("a", "Stop A", P(10.0, 10.0));
+const B = stop("b", "Stop B", null);
+const C = stop("c", "Stop C", P(10.01, 10.01));
 
 describe("LG-2 Ask 6 — adjacent legs only", () => {
   it("A1 no leg skips a stop with no point; both adjacent pairs are reported", () => {
-    const r = desiredPlanLegs([SOBA, INARI, TOFUKU], { stay: null, hasTransitCoverage: false });
-    assert.deepEqual(r.legs.map((l) => `${l.from.id}>${l.to.id}`), [], "no Soba → Tofuku-ji leg around Fushimi Inari");
-    assert.deepEqual(r.skipped.map((s) => `${s.fromItemId}>${s.toItemId}`), ["soba>inari", "inari>tofuku"]);
+    const r = desiredPlanLegs([A, B, C], { stay: null, hasTransitCoverage: false });
+    assert.deepEqual(r.legs.map((l) => `${l.from.id}>${l.to.id}`), [], "no A → C leg around B");
+    assert.deepEqual(r.skipped.map((s) => `${s.fromItemId}>${s.toItemId}`), ["a>b", "b>c"]);
     // Located neighbours still get their own leg.
-    const r2 = desiredPlanLegs([SOBA, TOFUKU, INARI], { stay: null, hasTransitCoverage: false });
-    assert.deepEqual(r2.legs.map((l) => `${l.from.id}>${l.to.id}`), ["soba>tofuku"]);
-    assert.deepEqual(r2.skipped.map((s) => `${s.fromItemId}>${s.toItemId}`), ["tofuku>inari"]);
+    const r2 = desiredPlanLegs([A, C, B], { stay: null, hasTransitCoverage: false });
+    assert.deepEqual(r2.legs.map((l) => `${l.from.id}>${l.to.id}`), ["a>c"]);
+    assert.deepEqual(r2.skipped.map((s) => `${s.fromItemId}>${s.toItemId}`), ["c>b"]);
   });
 
   it("A2 the stay connects to the day's first and last stop only — never around one with no point", () => {
-    const stay = { ...stop("stay", "Hotel", P(35.0, 135.76)), point: P(35.0, 135.76) };
-    const r = desiredPlanLegs([INARI, SOBA, TOFUKU], { stay, hasTransitCoverage: false });
+    const stay = { ...stop("stay", "Stay", P(10.02, 10.02)), point: P(10.02, 10.02) };
+    const r = desiredPlanLegs([B, A, C], { stay, hasTransitCoverage: false });
     const legs = r.legs.map((l) => `${l.from.id}>${l.to.id}`);
-    assert.ok(!legs.includes("stay>soba"), "the stay leg does not skip to the first located stop");
-    assert.ok(legs.includes("soba>tofuku") && legs.includes("tofuku>stay"));
-    assert.ok(r.skipped.some((s) => s.fromItemId === "stay" && s.toItemId === "inari"));
+    assert.ok(!legs.includes("stay>a"), "the stay leg does not skip to the first located stop");
+    assert.ok(legs.includes("a>c") && legs.includes("c>stay"));
+    assert.ok(r.skipped.some((s) => s.fromItemId === "stay" && s.toItemId === "b"));
   });
 
   it("A3 the slip reads 'Travel time not checked yet' for a reported pair and draws nothing around the stop", () => {
@@ -61,19 +62,19 @@ describe("LG-2 Ask 6 — adjacent legs only", () => {
     const days = [
       {
         dayNumber: 1,
-        activities: [{ id: "soba" }, { id: "inari" }, { id: "tofuku" }],
-        // A bridge leg left over from before Ask 6: it must not be drawn in the slot before Tofuku-ji.
-        transports: [{ id: "old-bridge", fromActivityId: "soba", toActivityId: "tofuku", estimatedDurationMinutes: 14, mode: "drive" }],
+        activities: [{ id: "a" }, { id: "b" }, { id: "c" }],
+        // A bridge leg left over from before Ask 6: it must not be drawn in the slot before C.
+        transports: [{ id: "old-bridge", fromActivityId: "a", toActivityId: "c", estimatedDurationMinutes: 14, mode: "drive" }],
         legsNotChecked: [
-          { fromActivityId: "soba", toActivityId: "inari" },
-          { fromActivityId: "inari", toActivityId: "tofuku" },
+          { fromActivityId: "a", toActivityId: "b" },
+          { fromActivityId: "b", toActivityId: "c" },
         ],
       },
     ];
-    assert.deepEqual(slipLegBetween(days, "soba", "inari"), { kind: "not_checked", fromId: "soba", toId: "inari" });
-    assert.deepEqual(slipLegBetween(days, "inari", "tofuku"), { kind: "not_checked", fromId: "inari", toId: "tofuku" });
+    assert.deepEqual(slipLegBetween(days, "a", "b"), { kind: "not_checked", fromId: "a", toId: "b" });
+    assert.deepEqual(slipLegBetween(days, "b", "c"), { kind: "not_checked", fromId: "b", toId: "c" });
     const noFlag = [{ ...days[0], legsNotChecked: [] }];
-    assert.equal(slipLegBetween(noFlag, "inari", "tofuku"), null, "no time is guessed and no earlier stop's leg is drawn");
+    assert.equal(slipLegBetween(noFlag, "b", "c"), null, "no time is guessed and no earlier stop's leg is drawn");
   });
 
   it("A4 the day check cannot pass with a leg that has no time", () => {
@@ -90,7 +91,7 @@ describe("LG-2 Ask 6 — adjacent legs only", () => {
       tripStartIso: "2026-11-10",
       transitCoverage: false,
       // Day 1 has a stop with no point between two located ones; day 2 is fully located.
-      stops: [s("soba", P(34.9671, 135.7727), 1), s("inari", null, 1), s("tofuku", P(34.9767, 135.7738), 1), s("a", P(35, 135.7), 2), s("b", P(35.01, 135.71), 2)],
+      stops: [s("a", P(10.0, 10.0), 1), s("b", null, 1), s("c", P(10.01, 10.01), 1), s("d", P(20.0, 20.0), 2), s("e", P(20.01, 20.01), 2)],
       hours: new Map(),
       lastAdmission: new Map(),
       lastServices: [],
@@ -117,9 +118,9 @@ describe("LG-2 Ask 6 — adjacent legs only", () => {
       tripStartIso: "2026-11-10",
       transitCoverage: true,
       stops: [
-        { id: "a", title: "a", dayNumber: 1, startTime: "09:00", endTime: "10:00", durationMinutes: null, point: P(34.98, 135.75) },
+        { id: "a", title: "a", dayNumber: 1, startTime: "09:00", endTime: "10:00", durationMinutes: null, point: P(10.0, 10.0) },
         { id: "u", title: "u", dayNumber: 1, startTime: "11:00", endTime: "12:00", durationMinutes: null, point: null },
-        { id: "c", title: "c", dayNumber: 1, startTime: "13:00", endTime: "14:00", durationMinutes: null, point: P(35.09, 135.68) },
+        { id: "c", title: "c", dayNumber: 1, startTime: "13:00", endTime: "14:00", durationMinutes: null, point: P(10.1, 10.1) },
       ],
       hours: new Map(),
       lastAdmission: new Map(),
