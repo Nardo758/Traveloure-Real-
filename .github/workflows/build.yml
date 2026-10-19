@@ -1470,6 +1470,11 @@ jobs:
       - if: ${{ !cancelled() }}
         name: Item OSM re-geocode pins
         run: npx tsx --test server/services/__tests__/item-osm-regeocode.test.ts
+      # LG-2 Asks 2+3: the matcher's OSM class gate (no admin area, neighbourhood or road segment resolves a named
+      # place) and the Wikidata planner's title phrase. Pure, fake fetches.
+      - if: ${{ !cancelled() }}
+        name: LG-2 matcher and planner pins
+        run: npx tsx --test server/services/__tests__/lg2-matcher-planner.test.ts
       # EV PR 0: the SerpAPI `google_maps` path (calls, the `serp_cache` write and every cache read) is off
       # unless SERPAPI_GOOGLE_MAPS_ENABLED=1. Fake fetch, db methods replaced; no database is reached.
       - if: ${{ !cancelled() }}
