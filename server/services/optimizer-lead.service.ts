@@ -35,6 +35,7 @@ import { checkPlan, feasibilityView, type PlanCheckInput } from "@shared/plan-ch
 import { planDayIsPast } from "@shared/plan-timing";
 import { factPointsForTrip, feasibilityFactsForTrip, placeRefsForTrip } from "./content-facts/place-facts.service";
 import { openCoordsForItemIds, openCoordsForPlaceIds } from "./routing/open-place-coords.service";
+import { pulledOpenItems } from "./routing/open-coord-review.service";
 import { routingPointFor } from "./routing/open-routing-points";
 import { osmRideServiceIds } from "./routing/plan-legs-engine.service";
 import { isOpenCoordOrigin } from "@shared/open-coords";
@@ -102,9 +103,10 @@ export async function loadPlanCheckInput(tripId: string): Promise<{ input: PlanC
     tripLegsShown(tripId),
   ]);
   const placeIdOf = (r: any): string | null => (r.googlePlaceId as string | null) || placeRefs.get(r.id)?.placeId || null;
-  const [openCoords, itemOpen, osmRides] = await Promise.all([
+  const [openCoords, itemOpen, pulled, osmRides] = await Promise.all([
     openCoordsForPlaceIds(items.map(placeIdOf).filter((p): p is string => !!p)),
     openCoordsForItemIds(items.map((r) => r.id)),
+    pulledOpenItems(items.map((r) => r.id)),
     osmRideServiceIds(items.map((r) => r.providerServiceId).filter((x): x is string => !!x)),
   ]);
   const openPoint = (r: (typeof items)[number]): { lat: number; lng: number } | null => {
@@ -114,6 +116,7 @@ export async function loadPlanCheckInput(tripId: string): Promise<{ input: PlanC
       lookupPlaceId: placeIdOf(r),
       open: openCoords,
       itemOpen: itemOpen.get(r.id) ?? null,
+      itemPulled: pulled.has(r.id),
       ownPoint: own && Number.isFinite(own.lat) && Number.isFinite(own.lng) ? own : null,
       factPoint: factPoints.get(r.id) ?? null,
       osmRide: !!r.providerServiceId && osmRides.has(r.providerServiceId),
