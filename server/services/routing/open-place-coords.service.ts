@@ -123,6 +123,14 @@ export async function recordOpenCoordForItem(input: OpenCoordForItemInput): Prom
   return { written: inserted.length > 0 || linked.length > 0, rowInserted: inserted.length > 0, linked: linked.length > 0 };
 }
 
+/** LG-2 Ask 7: which of the given hand-picked point ids ('admin:<type>/<id>') are already entered. Read-only. */
+export async function enteredAdminPointIds(ids: readonly string[]): Promise<Set<string>> {
+  const list = Array.from(new Set(ids.filter(Boolean)));
+  if (list.length === 0) return new Set();
+  const rows = await db.select({ id: openPlaceCoords.id }).from(openPlaceCoords).where(inArray(openPlaceCoords.id, list));
+  return new Set(rows.map((r) => r.id));
+}
+
 /** The items (of those given) that already have an open coordinate link — the batch skips them, so a re-run resumes. */
 export async function itemsWithOpenCoord(itemIds: readonly string[]): Promise<Set<string>> {
   const ids = Array.from(new Set(itemIds.filter(Boolean)));

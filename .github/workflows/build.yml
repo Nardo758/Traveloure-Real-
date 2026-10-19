@@ -1480,6 +1480,11 @@ jobs:
       - if: ${{ !cancelled() }}
         name: LG-2 classifier and meeting-point pins
         run: npx tsx --test server/services/__tests__/lg2-classifier-meeting.test.ts
+      # LG-2 Ask 7: the reviewed points sheet (credit line kept, approved rows only, Hanamikoji never, paths at their
+      # start) and the exact name-attach plan. Pure, synthetic coordinates.
+      - if: ${{ !cancelled() }}
+        name: LG-2 admin OSM points dry-run pins
+        run: npx tsx --test shared/__tests__/admin-osm-points.test.ts
       # EV PR 0: the SerpAPI `google_maps` path (calls, the `serp_cache` write and every cache read) is off
       # unless SERPAPI_GOOGLE_MAPS_ENABLED=1. Fake fetch, db methods replaced; no database is reached.
       - if: ${{ !cancelled() }}
