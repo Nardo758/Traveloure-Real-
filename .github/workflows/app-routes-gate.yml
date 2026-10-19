@@ -207,6 +207,10 @@ jobs:
           # Test-only: allow the plain-http localhost session cookie to be set
           # so globalSetup's ci-* logins yield reusable sessions. NEVER in prod.
           SESSION_COOKIE_INSECURE: '1'
+          # The route sweep above makes hundreds of /api reads from localhost inside a minute; the
+          # deprecated-redirect check that follows then read /api/traveler-doors as 429 and was sent
+          # home from /optimize. Loopback is exempt here as it already is in this workflow's other job.
+          RATE_LIMIT_LOOPBACK_SKIP: '1'
           PGUSER: postgres
           PGPASSWORD: postgres
           PGHOST: localhost
