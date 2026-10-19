@@ -18,7 +18,9 @@ import { admitFeasibilityFact } from "../feasibility-facts";
 
 const row = (over: Record<string, unknown> = {}) => ({
   id: "keihan", active: true, licenseClass: "official", termsCheckedAt: "2026-10-10T00:00:00Z",
-  refreshIntervalDays: 30, costCeilingCentsPerDay: 25, adapter: "tavily_extract", ...over,
+  refreshIntervalDays: 30, costCeilingCentsPerDay: 25, adapter: "tavily_extract",
+  // CS-1 item 1 (ledger `2026-10-18-cs1-source-signoff`): approved and auto-fetchable.
+  signoffStatus: "approved", termsClass: "extract", automatedAccessAllowed: true, ...over,
 });
 
 test("OR1 — eligibility, each refusal by name", () => {

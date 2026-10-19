@@ -267,6 +267,7 @@ import { trackAnthropicResponse } from "../services/ai-cost-tracker";
 import { sanitizeInput } from "../utils/sanitize";
 import { scrubTravelpayoutsToken } from "../services/travelpayouts/travelpayouts-client";
 import { affiliateProductNotPausedWhere, contentRegistryNotPausedWhere } from "../services/partner-pause.service";
+import { visibleListingImage } from "../services/place-photo-blocks.service";
 
 const router = Router();
 
@@ -2708,7 +2709,8 @@ router.get("/api/services/:id", async (req, res) => {
               serviceName: r.serviceName!,
               shortDescription: r.shortDescription,
               deliveryMethod: r.deliveryMethod,
-              serviceImage: r.serviceImage,
+              // CS-1 item 1: no cover photo of a place under a no_photos block.
+              serviceImage: visibleListingImage({ serviceName: r.serviceName, city: (service as any).city ?? null, serviceImage: r.serviceImage }),
             }
           : {
               available: false as const,

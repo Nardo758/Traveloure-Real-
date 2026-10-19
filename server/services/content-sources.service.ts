@@ -30,6 +30,7 @@ import { db } from "../db";
 import { contentSources } from "@shared/schema";
 import { LICENSE_CLASSES, SOURCE_ADAPTERS, admitNeedList, canActivateSource } from "@shared/content-facts";
 import { mayActivateContentSource } from "../config/content-sources.config";
+import { SIGNOFF_BOUND_FIELDS, SIGNOFF_DECISIONS, TERMS_CLASSES, adapterForTermsClass, isReadingClass, signoffAllowsActivation } from "@shared/source-signoff";
 
 export class ContentSourceError extends Error {
   constructor(public readonly code: string, public readonly status: number, public readonly details?: Record<string, unknown>) {
@@ -53,6 +54,10 @@ const editable = {
   refreshIntervalDays: z.number().int().min(1).max(3650).nullable(),
   costCeilingCentsPerDay: z.number().int().min(0).max(10_000_000).nullable(),
   notes: z.string().max(4000).nullable(),
+  // CS-1 item 1 (migration 395, held): what the site's terms allow, and the credit it asks for.
+  termsClass: z.enum(TERMS_CLASSES).nullable(),
+  automatedAccessAllowed: z.boolean().nullable(),
+  creditText: z.string().trim().max(500).nullable(),
 };
 
 /** Create: `.strict()` — a create naming a terms or activation field is refused, not trimmed. */
@@ -70,6 +75,9 @@ export const createContentSourceBody = z.object({
   refreshIntervalDays: editable.refreshIntervalDays.optional(),
   costCeilingCentsPerDay: editable.costCeilingCentsPerDay.optional(),
   notes: editable.notes.optional(),
+  termsClass: editable.termsClass.optional(),
+  automatedAccessAllowed: editable.automatedAccessAllowed.optional(),
+  creditText: editable.creditText.optional(),
 }).strict();
 
 /** Edit: zod's default STRIP — terms/activation/identity fields are dropped, never written. */
@@ -86,10 +94,16 @@ export const editContentSourceBody = z.object({
   refreshIntervalDays: editable.refreshIntervalDays.optional(),
   costCeilingCentsPerDay: editable.costCeilingCentsPerDay.optional(),
   notes: editable.notes.optional(),
+  termsClass: editable.termsClass.optional(),
+  automatedAccessAllowed: editable.automatedAccessAllowed.optional(),
+  creditText: editable.creditText.optional(),
 });
 
-/** The fields a terms check vouches for: changing one clears the check and deactivates. */
-export const TERMS_BOUND_FIELDS = ["homepage", "termsUrl", "licenseClass", "adapter"] as const;
+/**
+ * The fields a terms check and a sign-off vouch for: changing one clears the check, returns the sign-off to pending and
+ * deactivates (CS-1 item 1 added the terms class and the automated-access answer).
+ */
+export const TERMS_BOUND_FIELDS = SIGNOFF_BOUND_FIELDS;
 
 function admitNeeds(field: "covers" | "doesNotCover", v: string[] | undefined): string[] | undefined {
   if (v === undefined) return undefined;
@@ -121,7 +135,8 @@ export async function createContentSource(body: unknown, actorId: string): Promi
       name: b.name,
       homepage: b.homepage ?? null,
       market: b.market ?? null,
-      adapter: b.adapter,
+      // Ruling 1 (Oct 18, 2026): a link-out source is never read, so its adapter is `manual` whatever was sent.
+      adapter: adapterForTermsClass(b.termsClass, b.adapter),
       covers,
       doesNotCover,
       licenseClass: b.licenseClass,
@@ -134,6 +149,13 @@ export async function createContentSource(body: unknown, actorId: string): Promi
       active: false,
       addedBy: actorId,
       notes: b.notes ?? null,
+      termsClass: b.termsClass ?? null,
+      automatedAccessAllowed: b.automatedAccessAllowed ?? null,
+      creditText: b.creditText ?? null,
+      // Born pending: no sign-off exists until the approver records one.
+      signoffStatus: null,
+      signoffBy: null,
+      signoffAt: null,
     })
     .onConflictDoNothing({ target: contentSources.id })
     .returning();
@@ -155,6 +177,10 @@ export async function editContentSource(id: string, body: unknown): Promise<Cont
     for (const [k, v] of Object.entries(b)) if (v !== undefined) (set as any)[k] = v;
     if (covers) set.covers = covers;
     if (doesNotCover) set.doesNotCover = doesNotCover;
+    // Ruling 1: a link-out class (sent now, or already on the row) forces the adapter to `manual`.
+    const termsClass = set.termsClass !== undefined ? set.termsClass : cur.termsClass;
+    const adapter = adapterForTermsClass(termsClass, (set.adapter ?? cur.adapter) as string);
+    if (adapter !== cur.adapter || set.adapter !== undefined) set.adapter = adapter;
     const termsMoved = TERMS_BOUND_FIELDS.some((f) => f in set && (set as any)[f] !== (cur as any)[f]);
     if (termsMoved) {
       set.termsCheckedAt = null;
@@ -164,6 +190,10 @@ export async function editContentSource(id: string, body: unknown): Promise<Cont
       set.publicOk = null;
       set.publicOkCheckedAt = null;
       set.publicOkCheckedBy = null;
+      // CS-1 item 1: a sign-off covered the old terms; the source returns to pending.
+      set.signoffStatus = null;
+      set.signoffBy = null;
+      set.signoffAt = null;
     }
     if (Object.keys(set).length === 0) return cur;
     const [row] = await tx.update(contentSources).set(set).where(eq(contentSources.id, id)).returning();
@@ -182,16 +212,56 @@ export async function activateContentSource(id: string, actorId: string | null):
     .set({ active: true, termsCheckedAt: sql`now()`, termsCheckedBy: actorId })
     .where(sql`${contentSources.id} = ${id}
       AND ${contentSources.licenseClass} IN (${sql.join(LICENSE_CLASSES.map((c) => sql`${c}`), sql`, `)})
-      AND cardinality(${contentSources.covers}) > 0`)
+      AND cardinality(${contentSources.covers}) > 0
+      AND ${contentSources.signoffStatus} = 'approved'
+      AND ${contentSources.termsClass} IN ('link_out', 'link_out_no_link')`)
     .returning();
   if (row) {
-    // Belt and braces: the shared predicate agrees with the statement, or the row is reported.
-    if (!canActivateSource(row)) throw new ContentSourceError("activation_inconsistent", 500);
+    // Belt and braces: the shared predicates agree with the statement, or the row is reported.
+    if (!canActivateSource(row) || !signoffAllowsActivation(row)) throw new ContentSourceError("activation_inconsistent", 500);
     return row;
   }
   const [cur] = await db.select().from(contentSources).where(eq(contentSources.id, id));
   if (!cur) throw new ContentSourceError("not_found", 404);
+  // The A6 preconditions are reported first; the sign-off and the review gate after.
+  if (!(LICENSE_CLASSES as readonly string[]).includes(cur.licenseClass ?? "") || !(cur.covers ?? []).length) {
+    throw new ContentSourceError("not_activatable", 409, { reason: "needs a license class and at least one covered need" });
+  }
+  if (!signoffAllowsActivation(cur)) {
+    throw new ContentSourceError("not_signed_off", 409, { reason: "the source needs an approved sign-off and a terms class" });
+  }
+  // Decision-maker, Oct 18, 2026 (CS-1 ruling 5): no store/extract source activates until the review gate on its
+  // refresh output (CS-1 item 3) exists. Item 3 lifts this refusal; it never lifts the sign-off rule above.
+  if (isReadingClass(cur.termsClass)) {
+    throw new ContentSourceError("review_gate_not_built", 409, { reason: "a source that is read needs the fact review gate first" });
+  }
   throw new ContentSourceError("not_activatable", 409, { reason: "needs a license class and at least one covered need" });
+}
+
+/** The body of the sign-off rail: exactly one decision (§19 — `.strict()`). */
+export const signoffBody = z.object({ decision: z.enum(SIGNOFF_DECISIONS) }).strict();
+
+/**
+ * CS-1 item 1: the approver (the activator allowlist — Leon only) records approved or rejected, with who and when, in ONE
+ * statement. Approval needs a terms class on the row in the same statement. Rejecting also deactivates; approving
+ * activates nothing (activation is its own action). Any other admin is 403.
+ */
+export async function signoffContentSource(id: string, body: unknown, actorId: string | null): Promise<ContentSourceRow> {
+  if (!mayActivateContentSource(actorId)) throw new ContentSourceError("not_approver", 403);
+  const parsed = signoffBody.safeParse(body);
+  if (!parsed.success) throw zodFail(parsed.error);
+  const decision = parsed.data.decision;
+  const [row] = await db
+    .update(contentSources)
+    .set({ signoffStatus: decision, signoffBy: actorId, signoffAt: sql`now()`, ...(decision === "rejected" ? { active: false } : {}) })
+    .where(decision === "approved"
+      ? sql`${contentSources.id} = ${id} AND ${contentSources.termsClass} IN (${sql.join(TERMS_CLASSES.map((c) => sql`${c}`), sql`, `)})`
+      : sql`${contentSources.id} = ${id}`)
+    .returning();
+  if (row) return row;
+  const [cur] = await db.select().from(contentSources).where(eq(contentSources.id, id));
+  if (!cur) throw new ContentSourceError("not_found", 404);
+  throw new ContentSourceError("no_terms_class", 409, { reason: "set the terms class before approving" });
 }
 
 /** The body of the public_ok rail: exactly one boolean (§19 — `.strict()`, nothing else admitted). */
