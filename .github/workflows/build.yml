@@ -1472,6 +1472,11 @@ jobs:
       - if: ${{ !cancelled() }}
         name: LG-2 matcher and planner pins
         run: npx tsx --test server/services/__tests__/lg2-matcher-planner.test.ts
+      # LG-2 Asks 4+5: activity words stripped before an item is judged to name no place; two joined places looked up
+      # by the first; a private tour, arrival or check-in routes only from a chosen point or the stay. Pure.
+      - if: ${{ !cancelled() }}
+        name: LG-2 classifier and meeting-point pins
+        run: npx tsx --test server/services/__tests__/lg2-classifier-meeting.test.ts
       # EV PR 0: the SerpAPI `google_maps` path (calls, the `serp_cache` write and every cache read) is off
       # unless SERPAPI_GOOGLE_MAPS_ENABLED=1. Fake fetch, db methods replaced; no database is reached.
       - if: ${{ !cancelled() }}
