@@ -48,6 +48,15 @@ runs:
       env:
         DATABASE_URL: ${{ inputs.database-url }}
 
+    - name: Open the switched traveler doors for CI fixtures
+      # Ledger `2026-10-18-traveler-doors-hidden`: production keeps `event_concierge` and `handoff_booking` off (a
+      # missing row reads off); the specs that cover those flows need them on. The script refuses any non-local
+      # DATABASE_URL.
+      run: npx tsx scripts/ci-traveler-doors-on.ts
+      shell: bash
+      env:
+        DATABASE_URL: ${{ inputs.database-url }}
+
     - name: Create sessions table (connect-pg-simple workaround)
       # connect-pg-simple 10.0.0 table.sql uses WITH (OIDS=FALSE) which is
       # incompatible with Postgres 12+. Pre-create the table here so that

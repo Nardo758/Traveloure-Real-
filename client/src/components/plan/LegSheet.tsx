@@ -28,6 +28,7 @@ import {
 } from "@/lib/leg-sheet";
 import { routedLegLine } from "@shared/routing-engine";
 import type { LegOptionView } from "@shared/leg-options";
+import { useTravelerDoors } from "@/hooks/use-traveler-doors";
 
 export interface LegSheetProps {
   open: boolean;
@@ -53,6 +54,7 @@ export function LegSheet(props: LegSheetProps) {
   const [asked, setAsked] = useState<{ options: LegOptionView[]; paused: boolean } | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   const actions = legSheetActions({ canEditItems: props.canEditItems, isOwner: props.isOwner, hostPickupConfirmed: props.hostPickupConfirmed === true });
+  const { handoffBooking } = useTravelerDoors();
 
   const ask = useMutation({
     mutationFn: async () => (await apiRequest("POST", `/api/trips/${tripId}/transport-legs/${legId}/options`)).json(),
@@ -109,10 +111,15 @@ export function LegSheet(props: LegSheetProps) {
           paused={asked?.paused === true}
           unavailable={unavailable}
           findDriverHref={servicesBrowseHref("private_transportation", tripId)}
-          onBookForMe={() => {
-            props.onOpenChange(false);
-            openHandoffChooser({ kind: "book", itemIds: legHandoffItemIds(props.fromId, props.toId) });
-          }}
+          // Ledger `2026-10-18-traveler-doors-hidden`: "Book this for me" only while `handoff_booking` is on.
+          onBookForMe={
+            handoffBooking
+              ? () => {
+                  props.onOpenChange(false);
+                  openHandoffChooser({ kind: "book", itemIds: legHandoffItemIds(props.fromId, props.toId) });
+                }
+              : null
+          }
         />
       </SheetContent>
     </Sheet>
@@ -131,7 +138,8 @@ export function LegSheetBody(props: {
   paused: boolean;
   unavailable: boolean;
   findDriverHref: string;
-  onBookForMe: () => void;
+  /** Absent or null ⇒ no "Book this for me" (the `handoff_booking` switch is off). */
+  onBookForMe?: (() => void) | null;
 }) {
   const { legId, options } = props;
   return (
@@ -178,14 +186,16 @@ export function LegSheetBody(props: {
               Find a driver
             </Link>
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={props.onBookForMe}
-            data-testid={`leg-sheet-book-for-me-${legId}`}
-          >
-            Book this for me
-          </Button>
+          {props.onBookForMe ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={props.onBookForMe}
+              data-testid={`leg-sheet-book-for-me-${legId}`}
+            >
+              Book this for me
+            </Button>
+          ) : null}
         </div>
       ) : null}
     </div>
