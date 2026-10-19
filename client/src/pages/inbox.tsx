@@ -58,6 +58,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Loader2 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatDistanceToNow } from "date-fns";
+import { useExpertAvailability } from "@/lib/expert-availability";
 import {
   Inbox as InboxIcon,
   MessageSquare,
@@ -80,6 +81,9 @@ import {
 
 function MessagesTab() {
   const { threads, isLoading } = useConversationThreads();
+  // SH-1 item 11 (Q11.3): the empty state's "Browse experts" names no city — it draws only when any
+  // live market has an expert to ask.
+  const anyExpertAvailable = useExpertAvailability("any");
   const [reportDialogOpen, setReportDialogOpen] = useState(false);
   const [reportTargetId, setReportTargetId] = useState<string | null>(null);
   const [reportTargetName, setReportTargetName] = useState<string>("");
@@ -122,9 +126,11 @@ function MessagesTab() {
           <p className="text-sm text-muted-foreground mb-4">
             Messages you exchange with an expert will show up here.
           </p>
-          <Button variant="outline" asChild data-testid="button-empty-browse-experts">
-            <Link href="/chat">Browse experts</Link>
-          </Button>
+          {anyExpertAvailable && (
+            <Button variant="outline" asChild data-testid="button-empty-browse-experts">
+              <Link href="/chat">Browse experts</Link>
+            </Button>
+          )}
         </CardContent>
       </Card>
     );
