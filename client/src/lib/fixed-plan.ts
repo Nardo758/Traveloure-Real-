@@ -81,3 +81,28 @@ export function fixedDayState(view: FixedPlanView | null | undefined, day: numbe
   if (!view || day == null) return null;
   return view.days.find((d) => d.day === day)?.state ?? null;
 }
+
+/**
+ * FB-1 step 4b (ledger `2026-10-19-fb1-free-retime`): a free plan's retime fix on tap. "Move Temple to 9:00 AM" — the
+ * stop's own title and the server's new time. The confirm step shows the same counts line (`fixedDayResultLine`).
+ */
+export function freeRetimeButton(title: string, time: string): string {
+  return `Move ${title} to ${time}`;
+}
+export interface FreeRetimeMove {
+  itemId: string;
+  title: string;
+  fromMin: number;
+  toMin: number;
+  endMin: number;
+}
+export interface FreeRetimeFix {
+  itemId: string;
+  title: string;
+  day: number;
+  moves: FreeRetimeMove[];
+}
+/** The counts line for a free fix: every stop it moves is "moved"; it adds and removes nothing. */
+export function freeRetimeResultLine(fix: Pick<FreeRetimeFix, "day" | "moves">): string | null {
+  return fixedDayResultLine({ day: fix.day, moved: fix.moves.length, added: 0, removed: 0 });
+}

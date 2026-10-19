@@ -25,6 +25,8 @@ import {
   openPathDays,
   paceOver,
   pathNotChecked,
+  legNotChecked,
+  legNotCheckedDays,
   timedEntryConflicts,
   visitEndMinutes,
   walkingSavedKm,
@@ -36,7 +38,7 @@ import {
   type RideCheck,
 } from "./optimizer-lead";
 import { legUnreachableFinding, unreachableStops, wallClockMinutes } from "./leg-reachability";
-import { hoursFactForDate, lastAdmissionMinutes, lastServiceMinutes, parseLastAdmission, parseLastService, SERVICE_DAY_START_MIN } from "./feasibility-facts";
+import { closedOnDate, hoursFactForDate, lastAdmissionMinutes, lastServiceMinutes, parseClosedDates, parseLastAdmission, parseLastService, SERVICE_DAY_START_MIN } from "./feasibility-facts";
 import { isRideMode } from "./plan-feasibility";
 import { haversineMeters } from "./geo";
 import { ROUTED_WALK_MAX_METERS, defaultRoutedMode } from "./routing-engine";
@@ -103,6 +105,8 @@ export interface PlanCheckInput {
   hours: ReadonlyMap<string, readonly PlanCheckHours[]>;
   /** Every admitted last-admission fact per stop, in precedence order. */
   lastAdmission: ReadonlyMap<string, readonly PlanCheckLastAdmission[]>;
+  /** FB-1 step 5b: every admitted `closed_dates` fact per stop, in precedence order; absent ⇒ none stored. */
+  closedDates?: ReadonlyMap<string, readonly PlanCheckLastAdmission[]>;
   /** The market's official last departures, each at its station's point. */
   lastServices: readonly PlanCheckLastService[];
   anchors: readonly AnchorWindow[];
@@ -137,6 +141,8 @@ export interface FeasibilityView {
   hours: Map<string, PlanCheckHours>;
   /** The last-entry minute that applies on each stop's date, with the fact it came from. */
   lastEntry: Map<string, { minute: number; fact: PlanCheckLastAdmission }>;
+  /** FB-1 step 5b: the stops whose own date a stored `closed_dates` fact names, with the first such fact. */
+  closedOn: Map<string, PlanCheckLastAdmission>;
   rides: CheckedRide[];
 }
 
@@ -158,7 +164,7 @@ function lastEntryFor(candidates: readonly PlanCheckLastAdmission[], dateIso: st
 
 /**
  * Pure. The ONE assembly of the feasibility inputs (§18 rule 1): the findings, the day line and a stop's hours read the
- * same hours, last entries and rides. A ride is derived between two consecutive LOCATED stops of a day — located = an
+ * same hours, last entries and rides. A ride is derived between two ADJACENT stops of a day that are both LOCATED — located = an
  * OPEN point (FB-1 step 2); a leg the plan shows for the pair wins with its own mode, else the engine's default-mode
  * rule. It departs when the stop it leaves ends; no end ⇒ unchecked.
  */
@@ -175,7 +181,15 @@ export function feasibilityView(input: PlanCheckInput): FeasibilityView {
   }));
   const hours = new Map<string, PlanCheckHours>();
   const lastEntry = new Map<string, { minute: number; fact: PlanCheckLastAdmission }>();
+  const closedOn = new Map<string, PlanCheckLastAdmission>();
   for (const it of timed) {
+    if (it.dateIso) {
+      const closed = (input.closedDates?.get(it.id) ?? []).find((c) => {
+        const v = parseClosedDates(c.value);
+        return v !== null && closedOnDate(v, it.dateIso!);
+      });
+      if (closed) closedOn.set(it.id, closed);
+    }
     const h = hoursFactForDate(input.hours.get(it.id) ?? [], it.dateIso);
     if (h) hours.set(it.id, h);
     const m = it.dateIso ? lastEntryFor(input.lastAdmission.get(it.id) ?? [], it.dateIso) : null;
@@ -192,10 +206,12 @@ export function feasibilityView(input: PlanCheckInput): FeasibilityView {
   const byDay = new Map<number, PlanCheckStop[]>();
   for (const r of input.stops) byDay.set(r.dayNumber, [...(byDay.get(r.dayNumber) ?? []), r]);
   byDay.forEach((list, dayNumber) => {
-    const located = list.filter((r): r is PlanCheckStop & { point: { lat: number; lng: number } } => r.point !== null);
-    for (let i = 0; i + 1 < located.length; i++) {
-      const a = located[i];
-      const b = located[i + 1];
+    // LG-2 Ask 6: a ride is derived between ADJACENT stops only, both with an open point — never across a stop with none.
+    const hasPoint = (r: PlanCheckStop): r is PlanCheckStop & { point: { lat: number; lng: number } } => r.point !== null;
+    for (let i = 0; i + 1 < list.length; i++) {
+      const a = list[i];
+      const b = list[i + 1];
+      if (!hasPoint(a) || !hasPoint(b)) continue;
       const key = `${dayNumber}|${a.id}|${b.id}`;
       const inferred = !shownMode.has(key);
       const mode = inferred ? defaultRoutedMode(a.point, b.point, input.transitCoverage) : shownMode.get(key) ?? null;
@@ -225,7 +241,7 @@ export function feasibilityView(input: PlanCheckInput): FeasibilityView {
       });
     }
   });
-  return { timed, hours, lastEntry, rides };
+  return { timed, hours, lastEntry, closedOn, rides };
 }
 
 // ── issues ─────────────────────────────────────────────────────────────────────────────────────
@@ -235,6 +251,7 @@ export type PlanIssueWhy =
   | "before_opening"
   | "after_closing"
   | "closed_day"
+  | "closed_date"
   | "closes_early"
   | "after_last_entry"
   | "leg_too_long"
@@ -256,7 +273,7 @@ export interface PlanIssueSource {
  * ONE suggested fix — an instruction a version can carry out (step 3), never a write. Minutes are the plan's own
  * wall-clock minutes on the stop's day (a time after midnight is past 24:00).
  *   retime               start the stop no earlier than `notBeforeMin` and/or no later than `notAfterMin`
- *   move_day             the stop cannot happen on this day (a closed day) — another day of the plan
+ *   move_day             the stop cannot happen on this day (a closed weekday, or a closed date) — another day of the plan
  *   move_clear_of_anchor keep the stop clear of the anchor's window
  *   reorder_day          re-sequence the day's stops (a path finding — no stop named)
  *   lighten_day          move a stop off the day (pace)
@@ -301,6 +318,31 @@ function visitLength(t: TimedStop | undefined): number | null {
 }
 
 /**
+ * FB-1 step 5b (ledger `2026-10-19-fb1-closed-dates`): a stop on a date a stored `closed_dates` fact names is counted
+ * in `closed_on_arrival` with reason `closed_date` (fix `move_day`), whether or not it states a time. It replaces any
+ * hours reason for that stop — a closed place has no opening time to start by. Pure.
+ */
+function withClosedDates(hoursFinding: Finding | null, ctx: FeasibilityView): Finding | null {
+  if (!ctx.closedOn.size) return hoursFinding;
+  const closed: NonNullable<Finding["stops"]> = ctx.timed
+    .filter((t) => ctx.closedOn.has(t.id) && t.dateIso)
+    .map((t) => {
+      const at = wallClockMinutes(t.startTime);
+      return { itemId: t.id, title: t.title ?? "This stop", day: t.dayNumber, reason: "closed_date" as const, dateIso: t.dateIso!, ...(at !== null ? { startMin: at } : {}) };
+    });
+  const rest = (hoursFinding?.stops ?? []).filter((s) => !ctx.closedOn.has(s.itemId));
+  const stops = [...closed, ...rest].sort((a, b) => a.day - b.day);
+  const days = Array.from(new Set(stops.map((s) => s.day))).sort((x, y) => x - y);
+  return {
+    kind: "closed_on_arrival",
+    count: stops.length,
+    days,
+    stops,
+    ...(rest.length && hoursFinding?.caveat ? { caveat: hoursFinding.caveat } : {}),
+  };
+}
+
+/**
  * Pure. THE PLAN CHECK. Findings are the existing rules over the same inputs the trip loader used to read itself;
  * `findings` is exactly what the free preview returned before the split (the parity test pins it).
  */
@@ -327,7 +369,7 @@ export function checkPlan(input: PlanCheckInput): PlanCheckResult {
 
   const found = [
     legUnreachableFinding(reach.unreachable),
-    closedOnArrival(ctx.timed, hoursFacts, start),
+    withClosedDates(closedOnArrival(ctx.timed, hoursFacts, start), ctx),
     afterLastAdmission(ctx.timed, lastMinute),
     closesBeforeVisitEnd(ctx.timed, hoursFacts, start),
     lastServiceMissed(ctx.rides.filter((r) => r.lastDepartures.length > 0)),
@@ -353,18 +395,18 @@ export function checkPlan(input: PlanCheckInput): PlanCheckResult {
           const hours = ctx.hours.get(s.itemId);
           const why = (s.reason ?? "after_closing") as PlanIssueWhy;
           let fix: PlanFix;
-          if (why === "closed_day") fix = { action: "move_day", itemId: s.itemId, day: s.day };
+          if (why === "closed_day" || why === "closed_date") fix = { action: "move_day", itemId: s.itemId, day: s.day };
           else if (why === "before_opening") fix = { action: "retime", itemId: s.itemId, day: s.day, notBeforeMin: s.atMin! };
           else if (why === "after_last_entry") fix = { action: "retime", itemId: s.itemId, day: s.day, notAfterMin: s.atMin! };
           // after_closing / closes_early: start early enough to finish by the close (by the close, when no length is stated).
           else fix = { action: "retime", itemId: s.itemId, day: s.day, notAfterMin: s.atMin! - (len ?? 0) };
-          const fact: FactProvenance | undefined = why === "after_last_entry" ? lastEntry?.fact : hours;
+          const fact: FactProvenance | undefined = why === "after_last_entry" ? lastEntry?.fact : why === "closed_date" ? ctx.closedOn.get(s.itemId) : hours;
           issues.push({
             type: f.kind,
             day: s.day,
             stop: { itemId: s.itemId, title: s.title },
             why,
-            source: why === "after_last_entry" ? { kind: "official_fact", url: fact?.sourceUrl ?? null, provenance: fact?.provenance ?? null } : hoursSource(hours),
+            source: why === "after_last_entry" || why === "closed_date" ? { kind: "official_fact", url: fact?.sourceUrl ?? null, provenance: fact?.provenance ?? null } : hoursSource(hours),
             checkedAt: fact?.checkedAt ?? null,
             fix,
           });
@@ -440,5 +482,8 @@ export function checkPlan(input: PlanCheckInput): PlanCheckResult {
     }
   }
 
-  return { findings: leadFindings(found), allFindings, issues, notChecked: pathNotChecked(notCheckedDays) };
+  // LG-2 Ask 6: a day with a leg that has no travel time (an adjacent stop with no open point) is not checked for
+  // reachability — it never reads as a pass.
+  const legDays = legNotCheckedDays(input.stops.map((r) => ({ dayNumber: r.dayNumber, open: r.point })));
+  return { findings: leadFindings(found), allFindings, issues, notChecked: [...pathNotChecked(notCheckedDays), ...legNotChecked(legDays)] };
 }

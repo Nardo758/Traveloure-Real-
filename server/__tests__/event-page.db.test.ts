@@ -100,7 +100,7 @@ before(async () => {
   const base = { placeRefKind: "event_id", placeRef: ids.main, market: "kyoto", need: "stop.hours", origin: "crawled", license: "official", fetchedAt: FETCHED };
   await db.insert(placeFacts).values([
     { ...base, id: `${RUN}-hours`, factType: "hours", value: { text: "Doors open an hour before the first set." }, sourceId: SRC, sourceUrl: HOURS_URL },
-    { ...base, id: `${RUN}-nourl`, factType: "closure", value: { text: `NOURL-${RUN}` }, sourceId: SRC, sourceUrl: null },
+    { ...base, id: `${RUN}-nourl`, factType: "closed_dates", value: { text: `NOURL-${RUN}` }, sourceId: SRC, sourceUrl: null },
     { ...base, id: `${RUN}-unans`, factType: "hours", value: { text: `UNANSWERED-${RUN}` }, sourceId: SRC_UNANSWERED, sourceUrl: `https://kyoto.example/${RUN}/u` },
   ] as any);
 });

@@ -155,7 +155,7 @@ import { slipAdvisorStandingLine, type SlipRailAdvisor } from "@/lib/slip-rail";
 // existing rails they call live in `SlipItemTools.tsx`. Nothing here restates either (§18 rule 1).
 import { SlipAddItemControl, useSlipItemActions } from "./SlipItemTools";
 import { SLIP_DELEGATE_NOTE, canEditPlanItems, slipViewer } from "@/lib/slip-viewer-role";
-import { FixedDayControl, FixedPlanBar, useFixedPlan } from "@/components/plan/FixedPlanControls";
+import { FixedDayControl, FixedPlanBar, FreeRetimeDayControl, useFixedPlan, useFreeRetimeFixes } from "@/components/plan/FixedPlanControls";
 import {
   SlipAnchorCompareButton,
   SlipOptionSetCard,
@@ -2194,6 +2194,8 @@ export function SlipView({
   const aiAction = useSlipAiAction(tripId, allActivities);
   // FB-1 step 4: "Your plan, fixed" by tap — only for a viewer with the item tools, once a run exists.
   const fixedPlan = useFixedPlan(tripId, canEditItems && !!data.lastComparisonId);
+  // FB-1 step 4b: a FREE plan's retime fixes on tap (the server answers none for a paid plan).
+  const freeFixes = useFreeRetimeFixes(tripId, canEditItems);
   // The Empty board's start renders for the OWNER of a plan with no items, in list view only.
   const emptyStartShown = isOwner && aiAction === "draft" && slipView === "list";
   // ── THE MOMENT BOARD (slip conformance; ledger `2026-10-08-slip-moment-board`) ─────────────────
@@ -2706,7 +2708,13 @@ export function SlipView({
                     />
                   ) : null
                 }
-                fixControl={fixedPlan && slot.dayNum != null ? <FixedDayControl tripId={tripId} view={fixedPlan} day={slot.dayNum} /> : null}
+                fixControl={
+                  slot.dayNum == null ? null : fixedPlan ? (
+                    <FixedDayControl tripId={tripId} view={fixedPlan} day={slot.dayNum} />
+                  ) : freeFixes.some((f) => f.day === slot.dayNum) ? (
+                    <FreeRetimeDayControl tripId={tripId} fixes={freeFixes} day={slot.dayNum} />
+                  ) : null
+                }
                 thumb={
                   slot.dayNum != null && dayPhotoItemId.get(slot.dayNum) ? (
                     <PlacePhoto photo={dayPhotos[dayPhotoItemId.get(slot.dayNum)!]} size="thumb" testId={`slip-day-thumb-${slot.dayNum}`} />
