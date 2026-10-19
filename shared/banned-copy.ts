@@ -98,3 +98,30 @@ export function dropBannedSentences(text: string | null | undefined): string {
     .join(" ")
     .trim();
 }
+
+/**
+ * FB-1 expert hook (decision-maker, Oct 18, 2026 — ledger `2026-10-18-fb1-expert-hook`): the never-say list for the
+ * copy WE write on a surface (the hook's lines and button). Every phrase above, plus "coming soon", and no transit-time,
+ * live-checking, offline or app claim. A surface's strings are tested against `containsNeverSayCopy`; generated item
+ * text keeps the narrower rules above (a title may well name a place's opening hours or a train).
+ */
+const NEVER_SAY_EXTRA: readonly RegExp[] = [
+  /\bcoming\s+soon\b/i,
+  // Transit-time claims: a number of minutes or hours, or "N min away / walk / drive / ride".
+  /\b\d+\s*(?:min|mins|minutes?|hrs?|hours?)\b/i,
+  /\b(?:minutes?|hours?)\s+(?:away|walk|drive|ride|by\s+train)\b/i,
+  // Live checking.
+  /\blive\b/i,
+  /\breal[\s-]?time\b/i,
+  /\bchecked\s+(?:just\s+now|today|right\s+now)\b/i,
+  /\bup[\s-]to[\s-]the[\s-]minute\b/i,
+  // Offline and app claims.
+  /\boffline\b/i,
+  /\bapps?\b/i,
+  /\bdownload\b/i,
+];
+
+export function containsNeverSayCopy(text: string | null | undefined): boolean {
+  const t = String(text ?? "");
+  return containsBannedCopy(t) || NEVER_SAY_EXTRA.some((r) => r.test(t));
+}
