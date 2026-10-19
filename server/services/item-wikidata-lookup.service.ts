@@ -38,7 +38,7 @@ export interface WikidataCandidate {
 export type WikidataOutcome =
   | { kind: "resolved"; qid: string; label: string; lat: number; lng: number; matches: number }
   | { kind: "ambiguous"; spreadM: number; candidates: WikidataCandidate[] }
-  | { kind: "unresolved"; reason: "no_place_phrase" | "no_named_tokens" | "area_title" | "no_results" | "no_match" }
+  | { kind: "unresolved"; reason: "no_place_phrase" | "no_named_tokens" | "area_title" | "meeting_or_stay" | "no_results" | "no_match" }
   | { kind: "unreachable" };
 
 type FetchLike = (url: string, init: { headers: Record<string, string>; signal?: AbortSignal }) => Promise<{
