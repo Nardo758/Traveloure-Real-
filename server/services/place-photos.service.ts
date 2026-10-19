@@ -22,6 +22,7 @@ import {
   type PhotoView,
 } from "@shared/place-photos";
 import { PLACE_PHOTO_ENDPOINT, googlePhotoLive } from "./place-photos-google";
+import { blockFor, photoBlocks } from "./place-photo-blocks.service";
 import {
   WIKIMEDIA_USER_AGENT,
   placePhotosCostCents,
@@ -131,6 +132,13 @@ export { photoCacheKey };
 /** Resolve photos for several places at once (sequential — Commons asks for politeness). */
 export async function photosFor(places: Array<{ id: string } & PhotoPlace>, deps: PhotoResolveDeps = defaultPhotoDeps): Promise<Record<string, PhotoView | null>> {
   const out: Record<string, PhotoView | null> = {};
-  for (const p of places) out[p.id] = await resolvePlacePhoto(p, deps);
+  // CS-1 item 1: a place under a no_photos block shows no photo at all — not ours, not Commons, not Google — and
+  // nothing is resolved (or cached) for it. A block list that cannot be read hides nothing it does not know about;
+  // the read fails rather than guessing (§13).
+  const blocks = await photoBlocks();
+  for (const p of places) {
+    const blocked = blockFor(blocks, { placeIds: [p.placeId, p.itemPlaceId], names: [p.name, ...(p.otherNames ?? [])], city: p.city ?? null });
+    out[p.id] = blocked ? null : await resolvePlacePhoto(p, deps);
+  }
   return out;
 }

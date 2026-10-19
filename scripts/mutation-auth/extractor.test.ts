@@ -290,6 +290,8 @@ test("resolves named re-exports used by authentication registration helpers", ()
  * 709 / 701 → 710 / 702 (ledger `2026-10-19-fb1-free-retime`): POST /api/trips/:tripId/retime-fixes/:itemId/apply —
  * a free plan's retime fix on tap; `.strict()` { preview? } body, the owner/delegate gate (planRole "choose") in the
  * service before any read or write (one 404), the moves recomputed server-side.
+ * 710 / 702 → 712 / 704 (ledger `2026-10-18-cs1-source-signoff`): POST /api/admin/content-sources/:id/signoff (the
+ * approver's sign-off) and POST /api/admin/place-photo-blocks (the approver adds a no_photos block) — both admin, both new.
  *
  * THE COUNTS ARE THE POINT: they exist so a route appearing or vanishing from
  * the mounted graph fails here. Now that the file is wired into CI, changing a
@@ -298,8 +300,8 @@ test("resolves named re-exports used by authentication registration helpers", ()
 test("current mounted graph parity includes auth helpers and shared api paths", () => {
   const root = process.cwd();
   const result = extractMountedMutations(path.join(root, "server/routes.ts"), root);
-  assert.equal(result.mutations.length, 711);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 703);
+  assert.equal(result.mutations.length, 713);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 705);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -309,12 +311,13 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "generated/security/mutation-auth-manifest.json"), "utf8"));
   const markdown = fs.readFileSync(path.join(root, "generated/security/mutation-auth-inventory.md"), "utf8");
   const endpointRows = markdown.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| ---")).slice(1);
-  assert.equal(endpointRows.length, 703);
+  assert.equal(endpointRows.length, 705);
   // 709 / 701 (ledger `2026-10-18-fd4-share-projection`): the shadowed quick-start twin is deleted; unique paths stay 701.
   // 710 / 702 (ledger `2026-10-19-fb1-free-retime`): + POST /api/trips/:tripId/retime-fixes/:itemId/apply.
-  // 711 / 703 (ledger `2026-10-19-sh1-test-flag`): + PATCH /api/admin/users/:id/test-flag.
-  assert.equal(manifest.rawRegistrationCount, 711);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 703);
+  // 712 / 704 (ledger `2026-10-18-cs1-source-signoff`): the sign-off and photo-block POSTs.
+  // 713 / 705 (ledger `2026-10-19-sh1-test-flag`): + PATCH /api/admin/users/:id/test-flag.
+  assert.equal(manifest.rawRegistrationCount, 713);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 705);
   // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R274): user-data,
   // session-self; the owner/delegate check runs in the service before any write.
   // + POST /api/admin/content-sources/:id/public-ok (ledger `2026-10-03-official-facts-public-ok`, R278):
@@ -355,7 +358,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // + POST /api/viator/live/click (VD-1): other, session-self — isAuthenticated, the user from the session.
   // + POST /api/trips/:tripId/retime-fixes/:itemId/apply (FB-1 step 4b): user-data, session-self; the owner/delegate
   // check (planRole "choose") runs in the service before any write.
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 183, "user-data": 246, other: 243 }); // admin +1: SH-1 test-flag
+  // admin 182 → 184 (ledger `2026-10-18-cs1-source-signoff`): the sign-off and photo-block POSTs are both admin; +1 SH-1 test-flag.
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 185, "user-data": 246, other: 243 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
@@ -388,7 +392,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // + POST /api/viator/live/click (VD-1): session-self 360 → 361.
   // + POST /api/trips/:tripId/retime-fixes/:itemId/apply (FB-1 step 4b): session-self 361 → 362.
   assert.deepEqual(manifest.boundaryTotals, {
-    "admin-role": 183, "session-self": 362, "resource-owner": 102,
+  // admin-role 182 → 184 (ledger `2026-10-18-cs1-source-signoff`): the same two admin POSTs; +1 SH-1 test-flag.
+    "admin-role": 185, "session-self": 362, "resource-owner": 102,
     signature: 6, "public-or-system": 50, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [

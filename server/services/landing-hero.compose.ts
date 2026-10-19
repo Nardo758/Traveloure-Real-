@@ -115,6 +115,9 @@ export function composeLandingHero(input: {
     vendorPhoto?: unknown;
   }>;
   wanted: Array<{ title: string; city: string }> | null;
+  /** CS-1 item 1: the route answers "is this listing's place under a no_photos block?" (the block list is a db
+   *  read, and this file imports none). Absent ⇒ nothing is blocked. */
+  servicePhotoBlocked?: (subject: { serviceName: string | null; city: string | null }) => boolean;
 }): LandingHeroPayload {
   const { topCity } = input;
   const gemRow = input.gems.find((g) => (g?.placeName ?? "").toString().trim().length > 0) ?? null;
@@ -147,7 +150,11 @@ export function composeLandingHero(input: {
       : typeof svcRow?.vendorPhoto === "string"
         ? svcRow.vendorPhoto.trim()
         : "";
-  if (payload.service && serviceImageUrl) payload.service.imageUrl = serviceImageUrl;
+  // CS-1 item 1: no photo of a place under a no_photos block (the listing's cover or the provider's photo).
+  const serviceBlocked = svcRow && input.servicePhotoBlocked
+    ? input.servicePhotoBlocked({ serviceName: svcRow.serviceName ?? null, city: topCity?.cityName ?? null })
+    : false;
+  if (payload.service && serviceImageUrl && !serviceBlocked) payload.service.imageUrl = serviceImageUrl;
 
   return payload;
 }

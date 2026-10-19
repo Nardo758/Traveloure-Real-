@@ -54,6 +54,7 @@ import { directoryCardListings, type DirectoryListingFacts } from "../services/p
 import { loadEarnerRatings, summarizeApprovedRatings } from "../services/earner-rating.service";
 import { updateUserPreferences } from "../services/user-preferences-writer";
 import { injectIntoHead } from "../utils/html-head";
+import { hideBlockedListingImages, visibleListingImage } from "../services/place-photo-blocks.service";
 
 const router = Router();
 
@@ -683,7 +684,8 @@ async function loadStorefrontFromOwner(
   // of a room still counts toward the storefront's reviews exactly as before.
   const services = publicListingRows
     .filter((row) => !row.parentServiceId)
-    .map(({ parentServiceId: _parent, ...row }) => row);
+    // CS-1 item 1: no cover photo of a place under a no_photos block.
+    .map(({ parentServiceId: _parent, ...row }) => hideBlockedListingImages(row));
 
   // C3 (ruling 74/75): resolve each service's booking mode server-side, so the traveler card
   // always receives a CONCRETE value. This is THE ONE derivation site shared by both card reads
@@ -1394,6 +1396,8 @@ router.get("/services/:id", async (req, res, next) => {
         description: providerServices.description,
         price: providerServices.price,
         serviceImage: providerServices.serviceImage,
+        city: providerServices.city,
+        location: providerServices.location,
       })
       .from(providerServices)
       .where(
@@ -1413,6 +1417,8 @@ router.get("/services/:id", async (req, res, next) => {
       `Book ${service.serviceName} on Traveloure — secure checkout, verified reviews.`;
     const shareUrl = `https://traveloure.com/services/${service.id}`;
     // Managed covers are stored as `covers:${key}` — resolve to the absolute proxy URL.
+    // CS-1 item 1: a blocked place's cover is never the share image.
+    if (visibleListingImage(service) === null) service.serviceImage = null;
     const resolvedServiceImage = service.serviceImage?.startsWith("covers:")
       ? `${req.protocol}://${req.get("host")}/api/services/${service.id}/cover-image`
       : service.serviceImage;

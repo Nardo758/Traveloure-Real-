@@ -2097,6 +2097,13 @@ export const MIGRATION_FILES = [
   // EV-P0 PR 3: data only — re-tags official last-entry / last-train expert rows that 362 tagged local to
   // public + link_only, what placeFactTags answers. Idempotent. Ledger 2026-10-18-fact-tags-exhaustive.
   "394_place_facts_feasibility_retag.sql",
+  // CS-1 item 1: source sign-off columns (additive, nullable) and the empty place_photo_blocks table. HELD.
+  // Ledger 2026-10-18-cs1-source-signoff. Declared in shared/schema.ts.
+  "395_source_signoff_and_photo_blocks.sql",
+  // 396 — open_place_coords gains entered_by, checked_at, point_basis, note (additive nullable, no DEFAULT/CHECK/index):
+  // who entered a hand-picked OSM point and what it is. LG-2 Ask 7, ledger 2026-10-19-lg2-admin-osm-points. Declared in
+  // shared/schema.ts.
+  "396_open_place_admin_entry.sql",
   // 397 — SH-1 item 12: users.is_test, nullable boolean, no default (NULL = not a test account by flag).
   // HELD for Leon's comment. Ledger 2026-10-19-sh1-test-flag.
   "397_users_is_test.sql",

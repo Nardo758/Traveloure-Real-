@@ -1,4 +1,5 @@
 import { toPublicListing } from "./utils/public-service-listing";
+import { hideBlockedListingImages } from "./services/place-photo-blocks.service";
 import { VIATOR_ITEM_CONTENT_TYPE } from "@shared/viator-item";
 import { db } from "./db";
 import { scrubStoredTransportOption } from "./services/transport-option-client";
@@ -2371,10 +2372,12 @@ export class DatabaseStorage implements IStorage {
   // than the raw opaque reference. Legacy external HTTP URLs pass through unchanged.
   // This is the single normalization point — never convert in individual routes.
   static normalizeServiceImage<T extends { id: string; serviceImage?: string | null }>(svc: T): T {
-    if (svc.serviceImage?.startsWith("covers:")) {
-      return { ...svc, serviceImage: `/api/services/${svc.id}/cover-image` };
+    // CS-1 item 1: a listing whose place is under a no_photos block shows no cover or gallery, on every read.
+    const visible = hideBlockedListingImages(svc as any) as T;
+    if (visible.serviceImage?.startsWith("covers:")) {
+      return { ...visible, serviceImage: `/api/services/${visible.id}/cover-image` };
     }
-    return svc;
+    return visible;
   }
 
   async getProviderServices(userId: string, filters?: { destination?: string; category?: string; activeOnly?: boolean }): Promise<ProviderService[]> {
@@ -5570,8 +5573,9 @@ export class DatabaseStorage implements IStorage {
       deliverables: ps.deliverables as any,
       cancellationPolicy: ps.cancellationPolicy ?? null,
       leadTime: ps.leadTime ?? null,
-      imageUrl: ps.serviceImage ?? null,
-      galleryImages: ps.galleryImages as any,
+      // CS-1 item 1: a blocked place's cover and gallery are hidden on this read too.
+      imageUrl: hideBlockedListingImages(ps as any).serviceImage ?? null,
+      galleryImages: hideBlockedListingImages(ps as any).galleryImages as any,
       experienceTypes: ps.experienceTypes as any,
       status: (ps.approvalStatus ?? "draft") as any,
       submittedAt: ps.submittedAt ?? null,

@@ -69,6 +69,7 @@ import { anchorTimeLabel12h } from "@shared/anchor-time";
 import { checkPlan } from "@shared/plan-check";
 import { FIXED_VERSION_NAME, fixedVersionDescriptor, isShownVariantStatus, retimeWindowsByItem, type CheckedPlan } from "@shared/version-check";
 import { gateStoredVersion, recordSequencingCheck } from "./services/version-check.service";
+import { visibleListingImage } from "./services/place-photo-blocks.service";
 
 // Anthropic is the optimizer's ONE provider (ledger `2026-09-30-retire-xai`): the Grok primary it
 // used to try first is gone, so a failure here is the real failure, reported as one.
@@ -2184,7 +2185,7 @@ async function generateUpsellSuggestions(
           title: matchingService.serviceName,
           description: matchingService.shortDescription || null,
           price: matchingService.price?.toString() || null,
-          imageUrl: matchingService.serviceImage || null,
+          imageUrl: visibleListingImage(matchingService as any) || null, // CS-1 item 1
           category: category.category,
           location: matchingService.location || null,
           rating: matchingService.averageRating?.toString() || null,

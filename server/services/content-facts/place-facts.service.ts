@@ -54,6 +54,7 @@ import { claudeService } from "../claude.service";
 import { assertRobotsAllowed } from "../../utils/robots-txt";
 import { ROBOTS_TXT_USER_AGENT_TOKEN } from "../../config/robots-txt.config";
 import { loadPartnerHosts } from "../partner-hosts.service";
+import { autoFetchAllowed, isLinkOutClass } from "@shared/source-signoff";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -100,10 +101,27 @@ export async function recordFacts(
     if (!verdict.ok) console.info(`[place-facts] refused fact_type=${d.factType} reason=${verdict.reason} plan_id=${ctx.planId ?? "none"} item_id=${ctx.itemId ?? "none"}`);
     return verdict.ok;
   });
+  if (!drafts.length) return 0;
+  // CS-1 item 1: a link-out source is never read, so no fact is ever stored from one — refused, logged.
+  const sourceIds = Array.from(new Set(drafts.map((d) => d.sourceId).filter((x): x is string => !!x)));
+  const linkOut = new Set<string>();
+  if (sourceIds.length) {
+    const srcRows = await exec.select({ id: contentSources.id, termsClass: contentSources.termsClass }).from(contentSources).where(inArray(contentSources.id, sourceIds));
+    for (const r of srcRows) if (isLinkOutClass(r.termsClass)) linkOut.add(r.id);
+  }
+  const admitted = linkOut.size
+    ? drafts.filter((d) => {
+        if (d.sourceId && linkOut.has(d.sourceId)) {
+          console.info(`[place-facts] refused fact_type=${d.factType} reason=link_out_source source_id=${d.sourceId}`);
+          return false;
+        }
+        return true;
+      })
+    : drafts;
   // FB-1 step 5b (ledger `2026-10-19-fb1-closed-dates`): a `closed_dates` fact expires at midnight, in the plan's
   // time zone (else its market's), of the day after its last closed date — whatever the writer sent. No zone ⇒ not stored.
   const kept: FactDraft[] = [];
-  for (const d of drafts) {
+  for (const d of admitted) {
     if (d.factType !== "closed_dates") { kept.push(d); continue; }
     const v = parseClosedDates(d.value);
     const zone = (ctx.planId ? await planTimeZone(ctx.planId) : null) ?? (d.market ? MARKET_TIMEZONES[d.market.toLowerCase()] ?? null : null);
@@ -917,7 +935,8 @@ export async function fetchFreshFactsForItem(input: {
   const deps: TavilyExtractDeps = { ...defaultTavilyExtractDeps(), ...(input.deps ?? {}) };
   const actorId = input.ctx.kind === "expert_action" ? input.ctx.expertUserId : input.ctx.kind === "paid_run" ? input.ctx.actorId : null;
   const runId = input.ctx.kind === "paid_run" ? input.ctx.runId : null;
-  const source = rows.find((r) => new TavilyExtractAdapter(r, deps).covers(need, input.market));
+  // CS-1 item 1: a per-plan fetch reads only an approved, reading-class source that allows automated access.
+  const source = rows.filter((r) => autoFetchAllowed(r)).find((r) => new TavilyExtractAdapter(r, deps).covers(need, input.market));
   if (!source) return { recorded: 0, outcome: "no_source_for_need", sourceId: null, refused: [] };
   const budget = await resolveFreshFetchBudget(input.ctx, source);
   if (!budget.basis) return { recorded: 0, outcome: budget.reason, sourceId: source.id, refused: [] };

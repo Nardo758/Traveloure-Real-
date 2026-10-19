@@ -165,6 +165,10 @@ jobs:
         run: npx tsx --test --test-force-exit server/__tests__/paid-run-fresh-fetch.test.ts
       - name: A6 content source registry — born inactive, edit strips terms, allowlisted activation
         run: npx tsx --test --test-force-exit server/__tests__/content-sources.db.test.ts
+      # CS-1 item 1 (ledger `2026-10-18-cs1-source-signoff`, migration 395): source sign-off, terms class
+      # (link-out forces manual), and per-place no_photos on both keys at upload and read. SB1–SB5, PB1–PB6.
+      - name: CS-1 source sign-off and per-place no_photos — approver only, link-out never read, blocks on both keys
+        run: npx tsx --test --test-force-exit server/__tests__/source-signoff-photo-blocks.db.test.ts
       # Places named-place gate (ledger `2026-09-30-places-named-gate`, production smoke test 3):
       # generic titles are never looked up, a mismatched answer is never attached, and the per-draft
       # cap reaches every day. G1–G4, fake Places API only.
