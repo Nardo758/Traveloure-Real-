@@ -14,21 +14,40 @@
  *   · in a description, a sentence carrying any banned phrase is dropped.
  */
 
-const GEISHA = /\bgeisha[\s-]+spotting\b/i;
-
-/** Removed from a title wherever they appear. Order matters: "no hidden fees" before "hidden gem". */
-const REMOVED: readonly RegExp[] = [
-  /\bno\s+hidden\s+fees?\b/gi,
-  /\bno\s+mark-?ups?\b/gi,
-  /\bhidden\s+gems?\b/gi,
-  /\bsecrets?\b/gi,
-  /\binsiders?(?:['’]s)?\b/gi,
-  /\b(?:vetted|verified|certified|licensed|authenticated)\b/gi,
+/**
+ * THE ONE LIST (§18 rule 1): each banned phrase as a person reads it (`words`, which the drafting prompts name at
+ * runtime — `bannedCopyPromptLine`) and the pattern that finds it. Order matters for removal: "no hidden fees"
+ * before "hidden gem".
+ */
+const BANNED: ReadonlyArray<{ words: string; re: RegExp; rule: "geisha" | "remove" | "trending" }> = [
+  { words: "geisha spotting", re: /\bgeisha[\s-]+spotting\b/i, rule: "geisha" },
+  { words: "no hidden fees", re: /\bno\s+hidden\s+fees?\b/gi, rule: "remove" },
+  { words: "no markup", re: /\bno\s+mark-?ups?\b/gi, rule: "remove" },
+  { words: "hidden gem(s)", re: /\bhidden\s+gems?\b/gi, rule: "remove" },
+  { words: "secret", re: /\bsecrets?\b/gi, rule: "remove" },
+  { words: "insider", re: /\binsiders?(?:['’]s)?\b/gi, rule: "remove" },
+  { words: "vetted", re: /\bvetted\b/gi, rule: "remove" },
+  { words: "verified", re: /\bverified\b/gi, rule: "remove" },
+  { words: "certified", re: /\bcertified\b/gi, rule: "remove" },
+  { words: "licensed", re: /\blicensed\b/gi, rule: "remove" },
+  { words: "authenticated", re: /\bauthenticated\b/gi, rule: "remove" },
+  { words: "trending", re: /\btrending\b/gi, rule: "trending" },
 ];
-const TRENDING = /\btrending\b/gi;
+
+const GEISHA = BANNED.find((b) => b.rule === "geisha")!.re;
+const REMOVED: readonly RegExp[] = BANNED.filter((b) => b.rule === "remove").map((b) => b.re);
+const TRENDING = BANNED.find((b) => b.rule === "trending")!.re;
 
 /** Every banned phrase, for the description rule and the guard. */
-const ANY_BANNED: readonly RegExp[] = [GEISHA, ...REMOVED, TRENDING].map((r) => new RegExp(r.source, "i"));
+const ANY_BANNED: readonly RegExp[] = BANNED.map((b) => new RegExp(b.re.source, "i"));
+
+/**
+ * FB-1 step 5 (ledger `2026-10-19-fb1-prompt-cleanup`): the one line every drafting prompt carries, naming the words
+ * from THE ONE LIST above — built at runtime, never retyped. Storage-time rewording stays the backstop.
+ */
+export function bannedCopyPromptLine(): string {
+  return `Never use these words or phrases in any title or description: ${BANNED.map((b) => `"${b.words}"`).join(", ")}.`;
+}
 
 export function containsBannedCopy(text: string | null | undefined): boolean {
   const t = String(text ?? "");

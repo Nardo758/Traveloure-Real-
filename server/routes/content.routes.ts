@@ -3,6 +3,7 @@ import { toPublicPartnerProducts } from "../services/public-partner-product";
 import { claimFreeDraft, promoteFreeDraft, releaseFreeDraft, freeDraftRefusalBody, freeDraftStatus, FREE_DRAFT_REFUSAL_STATUS } from "../services/free-draft-cap.service";
 import { optimizedItinerariesGate } from "../config/optimized-itineraries.config";
 import { freeDraftCopy } from "@shared/free-draft-cap";
+import { bannedCopyPromptLine } from "@shared/banned-copy";
 import { zodErrorBody } from "../utils/zod-error-body";
 import { getTripRole } from "../utils/trip-role";
 import { demoSeedsAllowed, demoSeedSkipMessage } from "../seeds/lib/demo-seed-gate";
@@ -771,7 +772,7 @@ Please provide a comprehensive travel blueprint in JSON format with this structu
       "title": "Day title",
       "description": "Day overview",
       "activities": [
-        { "time": "9:00 AM", "title": "Activity", "description": "Description", "estimatedCost": 50 }
+        { "time": "<HH:MM AM/PM>", "title": "Activity", "description": "Description", "estimatedCost": 50 }
       ],
       "meals": { "breakfast": "suggestion", "lunch": "suggestion", "dinner": "suggestion" },
       "accommodation": "Hotel recommendation"
@@ -782,7 +783,8 @@ Please provide a comprehensive travel blueprint in JSON format with this structu
   "recommendedVendors": [
     { "type": "hotel", "name": "Hotel Name", "reason": "Why recommended" }
   ]
-}`;
+}
+${bannedCopyPromptLine()}`;
 
       const completion = await anthropic.messages.create({
         model: "claude-sonnet-4-5",
