@@ -22,6 +22,7 @@ import {
   BETA_MARKET_SLUGS_HELP, BETA_MARKET_SLUGS_SETTING, TICKER_CONTENT_RULE, TICKER_TEXT_MAX, betaCityNames, betaLabel,
   betaMarketSlugs, launchCityName, tickerButton,
 } from "@shared/ticker";
+import { EXPERT_HOOK_CITIES_HELP, EXPERT_HOOK_CITIES_SETTING, expertHookCities } from "@shared/expert-hook";
 
 interface AdminTickerItem {
   id: string;
@@ -90,6 +91,56 @@ function BetaCities({ launchMarketSlug }: { launchMarketSlug: string }) {
           data-testid="button-beta-save"
         >
           Save beta cities
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** FB-1: the expert hook's cities, switched by hand beside the beta list. Empty by default. */
+function ExpertHookCities() {
+  const settings = useQuery<{ setting_key: string; setting_value: string | null }[]>({ queryKey: SETTINGS_KEY });
+  const current = expertHookCities(settings.data?.find((r) => r.setting_key === EXPERT_HOOK_CITIES_SETTING)?.setting_value ?? null);
+  const [picked, setPicked] = useState<string[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const chosen = picked ?? current;
+  const save = useMutation({
+    mutationFn: () =>
+      apiRequest("PATCH", `/api/admin/platform-settings/${EXPERT_HOOK_CITIES_SETTING}`, { settingValue: JSON.stringify(chosen) }),
+    onSuccess: () => {
+      setError(null);
+      setPicked(null);
+      queryClient.invalidateQueries({ queryKey: SETTINGS_KEY });
+    },
+    onError: (e) => setError(serverMessage(e)),
+  });
+  const toggle = (key: string, on: boolean) =>
+    setPicked(OPERATING_MARKETS.map((m) => m.marketKey).filter((k) => (k === key ? on : chosen.includes(k))));
+  return (
+    <Card>
+      <CardHeader><CardTitle>Expert hook cities</CardTitle></CardHeader>
+      <CardContent className="space-y-4" data-testid="card-expert-hook-cities">
+        <p className="text-sm text-muted-foreground">{EXPERT_HOOK_CITIES_HELP}</p>
+        <div className="flex flex-wrap gap-4">
+          {OPERATING_MARKETS.map((m) => (
+            <label key={m.marketKey} className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={chosen.includes(m.marketKey)}
+                onCheckedChange={(v) => toggle(m.marketKey, v === true)}
+                data-testid={`checkbox-expert-hook-${m.marketKey}`}
+              />
+              {m.cityName}
+            </label>
+          ))}
+        </div>
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        <Button
+          variant="outline"
+          disabled={picked === null || save.isPending}
+          onClick={() => save.mutate()}
+          data-testid="button-expert-hook-save"
+        >
+          Save expert hook cities
         </Button>
       </CardContent>
     </Card>
@@ -285,6 +336,7 @@ export default function AdminTicker() {
               </CardContent>
             </Card>
             <BetaCities launchMarketSlug={data.marketSlug} />
+            <ExpertHookCities />
             <Card>
               <CardHeader><CardTitle>Add a line</CardTitle></CardHeader>
               <CardContent>

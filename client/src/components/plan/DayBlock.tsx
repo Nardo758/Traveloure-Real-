@@ -43,10 +43,12 @@ export interface DayBlockProps {
    * `localTeaserLine` (shared). Absent or zero ⇒ nothing.
    */
   localTeaser?: LocalTeaser | null;
+  /** FB-1: the "With local picks" section, drawn last in the open day (the slip's owner view only). */
+  hook?: ReactNode;
   children: ReactNode;
 }
 
-export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, onOpenChange, photo = null, aside = null, domId, thumb = null, feasibility = null, localTeaser = null, children }: DayBlockProps) {
+export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, onOpenChange, photo = null, aside = null, domId, thumb = null, feasibility = null, localTeaser = null, hook = null, children }: DayBlockProps) {
   const feasibilityText = feasibilityLine(feasibility);
   const teaserText = localTeaserLine(localTeaser);
   const look = usePlanRowLook();
@@ -95,6 +97,7 @@ export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, on
             <DayFeasibilityLine dayKey={dayKey} text={feasibilityText} className="px-4 pb-1.5 text-xs text-[color:var(--slip-muted)]" />
             <DayLocalTeaserLine dayKey={dayKey} text={teaserText} className="px-4 pb-1.5 text-xs text-[color:var(--slip-muted)]" />
             {children}
+            {hook}
           </div>
         ) : null}
       </section>
@@ -131,6 +134,7 @@ export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, on
           <DayFeasibilityLine dayKey={dayKey} text={feasibilityText} className="px-3 pl-8 pb-1 text-xs text-muted-foreground" />
           <DayLocalTeaserLine dayKey={dayKey} text={teaserText} className="px-3 pl-8 pb-1 text-xs text-muted-foreground" />
           {children}
+          {hook}
         </div>
       ) : null}
     </section>
