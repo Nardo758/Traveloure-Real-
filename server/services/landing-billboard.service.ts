@@ -40,6 +40,7 @@ import { getMarketByKey, resolveMarketSlug } from "./trend-engine/operating-mark
 import { parseCoord } from "./advisor-fundamentals.service";
 import { buildListingBuyActions, hasPublishedPrice, resolveNextAvailableSlots, type ListingBuyRow } from "./buy-action-payload";
 import type { BuyAction } from "@shared/buy-action";
+import { visibleListingImage } from "./place-photo-blocks.service";
 
 /**
  * Experts with a VERIFIED neighbourhood whose city resolves to the market. Never read bare: every
@@ -130,7 +131,7 @@ async function qualifyFromStorefront(expertId: string, marketKey: string): Promi
         priceType: s.priceType ?? null,
         pricingUnit: s.pricingUnit ?? null,
         showPrice: s.showPrice !== false,
-        imageUrl: s.serviceImage || null,
+        imageUrl: visibleListingImage(s as any) || null, // CS-1 item 1: no photo of a blocked place
       };
     })
     // Deterministic: a listing with its own photo first, then by title, then id.
@@ -338,7 +339,7 @@ async function sliceReadyListingCandidates(marketKey: string): Promise<Billboard
         priceType: row.priceType,
         pricingUnit: row.pricingUnit,
         showPrice: row.showPrice === true,
-        imageUrl: row.serviceImage || null,
+        imageUrl: visibleListingImage(row as any) || null, // CS-1 item 1
       };
       return {
         id: row.id,

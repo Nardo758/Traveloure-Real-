@@ -1,4 +1,5 @@
 import { displayCrowdBand, displayTrendScore, type DisplayCrowdBand } from "@shared/trend-display";
+import { hideBlockedGemImage, photoBlocks } from "./place-photo-blocks.service";
 import { teamSeededGemTags } from "@shared/content-tiers";
 import { trendScoreMaxAgeHours } from "../config/trend-display.config";
 import { db } from "../db";
@@ -383,7 +384,9 @@ export class TravelPulseService {
       .orderBy(desc(travelPulseHiddenGems.gemScore))
       .limit(limit);
 
-    return gems;
+    // CS-1 item 1: a gem of a place under a no_photos block shows no image (hidden, never deleted).
+    const blocks = await photoBlocks();
+    return gems.map((g) => hideBlockedGemImage(g, blocks));
   }
 
   /**

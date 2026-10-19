@@ -91,6 +91,14 @@ export function pickCommonsPhoto(candidates: readonly CommonsCandidate[], placeN
 export interface PhotoPlace {
   name: string;
   placeId: string | null;
+  /**
+   * CS-1 item 1 (per-place no_photos): the city the stop is in, and any further names its row gives (location name,
+   * listing name). With `name`, they are matched against `place_photo_blocks`; a blocked place shows no photo.
+   */
+  city?: string | null;
+  otherNames?: ReadonlyArray<string | null | undefined>;
+  /** The item's own stored Google place id, matched against a block's place id. */
+  itemPlaceId?: string | null;
   lat: number | null;
   lng: number | null;
   /** A platform listing's own image, when the item is one. */
