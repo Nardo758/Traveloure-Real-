@@ -9,7 +9,7 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { trips, itineraryItems } from "@shared/schema";
-import { BUSY_BUS_MARKETS, busyBusReason, type BusyBusReason, type JapanHoliday } from "@shared/busy-bus";
+import { BUSY_BUS_MARKETS, busyBusCityName, busyBusReason, type BusyBusReason, type JapanHoliday } from "@shared/busy-bus";
 import { planDatesAreConfirmed } from "@shared/plan-dates";
 import { planDayIso } from "@shared/coverage-targets";
 import { getSeasonWindows } from "./platform-flags";
@@ -17,8 +17,8 @@ import holidayList from "../data/japan-holidays.json";
 
 export const JAPAN_HOLIDAYS: readonly JapanHoliday[] = (holidayList as { holidays: JapanHoliday[] }).holidays;
 
-export async function busyBusForTrip(tripId: string): Promise<Map<number, { reason: BusyBusReason }>> {
-  const out = new Map<number, { reason: BusyBusReason }>();
+export async function busyBusForTrip(tripId: string): Promise<Map<number, { reason: BusyBusReason; cityName: string }>> {
+  const out = new Map<number, { reason: BusyBusReason; cityName: string }>();
   try {
     const [trip] = await db
       .select({ marketSlug: trips.marketSlug, startDate: trips.startDate, endDate: trips.endDate, datesConfirmedAt: trips.datesConfirmedAt })
@@ -27,6 +27,8 @@ export async function busyBusForTrip(tripId: string): Promise<Map<number, { reas
       .limit(1);
     const market = (trip?.marketSlug ?? "").toLowerCase();
     if (!trip || !(BUSY_BUS_MARKETS as readonly string[]).includes(market) || !planDatesAreConfirmed(trip.datesConfirmedAt)) return out;
+    const cityName = busyBusCityName(market);
+    if (!cityName) return out;
     const isoOf = (v: unknown) => (typeof v === "string" ? v.slice(0, 10) : v instanceof Date ? v.toISOString().slice(0, 10) : null);
     const start = isoOf(trip.startDate);
     if (!start) return out;
@@ -42,7 +44,7 @@ export async function busyBusForTrip(tripId: string): Promise<Map<number, { reas
     for (let d = 1; d <= days; d++) {
       const iso = planDayIso(start, d);
       const reason = iso ? busyBusReason(iso, JAPAN_HOLIDAYS, windows) : null;
-      if (reason) out.set(d, { reason });
+      if (reason) out.set(d, { reason, cityName });
     }
   } catch (err) {
     console.error(`[busy-bus] failed plan_id=${tripId}:`, (err as Error)?.message ?? err);

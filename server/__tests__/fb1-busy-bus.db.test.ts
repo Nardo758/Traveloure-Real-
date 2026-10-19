@@ -33,7 +33,11 @@ async function seed(tripId: string, market: string, destination: string, confirm
   await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, market_slug, start_date, end_date, status, timezone, dates_confirmed_at)
     VALUES (${tripId}, ${owner}, 'FB-1 busy', ${destination}, ${market}, '2027-03-20', '2027-03-23', 'draft', 'Asia/Tokyo', ${confirmed ? sql`NOW()` : null})`);
 }
-const reasons = async (tripId: string) => Object.fromEntries([...(await busyBusForTrip(tripId))].map(([d, v]) => [d, v.reason]));
+const reasons = async (tripId: string) => {
+  const m = await busyBusForTrip(tripId);
+  for (const v of m.values()) assert.equal(v.cityName, "Kyoto", "the market's city name from data");
+  return Object.fromEntries([...m].map(([d, v]) => [d, v.reason]));
+};
 
 before(async () => {
   const host = new URL(process.env.DATABASE_URL ?? "postgres://localhost").hostname.toLowerCase();

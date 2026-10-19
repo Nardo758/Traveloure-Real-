@@ -7,13 +7,13 @@
  *   BB4 the committed list: source, URL, years, every row in a covered year with a kind
  *   BB5 the season-windows setting: valid lists pass, every malformed shape is refused, an unknown market is refused,
  *       and a stored invalid value reads as no window
- *   BB6 the words: Marketing's day line
+ *   BB6 the words: Marketing's day line, its city the market's name from data
  *
  * Run: npx tsx --test shared/__tests__/fb1-busy-bus.test.ts
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { busyBusDayLine, busyBusReason, seasonWindows, seasonWindowsRefusal, seasonWindowsSettingRefusal, type JapanHoliday } from "../busy-bus";
+import { busyBusCityName, busyBusDayLine, busyBusReason, seasonWindows, seasonWindowsRefusal, seasonWindowsSettingRefusal, type JapanHoliday } from "../busy-bus";
 import list from "../../server/data/japan-holidays.json";
 
 const HOLIDAYS: JapanHoliday[] = [
@@ -74,6 +74,10 @@ test("BB5 the season-windows setting", () => {
 });
 
 test("BB6 the words", () => {
-  assert.equal(busyBusDayLine("Golden Week"), "Busy day for Kyoto buses (Golden Week). Leave extra time for any bus legs today.");
-  assert.equal(busyBusDayLine("national holiday"), "Busy day for Kyoto buses (national holiday). Leave extra time for any bus legs today.");
+  assert.equal(busyBusCityName("kyoto"), "Kyoto", "the city is the market's name from OPERATING_MARKETS");
+  assert.equal(busyBusCityName("atlantis"), null);
+  assert.equal(busyBusDayLine({ reason: "Golden Week", cityName: "Kyoto" }), "Busy day for Kyoto buses (Golden Week). Leave extra time for any bus legs today.");
+  assert.equal(busyBusDayLine({ reason: "national holiday", cityName: "Kyoto" }), "Busy day for Kyoto buses (national holiday). Leave extra time for any bus legs today.");
+  // The city comes from the day's data, never a literal in the line.
+  assert.equal(busyBusDayLine({ reason: "Obon", cityName: "Somewhere" }), "Busy day for Somewhere buses (Obon). Leave extra time for any bus legs today.");
 });

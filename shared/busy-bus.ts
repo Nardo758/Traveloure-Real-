@@ -15,15 +15,25 @@
  * mode says "bus" today (`normalizeLegMode` folds bus into transit, and OSRM answers no transit).
  */
 
+import { OPERATING_MARKETS } from "./operating-markets";
+
 export type BusyBusReason = "New Year" | "Golden Week" | "Obon" | "national holiday" | "peak season weekend";
 
-/** Marketing's day line, word for word (FOUNDER WORDING REVIEW on the PR). */
-export function busyBusDayLine(reason: BusyBusReason): string {
-  return `Busy day for Kyoto buses (${reason}). Leave extra time for any bus legs today.`;
+/**
+ * Marketing's day line, word for word (FOUNDER WORDING REVIEW on the PR). The city is the market's own name from
+ * `OPERATING_MARKETS` (`busyBusCityName`), carried on the plancard day — never a literal.
+ */
+export function busyBusDayLine(day: { reason: BusyBusReason; cityName: string }): string {
+  return `Busy day for ${day.cityName} buses (${day.reason}). Leave extra time for any bus legs today.`;
 }
 
-/** The markets the flag runs in. Kyoto only: the lines name Kyoto's buses. */
+/** The markets the flag runs in: the holiday list is Japan's, and Kyoto is the market the rulings name. */
 export const BUSY_BUS_MARKETS = ["kyoto"] as const;
+
+/** The market's city name from the operating-markets data, or null for a market it does not carry. */
+export function busyBusCityName(market: string): string | null {
+  return OPERATING_MARKETS.find((m) => m.marketKey === market)?.cityName ?? null;
+}
 
 export interface JapanHoliday {
   date: string;
@@ -66,8 +76,6 @@ export function busyBusReason(dateIso: string, holidays: readonly JapanHoliday[]
 }
 
 // ── the season windows setting (shared with SH-1's "In season" badge) ────────────────────────────
-
-import { OPERATING_MARKETS } from "./operating-markets";
 
 export const SEASON_WINDOWS_SETTING_PREFIX = "season_windows_";
 export const seasonWindowsSettingKey = (market: string) => `${SEASON_WINDOWS_SETTING_PREFIX}${market}`;

@@ -46,7 +46,7 @@ export interface DayBlockProps {
   localTeaser?: LocalTeaser | null;
   /** FB-1 step 5d (ledger `2026-10-19-fb1-busy-bus`): the server's busy-bus reason for the day, drawn as
    *  `busyBusDayLine` (shared). Absent ⇒ nothing. */
-  busyBus?: { reason: BusyBusReason } | null;
+  busyBus?: { reason: BusyBusReason; cityName: string } | null;
   /** FB-1 step 4 (ledger `2026-10-19-fb1-fixed-by-tap`): the slip's "Use the fixed day" control, drawn under the
    *  feasibility line. Only the slip passes it (ruling (b)); absent ⇒ nothing. */
   fixControl?: ReactNode;
@@ -58,7 +58,7 @@ export interface DayBlockProps {
 export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, onOpenChange, photo = null, aside = null, domId, thumb = null, feasibility = null, localTeaser = null, busyBus = null, fixControl = null, hook = null, children }: DayBlockProps) {
   const feasibilityText = feasibilityLine(feasibility);
   const teaserText = localTeaserLine(localTeaser);
-  const busyBusText = busyBus?.reason ? busyBusDayLine(busyBus.reason) : null;
+  const busyBusText = busyBus?.reason && busyBus.cityName ? busyBusDayLine(busyBus) : null;
   const look = usePlanRowLook();
   const [ownOpen, setOwnOpen] = useState(defaultOpen);
   const isOpen = open ?? ownOpen;

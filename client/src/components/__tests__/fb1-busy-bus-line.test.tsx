@@ -20,14 +20,14 @@ const day = (extra: Record<string, unknown>) =>
 
 describe("the busy-bus day line", () => {
   it("BL1 drawn on an open day", () => {
-    const html = day({ busyBus: { reason: "national holiday" } });
+    const html = day({ busyBus: { reason: "national holiday", cityName: "Kyoto" } });
     assert.ok(html.includes('data-testid="slip-day-busy-bus-2"'));
-    assert.ok(html.includes(busyBusDayLine("national holiday")));
+    assert.ok(html.includes(busyBusDayLine({ reason: "national holiday", cityName: "Kyoto" })));
   });
   it("BL2 absent or closed ⇒ nothing", () => {
     assert.ok(!day({}).includes("slip-day-busy-bus-2"));
     assert.ok(!day({ busyBus: null }).includes("slip-day-busy-bus-2"));
-    assert.ok(!day({ busyBus: { reason: "Obon" }, open: false }).includes("slip-day-busy-bus-2"));
+    assert.ok(!day({ busyBus: { reason: "Obon", cityName: "Kyoto" }, open: false }).includes("slip-day-busy-bus-2"));
   });
   it("BL3 every day surface passes it", () => {
     for (const f of ["../plancard/SlipView.tsx", "../plancard/TripCardDays.tsx", "../plan/WorkstationDays.tsx"]) {
