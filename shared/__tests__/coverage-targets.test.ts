@@ -7,7 +7,7 @@
  *   CT2  meetsTarget: under either count ⇒ false; at target ⇒ true; no target or unset field ⇒ no gate
  *   CT3  the teaser gate: zero ⇒ nothing; under target ⇒ nothing; at target ⇒ the honest count; a slug with no
  *        target keeps FD-1's behaviour; a two-neighbourhood day counts only the one at target (never summed)
- *   CT4  the gate measures the neighbourhood's whole content, not the plan's remainder
+ *   CT4  the gate measures the neighbourhood's off-plan content, the remainder the teaser shows
  *   CT5  the census: counts per slug, official facts by source, unplaced gems, unknown target slugs, gates
  *   CT6  the words: honest counts, singulars, nothing on zero
  *   CT7  Leon's Kyoto numbers, on the eight production slugs and no 042 slug; official fields unset
@@ -100,15 +100,24 @@ test("CT3 — the teaser gate", () => {
   assert.deepEqual(mixed.get(1), { localPicks: 3, localNotes: 2 });
 });
 
-test("CT4 — the gate measures the neighbourhood, the teaser shows the plan's remainder", () => {
-  // gion holds 3 picks (at target); one is already on the plan ⇒ the teaser says 2, and the day still speaks.
+test("CT4 — the gate measures the neighbourhood's off-plan content, the teaser shows the same remainder", () => {
+  // EV-P0 PR 3 (ledger `2026-10-18-fact-tags-exhaustive`; edit sanctioned): an on-plan gem no longer counts toward
+  // the target. gion holds 4 picks, one already on the plan ⇒ 3 off-plan meet the target and the teaser says 3.
   const r = localTeasersByDay(base({
+    items: [{ dayNumber: 1, lat: 35.004, lng: 135.779, gemId: "gion-0" }],
+    gems: gems("gion", 4),
+    notes: notes("h-gion", 2),
+    gate: gate("normal_weekday"),
+  }));
+  assert.deepEqual(r.get(1), { localPicks: 3, localNotes: 2 });
+  // 3 picks with one on the plan ⇒ 2 off-plan, below target ⇒ the day carries nothing.
+  const under = localTeasersByDay(base({
     items: [{ dayNumber: 1, lat: 35.004, lng: 135.779, gemId: "gion-0" }],
     gems: gems("gion", 3),
     notes: notes("h-gion", 2),
     gate: gate("normal_weekday"),
   }));
-  assert.deepEqual(r.get(1), { localPicks: 2, localNotes: 2 });
+  assert.equal(under.get(1), undefined);
 });
 
 test("CT5 — the census", () => {
