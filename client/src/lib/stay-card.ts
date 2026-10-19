@@ -28,6 +28,11 @@ export const STAY_PICK_TITLE = "Our pick for your days";
 export const STAY_PICK_SUBTITLE = "Closest to your stops on most days, by travel time.";
 export const STAY_STRAIGHT_LINE_TITLE = "Closest to your stops";
 export const STAY_STRAIGHT_LINE_SUBTITLE = "By straight line. Optimize scores stays by travel time to your stops.";
+/**
+ * A PAID plan with no pick it may show (ledger `2026-10-18-stay-pick-est-fallback`): the same straight-line top 3,
+ * marked "est." — the free subtitle's "Optimize scores stays…" would promise what the paid plan already has.
+ */
+export const STAY_STRAIGHT_LINE_EST_SUBTITLE = "By straight line to your stops (est.).";
 export const STAY_CHANGED_LINE = "Updated for your latest stops.";
 export const STAY_HERE_LABEL = "Stay here";
 export const STAY_SWAP_LEAD = "Rather pick yourself?";
@@ -109,7 +114,7 @@ export function stayClosenessLine(c: StayCloseness | null | undefined): string |
 export type StayCardHotel = StayHotel & { closeness?: StayCloseness | null };
 export type StayCardModel =
   | { tier: "routed"; hotels: [StayCardHotel]; scoredLine: string | null; changed: boolean }
-  | { tier: "straight_line"; hotels: StayCardHotel[]; scoredLine: null; changed: false };
+  | { tier: "straight_line"; hotels: StayCardHotel[]; scoredLine: null; changed: false; estimated: boolean };
 
 /** What the card draws, or null when it draws nothing (no stay block, no pick, no hotels). */
 export function stayCardModel(stay: WhereToStayStay | null | undefined): StayCardModel | null {
@@ -119,7 +124,13 @@ export function stayCardModel(stay: WhereToStayStay | null | undefined): StayCar
     return { tier: "routed", hotels: [{ ...stay.pick, closeness: stay.closeness ?? null }], scoredLine: stayScoredLine(stay.scoredCount, stay.candidateCount), changed: !!stay.changed };
   }
   const hotels = (stay.hotels ?? []).slice(0, 3);
-  return hotels.length ? { tier: "straight_line", hotels, scoredLine: null, changed: false } : null;
+  return hotels.length ? { tier: "straight_line", hotels, scoredLine: null, changed: false, estimated: stay.estimated === true } : null;
+}
+
+/** The card's subtitle, by tier: the pick's, the paid plan's estimate, or the free plan's straight line. */
+export function stayCardSubtitle(model: StayCardModel): string {
+  if (model.tier === "routed") return STAY_PICK_SUBTITLE;
+  return model.estimated ? STAY_STRAIGHT_LINE_EST_SUBTITLE : STAY_STRAIGHT_LINE_SUBTITLE;
 }
 
 /**
