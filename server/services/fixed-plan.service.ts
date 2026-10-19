@@ -11,6 +11,10 @@
  *     is refused, never overwritten. The run's start is its baseline ("Your Plan") version, written before the model
  *     call, whose items record each plan item's day as it stood then (`staleDays`, pure, below).
  *   · No baseline to read ⇒ nothing can be shown unchanged ⇒ every day is stale (refused, never guessed).
+ *   · CONFIRM BEFORE APPLY: the tap first sends `preview: true` — `applyDays` runs the same diff and rolls it back —
+ *     shows each day's moved/added/removed counts, and writes only on the traveler's confirm.
+ *   · MACHINE WRITES ARE NOT EDITS: a writer that re-times items on its own (the legacy leg schedule writer) does not
+ *     bump `updated_at`, so it never makes a day "changed" (`trip-transport-legs.service.ts`).
  */
 import { and, desc, eq, gt, lte } from "drizzle-orm";
 import { db } from "../db";
@@ -126,7 +130,13 @@ export async function loadFixedPlan(tripId: string): Promise<FixedPlanView | nul
  * on since the run started is never written: one asked-for day that changed is a 409 `day_changed`; several apply the
  * rest and report what they skipped. The days themselves go through the ONE adopt writer, `applyDays`.
  */
-export async function applyDaysUnchangedSinceRun(input: { tripId: string; userId: string; days: Array<{ day: number; variantId: string }> }): Promise<{
+export async function applyDaysUnchangedSinceRun(input: {
+  tripId: string;
+  userId: string;
+  days: Array<{ day: number; variantId: string }>;
+  /** Confirm before apply: the same diff, rolled back — the counts the tap shows, nothing written. */
+  preview?: boolean;
+}): Promise<{
   days: Awaited<ReturnType<typeof applyDays>>["days"];
   stay: unknown;
   skipped: Array<{ day: number; reason: "changed_since_run" }>;
@@ -141,6 +151,6 @@ export async function applyDaysUnchangedSinceRun(input: { tripId: string; userId
   }
   const fresh = input.days.filter((d) => !isStale(d.day));
   if (!fresh.length) return { days: [], stay: null, skipped };
-  const out = await applyDays({ tripId: input.tripId, userId: input.userId, days: fresh });
+  const out = await applyDays({ tripId: input.tripId, userId: input.userId, days: fresh, dryRun: input.preview === true });
   return { ...out, skipped };
 }

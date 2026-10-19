@@ -519,10 +519,12 @@ export async function generateTripTransportLegs(
         return Promise.resolve();
       }
       const routed = routeByTarget.get(update.id);
+      // FB-1 step 4 (ledger `2026-10-19-fb1-fixed-by-tap`): a machine re-time is not an edit, so it leaves
+      // `updated_at` alone — "Use the fixed day" refuses only days the TRAVELER changed since the run. (This writer
+      // never runs on a routed plan, the only kind with versions; the rule holds wherever it does run.)
       const scheduleValues: Partial<typeof itineraryItems.$inferInsert> = {
         startTime: update.startTime,
         endTime: update.endTime,
-        updatedAt: new Date(),
       };
       if (routed) {
         scheduleValues.travelFromPrevious = {

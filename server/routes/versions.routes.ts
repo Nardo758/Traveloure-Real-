@@ -62,8 +62,11 @@ const applyBody = z
     days: z.array(z.object({ day: z.number().int().min(1).max(60), variantId: z.string().min(1).max(64) }).strict()).min(1).max(60),
     // FB-1 step 4: the "Your plan, fixed" tap. The board never sends it, so its adopt is unchanged.
     unchangedSinceRun: z.literal(true).optional(),
+    // Confirm before apply: the same diff, rolled back. Only with `unchangedSinceRun` (the tap's rail).
+    preview: z.literal(true).optional(),
   })
-  .strict();
+  .strict()
+  .refine((b) => !b.preview || b.unchangedSinceRun, { message: "preview is the tap's" });
 
 router.post("/api/trips/:tripId/versions/apply-days", isAuthenticated, async (req: any, res) => {
   const userId = await gate(req, res, true);
@@ -72,11 +75,12 @@ router.post("/api/trips/:tripId/versions/apply-days", isAuthenticated, async (re
   if (!parsed.success) return res.status(400).json({ message: "Send the days to adopt" });
   try {
     const out = parsed.data.unchangedSinceRun
-      ? await applyDaysUnchangedSinceRun({ tripId: req.params.tripId, userId, days: parsed.data.days })
+      ? await applyDaysUnchangedSinceRun({ tripId: req.params.tripId, userId, days: parsed.data.days, preview: parsed.data.preview })
       : await applyDays({ tripId: req.params.tripId, userId, days: parsed.data.days });
     // Step 9a ruling 6 (ledger 2026-10-07-step9a-routing-engine): applying versions writes the plan's
-    // own legs for what was adopted — after the commit, best-effort, never failing the apply (§15b).
-    void runNow(req.params.tripId);
+    // own legs for what was adopted — after the commit, best-effort, never failing the apply (§15b). A preview
+    // wrote nothing, so it refreshes nothing.
+    if (!parsed.data.preview) void runNow(req.params.tripId);
     res.json(out);
   } catch (err) {
     fail(res, err, "apply those days");

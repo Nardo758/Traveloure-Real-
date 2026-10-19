@@ -22,23 +22,25 @@ const view = { variantId: "A", comparisonId: "c1", days: [{ day: 1, state: "fixa
 
 test("FP1 the strings, and the stale line reuses the slip's existing Compare versions label", () => {
   assert.equal(FIXED_DAY_BUTTON, "Use the fixed day");
-  assert.equal(FIXED_PLAN_BUTTON, "Use Your plan, fixed");
-  assert.equal(FIXED_DAY_CHANGED, "This day changed since your versions were made.");
+  assert.equal(FIXED_PLAN_BUTTON, "Use all fixed days");
+  assert.equal(FIXED_DAY_CHANGED, "You’ve changed this day since these versions were made, so we didn’t replace it.");
   assert.equal(COMPARE_VERSIONS_LABEL, "Compare versions");
   const slip = readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../components/plancard/SlipView.tsx"), "utf8");
   assert.match(slip, new RegExp(`>\\s*${COMPARE_VERSIONS_LABEL}\\s*<`), "the same words as the slip header's link");
 });
 
-test("FP2 the whole-plan report: plurals, and the skipped part only when something was skipped", () => {
-  assert.equal(fixedPlanResultLine(3, 1), "3 days fixed · 1 unchanged since you edited it");
-  assert.equal(fixedPlanResultLine(1, 2), "1 day fixed · 2 unchanged since you edited them");
-  assert.equal(fixedPlanResultLine(2, 0), "2 days fixed");
+test("FP2 the whole-plan report: Marketing's words, plurals, and the skipped days named", () => {
+  assert.equal(fixedPlanResultLine(3, [2]), "Updated 3 days. Skipped Day 2 because you’ve changed it.");
+  assert.equal(fixedPlanResultLine(1, [2, 4]), "Updated 1 day. Skipped Day 2 and Day 4 because you’ve changed them.");
+  assert.equal(fixedPlanResultLine(2, [1, 3, 5]), "Updated 2 days. Skipped Day 1, Day 3 and Day 5 because you’ve changed them.");
+  assert.equal(fixedPlanResultLine(2, []), "Updated 2 days.");
 });
 
-test("FP3 one day's counts: zeros omitted, all zero ⇒ nothing", () => {
-  assert.equal(fixedDayResultLine({ moved: 2, added: 1, removed: 1 }), "2 moved · 1 added · 1 removed");
-  assert.equal(fixedDayResultLine({ moved: 1, added: 0, removed: 0 }), "1 moved");
-  assert.equal(fixedDayResultLine({ moved: 0, added: 0, removed: 0 }), null);
+test("FP3 one day's counts: 'stops' on the first part, zero parts omitted, all zero ⇒ nothing", () => {
+  assert.equal(fixedDayResultLine({ day: 2, moved: 2, added: 1, removed: 1 }), "Day 2 updated: 2 stops moved, 1 added, 1 removed");
+  assert.equal(fixedDayResultLine({ day: 1, moved: 1, added: 0, removed: 0 }), "Day 1 updated: 1 stop moved");
+  assert.equal(fixedDayResultLine({ day: 3, moved: 0, added: 2, removed: 1 }), "Day 3 updated: 2 stops added, 1 removed");
+  assert.equal(fixedDayResultLine({ day: 1, moved: 0, added: 0, removed: 0 }), null);
   assert.equal(fixedDayResultLine(null), null);
 });
 
