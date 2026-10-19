@@ -37,6 +37,7 @@ import {
   deactivateContentSource,
   editContentSource,
   setContentSourcePublicOk,
+  signoffContentSource,
 } from "../services/content-sources.service";
 
 const RUN = crypto.randomUUID().slice(0, 8).replace(/-/g, "");
@@ -54,7 +55,12 @@ const base = (id: string) => ({
   doesNotCover: ["transport.intercity.rail"],
   licenseClass: "official",
   termsUrl: "https://example.org/terms",
+  // CS-1 item 1 (ledger `2026-10-18-cs1-source-signoff`): a terms class, so the approver can sign it off.
+  termsClass: "link_out",
 });
+
+/** CS-1 item 1: activation needs the approver's sign-off first. */
+const signedOff = (id: string) => signoffContentSource(id, { decision: "approved" }, founder);
 
 async function refused(p: Promise<unknown>, code: string, status: number) {
   await assert.rejects(p, (e: unknown) => e instanceof ContentSourceError && e.code === code && e.status === status);
@@ -128,6 +134,7 @@ test("R4: activation is refused outside the allowlist, and for everyone when it 
 test("R5: the activator's activation stamps now() and the actor", async () => {
   await createContentSource(base(sid("r5")), otherAdmin);
   const before = Date.now();
+  await signedOff(sid("r5"));
   const row = await activateContentSource(sid("r5"), founder);
   assert.equal(row.active, true);
   assert.equal(row.termsCheckedBy, founder);
@@ -136,6 +143,7 @@ test("R5: the activator's activation stamps now() and the actor", async () => {
 
 test("R6: changing the terms URL clears the check and deactivates; changing notes does not", async () => {
   await createContentSource(base(sid("r6")), otherAdmin);
+  await signedOff(sid("r6"));
   await activateContentSource(sid("r6"), founder);
   const notes = await editContentSource(sid("r6"), { notes: "still fine" });
   assert.equal(notes.active, true);
@@ -150,6 +158,7 @@ test("R6: changing the terms URL clears the check and deactivates; changing note
 
 test("R7: deactivation keeps the terms check as history", async () => {
   await createContentSource(base(sid("r7")), otherAdmin);
+  await signedOff(sid("r7"));
   await activateContentSource(sid("r7"), founder);
   const row = await deactivateContentSource(sid("r7"));
   assert.equal(row.active, false);
@@ -172,13 +181,15 @@ test("R9: every registry route sits under /api/admin", () => {
   const src = fs.readFileSync(path.join(process.cwd(), "server", "routes", "content-sources.routes.ts"), "utf8");
   const paths = [...src.matchAll(/router\.(get|post|patch|put|delete)\(\s*"([^"]+)"/g)].map((m) => m[2]);
   // PF-1 (ledger `2026-10-11-pf1-lookup-outcomes`) added the two lookup-outcome reads: 6 → 8.
-  assert.equal(paths.length, 8);
+  // CS-1 item 1 (ledger `2026-10-18-cs1-source-signoff`) added the sign-off POST: 8 → 9.
+  assert.equal(paths.length, 9);
   assert.ok(paths.every((p) => p.startsWith("/api/admin/content-sources")), paths.join(", "));
 });
 
 test("R10: public_ok — activator only, official + terms-checked only, stamped; false recorded too", async () => {
   await createContentSource(base(sid("r10")), otherAdmin);
   await refused(setContentSourcePublicOk(sid("r10"), { publicOk: true }, founder), "not_public_eligible", 409);
+  await signedOff(sid("r10"));
   await activateContentSource(sid("r10"), founder);
   await refused(setContentSourcePublicOk(sid("r10"), { publicOk: true }, otherAdmin), "not_activator", 403);
   await refused(setContentSourcePublicOk(sid("r10"), { publicOk: true, active: true }, founder), "invalid_body", 400);
@@ -193,6 +204,7 @@ test("R10: public_ok — activator only, official + terms-checked only, stamped;
   assert.equal(no.publicOkCheckedBy, founder);
 
   await createContentSource({ ...base(sid("r10ed")), licenseClass: "editorial" }, otherAdmin);
+  await signedOff(sid("r10ed"));
   await activateContentSource(sid("r10ed"), founder);
   await refused(setContentSourcePublicOk(sid("r10ed"), { publicOk: true }, founder), "not_public_eligible", 409);
   await refused(setContentSourcePublicOk(sid("nope"), { publicOk: true }, founder), "not_found", 404);
@@ -200,6 +212,7 @@ test("R10: public_ok — activator only, official + terms-checked only, stamped;
 
 test("R11: a general edit cannot set public_ok; clearing the terms check clears it", async () => {
   await createContentSource(base(sid("r11")), otherAdmin);
+  await signedOff(sid("r11"));
   await activateContentSource(sid("r11"), founder);
   await setContentSourcePublicOk(sid("r11"), { publicOk: true }, founder);
   const stripped = await editContentSource(sid("r11"), { notes: "n", publicOk: false, publicOkCheckedBy: otherAdmin } as any);

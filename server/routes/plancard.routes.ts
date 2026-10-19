@@ -26,6 +26,7 @@ import {
   providerServices,
   notifications,
   transportLegs,
+  trips,
 } from "@shared/schema";
 import { db } from "../db";
 import { and, count, desc, eq, inArray, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
@@ -722,18 +723,24 @@ router.get("/api/trips/:tripId/place-photos", isAuthenticated, async (req, res) 
     const ids = Array.from(new Set(String(req.query.items ?? "").split(",").map((x) => x.trim()).filter(Boolean))).slice(0, PLACE_PHOTOS_MAX_ITEMS);
     if (!ids.length) return res.json({ photos: {} });
     const rows = await db
-      .select({ id: itineraryItems.id, title: itineraryItems.title, lat: itineraryItems.latitude, lng: itineraryItems.longitude, serviceImage: providerServices.serviceImage })
+      .select({ id: itineraryItems.id, title: itineraryItems.title, lat: itineraryItems.latitude, lng: itineraryItems.longitude, serviceImage: providerServices.serviceImage, locationName: itineraryItems.locationName, googlePlaceId: itineraryItems.googlePlaceId, serviceName: providerServices.serviceName })
       .from(itineraryItems)
       .leftJoin(providerServices, eq(providerServices.id, itineraryItems.providerServiceId))
       .where(and(eq(itineraryItems.tripId, tripId), inArray(itineraryItems.id, ids)));
     const refs = await placeRefsForTrip(tripId, rows.map((r) => r.id));
     const num = (v: unknown) => (v == null || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
+    const [tripRow] = await db.select({ destination: trips.destination }).from(trips).where(eq(trips.id, tripId)).limit(1);
+    const city = (tripRow?.destination ?? "").split(",")[0].trim() || null;
     const photos = await photosFor(
       rows.map((r) => {
         const ref = refs.get(r.id);
         return {
           id: r.id,
           name: r.title ?? "",
+          // CS-1 item 1: the names and ids a no_photos block is matched on.
+          city,
+          otherNames: [r.locationName, r.serviceName],
+          itemPlaceId: r.googlePlaceId ?? null,
           placeId: ref?.placeId ?? null,
           lat: ref?.lat ?? num(r.lat),
           lng: ref?.lng ?? num(r.lng),

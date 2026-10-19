@@ -16,6 +16,7 @@ import { accommodationCategoryId } from "../utils/property-category";
 // (content.routes.ts) so write-time and read-time can never resolve it two different ways.
 import { deriveBundleDeliveryMethod as deriveBundleDeliveryMethodFromMethods } from "@shared/bundle-delivery-method";
 import { sanitizeStringFields, sanitizeText } from "../utils/text-sanitizer";
+import { PHOTO_BLOCK_REFUSAL, listingPhotoSubject, photoBlockedFor } from "../services/place-photo-blocks.service";
 
 /**
  * Provider supply tools — /api/provider/settings (Kyoto-supply activation).
@@ -603,6 +604,11 @@ router.post("/api/provider/properties", isAuthenticated, async (req, res) => {
     });
     // PB-1 R1: the category is server-set (`accommodation`), never the body's; rooms inherit it below.
     const categoryId = await accommodationCategoryId();
+    // CS-1 item 1: a photo of a place under a no_photos block is refused at upload, with the reason.
+    if (body.serviceImage || (body.galleryImages ?? []).length) {
+      const block = await photoBlockedFor(listingPhotoSubject({ serviceName: body.serviceName, location: body.location ?? null, city: (cityPatch as any).city ?? null }));
+      if (block) return res.status(422).json({ message: PHOTO_BLOCK_REFUSAL, reason: block.reason, code: "PHOTO_BLOCKED" });
+    }
 
     const { property, rooms } = await db.transaction(async (tx) => {
       const [createdProperty] = await tx
@@ -749,6 +755,12 @@ router.patch("/api/provider/properties/:id", isAuthenticated, async (req, res) =
     if (body.serviceImage !== undefined) patch.serviceImage = body.serviceImage;
     if (body.galleryImages !== undefined) patch.galleryImages = body.galleryImages;
     if (body.status !== undefined) patch.status = body.status;
+    // CS-1 item 1: adding a photo of a place under a no_photos block is refused, with the reason.
+    if (body.serviceImage || (body.galleryImages ?? []).length) {
+      const [curRow] = await db.select({ serviceName: providerServices.serviceName, location: providerServices.location, city: providerServices.city }).from(providerServices).where(eq(providerServices.id, req.params.id)).limit(1);
+      const block = await photoBlockedFor(listingPhotoSubject({ serviceName: patch.serviceName ?? curRow?.serviceName ?? null, location: patch.location ?? curRow?.location ?? null, city: patch.city ?? curRow?.city ?? null }));
+      if (block) return res.status(422).json({ message: PHOTO_BLOCK_REFUSAL, reason: block.reason, code: "PHOTO_BLOCKED" });
+    }
 
     // PB-2 / R3 (ledger `2026-10-10-pb2-property-patch-rooms`): rooms inherit the property's
     // neighborhood and city at creation, so a change here carries to them — in the SAME
