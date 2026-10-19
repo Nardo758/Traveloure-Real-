@@ -455,6 +455,8 @@ export interface PlanCardLegData extends InlineTransportLegData {
 }
 
 export interface PlanCardDay {
+  /** LG-2 Ask 6: adjacent pairs whose leg has no travel time (a stop with no open point) — "Travel time not checked yet". */
+  legsNotChecked?: Array<{ fromActivityId: string; toActivityId: string }>;
   dayNum: number;
   /** The DISPLAY day, already localised by the producer ("Fri, Oct 2"). */
   date: string;
@@ -473,6 +475,8 @@ export interface PlanCardDay {
   feasibility?: import("@shared/plan-feasibility").DayFeasibility;
   /** FD-1/FD-5 (ledger `2026-10-10-fd5-coverage-targets`): a free plan's gated count-only teaser; absent ⇒ none. */
   localTeaser?: import("@shared/free-draft-cap").LocalTeaser;
+  /** FB-1: the in-season count for this day — present only when non-zero (empty until FB-1 step 8). */
+  inSeason?: { count: number; href: string };
   /**
    * 9b-c LB8 (ledger `2026-10-18-lb8-lb9-card-wiring`): the day's flight departures — `id` = the airport leg's end
    * (`anchor:<anchorId>`), `bufferedTime` = take-off − its R-i buffer ("HH:MM", plan zone; null across midnight),
@@ -541,6 +545,8 @@ export interface OptimizationDelta {
 
 export interface PlanCardData {
   tripRole?: PlanCardRole;
+  /** FB-1 expert hook: present only for the owner of a free plan, on the slip read. */
+  expertHook?: import("@shared/expert-hook").ExpertHook;
   /** R-be (R300/R301; read since R323): where a bought copy came from. Null ⇒ not a copy (§13). */
   readyMadeSource?: {
     sourceReadyMadeTripId: string;

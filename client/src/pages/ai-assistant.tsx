@@ -30,6 +30,7 @@ import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
 import { AiPlannerDraftPanel } from "@/components/ai-planner-draft-panel";
 import { useToast } from "@/hooks/use-toast";
+import { useTravelerDoors } from "@/hooks/use-traveler-doors";
 
 interface Message {
   id: number;
@@ -47,6 +48,7 @@ interface Conversation {
 }
 
 export default function AIAssistant() {
+  const { eventConcierge: conciergeShown } = useTravelerDoors();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [selectedConversation, setSelectedConversation] = useState<number | null>(null);
@@ -358,7 +360,9 @@ export default function AIAssistant() {
                 </p>
               </div>
             </div>
-            {/* C4: first-class, always-visible human handoff (ruled hybrid). */}
+            {/* C4: first-class, always-visible human handoff (ruled hybrid). Ledger
+                `2026-10-18-traveler-doors-hidden`: it files an old-concierge request, so it is off by default. */}
+            {conciergeShown ? (
             <Button
               variant="outline"
               size="sm"
@@ -373,6 +377,7 @@ export default function AIAssistant() {
               )}
               Get help from our team
             </Button>
+            ) : null}
           </div>
         </div>
 

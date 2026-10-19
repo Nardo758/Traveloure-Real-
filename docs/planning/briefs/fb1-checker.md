@@ -143,6 +143,85 @@ The windows (`retimeWindowsByItem`, `shared/version-check.ts`) come once per run
 
 Unchanged: `spaceDayTimes` and `retimeDayInOrder` (the traveler's own re-time, R-ac), the anchor step, energy balancing, the legs step and the gate. With no model times and no windows, the result is exactly today's (golden parity).
 
+## Step 4 — "Your plan, fixed" by tap
+
+Decision-maker Leon Dixon, Oct 19, 2026 (step 4 rulings (a)–(d), and follow-up rulings (1)–(3) the same day). Ledger row `2026-10-19-fb1-fixed-by-tap`. Service: `server/services/fixed-plan.service.ts`; words: `client/src/lib/fixed-plan.ts`.
+
+**Flag-only.** The checker and the run never adopt anything. A day of version A ("Your plan, fixed") reaches the plan only through a traveler's tap on the slip, which posts `POST /api/trips/:tripId/versions/apply-days` with `unchangedSinceRun: true`. The days go through the one adopt writer, `applyDays`. A pin test (`fb1-apply-days-callers`) fails if anything else calls it.
+
+**Confirm before apply.** A tap first sends `preview: true`: `applyDays` runs the same diff inside its transaction and rolls it back. The slip shows each day's counts ("Day 2 updated: 2 stops moved, 1 added, 1 removed") with Confirm and Cancel. Nothing is written before Confirm.
+
+**Which days (read).** `GET /api/trips/:tripId/versions/fixed` names version A and the plan's flagged days — days with an issue in the current check — each `fixable` or `changed`. No shown "Your plan, fixed" ⇒ `null`.
+
+**Changed (ruling (a)(i)).** A day the traveler changed after the run STARTED is refused, never overwritten. The start is the run's baseline ("Your Plan") version, written before the model call; its items record each plan item's day then. A day is changed when:
+- an item on it now was created or written after the start (an add, an edit, a re-time, a move in);
+- an item the baseline had on it is gone or now on another day (a delete, a move out).
+
+Every day is changed when an item the baseline does not know (a fixed commitment) was removed after the start — its day is unknowable. No baseline to read ⇒ every day is changed.
+
+**Machine writes are not edits.** A writer that re-times items on its own does not bump `updated_at`. The one that did — the legacy leg schedule writer in `trip-transport-legs.service.ts` (run by "generate legs"; it never runs on a routed plan, the only kind with versions) — no longer does. The other machine writers (place facts, coordinates, sort order, the Moment lock) already left it alone.
+
+**The two taps (rulings (b), (c)).** Slip only; the Trip Card is the finalized read-out.
+- One day: "Use the fixed day", under the day's feasibility line. A changed day shows "You’ve changed this day since these versions were made, so we didn’t replace it." and the slip's existing "Compare versions" link to the board instead; its tap would be a 409 `day_changed`.
+- Whole plan: "Use all fixed days", above the days, while at least one flagged day is fixable. It sends every flagged day; the server applies the unchanged ones and names the rest: "Updated 3 days. Skipped Day 2 because you’ve changed it."
+
+**Unchanged:** the board's own adopt (it never sends the flag), the gate.
+## Step 4b — a free plan's retime fix by tap
+
+Decision-maker Leon Dixon, Oct 19, 2026. On a free plan (no routed legs; a paid plan has "Your plan, fixed"), a
+finding whose fix is `retime` is a tap on the slip. The other fix kinds stay flags with the fix in words, and
+`lighten_day` is never a tap. The issue shape does not change before Oct 21.
+
+- **The move.** `planRetimeFix` (`shared/free-retime.ts`, pure) moves the stop to its window's bound and keeps its
+  length. A later stop on the same day moves later only where it would overlap. No tap is offered when the move
+  would collide with the stop before, run past midnight, miss the window, or move a booked, in-checkout, locked or
+  expert stop.
+- **Offered only when it works.** The server re-runs the one checker on the moved day. A fix is offered only when
+  that stop's issue is gone and the day carries nothing it did not already have.
+- **Who and what.** Owner or delegate (`planRole(…, "choose")`); anyone else gets one 404. Public facts only, no
+  model call, no version.
+- **Confirm before apply.** `POST /api/trips/:tripId/retime-fixes/:itemId/apply` with `preview: true` writes nothing
+  and returns the moves; Confirm sends it without. The moves are recomputed on the server, never taken from a body.
+  The write is one transaction, each update conditional on the stop still starting where the plan said (else 409
+  `plan_changed`); a stop with no fix is 409 `no_fix`; a paid plan is 409 `paid_plan`. Times are stored as
+  "h:mm AM/PM". The plan's legs are queued for recompute.
+- **Read.** `GET /api/trips/:tripId/retime-fixes` lists the fixes; a paid plan gets none.
+- **Words** (founder wording review on the PR): "Move <stop> to <time>", "Confirm" / "Cancel", and the step 4
+  counts line ("Day 2 updated: 2 stops moved").
+
+## Step 5b — `closed_dates`
+
+Decision-maker Leon Dixon, Oct 19, 2026.
+
+- **One type.** `closed_dates` replaces the unread `closure` fact type, which nothing wrote with an end date and no
+  checker read. `closure` is dropped from the crawler's extract list for `stop.hours`, and `closed_dates` is not added
+  to it. Rows already stored as `closure` stay as they are; nothing reads them.
+- **The value** is a list of inclusive from–to ranges, `{ ranges: [{ from: "YYYY-MM-DD", to: "YYYY-MM-DD" }] }`. A
+  single day is a one-day range. A malformed value is refused, never repaired.
+- **Expiry.** `recordFacts` sets `expires_at` to midnight, in the plan's time zone (else the market's), of the day after
+  the last closed date, whatever the writer sent. With no zone at all the fact is not stored.
+- **Admission** is the `last_admission` rule (`admitFeasibilityFact`): an official page read or an expert, an
+  `official` licence, an https source, and — when a quote travels with the value — every date that bounds a range
+  printed in the quote (`dateAppearsIn`: ISO, `2027/12/29`, `12/29`, `12月29日`, `December 29`, `29 Dec`, …; a numeric
+  form is never read inside a longer number). Tagged public + link_only, and public with the link like `closure` was.
+- **The checker.** A stop whose own date (trip start + day − 1) a stored fact names is counted in `closed_on_arrival`
+  with reason `closed_date` and fix `move_day`, whether or not it states a time; it replaces any hours reason for that
+  stop. The step 3 gate counts it like every other issue. A version copies the draft stop's facts.
+- **Words** (founder wording review on the PR): the card line "Closed on Monday, November 8. Move this stop to another
+  day." (Marketing's "Closed on [date]. Move this stop to another day."), the issue line "is closed on that date", and
+  the existing fix line "Fix: move it to another day."
+- **Bots** may not propose it yet (BOT-1's kinds are unchanged, pending Leon's yes).
+
+## Step 5a — prompt cleanup
+
+Decision-maker Leon Dixon, Oct 19, 2026 (prompt cleanup rulings (a)–(c)). Ledger row `2026-10-19-fb1-prompt-cleanup`.
+
+- **The free draft** (`generateAutonomousItinerary`, `server/services/ai-generation.service.ts`) no longer feeds TravelPulse's hidden-gem names or its crowd level, and its intelligence block drops "Prioritize trending experiences", "Factor in crowd levels when scheduling" (crowd timing is an expert's judgment; the model has no data for it) and "Include hidden gems…". "Prioritize must-see attractions" stays.
+- **The paid run** (`server/itinerary-optimizer.ts`) no longer tells the model to fill empty days. An empty day stays empty, and the checker does not flag it.
+- **Example times are placeholders** in every drafting prompt's JSON example (`<HH:MM>`, `<HH:MM AM/PM>`).
+- **The never-say line.** Every drafting prompt — the free draft, the trip generate route, the paid run, the blueprint — carries one line naming the banned words, built at runtime from `shared/banned-copy.ts`'s one list (`bannedCopyPromptLine`). The storage-time rewording (LG-2 Ask 9) stays the backstop.
+- **No canned fallback.** When the model fails, `POST /api/trips/:id/generate-itinerary` stores no draft: it answers through `aiFailureResponse` (503 with retry-after; 502 for a non-retryable failure), releases the free draft, and leaves the plan as it was. It used to replace the plan's AI items with four generic stops per day.
+
 ## Not in step 3
 
 - Regenerating a held version: step 3b.

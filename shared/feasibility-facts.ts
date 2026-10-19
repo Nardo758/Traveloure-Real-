@@ -15,7 +15,9 @@
 
 import { PAGE_READ_ORIGINS } from "./content-facts";
 
-export const FEASIBILITY_FACT_TYPES = ["last_admission", "last_service"] as const;
+// FB-1 step 5b (ledger `2026-10-19-fb1-closed-dates`): `closed_dates` — the dates a place states it is closed,
+// admitted on the `last_admission` rule (decision-maker, Oct 19, 2026).
+export const FEASIBILITY_FACT_TYPES = ["last_admission", "last_service", "closed_dates"] as const;
 export type FeasibilityFactType = (typeof FEASIBILITY_FACT_TYPES)[number];
 
 export function isFeasibilityFactType(v: unknown): v is FeasibilityFactType {
@@ -174,6 +176,73 @@ export function lastServiceMinutes(v: LastServiceValue, dateIso: string): number
 /** A departure before this minute is read as the previous evening's service. */
 export const SERVICE_DAY_START_MIN = 4 * 60;
 
+// ── closed_dates (FB-1 step 5b) ──────────────────────────────────────────────────────────────────
+
+/** The dates a place is closed, as inclusive "YYYY-MM-DD" ranges; a single day is a one-day range. At least one. */
+export interface ClosedDatesValue {
+  ranges: Array<{ from: string; to: string }>;
+}
+
+/** The most ranges one fact may carry — a page listing more is read as several facts, never truncated. */
+export const CLOSED_DATES_MAX_RANGES = 60;
+
+/** A real calendar date (rejects "2027-02-30"). */
+function isCalendarDate(v: unknown): v is string {
+  if (typeof v !== "string" || !ISO_DATE.test(v)) return false;
+  return new Date(`${v}T00:00:00Z`).toISOString().slice(0, 10) === v;
+}
+
+/** Pure. The structured value, or null when it does not parse — never a repaired guess (§13). Ranges are sorted. */
+export function parseClosedDates(v: unknown): ClosedDatesValue | null {
+  const raw = (v as any)?.ranges;
+  if (!Array.isArray(raw) || !raw.length || raw.length > CLOSED_DATES_MAX_RANGES) return null;
+  const ranges: ClosedDatesValue["ranges"] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== "object" || !isCalendarDate(r.from) || !isCalendarDate(r.to) || r.from > r.to) return null;
+    ranges.push({ from: r.from, to: r.to });
+  }
+  ranges.sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : a.to < b.to ? -1 : 1));
+  return { ranges };
+}
+
+/** Pure. Is the place closed on that date? */
+export function closedOnDate(v: ClosedDatesValue, dateIso: string): boolean {
+  return ISO_DATE.test(dateIso) && v.ranges.some((r) => dateIso >= r.from && dateIso <= r.to);
+}
+
+/** Pure. The day after the fact's last closed date, "YYYY-MM-DD" — midnight of it, in the plan's zone, is the expiry. */
+export function closedDatesExpiryDay(v: ClosedDatesValue): string {
+  const last = v.ranges.reduce((m, r) => (r.to > m ? r.to : m), v.ranges[0].to);
+  const d = new Date(`${last}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+
+/**
+ * Pure. Does the page's own quote state this date? "2026-12-29" is found as written ISO, "2026/12/29", "2026.12.29",
+ * "12/29", "12月29日", "2026年12月29日", "December 29", "Dec 29", "29 December", "29 Dec". A date the quote does not
+ * state is refused: the model may not supply a date the page did not print.
+ */
+export function dateAppearsIn(quote: string, iso: string): boolean {
+  if (!isCalendarDate(iso)) return false;
+  const y = iso.slice(0, 4);
+  const mo = Number(iso.slice(5, 7));
+  const d = Number(iso.slice(8, 10));
+  const q = quote.normalize("NFKC").toLowerCase().replace(/\s+/g, " ");
+  const mm = String(mo).padStart(2, "0");
+  const dd = String(d).padStart(2, "0");
+  const long = MONTHS[mo - 1];
+  const short = long.slice(0, 3);
+  const numeric = [`${y}-${mm}-${dd}`, `${y}/${mo}/${d}`, `${y}/${mm}/${dd}`, `${y}.${mo}.${d}`, `${y}.${mm}.${dd}`, `${mo}/${d}`, `${mm}/${dd}`, `${mo}月${d}日`];
+  // A numeric form must not be part of a longer number ("1/29" inside "11/29" or "1/290").
+  const numericHit = numeric.some((f) => new RegExp(`(^|[^0-9])${f.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}($|[^0-9])`).test(q));
+  if (numericHit) return true;
+  const words = [`${long} ${d}`, `${short} ${d}`, `${short}. ${d}`, `${d} ${long}`, `${d} ${short}`];
+  return words.some((f) => new RegExp(`(^|[^0-9a-z])${f.replace(/\./g, "\\.")}($|[^0-9])`).test(q));
+}
+
 // ── the time in the quote ────────────────────────────────────────────────────────────────────────
 
 /**
@@ -196,12 +265,20 @@ export function timeAppearsIn(quote: string, hhmm: string): boolean {
 
 // ── THE ONE ADMISSION RULE ───────────────────────────────────────────────────────────────────────
 
-export type FeasibilityRefusal = "not_feasibility_type" | "bad_value" | "not_official" | "no_source_url" | "origin_not_allowed" | "time_not_in_quote";
+export type FeasibilityRefusal = "not_feasibility_type" | "bad_value" | "not_official" | "no_source_url" | "origin_not_allowed" | "time_not_in_quote" | "date_not_in_quote";
+
+/** Pure. The structured value of a feasibility fact by its type, or null. */
+export function parseFeasibilityValue(factType: FeasibilityFactType, v: unknown): LastAdmissionValue | LastServiceValue | ClosedDatesValue | null {
+  if (factType === "last_admission") return parseLastAdmission(v);
+  if (factType === "last_service") return parseLastService(v);
+  return parseClosedDates(v);
+}
 
 /**
  * Pure. May this draft be stored as a feasibility fact? Rulings 1/3/5: the value parses; the writer is an
  * official crawled page or an expert; the license is `official`; there is an https source url. When a
- * quote travels with the value (the crawled path), every structured time must appear in it.
+ * quote travels with the value (the crawled path), every structured time must appear in it — and for
+ * `closed_dates`, every date that bounds a range (FB-1 step 5b).
  */
 export function admitFeasibilityFact(d: {
   factType: string;
@@ -220,6 +297,14 @@ export function admitFeasibilityFact(d: {
     if (!v) return { ok: false, reason: "bad_value" };
     if (quote !== null) {
       for (const t of Object.values(v.byWeekday)) if (t && !timeAppearsIn(quote, t)) return { ok: false, reason: "time_not_in_quote" };
+    }
+    return { ok: true };
+  }
+  if (d.factType === "closed_dates") {
+    const v = parseClosedDates(d.value);
+    if (!v) return { ok: false, reason: "bad_value" };
+    if (quote !== null) {
+      for (const r of v.ranges) for (const day of r.from === r.to ? [r.from] : [r.from, r.to]) if (!dateAppearsIn(quote, day)) return { ok: false, reason: "date_not_in_quote" };
     }
     return { ok: true };
   }

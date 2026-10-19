@@ -12,6 +12,7 @@ import { savedItemQuestions } from "../services/expert-door.service";
 import { getUserId } from "../utils/auth";
 import { storage, stampItemSourceClass } from "../storage";
 import { localTeasersForTrip } from "../services/local-teaser.service";
+import { expertHookForTrip, inSeasonAdditionsForTrip } from "../services/expert-hook.service";
 import { rideRecommendationsForTrip } from "../services/ride-recommender.service";
 import { liveLegFactsForTrip } from "../services/live-directions.service";
 import { loadDayFeasibility } from "../services/optimizer-lead.service";
@@ -932,9 +933,24 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     // FD-1 (ledger `2026-10-09-fd1-free-draft-cap`): on a FREE plan only, per day, the count of local picks and
     // notes the paid tier would add — counts only; a day not computed, or zero, carries no key (§13).
     const localTeasers = await localTeasersForTrip(tripId);
+    // FB-1 expert hook (ledger `2026-10-18-fb1-expert-hook`): the OWNER of a FREE plan gets the switch state and whether
+    // the chooser has anyone in it; anyone else, a paid plan or a failure gets no key (§13). The in-season count is per
+    // day and present only when non-zero — empty until FB-1 step 8.
+    // The slip only: the Trip Card read (`?surface=card`) never carries it.
+    const expertHook = render === "final" ? null : await expertHookForTrip(tripId, userId);
+    const inSeason = await inSeasonAdditionsForTrip(tripId);
     // FD-3 (ledger `2026-10-10-fd3-feasibility`, §3d): per day, what the feasibility checks could read —
     // counts only, every plan. Never fails the read: a failed count is no line, never a claimed "checked".
-    const feasibility = await loadDayFeasibility(tripId).catch((err) => {
+    // LG-2 Ask 6 (decision-maker, Oct 19, 2026): per day, the adjacent pairs whose leg has no travel time (a stop with
+    // no open point). The slip draws "Travel time not checked yet" between them and the day line counts them. Routed
+    // plans only; a failed read is no key, never a claimed time (§13).
+    const legsNotChecked = await import("../services/routing/plan-legs-engine.service")
+      .then(({ planLegsNotCheckedByDay }) => planLegsNotCheckedByDay(tripId))
+      .catch((err) => {
+        console.error(`[plancard] legs not checked failed plan_id=${tripId}:`, (err as Error)?.message ?? err);
+        return null;
+      });
+    const feasibility = await loadDayFeasibility(tripId, legsNotChecked ? { legsNotChecked } : {}).catch((err) => {
       console.error(`[plancard] day feasibility failed plan_id=${tripId}:`, (err as Error)?.message ?? err);
       return new Map();
     });
@@ -973,12 +989,15 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
             ? { transports: d.transports.map((tr: any) => (liveLegs.has(tr?.id) ? { ...tr, ...liveLegs.get(tr.id) } : tr)) }
             : {}),
           ...(t ? { localTeaser: t } : {}),
+          ...(inSeason.get(d.dayNumber)?.count ? { inSeason: inSeason.get(d.dayNumber) } : {}),
           ...(anchorStops.get(d.dayNumber)?.length ? { anchorStops: anchorStops.get(d.dayNumber) } : {}),
           ...(f ? { feasibility: f } : {}),
+          ...(legsNotChecked?.get(d.dayNumber)?.length ? { legsNotChecked: legsNotChecked.get(d.dayNumber) } : {}),
           ...(rt && rt.rides > 0 ? { rideTeaser: rt } : {}),
           ...(rs && rs.length ? { rideSuggestions: rs.map(({ score: _score, ...s }) => s) } : {}),
         };
       }),
+      ...(expertHook ? { expertHook } : {}),
       changeLog: plan.plancard.changeLog,
       metrics: plan.plancard.metrics,
       optimizationDelta: plan.plancard.optimizationDelta,

@@ -353,7 +353,7 @@ jobs:
       # ~2.8 GB for everything else. Set for this step only.
       - name: tsc baseline ratchet (down-only)
         env:
-          TSC_BASELINE: '117'
+          TSC_BASELINE: '116'
           TSC_TIMEOUT_S: '900'
           NODE_OPTIONS: '--max-old-space-size=5120'
         run: |
@@ -1182,6 +1182,9 @@ jobs:
       - if: ${{ !cancelled() }}
         name: Ticker rules and ribbon render
         run: npx tsx --test client/src/lib/__tests__/ticker-rules.test.ts client/src/components/__tests__/ticker-ribbon.test.tsx
+      - if: ${{ !cancelled() }}
+        name: Switched traveler doors (event_concierge, handoff_booking) and their copy
+        run: npx tsx --test client/src/components/__tests__/traveler-doors.test.tsx
       # ── trip-card-honesty ───────────────────────────────────────────
       - name: "── trip-card-honesty (L4 — 2026-09-07-trip-card-honesty)"
         if: ${{ !cancelled() }}
@@ -1467,6 +1470,31 @@ jobs:
       - if: ${{ !cancelled() }}
         name: Item OSM re-geocode pins
         run: npx tsx --test server/services/__tests__/item-osm-regeocode.test.ts
+      # LG-2 Asks 2+3: the matcher's OSM class gate (no admin area, neighbourhood or road segment resolves a named
+      # place) and the Wikidata planner's title phrase. Pure, fake fetches.
+      - if: ${{ !cancelled() }}
+        name: LG-2 matcher and planner pins
+        run: npx tsx --test server/services/__tests__/lg2-matcher-planner.test.ts
+      # LG-2 Asks 4+5: activity words stripped before an item is judged to name no place; two joined places looked up
+      # by the first; a private tour, arrival or check-in routes only from a chosen point or the stay. Pure.
+      - if: ${{ !cancelled() }}
+        name: LG-2 classifier and meeting-point pins
+        run: npx tsx --test server/services/__tests__/lg2-classifier-meeting.test.ts
+      # LG-2 Ask 7: the reviewed points sheet (credit line kept, approved rows only, Hanamikoji never, paths at their
+      # start) and the exact name-attach plan. Pure, synthetic coordinates.
+      - if: ${{ !cancelled() }}
+        name: LG-2 admin OSM points dry-run pins
+        run: npx tsx --test shared/__tests__/admin-osm-points.test.ts
+      # LG-2 Ask 6: a leg connects adjacent stops only; a stop with no open point gives a leg with no time, and the day
+      # check cannot pass with one. Pure.
+      - if: ${{ !cancelled() }}
+        name: LG-2 adjacent legs pins
+        run: npx tsx --test server/services/__tests__/lg2-ask6-adjacent-legs.test.ts
+      # LG-2 Ask 8: the item batch asks a configured geocoder and refuses the public Nominatim server; the
+      # open-coordinate tables stay internal. Pure and source-level.
+      - if: ${{ !cancelled() }}
+        name: LG-2 licence and geocoder pins
+        run: npx tsx --test server/services/__tests__/lg2-licence-geocoder.test.ts
       # EV PR 0: the SerpAPI `google_maps` path (calls, the `serp_cache` write and every cache read) is off
       # unless SERPAPI_GOOGLE_MAPS_ENABLED=1. Fake fetch, db methods replaced; no database is reached.
       - if: ${{ !cancelled() }}

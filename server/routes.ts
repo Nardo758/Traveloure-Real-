@@ -22,6 +22,7 @@ import { OWNER_BOOKING_TRANSITIONS, ownerTransitionRefusal } from "./utils/booki
 // (`describeAcceptance`, `describeCompletionDeclaration`), so no surface has to restate an
 // acceptance window or a dispute deadline on the client (§18 rule 1). No rail, no write, no column.
 import { describeCompletionDeclaration } from "@shared/declared-completion-window";
+import { bannedCopyPromptLine } from "@shared/banned-copy";
 import { declaredCompletionWindowDays } from "./config/completion-windows.config";
 import { describeAcceptance } from "./services/booking-acceptance.service";
 import { outOfBandFullyRefundedBookingIds, refundSummariesFor } from "./services/out-of-band-refund.service";
@@ -195,7 +196,7 @@ import { aiUsageService } from "./services/ai-usage.service";
 import { complexityTier, buildAnchorPromptBlock, validateAnchorConflicts } from "./services/smart-sequencing.service";
 import { daysWithinFlightWindows } from "./utils/draft-flight-windows";
 import { placeholderMintDay } from "./services/trip-placeholder-dates";
-import { reduceUncoveredEventActivities, withNormalizedTravelTitles } from "./utils/ai-draft-sanitize";
+import { logBannedCopyDrops, newBannedCopyDrops, reduceUncoveredEventActivities, withNormalizedTravelTitles } from "./utils/ai-draft-sanitize";
 import { coveringEventsForTrip } from "./services/content-facts/covering-events";
 import { seasonPromptLineForTrip } from "./services/content-facts/season-facts";
 import { AI_MEAL_PROMPT_LINE, aiEventPromptLine } from "@shared/ai-place-text";
@@ -1627,7 +1628,6 @@ export async function registerRoutes(
   app.post(api.trips.generateItinerary.path, isAuthenticated, async (req, res) => {
     // FD-1 (ledger `2026-10-09-fd1-free-draft-cap`): the claimed free-draft run; released on our failure.
     let freeDraftRunId: string | null = null;
-    let freeDraftProviderFailed = false;
     try {
       const trip = await storage.getTrip(req.params.id);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
@@ -1747,7 +1747,7 @@ Return ONLY valid JSON in this exact structure:
       "title": "Day theme title",
       "activities": [
         {
-          "time": "09:00 AM",
+          "time": "<HH:MM AM/PM>",
           "title": "Activity name",
           "description": "2-3 sentence description",
           "type": "sightseeing|food|travel|rest|adventure|shopping|culture",
@@ -1760,7 +1760,8 @@ Return ONLY valid JSON in this exact structure:
   ]
 }
 
-Include 4-6 activities per day. Make it realistic, specific to ${destination}, and culturally accurate.`;
+Include 4-6 activities per day. Make it realistic, specific to ${destination}, and culturally accurate.
+${bannedCopyPromptLine()}`;
 
         // One AI call shared across all concurrent requests with the same key.
         // callWithCircuitBreaker prevents further calls when AI is failing repeatedly.
@@ -1810,41 +1811,33 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           if (freeDraftRunId) await releaseFreeDraft(freeDraftRunId).catch(() => {});
           return res.status(failure.status).json(failure.body);
         }
-        // A retryable provider failure is still RECORDED (so an outage is visible as failed calls)
-        // before the existing contextual fallback runs.
-        await reportAiUpstreamError(aiErr, {
+        // FB-1 step 5 (ledger `2026-10-19-fb1-prompt-cleanup`): a retryable provider failure stores NO draft. The canned
+        // fallback it used to store (the same four generic stops on every day, replacing the plan's AI items) is gone:
+        // the failure is recorded and answered the way every other AI failure here is (`aiFailureResponse` — 503 with
+        // retry-after), the plan is left as it was, the free draft does not count (FD-1 ruling 3), and the traveler
+        // can try again.
+        const failure = await aiFailureResponse(aiErr, {
           route: "POST /api/trips/:id/generate-itinerary",
           sourceType: "ai_itinerary",
           userId: callerUserId,
         });
-        console.error("AI generation failed, using contextual fallback:", aiErr);
-        // FD-1 ruling 3: the provider failed — the canned fallback is our failure, not a counted draft.
-        freeDraftProviderFailed = true;
-        itineraryData = {
-          days: Array.from({ length: duration }, (_, i) => ({
-            day: i + 1,
-            title: i === 0 ? "Arrival & Orientation" : i === duration - 1 ? "Departure Day" : `Exploration Day ${i + 1}`,
-            activities: [
-              { time: "09:00 AM", title: `Morning in ${destination}`, description: `Start your day exploring the highlights of ${destination}.`, type: "sightseeing", locationName: destination, durationMinutes: 120, estimatedCost: 0 },
-              { time: "12:00 PM", title: "Local Lunch", description: `Try authentic local cuisine in ${destination}.`, type: "food", locationName: "Local Restaurant", durationMinutes: 60, estimatedCost: 20 },
-              { time: "2:00 PM", title: "Cultural Experience", description: `Immerse yourself in the culture and history of ${destination}.`, type: "culture", locationName: destination, durationMinutes: 150, estimatedCost: 15 },
-              { time: "7:00 PM", title: "Dinner", description: "Enjoy a relaxing dinner after a full day.", type: "food", locationName: "Local Restaurant", durationMinutes: 90, estimatedCost: 30 },
-            ],
-          })),
-        };
+        if (freeDraftRunId) await releaseFreeDraft(freeDraftRunId).catch(() => {});
+        return res.status(failure.status).json(failure.body);
       }
 
       // Step 6 (R-aa, R-w): the same storage rules the snapshot writer applies to every other drafting
       // path — nothing before arrival + buffer or past departure − buffer (the ONE rule,
       // `draft-flight-windows`), and an event-named title not confirmed for these dates reduced.
       if (Array.isArray(itineraryData?.days)) {
+        const bannedDrops = newBannedCopyDrops();
         itineraryData.days = withNormalizedTravelTitles(
           daysWithinFlightWindows(itineraryData.days, tripAnchors as any, tripStartIso).map((d: any) => ({
             ...d,
-            activities: Array.isArray(d.activities) ? reduceUncoveredEventActivities(d.activities, coveringEvents) : d.activities,
+            activities: Array.isArray(d.activities) ? reduceUncoveredEventActivities(d.activities, coveringEvents, bannedDrops) : d.activities,
           })),
           trip.destination,
         );
+        logBannedCopyDrops("trip-generate", bannedDrops);
       }
 
       // Post-generation anchor validation (Lane 2a): warn, never block. Attaches
@@ -1956,7 +1949,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
       enqueuePlanLegRecompute(trip.id); // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)
       if (freeDraftRunId) {
-        await (freeDraftProviderFailed ? releaseFreeDraft(freeDraftRunId) : promoteFreeDraft(freeDraftRunId, trip.id))
+        await promoteFreeDraft(freeDraftRunId, trip.id)
           .catch((e) => console.error("[free-draft] settle failed:", e));
       }
 

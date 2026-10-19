@@ -155,6 +155,7 @@ import { slipAdvisorStandingLine, type SlipRailAdvisor } from "@/lib/slip-rail";
 // existing rails they call live in `SlipItemTools.tsx`. Nothing here restates either (§18 rule 1).
 import { SlipAddItemControl, useSlipItemActions } from "./SlipItemTools";
 import { SLIP_DELEGATE_NOTE, canEditPlanItems, slipViewer } from "@/lib/slip-viewer-role";
+import { FixedDayControl, FixedPlanBar, FreeRetimeDayControl, useFixedPlan, useFreeRetimeFixes } from "@/components/plan/FixedPlanControls";
 import {
   SlipAnchorCompareButton,
   SlipOptionSetCard,
@@ -164,6 +165,7 @@ import {
   useOptionSets,
 } from "./SlipOptionSets";
 import { AddLocalExpertButton, ExpertDoorCard, useExpertDoorState } from "./ExpertDoor";
+import { DayExpertHook } from "../plan/DayExpertHook";
 import { HandoffChooserHost } from "@/components/plan/HandoffChooser";
 import { HandoffBanner, HandoffFooter, SuggestionStrip, useExpertSuggestions, useHandoff } from "@/components/plan/HandoffBanner";
 import { handoffDayStat, handoffExpertLabel, handoffPenScope, openHandoffChooser } from "@/lib/handoff-client";
@@ -188,6 +190,7 @@ import {
   SLIP_TITLE_FONT_CLASS,
   tintPillStyle,
 } from "./slip-tokens";
+import { useTravelerDoors } from "@/hooks/use-traveler-doors";
 
 // ── DTO shape (the plancard route response — PlanCardData plus the blocks the slip reads) ──
 
@@ -871,6 +874,8 @@ function SlipDayItem({
   // BP-1: which booking controls the sheet draws, from the item's resolved path (`@shared/booking-path`). An
   // unresolved path keeps the pre-BP-1 sheet (the stay's Book and "Book this for me") — no new claim either way.
   const sheetControls = a.bookingPath ? bookingControls(a.bookingPath) : { primaryBook: true, bookForMe: true };
+  // Ledger `2026-10-18-traveler-doors-hidden`: "Book this for me" is drawn only while `handoff_booking` is on.
+  const { handoffBooking } = useTravelerDoors();
   useEffect(() => {
     if (detailsRequest > 0) setSheetOpen(true);
   }, [detailsRequest]);
@@ -981,17 +986,19 @@ function SlipDayItem({
                 <AffiliateBookButton activity={a as any} testId={`item-sheet-affiliate-book-${a.id}`} />
               ) : null}
               {/* R323 (step 7b, §12 step 1): "Book this for me" opens the ONE handoff chooser. */}
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setSheetOpen(false);
-                  openHandoffChooser({ kind: "book", itemIds: [a.id] });
-                }}
-                data-testid={`item-sheet-book-for-me-${a.id}`}
-              >
-                {ITEM_MENU_LABELS.bookForMe}
-              </Button>
+              {handoffBooking ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setSheetOpen(false);
+                    openHandoffChooser({ kind: "book", itemIds: [a.id] });
+                  }}
+                  data-testid={`item-sheet-book-for-me-${a.id}`}
+                >
+                  {ITEM_MENU_LABELS.bookForMe}
+                </Button>
+              ) : null}
             </>
           ) : null
         }
@@ -2185,6 +2192,10 @@ export function SlipView({
   } = useSlipViewModel({ tripId, data, highlightItemId, initialView });
   // Step 8b-2 (ruling 4): the map band reads the ONE AI action the rail reads.
   const aiAction = useSlipAiAction(tripId, allActivities);
+  // FB-1 step 4: "Your plan, fixed" by tap — only for a viewer with the item tools, once a run exists.
+  const fixedPlan = useFixedPlan(tripId, canEditItems && !!data.lastComparisonId);
+  // FB-1 step 4b: a FREE plan's retime fixes on tap (the server answers none for a paid plan).
+  const freeFixes = useFreeRetimeFixes(tripId, canEditItems);
   // The Empty board's start renders for the OWNER of a plan with no items, in list view only.
   const emptyStartShown = isOwner && aiAction === "draft" && slipView === "list";
   // ── THE MOMENT BOARD (slip conformance; ledger `2026-10-08-slip-moment-board`) ─────────────────
@@ -2618,6 +2629,7 @@ export function SlipView({
               <div className="h-4 rounded bg-muted animate-pulse w-1/2" />
             </div>
           ) : null}
+          <FixedPlanBar tripId={tripId} view={fixedPlan} />
           {daySlots.map((slot, slotIdx) => {
             const slotItems = slot.groups.flatMap((g) => g.items);
             // Step 2 addendum: an AI arrival on day 1 / departure on the last day IS the travel row —
@@ -2681,7 +2693,28 @@ export function SlipView({
                 open={dayIsOpen(slot.key, slotIdx, slotItems)}
                 onOpenChange={(o) => setDayOpen((m) => ({ ...m, [slot.key]: o }))}
                 feasibility={day?.feasibility ?? null}
-                localTeaser={day?.localTeaser ?? null}
+                // FB-1: on a free plan the owner's hook section carries the FD-5 counts in place of its plain line,
+                // so the day does not also draw them at the top.
+                localTeaser={isOwner && data.expertHook ? null : day?.localTeaser ?? null}
+                hook={
+                  isOwner && data.expertHook && slot.dayNum != null ? (
+                    <DayExpertHook
+                      dayKey={String(slot.dayNum)}
+                      dayNumber={slot.dayNum}
+                      hook={data.expertHook}
+                      teaser={day?.localTeaser ?? null}
+                      inSeason={day?.inSeason ?? null}
+                      onAsk={() => setExpertDoorState("open")}
+                    />
+                  ) : null
+                }
+                fixControl={
+                  slot.dayNum == null ? null : fixedPlan ? (
+                    <FixedDayControl tripId={tripId} view={fixedPlan} day={slot.dayNum} />
+                  ) : freeFixes.some((f) => f.day === slot.dayNum) ? (
+                    <FreeRetimeDayControl tripId={tripId} fixes={freeFixes} day={slot.dayNum} />
+                  ) : null
+                }
                 thumb={
                   slot.dayNum != null && dayPhotoItemId.get(slot.dayNum) ? (
                     <PlacePhoto photo={dayPhotos[dayPhotoItemId.get(slot.dayNum)!]} size="thumb" testId={`slip-day-thumb-${slot.dayNum}`} />

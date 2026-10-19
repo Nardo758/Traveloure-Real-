@@ -128,6 +128,7 @@ const AdminBookingDetail = lazy(() => import("@/pages/admin/booking-detail"));
 const AdminBookings = lazy(() => import("@/pages/admin/bookings"));
 const AdminFeedback = lazy(() => import("@/pages/admin/feedback"));
 const ConciergePage = lazy(() => import("@/pages/concierge"));
+import { EventConciergeRoute } from "@/components/concierge/EventConciergeRoute";
 const ResetPasswordPage = lazy(() => import("@/pages/reset-password"));
 const VerifyEmailPage = lazy(() => import("@/pages/verify-email"));
 const ExpertsPage = lazy(() => import("@/pages/experts"));
@@ -416,10 +417,14 @@ function Router() {
         {process.env.NODE_ENV === "development" ? <ArchitectureDiagram /> : <Redirect to="/" />}
       </Route>
       <Route path="/concierge">
-        <ConciergePage />
+        <EventConciergeRoute>
+          <ConciergePage />
+        </EventConciergeRoute>
       </Route>
       <Route path="/optimize">
-        <Redirect to="/concierge?tier=ai" />
+        <EventConciergeRoute>
+          <Redirect to="/concierge?tier=ai" />
+        </EventConciergeRoute>
       </Route>
       <Route path="/login">
         <LoginRoute />
