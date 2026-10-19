@@ -5,6 +5,7 @@ import { ArrowRight, Compass } from "lucide-react";
 import { SEOHead } from "@/components/seo-head";
 import { useImpressionTracker } from "@/hooks/use-impression-tracker";
 import { BLOG_IMPRESSION_CONTENT_TYPE } from "@shared/blog";
+import { useExpertAvailability } from "@/lib/expert-availability";
 import {
   authorLine,
   blogIndexNoindex,
@@ -92,6 +93,9 @@ function BlogCard({ post, position }: { post: PublicBlogPost; position: number }
 }
 
 function BlogEmptyState() {
+  // SH-1 item 11 (Q11.3): this page's expert CTA names no city, so it draws only when any live
+  // market has an expert to ask.
+  const anyExpertAvailable = useExpertAvailability("any");
   return (
     <div className="text-center py-8">
       <Compass className="w-16 h-16 mx-auto text-muted-foreground mb-6" />
@@ -106,9 +110,11 @@ function BlogEmptyState() {
             Explore destinations <ArrowRight className="w-4 h-4 ml-2" />
           </Button>
         </Link>
-        <Link href="/experts">
-          <Button variant="outline" data-testid="button-blog-experts">Browse experts</Button>
-        </Link>
+        {anyExpertAvailable && (
+          <Link href="/experts">
+            <Button variant="outline" data-testid="button-blog-experts">Browse experts</Button>
+          </Link>
+        )}
       </div>
     </div>
   );
