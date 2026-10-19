@@ -54,7 +54,7 @@ const editable = {
   refreshIntervalDays: z.number().int().min(1).max(3650).nullable(),
   costCeilingCentsPerDay: z.number().int().min(0).max(10_000_000).nullable(),
   notes: z.string().max(4000).nullable(),
-  // CS-1 item 1 (migration 392, held): what the site's terms allow, and the credit it asks for.
+  // CS-1 item 1 (migration 395, held): what the site's terms allow, and the credit it asks for.
   termsClass: z.enum(TERMS_CLASSES).nullable(),
   automatedAccessAllowed: z.boolean().nullable(),
   creditText: z.string().trim().max(500).nullable(),

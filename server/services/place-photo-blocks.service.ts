@@ -1,6 +1,6 @@
 /**
  * CS-1 item 1 — PER-PLACE no_photos (decision-maker, Oct 18, 2026; ledger `2026-10-18-cs1-source-signoff`; migration
- * 392, held). The ONE reader/writer of `place_photo_blocks`.
+ * 395, held). The ONE reader/writer of `place_photo_blocks`.
  *
  * A photo is BLOCKED when either key matches:
  *   · its place id equals a block's `place_id`, or
@@ -181,4 +181,25 @@ export function visibleListingImage(row: ListingLike & { serviceImage?: string |
   const img = row.serviceImage ?? null;
   if (!img || !blocks.length) return img;
   return blockFor(blocks, listingPhotoSubject(row)) ? null : img;
+}
+
+// ── gems ───────────────────────────────────────────────────────────────────────────────────────
+
+type GemLike = {
+  placeName?: string | null;
+  name?: string | null;
+  city?: string | null;
+  destination?: string | null;
+  imageUrl?: string | null;
+};
+
+/**
+ * Sync: a gem row (`travel_pulse_hidden_gems` — placeName + city; `ai_discovered_gems` — name + destination) with
+ * its `imageUrl` hidden when its place is blocked. Gems carry no place id, so only the name + city key applies.
+ * Nothing is deleted from the row in the database.
+ */
+export function hideBlockedGemImage<T extends GemLike & Record<string, any>>(row: T, blocks: readonly PhotoBlockRow[] = photoBlocksSnapshot()): T {
+  if (!row.imageUrl || !blocks.length) return row;
+  const blocked = blockFor(blocks, { names: [row.placeName, row.name], city: row.city ?? row.destination ?? null });
+  return blocked ? ({ ...row, imageUrl: null } as T) : row;
 }

@@ -34,7 +34,7 @@ export interface RefreshSourceRow {
   refreshIntervalDays: number | null;
   costCeilingCentsPerDay: number | null;
   adapter: string | null;
-  // CS-1 item 1 (migration 392): a machine reads only an approved, reading-class source that allows automated access.
+  // CS-1 item 1 (migration 395): a machine reads only an approved, reading-class source that allows automated access.
   signoffStatus?: string | null;
   termsClass?: string | null;
   automatedAccessAllowed?: boolean | null;

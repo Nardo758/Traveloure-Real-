@@ -1,6 +1,6 @@
 /**
  * CS-1 item 1 — SOURCE SIGN-OFF AND TERMS CLASS (decision-maker, Oct 18, 2026; ledger `2026-10-18-cs1-source-signoff`;
- * migration 392, HELD). The pure rules; the ONE writer is `server/services/content-sources.service.ts`.
+ * migration 395, HELD). The pure rules; the ONE writer is `server/services/content-sources.service.ts`.
  *
  *   · `signoff_status` — pending | approved | rejected. NULL reads as pending: a source nobody signed off is pending,
  *     never approved. Only the allowlisted approver (the activator allowlist) sets approved or rejected.

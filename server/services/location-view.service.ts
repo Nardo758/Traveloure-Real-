@@ -17,6 +17,7 @@
  * Phase 262: also returns DB-sourced hidden gems and active platform services.
  */
 
+import { hideBlockedGemImage, hideBlockedListingImages, photoBlocks } from "./place-photo-blocks.service";
 import { db } from "../db";
 import { resolveCanonicalCity } from "../utils/canonical-city";
 import { notConciergePoolListingSql } from "./expert-routability";
@@ -38,7 +39,6 @@ import {
 } from "@shared/trailhead-resolution";
 import { sortByFeaturedAdjusted } from "./featured-sort";
 import { logger } from "../infrastructure/logger";
-import { hideBlockedListingImages } from "./place-photo-blocks.service";
 
 /**
  * ── FP-1 / B4 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1) ─────────────────────────────────
@@ -381,7 +381,9 @@ class LocationViewService {
           .select()
           .from(travelPulseHiddenGems)
           .where(eq(travelPulseHiddenGems.city, cityName))
-          .orderBy(desc(travelPulseHiddenGems.gemScore)),
+          .orderBy(desc(travelPulseHiddenGems.gemScore))
+          // CS-1 item 1: no image of a place under a no_photos block.
+          .then(async (rows) => { const blocks = await photoBlocks(); return rows.map((g) => hideBlockedGemImage(g, blocks)); }),
       ]);
 
       // Keyed by normalizeNeighborhoodKey(...) — see 2026-08-27-neighbourhood-slug-match
@@ -478,6 +480,8 @@ class LocationViewService {
       .from(travelPulseHiddenGems)
       .where(eq(travelPulseHiddenGems.city, cityName))
       .orderBy(desc(travelPulseHiddenGems.gemScore))
+      // CS-1 item 1: no image of a place under a no_photos block.
+      .then(async (rows) => { const blocks = await photoBlocks(); return rows.map((g) => hideBlockedGemImage(g, blocks)); })
       // Attribution (ruling 1) attached, then the ruled TEASER projection
       // (ruling 3) — deep fields never leave the server on this surface.
       .then((rows) => attachGemAttribution(rows))

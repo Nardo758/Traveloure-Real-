@@ -5035,6 +5035,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const city = typeof req.query.city === "string" ? req.query.city : "";
       const source = typeof req.query.source === "string" ? req.query.source : "google";
       if (!q || source !== "unsplash") return res.json({ photoUrl: null });
+      // CS-1 item 1: no stock photo of a place under a no_photos block (the gem photo hook asks by name + city).
+      {
+        const { photoBlockedFor } = await import("./services/place-photo-blocks.service");
+        if (await photoBlockedFor({ names: [q], city })) return res.json({ photoUrl: null });
+      }
 
       {
         // Unsplash → Pexels fallback chain via media aggregator services

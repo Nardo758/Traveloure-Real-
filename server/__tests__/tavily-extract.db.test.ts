@@ -41,6 +41,8 @@ const PAGE = "Kinkaku-ji opening hours: 9:00 to 17:00 every day. Admission 500 y
 const row = {
   id: SRC, name: "Kyoto City Official", homepage: "https://kyoto.travel/", market: "kyoto", adapter: "tavily_extract",
   covers: ["stop.hours", "stop.ticketing"], doesNotCover: [] as string[], licenseClass: "official", active: true,
+  // CS-1 item 1 (ledger `2026-10-18-cs1-source-signoff`): a per-plan fetch reads only an approved, auto-fetchable source.
+  signoffStatus: "approved", termsClass: "extract", automatedAccessAllowed: true,
 };
 
 function fakeDeps(over: Partial<{ results: string[]; robotsThrows: boolean; facts: unknown[] }> = {}) {

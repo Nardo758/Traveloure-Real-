@@ -54,8 +54,9 @@ async function source(id: string, over: Record<string, string> = {}) {
   const v = {
     active: "true", terms: "now()", interval: "30", ceiling: "25", covers: "{stop.hours,transport.local}", ...over,
   };
-  await db.execute(sql.raw(`INSERT INTO content_sources (id, name, homepage, market, adapter, covers, does_not_cover, license_class, terms_checked_at, refresh_interval_days, cost_ceiling_cents_per_day, active)
-    VALUES ('${id}', 'Fixture ${id}', '${HOME}', 'kyoto', 'tavily_extract', '${v.covers}', '{}', 'official', ${v.terms}, ${v.interval}, ${v.ceiling}, ${v.active})`));
+  // CS-1 item 1 (ledger `2026-10-18-cs1-source-signoff`): the refresh reads only an approved, auto-fetchable source.
+  await db.execute(sql.raw(`INSERT INTO content_sources (id, name, homepage, market, adapter, covers, does_not_cover, license_class, terms_checked_at, refresh_interval_days, cost_ceiling_cents_per_day, active, signoff_status, terms_class, automated_access_allowed)
+    VALUES ('${id}', 'Fixture ${id}', '${HOME}', 'kyoto', 'tavily_extract', '${v.covers}', '{}', 'official', ${v.terms}, ${v.interval}, ${v.ceiling}, ${v.active}, 'approved', 'extract', true)`));
 }
 
 const templeTarget = (id: string): ContentSourceTargets => ({

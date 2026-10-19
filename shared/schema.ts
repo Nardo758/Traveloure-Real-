@@ -12396,7 +12396,7 @@ export const contentSources = pgTable("content_sources", {
   publicOk: boolean("public_ok"),
   publicOkCheckedAt: timestamp("public_ok_checked_at"),
   publicOkCheckedBy: varchar("public_ok_checked_by"),
-  // Migration 392 (CS-1 item 1, ledger 2026-10-18-cs1-source-signoff). The sign-off and what the site's terms allow.
+  // Migration 395 (CS-1 item 1, ledger 2026-10-18-cs1-source-signoff). The sign-off and what the site's terms allow.
   // Value sets in shared/source-signoff.ts (no CHECK); NULL signoff_status reads as pending. ONE writer:
   // server/services/content-sources.service.ts. No DEFAULT/CHECK/index/FK.
   signoffStatus: varchar("signoff_status", { length: 16 }),
@@ -12409,7 +12409,7 @@ export const contentSources = pgTable("content_sources", {
   marketIdx: index("idx_content_sources_market").on(table.market),
 }));
 
-// Migration 392 (CS-1 item 1): per-place no_photos. Born empty; rows entered by the approver in admin, never deleted.
+// Migration 395 (CS-1 item 1): per-place no_photos. Born empty; rows entered by the approver in admin, never deleted.
 // Two keys: the Google place id, or the normalised place name + city (server/services/place-photo-blocks.service.ts).
 export const placePhotoBlocks = pgTable("place_photo_blocks", {
   id: varchar("id").primaryKey(),

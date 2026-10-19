@@ -1,17 +1,18 @@
 /**
  * CS-1 item 1 — SOURCE SIGN-OFF AND PER-PLACE no_photos, on a real database (ledger `2026-10-18-cs1-source-signoff`;
- * migration 392, held).
+ * migration 395, held).
  *
  *   SB1  a link-out terms class forces adapter `manual`, on create and on edit
  *   SB2  sign-off is the approver's alone (403 otherwise); approving needs a terms class; reject deactivates
  *   SB3  activation needs an approved sign-off; a reading-class source is refused until the review gate exists
  *   SB4  a terms-bound edit (terms class) returns the source to pending and deactivates it
  *   SB5  the refresh refuses a source that is not auto-fetchable; recordFacts refuses a link-out source's facts
- *   PB1  migration 392 creates the table and inserts nothing (no INSERT in the file; the table is empty on a fresh run)
+ *   PB1  migration 395 creates the table and inserts nothing (no INSERT in the file; the table is empty on a fresh run)
  *   PB2  the approver alone adds a block; a name needs its city; a block needs a key
  *   PB3  both keys: a place id, or a normalised name + city (Kiyomizu Temple ≈ Kiyomizu-dera); never a name alone
  *   PB4  upload: assertPhotoAllowed refuses a blocked subject with a 422 naming the reason
  *   PB5  read: photosFor returns no photo for a blocked place; a listing read hides its cover and gallery
+ *   PB6  read: a gem (hidden gem placeName + city; AI gem name + destination) hides its image when blocked
  *
  * DISPOSABLE DB ONLY: rows keyed by a per-run prefix and deleted afterwards.
  */
@@ -38,6 +39,7 @@ import {
   addPlacePhotoBlock,
   assertPhotoAllowed,
   blockFor,
+  hideBlockedGemImage,
   photoBlocks,
   warmPhotoBlocks,
 } from "../services/place-photo-blocks.service";
@@ -164,8 +166,8 @@ test("SB5: refresh refuses a non-auto-fetchable source; recordFacts refuses a li
   assert.equal((r.rows ?? r)[0].n, 0);
 });
 
-test("PB1: migration 392 creates place_photo_blocks and inserts nothing", () => {
-  const file = fs.readFileSync(path.resolve(process.cwd(), "server/migrations/392_source_signoff_and_photo_blocks.sql"), "utf8");
+test("PB1: migration 395 creates place_photo_blocks and inserts nothing", () => {
+  const file = fs.readFileSync(path.resolve(process.cwd(), "server/migrations/395_source_signoff_and_photo_blocks.sql"), "utf8");
   const code = file.replace(/--.*$/gm, "");
   assert.match(code, /CREATE TABLE IF NOT EXISTS place_photo_blocks/i);
   assert.doesNotMatch(code, /\b(INSERT|COPY|UPDATE)\b/i, "a deploy writes no block and no source value");
@@ -222,4 +224,13 @@ test("PB5: reads hide a blocked place's photos and keep the rest", async () => {
   // Nothing was deleted: the block rows remain, and no photo row was touched.
   const r: any = await db.execute(sql`SELECT count(*)::int AS n FROM place_photo_blocks WHERE set_by = ${approver}`);
   assert.equal((r.rows ?? r)[0].n, 2);
+});
+
+test("PB6: a gem's image is hidden when its place is blocked", async () => {
+  const blocks = await photoBlocks();
+  const img = "https://cdn.example.org/gem.jpg";
+  assert.equal(hideBlockedGemImage({ placeName: "Kiyomizu Temple", city: "Kyoto", imageUrl: img }, blocks).imageUrl, null);
+  assert.equal(hideBlockedGemImage({ name: "Kiyomizudera", destination: "Kyoto", imageUrl: img }, blocks).imageUrl, null);
+  assert.equal(hideBlockedGemImage({ placeName: "Nishiki Market", city: "Kyoto", imageUrl: img }, blocks).imageUrl, img);
+  assert.equal(hideBlockedGemImage({ placeName: "Kiyomizu Temple", city: "Osaka", imageUrl: img }, blocks).imageUrl, img);
 });

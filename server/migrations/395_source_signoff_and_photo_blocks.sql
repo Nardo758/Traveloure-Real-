@@ -1,4 +1,4 @@
--- 392_source_signoff_and_photo_blocks.sql — CS-1 item 1 (ledger `2026-10-18-cs1-source-signoff`). HELD for the
+-- 395_source_signoff_and_photo_blocks.sql — CS-1 item 1 (ledger `2026-10-18-cs1-source-signoff`). HELD for the
 -- decision-maker's comment on the PR. Additive and nullable; the new table is created EMPTY — no row is inserted by
 -- this migration or by any deploy (rows are entered by Leon in admin).
 --

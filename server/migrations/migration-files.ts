@@ -2086,5 +2086,5 @@ export const MIGRATION_FILES = [
   "390_open_coords_rekey.sql",
   // CS-1 item 1: source sign-off columns (additive, nullable) and the empty place_photo_blocks table. HELD.
   // Ledger 2026-10-18-cs1-source-signoff. Declared in shared/schema.ts.
-  "392_source_signoff_and_photo_blocks.sql",
+  "395_source_signoff_and_photo_blocks.sql",
 ] as const;
