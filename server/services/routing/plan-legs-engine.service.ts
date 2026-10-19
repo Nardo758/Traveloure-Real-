@@ -208,7 +208,7 @@ export async function loadPlanLegContext(
   opts: { acceptsPoint?: (p: RoutePoint) => boolean } = {},
 ) {
   // LG-1: which points the routing adapter may be given — the caller's adapter, else the live one. OSRM takes open
-  // coordinates only; a refused stop is unlocated for routing (no routed leg in or out — bridged like any other).
+  // coordinates only; a refused stop is unlocated for routing (no routed leg in or out — LG-2 Ask 6: never bridged).
   const liveAdapter = opts.acceptsPoint ? null : routingAdapter();
   const acceptsPoint = opts.acceptsPoint ?? (liveAdapter?.acceptsPoint ? (p: RoutePoint) => liveAdapter.acceptsPoint!(p) : undefined);
   const items = await storage.getItineraryItems(tripId);
@@ -710,7 +710,7 @@ async function computePlanLegsCore(
 
 /**
  * P0 legs rulings 2 and 6 (ledger `2026-10-10-p0-legs-baseline`): per plan day, how many legs the plan
- * SHOULD have (the ONE `desiredPlanLegs`, bridges included) and shows none — a "no route found" marker
+ * SHOULD have (the ONE `desiredPlanLegs`, adjacent pairs only — LG-2 Ask 6) and shows none — a "no route found" marker
  * the FD-3 day line counts and the re-check reports. Counted only where the engine could have answered:
  * the engine on, a routed plan, chosen dates, a day not yet over. Empty map otherwise (nothing claimed).
  * Read only — never writes a leg.
@@ -726,6 +726,24 @@ export async function planLegGapsByDay(tripId: string, now: Date = new Date()): 
   for (const d of desired) {
     if (planDayIsPast(trip.startDate ? String(trip.startDate) : null, d.dayNumber, trip.timezone, now)) continue;
     if (!shown.has(d.pairKey)) out.set(d.dayNumber, (out.get(d.dayNumber) ?? 0) + 1);
+  }
+  return out;
+}
+
+/**
+ * LG-2 Ask 6 (decision-maker, Oct 19, 2026): per plan day, the ADJACENT pairs whose leg has no travel time because a
+ * stop has no open coordinate — the ONE `desiredPlanLegs` skip list (§18 rule 1). Each such leg exists with no time
+ * and reads "Travel time not checked yet"; the day line counts them, so the day's check never reads as a pass. Only
+ * on a plan that earns routed legs (a free plan shows no legs at all). Read only — never writes a leg.
+ */
+export async function planLegsNotCheckedByDay(tripId: string): Promise<Map<number, Array<{ fromActivityId: string; toActivityId: string }>>> {
+  const out = new Map<number, Array<{ fromActivityId: string; toActivityId: string }>>();
+  if (!(await tripGetsRoutedLegs(tripId))) return out;
+  const trip = await storage.getTrip(tripId);
+  if (!trip) return out;
+  const { skipped } = await loadPlanLegContext(tripId, trip);
+  for (const p of skipped) {
+    out.set(p.dayNumber, [...(out.get(p.dayNumber) ?? []), { fromActivityId: p.fromItemId, toActivityId: p.toItemId }]);
   }
   return out;
 }
