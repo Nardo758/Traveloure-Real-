@@ -25,6 +25,7 @@ import { formatDistance } from "../transport-leg-calculator";
 import { factPointsForTrip, factsForTrip, placeRefsForTrip } from "../content-facts/place-facts.service";
 import { stayPointForPlan } from "../stay-reroute.service";
 import { openCoordsForItemIds, openCoordsForPlaceIds, type OpenPlaceCoord } from "./open-place-coords.service";
+import { pulledOpenItems } from "./open-coord-review.service";
 import { acceptedPoint, routingPointFor } from "./open-routing-points";
 import { isOpenCoordOrigin } from "@shared/open-coords";
 import { routingAdapter } from "./index";
@@ -146,9 +147,10 @@ export async function openPointsForItems(
   if (!items.length) return out;
   const placeRefs = await placeRefsForTrip(tripId, items.map((i) => i.id));
   const placeIdOf = (it: (typeof items)[number]): string | null => it.googlePlaceId || placeRefs.get(it.id)?.placeId || null;
-  const [openCoords, itemOpen, osmRides] = await Promise.all([
+  const [openCoords, itemOpen, pulled, osmRides] = await Promise.all([
     openCoordsForPlaceIds(items.map(placeIdOf).filter((p): p is string => !!p)),
     openCoordsForItemIds(items.map((it) => it.id)),
+    pulledOpenItems(items.map((it) => it.id)),
     osmRideServiceIds(items.map((it) => it.providerServiceId ?? "").filter(Boolean)),
   ]);
   for (const it of items) {
@@ -157,6 +159,7 @@ export async function openPointsForItems(
       lookupPlaceId: placeIdOf(it),
       open: openCoords,
       itemOpen: itemOpen.get(it.id) ?? null,
+      itemPulled: pulled.has(it.id),
       ownPoint: rowCoordinatesTrusted(it as any) ? realPoint(it.latitude, it.longitude) : null,
       factPoint: null,
       osmRide: !!it.providerServiceId && osmRides.has(it.providerServiceId),
@@ -218,10 +221,13 @@ export async function loadPlanLegContext(
   // refreshes or clears it. The trusted row point needs no record.
   const googleFetchedAt = new Map<string, Date>();
   const placeIdOf = (it: any): string | null => (it.googlePlaceId as string | null) || placeRefs.get(it.id)?.placeId || null;
-  const [openCoords, itemOpen, osmRides] = await Promise.all([
+  const engineItemIds = [...items.map((it: any) => it.id as string), ...(stayPoint ? [stayPoint.itemId] : [])];
+  const [openCoords, itemOpen, pulled, osmRides] = await Promise.all([
     openCoordsForPlaceIds([...items.map(placeIdOf), stayPoint ? placeIdOf(items.find((i: any) => i.id === stayPoint.itemId) ?? { id: stayPoint.itemId }) : null].filter((p): p is string => !!p)),
     // LG-1 re-key (migration 390): the open place each item is linked to — reached without a Google place id.
-    openCoordsForItemIds([...items.map((it: any) => it.id as string), ...(stayPoint ? [stayPoint.itemId] : [])]),
+    openCoordsForItemIds(engineItemIds),
+    // LG-2 Ask 1 (migration 391): an item whose link is pulled for review does not fall back by place id.
+    pulledOpenItems(engineItemIds),
     osmRideServiceIds(items.map((it: any) => it.providerServiceId).filter(Boolean)),
   ]);
   const pointFor = (it: any): RoutePoint | null => {
@@ -233,6 +239,7 @@ export async function loadPlanLegContext(
         lookupPlaceId: placeIdOf(it),
         open: openCoords,
         itemOpen: itemOpen.get(it.id) ?? null,
+        itemPulled: pulled.has(it.id),
         ownPoint: own,
         factPoint: fact,
         osmRide: !!it.providerServiceId && osmRides.has(it.providerServiceId),
@@ -273,6 +280,7 @@ export async function loadPlanLegContext(
           lookupPlaceId: placeIdOf(stayItem),
           open: openCoords,
           itemOpen: itemOpen.get(stayPoint.itemId) ?? null,
+          itemPulled: pulled.has(stayPoint.itemId),
           ownPoint: { lat: stayPoint.lat, lng: stayPoint.lng },
           factPoint: null,
           osmRide: false,
@@ -738,9 +746,10 @@ export async function versionRoutingFor(comparisonId: string): Promise<{
   const items = await storage.getItineraryItems(tripId);
   const refs = await placeRefsForTrip(tripId, items.map((i) => i.id));
   const placeIdOf = new Map(items.map((i: any) => [i.id, ((i.googlePlaceId as string | null) || refs.get(i.id)?.placeId || null) as string | null] as const));
-  const [open, itemOpen] = await Promise.all([
+  const [open, itemOpen, pulled] = await Promise.all([
     openCoordsForPlaceIds(Array.from(placeIdOf.values()).filter((p): p is string => !!p)),
     openCoordsForItemIds(items.map((i: any) => i.id as string)),
+    pulledOpenItems(items.map((i: any) => i.id as string)),
   ]);
   const profile = (TRANSPORT_PROFILES as Record<string, { availableModes: Array<{ mode: string; available?: boolean }>; apiTransitCoverage?: boolean }>)[(trip.marketSlug ?? "").toLowerCase()];
   const transit = marketTransitRouting(profile);
@@ -754,12 +763,13 @@ export async function versionRoutingFor(comparisonId: string): Promise<{
       timezone: trip.timezone ?? null,
     },
     placeIdFor: (id) => (id ? refs.get(id)?.placeId ?? null : null),
-    // The same order as `routingPointFor`: an admin row for the place id, the item's own open place, a place-id match.
+    // The same order as `routingPointFor`: an admin row for the place id, the item's own open place, a place-id match
+    // (none for an item whose link is pulled for review, LG-2 Ask 1).
     openFor: (id) => {
       if (!id) return null;
       const pid = placeIdOf.get(id) ?? null;
       const byPlace = pid ? open.get(pid) ?? null : null;
-      return byPlace?.origin === "admin" ? byPlace : itemOpen.get(id) ?? byPlace;
+      return byPlace?.origin === "admin" ? byPlace : itemOpen.get(id) ?? (pulled.has(id) ? null : byPlace);
     },
   };
 }

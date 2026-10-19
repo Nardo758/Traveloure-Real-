@@ -53,6 +53,11 @@ export function routingPointFor(input: {
    * no Google place id reaches only this way. An admin row for its place id still wins; a place-id match comes after.
    */
   itemOpen?: OpenPlaceCoord | null;
+  /**
+   * LG-2 Ask 1 (migration 391): the item's link was pulled for review and not restored. It then does not fall back to an
+   * OSM place through its Google place id (the same place would come straight back); an admin point still wins.
+   */
+  itemPulled?: boolean;
   ownPoint: { lat: number; lng: number } | null;
   factPoint: { lat: number; lng: number } | null;
   osmRide: boolean;
@@ -60,7 +65,7 @@ export function routingPointFor(input: {
   const placeId = input.placeId?.trim() || null;
   const lookup = (input.lookupPlaceId ?? input.placeId)?.trim() || null;
   const byPlace = lookup ? input.open.get(lookup) : undefined;
-  const open = byPlace?.origin === "admin" ? byPlace : input.itemOpen ?? byPlace;
+  const open = byPlace?.origin === "admin" ? byPlace : input.itemOpen ?? (input.itemPulled ? undefined : byPlace);
   if (open) return { lat: open.lat, lng: open.lng, placeId, coordOrigin: open.origin };
   if (input.osmRide && input.ownPoint) return { ...input.ownPoint, placeId, coordOrigin: "osm_node" };
   const p = input.ownPoint ?? input.factPoint;
