@@ -666,9 +666,6 @@ export default function ItineraryPage() {
                         Let an Expert Book Everything
                         <Badge className="bg-primary/10 text-primary text-xs" data-testid="badge-recommended">Recommended</Badge>
                       </h4>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Our trip planners handle all bookings — on-site and partner.
-                      </p>
                     </div>
                   </div>
                   <Button

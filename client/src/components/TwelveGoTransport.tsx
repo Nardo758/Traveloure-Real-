@@ -138,10 +138,6 @@ export function TwelveGoTransport({
         >
           {requested ? "Agent notified — we'll add it to your trip" : hasRoute ? "Find & book this route" : "Find transportation"}
         </Button>
-        
-        <p className="text-xs text-gray-400 text-center">
-          A Traveloure booking agent handles this for you
-        </p>
       </CardContent>
     </Card>
   );
