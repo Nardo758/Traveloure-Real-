@@ -143,6 +143,26 @@ The windows (`retimeWindowsByItem`, `shared/version-check.ts`) come once per run
 
 Unchanged: `spaceDayTimes` and `retimeDayInOrder` (the traveler's own re-time, R-ac), the anchor step, energy balancing, the legs step and the gate. With no model times and no windows, the result is exactly today's (golden parity).
 
+## Step 4 — "Your plan, fixed" by tap
+
+Decision-maker Leon Dixon, Oct 19, 2026 (step 4 rulings (a)–(d)). Ledger row `2026-10-19-fb1-fixed-by-tap`. Service: `server/services/fixed-plan.service.ts`; words: `client/src/lib/fixed-plan.ts`.
+
+**Flag-only.** The checker and the run never adopt anything. A day of version A ("Your plan, fixed") reaches the plan only through a traveler's tap on the slip, which posts `POST /api/trips/:tripId/versions/apply-days` with `unchangedSinceRun: true`. The days go through the one adopt writer, `applyDays`. A pin test (`fb1-apply-days-callers`) fails if anything else calls it.
+
+**Which days (read).** `GET /api/trips/:tripId/versions/fixed` names version A and the plan's flagged days — days with an issue in the current check — each `fixable` or `changed`. No shown "Your plan, fixed" ⇒ `null`.
+
+**Stale (ruling (a)(i)).** A day the plan changed on after the run STARTED is refused, never overwritten. The start is the run's baseline ("Your Plan") version, written before the model call; its items record each plan item's day then. A day is changed when:
+- an item on it now was created or written after the start (an add, an edit, a re-time, a move in);
+- an item the baseline had on it is gone or now on another day (a delete, a move out).
+
+Every day is changed when an item the baseline does not know (a fixed commitment) was removed after the start — its day is unknowable. No baseline to read ⇒ every day is changed.
+
+**The two taps (rulings (b), (c)).** Slip only; the Trip Card is the finalized read-out.
+- One day: "Use the fixed day", drawn under the day's feasibility line. A changed day shows "This day changed since your versions were made." and the slip's existing "Compare versions" link to the board instead; its tap would be a 409 `day_changed`.
+- Whole plan: "Use Your plan, fixed", above the days, while at least one flagged day is fixable. It sends every flagged day; the server applies the unchanged ones and reports the rest: "3 days fixed · 1 unchanged since you edited it".
+
+**Unchanged:** the board's own adopt (it never sends the flag), `applyDays` itself, the gate.
+
 ## Not in step 3
 
 - Regenerating a held version: step 3b.

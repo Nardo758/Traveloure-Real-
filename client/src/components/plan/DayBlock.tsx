@@ -43,10 +43,13 @@ export interface DayBlockProps {
    * `localTeaserLine` (shared). Absent or zero ⇒ nothing.
    */
   localTeaser?: LocalTeaser | null;
+  /** FB-1 step 4 (ledger `2026-10-19-fb1-fixed-by-tap`): the slip's "Use the fixed day" control, drawn under the
+   *  feasibility line. Only the slip passes it (ruling (b)); absent ⇒ nothing. */
+  fixControl?: ReactNode;
   children: ReactNode;
 }
 
-export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, onOpenChange, photo = null, aside = null, domId, thumb = null, feasibility = null, localTeaser = null, children }: DayBlockProps) {
+export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, onOpenChange, photo = null, aside = null, domId, thumb = null, feasibility = null, localTeaser = null, fixControl = null, children }: DayBlockProps) {
   const feasibilityText = feasibilityLine(feasibility);
   const teaserText = localTeaserLine(localTeaser);
   const look = usePlanRowLook();
@@ -94,6 +97,7 @@ export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, on
           <div className="pb-1" data-testid={`slip-day-body-${dayKey}`}>
             <DayFeasibilityLine dayKey={dayKey} text={feasibilityText} className="px-4 pb-1.5 text-xs text-[color:var(--slip-muted)]" />
             <DayLocalTeaserLine dayKey={dayKey} text={teaserText} className="px-4 pb-1.5 text-xs text-[color:var(--slip-muted)]" />
+            {fixControl ? <div className="px-4 pb-1.5" data-testid={`slip-day-fix-${dayKey}`}>{fixControl}</div> : null}
             {children}
           </div>
         ) : null}
@@ -130,6 +134,7 @@ export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, on
           {photo ? <div className="px-3 pt-1 pb-2">{photo}</div> : null}
           <DayFeasibilityLine dayKey={dayKey} text={feasibilityText} className="px-3 pl-8 pb-1 text-xs text-muted-foreground" />
           <DayLocalTeaserLine dayKey={dayKey} text={teaserText} className="px-3 pl-8 pb-1 text-xs text-muted-foreground" />
+          {fixControl ? <div className="px-3 pl-8 pb-1" data-testid={`slip-day-fix-${dayKey}`}>{fixControl}</div> : null}
           {children}
         </div>
       ) : null}
