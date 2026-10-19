@@ -30,7 +30,7 @@ import {
   type FactView,
 } from "@shared/content-facts";
 import { rankFactsByOrigin } from "../upsell-engine.service";
-import { factTtlDays, placesLookupsPerDraft } from "../../config/content-facts.config";
+import { factTtlDays, placesCacheMaxDays, placesLookupsPerDraft } from "../../config/content-facts.config";
 import type { FactDraft, SourceAdapter } from "./source-adapter";
 import { PlacesAdapter, sourcesForNeed } from "./places-adapter";
 import { LookupScheduler } from "./lookup-scheduler.pure";
@@ -134,7 +134,7 @@ export async function recordFacts(
   }
   if (!kept.length) return 0;
   await exec.insert(placeFacts).values(
-    kept.map((d) => ({
+    kept.map(capPlacesExpiry).map((d) => ({
       id: d.id ?? crypto.randomUUID(),
       placeRefKind: d.placeRefKind,
       placeRef: d.placeRef,
@@ -165,6 +165,22 @@ export async function recordFacts(
 }
 
 type FactRow = typeof placeFacts.$inferSelect;
+
+/**
+ * Google's Places terms cache a fact for 30 days at most (`placesCacheMaxDays`). The Places adapter already stamps
+ * that cap; this is the WRITER's own copy of the rule (ledger `2026-10-19-places-writer-cap`), so no caller can store a
+ * Places fact that outlives it: an expiry later than `fetched_at` + the cap, or none at all, is written as exactly the
+ * cap and logged. A sooner expiry is kept. Every other origin passes unchanged.
+ */
+export function capPlacesExpiry<D extends { origin: string; fetchedAt: Date; expiresAt: Date | null; factType: string; sourceId?: string | null }>(d: D): D {
+  if (d.origin !== "places_api") return d;
+  const fetched = new Date(d.fetchedAt).getTime();
+  if (!Number.isFinite(fetched)) return d;
+  const cap = new Date(fetched + placesCacheMaxDays() * 86_400_000);
+  if (d.expiresAt && new Date(d.expiresAt).getTime() <= cap.getTime()) return d;
+  console.info(`[place-facts] capped places_api expiry fact_type=${d.factType} reason=${d.expiresAt ? "past_places_cache_cap" : "no_expiry"}`);
+  return { ...d, expiresAt: cap };
+}
 
 /**
  * R-u (surface step 3): a place ID an earlier answer to this SAME query text already resolved — a
