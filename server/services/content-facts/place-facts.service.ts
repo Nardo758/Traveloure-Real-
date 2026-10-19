@@ -89,6 +89,12 @@ export async function recordFacts(
         return false;
       }
     }
+    // EV-P0 PR 3 (ledger `2026-10-18-fact-tags-exhaustive`): a row whose origin has no ruled tier is refused,
+    // never stored untagged.
+    if (!placeFactTags(d.origin, d.license, d.factType)) {
+      console.info(`[place-facts] refused untagged origin=${d.origin} fact_type=${d.factType} plan_id=${ctx.planId ?? "none"}`);
+      return false;
+    }
     if (!isFeasibilityFactType(d.factType)) return true;
     const verdict = admitFeasibilityFact(d);
     if (!verdict.ok) console.info(`[place-facts] refused fact_type=${d.factType} reason=${verdict.reason} plan_id=${ctx.planId ?? "none"} item_id=${ctx.itemId ?? "none"}`);
@@ -132,9 +138,9 @@ export async function recordFacts(
       planId: ctx.planId,
       itineraryItemId: ctx.itemId,
       // FD-2 (ledger `2026-10-09-fd2-content-tier-tags`): the tag pair is born with the row, from its own
-      // origin and license through the ONE rule; an origin with no ruled tag stays untagged (§13).
-      sourceClass: placeFactTags(d.origin, d.license, d.factType)?.sourceClass ?? null,
-      reuseClass: placeFactTags(d.origin, d.license, d.factType)?.reuseClass ?? null,
+      // origin and license through the ONE rule (an untagged row was refused above).
+      sourceClass: placeFactTags(d.origin, d.license, d.factType)!.sourceClass,
+      reuseClass: placeFactTags(d.origin, d.license, d.factType)!.reuseClass,
     })),
   );
   return kept.length;
@@ -179,8 +185,17 @@ async function cachedRowsForPlace(placeId: string): Promise<FactDraft[] | null> 
   const rows = await db
     .select()
     .from(placeFacts)
-    // GH-1: a legacy Google hours row is never copied to another plan.
-    .where(and(eq(placeFacts.placeRefKind, "place_id"), eq(placeFacts.placeRef, hit.placeRef), sql`${placeFacts.expiresAt} > now()`, notGoogleHoursRow()));
+    // GH-1: a legacy Google hours row is never copied to another plan. EV-P0 PR 3 (ledger
+    // `2026-10-18-fact-tags-exhaustive`): a superseded row is never copied, and only a PUBLIC row is — an
+    // expert's local nugget belongs to the plan it was written on and never reaches another traveler's.
+    .where(and(
+      eq(placeFacts.placeRefKind, "place_id"),
+      eq(placeFacts.placeRef, hit.placeRef),
+      sql`${placeFacts.expiresAt} > now()`,
+      isNull(placeFacts.supersededBy),
+      eq(placeFacts.sourceClass, "public"),
+      notGoogleHoursRow(),
+    ));
   const seen = new Set<string>();
   const out: FactDraft[] = [];
   for (const r of rankFactsByOrigin(rows)) {
@@ -195,12 +210,15 @@ async function cachedRowsForPlace(placeId: string): Promise<FactDraft[] | null> 
       need: r.need as ContentNeed,
       factType: r.factType as FactType,
       value: r.value as Record<string, unknown>,
-      origin: "places_api",
+      // The copy keeps the row's OWN origin and license (an official fact is never relabelled as Google's).
+      origin: r.origin as FactDraft["origin"],
       sourceId: r.sourceId,
       sourceUrl: r.sourceUrl,
-      license: "restricted",
+      license: r.license as FactDraft["license"],
       fetchedAt: r.fetchedAt,
       expiresAt: r.expiresAt,
+      verifiedAt: r.verifiedAt ?? null,
+      verifiedBy: r.verifiedBy ?? null,
       costCents: 0,
     });
   }
@@ -678,7 +696,7 @@ async function storedOfficialFacts(placeIds: string[], factTypes: string[]): Pro
         inArray(placeFacts.origin, [...PAGE_READ_ORIGINS, "expert_nugget"]),
         eq(placeFacts.license, "official"),
         isNull(placeFacts.supersededBy),
-        sql`${placeFacts.sourceClass} IS NOT NULL`,
+        eq(placeFacts.sourceClass, "public"),
       ),
     );
 }
@@ -726,7 +744,7 @@ async function itemPlaceIdsForTrip(tripId: string, own: FactRow[]): Promise<Map<
  * and verified facts keep their place in front.
  */
 function officialHoursBeforePlaces(ranked: FactRow[]): FactRow[] {
-  const isOfficial = (r: FactRow) => r.license === "official" && r.origin !== "places_api" && r.sourceClass != null;
+  const isOfficial = (r: FactRow) => r.license === "official" && r.origin !== "places_api" && r.sourceClass === "public";
   const firstPlaces = ranked.findIndex((r) => r.origin === "places_api");
   if (firstPlaces < 0) return ranked;
   const officials = ranked.slice(firstPlaces).filter(isOfficial);
@@ -950,9 +968,22 @@ export async function confirmFactAsNugget(input: { tripId: string; factId: strin
     const [fact] = await tx
       .select()
       .from(placeFacts)
-      .where(and(eq(placeFacts.id, input.factId), eq(placeFacts.planId, input.tripId)));
+      .where(and(eq(placeFacts.id, input.factId), eq(placeFacts.planId, input.tripId)))
+      .for("update");
     if (!fact) throw new FactConfirmError("not_found", 404);
     if (fact.supersededBy) throw new FactConfirmError("already_superseded", 409);
+    // EV-P0 PR 3 (ledger `2026-10-18-fact-tags-exhaustive`): an OFFICIAL fact stays in the feasibility checks
+    // when an expert confirms it — it is linked from the nugget (`official_source_fact_id`), never superseded.
+    // The row lock above serialises confirms, so a second one is refused by the linked nugget it finds.
+    const official = fact.license === "official";
+    if (official) {
+      const [linked] = await tx
+        .select({ id: placeFacts.id })
+        .from(placeFacts)
+        .where(eq(placeFacts.officialSourceFactId, fact.id))
+        .limit(1);
+      if (linked) throw new FactConfirmError("already_superseded", 409);
+    }
     if (!isConfirmableFact({ origin: fact.origin, license: fact.license, verifiedAt: fact.verifiedAt })) {
       throw new FactConfirmError("not_confirmable", 409);
     }
@@ -961,6 +992,9 @@ export async function confirmFactAsNugget(input: { tripId: string; factId: strin
     const now = new Date();
     const ttl = factTtlDays(fact.factType as FactType);
     const nuggetId = crypto.randomUUID();
+    // A writer never stores an untagged row (ledger `2026-10-18-fact-tags-exhaustive`).
+    const nuggetTags = placeFactTags("expert_nugget", null, fact.factType);
+    if (!nuggetTags) throw new FactConfirmError("not_confirmable", 409);
     await tx.insert(placeFacts).values({
       id: nuggetId,
       placeRefKind: fact.placeRefKind,
@@ -982,18 +1016,20 @@ export async function confirmFactAsNugget(input: { tripId: string; factId: strin
       costCents: "0",
       planId: fact.planId,
       itineraryItemId: fact.itineraryItemId,
-      // FD-2: the expert's confirmation is local and ours; when it confirms an OFFICIAL fact it quotes that
-      // fact, and expires with it (ruling 8, `isLiveLocal`).
-      sourceClass: "local",
-      reuseClass: "reusable",
-      officialSourceFactId: fact.license === "official" ? fact.id : null,
+      // FD-2: the expert's confirmation is local and ours — tagged through the ONE rule, never by hand; when it
+      // confirms an OFFICIAL fact it quotes that fact, and expires with it (ruling 8, `isLiveLocal`).
+      sourceClass: nuggetTags.sourceClass,
+      reuseClass: nuggetTags.reuseClass,
+      officialSourceFactId: official ? fact.id : null,
     });
-    const claimed = await tx
-      .update(placeFacts)
-      .set({ supersededBy: nuggetId })
-      .where(and(eq(placeFacts.id, fact.id), isNull(placeFacts.supersededBy)))
-      .returning({ id: placeFacts.id });
-    if (!claimed.length) throw new FactConfirmError("already_superseded", 409);
+    if (!official) {
+      const claimed = await tx
+        .update(placeFacts)
+        .set({ supersededBy: nuggetId })
+        .where(and(eq(placeFacts.id, fact.id), isNull(placeFacts.supersededBy)))
+        .returning({ id: placeFacts.id });
+      if (!claimed.length) throw new FactConfirmError("already_superseded", 409);
+    }
     // Smoke 5: the last fact writer with no log line (ids only, no content).
     console.info(`[place-facts] confirmed plan_id=${fact.planId} item_id=${fact.itineraryItemId} fact_id=${fact.id} nugget_fact_id=${nuggetId}`);
     return { nuggetId };
@@ -1084,7 +1120,7 @@ export async function lastServicesForMarket(
         eq(placeFacts.market, market),
         eq(placeFacts.license, "official"),
         isNull(placeFacts.supersededBy),
-        sql`${placeFacts.sourceClass} IS NOT NULL`,
+        eq(placeFacts.sourceClass, "public"),
         sql`${placeFacts.placeLat} IS NOT NULL AND ${placeFacts.placeLng} IS NOT NULL`,
       ),
     );
@@ -1105,7 +1141,7 @@ export async function lastServicesForMarket(
 }
 
 export async function feasibilityFactsForTrip(tripId: string, market: string | null, now: Date = new Date()): Promise<FeasibilityFacts> {
-  const own = (await rowsForTrip(tripId)).filter((r) => r.sourceClass != null);
+  const own = (await rowsForTrip(tripId)).filter((r) => r.sourceClass === "public");
   const timeZone = await planTimeZone(tripId);
   const placeOf = await itemPlaceIdsForTrip(tripId, own);
   const stored = await storedOfficialFacts(Array.from(new Set(placeOf.values())), ["hours", "last_admission", "closed_dates"]);

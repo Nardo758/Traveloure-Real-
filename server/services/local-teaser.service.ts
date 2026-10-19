@@ -42,7 +42,7 @@ export async function localTeasersForTrip(tripId: string): Promise<Map<number, L
       db.select({ id: travelPulseHiddenGems.id, slug: travelPulseHiddenGems.neighborhood })
         .from(travelPulseHiddenGems)
         .where(and(ilike(travelPulseHiddenGems.city, city), LIVE_LOCAL(travelPulseHiddenGems))),
-      db.select({ neighbourhoodId: localKnowledgeNuggets.neighborhoodId, neighbourhoodName: localKnowledgeNuggets.linkedNeighbourhood })
+      db.select({ neighbourhoodId: localKnowledgeNuggets.neighborhoodId, neighbourhoodName: localKnowledgeNuggets.linkedNeighbourhood, promotedGemId: localKnowledgeNuggets.promotedGemId })
         .from(localKnowledgeNuggets)
         .where(and(ilike(localKnowledgeNuggets.city, city), LIVE_LOCAL(localKnowledgeNuggets))),
     ]);
@@ -68,7 +68,7 @@ export async function localTeasersForTrip(tripId: string): Promise<Map<number, L
       items: items.map((i) => ({ dayNumber: i.dayNumber, lat: num(i.lat), lng: num(i.lng), gemId: i.gemId ?? null })),
       neighbourhoods: hoods.map((h) => ({ id: h.id, slug: h.slug, name: h.name, lat: num(h.lat), lng: num(h.lng) })),
       gems: gems.map((g) => ({ id: g.id, neighbourhoodSlug: g.slug ?? null })),
-      notes: notes.map((n) => ({ neighbourhoodId: n.neighbourhoodId ?? null, neighbourhoodName: n.neighbourhoodName ?? null })),
+      notes: notes.map((n) => ({ neighbourhoodId: n.neighbourhoodId ?? null, neighbourhoodName: n.neighbourhoodName ?? null, promotedGemId: n.promotedGemId ?? null })),
     });
   } catch (err: any) {
     console.warn(`[local-teaser] ${tripId}: not computed: ${String(err?.message ?? err).slice(0, 200)}`);

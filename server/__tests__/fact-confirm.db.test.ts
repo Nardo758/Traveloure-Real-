@@ -54,7 +54,9 @@ before(async () => {
     (${ids.item}, ${ids.trip}, 1, 'Kinkaku-ji', 'attraction', 'ai'),
     (${ids.item2}, ${ids.trip}, 1, 'Ryoan-ji', 'attraction', 'ai'),
     (${ids.item3}, ${ids.other}, 1, 'Ginkaku-ji', 'attraction', 'ai')`);
-  await recordFacts([draft({})], { planId: ids.trip, itemId: ids.item });
+  // EV-P0 PR 3 (ledger `2026-10-18-fact-tags-exhaustive`; edit sanctioned): an OFFICIAL fact is no longer superseded
+  // when confirmed (pinned by draft-readers-tagged T5), so F2's fixture is an editorial-licence crawled fact.
+  await recordFacts([draft({ license: "editorial" })], { planId: ids.trip, itemId: ids.item });
   // GH-1: the writer refuses a Google hours draft, so the Places fixture is an address row.
   await recordFacts([draft({ origin: "places_api", license: "restricted", factType: "address", value: { formattedAddress: "13 Ryoanji Goryonoshitacho, Ukyo Ward, Kyoto" } })], { planId: ids.trip, itemId: ids.item2 });
   await recordFacts([draft({ placeRef: "Ginkaku-ji" })], { planId: ids.other, itemId: ids.item3 });
