@@ -34,6 +34,7 @@ import {
   resolveBentoCompactActionState,
   type BentoCompactActionState,
 } from "@/lib/bento-action-state";
+import { useExpertAvailability } from "@/lib/expert-availability";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import {
   composeDiscoverFeed,
@@ -1203,15 +1204,26 @@ function FeedRenderer({
 
 // ─── Date highlight strip ("pulled to top") ───────────────────────────────────
 
+/** An add-on whose link opens the expert directory is an expert call-to-action (SH-1 item 11). */
+function isExpertDirectoryHref(href: string | null | undefined): boolean {
+  return /^\/(local-)?experts(\/|\?|$)/.test(href ?? "");
+}
+
 function DateHighlightStrip({
   scheduledDate,
+  city,
   cityIntel,
   onAdd,
 }: {
   scheduledDate: string;
+  /** The page's city — scopes the expert-availability answer for the "Festival guide" companion. */
+  city: string;
   cityIntel: any;
   onAdd?: (item: any) => void;
 }) {
+  // SH-1 item 11: the "Festival guide" companion books a local expert, so it draws only when this
+  // city has an expert to ask.
+  const expertAvailable = useExpertAvailability({ city });
   const parsedDate = new Date(scheduledDate + "T12:00:00");
   const monthIndex = parsedDate.getMonth();
   const monthName = MONTH_NAMES[monthIndex];
@@ -1235,7 +1247,7 @@ function DateHighlightStrip({
   // Services tab (in discover.tsx's VISIBLE_TABS), where these service types
   // are actually searchable. `/local-experts` (festival guide) was already a
   // real routed page and stays.
-  const companionService: ServiceAddon | null = (() => {
+  const companionServiceCandidate: ServiceAddon | null = (() => {
     if (highlight.includes("blossom") || highlight.includes("sakura") || highlight.includes("cherry"))
       return { icon: "📷", label: "Blossom photo shoot", href: "/services" };
     if (highlight.includes("snow") || highlight.includes("winter") || highlight.includes("ski"))
@@ -1246,6 +1258,10 @@ function DateHighlightStrip({
       return { icon: "🍂", label: "Foliage photo tour", href: "/services" };
     return null;
   })();
+  const companionService: ServiceAddon | null =
+    companionServiceCandidate && isExpertDirectoryHref(companionServiceCandidate.href) && !expertAvailable
+      ? null
+      : companionServiceCandidate;
 
   return (
     <div data-testid="date-highlight-strip">
@@ -1453,7 +1469,14 @@ function TripComplementsStrip({
   highlight?: string | null;
 }) {
   const staticAddOns = buildAddOns(city);
-  const contentAddOn = buildContentAddOn(highlight, city);
+  // SH-1 item 11: the "Festival guide" add-on sends the traveler to the expert directory, so it
+  // draws only when this city has an expert to ask.
+  const expertAvailable = useExpertAvailability({ city });
+  const contentAddOnCandidate = buildContentAddOn(highlight, city);
+  const contentAddOn =
+    contentAddOnCandidate && isExpertDirectoryHref(contentAddOnCandidate.href) && !expertAvailable
+      ? null
+      : contentAddOnCandidate;
   const addOns: AddOn[] = contentAddOn ? [contentAddOn, ...staticAddOns] : staticAddOns;
 
   return (
@@ -2013,6 +2036,7 @@ export default function DiscoverLocationPage() {
             {SEASONAL_WRITER_LIVE && scheduledDate && (
               <DateHighlightStrip
                 scheduledDate={scheduledDate}
+                city={city}
                 cityIntel={data.hero?.data?.city}
                 onAdd={handleAdd}
               />

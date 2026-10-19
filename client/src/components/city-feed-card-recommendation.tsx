@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useGemPhoto } from "@/hooks/use-gem-photo";
+import { useExpertAvailability } from "@/lib/expert-availability";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import type { BentoCompactActionState } from "@/lib/bento-action-state";
 import { ADD_TO_PLAN_LABEL } from "@/lib/plan-vocabulary";
@@ -130,6 +131,8 @@ export function CityFeedCardRecommendation({
   // grammar: the card is the link; no "More info" text link).
   const [infoOpen, setInfoOpen] = useState(false);
   const askExpert = useAskExpert();
+  // SH-1 item 11: the Ask CTA draws only when the server says this city has an expert to ask.
+  const expertAvailable = useExpertAvailability({ city });
   const name = resolveRecommendationName(candidate);
   const meta = recVisualMeta(candidate);
   const isAffiliate =
@@ -258,18 +261,20 @@ export function CityFeedCardRecommendation({
           <Plus className="w-3 h-3 mr-1" />
           {addLabel}
         </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-7 text-xs px-2.5"
-          onClick={(e) => {
-            e.stopPropagation();
-            askExpert({ city, subject: name });
-          }}
-          data-testid={`btn-ask-rec-${position}`}
-        >
-          Ask an expert
-        </Button>
+        {expertAvailable && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs px-2.5"
+            onClick={(e) => {
+              e.stopPropagation();
+              askExpert({ city, subject: name });
+            }}
+            data-testid={`btn-ask-rec-${position}`}
+          >
+            Ask an expert
+          </Button>
+        )}
 
         {/* "Why recommended" disclosure modal — opened by clicking the card
             (family grammar: the card is the link; the "More info" text link is
@@ -436,7 +441,7 @@ export function CityFeedCardRecommendation({
               {addLabel}
             </Button>
             {/* Compact = exactly two buttons: Ask shows ONLY when Book is absent. */}
-            {(!onBook || compactActionState === "not-bookable") && (
+            {expertAvailable && (!onBook || compactActionState === "not-bookable") && (
               <Button
                 size="sm"
                 variant="outline"

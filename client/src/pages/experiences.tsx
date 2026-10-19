@@ -27,6 +27,7 @@ import { SEOHead } from "@/components/seo-head";
 import { PlanEntryPanel } from "@/components/plan/PlanEntry";
 import { usePlanning } from "@/contexts/PlanningContext";
 import type { PlanEntrySource } from "@/lib/plan-entry";
+import { useExpertAvailability } from "@/lib/expert-availability";
 import {
   WORLD_MAP,
   cityPhotoFor,
@@ -117,6 +118,9 @@ function PlacePicker({ picked, pick }: { picked: string | null; pick: (marketKey
 export default function Experiences({ occasionSlug: routeSlug = null }: { occasionSlug?: string | null } = {}) {
   const searchString = useSearch();
   const planning = usePlanning();
+  // SH-1 item 11 (Q11.3): this page's expert CTA names no city, so it draws only when any live
+  // market has an expert to ask.
+  const anyExpertAvailable = useExpertAvailability("any");
 
   // What the URL holds, handed to PlanEntry as a door would (D13: a door passes what it holds).
   const source = useMemo<PlanEntrySource>(() => {
@@ -150,9 +154,11 @@ export default function Experiences({ occasionSlug: routeSlug = null }: { occasi
         </section>
 
         <div className="flex flex-wrap gap-3">
-          <Link href="/experts" className={PAGE_ACTION.secondary} data-testid="button-find-expert">
-            Find a local expert
-          </Link>
+          {anyExpertAvailable && (
+            <Link href="/experts" className={PAGE_ACTION.secondary} data-testid="button-find-expert">
+              Find a local expert
+            </Link>
+          )}
           <Link href="/ready-made" className={PAGE_ACTION.secondary} data-testid="button-browse-ready-made">
             Browse Ready-Made Trips
           </Link>
