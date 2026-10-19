@@ -57,7 +57,7 @@ import { assertRobotsAllowed } from "../../utils/robots-txt";
 import { ROBOTS_TXT_USER_AGENT_TOKEN } from "../../config/robots-txt.config";
 import { loadPartnerHosts } from "../partner-hosts.service";
 import { autoFetchAllowed, isLinkOutClass } from "@shared/source-signoff";
-import { lastEntryWaitingLine, type WaitingLine } from "@shared/fact-review";
+import { hoursWaitingLine, lastEntryWaitingLine, type WaitingLine } from "@shared/fact-review";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -840,6 +840,47 @@ export async function lastEntryWaitingForTrip(tripId: string, now: Date = new Da
     const src = i.placeId ? waitingSource.get(i.placeId) : undefined;
     if (!src) continue;
     out[i.id] = lastEntryWaitingLine({ placeName: i.title, homepage: src.homepage, termsClass: src.termsClass });
+  }
+  return out;
+}
+
+/**
+ * CS-1 item 2: per item, the line a stop shows once the official hours stored for its place have expired and no live
+ * official hours replace them — "Hours not checked yet. See <Place>'s official site before you go." with the source's
+ * top-level link, else plain "Hours not checked yet" (`hoursWaitingLine`). Keyed by item id; absent where nothing expired.
+ */
+export async function hoursWaitingForTrip(tripId: string, now: Date = new Date()): Promise<Record<string, WaitingLine>> {
+  const items = await db
+    .select({ id: itineraryItems.id, title: itineraryItems.title, placeId: itineraryItems.googlePlaceId })
+    .from(itineraryItems)
+    .where(and(eq(itineraryItems.tripId, tripId), sql`${itineraryItems.googlePlaceId} IS NOT NULL`));
+  const placeIds = Array.from(new Set(items.map((i) => i.placeId!).filter(Boolean)));
+  if (!placeIds.length) return {};
+  const [expired, live] = await Promise.all([
+    db
+      .select({ placeRef: placeFacts.placeRef, homepage: contentSources.homepage, termsClass: contentSources.termsClass })
+      .from(placeFacts)
+      .leftJoin(contentSources, eq(contentSources.id, placeFacts.sourceId))
+      .where(
+        and(
+          eq(placeFacts.placeRefKind, "place_id"),
+          inArray(placeFacts.placeRef, placeIds),
+          eq(placeFacts.factType, "hours"),
+          inArray(placeFacts.origin, [...PAGE_READ_ORIGINS]),
+          eq(placeFacts.license, "official"),
+          isNull(placeFacts.supersededBy),
+          sql`${placeFacts.expiresAt} IS NOT NULL AND ${placeFacts.expiresAt} <= ${now}`,
+        ),
+      ),
+    storedOfficialFacts(placeIds, ["hours"], now),
+  ]);
+  const hasLive = new Set(live.map((r) => r.placeRef));
+  const source = new Map<string, { homepage: string | null; termsClass: string | null }>();
+  for (const e of expired) if (!hasLive.has(e.placeRef) && !source.has(e.placeRef)) source.set(e.placeRef, e);
+  const out: Record<string, WaitingLine> = {};
+  for (const i of items) {
+    const src = i.placeId ? source.get(i.placeId) : undefined;
+    if (src) out[i.id] = hoursWaitingLine({ placeName: i.title, homepage: src.homepage, termsClass: src.termsClass });
   }
   return out;
 }

@@ -28,7 +28,7 @@
 import { and, eq, gte, isNull, lte, ne, sql } from "drizzle-orm";
 import { db } from "../db";
 import { cityEvents, cityNeighborhoods, contentSources, placeFacts, type CityEvent } from "@shared/schema";
-import { asFactOrigin, checkedDayLabel, mustOmitOnPublicPage, publicFactAttribution } from "@shared/content-facts";
+import { asFactOrigin, mustOmitOnPublicPage, publicFactAttribution, reviewedFactLabel } from "@shared/content-facts";
 import { ticketUrlRefusal } from "@shared/city-events";
 import type { TravelTime } from "@shared/travel-time";
 import { toCityEventCard } from "./city-events.service";
@@ -55,12 +55,14 @@ export interface EventGuideFacts {
     /** The organiser's or primary seller's page; null when absent or refused (R208 / partner host). */
     ticketUrl: string | null;
   };
+  /** Publishable facts about the venue/event, as plain text. Empty = none publishable yet. */
+  venueFacts: Array<{ factType: string; text: string }>;
   /**
-   * Publishable facts about the venue/event, as plain text. Empty = none publishable yet. CS-1 item 2: each copied
-   * fact carries its source's name and its checked date ("checked <d Mon yyyy>", the market's zone) — null only where
-   * the row has none (a platform-owned fact with no registry source). Never a URL: links stay out of the prompt.
+   * CS-1 item 2: each venue fact that has a registry source and a check date, stamped BY CODE from those stored fields —
+   * "Checked <date> · Source: <official site>" (`reviewedFactLabel`, the market's zone). NEVER in the prompt
+   * (`promptFacts` omits it): the generators append the stamps to the post body themselves (`withFactStamps`).
    */
-  venueFacts: Array<{ factType: string; text: string; source: string | null; checked: string | null }>;
+  factStamps: Array<{ factType: string; text: string; stamp: string }>;
   /**
    * Ruling R-p: one post source per official source a venue fact came from — "from <source>" linking
    * to the fact's URL, "checked <date>" as the publisher line. NEVER in the prompt (`promptFacts`
@@ -135,6 +137,7 @@ export async function loadEventGuideFacts(eventId: string, deps: EventFactsDeps 
   const venueFacts: EventGuideFacts["venueFacts"] = [];
   const venueFactSources: EventGuideFacts["venueFactSources"] = [];
   const attributedFacts: EventGuideFacts["attributedFacts"] = [];
+  const factStamps: EventGuideFacts["factStamps"] = [];
   for (const r of factRows) {
     const f = r.fact;
     if (asFactOrigin(f.origin) === null) continue;
@@ -158,13 +161,12 @@ export async function loadEventGuideFacts(eventId: string, deps: EventFactsDeps 
     // LG-1 item 5: the checked day in the event's market zone (none known ⇒ the UTC day).
     const tz = card.marketKey ? MARKET_TIMEZONES[card.marketKey] ?? null : null;
     const credit = publicFactAttribution(view, tz);
+    venueFacts.push({ factType: f.factType, text });
     const fetched = f.fetchedAt ? new Date(f.fetchedAt as any) : null;
-    venueFacts.push({
-      factType: f.factType,
-      text,
-      source: credit?.sourceName ?? (r.sourceName?.trim() || null),
-      checked: credit?.checked ?? (fetched && Number.isFinite(fetched.getTime()) ? `checked ${checkedDayLabel(fetched, tz)}` : null),
-    });
+    const sourceName = r.sourceName?.trim();
+    if (sourceName && fetched && Number.isFinite(fetched.getTime())) {
+      factStamps.push({ factType: f.factType, text, stamp: reviewedFactLabel(fetched, sourceName, tz) });
+    }
     if (credit) attributedFacts.push({ factType: f.factType, text, ...credit });
     if (credit && !venueFactSources.some((s) => s.url === credit.sourceUrl)) {
       venueFactSources.push({ url: credit.sourceUrl, title: credit.label, publisher: credit.checked, retrievedAt: new Date(f.fetchedAt) });
@@ -221,6 +223,7 @@ export async function loadEventGuideFacts(eventId: string, deps: EventFactsDeps 
       ticketUrl,
     },
     venueFacts,
+    factStamps,
     venueFactSources,
     attributedFacts,
     stayNear,

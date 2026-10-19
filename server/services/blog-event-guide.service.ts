@@ -31,7 +31,7 @@ export const EVENT_GUIDE_SYSTEM_PROMPT = [
   "You write a short weekend guide to ONE event for Traveloure, from the JSON facts you are given and nothing else.",
   "Use only the facts' names, dates and times. Do not state prices, capacities, distances, durations, ratings, weather or any number the facts do not contain.",
   "Where to stay: name the stayNear neighbourhoods in their given order and describe them only as closest or a short ride from the venue. Never give minutes or kilometres.",
-  "If venueFacts is empty, say nothing about the venue beyond its name. When you state a venueFact, name its source and its checked date where they are given (e.g. \"per <source>, <checked>\"). If alsoOn is empty, leave that section out.",
+  "If venueFacts is empty, say nothing about the venue beyond its name. Never write a date, a source name, or the words verified or confirmed about a venueFact: the post adds each fact's source and checked date itself. If alsoOn is empty, leave that section out.",
   "Write no URLs and no links. End by inviting the reader to start a plan around the event.",
   'Return JSON of the form {"title":"…","summary":"one sentence","body":"plain text, short paragraphs"}.',
 ].join("\n");
@@ -45,8 +45,18 @@ export function promptFacts(facts: EventGuideFacts) {
   const { id: _id, ticketUrl: _t, ...event } = facts.event;
   // The attribution links go to the post's source list, never to the model (ruling R-p).
   // The event page's attributed facts carry the same links, so they stay out too (ledger `2026-10-06-event-page`).
-  const { venueFactSources: _s, attributedFacts: _a, ...rest } = facts;
+  // CS-1 item 2: the fact stamps are written into the post by code, never by the model.
+  const { venueFactSources: _s, attributedFacts: _a, factStamps: _f, ...rest } = facts;
   return { ...rest, event };
+}
+
+/**
+ * Pure. CS-1 item 2: the post body with one code-written line per stamped venue fact appended —
+ * "<fact> — Checked <date> · Source: <official site>", from the stored fields only. No stamps ⇒ the body unchanged.
+ */
+export function withFactStamps(body: string, facts: Pick<EventGuideFacts, "factStamps">): string {
+  const lines = (facts.factStamps ?? []).map((f) => `${f.text} — ${f.stamp}`);
+  return lines.length ? `${body}\n\n${lines.join("\n")}` : body;
 }
 
 /** The post's sources: the ticket page, then one "from <official source>" per attributed venue fact. */
@@ -138,7 +148,7 @@ export async function draftEventWeekendGuide(eventId: string, actorId: string | 
       slug,
       title: checked.title,
       summary: checked.summary || null,
-      body: checked.body,
+      body: withFactStamps(checked.body, facts),
       marketSlug: facts.event.marketKey,
       cityEventId: facts.event.id,
       sources: eventPostSources(facts),

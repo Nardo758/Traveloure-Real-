@@ -4,7 +4,8 @@
  *       note; true for platform-owned origins; an expert nugget only once verified; a partner or
  *       restricted license is never publishable
  *   F2  origin order: platform-native → verified → Places → crawled → traveler note; unknown last
- *   F3  the provenance line names the source and the check date, and says when a fact may have changed
+ *   F3  the provenance line names the source and the check date; an expired fact carries no "(may have changed)"
+ *       suffix, because no traveler surface reads one (CS-1 item 2)
  *   F4  a source is activatable only with a terms check AND a license class
  *   F5  needForItemType: a meal is dining, anything else a stop's hours
  *   F6  ruling R-p (ledger `2026-10-03-official-facts-public-ok`): a crawled fact is publishable ONLY
@@ -54,7 +55,8 @@ test("F3: provenance line", () => {
     factProvenanceLine({ origin: "places_api", fetchedAt: "2026-09-29T08:00:00Z", expiresAt: "2026-10-06T08:00:00Z" }, now),
     "Google Maps · checked 29 Sept 2026".replace("Sept", new Date(Date.UTC(2026, 8, 29)).toLocaleDateString("en-GB", { month: "short", timeZone: "UTC" })),
   );
-  assert.match(factProvenanceLine({ origin: "places_api", fetchedAt: "2026-08-01T00:00:00Z", expiresAt: "2026-08-08T00:00:00Z" }, now), /may have changed/);
+  // CS-1 item 2 (ledger `2026-10-19-cs1-live-facts`): the suffix is retired — an expired fact is never read.
+  assert.doesNotMatch(factProvenanceLine({ origin: "places_api", fetchedAt: "2026-08-01T00:00:00Z", expiresAt: "2026-08-08T00:00:00Z" }, now), /may have changed/);
   assert.match(factProvenanceLine({ origin: "expert_nugget", verifiedAt: "2026-09-01", fetchedAt: "2026-09-01" }, now), /^A local expert · verified · checked/);
   assert.equal(factProvenanceLine({ origin: "crawled", sourceName: "Kyoto City Official Travel Guide" } as any, now), "Kyoto City Official Travel Guide");
 });
@@ -114,7 +116,8 @@ test("F6: the official-source path, branch by branch", () => {
 });
 
 test("F7: a public crawled-official fact carries from <source>, its URL and the check date", () => {
-  const f = { ...officialHours, sourceName: "Kyoto City Official Travel Guide", sourceUrl: "https://kyoto.travel/en/x" };
+  // CS-1 item 2: a machine-read fact with no expiry is not live, so the fixture states one.
+  const f = { ...officialHours, sourceName: "Kyoto City Official Travel Guide", sourceUrl: "https://kyoto.travel/en/x", expiresAt: "2099-01-01T00:00:00Z" };
   assert.deepEqual(publicFactAttribution(f), {
     label: "from Kyoto City Official Travel Guide",
     sourceName: "Kyoto City Official Travel Guide",

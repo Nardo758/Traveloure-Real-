@@ -34,6 +34,21 @@ import { factsLineParts, itemClosingWarning, itemFactsLine, itemPlaceLine, sourc
 import { HOURS_NOT_CHECKED_YET_LABEL } from "@/lib/plancard-refetch";
 import type { WaitingLine } from "@shared/fact-review";
 
+/** CS-1 item 2: the hours line's words — the server's expired-hours line with its link, else GH-1's plain label. */
+function WaitingText({ line }: { line?: WaitingLine | null }) {
+  if (!line || !line.url || !line.linkText) return <>{line?.text ?? HOURS_NOT_CHECKED_YET_LABEL}</>;
+  const [before, after] = line.text.split(line.linkText);
+  return (
+    <>
+      {before}
+      <a href={line.url} target="_blank" rel="noopener noreferrer" className="underline">
+        {line.linkText}
+      </a>
+      {after}
+    </>
+  );
+}
+
 /** CS-1 item 3: the stop's last entry waits for review. The link is the source's top-level page, or none. */
 function LastEntryWaiting({ id, line }: { id: string; line: WaitingLine }) {
   const [before, after] = line.text.split(line.linkText);
@@ -129,6 +144,9 @@ export interface ItemRowProps {
   hoursNotChecked?: boolean;
   /** CS-1 item 3: "Last entry not checked yet. See <Place>'s official site before you go." — the server's line. */
   lastEntryWaiting?: WaitingLine | null;
+  /** CS-1 item 2: "Hours not checked yet. See <Place>'s official site before you go." — the server's line, drawn in
+   *  place of the plain "Hours not checked yet" once the stop's stored official hours have expired. */
+  hoursWaiting?: WaitingLine | null;
   menu?: ItemRowMenu | null;
   highlighted?: boolean;
   rowRef?: (el: HTMLDivElement | null) => void;
@@ -238,7 +256,7 @@ export function ItemRow(props: ItemRowProps) {
         </p>
       ) : props.hoursNotChecked ? (
         <p className="mt-0.5 text-xs text-muted-foreground italic" data-testid={`slip-item-hours-not-checked-${a.id}`}>
-          {HOURS_NOT_CHECKED_YET_LABEL}
+          <WaitingText line={props.hoursWaiting} />
         </p>
       ) : null}
       {closing ? <ClosingWarning id={a.id} closing={closing} /> : null}
@@ -518,7 +536,7 @@ function BoardItemRow(
         </p>
       ) : props.hoursNotChecked ? (
         <p className="text-xs italic text-[color:var(--slip-muted)]" data-testid={`slip-item-hours-not-checked-${a.id}`}>
-          {HOURS_NOT_CHECKED_YET_LABEL}
+          <WaitingText line={props.hoursWaiting} />
         </p>
       ) : null}
       {closing ? <ClosingWarning id={a.id} closing={closing} /> : null}

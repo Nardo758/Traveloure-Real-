@@ -252,6 +252,8 @@ export interface SlipData extends PlanCardData {
   factsPendingItemIds?: string[];
   /** CS-1 item 3: stops whose last entry waits for a person's review (server-built line). */
   lastEntryWaiting?: Record<string, WaitingLine>;
+  /** CS-1 item 2: stops whose stored official hours have expired (server-built line). */
+  hoursWaiting?: Record<string, WaitingLine>;
   /** Smoke 7 item 4: the viewer's own saved "Ask a local" questions, by item (present only when any). */
   savedQuestions?: { cityName: string | null; items: Record<string, { question: string | null; savedAt: string }> };
   /** The §4 diary — last 20 log rows, newest first. Absent on pre-BUILD-1 responses. */
@@ -775,6 +777,7 @@ function SlipDayItem({
   timeZone = null,
   hoursNotChecked = false,
   lastEntryWaiting = null,
+  hoursWaiting = null,
   onOpenExpertDoor,
   onFindHost,
   savedQuestion = null,
@@ -789,6 +792,8 @@ function SlipDayItem({
   hoursNotChecked?: boolean;
   /** CS-1 item 3: the stop's last entry waits for a person's review. */
   lastEntryWaiting?: WaitingLine | null;
+  /** CS-1 item 2: the stop's stored official hours have expired. */
+  hoursWaiting?: WaitingLine | null;
   dateIso?: string | null;
   /** S9-6: the plan's zone (`trips.timezone`) for the facts line's "checked" day; null ⇒ the UTC day. */
   timeZone?: string | null;
@@ -942,6 +947,7 @@ function SlipDayItem({
       }
       hoursNotChecked={hoursNotChecked}
       lastEntryWaiting={lastEntryWaiting}
+      hoursWaiting={hoursWaiting}
       menu={menu}
       highlighted={highlighted}
       rowRef={rowRef}
@@ -2737,6 +2743,7 @@ export function SlipView({
                       city={data.trip?.destination ?? null}
                       facts={data.placeFacts?.[a.id]}
                       lastEntryWaiting={data.lastEntryWaiting?.[a.id] ?? null}
+                      hoursWaiting={data.hoursWaiting?.[a.id] ?? null}
                       hoursNotChecked={showsHoursNotChecked({
                         isStop: !isLodgingItem({ type: a.type, title: a.name }) && a.type !== "transport",
                         hasHoursLine: !!itemFactsLine(data.placeFacts?.[a.id], slot.dateIso ?? null),

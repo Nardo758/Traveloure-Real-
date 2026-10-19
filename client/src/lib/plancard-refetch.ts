@@ -1,3 +1,5 @@
+import { HOURS_NOT_CHECKED_TEXT } from "@shared/fact-review";
+
 /**
  * Smoke 5 item 5 (ledger `2026-10-03-smoke5-fixes`). Pure. How soon the slip re-reads its plancard.
  *
@@ -31,7 +33,8 @@ export function plancardRefetchInterval(
  */
 
 /** GH-1: what a stop row says where its hours line would go when no admitted hours fact covers it. */
-export const HOURS_NOT_CHECKED_YET_LABEL = "Hours not checked yet";
+// CS-1 item 2: the words live once, in shared/fact-review.ts, beside the expired-hours line that extends them.
+export const HOURS_NOT_CHECKED_YET_LABEL = HOURS_NOT_CHECKED_TEXT;
 
 /**
  * Pure. True for a stop row (not a stay, not a ride) that has no hours line and no hours fact at all —

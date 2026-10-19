@@ -9,11 +9,13 @@
  *   LF3  last services: an expired one is not read, a live one is
  *   LF4  covering events: an expired event fact is not read, a live one is
  *   LF5  the event guide's fact builder (public page + blog generators): an expired fact is dropped; a live one is
- *        copied with its source name and checked date
+ *        stamped BY CODE "Checked <date> · Source: <site>", the model never sees the stamp, and the body carries it
  *   LF6  an expert cannot confirm an expired fact
+ *   LF7  a stop whose stored official hours expired shows "Hours not checked yet. See <Place>'s official site before you
+ *        go." with the top-level link; the expired hours are never read
  *
- * NOT COVERED HERE (stated): the coverage census and where-to-stay's neighbourhood line read the same rule through
- * `liveFactRow` / its SQL twin; their fixtures need seeded neighbourhoods and are not built here.
+ * The coverage census and where-to-stay's neighbourhood line are proven without a database in
+ * server/__tests__/live-facts-readers.test.ts (LR1–LR2).
  *
  * DISPOSABLE DB ONLY: rows keyed by a per-run prefix and deleted afterwards.
  */
@@ -27,6 +29,7 @@ import {
   confirmFactAsNugget,
   factsForTrip,
   feasibilityFactsForTrip,
+  hoursWaitingForTrip,
   lastEntryWaitingForTrip,
   lastServicesForMarket,
   recordFacts,
@@ -34,6 +37,7 @@ import {
 } from "../services/content-facts/place-facts.service";
 import { coveringEventsForTrip } from "../services/content-facts/covering-events";
 import { loadEventGuideFacts } from "../services/blog-event-facts.service";
+import { promptFacts, withFactStamps } from "../services/blog-event-guide.service";
 
 const RUN = crypto.randomUUID().slice(0, 8).replace(/-/g, "");
 const id = (s: string) => `lf_${RUN}_${s}`;
@@ -195,10 +199,29 @@ test("LF5 — the event guide drops an expired fact and stamps a live one with s
   const facts = await loadEventGuideFacts(eventId, { partnerHosts: async () => [], now });
   assert.ok(facts);
   assert.equal(JSON.stringify(facts).includes(`GUIDE-OLD-${RUN}`), false, "expired: dropped everywhere");
-  const copied = facts!.venueFacts.find((f) => f.text === `GUIDE-NEW-${RUN}`);
-  assert.ok(copied, "live: copied");
-  assert.equal(copied!.source, "Kinkaku-ji");
-  assert.match(copied!.checked ?? "", /^checked \d{1,2} \S+ \d{4}$/);
+  assert.ok(facts!.venueFacts.some((f) => f.text === `GUIDE-NEW-${RUN}`), "live: copied");
+  const stamp = facts!.factStamps.find((f) => f.text === `GUIDE-NEW-${RUN}`);
+  assert.match(stamp?.stamp ?? "", /^Checked \d{1,2} \S+ \d{4} · Source: Kinkaku-ji$/, "code writes the stamp from stored fields");
+  // The model never sees a stamp; the generators append them to the body themselves.
+  assert.equal(JSON.stringify(promptFacts(facts!)).includes("Checked"), false);
+  assert.equal(JSON.stringify(promptFacts(facts!)).includes("Kinkaku-ji"), false);
+  const body = withFactStamps("Body.", facts!);
+  assert.ok(body.startsWith("Body.\n\n"));
+  assert.ok(body.includes(`GUIDE-NEW-${RUN} — ${stamp!.stamp}`));
+  assert.doesNotMatch(body, /verified|confirmed/i);
+});
+
+test("LF7 — a stop whose stored official hours expired shows the hours line with the official link", async () => {
+  await recordFacts([{ ...lastEntry(PLACE_OLD), factType: "hours", value: { weekdayDescriptions: ["Monday: 9:00 AM – 5:00 PM"], quote: "9:00 AM – 5:00 PM" } }], { planId: null, itemId: null });
+  const waiting = await hoursWaitingForTrip(trip, now);
+  assert.deepEqual(waiting[id("old")], {
+    text: "Hours not checked yet. See Kinkaku-ji's official site before you go.",
+    linkText: "Kinkaku-ji's official site",
+    url: "https://www.shokoku-ji.jp/",
+  });
+  assert.equal(waiting[id("live")], undefined, "no expired hours stored for that place");
+  const views = await factsForTrip(trip, now);
+  assert.equal((views[id("old")] ?? []).some((v) => v.factType === "hours"), false, "the expired hours are never read");
 });
 
 test("LF6 — an expired fact cannot be confirmed", async () => {
