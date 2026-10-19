@@ -147,7 +147,7 @@ Unchanged: `spaceDayTimes` and `retimeDayInOrder` (the traveler's own re-time, R
 
 Decision-maker Leon Dixon, Oct 19, 2026 (prompt cleanup rulings (a)–(c)). Ledger row `2026-10-19-fb1-prompt-cleanup`.
 
-- **The free draft** (`generateAutonomousItinerary`, `server/services/ai-generation.service.ts`) no longer feeds TravelPulse's hidden-gem names, and its intelligence block drops "Prioritize trending experiences", "Factor in crowd levels when scheduling" (crowd timing is an expert's judgment; the model has no data for it) and "Include hidden gems…". "Prioritize must-see attractions" stays.
+- **The free draft** (`generateAutonomousItinerary`, `server/services/ai-generation.service.ts`) no longer feeds TravelPulse's hidden-gem names or its crowd level, and its intelligence block drops "Prioritize trending experiences", "Factor in crowd levels when scheduling" (crowd timing is an expert's judgment; the model has no data for it) and "Include hidden gems…". "Prioritize must-see attractions" stays.
 - **The paid run** (`server/itinerary-optimizer.ts`) no longer tells the model to fill empty days. An empty day stays empty, and the checker does not flag it.
 - **Example times are placeholders** in every drafting prompt's JSON example (`<HH:MM>`, `<HH:MM AM/PM>`).
 - **The never-say line.** Every drafting prompt — the free draft, the trip generate route, the paid run, the blueprint — carries one line naming the banned words, built at runtime from `shared/banned-copy.ts`'s one list (`bannedCopyPromptLine`). The storage-time rewording (LG-2 Ask 9) stays the backstop.

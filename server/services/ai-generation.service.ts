@@ -483,9 +483,6 @@ Return JSON with this structure:
       if (tpCtx.pulseScore) {
         tpParts.push(`- City Pulse Score: ${tpCtx.pulseScore}/100 (activity level)`);
       }
-      if (tpCtx.crowdLevel) {
-        tpParts.push(`- Current Crowd Level: ${tpCtx.crowdLevel}`);
-      }
       if (tpCtx.aiBudgetEstimate) {
         tpParts.push(`- Local Budget Insight: ${tpCtx.aiBudgetEstimate}`);
       }

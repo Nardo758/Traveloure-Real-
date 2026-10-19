@@ -1,7 +1,7 @@
 /**
  * FB-1 step 5 — prompt cleanup (decision-maker, Oct 19, 2026; ledger `2026-10-19-fb1-prompt-cleanup`).
  *
- *   PC1 the free draft's prompt: no hidden-gems feed, no "trending", no crowd-timing instruction; "must-see attractions"
+ *   PC1 the free draft's prompt: no hidden-gems feed, no "trending", no crowd-level input or instruction; "must-see attractions"
  *       kept; the never-say line present
  *   PC2 the paid run's prompt: no empty-day fill, placeholder example times, the never-say line present
  *   PC3 the trip-generate and blueprint prompts: placeholder example times, the never-say line present
@@ -35,6 +35,7 @@ test("PC1 the free draft's prompt", () => {
   assert.doesNotMatch(src, /Hidden Gems to Consider/);
   assert.doesNotMatch(src, /Prioritize trending/i);
   assert.doesNotMatch(src, /Factor in crowd levels/i);
+  assert.doesNotMatch(src, /Current Crowd Level/, "no crowd data feeds the model");
   assert.doesNotMatch(src, /Include hidden gems/i);
   assert.match(src, /Prioritize must-see attractions\./);
   assert.match(src, NEVER_SAY);
