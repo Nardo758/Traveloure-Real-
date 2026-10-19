@@ -31,6 +31,7 @@
  * fails when a seeded expert email is not classified seed here — the list cannot drift silently.
  */
 import { sql, type SQL } from "drizzle-orm";
+import { isTestAccount, testAccountSql } from "./test-account";
 
 /** Email domains only seed files and fixtures use. */
 export const SEED_EXPERT_EMAIL_DOMAINS: readonly string[] = ["example.com", "example.org", "traveloure.test", "traveloure-qa.test"];
@@ -76,12 +77,15 @@ export function isRoutableExpert(input: {
   identityVerificationStatus: string | null | undefined;
   stripeConnectStatus: string | null | undefined;
   email: string | null | undefined;
+  /** SH-1 item 12: `users.is_test`. A test account is never routable; SHOW_DEMO_EXPERTS never relaxes it. */
+  isTest?: boolean | null;
 }): boolean {
   return (
     input.applicationStatus === "approved" &&
     input.identityVerificationStatus === "verified" &&
     input.stripeConnectStatus === "complete" &&
-    (showDemoExperts() || !isSeedExpertEmail(input.email))
+    (showDemoExperts() || !isSeedExpertEmail(input.email)) &&
+    !isTestAccount({ isTest: input.isTest, email: input.email })
   );
 }
 
@@ -99,7 +103,9 @@ export function seedEmailSql(emailExpr: SQL): SQL {
  */
 export function routableExpertSql(conciergePoolUserId: string | null, editorialUserId: string | null = null): SQL {
   const seedClause = showDemoExperts() ? sql`` : sql` AND NOT ${seedEmailSql(sql`u.email`)}`;
-  const routable = sql`(lef.status = 'approved' AND lef.identity_verification_status = 'verified' AND lef.stripe_connect_status = 'complete'${seedClause})`;
+  // SH-1 item 12: a test account is never routable — its own clause, which SHOW_DEMO_EXPERTS does not relax.
+  const testClause = sql` AND NOT ${testAccountSql(sql`u.is_test`, sql`u.email`)}`;
+  const routable = sql`(lef.status = 'approved' AND lef.identity_verification_status = 'verified' AND lef.stripe_connect_status = 'complete'${seedClause}${testClause})`;
   // ED-1b: the Traveloure Editorial house account is never a match, whatever rows it carries.
   const notEditorial = editorialUserId ? sql`(u.id <> ${editorialUserId} AND ${routable})` : routable;
   return conciergePoolUserId ? sql`(u.id <> ${conciergePoolUserId} AND ${notEditorial})` : notEditorial;
@@ -178,14 +184,23 @@ export async function withoutConciergePoolListings<T>(rows: readonly T[], ownerO
 export function isPublicExpertAccount(input: {
   applicationStatus: string | null | undefined;
   email: string | null | undefined;
+  /** SH-1 item 12: `users.is_test`. A test account is never a public expert. */
+  isTest?: boolean | null;
 }): boolean {
-  return input.applicationStatus === "approved" && (showDemoExperts() || !isSeedExpertEmail(input.email));
+  return (
+    input.applicationStatus === "approved" &&
+    (showDemoExperts() || !isSeedExpertEmail(input.email)) &&
+    !isTestAccount({ isTest: input.isTest, email: input.email })
+  );
 }
 
-/** SQL form of `isPublicExpertAccount` over a `local_expert_forms.status` and a users-email expression. */
-export function publicExpertSql(applicationStatusExpr: SQL, emailExpr: SQL): SQL {
+/**
+ * SQL form of `isPublicExpertAccount` over a `local_expert_forms.status`, a users-email and a users
+ * `is_test` expression.
+ */
+export function publicExpertSql(applicationStatusExpr: SQL, emailExpr: SQL, isTestExpr: SQL): SQL {
   const seedClause = showDemoExperts() ? sql`` : sql` AND NOT ${seedEmailSql(emailExpr)}`;
-  return sql`(${applicationStatusExpr} = 'approved'${seedClause})`;
+  return sql`(${applicationStatusExpr} = 'approved'${seedClause} AND NOT ${testAccountSql(isTestExpr, emailExpr)})`;
 }
 
 /** Is this ONE account routable (approved + Identity verified + Connect complete + not seed + not the pool)? */
@@ -211,12 +226,12 @@ export async function isPublicExpertProfileId(userId: string | null | undefined)
   if (!userId) return false;
   const { db } = await import("../db");
   const r = await db.execute(sql`
-    SELECT lef.status, u.email FROM users u LEFT JOIN local_expert_forms lef ON lef.user_id = u.id
+    SELECT lef.status, u.email, u.is_test FROM users u LEFT JOIN local_expert_forms lef ON lef.user_id = u.id
     WHERE u.id = ${userId} LIMIT 1
   `);
   const f = (r.rows?.[0] ?? null) as any;
   if (!f) return false;
-  return isPublicExpertAccount({ applicationStatus: f.status ?? null, email: f.email ?? null });
+  return isPublicExpertAccount({ applicationStatus: f.status ?? null, email: f.email ?? null, isTest: f.is_test ?? null });
 }
 
 /**

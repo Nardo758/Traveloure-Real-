@@ -24,6 +24,7 @@ import { PROCESSING_FEE_RATE, resolveCommissionRates, resolveServiceOwnerShareRa
 import { isPlatformConciergeUserId } from "./services/platform-concierge.service";
 import { isEditorialUserId } from "./services/editorial-account.service";
 import { notConciergePoolListingSql } from "./services/expert-routability";
+import { notTestOwnerListingSql } from "./services/test-account";
 import { notRideListingSql } from "./services/ride-listings";
 // D-32..D-35 (ledger `2026-09-16-d32-d35-bundle-components`): the child-row BIRTH inside the checkout
 // claim's transaction, the ROW READ inside the mint, and the ONE reduced-figures derivation.
@@ -3247,6 +3248,8 @@ export class DatabaseStorage implements IStorage {
       eq(providerServices.approvalStatus, "approved"),
       // The concierge pool account's listings are never public (ledger `2026-10-06-pool-listings-not-public`).
       await notConciergePoolListingSql(providerServices.userId),
+      // SH-1 item 12: a test account's listings are never public (server/services/test-account.ts).
+      notTestOwnerListingSql(providerServices.userId),
       // TC-3 catalog rides surface only as rides, never in browse (ledger `2026-10-11-tc3-ride-seed`).
       notRideListingSql(providerServices.id),
     ];
@@ -4118,7 +4121,8 @@ export class DatabaseStorage implements IStorage {
     // The concierge pool account's listings are never public (ledger `2026-10-06-pool-listings-not-public`).
     const notPool = await notConciergePoolListingSql(providerServices.userId);
     // TC-3 catalog rides surface only as rides, never in search (ledger `2026-10-11-tc3-ride-seed`).
-    const baseConditions = [eq(providerServices.status, "active"), eq(providerServices.approvalStatus, "approved"), notPool, notRideListingSql(providerServices.id)];
+    // SH-1 item 12: a test account's listings are never public.
+    const baseConditions = [eq(providerServices.status, "active"), eq(providerServices.approvalStatus, "approved"), notPool, notRideListingSql(providerServices.id), notTestOwnerListingSql(providerServices.userId)];
 
     if (filters.categoryId) {
       baseConditions.push(eq(providerServices.categoryId, filters.categoryId));

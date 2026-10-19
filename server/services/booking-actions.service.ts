@@ -640,7 +640,7 @@ export async function listTripExpertAdvisors(tripId: string): Promise<any[]> {
       -- B3 ruling 1 (read): a seed-sourced or not-approved expert is never shown on a plan, even
       -- where a row exists (seed rows are hidden, never deleted). An APPROVED expert whose Identity
       -- or Connect has lapsed is a real hire and stays.
-      AND ${publicExpertSql(sql`lef.status`, sql`u.email`)}
+      AND ${publicExpertSql(sql`lef.status`, sql`u.email`, sql`u.is_test`)}
     GROUP BY tea.id, tea.status, tea.message, tea.expert_response, tea.assigned_at,
              lef.id, lef.first_name, lef.last_name, lef.bio, lef.specialties,
              lef.destinations, lef.hourly_rate, u.profile_image_url, u.handle
@@ -817,7 +817,7 @@ export type TripAdvisorRowExecutor =
  */
 async function assertNewAdvisorRoutable(exec: typeof db, input: UpsertTripAdvisorRowInput): Promise<void> {
   const r = await exec.execute(sql`
-    SELECT u.role, u.email, lef.status AS application_status,
+    SELECT u.role, u.email, u.is_test, lef.status AS application_status,
            lef.identity_verification_status, lef.stripe_connect_status,
            EXISTS (SELECT 1 FROM trip_expert_advisors t
                    WHERE t.trip_id = ${input.tripId} AND t.local_expert_id = ${input.localExpertId}) AS has_row
@@ -833,6 +833,7 @@ async function assertNewAdvisorRoutable(exec: typeof db, input: UpsertTripAdviso
     identityVerificationStatus: row.identity_verification_status,
     stripeConnectStatus: row.stripe_connect_status,
     email: row.email,
+    isTest: row.is_test ?? null,
   });
   if (routable) return;
   if (input.routabilityOverride?.adminId) {

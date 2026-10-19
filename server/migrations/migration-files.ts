@@ -2094,4 +2094,7 @@ export const MIGRATION_FILES = [
   // 393 — DATA ONLY: two Gion itinerary_items (full ids) renamed "Gion District Walk" while their title still
   // contains "geisha spotting". Idempotent. LG-2 Ask 9, ledger 2026-10-18-lg2-banned-phrases.
   "393_gion_district_walk_titles.sql",
+  // 397 — SH-1 item 12: users.is_test, nullable boolean, no default (NULL = not a test account by flag).
+  // HELD for Leon's comment. Ledger 2026-10-19-sh1-test-flag.
+  "397_users_is_test.sql",
 ] as const;
