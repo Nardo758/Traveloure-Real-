@@ -48,6 +48,12 @@ export interface PlanStop {
    * the leg arriving at it still ends at `point` (the boarding pin). Absent on every other stop.
    */
   exitPoint?: RoutePoint | null;
+  /**
+   * LG-2 Ask 7b's interim rule: the stop is a path entered at its START only (`point_basis` 'path_start'). The leg
+   * arriving at it ends at that start; the leg LEAVING it is not routed (its end is not known yet) and is reported as
+   * skipped, so it reads as not checked — never a time from the wrong end.
+   */
+  leavingUnchecked?: boolean;
   startTime: string | null;
   endTime: string | null;
   durationMinutes: number | null;
@@ -167,7 +173,8 @@ export function desiredPlanLegs(
   const legs: DesiredLeg[] = [];
   const skipped: DesiredLegsResult["skipped"] = [];
   const add = (dayNumber: number, legOrder: number, from: PlanStop, to: PlanStop, wallClock: string | null) => {
-    if (!from.point || !to.point) {
+    // Ask 7b interim: a path entered at its start has no known leaving point.
+    if (!from.point || !to.point || from.leavingUnchecked) {
       skipped.push({ dayNumber, fromItemId: from.id, toItemId: to.id, reason: "missing_coordinates" });
       return;
     }

@@ -8,6 +8,7 @@ import {
   startConversation,
   type ContactAddressInput,
 } from "@/lib/earner-address";
+import { askFallbackPath, fetchExpertAvailability } from "@/lib/expert-availability";
 
 /**
  * Shared "Ask an expert" / "Message" action.
@@ -32,7 +33,8 @@ import {
  *
  * /chat is a ProtectedRoute (it bounces logged-out users to "/"), so we gate on auth here and open
  * the sign-in modal instead of sending them into a dead end. If nothing resolves, we fall back to
- * the public experts list pre-filtered to the city — context preserved, never a bare list.
+ * the public experts list pre-filtered to the city — context preserved, never a bare list — and only
+ * while the market answers yes (`@/lib/expert-availability`, SH-1 item 11).
  */
 
 interface AskExpertParams extends ContactAddressInput {
@@ -142,9 +144,10 @@ export function useAskExpert() {
         return;
       }
 
-      // Nothing resolved — honest fallback to the public list, pre-filtered so the traveler still
-      // lands on city-relevant experts.
-      navigate(city ? `/local-experts?location=${encodeURIComponent(city)}` : "/local-experts");
+      // Nothing resolved — the public list, pre-filtered to the city, but only when the market answers yes
+      // (SH-1 Q11.2): a "no" means the directory has no one to ask, so the traveler is not sent there.
+      const fallback = askFallbackPath(city, await fetchExpertAvailability(city ? { city } : "any"));
+      if (fallback) navigate(fallback);
     },
     [user, openSignInModal, navigate],
   );

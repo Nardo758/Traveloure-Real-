@@ -19,6 +19,7 @@ import {
   resolveRecommendationName,
   type RecommendationCandidate,
 } from "../city-feed-card-recommendation";
+import { expertAvailabilityUrl } from "@/lib/expert-availability";
 
 // tsconfig sets `jsx: "preserve"`, so tsx compiles JSX with the classic
 // `React.createElement` transform and every rendered component file needs React in
@@ -34,10 +35,19 @@ import {
 // trip-strip-lead component test uses. wouter needs a location at render time
 // (<Router ssrPath>); queries are disabled, so renderToString takes the synchronous
 // first paint and nothing is fetched.
-function render(candidate: RecommendationCandidate, props: Record<string, any> = {}): string {
+function render(
+  candidate: RecommendationCandidate,
+  props: Record<string, any> = {},
+  opts: { expertAvailable?: boolean } = {},
+): string {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, enabled: false } },
   });
+  // SH-1 item 11: the Ask CTA draws only on the server's settled "yes" for the card's city. A test
+  // that wants the CTA seeds that answer into the cache under the hook's own query key.
+  if (opts.expertAvailable) {
+    queryClient.setQueryData([expertAvailabilityUrl({ city: props.city ?? "kyoto" })], { available: true });
+  }
   return renderToString(
     <QueryClientProvider client={queryClient}>
       <Router ssrPath="/discover">
@@ -138,12 +148,20 @@ describe("traveler CTAs (gem-card parity, not the provider CTA)", () => {
     sourceType: "platform_provider",
   };
 
-  it("renders Add / Ask / Book and never 'I do this'", () => {
-    const html = render(candidate);
+  it("renders Add / Ask / Book and never 'I do this' (the city has an expert to ask)", () => {
+    const html = render(candidate, {}, { expertAvailable: true });
     assert.ok(html.includes("Book"), "Book CTA missing");
     assert.ok(html.includes("Add"), "Add CTA missing");
     assert.ok(html.includes("Ask"), "Ask CTA missing");
     assert.ok(!html.includes("I do this"), "provider-side CTA leaked onto a traveler card");
+  });
+
+  it("SH-1 item 11: with no availability answer the Ask CTA is not drawn (Add and Book stay)", () => {
+    const html = render(candidate);
+    assert.ok(!html.includes("btn-ask-rec-"), "Ask CTA drawn without a server yes");
+    assert.ok(!html.includes("Ask an expert"), "Ask label drawn without a server yes");
+    assert.ok(html.includes("Book"), "Book CTA missing");
+    assert.ok(html.includes("Add"), "Add CTA missing");
   });
 });
 

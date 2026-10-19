@@ -1,6 +1,7 @@
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { UserCheck } from "lucide-react";
+import { useExpertAvailability } from "@/lib/expert-availability";
 
 interface BookWithExpertButtonProps {
   destination?: string;
@@ -16,6 +17,9 @@ export function BookWithExpertButton({
   "data-testid": testId,
 }: BookWithExpertButtonProps) {
   const [, navigate] = useLocation();
+  // SH-1 item 11: draws only when the server says there is an expert to ask — for the card's
+  // destination when it names one, else for any live market (the link then names no city).
+  const expertAvailable = useExpertAvailability(destination ? { city: destination } : "any");
 
   const handleClick = () => {
     const params = new URLSearchParams();
@@ -24,6 +28,8 @@ export function BookWithExpertButton({
     params.set("role", "travel_expert");
     navigate(`/experts?${params.toString()}`);
   };
+
+  if (!expertAvailable) return null;
 
   return (
     <Button
