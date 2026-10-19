@@ -19,6 +19,7 @@ import {
   type CalendarEvent,
   type PeriodKind,
   type SeasonBand,
+  countedCityKey,
 } from "@shared/events-calendar";
 import { planAroundSource } from "@/components/landing/events-strip";
 import type { PlanningSource } from "@/contexts/PlanningContext";
@@ -190,7 +191,8 @@ export function WhatsOn({
   jump: { label: string; go: () => void } | null;
   onPlanAround: (s: PlanningSource) => void;
 }) {
-  const cities = new Set(rows.map((r) => r.marketKey ?? r.city)).size;
+  // SH-1 item 4: an event outside its market city counts toward its venue city, never the market city.
+  const cities = new Set(rows.map(countedCityKey)).size;
   const sub = rows.length === 0 ? "No dated events" : `${rows.length} ${rows.length === 1 ? "event" : "events"} · ${cities} ${cities === 1 ? "city" : "cities"}`;
   const empty = rows.length === 0 && bands.length === 0;
   return (

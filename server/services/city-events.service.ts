@@ -34,6 +34,9 @@ import {
   type NeighbourhoodCandidate,
   isCityEventVertical,
   CITY_EVENT_SERIES_KEY_RE,
+  EVENT_OUTSIDE_CITY_THRESHOLD_SETTING,
+  eventPlacement,
+  parseOutsideCityThresholdKm,
 } from "@shared/city-events";
 import { getMarketByCityName, timezoneForMarket } from "./trend-engine/operating-markets";
 import { logger } from "../infrastructure/logger";
@@ -95,6 +98,8 @@ export function buildCityEventRow(
   entry: CityEventSeedEntry,
   neighbourhoods: readonly NeighbourhoodCandidate[],
   partnerHosts: readonly string[],
+  // SH-1 item 4: the admin's outside-the-city distance (`loadOutsideCityThresholdKm`); null = unset.
+  thresholdKm: number | null = null,
 ): { row: InsertCityEvent } | { refused: CityEventRefusal } {
   if (!entry.sourceId || !entry.sourceId.trim()) return { refused: "empty_source_id" };
   const market = getMarketByCityName(entry.city.trim());
@@ -137,7 +142,11 @@ export function buildCityEventRow(
       venue: entry.venue.trim(),
       venueLat: lat,
       venueLng: lng,
-      neighbourhoodId: nearestNeighbourhoodId({ city: market.cityName, lat, lng }, neighbourhoods),
+      // SH-1 item 4: an event outside the market city gets no market-city neighbourhood — never the nearest one.
+      neighbourhoodId: placeCityEvent({ city: market.cityName, venueLocality: entry.venueLocality?.trim() || null, venueLat: lat, venueLng: lng }, thresholdKm)
+        .outsideCity
+        ? null
+        : nearestNeighbourhoodId({ city: market.cityName, lat, lng }, neighbourhoods),
       startsAt,
       endsAt,
       nights: deriveNights(startsAt, endsAt, tz),
@@ -210,6 +219,7 @@ export async function seedCityEvents(
   if (entries.length === 0) return { inserted: 0, skipped: 0, filled: 0, renamed: 0, refused, located, unlocated, deferred, nominatim };
   const candidates = await loadNeighbourhoodCandidates();
   const partnerHosts = await (deps.partnerHosts ?? loadPartnerHosts)();
+  const thresholdKm = await loadOutsideCityThresholdKm();
   // CITY_EVENTS_VENUE_LOOKUP=0 turns the network lookup off (tests, an offline boot): rows then land
   // unlocated and are flagged, exactly as a no-match does.
   const lookupOn = deps.venueLookup !== false && process.env.CITY_EVENTS_VENUE_LOOKUP !== "0";
@@ -225,7 +235,7 @@ export async function seedCityEvents(
   let filled = 0;
   let renamed = 0;
   for (const entry of entries) {
-    let built = buildCityEventRow(entry, candidates, partnerHosts);
+    let built = buildCityEventRow(entry, candidates, partnerHosts, thresholdKm);
     if ("refused" in built) {
       refused.push({ sourceId: entry.sourceId, reason: built.refused });
       logger.warn({ sourceId: entry.sourceId, reason: built.refused }, "[city-events] seed entry refused");
@@ -265,7 +275,7 @@ export async function seedCityEvents(
         continue;
       }
       const relocated = hit
-        ? buildCityEventRow({ ...entry, venueLat: hit.lat, venueLng: hit.lng }, candidates, partnerHosts)
+        ? buildCityEventRow({ ...entry, venueLat: hit.lat, venueLng: hit.lng }, candidates, partnerHosts, thresholdKm)
         : built;
       const next = "row" in relocated ? relocated.row : built.row;
       const changed = await db
@@ -299,7 +309,7 @@ export async function seedCityEvents(
         continue;
       }
       if (hit) {
-        const rebuilt = buildCityEventRow({ ...entry, venueLat: hit.lat, venueLng: hit.lng }, candidates, partnerHosts);
+        const rebuilt = buildCityEventRow({ ...entry, venueLat: hit.lat, venueLng: hit.lng }, candidates, partnerHosts, thresholdKm);
         if ("row" in rebuilt) built = rebuilt;
         located.push({ sourceId: entry.sourceId, matchedName: hit.matchedName });
       } else {
@@ -345,19 +355,50 @@ async function fillManualTypingIfNull(row: InsertCityEvent): Promise<boolean> {
 }
 
 /** Pure: shape one row into the card the page renders. */
-export function toCityEventCard(row: CityEvent, neighbourhood: string | null, now: Date): CityEventCard {
+/**
+ * SH-1 item 4 (ledger `2026-10-19-sh1-venue-city`): the admin's outside-the-city distance in km, or null while it is
+ * unset (then an event is in its venue's city). Read once per request; an unreadable setting reads as unset.
+ */
+export async function loadOutsideCityThresholdKm(): Promise<number | null> {
+  try {
+    const r = await db.execute(sql`SELECT setting_value FROM platform_settings WHERE setting_key = ${EVENT_OUTSIDE_CITY_THRESHOLD_SETTING} LIMIT 1`);
+    return parseOutsideCityThresholdKm(((r as any).rows?.[0]?.setting_value as string | undefined) ?? null);
+  } catch {
+    return null;
+  }
+}
+
+/** The ONE placement of a row (`eventPlacement`), against its market's centre and the admin's distance. */
+export function placeCityEvent(row: Pick<CityEvent, "city" | "venueLocality" | "venueLat" | "venueLng">, thresholdKm: number | null) {
+  const market = getMarketByCityName(row.city);
+  return eventPlacement({
+    city: row.city,
+    venueLocality: row.venueLocality ?? null,
+    venueLat: row.venueLat ?? null,
+    venueLng: row.venueLng ?? null,
+    centre: market ? { lat: market.lat, lng: market.lng } : null,
+    thresholdKm,
+  });
+}
+
+export function toCityEventCard(row: CityEvent, neighbourhood: string | null, now: Date, thresholdKm: number | null = null): CityEventCard {
   const market = getMarketByCityName(row.city);
   const tz = timezoneForMarket(market?.marketKey);
   const startsAt = new Date(row.startsAt);
   const endsAt = row.endsAt ? new Date(row.endsAt) : null;
   const firstDate = localDate(startsAt, tz);
+  const placement = placeCityEvent(row, thresholdKm);
   return {
     id: row.id,
     series: row.series,
     title: row.title,
     city: row.city,
     marketKey: market?.marketKey ?? null,
-    neighbourhood,
+    // SH-1 item 4: an event outside the market city has no market-city neighbourhood, whatever the row still holds —
+    // never a nearest-neighbourhood guess.
+    neighbourhood: placement.outsideCity ? null : neighbourhood,
+    outsideCity: placement.outsideCity,
+    venueCity: placement.venueCity,
     venue: row.venue,
     startsAt: startsAt.toISOString(),
     endsAt: endsAt ? endsAt.toISOString() : null,
@@ -386,6 +427,7 @@ export async function listUpcomingCityEvents(now: Date = new Date(), limit = 24)
     .where(and(gte(cityEvents.startsAt, now), lte(cityEvents.startsAt, end), isNull(cityEvents.withdrawnAt)))
     .orderBy(asc(cityEvents.startsAt));
   const renderable = rows.filter((r) => isRenderableCityEvent(r));
+  const thresholdKm = await loadOutsideCityThresholdKm();
   const hoodIds = Array.from(new Set(renderable.map((r) => r.neighbourhoodId).filter((x): x is string => !!x)));
   const names = new Map<string, string>();
   if (hoodIds.length > 0) {
@@ -397,6 +439,6 @@ export async function listUpcomingCityEvents(now: Date = new Date(), limit = 24)
     total: renderable.length,
     events: renderable
       .slice(0, limit)
-      .map((r) => toCityEventCard(r, r.neighbourhoodId ? names.get(r.neighbourhoodId) ?? null : null, now)),
+      .map((r) => toCityEventCard(r, r.neighbourhoodId ? names.get(r.neighbourhoodId) ?? null : null, now, thresholdKm)),
   };
 }

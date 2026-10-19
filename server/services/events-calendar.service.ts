@@ -42,7 +42,7 @@ import {
   type SeasonBand,
 } from "@shared/events-calendar";
 import { timezoneForMarket } from "./trend-engine/operating-markets";
-import { toCityEventCard } from "./city-events.service";
+import { loadOutsideCityThresholdKm, toCityEventCard } from "./city-events.service";
 
 export interface BandRow {
   id: string;
@@ -83,12 +83,14 @@ export function composeCalendarEvents(
   hoodNames: ReadonlyMap<string, string>,
   months: readonly string[],
   now: Date,
+  // SH-1 item 4: the admin's outside-the-city distance; null = unset (the venue's city decides).
+  thresholdKm: number | null = null,
 ): CalendarEvent[] {
   const windowEnd = monthLast(months[months.length - 1]);
   const out: CalendarEvent[] = [];
   for (const row of rows) {
     if (!isRenderableCityEvent(row)) continue;
-    const card = toCityEventCard(row, row.neighbourhoodId ? hoodNames.get(row.neighbourhoodId) ?? null : null, now);
+    const card = toCityEventCard(row, row.neighbourhoodId ? hoodNames.get(row.neighbourhoodId) ?? null : null, now, thresholdKm);
     // Under way counts: the exact test is the event's LOCAL last date against today IN ITS CITY.
     const today = localDate(now, timezoneForMarket(card.marketKey));
     if (card.lastDate < today || card.firstDate > windowEnd) continue;
@@ -206,7 +208,7 @@ export async function loadEventsCalendar(now: Date = new Date()): Promise<Events
 
   return {
     months,
-    events: composeCalendarEvents(eventRows, hoodNames, months, now),
+    events: composeCalendarEvents(eventRows, hoodNames, months, now, await loadOutsideCityThresholdKm()),
     bands: composeBands(bandRows, months),
     places: composePlaces(seasonRows, pulseRows),
   };

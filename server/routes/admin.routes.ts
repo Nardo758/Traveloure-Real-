@@ -1,4 +1,5 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { EVENT_OUTSIDE_CITY_THRESHOLD_SETTING, isValidOutsideCityThresholdSetting } from "@shared/city-events";
 import { BOT_FACT_DEFAULT_EXPIRY_SETTING, isValidExpiryDaysSetting } from "@shared/bot-proposals";
 import { WELCOME_VERIFICATION_WINDOW_SETTING, isValidWelcomeVerificationWindowSetting } from "@shared/welcome-verification";
 import { BLOG_FOOTER_MIN_PUBLISHED_SETTING, isValidBlogFooterMinPublishedSetting } from "@shared/blog-footer";
@@ -8242,6 +8243,10 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       if (settingKey === EXPERT_HOOK_CITIES_SETTING) {
         const refusal = expertHookCitiesRefusal(settingValue);
         if (refusal) return res.status(400).json({ error: refusal, got: settingValue });
+      }
+      // SH-1 item 4: the outside-the-city distance is a positive number of km; Leon sets it, no number lives in code.
+      if (settingKey === EVENT_OUTSIDE_CITY_THRESHOLD_SETTING && !isValidOutsideCityThresholdSetting(settingValue)) {
+        return res.status(400).json({ error: `${settingKey} must be a positive number of kilometres`, got: settingValue });
       }
       if (settingKey === LAUNCH_MARKET_SLUG_SETTING && !/^[a-z0-9-]{1,64}$/.test(settingValue)) {
         return res.status(400).json({ error: `${settingKey} must be a market slug (lower-case letters, digits, hyphens)`, got: settingValue });

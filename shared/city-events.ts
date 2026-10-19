@@ -288,6 +288,13 @@ export interface CityEventCard {
    * "same as the market" (§13).
    */
   venueLocality: string | null;
+  /**
+   * SH-1 item 4 (ledger `2026-10-19-sh1-venue-city`): the venue is outside the market city (`eventPlacement`). Such an
+   * event names its venue city ("In Osaka"), has no market-city neighbourhood and is not counted for the market city.
+   */
+  outsideCity?: boolean;
+  /** The venue's own city when `outsideCity`; null when it is not stated (§13 — never guessed). */
+  venueCity?: string | null;
 }
 
 export interface CityEventsPayload {
@@ -295,4 +302,57 @@ export interface CityEventsPayload {
   /** Renderable events in the window — the strip reads this against CITY_EVENTS_STRIP_MIN. */
   total: number;
   events: CityEventCard[];
+}
+
+/**
+ * SH-1 item 4 (decision-maker, Oct 19, 2026 — ledger `2026-10-19-sh1-venue-city`): WHERE AN EVENT IS. The admin
+ * setting below is the straight-line distance in km from the market centre to the venue within which a venue counts as
+ * in the market city. Leon sets the number; no number lives in code. Until it is set (or when the venue has no point),
+ * an event is in its VENUE's city: a stated `venueLocality` other than the market city puts it outside. There is never
+ * a nearest-neighbourhood fallback for an event outside the city.
+ */
+export const EVENT_OUTSIDE_CITY_THRESHOLD_SETTING = "event_outside_city_threshold_km";
+
+/** Pure. The setting's value as km, or null when unset or not a positive number. */
+export function parseOutsideCityThresholdKm(value: string | null | undefined): number | null {
+  if (value == null || value.trim() === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Pure. What the admin may store: a positive number of km. */
+export function isValidOutsideCityThresholdSetting(value: string): boolean {
+  return parseOutsideCityThresholdKm(value) !== null && /^\s*\d+(?:\.\d+)?\s*$/.test(value);
+}
+
+export interface EventPlacementInput {
+  city: string;
+  venueLocality: string | null;
+  venueLat: number | null;
+  venueLng: number | null;
+  /** The market centre (`OPERATING_MARKETS` lat/lng); null when the market is unknown. */
+  centre: { lat: number; lng: number } | null;
+  thresholdKm: number | null;
+}
+
+/**
+ * Pure. Whether the venue is outside the market city, and the venue's city then.
+ *   · threshold set, venue and centre located ⇒ outside exactly when the straight-line distance exceeds it;
+ *   · otherwise ⇒ outside exactly when a stated locality differs from the market city.
+ * Outside with no stated locality ⇒ `venueCity` null, never a guess.
+ */
+export function eventPlacement(e: EventPlacementInput): { outsideCity: boolean; venueCity: string | null } {
+  const loc = e.venueLocality?.trim() || null;
+  const differs = !!loc && loc.toLowerCase() !== e.city.trim().toLowerCase();
+  const located = e.venueLat != null && e.venueLng != null && Number.isFinite(e.venueLat) && Number.isFinite(e.venueLng);
+  if (e.thresholdKm != null && located && e.centre) {
+    const outside = haversineKm(e.centre.lat, e.centre.lng, e.venueLat as number, e.venueLng as number) > e.thresholdKm;
+    return { outsideCity: outside, venueCity: outside ? (differs ? loc : null) : null };
+  }
+  return { outsideCity: differs, venueCity: differs ? loc : null };
+}
+
+/** Pure. "In Osaka" for an event outside the market city with a stated venue city; null otherwise. */
+export function venueCityLabel(e: Pick<CityEventCard, "outsideCity" | "venueCity">): string | null {
+  return e.outsideCity && e.venueCity ? `In ${e.venueCity}` : null;
 }

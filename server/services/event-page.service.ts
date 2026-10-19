@@ -30,7 +30,7 @@ import {
 } from "@shared/event-page";
 import { logger } from "../infrastructure/logger";
 import { timezoneForMarket } from "./trend-engine/operating-markets";
-import { toCityEventCard } from "./city-events.service";
+import { loadOutsideCityThresholdKm, toCityEventCard } from "./city-events.service";
 import { loadEventGuideFacts, type EventGuideFacts } from "./blog-event-facts.service";
 import { verifiedLocalIds } from "./landing-billboard.service";
 
@@ -44,8 +44,8 @@ export function pickLiveEvent(rows: readonly CityEvent[]): { row: CityEvent } | 
 }
 
 /** Pure. The page's card: the calendar's own shape, with its address. */
-export function eventPageCard(row: CityEvent, now: Date): CalendarEvent {
-  const card = toCityEventCard(row, null, now);
+export function eventPageCard(row: CityEvent, now: Date, thresholdKm: number | null = null): CalendarEvent {
+  const card = toCityEventCard(row, null, now, thresholdKm);
   return { ...card, vertical: isCityEventVertical(row.vertical) ? row.vertical : null, venueLocality: row.venueLocality ?? null, sourceId: row.sourceId };
 }
 
@@ -71,8 +71,10 @@ export function composeEventPage(
   moreInCity: EventPageMoreRow[],
   verifiedCount: number,
   now: Date,
+  // SH-1 item 4: the admin's outside-the-city distance; null = unset.
+  thresholdKm: number | null = null,
 ): EventPagePayload {
-  const event = eventPageCard(row, now);
+  const event = eventPageCard(row, now, thresholdKm);
   const url = facts.event.ticketUrl;
   const host = url ? organizerHost(url) : null;
   return {
@@ -121,5 +123,5 @@ export async function loadEventPage(sourceId: string, deps: EventPageDeps = {}):
     .orderBy(asc(cityEvents.startsAt));
   const marketKey = facts.event.marketKey;
   const verified = marketKey ? await (deps.verifiedCount ?? countVerifiedLocals)(marketKey) : 0;
-  return composeEventPage(row, facts, composeMoreInCity(others, row.id, now), verified, now);
+  return composeEventPage(row, facts, composeMoreInCity(others, row.id, now), verified, now, await loadOutsideCityThresholdKm());
 }
