@@ -17,6 +17,7 @@
  * Phase 262: also returns DB-sourced hidden gems and active platform services.
  */
 
+import { hideBlockedGemImage, hideBlockedListingImages, photoBlocks } from "./place-photo-blocks.service";
 import { db } from "../db";
 import { resolveCanonicalCity } from "../utils/canonical-city";
 import { notConciergePoolListingSql } from "./expert-routability";
@@ -25,6 +26,7 @@ import { cityNeighborhoods, travelPulseHiddenGems, providerServices, serviceProv
 import { eq, sql, and, or, isNull, ilike, inArray, notInArray, asc, desc, gte } from "drizzle-orm";
 import { travelPulseService } from "./travelpulse.service";
 import { feverService } from "./fever.service";
+import { toPublicFeverEvents } from "./fever-public";
 import { resolveBookability } from "@shared/bookability";
 import { toGemTeaser } from "@shared/gem-teaser";
 import type { GemCuratedBy } from "@shared/gem-curated-by";
@@ -337,7 +339,9 @@ class LocationViewService {
         limit,
         sortBy: "date",
       });
-      return result ?? { events: [], total: 0, page: 1, totalPages: 0, city: null };
+      if (!result) return { events: [], total: 0, page: 1, totalPages: 0, city: null };
+      // SH-1 Q7.4: the destination page never carries a Fever amount or partner URL.
+      return { ...result, events: await toPublicFeverEvents(result.events) };
     })();
 
     // Neighborhoods for this city — annotated with gem + service counts + top gems[]
@@ -380,7 +384,9 @@ class LocationViewService {
           .select()
           .from(travelPulseHiddenGems)
           .where(eq(travelPulseHiddenGems.city, cityName))
-          .orderBy(desc(travelPulseHiddenGems.gemScore)),
+          .orderBy(desc(travelPulseHiddenGems.gemScore))
+          // CS-1 item 1: no image of a place under a no_photos block.
+          .then(async (rows) => { const blocks = await photoBlocks(); return rows.map((g) => hideBlockedGemImage(g, blocks)); }),
       ]);
 
       // Keyed by normalizeNeighborhoodKey(...) — see 2026-08-27-neighbourhood-slug-match
@@ -477,6 +483,8 @@ class LocationViewService {
       .from(travelPulseHiddenGems)
       .where(eq(travelPulseHiddenGems.city, cityName))
       .orderBy(desc(travelPulseHiddenGems.gemScore))
+      // CS-1 item 1: no image of a place under a no_photos block.
+      .then(async (rows) => { const blocks = await photoBlocks(); return rows.map((g) => hideBlockedGemImage(g, blocks)); })
       // Attribution (ruling 1) attached, then the ruled TEASER projection
       // (ruling 3) — deep fields never leave the server on this surface.
       .then((rows) => attachGemAttribution(rows))
@@ -580,7 +588,9 @@ class LocationViewService {
             return (rating / 5) * 100; // 0–5 stars → 0–100, the primitive's scale
           },
         ),
-      );
+      )
+      // CS-1 item 1: no cover photo of a place under a no_photos block.
+      .then((rows) => rows.map((r) => hideBlockedListingImages(r as any) as typeof r));
 
     // ── Trailhead T4.3 — PUBLISHED external stubs for this market ──────────────────────────────
     // The traveler storefront for scraped content. Reads dmo_raw_content gated on the SAME

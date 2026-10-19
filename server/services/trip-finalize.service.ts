@@ -294,8 +294,10 @@ async function finalCardPhotos(tripId: string): Promise<Record<string, PhotoView
   const picked = Array.from(firstByDay.values());
   const refs = await placeRefsForTrip(tripId, picked.map((r) => r.id));
   const num = (v: unknown) => (v == null || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
+  const [tripRow] = await db.select({ destination: trips.destination }).from(trips).where(eq(trips.id, tripId)).limit(1);
+  const city = (tripRow?.destination ?? "").split(",")[0].trim() || null;
   const resolved = await photosFor(
-    picked.map((r) => ({ id: r.id, name: r.title ?? "", placeId: refs.get(r.id)?.placeId ?? null, lat: refs.get(r.id)?.lat ?? num(r.latitude), lng: refs.get(r.id)?.lng ?? num(r.longitude), ownImage: null })),
+    picked.map((r) => ({ id: r.id, name: r.title ?? "", placeId: refs.get(r.id)?.placeId ?? null, lat: refs.get(r.id)?.lat ?? num(r.latitude), lng: refs.get(r.id)?.lng ?? num(r.longitude), ownImage: null, city, otherNames: [r.locationName], itemPlaceId: r.googlePlaceId ?? null })),
     { ...defaultPhotoDeps, googleLive: null },
   );
   const out: Record<string, PhotoView> = {};
