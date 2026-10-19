@@ -131,7 +131,7 @@ describe("events calendar rules", () => {
   });
 
   it("K6 'outside the city' only where a locality is stored and differs", () => {
-    assert.equal(eventPlace(ev("o", "2026-10-24", "2026-10-24", { venue: "Kyocera Dome Osaka", venueLocality: "Osaka" })), "Kyocera Dome Osaka, Osaka · outside the city, planned from Kyoto");
+    assert.equal(eventPlace(ev("o", "2026-10-24", "2026-10-24", { venue: "Kyocera Dome Osaka", venueLocality: "Osaka" })), "Kyocera Dome Osaka, Osaka · Outside the city, planned from Kyoto");
     assert.equal(eventPlace(ev("n", "2026-10-24", "2026-10-24", { venue: "Kyoto Concert Hall", venueLocality: null })), "Kyoto Concert Hall · Kyoto", "none stored: no claim either way");
     assert.equal(eventPlace(ev("s", "2026-10-24", "2026-10-24", { venue: "Hall", venueLocality: "kyoto" })), "Hall · Kyoto", "same city: no claim");
   });
