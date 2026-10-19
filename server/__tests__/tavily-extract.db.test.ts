@@ -136,7 +136,7 @@ test("T4: quotes are capped at 300 characters and must be on the page", () => {
       { factType: "hours", text: "Invented.", quote: "Open around the clock" },
       { factType: "event", text: "Wrong type.", quote: "Hours: 9 to 5." },
     ] },
-    { allowed: ["hours", "closure"], page, quoteMax: 300 },
+    { allowed: ["hours", "last_admission"], page, quoteMax: 300 },
   );
   assert.deepEqual(r.facts.map((f) => f.quote), ["Hours: 9 to 5."]);
   assert.deepEqual(r.refused.map((x) => x.reason), ["quote_too_long", "quote_not_on_page", "type_not_for_need"]);
