@@ -60,7 +60,7 @@ test("PC3 — a sooner expiry is kept; another origin is untouched", async () =>
   await recordFacts(
     [
       draft("soon", { expiresAt: soon }),
-      draft("tip", { origin: "traveler_note", license: null, factType: "tip", value: { text: "x" }, expiresAt: later }),
+      draft("tip", { origin: "expert_nugget", license: null, factType: "tip", value: { text: "x" }, expiresAt: later }),
     ],
     { planId: null, itemId: null },
   );
