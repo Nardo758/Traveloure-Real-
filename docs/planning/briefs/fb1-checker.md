@@ -143,6 +143,16 @@ The windows (`retimeWindowsByItem`, `shared/version-check.ts`) come once per run
 
 Unchanged: `spaceDayTimes` and `retimeDayInOrder` (the traveler's own re-time, R-ac), the anchor step, energy balancing, the legs step and the gate. With no model times and no windows, the result is exactly today's (golden parity).
 
+## Step 5a — prompt cleanup
+
+Decision-maker Leon Dixon, Oct 19, 2026 (prompt cleanup rulings (a)–(c)). Ledger row `2026-10-19-fb1-prompt-cleanup`.
+
+- **The free draft** (`generateAutonomousItinerary`, `server/services/ai-generation.service.ts`) no longer feeds TravelPulse's hidden-gem names, and its intelligence block drops "Prioritize trending experiences", "Factor in crowd levels when scheduling" (crowd timing is an expert's judgment; the model has no data for it) and "Include hidden gems…". "Prioritize must-see attractions" stays.
+- **The paid run** (`server/itinerary-optimizer.ts`) no longer tells the model to fill empty days. An empty day stays empty, and the checker does not flag it.
+- **Example times are placeholders** in every drafting prompt's JSON example (`<HH:MM>`, `<HH:MM AM/PM>`).
+- **The never-say line.** Every drafting prompt — the free draft, the trip generate route, the paid run, the blueprint — carries one line naming the banned words, built at runtime from `shared/banned-copy.ts`'s one list (`bannedCopyPromptLine`). The storage-time rewording (LG-2 Ask 9) stays the backstop.
+- **No canned fallback.** When the model fails, `POST /api/trips/:id/generate-itinerary` stores no draft: it answers through `aiFailureResponse` (503 with retry-after; 502 for a non-retryable failure), releases the free draft, and leaves the plan as it was. It used to replace the plan's AI items with four generic stops per day.
+
 ## Not in step 3
 
 - Regenerating a held version: step 3b.

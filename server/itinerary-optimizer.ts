@@ -1,3 +1,4 @@
+import { bannedCopyPromptLine } from "@shared/banned-copy";
 import Anthropic from "@anthropic-ai/sdk";
 import { versionRoutingFor } from "./services/routing/plan-legs-engine.service";
 import { reportAiUpstreamError } from "./services/ai-upstream-errors";
@@ -1344,36 +1345,8 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
     // ── Lane 5b: already-purchased items as immovable constraints ─────────────
     const fixedCommitmentSection = buildFixedCommitmentSection(fixedCommitments);
 
-    // ── Empty day detection ───────────────────────────────────────────────────
-    let emptyDaySection = '';
-    if (startDate && endDate) {
-      const startMs = new Date(startDate).getTime();
-      const endMs = new Date(endDate).getTime();
-      if (!isNaN(startMs) && !isNaN(endMs) && endMs >= startMs) {
-        const tripDurationDays = Math.round((endMs - startMs) / (1000 * 60 * 60 * 24)) + 1;
-        if (tripDurationDays > 1) {
-          // Lane 5b: a day whose only content is an already-PURCHASED item is not empty. Listing
-          // it as "EMPTY DAY TO FILL" would contradict the fixed-commitment section in the same
-          // prompt and invite the model to schedule over a booking.
-          const coveredDays = new Set([
-            ...baselineItems.map(item => item.dayNumber || 1),
-            ...fixedCommitments.map(c => c.dayNumber),
-          ]);
-          const emptyDays: number[] = [];
-          for (let d = 1; d <= tripDurationDays; d++) {
-            if (!coveredDays.has(d)) emptyDays.push(d);
-          }
-          if (emptyDays.length > 0) {
-            const coveredList = [...coveredDays].sort((a, b) => a - b).join(', ');
-            emptyDaySection = `\n\nTRIP DURATION: ${tripDurationDays} days (Days 1–${tripDurationDays})
-DAYS WITH USER ACTIVITIES: Days ${coveredList}
-EMPTY DAYS TO FILL: Days ${emptyDays.join(', ')}
-
-For each empty day, add activities that match the user's experience style (inferred from their existing selections), the destination, and their overall budget pace. Each empty day must include at least: a morning activity, a dining experience, an afternoon activity, and accommodation. These auto-filled days must feel cohesive with the user's existing selections. All variants must cover all ${tripDurationDays} days.`;
-          }
-        }
-      }
-    }
+    // FB-1 step 5 (ledger `2026-10-19-fb1-prompt-cleanup`): an empty day stays empty — the run no longer tells the
+    // model to fill it, and the checker does not flag it.
 
     // FB-1 step 3b: ONE window map per run, from the draft's own `retime` fixes, keyed by draft item id.
     const draftWindows = draftCheck ? retimeWindowsByItem(draftCheck.result.issues) : new Map<string, StopTimeWindow>();
@@ -1386,7 +1359,7 @@ For each empty day, add activities that match the user's experience style (infer
 
     const prompt = `You are a travel optimization AI. Analyze the user's itinerary and generate 3 optimized alternatives.
 
-DESTINATION: ${destination} | DATES: ${startDate} to ${endDate} | TRAVELERS: ${travelers || 1} | BUDGET: ${budget ? `$${budget}` : "Open"}${logisticsContextSection}${cityIntelligenceSection}${travelerProfileSection}${anchorPromptSection}${fixedCommitmentSection}${marqueeSection}${emptyDaySection}
+DESTINATION: ${destination} | DATES: ${startDate} to ${endDate} | TRAVELERS: ${travelers || 1} | BUDGET: ${budget ? `$${budget}` : "Open"}${logisticsContextSection}${cityIntelligenceSection}${travelerProfileSection}${anchorPromptSection}${fixedCommitmentSection}${marqueeSection}
 
 USER'S CURRENT ITINERARY:
 ${compactBaseline}
@@ -1417,7 +1390,7 @@ Rules for all three variants:
 3. Use services from the available list when possible
 4. Provide clear reasoning for each change
 5. Preserve all PROTECTED ITEMS exactly — never replace, remove, or move them
-6. Cover all trip days, auto-filling any empty days with contextually appropriate activities
+6. ${bannedCopyPromptLine()}
 7. When a stop KEEPS one of the user's items (the same place), set "sourceRef" to that item's [S#] tag; a new or replacement stop has "sourceRef": null. Use each tag at most once per variant.
 
 Respond with valid JSON in this exact format:
@@ -1431,8 +1404,8 @@ Respond with valid JSON in this exact format:
         {
           "dayNumber": 1,
           "timeSlot": "morning",
-          "startTime": "09:00",
-          "endTime": "12:00",
+          "startTime": "<HH:MM>",
+          "endTime": "<HH:MM>",
           "name": "Activity Name",
           "description": "Brief description",
           "serviceType": "activities",
