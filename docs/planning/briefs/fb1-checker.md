@@ -166,6 +166,29 @@ Every day is changed when an item the baseline does not know (a fixed commitment
 - Whole plan: "Use all fixed days", above the days, while at least one flagged day is fixable. It sends every flagged day; the server applies the unchanged ones and names the rest: "Updated 3 days. Skipped Day 2 because you’ve changed it."
 
 **Unchanged:** the board's own adopt (it never sends the flag), the gate.
+## Step 4b — a free plan's retime fix by tap
+
+Decision-maker Leon Dixon, Oct 19, 2026. On a free plan (no routed legs; a paid plan has "Your plan, fixed"), a
+finding whose fix is `retime` is a tap on the slip. The other fix kinds stay flags with the fix in words, and
+`lighten_day` is never a tap. The issue shape does not change before Oct 21.
+
+- **The move.** `planRetimeFix` (`shared/free-retime.ts`, pure) moves the stop to its window's bound and keeps its
+  length. A later stop on the same day moves later only where it would overlap. No tap is offered when the move
+  would collide with the stop before, run past midnight, miss the window, or move a booked, in-checkout, locked or
+  expert stop.
+- **Offered only when it works.** The server re-runs the one checker on the moved day. A fix is offered only when
+  that stop's issue is gone and the day carries nothing it did not already have.
+- **Who and what.** Owner or delegate (`planRole(…, "choose")`); anyone else gets one 404. Public facts only, no
+  model call, no version.
+- **Confirm before apply.** `POST /api/trips/:tripId/retime-fixes/:itemId/apply` with `preview: true` writes nothing
+  and returns the moves; Confirm sends it without. The moves are recomputed on the server, never taken from a body.
+  The write is one transaction, each update conditional on the stop still starting where the plan said (else 409
+  `plan_changed`); a stop with no fix is 409 `no_fix`; a paid plan is 409 `paid_plan`. Times are stored as
+  "h:mm AM/PM". The plan's legs are queued for recompute.
+- **Read.** `GET /api/trips/:tripId/retime-fixes` lists the fixes; a paid plan gets none.
+- **Words** (founder wording review on the PR): "Move <stop> to <time>", "Confirm" / "Cancel", and the step 4
+  counts line ("Day 2 updated: 2 stops moved").
+
 ## Step 5a — prompt cleanup
 
 Decision-maker Leon Dixon, Oct 19, 2026 (prompt cleanup rulings (a)–(c)). Ledger row `2026-10-19-fb1-prompt-cleanup`.

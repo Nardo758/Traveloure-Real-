@@ -10,6 +10,7 @@ import { Link } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { formatItemTime as formatTime } from "@shared/free-retime";
 import {
   COMPARE_VERSIONS_LABEL,
   FIXED_CANCEL,
@@ -21,6 +22,9 @@ import {
   fixedDayState,
   fixedPlanResultLine,
   flaggedPlanDays,
+  freeRetimeButton,
+  freeRetimeResultLine,
+  type FreeRetimeFix,
   showsFixedPlanButton,
   type AppliedDay,
   type FixedPlanView,
@@ -169,4 +173,71 @@ export function FixedDayControl({ tripId, view, day }: { tripId: string; view: F
       {FIXED_DAY_BUTTON}
     </Button>
   );
+}
+
+/** FB-1 step 4b: a free plan's tap-able retime fixes. Only for a viewer with the item tools; a paid plan gets none. */
+export function useFreeRetimeFixes(tripId: string, enabled: boolean) {
+  const { data } = useQuery<{ fixes: FreeRetimeFix[] }>({
+    queryKey: [`/api/trips/${tripId}/retime-fixes`],
+    enabled: enabled && !!tripId,
+    retry: false,
+    staleTime: 15_000,
+  });
+  return data?.fixes ?? [];
+}
+
+/** One day's free retime taps: preview → Confirm → apply, the counts line before and after. */
+export function FreeRetimeDayControl({ tripId, fixes, day }: { tripId: string; fixes: FreeRetimeFix[]; day: number }) {
+  const [pending, setPending] = useState<FreeRetimeFix | null>(null);
+  const [result, setResult] = useState<string | null>(null);
+  const post = async (itemId: string, preview: boolean): Promise<{ fix: FreeRetimeFix }> =>
+    (await apiRequest("POST", `/api/trips/${tripId}/retime-fixes/${itemId}/apply`, preview ? { preview: true } : {})).json();
+  const preview = useMutation({ mutationFn: (itemId: string) => post(itemId, true), onError: () => refreshFree(tripId) });
+  const apply = useMutation({ mutationFn: (itemId: string) => post(itemId, false), onSettled: () => refreshFree(tripId) });
+  const mine = fixes.filter((f) => f.day === day);
+  if (result) {
+    return (
+      <p className="text-xs text-[color:var(--slip-muted)]" data-testid={`slip-free-retime-result-${day}`}>
+        {result}
+      </p>
+    );
+  }
+  if (pending) {
+    return (
+      <ConfirmBox
+        answer={{ days: [{ day, moved: pending.moves.length, added: 0, removed: 0, kept: 0 }], skipped: [] }}
+        busy={apply.isPending}
+        onCancel={() => setPending(null)}
+        onConfirm={() => {
+          const p = pending;
+          setPending(null);
+          apply.mutate(p.itemId, { onSuccess: (out) => setResult(freeRetimeResultLine(out.fix)) });
+        }}
+        testId={`slip-free-retime-preview-${day}`}
+      />
+    );
+  }
+  if (!mine.length) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5" data-testid={`slip-free-retime-${day}`}>
+      {mine.map((f) => (
+        <Button
+          key={f.itemId}
+          size="sm"
+          variant="outline"
+          className="h-7 text-xs"
+          disabled={preview.isPending || apply.isPending}
+          onClick={() => preview.mutate(f.itemId, { onSuccess: (out) => setPending(out.fix) })}
+          data-testid={`slip-free-retime-apply-${f.itemId}`}
+        >
+          {freeRetimeButton(f.title, formatTime(f.moves[0].toMin))}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
+function refreshFree(tripId: string) {
+  void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+  void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/retime-fixes`] });
 }
