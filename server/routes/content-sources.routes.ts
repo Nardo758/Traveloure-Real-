@@ -9,6 +9,8 @@
  *   POST  /api/admin/content-sources/:id/deactivate     any admin
  *   POST  /api/admin/content-sources/:id/public-ok      allowlisted activator only; `{ publicOk }`,
  *                                                       official + terms-checked rows only (ruling R-p)
+ *   POST  /api/admin/content-sources/:id/signoff        CS-1 item 1: the approver (same allowlist) records
+ *                                                       `{ decision: "approved" | "rejected" }`
  *   GET   /api/admin/content-sources/lookup-outcomes    PF-1: Places lookup outcomes by outcome/reason (`?days=`)
  *   GET   /api/admin/content-sources/lookup-outcomes/plan/:tripId   PF-1: each item's latest outcome on one plan
  */
@@ -24,7 +26,9 @@ import {
   editContentSource,
   listContentSources,
   setContentSourcePublicOk,
+  signoffContentSource,
 } from "../services/content-sources.service";
+import { needsManualRecheck } from "@shared/source-signoff";
 import { latestLookupOutcomesForPlan, lookupOutcomeCounts } from "../services/content-facts/lookup-outcomes.service";
 
 const router = Router();
@@ -40,6 +44,8 @@ router.get("/api/admin/content-sources", isAuthenticated, async (req, res) => {
     const sources = await listContentSources();
     res.json({
       sources,
+      // CS-1 item 1: reading-class sources a machine may not fetch — rechecked by a person.
+      manualRecheckIds: sources.filter((r) => needsManualRecheck(r)).map((r) => r.id),
       viewerMayActivate: mayActivateContentSource(getUserId(req)),
       activatorConfigured: contentSourceActivatorIds().length > 0,
     });
@@ -106,6 +112,14 @@ router.post("/api/admin/content-sources/:id/deactivate", isAuthenticated, async 
 router.post("/api/admin/content-sources/:id/public-ok", isAuthenticated, async (req, res) => {
   try {
     res.json({ source: await setContentSourcePublicOk(req.params.id, req.body, getUserId(req) ?? null) });
+  } catch (err) {
+    fail(res, err);
+  }
+});
+
+router.post("/api/admin/content-sources/:id/signoff", isAuthenticated, async (req, res) => {
+  try {
+    res.json({ source: await signoffContentSource(req.params.id, req.body, getUserId(req) ?? null) });
   } catch (err) {
     fail(res, err);
   }

@@ -81,6 +81,7 @@ import { routingAdapter } from "./routing/index";
 import { isOpenCoordOrigin } from "@shared/open-coords";
 import { affiliateProductNotPausedWhere } from "./partner-pause.service";
 import { RouteRunMemo } from "./routing/route-memo";
+import { visibleListingImage } from "./place-photo-blocks.service";
 
 const LODGING_CATEGORY = /hotel|accommodation|lodging|ryokan|stay/i;
 
@@ -344,7 +345,9 @@ export async function cityHotels(city: string): Promise<Array<StayHotel & { lat:
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
     // Step 6 R-aq: a platform stay's thumbnail is OUR listing's own image (the first source), with
     // its attribution; partner stays carry none — their images are not among R-aq's sources.
-    const image = typeof p.image === "string" && /^https?:\/\//i.test(p.image) ? p.image : null;
+    // CS-1 item 1: no photo of a place under a no_photos block.
+    const shown = visibleListingImage({ serviceName: p.name, city, serviceImage: typeof p.image === "string" ? p.image : null });
+    const image = typeof shown === "string" && /^https?:\/\//i.test(shown) ? shown : null;
     out.push({
       kind: "platform",
       id: p.id,

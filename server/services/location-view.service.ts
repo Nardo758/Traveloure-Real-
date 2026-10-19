@@ -38,6 +38,7 @@ import {
 } from "@shared/trailhead-resolution";
 import { sortByFeaturedAdjusted } from "./featured-sort";
 import { logger } from "../infrastructure/logger";
+import { hideBlockedListingImages } from "./place-photo-blocks.service";
 
 /**
  * ── FP-1 / B4 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1) ─────────────────────────────────
@@ -580,7 +581,9 @@ class LocationViewService {
             return (rating / 5) * 100; // 0–5 stars → 0–100, the primitive's scale
           },
         ),
-      );
+      )
+      // CS-1 item 1: no cover photo of a place under a no_photos block.
+      .then((rows) => rows.map((r) => hideBlockedListingImages(r as any) as typeof r));
 
     // ── Trailhead T4.3 — PUBLISHED external stubs for this market ──────────────────────────────
     // The traveler storefront for scraped content. Reads dmo_raw_content gated on the SAME

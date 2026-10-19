@@ -23,12 +23,15 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { CONTENT_NEEDS, LICENSE_CLASSES, SOURCE_ADAPTERS, publicOkEligibleSource, subNeedsOf } from "@shared/content-facts";
-import type { ContentSource } from "@shared/schema";
+import type { ContentSource, PlacePhotoBlock } from "@shared/schema";
+import { TERMS_CLASSES, isLinkOutClass, signoffAllowsActivation, signoffStatusOf } from "@shared/source-signoff";
 
 interface RegistryResponse {
   sources: ContentSource[];
   viewerMayActivate: boolean;
   activatorConfigured: boolean;
+  /** CS-1 item 1: reading-class sources a machine may not fetch — the server's list. */
+  manualRecheckIds?: string[];
 }
 
 const NEED_OPTIONS: { key: string; nested: boolean }[] = CONTENT_NEEDS.flatMap((n) => [
@@ -50,11 +53,17 @@ interface Draft {
   /** SS-1b: the official refresh reads a source only when both are stated. Blank = not stated. */
   refreshIntervalDays: string;
   costCeilingCentsPerDay: string;
+  /** CS-1 item 1: blank = not set. */
+  termsClass: string;
+  /** "yes" | "no" | "" (not answered). */
+  automatedAccess: string;
+  creditText: string;
 }
 
 const EMPTY: Draft = {
   id: "", name: "", homepage: "", market: "", adapter: "manual", covers: [], doesNotCover: [],
   licenseClass: "official", termsUrl: "", notes: "", refreshIntervalDays: "", costCeilingCentsPerDay: "",
+  termsClass: "", automatedAccess: "", creditText: "",
 };
 
 const orNull = (s: string) => (s.trim() === "" ? null : s.trim());
@@ -68,6 +77,9 @@ function fromRow(r: ContentSource): Draft {
     termsUrl: r.termsUrl ?? "", notes: r.notes ?? "",
     refreshIntervalDays: r.refreshIntervalDays == null ? "" : String(r.refreshIntervalDays),
     costCeilingCentsPerDay: r.costCeilingCentsPerDay == null ? "" : String(r.costCeilingCentsPerDay),
+    termsClass: r.termsClass ?? "",
+    automatedAccess: r.automatedAccessAllowed == null ? "" : r.automatedAccessAllowed ? "yes" : "no",
+    creditText: r.creditText ?? "",
   };
 }
 
@@ -108,6 +120,9 @@ export default function AdminContentSources() {
         covers: draft.covers, doesNotCover: draft.doesNotCover, licenseClass: draft.licenseClass,
         termsUrl: orNull(draft.termsUrl), notes: orNull(draft.notes),
         refreshIntervalDays: intOrNull(draft.refreshIntervalDays), costCeilingCentsPerDay: intOrNull(draft.costCeilingCentsPerDay),
+        termsClass: orNull(draft.termsClass),
+        automatedAccessAllowed: draft.automatedAccess === "" ? null : draft.automatedAccess === "yes",
+        creditText: orNull(draft.creditText),
       };
       return editingId
         ? apiRequest("PATCH", `/api/admin/content-sources/${editingId}`, body)
@@ -129,6 +144,13 @@ export default function AdminContentSources() {
     onError,
   });
 
+  const signoff = useMutation({
+    mutationFn: ({ id, decision }: { id: string; decision: "approved" | "rejected" }) =>
+      apiRequest("POST", `/api/admin/content-sources/${id}/signoff`, { decision }),
+    onSuccess: refresh,
+    onError,
+  });
+
   const act = useMutation({
     mutationFn: ({ id, action }: { id: string; action: "activate" | "deactivate" }) =>
       apiRequest("POST", `/api/admin/content-sources/${id}/${action}`),
@@ -144,7 +166,9 @@ export default function AdminContentSources() {
             <CardTitle>{editingId ? `Edit ${editingId}` : "Add a source"}</CardTitle>
             <CardDescription>
               A new source is saved inactive. Activating it records that its terms were read, by whom and when.
-              Changing the homepage, terms URL, license class or adapter clears that check and deactivates the source.
+              Changing the homepage, terms URL, license class, adapter, terms class or automated access clears that check,
+              returns the sign-off to pending and deactivates the source. A link-out source is never read, so its adapter
+              is always manual.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -173,7 +197,7 @@ export default function AdminContentSources() {
               </div>
               <div>
                 <Label htmlFor="cs-adapter">Adapter</Label>
-                <select id="cs-adapter" className="w-full border rounded-md h-9 px-2 bg-background" value={draft.adapter} onChange={(e) => setDraft({ ...draft, adapter: e.target.value })}>
+                <select id="cs-adapter" className="w-full border rounded-md h-9 px-2 bg-background" value={isLinkOutClass(draft.termsClass) ? "manual" : draft.adapter} disabled={isLinkOutClass(draft.termsClass)} onChange={(e) => setDraft({ ...draft, adapter: e.target.value })}>
                   {SOURCE_ADAPTERS.map((a) => <option key={a} value={a}>{a}</option>)}
                 </select>
               </div>
@@ -183,6 +207,25 @@ export default function AdminContentSources() {
                   {LICENSE_CLASSES.map((l) => <option key={l} value={l}>{l}</option>)}
                 </select>
               </div>
+              <div>
+                <Label htmlFor="cs-terms-class">Terms class</Label>
+                <select id="cs-terms-class" className="w-full border rounded-md h-9 px-2 bg-background" value={draft.termsClass} onChange={(e) => setDraft({ ...draft, termsClass: e.target.value })} data-testid="select-terms-class">
+                  <option value="">not set</option>
+                  {TERMS_CLASSES.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <Label htmlFor="cs-auto">Automated access allowed</Label>
+                <select id="cs-auto" className="w-full border rounded-md h-9 px-2 bg-background" value={draft.automatedAccess} onChange={(e) => setDraft({ ...draft, automatedAccess: e.target.value })} data-testid="select-automated-access">
+                  <option value="">not answered</option>
+                  <option value="yes">yes</option>
+                  <option value="no">no</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="cs-credit">Credit line (as the source states it)</Label>
+              <Input id="cs-credit" value={draft.creditText} onChange={(e) => setDraft({ ...draft, creditText: e.target.value })} data-testid="input-source-credit" />
             </div>
             <div className="grid md:grid-cols-2 gap-4">
               <NeedPicker label="Covers" value={draft.covers} onChange={(covers) => setDraft({ ...draft, covers })} testId="covers" />
@@ -237,12 +280,17 @@ export default function AdminContentSources() {
                     <Badge variant="outline">{s.market ?? "global"}</Badge>
                     <Badge variant="outline">{s.licenseClass}</Badge>
                     <Badge variant="outline">{s.adapter}</Badge>
+                    <Badge variant="outline" data-testid={`badge-signoff-${s.id}`}>sign-off: {signoffStatusOf(s)}</Badge>
+                    <Badge variant="outline">{s.termsClass ?? "terms class not set"}</Badge>
+                    {data.manualRecheckIds?.includes(s.id) && <Badge variant="secondary" data-testid={`badge-manual-recheck-${s.id}`}>manual recheck</Badge>}
                   </div>
                   <p className="text-sm mt-1">Covers: {(s.covers ?? []).join(", ") || "—"}</p>
                   <p className="text-sm">Does not cover: {(s.doesNotCover ?? []).join(", ") || "nothing listed"}</p>
                   <p className="text-xs text-muted-foreground mt-1">
                     {s.termsCheckedAt ? `Terms checked ${new Date(s.termsCheckedAt).toLocaleDateString()}` : "Terms not checked"}
+                    {s.signoffAt ? ` · ${signoffStatusOf(s)} on ${new Date(s.signoffAt).toLocaleDateString()}` : " · not signed off"}
                   </p>
+                  {s.creditText && <p className="text-xs text-muted-foreground">Credit: {s.creditText}</p>}
                   <PublicOkControl
                     source={s}
                     viewerMayActivate={data.viewerMayActivate}
@@ -251,7 +299,17 @@ export default function AdminContentSources() {
                   />
                   <div className="flex gap-2 mt-2">
                     <Button size="sm" variant="outline" onClick={() => { setEditingId(s.id); setDraft(fromRow(s)); }}>Edit</Button>
-                    {!s.active && data.viewerMayActivate && (
+                    {data.viewerMayActivate && signoffStatusOf(s) !== "approved" && (
+                      <Button size="sm" variant="outline" onClick={() => signoff.mutate({ id: s.id, decision: "approved" })} disabled={signoff.isPending || !s.termsClass} data-testid={`button-approve-${s.id}`}>
+                        Approve
+                      </Button>
+                    )}
+                    {data.viewerMayActivate && signoffStatusOf(s) !== "rejected" && (
+                      <Button size="sm" variant="outline" onClick={() => signoff.mutate({ id: s.id, decision: "rejected" })} disabled={signoff.isPending} data-testid={`button-reject-${s.id}`}>
+                        Reject
+                      </Button>
+                    )}
+                    {!s.active && data.viewerMayActivate && signoffAllowsActivation(s) && (
                       <Button size="sm" onClick={() => act.mutate({ id: s.id, action: "activate" })} disabled={act.isPending} data-testid={`button-activate-${s.id}`}>
                         I read the terms — activate
                       </Button>
@@ -267,6 +325,8 @@ export default function AdminContentSources() {
             </div>
           </CardContent>
         </Card>
+        <ManualRecheckCard sources={data?.sources ?? []} ids={data?.manualRecheckIds ?? []} />
+        <PhotoBlocksCard viewerMayActivate={!!data?.viewerMayActivate} />
         <LookupOutcomesCard />
       </div>
     </AdminLayout>
@@ -456,5 +516,116 @@ function PublicOkControl({
         {why ? ` · ${why}` : ""}
       </p>
     </div>
+  );
+}
+
+/** CS-1 item 1: the sources a person rechecks by hand — the server's list, shown as it is. */
+function ManualRecheckCard({ sources, ids }: { sources: ContentSource[]; ids: string[] }) {
+  const rows = sources.filter((s) => ids.includes(s.id));
+  return (
+    <Card data-testid="card-manual-recheck">
+      <CardHeader>
+        <CardTitle>Manual recheck</CardTitle>
+        <CardDescription>
+          Sources that are read for facts but whose terms or robots.txt do not allow automated access (or were not answered).
+          No scheduled refresh or plan lookup fetches them; a person rechecks them by hand.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground" data-testid="text-manual-recheck-empty">None.</p>
+        ) : (
+          <ul className="text-sm space-y-1">
+            {rows.map((s) => (
+              <li key={s.id} data-testid={`row-manual-recheck-${s.id}`}>
+                <code>{s.id}</code> — {s.name}{s.homepage ? ` · ${s.homepage}` : ""}
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * CS-1 item 1: per-place no_photos. A place is blocked by its Google place id, or by its name and city (normalised the
+ * way LG-2 matches names). A blocked place's photos are refused at upload and hidden on every read; nothing is deleted.
+ * Only the designated reviewer adds a block; there is no remove.
+ */
+function PhotoBlocksCard({ viewerMayActivate }: { viewerMayActivate: boolean }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [form, setForm] = useState({ placeId: "", placeName: "", city: "", reason: "" });
+  const blocks = useQuery<{ blocks: PlacePhotoBlock[] }>({ queryKey: ["/api/admin/place-photo-blocks"] });
+  const add = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", "/api/admin/place-photo-blocks", {
+        placeId: orNull(form.placeId),
+        placeName: orNull(form.placeName),
+        city: orNull(form.city),
+        reason: form.reason.trim(),
+      }),
+    onSuccess: () => {
+      setForm({ placeId: "", placeName: "", city: "", reason: "" });
+      qc.invalidateQueries({ queryKey: ["/api/admin/place-photo-blocks"] });
+      toast({ title: "Photos blocked for this place" });
+    },
+    onError: (e: Error) => toast({ title: "Not saved", description: e.message, variant: "destructive" }),
+  });
+  return (
+    <Card data-testid="card-photo-blocks">
+      <CardHeader>
+        <CardTitle>No photos (per place)</CardTitle>
+        <CardDescription>
+          Blocks every image of a place, including expert and provider uploads: refused at upload, hidden everywhere it is read.
+          An upload that names no place and carries no place id is not caught.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {blocks.isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : blocks.isError || !blocks.data ? (
+          <p className="text-sm text-muted-foreground">The list could not be loaded.</p>
+        ) : blocks.data.blocks.length === 0 ? (
+          <p className="text-sm text-muted-foreground" data-testid="text-photo-blocks-empty">No places blocked.</p>
+        ) : (
+          <ul className="text-sm space-y-1">
+            {blocks.data.blocks.map((b) => (
+              <li key={b.id} data-testid={`row-photo-block-${b.id}`}>
+                {b.placeNameNormalised ? <><code>{b.placeNameNormalised}</code> in {b.city}</> : null}
+                {b.placeId ? <> · place id <code>{b.placeId}</code></> : null}
+                {` — ${b.reason} (${new Date(b.setAt).toLocaleDateString()})`}
+              </li>
+            ))}
+          </ul>
+        )}
+        {viewerMayActivate ? (
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor="pb-name">Place name</Label>
+              <Input id="pb-name" value={form.placeName} onChange={(e) => setForm({ ...form, placeName: e.target.value })} placeholder="Kiyomizu-dera" data-testid="input-photo-block-name" />
+            </div>
+            <div>
+              <Label htmlFor="pb-city">City</Label>
+              <Input id="pb-city" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} placeholder="Kyoto" data-testid="input-photo-block-city" />
+            </div>
+            <div>
+              <Label htmlFor="pb-place">Google place id (optional)</Label>
+              <Input id="pb-place" value={form.placeId} onChange={(e) => setForm({ ...form, placeId: e.target.value })} data-testid="input-photo-block-place-id" />
+            </div>
+            <div>
+              <Label htmlFor="pb-reason">Reason</Label>
+              <Input id="pb-reason" value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} placeholder="The temple refuses commercial photos" data-testid="input-photo-block-reason" />
+            </div>
+            <div>
+              <Button onClick={() => add.mutate()} disabled={add.isPending || !form.reason.trim()} data-testid="button-add-photo-block">Block photos</Button>
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">Only the designated reviewer can add a block.</p>
+        )}
+      </CardContent>
+    </Card>
   );
 }

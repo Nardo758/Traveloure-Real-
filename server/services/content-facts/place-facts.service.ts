@@ -52,6 +52,7 @@ import { claudeService } from "../claude.service";
 import { assertRobotsAllowed } from "../../utils/robots-txt";
 import { ROBOTS_TXT_USER_AGENT_TOKEN } from "../../config/robots-txt.config";
 import { loadPartnerHosts } from "../partner-hosts.service";
+import { autoFetchAllowed, isLinkOutClass } from "@shared/source-signoff";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -93,8 +94,25 @@ export async function recordFacts(
     return verdict.ok;
   });
   if (!drafts.length) return 0;
+  // CS-1 item 1: a link-out source is never read, so no fact is ever stored from one — refused, logged.
+  const sourceIds = Array.from(new Set(drafts.map((d) => d.sourceId).filter((x): x is string => !!x)));
+  const linkOut = new Set<string>();
+  if (sourceIds.length) {
+    const srcRows = await exec.select({ id: contentSources.id, termsClass: contentSources.termsClass }).from(contentSources).where(inArray(contentSources.id, sourceIds));
+    for (const r of srcRows) if (isLinkOutClass(r.termsClass)) linkOut.add(r.id);
+  }
+  const kept = linkOut.size
+    ? drafts.filter((d) => {
+        if (d.sourceId && linkOut.has(d.sourceId)) {
+          console.info(`[place-facts] refused fact_type=${d.factType} reason=link_out_source source_id=${d.sourceId}`);
+          return false;
+        }
+        return true;
+      })
+    : drafts;
+  if (!kept.length) return 0;
   await exec.insert(placeFacts).values(
-    drafts.map((d) => ({
+    kept.map((d) => ({
       id: d.id ?? crypto.randomUUID(),
       placeRefKind: d.placeRefKind,
       placeRef: d.placeRef,
@@ -121,7 +139,7 @@ export async function recordFacts(
       reuseClass: placeFactTags(d.origin, d.license, d.factType)?.reuseClass ?? null,
     })),
   );
-  return drafts.length;
+  return kept.length;
 }
 
 type FactRow = typeof placeFacts.$inferSelect;
@@ -883,7 +901,8 @@ export async function fetchFreshFactsForItem(input: {
   const deps: TavilyExtractDeps = { ...defaultTavilyExtractDeps(), ...(input.deps ?? {}) };
   const actorId = input.ctx.kind === "expert_action" ? input.ctx.expertUserId : input.ctx.kind === "paid_run" ? input.ctx.actorId : null;
   const runId = input.ctx.kind === "paid_run" ? input.ctx.runId : null;
-  const source = rows.find((r) => new TavilyExtractAdapter(r, deps).covers(need, input.market));
+  // CS-1 item 1: a per-plan fetch reads only an approved, reading-class source that allows automated access.
+  const source = rows.filter((r) => autoFetchAllowed(r)).find((r) => new TavilyExtractAdapter(r, deps).covers(need, input.market));
   if (!source) return { recorded: 0, outcome: "no_source_for_need", sourceId: null, refused: [] };
   const budget = await resolveFreshFetchBudget(input.ctx, source);
   if (!budget.basis) return { recorded: 0, outcome: budget.reason, sourceId: source.id, refused: [] };

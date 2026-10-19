@@ -8,6 +8,7 @@
 
 import type { LandingHeroPayload } from "@shared/landing-hero";
 import type { BillboardMarketSelection } from "@shared/landing-billboard-override";
+import { visibleListingImage } from "./place-photo-blocks.service";
 export type { LandingHeroPayload } from "@shared/landing-hero";
 
 // ── Types ────────────────────────────────────────────────────────────────────────────────
@@ -147,7 +148,9 @@ export function composeLandingHero(input: {
       : typeof svcRow?.vendorPhoto === "string"
         ? svcRow.vendorPhoto.trim()
         : "";
-  if (payload.service && serviceImageUrl) payload.service.imageUrl = serviceImageUrl;
+  // CS-1 item 1: no photo of a place under a no_photos block (the listing's cover or the provider's photo).
+  const serviceBlocked = svcRow ? visibleListingImage({ serviceName: svcRow.serviceName ?? null, city: topCity?.cityName ?? null, serviceImage: "x" }) === null : false;
+  if (payload.service && serviceImageUrl && !serviceBlocked) payload.service.imageUrl = serviceImageUrl;
 
   return payload;
 }
