@@ -56,13 +56,13 @@ export async function openCoordsForItemIds(itemIds: readonly string[]): Promise<
   if (ids.length === 0) return out;
   try {
     const rows = await db
-      .select({ itemId: itineraryItemOpenCoords.itemId, lat: openPlaceCoords.lat, lng: openPlaceCoords.lng })
+      .select({ itemId: itineraryItemOpenCoords.itemId, lat: openPlaceCoords.lat, lng: openPlaceCoords.lng, source: itineraryItemOpenCoords.source })
       .from(itineraryItemOpenCoords)
       .innerJoin(openPlaceCoords, eq(openPlaceCoords.id, itineraryItemOpenCoords.openCoordId))
       .where(inArray(itineraryItemOpenCoords.itemId, ids));
     for (const r of rows) {
       const p = validCoord(r.lat, r.lng);
-      if (p) out.set(r.itemId, { ...p, origin: "osm" });
+      if (p) out.set(r.itemId, { ...p, origin: "osm", linkSource: r.source ?? null });
     }
     return out;
   } catch (err: any) {

@@ -28,6 +28,7 @@ import {
   visitedPlaceTitle,
 } from "@shared/place-name-gate";
 import { kindFromName, osmFeatureKind } from "@shared/osm-place-kind";
+import { meetingOrStayItem } from "@shared/meeting-point-items";
 import { NOMINATIM_MIN_INTERVAL_MS, OSM_ATTRIBUTION } from "./venue-geocode.service";
 
 export { NOMINATIM_MIN_INTERVAL_MS, OSM_ATTRIBUTION };
@@ -298,13 +299,19 @@ export function spineViewbox(
 
 export type RegeocodeV2Outcome =
   | Exclude<RegeocodeOutcome, { kind: "unresolved" }>
-  | { kind: "unresolved"; reason: "no_named_tokens" | "area_title" | "no_place_phrase" | "no_match" | "no_results" | "not_a_place" };
+  | { kind: "unresolved"; reason: V2SkipReason | "no_match" | "no_results" | "not_a_place" };
+
+/** Why an item is not looked up at all. `meeting_or_stay`: a private tour, arrival or check-in (LG-2 Ask 5). */
+export type V2SkipReason = "no_named_tokens" | "area_title" | "no_place_phrase" | "meeting_or_stay";
 
 export interface RegeocodeV2Result {
   outcome: RegeocodeV2Outcome;
   requested: boolean;
-  /** "item" = the item's own words (v1's query); "place_phrase" = the phrase after at/in/to of a skipped title. */
-  queryBasis: "item" | "place_phrase" | null;
+  /**
+   * "item" = the item's own words (v1's query); "place_phrase" = the phrase after at/in/to of a skipped title;
+   * "activity_stripped" = the title with its activity words stripped (LG-2 Ask 4).
+   */
+  queryBasis: "item" | "place_phrase" | "activity_stripped" | null;
   query: string | null;
   viewboxSource: "neighbourhood" | "city" | null;
   /** What v1 would have skipped this item for, when it did. */
@@ -395,15 +402,51 @@ export function classifyRegeocodeHitsV2(item: RegeocodeItem, itemTokens: Readonl
  * never a search.
  */
 export type V2QueryPlan =
-  | { skip: "no_named_tokens" | "area_title" | "no_place_phrase"; v1Skip: "no_named_tokens" | "area_title" }
+  | { skip: V2SkipReason; v1Skip: "no_named_tokens" | "area_title" | null }
   | {
       skip: null;
       place: string;
       titlePhrase: string;
-      queryBasis: "item" | "place_phrase";
+      queryBasis: "item" | "place_phrase" | "activity_stripped";
       itemTokens: Set<string>;
       v1Skip: "no_named_tokens" | "area_title" | null;
+      /** LG-2 Ask 4: the title joins two places; only the first is looked up. */
+      multiPlace: boolean;
     };
+
+/*
+ * LG-2 Ask 4 (decision-maker, Oct 18, 2026): the non-place classifier skipped the most routable places because their
+ * titles end in an activity ("Arashiyama Bamboo Grove Walk", "Yasaka Pagoda Photo Spot"). Activity words are stripped
+ * before deciding, and what remains is matched. A title joining two places ("Sannenzaka & Ninenzaka", "Ryoanji or
+ * Kinkakuji") is looked up by its FIRST named place — never a city centroid. The shared Places gate
+ * (`@shared/place-name-gate`) is NOT changed: its area rule keeps Google Places from renaming such items (smoke 7).
+ */
+const ACTIVITY_PHRASES: readonly RegExp[] = [
+  /\(\s*optional\b[^)]*\)/gi,
+  /&\s*riverside\s+walk\b/gi,
+  /\bself[-\s]?guided\b/gi,
+  /\bwalking\s+tours?\b/gi,
+  /\bphoto\s+(?:spot|stop)s?\b/gi,
+  /\bshopping\s+streets?\b/gi,
+  /\bstroll(?:ing)?\b/gi,
+  /\bwalk(?:ing)?\b/gi,
+  /\bvisit(?:ing)?\b/gi,
+  /\btours?\b/gi,
+];
+/** Between two named places: "&", "and", "or", "/", "+", "(or …)". */
+const PLACE_JOINER = /\s*\(\s*or\s+|\s+(?:&|and|or|\+)\s+|\s*\/\s*/i;
+
+/** Pure. The title with its activity words stripped, split into the places it names (in order). */
+export function strippedPlaceTitle(title: string, destination: string | null | undefined): { places: string[]; multiPlace: boolean } {
+  let t = visitedPlaceTitle(title);
+  for (const re of ACTIVITY_PHRASES) t = t.replace(re, " ");
+  const clean = (x: string) => x.replace(/[()]/g, " ").replace(/\s+/g, " ").replace(/^[\s,:;&–—-]+|[\s,:;&.!–—-]+$/g, "").trim();
+  const parts = t
+    .split(PLACE_JOINER)
+    .map(clean)
+    .filter((x) => x.length > 0 && normalisedNameTokens(x, destination).size > 0);
+  return { places: parts, multiPlace: parts.length > 1 };
+}
 
 /** Words a location fallback carries that name no place: compass and centre words beside the city. */
 const FALLBACK_LOCATION_WORDS = new Set(["central", "centre", "center", "north", "south", "east", "west", "northern", "southern", "eastern", "western", "japan"]);
@@ -415,20 +458,57 @@ export function locationNamesAPlace(locationName: string | null | undefined, des
 }
 
 export function v2QueryPlan(item: RegeocodeItem): V2QueryPlan {
+  // LG-2 Ask 5: a private tour, an arrival or a check-in routes from a meeting point or the stay — never looked up.
+  if (meetingOrStayItem(item.title)) return { skip: "meeting_or_stay", v1Skip: null };
   const v1Skip = unnamedPlaceReason(item, item.destination);
+  const stripped = strippedPlaceTitle(item.title, item.destination);
+  const first = stripped.places[0] ?? null;
   if (v1Skip) {
+    // The phrase after the last at/in/to first ("Morning walk at Fushimi Inari"), then the title with its activity
+    // words stripped ("Arashiyama Bamboo Grove Walk") — and only when what remains names a place, not an area.
     const phrase = placePhraseOf(item.title);
-    const phraseTokens = phrase ? normalisedNameTokens(phrase, item.destination) : new Set<string>();
-    if (!phrase || phraseTokens.size === 0) return { skip: phrase ? v1Skip : "no_place_phrase", v1Skip };
-    return { skip: null, place: phrase, titlePhrase: phrase, queryBasis: "place_phrase", itemTokens: phraseTokens, v1Skip };
+    const phrasePlace = phrase ? strippedPlaceTitle(phrase, item.destination) : null;
+    const phraseFirst = phrasePlace?.places[0] ?? null;
+    if (phrase && phraseFirst && unnamedPlaceReason({ title: phraseFirst }, item.destination) === null) {
+      return {
+        skip: null,
+        place: phraseFirst,
+        titlePhrase: phraseFirst,
+        queryBasis: "place_phrase",
+        itemTokens: normalisedNameTokens(phraseFirst, item.destination),
+        v1Skip,
+        multiPlace: phrasePlace!.multiPlace,
+      };
+    }
+    if (first && unnamedPlaceReason({ title: first }, item.destination) === null) {
+      return {
+        skip: null,
+        place: first,
+        titlePhrase: first,
+        queryBasis: "activity_stripped",
+        itemTokens: normalisedNameTokens(first, item.destination),
+        v1Skip,
+        multiPlace: stripped.multiPlace,
+      };
+    }
+    if (!phrase) return { skip: "no_place_phrase", v1Skip };
+    return { skip: v1Skip, v1Skip };
   }
-  let itemTokens = normalisedNameTokens(item.title, item.destination);
+  const titlePhrase = (first ?? placeLookupText(item.title)).trim();
+  let itemTokens = stripped.multiPlace && first ? normalisedNameTokens(first, item.destination) : normalisedNameTokens(item.title, item.destination);
   const location = (item.locationName ?? "").trim();
   const locationIsPlace = locationNamesAPlace(location, item.destination);
-  if (locationIsPlace) normalisedNameTokens(location, item.destination).forEach((t) => itemTokens.add(t));
-  if (hasAlternativeClause(item.title)) itemTokens = normalisedNameTokens(visitedPlaceTitle(item.title), item.destination);
-  const titlePhrase = placeLookupText(item.title).trim();
-  return { skip: null, place: locationIsPlace ? location : titlePhrase, titlePhrase, queryBasis: "item", itemTokens, v1Skip: null };
+  if (locationIsPlace && !stripped.multiPlace) normalisedNameTokens(location, item.destination).forEach((t) => itemTokens.add(t));
+  if (hasAlternativeClause(item.title) && !stripped.multiPlace) itemTokens = normalisedNameTokens(visitedPlaceTitle(item.title), item.destination);
+  return {
+    skip: null,
+    place: locationIsPlace && !stripped.multiPlace ? location : titlePhrase,
+    titlePhrase,
+    queryBasis: "item",
+    itemTokens,
+    v1Skip: null,
+    multiPlace: stripped.multiPlace,
+  };
 }
 
 /** One item, v2. Never throws. The caller spaces calls by `NOMINATIM_MIN_INTERVAL_MS`. */
