@@ -25,6 +25,7 @@ import { cityNeighborhoods, travelPulseHiddenGems, providerServices, serviceProv
 import { eq, sql, and, or, isNull, ilike, inArray, notInArray, asc, desc, gte } from "drizzle-orm";
 import { travelPulseService } from "./travelpulse.service";
 import { feverService } from "./fever.service";
+import { toPublicFeverEvents } from "./fever-public";
 import { resolveBookability } from "@shared/bookability";
 import { toGemTeaser } from "@shared/gem-teaser";
 import type { GemCuratedBy } from "@shared/gem-curated-by";
@@ -337,7 +338,9 @@ class LocationViewService {
         limit,
         sortBy: "date",
       });
-      return result ?? { events: [], total: 0, page: 1, totalPages: 0, city: null };
+      if (!result) return { events: [], total: 0, page: 1, totalPages: 0, city: null };
+      // SH-1 Q7.4: the destination page never carries a Fever amount or partner URL.
+      return { ...result, events: await toPublicFeverEvents(result.events) };
     })();
 
     // Neighborhoods for this city — annotated with gem + service counts + top gems[]

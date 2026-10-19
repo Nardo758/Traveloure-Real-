@@ -630,9 +630,8 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(page.getByTestId('sort-option-recommended')).toBeVisible();
     await expect(page.getByTestId('popover-filters').locator('[data-testid^="spine-chip-"]')).toHaveCount(0);
     await page.keyboard.press('Escape');
-    // Trip complements + request footer still render.
+    // Trip complements still render (SH-1 item 9 deleted the Request-a-service footer).
     await expect(page.getByTestId('trip-complements-strip')).toBeVisible();
-    await expect(page.getByTestId('section-service-request')).toBeVisible();
   });
 
   test('7. chip filter — every bento filters to the chip kind and empty neighbourhoods drop out', async ({ page }) => {
