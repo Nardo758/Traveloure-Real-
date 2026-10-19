@@ -2243,7 +2243,9 @@ export type InsertConversationContext = z.infer<typeof insertConversationContext
 
 // === AI Itinerary Optimization ===
 
-export const itineraryVariantStatusEnum = ["pending", "generating", "generated", "failed", "selected"] as const;
+// FB-1 step 3: `held` = a paid version that failed the plan check — stored with its findings, never shown or adopted
+// (app-enforced value set; the column is text, so no migration).
+export const itineraryVariantStatusEnum = ["pending", "generating", "generated", "failed", "selected", "held"] as const;
 export const itineraryVariantSourceEnum = ["user", "ai_optimized"] as const;
 
 export const itineraryComparisons = pgTable("itinerary_comparisons", {
@@ -4993,7 +4995,7 @@ export const travelPulseHiddenGems = pgTable("travel_pulse_hidden_gems", {
  * TRACK A STEP A2 — THE LAUNCH-CITY TRAVEL-TIME MATRIX (migration 331; ledger
  * `2026-09-29-a2-travel-time-matrix`; product map §M3/§M4). Declared here, index for index, because
  * an object `shared/schema.ts` does not declare is dropped by the deploy push and never recreated
- * (the migration is already stamped). Written ONLY by `server/services/travel-time-matrix.service.ts`.
+ * (the migration is already stamped). No writer since 9b-b; migration 392 deleted its Google cells (LG-2).
  */
 export const travelTimeMatrixRefreshes = pgTable("travel_time_matrix_refreshes", {
   id: varchar("id").primaryKey(),
@@ -12745,6 +12747,27 @@ export const itineraryItemOpenCoords = pgTable("itinerary_item_open_coords", {
   openCoordId: varchar("open_coord_id", { length: 64 }).references(() => openPlaceCoords.id, { onDelete: "cascade" }),
   source: varchar("source", { length: 16 }),
   matchedAt: timestamp("matched_at"),
+});
+
+// Item → open place links pulled out of routing for a person to check (migration 391, LG-2 Ask 1). The open place
+// itself is never moved. No FK: the pulled link no longer exists. Restoring puts the link back once.
+export const itineraryItemOpenCoordsReview = pgTable("itinerary_item_open_coords_review", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  itemId: varchar("item_id"),
+  openCoordId: varchar("open_coord_id", { length: 64 }),
+  osmType: varchar("osm_type", { length: 16 }),
+  osmId: bigint("osm_id", { mode: "number" }),
+  displayName: text("display_name"),
+  itemLat: decimal("item_lat", { precision: 10, scale: 7 }),
+  itemLng: decimal("item_lng", { precision: 10, scale: 7 }),
+  distanceM: integer("distance_m"),
+  reason: varchar("reason", { length: 32 }),
+  linkSource: varchar("link_source", { length: 16 }),
+  linkMatchedAt: timestamp("link_matched_at"),
+  removedAt: timestamp("removed_at"),
+  removedBy: varchar("removed_by", { length: 255 }),
+  restoredAt: timestamp("restored_at"),
+  restoredBy: varchar("restored_by", { length: 255 }),
 });
 
 export const launchWaitlist = pgTable("launch_waitlist", {

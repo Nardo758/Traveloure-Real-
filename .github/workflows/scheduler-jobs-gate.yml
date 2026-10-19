@@ -58,8 +58,7 @@ on:
 
 concurrency:
   group: scheduler-jobs-gate-${{ github.ref }}
-  cancel-in-progress: true
-
+  cancel-in-progress: ${{ github.event.action != 'ready_for_review' }}
 permissions:
   contents: read
 

@@ -2084,6 +2084,13 @@ export const MIGRATION_FILES = [
   // (item → open place, one per item, FKs ON DELETE CASCADE). Two NEW tables; the 389 rows naming their OSM element are
   // copied in (ON CONFLICT DO NOTHING). LG-1 re-key, ledger 2026-10-18-lg1-open-coords-rekey. Declared in shared/schema.ts.
   "390_open_coords_rekey.sql",
+  // 391 — itinerary_item_open_coords_review (one NEW table, PK only, no DEFAULT/CHECK/FK) + platform_settings
+  // open_coord_max_drift_m = 500. Pulled item → open place links are recorded here and leave routing; open_place_coords
+  // is never moved. LG-2 Ask 1, ledger 2026-10-18-lg2-open-coord-review. Declared in shared/schema.ts.
+  "391_open_coord_review.sql",
+  // 392 — DELETE FROM travel_time_matrix (data only; the stored Google Route Matrix cells). The table, its declaration and
+  // travel_time_matrix_refreshes' run rows stay. LG-2, ledger 2026-10-18-lg2-route-matrix-delete.
+  "392_travel_time_matrix_cells_delete.sql",
   // EV-P0 PR 3: data only — re-tags official last-entry / last-train expert rows that 362 tagged local to
   // public + link_only, what placeFactTags answers. Idempotent. Ledger 2026-10-18-fact-tags-exhaustive.
   "394_place_facts_feasibility_retag.sql",

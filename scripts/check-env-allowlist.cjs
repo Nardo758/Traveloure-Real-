@@ -11,7 +11,9 @@
  *   (a) isProdStrictEnv is DEFINED in server/utils/stripe-key-policy.ts and
  *       REFERENCED by server/validate-env.ts (single prod-detection source).
  *   (b) server/index.ts gates seedE2EAccounts() on ALLOW_TEST_ACCOUNTS (with the
- *       NODE_ENV fail-safe) and PURGES via the prod-purge path otherwise.
+ *       NODE_ENV fail-safe). The prod purge no longer runs at boot (ledger
+ *       `2026-10-18-boot-removals`): server/index.ts must NOT call it, and
+ *       server/seeds/e2e-test-accounts.seed.ts must keep its `--purge` entry point.
  *   (c) No .github/workflows/*.yml SETS ALLOW_TEST_ACCOUNTS=1 in a file that also
  *       targets a real deployment (deploy base URL / production-named job).
  *       Setting it for a throwaway-DB CI boot (NODE_ENV=production bundle on
@@ -26,6 +28,7 @@ const ROOT = path.resolve(__dirname, "..");
 const STRIPE_POLICY = path.join(ROOT, "server", "utils", "stripe-key-policy.ts");
 const VALIDATE_ENV = path.join(ROOT, "server", "validate-env.ts");
 const SERVER_INDEX = path.join(ROOT, "server", "index.ts");
+const E2E_SEED = path.join(ROOT, "server", "seeds", "e2e-test-accounts.seed.ts");
 const WORKFLOW_DIR = path.join(ROOT, ".github", "workflows");
 
 function readOrEmpty(p) {
@@ -131,7 +134,7 @@ function targetsDeployment(yamlNoComments) {
   return false;
 }
 
-function lint({ stripePolicy, validateEnv, serverIndex, workflows }) {
+function lint({ stripePolicy, validateEnv, serverIndex, seedFile = OK_SEED_FILE, workflows }) {
   const failures = [];
 
   // (a) isProdStrictEnv defined + referenced.
@@ -146,7 +149,7 @@ function lint({ stripePolicy, validateEnv, serverIndex, workflows }) {
     );
   }
 
-  // (b) seedE2EAccounts gated on ALLOW_TEST_ACCOUNTS, purge on the else branch.
+  // (b) seedE2EAccounts gated on ALLOW_TEST_ACCOUNTS; the purge runs on purpose, never at boot.
   if (!/\bseedE2EAccounts\b/.test(serverIndex)) {
     failures.push("(b) server/index.ts no longer calls seedE2EAccounts — the seed gate is gone.");
   }
@@ -155,28 +158,23 @@ function lint({ stripePolicy, validateEnv, serverIndex, workflows }) {
       "(b) server/index.ts no longer references ALLOW_TEST_ACCOUNTS — the seed branch is not gated on the allowlist.",
     );
   }
-  // The seed must be gated: ALLOW_TEST_ACCOUNTS and seedE2EAccounts must co-occur
-  // inside a conditional guard, and the prod-purge path must exist as the else.
-  if (!/purgeE2EAccountsFromProd/.test(serverIndex)) {
+  const indexCode = serverIndex.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  const allowIdx = indexCode.search(/ALLOW_TEST_ACCOUNTS/);
+  const seedIdx = indexCode.search(/await\s+seedE2EAccounts\s*\(/);
+  if (seedIdx >= 0 && !(allowIdx >= 0 && seedIdx > allowIdx)) {
     failures.push(
-      "(b) server/index.ts no longer calls purgeE2EAccountsFromProd — production no longer purges seeded test accounts (P0 posture broken).",
+      "(b) server/index.ts: ALLOW_TEST_ACCOUNTS gate does not precede the seedE2EAccounts() call — the seed may run ungated.",
     );
-  } else {
-    // Ensure the gate wraps the seed: ALLOW_TEST_ACCOUNTS appears before the
-    // seedE2EAccounts() call and the purge appears after (guard/else shape).
-    const allowIdx = serverIndex.search(/ALLOW_TEST_ACCOUNTS/);
-    const seedIdx = serverIndex.search(/await\s+seedE2EAccounts\s*\(/);
-    const purgeIdx = serverIndex.search(/await\s+purgeE2EAccountsFromProd\s*\(/);
-    if (!(allowIdx >= 0 && seedIdx > allowIdx)) {
-      failures.push(
-        "(b) server/index.ts: ALLOW_TEST_ACCOUNTS gate does not precede the seedE2EAccounts() call — the seed may run ungated.",
-      );
-    }
-    if (!(purgeIdx > seedIdx)) {
-      failures.push(
-        "(b) server/index.ts: purgeE2EAccountsFromProd() is not on the non-allowed branch (should follow the seed guard as the else path).",
-      );
-    }
+  }
+  if (/\bpurgeE2EAccountsFromProd\s*\(/.test(indexCode)) {
+    failures.push(
+      "(b) server/index.ts calls purgeE2EAccountsFromProd at boot — the purge runs on purpose only (ledger 2026-10-18-boot-removals: `npx tsx server/seeds/e2e-test-accounts.seed.ts --purge`).",
+    );
+  }
+  if (!/--purge/.test(seedFile) || !/\bpurgeE2EAccountsFromProd\s*\(/.test(seedFile)) {
+    failures.push(
+      "(b) server/seeds/e2e-test-accounts.seed.ts has lost its --purge entry point — production test accounts could no longer be purged on purpose.",
+    );
   }
 
   // (c) Deploy-targeting workflows are FAIL-CLOSED on ALLOW_TEST_ACCOUNTS: ANY occurrence of the
@@ -200,6 +198,9 @@ function lint({ stripePolicy, validateEnv, serverIndex, workflows }) {
   return failures;
 }
 
+// A seed file that keeps the on-purpose purge (the self-test's default).
+const OK_SEED_FILE = 'const run = process.argv.includes("--purge") ? purgeE2EAccountsFromProd() : seedE2EAccounts();';
+
 function collectWorkflows(dir) {
   if (!fs.existsSync(dir)) return [];
   return fs
@@ -216,7 +217,7 @@ function selfTest() {
     stripePolicy: "export function isProdStrictEnv(env) { return true; }",
     validateEnv: 'import { isProdStrictEnv } from "./utils/stripe-key-policy";\nconst x = isProdStrictEnv();',
     serverIndex:
-      "const allow = process.env.ALLOW_TEST_ACCOUNTS === '1';\nif (allow) { await seedE2EAccounts(); } else { await purgeE2EAccountsFromProd(); }",
+      "const allow = process.env.ALLOW_TEST_ACCOUNTS === '1';\nif (allow) { await seedE2EAccounts(); }",
     workflows: [
       // Throwaway-DB CI boot: sets ALLOW but NO deploy target → OK.
       { name: "route-gate.yml", text: "jobs:\n  gate:\n    env:\n      NODE_ENV: production\n      ALLOW_TEST_ACCOUNTS: '1'\n" },
@@ -233,7 +234,7 @@ function selfTest() {
   const noDef = lint({
     stripePolicy: "// nothing here",
     validateEnv: "isProdStrictEnv()",
-    serverIndex: "if (process.env.ALLOW_TEST_ACCOUNTS) { await seedE2EAccounts(); } else { await purgeE2EAccountsFromProd(); }",
+    serverIndex: "if (process.env.ALLOW_TEST_ACCOUNTS) { await seedE2EAccounts(); }",
     workflows: [],
   });
   results.push(["missing isProdStrictEnv definition fails", noDef.some((f) => f.includes("stripe-key-policy")), noDef]);
@@ -242,25 +243,35 @@ function selfTest() {
   const noRef = lint({
     stripePolicy: "export function isProdStrictEnv() {}",
     validateEnv: "// does not use it",
-    serverIndex: "if (process.env.ALLOW_TEST_ACCOUNTS) { await seedE2EAccounts(); } else { await purgeE2EAccountsFromProd(); }",
+    serverIndex: "if (process.env.ALLOW_TEST_ACCOUNTS) { await seedE2EAccounts(); }",
     workflows: [],
   });
   results.push(["missing validate-env reference fails", noRef.some((f) => f.includes("validate-env")), noRef]);
 
-  // (b) missing purge.
-  const noPurge = lint({
+  // (b) a boot purge fails (ledger 2026-10-18-boot-removals).
+  const bootPurge = lint({
+    stripePolicy: "export function isProdStrictEnv() {}",
+    validateEnv: "isProdStrictEnv()",
+    serverIndex: "if (process.env.ALLOW_TEST_ACCOUNTS) { await seedE2EAccounts(); } else { await purgeE2EAccountsFromProd(); }",
+    workflows: [],
+  });
+  results.push(["a boot purge fails", bootPurge.some((f) => f.includes("calls purgeE2EAccountsFromProd at boot")), bootPurge]);
+
+  // (b) the seed file must keep its --purge entry point.
+  const noPurgeCli = lint({
     stripePolicy: "export function isProdStrictEnv() {}",
     validateEnv: "isProdStrictEnv()",
     serverIndex: "if (process.env.ALLOW_TEST_ACCOUNTS) { await seedE2EAccounts(); }",
+    seedFile: "export { seedE2EAccounts, purgeE2EAccountsFromProd };",
     workflows: [],
   });
-  results.push(["missing purge fails", noPurge.some((f) => f.includes("purgeE2EAccountsFromProd")), noPurge]);
+  results.push(["a seed file without --purge fails", noPurgeCli.some((f) => f.includes("--purge entry point")), noPurgeCli]);
 
   // (b) ungated seed (allow gate after seed / absent).
   const ungated = lint({
     stripePolicy: "export function isProdStrictEnv() {}",
     validateEnv: "isProdStrictEnv()",
-    serverIndex: "await seedE2EAccounts();\nconst allow = process.env.ALLOW_TEST_ACCOUNTS;\nawait purgeE2EAccountsFromProd();",
+    serverIndex: "await seedE2EAccounts();\nconst allow = process.env.ALLOW_TEST_ACCOUNTS;",
     workflows: [],
   });
   results.push(["seed before the ALLOW gate fails", ungated.some((f) => f.includes("does not precede")), ungated]);
@@ -269,7 +280,7 @@ function selfTest() {
   const leakEnv = lint({
     stripePolicy: "export function isProdStrictEnv() {}",
     validateEnv: "isProdStrictEnv()",
-    serverIndex: "if (process.env.ALLOW_TEST_ACCOUNTS) { await seedE2EAccounts(); } else { await purgeE2EAccountsFromProd(); }",
+    serverIndex: "if (process.env.ALLOW_TEST_ACCOUNTS) { await seedE2EAccounts(); }",
     workflows: [
       { name: "bad.yml", text: "jobs:\n  x:\n    env:\n      E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}\n      ALLOW_TEST_ACCOUNTS: '1'\n" },
     ],
@@ -280,7 +291,7 @@ function selfTest() {
   const leakShell = lint({
     stripePolicy: "export function isProdStrictEnv() {}",
     validateEnv: "isProdStrictEnv()",
-    serverIndex: "if (process.env.ALLOW_TEST_ACCOUNTS) { await seedE2EAccounts(); } else { await purgeE2EAccountsFromProd(); }",
+    serverIndex: "if (process.env.ALLOW_TEST_ACCOUNTS) { await seedE2EAccounts(); }",
     workflows: [
       { name: "prod.yml", text: "jobs:\n  production-deploy:\n    steps:\n      - run: |\n          export ALLOW_TEST_ACCOUNTS=1\n          npm run deploy\n" },
     ],
@@ -291,7 +302,7 @@ function selfTest() {
   const cleanProd = lint({
     stripePolicy: "export function isProdStrictEnv() {}",
     validateEnv: "isProdStrictEnv()",
-    serverIndex: "if (process.env.ALLOW_TEST_ACCOUNTS) { await seedE2EAccounts(); } else { await purgeE2EAccountsFromProd(); }",
+    serverIndex: "if (process.env.ALLOW_TEST_ACCOUNTS) { await seedE2EAccounts(); }",
     workflows: [{ name: "deploy.yml", text: "jobs:\n  production-deploy:\n    env:\n      E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}\n    steps:\n      - run: echo ship\n" }],
   });
   results.push(["deploy job without ALLOW passes", cleanProd.length === 0, cleanProd]);
@@ -300,7 +311,7 @@ function selfTest() {
   const okPosture = {
     stripePolicy: "export function isProdStrictEnv() {}",
     validateEnv: "isProdStrictEnv()",
-    serverIndex: "if (process.env.ALLOW_TEST_ACCOUNTS) { await seedE2EAccounts(); } else { await purgeE2EAccountsFromProd(); }",
+    serverIndex: "if (process.env.ALLOW_TEST_ACCOUNTS) { await seedE2EAccounts(); }",
   };
 
   // (c) FAIL-CLOSED — quoted YAML assignment to a NON-1 value on a deploy target still fails
@@ -419,6 +430,7 @@ const failures = lint({
   stripePolicy: readOrEmpty(STRIPE_POLICY),
   validateEnv: readOrEmpty(VALIDATE_ENV),
   serverIndex: readOrEmpty(SERVER_INDEX),
+  seedFile: readOrEmpty(E2E_SEED),
   workflows: collectWorkflows(WORKFLOW_DIR),
 });
 
@@ -426,4 +438,4 @@ if (failures.length) {
   for (const f of failures) console.error(`FAIL  ${f}`);
   process.exit(1);
 }
-console.log("env-allowlist guard OK (prod-strict source intact · seed gated on ALLOW_TEST_ACCOUNTS w/ prod purge · no deploy-targeting workflow seeds test accounts)");
+console.log("env-allowlist guard OK (prod-strict source intact · seed gated on ALLOW_TEST_ACCOUNTS · prod purge on purpose only · no deploy-targeting workflow seeds test accounts)");

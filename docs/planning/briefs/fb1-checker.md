@@ -90,8 +90,61 @@ How each `retime` is set:
 - `after_last_service` — `notAfterMin` = the latest last departure minus the visit's length;
 - `leg_too_long` — `notBeforeMin` = the stop's start plus the minutes the leg is short by.
 
-## Not in step 2
+## Step 3 — the paid versions are gated
 
-- Running the checker on paid versions, hiding or regenerating a version, and the metric rows: step 3.
+Decision-maker Leon Dixon, Oct 18, 2026 (step 3 rulings 1–5). Ledger row `2026-10-18-fb1-version-gate`. Pure rules: `shared/version-check.ts`; run wiring: `server/services/version-check.service.ts`.
+
+**When it runs.** Once per paid run, the draft is checked (`loadPlanCheckInput` + `checkPlan`). Then each version is checked twice:
+
+- after sequencing, in memory — recorded as `check_unresolved_after_sequencing` and `check_added_after_sequencing`;
+- after its legs are written (the legs step re-times the stops) — this check decides.
+
+Both run inside the run, so the existing five-minute deadline covers them.
+
+**A version's input.** A version stop that keeps a draft item (`sourceItemId`) inherits that item's open point and stored facts. A stop the version added has neither, so its checks do not run. The plan's anchors and the market's last departures apply unchanged. A version has no energy rows, so pace is not checkable on it.
+
+**The verdict (ruling 2).**
+
+- A stop issue is matched by the place it is about (the draft item the stop keeps), whatever day it moved to. A day issue is matched by its day.
+- **Unresolved:** a draft issue the version still has. **Added:** a version issue the draft did not have. Either fails the version.
+- **Not checked never fails.** A version on which fewer checks ran than on the draft (`checkCoverage`), or on which a draft finding kind could not run at all, still passes — and says so ("Fewer checks could run on this version than on your plan.").
+
+**Held (ruling 1).** A failing version is stored with status `held` (text column; no migration). It is never shown, named or adopted: the board, apply-days, swap-in, the comparison read, the top-version fallback of apply-to-trip and the read-by-id all leave it out. The latest run is found counting held versions, so a run whose every version failed never shows the previous run's versions in its place. Regeneration is step 3b, after a week of data.
+
+**Metric rows (ruling 3)** in `itinerary_variant_metrics`, every key starting `check_`:
+
+| Key | Value | Description |
+|---|---|---|
+| `check_<kind>` | the finding's count on the version | the why codes |
+| `check_unresolved` | draft issues still present | the why codes |
+| `check_added` | issues the draft did not have | the why codes |
+| `check_coverage_reduced` | 1 when fewer checks ran than on the draft, else 0 | "checks N of the draft's M" and any kind not checkable |
+| `check_unresolved_after_sequencing`, `check_added_after_sequencing` | the same, after sequencing | the why codes |
+
+**No version passes (ruling 4).** The board shows no version, the lead line "We couldn’t make a version of this plan that clears every problem. Here’s what’s still in the way:", and the draft's open issues, each with its one fix. No retry, no apology, and no held version shown as if it passed.
+
+**Names (ruling 5).** Version A is "Your plan, fixed": the model is told to keep the plan and apply the draft's fixes (by [S#] tag and minute), and the name is the server's. B and C keep their strategy names. The same gate applies to all three. "In season" and "With local picks" are absent.
+
+**Sequencing (step 3b).** The run's sequencing step used to re-time every day from 08:00, so a model's start time never survived. Step 3b changes that (below).
+
+## Step 3b — sequencing honours the model's times and the draft's windows
+
+Decision-maker Leon Dixon, Oct 18, 2026 (step 3b sanctioned as proposed). Ledger row `2026-10-18-fb1-sequencing-windows`.
+
+`reorderDayActivities` (`server/services/smart-sequencing.service.ts`), called only by the paid run's `reorderItinerary`, now spaces each day with `spaceDayTimesHonouring`, beside `spaceDayTimes`. In the day's order, with the same durations and the same 30-minute gap, each stop starts at the latest of:
+
+- the cursor: 08:00 for the first stop, else the previous stop's end + 30. A stop is never moved earlier than this, so stops never overlap;
+- the model's own start time, captured before step 1 fills its slot defaults (a default is never honoured as if the model had said it);
+- the window's `notBeforeMin`.
+
+A stop that lands past its `notAfterMin` is left late, never squeezed; the step 3 gate holds the version.
+
+The windows (`retimeWindowsByItem`, `shared/version-check.ts`) come once per run from the draft's own `retime` fixes, keyed by the draft item a stop keeps (`sourceItemId`). Several fixes on one stop combine into the latest `notBefore` and the earliest `notAfter`. A stop the model added has no window. They apply to all three versions.
+
+Unchanged: `spaceDayTimes` and `retimeDayInOrder` (the traveler's own re-time, R-ac), the anchor step, energy balancing, the legs step and the gate. With no model times and no windows, the result is exactly today's (golden parity).
+
+## Not in step 3
+
+- Regenerating a held version: step 3b.
 - "Your plan, fixed" by tap: step 4.
-- Any screen reading `issues` or `notChecked`: the FB-1 copy lane, after step 3.
+- The count lines and "Not checked yet" wording on the free card: the FB-1 copy lane.

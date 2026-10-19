@@ -175,11 +175,9 @@ import { cacheService } from "../services/cache.service";
 import { cacheSchedulerService } from "../services/cache-scheduler.service";
 import { claudeService } from "../services/claude.service";
 import { getTransitRoute, getMultipleTransitRoutes, TransitRequestSchema } from "../services/routes.service";
-import { aiOrchestrator } from "../services/ai-orchestrator";
 import { feverService } from "../services/fever.service";
 import { partnerEventsCacheService } from "../services/partner-events-cache.service";
 import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems } from "@shared/schema";
-import { travelPulseService } from "../services/travelpulse.service";
 import { coordinationService } from "../services/coordination.service";
 import { vendorManagementService } from "../services/vendor-management.service";
 import { budgetService } from "../services/budget.service";
@@ -191,7 +189,9 @@ import { aiUsageService } from "../services/ai-usage.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "../utils/data-sanitizer";
 import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
 import { regenerateMapsUrlsFromLegs } from "../services/transport-leg-calculator";
-import { buildGoogleNavUrl, buildAppleNavUrl } from "../services/maps-url-builder";
+import { buildGoogleNavUrl, buildAppleNavUrl, buildGoogleMapsUrl, buildAppleMapsUrl, buildAppleMapsWebUrl } from "../services/maps-url-builder";
+import { loadVariantSharePublicTest, projectVariantPlanForShare } from "../services/share-projection.service";
+import { legIsShareable, localCountEntry } from "@shared/share-projection";
 import { generateKml } from "../services/kml-generator";
 import { generateGpx } from "../services/gpx-generator";
 import { asyncHandler, NotFoundError, ValidationError, ForbiddenError } from "../infrastructure";
@@ -921,108 +921,8 @@ router.post("/api/itinerary-comparisons/:id/apply-to-cart", isAuthenticated, asy
 
   // Vendor Availability Slots
 
-  const quickStartItinerarySchema = z.object({
-    destination: z.string().min(1),
-    country: z.string().optional(),
-    dates: z.object({
-      start: z.string(),
-      end: z.string(),
-    }).optional(),
-    travelers: z.number().min(1).default(2),
-    interests: z.array(z.string()).default([]),
-    pacePreference: z.enum(["relaxed", "moderate", "packed"]).default("moderate"),
-  });
-
-router.post("/api/quick-start-itinerary", isAuthenticated, async (req, res) => {
-    try {
-      const parsed = quickStartItinerarySchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
-      }
-
-      const userId = getUserId(req)!;
-      const { destination, country, dates, travelers, interests, pacePreference } = parsed.data;
-
-      // Fetch city intelligence from TravelPulse
-      const cityIntelligence = await travelPulseService.getCityIntelligence(destination, { forDraft: true });
-      
-      // Build TravelPulse context for the AI
-      let travelPulseContext: any = undefined;
-      
-      if (cityIntelligence) {
-        const city = cityIntelligence.city;
-        travelPulseContext = {
-          trendingScore: city.trendingScore,
-          aiBudgetEstimate: city.aiBudgetEstimate,
-          aiTravelTips: city.aiTravelTips,
-          aiLocalInsights: city.aiLocalInsights,
-          aiMustSeeAttractions: city.aiMustSeeAttractions,
-          aiSeasonalHighlights: city.aiSeasonalHighlights,
-          aiUpcomingEvents: city.aiUpcomingEvents,
-          hiddenGems: cityIntelligence.hiddenGems?.slice(0, 5).map((g: any) => ({
-            // travel_pulse_hidden_gems has no `name` column — the field is placeName
-            // (fixed Aug 29 2026: g.name fed the model undefined gem names).
-            name: g.placeName,
-            description: g.description,
-            gemScore: g.gemScore,
-          })),
-          happeningNow: cityIntelligence.happeningNow?.slice(0, 5).map((h: any) => ({
-            name: h.name,
-            type: h.type,
-          })),
-        };
-      }
-
-      // Generate default dates if not provided (3-day trip starting tomorrow)
-      const startDate = dates?.start || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-      const endDate = dates?.end || new Date(Date.now() + 4 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-
-      // Generate itinerary with city intelligence context
-      const itineraryRequest = {
-        destination: country ? `${destination}, ${country}` : destination,
-        dates: { start: startDate, end: endDate },
-        travelers,
-        interests: interests.length > 0 ? interests : ["culture", "food", "nature"],
-        pacePreference,
-        travelPulseContext,
-      };
-
-      const result = await aiOrchestrator.generateAutonomousItinerary(itineraryRequest, {
-        userId,
-      });
-
-      // Store generated itinerary
-      const saved = await storage.saveAiGeneratedItinerary({
-        userId,
-        destination: itineraryRequest.destination,
-        startDate: itineraryRequest.dates.start,
-        endDate: itineraryRequest.dates.end,
-        title: result.title,
-        summary: result.summary,
-        totalEstimatedCost: result.totalEstimatedCost?.toString(),
-        itineraryData: result.dailyItinerary,
-        accommodationSuggestions: result.accommodationSuggestions || [],
-        packingList: result.packingList || [],
-        travelTips: result.travelTips || [],
-        provider: "claude",
-        status: "generated",
-      });
-
-      res.json({
-        ...result,
-        id: saved.id,
-        cityIntelligence: cityIntelligence ? {
-          trendingScore: cityIntelligence.city?.trendingScore,
-          hiddenGemsCount: cityIntelligence.hiddenGems?.length || 0,
-          happeningNowCount: cityIntelligence.happeningNow?.length || 0,
-          alertsCount: cityIntelligence.alerts?.length || 0,
-        } : null,
-      });
-    } catch (error: any) {
-      console.error("Quick start itinerary error:", error);
-      res.status(500).json({ message: error.message || "Itinerary generation failed" });
-    }
-  });
+  // The quick-start route lives in server/routes.ts (registered first). Its shadowed twin here was deleted
+  // (FD-4, ledger `2026-10-18-fd4-share-projection`, §18c): it served nothing and lacked the free-draft gem filter.
 
 
 
@@ -2110,20 +2010,20 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
       // body to a token holder, so it asks for 'full' — and then emits ONLY the pre-existing
       // response keys below, so nothing the envelope newly carries (vendorPhone,
       // confirmationNumber, meetingPoint, expertNote, booked/bookVia, …) leaks onto this surface.
-      let plan: VariantFullTripPlan;
+      let assembled: VariantFullTripPlan;
       try {
-        plan = await assembleTripPlanFromVariant(shared.variantId, "full");
+        assembled = await assembleTripPlanFromVariant(shared.variantId, "full");
       } catch (e) {
         if (e instanceof TripPlanVariantNotFoundError) {
           return res.status(404).json({ error: "Variant not found" });
         }
         throw e;
       }
+      // FD-4 (ledger `2026-10-18-fd4-share-projection`): a share carries known-public stops only; every
+      // other stop is counted per day, and a leg is kept only when both its ends are shown.
+      const { plan, hidden } = projectVariantPlanForShare(assembled, await loadVariantSharePublicTest(shared.variantId));
 
-      const [exportCache, sharer] = await Promise.all([
-        storage.getMapsExportCacheByVariantId(shared.variantId),
-        storage.getUserPublicProfile(shared.sharedByUserId),
-      ]);
+      const sharer = await storage.getUserPublicProfile(shared.sharedByUserId);
 
       // §16 (L11): the `linkedProductUrl` key + the raw-leg read that fed it are REMOVED —
       // this was the one deliberate response-key deletion for this lane. TripPlan already never
@@ -2138,6 +2038,7 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
         // `dateIso` is the machine YYYY-MM-DD the envelope carries; "" when the snapshot has no
         // start date (the pre-existing behaviour — never a guessed date).
         date: day.dateIso ?? "",
+        ...localCountEntry(hidden.get(day.dayNumber) ?? 0),
         activities: day.activities.map(a => ({
           id: a.id,
           name: a.name,
@@ -2193,19 +2094,24 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
       // content. A plain "view" link (the everyday friend/family share) never sees it.
       const canSeeExpertContent = isOwner || shared.permissions === "suggest" || shared.permissions === "edit";
 
-      // §21 (ratified Aug 9 2026): the TRAVELER-FACING trip-level delivery note. This is a
-      // DIFFERENT column (`trips.expertTravelerNote`) from the `expertNotes`/`expertDiff` above
-      // (`shared_itineraries`' own private per-share-review commentary) — never confuse the two.
-      // SH-1 (ledger `2026-10-09-sh1-share-traveler-note`): it is a message TO THE TRAVELER, so on
-      // this public rail it reaches the plan's traveler (the linked trip's owner, by session) and
-      // nobody else — not a "view" link's friend, not a "suggest"/"edit" link's expert, not the
-      // sharer when the sharer is not the traveler. ONE rule, `travelerNoteForShareViewer`.
-      // `plan.meta.tripId` is nullable for a variant produced off a trip-less optimizer comparison
-      // (shared/trip-plan.ts): no `trips` row, no note, `null` (§13 — never guessed).
-      let expertTravelerNote: string | null = null;
-      if (plan.meta.tripId) {
-        const linkedTrip = await storage.getTrip(plan.meta.tripId);
-        expertTravelerNote = travelerNoteForShareViewer(linkedTrip?.expertTravelerNote, requesterId, linkedTrip?.userId);
+      // FD-4 (ledger `2026-10-18-fd4-share-projection`): the trip-level expert note (`trips.expertTravelerNote`,
+      // §21) is not carried on a share read at all — SH-1's traveler-only rule is superseded here by "no
+      // expert note on any share rail". The traveler reads it on their own plan.
+
+      // Per-day map links are rebuilt from the SHOWN stops only; the cached links were built from every stop.
+      const shownPoints = (d: (typeof plan.days)[number]) =>
+        d.activities
+          .filter(a => a.lat != null && a.lng != null)
+          .map(a => ({ lat: a.lat as number, lng: a.lng as number, name: a.name }));
+      const googleMapsPerDay: Record<number, string> = {};
+      const appleMapsPerDay: Record<number, string> = {};
+      const appleMapsWebPerDay: Record<number, string> = {};
+      for (const d of plan.days) {
+        const pts = shownPoints(d);
+        if (pts.length < 2) continue;
+        googleMapsPerDay[d.dayNumber] = buildGoogleMapsUrl(pts, "");
+        appleMapsPerDay[d.dayNumber] = buildAppleMapsUrl(pts, "");
+        appleMapsWebPerDay[d.dayNumber] = buildAppleMapsWebUrl(pts, "");
       }
 
       // ── MONEY REDACTION (ledger 2026-09-03-share-link-price-redaction) ─────────────────────
@@ -2246,9 +2152,9 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
           },
         },
         mapsLinks: {
-          googleMapsPerDay: exportCache?.googleMapsUrls || {},
-          appleMapsPerDay: exportCache?.appleMapsUrls || {},
-          appleMapsWebPerDay: exportCache?.appleMapsWebUrls || {},
+          googleMapsPerDay,
+          appleMapsPerDay,
+          appleMapsWebPerDay,
           kmlDownloadUrl: `/api/itinerary-share/${token}/export/kml`,
           gpxDownloadUrl: `/api/itinerary-share/${token}/export/gpx`,
         },
@@ -2266,8 +2172,6 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
         // Private expert review content — never sent to a non-owner "view"-only link holder.
         expertNotes: canSeeExpertContent ? (shared.expertNotes || null) : null,
         expertDiff: canSeeExpertContent ? (shared.expertDiff || null) : null,
-        // §21 + SH-1: the plan's traveler only, see comment above.
-        expertTravelerNote,
         transportPreferences: shared.transportPreferences,
         shareToken: token,
         isOwner,
@@ -2530,7 +2434,9 @@ router.patch("/api/transport-legs/:legId/mode", async (req, res) => {
   // A cached blob missing or mismatching the marker (i.e. anything written before this change)
   // is treated as a miss — regenerated and overwritten — so the old raw-DB-order /
   // null-island-emitting shape can never be served again post-deploy, with no migration.
-  const EXPORT_FORMAT_MARKER = "<!-- traveloure-export-format:v2-variant-producer -->";
+  // v3 (FD-4, ledger `2026-10-18-fd4-share-projection`): exports carry known-public stops only, so every
+// export cached before it is stale and is rebuilt on its next read.
+const EXPORT_FORMAT_MARKER = "<!-- traveloure-export-format:v3-share-projection -->";
 
   function withExportVersionMarker(xml: string): string {
     const declEnd = xml.indexOf("?>");
@@ -2552,15 +2458,17 @@ router.get("/api/itinerary-share/:token/export/kml", async (req, res) => {
       const shared = await storage.getSharedItineraryByToken(token);
       if (!shared) return res.status(404).json({ error: "Not found" });
 
-      let plan: VariantFullTripPlan;
+      let assembled: VariantFullTripPlan;
       try {
-        plan = await assembleTripPlanFromVariant(shared.variantId, "full");
+        assembled = await assembleTripPlanFromVariant(shared.variantId, "full");
       } catch (e) {
         if (e instanceof TripPlanVariantNotFoundError) {
           return res.status(404).json({ error: "Variant not found" });
         }
         throw e;
       }
+      // FD-4: the export carries the shown stops and legs only (see the JSON route).
+      const { plan } = projectVariantPlanForShare(assembled, await loadVariantSharePublicTest(shared.variantId));
 
       const cached = await storage.getMapsExportCacheByVariantId(shared.variantId);
       const cachedKml: string | undefined = cached?.kmlContent;
@@ -2594,15 +2502,17 @@ router.get("/api/itinerary-share/:token/export/gpx", async (req, res) => {
       const shared = await storage.getSharedItineraryByToken(token);
       if (!shared) return res.status(404).json({ error: "Not found" });
 
-      let plan: VariantFullTripPlan;
+      let assembled: VariantFullTripPlan;
       try {
-        plan = await assembleTripPlanFromVariant(shared.variantId, "full");
+        assembled = await assembleTripPlanFromVariant(shared.variantId, "full");
       } catch (e) {
         if (e instanceof TripPlanVariantNotFoundError) {
           return res.status(404).json({ error: "Variant not found" });
         }
         throw e;
       }
+      // FD-4: the export carries the shown stops and legs only (see the JSON route).
+      const { plan } = projectVariantPlanForShare(assembled, await loadVariantSharePublicTest(shared.variantId));
 
       const cached = await storage.getMapsExportCacheByVariantId(shared.variantId);
       const cachedGpx: string | undefined = cached?.gpxContent;
@@ -2640,6 +2550,10 @@ router.get("/api/itinerary-share/:token/navigate/:dayNumber/:legOrder", async (r
       const leg = await storage.getTransportLegByDayOrder(shared.variantId, parseInt(dayNumber), parseInt(legOrder));
 
       if (!leg) return res.status(404).json({ error: "Leg not found" });
+      // FD-4: a leg touching a stop the share does not show is not found — its ends would place that stop.
+      if (!legIsShareable(leg, await loadVariantSharePublicTest(shared.variantId))) {
+        return res.status(404).json({ error: "Leg not found" });
+      }
 
       const mode = leg.userSelectedMode || leg.recommendedMode;
       const fromLat = currentLat ? parseFloat(currentLat) : leg.fromLat;

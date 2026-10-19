@@ -458,9 +458,13 @@ async function purgeE2EAccountsFromProd(): Promise<PurgeResult> {
 export { seedE2EAccounts, purgeE2EAccountsFromProd };
 
 // Run directly (tsx server/seeds/e2e-test-accounts.seed.ts)
+// `--purge` (ledger `2026-10-18-boot-removals`): the production purge, run on purpose — never at boot.
 if (process.argv[1] && process.argv[1].endsWith("e2e-test-accounts.seed.ts")) {
-  seedE2EAccounts().catch((err) => {
-    console.error("Seed failed:", err);
+  const run = process.argv.includes("--purge")
+    ? purgeE2EAccountsFromProd().then((r) => console.log("[e2e-purge]", JSON.stringify({ neutralized: r.neutralized, deleted: r.deleted, blocked: r.blocked.length })))
+    : seedE2EAccounts();
+  run.catch((err) => {
+    console.error(process.argv.includes("--purge") ? "Purge failed:" : "Seed failed:", err);
     process.exit(1);
   });
 }

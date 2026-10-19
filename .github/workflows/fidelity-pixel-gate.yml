@@ -42,8 +42,7 @@ on:
 
 concurrency:
   group: fidelity-pixel-gate-${{ github.ref }}
-  cancel-in-progress: true
-
+  cancel-in-progress: ${{ github.event.action != 'ready_for_review' }}
 permissions:
   contents: write # to push regenerated baselines on the update_baselines dispatch
 

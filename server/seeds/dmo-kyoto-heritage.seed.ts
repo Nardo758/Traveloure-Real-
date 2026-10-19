@@ -56,7 +56,7 @@ export async function seedDmoKyotoHeritage(): Promise<{ upserted: number }> {
 
   for (const site of KYOTO_HERITAGE) {
     const sourceUrl = `${UNESCO_SITE_URL}#${site.slug}`;
-    await db
+    const inserted = await db
       .insert(dmoRawContent)
       .values({
         sourceId: UNESCO_SOURCE_ID,
@@ -89,8 +89,10 @@ export async function seedDmoKyotoHeritage(): Promise<{ upserted: number }> {
       })
       .onConflictDoNothing({
         target: [dmoRawContent.sourceUrl, dmoRawContent.sourceId],
-      });
-    upserted += 1;
+      })
+      .returning({ id: dmoRawContent.id });
+    // Counts rows actually inserted (ledger `2026-10-18-boot-reference-seeding`), never attempts.
+    upserted += inserted.length;
   }
 
   return { upserted };
