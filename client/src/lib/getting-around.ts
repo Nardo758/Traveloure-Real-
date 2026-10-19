@@ -4,13 +4,14 @@
  * stops, in slip order. A gap reads:
  *   · a routed leg → the same line the slip and the Trip Card draw (`routedLegLine`)
  *   · a shown leg with minutes but no routed facts → minutes only ("15 min · walk", D5)
+ *   · a leg the server names as having no time (a stop with no open point, LG-2 Ask 6) → "Travel time not checked yet"
  *   · no leg, or a leg with no minutes → "not worked out yet" — never dropped, never guessed (§13)
  * Days never vanish: a day with one stop (or none) is still listed, with no gaps. On a plan that does
  * not earn routed legs (`routedLegs` absent on the plancard), one header line says where times come
  * from. Pure; no calls.
  */
 import { routedLegLine } from "@shared/routing-engine";
-import { bridgeLabelFor, slipLegBetween, unroutedLegLine } from "./slip-legs";
+import { TRAVEL_TIME_NOT_CHECKED_LINE, slipLegBetween, unroutedLegLine } from "./slip-legs";
 import { TRAVEL_TIMES_COME_WITH_OPTIMIZE } from "@shared/optimizer-lead";
 
 export const GETTING_AROUND_EMPTY = "No stops on this plan yet.";
@@ -33,7 +34,8 @@ export interface GettingAroundGap {
   key: string;
   title: string;
   line: string;
-  kind: "routed" | "unrouted" | "pending";
+  /** `not_checked` (LG-2 Ask 6): a stop has no open point, so the leg exists with no time. */
+  kind: "routed" | "unrouted" | "not_checked" | "pending";
 }
 
 export interface GettingAroundDay {
@@ -56,12 +58,12 @@ export function gettingAroundDays(days: readonly any[] | null | undefined, timeZ
       const from = stops[i];
       const to = stops[i + 1];
       const leg = slipLegBetween([d], String(from.id), String(to.id));
-      // P0-e item 3: a bridge around an unlocated stop is named by its real endpoints and the stops it goes
-      // round — the same formatter the slip and the Trip Card use ("Fushimi Inari → Tofuku-ji · around Soba Restaurant").
-      const title = leg?.bridge ? bridgeLabelFor(stops, leg.bridge, String(to.id)) : `${stopName(from)} → ${stopName(to)}`;
+      // LG-2 Ask 6: every gap is its own two stops — no leg goes round a stop with no point.
+      const title = `${stopName(from)} → ${stopName(to)}`;
       const key = `${from.id}>${to.id}`;
       if (leg?.kind === "routed") gaps.push({ key, title, kind: "routed", line: routedLegLine({ mode: leg.mode, route: leg.route }, timeZone) });
       else if (leg?.kind === "unrouted") gaps.push({ key, title, kind: "unrouted", line: unroutedLegLine(leg.mode, leg.minutes, leg.estimate === true) });
+      else if (leg?.kind === "not_checked") gaps.push({ key, title, kind: "not_checked", line: TRAVEL_TIME_NOT_CHECKED_LINE });
       else {
         const unlocated = [from, to].find((a) => !hasPoint(a));
         gaps.push({ key, title, kind: "pending", line: unlocated ? gettingAroundUnlocatedLine(stopName(unlocated)) : GETTING_AROUND_PENDING });

@@ -941,7 +941,16 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     const inSeason = await inSeasonAdditionsForTrip(tripId);
     // FD-3 (ledger `2026-10-10-fd3-feasibility`, §3d): per day, what the feasibility checks could read —
     // counts only, every plan. Never fails the read: a failed count is no line, never a claimed "checked".
-    const feasibility = await loadDayFeasibility(tripId).catch((err) => {
+    // LG-2 Ask 6 (decision-maker, Oct 19, 2026): per day, the adjacent pairs whose leg has no travel time (a stop with
+    // no open point). The slip draws "Travel time not checked yet" between them and the day line counts them. Routed
+    // plans only; a failed read is no key, never a claimed time (§13).
+    const legsNotChecked = await import("../services/routing/plan-legs-engine.service")
+      .then(({ planLegsNotCheckedByDay }) => planLegsNotCheckedByDay(tripId))
+      .catch((err) => {
+        console.error(`[plancard] legs not checked failed plan_id=${tripId}:`, (err as Error)?.message ?? err);
+        return null;
+      });
+    const feasibility = await loadDayFeasibility(tripId, legsNotChecked ? { legsNotChecked } : {}).catch((err) => {
       console.error(`[plancard] day feasibility failed plan_id=${tripId}:`, (err as Error)?.message ?? err);
       return new Map();
     });
@@ -983,6 +992,7 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
           ...(inSeason.get(d.dayNumber)?.count ? { inSeason: inSeason.get(d.dayNumber) } : {}),
           ...(anchorStops.get(d.dayNumber)?.length ? { anchorStops: anchorStops.get(d.dayNumber) } : {}),
           ...(f ? { feasibility: f } : {}),
+          ...(legsNotChecked?.get(d.dayNumber)?.length ? { legsNotChecked: legsNotChecked.get(d.dayNumber) } : {}),
           ...(rt && rt.rides > 0 ? { rideTeaser: rt } : {}),
           ...(rs && rs.length ? { rideSuggestions: rs.map(({ score: _score, ...s }) => s) } : {}),
         };

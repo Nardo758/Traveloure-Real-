@@ -1485,6 +1485,11 @@ jobs:
       - if: ${{ !cancelled() }}
         name: LG-2 admin OSM points dry-run pins
         run: npx tsx --test shared/__tests__/admin-osm-points.test.ts
+      # LG-2 Ask 6: a leg connects adjacent stops only; a stop with no open point gives a leg with no time, and the day
+      # check cannot pass with one. Pure.
+      - if: ${{ !cancelled() }}
+        name: LG-2 adjacent legs pins
+        run: npx tsx --test server/services/__tests__/lg2-ask6-adjacent-legs.test.ts
       # LG-2 Ask 8: the item batch asks a configured geocoder and refuses the public Nominatim server; the
       # open-coordinate tables stay internal. Pure and source-level.
       - if: ${{ !cancelled() }}

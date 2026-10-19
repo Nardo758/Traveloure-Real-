@@ -25,7 +25,7 @@ import { AIRPORT_LEG_MODE_LABEL, airportLegLine, type AirportLegMode } from "@sh
 import { AUTHOR_TIP_MAX_CHARS, isChauffeuredMode, legModeOptions } from "@shared/trip-plan";
 import { planLegDomId, planLegPairDomId } from "@shared/plan-jump-targets";
 import { TRANSPORT_MODE_LABELS } from "@/lib/maps-platform";
-import { unroutedLegLine } from "@/lib/slip-legs";
+import { TRAVEL_TIME_NOT_CHECKED_LINE, unroutedLegLine } from "@/lib/slip-legs";
 import { legRuleClass, storedLegIsRouted } from "@/lib/leg-rule";
 
 /** The leg between two stops, as `GET /api/trips/:tripId/transport-legs` returns it (no user id). */
@@ -349,7 +349,17 @@ export interface UnroutedLegRowProps {
   estimate?: boolean;
 }
 
-export type LegRowProps = AirportLegRowProps | StopLegRowProps | RoutedLegRowProps | UnroutedLegRowProps;
+/**
+ * LG-2 Ask 6 (decision-maker, Oct 19, 2026): the leg between two adjacent stops when either has no open point — it
+ * exists, with no time: "Travel time not checked yet". No minutes, no mode, no estimate, no tap.
+ */
+export interface NotCheckedLegRowProps {
+  kind: "not_checked";
+  fromId: string;
+  toId: string;
+}
+
+export type LegRowProps = AirportLegRowProps | StopLegRowProps | RoutedLegRowProps | UnroutedLegRowProps | NotCheckedLegRowProps;
 
 /** The ONE leg row (R-c): a between-stops leg (`stops`, `routed`), else the airport leg. */
 export function LegRow(props: LegRowProps) {
@@ -359,6 +369,7 @@ export function LegRow(props: LegRowProps) {
   }
   if ("kind" in props && props.kind === "routed") return <RoutedLegRow {...props} />;
   if ("kind" in props && props.kind === "unrouted") return <UnroutedLegRow {...props} />;
+  if ("kind" in props && props.kind === "not_checked") return <NotCheckedLegRow {...props} />;
   return <AirportLegRow {...(props as AirportLegRowProps)} />;
 }
 
@@ -411,6 +422,14 @@ function UnroutedLegRow({ legId, mode, minutes, estimate = false }: UnroutedLegR
     <p className={`ml-4 ${legRuleClass(false)} px-3 py-1.5 text-xs text-muted-foreground flex items-center gap-1.5`} data-testid={`slip-leg-unrouted-${legId}`}>
       <Icon className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
       <span>{unroutedLegLine(mode, minutes, estimate)}</span>
+    </p>
+  );
+}
+
+function NotCheckedLegRow({ fromId, toId }: NotCheckedLegRowProps) {
+  return (
+    <p className={`ml-4 ${legRuleClass(false)} px-3 py-1.5 text-xs text-muted-foreground`} data-testid={`slip-leg-not-checked-${fromId}-${toId}`}>
+      {TRAVEL_TIME_NOT_CHECKED_LINE}
     </p>
   );
 }
