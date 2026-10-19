@@ -31,37 +31,14 @@ import {
   platformSettingsTable,
 } from "@shared/schema";
 import { metresBetween } from "../item-osm-regeocode.service";
+import { foldName, kindFromName } from "@shared/osm-place-kind";
 
 export const OPEN_COORD_MAX_DRIFT_SETTING = "open_coord_max_drift_m";
 export const OPEN_COORD_REVIEW_REASONS = ["admin", "neighbourhood", "street", "name_mismatch", "drift"] as const;
 export type OpenCoordReviewReason = (typeof OPEN_COORD_REVIEW_REASONS)[number];
 
-/** Pure. Lower-case letters and digits only (macrons folded), so "Higashiyama-ku" and "higashiyama ku" compare equal. */
-export function foldName(name: string | null | undefined): string {
-  return (name ?? "")
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9぀-ヿ一-鿿]+/g, "");
-}
-
-// A ward, city, prefecture or smaller administrative unit, in English or Japanese.
-const ADMIN_NAME = /(^|[\s-])(ward|city|prefecture|town|village|district|ku|shi|fu|cho|machi|mura)$|[区市府町村]$/i;
-// A street, road or lane, in English or Japanese (dōri / dori / kōji / koji / 通 / 小路).
-const STREET_NAME = /(^|[\s-])(street|st\.?|road|rd\.?|avenue|ave\.?|lane|alley|dori|doori|koji|kouji)$|(dori|koji|kouji)$|通り?$|小路$/i;
-
-/** Pure. The kind a place's name says it is, or null. A neighbourhood is a name the spine (`city_neighborhoods`) carries. */
-export function kindFromName(
-  name: string | null | undefined,
-  neighbourhoodNames: ReadonlySet<string>,
-): "admin" | "neighbourhood" | "street" | null {
-  const raw = (name ?? "").normalize("NFKD").replace(/[̀-ͯ]/g, "").trim();
-  if (!raw) return null;
-  if (neighbourhoodNames.has(foldName(raw))) return "neighbourhood";
-  if (ADMIN_NAME.test(raw)) return "admin";
-  if (STREET_NAME.test(raw)) return "street";
-  return null;
-}
+// The name readings live in ONE pure module, shared with the matcher (LG-2 Ask 2; §18 rule 1).
+export { foldName, kindFromName };
 
 /**
  * Pure. Ask 1's containment rule: the place's name (whole, or its part before a comma or bracket) appears in the item's

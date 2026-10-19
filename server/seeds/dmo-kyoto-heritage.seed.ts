@@ -23,6 +23,7 @@
  * Run: `tsx server/seeds/dmo-kyoto-heritage.seed.ts`
  */
 
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../db";
 import { dmoRawContent } from "@shared/schema";
 
@@ -54,8 +55,17 @@ const KYOTO_HERITAGE: HeritageSeed[] = [
 export async function seedDmoKyotoHeritage(): Promise<{ upserted: number }> {
   let upserted = 0;
 
+  // One read for all ten stubs (ledger `2026-10-19-boot-seed-timing`): only a stub whose (source_url, source_id)
+  // the table lacks is inserted, so a warm boot makes one round trip. Same conflict key as the insert.
+  const present = new Set(
+    (await db
+      .select({ sourceUrl: dmoRawContent.sourceUrl })
+      .from(dmoRawContent)
+      .where(and(eq(dmoRawContent.sourceId, UNESCO_SOURCE_ID), inArray(dmoRawContent.sourceUrl, KYOTO_HERITAGE.map((s) => `${UNESCO_SITE_URL}#${s.slug}`))))).map((r) => r.sourceUrl),
+  );
   for (const site of KYOTO_HERITAGE) {
     const sourceUrl = `${UNESCO_SITE_URL}#${site.slug}`;
+    if (present.has(sourceUrl)) continue;
     const inserted = await db
       .insert(dmoRawContent)
       .values({

@@ -127,7 +127,9 @@ export function admitNeedList(values: unknown): { ok: true; needs: ContentNeedKe
  */
 export const FACT_TYPES = [
   "hours",
-  "closure",
+  // FB-1 step 5b (ledger `2026-10-19-fb1-closed-dates`): `closed_dates` REPLACES the unread `closure` type —
+  // one type for "this place is closed on these dates", structured, admitted by `admitFeasibilityFact`.
+  "closed_dates",
   "price",
   "ticketing_rule",
   "transit",
@@ -239,7 +241,7 @@ export interface FactLike {
  * itself. `description` and `tip` NEVER qualify by this path — prose stays plan-only until an expert
  * verifies it (§8's flywheel).
  */
-export const PUBLIC_OK_FACT_TYPES = ["hours", "closure", "ticketing_rule", "transit", "event"] as const satisfies readonly FactType[];
+export const PUBLIC_OK_FACT_TYPES = ["hours", "closed_dates", "ticketing_rule", "transit", "event"] as const satisfies readonly FactType[];
 
 /**
  * The official-source path, on its own so a surface can ask whether a publishable fact owes the

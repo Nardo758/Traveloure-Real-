@@ -196,6 +196,18 @@ export interface StayPick {
    * stored before FU-S1-3 (no backfill — read as null until the next re-score, §13).
    */
   closeness?: StayCloseness | null;
+  /**
+   * Which router ranked the pick (decision-maker, Oct 18, 2026 — ledger `2026-10-18-stay-pick-est-fallback`).
+   * `"osrm"` = the engine's own adapter between open coordinates. Absent = a pick stored before #1536, ranked by
+   * Google Route Matrix: it is Google route data under the strict ruling, so it is NEVER SHOWN (`stayPickIsShown`)
+   * and its row stays until a later "delete approved".
+   */
+  router?: "osrm" | null;
+}
+
+/** The ONE rule for whether a stored pick may be shown or linked: only a pick the engine's own router ranked. */
+export function stayPickIsShown(pick: StayPick | null | undefined): pick is StayPick {
+  return !!pick && pick.router === "osrm";
 }
 
 // S1-d-1: `liteapi` is allowlisted, or a stored LiteAPI pick would read as no pick.
@@ -218,6 +230,7 @@ export function readStayPick(value: unknown): StayPick | null {
     tier: "routed",
     changed: v.changed === true,
     closeness: readCloseness(v.closeness),
+    router: v.router === "osrm" ? "osrm" : null,
   };
 }
 
@@ -241,5 +254,5 @@ export function nextStayPick(
   computed: Omit<StayPick, "changed" | "tier">,
 ): StayPick {
   const different = !!prev && (prev.hotelId !== computed.hotelId || prev.hotelKind !== computed.hotelKind);
-  return { ...computed, closeness: computed.closeness ?? null, tier: "routed", changed: different || (prev?.changed ?? false) };
+  return { ...computed, closeness: computed.closeness ?? null, router: computed.router ?? null, tier: "routed", changed: different || (prev?.changed ?? false) };
 }

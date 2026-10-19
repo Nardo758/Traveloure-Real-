@@ -11,6 +11,9 @@
  *     in the middle of town);
  *   · every description, tip, theme, summary and travel tip → sentences naming a brand or a hotel
  *     are dropped;
+ *   · LG-2 Ask 9 (ledger `2026-10-18-lg2-banned-phrases`; rules in `@shared/banned-copy`): a title carrying a
+ *     banned phrase is reworded, and one left with nothing and no place name is not stored (left for
+ *     regeneration); a description or tip sentence carrying one is dropped;
  *   · NO PLACE TO STAY (`noLodging`) additionally: no item, meal or leg that mentions lodging at
  *     all, no lodging sentence anywhere, and no accommodation suggestions.
  */
@@ -25,6 +28,7 @@ import {
   type CoveringEvent,
 } from "@shared/ai-place-text";
 import { normalizedTravelLineTitle } from "@shared/draft-basis";
+import { dropBannedSentences, rewordBannedTitle } from "@shared/banned-copy";
 import type { NormalizedGeneratedCanonicalItem } from "./generated-itinerary";
 
 export interface AiDraftSanitizeOptions {
@@ -38,6 +42,25 @@ export interface AiDraftSanitizeOptions {
    * supply slot. Absent ⇒ none cover the dates ⇒ every event-named title is reduced.
    */
   coveringEvents?: readonly CoveringEvent[];
+  /**
+   * LG-2 Ask 9: incremented once per item NOT STORED because the banned-phrase rule emptied its title and it had no
+   * place name (left for regeneration). The caller logs it; counts only. Absent ⇒ not counted.
+   */
+  drops?: BannedCopyDrops;
+}
+
+/** The count of items the banned-phrase rule left for regeneration (decision-maker, Oct 18, 2026). */
+export interface BannedCopyDrops {
+  bannedTitleNoPlace: number;
+}
+export function newBannedCopyDrops(): BannedCopyDrops {
+  return { bannedTitleNoPlace: 0 };
+}
+/** The one log line for the count; says nothing when nothing was dropped. */
+export function logBannedCopyDrops(path: string, drops: BannedCopyDrops): void {
+  if (drops.bannedTitleNoPlace > 0) {
+    console.info(`[banned-copy] ${path}: ${drops.bannedTitleNoPlace} item(s) not stored — title emptied by the banned-phrase rule, no place name`);
+  }
 }
 
 /** S9-8: one drafted item's title and place, with an uncovered event reduced. */
@@ -59,17 +82,47 @@ function reduceEventItem<T extends { title?: unknown; name?: unknown; location?:
 }
 
 /**
+ * LG-2 Ask 9: one item's title reworded and its description/tips cleaned of banned phrases (`@shared/banned-copy`),
+ * or `null` when the title is left with nothing and the item has no place name — left for regeneration, never a
+ * placeholder phrase. Reads and writes `title` and/or `name`, whichever the item carries.
+ */
+function withoutBannedCopy<T extends Record<string, any>>(it: T, place: unknown, drops?: BannedCopyDrops): T | null {
+  const before = String(it.title ?? it.name ?? "");
+  const title = rewordBannedTitle(before, typeof place === "string" ? place : null);
+  if (title === null) {
+    if (drops) drops.bannedTitleNoPlace += 1;
+    return null;
+  }
+  const out: any = { ...it };
+  if (title !== before) {
+    if ("title" in out || !("name" in out)) out.title = title;
+    if ("name" in out) out.name = title;
+  }
+  for (const k of ["description", "tips"] as const) {
+    if (typeof out[k] === "string") out[k] = dropBannedSentences(out[k]);
+  }
+  return out as T;
+}
+
+/**
  * Step 6 (R-aa/R-w on every drafting path): a day's activities from a path that does not go through
  * the snapshot writer (the trip generate route), with each uncovered event-named title reduced by the
  * SAME rule. `locationName` is read and written as the place.
  */
-export function reduceUncoveredEventActivities<T extends Record<string, any>>(activities: readonly T[], coveringEvents: readonly CoveringEvent[]): T[] {
-  return activities.map((a) => {
+export function reduceUncoveredEventActivities<T extends Record<string, any>>(
+  activities: readonly T[],
+  coveringEvents: readonly CoveringEvent[],
+  drops?: BannedCopyDrops,
+): T[] {
+  return activities.flatMap((a) => {
     const r: any = reduceEventItem({ ...a, location: a.locationName ?? a.location }, { noLodging: false, coveringEvents });
-    const out: any = { ...r };
-    if ("locationName" in a) out.locationName = r.location;
+    // LG-2 Ask 9: this path skips the snapshot writer, so it takes the banned-phrase rule here too.
+    const cleaned: any = withoutBannedCopy(r, r.location, drops);
+    if (!cleaned) return [];
+    const out: any = { ...cleaned };
+    if ("locationName" in a) out.locationName = cleaned.location;
     if (!("location" in a)) delete out.location;
-    return out as T;
+    return [out as T];
   });
 }
 
@@ -89,7 +142,7 @@ export function sanitizeCanonicalItems(
     .map((it) => {
       // Ledger `2026-10-08-arrival-title-normalized`: the plan's own travel line stores our wording.
       const title = normalizedTravelLineTitle(String(it.title ?? ""), o.city, Number(it.dayNumber), lastDay);
-      return reduceEventItem(
+      const reduced = reduceEventItem(
         {
           ...it,
           ...(title !== it.title ? { title, name: title } : {}),
@@ -98,7 +151,9 @@ export function sanitizeCanonicalItems(
         },
         o,
       );
-    });
+      return withoutBannedCopy(reduced, reduced.location, o.drops);
+    })
+    .filter((it): it is NormalizedGeneratedCanonicalItem => it !== null);
 }
 
 /**
@@ -132,7 +187,8 @@ function cleanActivity(a: any, o: AiDraftSanitizeOptions): any {
   for (const k of ["description", "tips"] as const) {
     if (k in out) out[k] = sanitizeAiProse(out[k], o) ?? "";
   }
-  return reduceEventItem(out, o);
+  const reduced = reduceEventItem(out, o);
+  return withoutBannedCopy(reduced, reduced.location, o.drops);
 }
 
 function mealMentions(m: any, o: AiDraftSanitizeOptions): boolean {
@@ -145,22 +201,28 @@ function legMentions(l: any, o: AiDraftSanitizeOptions): boolean {
   return namesAHotel(text) || namesABrand(text) || (o.noLodging && mentionsLodging(text));
 }
 
-/** The stored draft JSON (`generatedPlan`), cleaned by the same rules as the rows. */
-export function sanitizeGeneratedPlan<T extends Record<string, any>>(plan: T, o: AiDraftSanitizeOptions): T {
+/**
+ * The stored draft JSON (`generatedPlan`), cleaned by the same rules as the rows. It never counts `drops`: the JSON
+ * holds the same items as the rows, which are counted once by `sanitizeCanonicalItems`.
+ */
+export function sanitizeGeneratedPlan<T extends Record<string, any>>(plan: T, opts: AiDraftSanitizeOptions): T {
+  const o: AiDraftSanitizeOptions = { ...opts, drops: undefined };
   const days = withNormalizedTravelTitles(Array.isArray(plan.itineraryData) ? plan.itineraryData : [], o.city);
   const itineraryData = days.map((d: any) => ({
     ...d,
-    ...(typeof d?.theme === "string" ? { theme: sanitizeAiProse(d.theme, o) ?? "" } : {}),
+    ...(typeof d?.theme === "string" ? { theme: dropBannedSentences(sanitizeAiProse(d.theme, o) ?? "") } : {}),
     ...(Array.isArray(d?.activities)
-      ? { activities: d.activities.filter((a: any) => !dropTitle(a?.name ?? a?.title, o)).map((a: any) => cleanActivity(a, o)) }
+      ? { activities: d.activities.filter((a: any) => !dropTitle(a?.name ?? a?.title, o)).map((a: any) => cleanActivity(a, o)).filter((a: any) => a !== null) }
       : {}),
     ...(Array.isArray(d?.meals) ? { meals: d.meals.filter((m: any) => !mealMentions(m, o)) } : {}),
     ...(Array.isArray(d?.transportation) ? { transportation: d.transportation.filter((l: any) => !legMentions(l, o)) } : {}),
   }));
   const out: Record<string, any> = { ...plan, itineraryData };
-  if (typeof plan.summary === "string") out.summary = sanitizeAiProse(plan.summary, o) ?? "";
+  if (typeof plan.summary === "string") out.summary = dropBannedSentences(sanitizeAiProse(plan.summary, o) ?? "");
   if (Array.isArray(plan.travelTips)) {
-    out.travelTips = plan.travelTips.map((t: unknown) => sanitizeAiProse(String(t ?? ""), o)).filter((t: string | null): t is string => !!t);
+    out.travelTips = plan.travelTips
+      .map((t: unknown) => dropBannedSentences(sanitizeAiProse(String(t ?? ""), o) ?? ""))
+      .filter((t: string) => !!t);
   }
   if (o.noLodging) out.accommodationSuggestions = [];
   return out as T;

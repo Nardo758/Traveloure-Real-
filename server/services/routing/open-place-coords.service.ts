@@ -56,13 +56,13 @@ export async function openCoordsForItemIds(itemIds: readonly string[]): Promise<
   if (ids.length === 0) return out;
   try {
     const rows = await db
-      .select({ itemId: itineraryItemOpenCoords.itemId, lat: openPlaceCoords.lat, lng: openPlaceCoords.lng })
+      .select({ itemId: itineraryItemOpenCoords.itemId, lat: openPlaceCoords.lat, lng: openPlaceCoords.lng, source: itineraryItemOpenCoords.source })
       .from(itineraryItemOpenCoords)
       .innerJoin(openPlaceCoords, eq(openPlaceCoords.id, itineraryItemOpenCoords.openCoordId))
       .where(inArray(itineraryItemOpenCoords.itemId, ids));
     for (const r of rows) {
       const p = validCoord(r.lat, r.lng);
-      if (p) out.set(r.itemId, { ...p, origin: "osm" });
+      if (p) out.set(r.itemId, { ...p, origin: "osm", linkSource: r.source ?? null });
     }
     return out;
   } catch (err: any) {
@@ -121,6 +121,14 @@ export async function recordOpenCoordForItem(input: OpenCoordForItemInput): Prom
     .onConflictDoNothing({ target: itineraryItemOpenCoords.itemId })
     .returning({ itemId: itineraryItemOpenCoords.itemId });
   return { written: inserted.length > 0 || linked.length > 0, rowInserted: inserted.length > 0, linked: linked.length > 0 };
+}
+
+/** LG-2 Ask 7: which of the given hand-picked point ids ('admin:<type>/<id>') are already entered. Read-only. */
+export async function enteredAdminPointIds(ids: readonly string[]): Promise<Set<string>> {
+  const list = Array.from(new Set(ids.filter(Boolean)));
+  if (list.length === 0) return new Set();
+  const rows = await db.select({ id: openPlaceCoords.id }).from(openPlaceCoords).where(inArray(openPlaceCoords.id, list));
+  return new Set(rows.map((r) => r.id));
 }
 
 /** The items (of those given) that already have an open coordinate link — the batch skips them, so a re-run resumes. */

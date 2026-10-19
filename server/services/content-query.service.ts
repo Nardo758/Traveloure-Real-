@@ -32,7 +32,7 @@ import type { NormalizedGeneratedCanonicalItem } from "../utils/generated-itiner
 import { flagReviewSignal } from "./review-mutation.service";
 import { itineraryItemRebuildDeletable } from "./itinerary-rebuild-guard";
 import { assertAiDraftEligible, itineraryItemNotPlanAnchor } from "./ai-draft-eligibility";
-import { sanitizeCanonicalItems, sanitizeGeneratedPlan } from "../utils/ai-draft-sanitize";
+import { logBannedCopyDrops, newBannedCopyDrops, sanitizeCanonicalItems, sanitizeGeneratedPlan } from "../utils/ai-draft-sanitize";
 import { coveringEventsForTrip } from "./content-facts/covering-events";
 
 // ─── Health ───────────────────────────────────────────────────────────────────
@@ -405,12 +405,16 @@ export async function saveGeneratedItinerarySnapshot(
     startDate: input.trip.startDate,
     endDate: input.trip.endDate,
   });
-  const sanitizeOptions = { noLodging: input.noLodging === true, city: input.trip.destination, coveringEvents };
+  // LG-2 Ask 9: `drops` counts the item rows only — `sanitizeGeneratedPlan` ignores it (the stored JSON holds the same
+  // items; counting both would double it).
+  const drops = newBannedCopyDrops();
+  const sanitizeOptions = Object.assign({ noLodging: input.noLodging === true, city: input.trip.destination, coveringEvents }, { drops });
   input = {
     ...input,
     canonicalItems: sanitizeCanonicalItems(input.canonicalItems, sanitizeOptions),
     generatedPlan: sanitizeGeneratedPlan(input.generatedPlan, sanitizeOptions),
   };
+  logBannedCopyDrops("snapshot", drops);
   // R-aa (step 6): every drafting path that reaches this writer — the free draft, Plus occasion
   // drafts, save-as-trip — keeps nothing before arrival + buffer or past departure − buffer, by the ONE
   // rule (`server/utils/draft-flight-windows.ts`). A newly minted plan has no flights yet, so this is a

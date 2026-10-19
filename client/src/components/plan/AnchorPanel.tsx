@@ -26,16 +26,16 @@
  */
 import { PlacePhoto } from "./PlacePhoto";
 import { HAND_ADDED_STAY_LINE } from "@shared/where-to-stay";
+import { OSM_COORD_ATTRIBUTION } from "@shared/open-coords";
 import {
   GOOGLE_MAPS_ATTRIBUTION,
   STAY_CHANGED_LINE,
   STAY_HERE_LABEL,
-  STAY_PICK_SUBTITLE,
   STAY_PICK_TITLE,
-  STAY_STRAIGHT_LINE_SUBTITLE,
   STAY_STRAIGHT_LINE_TITLE,
   STAY_SWAP_LEAD,
   stayCardModel,
+  stayCardSubtitle,
   stayClosenessLine,
   stayCardLink,
   STAY_RATES_LOADING,
@@ -216,13 +216,14 @@ export function StayPickCard({
       className="space-y-2 rounded-[var(--slip-radius-card,12px)] border border-[color:var(--slip-teal,#2E8B8B)] bg-[color:var(--slip-card,#fff)] p-3"
       data-testid="stay-pick-card"
       data-stay-tier={model.tier}
+      data-stay-estimated={model.tier === "straight_line" && model.estimated ? "true" : undefined}
     >
       <div>
         <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-[color:var(--slip-teal-ink,#1F6F6F)]" data-testid="stay-pick-title">
           {routed ? STAY_PICK_TITLE : STAY_STRAIGHT_LINE_TITLE}
         </p>
         <p className="text-xs text-[color:var(--slip-muted,#5B6B7A)]" data-testid="stay-pick-subtitle">
-          {routed ? STAY_PICK_SUBTITLE : STAY_STRAIGHT_LINE_SUBTITLE}
+          {stayCardSubtitle(model)}
         </p>
         {model.scoredLine ? (
           <p className="text-xs text-[color:var(--slip-muted,#5B6B7A)]" data-testid="stay-pick-scored">
@@ -306,6 +307,12 @@ export function StayPickCard({
           </li>
         ))}
       </ul>
+      {model.hotels.some((h) => stayClosenessLine(h.closeness)) ? (
+        // LG-2 Ask 8: a closeness line is computed over open coordinates (routed or straight line) — the ODbL credit, exactly.
+        <p className="text-[11px] text-[color:var(--slip-muted,#5B6B7A)]" data-testid="stay-pick-osm-credit">
+          {OSM_COORD_ATTRIBUTION}
+        </p>
+      ) : null}
       {canChoose && swapControl ? (
         <div className="flex flex-wrap items-center gap-2 border-t border-border pt-2 text-xs text-[color:var(--slip-muted,#5B6B7A)]" data-testid="stay-pick-swap">
           <span>{STAY_SWAP_LEAD}</span>

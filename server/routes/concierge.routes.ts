@@ -33,6 +33,8 @@ import { verifyTripOwnership } from "../utils/trip-ownership";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { chatStorage } from "../replit_integrations/chat/storage";
 import { createRateLimiter } from "../infrastructure/rate-limiter";
+import { getPlatformFlag } from "../services/platform-flags";
+import { EVENT_CONCIERGE_SETTING, HANDOFF_BOOKING_SETTING } from "@shared/traveler-doors";
 import {
   buildConciergeAdminNotification,
   escalationRequestSchema,
@@ -583,6 +585,18 @@ router.post("/api/concierge/escalations", isAuthenticated, escalationLimiter, as
     console.error("[concierge/escalations] error:", err);
     res.status(500).json({ error: err.message });
   }
+});
+
+// ─── GET /api/traveler-doors (ledger `2026-10-18-traveler-doors-hidden`) ──────────────────────
+// Which switched traveler doors are open: the old done-for-you concierge and the booking hand-off.
+// Public, read-only, two booleans; a missing row or a read error answers false (the door stays hidden).
+
+router.get("/api/traveler-doors", async (_req, res) => {
+  const [eventConcierge, handoffBooking] = await Promise.all([
+    getPlatformFlag(EVENT_CONCIERGE_SETTING, false),
+    getPlatformFlag(HANDOFF_BOOKING_SETTING, false),
+  ]);
+  res.json({ eventConcierge, handoffBooking });
 });
 
 // ─── GET /api/concierge/event-packages (CON-A.P8 / N6) ─────────────────────

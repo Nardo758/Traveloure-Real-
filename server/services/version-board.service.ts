@@ -406,10 +406,36 @@ async function retimeCounts(tripId: string, since: Date, exec: any = db): Promis
 const updatableWhere = (tripId: string, id: string) =>
   and(eq(itineraryItems.id, id), eq(itineraryItems.tripId, tripId), eq(itineraryItems.routingStatus, "in_planning"), sql`${itineraryItems.bookingId} IS NULL`, itineraryItemNotMachineProtected());
 
+/** FB-1 step 4: a dry run's way out of `applyDays`' transaction — the counts leave, every write rolls back. */
+class ApplyDaysDryRun extends Error {
+  constructor(readonly result: { days: Array<{ day: number; variantId: string; moved: number; added: number; removed: number; kept: number }>; stay: unknown }) {
+    super("apply-days dry run");
+  }
+}
+
 export async function applyDays(input: {
   tripId: string;
   userId: string;
   days: Array<{ day: number; variantId: string }>;
+  /**
+   * FB-1 step 4 (confirm before apply): run the SAME diff and roll it back — the counts a confirm screen shows are
+   * the counts the write would make, and nothing is written.
+   */
+  dryRun?: boolean;
+}): Promise<{ days: Array<{ day: number; variantId: string; moved: number; added: number; removed: number; kept: number }>; stay: unknown }> {
+  try {
+    return await applyDaysTx(input);
+  } catch (err) {
+    if (err instanceof ApplyDaysDryRun) return err.result;
+    throw err;
+  }
+}
+
+async function applyDaysTx(input: {
+  tripId: string;
+  userId: string;
+  days: Array<{ day: number; variantId: string }>;
+  dryRun?: boolean;
 }): Promise<{ days: Array<{ day: number; variantId: string; moved: number; added: number; removed: number; kept: number }>; stay: unknown }> {
   const run = await latestRun(input.tripId);
   if (!run) throw new VersionBoardError(409, "no_run", "This plan has no optimized versions to adopt from");
@@ -501,6 +527,7 @@ export async function applyDays(input: {
       const pick = pickRow ? optionPickOf(pickRow.metadata) : null;
       if (pick) stay = await choosePickInTx(tx, { tripId: input.tripId, userId: input.userId, role, pick, via: "version_whole" });
     }
+    if (input.dryRun) throw new ApplyDaysDryRun({ days: results, stay: null });
     return { days: results, stay };
   });
 }

@@ -26,7 +26,8 @@ import { factPointsForTrip, factsForTrip, placeRefsForTrip } from "../content-fa
 import { stayPointForPlan } from "../stay-reroute.service";
 import { openCoordsForItemIds, openCoordsForPlaceIds, type OpenPlaceCoord } from "./open-place-coords.service";
 import { pulledOpenItems } from "./open-coord-review.service";
-import { acceptedPoint, routingPointFor } from "./open-routing-points";
+import { acceptedPoint, openPlaceForItem, routingPointFor } from "./open-routing-points";
+import { meetingOrStayItem } from "@shared/meeting-point-items";
 import { isOpenCoordOrigin } from "@shared/open-coords";
 import { routingAdapter } from "./index";
 import { RouteRunMemo, routeWithTransitFallback } from "./route-memo";
@@ -141,7 +142,7 @@ export async function osmRideServiceIds(serviceIds: readonly string[]): Promise<
  */
 export async function openPointsForItems(
   tripId: string,
-  items: ReadonlyArray<{ id: string; googlePlaceId?: string | null; providerServiceId?: string | null; latitude?: unknown; longitude?: unknown; origin?: string | null; locationName?: string | null; locationAddress?: string | null }>,
+  items: ReadonlyArray<{ id: string; title?: string | null; googlePlaceId?: string | null; providerServiceId?: string | null; latitude?: unknown; longitude?: unknown; origin?: string | null; locationName?: string | null; locationAddress?: string | null }>,
 ): Promise<Map<string, RoutePoint>> {
   const out = new Map<string, RoutePoint>();
   if (!items.length) return out;
@@ -163,6 +164,8 @@ export async function openPointsForItems(
       ownPoint: rowCoordinatesTrusted(it as any) ? realPoint(it.latitude, it.longitude) : null,
       factPoint: null,
       osmRide: !!it.providerServiceId && osmRides.has(it.providerServiceId),
+      // LG-2 Ask 5: no stay is known here, so a check-in, arrival or private tour has a point only when a person chose one.
+      meetingOrStay: meetingOrStayItem(it.title),
     });
     if (p && isOpenCoordOrigin(p.coordOrigin)) out.set(it.id, p);
   }
@@ -205,7 +208,7 @@ export async function loadPlanLegContext(
   opts: { acceptsPoint?: (p: RoutePoint) => boolean } = {},
 ) {
   // LG-1: which points the routing adapter may be given — the caller's adapter, else the live one. OSRM takes open
-  // coordinates only; a refused stop is unlocated for routing (no routed leg in or out — bridged like any other).
+  // coordinates only; a refused stop is unlocated for routing (no routed leg in or out — LG-2 Ask 6: never bridged).
   const liveAdapter = opts.acceptsPoint ? null : routingAdapter();
   const acceptsPoint = opts.acceptsPoint ?? (liveAdapter?.acceptsPoint ? (p: RoutePoint) => liveAdapter.acceptsPoint!(p) : undefined);
   const items = await storage.getItineraryItems(tripId);
@@ -230,6 +233,23 @@ export async function loadPlanLegContext(
     pulledOpenItems(engineItemIds),
     osmRideServiceIds(items.map((it: any) => it.providerServiceId).filter(Boolean)),
   ]);
+  // The stay is resolved first: a check-in, an arrival or a private tour routes from it (LG-2 Ask 5).
+  const stayItem: any = stayPoint ? items.find((i: any) => i.id === stayPoint.itemId) ?? { id: stayPoint.itemId } : null;
+  const stayRoutePoint = stayPoint
+    ? acceptedPoint(
+        routingPointFor({
+          placeId: placeRefs.get(stayPoint.itemId)?.placeId ?? null,
+          lookupPlaceId: placeIdOf(stayItem),
+          open: openCoords,
+          itemOpen: itemOpen.get(stayPoint.itemId) ?? null,
+          itemPulled: pulled.has(stayPoint.itemId),
+          ownPoint: { lat: stayPoint.lat, lng: stayPoint.lng },
+          factPoint: null,
+          osmRide: false,
+        }),
+        acceptsPoint,
+      )
+    : null;
   const pointFor = (it: any): RoutePoint | null => {
     const own = rowCoordinatesTrusted(it) ? realPoint(it.latitude, it.longitude) : null;
     const fact = own ? null : factPoints.get(it.id) ?? null;
@@ -243,6 +263,9 @@ export async function loadPlanLegContext(
         ownPoint: own,
         factPoint: fact,
         osmRide: !!it.providerServiceId && osmRides.has(it.providerServiceId),
+        // LG-2 Ask 5: a check-in, an arrival or a private tour routes from a chosen point or the stay, else nowhere.
+        meetingOrStay: stayPoint && it.id === stayPoint.itemId ? null : meetingOrStayItem(it.title),
+        stayPoint: stayRoutePoint,
       }),
       acceptsPoint,
     );
@@ -272,22 +295,6 @@ export async function loadPlanLegContext(
     endTime: it.endTime || null,
     durationMinutes: it.durationMinutes ?? null,
   }));
-  const stayItem: any = stayPoint ? items.find((i: any) => i.id === stayPoint.itemId) ?? { id: stayPoint.itemId } : null;
-  const stayRoutePoint = stayPoint
-    ? acceptedPoint(
-        routingPointFor({
-          placeId: placeRefs.get(stayPoint.itemId)?.placeId ?? null,
-          lookupPlaceId: placeIdOf(stayItem),
-          open: openCoords,
-          itemOpen: itemOpen.get(stayPoint.itemId) ?? null,
-          itemPulled: pulled.has(stayPoint.itemId),
-          ownPoint: { lat: stayPoint.lat, lng: stayPoint.lng },
-          factPoint: null,
-          osmRide: false,
-        }),
-        acceptsPoint,
-      )
-    : null;
   if (stayPoint?.source === "google" && stayPoint.fetchedAt && stayRoutePoint?.coordOrigin === "google") googleFetchedAt.set(stayPoint.itemId, stayPoint.fetchedAt);
   const stay =
     stayPoint && stayRoutePoint
@@ -703,7 +710,7 @@ async function computePlanLegsCore(
 
 /**
  * P0 legs rulings 2 and 6 (ledger `2026-10-10-p0-legs-baseline`): per plan day, how many legs the plan
- * SHOULD have (the ONE `desiredPlanLegs`, bridges included) and shows none — a "no route found" marker
+ * SHOULD have (the ONE `desiredPlanLegs`, adjacent pairs only — LG-2 Ask 6) and shows none — a "no route found" marker
  * the FD-3 day line counts and the re-check reports. Counted only where the engine could have answered:
  * the engine on, a routed plan, chosen dates, a day not yet over. Empty map otherwise (nothing claimed).
  * Read only — never writes a leg.
@@ -724,6 +731,24 @@ export async function planLegGapsByDay(tripId: string, now: Date = new Date()): 
 }
 
 /**
+ * LG-2 Ask 6 (decision-maker, Oct 19, 2026): per plan day, the ADJACENT pairs whose leg has no travel time because a
+ * stop has no open coordinate — the ONE `desiredPlanLegs` skip list (§18 rule 1). Each such leg exists with no time
+ * and reads "Travel time not checked yet"; the day line counts them, so the day's check never reads as a pass. Only
+ * on a plan that earns routed legs (a free plan shows no legs at all). Read only — never writes a leg.
+ */
+export async function planLegsNotCheckedByDay(tripId: string): Promise<Map<number, Array<{ fromActivityId: string; toActivityId: string }>>> {
+  const out = new Map<number, Array<{ fromActivityId: string; toActivityId: string }>>();
+  if (!(await tripGetsRoutedLegs(tripId))) return out;
+  const trip = await storage.getTrip(tripId);
+  if (!trip) return out;
+  const { skipped } = await loadPlanLegContext(tripId, trip);
+  for (const p of skipped) {
+    out.set(p.dayNumber, [...(out.get(p.dayNumber) ?? []), { fromActivityId: p.fromItemId, toActivityId: p.toItemId }]);
+  }
+  return out;
+}
+
+/**
  * The routing context for an Optimize run's versions (step 9a ruling 6): the adapter, the plan's
  * transit coverage, its first day and zone, ONE in-memory memo for the run, and its stops' place IDs (so a
  * version stop keys a leg exactly as the plan stop it came from — the apply then reuses the run's own
@@ -735,6 +760,8 @@ export async function versionRoutingFor(comparisonId: string): Promise<{
   placeIdFor: (sourceItemId: string | null | undefined) => string | null;
   /** LG-1: the open coordinate (admin row, else OSM match) for a version stop's plan item, else null. */
   openFor: (sourceItemId: string | null | undefined) => OpenPlaceCoord | null;
+  /** LG-2 Ask 5: the version stop's plan item is a check-in, arrival or private tour — no Google point stands in. */
+  meetingOrStayFor: (sourceItemId: string | null | undefined) => string | null;
 } | null> {
   const adapter = routingAdapter();
   if (!adapter) return null;
@@ -746,6 +773,7 @@ export async function versionRoutingFor(comparisonId: string): Promise<{
   const items = await storage.getItineraryItems(tripId);
   const refs = await placeRefsForTrip(tripId, items.map((i) => i.id));
   const placeIdOf = new Map(items.map((i: any) => [i.id, ((i.googlePlaceId as string | null) || refs.get(i.id)?.placeId || null) as string | null] as const));
+  const meetingOf = new Map(items.map((i: any) => [i.id as string, meetingOrStayItem(i.title)] as const));
   const [open, itemOpen, pulled] = await Promise.all([
     openCoordsForPlaceIds(Array.from(placeIdOf.values()).filter((p): p is string => !!p)),
     openCoordsForItemIds(items.map((i: any) => i.id as string)),
@@ -768,9 +796,9 @@ export async function versionRoutingFor(comparisonId: string): Promise<{
     openFor: (id) => {
       if (!id) return null;
       const pid = placeIdOf.get(id) ?? null;
-      const byPlace = pid ? open.get(pid) ?? null : null;
-      return byPlace?.origin === "admin" ? byPlace : itemOpen.get(id) ?? (pulled.has(id) ? null : byPlace);
+      return openPlaceForItem({ byPlace: pid ? open.get(pid) ?? null : null, itemOpen: itemOpen.get(id) ?? null, itemPulled: pulled.has(id), meetingOrStay: meetingOf.get(id) ?? null });
     },
+    meetingOrStayFor: (id) => (id ? meetingOf.get(id) ?? null : null),
   };
 }
 
@@ -795,7 +823,11 @@ export async function recalculateVariantLegs(
   if (!routing) return { refused: "routing_engine_off" };
   // LG-1: a stop whose plan item has an open coordinate routes from it; any other point is Google (OSRM refuses it).
   const activities = items
-    .filter((item) => (item.latitude && item.longitude) || version?.openFor((item as any).sourceItemId))
+    .filter((item) =>
+      version?.openFor((item as any).sourceItemId)
+        ? true
+        : !version?.meetingOrStayFor((item as any).sourceItemId) && !!(item.latitude && item.longitude),
+    )
     .map((item, idx) => {
       const open = version?.openFor((item as any).sourceItemId) ?? null;
       return {

@@ -349,7 +349,7 @@ export default function PricingPage() {
       icon: UserRound,
       checklist: [
         "A named expert takes your trip end to end",
-        "They review, re-route, and book for you",
+        "They review, re-route, and book in your name.",
         // D-5 (ledger `2026-09-15-d5-no-milestone-billing`): there is NO deposit-then-balance,
         // milestone or instalment billing for expert planning work. A done-for-you event is a
         // coordination engagement whose fee is quoted server-side and captured ONCE

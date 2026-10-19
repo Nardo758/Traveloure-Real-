@@ -52,3 +52,11 @@ F3 cap/window and response timing tolerance; dormant-user threshold; trusted
 must-have item-change payment/ownership ordering; job proof cycle count N;
 final non-email/release ladder and draft metric scores. D4 remains deferred.
 No approval is inferred from this register or an existing implementation.
+
+## Parked work added 19 October 2026
+
+Recorded from the decision-maker's rulings in the CS-1 lane session, 19 October 2026 (ledger `2026-10-19-1517-salvage`).
+
+| ID | Ruling / state | Affected code and evidence boundary |
+|---|---|---|
+| PARK-COMMERCE | **Parked past 21 October.** The commerce branch `work/commerce-part7-verified-carry-20261010` is salvaged in pieces, never merged whole: (a) outbox dev-recipient safety and the non-sending sweep tests; (b) the cart-email state and item-change services; (c) the commerce sweep automation and its internal route; (d) the real-delivery proof scripts, as manual tools. Its migration `360_job_heartbeats_nullable_success.sql` collides with main's 360, so it is renumbered, and its NOT NULL drop is ruled separately. | Phase 0 dependencies: (a) D6; (b) D1, D11 and the postal-address rule; (c) D7 and the migration ruling; (d) D6, D8 and D12. |

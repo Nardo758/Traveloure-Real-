@@ -208,6 +208,7 @@ const WHY_TEXT: Record<PlanIssue["why"], string> = {
   before_opening: "starts before it opens",
   after_closing: "starts after it closes",
   closed_day: "is closed that day",
+  closed_date: "is closed on that date",
   closes_early: "closes before your visit ends",
   after_last_entry: "starts after last entry",
   leg_too_long: "can’t be reached in time from the stop before",

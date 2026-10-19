@@ -255,7 +255,7 @@ export function sourcedLineSuffix(place: { provenance: string | null; checked: s
 const SHEET_FACT_LABEL: Partial<Record<string, string>> = {
   hours: "Hours",
   address: "Address",
-  closure: "Closure",
+  closed_dates: "Closed dates",
   ticketing_rule: "Tickets",
   transit: "Getting there",
   price: "Price",

@@ -1,7 +1,8 @@
 /**
  * P0 legs baseline (decision-maker rulings, Oct 10, 2026 — ledger `2026-10-10-p0-legs-baseline`).
  *
- *   L1 an unlocated stop is reported AND bridged: A→C is routed, the B pairs are skipped (ruling 1)
+ *   L1 an unlocated stop is reported for both pairs it breaks and is NOT bridged — no A→C leg (LG-2 Ask 6, Oct 19,
+ *      2026, supersedes ruling 1's bridge)
  *   L2 a default-transit leg with no transit route is asked once as a drive and flagged (ruling 2)
  *   L3 transit and drive both without a route ⇒ a labelled straight-line estimate replaces the prior leg
  *      (9b-d, Leon's ruling Oct 17, 2026 — was "no leg")
@@ -16,7 +17,7 @@
  *   L9 P0-b item 8: a Kyoto plan (`apiTransitCoverage: false`) with a 3 km pair makes ZERO transit asks and
  *      stores a drive leg labelled `transit_api_uncovered`, which the plan payload carries as `transitApiUncovered`
  *   L10 P0-b acceptance: 2 located stops + 1 unlocated + a legacy drive leg on the unlocated pair ⇒ the plan
- *      shows 0 unsourced legs and 1 routed leg; the legacy row is retired (superseded, not deleted) and the
+ *      shows 0 unsourced legs and no routed leg round the gap (Ask 6); the legacy row is retired (superseded, not deleted) and the
  *      unlocated stop is the one gap the slip names (its line is pinned by G6)
  *   L11 P0-b items 1 and 10, pure: the skip reason the plancard reports, and a start-only PATCH's end time
  *
@@ -146,10 +147,10 @@ after(async () => {
   await db.execute(sql`DELETE FROM users WHERE id = ${owner}`);
 });
 
-test("L1: an unlocated stop is reported for both pairs it breaks, and A→C is routed", async () => {
+test("L1: an unlocated stop is reported for both pairs it breaks, and no leg goes round it (Ask 6)", async () => {
   const r: any = await computePlanLegs(BRIDGE, { adapter: new FakeAdapter() });
   assert.equal(r.skippedPairs, 2, "a>b and b>c are reported");
-  assert.deepEqual(pairs(await legs(BRIDGE)), ["1:a>c"], "the located stops either side are connected");
+  assert.deepEqual(pairs(await legs(BRIDGE)), [], "no A→C leg skips the unlocated stop");
 });
 
 test("L2: transit with no route ⇒ ONE drive ask, stored as a drive and flagged", async () => {
@@ -222,7 +223,7 @@ test("L5: a day already over is frozen — no call, nothing recomputed, nothing 
 test("L6: the gap count reads the desired pairs; the re-check reports it and writes nothing", async () => {
   await db.execute(sql`DELETE FROM transport_legs WHERE trip_id = ${BRIDGE}`);
   const gaps = await planLegGapsByDay(BRIDGE, new Date("2026-11-01T00:00:00Z"));
-  assert.equal(gaps.get(1), 1, "a>c has no leg");
+  assert.equal(gaps.get(1), undefined, "Ask 6: no pair is desired across the unlocated stop — its pairs are not checked, not 'no route'");
   const fake = new FakeAdapter();
   const r = await recheckPlanLegs(
     { tripId: BRIDGE, userId: owner, destination: "Kyoto", startDate: "2026-11-11", timezone: "Asia/Tokyo", datesConfirmed: true, since: new Date(0), checkDate: "2026-11-08", now: new Date() },
@@ -298,7 +299,7 @@ test("L9: Kyoto (no transit in the routing API) — a 3 km pair makes zero trans
   assert.equal(routedFactsOf({ source: leg.source, calculatedAt: leg.calculated_at, alternativeModes: leg.alternative_modes })?.transitUnavailable, undefined);
 });
 
-test("L10: 2 located + 1 unlocated + a legacy leg on the unlocated pair ⇒ 0 unsourced shown, 1 routed, legacy retired", async () => {
+test("L10: 2 located + 1 unlocated + a legacy leg on the unlocated pair ⇒ 0 unsourced shown, 0 routed (Ask 6), legacy retired", async () => {
   const r: any = await computePlanLegs(GAP, { adapter: new FakeAdapter() });
   assert.equal(r.skippedPairs, 2, "a>b and b>c are the honest gaps the unlocated stop makes");
   assert.equal(r.retiredLegacy, 1);
@@ -309,7 +310,7 @@ test("L10: 2 located + 1 unlocated + a legacy leg on the unlocated pair ⇒ 0 un
   const plan: any = await assembleTripPlan(GAP, "full");
   const shown = (plan.days ?? []).flatMap((d: any) => d.transports ?? []);
   assert.equal(shown.filter((l: any) => !l.routed).length, 0, "no unsourced leg shows on a routed plan");
-  assert.equal(shown.filter((l: any) => l.routed).length, 1, "the one routed leg bridges a→c");
+  assert.equal(shown.filter((l: any) => l.routed).length, 0, "Ask 6: no routed leg goes round the unlocated stop");
 });
 
 test("L11: the skip reason names the first gate that stops the run; a start-only edit moves the end by the item's own minutes", () => {

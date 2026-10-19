@@ -16,7 +16,7 @@ import React from "react";
 import { renderToString } from "react-dom/server";
 import { OptimizerLead } from "../../plan/OptimizerLead";
 import { cardLegCount, cardSlotLeg } from "../TripCardDays";
-import { bridgeLabelFor, bridgeLegLabel, slipLegBetween } from "@/lib/slip-legs";
+import { bridgeLegLabel, slipLegBetween } from "@/lib/slip-legs";
 import { LEAD_ZERO, SOME_TRAVEL_TIMES_UNCHECKED, TRAVEL_TIMES_COME_WITH_OPTIMIZE, planLegCoverage } from "@shared/optimizer-lead";
 
 (globalThis as any).React = React;
@@ -70,19 +70,14 @@ describe("P0-d", () => {
     routed: { line: "Keihan Main Line", fare: null, provenance: { source: "google_routes", checkedAt: "2026-10-10T05:00:00Z" } },
   };
 
-  it("PD3 the slip and the Trip Card draw the bridge in the same slot, with the same name", () => {
-    const slip = slipLegBetween([{ dayNumber: 1, activities: acts, transports: [bridge as any] }], "soba", "tj");
-    assert.ok(slip?.bridge, "the slip's slot before Tofuku-ji is the bridge");
-    assert.equal(bridgeLabelFor(acts, slip!.bridge!, "tj"), "Fushimi Inari → Tofuku-ji · around Soba Restaurant");
+  it("PD3 LG-2 Ask 6: neither the slip nor the Trip Card draws a leg round the unlocated stop", () => {
+    assert.equal(slipLegBetween([{ dayNumber: 1, activities: acts, transports: [bridge as any] }], "soba", "tj"), null, "no bridge in the slip's slot before Tofuku-ji");
     assert.equal(slipLegBetween([{ dayNumber: 1, activities: acts, transports: [bridge as any] }], "fi", "soba"), null, "no leg into the unlocated stop");
-
     assert.equal(cardSlotLeg([bridge as any], acts, 0), null, "the card's slot into the unlocated stop is empty");
-    const card = cardSlotLeg([bridge as any], acts, 1);
-    assert.equal((card?.leg as any)?.id, "leg-bridge");
-    assert.equal(bridgeLabelFor(acts, card!.bridge!, "tj"), bridgeLabelFor(acts, slip!.bridge!, "tj"));
+    assert.equal(cardSlotLeg([bridge as any], acts, 1), null, "and the slot after it draws no bridge");
   });
 
-  it("PD4 the card's leg count is stop-to-stop legs + bridges; stay legs are in neither", () => {
+  it("PD4 the card's leg count is stop-to-stop legs, a not-checked leg included (Ask 6); stay legs are out", () => {
     const stay = { id: "hotel", name: "Hotel", type: "accommodation" };
     const day = {
       activities: [stay, ...acts, { id: "nj", name: "Nanzen-ji" }] as any[],
@@ -92,7 +87,12 @@ describe("P0-d", () => {
         { id: "own", legOrder: 3, fromActivityId: "tj", toActivityId: "nj" },
         { id: "s2", legOrder: 4, fromActivityId: "nj", toActivityId: "hotel" },
       ] as any[],
+      legsNotChecked: [
+        { fromActivityId: "fi", toActivityId: "soba" },
+        { fromActivityId: "soba", toActivityId: "tj" },
+      ],
     };
-    assert.equal(cardLegCount([day]), 2, "the bridge and the stop-to-stop leg; the two stay legs are out");
+    assert.equal(cardLegCount([day]), 3, "two not-checked legs and the stop-to-stop leg; the bridge and the two stay legs are out");
+    assert.equal(cardLegCount([{ ...day, legsNotChecked: [] }]), 1, "the bridge is never counted");
   });
 });

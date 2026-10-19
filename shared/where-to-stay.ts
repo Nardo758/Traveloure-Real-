@@ -355,7 +355,9 @@ import type { StayCloseness } from "./stay-pick";
 export type WhereToStayStay =
   /** FU-S1-3: `closeness` is optional on the wire — absent means the payload predates it, which every reader
    *  treats exactly like null (no closeness line, §13). The server always sets it. */
-  | { tier: "straight_line"; hotels: Array<StayHotel & { closeness?: StayCloseness | null }> }
+  /** `estimated`: a PAID plan with no pick it may show (ledger `2026-10-18-stay-pick-est-fallback`) — the card marks
+   *  the list "est.". Absent on a free plan, whose card keeps its own straight-line wording. */
+  | { tier: "straight_line"; estimated?: true; hotels: Array<StayHotel & { closeness?: StayCloseness | null }> }
   | {
       tier: "routed";
       /** The picked hotel, or null when nothing has been scored yet or it has left our inventory (§13). */
