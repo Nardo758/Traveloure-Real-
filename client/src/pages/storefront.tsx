@@ -56,6 +56,7 @@ import { useToast } from "@/hooks/use-toast";
 import { SEOHead } from "@/components/seo-head";
 import { useAuth } from "@/hooks/use-auth";
 import { useAskExpert } from "@/lib/use-ask-expert";
+import { useExpertAvailability } from "@/lib/expert-availability";
 import { storefrontContactInput } from "@/lib/earner-address";
 import { LanguageMenu } from "@/components/language-menu";
 import { useLocale } from "@/hooks/use-locale";
@@ -655,6 +656,12 @@ export default function StorefrontPage() {
     ...(readyMade.length > 0 ? (["Ready-Made Trips"] as const) : []),
   ];
 
+  // SH-1 item 11 (Q11.2): the storefront's Message CTAs are addressed expert CTAs — they draw only
+  // while the earner's market has an expert to ask. The earner's location when the page states one,
+  // else any live market.
+  const storefrontLocation = data?.earner?.location?.trim() || null;
+  const contactAvailable = useExpertAvailability(storefrontLocation ? { city: storefrontLocation } : "any");
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-[var(--earn-ground)]">
@@ -979,14 +986,16 @@ export default function StorefrontPage() {
                     </Button>
                   </Link>
                 ) : (
-                  <Button
-                    className="w-full text-white bg-[color:var(--earn-coral-ink)] hover:bg-[color:var(--earn-coral-ink)]/90"
-                    onClick={messageEarner}
-                    data-testid="button-message-storefront"
-                  >
-                    <MessageCircle className="w-4 h-4 mr-1.5 shrink-0" />
-                    {messageLabel}
-                  </Button>
+                  contactAvailable ? (
+                    <Button
+                      className="w-full text-white bg-[color:var(--earn-coral-ink)] hover:bg-[color:var(--earn-coral-ink)]/90"
+                      onClick={messageEarner}
+                      data-testid="button-message-storefront"
+                    >
+                      <MessageCircle className="w-4 h-4 mr-1.5 shrink-0" />
+                      {messageLabel}
+                    </Button>
+                  ) : null
                 )}
                 {/* "Share page", not "Share": the booking panel's "Share my plan" is a different act
                     (it puts this expert on the traveler's plan), and two buttons both called
@@ -1233,7 +1242,7 @@ export default function StorefrontPage() {
                       actionCharges={actionLabel ? storefrontActionCharges(s.buyAction) : undefined}
                       nextAvailableText={actionLabel ? nextAvailableText : null}
                       onMessage={
-                        messageOnly
+                        messageOnly && contactAvailable
                           ? () =>
                               askExpert({
                                 serviceId: s.id,
@@ -1296,7 +1305,7 @@ export default function StorefrontPage() {
         </section>
 
         {/* "Not sure what you're looking for?" message band — same wiring as the hero CTA. */}
-        {!isOwnStorefront && (
+        {!isOwnStorefront && contactAvailable && (
           <div className={`mt-4 flex flex-wrap items-center gap-5 p-6 ${CARD_SHELL}`} data-testid="storefront-message-band">
             {earner.profileImageUrl ? (
               <img src={earner.profileImageUrl} alt={displayName} className="w-14 h-14 rounded-full object-cover shrink-0" />
