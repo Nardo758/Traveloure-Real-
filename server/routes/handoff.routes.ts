@@ -57,6 +57,13 @@ import {
 import { HANDOFF_KINDS, handoffBannerState, handoffCityName, handoffExpertDisclosed } from "@shared/handoff";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
+import { getPlatformFlag } from "../services/platform-flags";
+import { HANDOFF_BOOKING_OFF, HANDOFF_BOOKING_SETTING } from "@shared/traveler-doors";
+
+/** Ledger `2026-10-18-traveler-doors-hidden`: a NEW `book` ask or quote is refused with 410 while `handoff_booking` is off. */
+async function bookingHandoffOff(kind: string): Promise<boolean> {
+  return kind === "book" && !(await getPlatformFlag(HANDOFF_BOOKING_SETTING, false));
+}
 
 const router = Router();
 
@@ -157,6 +164,9 @@ router.post("/api/trips/:tripId/handoff/quote", isAuthenticated, async (req: any
   if (!userId) return;
   const parsed = quoteBody.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ message: "Choose how much help you want" });
+  if (await bookingHandoffOff(parsed.data.kind)) {
+    return res.status(HANDOFF_BOOKING_OFF.status).json({ code: HANDOFF_BOOKING_OFF.code, message: HANDOFF_BOOKING_OFF.message });
+  }
   const q = await quoteHandoff({ tripId: req.params.tripId, kind: parsed.data.kind, itemIds: parsed.data.itemIds });
   if ("ok" in q) return refuse(res, q);
   const { travelerFeeSnapshot: _snap, ...visible } = q;
@@ -168,6 +178,9 @@ router.post("/api/trips/:tripId/handoff", isAuthenticated, async (req: any, res)
   if (!userId) return;
   const parsed = askBody.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ message: "Choose how much help you want" });
+  if (await bookingHandoffOff(parsed.data.kind)) {
+    return res.status(HANDOFF_BOOKING_OFF.status).json({ code: HANDOFF_BOOKING_OFF.code, message: HANDOFF_BOOKING_OFF.message });
+  }
   try {
     const out = await askHandoff({ tripId: req.params.tripId, userId, kind: parsed.data.kind, itemIds: parsed.data.itemIds, notes: parsed.data.notes ?? null });
     if (!out.ok) return refuse(res, out);

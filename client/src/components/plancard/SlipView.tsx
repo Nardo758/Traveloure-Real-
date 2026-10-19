@@ -188,6 +188,7 @@ import {
   SLIP_TITLE_FONT_CLASS,
   tintPillStyle,
 } from "./slip-tokens";
+import { useTravelerDoors } from "@/hooks/use-traveler-doors";
 
 // ── DTO shape (the plancard route response — PlanCardData plus the blocks the slip reads) ──
 
@@ -871,6 +872,8 @@ function SlipDayItem({
   // BP-1: which booking controls the sheet draws, from the item's resolved path (`@shared/booking-path`). An
   // unresolved path keeps the pre-BP-1 sheet (the stay's Book and "Book this for me") — no new claim either way.
   const sheetControls = a.bookingPath ? bookingControls(a.bookingPath) : { primaryBook: true, bookForMe: true };
+  // Ledger `2026-10-18-traveler-doors-hidden`: "Book this for me" is drawn only while `handoff_booking` is on.
+  const { handoffBooking } = useTravelerDoors();
   useEffect(() => {
     if (detailsRequest > 0) setSheetOpen(true);
   }, [detailsRequest]);
@@ -981,17 +984,19 @@ function SlipDayItem({
                 <AffiliateBookButton activity={a as any} testId={`item-sheet-affiliate-book-${a.id}`} />
               ) : null}
               {/* R323 (step 7b, §12 step 1): "Book this for me" opens the ONE handoff chooser. */}
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setSheetOpen(false);
-                  openHandoffChooser({ kind: "book", itemIds: [a.id] });
-                }}
-                data-testid={`item-sheet-book-for-me-${a.id}`}
-              >
-                {ITEM_MENU_LABELS.bookForMe}
-              </Button>
+              {handoffBooking ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setSheetOpen(false);
+                    openHandoffChooser({ kind: "book", itemIds: [a.id] });
+                  }}
+                  data-testid={`item-sheet-book-for-me-${a.id}`}
+                >
+                  {ITEM_MENU_LABELS.bookForMe}
+                </Button>
+              ) : null}
             </>
           ) : null
         }
