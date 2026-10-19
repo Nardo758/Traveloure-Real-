@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { recordCreated } from "./seeds/lib/boot-seed-rules";
 import { experienceTypes, experienceTemplateSteps } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 const coreExperienceTypes = [
   { 
@@ -576,10 +576,13 @@ export async function seedExperienceTypes(): Promise<{ created: number; existing
   let existing = 0;
   let updated = 0;
 
+  // One read for every slug (ledger `2026-10-19-boot-seed-timing`): a warm boot makes one round trip, not 23.
+  const present = new Set(
+    (await db.select({ slug: experienceTypes.slug }).from(experienceTypes)
+      .where(inArray(experienceTypes.slug, coreExperienceTypes.map((t) => t.slug)))).map((r) => r.slug),
+  );
   for (const expType of coreExperienceTypes) {
-    const exists = await db.select().from(experienceTypes)
-      .where(eq(experienceTypes.slug, expType.slug))
-      .then(r => r[0]);
+    const exists = present.has(expType.slug);
     
     if (!exists) {
       const [inserted] = await db.insert(experienceTypes).values({
