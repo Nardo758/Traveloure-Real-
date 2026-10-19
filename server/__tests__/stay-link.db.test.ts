@@ -73,7 +73,7 @@ before(async () => {
   const expires = new Date(Date.now() + 30 * 86_400_000);
   await db.execute(sql`INSERT INTO hotel_cache (id, hotel_id, city_code, name, latitude, longitude, city, expires_at)
     VALUES (${ids.hotel}, ${ids.hotel}, 'LKV', 'Hotel Kamogawa', 35.0, 135.77, ${CITY}, ${expires})`);
-  const pick = { hotelId: ids.hotel, hotelKind: "hotel_cache", scoredCount: 1, candidateCount: 1, stopsHash: "1-x", computedAt: new Date().toISOString(), tier: "routed", changed: false };
+  const pick = { hotelId: ids.hotel, hotelKind: "hotel_cache", scoredCount: 1, candidateCount: 1, stopsHash: "1-x", computedAt: new Date().toISOString(), tier: "routed", changed: false, router: "osrm" };
   await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, start_date, end_date, status, stay_pick)
     VALUES (${ids.trip}, ${ids.owner}, 'LK plan', ${`${CITY}, Japan`}, '2027-05-01', '2027-05-03', 'planning', ${JSON.stringify(pick)}::jsonb)`);
 });
@@ -173,4 +173,7 @@ test("LK9 pickedStayLink: the routed pick only; free plan no link; stranger 404"
   assert.deepEqual(await pickedStayLink(ids.trip, ids.owner, { ...deps, routed: async () => true }), { stayLink: { kind: "google", url: "https://kamogawa.example/" } });
   assert.deepEqual(await pickedStayLink(ids.trip, ids.owner, { ...deps, routed: async () => false }), { stayLink: null }, "a free plan has no pick to open");
   assert.equal(await pickedStayLink(ids.trip, ids.stranger, { ...deps, routed: async () => true }), null, "one 404 for a stranger");
+  // Ledger `2026-10-18-stay-pick-est-fallback`: a stored Google-ranked pick (no `router`) is never linked.
+  await db.execute(sql`UPDATE trips SET stay_pick = stay_pick - 'router' WHERE id = ${ids.trip}`);
+  assert.deepEqual(await pickedStayLink(ids.trip, ids.owner, { ...deps, routed: async () => true }), { stayLink: null }, "a Google-ranked pick is not linked");
 });
