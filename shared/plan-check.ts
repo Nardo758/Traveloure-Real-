@@ -25,6 +25,8 @@ import {
   openPathDays,
   paceOver,
   pathNotChecked,
+  legNotChecked,
+  legNotCheckedDays,
   timedEntryConflicts,
   visitEndMinutes,
   walkingSavedKm,
@@ -162,7 +164,7 @@ function lastEntryFor(candidates: readonly PlanCheckLastAdmission[], dateIso: st
 
 /**
  * Pure. The ONE assembly of the feasibility inputs (§18 rule 1): the findings, the day line and a stop's hours read the
- * same hours, last entries and rides. A ride is derived between two consecutive LOCATED stops of a day — located = an
+ * same hours, last entries and rides. A ride is derived between two ADJACENT stops of a day that are both LOCATED — located = an
  * OPEN point (FB-1 step 2); a leg the plan shows for the pair wins with its own mode, else the engine's default-mode
  * rule. It departs when the stop it leaves ends; no end ⇒ unchecked.
  */
@@ -204,10 +206,12 @@ export function feasibilityView(input: PlanCheckInput): FeasibilityView {
   const byDay = new Map<number, PlanCheckStop[]>();
   for (const r of input.stops) byDay.set(r.dayNumber, [...(byDay.get(r.dayNumber) ?? []), r]);
   byDay.forEach((list, dayNumber) => {
-    const located = list.filter((r): r is PlanCheckStop & { point: { lat: number; lng: number } } => r.point !== null);
-    for (let i = 0; i + 1 < located.length; i++) {
-      const a = located[i];
-      const b = located[i + 1];
+    // LG-2 Ask 6: a ride is derived between ADJACENT stops only, both with an open point — never across a stop with none.
+    const hasPoint = (r: PlanCheckStop): r is PlanCheckStop & { point: { lat: number; lng: number } } => r.point !== null;
+    for (let i = 0; i + 1 < list.length; i++) {
+      const a = list[i];
+      const b = list[i + 1];
+      if (!hasPoint(a) || !hasPoint(b)) continue;
       const key = `${dayNumber}|${a.id}|${b.id}`;
       const inferred = !shownMode.has(key);
       const mode = inferred ? defaultRoutedMode(a.point, b.point, input.transitCoverage) : shownMode.get(key) ?? null;
@@ -478,5 +482,8 @@ export function checkPlan(input: PlanCheckInput): PlanCheckResult {
     }
   }
 
-  return { findings: leadFindings(found), allFindings, issues, notChecked: pathNotChecked(notCheckedDays) };
+  // LG-2 Ask 6: a day with a leg that has no travel time (an adjacent stop with no open point) is not checked for
+  // reachability — it never reads as a pass.
+  const legDays = legNotCheckedDays(input.stops.map((r) => ({ dayNumber: r.dayNumber, open: r.point })));
+  return { findings: leadFindings(found), allFindings, issues, notChecked: [...pathNotChecked(notCheckedDays), ...legNotChecked(legDays)] };
 }
