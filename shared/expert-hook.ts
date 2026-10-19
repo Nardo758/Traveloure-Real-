@@ -24,7 +24,9 @@ export const EXPERT_HOOK_OFF_LINE = "With local picks, this day gets notes on ti
 export const expertHookOnLine = (cityName: string) =>
   `A ${cityName} local can add notes on timing, crowds and food near this day’s stops.`;
 export const EXPERT_HOOK_BUTTON = "Want a local to tune this day?";
-export const inSeasonAdditionsLine = (count: number, day: number) => `${count} in-season additions for Day ${day}`;
+/** Singular at one, plural otherwise — the FD-5 teaser line's rule (`localTeaserLine`). */
+export const inSeasonAdditionsLine = (count: number, day: number) =>
+  `${count} in-season addition${count === 1 ? "" : "s"} for Day ${day}`;
 export const IN_SEASON_SEE_THEM = "See them";
 
 /** The refusal for a value an admin tries to save, or null when it is a valid list. */

@@ -62,6 +62,8 @@ describe("the section", () => {
     }
     const t = text(hook({ switchOn: true, canAsk: true }, { inSeason: { count: 2, href: "/plans/t1?view=versions" } }));
     assert.ok(t.includes("2 in-season additions for Day 2 · See them"));
+    const one = text(hook({ switchOn: true, canAsk: true }, { inSeason: { count: 1, href: "/plans/t1?view=versions" } }));
+    assert.ok(one.includes("1 in-season addition for Day 2 · See them"), "singular at one");
   });
   it("D6 inside DayBlock: last in an open day, absent in a closed one", () => {
     const section = <DayExpertHook dayKey="2" dayNumber={2} hook={{ switchOn: false, cityName: "Kyoto", canAsk: false }} onAsk={() => {}} />;

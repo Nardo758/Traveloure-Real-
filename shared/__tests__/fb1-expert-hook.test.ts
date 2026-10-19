@@ -29,6 +29,8 @@ test("H1 the strings, word for word", () => {
   assert.equal(expertHookOnLine("Kyoto"), "A Kyoto local can add notes on timing, crowds and food near this day’s stops.");
   assert.equal(EXPERT_HOOK_BUTTON, "Want a local to tune this day?");
   assert.equal(inSeasonAdditionsLine(3, 2), "3 in-season additions for Day 2");
+  assert.equal(inSeasonAdditionsLine(1, 2), "1 in-season addition for Day 2", "singular at one, as the FD-5 teaser line");
+  assert.equal(inSeasonAdditionsLine(2, 2), "2 in-season additions for Day 2");
   assert.equal(IN_SEASON_SEE_THEM, "See them");
 });
 
@@ -72,6 +74,7 @@ test("H6 the in-season line draws nothing at zero", () => {
   assert.equal(inSeasonLine(-1, 2), null);
   assert.equal(inSeasonLine(2, null), null);
   assert.equal(inSeasonLine(2, 3), "2 in-season additions for Day 3");
+  assert.equal(inSeasonLine(1, 3), "1 in-season addition for Day 3");
 });
 
 test("H7 the in-season counter: new stops only, transport never", () => {
