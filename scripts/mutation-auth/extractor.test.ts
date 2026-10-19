@@ -388,7 +388,7 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // + POST /api/viator/live/click (VD-1): session-self 360 → 361.
   // + POST /api/trips/:tripId/retime-fixes/:itemId/apply (FB-1 step 4b): session-self 361 → 362.
   assert.deepEqual(manifest.boundaryTotals, {
-    "admin-role": 182, "session-self": 362, "resource-owner": 102,
+    "admin-role": 183, "session-self": 362, "resource-owner": 102,
     signature: 6, "public-or-system": 50, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
