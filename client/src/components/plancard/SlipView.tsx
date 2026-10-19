@@ -165,6 +165,7 @@ import {
   useOptionSets,
 } from "./SlipOptionSets";
 import { AddLocalExpertButton, ExpertDoorCard, useExpertDoorState } from "./ExpertDoor";
+import { DayExpertHook } from "../plan/DayExpertHook";
 import { HandoffChooserHost } from "@/components/plan/HandoffChooser";
 import { HandoffBanner, HandoffFooter, SuggestionStrip, useExpertSuggestions, useHandoff } from "@/components/plan/HandoffBanner";
 import { handoffDayStat, handoffExpertLabel, handoffPenScope, openHandoffChooser } from "@/lib/handoff-client";
@@ -2690,7 +2691,21 @@ export function SlipView({
                 open={dayIsOpen(slot.key, slotIdx, slotItems)}
                 onOpenChange={(o) => setDayOpen((m) => ({ ...m, [slot.key]: o }))}
                 feasibility={day?.feasibility ?? null}
-                localTeaser={day?.localTeaser ?? null}
+                // FB-1: on a free plan the owner's hook section carries the FD-5 counts in place of its plain line,
+                // so the day does not also draw them at the top.
+                localTeaser={isOwner && data.expertHook ? null : day?.localTeaser ?? null}
+                hook={
+                  isOwner && data.expertHook && slot.dayNum != null ? (
+                    <DayExpertHook
+                      dayKey={String(slot.dayNum)}
+                      dayNumber={slot.dayNum}
+                      hook={data.expertHook}
+                      teaser={day?.localTeaser ?? null}
+                      inSeason={day?.inSeason ?? null}
+                      onAsk={() => setExpertDoorState("open")}
+                    />
+                  ) : null
+                }
                 fixControl={fixedPlan && slot.dayNum != null ? <FixedDayControl tripId={tripId} view={fixedPlan} day={slot.dayNum} /> : null}
                 thumb={
                   slot.dayNum != null && dayPhotoItemId.get(slot.dayNum) ? (
