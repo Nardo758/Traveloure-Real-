@@ -103,7 +103,6 @@ import {
 // about. There is no separate traveler↔provider conversation system to point at: this IS the rail,
 // and it works; the CTA was simply speaking a language the destination doesn't parse.
 import { useAskExpert } from "@/lib/use-ask-expert";
-import { useExpertAvailability } from "@/lib/expert-availability";
 // THE ONE price-unit derivation (§18 rule 1) — see the priceLabel comment below.
 import { resolvePriceUnit, priceUnitWord } from "@/lib/price-unit";
 // S10 (Gate G4): the shared bundle-component summary shape + pure link/label helpers, so the
@@ -961,12 +960,6 @@ export default function ServiceDetailPage() {
     );
     target?.focus();
   }, [service?.id]);
-
-  // SH-1 item 11 (Q11.2): Message on a listing is an addressed expert CTA — "Contact Provider"
-  // draws only while the listing's city has an expert to ask. "Unknown" is no city.
-  const contactAvailable = useExpertAvailability({
-    city: service?.location && service.location.trim() !== "Unknown" ? service.location : null,
-  });
 
   if (serviceLoading) {
     return (
@@ -2061,33 +2054,31 @@ export default function ServiceDetailPage() {
 
                   {/* CONTACT IS NOT A BUY BUTTON, so ruling 9 does not author it and V-13 did not
                       move it. It is the LD 40 contact rail — `{ serviceId }` as the address, the
-                      recipient resolved server-side — and it renders whenever the listing's city has an
-                      expert to ask (SH-1 item 11, Q11.2; `contactAvailable`). Where the descriptor names `message` in either slot (rows 1, 10 and the
+                      recipient resolved server-side — and it renders unconditionally, as it always
+                      has. Where the descriptor names `message` in either slot (rows 1, 10 and the
                       §13 fallback row 14), `buy.namesMessage` is true and THIS control is that
                       rendering; a second message button beside it would be two affordances for one
                       rail. Its label stays the page's, because a contact label is not a buy label. */}
-                  {contactAvailable && (
-                    <Button
-                      variant="ghost"
-                      className="w-full min-h-[42px] rounded-[8px] border border-[color:var(--earn-border)] bg-white hover:bg-[var(--earn-ground)] text-[color:var(--earn-navy)] font-bold text-[12px]"
-                      disabled={!providerVerification?.displayName}
-                      onClick={() =>
-                        askExpert({
-                          // Locked Decision 40 (lane 3): the LISTING is the address. The server
-                          // resolves the approved listing's owner itself — this CTA no longer reads
-                          // `service.userId`, which lane 2 removed from the public payload.
-                          serviceId: service.id,
-                          subject: service.serviceName,
-                          returnTo: `/services/${service.id}`,
-                          fallbackName: providerVerification?.displayName ?? null,
-                        })
-                      }
-                      data-testid="button-contact-provider"
-                    >
-                      <MessageSquare className="w-4 h-4 mr-2" />
-                      Contact Provider
-                    </Button>
-                  )}
+                  <Button
+                    variant="ghost"
+                    className="w-full min-h-[42px] rounded-[8px] border border-[color:var(--earn-border)] bg-white hover:bg-[var(--earn-ground)] text-[color:var(--earn-navy)] font-bold text-[12px]"
+                    disabled={!providerVerification?.displayName}
+                    onClick={() =>
+                      askExpert({
+                        // Locked Decision 40 (lane 3): the LISTING is the address. The server
+                        // resolves the approved listing's owner itself — this CTA no longer reads
+                        // `service.userId`, which lane 2 removed from the public payload.
+                        serviceId: service.id,
+                        subject: service.serviceName,
+                        returnTo: `/services/${service.id}`,
+                        fallbackName: providerVerification?.displayName ?? null,
+                      })
+                    }
+                    data-testid="button-contact-provider"
+                  >
+                    <MessageSquare className="w-4 h-4 mr-2" />
+                    Contact Provider
+                  </Button>
                 </div>
 
                 {/* Trust panel — the payment claim is CONDITIONED on the resolved buy action.

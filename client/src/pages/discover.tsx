@@ -446,9 +446,12 @@ function ServiceCard({
 }) {
   const [, navigateTo] = useLocation();
   const askExpert = useAskExpert();
-  // SH-1 item 11 (Q11.2): Message and "Ask an expert" draw only while the listing's city has an
-  // expert to ask. The raw location — never the "Remote" display fallback below.
+  // SH-1 item 11 (Q11.2 — expert CTAs only): "Ask an expert" draws only while the listing's city has
+  // an expert to ask (the raw location — never the "Remote" display fallback below). Message on a
+  // message-only listing is gated the same way only when the listing is an EXPERT's; a provider's
+  // listing keeps its Message (the role comes from the /api/discover row, server-derived).
   const expertAvailable = useExpertAvailability({ city: service.location });
+  const messageAvailable = !isExpertRole(service.providerRole) || expertAvailable;
   // ONE resolver, ONE href builder (client/src/lib/trip-target.ts) — the detail page reads the
   // same `?tripId=` back off the URL. With no target trip this is the pre-existing plain link.
   const detailHref = serviceDetailHref(service.id, targetTripId);
@@ -621,7 +624,7 @@ function ServiceCard({
             </div>
             <div className="grid grid-cols-2 gap-2">
               {messageOnly ? (
-                expertAvailable ? (
+                messageAvailable ? (
                   <Button
                     size="sm"
                     variant="outline"

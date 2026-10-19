@@ -656,11 +656,12 @@ export default function StorefrontPage() {
     ...(readyMade.length > 0 ? (["Ready-Made Trips"] as const) : []),
   ];
 
-  // SH-1 item 11 (Q11.2): the storefront's Message CTAs are addressed expert CTAs — they draw only
-  // while the earner's market has an expert to ask. The earner's location when the page states one,
-  // else any live market.
+  // SH-1 item 11 (Q11.2 — expert CTAs only): an EXPERT's Message CTAs draw only while their market has
+  // an expert to ask (their location when the page states one, else any live market). A provider's
+  // storefront is not gated: contacting a provider is not an expert CTA.
   const storefrontLocation = data?.earner?.location?.trim() || null;
-  const contactAvailable = useExpertAvailability(storefrontLocation ? { city: storefrontLocation } : "any");
+  const expertContactAvailable = useExpertAvailability(storefrontLocation ? { city: storefrontLocation } : "any");
+  const contactAvailable = isProviderRole(data?.earner?.role) || expertContactAvailable;
 
   if (isLoading) {
     return (
