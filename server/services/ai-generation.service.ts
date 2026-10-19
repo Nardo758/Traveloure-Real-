@@ -405,7 +405,6 @@ ${JSON.stringify(request.context, null, 2)}`;
 
 Create itineraries that are:
 1. Realistic - Consider travel times, opening hours, and fatigue
-2. Balanced - Mix popular attractions with hidden gems
 3. Budget-aware - Stay within the traveler's budget
 4. Personalized - Reflect the traveler's interests and pace preference
 5. Practical - Include transportation and meal suggestions
@@ -481,9 +480,6 @@ Return JSON with this structure:
       
       if (tpCtx.pulseScore) {
         tpParts.push(`- City Pulse Score: ${tpCtx.pulseScore}/100 (activity level)`);
-      }
-      if (tpCtx.trendingScore) {
-        tpParts.push(`- Trending Score: ${tpCtx.trendingScore}/100 (7-day trend)`);
       }
       if (tpCtx.crowdLevel) {
         tpParts.push(`- Current Crowd Level: ${tpCtx.crowdLevel}`);

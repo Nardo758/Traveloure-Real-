@@ -2091,4 +2091,7 @@ export const MIGRATION_FILES = [
   // 392 — DELETE FROM travel_time_matrix (data only; the stored Google Route Matrix cells). The table, its declaration and
   // travel_time_matrix_refreshes' run rows stay. LG-2, ledger 2026-10-18-lg2-route-matrix-delete.
   "392_travel_time_matrix_cells_delete.sql",
+  // 393 — DATA ONLY: two Gion itinerary_items (full ids) renamed "Gion District Walk" while their title still
+  // contains "geisha spotting". Idempotent. LG-2 Ask 9, ledger 2026-10-18-lg2-banned-phrases.
+  "393_gion_district_walk_titles.sql",
 ] as const;
