@@ -802,7 +802,7 @@ export async function factsForTrip(tripId: string, now: Date = new Date()): Prom
   // (`shownHoursFact`); a text-only crawled row is still a view, for the expert's confirm control.
   const tagged = rows.filter((r) => r.sourceClass != null);
   const placeOf = await itemPlaceIdsForTrip(tripId, tagged);
-  const stored = await storedOfficialFacts(Array.from(new Set(placeOf.values())), ["hours", "last_admission"]);
+  const stored = await storedOfficialFacts(Array.from(new Set(placeOf.values())), ["hours", "last_admission", "timed_entry_required"]);
   const sources = await sourcesFor([...rows, ...stored]);
   const byItem = new Map<string, FactRow[]>();
   for (const r of rows) {
@@ -853,6 +853,15 @@ export async function factsForTrip(tripId: string, now: Date = new Date()): Prom
       views.push(v);
     }
     seen.add("last_admission");
+    // FB-1 step 5c: the first admitted, unexpired timed-entry fact — the plan's own or one stored for the place —
+    // for the row's warning ("Entry needs a timed slot, reserved on the official site."), the same set the checker reads.
+    const teRows = [...list.filter((r) => r.factType === "timed_entry_required"), ...(officialByItem.get(itemId) ?? []).filter((x) => x.factType === "timed_entry_required" && !list.some((r) => r.id === x.id))];
+    const te = (resolveFactPrecedence(teRows.map((r) => ({ ...r, sourceClass: r.sourceClass, license: r.license })), "timed_entry_required") as FactRow[]).find(
+      (r) => !isFactStale(r, now) && admitFeasibilityFact(r).ok,
+    );
+    const teView = te ? toView(te, now, sources, timeZone) : null;
+    if (teView) views.push(teView);
+    seen.add("timed_entry_required");
     for (const r of rankFactsByOrigin(list.filter((x) => x.factType !== "hours"), now)) {
       if (seen.has(r.factType)) continue;
       const v = toView(r, now, sources, timeZone);
@@ -1134,6 +1143,8 @@ export interface FeasibilityFacts {
   lastAdmissionFacts: Map<string, FeasibilityLastAdmission[]>;
   /** FB-1 step 5b: every unexpired, admitted `closed_dates` fact per item, with its checked date and source. */
   closedDates: Map<string, FeasibilityLastAdmission[]>;
+  /** FB-1 step 5c: every unexpired, admitted `timed_entry_required` fact per item, with its checked date and source. */
+  timedEntry: Map<string, FeasibilityLastAdmission[]>;
   lastServices: Array<{ lat: number; lng: number; value: unknown; checkedAt?: string | null; sourceUrl?: string | null; provenance?: string | null }>;
 }
 
@@ -1179,7 +1190,7 @@ export async function feasibilityFactsForTrip(tripId: string, market: string | n
   const own = (await rowsForTrip(tripId)).filter((r) => r.sourceClass === "public");
   const timeZone = await planTimeZone(tripId);
   const placeOf = await itemPlaceIdsForTrip(tripId, own);
-  const stored = await storedOfficialFacts(Array.from(new Set(placeOf.values())), ["hours", "last_admission", "closed_dates"]);
+  const stored = await storedOfficialFacts(Array.from(new Set(placeOf.values())), ["hours", "last_admission", "closed_dates", "timed_entry_required"]);
   const sources = await sourcesFor([...own, ...stored]);
   const byItem = withStoredOfficial(own, placeOf, stored);
 
@@ -1187,6 +1198,7 @@ export async function feasibilityFactsForTrip(tripId: string, market: string | n
   const lastAdmission = new Map<string, unknown[]>();
   const lastAdmissionFacts = new Map<string, FeasibilityLastAdmission[]>();
   const closedDates = new Map<string, FeasibilityLastAdmission[]>();
+  const timedEntry = new Map<string, FeasibilityLastAdmission[]>();
   byItem.forEach((rows, itemId) => {
     const ranked = resolveFactPrecedence(
       rows.map((r) => ({ ...r, sourceClass: r.sourceClass, license: r.license })),
@@ -1238,8 +1250,21 @@ export async function feasibilityFactsForTrip(tripId: string, market: string | n
         })),
       );
     }
+    // FB-1 step 5c: every unexpired, admitted `timed_entry_required` fact for the item, official first.
+    const teRows = ranked.filter((r) => r.factType === "timed_entry_required" && !isFactStale(r, now) && admitFeasibilityFact(r).ok);
+    if (teRows.length) {
+      timedEntry.set(
+        itemId,
+        teRows.map((r) => ({
+          value: r.value,
+          checkedAt: r.fetchedAt ? new Date(r.fetchedAt as any).toISOString() : null,
+          sourceUrl: (r as any).sourceUrl ?? null,
+          provenance: toView(r as any, now, sources)?.provenance ?? null,
+        })),
+      );
+    }
   });
 
   const lastServices = market ? await lastServicesForMarket(market, now) : [];
-  return { hours, lastAdmission, lastAdmissionFacts, closedDates, lastServices };
+  return { hours, lastAdmission, lastAdmissionFacts, closedDates, timedEntry, lastServices };
 }
