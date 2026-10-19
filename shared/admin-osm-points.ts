@@ -231,3 +231,17 @@ export function planNameAttach(items: readonly AttachItem[], points: readonly Ad
     return { itemId: it.id, kind: "attach", pointId: adminPointId(distinct[0]), place: distinct[0].place, basis, replaces: it.linkSource };
   });
 }
+
+/**
+ * Pure. The one sheet point a person names for a hand attach (`--attach-one`, LG-2 Ask 7 follow-up): the admitted row
+ * whose `place` is exactly that name. No row, or two rows of that name, is a refusal — never a guess.
+ */
+export function pointByPlace(
+  points: readonly AdmittedPoint[],
+  place: string,
+): { ok: true; point: AdmittedPoint } | { ok: false; reason: "no_row" | "two_rows" } {
+  const hits = points.filter((p) => p.place.trim() === place.trim());
+  if (hits.length === 0) return { ok: false, reason: "no_row" };
+  if (hits.length > 1) return { ok: false, reason: "two_rows" };
+  return { ok: true, point: hits[0] };
+}
