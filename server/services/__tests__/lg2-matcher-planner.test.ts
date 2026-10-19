@@ -7,7 +7,8 @@
  *   MP3 Nijō Castle: Horikawa Street segments never resolve the castle; the castle answer does
  *   MP4 Sannenzaka resolves to its own pedestrian street; two same-name segments are ambiguous, never resolved
  *   MP5 the class list: visitable classes are places; boundary/place/road classes are refused; no class reads the name
- *   MP6 "Kyoto Dawn Temple Private Tour" never searches "Kyoto, Japan"; a phrase naming nothing is skipped
+ *   MP6 "Kyoto Dawn Temple Private Tour" never searches "Kyoto, Japan" (since Ask 5 it is not looked up at all); the
+ *       title's place phrase is searched, never the location fallback; a phrase naming nothing is skipped
  *   MP7 the location field is a Nominatim search only when it names a place of its own
  *
  * NEGATIVE SPACE (§18d): no request leaves the process; the class list cannot know every OSM tag (an unlisted class
@@ -119,7 +120,13 @@ test("MP6 Wikidata searches the title's place phrase, never the location fallbac
     seen.push(decodeURIComponent(new URL(url).searchParams.get("query") ?? ""));
     return { ok: true, status: 200, json: async () => ({ results: { bindings: [] } }) };
   }) as any;
-  const r = await lookupItemWikidata(item("Kyoto Dawn Temple Private Tour", "Kyoto, Japan"), fetchImpl);
+  // The pin title never searches "Kyoto, Japan". Since Ask 5 a private tour is not looked up at all (it routes from a
+  // meeting point or the stay), so it searches nothing.
+  const tour = await lookupItemWikidata(item("Kyoto Dawn Temple Private Tour", "Kyoto, Japan"), fetchImpl);
+  assert.notEqual(tour.search, "Kyoto, Japan");
+  assert.equal(tour.requested, false);
+  // The same title without the tour: the title's place phrase, never the location fallback.
+  const r = await lookupItemWikidata(item("Kyoto Dawn Temple", "Kyoto, Japan"), fetchImpl);
   assert.equal(r.requested, true);
   assert.notEqual(r.search, "Kyoto, Japan");
   assert.ok(!seen.some((q) => q.includes('mwapi:search "Kyoto, Japan"')), "the fallback city text is never the search");
@@ -138,10 +145,10 @@ test("MP7 the location field is a Nominatim search only when it names a place", 
   assert.equal(locationNamesAPlace("Kyoto, Japan", "Kyoto, Japan"), false);
   assert.equal(locationNamesAPlace("Accommodation in Central Kyoto", "Kyoto, Japan"), false);
   assert.equal(locationNamesAPlace("Kinkaku-ji", "Kyoto, Japan"), true);
-  const plan = v2QueryPlan(item("Kyoto Dawn Temple Private Tour", "Kyoto, Japan"));
+  const plan = v2QueryPlan(item("Kyoto Dawn Temple", "Kyoto, Japan"));
   assert.equal(plan.skip, null);
   if (plan.skip === null) {
-    assert.equal(plan.place, "Kyoto Dawn Temple Private Tour");
+    assert.equal(plan.place, "Kyoto Dawn Temple");
     assert.ok(!plan.itemTokens.has("japan"));
   }
   const named = v2QueryPlan(item("Golden Pavilion", "Kinkaku-ji"));
