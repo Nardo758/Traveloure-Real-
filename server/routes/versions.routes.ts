@@ -5,6 +5,10 @@
  *   GET  /api/trips/:tripId/versions             the board: latest run's A/B/C, per-day diffs,
  *                                                badges, anchors, re-time allowance (read gate)
  *   POST /api/trips/:tripId/versions/apply-days  { days: [{ day, variantId }] } — write gate
+ *   GET  /api/trips/:tripId/versions/fixed       FB-1 step 4: the flagged days "Your plan, fixed" can fix, each
+ *                                                fixable or changed since the run (read gate)
+ *                                                The tap sends apply-days with `unchangedSinceRun: true`: a day changed
+ *                                                since the run started is refused (one) or skipped and reported (several)
  *   POST /api/trips/:tripId/days/:day/retime     { order: itemIds, swapIn?: { variantItemId } } —
  *                                                write gate; free re-times per R-ac, else 409
  *                                                `retime_paid` with nothing written
@@ -20,6 +24,7 @@ import { isAuthenticated } from "../replit_integrations/auth";
 import { getUserId } from "../utils/auth";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
 import { VersionBoardError, applyDays, loadVersionsBoard, retimeDay } from "../services/version-board.service";
+import { applyDaysUnchangedSinceRun, loadFixedPlan } from "../services/fixed-plan.service";
 
 const router = Router();
 
@@ -53,8 +58,15 @@ router.get("/api/trips/:tripId/versions", isAuthenticated, async (req: any, res)
 });
 
 const applyBody = z
-  .object({ days: z.array(z.object({ day: z.number().int().min(1).max(60), variantId: z.string().min(1).max(64) }).strict()).min(1).max(60) })
-  .strict();
+  .object({
+    days: z.array(z.object({ day: z.number().int().min(1).max(60), variantId: z.string().min(1).max(64) }).strict()).min(1).max(60),
+    // FB-1 step 4: the "Your plan, fixed" tap. The board never sends it, so its adopt is unchanged.
+    unchangedSinceRun: z.literal(true).optional(),
+    // Confirm before apply: the same diff, rolled back. Only with `unchangedSinceRun` (the tap's rail).
+    preview: z.literal(true).optional(),
+  })
+  .strict()
+  .refine((b) => !b.preview || b.unchangedSinceRun, { message: "preview is the tap's" });
 
 router.post("/api/trips/:tripId/versions/apply-days", isAuthenticated, async (req: any, res) => {
   const userId = await gate(req, res, true);
@@ -62,13 +74,27 @@ router.post("/api/trips/:tripId/versions/apply-days", isAuthenticated, async (re
   const parsed = applyBody.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ message: "Send the days to adopt" });
   try {
-    const out = await applyDays({ tripId: req.params.tripId, userId, days: parsed.data.days });
+    const out = parsed.data.unchangedSinceRun
+      ? await applyDaysUnchangedSinceRun({ tripId: req.params.tripId, userId, days: parsed.data.days, preview: parsed.data.preview })
+      : await applyDays({ tripId: req.params.tripId, userId, days: parsed.data.days });
     // Step 9a ruling 6 (ledger 2026-10-07-step9a-routing-engine): applying versions writes the plan's
-    // own legs for what was adopted — after the commit, best-effort, never failing the apply (§15b).
-    void runNow(req.params.tripId);
+    // own legs for what was adopted — after the commit, best-effort, never failing the apply (§15b). A preview
+    // wrote nothing, so it refreshes nothing.
+    if (!parsed.data.preview) void runNow(req.params.tripId);
     res.json(out);
   } catch (err) {
     fail(res, err, "apply those days");
+  }
+});
+
+// FB-1 step 4 (ledger `2026-10-19-fb1-fixed-by-tap`): "Your plan, fixed" by tap. Flag-only: nothing adopts a day
+// without this request, and a day the plan changed on since the run started is refused, never overwritten.
+router.get("/api/trips/:tripId/versions/fixed", isAuthenticated, async (req: any, res) => {
+  if (!(await gate(req, res, false))) return;
+  try {
+    res.json({ fixed: await loadFixedPlan(req.params.tripId) });
+  } catch (err) {
+    fail(res, err, "read the fixed version");
   }
 });
 
