@@ -29,11 +29,18 @@ import {
 } from "@shared/place-name-gate";
 import { kindFromName, osmFeatureKind } from "@shared/osm-place-kind";
 import { meetingOrStayItem } from "@shared/meeting-point-items";
+import { geocoderBaseUrl, PUBLIC_NOMINATIM_BASE_URL } from "../config/geocoder.config";
 import { NOMINATIM_MIN_INTERVAL_MS, OSM_ATTRIBUTION } from "./venue-geocode.service";
 
 export { NOMINATIM_MIN_INTERVAL_MS, OSM_ATTRIBUTION };
 
-const NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search";
+/**
+ * LG-2 Ask 8: the geocoder's address is config (`GEOCODER_BASE_URL`); the public server is only the address the pure
+ * lookup builds against when none is set. A BATCH run refuses the public host (`batchGeocoderRefusal`, in the script).
+ */
+function nominatimSearchUrl(): string {
+  return `${geocoderBaseUrl() ?? PUBLIC_NOMINATIM_BASE_URL}/search`;
+}
 export const ITEM_REGEOCODE_USER_AGENT = "Traveloure-item-regeocode/1.0 (+https://traveloure.com; one request per plan item)";
 /** How many answers to ask for, so two different places with the item's name show up as ambiguous. */
 export const REGEOCODE_RESULT_LIMIT = 5;
@@ -126,7 +133,7 @@ export async function regeocodeItem(
 ): Promise<{ outcome: RegeocodeOutcome; requested: boolean }> {
   const skip = unnamedPlaceReason(item, item.destination);
   if (skip) return { outcome: { kind: "unresolved", reason: skip }, requested: false };
-  const url = `${NOMINATIM_SEARCH_URL}?${new URLSearchParams({
+  const url = `${nominatimSearchUrl()}?${new URLSearchParams({
     q: regeocodeQueryText(item),
     format: "jsonv2",
     limit: String(REGEOCODE_RESULT_LIMIT),
@@ -537,7 +544,7 @@ export async function regeocodeItemV2(
   }
   const base = { requested: true, queryBasis, query, viewboxSource: hint?.source ?? null, v1Skip } as const;
   try {
-    const res = await fetchImpl(`${NOMINATIM_SEARCH_URL}?${new URLSearchParams(params)}`, {
+    const res = await fetchImpl(`${nominatimSearchUrl()}?${new URLSearchParams(params)}`, {
       headers: { "User-Agent": ITEM_REGEOCODE_USER_AGENT, "Accept-Language": "en" },
       signal: AbortSignal.timeout(10_000),
     });
