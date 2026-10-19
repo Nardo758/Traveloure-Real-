@@ -138,6 +138,10 @@ test.describe('Lane D — landing ticker', () => {
   for (const vp of [{ width: 1440, height: 900 }, MOBILE]) {
     test(`D1 @${vp.width}px: cities ticker does not hard-clip labels`, async ({ page }) => {
       await page.setViewportSize(vp);
+      // SH-1 item 3: the rail and its ticker show only when at least two markets are live.
+      await page.route('**/api/public/live-markets*', (r) =>
+        r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ marketKeys: ['kyoto', 'goa'] }) }),
+      );
       await settle(page, '/');
       const t = page.getByTestId('cities-ticker');
       const clipped = await t.evaluate((el: HTMLElement) => {

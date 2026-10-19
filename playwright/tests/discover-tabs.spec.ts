@@ -607,12 +607,12 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(page.getByTestId('feed-card-vendor-svc-svc-1')).toBeVisible();
     // Phase 2c: ONE rendering per neighbourhood — the legacy container and its
     // "IN {nb}" list are gone; the neighbourhood's gems are bento tiles now,
-    // each carrying the Hidden gem tag.
+    // each carrying its type tag (SH-1 item 1: no "Hidden gem" tag).
     await expect(page.getByTestId('neighborhood-container-gion')).not.toBeAttached();
     await expect(
       page.locator('[data-testid="bento-section-gion"] [data-testid="feed-card-gem-g-gion-1"]'),
     ).toHaveCount(1);
-    await expect(page.getByTestId('gem-hidden-tag-g-gion-1')).toBeVisible();
+    await expect(page.getByTestId('gem-type-tag-g-gion-1')).toBeVisible();
     // Phase 2c: the spine chips are the VISIBLE rail (out of the popover), with
     // "All gems" active by default; the neighbourhood chips are gone and the
     // mono jump list stands above the first section.
@@ -911,7 +911,7 @@ test.describe('city-feed bento — /discover/location', () => {
     const unattributed = page.getByTestId('feed-card-gem-g-gion-2');
 
     await expect(attributed.getByTestId('gem-facts-g-gion-1')).toContainText('curated by Yuki');
-    await expect(unattributed.getByTestId('gem-facts-g-gion-2')).not.toContainText('curated by');
+    await expect(unattributed).not.toContainText('curated by');
 
     // Ruling 2: the attributed gem's Ask CTA names the curator; the
     // unattributed gem keeps the honest generic label (city-resolution fallback).

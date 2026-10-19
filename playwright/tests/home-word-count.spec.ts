@@ -87,6 +87,11 @@ async function serveFixtures(page: Page): Promise<void> {
   await page.route("**/api/landing/moments", (r) => r.fulfill(json(moments)));
   await page.route("**/api/city-events/upcoming*", (r) => r.fulfill(json(events)));
   await page.route("**/api/travelpulse/cities*", (r) => r.fulfill(json(cities)));
+  // SH-1 item 3: the cities rail shows only live markets and hides below two, so the fixture serves all
+  // eight as live — the same eight cities this count was measured with.
+  await page.route("**/api/public/live-markets*", (r) =>
+    r.fulfill(json({ marketKeys: ["kyoto", "goa", "mumbai", "jaipur", "edinburgh", "porto", "bogota", "cartagena"] })),
+  );
 }
 
 /** Words a visitor reads in `main`. */
