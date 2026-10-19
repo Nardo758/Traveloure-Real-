@@ -3,10 +3,9 @@
  * `2026-10-17-lg1-osm-place-coords`; migration 389), end to end against a real database.
  *
  *   LG1  an adapter with the OSRM rule is never handed a Google point: a stop whose place has no OSM/admin row gets
- *        no routed leg in or out (its neighbours are bridged), and every leg end is the OSM coordinate, not the
- *        stop's stored Google point
+ *        no routed leg in or out, and no leg goes round it (LG-2 Ask 6); the adapter is never handed a Google point
  *   LG2  an admin row for that stop's place id makes it routable on the next recompute, from the admin coordinate;
- *        the bridged leg is replaced by the two legs through it
+ *        the two legs through it are routed
  *   LG3  an admin row wins over an OSM match for the same place id
  *
  * NEGATIVE SPACE (§18d): the adapter is the CI stub wearing the OSRM adapter's acceptsPoint rule (no request leaves
@@ -94,11 +93,8 @@ test("LG1: a Google-only stop gets no routed leg; every leg end is the OSM point
   const adapter = new OpenOnlyStub();
   await computePlanLegs(TRIP, { adapter });
   const rows = await legs();
-  assert.deepEqual(pairs(rows), ["a>c"], "b is bridged — no leg in or out of it");
-  assert.equal(Number(rows[0].from_lat), OSM.a[0]);
-  assert.equal(Number(rows[0].from_lng), OSM.a[1]);
-  assert.equal(Number(rows[0].to_lat), OSM.c[0]);
-  assert.ok(adapter.seen.length > 0 && adapter.seen.every((p) => isOpenCoordOrigin(p.coordOrigin)), "the adapter was never handed a Google point");
+  assert.deepEqual(pairs(rows), [], "LG-2 Ask 6: no leg in or out of b, and none goes round it");
+  assert.ok(adapter.seen.every((p) => isOpenCoordOrigin(p.coordOrigin)), "the adapter was never handed a Google point");
 });
 
 test("LG2: an admin row makes the stop routable from the admin coordinate", async () => {

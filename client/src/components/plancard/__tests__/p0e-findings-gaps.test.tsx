@@ -4,7 +4,7 @@
  *   PE6 item 1: one finding + 8 stops off the map ⇒ both render (plain and board)
  *   PE7 item 2: an hours finding names its stop, day and time under the count line
  *   PE8 item 4: the gap list splits real places from placeholders; the straight-line footer is a free plan's only
- *   PE9 item 3: Getting around names a bridge with the slip's formatter
+ *   PE9 item 3 as amended by LG-2 Ask 6: no bridge — each gap is its own two stops, and a not-checked leg says so
  *
  * Run: npx tsx --test client/src/components/plancard/__tests__/p0e-findings-gaps.test.tsx
  */
@@ -62,7 +62,7 @@ describe("P0-e", () => {
     assert.ok(free.includes(FREE_PLAN_COVERAGE_FOOTER));
   });
 
-  it("PE9 Getting around names a bridge with the slip's formatter", () => {
+  it("PE9 Getting around draws no bridge; a not-checked leg reads 'Travel time not checked yet' (Ask 6)", () => {
     const day = {
       dayNumber: 1,
       activities: [
@@ -85,7 +85,10 @@ describe("P0-e", () => {
       ],
     };
     const gaps = gettingAroundDays([day], "Asia/Tokyo")[0].gaps;
-    assert.equal(gaps[1].title, "Fushimi Inari → Tofuku-ji · around Soba Restaurant");
+    assert.equal(gaps[1].title, "Soba Restaurant → Tofuku-ji", "the gap is its own two stops");
     assert.match(gaps[0].line, /Soba Restaurant isn't on the map/);
+    const flagged = gettingAroundDays([{ ...day, legsNotChecked: [{ fromActivityId: "soba", toActivityId: "tj" }] }], "Asia/Tokyo")[0].gaps;
+    assert.equal(flagged[1].kind, "not_checked");
+    assert.equal(flagged[1].line, "Travel time not checked yet");
   });
 });
