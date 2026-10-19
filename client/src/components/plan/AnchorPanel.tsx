@@ -26,6 +26,7 @@
  */
 import { PlacePhoto } from "./PlacePhoto";
 import { HAND_ADDED_STAY_LINE } from "@shared/where-to-stay";
+import { OSM_COORD_ATTRIBUTION } from "@shared/open-coords";
 import {
   GOOGLE_MAPS_ATTRIBUTION,
   STAY_CHANGED_LINE,
@@ -306,6 +307,12 @@ export function StayPickCard({
           </li>
         ))}
       </ul>
+      {model.hotels.some((h) => stayClosenessLine(h.closeness)) ? (
+        // LG-2 Ask 8: a closeness line is computed over open coordinates (routed or straight line) — the ODbL credit, exactly.
+        <p className="text-[11px] text-[color:var(--slip-muted,#5B6B7A)]" data-testid="stay-pick-osm-credit">
+          {OSM_COORD_ATTRIBUTION}
+        </p>
+      ) : null}
       {canChoose && swapControl ? (
         <div className="flex flex-wrap items-center gap-2 border-t border-border pt-2 text-xs text-[color:var(--slip-muted,#5B6B7A)]" data-testid="stay-pick-swap">
           <span>{STAY_SWAP_LEAD}</span>
