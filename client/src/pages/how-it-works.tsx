@@ -13,6 +13,7 @@ import { useSignInModal } from "@/contexts/SignInModalContext";
 import { usePlanning } from "@/contexts/PlanningContext";
 import { HOW_IT_WORKS_STEPS } from "@/lib/how-it-works-steps";
 import { PageLayout, SectionTitle, PAGE_ACTION } from "@/components/company/company-page";
+import { useExpertAvailability } from "@/lib/expert-availability";
 
 const STEP_ICONS = [ClipboardList, Sparkles, UserCheck, PartyPopper];
 
@@ -29,6 +30,9 @@ const steps = HOW_IT_WORKS_STEPS.map((step, i) => ({
 export default function HowItWorksPage() {
   const { openSignInModal } = useSignInModal();
   const { open: openPlanning } = usePlanning();
+  // SH-1 item 11 (Q11.3): this page's expert CTA names no city, so it draws only when any live
+  // market has an expert to ask.
+  const anyExpertAvailable = useExpertAvailability("any");
   
   return (
     <PageLayout
@@ -122,11 +126,13 @@ export default function HowItWorksPage() {
             <Button size="lg" className={PAGE_ACTION.primary} onClick={() => openPlanning()} data-testid="button-create-trip-cta">
               Create Your First Trip <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
-            <Link href="/experts">
-              <Button size="lg" variant="outline" className={PAGE_ACTION.secondary} data-testid="button-browse-experts">
-                Browse Experts
-              </Button>
-            </Link>
+            {anyExpertAvailable && (
+              <Link href="/experts">
+                <Button size="lg" variant="outline" className={PAGE_ACTION.secondary} data-testid="button-browse-experts">
+                  Browse Experts
+                </Button>
+              </Link>
+            )}
           </div>
         </motion.div>
       </section>

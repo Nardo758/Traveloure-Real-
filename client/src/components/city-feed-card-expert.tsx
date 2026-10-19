@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Info, Star, MapPin, UserCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useExpertAvailability } from "@/lib/expert-availability";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import { earnerProfilePath } from "@/lib/earner-address";
 import type { BentoCompactActionState } from "@/lib/bento-action-state";
@@ -31,6 +32,8 @@ interface CityFeedCardExpertProps {
 export function CityFeedCardExpert({ expert, city, className, cardPosition, density = "full", compactActionState: _compactActionState }: CityFeedCardExpertProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const askExpert = useAskExpert();
+  // SH-1 item 11 (Q11.2): even an addressed Ask draws only while this city has an expert to ask.
+  const expertAvailable = useExpertAvailability({ city });
   const imageUrl = expert.profileImageUrl || expert.profilePhoto || null;
 
   const name = [expert.firstName, expert.lastName].filter(Boolean).join(" ") || expert.name || "Expert";
@@ -143,25 +146,27 @@ export function CityFeedCardExpert({ expert, city, className, cardPosition, dens
                 View profile
               </a>
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs px-2.5"
-              onClick={(e) => {
-                e.stopPropagation();
-                askExpert({
-                  // Locked Decision 40 (lane 3): the HANDLE addresses this earner; the id is the
-                  // fallback only while the row has no claimed handle.
-                  handle: expert.handle ?? null,
-                  expertId: expert.handle ? null : expert.id,
-                  city,
-                  subject: expertCity || city,
-                });
-              }}
-              data-testid={`btn-ask-expert-${expert.id}`}
-            >
-              Ask an expert
-            </Button>
+            {expertAvailable && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs px-2.5"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  askExpert({
+                    // Locked Decision 40 (lane 3): the HANDLE addresses this earner; the id is the
+                    // fallback only while the row has no claimed handle.
+                    handle: expert.handle ?? null,
+                    expertId: expert.handle ? null : expert.id,
+                    city,
+                    subject: expertCity || city,
+                  });
+                }}
+                data-testid={`btn-ask-expert-${expert.id}`}
+              >
+                Ask an expert
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -308,25 +313,27 @@ export function CityFeedCardExpert({ expert, city, className, cardPosition, dens
             {/* Honest label: this navigates to the expert's profile (chat starts there) */}
             View {expert.firstName || "Expert"}'s profile
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 text-xs px-2.5"
-            onClick={(e) => {
-              e.stopPropagation();
-              askExpert({
-                  // Locked Decision 40 (lane 3): the HANDLE addresses this earner; the id is the
-                  // fallback only while the row has no claimed handle.
-                  handle: expert.handle ?? null,
-                  expertId: expert.handle ? null : expert.id,
-                  city,
-                  subject: expertCity || city,
-                });
-            }}
-            data-testid={`btn-ask-expert-${expert.id}`}
-          >
-            Ask an expert
-          </Button>
+          {expertAvailable && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs px-2.5"
+              onClick={(e) => {
+                e.stopPropagation();
+                askExpert({
+                    // Locked Decision 40 (lane 3): the HANDLE addresses this earner; the id is the
+                    // fallback only while the row has no claimed handle.
+                    handle: expert.handle ?? null,
+                    expertId: expert.handle ? null : expert.id,
+                    city,
+                    subject: expertCity || city,
+                  });
+              }}
+              data-testid={`btn-ask-expert-${expert.id}`}
+            >
+              Ask an expert
+            </Button>
+          )}
         </div>
       </div>
     </div>

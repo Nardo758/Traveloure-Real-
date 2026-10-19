@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { getOrCreateGuestSessionId } from "@/lib/guest-session";
 import { gemCategory, type MatchSuggestion } from "@/lib/feed-stream";
 import { resolveBookability, type Bookability } from "@shared/bookability";
+import { useExpertAvailability } from "@/lib/expert-availability";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import { normalizeGemScore } from "@/lib/gem-score";
 import type { BentoCompactActionState } from "@/lib/bento-action-state";
@@ -388,6 +389,10 @@ function MatchedServiceStrip({
   const [requested, setRequested] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const isRequest = suggestion.isRequest === true;
+  // SH-1 item 11: a suggestion that sends the traveler to the expert directory (the "do" gem's
+  // "local guide · Book guide") is an expert CTA — it draws only when this city has an expert to ask.
+  const isExpertSuggestion = !isRequest && /^\/(local-)?experts(\/|\?|$)/.test(suggestion.href ?? "");
+  const expertAvailable = useExpertAvailability({ city });
 
   async function handleRequest() {
     if (requested || submitting || !suggestion.offeringTypeKey) return;
@@ -417,6 +422,8 @@ function MatchedServiceStrip({
       setSubmitting(false);
     }
   }
+
+  if (isExpertSuggestion && !expertAvailable) return null;
 
   return (
     <div
@@ -840,6 +847,8 @@ export function CityFeedCardGem({
   const [imgLoaded, setImgLoaded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const askExpert = useAskExpert();
+  // SH-1 item 11: Ask draws only when the server says this city has an expert to ask.
+  const expertAvailable = useExpertAvailability({ city });
   const { photoUrl, loading } = useGemPhoto(gem.id, gem.placeName, city, gem.imageUrl);
   // What the heart saves (#330): the card's own identity, name, photo and city — a display cache
   // for the Saved places shelf. A photo is carried only when it is an http(s) or site path.
@@ -1073,27 +1082,29 @@ export function CityFeedCardGem({
             <Plus className="w-3 h-3 mr-1" />
             {addLabel}
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 text-xs px-2.5"
-            onClick={(e) => {
-              e.stopPropagation();
-              askExpert({
-                city,
-                subject: gem.placeName,
-                // LD 40 lane 2: still id-addressed — `gem.curatedBy` carries no handle, so this
-                // card holds no address the start rail accepts. The fix is a field on the feed
-                // payload (server), not a second client rail.
-                expertId: gemCurator(gem)?.id ?? null,
-                fallbackName: gemCuratorFullName(gem),
-                fallbackAvatar: gemCurator(gem)?.profileImageUrl ?? null,
-              });
-            }}
-            data-testid={`btn-ask-gem-${gem.id}`}
-          >
-            {gemCuratorShortName(gem) ? `Ask ${gemCuratorShortName(gem)}` : "Ask an expert"}
-          </Button>
+          {expertAvailable && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs px-2.5"
+              onClick={(e) => {
+                e.stopPropagation();
+                askExpert({
+                  city,
+                  subject: gem.placeName,
+                  // LD 40 lane 2: still id-addressed — `gem.curatedBy` carries no handle, so this
+                  // card holds no address the start rail accepts. The fix is a field on the feed
+                  // payload (server), not a second client rail.
+                  expertId: gemCurator(gem)?.id ?? null,
+                  fallbackName: gemCuratorFullName(gem),
+                  fallbackAvatar: gemCurator(gem)?.profileImageUrl ?? null,
+                });
+              }}
+              data-testid={`btn-ask-gem-${gem.id}`}
+            >
+              {gemCuratorShortName(gem) ? `Ask ${gemCuratorShortName(gem)}` : "Ask an expert"}
+            </Button>
+          )}
         </div>
       )}
     </div>
@@ -1223,7 +1234,7 @@ export function CityFeedCardGem({
               {/* Compact = exactly two buttons: Ask shows ONLY when Book is absent.
                   Ruling 2: an attributed gem's Ask targets ITS curator by name;
                   otherwise the honest city-resolution fallback stands. */}
-              {!compactHasBookAction && (
+              {expertAvailable && !compactHasBookAction && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -1293,6 +1304,8 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
   const [imgLoaded, setImgLoaded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const askExpert = useAskExpert();
+  // SH-1 item 11: Ask draws only when the server says this city has an expert to ask.
+  const expertAvailable = useExpertAvailability({ city });
   const dbImageUrl = event.image || event.imageUrl || null;
   const eventName = event.title || event.name || "";
   const { photoUrl, loading } = useGemPhoto(
@@ -1421,7 +1434,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
               </Button>
               {/* Compact = exactly two buttons: Tickets IS the book action, so Ask
                   shows ONLY when there is no ticket url. */}
-              {!event.url && (
+              {expertAvailable && !event.url && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -1558,18 +1571,20 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
               <Plus className="w-3 h-3 mr-1" />
               {addLabel}
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs px-2.5"
-              onClick={(e) => {
-                e.stopPropagation();
-                askExpert({ city, subject: eventName });
-              }}
-              data-testid={`btn-ask-event-${event.id}`}
-            >
-              Ask an expert
-            </Button>
+            {expertAvailable && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs px-2.5"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  askExpert({ city, subject: eventName });
+                }}
+                data-testid={`btn-ask-event-${event.id}`}
+              >
+                Ask an expert
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -1596,6 +1611,8 @@ interface CityFeedCardVendorServiceProps {
 export function CityFeedCardVendorService({ service, city, className, cardPosition, scheduledDate, onAdd, density = "full", compactActionState }: CityFeedCardVendorServiceProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const askExpert = useAskExpert();
+  // SH-1 item 11: Ask draws only when the server says this city has an expert to ask.
+  const expertAvailable = useExpertAvailability({ city });
   const imageUrl = service.serviceImage || service.vendorPhoto || null;
   const { photoUrl, loading } = useGemPhoto(`vsvc-${service.id}`, service.serviceName, city, imageUrl);
   const { ref: impressionRefVendor, getImpressionId: getImpIdVendor } = useImpressionTracker(
@@ -1888,18 +1905,20 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
                 <Globe className="w-3 h-3" />
               </Button>
             )}
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs px-2.5"
-              onClick={(e) => {
-                e.stopPropagation();
-                askExpert({ city, subject: service.serviceName });
-              }}
-              data-testid={`btn-ask-svc-${service.id}`}
-            >
-              Ask an expert
-            </Button>
+            {expertAvailable && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs px-2.5"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  askExpert({ city, subject: service.serviceName });
+                }}
+                data-testid={`btn-ask-svc-${service.id}`}
+              >
+                Ask an expert
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -1927,6 +1946,8 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
   const [imgLoaded, setImgLoaded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const askExpert = useAskExpert();
+  // SH-1 item 11: Ask draws only when the server says this city has an expert to ask.
+  const expertAvailable = useExpertAvailability({ city });
   const dbImageUrl = item.media?.[0]?.url || item.imageUrl || null;
   const itemName = item.name || item.title || "";
   const isHotel = kind === "supply-hotel";
@@ -2060,18 +2081,20 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
                 <Plus className="w-3 h-3 mr-1" />
                 {addLabel}
               </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs px-2.5"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  askExpert({ city, subject: itemName });
-                }}
-                data-testid={`btn-ask-supply-${item.id}`}
-              >
-                Ask an expert
-              </Button>
+              {expertAvailable && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs px-2.5"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    askExpert({ city, subject: itemName });
+                  }}
+                  data-testid={`btn-ask-supply-${item.id}`}
+                >
+                  Ask an expert
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -2200,18 +2223,20 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
               <Plus className="w-3 h-3 mr-1" />
               {addLabel}
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs px-2.5"
-              onClick={(e) => {
-                e.stopPropagation();
-                askExpert({ city, subject: itemName });
-              }}
-              data-testid={`btn-ask-supply-${item.id}`}
-            >
-              Ask an expert
-            </Button>
+            {expertAvailable && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs px-2.5"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  askExpert({ city, subject: itemName });
+                }}
+                data-testid={`btn-ask-supply-${item.id}`}
+              >
+                Ask an expert
+              </Button>
+            )}
           </div>
         </div>
       </div>
