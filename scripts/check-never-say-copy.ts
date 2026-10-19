@@ -41,13 +41,38 @@ export const LEGAL_PAGES: readonly string[] = [
 ];
 
 /**
- * Gems whose proper names carry "Secret" (ruled exempt by gem id; Research Bot supplies each source URL — an entry with
- * no URL yet is printed on every run so it is not forgotten).
+ * Gems whose proper names carry "Secret" (ruled exempt by gem id, each with the source URL Research Bot supplied).
+ * `name` is the short form the card keeps; `officialName` is the name the source gives. An entry with no URL is
+ * printed on every run so it is not forgotten.
  */
-export const GEM_EXEMPTIONS: ReadonlyArray<{ id: string; name: string; words: string; sourceUrl: string | null }> = [
-  { id: "b4b43f3f-bf3c-4da5-b61e-ef40d01a8b2d", name: "Wendy's Secret Garden (Sydney)", words: "secret", sourceUrl: null },
-  { id: "df40d0b0-5afd-4656-a109-e93f32354db6", name: "Wendy's Secret Garden (Sydney, second row)", words: "secret", sourceUrl: null },
-  { id: "1418d8b0-1c17-476e-bc33-9380c2a963aa", name: "Le Jardin Secret (Marrakech)", words: "secret", sourceUrl: null },
+export const GEM_EXEMPTIONS: ReadonlyArray<{
+  id: string;
+  name: string;
+  officialName: string;
+  words: string;
+  sourceUrl: string | null;
+}> = [
+  {
+    id: "b4b43f3f-bf3c-4da5-b61e-ef40d01a8b2d",
+    name: "Wendy's Secret Garden (Lavender Bay, Sydney)",
+    officialName: "Wendy Whiteley's Secret Garden",
+    words: "secret",
+    sourceUrl: "https://www.nsw.gov.au/visiting-and-exploring-nsw/locations-and-attractions/wendy-whiteleys-secret-garden",
+  },
+  {
+    id: "df40d0b0-5afd-4656-a109-e93f32354db6",
+    name: "Wendy's Secret Garden (Lavender Bay, Sydney; second row)",
+    officialName: "Wendy Whiteley's Secret Garden",
+    words: "secret",
+    sourceUrl: "https://www.nsw.gov.au/visiting-and-exploring-nsw/locations-and-attractions/wendy-whiteleys-secret-garden",
+  },
+  {
+    id: "1418d8b0-1c17-476e-bc33-9380c2a963aa",
+    name: "Le Jardin Secret (Marrakech)",
+    officialName: "Le Jardin Secret",
+    words: "secret",
+    sourceUrl: "https://www.lejardinsecretmarrakech.com",
+  },
 ];
 
 const NEVER_SCANNED = [/^shared\/banned-copy\.ts$/, /(^|\/)__tests__\//, /\.test\.tsx?$/, /^scripts\//];
@@ -236,6 +261,11 @@ function selfTest(): number {
     scanJson("server/data/x.json", JSON.stringify([{ id: GEM_EXEMPTIONS[0].id, place_name: "Wendy's Secret Garden", description: "A verified spot" }])).map((h) => h.words),
     ["verified"],
   );
+  expect(
+    "every exempt gem names its official name and an https source",
+    GEM_EXEMPTIONS.filter((g) => !g.officialName.trim() || !/^https:\/\/\S+$/.test(g.sourceUrl ?? "")).map((g) => g.id),
+    [],
+  );
   expect("the banned-copy module and tests are never in scope", scopeFiles().filter((f) => /banned-copy|__tests__/.test(f)), []);
   expect(
     "over-baseline finds a new phrase and a higher count",
@@ -246,7 +276,7 @@ function selfTest(): number {
     console.error(`check-never-say-copy --self-test FAILED:\n  ${failures.join("\n  ")}`);
     return 1;
   }
-  console.log("check-never-say-copy --self-test: OK (9 fixtures)");
+  console.log("check-never-say-copy --self-test: OK (10 fixtures)");
   return 0;
 }
 
