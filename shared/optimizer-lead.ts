@@ -432,7 +432,7 @@ export function directionReversals(points: DayPath["points"]): number {
  * one; any other day is NOT CHECKED, and says so — never read as "fine" (§13).
  */
 export const PATH_FINDING_KINDS = ["city_crossing", "walking_saved_km"] as const;
-export type NotCheckedReason = "no_open_coordinates";
+export type NotCheckedReason = "no_open_coordinates" | "leg_not_checked";
 
 export interface NotChecked {
   kind: FindingKind;
@@ -465,6 +465,32 @@ export function pathNotChecked(notCheckedDays: readonly number[]): NotChecked[] 
   if (notCheckedDays.length === 0) return [];
   const days = [...notCheckedDays].sort((a, b) => a - b);
   return PATH_FINDING_KINDS.map((kind) => ({ kind, reason: "no_open_coordinates" as const, days }));
+}
+
+/**
+ * LG-2 Ask 6 (decision-maker, Oct 19, 2026): the days on which a leg between two ADJACENT stops has no travel time
+ * because either stop has no open coordinate. Such a leg exists with no time ("Travel time not checked yet") — it is
+ * never bridged and never estimated — so the day's reachability check cannot pass: the day is NOT CHECKED, never
+ * "fine" (§13). `stops` in plan order; `open` null = no open coordinate.
+ */
+export function legNotCheckedDays(stops: ReadonlyArray<{ dayNumber: number; open: { lat: number; lng: number } | null }>): number[] {
+  const byDay = new Map<number, Array<{ lat: number; lng: number } | null>>();
+  for (const s of stops) byDay.set(s.dayNumber, [...(byDay.get(s.dayNumber) ?? []), s.open]);
+  const days: number[] = [];
+  byDay.forEach((pts, day) => {
+    for (let i = 0; i < pts.length - 1; i++) {
+      if (!pts[i] || !pts[i + 1]) {
+        days.push(day);
+        return;
+      }
+    }
+  });
+  return days.sort((a, b) => a - b);
+}
+
+/** Pure. The reachability check's "not checked" entry naming those days; none when every adjacent pair has two points. */
+export function legNotChecked(days: readonly number[]): NotChecked[] {
+  return days.length ? [{ kind: "leg_unreachable", reason: "leg_not_checked", days: [...days] }] : [];
 }
 
 /** c. Days that cross the city more than once (straight line, est.). */

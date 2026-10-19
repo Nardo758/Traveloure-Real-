@@ -2726,6 +2726,11 @@ This document captures architectural decisions to maintain consistency across co
     (`no_route` with `unanswered`) records nothing and keeps the leg's label; only the source's own "no route" is broken.
     The engine likewise keeps the last good leg on an unanswered call, and replaces it only on the router's own
     "no route" — with a labelled straight-line estimate (`source = 'straight_line_est'`, not routed, re-asked every run).
+    **AMENDED BY LG-2 ASK 6 (decision-maker, Oct 19, 2026 — ledger `2026-10-19-lg2-adjacent-legs`; no migration;
+    FOUNDER WORDING REVIEW on the PR).** A leg connects ADJACENT stops only. P0's bridge is retired: when either end has
+    no open coordinate, the leg exists with no time and reads "Travel time not checked yet" — never an estimate, never a
+    leg to the next located stop. The day line counts such legs and the plan check names the day not checked, so the
+    day's check never passes with one; no ride is derived across such a stop.
 
 64. **S1 — ONE STAY ON THE PLAN, PICKED BY ROUTED TIME, NEVER BY PRICE OR COMMISSION (decision-maker, Oct 9, 2026 —
     ledger `2026-10-09-s1-one-stay`; brief `docs/planning/briefs/s1-one-stay.md`; migration 359, APPROVED by the founder Oct 9, 2026).**
