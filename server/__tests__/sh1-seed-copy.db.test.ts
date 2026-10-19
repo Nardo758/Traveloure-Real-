@@ -57,7 +57,7 @@ test("SC1 sample rows take the new copy, a second run is a no-op, a hand-edited 
   try {
     await c.query("BEGIN");
     const user = fx("u");
-    await c.query(`INSERT INTO users (id, email, first_name, last_name, role) VALUES ($1, $2, 'SC', 'Fixture', 'service_provider')`, [user, `${user}@t.test`]);
+    await c.query(`INSERT INTO users (id, email, first_name, last_name, role) VALUES ($1, $2, 'SC', 'Fixture', 'service_provider')`, [user, `${user}@traveloure.test`]);
 
     // Pontocho gem (hidden-gems.json, by id).
     await c.query(
@@ -73,23 +73,23 @@ test("SC1 sample rows take the new copy, a second run is a no-op, a hand-edited 
          ($1, 'Kyoto', 'Gion Corner (Gion-Kaburenjo)', 'gion', $2), ($3, 'Kyoto', 'Gion Corner (Gion-Kaburenjo)', 'gion', $4)`,
       [fx("gc"), GION_CORNER_OLD, fx("gc-hand"), HAND_EDIT],
     );
-    // The fake bridal vendor (phase-d seeder key: email).
-    await c.query(`UPDATE service_provider_forms SET business_name = 'Maiko Bridal Studio' WHERE email = 'kyoto-bridal@traveloure.test'`);
+    // The fake bridal vendor (matched by its owner's fixture email DOMAIN and the old name).
+    await c.query(`UPDATE service_provider_forms SET business_name = 'Maiko Bridal Studio' WHERE business_name = 'QA Bridal Studio'`);
     await c.query(
       `INSERT INTO service_provider_forms (id, user_id, business_name, name, email, mobile, country, address, business_type, status)
-       VALUES ($1, $2, 'Maiko Bridal Studio', 'Hana Yoshida', 'kyoto-bridal@traveloure.test', '+81', 'Japan', 'Gion', 'Bridal Services', 'approved')`,
-      [fx("spf"), user],
+       VALUES ($1, $2, 'Maiko Bridal Studio', 'Fixture', $3, '', 'Japan', 'Gion', 'Bridal Services', 'approved')`,
+      [fx("spf"), user, `${user}@traveloure.test`],
     );
     // city_neighborhoods gion (city + country + slug), and a hand-edited washington-heights.
     await c.query(
       `INSERT INTO city_neighborhoods (id, city, country, name, slug, centroid_lat, centroid_lng, description)
-       VALUES ($1, 'Kyoto', 'Japan', 'Gion', 'gion', 35.0036, 135.7752, $2)
+       VALUES ($1, 'Kyoto', 'Japan', 'Gion', 'gion', 0, 0, $2)
        ON CONFLICT (city, country, slug) DO UPDATE SET description = $2`,
       [fx("cn-gion"), GION_NBHD_OLD],
     );
     await c.query(
       `INSERT INTO city_neighborhoods (id, city, country, name, slug, centroid_lat, centroid_lng, description)
-       VALUES ($1, 'New York', 'USA', 'Washington Heights', 'washington-heights', 40.8448, -73.9396, $2)
+       VALUES ($1, 'New York', 'USA', 'Washington Heights', 'washington-heights', 0, 0, $2)
        ON CONFLICT (city, country, slug) DO UPDATE SET description = $2`,
       [fx("cn-wh"), HAND_EDIT],
     );
