@@ -422,6 +422,8 @@ async function mockBentoEndpoints(page: import('@playwright/test').Page) {
   // casing, so the SPA may request /api/discover/location/Kyoto (title case). A regex
   // route matches either casing, keeping this suite independent of the redirect.
   await page.route(/\/api\/discover\/location\/kyoto/i, (route) => route.fulfill(json(BENTO_FIX.locationView)));
+  // SH-1 item 11: expert CTAs draw only on a "yes" from the availability answer — the fixture city has one.
+  await page.route('**/api/expert-availability**', (route) => route.fulfill(json({ available: true })));
   // Admin-configurable composition knobs — pinned so the interleave is deterministic.
   await page.route('**/api/feed-composition-config', (route) => route.fulfill(json(BENTO_FIX.feedConfig)));
   // Wanted-slot vocabulary.

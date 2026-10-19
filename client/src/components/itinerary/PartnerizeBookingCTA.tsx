@@ -15,6 +15,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { UserCheck, Loader2, CheckCircle2 } from "lucide-react";
+import { useExpertAvailability } from "@/lib/expert-availability";
 
 interface PartnerizeBookingCTAProps {
   tripId?: string;
@@ -45,6 +46,8 @@ export function PartnerizeBookingCTA({
   const { toast } = useToast();
   const [submitting, setSubmitting] = useState(false);
   const [requested, setRequested] = useState(false);
+  // SH-1 item 11: "Book with an expert" draws only when the destination has an expert to ask.
+  const expertAvailable = useExpertAvailability({ city: destination });
 
   // /api/expert-requests requires either a tripId, or both variantId +
   // comparisonId, for optimizer-based (non-trip) requests. Without one of
@@ -117,6 +120,8 @@ export function PartnerizeBookingCTA({
       </div>
     );
   }
+
+  if (!expertAvailable) return null;
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
