@@ -1,11 +1,11 @@
 # Mounted mutation authorization inventory
 
-Generated from `server/routes.ts`. **711** raw mounted mutation registrations and **703** unique METHOD+normalizedPath pairs were found.
+Generated from `server/routes.ts`. **712** raw mounted mutation registrations and **704** unique METHOD+normalizedPath pairs were found.
 
-The unique-pair count is **+157** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
+The unique-pair count is **+158** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
 
-Category totals: payments 31; admin 184; user-data 245; other 243.
-Boundary totals: admin-role 184; session-self 361; resource-owner 102; signature 6; public-or-system 50; unknown 0.
+Category totals: payments 31; admin 185; user-data 245; other 243.
+Boundary totals: admin-role 185; session-self 361; resource-owner 102; signature 6; public-or-system 50; unknown 0.
 
 | Method | Normalized path | Risk | Boundary | Ownership applicable | Expected ownership | Registrations | Fixture | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -33,10 +33,11 @@ Boundary totals: admin-role 184; session-self 361; resource-owner 102; signature
 | POST | `/api/admin/bookings/:kind(service|legacy|liteapi)/:id/resolve` | admin | admin-role | yes | unknown | `server/routes/admin.routes.ts:903` | unknown | unknown |
 | PATCH | `/api/admin/bookings/auto-cancel/config` | admin | admin-role | yes | unknown | `server/routes/admin.routes.ts:2222` | unknown | unknown |
 | POST | `/api/admin/bookings/auto-cancel/run` | admin | admin-role | yes | unknown | `server/routes/admin.routes.ts:2244` | unknown | unknown |
-| POST | `/api/admin/bot-accounts` | admin | admin-role | no | unknown | `server/routes/bot-admin.routes.ts:46` | unknown | unknown |
-| POST | `/api/admin/bot-accounts/:id/revoke` | admin | admin-role | no | unknown | `server/routes/bot-admin.routes.ts:61` | unknown | unknown |
-| POST | `/api/admin/bot-proposals/:id/approve` | admin | admin-role | no | unknown | `server/routes/bot-admin.routes.ts:84` | unknown | unknown |
-| POST | `/api/admin/bot-proposals/:id/reject` | admin | admin-role | no | unknown | `server/routes/bot-admin.routes.ts:99` | unknown | unknown |
+| POST | `/api/admin/bot-accounts` | admin | admin-role | no | unknown | `server/routes/bot-admin.routes.ts:47` | unknown | unknown |
+| POST | `/api/admin/bot-accounts/:id/revoke` | admin | admin-role | no | unknown | `server/routes/bot-admin.routes.ts:62` | unknown | unknown |
+| POST | `/api/admin/bot-proposals/:id/approve` | admin | admin-role | no | unknown | `server/routes/bot-admin.routes.ts:89` | unknown | unknown |
+| POST | `/api/admin/bot-proposals/:id/reject` | admin | admin-role | no | unknown | `server/routes/bot-admin.routes.ts:108` | unknown | unknown |
+| POST | `/api/admin/bot-proposals/refresh-facts/:id/approve` | admin | admin-role | no | unknown | `server/routes/bot-admin.routes.ts:132` | unknown | unknown |
 | POST | `/api/admin/catalog/ingest` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:2671` | unknown | unknown |
 | POST | `/api/admin/categories` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:3777` | unknown | unknown |
 | POST | `/api/admin/categories/:categoryId/subcategories` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:3953` | unknown | unknown |
@@ -562,7 +563,7 @@ Boundary totals: admin-role 184; session-self 361; resource-owner 102; signature
 | POST | `/api/transport-booking-options/seed/:variantId` | other | session-self | no | unknown | `server/routes/transport-hub.routes.ts:631` | unknown | unknown |
 | POST | `/api/transport-booking-options/seed/test-variant` | other | session-self | no | unknown | `server/routes/transport-hub.routes.ts:597` | unknown | unknown |
 | PATCH | `/api/transport-legs/:legId/mode` | other | resource-owner | no | verified | `server/routes/trips.routes.ts:2246` | unknown | unknown |
-| PATCH | `/api/transport-legs/:legId/status` | other | resource-owner | no | verified | `server/routes/plancard.routes.ts:1114` | unknown | unknown |
+| PATCH | `/api/transport-legs/:legId/status` | other | resource-owner | no | verified | `server/routes/plancard.routes.ts:1119` | unknown | unknown |
 | POST | `/api/transport-options/click` | other | session-self | no | unknown | `server/routes/transport-hub.routes.ts:544` | unknown | unknown |
 | POST | `/api/transport-packages/generate` | other | session-self | no | unknown | `server/routes/content.routes.ts:4175` | unknown | unknown |
 | POST | `/api/travelpulse/ai/refresh-all` | admin | admin-role | no | unknown | `server/routes/content.routes.ts:5831` | unknown | unknown |
@@ -593,8 +594,8 @@ Boundary totals: admin-role 184; session-self 361; resource-owner 102; signature
 | POST | `/api/trips/:tripId/anchors/:anchorId/impacts` | user-data | session-self | yes | unknown | `server/routes/trips.routes.ts:1832` | unknown | unknown |
 | POST | `/api/trips/:tripId/budget/calculate-split` | user-data | session-self | yes | unknown | `server/routes.ts:13088` | unknown | unknown |
 | POST | `/api/trips/:tripId/calculate-energy` | user-data | session-self | yes | unknown | `server/routes/booking-actions.ts:2135` (/trips/:tripId/calculate-energy) | unknown | unknown |
-| POST | `/api/trips/:tripId/changes` | user-data | session-self | yes | unknown | `server/routes/plancard.routes.ts:1078` | unknown | unknown |
-| DELETE | `/api/trips/:tripId/changes/:changeId` | user-data | session-self | yes | unknown | `server/routes/plancard.routes.ts:1196` | unknown | unknown |
+| POST | `/api/trips/:tripId/changes` | user-data | session-self | yes | unknown | `server/routes/plancard.routes.ts:1083` | unknown | unknown |
+| DELETE | `/api/trips/:tripId/changes/:changeId` | user-data | session-self | yes | unknown | `server/routes/plancard.routes.ts:1201` | unknown | unknown |
 | POST | `/api/trips/:tripId/contracts` | user-data | session-self | yes | unknown | `server/routes.ts:12880` | unknown | unknown |
 | POST | `/api/trips/:tripId/contracts/:contractId/documents` | user-data | session-self | yes | unknown | `server/routes/trips.routes.ts:1035` | unknown | unknown |
 | POST | `/api/trips/:tripId/day-boundaries` | user-data | session-self | yes | unknown | `server/routes/trips.routes.ts:1757` | unknown | unknown |

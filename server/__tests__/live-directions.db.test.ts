@@ -65,6 +65,8 @@ const svc = (ref: string, at: { lat: number; lng: number }, lastDeparture: strin
     need: "transport.local",
     factType: "last_service",
     value: { operator, line: "Main Line", station: null, lastDeparture, weekdays: [1], validFrom: "2027-01-01", validTo: "2028-01-01", quote: `last ${lastDeparture}` },
+    // CS-1 item 3 (ledger `2026-10-19-cs1-fact-review`): reviewed by a person.
+    verifiedBy: owner,
     origin: "crawled",
     sourceId: null,
     sourceUrl: "https://operator.example.jp/",

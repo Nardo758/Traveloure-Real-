@@ -4,7 +4,7 @@
  *
  *   SB1  a link-out terms class forces adapter `manual`, on create and on edit
  *   SB2  sign-off is the approver's alone (403 otherwise); approving needs a terms class; reject deactivates
- *   SB3  activation needs an approved sign-off; a reading-class source is refused until the review gate exists
+ *   SB3  activation needs an approved sign-off; a reading-class source activates (item 3 holds its facts for review)
  *   SB4  a terms-bound edit (terms class) returns the source to pending and deactivates it
  *   SB5  the refresh refuses a source that is not auto-fetchable; recordFacts refuses a link-out source's facts
  *   PB1  migration 395 creates the table and inserts nothing (no INSERT in the file; the table is empty on a fresh run)
@@ -121,7 +121,7 @@ test("SB2: sign-off is the approver's; approving needs a terms class; reject dea
   assert.equal(rej.active, false);
 });
 
-test("SB3: activation needs an approved sign-off; a reading source waits for the review gate", async () => {
+test("SB3: activation needs an approved sign-off; a reading source activates once its facts wait for review", async () => {
   await createContentSource(base(sid("sb3l"), { termsClass: "link_out" }), otherAdmin);
   await refused(activateContentSource(sid("sb3l"), approver), "not_signed_off", 409);
   await signoffContentSource(sid("sb3l"), { decision: "approved" }, approver);
@@ -129,7 +129,9 @@ test("SB3: activation needs an approved sign-off; a reading source waits for the
   assert.equal(on.active, true);
   await createContentSource(base(sid("sb3e"), { termsClass: "extract", automatedAccessAllowed: true }), otherAdmin);
   await signoffContentSource(sid("sb3e"), { decision: "approved" }, approver);
-  await refused(activateContentSource(sid("sb3e"), approver), "review_gate_not_built", 409);
+  // CS-1 item 3 (ledger `2026-10-19-cs1-fact-review`) lifted `review_gate_not_built`: its refresh facts wait for review.
+  const read = await activateContentSource(sid("sb3e"), approver);
+  assert.equal(read.active, true);
 });
 
 test("SB4: a terms-bound edit returns the source to pending and deactivates it", async () => {

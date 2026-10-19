@@ -288,6 +288,9 @@ test("resolves named re-exports used by authentication registration helpers", ()
  * 709 / 701 → 711 / 703 (ledger `2026-10-18-cs1-source-signoff`): POST /api/admin/content-sources/:id/signoff (the
  * approver's sign-off) and POST /api/admin/place-photo-blocks (the approver adds a no_photos block) — both admin, both new.
  *
+ * 711 / 703 → 712 / 704 (ledger `2026-10-19-cs1-fact-review`): POST /api/admin/bot-proposals/refresh-facts/:id/approve —
+ * an admin's review of official-refresh output, behind the blanket /api/admin guard.
+ *
  * THE COUNTS ARE THE POINT: they exist so a route appearing or vanishing from
  * the mounted graph fails here. Now that the file is wired into CI, changing a
  * number is a decision that needs its reason stated, exactly as this one does.
@@ -295,8 +298,8 @@ test("resolves named re-exports used by authentication registration helpers", ()
 test("current mounted graph parity includes auth helpers and shared api paths", () => {
   const root = process.cwd();
   const result = extractMountedMutations(path.join(root, "server/routes.ts"), root);
-  assert.equal(result.mutations.length, 711);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 703);
+  assert.equal(result.mutations.length, 712);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 704);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -306,10 +309,11 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "generated/security/mutation-auth-manifest.json"), "utf8"));
   const markdown = fs.readFileSync(path.join(root, "generated/security/mutation-auth-inventory.md"), "utf8");
   const endpointRows = markdown.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| ---")).slice(1);
-  assert.equal(endpointRows.length, 703);
+  assert.equal(endpointRows.length, 704);
   // 711 / 703 (ledger `2026-10-18-cs1-source-signoff`): the sign-off and photo-block POSTs.
-  assert.equal(manifest.rawRegistrationCount, 711);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 703);
+  // 712 / 704 (ledger `2026-10-19-cs1-fact-review`): the refresh-fact approve POST.
+  assert.equal(manifest.rawRegistrationCount, 712);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 704);
   // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R274): user-data,
   // session-self; the owner/delegate check runs in the service before any write.
   // + POST /api/admin/content-sources/:id/public-ok (ledger `2026-10-03-official-facts-public-ok`, R278):
@@ -349,7 +353,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // + PUT /api/admin/place-coords/:placeId (LG-1): admin, behind the blanket /api/admin guard.
   // + POST /api/viator/live/click (VD-1): other, session-self — isAuthenticated, the user from the session.
   // admin 182 → 184 (ledger `2026-10-18-cs1-source-signoff`): the sign-off and photo-block POSTs are both admin.
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 184, "user-data": 245, other: 243 });
+  // admin 184 → 185 (ledger `2026-10-19-cs1-fact-review`): the refresh-fact approve POST.
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 185, "user-data": 245, other: 243 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
@@ -382,7 +387,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // + POST /api/viator/live/click (VD-1): session-self 360 → 361.
   assert.deepEqual(manifest.boundaryTotals, {
   // admin-role 182 → 184 (ledger `2026-10-18-cs1-source-signoff`): the same two admin POSTs.
-    "admin-role": 184, "session-self": 361, "resource-owner": 102,
+  // admin-role 184 → 185 (ledger `2026-10-19-cs1-fact-review`): the refresh-fact approve POST.
+    "admin-role": 185, "session-self": 361, "resource-owner": 102,
     signature: 6, "public-or-system": 50, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [

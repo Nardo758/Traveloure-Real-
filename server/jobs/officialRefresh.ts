@@ -34,7 +34,7 @@ import { REFRESH_ORIGIN, refreshBudgetCents, refreshDue, refreshEligibleSource, 
 import { NOMINATIM_MIN_INTERVAL_MS, resolveOsmNode, type VenueCoordinate } from "../services/venue-geocode.service";
 import { CONTENT_FACTS_USAGE_PURPOSE } from "../services/content-facts/fresh-fetch";
 import { TavilyExtractAdapter, tavilyExtractCostCents, type TavilyExtractDeps } from "../services/content-facts/tavily-extract-adapter";
-import { defaultTavilyExtractDeps, recordFacts } from "../services/content-facts/place-facts.service";
+import { defaultTavilyExtractDeps, recordMachineFacts } from "../services/content-facts/place-facts.service";
 
 export interface OfficialRefreshSourceResult {
   sourceId: string;
@@ -181,7 +181,7 @@ export async function runOfficialRefresh(opts: {
         const drafts = await adapter.fetchTarget({ target, market: row.market, intervalDays: interval, budgetCents: budget, point });
         res.read++;
         res.outcomes[adapter.lastOutcome ?? "no_facts"] = (res.outcomes[adapter.lastOutcome ?? "no_facts"] ?? 0) + 1;
-        if (drafts.length) res.facts += await recordFacts(drafts, { planId: null, itemId: null });
+        if (drafts.length) res.facts += await recordMachineFacts(drafts, { planId: null, itemId: null });
       }
     }
   } catch (err: any) {

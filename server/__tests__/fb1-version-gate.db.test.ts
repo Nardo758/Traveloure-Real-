@@ -50,6 +50,7 @@ const hours = (placeRef: string, itemId: string, line = "Monday: 9:00 AM – 5:0
       placeRefKind: "place_id", placeRef, placeLat: null, placeLng: null, market: "kyoto", need: "stop.hours", factType: "hours",
       value: { text: line, quote: line, weekdayDescriptions: [line] },
       origin: "crawled", sourceId: null, sourceUrl: "https://official.example.jp/", license: "official", fetchedAt: NOW, expiresAt: later(30), costCents: 0,
+      /* CS-1 item 3 (ledger `2026-10-19-cs1-fact-review`): reviewed by a person */ verifiedBy: owner,
     } as any],
     { planId: trip, itemId },
   );

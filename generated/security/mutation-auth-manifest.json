@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "generatedBy": "scripts/generate-mutation-auth-manifest.ts",
   "entrypoint": "server/routes.ts",
-  "mutationCount": 711,
-  "rawRegistrationCount": 711,
-  "uniqueMethodNormalizedPathCount": 703,
-  "distinctMethodPathCount": 703,
+  "mutationCount": 712,
+  "rawRegistrationCount": 712,
+  "uniqueMethodNormalizedPathCount": 704,
+  "distinctMethodPathCount": 704,
   "duplicateRegistrations": [
     {
       "methodPath": "POST /api/chats",
@@ -130,12 +130,12 @@
   ],
   "categoryTotals": {
     "payments": 31,
-    "admin": 184,
+    "admin": 185,
     "user-data": 245,
     "other": 243
   },
   "boundaryTotals": {
-    "admin-role": 184,
+    "admin-role": 185,
     "session-self": 361,
     "resource-owner": 102,
     "signature": 6,
@@ -144,7 +144,7 @@
   },
   "historicalComparison": {
     "count": 546,
-    "delta": 165,
+    "delta": 166,
     "note": "The historical count is a comparison-only baseline; generation reads only the current source mount graph."
   },
   "diagnostics": [],
@@ -611,7 +611,7 @@
       "path": "/api/admin/bot-accounts",
       "effectivePath": "/api/admin/bot-accounts",
       "source": "server/routes/bot-admin.routes.ts",
-      "line": 46,
+      "line": 47,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -630,7 +630,7 @@
       "path": "/api/admin/bot-accounts/:id/revoke",
       "effectivePath": "/api/admin/bot-accounts/:id/revoke",
       "source": "server/routes/bot-admin.routes.ts",
-      "line": 61,
+      "line": 62,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -649,7 +649,7 @@
       "path": "/api/admin/bot-proposals/:id/approve",
       "effectivePath": "/api/admin/bot-proposals/:id/approve",
       "source": "server/routes/bot-admin.routes.ts",
-      "line": 84,
+      "line": 89,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -668,7 +668,26 @@
       "path": "/api/admin/bot-proposals/:id/reject",
       "effectivePath": "/api/admin/bot-proposals/:id/reject",
       "source": "server/routes/bot-admin.routes.ts",
-      "line": 99,
+      "line": 108,
+      "risk": "admin",
+      "expectedAuth": "required",
+      "expectedRoles": [
+        "admin"
+      ],
+      "expectedOwnership": "unknown",
+      "expectedBoundary": "admin-role",
+      "ownershipApplies": false,
+      "fixtureStatus": "unknown",
+      "testStatus": "unknown",
+      "diagnostics": []
+    },
+    {
+      "method": "POST",
+      "rawPath": "/api/admin/bot-proposals/refresh-facts/:id/approve",
+      "path": "/api/admin/bot-proposals/refresh-facts/:id/approve",
+      "effectivePath": "/api/admin/bot-proposals/refresh-facts/:id/approve",
+      "source": "server/routes/bot-admin.routes.ts",
+      "line": 132,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -10005,7 +10024,7 @@
       "path": "/api/transport-legs/:legId/status",
       "effectivePath": "/api/transport-legs/:legId/status",
       "source": "server/routes/plancard.routes.ts",
-      "line": 1114,
+      "line": 1119,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -10587,7 +10606,7 @@
       "path": "/api/trips/:tripId/changes",
       "effectivePath": "/api/trips/:tripId/changes",
       "source": "server/routes/plancard.routes.ts",
-      "line": 1078,
+      "line": 1083,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -10604,7 +10623,7 @@
       "path": "/api/trips/:tripId/changes/:changeId",
       "effectivePath": "/api/trips/:tripId/changes/:changeId",
       "source": "server/routes/plancard.routes.ts",
-      "line": 1196,
+      "line": 1201,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],

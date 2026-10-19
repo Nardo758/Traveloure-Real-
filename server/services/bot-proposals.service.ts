@@ -22,7 +22,6 @@ import {
   BOT_TOKEN_PREFIX,
   admitBotFact,
   admitBotSource,
-  botFactExpiryDays,
   botProposalDedupeInput,
   botTokenLive,
   factForKind,
@@ -33,6 +32,7 @@ import {
 } from "@shared/bot-proposals";
 import { PAGE_READ_ORIGINS, type LicenseClass } from "@shared/content-facts";
 import { admitFeasibilityFact, isFeasibilityFactType } from "@shared/feasibility-facts";
+import { resolveReviewedExpiry, type ReviewExpiryRefusal } from "@shared/fact-review";
 import { buildCoverageReport, type CoverageSourceRow } from "@shared/content-coverage";
 import { recordFacts } from "./content-facts/place-facts.service";
 import { structuredFields } from "./content-facts/tavily-extract-adapter";
@@ -302,7 +302,7 @@ export async function listBotProposalsForReview(status: string) {
   return out;
 }
 
-export type ApproveRefusal = "not_found" | "not_pending" | "bad_kind" | "source_not_eligible" | "url_not_https" | "url_off_source_host" | "expiry_unset" | "fact_refused";
+export type ApproveRefusal = "not_found" | "not_pending" | "bad_kind" | "source_not_eligible" | "url_not_https" | "url_off_source_host" | "fact_refused" | ReviewExpiryRefusal;
 
 /**
  * Approve. Checked first, then ONE transaction: claim `pending → approved` (the statement is the guard, §15), write
@@ -310,7 +310,13 @@ export type ApproveRefusal = "not_found" | "not_pending" | "bad_kind" | "source_
  * verified at the approval moment so the provenance line reads "checked <approval date>"), stamp `fact_id`. A fact
  * the writer refuses rolls the claim back.
  */
-export async function approveBotProposal(id: string, adminId: string, now: Date = new Date()): Promise<{ ok: true; factId: string } | { ok: false; reason: ApproveRefusal }> {
+export async function approveBotProposal(
+  id: string,
+  adminId: string,
+  now: Date = new Date(),
+  // CS-1 item 3: the reviewer's expiry. Required for last admission (a safety fact); optional for hours.
+  opts: { expiresAt?: unknown } = {},
+): Promise<{ ok: true; factId: string } | { ok: false; reason: ApproveRefusal }> {
   const [p] = await db.select().from(botProposals).where(eq(botProposals.id, id)).limit(1);
   if (!p) return { ok: false, reason: "not_found" };
   if (p.status !== "pending") return { ok: false, reason: "not_pending" };
@@ -319,10 +325,11 @@ export async function approveBotProposal(id: string, adminId: string, now: Date 
   const verdict = admitBotSource(src ?? null, p.sourceUrl);
   if (!verdict.ok) return { ok: false, reason: verdict.reason };
   const [setting] = await db.select({ v: platformSettingsTable.settingValue }).from(platformSettingsTable).where(eq(platformSettingsTable.settingKey, BOT_FACT_DEFAULT_EXPIRY_SETTING)).limit(1);
-  const days = botFactExpiryDays(src!.refreshIntervalDays, setting?.v ?? null);
-  if (days === null) return { ok: false, reason: "expiry_unset" };
-
   const { factType, need } = factForKind(p.kind);
+  // CS-1 item 3: the expiry is the reviewer's — no later than the source's expiry setting (falling back to the
+  // platform setting), counted from this approval, the fact's check date. Hours may take that latest date.
+  const expiry = resolveReviewedExpiry({ factType, checkedAt: now, sourceIntervalDays: src!.refreshIntervalDays, settingValue: setting?.v ?? null, entered: opts.expiresAt, now });
+  if (!expiry.ok) return { ok: false, reason: expiry.reason };
   const factId = crypto.randomUUID();
   const draft = {
     id: factId,
@@ -341,7 +348,7 @@ export async function approveBotProposal(id: string, adminId: string, now: Date 
     fetchedAt: now,
     verifiedAt: now,
     verifiedBy: adminId,
-    expiresAt: new Date(now.getTime() + days * 86_400_000),
+    expiresAt: expiry.expiresAt,
     costCents: 0,
   };
   const pre = admitBotFact(draft);

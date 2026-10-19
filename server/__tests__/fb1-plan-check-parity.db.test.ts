@@ -37,6 +37,8 @@ const later = (days: number) => new Date(NOW.getTime() + days * 86_400_000);
 const fact = (over: Record<string, unknown>) => ({
   placeRefKind: "place_id" as const, placeRef: pid("b"), placeLat: null, placeLng: null, market: "kyoto", need: "stop.hours" as const,
   factType: "hours" as const, value: {}, origin: "crawled" as const, sourceId: null, sourceUrl: null, license: "official" as const,
+  // CS-1 item 3 (ledger `2026-10-19-cs1-fact-review`): a dated, machine-read fact shows only once a person reviewed it.
+  verifiedBy: owner,
   fetchedAt: NOW, expiresAt: later(30), costCents: 0, ...over,
 }) as any;
 

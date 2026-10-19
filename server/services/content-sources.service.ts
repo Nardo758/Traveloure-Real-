@@ -214,7 +214,7 @@ export async function activateContentSource(id: string, actorId: string | null):
       AND ${contentSources.licenseClass} IN (${sql.join(LICENSE_CLASSES.map((c) => sql`${c}`), sql`, `)})
       AND cardinality(${contentSources.covers}) > 0
       AND ${contentSources.signoffStatus} = 'approved'
-      AND ${contentSources.termsClass} IN ('link_out', 'link_out_no_link')`)
+      AND ${contentSources.termsClass} IN (${sql.join(TERMS_CLASSES.map((c) => sql`${c}`), sql`, `)})`)
     .returning();
   if (row) {
     // Belt and braces: the shared predicates agree with the statement, or the row is reported.
@@ -223,18 +223,15 @@ export async function activateContentSource(id: string, actorId: string | null):
   }
   const [cur] = await db.select().from(contentSources).where(eq(contentSources.id, id));
   if (!cur) throw new ContentSourceError("not_found", 404);
-  // The A6 preconditions are reported first; the sign-off and the review gate after.
+  // The A6 preconditions are reported first; the sign-off after.
   if (!(LICENSE_CLASSES as readonly string[]).includes(cur.licenseClass ?? "") || !(cur.covers ?? []).length) {
     throw new ContentSourceError("not_activatable", 409, { reason: "needs a license class and at least one covered need" });
   }
   if (!signoffAllowsActivation(cur)) {
     throw new ContentSourceError("not_signed_off", 409, { reason: "the source needs an approved sign-off and a terms class" });
   }
-  // Decision-maker, Oct 18, 2026 (CS-1 ruling 5): no store/extract source activates until the review gate on its
-  // refresh output (CS-1 item 3) exists. Item 3 lifts this refusal; it never lifts the sign-off rule above.
-  if (isReadingClass(cur.termsClass)) {
-    throw new ContentSourceError("review_gate_not_built", 409, { reason: "a source that is read needs the fact review gate first" });
-  }
+  // CS-1 item 3 lifted the `review_gate_not_built` refusal: a store/extract source may activate, and its refresh
+  // facts wait for a person's review before any reader shows them (shared/fact-review.ts).
   throw new ContentSourceError("not_activatable", 409, { reason: "needs a license class and at least one covered need" });
 }
 

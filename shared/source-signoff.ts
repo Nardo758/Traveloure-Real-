@@ -79,3 +79,6 @@ export function needsManualRecheck(row: SignoffRow): boolean {
 
 /** Edits to these fields change what a sign-off covered; the row returns to pending (and the terms check clears). */
 export const SIGNOFF_BOUND_FIELDS = ["homepage", "termsUrl", "licenseClass", "adapter", "termsClass", "automatedAccessAllowed"] as const;
+
+/** CS-1 item 3: what the approver is told when activating a source that is read. */
+export const REFRESH_REVIEW_NOTE = "This source's refresh facts need review before they show.";
