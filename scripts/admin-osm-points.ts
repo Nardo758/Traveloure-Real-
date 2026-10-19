@@ -7,6 +7,8 @@
  *                                                    # enters the admitted points (open_place_coords, source 'admin')
  *   npx tsx scripts/admin-osm-points.ts --csv <file> --attach --by "<name>" --approved-counts
  *                                                    # writes the name-attach links (source 'admin')
+ *   npx tsx scripts/admin-osm-points.ts --csv <file> --attach-one --item <itemId> --place "<sheet place>" --by "<name>" --approved-counts
+ *                                                    # writes ONE link by hand: an item the name attach cannot match
  *
  * Order, and it is the ruling: the dry run's counts are posted and approved by a person BEFORE anything is entered or
  * attached. `--attach` also refuses a point that has not been entered. The sheet is never committed (it holds
@@ -32,7 +34,7 @@ import { readFileSync } from "node:fs";
 import { eq, ilike, isNull } from "drizzle-orm";
 import { db } from "../server/db";
 import { itineraryItemOpenCoords, itineraryItemOpenCoordsReview, itineraryItems, trips } from "../shared/schema";
-import { admitPointRow, adminPointId, parsePointsSheet, planNameAttach, type AdmittedPoint, type AttachItem } from "../shared/admin-osm-points";
+import { admitPointRow, adminPointId, parsePointsSheet, planNameAttach, pointByPlace, type AdmittedPoint, type AttachItem } from "../shared/admin-osm-points";
 import { strippedPlaceTitle } from "../server/services/item-osm-regeocode.service";
 import { enterAdminOsmPoint, enteredAdminPointIds } from "../server/services/routing/open-place-coords.service";
 import { attachAdminPointToItem } from "../server/services/routing/open-coord-review.service";
@@ -77,9 +79,10 @@ async function main(): Promise<void> {
   if (!file) throw new Error("--csv <file> is required");
   const enter = has("--enter");
   const attach = has("--attach");
-  if (enter && attach) throw new Error("--enter and --attach run separately");
+  const attachOne = has("--attach-one");
+  if ([enter, attach, attachOne].filter(Boolean).length > 1) throw new Error("--enter, --attach and --attach-one run separately");
   const by = arg("--by");
-  if ((enter || attach) && !by) throw new Error("--by <name> is required to write");
+  if ((enter || attach || attachOne) && !by) throw new Error("--by <name> is required to write");
 
   const sheet = parsePointsSheet(readFileSync(file, "utf8"));
   if (!sheet.ok) {
@@ -95,6 +98,42 @@ async function main(): Promise<void> {
     else refused[a.reason] = (refused[a.reason] ?? 0) + 1;
   }
   const entered = await enteredAdminPointIds(points.map(adminPointId));
+
+  // --attach-one (LG-2 Ask 7 follow-up): ONE link by hand, for an item the exact name attach cannot match. Same gate as
+  // --attach; the point is the sheet row named exactly and must already be entered; one item per call. An item already
+  // linked by a person is refused; a batch (OSM) link is moved to the review table first (`replaced_by_admin`), as
+  // --attach does. Prints no id, title or coordinate.
+  if (attachOne) {
+    if (!has("--approved-counts")) {
+      console.error("REFUSED: --attach-one writes a link only after the counts were posted and approved; pass --approved-counts to say they were.");
+      process.exitCode = 1;
+      return;
+    }
+    const itemId = arg("--item");
+    const place = arg("--place");
+    if (!itemId || !place) throw new Error("--attach-one needs --item <itemId> and --place \"<sheet place>\"");
+    const found = pointByPlace(points, place);
+    if (!found.ok) {
+      console.error(`REFUSED: ${found.reason === "no_row" ? "no admitted sheet row has exactly that place name" : "two sheet rows have that place name"}. Nothing written.`);
+      process.exitCode = 1;
+      return;
+    }
+    const pointId = adminPointId(found.point);
+    if (!entered.has(pointId)) {
+      console.error("REFUSED: that point is not entered yet. Run --enter first. Nothing written.");
+      process.exitCode = 1;
+      return;
+    }
+    const r = await attachAdminPointToItem(itemId, pointId, by!);
+    if (!r.attached) {
+      console.error(`REFUSED: ${r.reason === "already_admin" ? "the item already has a link a person attached" : r.reason === "no_item" ? "no such item" : "the point is not an entered admin point"}. Nothing written.`);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(JSON.stringify({ attached: 1, place: found.point.place, pointBasis: found.point.pointBasis, replacedABatchLink: r.replaced != null }, null, 2));
+    return;
+  }
+
   const items = await loadKyotoItems();
   const plan = planNameAttach(items, points);
 
