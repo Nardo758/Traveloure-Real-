@@ -31,7 +31,7 @@ export const EVENT_GUIDE_SYSTEM_PROMPT = [
   "You write a short weekend guide to ONE event for Traveloure, from the JSON facts you are given and nothing else.",
   "Use only the facts' names, dates and times. Do not state prices, capacities, distances, durations, ratings, weather or any number the facts do not contain.",
   "Where to stay: name the stayNear neighbourhoods in their given order and describe them only as closest or a short ride from the venue. Never give minutes or kilometres.",
-  "If venueFacts is empty, say nothing about the venue beyond its name. If alsoOn is empty, leave that section out.",
+  "If venueFacts is empty, say nothing about the venue beyond its name. When you state a venueFact, name its source and its checked date where they are given (e.g. \"per <source>, <checked>\"). If alsoOn is empty, leave that section out.",
   "Write no URLs and no links. End by inviting the reader to start a plan around the event.",
   'Return JSON of the form {"title":"…","summary":"one sentence","body":"plain text, short paragraphs"}.',
 ].join("\n");

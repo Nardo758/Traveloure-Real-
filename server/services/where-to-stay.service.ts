@@ -71,7 +71,7 @@ import {
   planRole,
   reopenOptionSet,
 } from "./plan-option-sets.service";
-import { enrichPlanItems } from "./content-facts/place-facts.service";
+import { enrichPlanItems, liveFactRow } from "./content-facts/place-facts.service";
 import { itineraryItemNotMachineProtected } from "./itinerary-rebuild-guard";
 import { OPTION_SET_CAP } from "@shared/plan-options";
 import { rerouteAfterStayChange } from "./stay-reroute.service";
@@ -282,9 +282,9 @@ async function neighbourhoodOneLiners(
           // The REGISTRY's line, never Google's: a Places row is display-inside-a-plan data with its
           // own provenance line, and is not what R-x means by a registry fact.
           sql`${placeFacts.origin} <> 'places_api'`,
-          isNull(placeFacts.supersededBy),
           sql`lower(${placeFacts.placeRef}) IN (${sql.join(keys.map((k) => sql`${k}`), sql`, `)})`,
-          sql`(${placeFacts.expiresAt} IS NULL OR ${placeFacts.expiresAt} > now())`,
+          // CS-1 item 2: live only (`liveFactRow`).
+          liveFactRow(),
         ),
       );
   } catch (err) {

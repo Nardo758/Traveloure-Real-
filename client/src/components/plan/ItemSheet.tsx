@@ -61,7 +61,6 @@ export function ItemSheet(props: ItemSheetProps) {
                     ) : (
                       l.source
                     )}
-                    {l.stale ? " (may have changed)" : ""}
                   </dd>
                 </div>
               ))}

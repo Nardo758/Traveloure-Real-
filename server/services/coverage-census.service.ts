@@ -13,6 +13,7 @@
  */
 import { OPERATING_MARKETS } from "@shared/operating-markets";
 import { buildCoverageCensus, type CoverageCensus, type SlugTargets } from "@shared/coverage-targets";
+import { REVIEWED_ORIGINS } from "@shared/content-facts";
 
 export type CensusQuery = (text: string, params: unknown[]) => Promise<{ rows: any[] }>;
 
@@ -45,11 +46,12 @@ export async function loadCoverageCensus(market: string, targets: Record<string,
          from place_facts pf left join content_sources cs on cs.id = pf.source_id
         where lower(btrim(pf.market)) = $1
           and pf.superseded_by is null
-          and (pf.expires_at is null or pf.expires_at > now())
+          -- CS-1 item 2: the live rule (isFactLive) — a machine-read row with no expiry is not live.
+          and (pf.expires_at > now() or (pf.expires_at is null and pf.origin <> all($2::text[])))
           and pf.place_lat is not null and pf.place_lng is not null
           and (pf.source_class = 'local'
                or (pf.license = 'official' and pf.fact_type in ('hours', 'last_admission', 'last_service')))`,
-      [key],
+      [key, [...REVIEWED_ORIGINS]],
     ),
   ]);
   return buildCoverageCensus({

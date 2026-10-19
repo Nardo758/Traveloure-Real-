@@ -13,7 +13,7 @@
  */
 import { canonicalAreaLine } from "@shared/place-address";
 import crypto from "node:crypto";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { contentSources, itineraryItems, placeFacts, trips } from "@shared/schema";
 import {
@@ -24,6 +24,7 @@ import {
   PAGE_READ_ORIGINS,
   factProvenanceLine,
   isConfirmableFact,
+  isFactLive,
   isFactStale,
   isGoogleHoursFact,
   isPublishable,
@@ -101,6 +102,11 @@ export async function recordFacts(
         return false;
       }
     }
+    // CS-1 item 2: a machine-read fact with no expiry would never be live (`isFactLive`) — refused, logged.
+    if ((REVIEWED_ORIGINS as readonly string[]).includes(d.origin) && d.expiresAt == null) {
+      console.info(`[place-facts] refused fact_type=${d.factType} reason=no_expiry origin=${d.origin} source_id=${d.sourceId ?? "none"}`);
+      return false;
+    }
     if (!isFeasibilityFactType(d.factType)) return true;
     const verdict = admitFeasibilityFact(d);
     if (!verdict.ok) console.info(`[place-facts] refused fact_type=${d.factType} reason=${verdict.reason} plan_id=${ctx.planId ?? "none"} item_id=${ctx.itemId ?? "none"}`);
@@ -171,8 +177,7 @@ export async function knownPlaceIdForQuery(query: string): Promise<string | null
         eq(placeFacts.placeRefKind, "place_id"),
         eq(placeFacts.factType, "location"),
         sql`${placeFacts.value}->>'query' = ${query}`,
-        sql`${placeFacts.expiresAt} > now()`,
-        isNull(placeFacts.supersededBy),
+        liveFactRow(),
       ),
     )
     .limit(1);
@@ -195,7 +200,7 @@ async function cachedRowsForPlace(placeId: string): Promise<FactDraft[] | null> 
     .select()
     .from(placeFacts)
     // GH-1: a legacy Google hours row is never copied to another plan.
-    .where(and(eq(placeFacts.placeRefKind, "place_id"), eq(placeFacts.placeRef, hit.placeRef), sql`${placeFacts.expiresAt} > now()`, notGoogleHoursRow(), notDatedFactRow()));
+    .where(and(eq(placeFacts.placeRefKind, "place_id"), eq(placeFacts.placeRef, hit.placeRef), liveFactRow(), notGoogleHoursRow(), notDatedFactRow()));
   const seen = new Set<string>();
   const out: FactDraft[] = [];
   for (const r of rankFactsByOrigin(rows)) {
@@ -616,19 +621,30 @@ export function reviewedFactRow() {
   return sql`(${placeFacts.factType} NOT IN (${list(DATED_FACT_TYPES)}) OR ${placeFacts.origin} NOT IN (${list(REVIEWED_ORIGINS)}) OR btrim(coalesce(${placeFacts.verifiedBy}, '')) <> '')`;
 }
 
+/**
+ * CS-1 item 2 (ledger `2026-10-19-cs1-live-facts`): the WHERE form of `isFactLive` — not superseded and `expires_at`
+ * in the future; a machine-read fact (REVIEWED_ORIGINS) with no `expires_at` is never live. Every reader of
+ * `place_facts` that serves a plan, a finding, a public page or a bot applies it. Nothing is deleted.
+ */
+export function liveFactRow(now?: Date) {
+  const list = sql.join(REVIEWED_ORIGINS.map((t) => sql`${t}`), sql`, `);
+  const at = now ? sql`${now}` : sql`now()`;
+  return sql`(${placeFacts.supersededBy} IS NULL AND (${placeFacts.expiresAt} > ${at} OR (${placeFacts.expiresAt} IS NULL AND ${placeFacts.origin} NOT IN (${list}))))`;
+}
+
 /** The WHERE form of "not a dated fact type" — a dated fact is never copied between plans by a machine. */
 export function notDatedFactRow() {
   return sql`${placeFacts.factType} NOT IN (${sql.join(DATED_FACT_TYPES.map((t) => sql`${t}`), sql`, `)})`;
 }
 
-async function rowsForTrip(tripId: string, itemIds?: string[]): Promise<FactRow[]> {
+async function rowsForTrip(tripId: string, itemIds?: string[], now?: Date): Promise<FactRow[]> {
   return db
     .select()
     .from(placeFacts)
     .where(
       and(
         eq(placeFacts.planId, tripId),
-        isNull(placeFacts.supersededBy),
+        liveFactRow(now),
         notGoogleHoursRow(),
         reviewedFactRow(),
         itemIds ? inArray(placeFacts.itineraryItemId, itemIds.length ? itemIds : ["__none__"]) : sql`true`,
@@ -698,7 +714,7 @@ function toView(r: FactRow, now: Date, sources: Map<string, SourceFacts> = new M
  * The official rows stored for these place ids by ANY plan (the registry's stored facts, FD-3 ruling 2) —
  * the ONE read both the feasibility checks and a row's shown hours use (P0-e addition 7).
  */
-async function storedOfficialFacts(placeIds: string[], factTypes: string[]): Promise<FactRow[]> {
+async function storedOfficialFacts(placeIds: string[], factTypes: string[], now?: Date): Promise<FactRow[]> {
   if (!placeIds.length) return [];
   return db
     .select()
@@ -711,7 +727,7 @@ async function storedOfficialFacts(placeIds: string[], factTypes: string[]): Pro
         // SS-1b: the market-level official refresh is an official page read like the crawl (PAGE_READ_ORIGINS).
         inArray(placeFacts.origin, [...PAGE_READ_ORIGINS, "expert_nugget"]),
         eq(placeFacts.license, "official"),
-        isNull(placeFacts.supersededBy),
+        liveFactRow(now),
         sql`${placeFacts.sourceClass} IS NOT NULL`,
         reviewedFactRow(),
       ),
@@ -777,13 +793,14 @@ function officialSeason(r: FactRow): { from: string; to: string } | null {
 }
 
 /**
- * CS-1 item 3: per item, the line a stop shows while its last entry waits for a person's review — "Last entry not
+ * CS-1 items 3 and 2: per item, the line a stop shows while its last entry waits for a person's review, or once its
+ * stored official last entry has expired — "Last entry not
  * checked yet. See <Place>'s official site before you go." — when an official refresh has read a last-entry fact for
  * the item's place that nobody has reviewed, and no reviewed last-entry fact is stored for it. The link is the source's
  * top-level page; a `link_out_no_link` source is named in plain text (`lastEntryWaitingLine`). Keyed by item id; an
  * item with nothing waiting is absent.
  */
-export async function lastEntryWaitingForTrip(tripId: string): Promise<Record<string, WaitingLine>> {
+export async function lastEntryWaitingForTrip(tripId: string, now: Date = new Date()): Promise<Record<string, WaitingLine>> {
   const items = await db
     .select({ id: itineraryItems.id, title: itineraryItems.title, placeId: itineraryItems.googlePlaceId })
     .from(itineraryItems)
@@ -800,12 +817,20 @@ export async function lastEntryWaitingForTrip(tripId: string): Promise<Record<st
           eq(placeFacts.placeRefKind, "place_id"),
           inArray(placeFacts.placeRef, placeIds),
           eq(placeFacts.factType, "last_admission"),
-          eq(placeFacts.origin, REFRESH_ORIGIN),
           isNull(placeFacts.supersededBy),
-          sql`btrim(coalesce(${placeFacts.verifiedBy}, '')) = ''`,
+          // Waiting for a person's review — or, CS-1 item 2, an official page-read fact that has expired: the
+          // traveler never sees the old value, only this line and the official link.
+          or(
+            and(eq(placeFacts.origin, REFRESH_ORIGIN), sql`btrim(coalesce(${placeFacts.verifiedBy}, '')) = ''`),
+            and(
+              inArray(placeFacts.origin, [...PAGE_READ_ORIGINS]),
+              eq(placeFacts.license, "official"),
+              sql`${placeFacts.expiresAt} IS NOT NULL AND ${placeFacts.expiresAt} <= ${now}`,
+            ),
+          ),
         ),
       ),
-    storedOfficialFacts(placeIds, ["last_admission"]),
+    storedOfficialFacts(placeIds, ["last_admission"], now),
   ]);
   const hasReviewed = new Set(reviewed.map((r) => r.placeRef));
   const waitingSource = new Map<string, { homepage: string | null; termsClass: string | null }>();
@@ -820,7 +845,7 @@ export async function lastEntryWaitingForTrip(tripId: string): Promise<Record<st
 }
 
 export async function factsForTrip(tripId: string, now: Date = new Date()): Promise<Record<string, FactView[]>> {
-  const [rows, timeZone] = await Promise.all([rowsForTrip(tripId), planTimeZone(tripId)]);
+  const [rows, timeZone] = await Promise.all([rowsForTrip(tripId, undefined, now), planTimeZone(tripId)]);
   // P0-e addition 7 (decision-maker, Oct 12, 2026): a row's hours are the SAME facts the feasibility checks
   // read — the plan's own rows plus the official rows stored for the item's place id, official first
   // (`resolveFactPrecedence`) — so an official hours fact replaces the Google line, and the row's closing
@@ -828,7 +853,7 @@ export async function factsForTrip(tripId: string, now: Date = new Date()): Prom
   // (`shownHoursFact`); a text-only crawled row is still a view, for the expert's confirm control.
   const tagged = rows.filter((r) => r.sourceClass != null);
   const placeOf = await itemPlaceIdsForTrip(tripId, tagged);
-  const stored = await storedOfficialFacts(Array.from(new Set(placeOf.values())), ["hours", "last_admission"]);
+  const stored = await storedOfficialFacts(Array.from(new Set(placeOf.values())), ["hours", "last_admission"], now);
   const sources = await sourcesFor([...rows, ...stored]);
   const byItem = new Map<string, FactRow[]>();
   for (const r of rows) {
@@ -897,7 +922,7 @@ export async function factsForTrip(tripId: string, now: Date = new Date()): Prom
  * coordinate is never copied onto the item row, where it would outlive Google's 30-day cache.
  */
 export async function factPointsForTrip(tripId: string, now: Date = new Date()): Promise<Map<string, { lat: number; lng: number }>> {
-  const rows = (await rowsForTrip(tripId)).filter((r) => r.factType === "location" && !isFactStale(r, now));
+  const rows = (await rowsForTrip(tripId, undefined, now)).filter((r) => r.factType === "location" && !isFactStale(r, now));
   const byItem = new Map<string, FactRow[]>();
   for (const r of rows) {
     if (!r.itineraryItemId) continue;
@@ -926,7 +951,7 @@ export type PlaceRefView = {
   photoRef: { name: string; authors: Array<{ displayName: string; uri: string | null }> } | null;
 };
 export async function placeRefsForTrip(tripId: string, itemIds: string[], now: Date = new Date()): Promise<Map<string, PlaceRefView>> {
-  const rows = (await rowsForTrip(tripId, itemIds)).filter((r) => !isFactStale(r, now));
+  const rows = (await rowsForTrip(tripId, itemIds, now)).filter((r) => !isFactStale(r, now));
   const out = new Map<string, PlaceRefView>();
   for (const r of rows) {
     if (!r.itineraryItemId) continue;
@@ -1032,6 +1057,8 @@ export async function confirmFactAsNugget(input: { tripId: string; factId: strin
       .where(and(eq(placeFacts.id, input.factId), eq(placeFacts.planId, input.tripId)));
     if (!fact) throw new FactConfirmError("not_found", 404);
     if (fact.supersededBy) throw new FactConfirmError("already_superseded", 409);
+    // CS-1 item 2: an expired fact is read by no surface, so it cannot be confirmed either.
+    if (!isFactLive(fact)) throw new FactConfirmError("expired", 409);
     if (!isConfirmableFact({ origin: fact.origin, license: fact.license, verifiedAt: fact.verifiedAt })) {
       throw new FactConfirmError("not_confirmable", 409);
     }
@@ -1160,7 +1187,7 @@ export async function lastServicesForMarket(
         eq(placeFacts.factType, "last_service"),
         eq(placeFacts.market, market),
         eq(placeFacts.license, "official"),
-        isNull(placeFacts.supersededBy),
+        liveFactRow(now),
         reviewedFactRow(),
         sql`${placeFacts.sourceClass} IS NOT NULL`,
         sql`${placeFacts.placeLat} IS NOT NULL AND ${placeFacts.placeLng} IS NOT NULL`,
@@ -1183,10 +1210,10 @@ export async function lastServicesForMarket(
 }
 
 export async function feasibilityFactsForTrip(tripId: string, market: string | null, now: Date = new Date()): Promise<FeasibilityFacts> {
-  const own = (await rowsForTrip(tripId)).filter((r) => r.sourceClass != null);
+  const own = (await rowsForTrip(tripId, undefined, now)).filter((r) => r.sourceClass != null);
   const timeZone = await planTimeZone(tripId);
   const placeOf = await itemPlaceIdsForTrip(tripId, own);
-  const stored = await storedOfficialFacts(Array.from(new Set(placeOf.values())), ["hours", "last_admission"]);
+  const stored = await storedOfficialFacts(Array.from(new Set(placeOf.values())), ["hours", "last_admission"], now);
   const sources = await sourcesFor([...own, ...stored]);
   const byItem = withStoredOfficial(own, placeOf, stored);
 

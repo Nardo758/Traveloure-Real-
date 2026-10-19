@@ -76,7 +76,7 @@ function sourceName(provenance: string): string {
  * Pure. The `ItemRow` facts line, VERBATIM per spec §3: "<Wkd> · <hours> · <source> · checked <d Mon>",
  * e.g. "Wed · Open 24 hours · Google Maps · checked 2 Oct". Only the plan DAY's own weekday is read
  * (§13: no date, no weekday — the line is omitted rather than guessed), and only from an hours fact.
- * " (may have changed)" follows a stale fact. Null when there is nothing true to say.
+ * No traveler surface reads an expired fact (CS-1 item 2), so no suffix follows. Null when there is nothing true to say.
  */
 /**
  * P0-e addition 7: the hours fact a row shows for its date — the first hours fact (the server ranks
@@ -109,7 +109,7 @@ function rowMinutes(t: string | null | undefined): number | null {
 /**
  * P0-e addition 7 (decision-maker, Oct 12, 2026): the row's closing warning — the planned time against
  * the closing time of the hours fact the row SHOWS, whatever its source, named with that source:
- * "Closes 5:00 PM · Google Maps · checked 4 Oct (may have changed)", or "Closes 5:00 PM · Ginkaku-ji
+ * "Closes 5:00 PM · Google Maps · checked 4 Oct", or "Closes 5:00 PM · Ginkaku-ji
  * official site · checked 12 Oct" when the official fact is the one shown. A last-entry fact covering the
  * date is preferred: arriving after it reads "Last entry 4:30 PM · …". Otherwise warns when the stop is reached
  * after the day's last close, or open on arrival and closing before the visit ends (its end time, else
@@ -179,7 +179,7 @@ function sourcedWarning(lead: string, fact: FactView, timeZone?: string | null):
   const checked = factCheckedLabel(fact.checkedAt, timeZone) ?? provenanceCheckedLabel(fact.provenance);
   const parts = [lead, sourceName(fact.provenance)];
   if (checked) parts.push(`checked ${checked}`);
-  return { text: parts.join(" · ") + (fact.stale ? " (may have changed)" : ""), sourceUrl: fact.sourceUrl };
+  return { text: parts.join(" · "), sourceUrl: fact.sourceUrl };
 }
 
 export function itemFactsLine(
@@ -198,7 +198,7 @@ export function itemFactsLine(
   const checked = factCheckedLabel(hours.checkedAt, timeZone) ?? provenanceCheckedLabel(hours.provenance);
   const parts = [WKD[dow], hoursText, sourceName(hours.provenance)];
   if (checked) parts.push(`checked ${checked}`);
-  return { text: parts.join(" · ") + (hours.stale ? " (may have changed)" : ""), sourceUrl: hours.sourceUrl };
+  return { text: parts.join(" · "), sourceUrl: hours.sourceUrl };
 }
 
 /**

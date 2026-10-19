@@ -28,13 +28,13 @@
 import { and, eq, gte, isNull, lte, ne, sql } from "drizzle-orm";
 import { db } from "../db";
 import { cityEvents, cityNeighborhoods, contentSources, placeFacts, type CityEvent } from "@shared/schema";
-import { asFactOrigin, mustOmitOnPublicPage, publicFactAttribution } from "@shared/content-facts";
+import { asFactOrigin, checkedDayLabel, mustOmitOnPublicPage, publicFactAttribution } from "@shared/content-facts";
 import { ticketUrlRefusal } from "@shared/city-events";
 import type { TravelTime } from "@shared/travel-time";
 import { toCityEventCard } from "./city-events.service";
 import { MARKET_TIMEZONES } from "./trend-engine/operating-markets";
 import { loadPartnerHosts } from "./partner-hosts.service";
-import { reviewedFactRow } from "./content-facts/place-facts.service";
+import { liveFactRow, reviewedFactRow } from "./content-facts/place-facts.service";
 import { loadEstimateReader, loadMarketCentroids } from "./travel-time-matrix.service";
 
 export interface EventGuideFacts {
@@ -55,8 +55,12 @@ export interface EventGuideFacts {
     /** The organiser's or primary seller's page; null when absent or refused (R208 / partner host). */
     ticketUrl: string | null;
   };
-  /** Publishable facts about the venue/event, as plain text. Empty = none publishable yet. */
-  venueFacts: Array<{ factType: string; text: string }>;
+  /**
+   * Publishable facts about the venue/event, as plain text. Empty = none publishable yet. CS-1 item 2: each copied
+   * fact carries its source's name and its checked date ("checked <d Mon yyyy>", the market's zone) — null only where
+   * the row has none (a platform-owned fact with no registry source). Never a URL: links stay out of the prompt.
+   */
+  venueFacts: Array<{ factType: string; text: string; source: string | null; checked: string | null }>;
   /**
    * Ruling R-p: one post source per official source a venue fact came from — "from <source>" linking
    * to the fact's URL, "checked <date>" as the publisher line. NEVER in the prompt (`promptFacts`
@@ -127,7 +131,7 @@ export async function loadEventGuideFacts(eventId: string, deps: EventFactsDeps 
     .select({ fact: placeFacts, sourceName: contentSources.name, sourceLicenseClass: contentSources.licenseClass, sourcePublicOk: contentSources.publicOk })
     .from(placeFacts)
     .leftJoin(contentSources, eq(contentSources.id, placeFacts.sourceId))
-    .where(and(eq(placeFacts.placeRefKind, "event_id"), eq(placeFacts.placeRef, row.id), isNull(placeFacts.supersededBy), reviewedFactRow()));
+    .where(and(eq(placeFacts.placeRefKind, "event_id"), eq(placeFacts.placeRef, row.id), liveFactRow(now), reviewedFactRow()));
   const venueFacts: EventGuideFacts["venueFacts"] = [];
   const venueFactSources: EventGuideFacts["venueFactSources"] = [];
   const attributedFacts: EventGuideFacts["attributedFacts"] = [];
@@ -144,13 +148,23 @@ export async function loadEventGuideFacts(eventId: string, deps: EventFactsDeps 
       sourcePublicOk: r.sourcePublicOk,
       sourceName: r.sourceName,
       sourceUrl: f.sourceUrl,
+      expiresAt: f.expiresAt,
+      supersededBy: f.supersededBy,
     };
-    if (mustOmitOnPublicPage(view)) continue;
+    // CS-1 item 2: the SQL above already reads live rows only; the public-page rule checks the same thing again.
+    if (mustOmitOnPublicPage(view, now)) continue;
     const text = factText(f.value);
     if (text === "") continue;
-    venueFacts.push({ factType: f.factType, text });
     // LG-1 item 5: the checked day in the event's market zone (none known ⇒ the UTC day).
-    const credit = publicFactAttribution(view, card.marketKey ? MARKET_TIMEZONES[card.marketKey] ?? null : null);
+    const tz = card.marketKey ? MARKET_TIMEZONES[card.marketKey] ?? null : null;
+    const credit = publicFactAttribution(view, tz);
+    const fetched = f.fetchedAt ? new Date(f.fetchedAt as any) : null;
+    venueFacts.push({
+      factType: f.factType,
+      text,
+      source: credit?.sourceName ?? (r.sourceName?.trim() || null),
+      checked: credit?.checked ?? (fetched && Number.isFinite(fetched.getTime()) ? `checked ${checkedDayLabel(fetched, tz)}` : null),
+    });
     if (credit) attributedFacts.push({ factType: f.factType, text, ...credit });
     if (credit && !venueFactSources.some((s) => s.url === credit.sourceUrl)) {
       venueFactSources.push({ url: credit.sourceUrl, title: credit.label, publisher: credit.checked, retrievedAt: new Date(f.fetchedAt) });
