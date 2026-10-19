@@ -47,7 +47,7 @@ const KANSAI_BIZLANG_EMAIL = "kyoto-interpreter@traveloure.test";
 // The quoted translation listing's copy (ledger `2026-09-23-kansai-translation-quoted`), stated once
 // for the definition below and for the one-time repair of an existing demo row.
 const TRANSLATION_DESCRIPTION =
-  "Professional translation of business documents: contracts, MOUs, technical manuals, financial reports, and marketing materials. Quoted per document by length (the standard rate unit is 400 Japanese characters, about 200 English words). Certification included. Typical turnaround 3–5 business days; express 24-hour service available.";
+  "Professional translation of business documents: contracts, MOUs, technical manuals, financial reports, and marketing materials. Quoted per document by length (the standard rate unit is 400 Japanese characters, about 200 English words). Typical turnaround 3–5 business days; express 24-hour service available.";
 
 
 // ─── Category placeholders (vendor arrays reference these at module load time) ─

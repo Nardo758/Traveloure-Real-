@@ -143,7 +143,7 @@ test("SC1 sample rows take the new copy, a second run is a no-op, a hand-edited 
 test("SC2 the migration is data only", () => {
   const body = MIGRATION.split("\n").filter((l) => !l.trimStart().startsWith("--")).join("\n");
   // Strip the quoted copy so a word inside seed text cannot trip (or hide) the check.
-  const code = body.replace(/\$(new|old|t)\$[\s\S]*?\$\1\$/g, "''");
+  const code = body.replace(/\$(new|old|t|k)\$[\s\S]*?\$\1\$/g, "''");
   assert.doesNotMatch(code, /\b(ALTER|CREATE|DROP|CHECK|DEFAULT|INSERT|DELETE|TRUNCATE)\b/i);
   for (const stmt of code.split(";").map((s) => s.trim()).filter(Boolean)) assert.match(stmt, /^UPDATE\s/i);
 });
