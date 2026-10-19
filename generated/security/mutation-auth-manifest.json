@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "generatedBy": "scripts/generate-mutation-auth-manifest.ts",
   "entrypoint": "server/routes.ts",
-  "mutationCount": 709,
-  "rawRegistrationCount": 709,
-  "uniqueMethodNormalizedPathCount": 701,
-  "distinctMethodPathCount": 701,
+  "mutationCount": 710,
+  "rawRegistrationCount": 710,
+  "uniqueMethodNormalizedPathCount": 702,
+  "distinctMethodPathCount": 702,
   "duplicateRegistrations": [
     {
       "methodPath": "POST /api/chats",
@@ -131,12 +131,12 @@
   "categoryTotals": {
     "payments": 31,
     "admin": 182,
-    "user-data": 245,
+    "user-data": 246,
     "other": 243
   },
   "boundaryTotals": {
     "admin-role": 182,
-    "session-self": 361,
+    "session-self": 362,
     "resource-owner": 102,
     "signature": 6,
     "public-or-system": 50,
@@ -144,7 +144,7 @@
   },
   "historicalComparison": {
     "count": 546,
-    "delta": 163,
+    "delta": 164,
     "note": "The historical count is a comparison-only baseline; generation reads only the current source mount graph."
   },
   "diagnostics": [],
@@ -10634,7 +10634,7 @@
       "path": "/api/trips/:tripId/days/:day/retime",
       "effectivePath": "/api/trips/:tripId/days/:day/retime",
       "source": "server/routes/versions.routes.ts",
-      "line": 82,
+      "line": 142,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -11395,6 +11395,23 @@
     },
     {
       "method": "POST",
+      "rawPath": "/api/trips/:tripId/retime-fixes/:itemId/apply",
+      "path": "/api/trips/:tripId/retime-fixes/:itemId/apply",
+      "effectivePath": "/api/trips/:tripId/retime-fixes/:itemId/apply",
+      "source": "server/routes/versions.routes.ts",
+      "line": 123,
+      "risk": "user-data",
+      "expectedAuth": "required",
+      "expectedRoles": [],
+      "expectedOwnership": "unknown",
+      "expectedBoundary": "session-self",
+      "ownershipApplies": true,
+      "fixtureStatus": "unknown",
+      "testStatus": "unknown",
+      "diagnostics": []
+    },
+    {
+      "method": "POST",
       "rawPath": "/api/trips/:tripId/ride-suggestions/dismiss",
       "path": "/api/trips/:tripId/ride-suggestions/dismiss",
       "effectivePath": "/api/trips/:tripId/ride-suggestions/dismiss",
@@ -11637,7 +11654,7 @@
       "path": "/api/trips/:tripId/versions/apply-days",
       "effectivePath": "/api/trips/:tripId/versions/apply-days",
       "source": "server/routes/versions.routes.ts",
-      "line": 59,
+      "line": 75,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],

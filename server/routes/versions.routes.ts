@@ -9,6 +9,9 @@
  *                                                fixable or changed since the run (read gate)
  *                                                The tap sends apply-days with `unchangedSinceRun: true`: a day changed
  *                                                since the run started is refused (one) or skipped and reported (several)
+ *   GET  /api/trips/:tripId/retime-fixes         FB-1 step 4b: a FREE plan's tap-able retime fixes (owner/delegate)
+ *   POST /api/trips/:tripId/retime-fixes/:itemId/apply { preview?: true } — owner/delegate; one stop's fix, the moves
+ *                                                recomputed server-side; preview writes nothing
  *   POST /api/trips/:tripId/days/:day/retime     { order: itemIds, swapIn?: { variantItemId } } —
  *                                                write gate; free re-times per R-ac, else 409
  *                                                `retime_paid` with nothing written
@@ -25,6 +28,7 @@ import { getUserId } from "../utils/auth";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
 import { VersionBoardError, applyDays, loadVersionsBoard, retimeDay } from "../services/version-board.service";
 import { applyDaysUnchangedSinceRun, loadFixedPlan } from "../services/fixed-plan.service";
+import { FreeRetimeError, applyFreeRetimeFix, loadFreeRetimeFixes } from "../services/free-retime.service";
 
 const router = Router();
 
@@ -95,6 +99,36 @@ router.get("/api/trips/:tripId/versions/fixed", isAuthenticated, async (req: any
     res.json({ fixed: await loadFixedPlan(req.params.tripId) });
   } catch (err) {
     fail(res, err, "read the fixed version");
+  }
+});
+
+// FB-1 step 4b (ledger `2026-10-19-fb1-free-retime`): a free plan's retime fix on tap. The owner or delegate only
+// (the service's own gate, one 404); the moves are recomputed from the plan, never read from the body.
+function failRetime(res: any, err: unknown, what: string) {
+  if (err instanceof FreeRetimeError) return res.status(err.status).json({ code: err.code, message: err.message });
+  console.error(`[retime-fixes] ${what} failed:`, err);
+  return res.status(500).json({ message: `Couldn't ${what}` });
+}
+
+router.get("/api/trips/:tripId/retime-fixes", isAuthenticated, async (req: any, res) => {
+  try {
+    res.json({ fixes: await loadFreeRetimeFixes(req.params.tripId, getUserId(req)) });
+  } catch (err) {
+    failRetime(res, err, "read the fixes");
+  }
+});
+
+const retimeFixBody = z.object({ preview: z.literal(true).optional() }).strict();
+
+router.post("/api/trips/:tripId/retime-fixes/:itemId/apply", isAuthenticated, async (req: any, res) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ message: "Not authenticated" });
+  const parsed = retimeFixBody.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ message: "Send nothing, or preview: true" });
+  try {
+    res.json({ fix: await applyFreeRetimeFix({ tripId: req.params.tripId, userId, itemId: req.params.itemId, preview: parsed.data.preview === true }) });
+  } catch (err) {
+    failRetime(res, err, "apply that fix");
   }
 });
 
