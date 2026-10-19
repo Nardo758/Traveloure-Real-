@@ -11,6 +11,8 @@ export interface OpenPlaceCoord {
   origin: "osm" | "admin";
   /** An item link's own source (`itinerary_item_open_coords.source`): 'admin' when a person attached it (LG-2 Ask 7). */
   linkSource?: string | null;
+  /** LG-2 Ask 7: what a hand-picked point is ('entrance', 'centroid', 'station', 'path_start'); null for a batch match. */
+  pointBasis?: string | null;
 }
 
 /**

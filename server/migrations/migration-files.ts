@@ -2094,4 +2094,8 @@ export const MIGRATION_FILES = [
   // 393 — DATA ONLY: two Gion itinerary_items (full ids) renamed "Gion District Walk" while their title still
   // contains "geisha spotting". Idempotent. LG-2 Ask 9, ledger 2026-10-18-lg2-banned-phrases.
   "393_gion_district_walk_titles.sql",
+  // 396 — open_place_coords gains entered_by, checked_at, point_basis, note (additive nullable, no DEFAULT/CHECK/index):
+  // who entered a hand-picked OSM point and what it is. LG-2 Ask 7, ledger 2026-10-19-lg2-admin-osm-points. Declared in
+  // shared/schema.ts.
+  "396_open_place_admin_entry.sql",
 ] as const;

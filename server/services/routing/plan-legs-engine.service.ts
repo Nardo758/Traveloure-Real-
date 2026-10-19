@@ -282,6 +282,11 @@ export async function loadPlanLegContext(
     name: it.title || "Stop",
     dayNumber: it.dayNumber,
     point: pointFor(it),
+    // LG-2 Ask 7b interim: a path entered at its start (a hand-picked point a person attached) — the leg leaving it waits.
+    leavingUnchecked: (() => {
+      const o = itemOpen.get(it.id);
+      return !!o && o.linkSource === "admin" && o.pointBasis === "path_start";
+    })(),
     // TC-3a (migration 368): a ride's exit pin — the origin of the leg that follows it.
     // LG-1: the exit pin is the ride's last seeded OSM node — open only when the ride's points are all OSM nodes.
     exitPoint: acceptedPoint(

@@ -12739,6 +12739,12 @@ export const openPlaceCoords = pgTable("open_place_coords", {
   matchedBy: varchar("matched_by", { length: 32 }),
   attribution: text("attribution"),
   matchedAt: timestamp("matched_at"),
+  // migration 396 (LG-2 Ask 7): a hand-picked point a person entered (source 'admin') — who, when it was checked, what
+  // the point is (entrance | centroid | station | path_start) and the reviewer's note. NULL on a batch match.
+  enteredBy: varchar("entered_by", { length: 255 }),
+  checkedAt: timestamp("checked_at"),
+  pointBasis: varchar("point_basis", { length: 32 }),
+  note: text("note"),
 });
 
 // Which open place a plan item is (one per item). Both FKs ON DELETE CASCADE (migration 390).
