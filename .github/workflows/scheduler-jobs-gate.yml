@@ -155,6 +155,9 @@ jobs:
         run: npx tsx --test --test-force-exit server/__tests__/build-around-places.db.test.ts
       - name: A5 content facts — engine order, Places cache, plan-fit points, no public reader
         run: npx tsx --test --test-force-exit server/__tests__/content-facts.db.test.ts
+      # Ledger `2026-10-19-places-writer-cap`: the writer caps a Places fact's expiry at Google's cache limit. PC1–PC4.
+      - name: Places writer cap — a Places fact never outlives placesCacheMaxDays
+        run: npx tsx --test --test-force-exit server/__tests__/places-writer-cap.db.test.ts
       - name: R313 leg Google coords — refresh a live point, clear past the max age, expired fact never a pin
         run: npx tsx --test --test-force-exit server/__tests__/leg-google-coords-refresh.db.test.ts
       - name: T-48h nudge — "starts soon" only for chosen dates and a start ahead (ledger 2026-10-08-nudge-needs-real-dates)
