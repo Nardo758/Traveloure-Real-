@@ -2094,4 +2094,7 @@ export const MIGRATION_FILES = [
   // 393 — DATA ONLY: two Gion itinerary_items (full ids) renamed "Gion District Walk" while their title still
   // contains "geisha spotting". Idempotent. LG-2 Ask 9, ledger 2026-10-18-lg2-banned-phrases.
   "393_gion_district_walk_titles.sql",
+  // 399 — DATA ONLY: the IMAGINE NOH continuous-run row (manual / imagine-noh-2026) gets withdrawn_at while it is still
+  // live; nothing deleted. The four shows are seeded as one row each. SH-1 item 5, ledger 2026-10-19-sh1-show-dates.
+  "399_imagine_noh_run_withdrawn.sql",
 ] as const;
