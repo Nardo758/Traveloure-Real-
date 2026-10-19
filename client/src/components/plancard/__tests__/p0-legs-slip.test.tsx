@@ -1,6 +1,6 @@
 /**
  * P0 legs baseline on the slip (ledger `2026-10-10-p0-legs-baseline`).
- *   C1 a bridged leg (the server connected A→C past an unlocated B) is drawn in the slot before C
+ *   C1 LG-2 Ask 6 (supersedes the bridge): a leg A→C past an unlocated B is never drawn in the slot before C
  *   C2 a fallback drive carries "No transit found — drive shown" on its row; an ordinary leg does not
  *   C3 the day line counts "no route found" only when the server sent a count
  *   C4 P0-b item 8: a Kyoto drive standing in for transit the routing API cannot answer carries the ruled
@@ -30,16 +30,13 @@ const DAYS = [
 ];
 
 describe("P0 legs on the slip", () => {
-  it("C1: the bridge A→C draws in the slot before C, never before B", () => {
+  it("C1: a leg A→C round the unlocated B is drawn in no slot (Ask 6)", () => {
     assert.equal(slipLegBetween(DAYS, "a", "b"), null, "nothing between A and the unlocated B");
-    const leg = slipLegBetween(DAYS, "b", "c");
-    assert.equal(leg?.kind, "routed");
-    assert.equal((leg as any).fromId, "a", "it is A's leg");
-    assert.equal((leg as any).legId, "ac");
+    assert.equal(slipLegBetween(DAYS, "b", "c"), null, "A's leg is not drawn before C");
   });
 
   it("C2: the fallback drive says so; an ordinary routed leg does not", () => {
-    const leg = slipLegBetween(DAYS, "b", "c") as any;
+    const leg = slipLegBetween([{ ...DAYS[0], activities: [{ id: "a" }, { id: "c" }] }], "a", "c") as any;
     assert.equal(leg.transitUnavailable, true);
     const html = text(renderToString(<LegRow kind="routed" legId="ac" mode={leg.mode} route={leg.route} timeZone="Asia/Tokyo" transitUnavailable />));
     assert.ok(html.startsWith(`${NO_TRANSIT_DRIVE_NOTE} · 11 min · drive`), html);

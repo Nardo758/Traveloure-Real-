@@ -455,6 +455,8 @@ export interface PlanCardLegData extends InlineTransportLegData {
 }
 
 export interface PlanCardDay {
+  /** LG-2 Ask 6: adjacent pairs whose leg has no travel time (a stop with no open point) — "Travel time not checked yet". */
+  legsNotChecked?: Array<{ fromActivityId: string; toActivityId: string }>;
   dayNum: number;
   /** The DISPLAY day, already localised by the producer ("Fri, Oct 2"). */
   date: string;

@@ -213,7 +213,10 @@ export async function loadLegCoverage(tripId: string, now: Date = new Date()): P
  * FD-3 §3d: each plan day's honest counts — what was checked, of what. Read behind the caller's own plan
  * gate (the plancard). Only counts leave it. Reads the SAME feasibility view the findings do (FB-1 step 2).
  */
-export async function loadDayFeasibility(tripId: string): Promise<Map<number, DayFeasibility>> {
+export async function loadDayFeasibility(
+  tripId: string,
+  opts: { legsNotChecked?: Map<number, ReadonlyArray<unknown>> } = {},
+): Promise<Map<number, DayFeasibility>> {
   const { input, found } = await loadPlanCheckInput(tripId);
   if (!found) return new Map();
   const ctx = feasibilityView(input);
@@ -243,6 +246,16 @@ export async function loadDayFeasibility(tripId: string): Promise<Map<number, Da
   gaps.forEach((n, dayNumber) => {
     const d = out.get(dayNumber);
     if (d && n > 0) d.noRoute = n;
+  });
+  // LG-2 Ask 6: legs with no travel time (an adjacent stop with no open point) — the ONE skip list, so the day line
+  // never reads as a pass while one is on the day. The caller may pass the map it already loaded.
+  const notChecked = opts.legsNotChecked
+    ?? (await import("./routing/plan-legs-engine.service")
+      .then(({ planLegsNotCheckedByDay }) => planLegsNotCheckedByDay(tripId))
+      .catch(() => new Map<number, ReadonlyArray<unknown>>()));
+  notChecked.forEach((pairs, dayNumber) => {
+    const d = out.get(dayNumber);
+    if (d && pairs.length > 0) d.legsNotChecked = pairs.length;
   });
   return out;
 }
