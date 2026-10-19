@@ -70,7 +70,7 @@ import {
   type HeldSlot,
 } from "@shared/draft-basis";
 import { draftBasisInputs } from "../services/plan-option-sets.service";
-import { sanitizeCanonicalItems, sanitizeGeneratedPlan } from "../utils/ai-draft-sanitize";
+import { logBannedCopyDrops, newBannedCopyDrops, sanitizeCanonicalItems, sanitizeGeneratedPlan } from "../utils/ai-draft-sanitize";
 import { coveringEventsForTrip } from "../services/content-facts/covering-events";
 import { healthFlags, healthEgressFlags, healthMapsCaps, healthKeyPresence } from "../services/runtime-flags";
 import { readHotelSupply } from "../services/hotel-supply.service";
@@ -4989,7 +4989,9 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
       const noLodging = draftBasis.kind === "none_asked";
       {
         const o = { noLodging, city: destination, coveringEvents };
-        normalizedResult.canonicalItems = sanitizeCanonicalItems(normalizedResult.canonicalItems, o).map((it) => ({ ...it, name: it.title }));
+        const drops = newBannedCopyDrops();
+        normalizedResult.canonicalItems = sanitizeCanonicalItems(normalizedResult.canonicalItems, { ...o, drops }).map((it) => ({ ...it, name: it.title }));
+        logBannedCopyDrops("free-draft", drops);
         const cleaned = sanitizeGeneratedPlan(
           {
             itineraryData: normalizedResult.dailyItinerary,

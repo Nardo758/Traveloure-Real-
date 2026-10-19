@@ -10,6 +10,7 @@
 -- title still contains "geisha spotting" (case-insensitive), so a row someone already retitled is left alone and a
 -- second run changes nothing (the new title no longer contains the phrase). A database without these rows (CI, dev)
 -- updates nothing.
+-- founder comment: #1562 2026-10-18T23:44:58Z
 UPDATE itinerary_items
 SET title = 'Gion District Walk'
 WHERE id IN ('18754d33-b5ca-4b8f-9f29-65531362f829', '92049500-6c56-40b7-9816-967a8a3cc977')

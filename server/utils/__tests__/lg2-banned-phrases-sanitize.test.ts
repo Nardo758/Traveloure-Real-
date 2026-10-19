@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { reduceUncoveredEventActivities, sanitizeCanonicalItems, sanitizeGeneratedPlan } from "../ai-draft-sanitize";
+import { newBannedCopyDrops, reduceUncoveredEventActivities, sanitizeCanonicalItems, sanitizeGeneratedPlan } from "../ai-draft-sanitize";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const item = (title: string, location: string, description = "") => ({
@@ -66,7 +66,22 @@ test("LB3 the trip generate route's own path takes it too", () => {
   );
   assert.deepEqual(out.map((a) => a.title), ["Gion District Walk"]);
   const routes = readFileSync(path.join(repo, "server/routes.ts"), "utf8");
-  assert.match(routes, /reduceUncoveredEventActivities\(d\.activities, coveringEvents\)/, "the route still calls it");
+  assert.match(routes, /reduceUncoveredEventActivities\(d\.activities, coveringEvents, bannedDrops\)/, "the route still calls it, counting its drops");
+});
+
+test("LB5 the drop counter: one per item not stored for an emptied title with no place name, and nothing else", () => {
+  const drops = newBannedCopyDrops();
+  sanitizeCanonicalItems(
+    [item("Hidden Gem", ""), item("Secret", ""), item("Hidden Gem", "Arashiyama"), item("Gion District Walking & Geisha Spotting", "Gion")] as any,
+    { noLodging: false, city: "Kyoto, Japan", drops },
+  );
+  assert.equal(drops.bannedTitleNoPlace, 2, "the placeless two; the place-name fallback and the reworded title are kept");
+  const routeDrops = newBannedCopyDrops();
+  reduceUncoveredEventActivities([{ title: "Hidden Gems", locationName: "" }], [], routeDrops);
+  assert.equal(routeDrops.bannedTitleNoPlace, 1);
+  for (const f of ["server/services/content-query.service.ts", "server/routes/content.routes.ts", "server/routes.ts"]) {
+    assert.match(readFileSync(path.join(repo, f), "utf8"), /logBannedCopyDrops\(/, `${f} logs its count`);
+  }
 });
 
 test("LB4 the prompt no longer asks for hidden gems or feeds the trending score", () => {

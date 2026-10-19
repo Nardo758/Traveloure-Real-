@@ -42,6 +42,25 @@ export interface AiDraftSanitizeOptions {
    * supply slot. Absent ⇒ none cover the dates ⇒ every event-named title is reduced.
    */
   coveringEvents?: readonly CoveringEvent[];
+  /**
+   * LG-2 Ask 9: incremented once per item NOT STORED because the banned-phrase rule emptied its title and it had no
+   * place name (left for regeneration). The caller logs it; counts only. Absent ⇒ not counted.
+   */
+  drops?: BannedCopyDrops;
+}
+
+/** The count of items the banned-phrase rule left for regeneration (decision-maker, Oct 18, 2026). */
+export interface BannedCopyDrops {
+  bannedTitleNoPlace: number;
+}
+export function newBannedCopyDrops(): BannedCopyDrops {
+  return { bannedTitleNoPlace: 0 };
+}
+/** The one log line for the count; says nothing when nothing was dropped. */
+export function logBannedCopyDrops(path: string, drops: BannedCopyDrops): void {
+  if (drops.bannedTitleNoPlace > 0) {
+    console.info(`[banned-copy] ${path}: ${drops.bannedTitleNoPlace} item(s) not stored — title emptied by the banned-phrase rule, no place name`);
+  }
 }
 
 /** S9-8: one drafted item's title and place, with an uncovered event reduced. */
@@ -67,10 +86,13 @@ function reduceEventItem<T extends { title?: unknown; name?: unknown; location?:
  * or `null` when the title is left with nothing and the item has no place name — left for regeneration, never a
  * placeholder phrase. Reads and writes `title` and/or `name`, whichever the item carries.
  */
-function withoutBannedCopy<T extends Record<string, any>>(it: T, place: unknown): T | null {
+function withoutBannedCopy<T extends Record<string, any>>(it: T, place: unknown, drops?: BannedCopyDrops): T | null {
   const before = String(it.title ?? it.name ?? "");
   const title = rewordBannedTitle(before, typeof place === "string" ? place : null);
-  if (title === null) return null;
+  if (title === null) {
+    if (drops) drops.bannedTitleNoPlace += 1;
+    return null;
+  }
   const out: any = { ...it };
   if (title !== before) {
     if ("title" in out || !("name" in out)) out.title = title;
@@ -87,11 +109,15 @@ function withoutBannedCopy<T extends Record<string, any>>(it: T, place: unknown)
  * the snapshot writer (the trip generate route), with each uncovered event-named title reduced by the
  * SAME rule. `locationName` is read and written as the place.
  */
-export function reduceUncoveredEventActivities<T extends Record<string, any>>(activities: readonly T[], coveringEvents: readonly CoveringEvent[]): T[] {
+export function reduceUncoveredEventActivities<T extends Record<string, any>>(
+  activities: readonly T[],
+  coveringEvents: readonly CoveringEvent[],
+  drops?: BannedCopyDrops,
+): T[] {
   return activities.flatMap((a) => {
     const r: any = reduceEventItem({ ...a, location: a.locationName ?? a.location }, { noLodging: false, coveringEvents });
     // LG-2 Ask 9: this path skips the snapshot writer, so it takes the banned-phrase rule here too.
-    const cleaned: any = withoutBannedCopy(r, r.location);
+    const cleaned: any = withoutBannedCopy(r, r.location, drops);
     if (!cleaned) return [];
     const out: any = { ...cleaned };
     if ("locationName" in a) out.locationName = cleaned.location;
@@ -125,7 +151,7 @@ export function sanitizeCanonicalItems(
         },
         o,
       );
-      return withoutBannedCopy(reduced, reduced.location);
+      return withoutBannedCopy(reduced, reduced.location, o.drops);
     })
     .filter((it): it is NormalizedGeneratedCanonicalItem => it !== null);
 }
@@ -162,7 +188,7 @@ function cleanActivity(a: any, o: AiDraftSanitizeOptions): any {
     if (k in out) out[k] = sanitizeAiProse(out[k], o) ?? "";
   }
   const reduced = reduceEventItem(out, o);
-  return withoutBannedCopy(reduced, reduced.location);
+  return withoutBannedCopy(reduced, reduced.location, o.drops);
 }
 
 function mealMentions(m: any, o: AiDraftSanitizeOptions): boolean {
@@ -175,8 +201,12 @@ function legMentions(l: any, o: AiDraftSanitizeOptions): boolean {
   return namesAHotel(text) || namesABrand(text) || (o.noLodging && mentionsLodging(text));
 }
 
-/** The stored draft JSON (`generatedPlan`), cleaned by the same rules as the rows. */
-export function sanitizeGeneratedPlan<T extends Record<string, any>>(plan: T, o: AiDraftSanitizeOptions): T {
+/**
+ * The stored draft JSON (`generatedPlan`), cleaned by the same rules as the rows. It never counts `drops`: the JSON
+ * holds the same items as the rows, which are counted once by `sanitizeCanonicalItems`.
+ */
+export function sanitizeGeneratedPlan<T extends Record<string, any>>(plan: T, opts: AiDraftSanitizeOptions): T {
+  const o: AiDraftSanitizeOptions = { ...opts, drops: undefined };
   const days = withNormalizedTravelTitles(Array.isArray(plan.itineraryData) ? plan.itineraryData : [], o.city);
   const itineraryData = days.map((d: any) => ({
     ...d,
