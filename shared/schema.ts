@@ -12396,9 +12396,33 @@ export const contentSources = pgTable("content_sources", {
   publicOk: boolean("public_ok"),
   publicOkCheckedAt: timestamp("public_ok_checked_at"),
   publicOkCheckedBy: varchar("public_ok_checked_by"),
+  // Migration 395 (CS-1 item 1, ledger 2026-10-18-cs1-source-signoff). The sign-off and what the site's terms allow.
+  // Value sets in shared/source-signoff.ts (no CHECK); NULL signoff_status reads as pending. ONE writer:
+  // server/services/content-sources.service.ts. No DEFAULT/CHECK/index/FK.
+  signoffStatus: varchar("signoff_status", { length: 16 }),
+  signoffBy: varchar("signoff_by"),
+  signoffAt: timestamp("signoff_at"),
+  termsClass: varchar("terms_class", { length: 24 }),
+  automatedAccessAllowed: boolean("automated_access_allowed"),
+  creditText: text("credit_text"),
 }, (table) => ({
   marketIdx: index("idx_content_sources_market").on(table.market),
 }));
+
+// Migration 395 (CS-1 item 1): per-place no_photos. Born empty; rows entered by the approver in admin, never deleted.
+// Two keys: the Google place id, or the normalised place name + city (server/services/place-photo-blocks.service.ts).
+export const placePhotoBlocks = pgTable("place_photo_blocks", {
+  id: varchar("id").primaryKey(),
+  placeId: varchar("place_id", { length: 255 }),
+  placeNameNormalised: varchar("place_name_normalised", { length: 300 }),
+  city: varchar("city", { length: 150 }),
+  reason: text("reason").notNull(),
+  setBy: varchar("set_by").notNull(),
+  setAt: timestamp("set_at").notNull(),
+}, (table) => ({
+  placeIdx: index("idx_place_photo_blocks_place_id").on(table.placeId),
+}));
+export type PlacePhotoBlock = typeof placePhotoBlocks.$inferSelect;
 
 // Insert-only; a superseded fact points at its successor. `isPublishable` (shared/content-facts.ts)
 // is the ONE predicate for whether a row may reach a public surface.

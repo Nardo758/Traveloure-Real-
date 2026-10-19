@@ -22,6 +22,7 @@
  *
  * Pure composers are exported for tests (the getPricingHandler precedent).
  */
+import { visibleListingImage } from "../services/place-photo-blocks.service";
 import { Router } from "express";
 import { z } from "zod";
 import { eq, and, sql } from "drizzle-orm";
@@ -163,6 +164,8 @@ router.get("/api/landing/hero", async (_req, res) => {
       gems,
       services,
       wanted,
+      // CS-1 item 1: no photo of a place under a no_photos block (the listing's cover or the provider's photo).
+      servicePhotoBlocked: (subject) => visibleListingImage({ ...subject, serviceImage: "x" }) === null,
     });
     res.set("Cache-Control", "public, max-age=300");
     res.json(payload);

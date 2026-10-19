@@ -2097,4 +2097,7 @@ export const MIGRATION_FILES = [
   // EV-P0 PR 3: data only — re-tags official last-entry / last-train expert rows that 362 tagged local to
   // public + link_only, what placeFactTags answers. Idempotent. Ledger 2026-10-18-fact-tags-exhaustive.
   "394_place_facts_feasibility_retag.sql",
+  // CS-1 item 1: source sign-off columns (additive, nullable) and the empty place_photo_blocks table. HELD.
+  // Ledger 2026-10-18-cs1-source-signoff. Declared in shared/schema.ts.
+  "395_source_signoff_and_photo_blocks.sql",
 ] as const;
