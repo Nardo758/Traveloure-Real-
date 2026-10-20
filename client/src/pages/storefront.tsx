@@ -56,6 +56,7 @@ import { useToast } from "@/hooks/use-toast";
 import { SEOHead } from "@/components/seo-head";
 import { useAuth } from "@/hooks/use-auth";
 import { useAskExpert } from "@/lib/use-ask-expert";
+import { useExpertAvailability } from "@/lib/expert-availability";
 import { storefrontContactInput } from "@/lib/earner-address";
 import { LanguageMenu } from "@/components/language-menu";
 import { useLocale } from "@/hooks/use-locale";
@@ -655,6 +656,13 @@ export default function StorefrontPage() {
     ...(readyMade.length > 0 ? (["Ready-Made Trips"] as const) : []),
   ];
 
+  // SH-1 item 11 (Q11.2 — expert CTAs only): an EXPERT's Message CTAs draw only while their market has
+  // an expert to ask (their location when the page states one, else any live market). A provider's
+  // storefront is not gated: contacting a provider is not an expert CTA.
+  const storefrontLocation = data?.earner?.location?.trim() || null;
+  const expertContactAvailable = useExpertAvailability(storefrontLocation ? { city: storefrontLocation } : "any");
+  const contactAvailable = isProviderRole(data?.earner?.role) || expertContactAvailable;
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-[var(--earn-ground)]">
@@ -727,18 +735,13 @@ export default function StorefrontPage() {
   const firstName = earner.businessName ? displayName : earner.name.split(" ")[0];
   // §3.10 eyebrow: SERVICE PROVIDER STOREFRONT / LOCAL EXPERT STOREFRONT (uppercased in CSS).
   const eyebrowLabel = isProviderRole(earner.role) ? "Service provider storefront" : "Local expert storefront";
-  // Two different claims, never swapped (§13): "Verified business" only when the BUSINESS is
-  // verified (Stripe-derived `businessVerified`); "Identity verified" when only the person is.
-  const verifiedBadge = earner.businessVerified
-    ? { label: "Verified business", title: "This business has been verified" }
-    : earner.verified
-      ? { label: "Identity verified", title: "This earner's identity has been verified" }
-      : null;
+  // SH-1 item 1: no "Verified business" / "Identity verified" badge — nothing behind it stores a checked date and an
+  // official source. (An "Identity checked" badge is a later lane, after a real Connect ID check.)
   const storefrontTitle = isProviderRole(earner.role)
     ? `${displayName} — Book local services`
     : `${earner.name} — Book local experiences`;
   const storefrontDescription = isProviderRole(earner.role)
-    ? `${earner.bio ? `${earner.bio} ` : ""}${services.length} bookable service${services.length === 1 ? "" : "s"} from ${displayName} on Traveloure. Secure checkout, verified reviews.`
+    ? `${earner.bio ? `${earner.bio} ` : ""}${services.length} bookable service${services.length === 1 ? "" : "s"} from ${displayName} on Traveloure. Secure checkout, traveler reviews.`
     : earner.bio ?? `Bookable experiences from ${earner.name} on Traveloure.`;
   const aboutGroups = [
     { label: "Specialties", values: Array.from(new Set(earner.specialties ?? [])) },
@@ -951,22 +954,10 @@ export default function StorefrontPage() {
               )}
             </div>
 
-            {/* Right column: the verified badge at the top, the two actions pinned to the bottom so
+            {/* Right column: the two actions pinned to the bottom so
                 they line up with the figures. On a phone they stack full-width under the identity. */}
             <div className="col-span-2 sm:col-span-1 flex flex-col justify-between gap-4 sm:pt-4">
-              <div className="flex sm:justify-end">
-                {verifiedBadge && (
-                  <span
-                    className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold shrink-0"
-                    style={{ borderWidth: 1, borderStyle: "solid", borderColor: "var(--earn-green-ink)", background: "var(--earn-teal-wash)", color: "var(--earn-green-ink)" }}
-                    data-testid="badge-storefront-verified"
-                    title={verifiedBadge.title}
-                  >
-                    <ShieldCheck className="w-3 h-3" />
-                    {verifiedBadge.label}
-                  </span>
-                )}
-              </div>
+              <div className="flex sm:justify-end" />
               <div className="flex flex-col gap-2">
                 {isOwnStorefront ? (
                   <Link href={isProviderRole(earner.role) ? "/provider/settings?tab=profile" : "/expert/settings?tab=profile"} className="w-full">
@@ -979,14 +970,16 @@ export default function StorefrontPage() {
                     </Button>
                   </Link>
                 ) : (
-                  <Button
-                    className="w-full text-white bg-[color:var(--earn-coral-ink)] hover:bg-[color:var(--earn-coral-ink)]/90"
-                    onClick={messageEarner}
-                    data-testid="button-message-storefront"
-                  >
-                    <MessageCircle className="w-4 h-4 mr-1.5 shrink-0" />
-                    {messageLabel}
-                  </Button>
+                  contactAvailable ? (
+                    <Button
+                      className="w-full text-white bg-[color:var(--earn-coral-ink)] hover:bg-[color:var(--earn-coral-ink)]/90"
+                      onClick={messageEarner}
+                      data-testid="button-message-storefront"
+                    >
+                      <MessageCircle className="w-4 h-4 mr-1.5 shrink-0" />
+                      {messageLabel}
+                    </Button>
+                  ) : null
                 )}
                 {/* "Share page", not "Share": the booking panel's "Share my plan" is a different act
                     (it puts this expert on the traveler's plan), and two buttons both called
@@ -1233,7 +1226,7 @@ export default function StorefrontPage() {
                       actionCharges={actionLabel ? storefrontActionCharges(s.buyAction) : undefined}
                       nextAvailableText={actionLabel ? nextAvailableText : null}
                       onMessage={
-                        messageOnly
+                        messageOnly && contactAvailable
                           ? () =>
                               askExpert({
                                 serviceId: s.id,
@@ -1296,7 +1289,7 @@ export default function StorefrontPage() {
         </section>
 
         {/* "Not sure what you're looking for?" message band — same wiring as the hero CTA. */}
-        {!isOwnStorefront && (
+        {!isOwnStorefront && contactAvailable && (
           <div className={`mt-4 flex flex-wrap items-center gap-5 p-6 ${CARD_SHELL}`} data-testid="storefront-message-band">
             {earner.profileImageUrl ? (
               <img src={earner.profileImageUrl} alt={displayName} className="w-14 h-14 rounded-full object-cover shrink-0" />

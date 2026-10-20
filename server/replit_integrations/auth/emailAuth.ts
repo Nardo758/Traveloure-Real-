@@ -10,6 +10,7 @@ import { deliverQueuedEmail } from "../../services/email-outbox.service";
 import { trackFunnelEvent } from "../../utils/funnelTracker";
 import { getPlatformFlag, FLAG_REGISTRATION_ENABLED, getTravelerSignupMode, getLaunchMarketSlug } from "../../services/platform-flags";
 import { qaSignupAllowed } from "../../services/qa-signup-code";
+import { isTestAccount } from "../../services/test-account";
 import { recordSignupSource } from "../../services/signup-source-record";
 import { decideFirstTimeSignup, normalizeSignupIntent, waitlistBlockedPath, TRAVELER_WAITLIST_MESSAGE } from "@shared/launch-signup";
 import { CURRENT_TERMS_VERSION, CURRENT_PRIVACY_VERSION } from "@shared/legal-versions";
@@ -186,6 +187,9 @@ export function setupEmailAuth(app: Express): void {
               privacyAcceptedAt: new Date(),
               termsVersion: CURRENT_TERMS_VERSION,
               privacyVersion: CURRENT_PRIVACY_VERSION,
+              // SH-1 item 12: an account created on the QA domain is a test account from birth. Any other
+              // sign-up leaves the flag NULL (not a test account by flag).
+              isTest: isTestAccount({ email }) ? true : null,
             })
             .returning();
           const welcomeId = await enqueueSignupWelcome(tx, newUser.id);

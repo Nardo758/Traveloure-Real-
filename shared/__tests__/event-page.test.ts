@@ -10,7 +10,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { eventDetailPath } from "../events-calendar";
-import { EVENT_SOURCE_ID_MAX, eventPageCountdown, isLookupableSourceId, organizerHost, verifiedLocalsLine } from "../event-page";
+import { EVENT_SOURCE_ID_MAX, eventPageCountdown, isLookupableSourceId, organizerHost, cityLocalsLine } from "../event-page";
 import { countdownLabel } from "../city-events";
 
 test("EPP1 the path encodes the id; only a plain, bounded id is looked up", () => {
@@ -30,10 +30,10 @@ test("EPP2 the organizer host", () => {
 });
 
 test("EPP3 verified locals: absent at zero or unknown", () => {
-  assert.equal(verifiedLocalsLine(null, "Kyoto"), null);
-  assert.equal(verifiedLocalsLine(0, "Kyoto"), null);
-  assert.equal(verifiedLocalsLine(1, "Kyoto"), "1 verified local in Kyoto");
-  assert.equal(verifiedLocalsLine(4, "Bogotá"), "4 verified locals in Bogotá");
+  assert.equal(cityLocalsLine(null, "Kyoto"), null);
+  assert.equal(cityLocalsLine(0, "Kyoto"), null);
+  assert.equal(cityLocalsLine(1, "Kyoto"), "1 Kyoto local");
+  assert.equal(cityLocalsLine(4, "Bogotá"), "4 Bogotá locals");
 });
 
 test("EPP4 the headline countdown", () => {

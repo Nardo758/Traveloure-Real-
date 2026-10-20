@@ -545,7 +545,7 @@ export default function EnhancedPlanningModal({
               <div className="mt-3">
                 <p className="text-xs font-semibold text-gray-600 mb-2 flex items-center gap-1">
                   <Gem className="w-3 h-3 text-purple-500" />
-                  Local hidden gems to consider
+                  Local picks to consider
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {gems.map(g => (

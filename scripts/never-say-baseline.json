@@ -1,0 +1,102 @@
+{
+  "client/src/components/ServiceForm.tsx": {
+    "verified": 2
+  },
+  "client/src/components/backoffice/SetupChecklistCard.tsx": {
+    "verified": 3
+  },
+  "client/src/components/booking-agent/VerifyRequestButton.tsx": {
+    "verified": 2
+  },
+  "client/src/components/expert/ItemFactConfirm.tsx": {
+    "verified": 2
+  },
+  "client/src/components/expert/service-recommendations.tsx": {
+    "trending": 1
+  },
+  "client/src/components/neighborhood-card.tsx": {
+    "coming soon": 1,
+    "hidden gem(s)": 1
+  },
+  "client/src/lib/role-routes-config.ts": {
+    "verified": 1
+  },
+  "client/src/pages/admin/analytics.tsx": {
+    "coming soon": 1
+  },
+  "client/src/pages/admin/categories.tsx": {
+    "verified": 1
+  },
+  "client/src/pages/admin/content-mapping.tsx": {
+    "trending": 2
+  },
+  "client/src/pages/admin/content-tracking.tsx": {
+    "coming soon": 1
+  },
+  "client/src/pages/admin/experts.tsx": {
+    "verified": 1
+  },
+  "client/src/pages/admin/gem-photo-backfill.tsx": {
+    "hidden gem(s)": 3
+  },
+  "client/src/pages/admin/neighborhood-claims.tsx": {
+    "verified": 3
+  },
+  "client/src/pages/admin/providers.tsx": {
+    "verified": 6
+  },
+  "client/src/pages/admin/qa-checklist.tsx": {
+    "secret": 4,
+    "verified": 2
+  },
+  "client/src/pages/admin/system.tsx": {
+    "coming soon": 1
+  },
+  "client/src/pages/architecture-diagram.tsx": {
+    "hidden gem(s)": 3,
+    "secret": 1,
+    "trending": 1
+  },
+  "client/src/pages/ea/profile.tsx": {
+    "coming soon": 1
+  },
+  "client/src/pages/ea/settings.tsx": {
+    "coming soon": 3,
+    "verified": 2
+  },
+  "client/src/pages/expert/analytics.tsx": {
+    "coming soon": 1,
+    "trending": 3
+  },
+  "client/src/pages/expert/catalog.tsx": {
+    "verified": 2
+  },
+  "client/src/pages/expert/content-studio.tsx": {
+    "hidden gem(s)": 1
+  },
+  "client/src/pages/expert/neighborhoods.tsx": {
+    "verified": 2
+  },
+  "client/src/pages/expert/profile.tsx": {
+    "vetted": 1
+  },
+  "client/src/pages/expert/settings.tsx": {
+    "verified": 2
+  },
+  "client/src/pages/expert/today.tsx": {
+    "verified": 3
+  },
+  "client/src/pages/expert/workspace.tsx": {
+    "insider": 1,
+    "verified": 2
+  },
+  "client/src/pages/provider/dashboard.tsx": {
+    "trending": 1
+  },
+  "client/src/pages/provider/profile.tsx": {
+    "verified": 1
+  },
+  "client/src/pages/provider/settings.tsx": {
+    "verified": 5
+  }
+}

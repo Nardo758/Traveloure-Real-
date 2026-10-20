@@ -42,6 +42,8 @@ const hours = (tripId: string, k: string, lines: string[]) =>
       placeRefKind: "place_id", placeRef: `ChIJ-fb1r-${RUN}-${tripId}-${k}`, placeLat: null, placeLng: null, market: "kyoto", need: "stop.hours", factType: "hours",
       value: { text: lines.join("; "), quote: lines.join("; "), weekdayDescriptions: lines },
       origin: "crawled", sourceId: null, sourceUrl: "https://official.example.jp/", license: "official", fetchedAt: NOW, expiresAt: later(30), costCents: 0,
+      // CS-1 item 3: hours are a dated fact and are read only once a person has reviewed them.
+      verifiedBy: owner,
     } as any],
     { planId: tripId, itemId: `${tripId}-${k}` },
   );

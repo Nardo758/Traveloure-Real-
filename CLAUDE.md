@@ -2523,6 +2523,15 @@ This document captures architectural decisions to maintain consistency across co
     created the column with none, by oversight.
     **AMENDED — GOOGLE'S HOURS ARE NOT STORED (terms ruling, Oct 16, 2026 — GH-1; ledger
     `2026-10-17-gh1-no-google-hours`; FOUNDER WORDING REVIEW on the PR).** "Stored hours with 'checked on <date>' are the traveler's record, kept for 30 days, where the source is official or person-checked. Hours from Google are not stored (terms ruling, Oct 16)."
+    **AMENDED — SOURCE ACTIVATION, DATED FACTS AND PER-PLACE PHOTO BLOCKS (CS-1 items 1 and 3; ledgers
+    `2026-10-18-cs1-source-signoff`, `2026-10-19-cs1-fact-review`).** In Leon's words:
+    "A6: A source activates only after the terms check and the approver's sign-off. A store or extract source can activate only through the review gate.
+    Dated facts: A dated safety fact goes live only with a reviewer-entered expiry taken from the source; other dated facts expire 90 days from the check date unless the reviewer enters a shorter one. Approving a bot's proposal needs an entered expiry date, no later than its source's expiry setting.
+    Per-place no_photos: the approver adds a block by place. Reads hide the photo and nothing is deleted." (founder comment: #1571 2026-10-19T22:01:35Z)
+    "A fact a bot or fetch proposes is saved as a draft with its official source; travelers never see a draft. Only a person sets verified_by, and only then is the fact shown or used by the plan check. No automated writer sets verified_by." (founder comment: #1571 2026-10-19T22:04:52Z)
+    The dated set is hours plus the safety set — `last_admission`, `last_service`, `closed_dates`, `transit`,
+    `event`; `timed_entry_required` is not a dated fact (decision-maker, Oct 20, 2026). The "90 days" is the current
+    value of `bot_fact_default_expiry_days`, the fallback when a source states no expiry setting.
 
 58. **PARTNER PAGE EXTRACTION RUNS ONLY WHERE THE PARTNER'S TERMS ALLOW IT, AND EVERY AFFILIATE PRODUCT
     SAYS WHICH WRITER MADE IT (decision-maker, Sep 30, 2026: "keep the capability, make it compliant" —

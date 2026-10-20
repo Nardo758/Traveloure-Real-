@@ -70,6 +70,8 @@ const fact = (over: Record<string, unknown>) =>
     license: "restricted" as const,
     fetchedAt: NOW,
     expiresAt: later(30),
+    // CS-1 item 3 (ledger `2026-10-19-cs1-fact-review`): a dated, machine-read fact shows only once a person reviewed it.
+    verifiedBy: owner,
     costCents: 0,
     ...over,
   }) as any;

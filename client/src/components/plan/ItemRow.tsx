@@ -30,8 +30,27 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { FactView } from "@shared/content-facts";
 import type { PlanCardActivity } from "@/components/plancard/plancard-types";
-import { factsLineParts, itemClosingWarning, itemFactsLine, itemPlaceLine, sourcedLineSuffix } from "@/lib/place-facts";
+import { factsLineParts, itemClosingWarning, itemFactsLine, itemPlaceLine, itemTimedEntryWarning, sourcedLineSuffix } from "@/lib/place-facts";
 import { HOURS_NOT_CHECKED_YET_LABEL } from "@/lib/plancard-refetch";
+import type { WaitingLine } from "@shared/fact-review";
+
+/** CS-1 item 3: the stop's last entry waits for review. The link is the source's top-level page, or none. */
+function LastEntryWaiting({ id, line }: { id: string; line: WaitingLine }) {
+  const [before, after] = line.text.split(line.linkText);
+  return (
+    <p className="mt-0.5 text-xs text-muted-foreground" data-testid={`slip-item-last-entry-waiting-${id}`}>
+      {before}
+      {line.url ? (
+        <a href={line.url} target="_blank" rel="noopener noreferrer" className="underline">
+          {line.linkText}
+        </a>
+      ) : (
+        line.linkText
+      )}
+      {after}
+    </p>
+  );
+}
 import { AnchorRow, anchorLabel } from "./AnchorRow";
 import { ExpertNote } from "./ExpertNote";
 import { PlacePhoto } from "./PlacePhoto";
@@ -108,6 +127,8 @@ export interface ItemRowProps {
   /** The place-facts run is still checking this stop. */
   /** GH-1: draw "Hours not checked yet" where the hours line would go (`showsHoursNotChecked`). */
   hoursNotChecked?: boolean;
+  /** CS-1 item 3: "Last entry not checked yet. See <Place>'s official site before you go." — the server's line. */
+  lastEntryWaiting?: WaitingLine | null;
   menu?: ItemRowMenu | null;
   highlighted?: boolean;
   rowRef?: (el: HTMLDivElement | null) => void;
@@ -140,9 +161,11 @@ export function ItemRow(props: ItemRowProps) {
   const factsLine = itemFactsLine(facts, dateIso, timeZone);
   // P0-e addition 7: the planned time against the shown hours fact's closing time, named with its source.
   const closing = itemClosingWarning(facts, dateIso, { time: a.time, endTime: (a as any).endTime, durationMinutes: (a as any).durationMinutes }, timeZone);
+  // FB-1 step 5c: entry needs a timed slot, linked to the official site.
+  const timedEntry = itemTimedEntryWarning(facts, timeZone);
   const showMenu = mode === "edit" && menu && hasAnyEntry(menu, !!anchor);
   const look = usePlanRowLook();
-  if (look === "board") return <BoardItemRow {...props} place={place} factsLine={factsLine} closing={closing} showMenu={!!showMenu} />;
+  if (look === "board") return <BoardItemRow {...props} place={place} factsLine={factsLine} closing={closing} timedEntry={timedEntry} showMenu={!!showMenu} />;
 
   const titleLine = (
     <p className={`font-medium flex items-start gap-1.5 ${props.visited?.checked ? "text-muted-foreground line-through" : "text-foreground"}`}>
@@ -221,6 +244,8 @@ export function ItemRow(props: ItemRowProps) {
         </p>
       ) : null}
       {closing ? <ClosingWarning id={a.id} closing={closing} /> : null}
+      {timedEntry ? <ClosingWarning id={a.id} closing={timedEntry} testId={`slip-item-timed-entry-${a.id}`} /> : null}
+      {props.lastEntryWaiting ? <LastEntryWaiting id={a.id} line={props.lastEntryWaiting} /> : null}
       {props.bookingState ? (
         <p className="mt-0.5 text-xs text-muted-foreground" data-testid={`slip-item-booking-${a.id}`}>
           {props.bookingState}
@@ -401,10 +426,11 @@ function BoardItemRow(
     place: ReturnType<typeof itemPlaceLine>;
     factsLine: ReturnType<typeof itemFactsLine>;
     closing: ReturnType<typeof itemClosingWarning>;
+    timedEntry: ReturnType<typeof itemTimedEntryWarning>;
     showMenu: boolean;
   },
 ) {
-  const { item: a, mode, anchor = null, menu = null, highlighted = false, place, factsLine, closing } = props;
+  const { item: a, mode, anchor = null, menu = null, highlighted = false, place, factsLine, closing, timedEntry } = props;
   const time = anchor ? (anchor.time !== undefined ? anchor.time : a.time || null) : a.time || null;
   const title = anchor ? anchor.title || a.name : a.name;
   const dot = boardDotFor({ isAnchor: !!anchor, anchorFromTool: anchor?.fromTool ?? null, hasFacts: !!factsLine, withExpert: !!props.pen });
@@ -500,6 +526,8 @@ function BoardItemRow(
         </p>
       ) : null}
       {closing ? <ClosingWarning id={a.id} closing={closing} /> : null}
+      {timedEntry ? <ClosingWarning id={a.id} closing={timedEntry} testId={`slip-item-timed-entry-${a.id}`} /> : null}
+      {props.lastEntryWaiting ? <LastEntryWaiting id={a.id} line={props.lastEntryWaiting} /> : null}
       {props.bookingState ? (
         // The Handoff board draws a booked stop as a teal pill; every other booking note stays a line.
         <p
@@ -560,9 +588,9 @@ function BoardItemRow(
 }
 
 /** P0-e addition 7: the row's closing warning, with its source's link when the fact carries one. */
-function ClosingWarning({ id, closing }: { id: string; closing: NonNullable<ReturnType<typeof itemClosingWarning>> }) {
+function ClosingWarning({ id, closing, testId }: { id: string; closing: NonNullable<ReturnType<typeof itemClosingWarning>>; testId?: string }) {
   return (
-    <p className="flex items-center gap-1.5 text-xs font-medium text-amber-800 dark:text-amber-300" data-testid={`slip-item-closing-${id}`}>
+    <p className="flex items-center gap-1.5 text-xs font-medium text-amber-800 dark:text-amber-300" data-testid={testId ?? `slip-item-closing-${id}`}>
       <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
       {closing.sourceUrl ? (
         <a href={closing.sourceUrl} target="_blank" rel="noopener noreferrer" className="hover:underline">

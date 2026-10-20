@@ -18,7 +18,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "wouter";
 import { ArrowLeft } from "lucide-react";
 import { eventDetailPath, eventPlace, eventTag, eventWhen, VERTICAL_LABELS } from "@shared/events-calendar";
-import { verifiedLocalsLine, type EventPagePayload } from "@shared/event-page";
+import { cityLocalsLine, type EventPagePayload } from "@shared/event-page";
 import { planAroundSource } from "@/components/landing/events-strip";
 import { usePlanning, type PlanningSource } from "@/contexts/PlanningContext";
 
@@ -93,8 +93,8 @@ export default function EventDetailPage() {
 
 /** The page body, from the payload alone — rendered by the route and by the render test. */
 export function EventDetailBody({ page, onPlanAround }: { page: EventPagePayload; onPlanAround: (s: PlanningSource) => void }) {
-  const { event, countdown, organizer, goodToKnow, moreInCity, verifiedLocals } = page;
-  const verifiedLine = verifiedLocalsLine(verifiedLocals, event.city);
+  const { event, countdown, organizer, goodToKnow, moreInCity, cityLocals } = page;
+  const localsLine = cityLocalsLine(cityLocals, event.city);
   const verticalLabel = event.vertical ? VERTICAL_LABELS[event.vertical] : null;
 
   return (
@@ -195,9 +195,9 @@ export function EventDetailBody({ page, onPlanAround }: { page: EventPagePayload
           <p className="text-[12.5px]" style={{ color: "var(--earn-muted)" }}>
             Starts a plan in {event.city} with this event's dates and venue filled in.
           </p>
-          {verifiedLine && (
-            <p className="text-[13px] font-semibold" style={{ color: "var(--earn-ink)" }} data-testid="event-detail-verified">
-              {verifiedLine}
+          {localsLine && (
+            <p className="text-[13px] font-semibold" style={{ color: "var(--earn-ink)" }} data-testid="event-detail-locals">
+              {localsLine}
             </p>
           )}
         </aside>

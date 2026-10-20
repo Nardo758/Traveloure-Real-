@@ -2094,4 +2094,25 @@ export const MIGRATION_FILES = [
   // 393 — DATA ONLY: two Gion itinerary_items (full ids) renamed "Gion District Walk" while their title still
   // contains "geisha spotting". Idempotent. LG-2 Ask 9, ledger 2026-10-18-lg2-banned-phrases.
   "393_gion_district_walk_titles.sql",
+  // EV-P0 PR 3: data only — re-tags official last-entry / last-train expert rows that 362 tagged local to
+  // public + link_only, what placeFactTags answers. Idempotent. Ledger 2026-10-18-fact-tags-exhaustive.
+  "394_place_facts_feasibility_retag.sql",
+  // CS-1 item 1: source sign-off columns (additive, nullable) and the empty place_photo_blocks table. HELD.
+  // Ledger 2026-10-18-cs1-source-signoff. Declared in shared/schema.ts.
+  "395_source_signoff_and_photo_blocks.sql",
+  // 396 — open_place_coords gains entered_by, checked_at, point_basis, note (additive nullable, no DEFAULT/CHECK/index):
+  // who entered a hand-picked OSM point and what it is. LG-2 Ask 7, ledger 2026-10-19-lg2-admin-osm-points. Declared in
+  // shared/schema.ts.
+  "396_open_place_admin_entry.sql",
+  // 397 — SH-1 item 12: users.is_test, nullable boolean, no default (NULL = not a test account by flag).
+  // HELD for Leon's comment. Ledger 2026-10-19-sh1-test-flag.
+  "397_users_is_test.sql",
+  // 398 — DATA ONLY: SH-1 item 1 seed copy. Carries the never-say edits made to the insert-only seeders onto rows they
+  // already wrote: each UPDATE is matched by the row's id/slug (or its seeder key) AND only while the exact old text is
+  // present, so it is idempotent and never clobbers a hand edit. 394–397 are taken by open PRs (397_users_is_test.sql
+  // is to sit before this entry). HELD for Leon's comment. Ledger 2026-10-19-sh1-banned-copy.
+  "398_sh1_seed_copy.sql",
+  // 399 — DATA ONLY: the IMAGINE NOH continuous-run row (manual / imagine-noh-2026) gets withdrawn_at while it is still
+  // live; nothing deleted. The four shows are seeded as one row each. SH-1 item 5, ledger 2026-10-19-sh1-show-dates.
+  "399_imagine_noh_run_withdrawn.sql",
 ] as const;

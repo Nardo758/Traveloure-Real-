@@ -19,6 +19,7 @@
  *                               one with a coordinate that is not an attributed OSM node's.
  *   · `refreshPlaceRef`       — where a fact attaches; a station's point is its OSM node's (`StationPoint`).
  */
+import { autoFetchAllowed } from "./source-signoff";
 
 export const REFRESH_ORIGIN = "official_refresh" as const;
 
@@ -33,9 +34,21 @@ export interface RefreshSourceRow {
   refreshIntervalDays: number | null;
   costCeilingCentsPerDay: number | null;
   adapter: string | null;
+  // CS-1 item 1 (migration 395): a machine reads only an approved, reading-class source that allows automated access.
+  signoffStatus?: string | null;
+  termsClass?: string | null;
+  automatedAccessAllowed?: boolean | null;
 }
 
-export type RefreshIneligible = "inactive" | "not_official" | "terms_unchecked" | "no_interval" | "no_ceiling" | "adapter_not_built";
+export type RefreshIneligible =
+  | "inactive"
+  | "not_official"
+  | "terms_unchecked"
+  | "no_interval"
+  | "no_ceiling"
+  | "adapter_not_built"
+  // CS-1 item 1: not signed off, a link-out source, or one whose terms or robots refuse automated access.
+  | "not_auto_fetchable";
 
 const ms = (v: Date | string | null | undefined): number | null => {
   if (v == null || v === "") return null;
@@ -51,6 +64,8 @@ export function refreshEligibleSource(s: RefreshSourceRow): { ok: true } | { ok:
   if (!Number.isInteger(s.refreshIntervalDays) || (s.refreshIntervalDays as number) <= 0) return { ok: false, reason: "no_interval" };
   if (!Number.isInteger(s.costCeilingCentsPerDay) || (s.costCeilingCentsPerDay as number) <= 0) return { ok: false, reason: "no_ceiling" };
   if (!(REFRESH_ADAPTERS as readonly string[]).includes(s.adapter ?? "")) return { ok: false, reason: "adapter_not_built" };
+  // CS-1 item 1: the scheduled refresh fetches only what a machine may fetch; the rest is on the manual recheck list.
+  if (!autoFetchAllowed(s)) return { ok: false, reason: "not_auto_fetchable" };
   return { ok: true };
 }
 

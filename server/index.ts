@@ -280,10 +280,14 @@ async function runDatabaseSeeding() {
   logger.info("Database seeding started");
   // One instance at a time (ledger `2026-10-18-boot-reference-seeding`): a second instance waits here, then
   // finds every insert-if-missing already done.
-  await withAdvisoryXactLock(BOOT_SEED_LOCK, () => seedAtBoot());
+  let lockWaitMs = 0;
+  await withAdvisoryXactLock(BOOT_SEED_LOCK, () => {
+    lockWaitMs = Date.now() - seedingStartTime!;
+    return seedAtBoot();
+  });
   seedingDurationMs = Date.now() - seedingStartTime;
   seedingComplete = true;
-  logger.info({ durationMs: seedingDurationMs }, "Database seeding complete");
+  logger.info({ durationMs: seedingDurationMs, lockWaitSeconds: Math.round(lockWaitMs / 100) / 10, seederSeconds }, "Database seeding complete");
 }
 
 /**
@@ -291,6 +295,20 @@ async function runDatabaseSeeding() {
  * (ledger `2026-10-18-boot-reference-seeding`). Content, demo data and backfills run here only in dev/CI
  * (`demoSeedsAllowed()`); in production they are `npx tsx scripts/seed-boot-content.ts`, run on purpose.
  */
+/**
+ * Per-seeder timing (ledger `2026-10-19-boot-seed-timing`): every boot seeder's seconds, logged once as one line
+ * after seeding — names and seconds only — so a slow boot names its seeder.
+ */
+const seederSeconds: Record<string, number> = {};
+async function timedSeeder<T>(name: string, fn: () => Promise<T>): Promise<T> {
+  const t = Date.now();
+  try {
+    return await fn();
+  } finally {
+    seederSeconds[name] = Math.round((Date.now() - t) / 100) / 10;
+  }
+}
+
 async function seedAtBoot() {
 
   // DISABLED: ESO backfill (see architectural decision in CLAUDE.md).
@@ -314,7 +332,7 @@ async function seedAtBoot() {
   // Previous: await runEsoBackfill();  // REMOVED — contradicted provider_services canonicality
 
   try {
-    const result = await seedCategories();
+    const result = await timedSeeder("seedCategories", () => seedCategories());
     if (result.created > 0) {
       logger.info({ count: result.created }, "Seeded new service categories");
     }
@@ -323,7 +341,7 @@ async function seedAtBoot() {
   }
 
   try {
-    const expResult = await seedExperienceTypes();
+    const expResult = await timedSeeder("seedExperienceTypes", () => seedExperienceTypes());
     if (expResult.created > 0) {
       logger.info({ count: expResult.created }, "Seeded new experience types");
     }
@@ -332,51 +350,51 @@ async function seedAtBoot() {
   }
 
   try {
-    await seedExperienceTemplateTabs();
+    await timedSeeder("seedExperienceTemplateTabs", () => seedExperienceTemplateTabs());
   } catch (err) {
     logger.error({ err }, "Failed to seed experience template tabs");
   }
 
   try {
-    await seedExpertServices();
+    await timedSeeder("seedExpertServices", () => seedExpertServices());
   } catch (err) {
     logger.error({ err }, "Failed to seed expert services");
   }
 
   try {
-    const n = await seedRoleScopedTemplates();
+    const n = await timedSeeder("seedRoleScopedTemplates", () => seedRoleScopedTemplates());
     if (n.inserted > 0) logger.info({ count: n.inserted }, "Seeded role-scoped expert service templates");
   } catch (err) {
     logger.error({ err }, "Failed to seed role-scoped templates");
   }
 
   try {
-    const templates = await seedCanonicalServiceTemplates();
+    const templates = await timedSeeder("seedCanonicalServiceTemplates", () => seedCanonicalServiceTemplates());
     if (templates > 0) logger.info({ count: templates }, "Seeded canonical service templates");
-    const offerings = await seedCanonicalExpertOfferings();
+    const offerings = await timedSeeder("seedCanonicalExpertOfferings", () => seedCanonicalExpertOfferings());
     if (offerings > 0) logger.info({ count: offerings }, "Seeded canonical expert service offerings");
   } catch (err) {
     logger.error({ err }, "Failed to seed canonical service templates");
   }
 
   try {
-    await ensureDefaultBookingFeeConfig();
+    await timedSeeder("ensureDefaultBookingFeeConfig", () => ensureDefaultBookingFeeConfig());
   } catch (err) {
     logger.error({ err }, "Failed to bootstrap booking_fee_configs");
   }
 
   try {
     // Mirror the in-code DMO source registry into dmo_sources (insert-if-missing).
-    const dmoResult = await seedDmoSources();
+    const dmoResult = await timedSeeder("seedDmoSources", () => seedDmoSources());
     if (dmoResult.upserted > 0) logger.info({ count: dmoResult.upserted }, "Seeded DMO sources registry");
-    const dmoHeritageResult = await seedDmoKyotoHeritage();
+    const dmoHeritageResult = await timedSeeder("seedDmoKyotoHeritage", () => seedDmoKyotoHeritage());
     if (dmoHeritageResult.upserted > 0) logger.info({ count: dmoHeritageResult.upserted }, "Seeded DMO Kyoto heritage stubs");
   } catch (err) {
     logger.error({ err }, "Failed to seed DMO sources");
   }
 
   try {
-    const locationResult = await seedLocationCache({ refresh: false });
+    const locationResult = await timedSeeder("seedLocationCache", () => seedLocationCache({ refresh: false }));
     if (locationResult.upserted > 0) logger.info({ count: locationResult.upserted }, "Seeded IATA airport/city location cache");
   } catch (err) {
     logger.error({ err }, "Failed to seed location cache");
@@ -694,6 +712,10 @@ if (process.env.NODE_ENV === "production") {
     logger.error({ err }, "FATAL: Database migrations failed — shutting down");
     process.exit(1);
   }
+
+  // CS-1 item 1: load the per-place no_photos list before requests arrive, so the synchronous listing readers
+  // (`normalizeServiceImage`) have it. A failed load is logged; the async readers still read the table themselves.
+  await import("./services/place-photo-blocks.service").then((m) => m.warmPhotoBlocks());
 
   // D-12's legacy-rail cutoff, stated at boot (ledger `2026-09-25-legacy-cutoff-boot-line`).
   // A FUTURE cutoff and an UNSET one behave identically until the date passes — both allow writes,

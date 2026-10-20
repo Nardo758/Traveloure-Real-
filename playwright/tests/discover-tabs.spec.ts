@@ -422,6 +422,8 @@ async function mockBentoEndpoints(page: import('@playwright/test').Page) {
   // casing, so the SPA may request /api/discover/location/Kyoto (title case). A regex
   // route matches either casing, keeping this suite independent of the redirect.
   await page.route(/\/api\/discover\/location\/kyoto/i, (route) => route.fulfill(json(BENTO_FIX.locationView)));
+  // SH-1 item 11: expert CTAs draw only on a "yes" from the availability answer — the fixture city has one.
+  await page.route('**/api/expert-availability**', (route) => route.fulfill(json({ available: true })));
   // Admin-configurable composition knobs — pinned so the interleave is deterministic.
   await page.route('**/api/feed-composition-config', (route) => route.fulfill(json(BENTO_FIX.feedConfig)));
   // Wanted-slot vocabulary.
@@ -607,12 +609,12 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(page.getByTestId('feed-card-vendor-svc-svc-1')).toBeVisible();
     // Phase 2c: ONE rendering per neighbourhood — the legacy container and its
     // "IN {nb}" list are gone; the neighbourhood's gems are bento tiles now,
-    // each carrying the Hidden gem tag.
+    // each carrying its type tag (SH-1 item 1: no "Hidden gem" tag).
     await expect(page.getByTestId('neighborhood-container-gion')).not.toBeAttached();
     await expect(
       page.locator('[data-testid="bento-section-gion"] [data-testid="feed-card-gem-g-gion-1"]'),
     ).toHaveCount(1);
-    await expect(page.getByTestId('gem-hidden-tag-g-gion-1')).toBeVisible();
+    await expect(page.getByTestId('gem-type-tag-g-gion-1')).toBeVisible();
     // Phase 2c: the spine chips are the VISIBLE rail (out of the popover), with
     // "All gems" active by default; the neighbourhood chips are gone and the
     // mono jump list stands above the first section.
@@ -630,9 +632,8 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(page.getByTestId('sort-option-recommended')).toBeVisible();
     await expect(page.getByTestId('popover-filters').locator('[data-testid^="spine-chip-"]')).toHaveCount(0);
     await page.keyboard.press('Escape');
-    // Trip complements + request footer still render.
+    // Trip complements still render (SH-1 item 9 deleted the Request-a-service footer).
     await expect(page.getByTestId('trip-complements-strip')).toBeVisible();
-    await expect(page.getByTestId('section-service-request')).toBeVisible();
   });
 
   test('7. chip filter — every bento filters to the chip kind and empty neighbourhoods drop out', async ({ page }) => {
@@ -911,7 +912,7 @@ test.describe('city-feed bento — /discover/location', () => {
     const unattributed = page.getByTestId('feed-card-gem-g-gion-2');
 
     await expect(attributed.getByTestId('gem-facts-g-gion-1')).toContainText('curated by Yuki');
-    await expect(unattributed.getByTestId('gem-facts-g-gion-2')).not.toContainText('curated by');
+    await expect(unattributed).not.toContainText('curated by');
 
     // Ruling 2: the attributed gem's Ask CTA names the curator; the
     // unattributed gem keeps the honest generic label (city-resolution fallback).

@@ -13,7 +13,7 @@
  *   · Official-source facts are `public` + `link_only` by default (ruling 2); an official source whose
  *     terms say otherwise is a later per-source admin override, never decided here.
  */
-import { isPageReadOrigin } from "./content-facts";
+import { asFactOrigin, isPageReadOrigin } from "./content-facts";
 
 export const SOURCE_CLASSES = ["public", "local"] as const;
 export type SourceClass = (typeof SOURCE_CLASSES)[number];
@@ -148,25 +148,47 @@ export function itemSourceClass(input: {
 }
 
 /**
- * The tag pair a `place_facts` row is born with (ruling 1/2), from its origin and license. An expert-confirmed
- * nugget is ours and local; Places is display-in-plan; a crawled fact follows the license mapping, and an unknown
- * license on a crawled fact is link-only, as migration 362 backfills it. Any other origin has no ruled tag ⇒ null.
+ * The tag pair a `place_facts` row is born with (ruling 1/2), from its origin and license. EXHAUSTIVE over
+ * `FACT_ORIGINS` (EV-P0 PR 3, ledger `2026-10-18-fact-tags-exhaustive`): every origin is decided here, and the
+ * compiler refuses a new origin until it is. An expert-confirmed nugget is ours and local; Places is
+ * display-in-plan; a page-read fact (crawl, official refresh, approved bot) follows the license mapping, an
+ * unknown license on one being link-only, as migration 362 backfills it. The five origins with NO RULED TIER
+ * (`platform_listing`, `gem`, `event`, `hotel_cache`, `traveler_note`) answer null — no writer stores one, and
+ * `recordFacts` refuses a row whose answer is null rather than store it untagged (§13: no tier is invented).
  */
 export function placeFactTags(
   origin: string | null | undefined,
   license: string | null | undefined,
   factType?: string | null,
 ): { sourceClass: SourceClass; reuseClass: ReuseClass } | null {
+  const o = asFactOrigin(origin);
+  if (!o) return null;
   // FD-3 rulings 1/3 (ledger `2026-10-10-fd3-feasibility`): a feasibility fact is public + link_only whoever
   // wrote it — an expert citing an official page writes the official fact, not a local note.
-  if ((factType === "last_admission" || factType === "last_service" || factType === "closed_dates") && (isPageReadOrigin(origin) || origin === "expert_nugget") && license === "official") {
+  if ((factType === "last_admission" || factType === "last_service" || factType === "closed_dates" || factType === "timed_entry_required") && (isPageReadOrigin(origin) || origin === "expert_nugget") && license === "official") {
     return { sourceClass: "public", reuseClass: "link_only" };
   }
-  if (origin === "expert_nugget") return { sourceClass: "local", reuseClass: "reusable" };
-  if (origin === "places_api") return { sourceClass: "public", reuseClass: "display_in_plan" };
-  // SS-1b: the market-level official refresh is tagged exactly as an official crawl (`isPageReadOrigin`).
-  if (isPageReadOrigin(origin)) return { sourceClass: "public", reuseClass: reuseClassForLicense(license) === "display_in_plan" ? "display_in_plan" : license === "partner" ? "internal" : "link_only" };
-  return null;
+  switch (o) {
+    case "expert_nugget":
+      return { sourceClass: "local", reuseClass: "reusable" };
+    case "places_api":
+      return { sourceClass: "public", reuseClass: "display_in_plan" };
+    // SS-1b: the market-level official refresh is tagged exactly as an official crawl (`isPageReadOrigin`).
+    case "crawled":
+    case "official_refresh":
+    case "bot_proposal":
+      return { sourceClass: "public", reuseClass: reuseClassForLicense(license) === "display_in_plan" ? "display_in_plan" : license === "partner" ? "internal" : "link_only" };
+    case "platform_listing":
+    case "gem":
+    case "event":
+    case "hotel_cache":
+    case "traveler_note":
+      return null;
+    default: {
+      const unreachable: never = o;
+      return unreachable;
+    }
+  }
 }
 
 /** "Traveloure team" — only on a row a person on the team seeded; never on machine output (ruling 3). */

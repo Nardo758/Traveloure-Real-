@@ -555,7 +555,7 @@ export function GuestInvitePage() {
                 <CardContent className="pt-6">
                   <div className="text-center">
                     <Plane className="h-12 w-12 text-blue-600 mx-auto mb-4" />
-                    <h3 className="font-semibold mb-2">Travel Recommendations Coming Soon!</h3>
+                    <h3 className="font-semibold mb-2">Travel recommendations aren't available yet</h3>
                     <p className="text-sm text-muted-foreground">
                       We're working on integrating flight search, hotel recommendations, and local activities.
                       Check back soon for personalized travel options from {originCity} to {experience.destination}!

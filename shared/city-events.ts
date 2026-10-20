@@ -295,6 +295,11 @@ export interface CityEventCard {
   outsideCity?: boolean;
   /** The venue's own city when `outsideCity`; null when it is not stated (§13 — never guessed). */
   venueCity?: string | null;
+  /**
+   * The row's `series_key` (migration 335): SH-1 item 5 groups the sibling rows that share it — one row per show — into
+   * one series (`seriesShowDates`, `shared/event-page.ts`). null = not part of a stated series.
+   */
+  seriesKey?: string | null;
 }
 
 export interface CityEventsPayload {

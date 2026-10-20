@@ -1,3 +1,6 @@
+import { heroEyebrowFragments } from "@/lib/hero-eyebrow";
+import { SEASONAL_WRITER_LIVE, buildSeasonLine } from "@/lib/season-line";
+import { PRICE_OPTIONS, extractTilePrice, priceMatches } from "@/lib/tile-price";
 import { useRef, useEffect, useState } from "react";
 import { resolveCoverPhoto, type CoverPhotoCredit } from "@/lib/cover-photo";
 import { useParams, useSearch, useLocation, Link } from "wouter";
@@ -9,7 +12,6 @@ import { NAV_LEAF_ICONS } from "@/components/layout";
 import { BrowseShell } from "@/components/browse-shell";
 import { buildServicesBrowseHref } from "@/lib/services-browse";
 import { AddToExperienceDialog } from "@/components/add-to-experience-dialog";
-import { ServiceRequestDialog } from "@/components/service-request-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -18,7 +20,6 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useTripContext } from "@/lib/trip-context";
 import { cn } from "@/lib/utils";
-import { useContentAgentBooking } from "@/hooks/use-content-agent-booking";
 import { CityFeedCardGem, CityFeedCardEvent, CityFeedCardSupply, CityFeedCardVendorService } from "@/components/city-feed-card";
 import { CityFeedCardExternalStub } from "@/components/city-feed-card-external-stub";
 import { CityFeedCardExpert } from "@/components/city-feed-card-expert";
@@ -34,6 +35,7 @@ import {
   resolveBentoCompactActionState,
   type BentoCompactActionState,
 } from "@/lib/bento-action-state";
+import { useExpertAvailability } from "@/lib/expert-availability";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import {
   composeDiscoverFeed,
@@ -144,10 +146,7 @@ function HeroBand({
 }) {
   const displayCity = toTitleCase(city);
   const cityIntel = heroData?.city;
-  // TravelPulse PR 1 (ledger `2026-09-29-travelpulse-hygiene`): the eyebrow's TREND is the
-  // RESOLVER's number (`trendingScore`, null when not ranked or stale), never the legacy
-  // `pulseScore`; and no CROWD fragment until PR 2 computes one (the server no longer sends it).
-  const pulse = typeof cityIntel?.trendingScore === "number" && cityIntel.trendingScore > 0 ? cityIntel.trendingScore : null;
+  // SH-1 item 2: the eyebrow carries no TREND score (and no CROWD fragment until one is computed).
   const crowdLevel: string | null = null;
   const highlight = cityIntel?.currentHighlight;
   const highlightEmoji = cityIntel?.highlightEmoji ?? "✨";
@@ -162,33 +161,17 @@ function HeroBand({
         .find((s) => s.month === monthIndex + 1) ?? null
     : null;
 
-  const seasonLine = seasonalEntry
-    ? `${seasonalEntry.rating}/10 in ${monthName} · ${seasonalEntry.highlight}${crowdLevel ? ` · ${crowdLevel}` : ""}`
-    : highlight
-    ? `${highlightEmoji} ${highlight}`
-    : null;
-
-  // Band sub (Phase 2d): the AUTHORED destination line when one exists — the
-  // same copy field chain the section headings read — else the seasonal line,
-  // else the fixed marketplace line. Never the generic "Plan your trip to…".
-  const authoredLine: string | null =
-    cityIntel?.editorialTitle ?? cityIntel?.headline ?? cityIntel?.tagline ??
-    heroData?.editorialTitle ?? heroData?.headline ?? heroData?.tagline ?? null;
-  const subLine: string =
-    authoredLine ??
-    seasonLine ??
-    `Local experts, bookable services, and what's on in ${displayCity}.`;
+  // SH-1 item 8: the header is the city name only. The authored line and the fixed "Local experts, bookable
+  // services…" line are gone; the season line returns only once a refresh writer exists (`SEASONAL_WRITER_LIVE`),
+  // and a word rating never renders as "{word}/10" (`buildSeasonLine`).
+  const seasonLine = !SEASONAL_WRITER_LIVE
+    ? null
+    : buildSeasonLine(seasonalEntry, monthName) ?? (highlight ? `${highlightEmoji} ${highlight}` : null);
+  const subLine: string | null = seasonLine;
 
   const datePillLabel = parsedDate ? `Planning ${monthName} ${dayOfMonth}` : null;
 
-  // Muted mono eyebrow: DESTINATION · {COUNTRY} · TREND {n} · CROWD {level} —
-  // each fragment omitted when its source is null (§13). The TREND fragment
-  // carries the preserved pulse-badge testid.
-  const eyebrowFragments: (string | JSX.Element)[] = ["DESTINATION"];
-  if (country) eyebrowFragments.push(country.toUpperCase());
-  if (pulse !== undefined && pulse !== null)
-    eyebrowFragments.push(<span data-testid="pulse-badge">TREND {pulse}</span>);
-  if (crowdLevel) eyebrowFragments.push(`CROWD ${String(crowdLevel).toUpperCase()}`);
+  const eyebrowFragments = heroEyebrowFragments(country);
 
   const Tile = NAV_LEAF_ICONS["Destinations"] ?? Palmtree;
 
@@ -223,9 +206,11 @@ function HeroBand({
               >
                 <span data-testid="text-city-name">{displayCity}</span>
               </h1>
-              <p className="text-sm text-[color:var(--earn-muted)] mt-1 max-w-[60ch]">
-                {subLine}
-              </p>
+              {subLine && (
+                <p className="text-sm text-[color:var(--earn-muted)] mt-1 max-w-[60ch]" data-testid="text-hero-subline">
+                  {subLine}
+                </p>
+              )}
               {datePillLabel && (
                 <div className="inline-flex items-center gap-1.5 mt-2 px-3 py-0.5 rounded-full text-[12px] bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)]">
                   📅 {datePillLabel}
@@ -284,16 +269,6 @@ function HeroBand({
 }
 
 // ─── Filters popover (price + sort ONLY — Phase 2c) ───────────────────────────
-
-/** Price bands the popover offers. A tile with NO price is outside the priced
- *  domain and is never dropped by a price filter (§13 — a filter narrows the
- *  priced inventory, it doesn't punish editorial tiles for having no price). */
-const PRICE_OPTIONS: { id: string; label: string; min: number; max: number }[] = [
-  { id: "any", label: "Any price", min: 0, max: Number.POSITIVE_INFINITY },
-  { id: "under50", label: "Under $50", min: 0, max: 50 },
-  { id: "50to150", label: "$50–150", min: 50, max: 150 },
-  { id: "over150", label: "$150+", min: 150, max: Number.POSITIVE_INFINITY },
-];
 
 const SORT_OPTIONS: { id: string; label: string }[] = [
   { id: "recommended", label: "Recommended" },
@@ -404,43 +379,6 @@ function chipMatches(item: FeedItem, chipId: string): boolean {
   if (chipId === "all") return true;
   const probe: FeedItem = item.kind === "lead-expert" ? { ...item, kind: "expert" } : item;
   return filterFeedStream([probe], chipId).length > 0;
-}
-
-/**
- * A tile's price when it carries a REAL one (§13 — never inferred): used by the
- * popover's price filter and price sorts. Editorial tiles (gems, recs, panels)
- * have no price and return null — the price filter leaves them alone and price
- * sorts keep them after the priced tiles in stream order.
- */
-function extractTilePrice(item: FeedItem): number | null {
-  const d: any = item.data ?? {};
-  const num = (v: unknown): number | null => {
-    const n = typeof v === "string" ? parseFloat(v) : Number(v);
-    return !isNaN(n) && n > 0 ? n : null;
-  };
-  switch (item.kind) {
-    case "vendor-service":
-      return num(d.price);
-    case "package":
-      return num(d.price);
-    case "event":
-      if (d.isFree) return 0;
-      return num(d.minPrice);
-    case "supply-hotel":
-    case "supply-activity":
-      return num(d.price) ?? num(d.pricePerNight) ?? num(d.priceFrom);
-    default:
-      return null;
-  }
-}
-
-function priceMatches(item: FeedItem, priceId: string): boolean {
-  if (priceId === "any") return true;
-  const band = PRICE_OPTIONS.find((o) => o.id === priceId);
-  if (!band) return true;
-  const p = extractTilePrice(item);
-  if (p === null) return true; // unpriced tiles are outside the priced domain
-  return p >= band.min && p < band.max;
 }
 
 /** Stable price sort over a tagged run — priced tiles ordered, unpriced keep stream order after them. */
@@ -1257,15 +1195,26 @@ function FeedRenderer({
 
 // ─── Date highlight strip ("pulled to top") ───────────────────────────────────
 
+/** An add-on whose link opens the expert directory is an expert call-to-action (SH-1 item 11). */
+function isExpertDirectoryHref(href: string | null | undefined): boolean {
+  return /^\/(local-)?experts(\/|\?|$)/.test(href ?? "");
+}
+
 function DateHighlightStrip({
   scheduledDate,
+  city,
   cityIntel,
   onAdd,
 }: {
   scheduledDate: string;
+  /** The page's city — scopes the expert-availability answer for the "Festival guide" companion. */
+  city: string;
   cityIntel: any;
   onAdd?: (item: any) => void;
 }) {
+  // SH-1 item 11: the "Festival guide" companion books a local expert, so it draws only when this
+  // city has an expert to ask.
+  const expertAvailable = useExpertAvailability({ city });
   const parsedDate = new Date(scheduledDate + "T12:00:00");
   const monthIndex = parsedDate.getMonth();
   const monthName = MONTH_NAMES[monthIndex];
@@ -1280,7 +1229,8 @@ function DateHighlightStrip({
   const highlight: string = (cityIntel?.currentHighlight ?? "").toLowerCase();
   const eventTitle = seasonalEntry?.highlight ?? cityIntel?.currentHighlight ?? "Seasonal highlight";
 
-  type ServiceAddon = { icon: string; label: string; price: string; href: string };
+  // SH-1 item 8: no hard-coded prices (they were yen literals no listing stood behind).
+  type ServiceAddon = { icon: string; label: string; href: string };
   // D2 honest links: the old `/experiences/photo` and `/experiences/gear` hrefs
   // resolved to the /experiences/:slug route but matched NO real experience
   // template — dead-ish destinations. The companion object carries no service
@@ -1288,17 +1238,21 @@ function DateHighlightStrip({
   // Services tab (in discover.tsx's VISIBLE_TABS), where these service types
   // are actually searchable. `/local-experts` (festival guide) was already a
   // real routed page and stays.
-  const companionService: ServiceAddon | null = (() => {
+  const companionServiceCandidate: ServiceAddon | null = (() => {
     if (highlight.includes("blossom") || highlight.includes("sakura") || highlight.includes("cherry"))
-      return { icon: "📷", label: "Blossom photo shoot", price: "from ¥12,000", href: "/services" };
+      return { icon: "📷", label: "Blossom photo shoot", href: "/services" };
     if (highlight.includes("snow") || highlight.includes("winter") || highlight.includes("ski"))
-      return { icon: "🎿", label: "Winter gear rental", price: "from ¥4,000", href: "/services" };
+      return { icon: "🎿", label: "Winter gear rental", href: "/services" };
     if (highlight.includes("festival") || highlight.includes("matsuri"))
-      return { icon: "🎋", label: "Festival guide", price: "from ¥8,000", href: "/local-experts" };
+      return { icon: "🎋", label: "Festival guide", href: "/local-experts" };
     if (highlight.includes("autumn") || highlight.includes("fall") || highlight.includes("foliage"))
-      return { icon: "🍂", label: "Foliage photo tour", price: "from ¥10,000", href: "/services" };
+      return { icon: "🍂", label: "Foliage photo tour", href: "/services" };
     return null;
   })();
+  const companionService: ServiceAddon | null =
+    companionServiceCandidate && isExpertDirectoryHref(companionServiceCandidate.href) && !expertAvailable
+      ? null
+      : companionServiceCandidate;
 
   return (
     <div data-testid="date-highlight-strip">
@@ -1376,7 +1330,7 @@ function DateHighlightStrip({
               </span>
             </div>
             <div className="text-[13px] font-medium mb-0.5">{companionService.label}</div>
-            <div className="text-[11px] text-muted-foreground mb-2">seasonal · {companionService.price}</div>
+            <div className="text-[11px] text-muted-foreground mb-2">seasonal</div>
             <Button
               size="sm"
               className="h-7 text-[12px] px-3"
@@ -1405,11 +1359,6 @@ interface AddOn {
   variant: "platform" | "affiliate";
   isExternal?: boolean;
   partner?: string;
-  /**
-   * §16: partner-fulfilled BOOKING add-ons route through the in-platform booking-agent rail
-   * (the server builds the deep link) instead of carrying a client-built affiliate URL.
-   */
-  agentPartner?: "12go";
 }
 
 function trackAddonClick(partner: string, city: string) {
@@ -1425,16 +1374,6 @@ function buildAddOns(city: string): AddOn[] {
   const cityParam = encodeURIComponent(city);
 
   return [
-    {
-      // §16: was a raw outbound booking CTA with the 12Go affiliate id built in client code.
-      // Now a booking-agent hand-off — the server constructs the 12Go deep link server-side.
-      icon: "🚖",
-      label: "Airport transfer",
-      badge: "Book via agent",
-      variant: "affiliate",
-      partner: "12go",
-      agentPartner: "12go",
-    },
     {
       icon: "📱",
       label: "eSIM for travel",
@@ -1521,7 +1460,14 @@ function TripComplementsStrip({
   highlight?: string | null;
 }) {
   const staticAddOns = buildAddOns(city);
-  const contentAddOn = buildContentAddOn(highlight, city);
+  // SH-1 item 11: the "Festival guide" add-on sends the traveler to the expert directory, so it
+  // draws only when this city has an expert to ask.
+  const expertAvailable = useExpertAvailability({ city });
+  const contentAddOnCandidate = buildContentAddOn(highlight, city);
+  const contentAddOn =
+    contentAddOnCandidate && isExpertDirectoryHref(contentAddOnCandidate.href) && !expertAvailable
+      ? null
+      : contentAddOnCandidate;
   const addOns: AddOn[] = contentAddOn ? [contentAddOn, ...staticAddOns] : staticAddOns;
 
   return (
@@ -1530,10 +1476,9 @@ function TripComplementsStrip({
         COMPLETE YOUR {city.toUpperCase()} TRIP · complements any itinerary
       </div>
       <div className="flex gap-2.5 flex-wrap">
-        {addOns.map((addon) =>
-          addon.agentPartner ? (
-            <AddOnAgentCard key={addon.label} addon={addon} city={city} />
-          ) : (
+        {/* SH-1 item 10: no "Airport transfer · Book via agent" card — nothing in this strip can reach the
+            booking-agent rail. */}
+        {addOns.map((addon) => (
             <a
               key={addon.label}
               href={addon.href}
@@ -1545,8 +1490,7 @@ function TripComplementsStrip({
             >
               <AddOnFace addon={addon} />
             </a>
-          ),
-        )}
+        ))}
       </div>
     </div>
   );
@@ -1570,37 +1514,6 @@ function AddOnFace({ addon }: { addon: AddOn }) {
         {addon.badge}
       </span>
     </>
-  );
-}
-
-/**
- * §16: partner-fulfilled booking add-on — routes through the booking-agent rail instead of
- * a client-built affiliate URL. Own component so the hook isn't called inside a map.
- */
-function AddOnAgentCard({ addon, city }: { addon: AddOn; city: string }) {
-  const agentBooking = useContentAgentBooking({
-    itemName: `${addon.label} — ${city}`,
-    itemDescription: "Trains, buses, ferries and transfers via 12Go Asia",
-    partnerName: "12Go Asia",
-    partnerCategory: "ground-transport",
-    partnerRoute: { partner: "12go", destination: city },
-  });
-
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        if (addon.partner) trackAddonClick(addon.partner, city);
-        agentBooking.book();
-      }}
-      disabled={agentBooking.isPending || agentBooking.requested}
-      className="flex-1 min-w-[150px] bg-card border border-border rounded-xl p-3 hover:shadow-sm transition-shadow text-left"
-      data-testid={`addon-${addon.label.toLowerCase().replace(/\s+/g, "-")}`}
-    >
-      <AddOnFace
-        addon={agentBooking.requested ? { ...addon, badge: "Request sent" } : addon}
-      />
-    </button>
   );
 }
 
@@ -2110,9 +2023,11 @@ export default function DiscoverLocationPage() {
         {data && (
           <div className="space-y-4">
             {/* ── "Pulled to top" date section (date mode only) ─────── */}
-            {scheduledDate && (
+            {/* SH-1 item 8: the date strip reads the same unwritten seasonal fields — off until a writer exists. */}
+            {SEASONAL_WRITER_LIVE && scheduledDate && (
               <DateHighlightStrip
                 scheduledDate={scheduledDate}
+                city={city}
                 cityIntel={data.hero?.data?.city}
                 onAdd={handleAdd}
               />
@@ -2216,23 +2131,9 @@ export default function DiscoverLocationPage() {
               }}
             />
             {activeFilter === "all" && !neighbourhoodFilter && (
-              <TripComplementsStrip city={city} highlight={currentHighlight} />
+              <TripComplementsStrip city={city} highlight={SEASONAL_WRITER_LIVE ? currentHighlight : null} />
             )}
 
-            {/* Request-a-service footer — a "nothing here matches" moment gets a
-                forward action instead of a dead end (POST /api/service-requests). */}
-            <div
-              className="mt-6 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4 text-center"
-              data-testid="section-service-request"
-            >
-              <p className="text-sm font-semibold text-gray-800 mb-1">
-                Can't find what you're looking for in {toTitleCase(city)}?
-              </p>
-              <p className="text-xs text-muted-foreground mb-3">
-                Tell us the experience you want and we'll try to source it for you.
-              </p>
-              <ServiceRequestDialog city={toTitleCase(city)} />
-            </div>
           </div>
         )}
 

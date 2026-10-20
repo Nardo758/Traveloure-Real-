@@ -15,7 +15,7 @@
  */
 import assert from "node:assert/strict";
 import test from "node:test";
-import { admitPointRow, adminPointId, normaliseTitle, parsePointsSheet, planNameAttach, pointNames, type AdmittedPoint } from "../admin-osm-points";
+import { admitPointRow, adminPointId, normaliseTitle, parsePointsSheet, planNameAttach, pointByPlace, pointNames, type AdmittedPoint } from "../admin-osm-points";
 
 const CREDIT = '"Data © OpenStreetMap contributors, ODbL. Internal use; credit ""© OpenStreetMap contributors"" wherever shown.",,,';
 const HEADER = "place,osm_type,osm_id,lat,lon,end_lat,end_lng,name_ja,point_basis,note,reviewed_by,approved";
@@ -97,4 +97,12 @@ test("AP4 the attach plan", () => {
   assert.equal(plan[2].kind, "ambiguous", "two points with one name: neither");
   assert.equal(plan[3].kind, "already_admin");
   assert.equal(plan[4].kind, "unmatched", "exact only — a title naming more than the place is not matched");
+});
+
+test("AP5 a hand attach names exactly one sheet row", () => {
+  const points = [pt("Alpha Temple (Alpha-dera)", null, 1), pt("Beta Garden", null, 2), pt("Beta Garden", null, 3)];
+  const one = pointByPlace(points, "Alpha Temple (Alpha-dera)");
+  assert.ok(one.ok && one.point.osmId === 1);
+  assert.deepEqual(pointByPlace(points, "Alpha Temple"), { ok: false, reason: "no_row" }, "the whole place name, never a part of it");
+  assert.deepEqual(pointByPlace(points, "Beta Garden"), { ok: false, reason: "two_rows" });
 });

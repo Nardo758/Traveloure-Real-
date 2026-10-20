@@ -8,6 +8,7 @@ import { useLocationMismatchGate } from "@/hooks/use-location-mismatch-gate";
 import { earnerProfilePath } from "@/lib/earner-address";
 import { deliveryMethodLabel } from "@/lib/delivery-method-label";
 import { offeringActionLabel, offeringActionIsMessageOnly, buildStorefrontActionHref } from "@/lib/storefront-offering-action";
+import { useExpertAvailability } from "@/lib/expert-availability";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import type { BuyAction } from "@shared/buy-action";
 import { LocationMismatchDialog } from "@/components/location-mismatch-dialog";
@@ -445,6 +446,12 @@ function ServiceCard({
 }) {
   const [, navigateTo] = useLocation();
   const askExpert = useAskExpert();
+  // SH-1 item 11 (Q11.2 — expert CTAs only): "Ask an expert" draws only while the listing's city has
+  // an expert to ask (the raw location — never the "Remote" display fallback below). Message on a
+  // message-only listing is gated the same way only when the listing is an EXPERT's; a provider's
+  // listing keeps its Message (the role comes from the /api/discover row, server-derived).
+  const expertAvailable = useExpertAvailability({ city: service.location });
+  const messageAvailable = !isExpertRole(service.providerRole) || expertAvailable;
   // ONE resolver, ONE href builder (client/src/lib/trip-target.ts) — the detail page reads the
   // same `?tripId=` back off the URL. With no target trip this is the pre-existing plain link.
   const detailHref = serviceDetailHref(service.id, targetTripId);
@@ -463,8 +470,6 @@ function ServiceCard({
   const price = Number.isFinite(priceValue) && priceValue > 0 ? priceValue : null;
   const reviewCount = service.reviewCount || 0;
   const location = service.location || "Remote";
-  // §13: a "Verified local" line is a claim, shown only once the service has real reviews.
-  const isVerified = reviewCount >= 3;
   // E1 (cosmetic-public-surfaces dispatch): a seed row with no category fell through to the raw
   // `deliveryMethodEnum` token ("in_person", "pdf") as the visible "service type" text. Humanize
   // it through the one shared mapper rather than printing the wire value; an unrecognized method
@@ -524,14 +529,6 @@ function ServiceCard({
 
         {/* Body */}
         <div className="p-3.5 flex-1 flex flex-col">
-          {isVerified && (
-            <div
-              className="flex items-center gap-1 text-[11px] font-semibold text-[color:var(--earn-green-ink)] mb-1"
-              style={{ fontFamily: EARN_MONO }}
-            >
-              <Check className="w-3 h-3" /> Verified local
-            </div>
-          )}
           <h4
             className="text-[15px] font-semibold leading-snug line-clamp-1"
             style={HEADING_STYLE}
@@ -617,22 +614,24 @@ function ServiceCard({
             </div>
             <div className="grid grid-cols-2 gap-2">
               {messageOnly ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="border-[var(--earn-border)] text-[color:var(--earn-ink)]"
-                  onClick={() =>
-                    askExpert({
-                      serviceId: service.id,
-                      subject: service.serviceName,
-                      returnTo: detailHref,
-                      fallbackName: providerName,
-                    })
-                  }
-                  data-testid={`button-service-message-${service.id}`}
-                >
-                  Message
-                </Button>
+                messageAvailable ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-[var(--earn-border)] text-[color:var(--earn-ink)]"
+                    onClick={() =>
+                      askExpert({
+                        serviceId: service.id,
+                        subject: service.serviceName,
+                        returnTo: detailHref,
+                        fallbackName: providerName,
+                      })
+                    }
+                    data-testid={`button-service-message-${service.id}`}
+                  >
+                    Message
+                  </Button>
+                ) : null
               ) : (
                 <Button
                   size="sm"
@@ -658,15 +657,17 @@ function ServiceCard({
                 </Button>
               )}
             </div>
-            <button
-              type="button"
-              className="text-[12px] text-[color:var(--earn-muted)] hover:text-[color:var(--earn-ink)] mt-2 transition-colors"
-              onClick={() =>
-                navigateTo(`/services?showExperts=true&destination=${encodeURIComponent(location)}`)
-              }
-            >
-              Ask an expert
-            </button>
+            {expertAvailable && (
+              <button
+                type="button"
+                className="text-[12px] text-[color:var(--earn-muted)] hover:text-[color:var(--earn-ink)] mt-2 transition-colors"
+                onClick={() =>
+                  navigateTo(`/services?showExperts=true&destination=${encodeURIComponent(location)}`)
+                }
+              >
+                Ask an expert
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -696,9 +697,9 @@ const SURFACE_META: Record<MarketplaceSurface, { icon: LucideIcon; title: string
   travelpulse: {
     icon: Palmtree,
     title: "Destinations",
-    subtitle: "Explore destinations & trending cities.",
+    subtitle: "Explore destinations and cities.",
     url: "/destinations",
-    seoTitle: "Destinations — Trending Cities & Travel Intel",
+    seoTitle: "Destinations — Cities & Travel Intel",
   },
   packages: {
     icon: Gem,
@@ -998,6 +999,11 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
   const expertHandoffDestination = urlParams.get("destination") || "";
   const expertHandoffExperienceType = urlParams.get("experienceType") || "";
   const expertHandoffTripId = urlParams.get("tripId") || "";
+  // SH-1 item 11: the "Experts for {city}" section (its Connect, Browse All and View All CTAs, and
+  // the AI-matched cards inside it) draws only when that city has an expert to ask.
+  const handoffExpertsAvailable = useExpertAvailability({ city: expertHandoffDestination });
+  // SH-1 item 11 (Q11.3): the page-foot "Talk to an Expert" names no city.
+  const anyExpertAvailable = useExpertAvailability("any");
   const [tripCtx] = useTripContext();
   const tripDestination = (tripCtx?.destination || tripCtx?.city || "").toString();
   
@@ -1653,7 +1659,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
         </section>
 
         {/* Matched Experts Section — shown when the URL carries showExperts=true */}
-        {showExperts && (
+        {showExperts && handoffExpertsAvailable && (
           <section ref={expertsSectionRef} className="py-8 bg-muted/30">
             <div className={pageContainerClass("content")}>
               <div className="flex items-center gap-3 mb-6">
@@ -1737,7 +1743,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                             </Badge>
                           )}
                           {expert.isExpert && (
-                            <Badge variant="outline" className="text-xs">Verified Expert</Badge>
+                            <Badge variant="outline" className="text-xs">Expert</Badge>
                           )}
                         </div>
                         <Button
@@ -2188,11 +2194,13 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
               trip based on your preferences, budget, and travel style.
             </p>
             <div className="flex flex-wrap justify-center gap-4">
-              <Link href="/experts">
-                <Button className={PAGE_ACTION.primary} data-testid="button-talk-to-expert">
-                  Talk to an Expert
-                </Button>
-              </Link>
+              {anyExpertAvailable && (
+                <Link href="/experts">
+                  <Button className={PAGE_ACTION.primary} data-testid="button-talk-to-expert">
+                    Talk to an Expert
+                  </Button>
+                </Link>
+              )}
               <Link href="/experiences">
                 <Button variant="outline" className={PAGE_ACTION.secondary} data-testid="button-plan-experience-cta">
                   Plan Your Experience

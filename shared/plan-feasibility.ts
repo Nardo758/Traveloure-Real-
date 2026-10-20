@@ -20,9 +20,10 @@ export interface DayFeasibility {
   /** Rides with a stored official last departure near their start, for that date. */
   ridesChecked: number;
   /**
-   * P0 legs ruling 2 (ledger `2026-10-10-p0-legs-baseline`): legs the routing engine looked for and
-   * found no route for (transit and the drive fallback both) — the pair shows no leg. Present only
-   * when > 0, and only where the engine could answer (a routed plan with chosen dates, day not over).
+   * P0 legs ruling 2 (ledger `2026-10-10-p0-legs-baseline`): desired legs the day shows no leg for.
+   * Since 9b-d (ledger `2026-10-17-9b-d-routing-recheck`) the router's own "no route" writes a labelled
+   * straight-line leg, so this counts pairs with no leg yet: an unanswered router call, a paused run,
+   * or a pair not yet computed. Present only when > 0, and only on a routed plan with chosen dates.
    */
   noRoute?: number;
   /**

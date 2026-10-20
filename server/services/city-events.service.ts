@@ -412,6 +412,8 @@ export function toCityEventCard(row: CityEvent, neighbourhood: string | null, no
     vertical: isCityEventVertical(row.vertical) ? row.vertical : null,
     // Migration 356: NULL = not known, never "same as the market" (§13).
     venueLocality: row.venueLocality ?? null,
+    // SH-1 item 5: sibling rows on one key are one series of shows (`seriesShowDates`).
+    seriesKey: row.seriesKey ?? null,
     ticketUrl: row.ticketUrl,
     blurb: row.blurb,
     imagePath: row.imagePath,

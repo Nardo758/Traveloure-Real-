@@ -37,7 +37,7 @@ export default function TermsOfServicePage() {
             </p>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
               <li><strong>Travelers:</strong> Individuals seeking personalized travel experiences and life event planning services</li>
-              <li><strong>Local Experts:</strong> Authenticated professionals providing consultation, cultural interpretation, and personalized planning services</li>
+              <li><strong>Local Experts:</strong> Professionals providing consultation, cultural interpretation, and personalized planning services</li>
               <li><strong>Service Providers:</strong> Businesses and individuals offering travel services, accommodations, activities, and experiences</li>
             </ul>
 
@@ -177,19 +177,19 @@ export default function TermsOfServicePage() {
             
             <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>5.5.1 Influencer Program Overview</h3>
             <p className="text-muted-foreground leading-relaxed mb-4">
-              The Traveloure Influencer Program allows verified travel content creators to earn commissions through referrals, access exclusive experiences, and collaborate with the platform on content creation.
+              The Traveloure Influencer Program allows approved travel content creators to earn commissions through referrals, access exclusive experiences, and collaborate with the platform on content creation.
             </p>
 
             <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>5.5.2 Eligibility Requirements</h3>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
-              <li>Minimum combined following of 10,000 across verified social platforms</li>
+              <li>Minimum combined following of 10,000 across connected social platforms</li>
               <li>Active content creation in travel, lifestyle, or related niches</li>
               <li>Authentic engagement metrics (no purchased followers or fake engagement)</li>
               <li>Compliance with FTC disclosure guidelines and local advertising regulations</li>
               <li>Professional and brand-appropriate content history</li>
             </ul>
         <p className="text-muted-foreground leading-relaxed mt-4">
-          Follower counts and engagement metrics are verified through the social accounts you connect to Traveloure. Connecting an Instagram or Facebook account is optional, but we cannot verify eligibility for the Influencer Program without it. Instagram verification requires a Business or Creator account linked to a Facebook Page; personal Instagram accounts cannot be verified.
+          Follower counts and engagement metrics are read from the social accounts you connect to Traveloure. Connecting an Instagram or Facebook account is optional, but we cannot verify eligibility for the Influencer Program without it. Instagram verification requires a Business or Creator account linked to a Facebook Page; personal Instagram accounts cannot be used.
         </p>
 
             <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>5.5.3 Commission Structure</h3>
@@ -240,7 +240,7 @@ export default function TermsOfServicePage() {
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
               <li><strong>Commission Rate:</strong> The platform fee applicable to a booking is set by Traveloure's published fee schedule in effect at the time of the booking. The amount you receive is shown in your Traveloure console on each earning and payout record</li>
               <li><strong>Payment Processing:</strong> 2.9% + $0.30 per transaction (Stripe fees)</li>
-              <li><strong>Payout Schedule:</strong> Weekly payouts for verified experts</li>
+              <li><strong>Payout Schedule:</strong> Weekly payouts for approved experts</li>
               <li><strong>Minimum Payout:</strong> $25 threshold for withdrawal</li>
             </ul>
           </section>

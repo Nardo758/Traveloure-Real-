@@ -45,7 +45,7 @@ import type { CityEventSeedEntry } from "../services/city-events.service";
  * the ledger row `2026-10-01-city-events-nine-seed`). Held until confirmed on the organiser's page:
  * Sunburn Goa 2026, Lakmé Fashion Week x FDCI, Serendipity Arts Festival 2026, Jaipur Literature
  * Festival 2027, Goa Carnival 2027. A `ticketUrl` is set only where the organiser's or primary seller's
- * own page was given; none is guessed. IMAGINE NOH's stays unset until the Kanze theatre's page is read.
+ * own page was given; none is guessed. IMAGINE NOH's stays unset until it is ruled.
  */
 export const MANUAL_CITY_EVENTS: readonly CityEventSeedEntry[] = [
   {
@@ -160,15 +160,60 @@ export const MANUAL_CITY_EVENTS: readonly CityEventSeedEntry[] = [
     seriesKey: "japanese-grand-prix",
     ticketUrl: "https://www.suzukacircuit.jp/eng/f1/index.html",
   },
+  // SH-1 item 5 (ledger `2026-10-19-sh1-show-dates`): IMAGINE NOH is four evening performances, not a run — one row
+  // per show on one series key, so the card reads "On now" only on a show day and "Next show <date>" otherwise
+  // (`seriesShowLabel`). Dates and times from the organiser and the theatre (imagine-noh.com;
+  // kyoto-kanze.jp/show_info/), as listed in the Oct 19, 2026 factcheck file — never typed from memory. The old
+  // continuous-run row `imagine-noh-2026` is withdrawn by migration (held), never deleted.
   {
     source: "manual",
-    sourceId: "imagine-noh-2026",
+    sourceId: "imagine-noh-2026-10-14",
     series: "IMAGINE NOH",
     title: "IMAGINE NOH — Legends and Laughter on Stage",
     city: "Kyoto",
-    venue: "京都観世会館",
-    startsAt: "2026-10-14T00:00:00+09:00",
-    endsAt: "2026-11-05T00:00:00+09:00",
+    venue: "Kyoto Kanze Noh Theatre (京都観世会館), Okazaki",
+    startsAt: "2026-10-14T17:30:00+09:00",
+    endsAt: "2026-10-14T19:00:00+09:00",
+    startTimeKnown: true,
+    vertical: "other",
+    seriesKey: "kyoto-kanze-noh",
+  },
+  {
+    source: "manual",
+    sourceId: "imagine-noh-2026-10-22",
+    series: "IMAGINE NOH",
+    title: "IMAGINE NOH — Legends and Laughter on Stage",
+    city: "Kyoto",
+    venue: "Kyoto Kanze Noh Theatre (京都観世会館), Okazaki",
+    startsAt: "2026-10-22T17:30:00+09:00",
+    endsAt: "2026-10-22T19:00:00+09:00",
+    startTimeKnown: true,
+    vertical: "other",
+    seriesKey: "kyoto-kanze-noh",
+  },
+  {
+    source: "manual",
+    sourceId: "imagine-noh-2026-10-28",
+    series: "IMAGINE NOH",
+    title: "IMAGINE NOH — Legends and Laughter on Stage",
+    city: "Kyoto",
+    venue: "Kyoto Kanze Noh Theatre (京都観世会館), Okazaki",
+    startsAt: "2026-10-28T17:30:00+09:00",
+    endsAt: "2026-10-28T19:00:00+09:00",
+    startTimeKnown: true,
+    vertical: "other",
+    seriesKey: "kyoto-kanze-noh",
+  },
+  {
+    source: "manual",
+    sourceId: "imagine-noh-2026-11-05",
+    series: "IMAGINE NOH",
+    title: "IMAGINE NOH — Legends and Laughter on Stage",
+    city: "Kyoto",
+    venue: "Kyoto Kanze Noh Theatre (京都観世会館), Okazaki",
+    startsAt: "2026-11-05T17:30:00+09:00",
+    endsAt: "2026-11-05T19:00:00+09:00",
+    startTimeKnown: true,
     vertical: "other",
     seriesKey: "kyoto-kanze-noh",
   },

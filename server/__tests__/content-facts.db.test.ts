@@ -25,6 +25,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { sql } from "drizzle-orm";
 import { db, pool } from "../db";
+import { placeFacts } from "@shared/schema";
 import { enrichPlanItems, factPointsForTrip, factsForTrip, recordFacts } from "../services/content-facts/place-facts.service";
 import { PlacesAdapter } from "../services/content-facts/places-adapter";
 import { placesDetailsCostCents } from "../config/content-facts.config";
@@ -51,6 +52,8 @@ const fact = (over: Record<string, unknown>) => ({
   license: "restricted" as const,
   fetchedAt: new Date(),
   expiresAt: new Date(Date.now() + 7 * 86_400_000),
+  // CS-1 item 3 (ledger `2026-10-19-cs1-fact-review`): a dated, machine-read fact shows only once a person reviewed it.
+  verifiedBy: ids.owner,
   costCents: 4,
   ...over,
 });
@@ -89,7 +92,10 @@ after(async () => {
 test("C1: the engine's order picks the fact; every view carries provenance", async () => {
   // GH-1: a Google hours draft is refused by the writer, so the hours view is the listing's alone.
   await recordFacts([fact({})], { planId: ids.trip, itemId: ids.s4 });
-  await recordFacts([fact({ origin: "platform_listing", license: null, sourceUrl: null, value: { weekdayDescriptions: ["Monday: from the listing"] } })], { planId: ids.trip, itemId: ids.s4 });
+  // EV-P0 PR 3 (ledger `2026-10-18-fact-tags-exhaustive`; edit sanctioned): recordFacts refuses an origin with no
+  // ruled tier, so the platform-native row is inserted directly.
+  const listing = fact({ origin: "platform_listing", license: null, sourceUrl: null, value: { weekdayDescriptions: ["Monday: from the listing"] } });
+  await db.insert(placeFacts).values({ ...listing, id: crypto.randomUUID(), costCents: String(listing.costCents ?? 0), planId: ids.trip, itineraryItemId: ids.s4 } as any);
   const facts = await factsForTrip(ids.trip);
   const hours = facts[ids.s4].filter((f) => f.factType === "hours");
   assert.equal(hours.length, 1, "one fact per type");
@@ -228,6 +234,10 @@ test("C5: no Places fact reaches a public route", async () => {
     // page-read origin, an official license — for the bot's overdue list (place id, type, dates) and the admin's
     // review page. Never a Places fact, never a plan's fact.
     "server/services/bot-proposals.service.ts",
+    // CS-1 item 3 (ledger `2026-10-19-cs1-fact-review`): the admin's review of official-refresh output. It READS only
+    // unreviewed `official_refresh` registry rows for the review page and WRITES a reviewed row through the one
+    // writer, superseding the unreviewed one. Behind the /api/admin blanket guard; never a Places fact, never a plan read.
+    "server/services/fact-review.service.ts",
     // Surface step 4 (ledger `2026-10-03-surface-step4-optimizer-lead`): the OptimizerLead's findings
     // read the plan's hours and location facts — only inside `GET /api/optimization-preview`, behind
     // `authorizeTripLogistics`; only kinds and counts leave it.

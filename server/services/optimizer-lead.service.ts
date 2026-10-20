@@ -143,6 +143,7 @@ export async function loadPlanCheckInput(tripId: string): Promise<{ input: PlanC
     hours: facts.hours,
     lastAdmission: facts.lastAdmissionFacts,
     closedDates: facts.closedDates,
+    timedEntry: facts.timedEntry,
     lastServices: facts.lastServices,
     anchors: anchors as any,
     // Step 9b (L9 as amended, D4): each leg says whether its minutes are routed, through the ONE `legIsRouted`.

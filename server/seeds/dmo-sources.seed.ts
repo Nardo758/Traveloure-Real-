@@ -73,7 +73,7 @@ export const PROPOSED_DMO_SOURCES: DMOSourceDefinition[] = [
     attributionRequired: false,
     isActive: true,
     scrapeConfig: { rateLimit: 1, paths: ["/en/"], respectRobotsTxt: true, language: "en" },
-    notes: "Osaka's certified DMO (Osaka Convention & Tourism Bureau). Has a downloadable guidebook/resources section (octb.osaka-info.jp) but no confirmed trade-registration program, so kept at 'scraped'.",
+    notes: "Osaka's DMO (Osaka Convention & Tourism Bureau). Has a downloadable guidebook/resources section (octb.osaka-info.jp) but no confirmed trade-registration program, so kept at 'scraped'.",
   },
   {
     id: "dmo-es-barcelonaturisme",
@@ -237,7 +237,15 @@ export const PROPOSED_DMO_SOURCES: DMOSourceDefinition[] = [
 export async function seedDmoSources(): Promise<{ upserted: number }> {
   let upserted = 0;
 
-  for (const src of [...ALL_DMO_SOURCES, ...PROPOSED_DMO_SOURCES]) {
+  // One read for the whole registry (ledger `2026-10-19-boot-seed-timing`): only a (domain, market) pair the table
+  // lacks is inserted, so a warm boot makes one round trip, not one per source. Same conflict key as the insert.
+  const all = [...ALL_DMO_SOURCES, ...PROPOSED_DMO_SOURCES];
+  const key = (domain: string, market: string) => `${domain}\u0000${market}`;
+  const present = new Set(
+    (await db.select({ domain: dmoSources.domain, market: dmoSources.market }).from(dmoSources)).map((r) => key(r.domain, r.market)),
+  );
+  for (const src of all) {
+    if (present.has(key(src.domain, src.market))) continue;
     const inserted = await db
       .insert(dmoSources)
       .values({

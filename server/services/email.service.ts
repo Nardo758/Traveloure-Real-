@@ -1313,7 +1313,7 @@ export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<v
 
   ${params.expertsWithoutPayout.length > 0 ? `
   <h3 style="color:#991B1B;margin-top:24px">💳 Experts Without Payout Setup (${params.expertsWithoutPayout.length})</h3>
-  <p style="color:#6B7280;font-size:13px">These experts cannot receive payments until their Stripe Connect account is verified.</p>
+  <p style="color:#6B7280;font-size:13px">These experts cannot receive payments until their Stripe Connect account setup is complete.</p>
   <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
     <thead>
       <tr style="background:#FEE2E2">
@@ -1393,7 +1393,7 @@ interface WelcomeEmailParams {
 /**
  * Queue the welcome through the existing outbox; never send without a durable row.
  * Introduces the platform, surfaces the three core actions (plan a trip, browse
- * experts, explore hidden gems), and gives a direct CTA to the dashboard.
+ * experts, explore local picks), and gives a direct CTA to the dashboard.
  * Safe to call without awaiting — all errors are caught internally.
  */
 export async function sendWelcomeEmail(params: WelcomeEmailParams): Promise<void> {
@@ -1431,7 +1431,7 @@ export function buildWelcomeEmailPayload(params: WelcomeEmailParams): SendEmailP
       <p style="color: #374151; font-size: 16px;">${greeting}</p>
       <p style="color: #374151; font-size: 15px; line-height: 1.6;">
         Your account is all set. Traveloure uses AI to turn your travel ideas into
-        personalised day-by-day itineraries — and connects you with verified local
+        personalised day-by-day itineraries — and connects you with local
         experts when you want a human touch.
       </p>
 
@@ -1447,7 +1447,7 @@ export function buildWelcomeEmailPayload(params: WelcomeEmailParams): SendEmailP
           <td style="padding: 16px; background: #F0FDF4; border-radius: 8px; vertical-align: top; width: 30%;">
             <div style="font-size: 24px; margin-bottom: 8px;">🧑‍💼</div>
             <div style="font-weight: 700; color: #111827; margin-bottom: 4px;">Meet an expert</div>
-            <div style="color: #6B7280; font-size: 13px;">Book a session with a local expert for tailored, insider advice.</div>
+            <div style="color: #6B7280; font-size: 13px;">Book a session with a local expert for tailored, local advice.</div>
           </td>
           <td style="width: 4%;"></td>
           <td style="padding: 16px; background: #EFF6FF; border-radius: 8px; vertical-align: top; width: 30%;">
@@ -1493,7 +1493,7 @@ export function buildWelcomeEmailPayload(params: WelcomeEmailParams): SendEmailP
     ``,
     `🗺️  Plan a trip  — ${dashboardUrl}`,
     `🧑‍💼  Meet an expert — ${expertsUrl}`,
-    `💎  Discover hidden gems — ${exploreUrl}`,
+    `💎  Discover local picks — ${exploreUrl}`,
     ``,
     `Start planning: ${dashboardUrl}`,
     ``,
@@ -1617,12 +1617,12 @@ export async function sendVerificationDecisionEmail(params: VerificationDecision
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
       <h2 style="color: ${approved ? "#059669" : "#DC2626"}; margin-bottom: 8px;">
-        ${approved ? "You're verified" : "Verification not approved"}
+        ${approved ? "Verification approved" : "Verification not approved"}
       </h2>
       <p style="color: #374151;">${greeting}</p>
       <p style="color: #374151;">
         ${approved
-          ? "Your account has been verified. You can now publish listings in background-check and higher-insurance categories."
+          ? "Your account passed its review. You can now publish listings in background-check and higher-insurance categories."
           : "We reviewed your account and couldn't approve verification at this time. You can update your details and request another review."}
       </p>
       ${reasonBlock}
@@ -1639,12 +1639,12 @@ export async function sendVerificationDecisionEmail(params: VerificationDecision
   `;
 
   const text = [
-    approved ? "You're verified" : "Verification not approved",
+    approved ? "Verification approved" : "Verification not approved",
     ``,
     greeting,
     ``,
     approved
-      ? "Your account has been verified. You can now publish listings in background-check and higher-insurance categories."
+      ? "Your account passed its review. You can now publish listings in background-check and higher-insurance categories."
       : "We reviewed your account and couldn't approve verification at this time. You can update your details and request another review.",
     !approved && params.reason ? `\nReviewer note: ${params.reason}` : "",
     ``,
@@ -1655,7 +1655,7 @@ export async function sendVerificationDecisionEmail(params: VerificationDecision
     await client.emails.send({
       from: getFromAddress(),
       to: params.toEmail,
-      subject: approved ? "You're verified on Traveloure" : "Your Traveloure verification review",
+      subject: approved ? "Your Traveloure verification is approved" : "Your Traveloure verification review",
       html,
       text,
     });

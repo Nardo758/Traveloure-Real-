@@ -5,13 +5,14 @@ import { tripGetsRoutedLegs } from "../services/routing/plan-routed-legs.service
 import { routingPausedToday } from "../services/maps-billing/maps-billing.service";
 
 import { enqueuePlanLegRecompute, runNow } from "../services/routing/plan-legs-queue";
-import { factsForTrip, pendingFactLookups, placeRefsForTrip } from "../services/content-facts/place-facts.service";
+import { factsForTrip, lastEntryWaitingForTrip, pendingFactLookups, placeRefsForTrip } from "../services/content-facts/place-facts.service";
 import { photosFor } from "../services/place-photos.service";
 import { applyGooglePins } from "@shared/ai-place-text";
 import { savedItemQuestions } from "../services/expert-door.service";
 import { getUserId } from "../utils/auth";
 import { storage, stampItemSourceClass } from "../storage";
 import { localTeasersForTrip } from "../services/local-teaser.service";
+import { busyBusForTrip } from "../services/busy-bus.service";
 import { expertHookForTrip, inSeasonAdditionsForTrip } from "../services/expert-hook.service";
 import { rideRecommendationsForTrip } from "../services/ride-recommender.service";
 import { liveLegFactsForTrip } from "../services/live-directions.service";
@@ -25,6 +26,7 @@ import {
   providerServices,
   notifications,
   transportLegs,
+  trips,
 } from "@shared/schema";
 import { db } from "../db";
 import { and, count, desc, eq, inArray, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
@@ -721,18 +723,24 @@ router.get("/api/trips/:tripId/place-photos", isAuthenticated, async (req, res) 
     const ids = Array.from(new Set(String(req.query.items ?? "").split(",").map((x) => x.trim()).filter(Boolean))).slice(0, PLACE_PHOTOS_MAX_ITEMS);
     if (!ids.length) return res.json({ photos: {} });
     const rows = await db
-      .select({ id: itineraryItems.id, title: itineraryItems.title, lat: itineraryItems.latitude, lng: itineraryItems.longitude, serviceImage: providerServices.serviceImage })
+      .select({ id: itineraryItems.id, title: itineraryItems.title, lat: itineraryItems.latitude, lng: itineraryItems.longitude, serviceImage: providerServices.serviceImage, locationName: itineraryItems.locationName, googlePlaceId: itineraryItems.googlePlaceId, serviceName: providerServices.serviceName })
       .from(itineraryItems)
       .leftJoin(providerServices, eq(providerServices.id, itineraryItems.providerServiceId))
       .where(and(eq(itineraryItems.tripId, tripId), inArray(itineraryItems.id, ids)));
     const refs = await placeRefsForTrip(tripId, rows.map((r) => r.id));
     const num = (v: unknown) => (v == null || v === "" ? null : Number.isFinite(Number(v)) ? Number(v) : null);
+    const [tripRow] = await db.select({ destination: trips.destination }).from(trips).where(eq(trips.id, tripId)).limit(1);
+    const city = (tripRow?.destination ?? "").split(",")[0].trim() || null;
     const photos = await photosFor(
       rows.map((r) => {
         const ref = refs.get(r.id);
         return {
           id: r.id,
           name: r.title ?? "",
+          // CS-1 item 1: the names and ids a no_photos block is matched on.
+          city,
+          otherNames: [r.locationName, r.serviceName],
+          itemPlaceId: r.googlePlaceId ?? null,
           placeId: ref?.placeId ?? null,
           lat: ref?.lat ?? num(r.lat),
           lng: ref?.lng ?? num(r.lng),
@@ -909,6 +917,10 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     // is still checking (migration 340). Present only when non-empty; the slip shows "checking
     // hours…" on those rows and re-reads until the key is gone. A stale or finished run ⇒ absent.
     const factsPendingItemIds = await pendingFactLookups(tripId);
+    // CS-1 item 3 (ledger `2026-10-19-cs1-fact-review`): the stops whose last entry an official refresh read and no
+    // person has reviewed yet — "Last entry not checked yet. See <Place>'s official site before you go." Present only
+    // when non-empty.
+    const lastEntryWaiting = await lastEntryWaitingForTrip(tripId);
 
     // IS AN EXPERT ASSIGNED? (ledger `2026-09-26-send-to-expert-needs-expert`; audit G2.) An
     // advisor in a §12 WRITE status (accepted/assigned) — the SAME predicate the routing rail refuses
@@ -933,6 +945,9 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     // FD-1 (ledger `2026-10-09-fd1-free-draft-cap`): on a FREE plan only, per day, the count of local picks and
     // notes the paid tier would add — counts only; a day not computed, or zero, carries no key (§13).
     const localTeasers = await localTeasersForTrip(tripId);
+    // FB-1 step 5d (ledger `2026-10-19-fb1-busy-bus`): per day, why Kyoto's buses are busy — a holiday span, a national
+    // holiday or a peak-season weekend — on a Kyoto plan with confirmed dates. Every tier; a failure is no key (§13).
+    const busyBus = await busyBusForTrip(tripId);
     // FB-1 expert hook (ledger `2026-10-18-fb1-expert-hook`): the OWNER of a FREE plan gets the switch state and whether
     // the chooser has anyone in it; anyone else, a paid plan or a failure gets no key (§13). The in-season count is per
     // day and present only when non-zero — empty until FB-1 step 8.
@@ -989,6 +1004,7 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
             ? { transports: d.transports.map((tr: any) => (liveLegs.has(tr?.id) ? { ...tr, ...liveLegs.get(tr.id) } : tr)) }
             : {}),
           ...(t ? { localTeaser: t } : {}),
+          ...(busyBus.get(d.dayNumber) ? { busyBus: busyBus.get(d.dayNumber) } : {}),
           ...(inSeason.get(d.dayNumber)?.count ? { inSeason: inSeason.get(d.dayNumber) } : {}),
           ...(anchorStops.get(d.dayNumber)?.length ? { anchorStops: anchorStops.get(d.dayNumber) } : {}),
           ...(f ? { feasibility: f } : {}),
@@ -1054,6 +1070,7 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       // until it is absent. Without it, items past the cap drew no "Build my days around this".
       ...((plan as any).coordinatesPending === true ? { coordinatesPending: true } : {}),
       ...(factsPendingItemIds.length ? { factsPendingItemIds } : {}),
+      ...(Object.keys(lastEntryWaiting).length ? { lastEntryWaiting } : {}),
       ...(Object.keys(savedQuestions.items).length ? { savedQuestions } : {}),
       // R-be — see the note above. ADDITIVE: existing consumers ignore the key.
       readyMadeSource,
