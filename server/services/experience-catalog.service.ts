@@ -50,6 +50,8 @@ export interface ActivityItem extends BaseItem {
 
 export interface EventItem extends BaseItem {
   type: "event";
+  /** SH-1 item 7: the price lives with the partner; `price` is always null. */
+  priceSource: "partner";
   dates: { start: Date | null; end: Date | null } | null;
   isFree: boolean;
   isSoldOut: boolean;
@@ -392,6 +394,9 @@ class ExperienceCatalogService {
     // name ("Paris") so both the cache query and the live fetch use the same value.
     // Falls back to the raw string when the destination is not a Fever-supported city
     // (query will simply return nothing and the fetch-on-miss will also skip safely).
+    // SH-1 Q7.3: event prices are the partner's (Fever), never ours, so a chosen price band leaves events out.
+    if (params.priceMin !== undefined || params.priceMax !== undefined) return [];
+
     const feverCity = params.destination ? feverService.findCity(params.destination) : undefined;
     const canonicalCity = feverCity?.name ?? params.destination;
 
@@ -405,12 +410,6 @@ class ExperienceCatalogService {
           ilike(feverEventCache.description, `%${params.query}%`)
         )
       );
-    }
-    if (params.priceMin !== undefined) {
-      conditions.push(gte(feverEventCache.minPrice, params.priceMin.toString()));
-    }
-    if (params.priceMax !== undefined) {
-      conditions.push(lte(feverEventCache.maxPrice, params.priceMax.toString()));
     }
     if (params.rating !== undefined) {
       conditions.push(gte(feverEventCache.rating, params.rating.toString()));
@@ -460,8 +459,10 @@ class ExperienceCatalogService {
       title: e.title,
       description: e.description,
       imageUrl: e.imageUrl,
-      price: e.minPrice ? parseFloat(e.minPrice) : null,
-      currency: e.currency || "USD",
+      // SH-1 Q7.2/Q7.4: no Fever amount reaches a traveler — the partner shows the current price.
+      price: null,
+      currency: "",
+      priceSource: "partner" as const,
       rating: e.rating ? parseFloat(e.rating) : null,
       reviewCount: e.reviewCount,
       destination: e.city,
@@ -477,7 +478,8 @@ class ExperienceCatalogService {
       dates: e.startDate || e.endDate
         ? { start: e.startDate, end: e.endDate }
         : null,
-      isFree: e.isFree ?? false,
+      // "Free" is an amount too (Q7.2): never claimed for a partner-priced event.
+      isFree: false,
       isSoldOut: e.isSoldOut ?? false,
       venueName: e.venueName,
     }));
@@ -873,8 +875,10 @@ class ExperienceCatalogService {
           title: event.title,
           description: event.description,
           imageUrl: event.imageUrl,
-          price: event.minPrice ? parseFloat(event.minPrice) : null,
-          currency: event.currency || "USD",
+          // SH-1 Q7.2/Q7.4: no Fever amount reaches a traveler.
+          price: null,
+          currency: "",
+          priceSource: "partner",
           rating: event.rating ? parseFloat(event.rating) : null,
           reviewCount: event.reviewCount,
           destination: event.city,
@@ -890,7 +894,7 @@ class ExperienceCatalogService {
           dates: event.startDate || event.endDate
             ? { start: event.startDate, end: event.endDate }
             : null,
-          isFree: event.isFree ?? false,
+          isFree: false,
           isSoldOut: event.isSoldOut ?? false,
           venueName: event.venueName,
         };

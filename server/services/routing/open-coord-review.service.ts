@@ -34,7 +34,8 @@ import { metresBetween } from "../item-osm-regeocode.service";
 import { foldName, kindFromName } from "@shared/osm-place-kind";
 
 export const OPEN_COORD_MAX_DRIFT_SETTING = "open_coord_max_drift_m";
-export const OPEN_COORD_REVIEW_REASONS = ["admin", "neighbourhood", "street", "name_mismatch", "drift"] as const;
+// `replaced_by_admin` (LG-2 Ask 7): the link a hand-picked admin point replaced — kept here, restorable, never deleted.
+export const OPEN_COORD_REVIEW_REASONS = ["admin", "neighbourhood", "street", "name_mismatch", "drift", "replaced_by_admin"] as const;
 export type OpenCoordReviewReason = (typeof OPEN_COORD_REVIEW_REASONS)[number];
 
 // The name readings live in ONE pure module, shared with the matcher (LG-2 Ask 2; §18 rule 1).
@@ -114,6 +115,7 @@ export async function planOpenCoordReview(maxDriftM: number): Promise<{ checked:
       itemLocationName: itineraryItems.locationName,
       itemLat: itineraryItems.latitude,
       itemLng: itineraryItems.longitude,
+      linkSource: itineraryItemOpenCoords.source,
     })
     .from(itineraryItemOpenCoords)
     .innerJoin(openPlaceCoords, eq(openPlaceCoords.id, itineraryItemOpenCoords.openCoordId))
@@ -134,6 +136,8 @@ export async function planOpenCoordReview(maxDriftM: number): Promise<{ checked:
   const pull: ReviewPlanLink[] = [];
   for (const l of links) {
     if (restored.has(`${l.itemId}|${l.openCoordId}`)) continue;
+    // LG-2 Ask 7: a link a person attached (a hand-picked admin point) is theirs to change, never pulled automatically.
+    if (l.linkSource === "admin") continue;
     const c = classifyOpenCoordLink(
       {
         displayName: l.displayName,
@@ -185,6 +189,52 @@ export async function pullOpenCoordLink(plan: ReviewPlanLink, removedBy: string)
     });
     await tx.delete(itineraryItemOpenCoords).where(eq(itineraryItemOpenCoords.itemId, plan.itemId));
     return { pulled: true, reviewId };
+  });
+}
+
+/**
+ * LG-2 Ask 7 (Leon's ruling 4): attach a hand-picked admin point to a plan item — the ONE writer of an admin link. An item
+ * has one link, so an existing link of another source is first written to the review table (`replaced_by_admin`,
+ * restorable) and then replaced; nothing is deleted without its review row. An item already admin-linked is left alone.
+ * Runs only after the name-attach dry run's counts were posted and approved (the script refuses otherwise).
+ */
+export async function attachAdminPointToItem(
+  itemId: string,
+  pointId: string,
+  attachedBy: string,
+): Promise<{ attached: boolean; replaced: string | null; reason?: "no_point" | "no_item" | "already_admin" }> {
+  return db.transaction(async (tx) => {
+    const [point] = await tx.select({ id: openPlaceCoords.id, source: openPlaceCoords.source }).from(openPlaceCoords).where(eq(openPlaceCoords.id, pointId));
+    if (!point || point.source !== "admin") return { attached: false, replaced: null, reason: "no_point" as const };
+    const [item] = await tx.select({ id: itineraryItems.id, lat: itineraryItems.latitude, lng: itineraryItems.longitude }).from(itineraryItems).where(eq(itineraryItems.id, itemId));
+    if (!item) return { attached: false, replaced: null, reason: "no_item" as const };
+    const [link] = await tx.select().from(itineraryItemOpenCoords).where(eq(itineraryItemOpenCoords.itemId, itemId)).for("update");
+    if (link?.source === "admin") return { attached: false, replaced: null, reason: "already_admin" as const };
+    const now = new Date();
+    let replaced: string | null = null;
+    if (link) {
+      const [old] = link.openCoordId ? await tx.select().from(openPlaceCoords).where(eq(openPlaceCoords.id, link.openCoordId)) : [];
+      await tx.insert(itineraryItemOpenCoordsReview).values({
+        id: `rev_${crypto.randomUUID()}`,
+        itemId,
+        openCoordId: link.openCoordId,
+        osmType: old?.osmType ?? null,
+        osmId: old?.osmId ?? null,
+        displayName: old?.name ?? null,
+        itemLat: item.lat ?? null,
+        itemLng: item.lng ?? null,
+        distanceM: null,
+        reason: "replaced_by_admin",
+        linkSource: link.source ?? null,
+        linkMatchedAt: link.matchedAt ?? null,
+        removedAt: now,
+        removedBy: attachedBy,
+      });
+      await tx.delete(itineraryItemOpenCoords).where(eq(itineraryItemOpenCoords.itemId, itemId));
+      replaced = link.openCoordId ?? null;
+    }
+    await tx.insert(itineraryItemOpenCoords).values({ itemId, openCoordId: pointId, source: "admin", matchedAt: now });
+    return { attached: true, replaced };
   });
 }
 

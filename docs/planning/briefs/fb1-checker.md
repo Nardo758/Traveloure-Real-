@@ -189,6 +189,30 @@ finding whose fix is `retime` is a tap on the slip. The other fix kinds stay fla
 - **Words** (founder wording review on the PR): "Move <stop> to <time>", "Confirm" / "Cancel", and the step 4
   counts line ("Day 2 updated: 2 stops moved").
 
+## Step 5c — `timed_entry_required`
+
+Decision-maker Leon Dixon, Oct 19, 2026 (rulings 1–5).
+
+- **Name** (ruling 1): `timed_entry_required` for the fact type, the issue type and the reason — clear of the existing
+  `timed_entry_conflict`, which is the stop-overlaps-a-fixed-time rule.
+- **Value** (ruling 4): `{ required: true, opensDaysAhead?: N }`. `opensDaysAhead` is kept only when the page prints N
+  (`numberAppearsIn`; refused with `days_not_in_quote`). No time is kept.
+- **Admission:** the `last_admission` rule (`admitFeasibilityFact`): an official page read or an expert, `official`
+  licence, https source. Tagged public + link_only, publishable with the link; 30-day TTL like the other operational facts.
+  The crawler is not asked for it.
+- **Checker:** one `timed_entry_required` issue per stop carrying an admitted fact, fix `book_ahead`, the fact's official
+  link as its source. It is not a card finding (no `FINDING_ORDER` entry; the Optimize card is unchanged).
+- **Flag-only** (ruling 2), through ONE predicate, `isFlagOnlyIssue`: shown on every version (a version keeping the place
+  carries the fact), and excluded from the step 3 gate's unresolved, added and not-checkable lists (coverage never counted
+  it), "Your plan, fixed"'s flagged days, the paid run's change list (`fixedVersionDescriptor`), free retime's
+  no-new-problem test, and the held-versions "still in the way" list.
+- **Where it shows** (ruling 3): the slip's per-stop warning, linked to the official site. Not on the day line (ruling 5).
+- **Words** (founder wording review on the PR): "Entry needs a timed slot, reserved on the official site.", "Slots open N
+  days ahead." (only when stated), the fix line "Fix: reserve a slot on the official site.", the issue line "needs a timed
+  slot reserved on the official site", and the item-sheet label "Timed entry".
+- **Bots:** a separate PR after Events' #1571 (the entered expiry on approval) and Leon's yes; bot facts expire in the
+  market's zone.
+
 ## Step 5b — `closed_dates`
 
 Decision-maker Leon Dixon, Oct 19, 2026.
@@ -211,6 +235,24 @@ Decision-maker Leon Dixon, Oct 19, 2026.
   day." (Marketing's "Closed on [date]. Move this stop to another day."), the issue line "is closed on that date", and
   the existing fix line "Fix: move it to another day."
 - **Bots** may not propose it yet (BOT-1's kinds are unchanged, pending Leon's yes).
+
+## Step 5d — the Kyoto busy-bus day
+
+Decision-maker Leon Dixon, Oct 19, 2026.
+
+- **The day line** ships now, on every tier, wherever a plan day renders (`DayBlock`): "Busy day for [city] buses
+  ([reason]). Leave extra time for any bus legs today." The city is the market's name from `OPERATING_MARKETS`
+  ("Kyoto"), sent on the plancard day, never a literal. The leg line is held until a router can name a bus.
+- **Reasons, in order:** New Year (Dec 29 – Jan 3), Golden Week (Apr 29 – May 5), Obon (Aug 13 – 16); then a national
+  or substitute holiday from the committed Cabinet Office list (`server/data/japan-holidays.json`, 2026–2027), both
+  read "national holiday"; then a Saturday or Sunday inside a season window ("peak season weekend").
+- **No guess:** a year the list does not cover, a plan whose dates are not confirmed, or a market other than Kyoto
+  carries no flag.
+- **Season windows** are `platform_settings.season_windows_<market>`, edited on `/admin/system`: a JSON list of at most
+  4 `{"from":"YYYY-MM-DD","to":"YYYY-MM-DD"}` windows, validated on save. Empty means none, so weekends are not flagged
+  until windows are entered. SH-1's "In season" badge reads the same key.
+- **Words** (founder wording review on the PR): the day line and the five reasons "New Year", "Golden Week", "Obon",
+  "national holiday", "peak season weekend".
 
 ## Step 5a — prompt cleanup
 

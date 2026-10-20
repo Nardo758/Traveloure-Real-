@@ -34,7 +34,7 @@ const ROLE_TEMPLATES: RoleTemplate[] = [
     targetRoles: ["local_expert"],
   },
   {
-    name: "Hidden Gems Insider Session",
+    name: "Local Picks Session",
     description:
       "A 1-hour video or in-person consultation revealing off-the-beaten-path cafés, markets, and experiences hand-picked by a true local.",
     price: "35",

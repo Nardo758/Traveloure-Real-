@@ -54,6 +54,7 @@ import { earnerProfilePath } from "@/lib/earner-address";
 import { buildBillboardGemPlanningSource } from "@/lib/billboard-gem-planning";
 // The ONE credit record for the repo's landing photos — never retyped into the tiles.
 import LANDING_PHOTO_ATTRIBUTION from "../../../public/images/landing/ATTRIBUTION.json";
+import { useExpertAvailability } from "@/lib/expert-availability";
 
 const FRAUNCES = "'Fraunces', Georgia, serif";
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
@@ -217,7 +218,8 @@ function useBillboardCopy() {
   return {
     slotLabels: [
       t("hero.billboard.slotLocalExpert", "Local expert").toUpperCase(),
-      t("hero.billboard.slotHiddenGem", "Hidden gem").toUpperCase(),
+      // SH-1 item 1: slot 2 carries no "hidden gem" claim — its eyebrow is the market's city (`slotLabel`).
+      null,
       t("hero.billboard.slotBookOnTraveloure", "Book on Traveloure").toUpperCase(),
     ] as const,
     startThisPlan: t("hero.startAPlan", "Start a plan"),
@@ -292,8 +294,8 @@ function CuratedTileCard({
   const market = OPERATING_MARKETS.find((m) => m.marketKey === tile.marketKey);
   const copy = useBillboardCopy();
   if (!market) return null;
-  const slotLabel = copy.slotLabels[slotIndex as 0 | 1 | 2];
-  if (!slotLabel) throw new Error(`Unknown billboard slot ${slotIndex}`);
+  if (slotIndex < 0 || slotIndex > 2) throw new Error(`Unknown billboard slot ${slotIndex}`);
+  const slotLabel = slotIndex === 1 ? market.cityName.toUpperCase() : copy.slotLabels[slotIndex as 0 | 2]!;
   return (
     <BillboardCardFrame
       tileKey={tile.key}
@@ -438,14 +440,7 @@ function GemTileCard({
         !fallbackFailed && <TilePhoto src={tile.imagePath} onFail={() => setFallbackFailed(true)} />
       )}
       representativeCity={!usesGemPhoto && !fallbackFailed ? market.cityName : undefined}
-      badge={<span
-        className="absolute right-2.5 top-2.5 z-10 rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[color:var(--landing-photo-badge-ink)]"
-        aria-label={`Score ${slot.gem.score}`}
-        data-testid={`hero-billboard-gem-score-${tile.key}`}
-      >
-        {slot.gem.score}
-      </span>}
-      label={copy.slotLabels[1]}
+      label={market.cityName.toUpperCase()}
       headline={slot.gem.name}
       actions={<button
         type="button"
@@ -557,6 +552,9 @@ export function LandingHeroContent({
   marketSelection?: BillboardMarketSelection;
 }) {
   const { t } = useTranslation("nav");
+  // SH-1 item 11 (Q11.3): "Browse local experts" names no city, so it draws only when any live
+  // market has an expert to ask.
+  const anyExpertAvailable = useExpertAvailability("any");
   const wantedSlots = hero?.wanted ?? [];
   const [wantedFocused, setWantedFocused] = useState(false);
   const [wantedHovered, setWantedHovered] = useState(false);
@@ -628,14 +626,16 @@ export function LandingHeroContent({
               <Sparkles className="h-4 w-4" />
               {t("hero.startAPlan", "Start a plan")}
             </button>
-            <Link
-              href="/experts"
-              className="inline-flex items-center rounded-[10px] border px-[18px] py-3 text-[14px] font-semibold"
-              style={{ borderColor: "var(--earn-border)", color: "var(--earn-ink)", background: "var(--earn-card)" }}
-              data-testid="button-browse-experts"
-            >
-              Browse local experts
-            </Link>
+            {anyExpertAvailable && (
+              <Link
+                href="/experts"
+                className="inline-flex items-center rounded-[10px] border px-[18px] py-3 text-[14px] font-semibold"
+                style={{ borderColor: "var(--earn-border)", color: "var(--earn-ink)", background: "var(--earn-card)" }}
+                data-testid="button-browse-experts"
+              >
+                Browse local experts
+              </Link>
+            )}
           </div>
 
           <HeroBeginPills />

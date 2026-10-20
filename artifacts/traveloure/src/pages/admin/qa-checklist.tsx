@@ -233,10 +233,10 @@ const BLOCKS: Block[] = [
     icon: FlaskConical,
     color: "#BE185D",
     items: [
-      { id: "T1", label: "All 5 test accounts exist + active", detail: "traveler, expert, provider, admin, ea @traveloure-test.com — all is_deleted=false", verifyMethod: "server" },
-      { id: "T2", label: "Expert account fully verified", detail: "status=approved, stripe_connect_status=complete, identity_verification_status=verified", verifyMethod: "server" },
-      { id: "T3", label: "Provider account fully verified", detail: "status=approved, business_verification_status=verified", verifyMethod: "server" },
-      { id: "T4", label: "Test data seeded correctly", detail: "Expert: Tokyo Guide + Paris Insider. Provider: Photography + Airport Transfer. Traveler: Tokyo Adventure", verifyMethod: "server" },
+      { id: "T1", label: "Test accounts exist + active in every role", detail: "traveler, expert, provider, admin, EA — test accounts (is_test or the traveloure-qa.test QA domain), not deleted, not suspended", verifyMethod: "server" },
+      { id: "T2", label: "Expert test account active", detail: "a test account with an expert role, not deleted, not suspended", verifyMethod: "server" },
+      { id: "T3", label: "Provider test account active", detail: "a test account with the provider role, not deleted, not suspended", verifyMethod: "server" },
+      { id: "T4", label: "Traveler test account active", detail: "a test account with the traveler role, not deleted, not suspended", verifyMethod: "server" },
     ],
   },
   {

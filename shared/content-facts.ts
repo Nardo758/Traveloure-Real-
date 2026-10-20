@@ -147,6 +147,9 @@ export const FACT_TYPES = [
   // `admitFeasibilityFact` (shared/feasibility-facts.ts) — an official source required, never parsed from text.
   "last_admission",
   "last_service",
+  // FB-1 step 5c (ledger `2026-10-19-fb1-timed-entry`): entry needs a timed slot reserved on the official site —
+  // structured, admitted by `admitFeasibilityFact`, flag-only in the checker.
+  "timed_entry_required",
 ] as const;
 export type FactType = (typeof FACT_TYPES)[number];
 
@@ -241,7 +244,7 @@ export interface FactLike {
  * itself. `description` and `tip` NEVER qualify by this path — prose stays plan-only until an expert
  * verifies it (§8's flywheel).
  */
-export const PUBLIC_OK_FACT_TYPES = ["hours", "closed_dates", "ticketing_rule", "transit", "event"] as const satisfies readonly FactType[];
+export const PUBLIC_OK_FACT_TYPES = ["hours", "closed_dates", "timed_entry_required", "ticketing_rule", "transit", "event"] as const satisfies readonly FactType[];
 
 /**
  * The official-source path, on its own so a surface can ask whether a publishable fact owes the

@@ -145,7 +145,7 @@ export const EARN_ROLES: EarnRole[] = [
     key: "local_expert",
     label: "Local Expert",
     track: "remote",
-    blurb: "Guide travelers through your city with personalized tours and insider tips",
+    blurb: "Guide travelers through your city with personalized tours and local tips",
     signupPath: "/become-expert?type=local_expert",
   },
 ];

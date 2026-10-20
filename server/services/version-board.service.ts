@@ -44,7 +44,7 @@ import { isPlanAnchorItemType } from "@shared/draft-basis";
 import { itineraryItemIsMachineProtected } from "@shared/itinerary-item-lock";
 import { optionPickOf } from "@shared/version-options";
 import { CHECK_METRIC_PREFIX, HELD_VARIANT_STATUS, isShownVariantStatus, isVersionStayPick } from "@shared/version-check";
-import { checkPlan, type PlanIssue } from "@shared/plan-check";
+import { checkPlan, isFlagOnlyIssue, type PlanIssue } from "@shared/plan-check";
 import { itineraryItemNotMachineProtected } from "./itinerary-rebuild-guard";
 import { choosePickInTx, openSetHeldItemIds } from "./version-adopt.service";
 import { planRole } from "./plan-option-sets.service";
@@ -334,7 +334,8 @@ export async function loadVersionsBoard(tripId: string, now = new Date(), viewer
   if (run.variants.length === 0 && run.held.length > 0) {
     const { loadPlanCheckInput } = await import("./optimizer-lead.service");
     const { input } = await loadPlanCheckInput(tripId);
-    blocked = { heldCount: run.held.length, openIssues: checkPlan(input).issues };
+    // FB-1 step 5c: a flag-only issue never held a version, so it is not "still in the way".
+    blocked = { heldCount: run.held.length, openIssues: checkPlan(input).issues.filter((i) => !isFlagOnlyIssue(i)) };
   }
   return {
     run: {

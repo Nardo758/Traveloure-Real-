@@ -53,7 +53,7 @@ export function ReadyMadePreviewView({ preview }: { preview: ReadyMadePreview })
             </span>
             {preview.expert.localVerified ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-[var(--earn-teal-wash)] px-2 py-0.5 text-[12px] font-semibold text-[var(--earn-teal-ink)]" data-testid="rm-preview-verified">
-                <BadgeCheck className="h-3.5 w-3.5" />Local · verified in {preview.market}
+                <BadgeCheck className="h-3.5 w-3.5" />Local in {preview.market}
               </span>
             ) : null}
           </div>

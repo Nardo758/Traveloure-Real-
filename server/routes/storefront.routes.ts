@@ -24,6 +24,7 @@
 import { loadLiveStatus } from "../services/live-status.service";
 import { Router } from "express";
 import { isExpertIdRoutable, isPublicExpertAccount } from "../services/expert-routability";
+import { isTestAccountId, testAccountSql } from "../services/test-account";
 import { zodErrorBody } from "../utils/zod-error-body";
 import { getUserId, getDbRole } from "../utils/auth";
 import { sanitizeInput } from "../utils/sanitize";
@@ -53,6 +54,7 @@ import { directoryCardListings, type DirectoryListingFacts } from "../services/p
 import { loadEarnerRatings, summarizeApprovedRatings } from "../services/earner-rating.service";
 import { updateUserPreferences } from "../services/user-preferences-writer";
 import { injectIntoHead } from "../utils/html-head";
+import { hideBlockedListingImages, visibleListingImage } from "../services/place-photo-blocks.service";
 
 const router = Router();
 
@@ -618,6 +620,10 @@ async function loadStorefrontFromOwner(
     if (!verified) return null;
   }
 
+  // SH-1 item 12: a test account's storefront is not public (one 404, LD 40), whatever its family —
+  // the waived no-handle expert path included (both callers of this loader are public reads).
+  if (await isTestAccountId(owner.id)) return null;
+
   // Lane 1: custom services — public read-gate is approval_status='approved' (F2) + active.
   const publicListingRows = await db
     .select({
@@ -678,7 +684,8 @@ async function loadStorefrontFromOwner(
   // of a room still counts toward the storefront's reviews exactly as before.
   const services = publicListingRows
     .filter((row) => !row.parentServiceId)
-    .map(({ parentServiceId: _parent, ...row }) => row);
+    // CS-1 item 1: no cover photo of a place under a no_photos block.
+    .map(({ parentServiceId: _parent, ...row }) => hideBlockedListingImages(row));
 
   // C3 (ruling 74/75): resolve each service's booking mode server-side, so the traveler card
   // always receives a CONCRETE value. This is THE ONE derivation site shared by both card reads
@@ -727,8 +734,8 @@ async function loadStorefrontFromOwner(
   // Connect incomplete) keeps the page and loses the request/book door (`bookingOpen` below).
   let bookingOpen = true;
   if (enforcePublicGates && isExpertRole(owner.role)) {
-    const [emailRow] = await db.select({ email: users.email }).from(users).where(eq(users.id, owner.id)).limit(1);
-    if (!isPublicExpertAccount({ applicationStatus: expertProfile?.status ?? null, email: emailRow?.email ?? null })) return null;
+    const [emailRow] = await db.select({ email: users.email, isTest: users.isTest }).from(users).where(eq(users.id, owner.id)).limit(1);
+    if (!isPublicExpertAccount({ applicationStatus: expertProfile?.status ?? null, email: emailRow?.email ?? null, isTest: emailRow?.isTest ?? null })) return null;
     bookingOpen = await isExpertIdRoutable(owner.id);
   }
 
@@ -1080,11 +1087,10 @@ async function loadProviderStorefrontDirectory() {
         eq(users.isDeleted, false),
         eq(users.isSuspended, false),
         isNotNull(users.handle),
-        // No test-account filter here, deliberately: in production the boot purge
-        // (`purgeE2EAccountsFromProd`, server/index.ts) already demotes every `@traveloure.test`
-        // account to role `user` — which this role gate drops — and deletes it where it can. Dev,
-        // staging and CI keep them on purpose. A second copy of that decision here would be the
-        // drift §18 rule 1 names.
+        // SH-1 item 12: a test account (`is_test` or the QA domain) is never in the directory — the ONE
+        // test-account predicate. The boot purge (`purgeE2EAccountsFromProd`) still demotes
+        // `@traveloure.test` accounts in production; that is a different rule and stays.
+        sql`NOT ${testAccountSql(sql`${users.isTest}`, sql`${users.email}`)}`,
       ),
     )
     .groupBy(
@@ -1296,9 +1302,9 @@ router.get("/s/:handle", async (req, res, next) => {
       ? `${displayName} — Book local services | Traveloure`
       : `${data.earner.name} — Book local experiences | Traveloure`;
     const description = isProvider
-      ? `${data.earner.bio ? `${data.earner.bio} ` : ""}${providerServiceCount} bookable service${providerServiceCount === 1 ? "" : "s"} from ${displayName} on Traveloure. Secure checkout, verified reviews.`
+      ? `${data.earner.bio ? `${data.earner.bio} ` : ""}${providerServiceCount} bookable service${providerServiceCount === 1 ? "" : "s"} from ${displayName} on Traveloure. Secure checkout, traveler reviews.`
       : data.earner.bio ??
-        `${count} bookable experience${count === 1 ? "" : "s"} from ${data.earner.name} on Traveloure. Secure checkout, verified reviews.`;
+        `${count} bookable experience${count === 1 ? "" : "s"} from ${data.earner.name} on Traveloure. Secure checkout, traveler reviews.`;
     const shareUrl = `https://traveloure.com/s/${data.earner.handle}`;
     const ogImage =
       data.earner.coverImageUrl ??
@@ -1390,6 +1396,8 @@ router.get("/services/:id", async (req, res, next) => {
         description: providerServices.description,
         price: providerServices.price,
         serviceImage: providerServices.serviceImage,
+        city: providerServices.city,
+        location: providerServices.location,
       })
       .from(providerServices)
       .where(
@@ -1406,9 +1414,11 @@ router.get("/services/:id", async (req, res, next) => {
     const title = `${service.serviceName} | Traveloure`;
     const description =
       service.description?.substring(0, 160) ??
-      `Book ${service.serviceName} on Traveloure — secure checkout, verified reviews.`;
+      `Book ${service.serviceName} on Traveloure — secure checkout, traveler reviews.`;
     const shareUrl = `https://traveloure.com/services/${service.id}`;
     // Managed covers are stored as `covers:${key}` — resolve to the absolute proxy URL.
+    // CS-1 item 1: a blocked place's cover is never the share image.
+    if (visibleListingImage(service) === null) service.serviceImage = null;
     const resolvedServiceImage = service.serviceImage?.startsWith("covers:")
       ? `${req.protocol}://${req.get("host")}/api/services/${service.id}/cover-image`
       : service.serviceImage;
@@ -1571,7 +1581,7 @@ router.get("/t/:slug", async (req, res, next) => {
 
     const title = `${preview.title} | Traveloure`;
     const description = [
-      `A ${preview.durationDays}-day ${preview.planLabel.toLowerCase()} for ${preview.market} by ${preview.expert.name}${preview.expert.localVerified ? ", a verified local" : ""}.`,
+      `A ${preview.durationDays}-day ${preview.planLabel.toLowerCase()} for ${preview.market} by ${preview.expert.name}${preview.expert.localVerified ? ", a local" : ""}.`,
       preview.priceLine,
       "See a sample day, then get the whole trip.",
     ].filter(Boolean).join(" ");

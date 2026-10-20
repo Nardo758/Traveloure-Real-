@@ -15,6 +15,7 @@
 import { ChevronRight } from "lucide-react";
 import type { FeedItem } from "@/lib/feed-stream";
 import type { WantedSlotData } from "@/lib/feed-composition";
+import { useExpertAvailability } from "@/lib/expert-availability";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import { buildWantedSlotSignupHref } from "@/lib/wanted-slot-link";
 import { trackRecruitmentClick } from "@/lib/analytics";
@@ -36,6 +37,8 @@ export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" 
     neighborhoodId,
   } = item.data as WantedSlotData;
   const isHighDemand = (demandCount ?? 0) >= 5;
+  // SH-1 item 11: Ask draws only when the server says this city has an expert to ask.
+  const expertAvailable = useExpertAvailability({ city: slotCity });
 
   return (
     <div
@@ -96,15 +99,17 @@ export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" 
         >
           Ways to earn <ChevronRight className="h-3 w-3" />
         </a>
-        <button
-          type="button"
-          onClick={() => askExpert({ city: slotCity, subject: `${offeringLabel} in ${neighborhoodName}` })}
-          className="inline-flex items-center rounded-md border px-2.5 py-1 text-[11px] font-semibold"
-          style={{ borderColor: "var(--earn-gold)", color: "var(--earn-gold-ink)" }}
-          data-testid={`link-wanted-ask-${neighborhoodId}`}
-        >
-          Ask an expert
-        </button>
+        {expertAvailable && (
+          <button
+            type="button"
+            onClick={() => askExpert({ city: slotCity, subject: `${offeringLabel} in ${neighborhoodName}` })}
+            className="inline-flex items-center rounded-md border px-2.5 py-1 text-[11px] font-semibold"
+            style={{ borderColor: "var(--earn-gold)", color: "var(--earn-gold-ink)" }}
+            data-testid={`link-wanted-ask-${neighborhoodId}`}
+          >
+            Ask an expert
+          </button>
+        )}
       </div>
     </div>
   );

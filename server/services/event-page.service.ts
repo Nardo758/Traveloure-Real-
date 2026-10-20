@@ -9,7 +9,8 @@
  *      nowhere else (brief item 21: no second reader). The page uses its refusal-checked organizer
  *      link and its ATTRIBUTED facts only (`attributedFacts`, ruling R-p).
  *   3. "More in <city>": other live events in the same city that have not ended, soonest first.
- *   4. "N verified in <city>": the size of the billboard's own verified-locals set, `verifiedLocalIds`
+ *   4. "N <City> locals" (SH-1 item 1; shown only while the market is in `expert_hook_cities`): the size of the
+ *      billboard's own verified-locals set, `verifiedLocalIds`
  *      — a verified neighbourhood in the market INTERSECTED with R343's `routableUserIds` (approved
  *      application, Identity verified, Connect complete, never a seed account, never the concierge
  *      pool); ledgers `2026-10-06-event-page`, `2026-10-06-billboard-locals-routable`. Zero ⇒ null.
@@ -36,6 +37,7 @@ import { timezoneForMarket } from "./trend-engine/operating-markets";
 import { toCityEventCard } from "./city-events.service";
 import { loadEventGuideFacts, type EventGuideFacts } from "./blog-event-facts.service";
 import { verifiedLocalIds } from "./landing-billboard.service";
+import { getExpertHookCities } from "./platform-flags";
 
 export const MORE_IN_CITY_MAX = 6;
 
@@ -92,7 +94,7 @@ export function composeEventPage(
     organizer: url && host ? { url, host } : null,
     goodToKnow: facts.attributedFacts.map((f) => ({ factType: f.factType, text: f.text, label: f.label, sourceUrl: f.sourceUrl, checked: f.checked })),
     moreInCity,
-    verifiedLocals: verifiedCount > 0 ? verifiedCount : null,
+    cityLocals: verifiedCount > 0 ? verifiedCount : null,
   };
 }
 
@@ -107,6 +109,8 @@ export async function countVerifiedLocals(marketKey: string, deps: Parameters<ty
 export interface EventPageDeps {
   facts?: typeof loadEventGuideFacts;
   verifiedCount?: (marketKey: string) => Promise<number>;
+  /** The per-city expert switch (`expert_hook_cities`, #1567). A market off it shows no locals line. */
+  expertHookCities?: () => Promise<readonly string[]>;
   now?: Date;
 }
 
@@ -131,6 +135,9 @@ export async function loadEventPage(sourceId: string, deps: EventPageDeps = {}):
     .where(and(eq(cityEvents.city, row.city), isNull(cityEvents.withdrawnAt)))
     .orderBy(asc(cityEvents.startsAt));
   const marketKey = facts.event.marketKey;
-  const verified = marketKey ? await (deps.verifiedCount ?? countVerifiedLocals)(marketKey) : 0;
+  // SH-1 item 1: the locals line shows only while the city's expert switch is on (and the count is above zero).
+  const hookCities = marketKey ? await (deps.expertHookCities ?? getExpertHookCities)() : [];
+  const switchOn = !!marketKey && hookCities.includes(marketKey);
+  const verified = switchOn ? await (deps.verifiedCount ?? countVerifiedLocals)(marketKey!) : 0;
   return composeEventPage(row, facts, composeMoreInCity(others, row.id, now), verified, now, others);
 }

@@ -71,7 +71,7 @@ export function canPublishToDiscover(row: PublishEligibilityRow): boolean {
 }
 
 // ── 4. Render-time trend headline (T4.4) ──────────────────────────────────────
-// Honest copy ceiling: "‹Market› is trending · ‹Event› approaching". No per-place
+// Copy ceiling: "‹Event› approaching" (SH-1 removed the "‹Market› is trending" claim). No per-place
 // trending badge; NO trend value is ever written to a content row — this string is
 // derived at render from the market-grain resolver's confidence flag and the nearest
 // imminent calendar event, then discarded.
@@ -83,13 +83,13 @@ export interface TrendContextInput {
   imminentEventName: string | null;
 }
 
+/**
+ * SH-1 item 1 (ledger `2026-10-19-sh1-banned-copy`): the line never claims "‹Market› is trending". It names only an
+ * imminent calendar event; `marketTrending` is accepted and ignored so callers need not change.
+ */
 export function buildTrendContext(input: TrendContextInput): string | null {
-  const parts: string[] = [];
-  if (input.marketTrending && input.marketName.trim()) {
-    parts.push(`${input.marketName.trim()} is trending`);
-  }
   if (input.imminentEventName && input.imminentEventName.trim()) {
-    parts.push(`${input.imminentEventName.trim()} approaching`);
+    return `${input.imminentEventName.trim()} approaching`;
   }
-  return parts.length ? parts.join(" · ") : null;
+  return null;
 }

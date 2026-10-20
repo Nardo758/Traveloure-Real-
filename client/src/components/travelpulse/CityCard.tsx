@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { optimizeUnsplashUrl, unsplashResponsiveProps } from "@/lib/unsplash";
 import { isReferencePhoto } from "@/lib/photo-provenance";
 import { ReferencePhotoChip } from "@/components/ui/reference-photo-chip";
+import { useExpertAvailability } from "@/lib/expert-availability";
 
 /**
  * Shared city card — one component behind every "city" surface (Discover trending
@@ -94,6 +95,8 @@ export function CityCard(props: CityCardProps) {
     expertsCount = 0, primaryLabel, onPrimary, secondaryLabel, onSecondary, onAsk,
     experiences = [], onCardClick, primaryTestId, testId,
   } = props;
+  // SH-1 item 11: the card's expert link and Ask draw only when this city has an expert to ask.
+  const expertAvailable = useExpertAvailability({ city: cityName });
 
   // Compact momentum tile (density="compact") — the mock's `.ct`: swatch/photo with a
   // trend pill, city name, one honest meta line. Score/crowd/experts render only when
@@ -157,7 +160,6 @@ export function CityCard(props: CityCardProps) {
   const avgPriceNum = avgPrice != null && avgPrice !== "" ? Number(avgPrice) : NaN;
   const showAvgPrice = isPositive(avgPriceNum);
   const showScore = isPositive(score);
-  const showTrending = isPositive(trendingSpots);
   const showGems = isPositive(hiddenGems);
   const countSegments = [
     eventsCount > 0 ? `🎆 ${eventsCount} ${eventsCount === 1 ? "event" : "events"}` : null,
@@ -214,9 +216,7 @@ export function CityCard(props: CityCardProps) {
           {variant === "pulse" ? (
             isHot ? (
               <span className="px-2 py-0.5 rounded-md bg-[var(--earn-coral-ink)] text-white text-[11px] font-bold flex items-center gap-1"><Zap className="w-3 h-3 fill-white" />Hot</span>
-            ) : (
-              <span className="px-2 py-0.5 rounded-md bg-white/95 text-[var(--earn-gold-ink)] text-[11px] font-bold flex items-center gap-1"><TrendingUp className="w-3 h-3" />Trending</span>
-            )
+            ) : null
           ) : (
             trendLabel && <span className="px-2 py-0.5 rounded-md bg-white/95 text-[var(--earn-gold-ink)] text-[11px] font-bold">☀️ {trendLabel}</span>
           )}
@@ -279,10 +279,9 @@ export function CityCard(props: CityCardProps) {
 
         {/* stat footer */}
         {variant === "pulse" ? (
-          (showScore || showTrending || showGems) && (
+          (showScore || showGems) && (
             <div className="flex items-center justify-between text-[11px] text-[var(--earn-muted)] border-t border-[color:var(--earn-border)] pt-2.5 mt-auto tabular-nums">
               {showScore && <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-[var(--earn-green)]" />Pulse {score}</span>}
-              {showTrending && <span className="flex items-center gap-1"><TrendingUp className="w-3 h-3" />{trendingSpots} trending</span>}
               {showGems && <span className="flex items-center gap-1"><Gem className="w-3 h-3 text-[var(--earn-teal)]" />{hiddenGems} gems</span>}
             </div>
           )
@@ -295,17 +294,19 @@ export function CityCard(props: CityCardProps) {
         )}
 
         {/* experience quick-links (§12 revenue entry) */}
-        <div className="mt-2.5 border-t border-[color:var(--earn-border)] pt-2.5">
-          <Link
-            href={expertHref}
-            onClick={(e) => e.stopPropagation()}
-            className="inline-flex min-h-[32px] items-center gap-1.5 text-[11px] font-semibold text-[var(--earn-teal-ink)] hover:underline"
-            data-testid={`source-experts-${cityName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`}
-          >
-            {expertsCount > 0 ? <Users className="h-3.5 w-3.5" /> : <MessageCircle className="h-3.5 w-3.5" />}
-            {expertsCount > 0 ? `${expertsCount} local experts` : "Ask a trip planner"}
-          </Link>
-        </div>
+        {expertAvailable && (
+          <div className="mt-2.5 border-t border-[color:var(--earn-border)] pt-2.5">
+            <Link
+              href={expertHref}
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex min-h-[32px] items-center gap-1.5 text-[11px] font-semibold text-[var(--earn-teal-ink)] hover:underline"
+              data-testid={`source-experts-${cityName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`}
+            >
+              {expertsCount > 0 ? <Users className="h-3.5 w-3.5" /> : <MessageCircle className="h-3.5 w-3.5" />}
+              {expertsCount > 0 ? `${expertsCount} local experts` : "Ask a trip planner"}
+            </Link>
+          </div>
+        )}
 
         {experiences.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-2.5">
@@ -341,7 +342,7 @@ export function CityCard(props: CityCardProps) {
               <Info className="w-3.5 h-3.5" />{secondaryLabel}
             </button>
           )}
-          {onAsk && (
+          {onAsk && expertAvailable && (
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); onAsk(); }}

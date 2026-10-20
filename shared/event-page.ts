@@ -45,8 +45,11 @@ export interface EventPagePayload {
   goodToKnow: EventPageFact[];
   /** Soonest first; empty = the section is absent. */
   moreInCity: EventPageMoreRow[];
-  /** Verified locals in the event's market; null = the line is absent (never "0 verified"). */
-  verifiedLocals: number | null;
+  /**
+   * Locals in the event's market (SH-1 item 1): a count only while the market is in `expert_hook_cities` and the
+   * count is above zero; null = the line is absent (never "0 locals").
+   */
+  cityLocals: number | null;
   /**
    * SH-1 item 5: the series' show dates (local YYYY-MM-DD, sorted) when the event is one show of a series stated as
    * sibling rows — two or more live rows on the same `series_key`; absent otherwise. When present, `countdown` is the
@@ -73,10 +76,10 @@ export function organizerHost(url: string): string | null {
   }
 }
 
-/** Pure. "N verified in <city>" — or null when there is no verified local (the line is absent). */
-export function verifiedLocalsLine(count: number | null, city: string): string | null {
+/** Pure. "N <City> locals" ("1 Kyoto local") — or null when there is none (the line is absent). */
+export function cityLocalsLine(count: number | null, city: string): string | null {
   if (count == null || count <= 0) return null;
-  return `${count} verified ${count === 1 ? "local" : "locals"} in ${city}`;
+  return `${count} ${city} ${count === 1 ? "local" : "locals"}`;
 }
 
 /** "Starts in N days" on the page; the list's shorter "In N days" reads oddly as a headline. */

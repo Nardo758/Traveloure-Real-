@@ -51,14 +51,14 @@ export const CANONICAL_TEMPLATES = [
   },
   {
     title: "Destination Deep Dive",
-    description: "In-depth guide to a specific destination with local insights and hidden gems",
+    description: "In-depth guide to a specific destination with local insights and local picks",
     serviceType: "custom",
     // 'pdf' per the canonical deliveryMethodEnum (migration 109 CHECK); was 'document'
     deliveryMethod: "pdf",
     deliveryTimeframe: "48 hours",
     suggestedPrice: "79",
     requirements: JSON.stringify(["Destination", "Travel dates", "Interests"]),
-    whatIncluded: JSON.stringify(["PDF guide", "Local recommendations", "Maps", "Insider tips", "Safety advice"]),
+    whatIncluded: JSON.stringify(["PDF guide", "Local recommendations", "Maps", "Local tips", "Safety advice"]),
     isActive: true,
     sortOrder: 4,
   },
@@ -106,7 +106,7 @@ export const CANONICAL_OFFERINGS = [
   { name: "Quick Consultation",         description: "15-minute video call to answer quick travel questions and provide immediate guidance",         price: "29.00",  sortOrder: 101 },
   { name: "Cart Review & Optimization", description: "Expert review of your travel cart to find savings and better alternatives",                   price: "49.00",  sortOrder: 102 },
   { name: "Full Trip Planning",         description: "Comprehensive trip planning from start to finish with personalized itinerary",                price: "249.00", sortOrder: 103 },
-  { name: "Destination Deep Dive",      description: "In-depth guide to a specific destination with local insights and hidden gems",                price: "79.00",  sortOrder: 104 },
+  { name: "Destination Deep Dive",      description: "In-depth guide to a specific destination with local insights and local picks",                price: "79.00",  sortOrder: 104 },
   { name: "Honeymoon Planning Package", description: "Romantic trip planning with special touches and memorable experiences",                      price: "399.00", sortOrder: 105 },
   { name: "Group Trip Coordinator",     description: "Organize and coordinate travel for groups with complex logistics",                           price: "349.00", sortOrder: 106 },
 ];

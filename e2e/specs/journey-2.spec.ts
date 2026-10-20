@@ -42,14 +42,23 @@ async function countVisible(page, selector: string, ms = 5_000): Promise<number>
 test.describe('Journey 2C — Expert match in discover', () => {
   test.use({ storageState: authFile('traveler') });
 
-  test('ExpertMatchCard renders for destination-aware discover', async ({ page }) => {
+  // SH-1 item 11 (Q11.1; 2C rewritten by sanction, Oct 19, 2026): the "Experts for {city}" section and its
+  // expert-match cards draw only where that city has an expert to ask. Tokyo is no market, so the page
+  // answers no and shows neither. The availability answer is awaited first, so the absence is the
+  // page's decision and not a page that has not loaded yet.
+  test('no expert section or expert-match card for a city with no expert to ask (Tokyo)', async ({ page }) => {
+    const availability = page.waitForResponse(
+      (r) => new URL(r.url()).pathname === '/api/expert-availability' && new URL(r.url()).searchParams.get('city') === 'Tokyo',
+      { timeout: 90_000 },
+    );
     await page.goto('/discover?showExperts=true&destination=Tokyo', { waitUntil: 'domcontentloaded' });
     await waitForNav(page);
-    // Scroll to trigger any intersection-observer-gated AIMatchedExpertsSection.
+    const answer = await availability;
+    expect(answer.status()).toBe(200);
+    expect(await answer.json()).toEqual({ available: false });
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    // 90 s covers Vite cold-start + Grok 8 s abort + fallback cycle.
-    await page.waitForSelector(SELECTORS.expertMatchCard, { timeout: 90_000 });
-    await expect(page.locator(SELECTORS.expertMatchCard).first()).toBeVisible();
+    await expect(page.locator('[data-testid="text-matched-experts-title"]')).toHaveCount(0);
+    await expect(page.locator(SELECTORS.expertMatchCard)).toHaveCount(0);
   });
 });
 

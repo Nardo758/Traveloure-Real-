@@ -279,6 +279,7 @@ import providerRoutes from "./routes/provider.routes";
 import bookingModePromptRoutes from "./routes/booking-mode-prompt.routes";
 import blogRoutes from "./routes/blog.routes";
 import contentSourcesRoutes from "./routes/content-sources.routes";
+import placePhotoBlocksRoutes from "./routes/place-photo-blocks.routes";
 import contentFactsRoutes from "./routes/content-facts.routes";
 import storefrontRoutes from "./routes/storefront.routes";
 import seoRoutes from "./routes/seo.routes";
@@ -1183,6 +1184,8 @@ export async function registerRoutes(
   // Content source registry (A6 (2), ledger `2026-10-01-a6-registry-surface`): admin-only, under
   // the §2 blanket guard registered above; activation is restricted further to a config allowlist.
   app.use(contentSourcesRoutes);
+  // CS-1 item 1: per-place no_photos (admin, under the §2 blanket guard).
+  app.use(placePhotoBlocksRoutes);
   // Expert-action fresh lookup (A6 (3), ledger `2026-10-01-a6-tavily-extract`): §12 write-status
   // advisor only; spend capped per plan/day/source; the free draft never reaches it.
   app.use(contentFactsRoutes);
@@ -3150,9 +3153,14 @@ ${bannedCopyPromptLine()}`;
     const { withoutConciergePoolListings } = await import("./services/expert-routability");
     // TC-3 catalog rides surface only as rides, never in this browse (ledger `2026-10-11-tc3-ride-seed`).
     const { withoutRideListings } = await import("./services/ride-listings");
-    const live = await withoutRideListings(
-      await withoutConciergePoolListings(await filterOutAwayOwners(approved, (s) => s.userId), (s) => s.userId),
-      (s) => s.id,
+    // SH-1 item 12: a test account's listings are never public (server/services/test-account.ts).
+    const { withoutTestOwnerListings } = await import("./services/test-account");
+    const live = await withoutTestOwnerListings(
+      await withoutRideListings(
+        await withoutConciergePoolListings(await filterOutAwayOwners(approved, (s) => s.userId), (s) => s.userId),
+        (s) => s.id,
+      ),
+      (s) => s.userId,
     );
     // D3 leak-prevention: this route is UNAUTHENTICATED public browse — serviceFile is the
     // product itself for a pdf-delivery listing and must never surface pre-purchase.
@@ -4020,6 +4028,12 @@ ${bannedCopyPromptLine()}`;
       // Sanitize provider-authored free-text fields to strip HTML injection vectors before
       // they reach the database, emails, or AI prompts (task 1135 / task 1138).
       const input = sanitizeStringFields(insertProviderServiceSchema.parse(bodyWithoutLocation) as Record<string, unknown>);
+      // CS-1 item 1: a photo of a place under a no_photos block is refused at upload, with the reason.
+      if ((input as any).serviceImage || ((input as any).galleryImages ?? []).length) {
+        const { photoBlockedFor, listingPhotoSubject, PHOTO_BLOCK_REFUSAL } = await import("./services/place-photo-blocks.service");
+        const block = await photoBlockedFor(listingPhotoSubject(input as any));
+        if (block) return res.status(422).json({ message: PHOTO_BLOCK_REFUSAL, reason: block.reason, code: "PHOTO_BLOCKED" });
+      }
       // PB-1 R1 (ledger `2026-10-10-pb1-property-category-city`): a property or room is lodging by
       // construction — its category is server-set to `accommodation`, never the body's, on this rail too.
       if (isPropertyProductShape((input as any).productShape)) {
@@ -4444,6 +4458,12 @@ ${bannedCopyPromptLine()}`;
       const { body: bodyWithoutLocation, patch: locationPatch } = extractServiceLocation(bodyWithoutNeighborhoods);
       // Sanitize provider-authored free-text fields on update (task 1135 / task 1138).
       const input = sanitizeStringFields(insertProviderServiceSchema.partial().parse(bodyWithoutLocation) as Record<string, unknown>);
+      // CS-1 item 1: adding a photo of a place under a no_photos block is refused, with the reason.
+      if ((input as any).serviceImage || ((input as any).galleryImages ?? []).length) {
+        const { photoBlockedFor, listingPhotoSubject, PHOTO_BLOCK_REFUSAL } = await import("./services/place-photo-blocks.service");
+        const block = await photoBlockedFor(listingPhotoSubject({ ...(ownedService as any), ...(input as any) }));
+        if (block) return res.status(422).json({ message: PHOTO_BLOCK_REFUSAL, reason: block.reason, code: "PHOTO_BLOCKED" });
+      }
 
       const saveIntent = admitListingSaveIntent(bodyWithoutLocation);
       if (!saveIntent.ok) {
@@ -5013,6 +5033,11 @@ ${bannedCopyPromptLine()}`;
       const city = typeof req.query.city === "string" ? req.query.city : "";
       const source = typeof req.query.source === "string" ? req.query.source : "google";
       if (!q || source !== "unsplash") return res.json({ photoUrl: null });
+      // CS-1 item 1: no stock photo of a place under a no_photos block (the gem photo hook asks by name + city).
+      {
+        const { photoBlockedFor } = await import("./services/place-photo-blocks.service");
+        if (await photoBlockedFor({ names: [q], city })) return res.json({ photoUrl: null });
+      }
 
       {
         // Unsplash → Pexels fallback chain via media aggregator services
@@ -6910,6 +6935,12 @@ ${bannedCopyPromptLine()}`;
         if (!service || service.userId !== userId) {
           return res.status(404).json({ message: "Service not found or not owned by you" });
         }
+        // CS-1 item 1: a photo of a place under a no_photos block is refused at upload, with the reason.
+        {
+          const { photoBlockedFor, listingPhotoSubject, PHOTO_BLOCK_REFUSAL } = await import("./services/place-photo-blocks.service");
+          const block = await photoBlockedFor(listingPhotoSubject(service as any));
+          if (block) return res.status(422).json({ message: PHOTO_BLOCK_REFUSAL, reason: block.reason, code: "PHOTO_BLOCKED" });
+        }
         if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
           return res.status(400).json({
             message: "Send the image as a raw request body with Content-Type: image/jpeg or image/png",
@@ -6987,6 +7018,11 @@ ${bannedCopyPromptLine()}`;
     try {
       const service = await storage.getProviderServiceByIdRaw(req.params.id);
       if (!service) return res.status(404).json({ message: "Service not found" });
+      // CS-1 item 1: a blocked place's cover is hidden (the bytes stay stored, never deleted).
+      {
+        const { photoBlockedFor, listingPhotoSubject } = await import("./services/place-photo-blocks.service");
+        if (await photoBlockedFor(listingPhotoSubject(service as any))) return res.status(404).json({ message: "Service not found" });
+      }
 
       const stored = (service.serviceImage ?? "").trim();
       if (stored.startsWith(COVER_OBJSTORE_PREFIX)) {
@@ -7034,6 +7070,12 @@ ${bannedCopyPromptLine()}`;
         if (!service || service.userId !== userId) {
           return res.status(404).json({ message: "Service not found or not owned by you" });
         }
+        // CS-1 item 1: a photo of a place under a no_photos block is refused at upload, with the reason.
+        {
+          const { photoBlockedFor, listingPhotoSubject, PHOTO_BLOCK_REFUSAL } = await import("./services/place-photo-blocks.service");
+          const block = await photoBlockedFor(listingPhotoSubject(service as any));
+          if (block) return res.status(422).json({ message: PHOTO_BLOCK_REFUSAL, reason: block.reason, code: "PHOTO_BLOCKED" });
+        }
         if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
           return res.status(400).json({ message: "Send the image as a raw request body (JPEG or PNG)", code: "GALLERY_PHOTO_REQUIRED" });
         }
@@ -7070,6 +7112,11 @@ ${bannedCopyPromptLine()}`;
     try {
       const service = await storage.getProviderServiceByIdRaw(req.params.id);
       if (!service) return res.status(404).json({ message: "Gallery image not found" });
+      // CS-1 item 1: a blocked place's gallery is hidden (the bytes stay stored, never deleted).
+      {
+        const { photoBlockedFor, listingPhotoSubject } = await import("./services/place-photo-blocks.service");
+        if (await photoBlockedFor(listingPhotoSubject(service as any))) return res.status(404).json({ message: "Gallery image not found" });
+      }
       const { downloadBytes } = await import("./infrastructure/object-storage");
       let bytes: Buffer;
       try {

@@ -99,7 +99,7 @@ export default function HiddenGemsPage() {
     onSuccess: (data: any) => {
       toast({
         title: "Discovery Complete",
-        description: data.message || `Discovered ${data.totalGems} hidden gems!`,
+        description: data.message || `Discovered ${data.totalGems} local picks!`,
       });
       queryClient.invalidateQueries({ 
         predicate: (query) => {
@@ -113,7 +113,7 @@ export default function HiddenGemsPage() {
     onError: (error: any) => {
       toast({
         title: "Discovery Failed",
-        description: error.message || "Failed to discover hidden gems",
+        description: error.message || "Failed to discover local picks",
         variant: "destructive",
       });
     },
@@ -127,7 +127,7 @@ export default function HiddenGemsPage() {
     if (!discoverDestination.trim()) {
       toast({
         title: "Enter a destination",
-        description: "Please enter a city or destination to discover hidden gems",
+        description: "Please enter a city or destination to discover local picks",
         variant: "destructive",
       });
       return;
@@ -155,10 +155,10 @@ export default function HiddenGemsPage() {
       <div className="space-y-2">
         <div className="flex items-center gap-2">
           <Gem className="h-8 w-8 text-primary" />
-          <h1 className="text-3xl font-bold" data-testid="text-page-title">Hidden Gems</h1>
+          <h1 className="text-3xl font-bold" data-testid="text-page-title">Local Picks</h1>
         </div>
         <p className="text-muted-foreground">
-          AI-discovered local secrets and authentic experiences that tourists rarely find
+          AI-discovered local places and authentic experiences that tourists rarely find
         </p>
       </div>
 
@@ -169,7 +169,7 @@ export default function HiddenGemsPage() {
             Discover New Destinations
           </CardTitle>
           <CardDescription>
-            Let AI scan a destination and uncover hidden gems across all categories
+            Let AI scan a destination and uncover local picks across all categories
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -202,7 +202,7 @@ export default function HiddenGemsPage() {
           </div>
           {discoverMutation.isPending && (
             <p className="text-sm text-muted-foreground mt-2">
-              Researching local secrets... This may take a moment.
+              Researching local places... This may take a moment.
             </p>
           )}
         </CardContent>
@@ -251,7 +251,7 @@ export default function HiddenGemsPage() {
           {gemsError ? (
             <Card data-testid="card-gems-error">
               <CardContent className="py-12 text-center">
-                <div className="text-destructive mb-4" data-testid="text-error-title">Failed to load hidden gems</div>
+                <div className="text-destructive mb-4" data-testid="text-error-title">Failed to load local picks</div>
                 <p className="text-muted-foreground" data-testid="text-error-message">Please try again later</p>
               </CardContent>
             </Card>
@@ -271,7 +271,7 @@ export default function HiddenGemsPage() {
             <Card data-testid="card-gems-empty">
               <CardContent className="py-12 text-center">
                 <Gem className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium mb-2" data-testid="text-empty-title">No hidden gems yet</h3>
+                <h3 className="text-lg font-medium mb-2" data-testid="text-empty-title">No local picks yet</h3>
                 <p className="text-muted-foreground mb-4" data-testid="text-empty-message">
                   {searchDestination 
                     ? `No gems found for ${searchDestination}. Try discovering new ones!`
@@ -322,7 +322,7 @@ export default function HiddenGemsPage() {
                       <div className="bg-amber-50 dark:bg-amber-900/20 p-3 rounded-md" data-testid={`section-tip-${gem.id}`}>
                         <div className="flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-300 mb-1">
                           <Lightbulb className="h-3 w-3" />
-                          Insider Tip
+                          Local Tip
                         </div>
                         <p className="text-sm">{gem.insiderTip}</p>
                       </div>
