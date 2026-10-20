@@ -24,7 +24,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { CONTENT_NEEDS, LICENSE_CLASSES, SOURCE_ADAPTERS, publicOkEligibleSource, subNeedsOf } from "@shared/content-facts";
 import type { ContentSource, PlacePhotoBlock } from "@shared/schema";
-import { TERMS_CLASSES, isLinkOutClass, signoffAllowsActivation, signoffStatusOf } from "@shared/source-signoff";
+import { REFRESH_REVIEW_NOTE, TERMS_CLASSES, isLinkOutClass, isReadingClass, signoffAllowsActivation, signoffStatusOf } from "@shared/source-signoff";
 
 interface RegistryResponse {
   sources: ContentSource[];
@@ -310,9 +310,23 @@ export default function AdminContentSources() {
                       </Button>
                     )}
                     {!s.active && data.viewerMayActivate && signoffAllowsActivation(s) && (
-                      <Button size="sm" onClick={() => act.mutate({ id: s.id, action: "activate" })} disabled={act.isPending} data-testid={`button-activate-${s.id}`}>
-                        I read the terms — activate
-                      </Button>
+                      <>
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            // CS-1 item 3: a source that is read has its refresh output held for review.
+                            if (isReadingClass(s.termsClass) && !window.confirm(REFRESH_REVIEW_NOTE)) return;
+                            act.mutate({ id: s.id, action: "activate" });
+                          }}
+                          disabled={act.isPending}
+                          data-testid={`button-activate-${s.id}`}
+                        >
+                          I read the terms — activate
+                        </Button>
+                        {isReadingClass(s.termsClass) && (
+                          <span className="text-xs text-muted-foreground" data-testid={`text-refresh-review-${s.id}`}>{REFRESH_REVIEW_NOTE}</span>
+                        )}
+                      </>
                     )}
                     {s.active && (
                       <Button size="sm" variant="outline" onClick={() => act.mutate({ id: s.id, action: "deactivate" })} disabled={act.isPending}>

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "generatedBy": "scripts/generate-mutation-auth-coverage.ts",
   "manifest": "generated/security/mutation-auth-manifest.json",
-  "manifestSha256": "ee49b392748d31bb5ee209fa8a3faee168ed1283237af3c21112ac92f21f6945",
+  "manifestSha256": "4373b986e4a3b8f0a67a23f12bc3618b3ac4ed4e9969962d77e6df4cc5f9d47c",
   "evidence": {
     "path": "generated/security/mutation-auth-evidence.json",
     "state": "evidence manifest SHA-256 is stale",
@@ -10,8 +10,8 @@
   },
   "totals": {
     "tested": 0,
-    "total": 705,
-    "remaining": 705,
+    "total": 706,
+    "remaining": 706,
     "categories": {
       "payments": {
         "tested": 0,
@@ -19,7 +19,7 @@
       },
       "admin": {
         "tested": 0,
-        "total": 185
+        "total": 186
       },
       "user-data": {
         "tested": 0,
@@ -1342,7 +1342,7 @@
       "path": "/api/trips/:tripId/changes/:changeId",
       "effectivePath": "/api/trips/:tripId/changes/:changeId",
       "source": "server/routes/plancard.routes.ts",
-      "line": 1220,
+      "line": 1225,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -2250,7 +2250,7 @@
       "path": "/api/admin/ticker/:id",
       "effectivePath": "/api/admin/ticker/:id",
       "source": "server/routes/ticker.routes.ts",
-      "line": 123,
+      "line": 146,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -3758,7 +3758,7 @@
       "path": "/api/transport-legs/:legId/status",
       "effectivePath": "/api/transport-legs/:legId/status",
       "source": "server/routes/plancard.routes.ts",
-      "line": 1138,
+      "line": 1143,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -4376,7 +4376,7 @@
       "path": "/api/admin/bot-accounts",
       "effectivePath": "/api/admin/bot-accounts",
       "source": "server/routes/bot-admin.routes.ts",
-      "line": 46,
+      "line": 47,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4398,7 +4398,7 @@
       "path": "/api/admin/bot-accounts/:id/revoke",
       "effectivePath": "/api/admin/bot-accounts/:id/revoke",
       "source": "server/routes/bot-admin.routes.ts",
-      "line": 61,
+      "line": 62,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4420,7 +4420,7 @@
       "path": "/api/admin/bot-proposals/:id/approve",
       "effectivePath": "/api/admin/bot-proposals/:id/approve",
       "source": "server/routes/bot-admin.routes.ts",
-      "line": 84,
+      "line": 89,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4442,7 +4442,7 @@
       "path": "/api/admin/bot-proposals/:id/reject",
       "effectivePath": "/api/admin/bot-proposals/:id/reject",
       "source": "server/routes/bot-admin.routes.ts",
-      "line": 99,
+      "line": 108,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -4455,6 +4455,28 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/admin/bot-proposals/:id/reject",
+      "tested": false,
+      "reason": "Not run: evidence manifest SHA-256 is stale."
+    },
+    {
+      "method": "POST",
+      "rawPath": "/api/admin/bot-proposals/refresh-facts/:id/approve",
+      "path": "/api/admin/bot-proposals/refresh-facts/:id/approve",
+      "effectivePath": "/api/admin/bot-proposals/refresh-facts/:id/approve",
+      "source": "server/routes/bot-admin.routes.ts",
+      "line": 132,
+      "risk": "admin",
+      "expectedAuth": "required",
+      "expectedRoles": [
+        "admin"
+      ],
+      "expectedOwnership": "unknown",
+      "expectedBoundary": "admin-role",
+      "ownershipApplies": false,
+      "fixtureStatus": "unknown",
+      "testStatus": "unknown",
+      "diagnostics": [],
+      "key": "POST /api/admin/bot-proposals/refresh-facts/:id/approve",
       "tested": false,
       "reason": "Not run: evidence manifest SHA-256 is stale."
     },
@@ -6048,7 +6070,7 @@
       "path": "/api/admin/ticker",
       "effectivePath": "/api/admin/ticker",
       "source": "server/routes/ticker.routes.ts",
-      "line": 92,
+      "line": 115,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [
@@ -12040,7 +12062,7 @@
       "path": "/api/trips/:tripId/changes",
       "effectivePath": "/api/trips/:tripId/changes",
       "source": "server/routes/plancard.routes.ts",
-      "line": 1102,
+      "line": 1107,
       "risk": "user-data",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -14146,7 +14168,7 @@
       "path": "/api/admin/ticker/order",
       "effectivePath": "/api/admin/ticker/order",
       "source": "server/routes/ticker.routes.ts",
-      "line": 108,
+      "line": 131,
       "risk": "admin",
       "expectedAuth": "required",
       "expectedRoles": [

@@ -142,7 +142,7 @@ test("H3 · a legacy Google hours row is never read, nor copied to another plan"
 
 test("H4 · an official hours fact is still stored and read", async () => {
   const n = await recordFacts(
-    [draft({ origin: "crawled", license: "official", sourceUrl: "https://www.shokoku-ji.jp/kinkakuji/", value: { text: "Open 9:00–17:00", quote: "9:00–17:00", weekdayDescriptions: ["Monday: 9:00 AM – 5:00 PM"] } })],
+    [draft({ /* CS-1 item 3 (ledger `2026-10-19-cs1-fact-review`): reviewed by a person */ verifiedBy: owner, origin: "crawled", license: "official", sourceUrl: "https://www.shokoku-ji.jp/kinkakuji/", value: { text: "Open 9:00–17:00", quote: "9:00–17:00", weekdayDescriptions: ["Monday: 9:00 AM – 5:00 PM"] } })],
     { planId: tripA, itemId: id("a1") },
   );
   assert.equal(n, 1);

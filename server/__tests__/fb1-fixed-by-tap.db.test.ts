@@ -48,6 +48,8 @@ const hours = (placeRef: string, itemId: string) =>
       placeRefKind: "place_id", placeRef, placeLat: null, placeLng: null, market: "kyoto", need: "stop.hours", factType: "hours",
       value: { text: WEEK.join("; "), quote: WEEK.join("; "), weekdayDescriptions: WEEK },
       origin: "crawled", sourceId: null, sourceUrl: "https://official.example.jp/", license: "official", fetchedAt: NOW, expiresAt: later(30), costCents: 0,
+      // CS-1 item 3: hours are a dated fact and are read only once a person has reviewed them.
+      verifiedBy: owner,
     } as any],
     { planId: trip, itemId },
   );

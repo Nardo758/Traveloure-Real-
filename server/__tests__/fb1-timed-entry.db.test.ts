@@ -43,6 +43,8 @@ const VILLA_URL = "https://villa.example.jp/visit";
 const draft = (tripId: string, k: string, factType: string, value: Record<string, unknown>, sourceUrl = "https://official.example.jp/") => ({
   placeRefKind: "place_id", placeRef: `ChIJ-fb1e-${RUN}-${tripId}-${k}`, placeLat: null, placeLng: null, market: "kyoto", need: "stop.hours", factType,
   value, origin: "crawled", sourceId: null, sourceUrl, license: "official", fetchedAt: NOW, expiresAt: later(30), costCents: 0,
+  // CS-1 item 3: hours are a dated fact and show only once a person has reviewed them.
+  verifiedBy: owner,
 }) as any;
 const record = (tripId: string, k: string, factType: string, value: Record<string, unknown>, sourceUrl?: string) =>
   recordFacts([draft(tripId, k, factType, value, sourceUrl)], { planId: tripId, itemId: `${tripId}-${k}` });
