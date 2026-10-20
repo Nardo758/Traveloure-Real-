@@ -19,7 +19,7 @@
 const { Client } = require("pg");
 
 // Keep in step with DATED_FACT_TYPES in shared/content-facts.ts (pinned by shared/__tests__/fact-review.test.ts).
-const DATED_FACT_TYPES = ["hours", "last_admission", "last_service", "closure", "transit", "event"];
+const DATED_FACT_TYPES = ["hours", "last_admission", "last_service", "closed_dates", "transit", "event"];
 
 const SQL = `
   SELECT fact_type, coalesce(source_id, '(none)') AS source_id,

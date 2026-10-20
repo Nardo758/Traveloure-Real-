@@ -19,6 +19,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { useToast } from "@/hooks/use-toast";
 import { getStripePromise } from "@/components/booking/StripeCheckout";
 import { HANDOFF_KINDS, HANDOFF_KIND_LINE, type HandoffKind } from "@shared/handoff";
+import { offeredHandoffKinds } from "@shared/traveler-doors";
+import { useTravelerDoors } from "@/hooks/use-traveler-doors";
 import {
   HANDOFF_CHOOSER_EVENT,
   handoffQueryKey,
@@ -113,6 +115,10 @@ export function HandoffChooser(props: {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [kind, setKind] = useState<HandoffKind | null>(null);
+  // Ledger `2026-10-18-traveler-doors-hidden`: "Book these for me" (the `book` kind) is offered only while
+  // `handoff_booking` is on; a door that asked for it then opens with nothing chosen.
+  const doors = useTravelerDoors();
+  const kinds = offeredHandoffKinds(HANDOFF_KINDS, doors);
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
@@ -122,7 +128,7 @@ export function HandoffChooser(props: {
 
   useEffect(() => {
     if (!open) return;
-    setKind(initial?.kind ?? null);
+    setKind(initial?.kind && kinds.includes(initial.kind) ? initial.kind : null);
     setTicked(new Set(initial?.itemIds ?? []));
     setQuote(null);
     setQuoteError(null);
@@ -209,7 +215,7 @@ export function HandoffChooser(props: {
         ) : (
           <div className="space-y-4">
             <div className="grid gap-2" role="radiogroup">
-              {HANDOFF_KINDS.map((k) => (
+              {kinds.map((k) => (
                 <button
                   key={k}
                   type="button"

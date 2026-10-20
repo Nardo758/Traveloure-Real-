@@ -146,6 +146,25 @@ export function itemClosingWarning(
   return sourcedWarning(`Closes ${clockLabel(close)}`, hours, timeZone);
 }
 
+/** FB-1 step 5c — Marketing's words (FOUNDER WORDING REVIEW on the PR). */
+export const TIMED_ENTRY_LINE = "Entry needs a timed slot, reserved on the official site.";
+export function timedEntryOpensLine(days: number): string {
+  return `Slots open ${days} ${days === 1 ? "day" : "days"} ahead.`;
+}
+
+/**
+ * FB-1 step 5c (ledger `2026-10-19-fb1-timed-entry`): the row's timed-entry warning, linked to the official site — the
+ * fact the checker reads (flag-only). "Slots open N days ahead." only when the page stated it. No fact ⇒ null.
+ */
+export function itemTimedEntryWarning(facts: readonly FactView[] | undefined, timeZone?: string | null): { text: string; sourceUrl: string | null } | null {
+  const f = (facts ?? []).find((x) => x.factType === "timed_entry_required" && x.value?.required === true);
+  if (!f) return null;
+  const raw: unknown = f.value?.opensDaysAhead;
+  const n = typeof raw === "number" && Number.isInteger(raw) && raw > 0 ? raw : null;
+  const lead = n !== null ? `${TIMED_ENTRY_LINE} ${timedEntryOpensLine(n)}` : TIMED_ENTRY_LINE;
+  return sourcedWarning(lead, f, timeZone);
+}
+
 /**
  * 9b-c LB9 (ledger `2026-10-18-lb8-lb9-card-wiring`): the time a stop's leave-by measures against when the
  * planned start is too late — the SAME two facts `itemClosingWarning` reads above, never a second rule: a
@@ -255,7 +274,8 @@ export function sourcedLineSuffix(place: { provenance: string | null; checked: s
 const SHEET_FACT_LABEL: Partial<Record<string, string>> = {
   hours: "Hours",
   address: "Address",
-  closure: "Closure",
+  closed_dates: "Closed dates",
+  timed_entry_required: "Timed entry",
   ticketing_rule: "Tickets",
   transit: "Getting there",
   price: "Price",

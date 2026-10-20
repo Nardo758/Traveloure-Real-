@@ -158,9 +158,10 @@ test("P5 a stop with no open point takes no ride: last_service_missed is not rai
     const r = checkPlan(input);
     assert.equal(r.allFindings.some((f) => f.kind === "last_service_missed"), false);
     const { feasibilityView } = await import("@shared/plan-check");
-    assert.deepEqual(keyed(feasibilityView(input).rides.filter((x) => x.dayNumber === 1).map((x) => [x.fromItemId, x.toItemId])), [["b", "a"]], "B and A are now consecutive; no ride leaves Kiyomizu");
+    // LG-2 Ask 6: a ride is derived between ADJACENT stops only — B and A are not adjacent across Kiyomizu.
+    assert.deepEqual(keyed(feasibilityView(input).rides.filter((x) => x.dayNumber === 1).map((x) => [x.fromItemId, x.toItemId])), [], "no ride leaves Kiyomizu, and none goes round it");
     const day1 = (await lead.loadDayFeasibility(trip)).get(1);
-    assert.equal(day1?.rides, 1, "the day line reads the same view");
+    assert.equal(day1?.rides, 0, "the day line reads the same view");
   } finally {
     await db.execute(sql`INSERT INTO open_place_coords (id, source, google_place_id, lat, lng, osm_type, osm_id, name, matched_by, attribution, matched_at)
       VALUES ('osm:node/' || ${pid("k")}, 'osm', ${pid("k")}, '34.9949', '135.785', 'node', 1, 'k', 'nominatim_batch', '© OpenStreetMap contributors', now())`);

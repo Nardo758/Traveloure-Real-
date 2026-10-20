@@ -6,7 +6,8 @@
  *
  *   · legs connect consecutive same-day stops, in plan order (the A8 pairing rule), plus the stay ↔ the
  *     day's first and last stop when the plan has a located stay (spec §14.1 "anchor ↔ first/last stop")
- *   · a stop with no point is never bridged over (§13): the pair is reported and skipped
+ *   · a stop with no point is never bridged over (§13): the pair is reported and skipped, and no leg skips past it
+ *     to the next located stop (LG-2 Ask 6) — the pair reads "Travel time not checked yet"
  *   · a pair an expert has CONFIRMED is never computed — the confirmed leg wins (ruling 3)
  *   · a leg is unchanged when its pair, mode and leg key (both points and the departure hour) are the
  *     same; a leg whose only change is its position is re-ordered, never re-asked
@@ -47,6 +48,12 @@ export interface PlanStop {
    * the leg arriving at it still ends at `point` (the boarding pin). Absent on every other stop.
    */
   exitPoint?: RoutePoint | null;
+  /**
+   * LG-2 Ask 7b's interim rule: the stop is a path entered at its START only (`point_basis` 'path_start'). The leg
+   * arriving at it ends at that start; the leg LEAVING it is not routed (its end is not known yet) and is reported as
+   * skipped, so it reads as not checked — never a time from the wrong end.
+   */
+  leavingUnchecked?: boolean;
   startTime: string | null;
   endTime: string | null;
   durationMinutes: number | null;
@@ -105,7 +112,7 @@ export function departureWallClock(stop: Pick<PlanStop, "startTime" | "endTime" 
 
 export interface DesiredLegsResult {
   legs: DesiredLeg[];
-  /** Adjacent pairs with a stop that has no point (§13) — reported; the located stops either side are still connected. */
+  /** Adjacent pairs with a stop that has no point (§13) — reported, with no leg and no bridge (LG-2 Ask 6). */
   skipped: Array<{ dayNumber: number; fromItemId: string; toItemId: string; reason: "missing_coordinates" }>;
 }
 
@@ -166,7 +173,8 @@ export function desiredPlanLegs(
   const legs: DesiredLeg[] = [];
   const skipped: DesiredLegsResult["skipped"] = [];
   const add = (dayNumber: number, legOrder: number, from: PlanStop, to: PlanStop, wallClock: string | null) => {
-    if (!from.point || !to.point) {
+    // Ask 7b interim: a path entered at its start has no known leaving point.
+    if (!from.point || !to.point || from.leavingUnchecked) {
       skipped.push({ dayNumber, fromItemId: from.id, toItemId: to.id, reason: "missing_coordinates" });
       return;
     }
@@ -190,36 +198,28 @@ export function desiredPlanLegs(
   };
   for (const dayNumber of Array.from(byDay.keys()).sort((a, b) => a - b)) {
     const day = byDay.get(dayNumber)!;
-    const located = day.filter((s) => s.point);
-    if (opts.stay && located.length) {
-      // Out of the stay to the day's first located stop; the hour is when that stop starts.
-      add(dayNumber, 0, { ...opts.stay, dayNumber }, located[0], hhmm(located[0].startTime));
-    }
-    // P0 legs ruling 1 (ledger `2026-10-10-p0-legs-baseline`): a stop with no point is REPORTED for
-    // each adjacent pair it breaks, and the located stops either side of it are still connected — an
-    // unlocated stop never leaves a gap with no leg. The bridge's order is the from-stop's position.
-    for (let i = 0; i < day.length - 1; i++) {
-      if (!day[i].point || !day[i + 1].point) {
-        skipped.push({ dayNumber, fromItemId: day[i].id, toItemId: day[i + 1].id, reason: "missing_coordinates" });
-      }
-    }
-    for (let j = 0; j < located.length - 1; j++) {
-      add(dayNumber, day.indexOf(located[j]) + 1, located[j], located[j + 1], departureWallClock(located[j]));
-    }
-    if (opts.stay && located.length) {
-      const last = located[located.length - 1];
+    if (!day.length) continue;
+    // LG-2 Ask 6 (decision-maker, Oct 19, 2026; supersedes P0 legs ruling 1's bridge): a leg connects ADJACENT
+    // stops only. A pair with a stop that has no open coordinate gets no routed leg and no bridge around it — it
+    // is reported (`skipped`) and reads "Travel time not checked yet"; never an estimate, never a skip to the
+    // next located stop.
+    if (opts.stay) add(dayNumber, 0, { ...opts.stay, dayNumber }, day[0], hhmm(day[0].startTime));
+    for (let i = 0; i < day.length - 1; i++) add(dayNumber, i + 1, day[i], day[i + 1], departureWallClock(day[i]));
+    if (opts.stay) {
+      const last = day[day.length - 1];
       add(dayNumber, day.length, last, { ...opts.stay, dayNumber }, departureWallClock(last));
     }
   }
   // FU-9A-2: airport legs — only for a flight anchor that HAS a point (an IATA code the table holds).
+  // Ask 6: the airport leg meets the stay, else the day's first (arrival) or last (departure) stop — adjacent only.
   for (const a of opts.airports ?? []) {
-    const located = (byDay.get(a.dayNumber) ?? []).filter((s) => s.point);
+    const day = byDay.get(a.dayNumber) ?? [];
     const airport: PlanStop = { id: a.id, name: a.name, dayNumber: a.dayNumber, point: a.point, startTime: null, endTime: null, durationMinutes: null };
     if (a.direction === "arrival") {
-      const to = opts.stay ? { ...opts.stay, dayNumber: a.dayNumber } : located[0];
+      const to = opts.stay ? { ...opts.stay, dayNumber: a.dayNumber } : day[0];
       if (to) add(a.dayNumber, -1, airport, to, a.wallClock);
     } else {
-      const from = opts.stay ? { ...opts.stay, dayNumber: a.dayNumber } : located[located.length - 1];
+      const from = opts.stay ? { ...opts.stay, dayNumber: a.dayNumber } : day[day.length - 1];
       if (from) add(a.dayNumber, (byDay.get(a.dayNumber) ?? []).length + 1, from, airport, a.wallClock);
     }
   }

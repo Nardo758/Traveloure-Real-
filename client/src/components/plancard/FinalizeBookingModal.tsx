@@ -38,6 +38,7 @@ import {
 import type { PlanCardActivity } from "./plancard-types";
 import { useRouteRefusalToast } from "./use-route-refusal-toast";
 import { ShoppingCart, UserCheck, Sparkles, Handshake, Check } from "lucide-react";
+import { useTravelerDoors } from "@/hooks/use-traveler-doors";
 
 type FinalizeTrip = { id: string; destination: string | null; travelers: number | null };
 type Lane = "myself" | "agent" | "expert" | "concierge";
@@ -60,6 +61,7 @@ export function FinalizeBookingModal({
 }) {
   const { toast } = useToast();
   const { showBulkResult } = useRouteRefusalToast(trip.id);
+  const { eventConcierge: conciergeShown } = useTravelerDoors();
   const [, setLocation] = useLocation();
   const [lane, setLane] = useState<Lane>("myself");
   const [submitting, setSubmitting] = useState(false);
@@ -151,7 +153,8 @@ export function FinalizeBookingModal({
       disabled: !agentAvailable,
     },
     { id: "expert", label: "Travel expert", blurb: "Reviews and refines — you book at checkout", icon: UserCheck },
-    { id: "concierge", label: "Concierge", blurb: "Ask about full-service help", icon: Sparkles },
+    // Ledger `2026-10-18-traveler-doors-hidden`: the Concierge lane opens the old concierge, off by default.
+    ...(conciergeShown ? [{ id: "concierge" as Lane, label: "Concierge", blurb: "Ask about full-service help", icon: Sparkles }] : []),
   ];
 
   return (

@@ -12,6 +12,7 @@ import { usePlanning } from "@/contexts/PlanningContext";
 import { planAroundSource } from "@/components/landing/events-strip";
 import { blogWaitlistHref, type SignupModeView } from "@/lib/launch-waitlist-view";
 import type { BlogReactionKind } from "@shared/blog";
+import { useExpertAvailability } from "@/lib/expert-availability";
 import {
   BLOG_REACTION_LABELS,
   BLOG_REACTION_ORDER,
@@ -174,6 +175,9 @@ function AskTheLocal({ post }: { post: PublicBlogPost }) {
   const [, navigate] = useLocation();
   const [failed, setFailed] = useState(false);
   const [pending, setPending] = useState(false);
+  // SH-1 item 11 (Q11.2): an addressed Ask — it draws only while the post's market has an expert
+  // to ask. A post with no market is no city, so nothing is asked and the CTA stays hidden.
+  const expertAvailable = useExpertAvailability({ city: post.marketSlug });
   const ask = async () => {
     if (!user) return openSignInModal();
     setPending(true);
@@ -186,6 +190,7 @@ function AskTheLocal({ post }: { post: PublicBlogPost }) {
       avatar: started.recipient.avatarUrl,
     }));
   };
+  if (!expertAvailable) return null;
   return (
     <section className="mt-8 rounded-lg border p-5" data-testid="section-blog-ask-local">
       <p className="font-medium">Have a question for {post.byline!.displayName}?</p>

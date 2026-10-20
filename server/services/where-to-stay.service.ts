@@ -57,7 +57,7 @@ import {
   type WhereToStayView,
 } from "@shared/where-to-stay";
 import { haversineMeters } from "@shared/geo";
-import { freeStayShortList, readStayPick, straightLineCloseness, toStayPickCandidate, type StayPickStop } from "@shared/stay-pick";
+import { freeStayShortList, readStayPick, stayPickIsShown, straightLineCloseness, toStayPickCandidate, type StayPickStop } from "@shared/stay-pick";
 import { stayCloseStraightKm } from "../config/stay-closeness.config";
 import { pendingLookupItemIds } from "./content-facts/lookup-progress.pure";
 import { rankFactsByOrigin } from "./upsell-engine.service";
@@ -466,23 +466,32 @@ async function stayBlock(
     const { lat: _lat, lng: _lng, ...rest } = h;
     return rest;
   };
-  if (await planIsRouted(tripId)) {
+  const routed = await planIsRouted(tripId);
+  if (routed) {
     const pick = readStayPick(stored);
-    if (!pick) return { tier: "routed", pick: null, scoredCount: null, candidateCount: null, changed: false, computedAt: null, closeness: null };
-    const hotel = byKey.get(`${pick.hotelKind}:${pick.hotelId}`);
-    // FU-S1-2 (ledger `2026-10-09-fu-s1-2-stay-link`): the card's list link — own or Google Maps, NO Google
-    // call; its Google website is fetched only when the card is opened (`GET …/stay-pick/link`).
-    const [linked] = hotel ? await listStayLinks([strip(hotel)], city) : [];
-    return {
-      tier: "routed",
-      pick: linked ?? null,
-      scoredCount: pick.scoredCount,
-      candidateCount: pick.candidateCount,
-      changed: pick.changed,
-      computedAt: pick.computedAt,
-      // FU-S1-3: stored by the one writer; null when the pick left our inventory or predates FU-S1-3.
-      closeness: hotel ? (pick.closeness ?? null) : null,
-    };
+    const hotel = stayPickIsShown(pick) ? byKey.get(`${pick.hotelKind}:${pick.hotelId}`) : undefined;
+    if (pick && hotel) {
+      // FU-S1-2 (ledger `2026-10-09-fu-s1-2-stay-link`): the card's list link — own or Google Maps, NO Google
+      // call; its Google website is fetched only when the card is opened (`GET …/stay-pick/link`).
+      const [linked] = await listStayLinks([strip(hotel)], city);
+      return {
+        tier: "routed",
+        pick: linked ?? null,
+        scoredCount: pick.scoredCount,
+        candidateCount: pick.candidateCount,
+        changed: pick.changed,
+        computedAt: pick.computedAt,
+        // FU-S1-3: stored by the one writer; null when the pick predates FU-S1-3.
+        closeness: pick.closeness ?? null,
+      };
+    }
+    // Decision-maker, Oct 18, 2026 (ledger `2026-10-18-stay-pick-est-fallback`): a paid plan with no pick it may
+    // show — none stored, a Google-ranked pick (never shown under the strict ruling; its row is kept), or a pick
+    // whose hotel left our inventory — shows the free straight-line top 3 marked "est.", never an empty card.
+    // Counts only: no minutes and no ranking are stored or logged.
+    console.info(
+      `[stay-pick] paid plan shows the straight-line estimate (${!pick ? "no_pick" : !stayPickIsShown(pick) ? "google_ranked_hidden" : "hotel_gone"})`,
+    );
   }
   const top = new Set(ranked.map((r) => r.slug));
   // The plan's dates only — the same stops the routed scorer reads (ruling 1).
@@ -499,6 +508,7 @@ async function stayBlock(
   const km = stayCloseStraightKm();
   return {
     tier: "straight_line",
+    ...(routed ? { estimated: true as const } : {}),
     hotels: await listStayLinks(
       list.map((c) => ({ ...strip(byKey.get(`${c.kind}:${c.id}`)!), closeness: straightLineCloseness(c, stops, km) })),
       city,

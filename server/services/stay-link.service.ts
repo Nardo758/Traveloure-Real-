@@ -22,7 +22,7 @@ import { db } from "../db";
 import { providerServices, serviceProviderForms, trips } from "@shared/schema";
 import { chooseStayLink, googleMapsSearchUrl, type StayLink } from "@shared/stay-link";
 import { distinctiveTokens, matchNamesItem } from "@shared/place-name-gate";
-import { readStayPick } from "@shared/stay-pick";
+import { readStayPick, stayPickIsShown } from "@shared/stay-pick";
 import type { StayHotel } from "@shared/where-to-stay";
 import { gatedMapsCall } from "./maps-billing/maps-billing.service";
 import { placesStayLinkCostCents } from "../config/content-facts.config";
@@ -150,7 +150,8 @@ export async function pickedStayLink(tripId: string, userId: string | null | und
   const routed = deps.routed ?? (async (id: string) => (await import("./routing/plan-routed-legs.service")).tripGetsRoutedLegs(id));
   const [trip] = await db.select({ destination: trips.destination, stayPick: trips.stayPick }).from(trips).where(eq(trips.id, tripId)).limit(1);
   const pick = readStayPick(trip?.stayPick);
-  if (!trip || !pick || !(await routed(tripId))) return { stayLink: null };
+  // A Google-ranked pick is never shown, so it is never linked (ledger `2026-10-18-stay-pick-est-fallback`).
+  if (!trip || !stayPickIsShown(pick) || !(await routed(tripId))) return { stayLink: null };
   const city = (trip.destination ?? "").split(",")[0].trim() || null;
   const { cityHotels } = await import("./where-to-stay.service");
   const hotel = city ? (await cityHotels(city)).find((h) => h.kind === pick.hotelKind && h.id === pick.hotelId) : undefined;

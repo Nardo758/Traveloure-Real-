@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { optimizeUnsplashUrl, unsplashResponsiveProps } from "@/lib/unsplash";
 import { isReferencePhoto } from "@/lib/photo-provenance";
 import { ReferencePhotoChip } from "@/components/ui/reference-photo-chip";
+import { useExpertAvailability } from "@/lib/expert-availability";
 
 /**
  * Shared city card — one component behind every "city" surface (Discover trending
@@ -94,6 +95,8 @@ export function CityCard(props: CityCardProps) {
     expertsCount = 0, primaryLabel, onPrimary, secondaryLabel, onSecondary, onAsk,
     experiences = [], onCardClick, primaryTestId, testId,
   } = props;
+  // SH-1 item 11: the card's expert link and Ask draw only when this city has an expert to ask.
+  const expertAvailable = useExpertAvailability({ city: cityName });
 
   // Compact momentum tile (density="compact") — the mock's `.ct`: swatch/photo with a
   // trend pill, city name, one honest meta line. Score/crowd/experts render only when
@@ -295,17 +298,19 @@ export function CityCard(props: CityCardProps) {
         )}
 
         {/* experience quick-links (§12 revenue entry) */}
-        <div className="mt-2.5 border-t border-[color:var(--earn-border)] pt-2.5">
-          <Link
-            href={expertHref}
-            onClick={(e) => e.stopPropagation()}
-            className="inline-flex min-h-[32px] items-center gap-1.5 text-[11px] font-semibold text-[var(--earn-teal-ink)] hover:underline"
-            data-testid={`source-experts-${cityName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`}
-          >
-            {expertsCount > 0 ? <Users className="h-3.5 w-3.5" /> : <MessageCircle className="h-3.5 w-3.5" />}
-            {expertsCount > 0 ? `${expertsCount} local experts` : "Ask a trip planner"}
-          </Link>
-        </div>
+        {expertAvailable && (
+          <div className="mt-2.5 border-t border-[color:var(--earn-border)] pt-2.5">
+            <Link
+              href={expertHref}
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex min-h-[32px] items-center gap-1.5 text-[11px] font-semibold text-[var(--earn-teal-ink)] hover:underline"
+              data-testid={`source-experts-${cityName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`}
+            >
+              {expertsCount > 0 ? <Users className="h-3.5 w-3.5" /> : <MessageCircle className="h-3.5 w-3.5" />}
+              {expertsCount > 0 ? `${expertsCount} local experts` : "Ask a trip planner"}
+            </Link>
+          </div>
+        )}
 
         {experiences.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-2.5">
@@ -341,7 +346,7 @@ export function CityCard(props: CityCardProps) {
               <Info className="w-3.5 h-3.5" />{secondaryLabel}
             </button>
           )}
-          {onAsk && (
+          {onAsk && expertAvailable && (
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); onAsk(); }}

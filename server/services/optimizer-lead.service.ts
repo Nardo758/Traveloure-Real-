@@ -36,6 +36,7 @@ import { planDayIsPast } from "@shared/plan-timing";
 import { factPointsForTrip, feasibilityFactsForTrip, placeRefsForTrip } from "./content-facts/place-facts.service";
 import { openCoordsForItemIds, openCoordsForPlaceIds } from "./routing/open-place-coords.service";
 import { pulledOpenItems } from "./routing/open-coord-review.service";
+import { meetingOrStayItem } from "@shared/meeting-point-items";
 import { routingPointFor } from "./routing/open-routing-points";
 import { osmRideServiceIds } from "./routing/plan-legs-engine.service";
 import { isOpenCoordOrigin } from "@shared/open-coords";
@@ -120,6 +121,8 @@ export async function loadPlanCheckInput(tripId: string): Promise<{ input: PlanC
       ownPoint: own && Number.isFinite(own.lat) && Number.isFinite(own.lng) ? own : null,
       factPoint: factPoints.get(r.id) ?? null,
       osmRide: !!r.providerServiceId && osmRides.has(r.providerServiceId),
+      // LG-2 Ask 5: a check-in, arrival or private tour has a point only when a person chose one.
+      meetingOrStay: meetingOrStayItem(r.title),
     });
     return p && isOpenCoordOrigin(p.coordOrigin) ? { lat: p.lat, lng: p.lng } : null;
   };
@@ -139,6 +142,8 @@ export async function loadPlanCheckInput(tripId: string): Promise<{ input: PlanC
     })),
     hours: facts.hours,
     lastAdmission: facts.lastAdmissionFacts,
+    closedDates: facts.closedDates,
+    timedEntry: facts.timedEntry,
     lastServices: facts.lastServices,
     anchors: anchors as any,
     // Step 9b (L9 as amended, D4): each leg says whether its minutes are routed, through the ONE `legIsRouted`.
@@ -208,7 +213,10 @@ export async function loadLegCoverage(tripId: string, now: Date = new Date()): P
  * FD-3 §3d: each plan day's honest counts — what was checked, of what. Read behind the caller's own plan
  * gate (the plancard). Only counts leave it. Reads the SAME feasibility view the findings do (FB-1 step 2).
  */
-export async function loadDayFeasibility(tripId: string): Promise<Map<number, DayFeasibility>> {
+export async function loadDayFeasibility(
+  tripId: string,
+  opts: { legsNotChecked?: Map<number, ReadonlyArray<unknown>> } = {},
+): Promise<Map<number, DayFeasibility>> {
   const { input, found } = await loadPlanCheckInput(tripId);
   if (!found) return new Map();
   const ctx = feasibilityView(input);
@@ -238,6 +246,16 @@ export async function loadDayFeasibility(tripId: string): Promise<Map<number, Da
   gaps.forEach((n, dayNumber) => {
     const d = out.get(dayNumber);
     if (d && n > 0) d.noRoute = n;
+  });
+  // LG-2 Ask 6: legs with no travel time (an adjacent stop with no open point) — the ONE skip list, so the day line
+  // never reads as a pass while one is on the day. The caller may pass the map it already loaded.
+  const notChecked = opts.legsNotChecked
+    ?? (await import("./routing/plan-legs-engine.service")
+      .then(({ planLegsNotCheckedByDay }) => planLegsNotCheckedByDay(tripId))
+      .catch(() => new Map<number, ReadonlyArray<unknown>>()));
+  notChecked.forEach((pairs, dayNumber) => {
+    const d = out.get(dayNumber);
+    if (d && pairs.length > 0) d.legsNotChecked = pairs.length;
   });
   return out;
 }

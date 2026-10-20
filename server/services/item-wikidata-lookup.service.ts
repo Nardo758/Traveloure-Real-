@@ -14,7 +14,7 @@
  * further apart is ambiguous (nothing would be written). The region's id is VERIFIED at the start of a run against its
  * English label, so a wrong id stops the run instead of searching the wrong prefecture.
  */
-import { matchNormalisedName, metresBetween, RESOLVED_CLUSTER_M, v2QueryPlan, type RegeocodeItem } from "./item-osm-regeocode.service";
+import { matchNormalisedName, metresBetween, normalisedNameTokens, RESOLVED_CLUSTER_M, v2QueryPlan, type RegeocodeItem } from "./item-osm-regeocode.service";
 
 export const WIKIDATA_SPARQL_URL = "https://query.wikidata.org/sparql";
 export const WIKIDATA_API_URL = "https://www.wikidata.org/w/api.php";
@@ -38,7 +38,7 @@ export interface WikidataCandidate {
 export type WikidataOutcome =
   | { kind: "resolved"; qid: string; label: string; lat: number; lng: number; matches: number }
   | { kind: "ambiguous"; spreadM: number; candidates: WikidataCandidate[] }
-  | { kind: "unresolved"; reason: "no_place_phrase" | "no_named_tokens" | "area_title" | "no_results" | "no_match" }
+  | { kind: "unresolved"; reason: "no_place_phrase" | "no_named_tokens" | "area_title" | "meeting_or_stay" | "no_results" | "no_match" }
   | { kind: "unreachable" };
 
 type FetchLike = (url: string, init: { headers: Record<string, string>; signal?: AbortSignal }) => Promise<{
@@ -146,8 +146,12 @@ export async function lookupItemWikidata(
 ): Promise<{ outcome: WikidataOutcome; requested: boolean; search: string | null }> {
   const plan = v2QueryPlan(item);
   if (plan.skip) return { outcome: { kind: "unresolved", reason: plan.skip }, requested: false, search: null };
-  const search = plan.place.trim();
-  if (!search) return { outcome: { kind: "unresolved", reason: "no_place_phrase" }, requested: false, search: null };
+  // LG-2 Ask 3: the place phrase from the TITLE, never the location fallback ("Kyoto, Japan"). A phrase with no word
+  // beyond the city and the generic words is skipped with its reason, never searched.
+  const search = plan.titlePhrase.trim();
+  if (!search || normalisedNameTokens(search, item.destination).size === 0) {
+    return { outcome: { kind: "unresolved", reason: "no_place_phrase" }, requested: false, search: null };
+  }
   try {
     const json = await getJson(`${WIKIDATA_SPARQL_URL}?${new URLSearchParams({ query: wikidataQuery(search), format: "json" })}`, fetchImpl);
     if (!json) return { outcome: { kind: "unreachable" }, requested: true, search };

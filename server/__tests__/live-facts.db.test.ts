@@ -1,10 +1,11 @@
 /**
  * CS-1 item 2 — every fact reader reads live facts only, on a real database (ledger `2026-10-19-cs1-live-facts`).
  *
- *   LF1  the writer refuses a machine-read fact with no expires_at; a traveler's own note with none is stored
+ *   LF1  the writer refuses a machine-read fact with no expires_at; an expert's own note with none is stored (a
+ *        traveler_note has no ruled tier and is refused by EV-P0 PR 3)
  *   LF2  the plan: an expired reviewed official last entry is not in the plan's facts or the feasibility checks, and the
  *        stop shows "Last entry not checked yet. See <Place>'s official site before you go." with the top-level link;
- *        a live one is read and draws no waiting line; a legacy machine row with no expiry is not read; the traveler's
+ *        a live one is read and draws no waiting line; a legacy machine row with no expiry is not read; the expert's
  *        note with no expiry is
  *   LF3  last services: an expired one is not read, a live one is
  *   LF4  covering events: an expired event fact is not read, a live one is
@@ -133,10 +134,10 @@ test("LF1 — the writer refuses a machine fact with no expiry", async () => {
   const refused = await recordMachineFacts([lastEntry(PLACE_OLD, { expiresAt: null, verifiedBy: null })], { planId: null, itemId: null });
   assert.equal(refused, 0, "no_expiry");
   const note = await recordFacts(
-    [{ ...lastEntry(`ChIJ-${RUN}-note`), factType: "tip", need: "stop.hours", origin: "traveler_note", sourceId: null, sourceUrl: null, license: null, verifiedBy: null, verifiedAt: null, expiresAt: null, value: { text: `NOTE-${RUN}` } }],
+    [{ ...lastEntry(PLACE_LIVE), factType: "tip", need: "stop.hours", origin: "expert_nugget", sourceId: null, sourceUrl: null, license: null, verifiedBy: null, verifiedAt: null, expiresAt: null, value: { text: `NOTE-${RUN}` } }],
     { planId: trip, itemId: id("live") },
   );
-  assert.equal(note, 1, "a traveler's note keeps its rule: no expiry, stored");
+  assert.equal(note, 1, "an expert's own note keeps its rule: no expiry, stored");
 });
 
 test("LF2 — the plan reads live facts only, and an expired last entry waits with the official link", async () => {
@@ -148,7 +149,7 @@ test("LF2 — the plan reads live facts only, and an expired last entry waits wi
   const views = await factsForTrip(trip, now);
   assert.equal((views[id("old")] ?? []).some((v) => v.factType === "last_admission"), false, "expired: not read");
   assert.equal((views[id("live")] ?? []).some((v) => v.factType === "last_admission"), true, "live: read");
-  assert.equal((views[id("live")] ?? []).some((v) => (v.value as any)?.text === `NOTE-${RUN}`), true, "the traveler's note is read");
+  assert.equal((views[id("live")] ?? []).some((v) => (v.value as any)?.text === `NOTE-${RUN}`), true, "the expert's note is read");
   assert.equal(JSON.stringify(views).includes("15:00"), false, "the legacy no-expiry row is never read");
   assert.equal(JSON.stringify(views).includes("may have changed"), false);
 
