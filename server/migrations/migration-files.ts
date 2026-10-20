@@ -2112,4 +2112,7 @@ export const MIGRATION_FILES = [
   // present, so it is idempotent and never clobbers a hand edit. 394–397 are taken by open PRs (397_users_is_test.sql
   // is to sit before this entry). HELD for Leon's comment. Ledger 2026-10-19-sh1-banned-copy.
   "398_sh1_seed_copy.sql",
+  // 399 — DATA ONLY: the IMAGINE NOH continuous-run row (manual / imagine-noh-2026) gets withdrawn_at while it is still
+  // live; nothing deleted. The four shows are seeded as one row each. SH-1 item 5, ledger 2026-10-19-sh1-show-dates.
+  "399_imagine_noh_run_withdrawn.sql",
 ] as const;

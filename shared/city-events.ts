@@ -288,6 +288,11 @@ export interface CityEventCard {
    * "same as the market" (§13).
    */
   venueLocality: string | null;
+  /**
+   * The row's `series_key` (migration 335): SH-1 item 5 groups the sibling rows that share it — one row per show — into
+   * one series (`seriesShowDates`, `shared/event-page.ts`). null = not part of a stated series.
+   */
+  seriesKey?: string | null;
 }
 
 export interface CityEventsPayload {
