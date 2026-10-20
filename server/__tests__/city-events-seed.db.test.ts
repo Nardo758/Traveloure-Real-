@@ -52,7 +52,8 @@ after(async () => {
 });
 
 test("E1: the manual list builds cleanly; only rows with a printed time state one", () => {
-  assert.equal(MANUAL_CITY_EVENTS.length, 22);
+  // SH-1 item 5 (ledger `2026-10-19-sh1-show-dates`): IMAGINE NOH's one run row became four show rows.
+  assert.equal(MANUAL_CITY_EVENTS.length, 25);
   const ids = MANUAL_CITY_EVENTS.map((e) => e.sourceId);
   assert.equal(new Set(ids).size, ids.length, "sourceIds are unique");
   for (const e of MANUAL_CITY_EVENTS) {
@@ -68,6 +69,10 @@ test("E1: the manual list builds cleanly; only rows with a printed time state on
     "edinburgh-hogmanay-2026-gardens",
     "edinburgh-hogmanay-2026-torchlight",
     "gulaab-shilpa-rao-2027",
+    "imagine-noh-2026-10-14",
+    "imagine-noh-2026-10-22",
+    "imagine-noh-2026-10-28",
+    "imagine-noh-2026-11-05",
     "max-richter-live-mumbai-2026",
     "mitsuko-uchida-kyoto-2026",
     "snarky-puppy-porto-2027",
@@ -88,10 +93,12 @@ test("E2: a date-only card carries no start time; a known time renders in the ci
     assert.ok("row" in built);
     return toCityEventCard({ ...(built.row as any), id: "x", createdAt: now, withdrawnAt: null }, null, now);
   };
-  const noh = card("imagine-noh-2026");
-  assert.equal(noh.startTime, null, "never '00:00'");
+  // SH-1 item 5: one show, its published time, one day.
+  const noh = card("imagine-noh-2026-10-14");
+  assert.equal(noh.startTime, "17:30");
+  assert.equal(noh.nights, 1);
   assert.equal(noh.firstDate, "2026-10-14");
-  assert.equal(noh.lastDate, "2026-11-05");
+  assert.equal(noh.lastDate, "2026-10-14");
   const lolla = card("lollapalooza-india-2027");
   assert.equal(lolla.startTime, null);
   assert.equal(lolla.nights, 2);

@@ -25,7 +25,10 @@ import type { CalendarEvent } from "@shared/events-calendar";
 import {
   eventPageCountdown,
   isLookupableSourceId,
+  isShowSeries,
   organizerHost,
+  seriesShowDates,
+  seriesShowLabel,
   type EventPageMoreRow,
   type EventPagePayload,
 } from "@shared/event-page";
@@ -73,13 +76,21 @@ export function composeEventPage(
   moreInCity: EventPageMoreRow[],
   verifiedCount: number,
   now: Date,
+  // SH-1 item 5: the live rows in the event's city, so its series' sibling shows can be read (none ⇒ no series).
+  cityRows: readonly CityEvent[] = [],
 ): EventPagePayload {
   const event = eventPageCard(row, now);
   const url = facts.event.ticketUrl;
   const host = url ? organizerHost(url) : null;
+  const showDates = seriesShowDates(
+    [row, ...cityRows.filter((r) => r.id !== row.id && !r.withdrawnAt && isRenderableCityEvent(r))].map((r) => toCityEventCard(r, null, now)),
+    row.seriesKey,
+  );
+  const series = isShowSeries(showDates) ? seriesShowLabel(showDates, localDate(now, timezoneForMarket(event.marketKey))) : null;
   return {
     event,
-    countdown: eventPageCountdown(countdownLabel(event.daysUntil)),
+    countdown: series ?? eventPageCountdown(countdownLabel(event.daysUntil)),
+    ...(isShowSeries(showDates) ? { showDates } : {}),
     organizer: url && host ? { url, host } : null,
     goodToKnow: facts.attributedFacts.map((f) => ({ factType: f.factType, text: f.text, label: f.label, sourceUrl: f.sourceUrl, checked: f.checked })),
     moreInCity,
@@ -128,5 +139,5 @@ export async function loadEventPage(sourceId: string, deps: EventPageDeps = {}):
   const hookCities = marketKey ? await (deps.expertHookCities ?? getExpertHookCities)() : [];
   const switchOn = !!marketKey && hookCities.includes(marketKey);
   const verified = switchOn ? await (deps.verifiedCount ?? countVerifiedLocals)(marketKey!) : 0;
-  return composeEventPage(row, facts, composeMoreInCity(others, row.id, now), verified, now);
+  return composeEventPage(row, facts, composeMoreInCity(others, row.id, now), verified, now, others);
 }
