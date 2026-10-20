@@ -815,7 +815,7 @@ export class TravelPulseService {
         whyLocalsLoveIt: "Time capsule of Showa-era Tokyo with family-run shops",
         bestFor: ["food", "photography", "culture"],
         priceRange: "$",
-        imageUrl: "https://images.unsplash.com/photo-1545569341-9eb8b30979d9?w=600",
+        imageUrl: null, // SH-1 item 6: the photo was of Kiyomizu-dera (shared/banned-photos.ts)
       },
       {
         city: "Tokyo",

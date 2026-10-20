@@ -1,5 +1,6 @@
 import { db } from "../db";
-import { hideBlockedGemImage, photoBlocks } from "./place-photo-blocks.service";
+import { hideBlockedGemImage, photoBlockedFor, photoBlocks } from "./place-photo-blocks.service";
+import { isBannedPhotoUrl } from "@shared/banned-photos";
 import { 
   aiDiscoveredGems, 
   discoveryJobs, 
@@ -264,13 +265,15 @@ Focus on authenticity and specificity. Avoid generic tourist attractions.`;
     destination: string,
     imageSearchTerms: string[]
   ): Promise<string | null> {
+    // SH-1 item 6: a place under a no_photos block is never searched for — no request at all, not only no display.
+    if (await this.gemPhotoBlocked(name, destination)) return null;
     const searchQuery = imageSearchTerms.length > 0
       ? `${imageSearchTerms[0]} ${destination}`
       : `${name} ${destination}`;
 
     try {
       const unsplashResults = await unsplashService.searchPhotos(searchQuery, { perPage: 1, orientation: "landscape" });
-      if (unsplashResults[0]?.url) {
+      if (unsplashResults[0]?.url && !isBannedPhotoUrl(unsplashResults[0].url)) {
         return unsplashResults[0].url;
       }
     } catch {
@@ -279,7 +282,7 @@ Focus on authenticity and specificity. Avoid generic tourist attractions.`;
 
     try {
       const pexelsResults = await pexelsService.searchPhotos(searchQuery, { perPage: 1 });
-      const photo = pexelsResults.find((r) => r.mediaType === "photo");
+      const photo = pexelsResults.find((r) => r.mediaType === "photo" && !isBannedPhotoUrl(r.url));
       if (photo?.url) {
         return photo.url;
       }
@@ -288,6 +291,19 @@ Focus on authenticity and specificity. Avoid generic tourist attractions.`;
     }
 
     return null;
+  }
+
+  /**
+   * SH-1 item 6: is this gem's place under a no_photos block (name + city, the ONE rule)? An unreadable block list
+   * answers yes, so a failed read never spends a photo search on a place that may be blocked.
+   */
+  private async gemPhotoBlocked(name: string, destination: string): Promise<boolean> {
+    try {
+      return (await photoBlockedFor({ names: [name], city: destination })) !== null;
+    } catch (err) {
+      logger.warn({ err: String((err as any)?.message ?? err).slice(0, 200) }, `[gem-photo] block list unreadable; photo search skipped for "${name}"`);
+      return true;
+    }
   }
 
   private async saveGem(gem: InsertAiDiscoveredGem): Promise<void> {
@@ -416,7 +432,7 @@ Focus on authenticity and specificity. Avoid generic tourist attractions.`;
     return results;
   }
 
-  async backfillGemPhotos(): Promise<{ processed: number; updated: number; failed: number }> {
+  async backfillGemPhotos(): Promise<{ processed: number; updated: number; failed: number; skippedBlocked: number }> {
     const gems = await db.select({
       id: aiDiscoveredGems.id,
       name: aiDiscoveredGems.name,
@@ -428,9 +444,15 @@ Focus on authenticity and specificity. Avoid generic tourist attractions.`;
 
     let updated = 0;
     let failed = 0;
+    let skippedBlocked = 0;
 
     for (const gem of gems) {
       try {
+        // SH-1 item 6: a blocked place is skipped before any photo request, and counted as skipped, not failed.
+        if (await this.gemPhotoBlocked(gem.name, gem.destination)) {
+          skippedBlocked++;
+          continue;
+        }
         const terms = Array.isArray(gem.imageSearchTerms) ? gem.imageSearchTerms as string[] : [];
         const imageUrl = await this.fetchGemPhoto(gem.name, gem.destination, terms);
         if (imageUrl) {
@@ -447,7 +469,7 @@ Focus on authenticity and specificity. Avoid generic tourist attractions.`;
       }
     }
 
-    return { processed: gems.length, updated, failed };
+    return { processed: gems.length, updated, failed, skippedBlocked };
   }
 }
 

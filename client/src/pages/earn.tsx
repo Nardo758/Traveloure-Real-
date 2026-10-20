@@ -328,7 +328,7 @@ export default function EarnPage() {
   return (
     <Layout>
       <PageLayout
-        title="Get paid for what you already know"
+        title="Get paid for what you already know about Kyoto"
         titleTestId="earn-hero-title"
         testId="earn-hero"
         lead={
@@ -336,11 +336,6 @@ export default function EarnPage() {
             <p className="text-muted-foreground">
               Pick the role that sounds like you — see exactly what you'd offer and what you keep.
             </p>
-            {keepSentence && (
-              <p className="mt-2 text-[14px] text-foreground" data-testid="earn-keep-sentence">
-                {keepSentence}
-              </p>
-            )}
             <p className="mt-3 text-[14px]">
               <span className="text-muted-foreground">Already a partner?</span>{" "}
               <button
@@ -522,6 +517,12 @@ export default function EarnPage() {
             </div>
           </div>
         </section>
+
+        {keepSentence && (
+          <p className="text-[14px] text-foreground" data-testid="earn-keep-sentence">
+            {keepSentence}
+          </p>
+        )}
 
         {showReadyMadeCalculator && readyMadeRate !== null && (
           <ReadyMadeCalculator rate={readyMadeRate} showExample={keepRates?.readyMadeExampleEnabled === true} />

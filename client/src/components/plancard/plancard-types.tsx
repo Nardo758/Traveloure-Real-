@@ -164,7 +164,7 @@ export function getTemplateConfig(occasion?: PlanCardSkinInput): TemplateConfig 
 const DESTINATION_PHOTOS: Record<string, string> = {
   // Japan
   tokyo: "photo-1540959733332-eab4deabeeaf",
-  kyoto: "photo-1545569341-9eb8b30979d9",
+  // kyoto: none — SH-1 item 6 dropped its photo (Kiyomizu-dera, shared/banned-photos.ts); a Kyoto plan draws the typographic block.
   osaka: "photo-1590559899731-a382839e5549",
   japan: "photo-1490806843957-31f4c9a91c65",
   // Europe
