@@ -3153,9 +3153,14 @@ ${bannedCopyPromptLine()}`;
     const { withoutConciergePoolListings } = await import("./services/expert-routability");
     // TC-3 catalog rides surface only as rides, never in this browse (ledger `2026-10-11-tc3-ride-seed`).
     const { withoutRideListings } = await import("./services/ride-listings");
-    const live = await withoutRideListings(
-      await withoutConciergePoolListings(await filterOutAwayOwners(approved, (s) => s.userId), (s) => s.userId),
-      (s) => s.id,
+    // SH-1 item 12: a test account's listings are never public (server/services/test-account.ts).
+    const { withoutTestOwnerListings } = await import("./services/test-account");
+    const live = await withoutTestOwnerListings(
+      await withoutRideListings(
+        await withoutConciergePoolListings(await filterOutAwayOwners(approved, (s) => s.userId), (s) => s.userId),
+        (s) => s.id,
+      ),
+      (s) => s.userId,
     );
     // D3 leak-prevention: this route is UNAUTHENTICATED public browse — serviceFile is the
     // product itself for a pdf-delivery listing and must never surface pre-purchase.

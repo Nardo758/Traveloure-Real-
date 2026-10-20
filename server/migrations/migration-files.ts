@@ -2104,4 +2104,7 @@ export const MIGRATION_FILES = [
   // who entered a hand-picked OSM point and what it is. LG-2 Ask 7, ledger 2026-10-19-lg2-admin-osm-points. Declared in
   // shared/schema.ts.
   "396_open_place_admin_entry.sql",
+  // 397 — SH-1 item 12: users.is_test, nullable boolean, no default (NULL = not a test account by flag).
+  // HELD for Leon's comment. Ledger 2026-10-19-sh1-test-flag.
+  "397_users_is_test.sql",
 ] as const;

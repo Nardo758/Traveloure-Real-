@@ -81,3 +81,21 @@ test("R3 SHOW_DEMO_EXPERTS=1 is the only switch", () => {
     else process.env.SHOW_DEMO_EXPERTS = prev;
   }
 });
+
+test("R3b SHOW_DEMO_EXPERTS=1 never lets a test account through (SH-1 item 12)", () => {
+  const prev = process.env.SHOW_DEMO_EXPERTS;
+  const prevDomain = process.env.QA_ACCOUNT_EMAIL_DOMAIN;
+  try {
+    process.env.SHOW_DEMO_EXPERTS = "1";
+    process.env.QA_ACCOUNT_EMAIL_DOMAIN = "qa-r3b.test";
+    const base = { applicationStatus: "approved", identityVerificationStatus: "verified", stripeConnectStatus: "complete" };
+    assert.equal(isRoutableExpert({ ...base, email: "x@normal.invalid", isTest: true }), false, "a flagged account stays out");
+    assert.equal(isRoutableExpert({ ...base, email: "x@qa-r3b.test" }), false, "a QA-domain account stays out");
+    assert.equal(isRoutableExpert({ ...base, email: "x@normal.invalid", isTest: null }), true);
+  } finally {
+    if (prev === undefined) delete process.env.SHOW_DEMO_EXPERTS;
+    else process.env.SHOW_DEMO_EXPERTS = prev;
+    if (prevDomain === undefined) delete process.env.QA_ACCOUNT_EMAIL_DOMAIN;
+    else process.env.QA_ACCOUNT_EMAIL_DOMAIN = prevDomain;
+  }
+});

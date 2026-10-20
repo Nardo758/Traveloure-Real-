@@ -44,6 +44,8 @@ interface AdminUserRow {
   joined: string;
   /** LW-1d: the supply sign-up source tag (`users.signup_source`); null = not recorded. */
   signupSource?: string | null;
+  /** SH-1 item 12: the stored test flag (`users.is_test`). */
+  isTest?: boolean;
   trips: number;
   spent: string;
 }
@@ -131,6 +133,24 @@ export default function AdminUsers() {
     },
     onError: (err: any) => {
       toast({ title: "Failed to reactivate account", description: err?.message || "Please try again.", variant: "destructive" });
+    },
+  });
+
+  // SH-1 item 12: the admin test-flag switch. A test account's listings leave the public site and it is
+  // never routed work. The server records every change in the audit log.
+  const testFlagMutation = useMutation({
+    mutationFn: async ({ id, isTest }: { id: string; isTest: boolean }) => {
+      await apiRequest("PATCH", `/api/admin/users/${id}/test-flag`, { isTest });
+    },
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({
+        title: vars.isTest ? "Marked as a test account" : "No longer a test account",
+        description: vars.isTest ? "Its listings are hidden from the public site." : "Its listings follow the normal public rules again.",
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to change the test flag", description: err?.message || "Please try again.", variant: "destructive" });
     },
   });
 
@@ -285,6 +305,11 @@ export default function AdminUsers() {
                         <Badge className={getRoleDisplay(user.role).className}>
                           {getRoleDisplay(user.role).label}
                         </Badge>
+                        {user.isTest && (
+                          <Badge className="ml-1 bg-gray-100 text-gray-700 border-gray-200" data-testid={`badge-test-${user.id}`}>
+                            Test
+                          </Badge>
+                        )}
                       </td>
                       <td className="py-3 px-2">
                         <Badge
@@ -347,6 +372,13 @@ export default function AdminUsers() {
                                   Suspend account
                                 </DropdownMenuItem>
                               )}
+                              <DropdownMenuItem
+                                onClick={() => testFlagMutation.mutate({ id: user.id, isTest: !user.isTest })}
+                                disabled={testFlagMutation.isPending}
+                                data-testid={`menu-test-flag-${user.id}`}
+                              >
+                                {user.isTest ? "Unmark test account" : "Mark as test account"}
+                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>

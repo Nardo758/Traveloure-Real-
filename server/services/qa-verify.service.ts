@@ -10,6 +10,7 @@
 
 import { db } from "../db";
 import { sql } from "drizzle-orm";
+import { isExpertRole, isProviderRole } from "@shared/roles";
 
 export type QACheckResult = { pass: boolean; detail: string };
 export type QAResults = Record<string, QACheckResult>;
@@ -21,6 +22,42 @@ export interface QARunSummary {
   partialCount: number;
   totalCount: number;
   checkedAt: string;
+}
+
+/** The role groups T1 needs one active test account in. */
+export const QA_TEST_ROLE_GROUPS: ReadonlyArray<{ label: string; matches: (role: string | null) => boolean }> = [
+  { label: "traveler", matches: (role) => role === "user" },
+  { label: "expert", matches: (role) => isExpertRole(role) },
+  { label: "provider", matches: (role) => isProviderRole(role) },
+  { label: "admin", matches: (role) => role === "admin" },
+  { label: "executive assistant", matches: (role) => role === "executive_assistant" },
+];
+
+/**
+ * Pure. T1–T4 over the test accounts' rows: T1 = an active test account in every role group; T2 = expert;
+ * T3 = provider; T4 = traveler. Active = not deleted and not suspended. Role + active only.
+ */
+export function qaTestAccountReport(
+  rows: ReadonlyArray<{ role: string | null; is_deleted?: boolean | null; is_suspended?: boolean | null }>,
+): Record<"T1" | "T2" | "T3" | "T4", QACheckResult> {
+  const active = rows.filter((r) => r.is_deleted !== true && r.is_suspended !== true);
+  const has = (label: string) => {
+    const group = QA_TEST_ROLE_GROUPS.find((g) => g.label === label)!;
+    return active.some((r) => group.matches(r.role ?? null));
+  };
+  const missing = QA_TEST_ROLE_GROUPS.map((g) => g.label).filter((label) => !has(label));
+  const one = (label: string): QACheckResult =>
+    has(label)
+      ? { pass: true, detail: `An active ${label} test account exists` }
+      : { pass: false, detail: `No active ${label} test account` };
+  return {
+    T1: missing.length === 0
+      ? { pass: true, detail: `Active test accounts in all ${QA_TEST_ROLE_GROUPS.length} role groups (${active.length} active)` }
+      : { pass: false, detail: `No active test account for: ${missing.join(", ")}` },
+    T2: one("expert"),
+    T3: one("provider"),
+    T4: one("traveler"),
+  };
 }
 
 export async function runQAVerify(): Promise<QARunSummary> {
@@ -342,105 +379,24 @@ export async function runQAVerify(): Promise<QARunSummary> {
     };
   } catch { results.C5 = { pass: false, detail: "FS error" }; }
 
-  // ── T1: 5 test accounts ─────────────────────────────────────────────────
+  // ── T1–T4: test accounts by role (SH-1 item 12) ──────────────────────────
+  // Smoke checks, not a permissions audit: each asserts ROLE + ACTIVE (not deleted, not suspended) only,
+  // over the ONE test-account predicate (`is_test` OR the QA_ACCOUNT_EMAIL_DOMAIN setting). No fixed
+  // addresses and no seeded-content checks.
   try {
-    const emails = [
-      "traveler@traveloure-test.com",
-      "expert@traveloure-test.com",
-      "provider@traveloure-test.com",
-      "admin@traveloure-test.com",
-      "ea@traveloure-test.com",
-    ];
+    const { testAccountSql } = await import("./test-account");
     const r = await db.execute(sql`
-      SELECT email, role, is_deleted FROM users
-      WHERE email = ANY(${emails}::text[])
+      SELECT role, is_deleted, is_suspended FROM users
+      WHERE ${testAccountSql(sql`is_test`, sql`email`)}
     `);
-    const rows = (r as any).rows;
-    const found = rows.map((r: any) => r.email);
-    const missing = emails.filter(e => !found.includes(e));
-    const deleted = rows.filter((r: any) => r.is_deleted).map((r: any) => r.email);
-    const pass = missing.length === 0 && deleted.length === 0;
-    results.T1 = {
-      pass,
-      detail: pass
-        ? `All 5 accounts present and active`
-        : [missing.length && `Missing: ${missing.join(", ")}`, deleted.length && `Deleted: ${deleted.join(", ")}`].filter(Boolean).join("; "),
-    };
-  } catch (e: any) { results.T1 = { pass: false, detail: e.message }; }
-
-  // ── T2: Expert test form status ─────────────────────────────────────────
-  try {
-    const r = await db.execute(sql`
-      SELECT lef.status, lef.stripe_connect_status, lef.identity_verification_status
-      FROM local_expert_forms lef
-      JOIN users u ON lef.user_id = u.id
-      WHERE u.email = 'expert@traveloure-test.com'
-      LIMIT 1
-    `);
-    const row = (r as any).rows[0];
-    if (!row) { results.T2 = { pass: false, detail: "No expert form found for expert@traveloure-test.com" }; }
-    else {
-      const pass = row.status === "approved" && row.stripe_connect_status === "complete" && row.identity_verification_status === "verified";
-      results.T2 = { pass, detail: `status=${row.status} stripe=${row.stripe_connect_status} identity=${row.identity_verification_status}` };
-    }
-  } catch (e: any) { results.T2 = { pass: false, detail: e.message }; }
-
-  // ── T3: Provider test form status ───────────────────────────────────────
-  try {
-    const r = await db.execute(sql`
-      SELECT spf.status, spf.business_verification_status
-      FROM service_provider_forms spf
-      JOIN users u ON spf.user_id = u.id
-      WHERE u.email = 'provider@traveloure-test.com'
-      LIMIT 1
-    `);
-    const row = (r as any).rows[0];
-    if (!row) { results.T3 = { pass: false, detail: "No provider form found for provider@traveloure-test.com" }; }
-    else {
-      const pass = row.status === "approved" && row.business_verification_status === "verified";
-      results.T3 = { pass, detail: `status=${row.status} business_verification=${row.business_verification_status}` };
-    }
-  } catch (e: any) { results.T3 = { pass: false, detail: e.message }; }
-
-  // ── T4: Test data seeded ─────────────────────────────────────────────────
-  try {
-    const expertServices = await db.execute(sql`
-      SELECT service_name FROM provider_services ps
-      JOIN users u ON ps.user_id = u.id
-      WHERE u.email = 'expert@traveloure-test.com' AND ps.status = 'active'
-    `);
-    const providerServices = await db.execute(sql`
-      SELECT service_name FROM provider_services ps
-      JOIN users u ON ps.user_id = u.id
-      WHERE u.email = 'provider@traveloure-test.com' AND ps.status = 'active'
-    `);
-    const travelerTrip = await db.execute(sql`
-      SELECT title FROM trips t
-      JOIN users u ON t.user_id = u.id
-      WHERE u.email = 'traveler@traveloure-test.com' AND t.title ILIKE '%tokyo%'
-      LIMIT 1
-    `);
-    const eNames = (expertServices as any).rows.map((r: any) => r.service_name);
-    const pNames = (providerServices as any).rows.map((r: any) => r.service_name);
-    const hasTokyoGuide = eNames.some((n: string) => n.toLowerCase().includes("tokyo"));
-    const hasParis     = eNames.some((n: string) => n.toLowerCase().includes("paris"));
-    const hasPhoto     = pNames.some((n: string) => n.toLowerCase().includes("photo"));
-    const hasTransfer  = pNames.some((n: string) => n.toLowerCase().includes("transfer") || n.toLowerCase().includes("airport"));
-    const hasTrip      = (travelerTrip as any).rows.length > 0;
-    const missing = [
-      !hasTokyoGuide && "Tokyo Guide",
-      !hasParis && "Paris Insider",
-      !hasPhoto && "Photography",
-      !hasTransfer && "Airport Transfer",
-      !hasTrip && "Tokyo Adventure trip",
-    ].filter(Boolean);
-    results.T4 = {
-      pass: missing.length === 0,
-      detail: missing.length === 0
-        ? `Expert: ${eNames.slice(0,2).join(", ")} | Provider: ${pNames.slice(0,2).join(", ")} | Trip: Tokyo Adventure`
-        : `Missing: ${missing.join(", ")}`,
-    };
-  } catch (e: any) { results.T4 = { pass: false, detail: e.message }; }
+    const report = qaTestAccountReport((r as any).rows ?? []);
+    results.T1 = report.T1;
+    results.T2 = report.T2;
+    results.T3 = report.T3;
+    results.T4 = report.T4;
+  } catch (e: any) {
+    for (const id of ["T1", "T2", "T3", "T4"]) results[id] = { pass: false, detail: e.message };
+  }
 
   // ── R2: Global error handler ─────────────────────────────────────────────
   try {
