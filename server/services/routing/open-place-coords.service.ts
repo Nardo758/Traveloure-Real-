@@ -19,6 +19,7 @@ import { db } from "../../db";
 import { adminPlaceCoords, itineraryItemOpenCoords, openPlaceCoords } from "@shared/schema";
 import { OSM_COORD_ATTRIBUTION, OSM_COORD_MATCHED_BY_NOMINATIM_BATCH } from "@shared/open-coords";
 import { mergeOpenCoords, validCoord, type OpenPlaceCoord } from "./open-routing-points";
+import { adminPointId, type AdmittedPoint } from "@shared/admin-osm-points";
 
 export type { OpenPlaceCoord };
 
@@ -56,13 +57,21 @@ export async function openCoordsForItemIds(itemIds: readonly string[]): Promise<
   if (ids.length === 0) return out;
   try {
     const rows = await db
-      .select({ itemId: itineraryItemOpenCoords.itemId, lat: openPlaceCoords.lat, lng: openPlaceCoords.lng, source: itineraryItemOpenCoords.source })
+      .select({
+        itemId: itineraryItemOpenCoords.itemId,
+        lat: openPlaceCoords.lat,
+        lng: openPlaceCoords.lng,
+        source: itineraryItemOpenCoords.source,
+        rowSource: openPlaceCoords.source,
+        pointBasis: openPlaceCoords.pointBasis,
+      })
       .from(itineraryItemOpenCoords)
       .innerJoin(openPlaceCoords, eq(openPlaceCoords.id, itineraryItemOpenCoords.openCoordId))
       .where(inArray(itineraryItemOpenCoords.itemId, ids));
     for (const r of rows) {
       const p = validCoord(r.lat, r.lng);
-      if (p) out.set(r.itemId, { ...p, origin: "osm", linkSource: r.source ?? null });
+      // LG-2 Ask 7: a hand-picked point a person entered routes as `admin`; its basis says whether it is a path's start.
+      if (p) out.set(r.itemId, { ...p, origin: r.rowSource === "admin" ? "admin" : "osm", linkSource: r.source ?? null, pointBasis: r.pointBasis ?? null });
     }
     return out;
   } catch (err: any) {
@@ -121,6 +130,41 @@ export async function recordOpenCoordForItem(input: OpenCoordForItemInput): Prom
     .onConflictDoNothing({ target: itineraryItemOpenCoords.itemId })
     .returning({ itemId: itineraryItemOpenCoords.itemId });
   return { written: inserted.length > 0 || linked.length > 0, rowInserted: inserted.length > 0, linked: linked.length > 0 };
+}
+
+/**
+ * LG-2 Ask 7 (Leon's rulings 3–5): enter a hand-picked OSM point a person checked — the ONE writer of an admin open
+ * place. Written under 'admin:<type>/<id>' (`adminPointId`), so the batch's own 'osm:…' row is never moved; insert-once
+ * (a point already entered is reported, never overwritten). A path row is entered at its START only (`point_basis`
+ * 'path_start') until paths ship (Ask 7b). Credited "© OpenStreetMap contributors".
+ */
+export async function enterAdminOsmPoint(p: AdmittedPoint, enteredBy: string, checkedAt: Date): Promise<{ entered: boolean; id: string }> {
+  const id = adminPointId(p);
+  const c = validCoord(p.lat, p.lng);
+  if (!c) throw new Error("invalid_coordinate");
+  const note = [p.note, `reviewed by ${p.reviewedBy}; approved ${p.approved}`].filter(Boolean).join(" — ");
+  const rows = await db
+    .insert(openPlaceCoords)
+    .values({
+      id,
+      source: "admin",
+      osmType: p.osmType,
+      osmId: p.osmId,
+      lat: c.lat.toFixed(7),
+      lng: c.lng.toFixed(7),
+      name: p.place,
+      googlePlaceId: null,
+      matchedBy: "admin",
+      attribution: OSM_COORD_ATTRIBUTION,
+      matchedAt: new Date(),
+      enteredBy,
+      checkedAt,
+      pointBasis: p.pointBasis,
+      note,
+    })
+    .onConflictDoNothing({ target: openPlaceCoords.id })
+    .returning({ id: openPlaceCoords.id });
+  return { entered: rows.length > 0, id };
 }
 
 /** LG-2 Ask 7: which of the given hand-picked point ids ('admin:<type>/<id>') are already entered. Read-only. */

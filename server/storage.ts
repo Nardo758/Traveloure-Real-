@@ -1,4 +1,5 @@
 import { toPublicListing } from "./utils/public-service-listing";
+import { hideBlockedListingImages } from "./services/place-photo-blocks.service";
 import { VIATOR_ITEM_CONTENT_TYPE } from "@shared/viator-item";
 import { db } from "./db";
 import { scrubStoredTransportOption } from "./services/transport-option-client";
@@ -24,6 +25,7 @@ import { PROCESSING_FEE_RATE, resolveCommissionRates, resolveServiceOwnerShareRa
 import { isPlatformConciergeUserId } from "./services/platform-concierge.service";
 import { isEditorialUserId } from "./services/editorial-account.service";
 import { notConciergePoolListingSql } from "./services/expert-routability";
+import { notTestOwnerListingSql } from "./services/test-account";
 import { notRideListingSql } from "./services/ride-listings";
 // D-32..D-35 (ledger `2026-09-16-d32-d35-bundle-components`): the child-row BIRTH inside the checkout
 // claim's transaction, the ROW READ inside the mint, and the ONE reduced-figures derivation.
@@ -2370,10 +2372,12 @@ export class DatabaseStorage implements IStorage {
   // than the raw opaque reference. Legacy external HTTP URLs pass through unchanged.
   // This is the single normalization point — never convert in individual routes.
   static normalizeServiceImage<T extends { id: string; serviceImage?: string | null }>(svc: T): T {
-    if (svc.serviceImage?.startsWith("covers:")) {
-      return { ...svc, serviceImage: `/api/services/${svc.id}/cover-image` };
+    // CS-1 item 1: a listing whose place is under a no_photos block shows no cover or gallery, on every read.
+    const visible = hideBlockedListingImages(svc as any) as T;
+    if (visible.serviceImage?.startsWith("covers:")) {
+      return { ...visible, serviceImage: `/api/services/${visible.id}/cover-image` };
     }
-    return svc;
+    return visible;
   }
 
   async getProviderServices(userId: string, filters?: { destination?: string; category?: string; activeOnly?: boolean }): Promise<ProviderService[]> {
@@ -3247,6 +3251,8 @@ export class DatabaseStorage implements IStorage {
       eq(providerServices.approvalStatus, "approved"),
       // The concierge pool account's listings are never public (ledger `2026-10-06-pool-listings-not-public`).
       await notConciergePoolListingSql(providerServices.userId),
+      // SH-1 item 12: a test account's listings are never public (server/services/test-account.ts).
+      notTestOwnerListingSql(providerServices.userId),
       // TC-3 catalog rides surface only as rides, never in browse (ledger `2026-10-11-tc3-ride-seed`).
       notRideListingSql(providerServices.id),
     ];
@@ -4118,7 +4124,8 @@ export class DatabaseStorage implements IStorage {
     // The concierge pool account's listings are never public (ledger `2026-10-06-pool-listings-not-public`).
     const notPool = await notConciergePoolListingSql(providerServices.userId);
     // TC-3 catalog rides surface only as rides, never in search (ledger `2026-10-11-tc3-ride-seed`).
-    const baseConditions = [eq(providerServices.status, "active"), eq(providerServices.approvalStatus, "approved"), notPool, notRideListingSql(providerServices.id)];
+    // SH-1 item 12: a test account's listings are never public.
+    const baseConditions = [eq(providerServices.status, "active"), eq(providerServices.approvalStatus, "approved"), notPool, notRideListingSql(providerServices.id), notTestOwnerListingSql(providerServices.userId)];
 
     if (filters.categoryId) {
       baseConditions.push(eq(providerServices.categoryId, filters.categoryId));
@@ -5566,8 +5573,9 @@ export class DatabaseStorage implements IStorage {
       deliverables: ps.deliverables as any,
       cancellationPolicy: ps.cancellationPolicy ?? null,
       leadTime: ps.leadTime ?? null,
-      imageUrl: ps.serviceImage ?? null,
-      galleryImages: ps.galleryImages as any,
+      // CS-1 item 1: a blocked place's cover and gallery are hidden on this read too.
+      imageUrl: hideBlockedListingImages(ps as any).serviceImage ?? null,
+      galleryImages: hideBlockedListingImages(ps as any).galleryImages as any,
       experienceTypes: ps.experienceTypes as any,
       status: (ps.approvalStatus ?? "draft") as any,
       submittedAt: ps.submittedAt ?? null,

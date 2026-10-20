@@ -46,9 +46,8 @@
     "verified": 6
   },
   "client/src/pages/admin/qa-checklist.tsx": {
-    "insider": 1,
     "secret": 4,
-    "verified": 6
+    "verified": 2
   },
   "client/src/pages/admin/system.tsx": {
     "coming soon": 1

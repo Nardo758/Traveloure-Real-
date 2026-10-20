@@ -90,6 +90,7 @@ import { isContentCartLine } from "@shared/cart-content-line";
 // line draws — units, seats, or none — is the SERVER'S OWN derivation, read here rather than
 // restated. A second copy of "does a stay have a quantity?" is the drift class §18 rule 1 names.
 import { archetypeAsks, cartCountLabel, cartLineUnitCount, cartUnitLabel } from "@shared/cart-quantity";
+import { useExpertAvailability } from "@/lib/expert-availability";
 import {
   REQUEST_ONLY_LINE_SENTENCE,
   isRequestOnlyReason,
@@ -692,6 +693,10 @@ export default function CartPage() {
   const [resolvedTrip, setResolvedTrip] = useState<{ id: string; title: string; destination: string; startDate: string; endDate: string; numberOfTravelers: number } | null>(null);
   const [tripTitle, setTripTitle] = useState("");
   const [tripDestination, setTripDestination] = useState("");
+  // SH-1 item 11: the "Work with a Trip Planner" card draws only when the server says there is an
+  // expert to ask — for the plan's destination when it has one, else for any live market (the link
+  // then names no city).
+  const tripPlannerAvailable = useExpertAvailability(tripDestination ? { city: tripDestination } : "any");
   // Trip-date range — edited in the always-visible header at the top of the cart (not a step/modal).
   // Seeded from the experience context so an experience-template flow's up-front dates carry over.
   // Live trip context (P2): dates derive from the shared TripContext hook so an
@@ -2777,29 +2782,31 @@ export default function CartPage() {
                     </CardContent>
                   </Card>
 
-                  <Card className="border border-border">
-                    <CardContent className="p-4 space-y-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shrink-0">
-                          <Zap className="w-4 h-4 text-white" />
+                  {tripPlannerAvailable && (
+                    <Card className="border border-border">
+                      <CardContent className="p-4 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shrink-0">
+                            <Zap className="w-4 h-4 text-white" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-foreground">Work with a Trip Planner</p>
+                            <p className="text-xs text-muted-foreground">Let an expert handle every detail</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-sm font-semibold text-foreground">Work with a Trip Planner</p>
-                          <p className="text-xs text-muted-foreground">Let an expert handle every detail</p>
-                        </div>
-                      </div>
-                      {/* Funnel PR2: carry the plan's context to the expert page — the
-                          old bare link dropped the cart entirely (funnel audit). The
-                          experts page consumes ?destination= (filters + search);
-                          tripId rides along for the future full plan-handoff rail
-                          (filed follow-up: expert sees the cart snapshot). */}
-                      <Link href={`/experts?role=travel_expert${tripDestination ? '&destination=' + encodeURIComponent(tripDestination) : ''}${resolvedTrip?.id ? '&tripId=' + resolvedTrip.id : ''}`}>
-                        <Button variant="outline" size="sm" className="w-full border-emerald-500 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30" data-testid="button-find-trip-planner">
-                          Find a Trip Planner <ArrowLeft className="w-3.5 h-3.5 ml-1.5 rotate-180" />
-                        </Button>
-                      </Link>
-                    </CardContent>
-                  </Card>
+                        {/* Funnel PR2: carry the plan's context to the expert page — the
+                            old bare link dropped the cart entirely (funnel audit). The
+                            experts page consumes ?destination= (filters + search);
+                            tripId rides along for the future full plan-handoff rail
+                            (filed follow-up: expert sees the cart snapshot). */}
+                        <Link href={`/experts?role=travel_expert${tripDestination ? '&destination=' + encodeURIComponent(tripDestination) : ''}${resolvedTrip?.id ? '&tripId=' + resolvedTrip.id : ''}`}>
+                          <Button variant="outline" size="sm" className="w-full border-emerald-500 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30" data-testid="button-find-trip-planner">
+                            Find a Trip Planner <ArrowLeft className="w-3.5 h-3.5 ml-1.5 rotate-180" />
+                          </Button>
+                        </Link>
+                      </CardContent>
+                    </Card>
+                  )}
                 </div>
               </div>
             )}

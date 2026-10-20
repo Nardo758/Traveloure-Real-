@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { hideBlockedGemImage, photoBlocks } from "./place-photo-blocks.service";
 import { 
   aiDiscoveredGems, 
   discoveryJobs, 
@@ -347,7 +348,9 @@ Focus on authenticity and specificity. Avoid generic tourist attractions.`;
       .from(aiDiscoveredGems)
       .where(eq(aiDiscoveredGems.destination, destination));
 
-    return { gems, total: Number(count) };
+    // CS-1 item 1: a gem of a place under a no_photos block shows no image (hidden, never deleted).
+    const blocks = await photoBlocks();
+    return { gems: gems.map((g) => hideBlockedGemImage(g, blocks)), total: Number(count) };
   }
 
   async getAllGems(options?: {
@@ -376,7 +379,9 @@ Focus on authenticity and specificity. Avoid generic tourist attractions.`;
 
     const [{ count }] = await countQuery;
 
-    return { gems, total: Number(count) };
+    // CS-1 item 1: a gem of a place under a no_photos block shows no image (hidden, never deleted).
+    const blocks = await photoBlocks();
+    return { gems: gems.map((g) => hideBlockedGemImage(g, blocks)), total: Number(count) };
   }
 
   async incrementViewCount(gemId: string): Promise<void> {

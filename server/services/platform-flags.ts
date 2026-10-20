@@ -17,6 +17,7 @@
 // PATCH endpoint calls invalidatePlatformFlagCache() so toggles apply
 // immediately in-process.
 
+import { seasonWindows, seasonWindowsSettingKey, type SeasonWindow } from "@shared/busy-bus";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import {
@@ -152,6 +153,16 @@ export async function getBlogFooterMinPublished(): Promise<number> {
  * FB-1 expert hook (ledger `2026-10-18-fb1-expert-hook`): the cities whose hook names a local and may offer the chooser.
  * A missing row, a read error or an invalid value ⇒ none (the switch defaults off). Cached like the flags.
  */
+/** FB-1 step 5d: a market's peak windows (`season_windows_<market>`). No row, unreadable or invalid ⇒ none — no code default. */
+export async function getSeasonWindows(market: string): Promise<SeasonWindow[]> {
+  try {
+    return seasonWindows(await getSettingValue(seasonWindowsSettingKey(market)));
+  } catch (err) {
+    console.error(`[platform-flags] read failed for ${seasonWindowsSettingKey(market)}, treating as none:`, err);
+    return [];
+  }
+}
+
 export async function getExpertHookCities(): Promise<string[]> {
   try {
     return expertHookCities(await getSettingValue(EXPERT_HOOK_CITIES_SETTING));

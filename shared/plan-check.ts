@@ -38,7 +38,7 @@ import {
   type RideCheck,
 } from "./optimizer-lead";
 import { legUnreachableFinding, unreachableStops, wallClockMinutes } from "./leg-reachability";
-import { closedOnDate, hoursFactForDate, lastAdmissionMinutes, lastServiceMinutes, parseClosedDates, parseLastAdmission, parseLastService, SERVICE_DAY_START_MIN } from "./feasibility-facts";
+import { closedOnDate, hoursFactForDate, parseTimedEntryRequired, lastAdmissionMinutes, lastServiceMinutes, parseClosedDates, parseLastAdmission, parseLastService, SERVICE_DAY_START_MIN } from "./feasibility-facts";
 import { isRideMode } from "./plan-feasibility";
 import { haversineMeters } from "./geo";
 import { ROUTED_WALK_MAX_METERS, defaultRoutedMode } from "./routing-engine";
@@ -107,6 +107,8 @@ export interface PlanCheckInput {
   lastAdmission: ReadonlyMap<string, readonly PlanCheckLastAdmission[]>;
   /** FB-1 step 5b: every admitted `closed_dates` fact per stop, in precedence order; absent ⇒ none stored. */
   closedDates?: ReadonlyMap<string, readonly PlanCheckLastAdmission[]>;
+  /** FB-1 step 5c: every admitted `timed_entry_required` fact per stop, in precedence order; absent ⇒ none stored. */
+  timedEntry?: ReadonlyMap<string, readonly PlanCheckLastAdmission[]>;
   /** The market's official last departures, each at its station's point. */
   lastServices: readonly PlanCheckLastService[];
   anchors: readonly AnchorWindow[];
@@ -259,7 +261,8 @@ export type PlanIssueWhy =
   | "overlaps_anchor"
   | "crosses_city"
   | "walking_saved"
-  | "recovery_needed";
+  | "recovery_needed"
+  | "timed_entry_required";
 
 export type PlanIssueSourceKind = "official_fact" | "person_checked_fact" | "fact" | "plan_leg" | "anchor" | "energy" | "open_coordinates";
 
@@ -277,13 +280,15 @@ export interface PlanIssueSource {
  *   move_clear_of_anchor keep the stop clear of the anchor's window
  *   reorder_day          re-sequence the day's stops (a path finding — no stop named)
  *   lighten_day          move a stop off the day (pace)
+ *   book_ahead           reserve a timed slot on the official site — FLAG-ONLY (`isFlagOnlyIssue`): no version can do it
  */
 export type PlanFix =
   | { action: "retime"; itemId: string; day: number; notBeforeMin?: number; notAfterMin?: number }
   | { action: "move_day"; itemId: string; day: number }
   | { action: "move_clear_of_anchor"; itemId: string; day: number; anchorId: string }
   | { action: "reorder_day"; day: number }
-  | { action: "lighten_day"; day: number };
+  | { action: "lighten_day"; day: number }
+  | { action: "book_ahead"; itemId: string; day: number };
 
 export interface PlanIssue {
   type: FindingKind;
@@ -315,6 +320,38 @@ function visitLength(t: TimedStop | undefined): number | null {
   const s = wallClockMinutes(t.startTime);
   const e = visitEndMinutes(t);
   return s !== null && e !== null ? e - s : null;
+}
+
+/**
+ * FB-1 step 5c (ledger `2026-10-19-fb1-timed-entry`; decision-maker, Oct 19, 2026): THE ONE PREDICATE for a flag-only
+ * issue — a fix no version, retime or model change can carry out (reserving a slot). It is shown, and it counts in none
+ * of: the step 3 gate's unresolved/added/coverage, "Your plan, fixed"'s flagged days, the paid run's change list, or free
+ * retime's no-new-problem test.
+ */
+export function isFlagOnlyIssue(issue: Pick<PlanIssue, "fix">): boolean {
+  return issue.fix.action === "book_ahead";
+}
+
+/**
+ * FB-1 step 5c: one `timed_entry_required` issue per stop carrying an admitted fact — fix `book_ahead`, the fact's
+ * official link as its source. Not a card finding (ruling 3: the slip's per-stop warning only). Pure.
+ */
+function timedEntryIssues(input: PlanCheckInput): PlanIssue[] {
+  const out: PlanIssue[] = [];
+  for (const s of input.stops) {
+    const fact = (input.timedEntry?.get(s.id) ?? []).find((c) => parseTimedEntryRequired(c.value) !== null);
+    if (!fact) continue;
+    out.push({
+      type: "timed_entry_required",
+      day: s.dayNumber,
+      stop: { itemId: s.id, title: s.title },
+      why: "timed_entry_required",
+      source: { kind: "official_fact", url: fact.sourceUrl ?? null, provenance: fact.provenance ?? null },
+      checkedAt: fact.checkedAt ?? null,
+      fix: { action: "book_ahead", itemId: s.id, day: s.dayNumber },
+    });
+  }
+  return out;
 }
 
 /**
@@ -482,6 +519,7 @@ export function checkPlan(input: PlanCheckInput): PlanCheckResult {
     }
   }
 
+  issues.push(...timedEntryIssues(input));
   // LG-2 Ask 6: a day with a leg that has no travel time (an adjacent stop with no open point) is not checked for
   // reachability — it never reads as a pass.
   const legDays = legNotCheckedDays(input.stops.map((r) => ({ dayNumber: r.dayNumber, open: r.point })));

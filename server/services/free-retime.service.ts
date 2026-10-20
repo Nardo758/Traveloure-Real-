@@ -12,7 +12,7 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { itineraryItems } from "@shared/schema";
-import { checkPlan, type PlanCheckInput } from "@shared/plan-check";
+import { checkPlan, isFlagOnlyIssue, type PlanCheckInput } from "@shared/plan-check";
 import { retimeWindowsByItem } from "@shared/version-check";
 import { wallClockMinutes } from "@shared/leg-reachability";
 import { visitEndMinutes } from "@shared/optimizer-lead";
@@ -69,7 +69,8 @@ export function withMoves(input: PlanCheckInput, moves: readonly RetimeMove[]): 
  * stop's issue and carries nothing the day did not already have.
  */
 export function freeRetimeFixes(input: PlanCheckInput, movable: (id: string) => boolean): FreeRetimeFix[] {
-  const before = checkPlan(input).issues;
+  // FB-1 step 5c: flag-only issues (a timed slot to reserve) never count in the no-new-problem test.
+  const before = checkPlan(input).issues.filter((i) => !isFlagOnlyIssue(i));
   const windows = retimeWindowsByItem(before);
   const out: FreeRetimeFix[] = [];
   for (const [itemId, window] of Array.from(windows.entries())) {
@@ -77,7 +78,7 @@ export function freeRetimeFixes(input: PlanCheckInput, movable: (id: string) => 
     if (!stop) continue;
     const moves = planRetimeFix(dayStopsOf(input, stop.dayNumber, movable), itemId, window);
     if (!moves) continue;
-    const after = checkPlan(withMoves(input, moves)).issues.filter((i) => i.day === stop.dayNumber);
+    const after = checkPlan(withMoves(input, moves)).issues.filter((i) => i.day === stop.dayNumber && !isFlagOnlyIssue(i));
     const beforeKeys = new Set(before.filter((i) => i.day === stop.dayNumber).map(issueKey));
     if (after.some((i) => i.stop?.itemId === itemId)) continue; // the fix did not clear it
     if (after.some((i) => !beforeKeys.has(issueKey(i)))) continue; // it would add a problem

@@ -54,6 +54,7 @@ import { earnerProfilePath } from "@/lib/earner-address";
 import { buildBillboardGemPlanningSource } from "@/lib/billboard-gem-planning";
 // The ONE credit record for the repo's landing photos — never retyped into the tiles.
 import LANDING_PHOTO_ATTRIBUTION from "../../../public/images/landing/ATTRIBUTION.json";
+import { useExpertAvailability } from "@/lib/expert-availability";
 
 const FRAUNCES = "'Fraunces', Georgia, serif";
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
@@ -551,6 +552,9 @@ export function LandingHeroContent({
   marketSelection?: BillboardMarketSelection;
 }) {
   const { t } = useTranslation("nav");
+  // SH-1 item 11 (Q11.3): "Browse local experts" names no city, so it draws only when any live
+  // market has an expert to ask.
+  const anyExpertAvailable = useExpertAvailability("any");
   const wantedSlots = hero?.wanted ?? [];
   const [wantedFocused, setWantedFocused] = useState(false);
   const [wantedHovered, setWantedHovered] = useState(false);
@@ -622,14 +626,16 @@ export function LandingHeroContent({
               <Sparkles className="h-4 w-4" />
               {t("hero.startAPlan", "Start a plan")}
             </button>
-            <Link
-              href="/experts"
-              className="inline-flex items-center rounded-[10px] border px-[18px] py-3 text-[14px] font-semibold"
-              style={{ borderColor: "var(--earn-border)", color: "var(--earn-ink)", background: "var(--earn-card)" }}
-              data-testid="button-browse-experts"
-            >
-              Browse local experts
-            </Link>
+            {anyExpertAvailable && (
+              <Link
+                href="/experts"
+                className="inline-flex items-center rounded-[10px] border px-[18px] py-3 text-[14px] font-semibold"
+                style={{ borderColor: "var(--earn-border)", color: "var(--earn-ink)", background: "var(--earn-card)" }}
+                data-testid="button-browse-experts"
+              >
+                Browse local experts
+              </Link>
+            )}
           </div>
 
           <HeroBeginPills />

@@ -49,6 +49,7 @@ export function versionCheckInput(
   const hours = new Map<string, NonNullable<ReturnType<PlanCheckInput["hours"]["get"]>>>();
   const lastAdmission = new Map<string, NonNullable<ReturnType<PlanCheckInput["lastAdmission"]["get"]>>>();
   const closedDates = new Map<string, readonly PlanCheckLastAdmission[]>();
+  const timedEntry = new Map<string, readonly PlanCheckLastAdmission[]>();
   const out: PlanCheckStop[] = [];
   for (const r of stops) {
     if (r.dayNumber == null) continue;
@@ -60,6 +61,9 @@ export function versionCheckInput(
     if (la) lastAdmission.set(r.id, la);
     const cd = source ? draft.closedDates?.get(source) : undefined;
     if (cd) closedDates.set(r.id, cd);
+    // FB-1 step 5c: a version keeping the place keeps its timed-entry flag (shown on every version, flag-only).
+    const te = source ? draft.timedEntry?.get(source) : undefined;
+    if (te) timedEntry.set(r.id, te);
     out.push({
       id: r.id,
       title: r.name,
@@ -78,6 +82,7 @@ export function versionCheckInput(
       hours,
       lastAdmission,
       closedDates,
+      timedEntry,
       lastServices: draft.lastServices,
       anchors: draft.anchors,
       legs,

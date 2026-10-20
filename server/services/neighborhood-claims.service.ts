@@ -65,6 +65,7 @@ import {
 import { logClaimTransition } from "./neighborhood-claim-transitions.service";
 import { EvidenceThresholdsMissingError, loadEvidenceThresholds } from "./evidence-thresholds.service";
 import { dispatchModerationEvent } from "../automations/moderation/runtime";
+import { blockFor, photoBlocks } from "./place-photo-blocks.service";
 
 /** The transaction-local GUC the migration-272 trigger requires on expert_neighborhoods INSERTs. */
 export const EXPERT_NEIGHBORHOODS_WRITER_SETTING = "traveloure.expert_neighborhoods_writer";
@@ -782,19 +783,28 @@ export async function searchExpertsForManualEntry(q: string): Promise<Array<{ id
  */
 export async function listConsentedNuggetPhotos(nuggetIds: string[]): Promise<NuggetPhoto[]> {
   if (nuggetIds.length === 0) return [];
-  return db
+  const rows = await db
     .select({
       id: nuggetPhotos.id,
       nuggetId: nuggetPhotos.nuggetId,
       position: nuggetPhotos.position,
       photoUrl: nuggetPhotos.photoUrl,
       createdAt: nuggetPhotos.createdAt,
+      // CS-1 item 1: what the nugget names, matched against the per-place no_photos list.
+      city: localKnowledgeNuggets.city,
+      linkedPoi: localKnowledgeNuggets.linkedPoi,
+      normalizedName: localKnowledgeNuggets.normalizedName,
     })
     .from(nuggetPhotos)
     .innerJoin(localKnowledgeNuggets, eq(localKnowledgeNuggets.id, nuggetPhotos.nuggetId))
     .innerJoin(expertNeighborhoodClaims, eq(expertNeighborhoodClaims.id, localKnowledgeNuggets.claimId))
     .where(and(inArray(nuggetPhotos.nuggetId, nuggetIds), sql`${expertNeighborhoodClaims.consentAt} IS NOT NULL`))
     .orderBy(asc(nuggetPhotos.nuggetId), asc(nuggetPhotos.position));
+  // A photo of a blocked place is hidden on this read — never deleted.
+  const blocks = await photoBlocks();
+  return rows
+    .filter((r) => !blockFor(blocks, { names: [r.linkedPoi, r.normalizedName], city: r.city }))
+    .map(({ city: _c, linkedPoi: _p, normalizedName: _n, ...photo }) => photo);
 }
 
 /** Boot check: the one-writer trigger must exist (drizzle push never manages it; log loudly if gone). */

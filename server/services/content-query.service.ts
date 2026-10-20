@@ -4,6 +4,7 @@
  * Routes → this service (or storage) → db. No raw db calls in route handlers.
  */
 
+import { hideBlockedGemImage, photoBlocks } from "./place-photo-blocks.service";
 import { affiliateProductNotPausedWhere, contentRegistryNotPausedWhere } from "./partner-pause.service";
 import { stampItemSourceClass } from "@shared/content-tiers";
 import { canonicalWithinFlightWindows, daysWithinFlightWindows } from "../utils/draft-flight-windows";
@@ -672,7 +673,9 @@ export async function getAiDiscoveredGemById(id: string): Promise<any | null> {
     .from(aiDiscoveredGems)
     .where(eq(aiDiscoveredGems.id, id))
     .limit(1);
-  return gem ?? null;
+  if (!gem) return null;
+  // CS-1 item 1: no image of a place under a no_photos block.
+  return hideBlockedGemImage(gem, await photoBlocks());
 }
 
 // ─── Content Discovery ────────────────────────────────────────────────────────

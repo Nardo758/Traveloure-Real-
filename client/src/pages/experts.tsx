@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
+import { clearedExpertsFilters, expertsFiltersSet, expertsResultState } from "@/lib/experts-filters";
 import { ExpertCard } from "@/components/expert-card";
 import { SEOHead } from "@/components/seo-head";
 import { OPERATING_MARKET_DESTINATIONS } from "@shared/operating-markets";
@@ -351,6 +352,12 @@ export default function ExpertsPage() {
       });
     });
 
+  // SH-1 Q11.4: the page's own default role — a role-specific route's role, else Local Experts.
+  const defaultRole = routeRole ?? "local_expert";
+  const filtersSet = expertsFiltersSet(
+    { searchQuery, selectedDestination, selectedLanguage, selectedSpecialty, selectedExperienceType, neighbourhoodQuery, selectedRole, availableNowOnly },
+    defaultRole,
+  );
   const sortedExperts = [...filteredExperts].sort((a: any, b: any) => {
     switch (sortBy) {
       case "price-low":
@@ -794,8 +801,8 @@ export default function ExpertsPage() {
             </div>
           )}
 
-          {/* Empty State */}
-          {sortedExperts.length === 0 && (
+          {/* Empty State — only once the list has loaded with nobody in it (SH-1 Q11.4) */}
+          {expertsResultState(isLoadingExperts, sortedExperts.length) === "empty" && (
             <div
               className="flex flex-col items-center justify-center gap-3 rounded-[14px] border border-dashed border-[color:var(--earn-border-dash)] py-16 text-center"
             >
@@ -831,26 +838,32 @@ export default function ExpertsPage() {
                   Browse trip planners
                 </Link>
               )}
-              <button
-                className={`mt-1 px-4 py-2 text-sm ${PAGE_LINK}`}
-                onClick={() => {
-                  setSearchQuery("");
-                  setSelectedDestination("All Destinations");
-                  setSelectedLanguage("All Languages");
-                  setSelectedExperienceType("");
-                  setNeighbourhoodQuery("");
-                }}
-                data-testid="button-clear-filters"
-              >
-                Clear all filters
-              </button>
+              {filtersSet && (
+                <button
+                  className={`mt-1 px-4 py-2 text-sm ${PAGE_LINK}`}
+                  onClick={() => {
+                    const c = clearedExpertsFilters(defaultRole);
+                    setSearchQuery(c.searchQuery);
+                    setSelectedDestination(c.selectedDestination);
+                    setSelectedLanguage(c.selectedLanguage);
+                    setSelectedSpecialty(c.selectedSpecialty);
+                    setSelectedExperienceType(c.selectedExperienceType);
+                    setNeighbourhoodQuery(c.neighbourhoodQuery);
+                    setSelectedRole(c.selectedRole);
+                    setAvailableNowOnly(c.availableNowOnly);
+                  }}
+                  data-testid="button-clear-filters"
+                >
+                  Clear all filters
+                </button>
+              )}
             </div>
           )}
 
           {/* F-E1 fallback (ruling 2026-08-30): the requested role has no supply, so the
               roles that DO render here, labeled as what they are — the page keeps its own
               heading, the visitor is never stranded, and nothing is silently relabeled. */}
-          {sortedExperts.length === 0 && fallbackRole && fallbackExperts.length > 0 && (
+          {expertsResultState(isLoadingExperts, sortedExperts.length) === "empty" && fallbackRole && fallbackExperts.length > 0 && (
             <div className="mt-8" data-testid="section-role-fallback">
               <div className="mb-4">
                 <p

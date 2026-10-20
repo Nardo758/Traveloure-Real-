@@ -21,6 +21,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { useExpertAvailability } from "@/lib/expert-availability";
 
 function formatStat(n: number): string {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M+`;
@@ -97,6 +98,9 @@ const additionalFeatures = [
 
 export default function FeaturesPage() {
   const { open: openPlanning } = usePlanning();
+  // SH-1 item 11 (Q11.3): this page's expert CTA names no city, so it draws only when any live
+  // market has an expert to ask.
+  const anyExpertAvailable = useExpertAvailability("any");
   const { data: platformStats } = useQuery<{
     totalTrips: number; totalUsers: number; totalExperts: number; totalReviews: number; totalCountries: number; avgRating: string;
   }>({ queryKey: ["/api/platform/stats"] });
@@ -140,16 +144,18 @@ export default function FeaturesPage() {
               >
                 Start Planning <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
-              <Link href="/experts">
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="border-white/30 text-white hover:bg-white/10 px-8"
-                  data-testid="button-find-expert"
-                >
-                  Find an Expert
-                </Button>
-              </Link>
+              {anyExpertAvailable && (
+                <Link href="/experts">
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="border-white/30 text-white hover:bg-white/10 px-8"
+                    data-testid="button-find-expert"
+                  >
+                    Find an Expert
+                  </Button>
+                </Link>
+              )}
             </div>
           </motion.div>
 

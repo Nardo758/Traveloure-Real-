@@ -22,6 +22,8 @@ import path from "node:path";
 import React from "react";
 import { renderToString } from "react-dom/server";
 import { Router } from "wouter";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { expertAvailabilityUrl } from "@/lib/expert-availability";
 import { LandingHeroContent, billboardOverridePlanSource, billboardPlanSource, heroBeginRows, resolveBillboardTiles } from "../landing/landing-hero";
 import type { BillboardMarketSelection, BillboardOverride } from "@shared/landing-billboard-override";
 import { BILLBOARD_TILES, type PhotoAttribution } from "@shared/landing-billboard";
@@ -52,10 +54,16 @@ function render(
   overrides: BillboardOverride[] = [],
   marketSelection?: BillboardMarketSelection,
 ): string {
+  // SH-1 item 11: the hero's "Browse local experts" reads the any-market availability answer, so the
+  // render needs a query client; the answer is seeded yes, as the hero rendered before.
+  const queryClient = new QueryClient();
+  queryClient.setQueryData([expertAvailabilityUrl("any")], { available: true });
   return renderToString(
-    <Router ssrPath="/">
-      <LandingHeroContent hero={payload} onPlanTrip={() => {}} overrides={overrides} marketSelection={marketSelection} />
-    </Router>,
+    <QueryClientProvider client={queryClient}>
+      <Router ssrPath="/">
+        <LandingHeroContent hero={payload} onPlanTrip={() => {}} overrides={overrides} marketSelection={marketSelection} />
+      </Router>
+    </QueryClientProvider>,
   ).replace(/<!--.*?-->/g, "");
 }
 

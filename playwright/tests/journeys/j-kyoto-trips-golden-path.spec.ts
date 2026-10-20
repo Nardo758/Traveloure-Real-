@@ -1359,7 +1359,14 @@ test.describe("6 · paid run", () => {
     // ── Re-time: one free re-time by drag, two more by the rail, then the fourth is gated ────────
     await expect(testid(page, "versions-retime-line-1")).toContainText("free · 3 left", { timeout: 15_000 });
     const planStops = page.locator('[data-testid^="versions-desk-plan-stop-"]');
-    await expect(planStops).toHaveCount(3);
+    // The board refetches after the apply. Until it lands it still draws the draft day (also three
+    // stops, also "free · 3 left"), and a drag started on those rows is lost when they are replaced
+    // by the adopted ones — no drop, no re-time. Wait for the adopted day itself before dragging.
+    await expect(planStops).toHaveText([/Gion stroll/, /Fushimi Inari/, /Arashiyama \(area\)/], { timeout: 15_000 });
+    // The apply also refetches the plan card, which redraws the map beside the board. dragTo measures
+    // the drop point before it moves, so a layout shift mid-drag drops the stop back on itself (a
+    // no-op, correctly sends nothing). Let the refetches settle first.
+    await page.waitForLoadState("networkidle");
     const retimed = page.waitForResponse((r) => /\/days\/1\/retime$/.test(new URL(r.url()).pathname) && r.request().method() === "POST");
     await planStops.nth(2).dragTo(planStops.nth(0));
     expect((await retimed).status()).toBe(200);
