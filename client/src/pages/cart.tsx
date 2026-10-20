@@ -1,6 +1,7 @@
 import { helpArticlePath } from "@shared/help-article-slugs";
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import { OPTIMIZE_RERUN_RULE } from "@/lib/optimization-preview";
+import { OPTIMIZE_UNAVAILABLE, optimizeUnavailable } from "@/lib/optimize-pay-copy";
 import { canRemoveBeforePayment, readCartIntentParam, resolveCartIntent } from "@/lib/cart-intent";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -251,6 +252,8 @@ interface OptimizationPreview {
   feeCents: number;
   currency: string;
   freeRerun: boolean;
+  /** Set when the fee row is `is_disabled`. `feeCents` is then 0 — that is not a free run. */
+  aiDisabled?: boolean;
   metrics: {
     balanceScore: number;
     wellnessScore: number;
@@ -1618,7 +1621,7 @@ export default function CartPage() {
       openSignInModal();
       return;
     }
-    if (!optimizationPreview) return;
+    if (!optimizationPreview || optimizeUnavailable(optimizationPreview)) return;
     setPaymentLoading(true);
     try {
       // Send DB identifiers so the server derives the tier server-side
@@ -1631,6 +1634,10 @@ export default function CartPage() {
         userExperienceId,
         destination: experienceTitle,
       });
+      if (outcome.kind === "unavailable") {
+        toast({ title: OPTIMIZE_UNAVAILABLE });
+        return;
+      }
       if (outcome.kind === "refused") {
         handleOptimizationPaymentRefusal(outcome.status, outcome.body);
         return;
@@ -1661,7 +1668,7 @@ export default function CartPage() {
       openSignInModal();
       return;
     }
-    if (!optimizationPreview) return;
+    if (!optimizationPreview || optimizeUnavailable(optimizationPreview)) return;
     setOneClickLoading(true);
     try {
       const ctxAtPayment = getTripContext();
@@ -1674,6 +1681,10 @@ export default function CartPage() {
         destination: experienceTitle,
         useSavedCard: true,
       });
+      if (outcome.kind === "unavailable") {
+        toast({ title: OPTIMIZE_UNAVAILABLE });
+        return;
+      }
       if (outcome.kind === "refused") {
         handleOptimizationPaymentRefusal(outcome.status, outcome.body);
         return;
@@ -2032,9 +2043,9 @@ export default function CartPage() {
                 <div className="lg:col-span-2 space-y-4">
                   {/* Funnel PR2: optimization nudge — REAL preview metrics only (§13);
                       hidden when the preview finds no room to improve, or when the
-                      optimizer is disabled (feeCents 0 without a free re-run). Fee is
-                      the config-resolved amount the preview returned. */}
+                      fee row is disabled (`aiDisabled` — feeCents 0 is not a free run). */}
                   {cartIntent === "plan" && cartNudge && !optimizationResult &&
+                    !optimizeUnavailable(cartNudge) &&
                     (cartNudge.estimatedSavingsPct > 0 || cartNudge.estimatedScheduleTighteningPct > 0) &&
                     (cartNudge.feeCents > 0 || cartNudge.freeRerun) && (
                     <button
@@ -2709,7 +2720,11 @@ export default function CartPage() {
 
                       <Separator />
 
-                      {optimizationPreview.freeRerun ? (
+                      {optimizeUnavailable(optimizationPreview) ? (
+                        <p className="text-sm text-foreground" data-testid="optimize-unavailable">
+                          {OPTIMIZE_UNAVAILABLE}
+                        </p>
+                      ) : optimizationPreview.freeRerun ? (
                         <div className="rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 p-3">
                           <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
                             <RefreshCw className="w-4 h-4" />
@@ -2730,7 +2745,7 @@ export default function CartPage() {
 
                       {/* FP-2: one-click when a default saved card exists and this isn't the
                           free re-run (nothing to charge there). */}
-                      {!optimizationPayment && !optimizationPreview.freeRerun && savedPayment.hasDefault ? (
+                      {optimizeUnavailable(optimizationPreview) ? null : !optimizationPayment && !optimizationPreview.freeRerun && savedPayment.hasDefault ? (
                         <div className="space-y-2">
                           <Button
                             className="w-full bg-primary hover:bg-primary/90"

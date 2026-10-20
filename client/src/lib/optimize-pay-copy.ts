@@ -11,18 +11,31 @@ import { formatMoneyCents, type OptimizationFeeQuote } from "./optimization-prev
 export const OPTIMIZE_PAY_LINE = "You'll pay on the next screen; nothing runs until you do.";
 export const OPTIMIZE_COVERED_LINE = "Included in your Trip Pass — nothing is charged.";
 
+/**
+ * A disabled Optimize fee (`optimization_fees.is_disabled`). The preview answers `feeCents: 0`
+ * and `aiDisabled: true`; the payment endpoint refuses `ai_concierge_disabled`. Zero here is
+ * "not offered", never a free run.
+ */
+export const OPTIMIZE_UNAVAILABLE = "Optimize is unavailable right now.";
+
+export function optimizeUnavailable(fee: { aiDisabled?: boolean } | null | undefined): boolean {
+  return fee?.aiDisabled === true;
+}
+
 /** Is there a real price to pay for this run? */
 export function optimizeRunPriced(fee: OptimizationFeeQuote | null | undefined): boolean {
-  return !!fee && !fee.aiDisabled && !fee.coveredByTripPass && Number.isFinite(fee.feeCents) && fee.feeCents > 0;
+  return !!fee && !optimizeUnavailable(fee) && !fee.coveredByTripPass && Number.isFinite(fee.feeCents) && fee.feeCents > 0;
 }
 
 /** The dialog's line above the buttons. */
 export function optimizePayLine(fee: OptimizationFeeQuote | null | undefined): string {
+  if (optimizeUnavailable(fee)) return OPTIMIZE_UNAVAILABLE;
   return fee?.coveredByTripPass ? OPTIMIZE_COVERED_LINE : OPTIMIZE_PAY_LINE;
 }
 
 /** The confirm button: "Continue to pay <the band price>" when priced; "Generate 3 versions" when covered; else "Continue". */
 export function optimizeContinueLabel(fee: OptimizationFeeQuote | null | undefined): string {
+  if (optimizeUnavailable(fee)) return OPTIMIZE_UNAVAILABLE;
   if (fee && optimizeRunPriced(fee)) return `Continue to pay ${formatMoneyCents(fee.feeCents, fee.currency)}`;
   if (fee?.coveredByTripPass) return "Generate 3 versions";
   return "Continue";

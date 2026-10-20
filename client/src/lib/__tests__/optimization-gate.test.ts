@@ -82,6 +82,15 @@ describe("requestOptimizationGate — sheet path (no saved card)", () => {
     }
   });
 
+  it("a disabled Optimize fee is unavailable — not a free run and not a payment error", async () => {
+    const { fetchImpl } = mockFetch(400, {
+      error: "ai_concierge_disabled",
+      message: "Platform Concierge is currently disabled for this experience type.",
+    });
+    const outcome = await requestOptimizationGate({ tripId: "t", fetchImpl });
+    assert.deepStrictEqual(outcome, { kind: "unavailable" });
+  });
+
   it("throws the server's message on any other error response", async () => {
     const { fetchImpl } = mockFetch(500, { message: "Stripe unavailable" });
     await assert.rejects(

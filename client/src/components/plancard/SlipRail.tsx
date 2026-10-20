@@ -461,13 +461,18 @@ function BuildCard({
   }
 
   async function startOptimization(pinnedAnchor?: ComparisonPinnedAnchor) {
-    if (optimizing || creatingComparison || optimizeDisabledReason) return;
+    if (optimizing || creatingComparison || optimizeDisabledReason || leadData.fee?.aiDisabled) return;
     setOptimizing(true);
     try {
       const outcome = await requestOptimizationGate({
         tripId: trip.id,
         destination: trip.destination || undefined,
       });
+      if (outcome.kind === "unavailable") {
+        confirmedPinnedAnchor.current = undefined;
+        toast({ title: "Optimize is unavailable right now." });
+        return;
+      }
       if (outcome.kind === "refused") {
         confirmedPinnedAnchor.current = undefined;
         toast({

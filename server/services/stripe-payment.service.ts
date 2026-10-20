@@ -36,6 +36,7 @@ import { travelerChargeForRow } from './traveler-charge';
 import { computeRefundBreakdown, travelerFeeChargedOf } from './refund-breakdown';
 import { APP_REFUND_REFUSED_FROM_STATUSES, LEGACY_PREPAYMENT_STATUSES } from '../utils/booking-from-states';
 import { REFUND_ATTEMPT_KEY, REFUND_RECORD_KEY } from '../../shared/booking-refund-record';
+import { OPTIMIZER_RUN_REFUND_REASON, OPTIMIZER_RUN_REFUND_SOURCE } from '../../shared/optimizer-run-refund';
 import { getStripeSecretKey } from '../utils/stripe-key';
 import { upsertStripeMembership } from "./plan-membership-writer.service";
 import { isCanonicalBookingEmailPersistenceError } from "./canonical-booking-email.service";
@@ -185,6 +186,9 @@ const INTERNAL_REFUND_REASON_MAP: Readonly<Record<string, StripeRefundReason>> =
   // platform could not deliver as read — money returned for an undelivered product, which is the
   // customer-facing class, never `duplicate` or `fraudulent`.
   ai_task_proposal_refused: 'requested_by_customer',
+  // A paid Optimize run produced no optimized version. The traveler paid for a run the
+  // platform did not deliver — customer-facing, never `duplicate` or `fraudulent`.
+  optimizer_run_failed: 'requested_by_customer',
   // R162: a payment that succeeded AFTER its booking was marked `failed` (failed is final). The
   // traveler is owed money for a booking the platform does not hold — customer-facing, never
   // `duplicate` (it is not a second charge for one booking) and never `fraudulent`.
@@ -1974,6 +1978,35 @@ class StripePaymentService {
       onceByStripeRefundId: true,
     });
     return { id: refund.id, status: refund.status ?? null };
+  }
+
+  /**
+   * A paid Optimize run that ended with no optimized version (ledger
+   * `2026-10-20-optimize-paid-failure-refund`). One more caller of the shared refund
+   * call site, never a second `stripe.refunds.create`. The claim is the pending
+   * `refunds` row `refundFailedPaidOptimizerRun` inserts BEFORE this call. The amount
+   * and the key arrive from that caller (Stripe's own remaining amount, one key per
+   * PaymentIntent). This method does not write the audit row: the caller promotes the
+   * pending row so a retry cannot insert a second one. Throws the raw Stripe error.
+   */
+  async refundFailedOptimizerRun(input: {
+    comparisonId: string;
+    paymentIntentId: string;
+    amountCents: number;
+    idempotencyKey: string;
+  }): Promise<{ id: string; status: string | null; chargeId: string | null; currency: string }> {
+    const refund = await this.createStripeRefundForBooking({
+      paymentIntentId: input.paymentIntentId,
+      amountCents: input.amountCents,
+      stripeReason: toStripeRefundReason(OPTIMIZER_RUN_REFUND_REASON),
+      idempotencyKey: input.idempotencyKey,
+      metadata: {
+        comparisonId: input.comparisonId,
+        source: OPTIMIZER_RUN_REFUND_SOURCE,
+      },
+    });
+    const chargeId = typeof refund.charge === 'string' ? refund.charge : (refund.charge as { id?: string } | null)?.id ?? null;
+    return { id: refund.id, status: refund.status ?? null, chargeId, currency: refund.currency || 'usd' };
   }
 
   /**
