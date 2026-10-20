@@ -69,14 +69,16 @@ export async function joinWaitlist(
   const contactName = traveler ? null : body.contactName?.trim() || null;
   const businessName = traveler ? null : body.businessName?.trim() || null;
   const serviceType = traveler ? null : body.serviceType ?? null;
+  // LC-1b: the optional "somewhere else" note. `area` is the existing varchar(120); NULL = not answered.
+  const area = body.otherCity?.trim() ? body.otherCity.trim() : null;
   await db.execute(sql`
     INSERT INTO launch_waitlist
       (id, email, market_slug, role, source, trip_type, rough_month, worry,
-       contact_name, business_name, service_type, referrer_user_id, short_link_code,
+       contact_name, business_name, service_type, area, referrer_user_id, short_link_code,
        consent_at, consent_text_version, created_at, updated_at)
     VALUES
       (gen_random_uuid(), ${email}, ${marketSlug}, ${role}, ${source}, ${tripType}, ${roughMonth}, ${worry},
-       ${contactName}, ${businessName}, ${serviceType}, ${referrerUserId}, ${shortLinkCode},
+       ${contactName}, ${businessName}, ${serviceType}, ${area}, ${referrerUserId}, ${shortLinkCode},
        CASE WHEN ${consent} THEN NOW() ELSE NULL END, ${consentVersion}, NOW(), NOW())
     ON CONFLICT (email, market_slug) DO UPDATE SET
       updated_at           = NOW(),
@@ -87,6 +89,7 @@ export async function joinWaitlist(
       contact_name         = EXCLUDED.contact_name,
       business_name        = EXCLUDED.business_name,
       service_type         = EXCLUDED.service_type,
+      area                 = EXCLUDED.area,
       consent_text_version = CASE WHEN launch_waitlist.consent_at IS NULL THEN EXCLUDED.consent_text_version ELSE launch_waitlist.consent_text_version END,
       consent_at           = COALESCE(launch_waitlist.consent_at, EXCLUDED.consent_at)
   `);

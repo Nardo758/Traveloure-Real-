@@ -81,7 +81,8 @@ export function EventsCalendar() {
   const [day, setDay] = useState<string | null>(null);
   const [weekStart, setWeekStart] = useState<string | null>(null);
   const [kind, setKind] = useState<KindFilter>("all");
-  const [city, setCity] = useState("all");
+  // LC-1b: /events shows Kyoto only. The upcoming API stays multi-city.
+  const city = "kyoto";
   const [vibe, setVibe] = useState("all");
   const [showGrid, setShowGrid] = useState(false);
   const today = viewerToday();
@@ -102,18 +103,6 @@ export function EventsCalendar() {
     // Ruling E7: a band-only filter, labelled so it reads as the band, not as events.
     { id: "season" as KindFilter, label: "All-month seasons", n: cityBands.length },
   ].filter((k) => k.id === "all" || k.n > 0);
-  const allEvents = data?.events ?? [];
-  const allBands = data?.bands ?? [];
-  const cityChips = [
-    { id: "all", label: "All cities", n: allEvents.length + allBands.length },
-    ...OPERATING_MARKETS.map((m) => ({
-      id: m.marketKey,
-      label: m.cityName,
-      // SH-1 item 4: an event outside the market city is not counted for it (`matchesCity`).
-      n: allEvents.filter((e) => matchesCity(e, m.marketKey)).length + allBands.filter((b) => b.marketKeys.includes(m.marketKey)).length,
-    })),
-  ];
-
   const selKind: PeriodKind = mode === "day" && day ? "day" : mode === "week" && weekStart ? "week" : "month";
   const range = periodRange(selKind, ym, day, weekStart);
   const rows = eventsInPeriod(events, range.from, range.to);
@@ -195,14 +184,6 @@ export function EventsCalendar() {
           </span>
           {kindChips.map((k) => (
             <FilterChip key={k.id} on={kind === k.id} label={k.label} count={k.n} onClick={() => setKind(k.id)} testId={`events-kind-${k.id}`} />
-          ))}
-        </div>
-        <div className="flex flex-wrap items-center gap-2" data-testid="events-filter-where">
-          <span className="w-[52px] text-[10.5px] uppercase tracking-[0.12em]" style={{ fontFamily: MONO, color: "var(--earn-muted)" }}>
-            Where
-          </span>
-          {cityChips.map((c) => (
-            <FilterChip key={c.id} on={city === c.id} label={c.label} count={c.n} onClick={() => setCity(c.id)} testId={`events-city-${c.id}`} />
           ))}
         </div>
       </div>
@@ -348,7 +329,7 @@ export function EventsCalendar() {
               nextId={next?.id ?? null}
               bands={periodBands}
               monthName={monthName}
-              cityLabel={city === "all" ? "our cities" : OPERATING_MARKETS.find((m) => m.marketKey === city)?.cityName ?? "this city"}
+              cityLabel={OPERATING_MARKETS.find((m) => m.marketKey === city)?.cityName ?? "Kyoto"}
               showBack={selKind !== "month"}
               onBack={() => {
                 setDay(null);
@@ -361,7 +342,14 @@ export function EventsCalendar() {
         </div>
       )}
 
-      {data && <WhereToGo monthName={monthName} rows={whereToGo(data.places, ym, data.events, vibe)} vibe={vibe} onVibe={setVibe} />}
+      {data && (
+        <WhereToGo
+          monthName={monthName}
+          rows={whereToGo(data.places.filter((p) => p.marketKey === "kyoto"), ym, events, vibe)}
+          vibe={vibe}
+          onVibe={setVibe}
+        />
+      )}
     </section>
   );
 }

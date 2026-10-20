@@ -399,14 +399,14 @@ export default function PrivacyPolicyPage() {
           <section>
             <h2 className={`${PAGE_H2_CLASS} mb-4`} style={HEADING_STYLE}>14. Our City Waitlists</h2>
             <p className="text-muted-foreground leading-relaxed mb-4">
-              Traveloure is starting with Kyoto. You can join the waitlist for Kyoto or any other city on our Kyoto page, as a traveler or as a local guide or provider. This section explains what we keep when you do.
+              Traveloure is starting with Kyoto. You can join the waitlist for Kyoto, or another city you tell us about, on our Kyoto page, as a traveler or as a local guide or provider. This section explains what we keep when you do.
             </p>
 
             <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>14.1 What We Collect</h3>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
-              <li><strong>Traveler form:</strong> your email address, the city you signed up for and, if you choose to answer, what the trip is for, a rough month for it, and anything you tell us you are unsure about.</li>
-              <li><strong>Provider form:</strong> your name, your email address, the city you signed up for, the type of service you offer, and, if you give it, your business name.</li>
-              <li><strong>Both forms:</strong> whether you ticked the "Email me when Traveloure opens…" line for that city and when, the wording of that line as you saw it, the page or blog post you signed up from, and, if you arrived through a link shared by a Traveloure expert, which link.</li>
+              <li><strong>Traveler form:</strong> your email address and, if you choose to answer, what the trip is for, a rough month for it, anything you tell us you are unsure about, and another city you name. The sign-up is for Kyoto.</li>
+              <li><strong>Provider form:</strong> your name, your email address, the type of service you offer and, if you give them, your business name and another city you name. The sign-up is for Kyoto.</li>
+              <li><strong>Both forms:</strong> whether you ticked the "Join the Kyoto list" line and when, the wording of that line as you saw it, the page or blog post you signed up from, and, if you arrived through a link shared by a Traveloure expert, which link.</li>
             </ul>
 
             <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>14.2 Why We Use It</h3>

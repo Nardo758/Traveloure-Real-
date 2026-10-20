@@ -97,6 +97,8 @@ export const waitlistJoinBodySchema = z
     serviceType: z.enum(SERVICE_TYPE_KEYS).optional(),
     ref: z.string().max(40).optional(),
     market: z.string().trim().toLowerCase().max(64).optional(),
+    // LC-1b: the optional free-text answer to "Planning somewhere else? Tell us where." Stored on `area`.
+    otherCity: z.string().trim().max(120).optional(),
     homepage: z.string().max(200).optional(),
   })
   .strict()
@@ -119,8 +121,10 @@ export type WaitlistJoinBody = z.infer<typeof waitlistJoinBodySchema>;
 /** The consent wording's key and version. A wording change is a new version, never an edit (migration 381). */
 export const WAITLIST_CONSENT_KEY = "launch_waitlist_updates";
 export const WAITLIST_CONSENT_VERSION = "f1-2026-10-15";
-/** F1's consent line, word for word (both forms), and the privacy link beside it. */
-export const WAITLIST_CONSENT_LINE = "Email me when Traveloure opens for Kyoto.";
+/** Kyoto's consent line (LC-1b). A wording change is a new version, never an edit of `f1-2026-10-15`. */
+export const WAITLIST_CONSENT_LINE = "Join the Kyoto list";
+/** The version stored when someone ticks the Kyoto line. Other markets keep `f1-2026-10-15:<market>`. */
+export const WAITLIST_KYOTO_CONSENT_VERSION = "lc1b-2026-10-20:kyoto";
 export const WAITLIST_CONSENT_PRIVACY_LINK = { before: "See our ", label: "Privacy Policy", href: "/privacy", after: "." } as const;
 /** The exact text a person saw beside the tick, as stored in `consent_texts.body`. */
 export const WAITLIST_CONSENT_TEXT = `${WAITLIST_CONSENT_LINE} See our Privacy Policy (/privacy).`;
@@ -195,6 +199,7 @@ export function resolveWaitlistMarket(
  */
 const F1_COPY_MARKET = "kyoto";
 export function waitlistConsentVersion(marketKey: string): string {
+  if (marketKey === F1_COPY_MARKET) return WAITLIST_KYOTO_CONSENT_VERSION;
   return `${WAITLIST_CONSENT_VERSION}:${marketKey}`;
 }
 export function waitlistConsentLine(marketKey: string): string {

@@ -155,6 +155,10 @@ describe("LC3 public copy", () => {
     "What's coming",
     "warming up",
     "GOA AT SUNSET",
+    "Be first to book when Kyoto opens",
+    "We're opening Traveloure in Kyoto first",
+    "Email me when Traveloure opens for Kyoto",
+    "travelers will be able to plan trips",
   ];
 
   it("no public page source contains the retired strings", () => {
@@ -175,6 +179,11 @@ describe("LC3 public copy", () => {
     assert.equal(kyotoExpertsSectionVisible([], true), false);
     assert.equal(kyotoExpertsSectionVisible(null, false), false);
     assert.equal(kyotoExpertsSectionVisible([{ id: "e1" }], true), true);
+    const page = readFileSync("client/src/pages/launch-waitlist.tsx", "utf8");
+    assert.ok(page.includes("Join the Kyoto list"));
+    assert.ok(page.includes("Traveloure starts in Kyoto."));
+    assert.ok(page.includes("Plan your Kyoto trip with local experts and businesses."));
+    assert.ok(page.includes("{showKyotoExperts && ("));
   });
 });
 
