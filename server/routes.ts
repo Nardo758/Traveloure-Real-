@@ -783,7 +783,7 @@ async function verifyOptimizationPayment(params: {
         status: 402,
         body: {
           error: "payment_refunded",
-          message: "This optimization payment was refunded. Start Optimize again to pay for a new run.",
+          message: "This payment was refunded, so it can't be used for another run. You can start Optimize again whenever you're ready.",
         },
       };
     }

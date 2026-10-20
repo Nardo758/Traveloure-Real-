@@ -6,7 +6,7 @@
  */
 
 export const OPTIMIZE_FAILED_REFUNDED =
-  "This Optimize run didn't finish, and your plan is unchanged. The fee you paid for it was refunded.";
+  "This Optimize run didn't finish, and your plan is unchanged. Your refund is on its way to your card.";
 
 export const OPTIMIZE_FAILED_REFUND_PENDING =
-  "This Optimize run didn't finish, and your plan is unchanged. The fee you paid for it is being refunded.";
+  "This Optimize run didn't finish, and your plan is unchanged. Your refund is on its way to your card.";

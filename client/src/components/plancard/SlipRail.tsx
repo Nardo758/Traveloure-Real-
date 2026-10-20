@@ -77,6 +77,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient as sharedQueryClient } from "@/lib/queryClient";
 import { optimizeCheckoutHeading } from "@/lib/checkout-headings";
+import { OPTIMIZE_UNAVAILABLE } from "@/lib/optimize-pay-copy";
 import StripeCheckout from "@/components/booking/StripeCheckout";
 import { createComparison, type ComparisonPinnedAnchor } from "@/lib/create-comparison";
 import {
@@ -470,7 +471,7 @@ function BuildCard({
       });
       if (outcome.kind === "unavailable") {
         confirmedPinnedAnchor.current = undefined;
-        toast({ title: "Optimize is unavailable right now." });
+        toast({ title: OPTIMIZE_UNAVAILABLE });
         return;
       }
       if (outcome.kind === "refused") {

@@ -11,13 +11,17 @@ test("the refund sentences name the failure and the refund, with no amount or ti
   for (const sentence of [OPTIMIZE_FAILED_REFUNDED, OPTIMIZE_FAILED_REFUND_PENDING]) {
     assert.match(sentence, /didn't finish/);
     assert.match(sentence, /plan is unchanged/);
-    assert.match(sentence, /fee you paid/);
+    assert.match(sentence, /on its way to your card/);
     assert.equal(/\d/.test(sentence), false);
     assert.equal(sentence.includes("$"), false);
     assert.equal(sentence.includes("%"), false);
+    assert.equal(sentence.includes("fee you paid"), false);
   }
-  assert.match(OPTIMIZE_FAILED_REFUNDED, /was refunded/);
-  assert.match(OPTIMIZE_FAILED_REFUND_PENDING, /is being refunded/);
+  assert.equal(
+    OPTIMIZE_FAILED_REFUNDED,
+    "This Optimize run didn't finish, and your plan is unchanged. Your refund is on its way to your card.",
+  );
+  assert.equal(OPTIMIZE_FAILED_REFUND_PENDING, OPTIMIZE_FAILED_REFUNDED);
 });
 
 test("the review screen and the versions board both read those sentences", () => {
@@ -28,4 +32,12 @@ test("the review screen and the versions board both read those sentences", () =>
     assert.match(src, /OPTIMIZE_FAILED_REFUND_PENDING/);
     assert.match(src, /optimizationFeeRefund/);
   }
+  const routes = readFileSync("server/routes.ts", "utf8");
+  assert.match(
+    routes,
+    /This payment was refunded, so it can't be used for another run\. You can start Optimize again whenever you're ready\./,
+  );
+  const slip = readFileSync("client/src/components/plancard/SlipRail.tsx", "utf8");
+  assert.match(slip, /OPTIMIZE_UNAVAILABLE/);
+  assert.doesNotMatch(slip, /title: "Optimize is unavailable right now\."/);
 });
