@@ -29,6 +29,7 @@ import { storage } from "../storage";
 import { travelPulseService } from "../services/travelpulse.service";
 import { verifyGem } from "../services/gem-promotion.service";
 import { recordFacts } from "../services/content-facts/place-facts.service";
+import { placesCacheMaxDays } from "../config/content-facts.config";
 import { runContentExpiryCensus } from "../jobs/contentExpiryCensus";
 
 const RUN = crypto.randomUUID().slice(0, 8);
@@ -61,6 +62,7 @@ before(async () => {
 
 after(async () => {
   await db.delete(placeFacts).where(like(placeFacts.placeRef, `ctt-${RUN}-%`));
+  await db.execute(sql`DELETE FROM content_sources WHERE id = ${id("src")}`);
   await db.delete(itineraryItems).where(eq(itineraryItems.tripId, TRIP));
   await db.delete(travelPulseHiddenGems).where(eq(travelPulseHiddenGems.city, CITY));
   await db.execute(sql`DELETE FROM trips WHERE id = ${TRIP}`);
@@ -157,14 +159,30 @@ test("D6 — ruling 3: verification makes the verifier the author; repeat 409; u
 
 test("D7 — place_facts are born tagged from origin + license", async () => {
   const now = new Date();
+  const DAY = 86_400_000;
+  // CS-1 item 2 (ledger `2026-10-19-cs1-live-facts`): a machine-read fact needs an expiry. Each row states one within its
+  // own cap: Places ≤ 30 days (Google's cache limit, `placesCacheMaxDays`), the crawled rows within their source's
+  // refresh interval, which this fixture sets on the source row.
+  const SOURCE_INTERVAL_DAYS = 14;
+  await db.execute(sql`INSERT INTO content_sources (id, name, homepage, market, adapter, covers, does_not_cover, license_class, refresh_interval_days, active)
+    VALUES (${id("src")}, 'D7 source', 'https://example.invalid/', 'kyoto', 'manual', ARRAY['stop.hours'], ARRAY[]::text[], 'official', ${SOURCE_INTERVAL_DAYS}, false)`);
+  const crawled = { sourceId: id("src"), sourceUrl: "https://example.invalid/hours", expiresAt: new Date(now.getTime() + SOURCE_INTERVAL_DAYS * DAY) };
   const base = { placeRefKind: "free_text", placeLat: null, placeLng: null, market: null, need: "stop.hours", factType: "hours", value: { text: "9-5" }, sourceId: null, sourceUrl: null, fetchedAt: now, expiresAt: null, costCents: 0 };
+  // GH-1: the writer refuses a Google hours draft whatever its expiry.
+  assert.equal(
+    await recordFacts([{ ...base, placeRef: id("f-places-hours"), origin: "places_api", license: "restricted", expiresAt: new Date(now.getTime() + placesCacheMaxDays() * DAY) }] as any, { planId: null, itemId: null }),
+    0,
+    "a Places hours fact is refused",
+  );
   await recordFacts([
-    // GH-1: the writer refuses a Google hours draft, so the Places row is a location fact.
-    { ...base, placeRef: id("f-places"), origin: "places_api", license: "restricted", factType: "location", value: { lat: 35, lng: 135.7 } },
-    { ...base, placeRef: id("f-official"), origin: "crawled", license: "official" },
-    { ...base, placeRef: id("f-partner"), origin: "crawled", license: "partner" },
+    // An obviously fake point (not a real place); the tags are what D7 checks.
+    { ...base, placeRef: id("f-places"), origin: "places_api", license: "restricted", factType: "location", value: { lat: 0.001, lng: 0.001 }, expiresAt: new Date(now.getTime() + placesCacheMaxDays() * DAY) },
+    { ...base, ...crawled, placeRef: id("f-official"), origin: "crawled", license: "official" },
+    { ...base, ...crawled, placeRef: id("f-partner"), origin: "crawled", license: "partner" },
   ] as any, { planId: null, itemId: null });
-  const rows = await db.select().from(placeFacts).where(inArray(placeFacts.placeRef, [id("f-places"), id("f-official"), id("f-partner")]));
+  assert.ok(placesCacheMaxDays() <= 30, "the Places cap is Google's 30 days at most");
+  const rows = await db.select().from(placeFacts).where(inArray(placeFacts.placeRef, [id("f-places"), id("f-places-hours"), id("f-official"), id("f-partner")]));
+  assert.equal(rows.some((r) => r.placeRef === id("f-places-hours")), false, "no Places hours row is stored");
   const by = Object.fromEntries(rows.map((r) => [r.placeRef, [r.sourceClass, r.reuseClass]]));
   assert.deepEqual(by[id("f-places")], ["public", "display_in_plan"]);
   assert.deepEqual(by[id("f-official")], ["public", "link_only"]);

@@ -78,15 +78,44 @@ export interface WaitingLine {
 export function lastEntryWaitingLine(input: { placeName: string; homepage?: string | null; termsClass?: string | null }): WaitingLine {
   const linkText = `${input.placeName}'s official site`;
   const text = `Last entry not checked yet. See ${linkText} before you go.`;
-  if (input.termsClass === "link_out_no_link") return { text, linkText, url: null };
-  let url: string | null = null;
+  return { text, linkText, url: officialTopLevelUrl(input) };
+}
+
+/** A Google Maps / Places host: never a waiting line's link (the link is the stored official site). */
+function isMapsHost(host: string): boolean {
+  const h = host.toLowerCase().replace(/\.$/, "");
+  return /(^|\.)google\.[a-z.]+$/.test(h) || /(^|\.)goo\.gl$/.test(h) || /(^|\.)googleapis\.com$/.test(h);
+}
+
+/**
+ * The source's top-level page for a waiting line; none for a `link_out_no_link` source, an unreadable homepage, or a
+ * Google Maps / Places host.
+ */
+function officialTopLevelUrl(input: { homepage?: string | null; termsClass?: string | null }): string | null {
+  if (input.termsClass === "link_out_no_link") return null;
   try {
     if (input.homepage) {
       const u = new URL(input.homepage);
-      if (u.protocol === "https:" || u.protocol === "http:") url = `${u.origin}/`;
+      if (isMapsHost(u.hostname)) return null;
+      if (u.protocol === "https:" || u.protocol === "http:") return `${u.origin}/`;
     }
   } catch {
-    url = null;
+    /* unreadable ⇒ no link */
   }
-  return { text, linkText, url };
+  return null;
+}
+
+/** GH-1's line where a stop's hours are not checked. */
+export const HOURS_NOT_CHECKED_TEXT = "Hours not checked yet";
+
+/**
+ * CS-1 item 2: what a stop shows once its stored official hours have expired — "Hours not checked yet. See the
+ * official site for <Place> before you go." with the stored official source's top-level link (never a Places or map
+ * link); with no link to give, plain "Hours not checked yet".
+ */
+export function hoursWaitingLine(input: { placeName: string; homepage?: string | null; termsClass?: string | null }): WaitingLine {
+  const url = officialTopLevelUrl(input);
+  if (!url) return { text: HOURS_NOT_CHECKED_TEXT, linkText: "", url: null };
+  const linkText = `the official site for ${input.placeName}`;
+  return { text: `${HOURS_NOT_CHECKED_TEXT}. See ${linkText} before you go.`, linkText, url };
 }

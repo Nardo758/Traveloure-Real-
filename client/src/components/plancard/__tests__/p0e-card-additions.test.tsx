@@ -108,12 +108,12 @@ describe("P0-e card additions", () => {
 
   it("PA5 the closing warning reads the shown hours fact, whatever its source", () => {
     const at1710 = { time: "17:10" };
-    assert.equal(itemClosingWarning([googleHours], "2026-11-12", at1710, "Asia/Tokyo")?.text, "Closes 5:00 PM · Google Maps · checked 4 Oct (may have changed)");
+    assert.equal(itemClosingWarning([googleHours], "2026-11-12", at1710, "Asia/Tokyo")?.text, "Closes 5:00 PM · Google Maps · checked 4 Oct");
     // The official fact, ranked first by the server, replaces the Google line and names its own source.
     assert.equal(itemClosingWarning([officialHours, googleHours], "2026-11-12", at1710, "Asia/Tokyo")?.text, "Closes 5:00 PM · Ginkaku-ji official site · checked 12 Oct");
     assert.match(itemFactsLine([officialHours, googleHours], "2026-11-12", "Asia/Tokyo")!.text, /Ginkaku-ji official site/);
     // Out of the official fact's season, the next shown fact (Google) answers.
-    assert.equal(itemClosingWarning([officialHours, googleHours], "2026-12-10", { time: "17:10" }, "Asia/Tokyo")?.text, "Closes 5:00 PM · Google Maps · checked 4 Oct (may have changed)");
+    assert.equal(itemClosingWarning([officialHours, googleHours], "2026-12-10", { time: "17:10" }, "Asia/Tokyo")?.text, "Closes 5:00 PM · Google Maps · checked 4 Oct");
     // Open on arrival, the visit runs past closing ⇒ the warning; inside the hours ⇒ none.
     assert.match(itemClosingWarning([googleHours], "2026-11-12", { time: "16:30", durationMinutes: 60 }, "Asia/Tokyo")!.text, /^Closes 5:00 PM/);
     assert.equal(itemClosingWarning([googleHours], "2026-11-12", { time: "15:00", durationMinutes: 60 }, "Asia/Tokyo"), null);
@@ -126,7 +126,7 @@ describe("P0-e card additions", () => {
     it(`PA6 the row draws its warning and prints the hours line once (${look})`, () => {
       const el = React.createElement(ItemRow, { item: act("g", "Ginkaku-ji", { time: "17:10" }), facts: [googleHours], dateIso: "2026-11-12", timeZone: "Asia/Tokyo", mode: "read", role: "traveler" } as any);
       const html = renderToString(look === "board" ? React.createElement(PlanRowLookProvider, { look: "board", children: el }) : el);
-      assert.match(text(html), /Closes 5:00 PM · Google Maps · checked 4 Oct \(may have changed\)/);
+      assert.match(text(html), /Closes 5:00 PM · Google Maps · checked 4 Oct/);
       assert.equal((text(html).match(/8:30 AM – 5:00 PM/g) ?? []).length, 1, "the hours print once");
     });
   }
@@ -136,7 +136,7 @@ describe("P0-e card additions", () => {
     assert.equal(itemClosingWarning([entry, googleHours], "2026-11-12", { time: "16:45" }, "Asia/Tokyo")?.text, "Last entry 4:30 PM · Ginkaku-ji official site · checked 12 Oct");
     assert.equal(itemClosingWarning([entry, googleHours], "2026-11-12", { time: "16:30" }, "Asia/Tokyo"), null, "at the last entry is still in");
     // Out of the last entry's season, the closing rule answers.
-    assert.equal(itemClosingWarning([entry, googleHours], "2026-12-10", { time: "17:10" }, "Asia/Tokyo")?.text, "Closes 5:00 PM · Google Maps · checked 4 Oct (may have changed)");
+    assert.equal(itemClosingWarning([entry, googleHours], "2026-12-10", { time: "17:10" }, "Asia/Tokyo")?.text, "Closes 5:00 PM · Google Maps · checked 4 Oct");
   });
 
   it("PA7 no budget strip on the card; other surfaces keep theirs", () => {

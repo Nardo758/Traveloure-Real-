@@ -320,10 +320,24 @@ const toMs = (v: Date | string | null | undefined): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
-/** A fact past its `expires_at` still renders — as "checked <date>", never as current (brief §3). */
+/** A fact past its `expires_at`. Admin surfaces badge it; no traveler surface reads one (`isFactLive`, CS-1 item 2). */
 export function isFactStale(fact: FactLike, now: Date = new Date()): boolean {
   const exp = toMs(fact.expiresAt);
   return exp !== null && exp <= now.getTime();
+}
+
+/**
+ * CS-1 item 2 (ledger `2026-10-19-cs1-live-facts`): THE ONE "live" rule every fact reader applies — plan rows,
+ * findings, public pages and bots. A fact is live when it is not superseded and its `expires_at` is in the future.
+ * A machine-read fact (REVIEWED_ORIGINS) with no `expires_at` is never live; platform-owned, expert and traveler
+ * facts keep their existing rule (no `expires_at` = no expiry). The SQL form is `liveFactRow()` in the place-facts
+ * service. Nothing is deleted: an expired row is simply not read.
+ */
+export function isFactLive(fact: FactLike & { supersededBy?: string | null }, now: Date = new Date()): boolean {
+  if (fact.supersededBy) return false;
+  const exp = toMs(fact.expiresAt);
+  if (exp === null) return !(REVIEWED_ORIGINS as readonly string[]).includes(fact.origin ?? "");
+  return exp > now.getTime();
 }
 
 /** Brief §6 / Google's attribution rule: a Places fact names "Google Maps". */
@@ -378,7 +392,8 @@ export function factProvenanceLine(fact: FactLike & { sourceName?: string | null
   const verified = fact.origin === "expert_nugget" && fact.verifiedAt ? " · verified" : "";
   if (at === null) return `${name}${verified}`;
   const label = checkedDayLabel(new Date(at), timeZone);
-  return `${name}${verified} · checked ${label}${isFactStale(fact, now) ? " (may have changed)" : ""}`;
+  // CS-1 item 2: a traveler never sees an expired value, so the line carries no "(may have changed)" suffix.
+  return `${name}${verified} · checked ${label}`;
 }
 
 /**
@@ -408,8 +423,15 @@ export function publicFactAttribution(
   return { label: `from ${name}`, sourceName: name, sourceUrl: url, checked };
 }
 
-/** A public page drops a fact that is publishable only by the official path but cannot be attributed. */
-export function mustOmitOnPublicPage(fact: FactLike & { sourceName?: string | null; sourceUrl?: string | null }): boolean {
+/**
+ * A public page drops a fact that is publishable only by the official path but cannot be attributed — and, CS-1
+ * item 2, any fact that is not live (`isFactLive`).
+ */
+export function mustOmitOnPublicPage(
+  fact: FactLike & { sourceName?: string | null; sourceUrl?: string | null; supersededBy?: string | null },
+  now: Date = new Date(),
+): boolean {
+  if (!isFactLive(fact, now)) return true;
   if (!isPublishable(fact)) return true;
   return isOfficialPublicFact(fact) && publicFactAttribution(fact) === null;
 }

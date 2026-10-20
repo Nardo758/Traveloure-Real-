@@ -5,7 +5,7 @@ import { tripGetsRoutedLegs } from "../services/routing/plan-routed-legs.service
 import { routingPausedToday } from "../services/maps-billing/maps-billing.service";
 
 import { enqueuePlanLegRecompute, runNow } from "../services/routing/plan-legs-queue";
-import { factsForTrip, lastEntryWaitingForTrip, pendingFactLookups, placeRefsForTrip } from "../services/content-facts/place-facts.service";
+import { factsForTrip, hoursWaitingForTrip, lastEntryWaitingForTrip, pendingFactLookups, placeRefsForTrip } from "../services/content-facts/place-facts.service";
 import { photosFor } from "../services/place-photos.service";
 import { applyGooglePins } from "@shared/ai-place-text";
 import { savedItemQuestions } from "../services/expert-door.service";
@@ -921,6 +921,9 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     // person has reviewed yet — "Last entry not checked yet. See <Place>'s official site before you go." Present only
     // when non-empty.
     const lastEntryWaiting = await lastEntryWaitingForTrip(tripId);
+    // CS-1 item 2 (ledger `2026-10-19-cs1-live-facts`): the stops whose stored official hours have expired — "Hours not
+    // checked yet. See the official site for <Place> before you go." Present only when non-empty.
+    const hoursWaiting = await hoursWaitingForTrip(tripId);
 
     // IS AN EXPERT ASSIGNED? (ledger `2026-09-26-send-to-expert-needs-expert`; audit G2.) An
     // advisor in a §12 WRITE status (accepted/assigned) — the SAME predicate the routing rail refuses
@@ -1071,6 +1074,7 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       ...((plan as any).coordinatesPending === true ? { coordinatesPending: true } : {}),
       ...(factsPendingItemIds.length ? { factsPendingItemIds } : {}),
       ...(Object.keys(lastEntryWaiting).length ? { lastEntryWaiting } : {}),
+      ...(Object.keys(hoursWaiting).length ? { hoursWaiting } : {}),
       ...(Object.keys(savedQuestions.items).length ? { savedQuestions } : {}),
       // R-be — see the note above. ADDITIVE: existing consumers ignore the key.
       readyMadeSource,

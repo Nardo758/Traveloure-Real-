@@ -13,6 +13,7 @@
  */
 import { OPERATING_MARKETS } from "@shared/operating-markets";
 import { buildCoverageCensus, type CoverageCensus, type SlugTargets } from "@shared/coverage-targets";
+import { isFactLive } from "@shared/content-facts";
 
 export type CensusQuery = (text: string, params: unknown[]) => Promise<{ rows: any[] }>;
 
@@ -24,7 +25,12 @@ export function censusCityFor(market: string): string | null {
   return m?.cityName ?? null;
 }
 
-export async function loadCoverageCensus(market: string, targets: Record<string, SlugTargets>, query: CensusQuery): Promise<CoverageCensus> {
+export async function loadCoverageCensus(
+  market: string,
+  targets: Record<string, SlugTargets>,
+  query: CensusQuery,
+  now: Date = new Date(),
+): Promise<CoverageCensus> {
   const key = market.trim().toLowerCase();
   const city = censusCityFor(key);
   if (!city) return buildCoverageCensus({ market: key, neighbourhoods: [], gems: [], notes: [], facts: [], targets });
@@ -41,11 +47,11 @@ export async function loadCoverageCensus(market: string, targets: Record<string,
       [city],
     ),
     query(
-      `select pf.place_lat, pf.place_lng, pf.source_class, pf.license, pf.fact_type, cs.name as source_name
+      `select pf.place_lat, pf.place_lng, pf.source_class, pf.license, pf.fact_type, pf.origin, pf.expires_at, pf.superseded_by,
+              cs.name as source_name
          from place_facts pf left join content_sources cs on cs.id = pf.source_id
         where lower(btrim(pf.market)) = $1
           and pf.superseded_by is null
-          and (pf.expires_at is null or pf.expires_at > now())
           and pf.place_lat is not null and pf.place_lng is not null
           and (pf.source_class = 'local'
                or (pf.license = 'official' and pf.fact_type in ('hours', 'last_admission', 'last_service')))`,
@@ -57,7 +63,11 @@ export async function loadCoverageCensus(market: string, targets: Record<string,
     neighbourhoods: hoods.rows.map((h) => ({ id: String(h.id), slug: String(h.slug), name: String(h.name), lat: num(h.centroid_lat), lng: num(h.centroid_lng) })),
     gems: gems.rows.map((g) => ({ neighbourhoodSlug: g.neighborhood ?? null })),
     notes: notes.rows.map((n) => ({ neighbourhoodId: n.neighborhood_id ?? null, neighbourhoodName: n.linked_neighbourhood ?? null })),
-    facts: facts.rows.map((f) => ({
+    // CS-1 item 2: live facts only, through the ONE rule (`isFactLive`) — expired, or machine-read with no expiry, is
+    // not counted.
+    facts: facts.rows
+      .filter((f) => isFactLive({ origin: f.origin ?? null, expiresAt: f.expires_at ?? null, supersededBy: f.superseded_by ?? null }, now))
+      .map((f) => ({
       lat: num(f.place_lat), lng: num(f.place_lng), sourceClass: f.source_class ?? null, license: f.license ?? null,
       factType: String(f.fact_type), sourceName: f.source_name ?? null,
     })),
