@@ -15,6 +15,13 @@ import { BASE_URL, registerUser, createTrip, createItem, rows, closePool } from 
  */
 const KYOTO = "Kyoto, Japan";
 
+test.beforeEach(() => {
+  test.skip(
+    process.env.DRAFT_STUB_SERVER !== "1",
+    "Successful-draft proofs run only where DRAFT_STUB_SERVER=1 (a non-production server with E2E_AI_STUB=1).",
+  );
+});
+
 test.afterAll(async () => {
   await closePool();
 });
@@ -90,6 +97,10 @@ test("stub — Draft it with AI on an empty slip writes origin='ai' items", asyn
   await page.goto(`/plans/${tripId}`);
   await expect(testid(page, "slip-action-draft-ai")).toBeVisible({ timeout: 20_000 });
 
+  const [feesBefore] = await rows<{ c: number }>(
+    `SELECT count(*)::int AS c FROM fee_ledger WHERE fee_type = 'ai_concierge_fee'`,
+  );
+
   const status = await actAndAwait(
     page,
     async () => {
@@ -115,6 +126,13 @@ test("stub — Draft it with AI on an empty slip writes origin='ai' items", asyn
     expect(it.day_number, "every drafted row sits on a day of the plan").toBeGreaterThanOrEqual(1);
     expect(it.day_number!).toBeLessThanOrEqual(Number(span.days));
   }
+  const [feesAfter] = await rows<{ c: number }>(
+    `SELECT count(*)::int AS c FROM fee_ledger WHERE fee_type = 'ai_concierge_fee'`,
+  );
+  expect(
+    Number(feesAfter.c),
+    "a free draft on an empty plan writes no ai_concierge_fee row",
+  ).toBe(Number(feesBefore.c));
 
   await expect
     .poll(

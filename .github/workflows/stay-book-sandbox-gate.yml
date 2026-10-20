@@ -93,6 +93,7 @@ jobs:
           NODE_ENV: production
           ALLOW_TEST_ACCOUNTS: '1'
           # Set and ignored: a production boot never serves the canned draft.
+          # j-stay-book-sandbox.spec.ts never calls a draft route, so this job has no draft assertion.
           E2E_AI_STUB: '1'
           PORT: 5000
           SESSION_COOKIE_INSECURE: '1'

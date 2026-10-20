@@ -196,7 +196,11 @@ jobs:
 
       - name: Run journey suite (test:journeys)
         id: run-journeys
-        run: npm run test:journeys -- --project=chromium
+        # Successful-draft specs (titles start with "stub —") run on dev-server-gates, where
+        # NODE_ENV is not production. This job boots the production bundle, which ignores
+        # E2E_AI_STUB, so those proofs are excluded here. The directory selector stays, so the
+        # files remain wired. J13 on this job asserts the model failure and shares a traveler stop.
+        run: npm run test:journeys -- --project=chromium --grep-invert "stub —"
         env:
           BASE_URL: http://localhost:5000
           # Specs assert DB facts via a read-only pg pool.
