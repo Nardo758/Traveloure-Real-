@@ -14,7 +14,6 @@ import { useExpertAvailability } from "@/lib/expert-availability";
 import { isPartnerPriced, openPartnerPrice } from "@/lib/partner-price";
 import { PARTNER_COMMISSION_NOTE, PARTNER_PRICE_LINK_LABEL } from "@/lib/browse-supply";
 import { useAskExpert } from "@/lib/use-ask-expert";
-import { normalizeGemScore } from "@/lib/gem-score";
 import type { BentoCompactActionState } from "@/lib/bento-action-state";
 import { isReferencePhoto } from "@/lib/photo-provenance";
 import { ReferencePhotoChip } from "@/components/ui/reference-photo-chip";
@@ -313,7 +312,8 @@ function gemTypeMeta(placeType: string | null | undefined): TypeMeta {
   if (cat === "stay") {
     const isMarquee = ["ryokan", "resort", "boutique"].some((k) => t.includes(k));
     return {
-      label: isMarquee ? "Marquee stay" : "Stay",
+      // SH-1 item 1: the card shows one of five labels; a marquee stay still reads "Stay".
+      label: "Stay",
       emoji: isMarquee ? "🏯" : "🏨",
       tagBg: "bg-blue-50",
       tagText: "text-blue-700",
@@ -330,10 +330,10 @@ function gemTypeMeta(placeType: string | null | undefined): TypeMeta {
   const isLandmark = ["temple", "shrine", "palace", "castle", "landmark", "monument"].some((k) => t.includes(k));
   const isDayTrip = ["day trip", "day-trip", "daytrip"].some((k) => t.includes(k));
   if (isDayTrip) {
-    return { label: "Day trip", emoji: "🚌", tagBg: "bg-indigo-50", tagText: "text-indigo-700", phBg: "bg-indigo-50", phText: "text-indigo-600", phGrad: "bg-gradient-to-br from-indigo-50 via-indigo-100 to-indigo-200/70" };
+    return { label: "Do", emoji: "🚌", tagBg: "bg-indigo-50", tagText: "text-indigo-700", phBg: "bg-indigo-50", phText: "text-indigo-600", phGrad: "bg-gradient-to-br from-indigo-50 via-indigo-100 to-indigo-200/70" };
   }
   if (isLandmark) {
-    return { label: "Landmark", emoji: "🌉", tagBg: "bg-stone-100", tagText: "text-stone-700", phBg: "bg-stone-100", phText: "text-stone-600", phGrad: "bg-gradient-to-br from-stone-100 via-stone-200 to-stone-300/70" };
+    return { label: "Do", emoji: "🌉", tagBg: "bg-stone-100", tagText: "text-stone-700", phBg: "bg-stone-100", phText: "text-stone-600", phGrad: "bg-gradient-to-br from-stone-100 via-stone-200 to-stone-300/70" };
   }
   return { label: "Do", emoji: "⛩", tagBg: "bg-amber-50", tagText: "text-amber-800", phBg: "bg-amber-50", phText: "text-amber-700", phGrad: "bg-gradient-to-br from-amber-50 via-amber-100 to-amber-200/70" };
 }
@@ -347,14 +347,7 @@ const ADD_BTN_STYLE = { background: "var(--earn-navy)", color: "#fff", border: "
 
 // ─── Booking badge ─────────────────────────────────────────────────────────────
 
-function BookingBadge({ level, trending }: { level: Bookability; trending?: boolean }) {
-  if (trending) {
-    return (
-      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide bg-orange-100 text-orange-700 whitespace-nowrap">
-        🔥 Trending
-      </span>
-    );
-  }
+function BookingBadge({ level }: { level: Bookability }) {
   if (level === "native") {
     return (
       <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide bg-teal-50 text-teal-700 whitespace-nowrap">
@@ -892,8 +885,6 @@ export function CityFeedCardGem({
     resolvedBookability !== "info_only" &&
     Boolean(bookHref);
   const typeMeta = gemTypeMeta(gem.placeType);
-  const gemScore = normalizeGemScore(gem.gemScore);
-  const isTrending = gemScore !== null && gemScore >= 85;
 
   const addLabel = scheduledDate
     ? `Add to ${new Date(scheduledDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
@@ -936,13 +927,13 @@ export function CityFeedCardGem({
         />
       )}
       {/* No-photo fallback is the kind gradient ALONE — no emoji glyph (Phase 2d). */}
-      {/* Every gems[]-sourced tile carries the Hidden gem tag — green wash, mono. */}
+      {/* SH-1 item 1: the tile carries its card type (Eat, Do, Stay, Photo spot), never a "Hidden gem" claim. */}
       <span
-        className="absolute top-2 left-2 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
+        className={cn("absolute top-2 left-2 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide", typeMeta.tagBg, typeMeta.tagText)}
         style={{ fontFamily: EARN_MONO }}
-        data-testid={`gem-hidden-tag-${gem.id}`}
+        data-testid={`gem-type-tag-${gem.id}`}
       >
-        Hidden gem
+        {typeMeta.label}
       </span>
       {topPick && (
         <span
@@ -968,16 +959,7 @@ export function CityFeedCardGem({
     <div className={cn("p-3 flex flex-col gap-1.5 flex-1 min-w-0")}>
       {/* Type tag + booking badge + priceRange */}
       <div className="flex items-center gap-1.5 flex-wrap">
-        <span
-          className={cn(
-            "text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase",
-            typeMeta.tagBg,
-            typeMeta.tagText,
-          )}
-        >
-          {typeMeta.label}
-        </span>
-        <BookingBadge level={resolvedBookability} trending={isTrending} />
+        <BookingBadge level={resolvedBookability} />
         {gem.priceRange && (
           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide bg-gray-100 text-gray-600" data-testid={`gem-price-range-${gem.id}`}>
             {gem.priceRange}
@@ -1026,7 +1008,6 @@ export function CityFeedCardGem({
       {!compact && (
         <FactsRow
           facts={[
-            { value: gemScore !== null ? String(gemScore) : "", label: "gem score" },
             { value: gemAreaName(gem) ?? "", label: "area" },
             { value: bestForFace[0] ?? "", label: "best for" },
           ]}
@@ -1117,12 +1098,10 @@ export function CityFeedCardGem({
   // the link (opens the same details sheet). §13: score/best-for/area each omitted
   // when absent.
   if (density === "compact") {
-    const gemScoreStr = gemScore !== null ? String(gemScore) : null;
     // Byline fragment (rulings 1+2): only a server-resolved curator renders;
     // no attribution ⇒ the fragment is omitted (§13), never placeholdered.
     const curatorName = gemCuratorShortName(gem);
     const metaText = joinMeta(
-      gemScoreStr,
       bestForFace[0] ? `best for ${bestForFace[0]}` : null,
       gemAreaName(gem),
       curatorName ? `curated by ${curatorName}` : null,
@@ -1162,11 +1141,11 @@ export function CityFeedCardGem({
               />
             )}
             <span
-              className="absolute top-2 left-2 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400"
+              className={cn("absolute top-2 left-2 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide", typeMeta.tagBg, typeMeta.tagText)}
               style={{ fontFamily: EARN_MONO }}
-              data-testid={`gem-hidden-tag-${gem.id}`}
+              data-testid={`gem-type-tag-${gem.id}`}
             >
-              Hidden gem
+              {typeMeta.label}
             </span>
             <CompactInfoCue testid={`info-cue-gem-${gem.id}`} />
             {topPick && (

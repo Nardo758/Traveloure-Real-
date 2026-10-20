@@ -275,12 +275,12 @@ export default function ExpertStatusPage() {
               <div className="flex items-center gap-3">
                 <ShieldCheck className="w-6 h-6 text-green-600" />
                 <div>
-                  <p className="font-semibold text-green-800 dark:text-green-300">Identity Verified</p>
+                  <p className="font-semibold text-green-800 dark:text-green-300">Identity check complete</p>
                   {appStatus?.identityVerifiedAt && (
-                    <p className="text-sm text-green-600">Verified on {new Date(appStatus.identityVerifiedAt).toLocaleDateString()}</p>
+                    <p className="text-sm text-green-600">Completed on {new Date(appStatus.identityVerifiedAt).toLocaleDateString()}</p>
                   )}
                 </div>
-                <Badge className="ml-auto bg-green-100 text-green-700"><CheckCircle2 className="w-3 h-3 mr-1" />Verified</Badge>
+                <Badge className="ml-auto bg-green-100 text-green-700"><CheckCircle2 className="w-3 h-3 mr-1" />Complete</Badge>
               </div>
             </CardContent>
           </Card>

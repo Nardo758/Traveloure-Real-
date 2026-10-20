@@ -101,7 +101,7 @@ const SEED_DATA: CitySeed[] = [
         centroidLat: "35.0036000",
         centroidLng: "135.7752000",
         radiusKm: "1.00",
-        description: "Historic geisha district east of the Kamo River — teahouses, Hanamikoji street, evening ochaya.",
+        description: "Historic district east of the Kamo River — teahouses, Hanamikoji street, evening ochaya.",
       },
       {
         name: "Higashiyama",
@@ -360,7 +360,7 @@ const SEED_DATA: CitySeed[] = [
         centroidLat: "40.8448000",
         centroidLng: "-73.9396000",
         radiusKm: "1.50",
-        description: "Upper Manhattan's hidden gem — The Cloisters, High Bridge Park, Dominican culture, Hudson River views.",
+        description: "Upper Manhattan — The Cloisters, High Bridge Park, Dominican culture, Hudson River views.",
       },
     ],
   },

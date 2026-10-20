@@ -412,10 +412,10 @@ export function CityGrid({ onCitySelect, selectedCityName, hideHeader = false }:
         <div>
           <h2 className="text-2xl font-bold flex items-center gap-2">
             <Activity className="h-6 w-6 text-primary" />
-            Trending Cities
+            Cities
           </h2>
           <p className="text-muted-foreground mt-1">
-            Destination intelligence across {cities.length} trending cities
+            Destination intelligence across {cities.length} cities
           </p>
         </div>
         <Badge variant="outline" className="text-sm">
@@ -429,7 +429,7 @@ export function CityGrid({ onCitySelect, selectedCityName, hideHeader = false }:
         <Card className="p-8 text-center">
           <Sparkles className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
           <p className="text-lg font-medium mb-2">No cities available yet</p>
-          <p className="text-muted-foreground">Check back soon for trending destinations!</p>
+          <p className="text-muted-foreground">Check back soon for destinations!</p>
         </Card>
       ) : (
         <AnimatePresence mode="popLayout">

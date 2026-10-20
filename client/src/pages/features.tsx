@@ -10,7 +10,6 @@ import {
   Globe,
   Calendar,
   MessageSquare,
-  Shield,
   Clock,
   Star,
   Bot,
@@ -46,11 +45,11 @@ const mainFeatures = [
   {
     title: "Local Expert Network",
     description:
-      "Connect with local experts who know their destinations inside out. Get insider tips and authentic experiences you won't find in guidebooks.",
+      "Connect with local experts who know their destinations inside out. Get local tips and authentic experiences you won't find in guidebooks.",
     icon: Users,
     highlights: [
       "Reviewed before they can list",
-      "Vetted for deep local knowledge",
+      "Chosen for deep local knowledge",
       "Direct messaging",
       "Custom recommendations",
     ],
@@ -79,11 +78,6 @@ const additionalFeatures = [
     title: "Browse by Destination",
     description: "Find experts and experiences in the destinations we cover",
     icon: Globe,
-  },
-  {
-    title: "Verified Providers",
-    description: "Every expert and provider is reviewed before they can list",
-    icon: Shield,
   },
   {
     title: "Shareable Trips",

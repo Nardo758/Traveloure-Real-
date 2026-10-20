@@ -29,6 +29,7 @@ import {
   updateTickerItem,
 } from "../services/ticker.service";
 import { tickerItemCreateSchema, tickerItemPatchSchema, tickerReorderSchema } from "@shared/ticker";
+import { LIVE_MARKETS_ROUTE } from "@shared/live-markets";
 
 const router = Router();
 
@@ -49,6 +50,28 @@ router.get("/api/public/ticker", async (req, res) => {
     return res.json({ items: [] });
   }
 });
+
+// SH-1 item 3: the live market keys (`beta_market_slugs`), for the homepage rail. Cached in-process ~60 s; a failed read
+// answers an empty list, which hides the rail rather than guessing.
+const LIVE_MARKETS_CACHE_MS = 60_000;
+let liveMarketsCache: { at: number; marketKeys: string[] } | null = null;
+router.get(LIVE_MARKETS_ROUTE, async (_req, res) => {
+  try {
+    if (!liveMarketsCache || Date.now() - liveMarketsCache.at > LIVE_MARKETS_CACHE_MS) {
+      liveMarketsCache = { at: Date.now(), marketKeys: await getBetaMarketSlugs() };
+    }
+    res.set("Cache-Control", `public, max-age=${Math.floor(LIVE_MARKETS_CACHE_MS / 1000)}`);
+    return res.json({ marketKeys: liveMarketsCache.marketKeys });
+  } catch (err: any) {
+    logger.error(`[live-markets] read failed: ${err?.code ?? err?.message ?? "unknown"}`);
+    return res.json({ marketKeys: [] });
+  }
+});
+
+/** Test seam: forget the cached live-markets answer. */
+export function resetLiveMarketsCache(): void {
+  liveMarketsCache = null;
+}
 
 async function requireAdminUser(req: any, res: any): Promise<{ id: string; role: string } | null> {
   const userId = getUserId(req);

@@ -130,7 +130,7 @@ describe("V4 the page", () => {
     assert.match(html, /Kyoto, Slowly/);
     assert.match(html, /3 days/);
     assert.match(html, /href="\/s\/aiko-kyoto"/);
-    assert.match(html, /Local · verified in Kyoto/);
+    assert.match(html, /Local in Kyoto/);
     assert.match(html, /From \$49 · no fee on this purchase/);
     assert.match(html, /href="\/ready-made\/3f9a1c2b-7e44-4d1a-9c0e-5b6a7d8e9f01"[^>]*>Get this trip/);
     assert.match(html, /Day 1 · 3 stops · Fushimi, Nakagyo/);

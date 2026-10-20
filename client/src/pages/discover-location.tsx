@@ -1,3 +1,4 @@
+import { heroEyebrowFragments } from "@/lib/hero-eyebrow";
 import { SEASONAL_WRITER_LIVE, buildSeasonLine } from "@/lib/season-line";
 import { PRICE_OPTIONS, extractTilePrice, priceMatches } from "@/lib/tile-price";
 import { useRef, useEffect, useState } from "react";
@@ -145,10 +146,7 @@ function HeroBand({
 }) {
   const displayCity = toTitleCase(city);
   const cityIntel = heroData?.city;
-  // TravelPulse PR 1 (ledger `2026-09-29-travelpulse-hygiene`): the eyebrow's TREND is the
-  // RESOLVER's number (`trendingScore`, null when not ranked or stale), never the legacy
-  // `pulseScore`; and no CROWD fragment until PR 2 computes one (the server no longer sends it).
-  const pulse = typeof cityIntel?.trendingScore === "number" && cityIntel.trendingScore > 0 ? cityIntel.trendingScore : null;
+  // SH-1 item 2: the eyebrow carries no TREND score (and no CROWD fragment until one is computed).
   const crowdLevel: string | null = null;
   const highlight = cityIntel?.currentHighlight;
   const highlightEmoji = cityIntel?.highlightEmoji ?? "✨";
@@ -173,14 +171,7 @@ function HeroBand({
 
   const datePillLabel = parsedDate ? `Planning ${monthName} ${dayOfMonth}` : null;
 
-  // Muted mono eyebrow: DESTINATION · {COUNTRY} · TREND {n} · CROWD {level} —
-  // each fragment omitted when its source is null (§13). The TREND fragment
-  // carries the preserved pulse-badge testid.
-  const eyebrowFragments: (string | JSX.Element)[] = ["DESTINATION"];
-  if (country) eyebrowFragments.push(country.toUpperCase());
-  if (pulse !== undefined && pulse !== null)
-    eyebrowFragments.push(<span data-testid="pulse-badge">TREND {pulse}</span>);
-  if (crowdLevel) eyebrowFragments.push(`CROWD ${String(crowdLevel).toUpperCase()}`);
+  const eyebrowFragments = heroEyebrowFragments(country);
 
   const Tile = NAV_LEAF_ICONS["Destinations"] ?? Palmtree;
 

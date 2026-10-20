@@ -3330,6 +3330,37 @@ router.patch("/api/admin/users/:id/commission-override", isAuthenticated, async 
     res.json({ id: targetId, commissionOverridePlatformFeePercent: nextValue });
   });
 
+  // SH-1 item 12 (ledger `2026-10-19-sh1-test-flag`): the ONE writer of `users.is_test` after sign-up.
+  // Admin only, `.strict()` body, audit-logged. A test account's listings leave every public reader and the
+  // account is never routed (server/services/test-account.ts). Never client-settable (§19).
+router.patch("/api/admin/users/:id/test-flag", isAuthenticated, async (req, res) => {
+    const admin = await getFullAdminUser(getUserId(req)!);
+    if (!admin || admin.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    const parsed = z.object({ isTest: z.boolean() }).strict().safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Send { isTest: true | false }." });
+    }
+    const targetId = req.params.id;
+    const before = await db.execute(sql`SELECT is_test FROM users WHERE id = ${targetId} LIMIT 1`);
+    if (!before.rows?.length) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    const previous = (before.rows[0] as any).is_test ?? null;
+    await db.execute(sql`UPDATE users SET is_test = ${parsed.data.isTest}, updated_at = NOW() WHERE id = ${targetId}`);
+    await insertAccessAuditLog({
+      actorId: admin.id,
+      actorRole: "admin",
+      action: "update_test_flag",
+      resourceType: "user",
+      resourceId: targetId,
+      targetUserId: targetId,
+      metadata: { field: "is_test", previous, next: parsed.data.isTest },
+    });
+    res.json({ id: targetId, isTest: parsed.data.isTest });
+  });
+
   // === Provider Application Routes ===
   
   // Get current user's provider application
@@ -6091,6 +6122,8 @@ router.get("/api/admin/users", isAuthenticated, async (req, res) => {
           spent: `$${totalSpent.toLocaleString()}`,
           // LW-1d: the supply sign-up source tag, as stored (NULL = not recorded, never "other").
           signupSource: u.signupSource ?? null,
+          // SH-1 item 12: the stored test flag (NULL reads as false).
+          isTest: u.isTest === true,
         };
       }));
 

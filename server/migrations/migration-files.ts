@@ -2104,4 +2104,12 @@ export const MIGRATION_FILES = [
   // who entered a hand-picked OSM point and what it is. LG-2 Ask 7, ledger 2026-10-19-lg2-admin-osm-points. Declared in
   // shared/schema.ts.
   "396_open_place_admin_entry.sql",
+  // 397 — SH-1 item 12: users.is_test, nullable boolean, no default (NULL = not a test account by flag).
+  // HELD for Leon's comment. Ledger 2026-10-19-sh1-test-flag.
+  "397_users_is_test.sql",
+  // 398 — DATA ONLY: SH-1 item 1 seed copy. Carries the never-say edits made to the insert-only seeders onto rows they
+  // already wrote: each UPDATE is matched by the row's id/slug (or its seeder key) AND only while the exact old text is
+  // present, so it is idempotent and never clobbers a hand edit. 394–397 are taken by open PRs (397_users_is_test.sql
+  // is to sit before this entry). HELD for Leon's comment. Ledger 2026-10-19-sh1-banned-copy.
+  "398_sh1_seed_copy.sql",
 ] as const;

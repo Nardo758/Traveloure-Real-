@@ -12,6 +12,15 @@ export interface IAuthStorage {
   acceptTerms(userId: string, termsVersion: string, privacyVersion: string): Promise<User | undefined>;
 }
 
+/**
+ * SH-1 item 12 (§19 layer 2): `isTest` is written only by the admin test-flag route and at QA sign-up, never
+ * through these generic writers — whatever object a caller hands them.
+ */
+function withoutTestFlag<T extends Partial<UpsertUser>>(data: T): Omit<T, "isTest"> {
+  const { isTest: _ignored, ...rest } = data;
+  return rest;
+}
+
 class AuthStorage implements IAuthStorage {
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
@@ -23,7 +32,8 @@ class AuthStorage implements IAuthStorage {
     return user;
   }
 
-  async upsertUser(userData: UpsertUser): Promise<User> {
+  async upsertUser(input: UpsertUser): Promise<User> {
+    const userData = withoutTestFlag(input) as UpsertUser;
     const [user] = await db
       .insert(users)
       .values(userData)
@@ -42,7 +52,7 @@ class AuthStorage implements IAuthStorage {
     const [user] = await db
       .update(users)
       .set({
-        ...data,
+        ...withoutTestFlag(data),
         updatedAt: new Date(),
       })
       .where(eq(users.id, id))

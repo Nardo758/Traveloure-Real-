@@ -18,7 +18,7 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { MapPin, MessageCircle, Search, ShieldCheck, Star, Store, Zap } from "lucide-react";
+import { MapPin, MessageCircle, Search, Star, Store, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -135,12 +135,6 @@ function ProviderCard({ provider }: { provider: ProviderStorefrontListing }) {
             <span className="inline-flex items-center gap-1 rounded-full bg-[var(--earn-teal-wash)] px-2.5 py-0.5 text-[11.5px] text-[color:var(--earn-teal-ink)]" data-testid={`chip-provider-instant-${provider.handle}`}>
               <Zap className="h-3 w-3" aria-hidden="true" />
               Instant booking
-            </span>
-          )}
-          {provider.businessVerified && (
-            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[color:var(--earn-green-ink)]" data-testid={`chip-provider-verified-${provider.handle}`}>
-              <ShieldCheck className="h-3 w-3" aria-hidden="true" />
-              Verified business
             </span>
           )}
         </div>
@@ -304,7 +298,7 @@ export default function ProvidersDirectoryPage() {
               <div>
                 <PageTitle>Service Providers</PageTitle>
                 <p className="text-sm text-[color:var(--earn-muted)] mt-1 max-w-[60ch]">
-                  Local businesses you can book directly — no middleman, no markup beyond the listing price.
+                  Local businesses you can book directly — no middleman; you pay the listing price.
                 </p>
               </div>
             </div>

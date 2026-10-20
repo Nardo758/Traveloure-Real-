@@ -769,7 +769,7 @@ function SegmentationRecommendationBanner({ proposal }: { proposal: Segmentation
               )}
             </p>
             <p className="text-xs text-muted-foreground/70 italic mt-1.5" data-testid="text-segmentation-apply-note">
-              Coming soon: apply this recommendation to your trip. For now this is informational only —
+              Applying this recommendation to your trip isn't available yet. For now this is informational only —
               nothing here changes your plan.
             </p>
           </div>
@@ -1663,13 +1663,6 @@ export default function ItineraryComparisonPage() {
                             <span className="font-medium text-purple-700 dark:text-purple-300">{travelPulseData.city.pulseScore}/100</span>
                           </div>
                         )}
-                        {travelPulseData.city.trendingScore && (
-                          <div className="flex items-center gap-1">
-                            <TrendingUp className="h-3 w-3 text-green-500" />
-                            <span className="text-muted-foreground">Trending:</span>
-                            <span className="font-medium text-green-600 dark:text-green-400">{travelPulseData.city.trendingScore}/100</span>
-                          </div>
-                        )}
                         {travelPulseData.city.crowdLevel && (
                           <div className="flex items-center gap-1">
                             <Users className="h-3 w-3 text-blue-500" />
@@ -1756,7 +1749,7 @@ export default function ItineraryComparisonPage() {
                           <TrendingUp className="w-4 h-4 mt-0.5 shrink-0" style={{ color: "var(--earn-green-ink)" }} />
                           <p>
                             <span className="font-medium">
-                              Trending now{primaryCity ? ` in ${primaryCity}` : ""}:{" "}
+                              Now{primaryCity ? ` in ${primaryCity}` : ""}:{" "}
                             </span>
                             {trending.map((e) => e.name).join(" · ")}
                           </p>

@@ -454,7 +454,7 @@ export async function resolveDeliveredBy(tripId: string): Promise<TripPlanExpert
   // advisor list drops the same accounts (`publicExpertSql`, one predicate).
   const form = await db.execute(sql`SELECT status FROM local_expert_forms WHERE user_id = ${expertId} LIMIT 1`);
   const { isPublicExpertAccount } = await import("./expert-routability");
-  if (!isPublicExpertAccount({ applicationStatus: (form.rows?.[0] as any)?.status ?? null, email: expert.email })) return null;
+  if (!isPublicExpertAccount({ applicationStatus: (form.rows?.[0] as any)?.status ?? null, email: expert.email, isTest: expert.isTest ?? null })) return null;
 
   const name = [expert.firstName, expert.lastName].filter(Boolean).join(" ").trim();
   return {

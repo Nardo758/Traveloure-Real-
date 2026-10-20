@@ -183,7 +183,7 @@ export function WhileYouWereAway({ userId, notifications, activePlans }: WhileYo
     queryKey: ["/api/travelpulse/cities", { limit: 10 }],
     queryFn: async () => {
       const res = await fetch("/api/travelpulse/cities?limit=10", { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch trending cities");
+      if (!res.ok) throw new Error("Failed to fetch cities");
       return res.json();
     },
     enabled: !!prevMarker,
@@ -248,7 +248,7 @@ export function WhileYouWereAway({ userId, notifications, activePlans }: WhileYo
     if (match) {
       const text = match.currentHighlight || match.dealAlert;
       if (text) {
-        trendingLine = `${match.cityName} is trending: ${text}`;
+        trendingLine = `${match.cityName}: ${text}`;
         break;
       }
     }

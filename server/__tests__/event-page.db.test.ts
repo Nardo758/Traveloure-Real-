@@ -49,7 +49,12 @@ const EXPERTS: Array<[string, string, string, string, string]> = [
 ];
 const noHosts = async () => [] as string[];
 const facts = (id: string) => loadEventGuideFacts(id, { partnerHosts: noHosts, now });
-const deps = (count = 0) => ({ facts: (id: string) => facts(id), verifiedCount: async () => count, now });
+const deps = (count = 0, hookCities: readonly string[] = ["kyoto"]) => ({
+  facts: (id: string) => facts(id),
+  verifiedCount: async () => count,
+  expertHookCities: async () => hookCities,
+  now,
+});
 
 async function insertEvent(key: string, startDays: number, over: Partial<typeof cityEvents.$inferInsert> = {}) {
   const [row] = await db
@@ -172,9 +177,10 @@ test("EP6 More in the city: same city, not ended, not withdrawn, not itself, soo
   assert.deepEqual(order, [...order].sort(), "soonest first");
 });
 
-test("EP7 verified locals: a count, or null at zero", async () => {
-  assert.equal((await loadEventPage(sid("main"), deps(3)))!.verifiedLocals, 3);
-  assert.equal((await loadEventPage(sid("main"), deps(0)))!.verifiedLocals, null);
+test("EP7 city locals: a count with the switch on, null at zero or with the switch off", async () => {
+  assert.equal((await loadEventPage(sid("main"), deps(3)))!.cityLocals, 3);
+  assert.equal((await loadEventPage(sid("main"), deps(0)))!.cityLocals, null);
+  assert.equal((await loadEventPage(sid("main"), deps(3, [])))!.cityLocals, null, "SH-1: switch off ⇒ no line");
 });
 
 test("EP8 the verified count is R343-gated: only the routable candidate counts", async () => {

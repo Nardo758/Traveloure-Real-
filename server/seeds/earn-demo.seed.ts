@@ -626,7 +626,7 @@ async function seedEarnDemo(): Promise<void> {
         country: "Japan",
         address: "Tokyo, Japan",
         businessType: "Photography & Visual Storytelling",
-        description: "A verified test storefront for provider directory coverage.",
+        description: "A test storefront for provider directory coverage.",
         status: "approved",
         identityVerificationStatus: "verified",
         businessVerificationStatus: "verified",
