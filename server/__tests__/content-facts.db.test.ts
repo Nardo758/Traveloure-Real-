@@ -25,6 +25,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { sql } from "drizzle-orm";
 import { db, pool } from "../db";
+import { placeFacts } from "@shared/schema";
 import { enrichPlanItems, factPointsForTrip, factsForTrip, recordFacts } from "../services/content-facts/place-facts.service";
 import { PlacesAdapter } from "../services/content-facts/places-adapter";
 import { placesDetailsCostCents } from "../config/content-facts.config";
@@ -91,7 +92,10 @@ after(async () => {
 test("C1: the engine's order picks the fact; every view carries provenance", async () => {
   // GH-1: a Google hours draft is refused by the writer, so the hours view is the listing's alone.
   await recordFacts([fact({})], { planId: ids.trip, itemId: ids.s4 });
-  await recordFacts([fact({ origin: "platform_listing", license: null, sourceUrl: null, value: { weekdayDescriptions: ["Monday: from the listing"] } })], { planId: ids.trip, itemId: ids.s4 });
+  // EV-P0 PR 3 (ledger `2026-10-18-fact-tags-exhaustive`; edit sanctioned): recordFacts refuses an origin with no
+  // ruled tier, so the platform-native row is inserted directly.
+  const listing = fact({ origin: "platform_listing", license: null, sourceUrl: null, value: { weekdayDescriptions: ["Monday: from the listing"] } });
+  await db.insert(placeFacts).values({ ...listing, id: crypto.randomUUID(), costCents: String(listing.costCents ?? 0), planId: ids.trip, itineraryItemId: ids.s4 } as any);
   const facts = await factsForTrip(ids.trip);
   const hours = facts[ids.s4].filter((f) => f.factType === "hours");
   assert.equal(hours.length, 1, "one fact per type");

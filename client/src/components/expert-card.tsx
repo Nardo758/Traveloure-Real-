@@ -32,6 +32,7 @@ import { useExpertOfferingLabels } from "@/lib/use-expert-offering-labels";
 // Locked Decision 40 (lane 3): ONE decision about how a card addresses an earner — the handle
 // when the row has one, the id route only while it has none (§18 rule 1).
 import { earnerProfilePath } from "@/lib/earner-address";
+import { useExpertAvailability } from "@/lib/expert-availability";
 import { useAskExpert } from "@/lib/use-ask-expert";
 
 // Continuity tokens — the same values as artifacts/mockup-sandbox's
@@ -154,7 +155,16 @@ function expertLowestPrice(expert: ExpertCardProps["expert"]): number | null {
 }
 
 /** Dark-gradient anchor treatment (city-feed bento lead expert). */
-function ExpertAnchorCard({ expert, detailQuery }: { expert: ExpertCardProps["expert"]; detailQuery?: string }) {
+function ExpertAnchorCard({
+  expert,
+  detailQuery,
+  expertAvailable,
+}: {
+  expert: ExpertCardProps["expert"];
+  detailQuery?: string;
+  /** SH-1 item 11: the server's answer for this expert's city, read once by `ExpertCard`. */
+  expertAvailable: boolean;
+}) {
   const fullName = `${expert.firstName || ""} ${expert.lastName || ""}`.trim() || "Local Expert";
   const firstName = expert.firstName || "your expert";
   const lede =
@@ -206,15 +216,17 @@ function ExpertAnchorCard({ expert, detailQuery }: { expert: ExpertCardProps["ex
           {lede}
         </p>
         <div className="flex flex-wrap items-center gap-2 pt-4">
-          <Link href={`${earnerProfilePath(expert) ?? "/experts"}${detailQuery ?? ""}`}>
-            <button
-              className="inline-flex h-9 items-center rounded-md px-3.5 text-[12px] font-bold text-white"
-              style={{ background: "var(--earn-coral-ink)", boxShadow: "0 4px 14px rgba(232,93,85,.35)" }}
-              data-testid="button-plan-with-expert"
-            >
-              {price !== null ? `Plan with ${firstName} · from $${price}` : `Plan with ${firstName}`}
-            </button>
-          </Link>
+          {expertAvailable && (
+            <Link href={`${earnerProfilePath(expert) ?? "/experts"}${detailQuery ?? ""}`}>
+              <button
+                className="inline-flex h-9 items-center rounded-md px-3.5 text-[12px] font-bold text-white"
+                style={{ background: "var(--earn-coral-ink)", boxShadow: "0 4px 14px rgba(232,93,85,.35)" }}
+                data-testid="button-plan-with-expert"
+              >
+                {price !== null ? `Plan with ${firstName} · from $${price}` : `Plan with ${firstName}`}
+              </button>
+            </Link>
+          )}
           <Link href={`${earnerProfilePath(expert) ?? "/experts"}${detailQuery ?? ""}`}>
             <button
               className="inline-flex h-9 items-center rounded-md border border-white/40 px-3.5 text-[12px] font-semibold text-white/90 hover:bg-white/10"
@@ -236,8 +248,13 @@ export function ExpertCard({ expert, onNeighbourhoodClick, detailQuery, variant 
   // Locked Decision 40 (lane 3): the shared contact rail. Addresses the earner by HANDLE when the
   // row carries one; the hook keeps the legacy `?expertId=` path for a row that does not.
   const askExpert = useAskExpert();
+  // SH-1 item 11 (Q11.2): this expert's own Message / "Plan with" draw only while their city has an
+  // expert to ask. The card's own city (or first stated destination) is the scope; none ⇒ hidden.
+  const expertAvailable = useExpertAvailability({
+    city: expert.expertForm?.city ?? expert.expertForm?.destinations?.[0] ?? null,
+  });
   if (variant === "anchor") {
-    return <ExpertAnchorCard expert={expert} detailQuery={detailQuery} />;
+    return <ExpertAnchorCard expert={expert} detailQuery={detailQuery} expertAvailable={expertAvailable} />;
   }
   const [isFavorite, setIsFavorite] = useState(false);
 
@@ -547,25 +564,27 @@ export function ExpertCard({ expert, onNeighbourhoodClick, detailQuery, variant 
 
       {/* Action grammar — the mock's two-button row (secondary + primary CTA) */}
       <div className="mt-auto flex items-center gap-2 pt-2.5" style={{ borderTop: `1px solid ${LINE}`, marginTop: "10px" }}>
-        <button
-          className="flex h-7 flex-1 items-center justify-center gap-1 rounded-md border text-[11px] font-semibold transition-colors hover:bg-black/[.03]"
-          style={{ borderColor: "var(--earn-navy)", color: "var(--earn-navy)" }}
-          data-testid="button-message"
-          onClick={() =>
-            askExpert({
-              // The HANDLE is the address; the server resolves the earner and answers with an
-              // opaque conversation id. `expertId` is the fallback for an expert who has claimed
-              // no handle — LD 40 lane 2: still id-addressed for those rows only.
-              handle: expert.handle ?? null,
-              expertId: expert.handle ? null : String(expert.id),
-              fallbackName: fullName,
-              fallbackAvatar: expert.profileImageUrl ?? null,
-            })
-          }
-        >
-          <MessageCircle className="h-3 w-3" />
-          Message
-        </button>
+        {expertAvailable && (
+          <button
+            className="flex h-7 flex-1 items-center justify-center gap-1 rounded-md border text-[11px] font-semibold transition-colors hover:bg-black/[.03]"
+            style={{ borderColor: "var(--earn-navy)", color: "var(--earn-navy)" }}
+            data-testid="button-message"
+            onClick={() =>
+              askExpert({
+                // The HANDLE is the address; the server resolves the earner and answers with an
+                // opaque conversation id. `expertId` is the fallback for an expert who has claimed
+                // no handle — LD 40 lane 2: still id-addressed for those rows only.
+                handle: expert.handle ?? null,
+                expertId: expert.handle ? null : String(expert.id),
+                fallbackName: fullName,
+                fallbackAvatar: expert.profileImageUrl ?? null,
+              })
+            }
+          >
+            <MessageCircle className="h-3 w-3" />
+            Message
+          </button>
+        )}
         <Link href={`${earnerProfilePath(expert) ?? "/experts"}${detailQuery ?? ""}`} className="flex-1">
           <button
             className="flex h-7 w-full items-center justify-center gap-1 rounded-md text-[11px] font-bold text-white transition-transform hover:-translate-y-px"

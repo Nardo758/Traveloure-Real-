@@ -10,13 +10,14 @@ function envNumber(name: string, fallback: number): number {
 }
 
 /**
- * Brief §3 — TTL by fact type, in days. `closure` and `event` expire at their own end date (the
- * adapter sets it); `tip` lasts until superseded (no expiry). A NULL here means "no TTL by type".
+ * Brief §3 — TTL by fact type, in days. `closed_dates` and `event` expire at their own end date
+ * (`closed_dates`: `recordFacts` sets it from the value); `tip` lasts until superseded (no expiry). A NULL here means "no TTL by type".
  * Override one with `PLACE_FACT_TTL_DAYS_<TYPE>` (e.g. `PLACE_FACT_TTL_DAYS_HOURS=3`).
  */
 const TTL_DAYS: Record<FactType, number | null> = {
   hours: 7,
-  closure: null,
+  // FB-1 step 5b: a `closed_dates` fact expires the day after its last closed date (recordFacts sets it).
+  closed_dates: null,
   price: 14,
   ticketing_rule: 30,
   transit: 30,
@@ -31,6 +32,8 @@ const TTL_DAYS: Record<FactType, number | null> = {
   // FD-3: official operational facts — re-read on the registry's cadence, not kept indefinitely.
   last_admission: 30,
   last_service: 30,
+  // FB-1 step 5c: a timed-entry requirement is an official operational fact like the two above.
+  timed_entry_required: 30,
 };
 
 export function factTtlDays(type: FactType): number | null {

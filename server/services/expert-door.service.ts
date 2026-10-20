@@ -139,6 +139,23 @@ export interface HelpLevelView {
   bandLabel: string | null;
 }
 
+/**
+ * FB-1 expert hook (ledger `2026-10-18-fb1-expert-hook`): would this market's chooser have anyone in it? The SAME
+ * candidates, byline gate and per-level selection the chooser draws, so the hook's button never opens an empty chooser.
+ */
+export async function chooserHasExperts(marketKey: string): Promise<boolean> {
+  const candidates = await loadCandidates(marketKey);
+  if (candidates.length === 0) return false;
+  const gate = gateFor(marketKey);
+  for (const level of HELP_LEVELS) {
+    if ((await selectPickerExperts(candidates, level, gate)).length > 0) return true;
+  }
+  return false;
+}
+
+/** The plan's market (key and city name), exported for the expert hook. */
+export const planMarketForTrip = (tripId: string) => planMarket(tripId);
+
 /** The "How much help do you want?" card: one row per level, each band from the picker's own listings. */
 export async function expertHelpOverview(tripId: string, userId: string | null | undefined) {
   await assertChooser(tripId, userId);

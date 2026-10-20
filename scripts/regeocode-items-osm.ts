@@ -24,6 +24,9 @@
  * v2 reads `city_neighborhoods` (names, centroids, radii) for the viewbox hint and prints per-reason unresolved
  * counts, the query basis and viewbox source counts, and twenty samples.
  *
+ * LG-2 Ask 8 (ruling 7): every run asks the geocoder at `GEOCODER_BASE_URL` and REFUSES to start when it is unset or
+ * names the public Nominatim server — no further batch runs or rechecks against nominatim.openstreetmap.org.
+ *
  * Reads `itinerary_items` (located rows) with their plan's destination, sends one Nominatim request per item that
  * names a place, at least 1.1 s apart, with a user agent naming Traveloure. Prints the counts (resolved /
  * ambiguous / unresolved / unreachable) and ten sample rows. Against production it is run by Replit; this
@@ -31,6 +34,7 @@
  */
 import { and, eq, inArray, isNotNull, or } from "drizzle-orm";
 import { db } from "../server/db";
+import { batchGeocoderRefusal, geocoderBaseUrl } from "../server/config/geocoder.config";
 import { cityNeighborhoods, itineraryItems, trips } from "../shared/schema";
 import { placeRefsForTrip } from "../server/services/content-facts/place-facts.service";
 import { itemsWithOpenCoord, openCoordsForPlaceIds, recordOpenCoordForItem } from "../server/services/routing/open-place-coords.service";
@@ -260,7 +264,7 @@ async function mainWikidata(): Promise<void> {
     nominatimBy[nominatim] = (nominatimBy[nominatim] ?? 0) + 1;
     let outcome: WikidataOutcome | null = null;
     let search: string | null = null;
-    if (nominatim === "no_results" || nominatim === "no_match") {
+    if (nominatim === "no_results" || nominatim === "no_match" || nominatim === "not_a_place") {
       const wait = lastWikidata + WIKIDATA_MIN_INTERVAL_MS - Date.now();
       if (wait > 0) await sleep(wait);
       const w = await lookupItemWikidata(item);
@@ -292,6 +296,20 @@ async function mainWikidata(): Promise<void> {
 
 async function main(): Promise<void> {
   const apply = process.argv.includes("--apply");
+  // LG-2 Ask 8 (ruling 7): no batch run against the public Nominatim server. Wikidata (--wikidata) also asks Nominatim
+  // first, so it is refused the same way. The address is config, never printed (it may name a private instance).
+  const refusal = batchGeocoderRefusal(geocoderBaseUrl());
+  if (refusal) {
+    console.error(
+      refusal === "public_nominatim"
+        ? "REFUSED: GEOCODER_BASE_URL names the public Nominatim server. Batch runs wait for a self-hosted or paid geocoder."
+        : refusal === "not_configured"
+          ? "REFUSED: GEOCODER_BASE_URL is not set. Batch runs wait for a self-hosted or paid geocoder; nothing was requested."
+          : "REFUSED: GEOCODER_BASE_URL is not an http(s) address. Nothing was requested.",
+    );
+    process.exitCode = 1;
+    return;
+  }
   if (apply && !process.argv.includes("--v2")) throw new Error("--apply runs only with --v2");
   if (process.argv.includes("--wikidata")) {
     if (apply) throw new Error("--wikidata is read-only in step 1c; it never runs with --apply");

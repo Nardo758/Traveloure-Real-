@@ -17,6 +17,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { tripPassPricingLine, tripPassRunsPhrase } from "@/lib/trip-pass-runs-copy";
 import { Link, useLocation } from "wouter";
+import { useExpertAvailability } from "@/lib/expert-availability";
 import {
   Palmtree,
   Sparkles,
@@ -172,6 +173,9 @@ export default function PricingPage() {
   const { data: pricing, isLoading, isError } = useQuery<PricingBundle>({
     queryKey: ["/api/pricing"],
   });
+  // SH-1 item 11 (Q11.3): the local-expert column's "Find a local expert" names no city, so it draws
+  // only when any live market has an expert to ask.
+  const anyExpertAvailable = useExpertAvailability("any");
 
   const stub = (label: string) =>
     toast({ title: `${label} — coming soon`, description: "This purchase flow isn't live yet." });
@@ -349,7 +353,7 @@ export default function PricingPage() {
       icon: UserRound,
       checklist: [
         "A named expert takes your trip end to end",
-        "They review, re-route, and book for you",
+        "They review, re-route, and book in your name.",
         // D-5 (ledger `2026-09-15-d5-no-milestone-billing`): there is NO deposit-then-balance,
         // milestone or instalment billing for expert planning work. A done-for-you event is a
         // coordination engagement whose fee is quoted server-side and captured ONCE
@@ -452,13 +456,15 @@ export default function PricingPage() {
                   </li>
                 ))}
               </ul>
-              <button
-                onClick={col.onClick}
-                data-testid={`button-plan-${col.testid}`}
-                className={`mt-5 w-full ${col.variant === "coral" ? PAGE_ACTION.primary : PAGE_ACTION.secondary}`}
-              >
-                {col.cta}
-              </button>
+              {(col.testid !== "local" || anyExpertAvailable) && (
+                <button
+                  onClick={col.onClick}
+                  data-testid={`button-plan-${col.testid}`}
+                  className={`mt-5 w-full ${col.variant === "coral" ? PAGE_ACTION.primary : PAGE_ACTION.secondary}`}
+                >
+                  {col.cta}
+                </button>
+              )}
             </div>
           ))}
         </div>

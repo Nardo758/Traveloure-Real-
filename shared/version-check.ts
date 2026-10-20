@@ -14,7 +14,7 @@
 import { clockLabel, parseDayHours, type FindingKind } from "./optimizer-lead";
 import { isPlanAnchorItemType } from "./draft-basis";
 import { optionPickOf } from "./version-options";
-import { checkPlan, feasibilityView, type PlanCheckInput, type PlanCheckResult, type PlanIssue } from "./plan-check";
+import { checkPlan, feasibilityView, isFlagOnlyIssue, type PlanCheckInput, type PlanCheckResult, type PlanIssue } from "./plan-check";
 
 /** The status a version is stored with when it fails the check. The board, adopt and apply never read it. */
 export const HELD_VARIANT_STATUS = "held" as const;
@@ -93,11 +93,15 @@ function checkableKinds(input: PlanCheckInput): Set<FindingKind> {
  */
 export function compareVersionToDraft(draft: CheckedPlan, version: CheckedPlan, sourceOf: ReadonlyMap<string, string | null>): VersionVerdict {
   const versionCan = checkableKinds(version.input);
-  const notCheckable = Array.from(new Set(draft.result.issues.map((i) => i.type).filter((k) => !versionCan.has(k))));
-  const draftKeys = new Set(draft.result.issues.map((i) => issueKey(i, null)));
-  const versionKeys = new Map(version.result.issues.map((i) => [issueKey(i, sourceOf), i] as const));
-  const unresolved = draft.result.issues.filter((i) => versionCan.has(i.type) && versionKeys.has(issueKey(i, null))).map((i) => versionKeys.get(issueKey(i, null))!);
-  const added = version.result.issues.filter((i) => !draftKeys.has(issueKey(i, sourceOf)));
+  // FB-1 step 5c: a flag-only issue (`isFlagOnlyIssue`) is shown on every version but never resolved, added or
+  // counted as not checkable here — no version can reserve a slot.
+  const draftIssues = draft.result.issues.filter((i) => !isFlagOnlyIssue(i));
+  const versionIssues = version.result.issues.filter((i) => !isFlagOnlyIssue(i));
+  const notCheckable = Array.from(new Set(draftIssues.map((i) => i.type).filter((k) => !versionCan.has(k))));
+  const draftKeys = new Set(draftIssues.map((i) => issueKey(i, null)));
+  const versionKeys = new Map(versionIssues.map((i) => [issueKey(i, sourceOf), i] as const));
+  const unresolved = draftIssues.filter((i) => versionCan.has(i.type) && versionKeys.has(issueKey(i, null))).map((i) => versionKeys.get(issueKey(i, null))!);
+  const added = versionIssues.filter((i) => !draftKeys.has(issueKey(i, sourceOf)));
   const d = checkCoverage(draft.input);
   const v = checkCoverage(version.input);
   return {
@@ -181,12 +185,16 @@ export function fixPromptLine(issue: PlanIssue, refOf: (itemId: string) => strin
       return `Day ${f.day}: re-sequence the day's stops so it does not double back across the city (${issue.why}).`;
     case "lighten_day":
       return `Day ${f.day}: move one stop off this day to ease the pace (${issue.why}).`;
+    // Flag-only: `fixedVersionDescriptor` never passes one; a line only because the switch is exhaustive.
+    case "book_ahead":
+      return `Day ${f.day}: keep ${stop}; its timed slot is reserved on the official site (${issue.why}).`;
   }
 }
 
 /** Pure. Version A's descriptor for the prompt (ruling 5): the traveler's plan with the draft's own fixes applied. */
 export function fixedVersionDescriptor(draftIssues: readonly PlanIssue[], refOf: (itemId: string) => string | null): { name: string; goal: string; strategy: string } {
-  const fixes = draftIssues.map((i) => fixPromptLine(i, refOf));
+  // FB-1 step 5c: a flag-only issue is never a change the model is asked to make.
+  const fixes = draftIssues.filter((i) => !isFlagOnlyIssue(i)).map((i) => fixPromptLine(i, refOf));
   return {
     name: FIXED_VERSION_NAME,
     goal: "Keep the traveler's own plan and fix the problems found in it — change nothing else.",
@@ -208,6 +216,7 @@ const WHY_TEXT: Record<PlanIssue["why"], string> = {
   before_opening: "starts before it opens",
   after_closing: "starts after it closes",
   closed_day: "is closed that day",
+  closed_date: "is closed on that date",
   closes_early: "closes before your visit ends",
   after_last_entry: "starts after last entry",
   leg_too_long: "can’t be reached in time from the stop before",
@@ -216,6 +225,7 @@ const WHY_TEXT: Record<PlanIssue["why"], string> = {
   crosses_city: "crosses the city more than once",
   walking_saved: "has a shorter walking order",
   recovery_needed: "is too full",
+  timed_entry_required: "needs a timed slot reserved on the official site",
 };
 
 /** Pure. One open issue, as the traveler reads it: "Stop · Day N — why", or "Day N — why" for a day issue. */
@@ -240,6 +250,9 @@ export function fixLine(issue: PlanIssue): string {
       return "Fix: reorder this day’s stops.";
     case "lighten_day":
       return "Fix: move a stop off this day.";
+    // FB-1 step 5c (FOUNDER WORDING REVIEW on the PR).
+    case "book_ahead":
+      return "Fix: reserve a slot on the official site.";
   }
 }
 

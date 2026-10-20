@@ -4,7 +4,10 @@ import { WELCOME_VERIFICATION_WINDOW_SETTING, isValidWelcomeVerificationWindowSe
 import { BLOG_FOOTER_MIN_PUBLISHED_SETTING, isValidBlogFooterMinPublishedSetting } from "@shared/blog-footer";
 import { TRAVELER_SIGNUP_MODE_SETTING, TRAVELER_SIGNUP_OPENED_AT_SETTING, LAUNCH_MARKET_SLUG_SETTING, isTravelerSignupModeValue } from "@shared/launch-signup";
 import { PHONE_DELIVERY_SWITCH_KEYS } from "@shared/phone-delivery";
+import { EVENT_CONCIERGE_SETTING, HANDOFF_BOOKING_SETTING } from "@shared/traveler-doors";
 import { BETA_MARKET_SLUGS_SETTING, betaMarketSlugsRefusal } from "@shared/ticker";
+import { EXPERT_HOOK_CITIES_SETTING, expertHookCitiesRefusal } from "@shared/expert-hook";
+import { seasonWindowsSettingRefusal } from "@shared/busy-bus";
 import { enteredStatus } from "../utils/form-status-transition";
 import { zodErrorBody } from "../utils/zod-error-body";
 import { getUserId } from "../utils/auth";
@@ -8200,7 +8203,7 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       // Boolean flags from /admin/system must be exactly "true"/"false" so the
       // enforcement middleware never misreads a junk value.
       // §8 phone delivery: one switch per channel, all off until an admin turns them on.
-      const BOOLEAN_FLAG_KEYS = ["maintenance_mode", "new_user_registration_enabled", "email_notifications_enabled", ...PHONE_DELIVERY_SWITCH_KEYS];
+      const BOOLEAN_FLAG_KEYS = ["maintenance_mode", "new_user_registration_enabled", "email_notifications_enabled", ...PHONE_DELIVERY_SWITCH_KEYS, EVENT_CONCIERGE_SETTING, HANDOFF_BOOKING_SETTING];
       if (BOOLEAN_FLAG_KEYS.includes(settingKey) && !["true", "false"].includes(settingValue)) {
         return res.status(400).json({ error: `${settingKey} must be 'true' or 'false'`, got: settingValue });
       }
@@ -8234,6 +8237,16 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       // LW-1f-b: the beta list is a JSON array of operating-market keys; an unknown or repeated key is refused.
       if (settingKey === BETA_MARKET_SLUGS_SETTING) {
         const refusal = betaMarketSlugsRefusal(settingValue);
+        if (refusal) return res.status(400).json({ error: refusal, got: settingValue });
+      }
+      // FB-1: the expert hook's cities — the same shape as the beta list; an unknown or repeated key is refused.
+      if (settingKey === EXPERT_HOOK_CITIES_SETTING) {
+        const refusal = expertHookCitiesRefusal(settingValue);
+        if (refusal) return res.status(400).json({ error: refusal, got: settingValue });
+      }
+      // FB-1 step 5d: a market's season windows (`season_windows_<market>`) — a JSON list of {from, to} dates.
+      {
+        const refusal = seasonWindowsSettingRefusal(settingKey, settingValue);
         if (refusal) return res.status(400).json({ error: refusal, got: settingValue });
       }
       if (settingKey === LAUNCH_MARKET_SLUG_SETTING && !/^[a-z0-9-]{1,64}$/.test(settingValue)) {

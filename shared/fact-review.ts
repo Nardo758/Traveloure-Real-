@@ -4,11 +4,12 @@
  * `verified_at`. Nothing deletes rows — an unreviewed dated fact is simply not read.
  *
  *   · DATED      — hours, plus the SAFETY set.
- *   · SAFETY     — last_admission, last_service, closure, transit (timetables), event (official viewing and
+ *   · SAFETY     — last_admission, last_service, closed_dates, transit (timetables), event (official viewing and
  *                  illumination dates). A safety fact goes live only with a reviewer-entered expiry taken
  *                  from the source.
  *   · hours      — expire at the latest allowed date unless the reviewer enters a shorter one.
- *   · ticketing_rule and every other type are not dated and are untouched by this rule.
+ *   · ticketing_rule, timed_entry_required (ruled Oct 20, 2026) and every other type are not dated and are
+ *     untouched by this rule.
  *   · only machine-read origins wait (REVIEWED_ORIGINS: crawled, official_refresh, bot_proposal, places_api). A
  *     listing's, gem's or event's own fact and an expert's or traveler's words keep their existing rules.
  *

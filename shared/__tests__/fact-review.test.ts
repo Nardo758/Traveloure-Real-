@@ -34,16 +34,18 @@ const checkedAt = new Date("2026-10-01T03:00:00Z");
 const now = new Date("2026-10-05T03:00:00Z");
 
 test("FR1 — the sets", () => {
-  assert.deepEqual([...SAFETY_FACT_TYPES], ["last_admission", "last_service", "closure", "transit", "event"]);
+  assert.deepEqual([...SAFETY_FACT_TYPES], ["last_admission", "last_service", "closed_dates", "transit", "event"]);
   assert.deepEqual([...DATED_FACT_TYPES], ["hours", ...SAFETY_FACT_TYPES]);
   assert.equal(isDatedFactType("ticketing_rule"), false);
+  assert.equal(isDatedFactType("timed_entry_required"), false, "ruled Oct 20, 2026: not a dated fact");
+  assert.equal(isDatedFactType("closure"), false, "closed_dates replaced closure");
   assert.equal(isSafetyFactType("hours"), false);
   assert.equal(isSafetyFactType("event"), true);
 });
 
 test("FR2 — factIsReviewed", () => {
   assert.equal(factIsReviewed({ factType: "hours", origin: "official_refresh", verifiedBy: null }), false);
-  assert.equal(factIsReviewed({ factType: "closure", origin: "crawled", verifiedBy: "  " }), false);
+  assert.equal(factIsReviewed({ factType: "closed_dates", origin: "crawled", verifiedBy: "  " }), false);
   assert.equal(factIsReviewed({ factType: "last_service", origin: "official_refresh", verifiedBy: "admin-1" }), true);
   assert.equal(factIsReviewed({ factType: "ticketing_rule", origin: "official_refresh", verifiedBy: null }), true);
   assert.equal(factIsReviewed({ factType: "location", origin: "places_api", verifiedBy: null }), true);
@@ -69,7 +71,7 @@ test("FR3 — resolveReviewedExpiry", () => {
   assert.equal((resolveReviewedExpiry({ ...base, sourceIntervalDays: null, settingValue: null, factType: "hours" }) as any).reason, "expiry_unset");
   // A sooner season end wins; a later one is refused.
   const season = new Date("2026-10-20T00:00:00Z");
-  const s = resolveReviewedExpiry({ ...base, factType: "closure", entered: season.toISOString() });
+  const s = resolveReviewedExpiry({ ...base, factType: "closed_dates", entered: season.toISOString() });
   assert.equal(s.ok && s.expiresAt.getTime(), season.getTime());
   assert.equal((resolveReviewedExpiry({ ...base, factType: "closure", entered: "2026-12-31" }) as any).reason, "expiry_after_limit");
   assert.equal((resolveReviewedExpiry({ ...base, factType: "hours", entered: "2026-10-02" }) as any).reason, "expiry_past");

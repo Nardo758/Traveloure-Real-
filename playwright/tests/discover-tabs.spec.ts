@@ -422,6 +422,8 @@ async function mockBentoEndpoints(page: import('@playwright/test').Page) {
   // casing, so the SPA may request /api/discover/location/Kyoto (title case). A regex
   // route matches either casing, keeping this suite independent of the redirect.
   await page.route(/\/api\/discover\/location\/kyoto/i, (route) => route.fulfill(json(BENTO_FIX.locationView)));
+  // SH-1 item 11: expert CTAs draw only on a "yes" from the availability answer — the fixture city has one.
+  await page.route('**/api/expert-availability**', (route) => route.fulfill(json({ available: true })));
   // Admin-configurable composition knobs — pinned so the interleave is deterministic.
   await page.route('**/api/feed-composition-config', (route) => route.fulfill(json(BENTO_FIX.feedConfig)));
   // Wanted-slot vocabulary.
@@ -630,9 +632,8 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(page.getByTestId('sort-option-recommended')).toBeVisible();
     await expect(page.getByTestId('popover-filters').locator('[data-testid^="spine-chip-"]')).toHaveCount(0);
     await page.keyboard.press('Escape');
-    // Trip complements + request footer still render.
+    // Trip complements still render (SH-1 item 9 deleted the Request-a-service footer).
     await expect(page.getByTestId('trip-complements-strip')).toBeVisible();
-    await expect(page.getByTestId('section-service-request')).toBeVisible();
   });
 
   test('7. chip filter — every bento filters to the chip kind and empty neighbourhoods drop out', async ({ page }) => {

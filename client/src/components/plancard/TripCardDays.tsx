@@ -22,7 +22,7 @@
  */
 import { PlanRowLookProvider } from "@/components/plan/row-look";
 import { routedLegLine } from "@shared/routing-engine";
-import { bridgeArrivingAt, bridgeLabelFor, bridgeLegLabel, routedLegBetween, type BridgeInfo } from "@/lib/slip-legs";
+import { TRAVEL_TIME_NOT_CHECKED_LINE, bridgeLegLabel, routedLegBetween } from "@/lib/slip-legs";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -90,38 +90,42 @@ type DayTransport = NonNullable<PlanCardDay["transports"]>[number];
  * to its PAIR by id. A day whose legs name none of its stops (a version's legs, keyed to version items)
  * keeps the position pairing it always had.
  *
- * P0-d item 2 (ledger `2026-10-12-p0d-coverage-bridges`): with no leg of its own, the slot draws the
- * BRIDGE arriving at the next stop from an earlier one — the slip's own rule (`bridgeArrivingAt`), so a
- * bridge is drawn on the card where the slip draws it, and named the same way.
+ * LG-2 Ask 6 (decision-maker, Oct 19, 2026; supersedes P0-d item 2's bridge): a leg connects ADJACENT stops only —
+ * a slot with no leg of its own draws nothing from an earlier stop.
  */
-export function cardSlotLeg(legs: DayTransport[], acts: Array<{ id: string }>, idx: number): { leg: DayTransport; bridge: BridgeInfo | null } | null {
+export function cardSlotLeg(legs: DayTransport[], acts: Array<{ id: string }>, idx: number): { leg: DayTransport } | null {
   const from = acts[idx]?.id;
   const to = acts[idx + 1]?.id;
-  const ids = acts.map((a) => a.id);
-  const idSet = new Set(ids);
+  const idSet = new Set(acts.map((a) => a.id));
   const named = legs.some((l: any) => idSet.has(l.fromActivityId ?? l.from) || idSet.has(l.toActivityId ?? l.to));
-  if (!named) return legs[idx] ? { leg: legs[idx], bridge: null } : null;
+  if (!named) return legs[idx] ? { leg: legs[idx] } : null;
   const own = legs.find((l: any) => (l.fromActivityId ?? l.from) === from && (l.toActivityId ?? l.to) === to);
-  if (own) return { leg: own, bridge: null };
-  const hit = bridgeArrivingAt(legs as any[], ids, idx + 1);
-  return hit ? { leg: hit.leg as DayTransport, bridge: hit.bridge } : null;
+  return own ? { leg: own } : null;
 }
 
-/** The leg drawn after stop `idx` (its own or a bridge) — `cardSlotLeg`'s leg. */
+/** The leg drawn after stop `idx` — `cardSlotLeg`'s leg. */
 export function cardLegAfter(legs: DayTransport[], acts: Array<{ id: string }>, idx: number): DayTransport | null {
   return cardSlotLeg(legs, acts, idx)?.leg ?? null;
 }
 
+/** LG-2 Ask 6: the slot after stop `idx` is a leg with no travel time — the server named the pair (a stop with no open point). */
+export function cardSlotNotChecked(day: Pick<PlanCardDay, "legsNotChecked">, acts: Array<{ id: string }>, idx: number): boolean {
+  const from = acts[idx]?.id;
+  const to = acts[idx + 1]?.id;
+  return !!from && !!to && (day.legsNotChecked ?? []).some((p) => p.fromActivityId === from && p.toActivityId === to);
+}
+
 /**
- * P0-d item 3: the card's leg count — stop-to-stop legs and bridges, every slot the day panel draws a leg
- * in; stay legs are in neither (the panel is the day's stops). The hero reads this, so the two agree.
+ * P0-d item 3: the card's leg count — every stop-to-stop slot the day panel draws a leg in, a leg with no travel time
+ * included (LG-2 Ask 6: it exists); stay legs are not counted (the panel is the day's stops). The hero reads this, so
+ * the two agree.
  */
-export function cardLegCount(days: ReadonlyArray<Pick<PlanCardDay, "activities" | "transports">>): number {
+export function cardLegCount(days: ReadonlyArray<Pick<PlanCardDay, "activities" | "transports" | "legsNotChecked">>): number {
   let n = 0;
   for (const d of days) {
     const acts = (d.activities ?? []).filter((a) => !isStayActivity(a));
     const legs = [...(d.transports ?? [])].sort((a: any, b: any) => (a.legOrder ?? 0) - (b.legOrder ?? 0));
-    for (let i = 0; i < acts.length - 1; i++) if (cardSlotLeg(legs as DayTransport[], acts, i)) n++;
+    for (let i = 0; i < acts.length - 1; i++) if (cardSlotLeg(legs as DayTransport[], acts, i) || cardSlotNotChecked(d, acts, i)) n++;
   }
   return n;
 }
@@ -129,18 +133,18 @@ export function cardLegCount(days: ReadonlyArray<Pick<PlanCardDay, "activities" 
 /**
  * P0-e addition 5 (ledger `2026-10-12-p0e-findings-and-gaps`): the selected day's panel header —
  * "Thu Nov 12 · 2 legs · 6 stops". Legs are the card's own count for that day (`cardLegCount`: stop-to-stop
- * legs and bridges, stays in neither), stops the day's stops with the stay left out, so the header and
+ * legs, a leg with no travel time included, stays not counted), stops the day's stops with the stay left out, so the header and
  * the hero count the same thing.
  */
-export function cardDayPanelLine(day: Pick<PlanCardDay, "dayNum" | "dateIso" | "activities" | "transports">): string {
+export function cardDayPanelLine(day: Pick<PlanCardDay, "dayNum" | "dateIso" | "activities" | "transports" | "legsNotChecked">): string {
   const legs = cardLegCount([day]);
   const stops = (day.activities ?? []).filter((a) => !isStayActivity(a)).length;
   return `${cardPanelDayLabel({ dayNum: day.dayNum, dateIso: day.dateIso ?? null })} · ${legs} ${legs === 1 ? "leg" : "legs"} · ${stops} ${stops === 1 ? "stop" : "stops"}`;
 }
 
 /**
- * P0-e addition 5b: the "From → To" line over a stop-to-stop leg — the same words a bridge gets
- * (`bridgeLegLabel`), read off the two stops the leg joins. A bridge keeps its own label.
+ * P0-e addition 5b: the "From → To" line over a stop-to-stop leg (`bridgeLegLabel`, the one formatter), read off the
+ * two stops the leg joins.
  */
 export function cardLegEndsLabel(fromName: string | null | undefined, toName: string | null | undefined): string {
   return bridgeLegLabel(fromName, toName, []);
@@ -470,6 +474,7 @@ export function TripCardDays(props: TripCardDaysProps) {
             onOpenChange={(o) => setOpenDay(o ? d.dayNum : null)}
             feasibility={d.feasibility ?? null}
             localTeaser={d.localTeaser ?? null}
+            busyBus={d.busyBus ?? null}
             photo={
               firstPhotoId ? (
                 <PlacePhoto
@@ -516,13 +521,15 @@ export function TripCardDays(props: TripCardDaysProps) {
                 />
                 {/* 9b-c (LB1–LB9): today's leave-by for this stop, derived at read from the ONE core (never stored). */}
                 {isToday && upNext ? <LeaveByLine row={upNext.leaveByRows.find((r) => r.stopId === a.id) ?? null} rows={upNext.leaveByRows} nowMinute={upNext.nowMinute} stopName={a.name} stopId={a.id} /> : null}
-                {idx < acts.length - 1 && cardSlotLeg(legs, acts, idx)?.bridge ? (
-                  <p className="ml-6 pl-3 pt-1 text-xs font-medium text-muted-foreground" data-testid={`card-leg-bridge-${(cardSlotLeg(legs, acts, idx)!.leg as any).id}`}>
-                    {bridgeLabelFor(acts, cardSlotLeg(legs, acts, idx)!.bridge!, acts[idx + 1].id)}
-                  </p>
-                ) : idx < acts.length - 1 && cardSlotLeg(legs, acts, idx) ? (
-                  <p className="ml-6 pl-3 pt-1 text-xs font-medium text-muted-foreground" data-testid={`card-leg-ends-${(cardSlotLeg(legs, acts, idx)!.leg as any).id}`}>
+                {idx < acts.length - 1 && (cardSlotLeg(legs, acts, idx) || cardSlotNotChecked(d, acts, idx)) ? (
+                  <p className="ml-6 pl-3 pt-1 text-xs font-medium text-muted-foreground" data-testid={`card-leg-ends-${(cardSlotLeg(legs, acts, idx)?.leg as any)?.id ?? `${a.id}-${acts[idx + 1].id}`}`}>
                     {cardLegEndsLabel(a.name, acts[idx + 1].name)}
+                  </p>
+                ) : null}
+                {/* LG-2 Ask 6: a stop with no open point — the leg exists with no time. */}
+                {idx < acts.length - 1 && !cardSlotLeg(legs, acts, idx) && cardSlotNotChecked(d, acts, idx) ? (
+                  <p className="ml-6 pl-3 py-1 text-xs text-muted-foreground" data-testid={`card-leg-not-checked-${a.id}-${acts[idx + 1].id}`}>
+                    {TRAVEL_TIME_NOT_CHECKED_LINE}
                   </p>
                 ) : null}
                 {idx < acts.length - 1 && cardLegAfter(legs, acts, idx) ? (

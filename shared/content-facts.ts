@@ -127,7 +127,9 @@ export function admitNeedList(values: unknown): { ok: true; needs: ContentNeedKe
  */
 export const FACT_TYPES = [
   "hours",
-  "closure",
+  // FB-1 step 5b (ledger `2026-10-19-fb1-closed-dates`): `closed_dates` REPLACES the unread `closure` type —
+  // one type for "this place is closed on these dates", structured, admitted by `admitFeasibilityFact`.
+  "closed_dates",
   "price",
   "ticketing_rule",
   "transit",
@@ -145,6 +147,9 @@ export const FACT_TYPES = [
   // `admitFeasibilityFact` (shared/feasibility-facts.ts) — an official source required, never parsed from text.
   "last_admission",
   "last_service",
+  // FB-1 step 5c (ledger `2026-10-19-fb1-timed-entry`): entry needs a timed slot reserved on the official site —
+  // structured, admitted by `admitFeasibilityFact`, flag-only in the checker.
+  "timed_entry_required",
 ] as const;
 export type FactType = (typeof FACT_TYPES)[number];
 
@@ -225,7 +230,9 @@ export function originTier(origin: string | null | undefined): number {
  * after a person has reviewed them (`verified_by` holds a person's id), when a machine read them (REVIEWED_ORIGINS). SAFETY facts go live only with a
  * reviewer-entered expiry. ticketing_rule and the rest are not dated. Review rules: shared/fact-review.ts.
  */
-export const SAFETY_FACT_TYPES = ["last_admission", "last_service", "closure", "transit", "event"] as const;
+// `closed_dates` replaced `closure` (ledger `2026-10-19-fb1-closed-dates`). `timed_entry_required` is NOT a dated fact
+// (decision-maker, Oct 20, 2026): it states that a slot must be booked, not when a place is open.
+export const SAFETY_FACT_TYPES = ["last_admission", "last_service", "closed_dates", "transit", "event"] as const;
 export const DATED_FACT_TYPES = ["hours", ...SAFETY_FACT_TYPES] as const;
 export type DatedFactType = (typeof DATED_FACT_TYPES)[number];
 export function isDatedFactType(t: unknown): t is DatedFactType {
@@ -268,7 +275,7 @@ export interface FactLike {
  * itself. `description` and `tip` NEVER qualify by this path — prose stays plan-only until an expert
  * verifies it (§8's flywheel).
  */
-export const PUBLIC_OK_FACT_TYPES = ["hours", "closure", "ticketing_rule", "transit", "event"] as const satisfies readonly FactType[];
+export const PUBLIC_OK_FACT_TYPES = ["hours", "closed_dates", "timed_entry_required", "ticketing_rule", "transit", "event"] as const satisfies readonly FactType[];
 
 /**
  * The official-source path, on its own so a surface can ask whether a publishable fact owes the

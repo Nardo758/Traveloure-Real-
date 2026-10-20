@@ -2,7 +2,8 @@
  * FB-1 step 1 (ledger `2026-10-17-fb1-checker-open-coords`), end to end through `loadOptimizerFindings` against a
  * real database (needs LG-1's migration 389).
  *   F1  stops carrying ONLY Google points (trusted row coordinates, which used to be read) yield neither path
- *       finding, and both sit in `notChecked` with the reason and the day
+ *       finding, and both sit in `notChecked` with the reason and the day — and, since LG-2 Ask 6, so does
+ *       `leg_unreachable` (`leg_not_checked`): a leg with no open point at an end has no time
  *   F2  the same stops with OSM rows (`open_place_coords`) yield city_crossing and walking_saved_km, and nothing is
  *       not checked
  *   F3  a second day with one Google-only stop is not checked while the open day is still read
@@ -62,6 +63,8 @@ test("F1 Google points only: neither path finding, both not checked", async () =
   assert.deepEqual(notChecked, [
     { kind: "city_crossing", reason: "no_open_coordinates", days: [1] },
     { kind: "walking_saved_km", reason: "no_open_coordinates", days: [1] },
+    // LG-2 Ask 6: the day's legs have no time (no open point at either end), so reachability is not checked either.
+    { kind: "leg_unreachable", reason: "leg_not_checked", days: [1] },
   ]);
 });
 

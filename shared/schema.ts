@@ -4995,7 +4995,7 @@ export const travelPulseHiddenGems = pgTable("travel_pulse_hidden_gems", {
  * TRACK A STEP A2 — THE LAUNCH-CITY TRAVEL-TIME MATRIX (migration 331; ledger
  * `2026-09-29-a2-travel-time-matrix`; product map §M3/§M4). Declared here, index for index, because
  * an object `shared/schema.ts` does not declare is dropped by the deploy push and never recreated
- * (the migration is already stamped). Written ONLY by `server/services/travel-time-matrix.service.ts`.
+ * (the migration is already stamped). No writer since 9b-b; migration 392 deleted its Google cells (LG-2).
  */
 export const travelTimeMatrixRefreshes = pgTable("travel_time_matrix_refreshes", {
   id: varchar("id").primaryKey(),
@@ -12763,6 +12763,12 @@ export const openPlaceCoords = pgTable("open_place_coords", {
   matchedBy: varchar("matched_by", { length: 32 }),
   attribution: text("attribution"),
   matchedAt: timestamp("matched_at"),
+  // migration 396 (LG-2 Ask 7): a hand-picked point a person entered (source 'admin') — who, when it was checked, what
+  // the point is (entrance | centroid | station | path_start) and the reviewer's note. NULL on a batch match.
+  enteredBy: varchar("entered_by", { length: 255 }),
+  checkedAt: timestamp("checked_at"),
+  pointBasis: varchar("point_basis", { length: 32 }),
+  note: text("note"),
 });
 
 // Which open place a plan item is (one per item). Both FKs ON DELETE CASCADE (migration 390).

@@ -8,6 +8,7 @@ import { Link } from "wouter";
 import { Map as MapIcon, MessageCircle, Share2, LifeBuoy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { openInMaps } from "@/lib/navigate";
+import { useTravelerDoors } from "@/hooks/use-traveler-doors";
 
 interface AdvisorLite {
   status: "pending" | "accepted" | "rejected";
@@ -28,6 +29,7 @@ export function BottomActionBar({
   onShare,
 }: BottomActionBarProps & { advisor?: AdvisorLite | null; onShare?: () => void }) {
   const { toast } = useToast();
+  const { eventConcierge: conciergeShown } = useTravelerDoors();
 
   const handleMaps = () => {
     if (!destination) return;
@@ -84,7 +86,8 @@ export function BottomActionBar({
           <MessageCircle className="w-[18px] h-[18px]" />
           {advisor?.first_name ? `Message ${advisor.first_name}` : "Message expert"}
         </Link>
-      ) : (
+      ) : !conciergeShown ? null : (
+        // Ledger `2026-10-18-traveler-doors-hidden`: "Get help" opens the old concierge, off by default.
         <Link
           href="/concierge"
           className="flex-1 min-h-11 flex flex-col items-center justify-center gap-0.5 rounded-lg text-[10.5px] font-bold bg-primary/10 text-primary transition-colors"
