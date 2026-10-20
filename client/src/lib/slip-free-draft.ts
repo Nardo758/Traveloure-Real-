@@ -14,6 +14,44 @@
  */
 import { readSlipHasItemsRefusal } from "@/lib/ai-draft-refusal";
 
+/** The toast and the inline alert share this title. The description is the server's sentence. */
+export const AI_DRAFT_FAILURE_TITLE = "Couldn't draft this plan";
+
+export interface AiDraftFailureNotice {
+  title: string;
+  description: string;
+}
+
+/**
+ * A real model failure, as the server already answers it (`aiFailureResponse`):
+ * 502 `ai_unavailable` ("Planning is temporarily unavailable.") or 503 high demand.
+ * The client does not restate the sentence — it shows `body.message`.
+ * Anything else (a refusal, a 500, a body with no message) is null so the caller keeps its own path.
+ */
+export function readAiDraftFailure(status: number, body: unknown): AiDraftFailureNotice | null {
+  if (status !== 502 && status !== 503) return null;
+  if (!body || typeof body !== "object") return null;
+  const rec = body as Record<string, unknown>;
+  const message = typeof rec.message === "string" ? rec.message.trim() : "";
+  if (!message) return null;
+  const unavailable = status === 502 && rec.code === "ai_unavailable" && rec.retryable === false;
+  const highDemand =
+    status === 503 &&
+    (rec.code === "ai_unavailable" || rec.retryable === true || typeof rec.retryAfterSeconds === "number");
+  if (!unavailable && !highDemand) return null;
+  return { title: AI_DRAFT_FAILURE_TITLE, description: message };
+}
+
+/** Thrown when the draft route answers a real model failure, so the slip can show that notice. */
+export class FreeDraftFailure extends Error {
+  readonly notice: AiDraftFailureNotice;
+  constructor(notice: AiDraftFailureNotice) {
+    super(notice.description);
+    this.name = "FreeDraftFailure";
+    this.notice = notice;
+  }
+}
+
 export interface FreeDraftTrip {
   id: string;
   destination: string;
@@ -43,7 +81,9 @@ export async function runFreeDraft(trip: FreeDraftTrip): Promise<FreeDraftResult
     // The server's OWN sentence for a non-empty slip — never a second copy of the rule.
     const refusal = readSlipHasItemsRefusal(res.status, body);
     if (refusal) throw new Error(refusal.message);
-    throw new Error(body?.message || "Couldn't draft this plan");
+    const modelFailure = readAiDraftFailure(res.status, body);
+    if (modelFailure) throw new FreeDraftFailure(modelFailure);
+    throw new Error(body?.message || AI_DRAFT_FAILURE_TITLE);
   }
   const line = typeof body?.draftBasis?.line === "string" ? body.draftBasis.line : null;
   return { kind: "drafted", basisLine: line };

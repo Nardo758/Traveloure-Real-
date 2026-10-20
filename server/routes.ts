@@ -58,6 +58,7 @@ import { assessServiceDeletion } from "./services/service-delete-guard.service";
 import { itineraryItemRebuildDeletable } from "./services/itinerary-rebuild-guard";
 import { splitTripMintBody, tripCreatedEventData } from "./services/trip-mint-entry";
 import { resolveAiDraftModel } from "./services/ai-draft-model";
+import { buildStubTripItinerary, isE2eAiStubEnabled } from "./services/ai-draft-stub";
 import { buildTravelerFeePreview, type TravelerFeePreviewInputLine } from "./services/traveler-fee-preview.service"; // R144 (ledger 2026-09-27-service-fee-before-checkout)
 import { resolveTripPassCoveredTripIds, tripPassCoversLine, lineFeeWaiverBasis, cartAddTripRefusal } from "./services/trip-pass-line-coverage.service"; // R148 (ledger 2026-09-27-trip-pass-waiver-per-line)
 import { buildListingBuyActions, listingBuyFacts, resolveBuyerState, hasPublishedPrice, PRICELESS_LISTING_REFUSAL, requestOnlyListingRefusals, requestOnlyRefusalBody, requestOnlyCartLines } from "./services/buy-action-payload"; // L23 (brief §11.5, ruling 9); refusal shared by the booking + cart rails (ledger 2026-09-13-cart-priceless-gap)
@@ -1740,6 +1741,11 @@ export async function registerRoutes(
       const dedupKey = `itinerary:claude:${destination}:${duration}:${travelers}:${preferences}${anchorBlock ? `:${anchorBlock}` : ""}:${draftRulesBlock}`;
 
       try {
+        if (isE2eAiStubEnabled()) {
+          // Happy path only. The catch below is unchanged: a real provider failure (stub off)
+          // is still `aiFailureResponse` — 502 `ai_unavailable` or 503 high demand — and stores nothing.
+          itineraryData = buildStubTripItinerary({ destination, durationDays: duration });
+        } else {
         const prompt = `Create a detailed ${duration}-day travel itinerary for ${destination} for ${travelers} traveler(s).${preferences ? ` Preferences: ${preferences}.` : ""}${anchorBlock}${draftRulesBlock}
 
 Return ONLY valid JSON in this exact structure:
@@ -1799,6 +1805,7 @@ ${bannedCopyPromptLine()}`;
             return parseAiJsonObjectOrThrow(text, "AI itinerary draft");
           })
         );
+        }
       } catch (aiErr: any) {
         // Circuit open → surface to outer handler as 503 (do NOT fall back).
         if (aiErr?.code === "AI_SERVICE_TEMPORARILY_UNAVAILABLE") throw aiErr;

@@ -95,6 +95,7 @@ export function SlipEmptyStart({
         </button>
         {draft.datesPanel}
       </section>
+      {draft.failureAlert}
 
       <div className="space-y-2">
         <button

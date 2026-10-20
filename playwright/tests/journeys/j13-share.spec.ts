@@ -46,9 +46,11 @@ test.afterAll(async () => {
 test.setTimeout(180_000);
 
 /**
- * Owner-authenticated: generate (or regenerate) the trip's generated_itineraries row.
- * The endpoint calls Anthropic (with a contextual fallback), so it can transiently 503 under
- * concurrent load; retry a couple of times before failing.
+ * Owner-authenticated: generate the trip's generated_itineraries row.
+ * Journey CI sets E2E_AI_STUB=1, so this happy path is the canned days payload and does not
+ * call the model. The stub does not answer a real provider failure: that 502/503 still shows
+ * on the slip (client/src/lib/__tests__/ai-draft-failure.test.tsx). Outside the stub, a
+ * transient 429/5xx is retried.
  */
 async function generateItinerary(ctx: any, tripId: string, preferences?: string) {
   let res: any;

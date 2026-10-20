@@ -359,7 +359,7 @@ test.describe("J1 — Golden Path (self-serve checkout, no expert)", () => {
     //     confirmed in Stripe TEST mode (pm_card_visa) and handed to confirm-payment, after which the
     //     booking is confirmed and the projection is gone. This replaced the PaymentElement attempt,
     //     which never reached the element (it mounts only inside cart.tsx's flowStep machine).
-    await assertCartClearsOnlyAfterPayment(request, {
+    const paymentConfirmed = await assertCartClearsOnlyAfterPayment(request, {
       label: "j1",
       bookingId: booking.id,
       paymentIntentId: booking.stripe_payment_intent_id,
@@ -376,18 +376,39 @@ test.describe("J1 — Golden Path (self-serve checkout, no expert)", () => {
     await expect(slipItem, "slip must render the purchased item").toBeVisible({ timeout: 20_000 });
 
     // ── Step 9 (matrix-id: J1.9): transition-log v1…vN ordering ──────────────────────────────
-    // DB fact: the item's log is exactly [in_planning→ready_for_checkout (traveler),
-    // ready_for_checkout→purchased (checkout)], strictly ordered by created_at (v1 … vN).
-    const fullLog = await q<{ id: string; from_status: string; to_status: string; actor_type: string; created_at: string }>(
-      `SELECT id, from_status, to_status, actor_type, created_at
+    // The diary is the sequence, not a count. v1 and v2 are the route and the checkout
+    // purchase. v3 is written only when confirm-payment runs: `promoteOneBooking` records
+    // `checkout_payment_confirmed` (payment_pending → confirmed, actor traveler) — the
+    // intended payment step from ba11c2132, observed once J1 confirms the PaymentIntent
+    // (65b6ce710, #1520). It is not a second purchase row. When half 2 of the cart
+    // contract is skipped, that third row is absent and the log stays at v1–v2.
+    const fullLog = await q<{
+      event_type: string;
+      from_status: string;
+      to_status: string;
+      actor_type: string;
+      created_at: string;
+    }>(
+      `SELECT event_type, from_status, to_status, actor_type, created_at
        FROM item_transition_log WHERE item_id=$1 ORDER BY created_at ASC, id ASC`,
       [itemId],
     );
-    expect(fullLog.length, "item diary must have v1 (route) then v2 (checkout)").toBe(2);
-    expect(fullLog[0]).toMatchObject({ from_status: "in_planning", to_status: "ready_for_checkout", actor_type: "traveler" });
-    expect(fullLog[1]).toMatchObject({ from_status: "ready_for_checkout", to_status: "purchased", actor_type: "checkout" });
-    // Monotonic ordering (v1 no later than v2).
-    expect(new Date(fullLog[0].created_at).getTime()).toBeLessThanOrEqual(new Date(fullLog[1].created_at).getTime());
+    const expectedDiary: Array<{ event_type: string; from_status: string; to_status: string; actor_type: string }> = [
+      { event_type: "status_transition", from_status: "in_planning", to_status: "ready_for_checkout", actor_type: "traveler" },
+      { event_type: "status_transition", from_status: "ready_for_checkout", to_status: "purchased", actor_type: "checkout" },
+    ];
+    if (paymentConfirmed) {
+      expectedDiary.push({
+        event_type: "checkout_payment_confirmed",
+        from_status: "payment_pending",
+        to_status: "confirmed",
+        actor_type: "traveler",
+      });
+    }
+    expect(fullLog.map(({ created_at: _t, ...row }) => row), "item diary sequence").toEqual(expectedDiary);
+    for (let i = 1; i < fullLog.length; i++) {
+      expect(new Date(fullLog[i - 1].created_at).getTime()).toBeLessThanOrEqual(new Date(fullLog[i].created_at).getTime());
+    }
 
     // Smoke 9 S9-9 (ledger `2026-10-04-smoke9-addendum`): the diary stays on the server (asserted
     // above) and the slip no longer prints it as numbered "v<n>" lines.

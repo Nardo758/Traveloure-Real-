@@ -24,7 +24,7 @@ import { formatGeneratedItinerarySpecialRequests } from "../utils/generated-itin
 import { AI_MEAL_PROMPT_LINE, AI_PLACE_PROMPT_LINE, aiEventPromptLine, type CoveringEvent } from "@shared/ai-place-text";
 import { coveringEventsForTrip } from "./content-facts/covering-events";
 import { seasonPromptLineForTrip } from "./content-facts/season-facts";
-import { buildStubItinerary } from "./ai-draft-stub";
+import { buildStubItinerary, isE2eAiStubEnabled } from "./ai-draft-stub";
 import { bannedCopyPromptLine } from "@shared/banned-copy";
 
 // Lazy Anthropic client for the itinerary draft (it runs its own configurable draft tier)
@@ -392,11 +392,7 @@ ${JSON.stringify(request.context, null, 2)}`;
     // step (insertAiGeneratedItinerary → insertItineraryComparison → optimizer
     // → comparisonId response → client redirect) then runs against real code;
     // only the external LLM call is bypassed.
-    const e2eAiStubEnabled =
-      process.env.E2E_AI_STUB === "1" &&
-      (process.env.NODE_ENV !== "production" ||
-        (process.env.ALLOW_TEST_ACCOUNTS === "1" && process.env.ENVIRONMENT !== "PROD"));
-    if (e2eAiStubEnabled) {
+    if (isE2eAiStubEnabled()) {
       // LD 41 (c): the stub names itself as the model, so a cost row born from an E2E run is
       // never attributed to a real vendor model that was never called (§13).
       return { result: buildStubItinerary(request), usage: STUB_USAGE, model: "e2e-ai-stub" };
