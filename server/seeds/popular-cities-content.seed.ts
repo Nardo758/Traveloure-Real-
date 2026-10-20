@@ -324,7 +324,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["evening walk", "summer dining", "atmosphere"],
     priceRange: "$$",
     neighborhood: "pontocho",
-    imageUrl: "https://images.unsplash.com/photo-1545569341-9eb8b30979d9?auto=format&fit=crop&w=800&q=80",
+    // SH-1 item 6: no image — the photo was of Kiyomizu-dera (shared/banned-photos.ts). The card shows its gradient.
   },
   {
     city: "Kyoto",

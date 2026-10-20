@@ -11,8 +11,8 @@ import { getDestinationPhoto } from "../plancard-types";
  */
 
 test("a curated destination matches its photo", () => {
-  const url = getDestinationPhoto("Kyoto, Japan");
-  assert.ok(url && url.includes("photo-1545569341-9eb8b30979d9"));
+  const url = getDestinationPhoto("Tokyo, Japan");
+  assert.ok(url && url.includes("photo-1540959733332-eab4deabeeaf"));
 });
 
 test("matching is case-insensitive and substring-based (a country key still matches)", () => {

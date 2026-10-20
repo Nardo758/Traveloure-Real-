@@ -172,6 +172,10 @@ jobs:
       # (link-out forces manual), and per-place no_photos on both keys at upload and read. SB1–SB5, PB1–PB6.
       - name: CS-1 source sign-off and per-place no_photos — approver only, link-out never read, blocks on both keys
         run: npx tsx --test --test-force-exit server/__tests__/source-signoff-photo-blocks.db.test.ts
+      # SH-1 item 6 (ledger `2026-10-20-sh1-banned-photos`): no Kiyomizu-dera or Kinkaku-ji image in seed/static content
+      # (the name rule + the banned-id backstop), and the read helpers hide a banned photo with no block row. PS1–PS6.
+      - name: SH-1 banned photos — seed/static scan, banned-id backstop on every read
+        run: npx tsx --test --test-force-exit server/__tests__/sh1-photo-scan.test.ts
       # CS-1 item 3 (ledger `2026-10-19-cs1-fact-review`): a dated, machine-read fact shows only after a person reviewed
       # it; machine writers never set verified_by; safety facts need the reviewer's expiry. RV1–RV7.
       - name: CS-1 fact review — unreviewed refresh facts are not read; approval needs the source's expiry
