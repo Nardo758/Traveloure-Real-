@@ -129,7 +129,7 @@ test.describe('/events — the year ahead (2026-10-06-events-calendar)', () => {
   test('P3 an event under way reads On now, and its real city is said', async ({ page }) => {
     await openEvents(page);
     await expect(page.getByTestId('events-row-countdown-underway')).toContainText(/On now/i);
-    await expect(page.getByTestId('events-row-place-underway')).toHaveText('Kyocera Dome Osaka, Osaka · outside the city, planned from Kyoto');
+    await expect(page.getByTestId('events-row-place-underway')).toHaveText('Kyocera Dome Osaka, Osaka · Outside the city, planned from Kyoto');
     await expect(page.getByTestId('events-row-when-soon')).toContainText('21:00');
   });
 
@@ -163,7 +163,7 @@ test.describe('/events — the year ahead (2026-10-06-events-calendar)', () => {
     await page.getByTestId('events-details-underway').click();
     await expect(page).toHaveURL(/\/events\/fixture-underway$/);
     await expect(page.getByTestId('event-detail-title')).toHaveText('Fixture underway');
-    await expect(page.getByTestId('event-detail-place')).toHaveText('Kyocera Dome Osaka, Osaka · outside the city, planned from Kyoto');
+    await expect(page.getByTestId('event-detail-place')).toHaveText('Kyocera Dome Osaka, Osaka · Outside the city, planned from Kyoto');
     await expect(page.getByTestId('event-detail-countdown')).toHaveText(/On now/i);
     await expect(page.getByTestId('event-detail-fact')).toContainText('from Fixture Official');
     // 2c is not armed: no notes and no comments, not even an empty section.
