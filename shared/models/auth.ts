@@ -135,6 +135,11 @@ export const users = pgTable("users", {
   // (shared/launch-waitlist.ts). Nullable, no default: NULL = not recorded (every traveler and every
   // account created before 381). Written once, server-side, at sign-up; no user-update rail sets it (§19).
   signupSource: text("signup_source"),
+  // SH-1 item 12 (migration 397, HELD): a test account. NULL reads as false. A test account is this flag OR
+  // an email on the QA_ACCOUNT_EMAIL_DOMAIN setting (server/services/test-account.ts, the ONE predicate).
+  // Written only by the admin PATCH /api/admin/users/:id/test-flag and at QA sign-up; never by a client
+  // body — authStorage.updateUser/upsertUser strip it (§19).
+  isTest: boolean("is_test"),
 }, (table) => [
   index("users_role_idx").on(table.role),
   // Migrations 102 + 105: partial indexes for soft-delete and suspension fast-paths.

@@ -127,7 +127,7 @@ describe("I4 the map slide", () => {
 
 describe("I5 the Story's proof lines", () => {
   it("are facts the listing carries", () => {
-    assert.deepEqual(svc.storyProofLines(sample()), ["3 days · 9 stops in Kyoto", "6 travel times confirmed by Aiko", "Built by Aiko, a verified local"]);
+    assert.deepEqual(svc.storyProofLines(sample()), ["3 days · 9 stops in Kyoto", "6 travel times confirmed by Aiko", "Built by Aiko, a local"]);
     assert.deepEqual(svc.storyProofLines(sample({ confirmedLegCount: 0, localVerified: false, durationDays: 1, stopCount: 1 })), ["1 day · 1 stop in Kyoto", "Built by Aiko, a Traveloure expert"]);
   });
 });

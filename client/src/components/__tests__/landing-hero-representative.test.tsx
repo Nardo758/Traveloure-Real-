@@ -109,7 +109,7 @@ describe("landing hero billboard", () => {
       assert.ok(html.includes(`hero-billboard-label-${tile.key}`), `${tile.key} has its slot label`);
     }
     assert.ok(html.includes("LOCAL EXPERT · KYOTO"));
-    assert.ok(html.includes("HIDDEN GEM"));
+    assert.ok(!html.includes("HIDDEN GEM"), "SH-1 item 1: no hidden-gem claim on the gem slot");
     assert.ok(html.includes("BOOK ON TRAVELOURE"));
     assert.ok(!html.includes("<details"), "no expandable details on the template");
     const startButtons = html.match(/<button[^>]+data-testid="hero-billboard-start-[^"]+"[^>]*>/g) ?? [];
@@ -237,10 +237,10 @@ describe("landing hero billboard", () => {
     assert.ok(html.includes("LOCAL EXPERT · KYOTO"));
     assert.ok(html.includes("Plan with @aiko"));
     assert.ok(html.includes('href="/s/aiko"'));
-    assert.ok(html.includes("HIDDEN GEM"));
+    assert.ok(!html.includes("HIDDEN GEM"), "SH-1 item 1: no hidden-gem claim on the gem slot");
     assert.ok(html.includes("Tito’s Lane"));
-    assert.ok(html.includes('aria-label="Score 87"'));
-    assert.ok(html.indexOf('aria-label="Score 87"') < html.indexOf("Tito’s Lane"), "the gem score is a top-right badge, not a line under the title");
+    assert.ok(!html.includes('aria-label="Score 87"'), "SH-1 item 1: the gem slot shows no score");
+    assert.ok(!html.includes('data-testid="hero-billboard-gem-score-'));
     assert.ok(html.includes("Plan around this gem"));
     assert.ok(html.includes("/fixture/gem-attributed.jpg"));
     assert.ok(html.includes("Photo: Mina Sato"));
@@ -277,7 +277,7 @@ describe("landing hero billboard", () => {
     assert.ok(html.includes('data-testid="hero-billboard-early-start"'));
     assert.ok(html.includes('data-testid="hero-billboard-date-night"'));
     assert.equal((html.match(/Representative photo · Kyoto/g) ?? []).length, 2);
-    assert.ok(html.includes('data-testid="hero-billboard-label-early-start">HIDDEN GEM'));
+    assert.ok(html.includes('data-testid="hero-billboard-label-early-start">KYOTO'), "SH-1 item 1: the gem slot's eyebrow is its city");
     assert.ok(html.includes('data-testid="hero-billboard-label-date-night">BOOK ON TRAVELOURE'));
     assert.equal((html.match(/data-testid="hero-billboard-start-[^"]+"[^>]*>Start a plan<\/button>/g) ?? []).length, 2);
     assert.ok(!html.includes("Plan details"));
@@ -319,8 +319,8 @@ describe("landing hero billboard", () => {
     assert.equal(badge(one), null, "the expert card carries no badge");
     assert.ok(one.includes("LOCAL EXPERT · KYOTO"));
     assert.deepEqual(actions(two), ["Plan around this gem"], "gem: one action");
-    assert.equal(badge(two), "87", "gem: its own score, top right");
-    assert.ok(two.includes("HIDDEN GEM"));
+    assert.equal(badge(two), null, "SH-1 item 1: the gem card carries no score");
+    assert.ok(!two.includes("HIDDEN GEM") && two.includes("KYOTO"), "SH-1 item 1: the gem slot's eyebrow is its city");
     assert.deepEqual(actions(three), ["Book now"], "listing: one action");
     assert.equal(badge(three), "$145", "listing: its own price, top right");
     assert.ok(three.includes("BOOK ON TRAVELOURE"));
@@ -354,7 +354,7 @@ describe("landing hero billboard", () => {
     const html = render(PAYLOAD, [OVERRIDE], selection);
     assert.equal((html.match(/Representative photo · Kyoto/g) ?? []).length, 3);
     assert.ok(html.includes("LOCAL EXPERT · KYOTO"));
-    assert.ok(html.includes("HIDDEN GEM"));
+    assert.ok(!html.includes("HIDDEN GEM"), "SH-1 item 1: no hidden-gem claim on the gem slot");
     assert.ok(html.includes("BOOK ON TRAVELOURE"));
     assert.equal((html.match(/data-testid="hero-billboard-start-[^"]+"[^>]*>Start a plan<\/button>/g) ?? []).length, 3);
     assert.ok(!html.includes("Plan with"));

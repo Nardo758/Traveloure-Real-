@@ -11,7 +11,6 @@ import {
   Zap, 
   MapPin, 
   Clock, 
-  TrendingUp, 
   Star, 
   ExternalLink, 
   Calendar,
@@ -385,15 +384,6 @@ export function SpontaneousDiscovery({
                               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                                 <Filter className="h-3 w-3" />
                                 <span>{opportunity.category}</span>
-                              </div>
-                            )}
-                            
-                            {opportunity.trendingOn && opportunity.trendingOn.length > 0 && (
-                              <div className="flex items-center gap-1.5 text-xs">
-                                <TrendingUp className="h-3 w-3 text-blue-500 dark:text-blue-400" />
-                                <span className="text-blue-600 dark:text-blue-400">
-                                  Trending on {opportunity.trendingOn.join(", ")}
-                                </span>
                               </div>
                             )}
                             

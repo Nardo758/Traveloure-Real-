@@ -303,7 +303,7 @@ export default function PrivacyPolicyPage() {
               <li>Email us at {COMPANY_CONTACT_EMAIL}</li>
             </ul>
             <p className="text-muted-foreground leading-relaxed mt-4">
-              We will respond to verified requests within 30 days (or as required by applicable law). We may need to verify your identity before processing your request.
+              We will respond to requests within 30 days (or as required by applicable law). We may need to verify your identity before processing your request.
             </p>
 
         <h3 id="data-deletion" className="text-[20px] font-semibold mb-3 mt-8" style={HEADING_STYLE}>8.5 Data Deletion - Available to All Users Worldwide</h3>

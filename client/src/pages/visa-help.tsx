@@ -243,7 +243,7 @@ export default function VisaHelpPage() {
     <>
       <SEOHead
         title="Visa Help - Requirements & Expert Assistance | Traveloure"
-        description="Look up visa requirements for your destination instantly with AI, then book a certified visa expert to handle your application."
+        description="Look up visa requirements for your destination instantly with AI, then book a visa expert to handle your application."
       />
 
       {/* Visa Booking Intake Modal */}
@@ -389,7 +389,7 @@ export default function VisaHelpPage() {
         width="content"
         eyebrow="AI-Powered Visa Requirements"
         title="Visa Help & Expert Guidance"
-        lead="Instantly look up visa requirements for any country, then connect with a certified visa expert for hands-on help."
+        lead="Instantly look up visa requirements for any country, then connect with a visa expert for hands-on help."
       >
 
         {/* Lookup Form */}
@@ -618,7 +618,7 @@ export default function VisaHelpPage() {
           <div>
             <SectionTitle>Visa Assistance Experts</SectionTitle>
             <p className="text-muted-foreground mt-1">
-              Connect with a certified expert who can handle your entire visa process.
+              Connect with an expert who can handle your entire visa process.
             </p>
           </div>
 
@@ -639,7 +639,7 @@ export default function VisaHelpPage() {
               <Globe className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
               <p className="text-muted-foreground font-medium">No visa experts listed yet</p>
               <p className="text-sm text-muted-foreground mt-1">
-                Check back soon — we're onboarding certified visa specialists.
+                Check back soon — we're onboarding visa specialists.
               </p>
               <Link href="/services?category=visa-assistance">
                 <Button variant="outline" className={`${PAGE_ACTION.secondary} mt-4`} data-testid="button-browse-experts">
@@ -656,7 +656,7 @@ export default function VisaHelpPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
               { step: "1", title: "Look up requirements", desc: "Enter your passport and destination above. Our AI surfaces all requirements in seconds.", icon: Globe },
-              { step: "2", title: "Book an expert", desc: "Select a certified visa specialist below. They handle document prep, form filling, and embassy appointments.", icon: Shield },
+              { step: "2", title: "Book an expert", desc: "Select a visa specialist below. They handle document prep, form filling, and embassy appointments.", icon: Shield },
               { step: "3", title: "Travel confidently", desc: "Your expert keeps you updated until your visa is approved and you're ready to go.", icon: CheckCircle },
             ].map(({ step, title, desc, icon: Icon }) => (
               <div key={step} className="flex gap-4">

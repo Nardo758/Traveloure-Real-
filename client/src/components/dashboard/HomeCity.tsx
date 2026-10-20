@@ -74,7 +74,7 @@ export function HomeCity({ enabled }: { enabled: boolean }) {
     queryKey: ["/api/travelpulse/cities", { limit: 10 }],
     queryFn: async () => {
       const res = await fetch("/api/travelpulse/cities?limit=10", { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch trending cities");
+      if (!res.ok) throw new Error("Failed to fetch cities");
       return res.json();
     },
     enabled: enabled && !!homeCity,

@@ -1,0 +1,17 @@
+// Fixture: none of these is copy. Comments are never scanned: secret, verified, trending, geisha.
+import { secretThing } from "./verified-helpers";
+import type { Secret } from "./types";
+type Status = "verified" | "trending";
+const clientSecret = process.env.X;
+const isVerified = true;
+const status = "verified";
+if (status === "Verified Secret") {}
+switch (status) { case "Hidden gem": break; }
+const map = { "Trending now": 1 };
+const route = "/hidden-gems";
+export function C() {
+  return <div data-testid="badge-verified-secret" className="trending geisha" key="maiko" href="/secret">ok</div>;
+}
+console.log("Seeding Kyoto hidden gems");
+logger.warn(`secret rotated for ${"x"}`);
+const q = sql`UPDATE t SET status = 'verified' WHERE note = 'trending'`;

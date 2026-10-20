@@ -63,7 +63,7 @@ export default function VerifyEmailPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <CheckCircle2 className="w-5 h-5 text-primary" />
-                Email verified
+                Email confirmed
               </CardTitle>
               <CardDescription>
                 Your email is confirmed. You can close this window or continue to your dashboard.

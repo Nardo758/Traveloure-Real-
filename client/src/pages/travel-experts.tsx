@@ -459,7 +459,7 @@ export default function TravelExpertsPage() {
       }));
       
       toast({
-        title: "Instagram Verified",
+        title: "Instagram connected",
         description: `@${instagramData.username} connected with ${instagramData.followers_count?.toLocaleString()} followers`,
       });
     }
@@ -585,7 +585,7 @@ export default function TravelExpertsPage() {
             acceptPrivacy: true,
           });
         } catch (error) {
-          console.log("Terms acceptance recorded (or user not authenticated)");
+          console.log("Terms acceptance recorded (or user not signed in)");
         }
       }
 
@@ -1059,7 +1059,7 @@ export default function TravelExpertsPage() {
                         Influencer Program
                       </Badge>
                       <p className="text-sm text-muted-foreground">
-                        Get a verified creator badge and earn referral commissions
+                        Get a creator badge and earn referral commissions
                       </p>
                     </div>
                     <div className="space-y-4 pl-6 border-l-2 border-primary/20">
@@ -1334,7 +1334,7 @@ export default function TravelExpertsPage() {
               <CardHeader>
                 <CardTitle className="text-2xl text-foreground">Your Local Specialties</CardTitle>
                 <p className="text-muted-foreground text-sm mt-1">
-                  Select the areas where you have genuine insider knowledge. These feed directly into how travelers find you.
+                  Select the areas where you have genuine local knowledge. These feed directly into how travelers find you.
                 </p>
               </CardHeader>
               <CardContent className="space-y-6">
