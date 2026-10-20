@@ -3045,7 +3045,9 @@ jobs:
           cache: npm
       - run: npm ci
       - name: client/src/lib/__tests__ (all)
-        run: npx tsx --test client/src/lib/__tests__/*.test.ts*
+        # The css hook is a no-op except for .css imports, so a page render test can load
+        # CityTickerTape's stylesheet (LC-1). Every other file in this directory is unchanged.
+        run: node --import ./client/src/lib/__tests__/lc1-css-register.mjs --import tsx --test client/src/lib/__tests__/*.test.ts*
 
   unit-suite-client-components:
     needs: [changes]

@@ -3,8 +3,7 @@
  * (earn-page role-to-offering redesign brief; supersedes the two-tab track
  * toggle while keeping the same data plumbing).
  *
- * Structure: hero → "Which of these is you?" role band (4 cards + EA text
- * line) → catalog of the selected role's full mapped offering list →
+ * Structure: hero → "Which of these is you?" role band (4 cards) → catalog of the selected role's full mapped offering list →
  * featured "you probably didn't know…" strip (is_surprising rows).
  *
  * The role→offering mapping lives in lib/earn-roles.ts (single source of
@@ -33,7 +32,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { earnKeepSentence, KEEP_RATES_ENDPOINT, type PublicKeepRates } from "@/lib/fee-keep-copy";
 import { ReadyMadeCalculator } from "@/components/earn/ReadyMadeCalculator";
 import { marketHasReadyMade, usableRate } from "@/lib/ready-made-calculator";
-import { useSearch, useLocation, Link } from "wouter";
+import { useSearch, useLocation } from "wouter";
 import { Layout } from "@/components/layout";
 import { PageLayout, SectionTitle, PAGE_ACTION, PAGE_LINK } from "@/components/company/company-page";
 import { useSignInModal } from "@/contexts/SignInModalContext";
@@ -47,7 +46,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { trackRecruitmentClick } from "@/lib/analytics";
 import {
   EARN_ROLES,
-  EA_SIGNUP,
   isAffiliateCategory,
   roleForProviderCategory,
   roleForExpertOffering,
@@ -380,17 +378,6 @@ export default function EarnPage() {
                 />
               ))}
             </div>
-            {/* EA: real signup, no offering backing yet — text link, not a card. */}
-            <p className="text-xs text-[color:var(--earn-muted)] mt-3">
-              {EA_SIGNUP.label} — {EA_SIGNUP.blurb}.{" "}
-              <Link
-                href={EA_SIGNUP.signupPath}
-                className={PAGE_LINK}
-                data-testid="earn-ea-signup"
-              >
-                Apply as an EA →
-              </Link>
-            </p>
           </div>
         </section>
 

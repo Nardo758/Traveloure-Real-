@@ -173,7 +173,6 @@ const languages = [
 ];
 
 const benefits = [
-  { icon: DollarSign, text: "Earn $3,000-$10,000+/month" },
   { icon: Clock, text: "Set your own schedule" },
   { icon: Users, text: "Access to global travelers" },
   { icon: Sparkles, text: "AI-powered planning tools" },

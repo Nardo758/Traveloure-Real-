@@ -563,7 +563,7 @@ export function LandingHeroContent({
   });
   const wanted = wantedSlots[wantedIndex] ?? null;
 
-  const marketNames = OPERATING_MARKETS.slice(0, 4);
+  const marketNames = OPERATING_MARKETS.filter((m) => m.marketKey === "kyoto");
   const tiles = resolveBillboardTiles();
 
   const tickerParts = hero?.city
@@ -736,7 +736,7 @@ export function LandingHeroContent({
             className="mt-2 flex flex-wrap justify-between gap-x-3 gap-y-1 text-[10.5px]"
             style={{ fontFamily: EARN_MONO, color: "var(--earn-muted)" }}
           >
-            <span>{hero?.city ? `live from the ${hero.city} feed` : "live feed warming up"}</span>
+            {hero?.city ? <span>{`live from the ${hero.city} feed`}</span> : null}
             <span
               className="flex items-center gap-1 whitespace-nowrap uppercase tracking-[0.14em]"
               data-testid="hero-market-ticker"

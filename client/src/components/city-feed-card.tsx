@@ -11,7 +11,7 @@ import { getOrCreateGuestSessionId } from "@/lib/guest-session";
 import { gemCategory, type MatchSuggestion } from "@/lib/feed-stream";
 import { resolveBookability, type Bookability } from "@shared/bookability";
 import { useExpertAvailability } from "@/lib/expert-availability";
-import { isPartnerPriced, openPartnerPrice } from "@/lib/partner-price";
+import { isPartnerPriced, openPartnerPrice, partnerActivityPriceLabel } from "@/lib/partner-price";
 import { PARTNER_COMMISSION_NOTE, PARTNER_PRICE_LINK_LABEL } from "@/lib/browse-supply";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import type { BentoCompactActionState } from "@/lib/bento-action-state";
@@ -1974,10 +1974,9 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
     : ADD_TO_PLAN_LABEL;
   const { srcSet, sizes } = buildSrcSet(photoUrl);
 
-  // Price chip
-  const priceText = item.price
-    ? (typeof item.price === "string" ? item.price : `$${item.price}`)
-    : item.priceRange ?? null;
+  // Partner amounts render in the source currency. No currency ⇒ "See current price", never a "$" prefix (LC-1).
+  const priceText =
+    partnerActivityPriceLabel(item.price, item.currency, PARTNER_PRICE_LINK_LABEL) ?? item.priceRange ?? null;
 
   // Duration for activities
   const durationLabel = !isHotel && item.durationMinutes

@@ -9,8 +9,6 @@ import {
   COMPANY_FOUNDED_YEAR,
   COMPANY_CITY,
   COMPANY_LEGAL_NAME,
-  marketCountWord,
-  marketNameList,
 } from "@/lib/company-facts";
 
 /**
@@ -22,7 +20,6 @@ import {
  * rendered from `OPERATING_MARKETS`, never typed (client/src/lib/company-facts.ts).
  */
 export default function AboutPage() {
-  const cityCount = marketCountWord();
   // The page's one plan entry — the SAME opener as the hero (ruling 2026-08-28-single-planning-entry);
   // planning-entry.spec asserts it opens the modal.
   const { open: openPlanning } = usePlanning();
@@ -65,9 +62,7 @@ export default function AboutPage() {
 
         <CompanySection title="Where we are" testId="section-about-markets">
           <p>
-            Traveloure is in beta in {cityCount} cities, chosen because they're the places where local knowledge changes
-            the trip the most: {marketNameList()}. Kyoto is first. Markets open as local experts join them; we don't show
-            a city as live until real people are behind it.
+            Traveloure is in beta in Kyoto. We don't show a city as live until real people are behind it.
           </p>
         </CompanySection>
 

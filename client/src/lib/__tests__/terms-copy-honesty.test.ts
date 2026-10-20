@@ -43,9 +43,9 @@
  * WHAT IS DELIBERATELY **NOT** IN THE PREDICATE, because it is real legal content the ruling
  * forbids this lane from touching — T5 asserts each survives, so the sweep can never be
  * satisfied by deleting it:
- *   • **Stripe's own processing rate** ("2.9% + $0.30 per transaction (Stripe fees)"). That is a
- *     third-party processor's published pass-through rate, not a Traveloure commission or
- *     margin. The punchlist row named four literals and this was not one of them.
+ *   • **Stripe's own processing rate** was removed by LC-1 (ledger `2026-10-20-lc1-kyoto-launch-copy`,
+ *     counsel review). The page now says fees are shown before you pay, and names no rate. T7 pins
+ *     that sentence. This is a pinned edit of the assertion this header used to protect.
  *   • **The cancellation/refund percentages** ("50% refund", "100% of what you paid"). A refund
  *     is a share of what the traveler already paid under a named policy — the opposite of a fee
  *     rate, and out of scope by the ruling's own words.
@@ -275,15 +275,16 @@ describe("V-21/V-27 — the consent documents name no fee rate and sell no retir
   });
 
   it("T7 the REAL legal content the ruling protects is untouched", () => {
-    // The sweep must never be satisfiable by deleting a third-party pass-through rate, the
-    // cancellation policy, or the Stripe card clause. §13's other direction: each of these is a
-    // fact the platform CAN perform, and each carries a number for a good reason.
+    // LC-1 (pinned edit): the hard-coded Stripe pass-through rate is gone. Fees are shown
+    // before you pay, and the sentence names no number. The cancellation policy, the Stripe
+    // card clause and the payout threshold stay — each is a fact the platform can perform.
     const copy = termsCopy();
     assert.match(
       copy,
-      /2\.9% \+ \$0\.30 per transaction \(Stripe fees\)/,
-      "Stripe's own published processing rate is a pass-through fact, not a Traveloure margin",
+      /Fees are shown before you pay/,
+      "payment processing names no rate; the amount is shown before payment",
     );
+    assert.doesNotMatch(copy, /2\.9% \+ \$0\.30/);
     assert.match(
       copy,
       /50% refund at least 48 hours before/,

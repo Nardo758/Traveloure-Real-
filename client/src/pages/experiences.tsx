@@ -46,7 +46,7 @@ function PlacePicker({ picked, pick }: { picked: string | null; pick: (marketKey
             src={WORLD_MAP.src}
             width={WORLD_MAP.width}
             height={WORLD_MAP.height}
-            alt="World map with the eight cities we plan in"
+            alt="World map of cities you can plan in"
             className="block h-auto w-full"
           />
           {OPERATING_MARKETS.map((m) => {

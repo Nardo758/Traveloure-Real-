@@ -15,6 +15,49 @@ export function isPartnerPriced(event: { priceSource?: unknown; provider?: unkno
   return event?.priceSource === "partner" || event?.provider === "fever";
 }
 
+/** A 3-letter source currency, or null when the partner did not state one. Never invents USD. */
+export function sourceCurrencyCode(currency: unknown): string | null {
+  if (typeof currency !== "string") return null;
+  const code = currency.trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(code) ? code : null;
+}
+
+function positiveAmount(amount: unknown): number | null {
+  const n = typeof amount === "number" ? amount : typeof amount === "string" && amount.trim() !== "" ? Number(amount) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * A partner amount in its own currency (¥ for JPY). Null when there is no positive amount
+ * or the source named no currency — the caller then says "See current price" instead of "$".
+ */
+export function formatSourceAmount(amount: unknown, currency: unknown): string | null {
+  const n = positiveAmount(amount);
+  const code = sourceCurrencyCode(currency);
+  if (n === null || !code) return null;
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: code,
+      maximumFractionDigits: code === "JPY" ? 0 : 2,
+    }).format(n);
+  } catch {
+    return null;
+  }
+}
+
+/** The price line for a partner activity: source currency, or `unpricedLabel` when the amount has none. */
+export function partnerActivityPriceLabel(amount: unknown, currency: unknown, unpricedLabel: string): string | null {
+  if (positiveAmount(amount) === null) return null;
+  return formatSourceAmount(amount, currency) ?? unpricedLabel;
+}
+
+/** Dollar bands compare USD only. A positive amount in any other currency, or with none stated, is outside them. */
+export function amountOutsideDollarBand(amount: unknown, currency: unknown): boolean {
+  if (positiveAmount(amount) === null) return false;
+  return sourceCurrencyCode(currency) !== "USD";
+}
+
 /** Opens the partner's page in a new tab. Resolves false when the token expired or the request failed. */
 export async function openPartnerPrice(item: PartnerPriceItem): Promise<boolean> {
   try {

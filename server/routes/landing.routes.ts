@@ -30,7 +30,7 @@ import { db } from "../db";
 import { users, providerServices, landingMomentEvents } from "@shared/schema";
 import {
   resolveLandingMoments,
-  MOMENTS,
+  homeMomentConfigs,
   MOMENT_KEYS,
   MOMENT_EVENT_KINDS,
 } from "../services/landing-moments";
@@ -185,7 +185,7 @@ router.get("/api/landing/moments", async (_req, res) => {
     // The full roster drives the tab strip's faint "coming as locals join" pills without the
     // client restating the moment list (§18 rule 1). The client still SUPPRESSES the whole
     // section when moments (the live set) is empty — empty state B.
-    const roster = MOMENTS.map((m) => ({ key: m.key, label: m.label }));
+    const roster = homeMomentConfigs().map((m) => ({ key: m.key, label: m.label }));
     res.set("Cache-Control", "public, max-age=120");
     res.json({ moments, roster });
   } catch (err: any) {

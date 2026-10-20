@@ -38,9 +38,9 @@ const events = {
   windowDays: 180,
   total: 4,
   events: [
-    event("h1-ev-1", "Rock al Parque", "Bogotá", "bogota", "Chapinero", "Parque Simón Bolívar", "2026-10-10", "2026-10-12", 3, 2),
+    event("h1-ev-1", "Fixture Kyoto night", "Kyoto", "kyoto", "Gion", "Hall one", "2026-10-10", "2026-10-12", 3, 2),
     event("h1-ev-2", "Imagine Noh", "Kyoto", "kyoto", "Gion", "Kyoto Kanze Kaikan", "2026-10-14", "2026-11-05", 23, 5),
-    event("h1-ev-3", "Aitana — Cuarto Azul World Tour", "Bogotá", "bogota", "Chapinero", "Movistar Arena", "2026-10-16", "2026-10-16", 1, 8),
+    event("h1-ev-3", "Fixture Kyoto evening", "Kyoto", "kyoto", "Gion", "Hall two", "2026-10-16", "2026-10-16", 1, 8),
     event("h1-ev-4", "Starsailor", "Edinburgh", "edinburgh", "Old Town", "Usher Hall", "2026-10-17", "2026-10-17", 1, 8),
   ],
 };

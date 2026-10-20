@@ -298,7 +298,7 @@ export default function ProvidersDirectoryPage() {
               <div>
                 <PageTitle>Service Providers</PageTitle>
                 <p className="text-sm text-[color:var(--earn-muted)] mt-1 max-w-[60ch]">
-                  Local businesses you can book directly — no middleman; you pay the listing price.
+                  Book local businesses directly through Traveloure.
                 </p>
               </div>
             </div>
@@ -316,9 +316,11 @@ export default function ProvidersDirectoryPage() {
                         className="inline-flex items-center gap-1.5 text-[12px] font-semibold px-2.5 py-1 rounded-md bg-[var(--earn-navy)] text-white"
                       >
                         {item.label}
+                        {providerTotal > 0 && (
                         <span className="inline-flex items-center justify-center min-w-[18px] h-4 px-1 rounded-full text-[11px] font-semibold leading-none bg-white/25 text-white">
                           {providerTotal}
                         </span>
+                        )}
                       </span>
                     );
                   }
@@ -395,10 +397,14 @@ export default function ProvidersDirectoryPage() {
         ) : (providers ?? []).length === 0 ? (
           <div className="rounded-xl border bg-[var(--earn-card)] px-6 py-16 text-center" data-testid="providers-empty">
             <Store className="mx-auto mb-3 h-8 w-8 text-[color:var(--earn-muted)]" />
-            <h2 className="text-lg font-semibold" style={HEADING_STYLE}>No providers yet</h2>
-            <p className="mt-1 text-sm text-[color:var(--earn-muted)]">
-              Check back soon — approved local businesses will appear here as they join.
-            </p>
+            <h2 className="text-lg font-semibold" style={HEADING_STYLE} data-testid="providers-empty-heading">No Kyoto businesses are listed yet. Run a tour, venue or service in Kyoto? Apply to list it.</h2>
+            <Link
+              href="/become-provider"
+              className="mt-4 inline-flex text-sm font-semibold underline"
+              data-testid="button-apply-kyoto-provider"
+            >
+              Apply as a Kyoto provider
+            </Link>
           </div>
         ) : filtered.length === 0 ? (
           <div className="rounded-xl border bg-[var(--earn-card)] px-6 py-16 text-center" data-testid="providers-no-results">

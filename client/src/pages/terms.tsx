@@ -114,7 +114,6 @@ export default function TermsOfServicePage() {
             <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>4.2 Verification Timeline</h3>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
               <li>Standard verification: 2-3 weeks</li>
-              <li>Expedited verification: 5-7 business days (additional fee applies)</li>
               <li>Provisional approval may be granted during verification for qualified candidates</li>
               <li>Annual re-verification required for all active Experts</li>
             </ul>
@@ -239,7 +238,7 @@ export default function TermsOfServicePage() {
             <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>5.6.3 Platform Fees</h3>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
               <li><strong>Commission Rate:</strong> The platform fee applicable to a booking is set by Traveloure's published fee schedule in effect at the time of the booking. The amount you receive is shown in your Traveloure console on each earning and payout record</li>
-              <li><strong>Payment Processing:</strong> 2.9% + $0.30 per transaction (Stripe fees)</li>
+              <li><strong>Payment Processing:</strong> Fees are shown before you pay.</li>
               <li><strong>Payout Schedule:</strong> Weekly payouts for approved experts</li>
               <li><strong>Minimum Payout:</strong> $25 threshold for withdrawal</li>
             </ul>

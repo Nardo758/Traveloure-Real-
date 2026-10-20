@@ -18,6 +18,12 @@ import { bookingComService } from "./booking-com.service";
 import { openTableService } from "./opentable.service";
 import { feverService } from "./fever.service";
 
+/** The partner's stated ISO currency, or null. Never substitutes USD (LC-1). */
+function activityCurrency(value: string | null | undefined): string | null {
+  const code = value?.trim().toUpperCase() ?? "";
+  return /^[A-Z]{3}$/.test(code) ? code : null;
+}
+
 // ─────────────────────────────────────────────
 // Discriminated union content model
 // ─────────────────────────────────────────────
@@ -30,7 +36,7 @@ export interface BaseItem {
   description: string | null;
   imageUrl: string | null;
   price: number | null;
-  currency: string;
+  currency: string | null;
   rating: number | null;
   reviewCount: number | null;
   destination: string | null;
@@ -346,6 +352,10 @@ class ExperienceCatalogService {
     if (params.priceMax !== undefined) {
       conditions.push(lte(activityCache.price, params.priceMax.toString()));
     }
+    // Dollar bands skip amounts the source did not price in USD (LC-1), including a missing currency.
+    if (params.priceMin !== undefined || params.priceMax !== undefined) {
+      conditions.push(sql`upper(coalesce(${activityCache.currency}, '')) = 'USD'`);
+    }
     if (params.rating !== undefined) {
       conditions.push(gte(activityCache.rating, params.rating.toString()));
     }
@@ -371,7 +381,7 @@ class ExperienceCatalogService {
       description: a.description,
       imageUrl: a.imageUrl,
       price: a.price ? parseFloat(a.price) : null,
-      currency: a.currency || "USD",
+      currency: activityCurrency(a.currency),
       rating: a.rating ? parseFloat(a.rating) : null,
       reviewCount: a.reviewCount,
       destination: a.destination,
@@ -843,7 +853,7 @@ class ExperienceCatalogService {
           description: activity.description,
           imageUrl: activity.imageUrl,
           price: activity.price ? parseFloat(activity.price) : null,
-          currency: activity.currency || "USD",
+          currency: activityCurrency(activity.currency),
           rating: activity.rating ? parseFloat(activity.rating) : null,
           reviewCount: activity.reviewCount,
           destination: activity.destination,
