@@ -216,8 +216,8 @@ test("LF7 — a stop whose stored official hours expired shows the hours line wi
   await recordFacts([{ ...lastEntry(PLACE_OLD), factType: "hours", value: { weekdayDescriptions: ["Monday: 9:00 AM – 5:00 PM"], quote: "9:00 AM – 5:00 PM" } }], { planId: null, itemId: null });
   const waiting = await hoursWaitingForTrip(trip, now);
   assert.deepEqual(waiting[id("old")], {
-    text: "Hours not checked yet. See Kinkaku-ji's official site before you go.",
-    linkText: "Kinkaku-ji's official site",
+    text: "Hours not checked yet. See the official site for Kinkaku-ji before you go.",
+    linkText: "the official site for Kinkaku-ji",
     url: "https://www.shokoku-ji.jp/",
   });
   assert.equal(waiting[id("live")], undefined, "no expired hours stored for that place");

@@ -61,14 +61,18 @@ test("LV3 — no \"(may have changed)\" anywhere a traveler reads", () => {
 
 test("LV4 — the expired-hours line", () => {
   assert.deepEqual(hoursWaitingLine({ placeName: "Kinkaku-ji", homepage: "https://www.shokoku-ji.jp/kinkakuji/visit/", termsClass: "extract" }), {
-    text: "Hours not checked yet. See Kinkaku-ji's official site before you go.",
-    linkText: "Kinkaku-ji's official site",
+    text: "Hours not checked yet. See the official site for Kinkaku-ji before you go.",
+    linkText: "the official site for Kinkaku-ji",
     url: "https://www.shokoku-ji.jp/",
   });
   for (const input of [
     { placeName: "JR Central", homepage: "https://jr-central.co.jp/", termsClass: "link_out_no_link" },
     { placeName: "X", homepage: null, termsClass: "extract" },
     { placeName: "X", homepage: "not a url", termsClass: "extract" },
+    { placeName: "X", homepage: "https://www.google.com/maps/place/?q=place_id:ChIJ", termsClass: "extract" },
+    { placeName: "X", homepage: "https://maps.google.co.jp/", termsClass: "extract" },
+    { placeName: "X", homepage: "https://maps.app.goo.gl/abc", termsClass: "extract" },
+    { placeName: "X", homepage: "https://places.googleapis.com/v1/places/ChIJ", termsClass: "extract" },
   ]) {
     assert.deepEqual(hoursWaitingLine(input), { text: HOURS_NOT_CHECKED_TEXT, linkText: "", url: null }, input.placeName);
   }

@@ -145,7 +145,7 @@ export interface ItemRowProps {
   hoursNotChecked?: boolean;
   /** CS-1 item 3: "Last entry not checked yet. See <Place>'s official site before you go." — the server's line. */
   lastEntryWaiting?: WaitingLine | null;
-  /** CS-1 item 2: "Hours not checked yet. See <Place>'s official site before you go." — the server's line, drawn in
+  /** CS-1 item 2: "Hours not checked yet. See the official site for <Place> before you go." — the server's line, drawn in
    *  place of the plain "Hours not checked yet" once the stop's stored official hours have expired. */
   hoursWaiting?: WaitingLine | null;
   menu?: ItemRowMenu | null;

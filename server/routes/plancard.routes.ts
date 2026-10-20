@@ -922,7 +922,7 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     // when non-empty.
     const lastEntryWaiting = await lastEntryWaitingForTrip(tripId);
     // CS-1 item 2 (ledger `2026-10-19-cs1-live-facts`): the stops whose stored official hours have expired — "Hours not
-    // checked yet. See <Place>'s official site before you go." Present only when non-empty.
+    // checked yet. See the official site for <Place> before you go." Present only when non-empty.
     const hoursWaiting = await hoursWaitingForTrip(tripId);
 
     // IS AN EXPERT ASSIGNED? (ledger `2026-09-26-send-to-expert-needs-expert`; audit G2.) An

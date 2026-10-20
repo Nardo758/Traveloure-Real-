@@ -898,7 +898,7 @@ export async function lastEntryWaitingForTrip(tripId: string, now: Date = new Da
 
 /**
  * CS-1 item 2: per item, the line a stop shows once the official hours stored for its place have expired and no live
- * official hours replace them — "Hours not checked yet. See <Place>'s official site before you go." with the source's
+ * official hours replace them — "Hours not checked yet. See the official site for <Place> before you go." with the source's
  * top-level link, else plain "Hours not checked yet" (`hoursWaitingLine`). Keyed by item id; absent where nothing expired.
  */
 export async function hoursWaitingForTrip(tripId: string, now: Date = new Date()): Promise<Record<string, WaitingLine>> {

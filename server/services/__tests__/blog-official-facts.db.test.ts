@@ -98,3 +98,15 @@ test("O3: the published post's public read carries 'from <source>' → the fact'
   assert.equal(line.publisher, "checked 2 Oct 2026");
   assert.equal(pub.sources.some((s: any) => /about|\/u$/.test(s.url)), false, "excluded facts bring no source line");
 });
+
+test("O4: an official fact past its expiry is hidden (CS-1 item 2, ledger `2026-10-19-cs1-live-facts`)", async () => {
+  await db.insert(placeFacts).values({
+    placeRefKind: "event_id", placeRef: EV, market: "kyoto", need: "stop.hours", origin: "crawled", license: "official",
+    fetchedAt: FETCHED, verifiedBy: ADMIN, expiresAt: new Date(Date.now() - DAY),
+    id: `${EV}-expired`, factType: "hours", value: { text: `EXPIRED-${RUN}` }, sourceId: PUBLIC_SRC, sourceUrl: `https://kyoto.example/${RUN}/expired`,
+  } as any);
+  const facts = (await loadEventGuideFacts(EV, { partnerHosts: noHosts }))!;
+  assert.equal(JSON.stringify(facts.venueFacts).includes(`EXPIRED-${RUN}`), false, "the expired fact is not shown");
+  assert.equal(facts.venueFactSources.some((s) => s.url.endsWith("/expired")), false, "and brings no source line");
+  assert.deepEqual(facts.venueFacts, [{ factType: "hours", text: "The box office opens an hour before doors." }]);
+});
