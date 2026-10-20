@@ -17,10 +17,10 @@ name: Kyoto Slice Gate (Trips golden path — Track A acceptance)
 # STATED NEGATIVE SPACE (§18d — green means green-within-stated-bounds). The server boots with STUB
 # Stripe and model keys, so nothing that needs a real PaymentIntent or a real generation runs here:
 # §6's paid run and §7's checkout/cancel are fixmes that say so. E2E_AI_STUB is set below and ignored:
-# NODE_ENV is production and the bundle inlines that (script/build.ts), so §4's free draft takes the
-# real model path and a stub Anthropic key does not produce a draft (ledger
-# `2026-10-20-js1-stub-never-in-production`). What a real model writes is not proven here. The earlier
-# stand-in proof is ledger `2026-09-28-kyoto-s4-draft-ci`.
+# NODE_ENV is production and the bundle inlines that (script/build.ts), so the draft steps assert
+# 429/502/503 and no origin='ai' rows. The stand-in proof is
+# playwright/tests/journeys/j-kyoto-draft-stub.spec.ts on dev-server-gates (NODE_ENV=development).
+# Ledger `2026-10-20-js1-stub-never-in-production`.
 # §3 A4's matrix stand-in is gone (9b-b, ledger `2026-10-16-9b-b-legs-off-google`): the matrix is retired as a
 # source, so every plan-fit minute is the labelled straight-line estimate and there is nothing to seed.
 #

@@ -1,7 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { test, expect, type Page } from "@playwright/test";
 import { perDayAgreement } from "../../../shared/leg-resolution";
-import { isAcceptableArrivalLine, isHotelItemTitle } from "../../../shared/draft-basis";
 import { actAndAwait, ok2xx, appears, testid } from "../../../e2e/supply-demand/lib/ui";
 import { fillPlanEntryToStart, clickPlanStart } from "../../../e2e/supply-demand/lib/flows";
 import {
@@ -34,11 +33,11 @@ import {
  * fake Kyoto supply anywhere).
  *
  * WHERE TODAY'S RUN STOPS SHORT OF THE OUTLINE, AND WHY (stated, not hidden — §18d):
- *   · §4 today (the free draft) asserts the draft's STRUCTURE and its funnel row, never its prose.
- *     The job sets `E2E_AI_STUB=1` on a production bundle, which ignores the flag (ledger
- *     `2026-10-20-js1-stub-never-in-production`), so this step takes the real model path. What a
- *     real model writes is NOT proven here. The earlier stand-in proof is
- *     ledger `2026-09-28-kyoto-s4-draft-ci`.
+ *   · §4 today (the free draft) on THIS job asserts the production failure: the bundle ignores
+ *     `E2E_AI_STUB`, a stub model key answers 429/502/503, and no `origin='ai'` rows are written.
+ *     The stand-in proof (structure, funnel row, where-to-stay) is
+ *     `playwright/tests/journeys/j-kyoto-draft-stub.spec.ts` on the dev-server job, where
+ *     `NODE_ENV=development` still honors the flag (ledger `2026-10-20-js1-stub-never-in-production`).
  *   · §6 today is split: the free preview and the fee line PASS; paying, the board and adopt-stop
  *     need a Stripe test key (this job runs the stub — ruling 38's declared-503 contract).
  *     The outline says the fee equals the `fee_bands`-derived amount; on `main` the optimizer fee
@@ -73,6 +72,20 @@ test.afterAll(async () => {
 /** A fresh traveler, signed in on `page` (page.request shares the browser's cookie jar). */
 async function signedInTraveler(page: Page, label: string): Promise<{ id: string; email: string }> {
   return registerUser(page.request, `kyoto-${label}`, "Kyoto", label);
+}
+
+/**
+ * This job boots a production bundle, which ignores `E2E_AI_STUB`. A stub model key answers
+ * 502, 503, or (once the breaker/limiter is open) 429, and writes no drafted rows. The slip
+ * shows that failure. The stand-in that writes items is `j-kyoto-draft-stub.spec.ts`.
+ */
+async function expectProductionModelFailure(page: Page, status: number | null, tripId: string): Promise<void> {
+  expect([429, 502, 503], `production ignores E2E_AI_STUB; draft answered ${status}`).toContain(status);
+  expect(
+    (await rows(`SELECT id FROM itinerary_items WHERE trip_id = $1 AND origin = 'ai'`, [tripId])).length,
+    "a production model failure writes no drafted rows",
+  ).toBe(0);
+  await expect(testid(page, "ai-draft-failure")).toBeVisible({ timeout: 20_000 });
 }
 
 /** Opens PlanEntry (E2) from the landing hero, confirming it appeared. */
@@ -320,20 +333,19 @@ test.describe("1 · entry and occasion", () => {
     expect(secondId, "the door made a NEW plan").toBeTruthy();
     expect(secondId).not.toBe(firstId);
     const draft = page.waitForResponse(
-      (r) => new URL(r.url()).pathname === "/api/ai/generate-itinerary" && r.request().method() === "POST" && r.status() !== 409,
+      (r) => new URL(r.url()).pathname === "/api/ai/generate-itinerary" && r.request().method() === "POST",
       { timeout: 60_000 },
     );
     await testid(page, "slip-action-draft-ai").first().click();
-    // Smoke 4 item 5: the draft is never preceded by a hotel question.
-    expect(ok2xx((await draft).status()), "the draft is not refused as 'already has items'").toBe(true);
+    const status = (await draft).status();
+    // A new empty plan is not the 409 "already has items" refusal. On this production boot the
+    // call reaches the model and fails; the stand-in that lands rows is j-kyoto-draft-stub.spec.ts.
+    expect(status, "the draft is not refused as 'already has items'").not.toBe(409);
 
     const plans = await rows<{ id: string }>(`SELECT id FROM trips WHERE user_id = $1`, [traveler.id]);
     expect(plans.length, "the door made a second plan").toBe(2);
     const second = plans.find((p) => p.id !== firstId)!;
-    expect(
-      (await rows(`SELECT id FROM itinerary_items WHERE trip_id = $1`, [second.id])).length,
-      "the draft landed in the new plan",
-    ).toBeGreaterThan(0);
+    await expectProductionModelFailure(page, status, second.id);
     expect(
       (await rows(`SELECT id FROM itinerary_items WHERE trip_id = $1`, [firstId])).length,
       "the first plan is untouched",
@@ -809,17 +821,14 @@ test.describe("3 · the compare view (A4)", () => {
 // ── §4 · free draft around the set ────────────────────────────────────────────────────────────
 test.describe("4 · free draft around the set", () => {
   test("§4 today — Draft it with AI on an empty slip writes origin='ai' items, drawn as plain rows (no pills, surface step 1)", async ({ page }) => {
-    // The job's server is a production bundle, so E2E_AI_STUB is ignored and this step takes the
-    // real model path (ledger `2026-10-20-js1-stub-never-in-production`). A non-production server
-    // with the flag set still returns the stand-in, which names itself `e2e-ai-stub` on the cost
-    // row. Assertions are STRUCTURAL — never a draft's prose.
+    // Production bundle ignores E2E_AI_STUB (ledger `2026-10-20-js1-stub-never-in-production`).
+    // The structure, the funnel row and the plain-row read live in j-kyoto-draft-stub.spec.ts.
     await signedInTraveler(page, "s4");
     const tripId = await createTrip(page.request, "Kyoto trip", KYOTO);
     await page.goto(`/plans/${tripId}`);
     await expect(testid(page, "slip-action-draft-ai")).toBeVisible({ timeout: 20_000 });
 
-    // A5 + R215: this plan has no recorded occasion — its `vacation` event type is the column default,
-    // not the traveler's answer — so it is not a Trip and the draft does NOT ask where they are staying.
+    // A5 + R215: this plan has no recorded occasion, so the draft does NOT ask where they are staying.
     const status = await actAndAwait(
       page,
       async () => {
@@ -828,66 +837,7 @@ test.describe("4 · free draft around the set", () => {
       { method: "POST", path: /^\/api\/ai\/generate-itinerary$/ },
     );
     await expect(testid(page, "slip-draft-anchor-ask")).toHaveCount(0);
-    expect(ok2xx(status), `draft answered ${status}`).toBe(true);
-
-    const [span] = await rows<{ days: number }>(
-      `SELECT (end_date - start_date) + 1 AS days FROM trips WHERE id = $1`,
-      [tripId],
-    );
-    const items = await rows<{ id: string; title: string | null; day_number: number | null; origin: string | null }>(
-      `SELECT id, title, day_number, origin FROM itinerary_items WHERE trip_id = $1`,
-      [tripId],
-    );
-    expect(items.length, "the draft wrote rows onto the empty plan").toBeGreaterThan(0);
-    for (const it of items) {
-      expect(it.origin, "every drafted row is stamped origin='ai' server-side").toBe("ai");
-      expect((it.title ?? "").trim().length, "every drafted row has a title").toBeGreaterThan(0);
-      expect(it.day_number, "every drafted row sits on a day of the plan").toBeGreaterThanOrEqual(1);
-      expect(it.day_number!).toBeLessThanOrEqual(Number(span.days));
-    }
-
-    // E6 (slip-funnel-events.md §3.6): one row, written after the snapshot commits — poll the READ.
-    await expect
-      .poll(
-        async () =>
-          (
-            await rows<{ stage: string; properties: Record<string, unknown> | null }>(
-              `SELECT stage, properties FROM funnel_events WHERE trip_id = $1 AND event_type = 'slip_free_draft_run'
-                 ORDER BY created_at`,
-              [tripId],
-            )
-          ).map((r) => ({ stage: r.stage, properties: r.properties })),
-        { timeout: 10_000 },
-      )
-      .toEqual([{ stage: "SLIP", properties: { outcome: "drafted", itemsWritten: items.length, heldSlots: 0 } }]);
-
-    await page.reload();
-    // Surface step 1 (ledger `2026-10-03-surface-step1-item-row`): the slip's `ItemRow` draws no
-    // status pills — origin stays a stored fact (asserted above), never a chip on the row.
-    // The FIRST day is the one open by default, so the row read is one of day 1's.
-    const first = [...items].sort((a, b) => (a.day_number ?? 0) - (b.day_number ?? 0))[0];
-    await expect(testid(page, `slip-item-${first.id}`)).toBeVisible({ timeout: 20_000 });
-    await expect(page.locator('[data-testid^="badge-origin-"]')).toHaveCount(0);
-
-    // LD 41 (b): the plan is no longer empty, so a second free draft is refused (409) before any
-    // model call — and the refusal is its own E6 row, with no count.
-    const again = await page.request.post(`${BASE_URL}/api/ai/generate-itinerary`, {
-      data: { tripId, destination: KYOTO, dates: { start: "2099-01-01", end: "2099-01-02" } },
-    });
-    expect(again.status()).toBe(409);
-    await expect
-      .poll(
-        async () =>
-          (
-            await rows<{ properties: Record<string, unknown> | null }>(
-              `SELECT properties FROM funnel_events WHERE trip_id = $1 AND event_type = 'slip_free_draft_run'
-                 AND properties->>'outcome' = 'refused_not_empty'`,
-              [tripId],
-            )
-          ).map((r) => r.properties),
-        { timeout: 10_000 },
-      )
-      .toEqual([{ outcome: "refused_not_empty" }]);
+    await expectProductionModelFailure(page, status, tripId);
   });
   test("§4 B3/B4/B6 — a plan started to be built with AI drafts INTO itself and stays on its slip; no alternatives run starts", async ({ page }) => {
     // Production smoke test Sep 30, 2026 (ledger `2026-09-30-b3-b6-draft-is-the-deliverable`). E2 ruling 2 /
@@ -907,27 +857,20 @@ test.describe("4 · free draft around the set", () => {
       { method: "POST", path: /^\/api\/ai\/generate-itinerary$/ },
       60_000,
     );
-    expect(ok2xx(drafted), `draft answered ${drafted}`).toBe(true);
     expect(tripId).toBeTruthy();
     await expect(page).toHaveURL(new RegExp(`/plans/${tripId}`));
     await expect(page).not.toHaveURL(/itinerary-comparison/);
-    // The slip it already showed refreshes to the drafted items (no navigation needed).
-    await expect(page.getByText("Explore Kyoto").first()).toBeVisible({ timeout: 20_000 });
-    expect(
-      (await rows(`SELECT id FROM itinerary_items WHERE trip_id = $1`, [tripId])).length,
-      "the draft is saved into the plan",
-    ).toBeGreaterThan(0);
+    await expectProductionModelFailure(page, drafted, tripId);
     expect(
       await rows(`SELECT id FROM itinerary_comparisons WHERE trip_id = $1`, [tripId]),
-      "a free draft creates no comparison and starts no optimizer run",
+      "a failed draft creates no comparison and starts no optimizer run",
     ).toEqual([]);
   });
 
   test("§4 — a Travel plan with no stay and no set drafts at once, then recommends where to stay", async ({ page }) => {
-    // Smoke 4 item 5 (ledger `2026-10-02-smoke4-draft-fixes`; decision-maker, Oct 2, 2026: "Hotel is
-    // optional and recommended after the draft, not asked before it"). A RESOLVED Trips occasion
-    // (R215), no stay, no set: "Draft it with AI" drafts on the first press — the client sends the
-    // explicit skip — and the slip then shows the "Where to stay" panel. Same stand-in as §4-today.
+    // Smoke 4 item 5: a Travel plan is not asked for a hotel before the draft. On this production
+    // boot the draft fails and writes nothing. The "drafts at once, then where to stay" proof is
+    // j-kyoto-draft-stub.spec.ts.
     const tripId = await planWithOccasion(page, "s4-ask", "travel");
     await page.goto(`/plans/${tripId}`);
     await expect(testid(page, "slip-action-draft-ai")).toBeVisible({ timeout: 20_000 });
@@ -938,44 +881,15 @@ test.describe("4 · free draft around the set", () => {
       },
       { method: "POST", path: /^\/api\/ai\/generate-itinerary$/ },
     );
-    expect(ok2xx(status), `draft answered ${status} — it must draft, never ask first`).toBe(true);
-    const items = await rows<{ id: string; title: string }>(`SELECT id, title FROM itinerary_items WHERE trip_id = $1`, [tripId]);
-    expect(items.length, "the first press drafted the days").toBeGreaterThan(0);
-    // Smoke 5 item 10: a no-hotel draft carries no hotel item, and any arrival or departure line is
-    // either our own ("Arrival in Kyoto") or a station-specific line the model wrote — both pass.
-    for (const it of items) {
-      expect(isHotelItemTitle(it.title), `no hotel wording: "${it.title}"`).toBe(false);
-      if (/\barriv/i.test(it.title)) expect(isAcceptableArrivalLine(it.title, "Kyoto", "arrival"), it.title).toBe(true);
-      if (/\b(depart|leav)/i.test(it.title)) expect(isAcceptableArrivalLine(it.title, "Kyoto", "departure"), it.title).toBe(true);
-    }
-    await expect
-      .poll(
-        async () =>
-          (
-            await rows<{ properties: Record<string, unknown> | null }>(
-              `SELECT properties FROM funnel_events WHERE trip_id = $1 AND event_type = 'slip_free_draft_run' ORDER BY created_at`,
-              [tripId],
-            )
-          ).map((r) => r.properties),
-        { timeout: 10_000 },
-      )
-      .toEqual([{ outcome: "drafted", itemsWritten: items.length, draftBasis: "none_asked", heldSlots: 0 }]);
-    const stay = await page.request.get(`${BASE_URL}/api/trips/${tripId}/where-to-stay`);
-    expect(stay.status()).toBe(200);
-    const view = await stay.json();
-    expect(view.eligible, "a drafted 2+ day plan with no stay is offered where to stay").toBe(true);
-    expect(JSON.stringify(view), "no distance or minute value is served").not.toMatch(/minutes|meters|km/);
-    // The stub draft's stops carry no coordinates, so nothing is ranked yet — and the panel says
-    // THAT, never that Kyoto has no neighbourhoods (it has them; §13).
-    expect(view.neighborhoods).toEqual([]);
-    expect(view.unranked).toBe("no_located_items");
+    await expect(testid(page, "slip-draft-anchor-ask")).toHaveCount(0);
+    await expectProductionModelFailure(page, status, tripId);
   });
 
   test("§4 — with the draft's stops on the map, Where to stay ranks Kyoto's neighbourhoods by the days", async ({ page }) => {
-    // Follow-up to smoke 4 item 5 (ledger `2026-10-02-smoke4-draft-fixes`): the ranked panel, not
-    // only its empty state. The CI database carries Kyoto's `city_neighborhoods` rows (the same rows
-    // the matrix stand-in refreshes); the stub draft's stops have no coordinates, so this places five
-    // days' stops the way located items would be — four in Gion, one in Arashiyama.
+    // The draft on this production boot writes nothing (asserted below). The ranked panel still
+    // needs five located stops, so they are placed through the item rail: four in Gion, one in
+    // Arashiyama. The stand-in version, which starts from the stub draft's day-1 stop, is
+    // j-kyoto-draft-stub.spec.ts.
     const tripId = await planWithOccasion(page, "s4-rank", "travel");
     await page.goto(`/plans/${tripId}`);
     await expect(testid(page, "slip-action-draft-ai")).toBeVisible({ timeout: 20_000 });
@@ -986,9 +900,9 @@ test.describe("4 · free draft around the set", () => {
       },
       { method: "POST", path: /^\/api\/ai\/generate-itinerary$/ },
     );
-    expect(ok2xx(status), `draft answered ${status}`).toBe(true);
-    // The stub draft writes day 1 only; days 2–5 get one stop each through the ordinary item rail.
-    for (const day of [2, 3, 4, 5]) await createItem(page.request, tripId, `Stop on day ${day}`, day);
+    await expectProductionModelFailure(page, status, tripId);
+    // The draft wrote nothing. Ranking still needs five located stops, placed through the item rail.
+    for (const day of [1, 2, 3, 4, 5]) await createItem(page.request, tripId, `Stop on day ${day}`, day);
     // On the map: days 1–4 at Gion's centroid, day 5 at Arashiyama's (the CI rows' own centroids).
     await rows(
       `UPDATE itinerary_items SET latitude = CASE WHEN day_number = 5 THEN 35.0094 ELSE 35.0036 END,
@@ -1084,42 +998,16 @@ test.describe("4 · free draft around the set", () => {
       },
       { method: "POST", path: /^\/api\/ai\/generate-itinerary$/ },
     );
-    expect(ok2xx(status), `an open set does not make the slip non-empty (R126); draft answered ${status}`).toBe(true);
-
-    const items = await rows<{ item_type: string | null; origin: string | null }>(
-      `SELECT item_type, origin FROM itinerary_items WHERE trip_id = $1`,
-      [tripId],
-    );
-    expect(items.length, "the draft wrote the days").toBeGreaterThan(0);
-    for (const it of items) {
-      expect(it.origin).toBe("ai");
-      expect(
-        ["accommodation", "hotel", "hostel", "lodging", "resort", "ryokan", "guesthouse", "inn"],
-        "the held stay slot is never filled",
-      ).not.toContain((it.item_type ?? "").toLowerCase());
-    }
+    await expectProductionModelFailure(page, status, tripId);
     const [set] = await rows<{ status: string; chosen_option_id: string | null }>(
       `SELECT status, chosen_option_id FROM plan_option_sets WHERE id = $1`,
       [setId],
     );
-    expect(set, "the draft never closes or chooses the set").toEqual({ status: "open", chosen_option_id: null });
+    expect(set, "a failed draft never closes or chooses the set").toEqual({ status: "open", chosen_option_id: null });
     expect(
       await rows(`SELECT id, position, title, latitude, longitude FROM plan_options WHERE set_id = $1 ORDER BY position`, [setId]),
       "its options are untouched",
     ).toEqual(optionsBefore);
-
-    await expect
-      .poll(
-        async () =>
-          (
-            await rows<{ properties: Record<string, unknown> | null }>(
-              `SELECT properties FROM funnel_events WHERE trip_id = $1 AND event_type = 'slip_free_draft_run'`,
-              [tripId],
-            )
-          ).map((r) => r.properties),
-        { timeout: 10_000 },
-      )
-      .toEqual([{ outcome: "drafted", itemsWritten: items.length, draftBasis: "open_anchor_set", heldSlots: 1 }]);
   });
 });
 

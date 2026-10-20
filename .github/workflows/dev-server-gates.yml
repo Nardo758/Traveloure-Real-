@@ -109,7 +109,8 @@ jobs:
             playwright/tests/planning-entry.spec.ts \
             playwright/tests/service-display-options.spec.ts \
             playwright/tests/trip-pass.spec.ts \
-            playwright/tests/vendors-creator-filter.spec.ts; do
+            playwright/tests/vendors-creator-filter.spec.ts \
+            playwright/tests/journeys/j-kyoto-draft-stub.spec.ts; do
             if [ ! -f "$f" ]; then
               echo "::error file=.github/workflows/dev-server-gates.yml::Spec file not found: $f"
               FAIL=1
@@ -203,6 +204,13 @@ jobs:
             exit 1
           fi
           echo "Build identity confirmed: $ACTUAL_SHA"
+      - name: "kyoto draft stand-in (E2E_AI_STUB honored: NODE_ENV=development)"
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test --project=chromium --workers=1 --timeout=120000 playwright/tests/journeys/j-kyoto-draft-stub.spec.ts
+        env:
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          CI: 'true'
       - name: "e2e-provider-console: Catalog map, Distribute, ServiceForm steps"
         id: provider_console
         if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
