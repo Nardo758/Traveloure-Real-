@@ -31,9 +31,10 @@ describe("/privacy §14 — every waitlist city", () => {
     for (const old of ["The Kyoto Waitlist", "Kyoto waitlist", "opens for Kyoto", "demand for Kyoto", "not yet open in Kyoto"]) {
       assert.ok(!S14.includes(old), `§14 still says "${old}"`);
     }
-    assert.ok(S14.includes("Traveloure is starting with Kyoto. You can join the waitlist for Kyoto or any other city on our Kyoto page, as a traveler or as a local guide or provider."));
-    assert.equal((S14.match(/the city you signed up for/g) ?? []).length >= 2, true, "both forms name the city");
-    assert.ok(S14.includes('the "Email me when Traveloure opens…" line for that city'));
+    assert.ok(S14.includes("Traveloure is starting with Kyoto. You can join the waitlist for Kyoto, or another city you tell us about, on our Kyoto page, as a traveler or as a local guide or provider."));
+    assert.ok(S14.includes("another city you name"));
+    assert.equal((S14.match(/The sign-up is for Kyoto/g) ?? []).length, 2, "both forms say the sign-up is for Kyoto");
+    assert.ok(S14.includes('the "Join the Kyoto list" line'));
     assert.ok(S14.includes("To count demand in each city"));
     assert.ok(S14.includes("We email you about a city only if you ticked that city's box."));
   });

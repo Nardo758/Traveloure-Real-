@@ -8,7 +8,7 @@
  *   P3 an event already under way is listed and reads "On now"
  *   P4 "Plan around it" opens the planning pop-up
  *   P5 a month-level season shows in the band and in "In season all month", never on a day
- *   P6 "Where to go" lists all eight cities; one with no rating says "Not rated yet"
+ *   P6 "Where to go" lists Kyoto only (LC-1b)
  *   P7 (2b, ledger `2026-10-06-event-page`) from a row, "Event details" opens the event's own page
  *   P8 on the page, "Plan around it" opens the pop-up with the event's dates and venue filled in
  *   P9 an address with no live event is the "not on our calendar" page, not an empty shell
@@ -57,7 +57,7 @@ const PAYLOAD = {
   months,
   events: [
     card('underway', plus(-1), plus(1), { venue: 'Kyocera Dome Osaka', venueLocality: 'Osaka', vertical: 'other' }),
-    card('soon', soonDay, soonDay, { city: 'Porto', marketKey: 'porto', startTime: '21:00' }),
+    card('soon', soonDay, soonDay, { startTime: '21:00' }),
   ],
   bands: [
     { id: 'band-1', title: 'Fixture season', place: 'Japan', country: 'Japan', marketKeys: ['kyoto'], months: [ym], span: 'All year' },
@@ -149,11 +149,12 @@ test.describe('/events — the year ahead (2026-10-06-events-calendar)', () => {
     await expect(page.getByTestId(`events-day-${quiet}`)).toHaveAttribute('data-marks', '0');
   });
 
-  test('P6 Where to go lists all eight cities; unrated ones say so', async ({ page }) => {
+  test('P6 Where to go lists Kyoto only', async ({ page }) => {
     await openEvents(page);
-    await expect(page.locator('[data-testid^="events-where-group-"]')).toHaveCount(8);
+    await expect(page.locator('[data-testid^="events-where-group-"]')).toHaveCount(1);
     await expect(page.getByTestId('events-where-group-kyoto')).toHaveText(/Best time/i);
-    await expect(page.getByTestId('events-where-group-goa')).toHaveText(/Not rated yet/i);
+    await expect(page.getByTestId('events-where-group-goa')).toHaveCount(0);
+    await expect(page.getByTestId('events-city-all')).toHaveCount(0);
     await expect(page.getByTestId('events-where-scope-kyoto')).toContainText('Japan');
   });
 

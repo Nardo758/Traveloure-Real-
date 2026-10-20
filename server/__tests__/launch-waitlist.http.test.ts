@@ -51,7 +51,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { after, before, test } from "node:test";
 import { registerAndSignIn } from "./fixtures/register-and-sign-in";
-import { isWaitlistQaEmail, waitlistConsentLine } from "../../shared/launch-waitlist";
+import { isWaitlistQaEmail, waitlistConsentLine, waitlistConsentVersion } from "../../shared/launch-waitlist";
 
 const { Pool } = await import("pg");
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -151,7 +151,7 @@ test("W2 — a repeat updates the one row, keeps the first source, and a tick st
   assert.ok(rows[0].consent_at, "the tick stamps consent");
   const t = await pool.query(`SELECT body FROM consent_texts WHERE consent_key = 'launch_waitlist_updates' AND version = $1`, [rows[0].consent_text_version]);
   assert.equal(t.rows.length, 1, "the consent version is named");
-  assert.match(t.rows[0].body, /^Email me when Traveloure opens for Kyoto\./);
+  assert.match(t.rows[0].body, /^Join the Kyoto list /);
 });
 
 test("W3 — a later sign-up without the tick keeps consent already given", async () => {
@@ -508,7 +508,7 @@ test("W19 — the stored consent version is the city shown, and a tick covers on
   assert.equal(mumbai.consent_at, null, "a tick for Goa does not consent Mumbai");
   assert.equal(mumbai.consent_text_version, null);
   for (const row of [goa, launch]) {
-    assert.equal(row.consent_text_version, `f1-2026-10-15:${row.market_slug}`);
+    assert.equal(row.consent_text_version, waitlistConsentVersion(row.market_slug));
     const t = await pool.query(
       `SELECT body FROM consent_texts WHERE consent_key = 'launch_waitlist_updates' AND version = $1`,
       [row.consent_text_version],

@@ -19,7 +19,10 @@ import path from "node:path";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
 import {
   WAITLIST_CONSENT_LINE,
+  WAITLIST_KYOTO_CONSENT_VERSION,
   WAITLIST_MARKET_OPTIONS,
+  WAITLIST_TRIP_TYPES,
+  waitlistJoinBodySchema,
   WAITLIST_OTHER_CITY_PROMPT,
   resolveWaitlistMarket,
   waitlistConsentLine,
@@ -57,9 +60,14 @@ describe("M2 — resolving the market", () => {
 describe("M3 — consent is per city", () => {
   it("keeps Kyoto's F1 line and names every other city", () => {
     assert.equal(waitlistConsentLine("kyoto"), WAITLIST_CONSENT_LINE);
+    assert.equal(WAITLIST_CONSENT_LINE, "Join the Kyoto list");
+    assert.equal(waitlistConsentVersion("kyoto"), WAITLIST_KYOTO_CONSENT_VERSION);
     assert.equal(waitlistConsentLine("goa"), "Email me when Traveloure opens in Goa.");
     assert.equal(waitlistConsentLine("cartagena"), "Email me when Traveloure opens in Cartagena.");
-    for (const m of WAITLIST_MARKET_OPTIONS) assert.equal(waitlistConsentVersion(m.key), `f1-2026-10-15:${m.key}`);
+    for (const m of WAITLIST_MARKET_OPTIONS) {
+      if (m.key === "kyoto") continue;
+      assert.equal(waitlistConsentVersion(m.key), `f1-2026-10-15:${m.key}`);
+    }
   });
 });
 
@@ -81,20 +89,30 @@ describe("M4 — no promise for another city beyond an email when it opens", () 
     assert.equal(waitlistOtherCityDone("Goa", true), "We'll email you when Traveloure opens in Goa.");
     assert.equal(waitlistOtherCityProviderLine("Goa"), "Know Goa? Send us your details and we'll be in touch when we open there.");
   });
-  it("in the page: every non-Kyoto branch reads the shared copy", () => {
-    assert.ok(PAGE.includes(": waitlistOtherCityDone(city, consent)}"));
-    assert.ok(PAGE.includes(": waitlistOtherCityJoinButton(city)}"));
-    assert.ok(PAGE.includes(": waitlistOtherCityProviderDone(city)}"));
-    assert.ok(PAGE.includes("{waitlistOtherCityProviderLine(city)}"));
+  it("on the page: the preset list is gone and the note is free text", () => {
+    assert.equal((PAGE.match(/Planning somewhere else\? Tell us where\./g) ?? []).length, 0, "the prompt is the shared constant, not retyped");
+    assert.ok(PAGE.includes("WAITLIST_OTHER_CITY_PROMPT"));
+    assert.equal((PAGE.match(/<ElsewhereField /g) ?? []).length, 2);
+    assert.doesNotMatch(PAGE, /<option[^>]*>Goa</);
+    for (const city of ["Goa", "Mumbai", "Jaipur", "Edinburgh", "Porto", "Bogotá", "Cartagena"]) {
+      assert.equal(PAGE.includes(city), false, city);
+    }
     assert.ok(PAGE.includes("{waitlistConsentLine(market)}"));
+    assert.ok(WAITLIST_TRIP_TYPES.some((t) => t.key === "wedding" && t.label === "Wedding"));
+    assert.ok(PAGE.includes("WAITLIST_TRIP_TYPES.map"));
   });
 });
 
-describe("M5 — one city per submission", () => {
-  it("posts one market from a single select, with one consent box", () => {
-    assert.equal((PAGE.match(/<select id=\{id\}/g) ?? []).length, 1, "one picker component");
+describe("M5 — the other city is an optional note, and the sign-up stays one market", () => {
+  it("posts one market and an optional otherCity, with one consent box", () => {
+    assert.equal((PAGE.match(/<select id=\{id\}/g) ?? []).length, 0, "no city select");
     assert.doesNotMatch(PAGE, /<select[^>]*multiple/);
-    assert.equal((PAGE.match(/\n      market,\n/g) ?? []).length, 2, "each form posts one market");
+    assert.equal((PAGE.match(/\n      market,\n/g) ?? []).length, 2, "each form posts the launch market");
+    assert.equal((PAGE.match(/otherCity: otherCity\.trim\(\)/g) ?? []).length, 2);
     assert.equal((PAGE.match(/<ConsentTick /g) ?? []).length, 2, "one consent box per form");
+    const parsed = waitlistJoinBodySchema.safeParse({ email: "a@b.co", otherCity: "Lisbon" });
+    assert.equal(parsed.success, true);
+    const tooLong = waitlistJoinBodySchema.safeParse({ email: "a@b.co", otherCity: "x".repeat(121) });
+    assert.equal(tooLong.success, false);
   });
 });
