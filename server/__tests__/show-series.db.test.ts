@@ -97,8 +97,8 @@ test("SD4 — migration 399 withdraws the run only while it is live, and deletes
   const existing = ((await db.execute(sql`SELECT withdrawn_at FROM city_events WHERE source = 'manual' AND source_id = 'imagine-noh-2026'`)) as any).rows;
   if (existing.length) original = { withdrawn_at: existing[0].withdrawn_at };
   if (!existing.length) {
-    await db.execute(sql`INSERT INTO city_events (source, source_id, series, title, city, venue, starts_at, ends_at, nights)
-      VALUES ('manual', 'imagine-noh-2026', 'IMAGINE NOH', ${`fixture ${RUN}`}, 'Kyoto', 'x', '2026-10-14T00:00:00+09:00', '2026-11-05T00:00:00+09:00', 23)`);
+    await db.execute(sql`INSERT INTO city_events (id, source, source_id, series, title, city, venue, starts_at, ends_at, nights)
+      VALUES (${crypto.randomUUID()}, 'manual', 'imagine-noh-2026', 'IMAGINE NOH', ${`fixture ${RUN}`}, 'Kyoto', 'x', '2026-10-14T00:00:00+09:00', '2026-11-05T00:00:00+09:00', 23)`);
   } else {
     await db.execute(sql`UPDATE city_events SET withdrawn_at = NULL WHERE source = 'manual' AND source_id = 'imagine-noh-2026'`);
   }
