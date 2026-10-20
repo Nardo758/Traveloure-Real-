@@ -46,6 +46,7 @@ import {
   SeasonalOpportunity,
 } from "@shared/schema";
 import { eq, and, sql, gte, lte, desc, asc, or, ilike, inArray } from "drizzle-orm";
+import { sanitizePartnerCardCopy } from "@shared/banned-copy";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Section 1: Destination Content Recommendation types
@@ -498,7 +499,8 @@ class RecommendationService {
       .slice(0, limit);
 
     const enhancedActivities = activities
-      .map((activity) => this.scoreActivity(activity, context, seasonalInsight, cityIntelligence))
+      .map((activity) => sanitizePartnerCardCopy(this.scoreActivity(activity, context, seasonalInsight, cityIntelligence)))
+      .filter((activity): activity is NonNullable<typeof activity> => activity != null)
       .sort((a, b) => b.aiScore - a.aiScore)
       .slice(0, limit);
 

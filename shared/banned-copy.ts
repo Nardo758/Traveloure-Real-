@@ -182,3 +182,80 @@ export function siteNeverSayHits(text: string | null | undefined): string[] {
 export function containsSiteNeverSay(text: string | null | undefined): boolean {
   return siteNeverSayHits(text).length > 0;
 }
+
+/**
+ * G-02 (ledger `2026-10-20-g02-g06-copy`): phrases a partner / affiliate activity card never shows.
+ * The patterns are THE existing draft-list entries for "hidden gem(s)" and "secret", plus the site
+ * never-say "geisha" rule (which covers "geisha culture"). No new word list. A fresh RegExp per
+ * call — the shared ones are stateful under /g.
+ */
+const PARTNER_CARD_PHRASE_SOURCES: readonly string[] = [
+  BANNED.find((b) => b.words === "hidden gem(s)")!.re.source,
+  BANNED.find((b) => b.words === "secret")!.re.source,
+  SITE_NEVER_SAY.find((e) => e.words === "geisha")!.re.source,
+];
+
+/** Drop those phrases and tidy what remains. An untouched string is returned as it was. */
+export function stripPartnerCardPhrase(text: string | null | undefined): string {
+  const original = String(text ?? "");
+  if (!original) return "";
+  let t = original;
+  let hit = false;
+  for (const source of PARTNER_CARD_PHRASE_SOURCES) {
+    const next = t.replace(new RegExp(source, "gi"), " ");
+    if (next !== t) hit = true;
+    t = next;
+  }
+  if (!hit) return original;
+  // A joiner left glued to the sentence's punctuation ("and.") is not a word.
+  t = t.replace(/\b(?:and|with|of|in|at|to|for|the|a|an)\b(?=\s*[,:;!?.])/gi, " ");
+  const out = tidy(t);
+  if (!/[A-Za-z0-9]/.test(out)) return "";
+  // A lone article left behind ("a secret" → "A") is not a card.
+  if (/^(?:a|an|the|and|with|of|in|at|to|for)$/i.test(out)) return "";
+  return out;
+}
+
+const SKIP_STRING_KEY = /(url|uri|href|src|token|password|email|phone)$/i;
+
+function skipPartnerStringKey(key: string | undefined): boolean {
+  if (!key) return false;
+  if (SKIP_STRING_KEY.test(key)) return true;
+  if (/(?:Id|ID|Url|URL|Code)$/.test(key) || key === "id" || key === "slug" || key === "currency") return true;
+  // Image addresses are not card copy. A hyphen is a word boundary, so "secret-garden.jpg" would otherwise be rewritten.
+  return /image|cover|photo|logo|icon|media|avatar/i.test(key);
+}
+
+function isPlainObject(value: object): boolean {
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+function stripPartnerStrings(value: unknown, key?: string): unknown {
+  if (typeof value === "string") return skipPartnerStringKey(key) ? value : stripPartnerCardPhrase(value);
+  if (Array.isArray(value)) return value.map((item) => stripPartnerStrings(item)).filter((item) => item !== "");
+  if (value instanceof Date) return value;
+  if (value && typeof value === "object" && isPlainObject(value)) {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) out[k] = stripPartnerStrings(v, k);
+    return out;
+  }
+  return value;
+}
+
+/**
+ * Public partner/activity copy with those phrases removed. Returns null when a name or a title
+ * was present and nothing of either remains — the card is omitted, not shown blank.
+ */
+export function sanitizePartnerCardCopy<T>(record: T): T | null {
+  if (!record || typeof record !== "object") return record;
+  const src = record as { name?: unknown; title?: unknown };
+  const out = stripPartnerStrings(record) as { name?: unknown; title?: unknown };
+  const hadName = typeof src.name === "string";
+  const hadTitle = typeof src.title === "string";
+  const name = typeof out.name === "string" ? out.name.trim() : "";
+  const title = typeof out.title === "string" ? out.title.trim() : "";
+  if (hadName && !name) return null;
+  if (!hadName && hadTitle && !title) return null;
+  return out as T;
+}

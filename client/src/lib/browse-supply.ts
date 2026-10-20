@@ -6,6 +6,7 @@
  * the ONE add rail, `POST /api/trips/:tripId/itinerary-items` (LD 39).
  */
 import type { BrowsePlace } from "@/lib/map-scene";
+import { stripPartnerCardPhrase } from "@shared/banned-copy";
 import { offeringPriceLabel } from "@/lib/expert-door";
 import { resolvePriceUnit } from "@/lib/price-unit";
 
@@ -85,15 +86,18 @@ export const PARTNER_CATEGORY_WORDS: Readonly<Record<string, readonly string[]>>
 export function partnerPlaces(rows: ReadonlyArray<any> | null | undefined, categoryKey?: string | null): BrowsePlace[] {
   const words = categoryKey ? PARTNER_CATEGORY_WORDS[categoryKey] ?? [] : null;
   return (rows ?? [])
-    .filter((r) => {
-      if (!words) return true;
-      const text = `${r.category ?? ""} ${r.subCategory ?? ""}`.toLowerCase();
-      return words.some((w) => text.includes(w));
-    })
-    .map((r) => ({
+    .flatMap((r) => {
+      if (words) {
+        const text = `${r.category ?? ""} ${r.subCategory ?? ""}`.toLowerCase();
+        if (!words.some((w) => text.includes(w))) return [];
+      }
+      const rawName = r?.name == null || r.name === "" ? "" : String(r.name);
+      const name = rawName ? stripPartnerCardPhrase(rawName) : "Place";
+      if (!name) return [];
+      return [{
       id: String(r.id),
-      kind: "partner",
-      name: String(r.name ?? "Place"),
+      kind: "partner" as const,
+      name,
       lat: coord(r.coordinates?.lat),
       lng: coord(r.coordinates?.lng),
       category: r.category ?? null,
@@ -102,8 +106,9 @@ export function partnerPlaces(rows: ReadonlyArray<any> | null | undefined, categ
       // no as-of time, so it is never shown and never filters the budget. The card offers the
       // partner's current price instead (`PARTNER_PRICE_LINK_LABEL`). Provider listings keep theirs.
       priceLabel: null,
-      budget: { kind: "unpriced" },
-    }));
+      budget: { kind: "unpriced" as const },
+    }];
+    });
 }
 
 /** The partner card's price line: the partner's own current price, behind the tracked redirect. */
@@ -150,10 +155,14 @@ export function viatorLiveCards(res: ViatorLiveResponse | null | undefined, loca
   const asOfText = asOf && !Number.isNaN(asOf.getTime()) ? asOf.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }) : null;
   return res.items
     .filter((i) => typeof i.productCode === "string" && i.productCode)
-    .map((i) => ({
+    .flatMap((i) => {
+      const rawTitle = typeof i.title === "string" ? i.title : "";
+      const title = rawTitle ? stripPartnerCardPhrase(rawTitle) : "Activity";
+      if (!title) return [];
+      return [{
       id: String(i.id ?? `viator-${i.productCode}`),
       productCode: String(i.productCode),
-      title: String(i.title ?? "Activity"),
+      title,
       priceLine:
         typeof i.price === "number" && Number.isFinite(i.price) && i.price > 0 && i.currency && asOfText
           ? `From ${i.currency} ${i.price} · price as of ${asOfText}`
@@ -163,7 +172,8 @@ export function viatorLiveCards(res: ViatorLiveResponse | null | undefined, loca
           ? `${i.rating.toFixed(1)} rating · ${i.reviewCount} reviews on Viator`
           : null,
       url: typeof i.productUrl === "string" && i.productUrl.startsWith("https://") ? i.productUrl : null,
-    }));
+    }];
+    });
 }
 
 // ── STEP 8b-2: TABS, SEARCH AND BUDGET (brief item 14/15; rulings 8 and 10) ─────────────────────────
