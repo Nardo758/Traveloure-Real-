@@ -11,7 +11,8 @@ name: Dev-server Gates
 #
 # THE SPLIT IS THE SERVER'S CONFIGURATION, NOT THE SUBJECT. A spec sees the server it was proven
 # against, and the seven ran against two different ones:
-#   · e2e-ai-stub     — E2E_AI_STUB=1, CI test users seeded: provider console, spec coverage,
+#   · e2e-ai-stub     — E2E_AI_STUB=1 with NODE_ENV=development (tsx, so the flag is honored;
+#                       a production boot ignores it), CI test users seeded: provider console, spec coverage,
 #                       unwired specs (and i18n key parity, which needs no server).
 #   · e2e-live-config — no AI stub, the AI providers configured with stub keys, no CI users:
 #                       Home, the slip rail, Discover, the cart redirect (and its static check).
@@ -108,7 +109,10 @@ jobs:
             playwright/tests/planning-entry.spec.ts \
             playwright/tests/service-display-options.spec.ts \
             playwright/tests/trip-pass.spec.ts \
-            playwright/tests/vendors-creator-filter.spec.ts; do
+            playwright/tests/vendors-creator-filter.spec.ts \
+            playwright/tests/journeys/j-kyoto-draft-stub.spec.ts \
+            playwright/tests/journeys/j13-share-stub.spec.ts \
+            playwright/tests/personas/journey-plus-stub.spec.ts; do
             if [ ! -f "$f" ]; then
               echo "::error file=.github/workflows/dev-server-gates.yml::Spec file not found: $f"
               FAIL=1
@@ -165,6 +169,9 @@ jobs:
           GIT_COMMIT: ${{ github.sha }}
           NODE_ENV: development
           E2E_AI_STUB: "1"
+          # journey-plus-stub posts /internal/run-occasion-drafts. The in-process timer
+          # does not fire during this job; the spec is the caller.
+          INTERNAL_JOB_SECRET: ci-internal-secret
           # Loopback-only rate-limit exemption (server/infrastructure/rate-limiter.ts). Load-bearing:
           # these specs log in as the same fixtures many times, and retries log in again.
           RATE_LIMIT_LOOPBACK_SKIP: "1"
@@ -202,6 +209,32 @@ jobs:
             exit 1
           fi
           echo "Build identity confirmed: $ACTUAL_SHA"
+      - name: Seed persona accounts (journey-plus stand-in)
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx tsx scripts/seed-personas.ts --apply
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: "draft stand-in (E2E_AI_STUB honored: NODE_ENV=development)"
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test --project=chromium --workers=1 --timeout=180000 playwright/tests/journeys/j-kyoto-draft-stub.spec.ts playwright/tests/journeys/j13-share-stub.spec.ts playwright/tests/personas/journey-plus-stub.spec.ts
+        env:
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          CI: 'true'
+          DRAFT_STUB_SERVER: "1"
+          INTERNAL_JOB_SECRET: ci-internal-secret
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+      # Move before the next Playwright step. It writes the same playwright-json/ path, and the
+      # spec-arming gate only sees what is uploaded as playwright-json*.
+      - name: Keep the kyoto-draft-stub reports
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p reports/kyoto-draft-stub
+          [ -d playwright-report ] && mv playwright-report reports/kyoto-draft-stub/html || true
+          [ -d playwright-json ] && mv playwright-json reports/kyoto-draft-stub/json || true
       - name: "e2e-provider-console: Catalog map, Distribute, ServiceForm steps"
         id: provider_console
         if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
@@ -254,6 +287,13 @@ jobs:
           mkdir -p reports/unwired-specs
           [ -d playwright-report ] && mv playwright-report reports/unwired-specs/html || true
           [ -d playwright-json ] && mv playwright-json reports/unwired-specs/json || true
+      - name: Upload kyoto-draft-stub Playwright JSON report (the spec-arming gate reads playwright-json*)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-json-kyoto-draft-stub
+          path: reports/kyoto-draft-stub/json/
+          if-no-files-found: ignore
       - name: Upload i18n-key-parity Playwright JSON report (the spec-arming gate reads playwright-json*)
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4

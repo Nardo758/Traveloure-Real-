@@ -121,7 +121,10 @@ jobs:
           STRIPE_CONNECT_WEBHOOK_SECRET_TEST: whsec_ci_stub_no_real_calls
           XAI_API_KEY: xai-ci-stub-no-real-calls
           ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
-          # Exercise the positive occasion-draft delivery path without making an external LLM call.
+          # Set and ignored. This job boots the production bundle, so NODE_ENV is production and
+          # the occasion draft takes the real model path. journey-plus asserts that failure:
+          # HTTP 200, nothing promoted, the claim left unpromoted. The delivery proof is
+          # journey-plus-stub on dev-server-gates (ledger 2026-10-20-js1-stub-never-in-production).
           E2E_AI_STUB: '1'
           RESEND_API_KEY: re_ci_stub_no_real_calls
           # journey-plus.spec.ts's draft-run trigger (POST /internal/run-occasion-drafts) needs

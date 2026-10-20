@@ -22,7 +22,14 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
-import { runFreeDraft, type FreeDraftResult } from "@/lib/slip-free-draft";
+import { AiDraftFailureAlert } from "@/lib/ai-draft-failure";
+import {
+  AI_DRAFT_FAILURE_TITLE,
+  FreeDraftFailure,
+  runFreeDraft,
+  type AiDraftFailureNotice,
+  type FreeDraftResult,
+} from "@/lib/slip-free-draft";
 import { slipDraftDisabledReason } from "@/lib/slip-rail";
 import { planDatesAreConfirmed, planDatesGateLine } from "@shared/plan-dates";
 import { InlineDatesPanel, type PlanWindow } from "./SlipAnchorPanels";
@@ -63,11 +70,14 @@ export interface SlipFreeDraft {
   asksDatesFirst: boolean;
   /** The inline dates panel (when asking), mounted wherever the caller renders its control. */
   datesPanel: ReactNode;
+  /** Set when a draft failed, including a real 502/503 model failure. Null after a success. */
+  failureAlert: ReactNode;
 }
 
 export function useSlipFreeDraft(trip: FreeDraftTripInput, tripId: string): SlipFreeDraft {
   const { toast } = useToast();
   const [asking, setAsking] = useState(false);
+  const [failure, setFailure] = useState<AiDraftFailureNotice | null>(null);
   const disabledReason = slipDraftDisabledReason({
     destination: trip.destination,
     startDate: trip.startDate as any,
@@ -78,6 +88,7 @@ export function useSlipFreeDraft(trip: FreeDraftTripInput, tripId: string): Slip
   const draft = useMutation<FreeDraftResult, Error, { startDate?: string; endDate?: string } | void>({
     mutationFn: (dates) => runFreeDraft({ ...(trip as any), ...(dates ?? {}) }),
     onSuccess: (result) => {
+      setFailure(null);
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/option-sets`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/where-to-stay`] });
@@ -88,7 +99,15 @@ export function useSlipFreeDraft(trip: FreeDraftTripInput, tripId: string): Slip
       });
     },
     onError: (err: any) => {
-      toast({ variant: "destructive", title: "Couldn't draft this plan", description: err?.message });
+      const notice: AiDraftFailureNotice =
+        err instanceof FreeDraftFailure
+          ? err.notice
+          : {
+              title: AI_DRAFT_FAILURE_TITLE,
+              description: typeof err?.message === "string" && err.message ? err.message : AI_DRAFT_FAILURE_TITLE,
+            };
+      setFailure(notice);
+      toast({ variant: "destructive", title: notice.title, description: notice.description });
     },
   });
 
@@ -135,5 +154,6 @@ export function useSlipFreeDraft(trip: FreeDraftTripInput, tripId: string): Slip
     disabledReason,
     asksDatesFirst,
     datesPanel,
+    failureAlert: failure ? <AiDraftFailureAlert notice={failure} /> : null,
   };
 }

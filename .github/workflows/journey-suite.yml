@@ -131,11 +131,10 @@ jobs:
           # P0 fail-safe (server/index.ts): a production boot purges test accounts unless
           # explicitly allowed. This CI DB is throwaway.
           ALLOW_TEST_ACCOUNTS: '1'
-          # The same three server stand-ins kyoto-slice-gate.yml sets, because this job runs that
-          # job's spec too (playwright/tests/journeys/j-kyoto-trips-golden-path.spec.ts). Without
-          # them the §4 draft tests and J13 hit the stub AI keys and answer 502/503 (since #1166),
-          # and §7 A8 / §9a find no legs. E2E_AI_STUB is the one model stand-in (refused where
-          # ENVIRONMENT=PROD); the routing stub makes no network call and records provenance `stub`.
+          # Legs still use the routing stub (no network call, provenance `stub`). E2E_AI_STUB is
+          # set and ignored: this job boots the production bundle, which inlines NODE_ENV as
+          # production (script/build.ts), so generate-itinerary takes the real model path and a
+          # stub Anthropic key answers 502/503 (ledger 2026-10-20-js1-stub-never-in-production).
           E2E_AI_STUB: '1'
           TRAVEL_TIME_SERVICE_ENABLED: '1'
           ROUTING_ADAPTER_STUB: '1'
@@ -197,7 +196,11 @@ jobs:
 
       - name: Run journey suite (test:journeys)
         id: run-journeys
-        run: npm run test:journeys -- --project=chromium
+        # Successful-draft specs (titles start with "stub —") run on dev-server-gates, where
+        # NODE_ENV is not production. This job boots the production bundle, which ignores
+        # E2E_AI_STUB, so those proofs are excluded here. The directory selector stays, so the
+        # files remain wired. J13 on this job asserts the model failure and shares a traveler stop.
+        run: npm run test:journeys -- --project=chromium --grep-invert "stub —"
         env:
           BASE_URL: http://localhost:5000
           # Specs assert DB facts via a read-only pg pool.

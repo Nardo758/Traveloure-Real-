@@ -1,29 +1,26 @@
 /**
  * d4-ai-draft.spec.ts — Pass 2, Part 2, D4.
  *
- * T-auth (never T-pass — Trip Pass purchase is HELD:stripe) runs "Plan with AI" for a FRESH,
- * empty Kyoto plan from the one planning modal. Per ledger `2026-09-25-planning-tolls`: the free
- * draft on an EMPTY plan must write NO `fee_ledger` row. Records whether A/B/C appear in the
- * draft's items (candidate pool is `getActiveProviderServices(30)`, no destination scope —
- * content.routes.ts:5084). Then, on the now non-empty plan, opens "Ask AI about this plan" and
- * creates a proposal — free to ask, charged only at pay/apply (Stripe, HELD). If the CI AI stub
- * key cannot complete a real model call, that is recorded as an ENVIRONMENT limit (NOT PROVEN),
- * never as a product finding — only what is directly observable (an honest error, no fee row) is
- * asserted.
+ * T-auth (never T-pass — Trip Pass purchase is HELD:stripe) opens a fresh empty Kyoto plan.
+ * This job boots a production bundle, which ignores `E2E_AI_STUB`. The draft step asserts that
+ * failure: 429, 502 or 503, no `origin='ai'` rows, the slip's `ai-draft-failure` notice, and no
+ * new `ai_concierge_fee` row. A canned draft cannot name provider services or answer Ask AI, so
+ * those observations are not moved. The proof that an empty-plan draft writes `origin='ai'` items
+ * and no fee row is the stand-in on dev-server-gates.
  */
-import { test } from '@playwright/test';
-import { E2E_PASSWORD, e2eEmail } from './lib/run-id';
+import { test, expect } from '@playwright/test';
+import { e2eEmail } from './lib/run-id';
 import { signupViaUi } from './lib/accounts';
 import { fillPlanEntryToStart, clickPlanStart, openPlanEntryFromHero } from './lib/flows';
 import { shot, netLogger } from './lib/evidence';
 import { fileFinding } from './lib/findings';
-import { q, feeBand } from './lib/db';
+import { q } from './lib/db';
 import { readState, writeState } from './lib/state';
-import { testid, appears } from './lib/ui';
+import { testid, appears, actAndAwait } from './lib/ui';
 
 test.describe.configure({ mode: 'serial' });
 
-test('D4: AI free draft on an empty plan, then a paid-task proposal ask', async ({ page }) => {
+test('D4: a production free draft on an empty plan fails honestly and writes no fee row', async ({ page }) => {
   const state = readState();
   if (!state.accounts.tauth?.email) {
     fileFinding({
@@ -131,124 +128,34 @@ test('D4: AI free draft on an empty plan, then a paid-task proposal ask', async 
     net.flush();
     throw new Error('D4: no generate control');
   }
-  await generateBtn.click().catch(() => {});
-  await shot(page, 'D4', '03', 'generating');
+  const status = await actAndAwait(
+    page,
+    async () => {
+      await generateBtn.click();
+    },
+    { method: 'POST', path: /^\/api\/ai\/generate-itinerary$/ },
+    60_000,
+  );
+  await shot(page, 'D4', '03', 'after-draft-failure');
+  expect(
+    [429, 502, 503],
+    `production ignores E2E_AI_STUB; the slip draft answered ${status}`,
+  ).toContain(status);
 
-  // Smoke 4 item 5 (ledger `2026-10-02-smoke4-draft-fixes`): "Draft it with AI" always drafts —
-  // where to stay is recommended on the slip after the draft, never asked before it.
-
-  // Give the model call a generous window; this is exactly the leg the CI stub key may not be
-  // able to complete. Poll for either new itinerary_items or an on-screen error, up to 90s.
-  let itemsAfter: any[] = [];
-  let sawError = false;
-  for (let i = 0; i < 18; i++) {
-    await page.waitForTimeout(5000);
-    itemsAfter = await q(`SELECT id FROM itinerary_items WHERE trip_id = $1`, [draftTripId]);
-    if (itemsAfter.length > 0) break;
-    const errText = await page.locator('body').innerText().catch(() => '');
-    if (/error|failed|try again|could not generate/i.test(errText)) {
-      sawError = true;
-      break;
-    }
-  }
-  await shot(page, 'D4', '04', 'after-generate-wait');
+  const aiItems = await q(
+    `SELECT id FROM itinerary_items WHERE trip_id = $1 AND origin = 'ai'`,
+    [draftTripId],
+  );
+  expect(aiItems.length, 'a production model failure writes no drafted rows').toBe(0);
+  await expect(testid(page, 'ai-draft-failure')).toBeVisible({ timeout: 20_000 });
 
   const feeLedgerAfter = await q(
     `SELECT count(*)::int AS c FROM fee_ledger WHERE fee_type = 'ai_concierge_fee'`,
   );
-  const noFeeRow = feeLedgerAfter[0]?.c === feeLedgerBefore[0]?.c;
-  fileFinding({
-    journey: 'D4',
-    step: 'free-draft:no-fee-row',
-    class: noFeeRow ? 'SPEC_DIVERGENCE' : 'SPEC_DIVERGENCE',
-    severity: noFeeRow ? 'P3' : 'P1',
-    known: null,
-    title: `Free AI draft on an empty plan ${noFeeRow ? 'wrote NO' : 'WROTE A'} fee_ledger ai_concierge_fee row`,
-    expected: 'ledger 2026-09-25-planning-tolls: the free draft on an empty plan is un-tolled',
-    actual: `before=${feeLedgerBefore[0]?.c}, after=${feeLedgerAfter[0]?.c}`,
-    where: 'server routes handling the free draft generate',
-    evidence: {},
-    behavioural: true,
-  });
-
-  if (itemsAfter.length === 0) {
-    test.skip(
-      true,
-      `NOT PROVEN (environment): the AI draft did not produce items within 90s (sawErrorOnScreen=${sawError}). ` +
-        'The CI Anthropic key is a stub (sk-ant-ci…); a model call cannot be completed in this environment. ' +
-        'The only assertion made is the fee_ledger check above, which holds regardless.',
-    );
-    net.flush();
-    return;
-  }
-
-  const candidateIds = itemsAfter.map((r: any) => r.id);
-  const withProviderService = await q(
-    `SELECT provider_service_id FROM itinerary_items WHERE trip_id = $1 AND provider_service_id IS NOT NULL`,
-    [draftTripId],
-  );
-  const expectedIds = [
-    state.listings.providerA?.providerServiceId,
-    state.listings.providerB?.providerServiceId,
-    state.listings.providerC?.providerServiceId,
-  ].filter(Boolean);
-  const anyMatchesABC = withProviderService.some((r: any) => expectedIds.includes(r.provider_service_id));
-  fileFinding({
-    journey: 'D4',
-    step: 'free-draft:abc-in-pool',
-    class: 'SPEC_DIVERGENCE',
-    severity: 'P3',
-    known: null,
-    title: `A/B/C ${anyMatchesABC ? 'DID' : 'did NOT'} appear in the free draft's items`,
-    expected: 'n/a — observation of getActiveProviderServices(30), no destination scope (content.routes.ts:5084)',
-    actual: `${withProviderService.length} item(s) carry a provider_service_id; A/B/C present=${anyMatchesABC}`,
-    where: 'server/routes/content.routes.ts:5084',
-    evidence: {},
-    behavioural: true,
-  });
-
-  // ── Now the plan is non-empty: open "Ask AI about this plan" and create a proposal ──
-  await page.goto(`/plans/${draftTripId}`);
-  await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
-  const askAiTrigger = testid(page, 'slip-action-ask-ai');
-  if (await appears(askAiTrigger, 5000)) {
-    await askAiTrigger.click().catch(() => {});
-    await page.waitForTimeout(500);
-    await shot(page, 'D4', '05', 'ask-ai-drawer-open');
-    const question = testid(page, 'ask-ai-question');
-    if (await appears(question, 3000)) {
-      await question.fill('Swap one afternoon activity for something quieter.').catch(() => {});
-      const submit = testid(page, 'ask-ai-submit');
-      if (await appears(submit, 2000) && !(await submit.isDisabled().catch(() => false))) {
-        const band = await feeBand('concierge:ai_task').catch(() => null);
-        await submit.click().catch(() => {});
-        await page.waitForTimeout(3000);
-        await shot(page, 'D4', '06', 'after-ask-ai-submit');
-        const proposalRows = await q(
-          `SELECT id, status FROM plan_proposals WHERE trip_id = $1 ORDER BY created_at DESC LIMIT 1`,
-          [draftTripId],
-        ).catch(() => [] as any[]);
-        fileFinding({
-          journey: 'D4',
-          step: 'ask-ai:proposal-created',
-          class: proposalRows.length > 0 ? 'SPEC_DIVERGENCE' : 'SPEC_DIVERGENCE',
-          severity: proposalRows.length > 0 ? 'P3' : 'P2',
-          known: null,
-          title: `plan_proposals row ${proposalRows.length > 0 ? 'created' : 'NOT created'} by Ask AI (fee_bands concierge:ai_task rate=${band?.defaultRate ?? 'n/a'})`,
-          expected: 'Asking is free; a plan_proposals row is written; charge happens only at pay/apply',
-          actual: JSON.stringify(proposalRows[0] ?? null),
-          where: 'client/src/components/plancard/AskAiDrawer.tsx; server (POST .../proposals)',
-          evidence: { shot: 'shots/D4-06-after-ask-ai-submit.png' },
-          behavioural: true,
-        });
-        if (proposalRows.length > 0) {
-          test.skip(true, 'HELD:stripe — pay/apply on the proposal charges from concierge:ai_task and is not attempted');
-        } else {
-          test.skip(true, 'NOT PROVEN (environment): the proposal ask could not be confirmed as created within the wait window (CI model stub)');
-        }
-      }
-    }
-  }
+  expect(
+    feeLedgerAfter[0]?.c,
+    'a failed free draft on an empty plan writes no ai_concierge_fee row',
+  ).toBe(feeLedgerBefore[0]?.c);
 
   net.flush();
 });
