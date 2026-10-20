@@ -43,15 +43,26 @@ test("S1 the stub gate is the happy-path stand-in, and production cannot turn it
   withEnv({ E2E_AI_STUB: "1", NODE_ENV: "test", ALLOW_TEST_ACCOUNTS: undefined, ENVIRONMENT: undefined }, () => {
     assert.equal(isE2eAiStubEnabled(), true);
   });
-  withEnv({ E2E_AI_STUB: "1", NODE_ENV: "production", ALLOW_TEST_ACCOUNTS: undefined, ENVIRONMENT: undefined }, () => {
-    assert.equal(isE2eAiStubEnabled(), false);
-  });
-  withEnv({ E2E_AI_STUB: "1", NODE_ENV: "production", ALLOW_TEST_ACCOUNTS: "1", ENVIRONMENT: "PROD" }, () => {
-    assert.equal(isE2eAiStubEnabled(), false);
-  });
-  withEnv({ E2E_AI_STUB: "1", NODE_ENV: "production", ALLOW_TEST_ACCOUNTS: "1", ENVIRONMENT: undefined }, () => {
-    assert.equal(isE2eAiStubEnabled(), true);
-  });
+  // NODE_ENV=production ignores the flag. ALLOW_TEST_ACCOUNTS and ENVIRONMENT do not reopen it.
+  for (const extra of [
+    { ALLOW_TEST_ACCOUNTS: undefined, ENVIRONMENT: undefined },
+    { ALLOW_TEST_ACCOUNTS: "1", ENVIRONMENT: undefined },
+    { ALLOW_TEST_ACCOUNTS: "1", ENVIRONMENT: "PROD" },
+    { ALLOW_TEST_ACCOUNTS: "1", ENVIRONMENT: "STAGING" },
+    { ALLOW_TEST_ACCOUNTS: undefined, ENVIRONMENT: "STAGING" },
+  ]) {
+    withEnv({ E2E_AI_STUB: "1", NODE_ENV: "production", ...extra }, () => {
+      assert.equal(isE2eAiStubEnabled(), false);
+    });
+  }
+  const helper = readFileSync(path.join(repo, "server/services/ai-draft-stub.ts"), "utf8");
+  const gate = helper.slice(
+    helper.indexOf("export function isE2eAiStubEnabled"),
+    helper.indexOf("export function buildStubTripItinerary"),
+  );
+  assert.match(gate, /process\.env\.E2E_AI_STUB === "1" && process\.env\.NODE_ENV !== "production"/);
+  assert.doesNotMatch(gate, /ALLOW_TEST_ACCOUNTS/);
+  assert.doesNotMatch(gate, /ENVIRONMENT/);
 });
 
 test("S2 the trip stub is one located activity per day, in the days[] shape", () => {

@@ -6,7 +6,8 @@
  *
  *   · `generateAutonomousItinerary` — the free draft / occasion drafts / quick-start / trip
  *     optimization generator. Anthropic is now PRIMARY (it was the fallback), on the draft tier
- *     (`resolveAiDraftModel()`); the E2E stand-in still answers first where `E2E_AI_STUB=1`.
+ *     (`resolveAiDraftModel()`); the E2E stand-in still answers first where `E2E_AI_STUB=1`
+ *     and `NODE_ENV` is not `production`.
  *   · `matchExpertToTraveler` — the live client's expert match scoring (`/api/grok/match-experts`).
  *   · `generateContent` — the expert AI-task delegate / regenerate content writer.
  *
@@ -229,7 +230,7 @@ export interface AutonomousItineraryResult {
   estimatedSavingsWithExpert?: number;
 }
 
-// ─── E2E AI stub (explicit test-account environments only; gated by E2E_AI_STUB=1) ──
+// ─── E2E AI stub (E2E_AI_STUB=1 and NODE_ENV is not production) ──
 // A deterministic, schema-valid AutonomousItineraryResult so the itinerary-
 // generation journey can run end-to-end in CI without an LLM key. Derived from
 // the request so the pipeline sees real destination/dates/traveler values.
@@ -381,13 +382,9 @@ ${JSON.stringify(request.context, null, 2)}`;
     request: AutonomousItineraryRequest,
     attribution: { sourceType: string; userId: string | null },
   ): Promise<{ result: AutonomousItineraryResult; usage: AiUsageStats; model: string }> {
-    // E2E stub: CI and the explicitly provisioned staging deployment run the
-    // itinerary-generation journey without a live LLM call, so the real AI call
-    // would throw and the flow would never reach the comparison/redirect the test
-    // asserts. The staging deployment runs in production mode, so its separate
-    // ALLOW_TEST_ACCOUNTS opt-in is required in addition to E2E_AI_STUB. A
-    // production environment can never serve stubbed AI, even if the flag is
-    // accidentally copied there.
+    // E2E stub: a non-production process with E2E_AI_STUB=1 returns a canned result
+    // so the steps after the model call run on real code. NODE_ENV=production ignores
+    // the flag, including when ALLOW_TEST_ACCOUNTS=1, and the real model path runs.
     // When enabled, return a valid canned result derived from the request. Every downstream
     // step (insertAiGeneratedItinerary → insertItineraryComparison → optimizer
     // → comparisonId response → client redirect) then runs against real code;

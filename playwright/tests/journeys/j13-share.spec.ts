@@ -47,10 +47,11 @@ test.setTimeout(180_000);
 
 /**
  * Owner-authenticated: generate the trip's generated_itineraries row.
- * Journey CI sets E2E_AI_STUB=1, so this happy path is the canned days payload and does not
- * call the model. The stub does not answer a real provider failure: that 502/503 still shows
- * on the slip (client/src/lib/__tests__/ai-draft-failure.test.tsx). Outside the stub, a
- * transient 429/5xx is retried.
+ * Journey CI boots a production bundle, which ignores E2E_AI_STUB, so this happy path takes
+ * the real model. A non-production server with E2E_AI_STUB=1 still returns the canned days
+ * payload. A real provider failure (502/503) still shows on the slip
+ * (client/src/lib/__tests__/ai-draft-failure.test.tsx). Outside the stub, a transient
+ * 429/5xx is retried.
  */
 async function generateItinerary(ctx: any, tripId: string, preferences?: string) {
   let res: any;

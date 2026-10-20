@@ -5,8 +5,9 @@
  *
  * Pure. Each flag is `true` exactly when its env var is the string "1" — the same test every reader of
  * these switches applies — and `false` otherwise (unset included). It reports the SWITCH, not the
- * whole effective state: the Places spine also needs `GOOGLE_MAPS_API_KEY`, and the AI stub also needs a
- * non-production environment; neither of those is read or reported here. The list is closed: a name is
+ * whole effective state: the Places spine also needs `GOOGLE_MAPS_API_KEY`, and the AI stub is ignored
+ * whenever `NODE_ENV` is `production` even if this switch reads true; neither of those is read or
+ * reported here. The list is closed: a name is
  * added here deliberately, and only a boolean ever leaves, never an env value.
  */
 import { MAPS_CALLER_KEYS, type MapsCallerKey } from "@shared/maps-billing";

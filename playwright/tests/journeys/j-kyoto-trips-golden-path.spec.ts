@@ -34,10 +34,11 @@ import {
  * fake Kyoto supply anywhere).
  *
  * WHERE TODAY'S RUN STOPS SHORT OF THE OUTLINE, AND WHY (stated, not hidden — §18d):
- *   · §4 today (the free draft) runs against the ONE explicit model stand-in, `E2E_AI_STUB=1`
- *     (ledger `2026-09-28-kyoto-s4-draft-ci`): the job sets it, nothing falls back to it, and the
- *     test asserts the draft's STRUCTURE and its funnel row, never its prose. What the real model
- *     writes is therefore NOT proven here.
+ *   · §4 today (the free draft) asserts the draft's STRUCTURE and its funnel row, never its prose.
+ *     The job sets `E2E_AI_STUB=1` on a production bundle, which ignores the flag (ledger
+ *     `2026-10-20-js1-stub-never-in-production`), so this step takes the real model path. What a
+ *     real model writes is NOT proven here. The earlier stand-in proof is
+ *     ledger `2026-09-28-kyoto-s4-draft-ci`.
  *   · §6 today is split: the free preview and the fee line PASS; paying, the board and adopt-stop
  *     need a Stripe test key (this job runs the stub — ruling 38's declared-503 contract).
  *     The outline says the fee equals the `fee_bands`-derived amount; on `main` the optimizer fee
@@ -808,10 +809,10 @@ test.describe("3 · the compare view (A4)", () => {
 // ── §4 · free draft around the set ────────────────────────────────────────────────────────────
 test.describe("4 · free draft around the set", () => {
   test("§4 today — Draft it with AI on an empty slip writes origin='ai' items, drawn as plain rows (no pills, surface step 1)", async ({ page }) => {
-    // Ledger `2026-09-28-kyoto-s4-draft-ci`: the job's server runs with E2E_AI_STUB=1, the ONE
-    // explicit stand-in for the draft model (ai-generation.service.ts; refused where ENVIRONMENT=PROD, and it
-    // names itself `e2e-ai-stub` on every cost row). Everything after the model call is real code.
-    // Assertions are STRUCTURAL — never the stand-in's prose.
+    // The job's server is a production bundle, so E2E_AI_STUB is ignored and this step takes the
+    // real model path (ledger `2026-10-20-js1-stub-never-in-production`). A non-production server
+    // with the flag set still returns the stand-in, which names itself `e2e-ai-stub` on the cost
+    // row. Assertions are STRUCTURAL — never a draft's prose.
     await signedInTraveler(page, "s4");
     const tripId = await createTrip(page.request, "Kyoto trip", KYOTO);
     await page.goto(`/plans/${tripId}`);

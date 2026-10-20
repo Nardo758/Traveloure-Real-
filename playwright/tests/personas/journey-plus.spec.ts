@@ -28,11 +28,10 @@
  * (server/routes/internal.routes.ts) — asserted as the honest negative rather than failing, the
  * same posture every money/service-availability gate in this dispatch uses.
  *
- * AI-GENERATION HONESTY: persona-nightly.yml explicitly enables E2E_AI_STUB=1 while retaining
- * the test-account opt-in. The explicitly provisioned staging deployment must set the same
- * E2E_AI_STUB=1 flag alongside ALLOW_TEST_ACCOUNTS=1; the server keeps the stub disabled for
- * production environments. This deterministic result bypasses the external LLM call while every
- * downstream step still uses real application code. This suite looks up the ledger row's ACTUAL
+ * AI-GENERATION HONESTY: persona-nightly.yml sets E2E_AI_STUB=1 on a production bundle. That
+ * boot ignores the flag (`NODE_ENV === production`), so the occasion draft takes the real model
+ * path. A non-production server with E2E_AI_STUB=1 still returns the canned itinerary, and every
+ * step after that call is real application code. This suite looks up the ledger row's ACTUAL
  * promoted state after triggering the run (never a guessed env flag) and fails if the positive
  * delivery path did not execute.
  */
@@ -157,26 +156,24 @@ test.describe("journey-plus — Plus member occasion draft delivery", () => {
       // FAIL LOUDLY — do NOT swallow this as an "honest negative" (the prior behaviour, which
       // green-passed whether or not the positive path ran, so the delivery proof could rot
       // unnoticed). The occasion draft's generation is served by aiGenerationService.generateAutonomousItinerary,
-      // which returns a deterministic canned itinerary when E2E_AI_STUB=1. Production-mode staging
-      // also needs ALLOW_TEST_ACCOUNTS=1; the server refuses the stub for ENVIRONMENT=PROD. The
-      // draft-run fires SERVER-SIDE via POST /internal/run-occasion-drafts, so E2E_AI_STUB=1 must be
-      // set in the target server environment for the positive promote path to run. A CLAIM row with
-      // a null trip_id/generated_at means generation produced nothing — the stub is almost certainly
-      // off in the target env.
+      // which returns a deterministic canned itinerary only when E2E_AI_STUB=1 AND NODE_ENV is
+      // not production. A production boot ignores the flag. The draft-run fires SERVER-SIDE via
+      // POST /internal/run-occasion-drafts. A CLAIM row with a null trip_id/generated_at means
+      // generation produced nothing.
       report.record({
         action: "draft run did not promote a trip — occasion draft produced no items",
         ui: "n/a",
         db: `occasion_drafts row=${JSON.stringify(draftRow)}, run result=${JSON.stringify(runBody1?.result)}`,
         verdict: "FAIL",
         note:
-          "Occasion draft produced no items — is E2E_AI_STUB=1 set in the STAGING env the draft-run " +
-          "targets? Without it, aiGenerationService.generateAutonomousItinerary makes a real LLM call that fails " +
-          "in staging, the CLAIM stays un-promoted, and the positive delivery path is never exercised.",
+          "Occasion draft produced no items. A production server ignores E2E_AI_STUB and takes the real " +
+          "model path; a non-production server needs E2E_AI_STUB=1. Either way a failed model call leaves " +
+          "the CLAIM un-promoted.",
       });
       report.write();
       expect(
         draftRow?.trip_id && draftRow?.generated_at,
-        "occasion draft produced no items — is E2E_AI_STUB=1 set in staging? " +
+        "occasion draft produced no items — a production server ignores E2E_AI_STUB. " +
           `occasion_drafts row=${JSON.stringify(draftRow)}, run result=${JSON.stringify(runBody1?.result)}`,
       ).toBeTruthy();
       return;

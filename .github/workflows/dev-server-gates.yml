@@ -11,7 +11,8 @@ name: Dev-server Gates
 #
 # THE SPLIT IS THE SERVER'S CONFIGURATION, NOT THE SUBJECT. A spec sees the server it was proven
 # against, and the seven ran against two different ones:
-#   · e2e-ai-stub     — E2E_AI_STUB=1, CI test users seeded: provider console, spec coverage,
+#   · e2e-ai-stub     — E2E_AI_STUB=1 with NODE_ENV=development (tsx, so the flag is honored;
+#                       a production boot ignores it), CI test users seeded: provider console, spec coverage,
 #                       unwired specs (and i18n key parity, which needs no server).
 #   · e2e-live-config — no AI stub, the AI providers configured with stub keys, no CI users:
 #                       Home, the slip rail, Discover, the cart redirect (and its static check).
