@@ -32,6 +32,8 @@ const TTL_DAYS: Record<FactType, number | null> = {
   // FD-3: official operational facts — re-read on the registry's cadence, not kept indefinitely.
   last_admission: 30,
   last_service: 30,
+  // FB-1 step 5c: a timed-entry requirement is an official operational fact like the two above.
+  timed_entry_required: 30,
 };
 
 export function factTtlDays(type: FactType): number | null {

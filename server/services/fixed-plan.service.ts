@@ -19,7 +19,7 @@
 import { and, desc, eq, gt, lte } from "drizzle-orm";
 import { db } from "../db";
 import { itemTransitionLog, itineraryItems, itineraryVariantItems, itineraryVariants } from "@shared/schema";
-import { checkPlan } from "@shared/plan-check";
+import { checkPlan, isFlagOnlyIssue } from "@shared/plan-check";
 import { FIXED_VERSION_NAME } from "@shared/version-check";
 import { VersionBoardError, applyDays, latestRun } from "./version-board.service";
 
@@ -114,7 +114,8 @@ export async function loadFixedPlan(tripId: string): Promise<FixedPlanView | nul
   if (!run || !fixed) return null;
   const { loadPlanCheckInput } = await import("./optimizer-lead.service");
   const { input } = await loadPlanCheckInput(tripId);
-  const flagged = Array.from(new Set(checkPlan(input).issues.map((i) => i.day))).filter((d) => Number.isInteger(d) && d >= 1).sort((a, b) => a - b);
+  // FB-1 step 5c: a flag-only issue (a timed slot to reserve) never flags a day — no fixed day can carry it out.
+  const flagged = Array.from(new Set(checkPlan(input).issues.filter((i) => !isFlagOnlyIssue(i)).map((i) => i.day))).filter((d) => Number.isInteger(d) && d >= 1).sort((a, b) => a - b);
   if (!flagged.length) return { variantId: fixed.id, comparisonId: run.comparisonId, days: [] };
 
   const stale = await staleSinceRun(tripId, run);
