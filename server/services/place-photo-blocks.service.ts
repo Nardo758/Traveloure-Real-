@@ -17,8 +17,9 @@ import { asc } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
 import { placePhotoBlocks, type PlacePhotoBlock } from "@shared/schema";
+import { isBannedPhotoUrl } from "@shared/banned-photos";
+import { blockFor, normalisePlaceName, type PhotoBlockRow, type PhotoSubject } from "./place-photo-block-rules";
 import { mayActivateContentSource } from "../config/content-sources.config";
-import { matchNormalisedName, normalisedNameTokens } from "./item-osm-regeocode.service";
 
 export class PhotoBlockError extends Error {
   constructor(public readonly code: string, public readonly status: number, public readonly details?: Record<string, unknown>) {
@@ -29,41 +30,8 @@ export class PhotoBlockError extends Error {
 /** The words shown when an upload is refused, naming the block's own reason. */
 export const PHOTO_BLOCK_REFUSAL = "Photos of this place can't be shown on Traveloure";
 
-/** Pure. A city as compared: folded case and accents, trimmed. */
-export function foldCity(city: string | null | undefined): string {
-  return (city ?? "").normalize("NFKD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
-}
-
-/** Pure. The stored form of a place name: its normalised distinctive words, sorted, joined by a space. */
-export function normalisePlaceName(name: string, city: string | null | undefined): string {
-  return Array.from(normalisedNameTokens(name, city)).sort().join(" ");
-}
-
-export type PhotoBlockRow = Pick<PlacePhotoBlock, "id" | "placeId" | "placeNameNormalised" | "city" | "reason">;
-
-/** What a photo belongs to: the place ids it carries, and the names (with the city) its row gives. */
-export interface PhotoSubject {
-  placeIds?: ReadonlyArray<string | null | undefined>;
-  names?: ReadonlyArray<string | null | undefined>;
-  city?: string | null;
-}
-
-/** Pure. The block that hides this photo, or null. A name with no city never matches a name block (both keys are needed). */
-export function blockFor(blocks: readonly PhotoBlockRow[], subject: PhotoSubject): PhotoBlockRow | null {
-  const ids = new Set((subject.placeIds ?? []).filter((x): x is string => !!x && x.trim() !== "").map((x) => x.trim()));
-  for (const b of blocks) if (b.placeId && ids.has(b.placeId)) return b;
-  const city = foldCity(subject.city);
-  if (!city) return null;
-  const names = (subject.names ?? []).filter((n): n is string => !!n && n.trim() !== "");
-  if (!names.length) return null;
-  for (const b of blocks) {
-    if (!b.placeNameNormalised || foldCity(b.city) !== city) continue;
-    for (const n of names) {
-      if (matchNormalisedName(b.placeNameNormalised, normalisedNameTokens(n, subject.city), subject.city)) return b;
-    }
-  }
-  return null;
-}
+export { foldCity, normalisePlaceName, blockFor } from "./place-photo-block-rules";
+export type { PhotoBlockRow, PhotoSubject } from "./place-photo-block-rules";
 
 // ── the block list, cached briefly so synchronous readers can ask ────────────────────────────────
 
@@ -167,7 +135,7 @@ export function listingPhotoSubject(row: ListingLike): PhotoSubject {
  * Reads the cached block list (`photoBlocksSnapshot`). Nothing is deleted from the row in the database.
  */
 export function hideBlockedListingImages<T extends ListingLike & Record<string, any>>(row: T, blocks: readonly PhotoBlockRow[] = photoBlocksSnapshot()): T {
-  if (!blocks.length || !blockFor(blocks, listingPhotoSubject(row))) return row;
+  if (!blocks.length || !blockFor(blocks, listingPhotoSubject(row))) return hideBannedListingPhotos(row);
   const out: Record<string, any> = { ...row };
   if ("serviceImage" in out) out.serviceImage = null;
   if ("galleryImages" in out) out.galleryImages = [];
@@ -176,9 +144,27 @@ export function hideBlockedListingImages<T extends ListingLike & Record<string, 
   return out as T;
 }
 
-/** Sync: a listing's cover image, or null when its place is blocked. */
+/**
+ * SH-1 item 6: a listing whose place is not blocked still never shows a BANNED photo (`shared/banned-photos.ts`) —
+ * the cover, an `imageUrl`/`image` copy, or one gallery entry. Only the banned photos go; nothing is deleted.
+ */
+function hideBannedListingPhotos<T extends Record<string, any>>(row: T): T {
+  const banned = (v: unknown) => typeof v === "string" && isBannedPhotoUrl(v);
+  const gallery = Array.isArray(row.galleryImages) ? row.galleryImages : null;
+  const galleryHit = gallery ? gallery.some((g: unknown) => banned(g) || banned((g as any)?.url)) : false;
+  if (!banned(row.serviceImage) && !banned(row.imageUrl) && !banned(row.image) && !galleryHit) return row;
+  const out: Record<string, any> = { ...row };
+  if (banned(out.serviceImage)) out.serviceImage = null;
+  if (banned(out.imageUrl)) out.imageUrl = null;
+  if (banned(out.image)) out.image = null;
+  if (galleryHit) out.galleryImages = gallery!.filter((g: unknown) => !banned(g) && !banned((g as any)?.url));
+  return out as T;
+}
+
+/** Sync: a listing's cover image, or null when its place is blocked or the photo is banned (SH-1 item 6). */
 export function visibleListingImage(row: ListingLike & { serviceImage?: string | null }, blocks: readonly PhotoBlockRow[] = photoBlocksSnapshot()): string | null {
   const img = row.serviceImage ?? null;
+  if (img && isBannedPhotoUrl(img)) return null;
   if (!img || !blocks.length) return img;
   return blockFor(blocks, listingPhotoSubject(row)) ? null : img;
 }
@@ -199,6 +185,7 @@ type GemLike = {
  * Nothing is deleted from the row in the database.
  */
 export function hideBlockedGemImage<T extends GemLike & Record<string, any>>(row: T, blocks: readonly PhotoBlockRow[] = photoBlocksSnapshot()): T {
+  if (row.imageUrl && isBannedPhotoUrl(row.imageUrl)) return { ...row, imageUrl: null } as T; // SH-1 item 6
   if (!row.imageUrl || !blocks.length) return row;
   const blocked = blockFor(blocks, { names: [row.placeName, row.name], city: row.city ?? row.destination ?? null });
   return blocked ? ({ ...row, imageUrl: null } as T) : row;
