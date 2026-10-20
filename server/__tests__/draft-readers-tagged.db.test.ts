@@ -55,6 +55,8 @@ async function insertFact(k: string, over: Record<string, unknown>) {
     fetchedAt: NOW,
     expiresAt: later(30),
     costCents: "0",
+    // CS-1 item 3: a dated, machine-read fact is read only once a person has reviewed it.
+    verifiedBy: OWNER,
     ...over,
   } as any);
 }

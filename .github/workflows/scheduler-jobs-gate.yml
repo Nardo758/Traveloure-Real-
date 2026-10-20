@@ -172,6 +172,10 @@ jobs:
       # (link-out forces manual), and per-place no_photos on both keys at upload and read. SB1–SB5, PB1–PB6.
       - name: CS-1 source sign-off and per-place no_photos — approver only, link-out never read, blocks on both keys
         run: npx tsx --test --test-force-exit server/__tests__/source-signoff-photo-blocks.db.test.ts
+      # CS-1 item 3 (ledger `2026-10-19-cs1-fact-review`): a dated, machine-read fact shows only after a person reviewed
+      # it; machine writers never set verified_by; safety facts need the reviewer's expiry. RV1–RV7.
+      - name: CS-1 fact review — unreviewed refresh facts are not read; approval needs the source's expiry
+        run: npx tsx --test --test-force-exit server/__tests__/fact-review.db.test.ts
       # Places named-place gate (ledger `2026-09-30-places-named-gate`, production smoke test 3):
       # generic titles are never looked up, a mismatched answer is never attached, and the per-draft
       # cap reaches every day. G1–G4, fake Places API only.

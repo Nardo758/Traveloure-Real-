@@ -19,6 +19,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "
 import "@/styles/slip-tokens.css";
 import { Link, useLocation } from "wouter";
 import { bookingControls } from "@shared/booking-path";
+import type { WaitingLine } from "@shared/fact-review";
 import { serviceDetailHref } from "@/lib/trip-target";
 import { AffiliateBookButton } from "./AffiliateBookButton";
 import { format } from "date-fns";
@@ -252,6 +253,8 @@ export interface SlipData extends PlanCardData {
   placeFacts?: Record<string, FactView[]>;
   /** Smoke 5 item 8 — item ids the latest draft's place-facts run is still checking (present only when non-empty). */
   factsPendingItemIds?: string[];
+  /** CS-1 item 3: stops whose last entry waits for a person's review (server-built line). */
+  lastEntryWaiting?: Record<string, WaitingLine>;
   /** Smoke 7 item 4: the viewer's own saved "Ask a local" questions, by item (present only when any). */
   savedQuestions?: { cityName: string | null; items: Record<string, { question: string | null; savedAt: string }> };
   /** The §4 diary — last 20 log rows, newest first. Absent on pre-BUILD-1 responses. */
@@ -774,6 +777,7 @@ function SlipDayItem({
   dateIso = null,
   timeZone = null,
   hoursNotChecked = false,
+  lastEntryWaiting = null,
   onOpenExpertDoor,
   onFindHost,
   savedQuestion = null,
@@ -786,6 +790,8 @@ function SlipDayItem({
   city: string | null;
   facts?: FactView[];
   hoursNotChecked?: boolean;
+  /** CS-1 item 3: the stop's last entry waits for a person's review. */
+  lastEntryWaiting?: WaitingLine | null;
   dateIso?: string | null;
   /** S9-6: the plan's zone (`trips.timezone`) for the facts line's "checked" day; null ⇒ the UTC day. */
   timeZone?: string | null;
@@ -940,6 +946,7 @@ function SlipDayItem({
             : null
       }
       hoursNotChecked={hoursNotChecked}
+      lastEntryWaiting={lastEntryWaiting}
       menu={menu}
       highlighted={highlighted}
       rowRef={rowRef}
@@ -2763,6 +2770,7 @@ export function SlipView({
                       activity={a}
                       city={data.trip?.destination ?? null}
                       facts={data.placeFacts?.[a.id]}
+                      lastEntryWaiting={data.lastEntryWaiting?.[a.id] ?? null}
                       hoursNotChecked={showsHoursNotChecked({
                         isStop: !isLodgingItem({ type: a.type, title: a.name }) && a.type !== "transport",
                         hasHoursLine: !!itemFactsLine(data.placeFacts?.[a.id], slot.dateIso ?? null),

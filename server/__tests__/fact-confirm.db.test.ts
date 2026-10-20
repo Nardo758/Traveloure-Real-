@@ -34,6 +34,8 @@ const draft = (over: Partial<FactDraft>): FactDraft => ({
   placeRefKind: "free_text", placeRef: "Kinkaku-ji Kyoto", placeLat: null, placeLng: null, market: "kyoto",
   need: "stop.hours", factType: "hours", value: { text: "Open 9:00–17:00 daily.", quote: "9:00 to 17:00 every day" },
   origin: "crawled", sourceId: null, sourceUrl: "https://kyoto.travel/kinkakuji", license: "official",
+  // CS-1 item 3 (ledger `2026-10-19-cs1-fact-review`): a dated, machine-read fact shows only once a person reviewed it.
+  verifiedBy: ids.owner,
   fetchedAt: new Date(), expiresAt: new Date(Date.now() + 7 * 86_400_000), costCents: 2.4, ...over,
 });
 

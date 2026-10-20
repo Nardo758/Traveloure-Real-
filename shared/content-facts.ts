@@ -225,10 +225,41 @@ export function originTier(origin: string | null | undefined): number {
 }
 
 /** The smallest shape the rules read. */
+/**
+ * CS-1 item 3 (ledger `2026-10-19-cs1-fact-review`): the DATED fact types — hours plus the SAFETY set — show only
+ * after a person has reviewed them (`verified_by` holds a person's id), when a machine read them (REVIEWED_ORIGINS). SAFETY facts go live only with a
+ * reviewer-entered expiry. ticketing_rule and the rest are not dated. Review rules: shared/fact-review.ts.
+ */
+// `closed_dates` replaced `closure` (ledger `2026-10-19-fb1-closed-dates`). `timed_entry_required` is NOT a dated fact
+// (decision-maker, Oct 20, 2026): it states that a slot must be booked, not when a place is open.
+export const SAFETY_FACT_TYPES = ["last_admission", "last_service", "closed_dates", "transit", "event"] as const;
+export const DATED_FACT_TYPES = ["hours", ...SAFETY_FACT_TYPES] as const;
+export type DatedFactType = (typeof DATED_FACT_TYPES)[number];
+export function isDatedFactType(t: unknown): t is DatedFactType {
+  return typeof t === "string" && (DATED_FACT_TYPES as readonly string[]).includes(t);
+}
+export function isSafetyFactType(t: unknown): boolean {
+  return typeof t === "string" && (SAFETY_FACT_TYPES as readonly string[]).includes(t);
+}
+/**
+ * The origins a MACHINE reads off a page or an API: the per-plan crawl, the official refresh, a bot's proposal and the
+ * Places lookup. Only their dated facts wait for a person's review; platform-owned content (a listing, a gem, an event,
+ * the hotel cache) and a person's own words (an expert's nugget, a traveler's note) keep their existing rules.
+ */
+export const REVIEWED_ORIGINS = ["crawled", "official_refresh", "bot_proposal", "places_api"] as const;
+/** Pure. May a reader show this row? A dated, machine-read fact needs a person's id in `verified_by`. */
+export function factIsReviewed(row: { factType?: string | null; origin?: string | null; verifiedBy?: string | null }): boolean {
+  if (!isDatedFactType(row.factType)) return true;
+  if (!(REVIEWED_ORIGINS as readonly string[]).includes(row.origin ?? "")) return true;
+  return typeof row.verifiedBy === "string" && row.verifiedBy.trim() !== "";
+}
+
 export interface FactLike {
   origin: string | null | undefined;
   license?: string | null;
   verifiedAt?: Date | string | null;
+  /** The reviewer — a person's id (CS-1 item 3). */
+  verifiedBy?: string | null;
   fetchedAt?: Date | string | null;
   expiresAt?: Date | string | null;
   /** The row's `fact_type` — read only by the official-source path below. */
@@ -321,6 +352,11 @@ export function checkedDayLabel(at: Date, timeZone?: string | null, opts: { year
   return fmt("UTC");
 }
 
+/** The traveler label for a reviewed dated fact: "Checked <date> · Source: <official site>". Never "verified". */
+export function reviewedFactLabel(checkedAt: Date, sourceName: string, timeZone?: string | null): string {
+  return `Checked ${checkedDayLabel(checkedAt, timeZone)} · Source: ${sourceName}`;
+}
+
 export function factProvenanceLine(fact: FactLike & { sourceName?: string | null }, now: Date = new Date(), timeZone?: string | null): string {
   const name =
     fact.sourceName?.trim() ||
@@ -334,6 +370,11 @@ export function factProvenanceLine(fact: FactLike & { sourceName?: string | null
             ? "Web source"
             : "Traveloure");
   const at = toMs(fact.fetchedAt);
+  // CS-1 item 3: a reviewed dated fact read from an official page reads "Checked <date> · Source: <site>" — never
+  // "verified". The check date is the read; the review is not shown.
+  if (at !== null && isPageReadOrigin(fact.origin) && isDatedFactType(fact.factType) && factIsReviewed(fact)) {
+    return reviewedFactLabel(new Date(at), name, timeZone);
+  }
   const verified = fact.origin === "expert_nugget" && fact.verifiedAt ? " · verified" : "";
   if (at === null) return `${name}${verified}`;
   const label = checkedDayLabel(new Date(at), timeZone);

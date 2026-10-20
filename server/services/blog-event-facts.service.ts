@@ -34,6 +34,7 @@ import type { TravelTime } from "@shared/travel-time";
 import { toCityEventCard } from "./city-events.service";
 import { MARKET_TIMEZONES } from "./trend-engine/operating-markets";
 import { loadPartnerHosts } from "./partner-hosts.service";
+import { reviewedFactRow } from "./content-facts/place-facts.service";
 import { loadEstimateReader, loadMarketCentroids } from "./travel-time-matrix.service";
 
 export interface EventGuideFacts {
@@ -126,7 +127,7 @@ export async function loadEventGuideFacts(eventId: string, deps: EventFactsDeps 
     .select({ fact: placeFacts, sourceName: contentSources.name, sourceLicenseClass: contentSources.licenseClass, sourcePublicOk: contentSources.publicOk })
     .from(placeFacts)
     .leftJoin(contentSources, eq(contentSources.id, placeFacts.sourceId))
-    .where(and(eq(placeFacts.placeRefKind, "event_id"), eq(placeFacts.placeRef, row.id), isNull(placeFacts.supersededBy)));
+    .where(and(eq(placeFacts.placeRefKind, "event_id"), eq(placeFacts.placeRef, row.id), isNull(placeFacts.supersededBy), reviewedFactRow()));
   const venueFacts: EventGuideFacts["venueFacts"] = [];
   const venueFactSources: EventGuideFacts["venueFactSources"] = [];
   const attributedFacts: EventGuideFacts["attributedFacts"] = [];

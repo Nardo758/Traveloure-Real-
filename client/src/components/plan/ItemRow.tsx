@@ -32,6 +32,25 @@ import type { FactView } from "@shared/content-facts";
 import type { PlanCardActivity } from "@/components/plancard/plancard-types";
 import { factsLineParts, itemClosingWarning, itemFactsLine, itemPlaceLine, itemTimedEntryWarning, sourcedLineSuffix } from "@/lib/place-facts";
 import { HOURS_NOT_CHECKED_YET_LABEL } from "@/lib/plancard-refetch";
+import type { WaitingLine } from "@shared/fact-review";
+
+/** CS-1 item 3: the stop's last entry waits for review. The link is the source's top-level page, or none. */
+function LastEntryWaiting({ id, line }: { id: string; line: WaitingLine }) {
+  const [before, after] = line.text.split(line.linkText);
+  return (
+    <p className="mt-0.5 text-xs text-muted-foreground" data-testid={`slip-item-last-entry-waiting-${id}`}>
+      {before}
+      {line.url ? (
+        <a href={line.url} target="_blank" rel="noopener noreferrer" className="underline">
+          {line.linkText}
+        </a>
+      ) : (
+        line.linkText
+      )}
+      {after}
+    </p>
+  );
+}
 import { AnchorRow, anchorLabel } from "./AnchorRow";
 import { ExpertNote } from "./ExpertNote";
 import { PlacePhoto } from "./PlacePhoto";
@@ -108,6 +127,8 @@ export interface ItemRowProps {
   /** The place-facts run is still checking this stop. */
   /** GH-1: draw "Hours not checked yet" where the hours line would go (`showsHoursNotChecked`). */
   hoursNotChecked?: boolean;
+  /** CS-1 item 3: "Last entry not checked yet. See <Place>'s official site before you go." — the server's line. */
+  lastEntryWaiting?: WaitingLine | null;
   menu?: ItemRowMenu | null;
   highlighted?: boolean;
   rowRef?: (el: HTMLDivElement | null) => void;
@@ -224,6 +245,7 @@ export function ItemRow(props: ItemRowProps) {
       ) : null}
       {closing ? <ClosingWarning id={a.id} closing={closing} /> : null}
       {timedEntry ? <ClosingWarning id={a.id} closing={timedEntry} testId={`slip-item-timed-entry-${a.id}`} /> : null}
+      {props.lastEntryWaiting ? <LastEntryWaiting id={a.id} line={props.lastEntryWaiting} /> : null}
       {props.bookingState ? (
         <p className="mt-0.5 text-xs text-muted-foreground" data-testid={`slip-item-booking-${a.id}`}>
           {props.bookingState}
@@ -505,6 +527,7 @@ function BoardItemRow(
       ) : null}
       {closing ? <ClosingWarning id={a.id} closing={closing} /> : null}
       {timedEntry ? <ClosingWarning id={a.id} closing={timedEntry} testId={`slip-item-timed-entry-${a.id}`} /> : null}
+      {props.lastEntryWaiting ? <LastEntryWaiting id={a.id} line={props.lastEntryWaiting} /> : null}
       {props.bookingState ? (
         // The Handoff board draws a booked stop as a teal pill; every other booking note stays a line.
         <p

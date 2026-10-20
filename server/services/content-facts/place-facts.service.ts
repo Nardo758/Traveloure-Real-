@@ -18,6 +18,9 @@ import { db } from "../../db";
 import { contentSources, itineraryItems, placeFacts, trips } from "@shared/schema";
 import {
   asFactOrigin,
+  DATED_FACT_TYPES,
+  REVIEWED_ORIGINS,
+  isDatedFactType,
   PAGE_READ_ORIGINS,
   factProvenanceLine,
   isConfirmableFact,
@@ -55,8 +58,18 @@ import { assertRobotsAllowed } from "../../utils/robots-txt";
 import { ROBOTS_TXT_USER_AGENT_TOKEN } from "../../config/robots-txt.config";
 import { loadPartnerHosts } from "../partner-hosts.service";
 import { autoFetchAllowed, isLinkOutClass } from "@shared/source-signoff";
+import { lastEntryWaitingLine, type WaitingLine } from "@shared/fact-review";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * CS-1 item 3: the ONE door for a MACHINE writer — the official refresh, the per-plan fetch, the Places lookup. It
+ * strips `verified_by` from every draft, so no machine ever marks a fact as reviewed by a person. Only a person's
+ * action (an admin's review or bot approval, an expert's confirm) writes through `recordFacts` with a reviewer.
+ */
+export async function recordMachineFacts(input: FactDraft[], ctx: { planId: string | null; itemId: string | null }): Promise<number> {
+  return recordFacts(input.map((d) => ({ ...d, verifiedBy: null })), ctx);
+}
 
 export async function recordFacts(
   input: FactDraft[],
@@ -229,6 +242,7 @@ async function cachedRowsForPlace(placeId: string): Promise<FactDraft[] | null> 
       isNull(placeFacts.supersededBy),
       eq(placeFacts.sourceClass, "public"),
       notGoogleHoursRow(),
+      notDatedFactRow(),
     ));
   const seen = new Set<string>();
   const out: FactDraft[] = [];
@@ -585,7 +599,7 @@ export async function enrichPlanItems(input: {
         }
         const kept = attachableDrafts(drafts, tokens, input.city);
         if (drafts.length && !kept.length) summary.unmatched += 1;
-        const recorded = await recordFacts(kept, { planId: input.tripId, itemId: item.id });
+        const recorded = await recordMachineFacts(kept, { planId: input.tripId, itemId: item.id });
         summary.recorded += recorded;
         const hasHours = kept.some((d) => d.factType === "hours");
         const display = kept.length ? attachedDisplayName(kept) : null;
@@ -643,6 +657,21 @@ export function notGoogleHoursRow() {
   return sql`NOT (${placeFacts.origin} = 'places_api' AND ${placeFacts.factType} = 'hours')`;
 }
 
+/**
+ * CS-1 item 3 (ledger `2026-10-19-cs1-fact-review`): the WHERE form of `factIsReviewed` — a dated, machine-read fact
+ * (hours and the safety set; REVIEWED_ORIGINS) is read only once a person's id is in `verified_by`. Every other type passes. Nothing is deleted: an
+ * unreviewed dated row is simply not read.
+ */
+export function reviewedFactRow() {
+  const list = (xs: readonly string[]) => sql.join(xs.map((t) => sql`${t}`), sql`, `);
+  return sql`(${placeFacts.factType} NOT IN (${list(DATED_FACT_TYPES)}) OR ${placeFacts.origin} NOT IN (${list(REVIEWED_ORIGINS)}) OR btrim(coalesce(${placeFacts.verifiedBy}, '')) <> '')`;
+}
+
+/** The WHERE form of "not a dated fact type" — a dated fact is never copied between plans by a machine. */
+export function notDatedFactRow() {
+  return sql`${placeFacts.factType} NOT IN (${sql.join(DATED_FACT_TYPES.map((t) => sql`${t}`), sql`, `)})`;
+}
+
 async function rowsForTrip(tripId: string, itemIds?: string[]): Promise<FactRow[]> {
   return db
     .select()
@@ -652,6 +681,7 @@ async function rowsForTrip(tripId: string, itemIds?: string[]): Promise<FactRow[
         eq(placeFacts.planId, tripId),
         isNull(placeFacts.supersededBy),
         notGoogleHoursRow(),
+        reviewedFactRow(),
         itemIds ? inArray(placeFacts.itineraryItemId, itemIds.length ? itemIds : ["__none__"]) : sql`true`,
       ),
     );
@@ -692,6 +722,9 @@ function toView(r: FactRow, now: Date, sources: Map<string, SourceFacts> = new M
     factType: r.factType,
     sourceLicenseClass: src?.licenseClass ?? null,
     sourcePublicOk: src?.publicOk ?? null,
+    // CS-1 item 3: a reviewed dated fact names its source ("Checked <date> · Source: <site>").
+    verifiedBy: r.verifiedBy,
+    sourceName: isDatedFactType(r.factType) ? src?.name ?? null : null,
   };
   return {
     id: r.id,
@@ -731,6 +764,7 @@ async function storedOfficialFacts(placeIds: string[], factTypes: string[]): Pro
         eq(placeFacts.license, "official"),
         isNull(placeFacts.supersededBy),
         eq(placeFacts.sourceClass, "public"),
+        reviewedFactRow(),
       ),
     );
 }
@@ -791,6 +825,49 @@ function officialSeason(r: FactRow): { from: string; to: string } | null {
   if (r.origin === "places_api" || r.license !== "official") return null;
   const season = hoursSeason(r.value);
   return season && season !== "invalid" ? season : null;
+}
+
+/**
+ * CS-1 item 3: per item, the line a stop shows while its last entry waits for a person's review — "Last entry not
+ * checked yet. See <Place>'s official site before you go." — when an official refresh has read a last-entry fact for
+ * the item's place that nobody has reviewed, and no reviewed last-entry fact is stored for it. The link is the source's
+ * top-level page; a `link_out_no_link` source is named in plain text (`lastEntryWaitingLine`). Keyed by item id; an
+ * item with nothing waiting is absent.
+ */
+export async function lastEntryWaitingForTrip(tripId: string): Promise<Record<string, WaitingLine>> {
+  const items = await db
+    .select({ id: itineraryItems.id, title: itineraryItems.title, placeId: itineraryItems.googlePlaceId })
+    .from(itineraryItems)
+    .where(and(eq(itineraryItems.tripId, tripId), sql`${itineraryItems.googlePlaceId} IS NOT NULL`));
+  const placeIds = Array.from(new Set(items.map((i) => i.placeId!).filter(Boolean)));
+  if (!placeIds.length) return {};
+  const [pending, reviewed] = await Promise.all([
+    db
+      .select({ placeRef: placeFacts.placeRef, homepage: contentSources.homepage, termsClass: contentSources.termsClass })
+      .from(placeFacts)
+      .leftJoin(contentSources, eq(contentSources.id, placeFacts.sourceId))
+      .where(
+        and(
+          eq(placeFacts.placeRefKind, "place_id"),
+          inArray(placeFacts.placeRef, placeIds),
+          eq(placeFacts.factType, "last_admission"),
+          eq(placeFacts.origin, REFRESH_ORIGIN),
+          isNull(placeFacts.supersededBy),
+          sql`btrim(coalesce(${placeFacts.verifiedBy}, '')) = ''`,
+        ),
+      ),
+    storedOfficialFacts(placeIds, ["last_admission"]),
+  ]);
+  const hasReviewed = new Set(reviewed.map((r) => r.placeRef));
+  const waitingSource = new Map<string, { homepage: string | null; termsClass: string | null }>();
+  for (const p of pending) if (!hasReviewed.has(p.placeRef) && !waitingSource.has(p.placeRef)) waitingSource.set(p.placeRef, p);
+  const out: Record<string, WaitingLine> = {};
+  for (const i of items) {
+    const src = i.placeId ? waitingSource.get(i.placeId) : undefined;
+    if (!src) continue;
+    out[i.id] = lastEntryWaitingLine({ placeName: i.title, homepage: src.homepage, termsClass: src.termsClass });
+  }
+  return out;
 }
 
 export async function factsForTrip(tripId: string, now: Date = new Date()): Promise<Record<string, FactView[]>> {
@@ -972,7 +1049,7 @@ export async function fetchFreshFactsForItem(input: {
     query: { text: input.item.title, city: input.city },
     budgetCents: budget.budgetCents,
   });
-  const recorded = await recordFacts(drafts, { planId: input.tripId, itemId: input.item.id });
+  const recorded = await recordMachineFacts(drafts, { planId: input.tripId, itemId: input.item.id });
   // Smoke 5: this writer stored facts with no log line at all; it now logs the same ids the draft's
   // lookups do (no query text, no title).
   console.info(
@@ -1167,6 +1244,7 @@ export async function lastServicesForMarket(
         eq(placeFacts.license, "official"),
         isNull(placeFacts.supersededBy),
         eq(placeFacts.sourceClass, "public"),
+        reviewedFactRow(),
         sql`${placeFacts.placeLat} IS NOT NULL AND ${placeFacts.placeLng} IS NOT NULL`,
       ),
     );

@@ -41,6 +41,8 @@ const closed = (tripId: string, k: string, ranges: Array<{ from: string; to: str
       placeRefKind: "place_id", placeRef: `ChIJ-fb1c-${RUN}-${tripId}-${k}`, placeLat: null, placeLng: null, market: "kyoto", need: "stop.hours", factType: "closed_dates",
       value: { ranges, quote, text: quote },
       origin: "crawled", sourceId: null, sourceUrl: "https://official.example.jp/news", license: "official", fetchedAt: NOW, expiresAt, costCents: 0,
+      // CS-1 item 3: closed_dates is a dated safety fact and is read only once a person has reviewed it.
+      verifiedBy: owner,
     } as any],
     { planId: tripId, itemId: `${tripId}-${k}` },
   );

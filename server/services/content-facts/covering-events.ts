@@ -13,6 +13,7 @@
  */
 import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { db } from "../../db";
+import { reviewedFactRow } from "./place-facts.service";
 import { cityEvents, contentSources, placeFacts } from "@shared/schema";
 import { isOfficialPublicFact } from "@shared/content-facts";
 import { cityEventCoversDates, eventFactCoversDates, type CoveringEvent } from "@shared/ai-place-text";
@@ -46,6 +47,8 @@ export async function coveringEventsForTrip(input: {
           eq(placeFacts.factType, "event"),
           eq(placeFacts.market, market),
           isNull(placeFacts.supersededBy),
+          // CS-1 item 3: an event date is a safety fact — read only once a person has reviewed it.
+          reviewedFactRow(),
           or(isNull(placeFacts.expiresAt), gt(placeFacts.expiresAt, input.now ?? sql`now()`)),
         ),
       );

@@ -50,7 +50,7 @@ before(async () => {
     id: EV, source: "manual", sourceId: `${EV}-src`, title: `Lantern Recital ${RUN}`, city: "Kyoto", venue: "ROHM Theatre",
     startsAt: new Date(Date.now() + 30 * DAY), nights: 1, vertical: "music",
   } as any);
-  const base = { placeRefKind: "event_id", placeRef: EV, market: "kyoto", need: "stop.hours", origin: "crawled", license: "official", fetchedAt: FETCHED };
+  const base = { placeRefKind: "event_id", placeRef: EV, market: "kyoto", need: "stop.hours", origin: "crawled", license: "official", fetchedAt: FETCHED, /* CS-1 item 3 (ledger `2026-10-19-cs1-fact-review`): reviewed by a person */ verifiedBy: ADMIN };
   await db.insert(placeFacts).values([
     { ...base, id: `${EV}-hours`, factType: "hours", value: { text: "The box office opens an hour before doors." }, sourceId: PUBLIC_SRC, sourceUrl: HOURS_URL },
     { ...base, id: `${EV}-desc`, factType: "description", value: { text: `DESCRIPTION-${RUN}` }, sourceId: PUBLIC_SRC, sourceUrl: `https://kyoto.example/${RUN}/about` },

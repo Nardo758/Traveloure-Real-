@@ -17,6 +17,7 @@ import {
   revokeBotAccount,
 } from "../services/bot-proposals.service";
 import { BOT_PROPOSAL_STATUSES } from "@shared/bot-proposals";
+import { approveRefreshFact, listRefreshFactsForReview } from "../services/fact-review.service";
 
 const router = Router();
 
@@ -81,12 +82,20 @@ router.get("/api/admin/bot-proposals", isAuthenticated, async (req, res) => {
   }
 });
 
+// CS-1 item 3: the reviewer's expiry — required for a safety fact (last admission), optional for hours. Nothing else.
+const approveBody = z.object({ expiresAt: z.string().trim().min(1).max(40).optional() }).strict();
+const EXPIRY_REFUSALS = new Set(["expiry_required", "expiry_invalid", "expiry_past", "expiry_after_limit"]);
+
 router.post("/api/admin/bot-proposals/:id/approve", isAuthenticated, async (req: any, res) => {
-  if (Object.keys(req.body ?? {}).length) return res.status(400).json({ error: "Approve takes no body", code: "bad_body" });
+  const parsed = approveBody.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: "Approve takes only an expiry date", code: "bad_body" });
   try {
-    const out = await approveBotProposal(String(req.params.id), getUserId(req)!);
-    if (!out.ok) return res.status(out.reason === "not_found" ? 404 : 409).json({ error: "Not approved", code: out.reason });
-    const warning = await audit(req, "bot_proposal_approve", "bot_proposal", String(req.params.id), { factId: out.factId });
+    const out = await approveBotProposal(String(req.params.id), getUserId(req)!, new Date(), { expiresAt: parsed.data.expiresAt });
+    if (!out.ok) {
+      const status = out.reason === "not_found" ? 404 : EXPIRY_REFUSALS.has(out.reason) ? 400 : 409;
+      return res.status(status).json({ error: "Not approved", code: out.reason });
+    }
+    const warning = await audit(req, "bot_proposal_approve", "bot_proposal", String(req.params.id), { factId: out.factId, expiresAt: parsed.data.expiresAt ?? null });
     res.json({ ok: true, factId: out.factId, ...(warning ? { auditWarning: warning } : {}) });
   } catch (err) {
     console.error("[admin bot-proposals approve]", err);
@@ -107,6 +116,33 @@ router.post("/api/admin/bot-proposals/:id/reject", isAuthenticated, async (req: 
   } catch (err) {
     console.error("[admin bot-proposals reject]", err);
     res.status(500).json({ error: "Could not reject the proposal" });
+  }
+});
+
+// CS-1 item 3: the official refresh's dated facts wait here for a person's review before any reader shows them.
+router.get("/api/admin/bot-proposals/refresh-facts", isAuthenticated, async (_req, res) => {
+  try {
+    res.json(await listRefreshFactsForReview());
+  } catch (err) {
+    console.error("[admin refresh-facts]", err);
+    res.status(500).json({ error: "Could not list refresh facts" });
+  }
+});
+
+router.post("/api/admin/bot-proposals/refresh-facts/:id/approve", isAuthenticated, async (req: any, res) => {
+  const parsed = approveBody.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: "Approve takes only an expiry date", code: "bad_body" });
+  try {
+    const out = await approveRefreshFact(String(req.params.id), getUserId(req)!, { expiresAt: parsed.data.expiresAt });
+    if (!out.ok) {
+      const status = out.reason === "not_found" ? 404 : EXPIRY_REFUSALS.has(out.reason) ? 400 : 409;
+      return res.status(status).json({ error: "Not approved", code: out.reason });
+    }
+    const warning = await audit(req, "refresh_fact_approve", "place_fact", String(req.params.id), { factId: out.factId, expiresAt: parsed.data.expiresAt ?? null });
+    res.json({ ok: true, factId: out.factId, ...(warning ? { auditWarning: warning } : {}) });
+  } catch (err) {
+    console.error("[admin refresh-facts approve]", err);
+    res.status(500).json({ error: "Could not approve the fact" });
   }
 });
 
