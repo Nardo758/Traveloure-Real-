@@ -130,11 +130,11 @@ test("M4 a non-stock photo curated by an expert from another market does not rep
 
 test("M5 two Moments in the same city receive only their explicitly associated photos", async () => {
   const live = await resolveLandingMoments();
-  const wedding = live.find((m) => m.key === "wedding");
+  // LC-1: wedding stays in MOMENTS for gem tagging, and is absent from the home live set.
+  assert.equal(live.find((m) => m.key === "wedding"), undefined);
   const proposal = live.find((m) => m.key === "proposal");
-  assert.ok(wedding);
   assert.ok(proposal);
-  assert.deepEqual(wedding!.photos.map((photo) => photo.url), [NONSTOCK_WEDDING]);
+  assert.equal(proposal!.photos.some((photo) => photo.url === NONSTOCK_WEDDING), false);
   assert.deepEqual(proposal!.photos.map((photo) => photo.url), [NONSTOCK_PROPOSAL]);
 });
 

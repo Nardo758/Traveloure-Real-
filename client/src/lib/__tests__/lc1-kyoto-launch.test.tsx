@@ -210,7 +210,7 @@ describe("LC4 partner currency", () => {
     assert.equal(priceMatches(usd, "under50"), true);
     assert.equal(priceMatches(usd, "over150"), false);
     const label = formatSourceAmount(40, "USD");
-    assert.ok(label?.includes("$"), label);
+    assert.equal(label?.includes("$"), true);
   });
 });
 

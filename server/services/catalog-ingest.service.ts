@@ -36,7 +36,7 @@ interface CatalogInput {
   type?: string;
   categories?: string[];
   price?: number | null;
-  currency?: string;
+  currency?: string | null;
   imageUrl?: string | null;
   bookingUrl?: string | null;
   affiliateUrl?: string | null;
