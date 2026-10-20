@@ -614,7 +614,7 @@ export default function ItineraryPage() {
                       Want a local expert to plan this for you?
                     </p>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Browse verified experts for{" "}
+                      Browse experts for{" "}
                       <span className="font-medium text-[#374151] dark:text-gray-300">
                         {itinerary?.destination?.split(",")[0] ?? "your destination"}
                       </span>{" "}

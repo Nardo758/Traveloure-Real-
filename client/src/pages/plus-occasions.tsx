@@ -109,7 +109,7 @@ export default function PlusOccasionsPage() {
           data-testid="banner-not-plus"
         >
           You can set these up now, but scheduled drafts only arrive for active Plus members.
-          {config.salesEnabled ? " Join Plus to turn them on." : " Plus is coming soon for your city."}
+          {config.salesEnabled ? " Join Plus to turn them on." : " Plus isn't available yet for your city."}
         </div>
       )}
 

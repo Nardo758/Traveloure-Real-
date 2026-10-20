@@ -324,7 +324,7 @@ export function TravelPulseCard({ data, compact = false, onClick }: TravelPulseC
 
         {data.triggerEvent && (
           <div className="p-2 bg-primary/5 rounded text-sm">
-            <span className="text-xs text-muted-foreground">Why it's trending: </span>
+            <span className="text-xs text-muted-foreground">Why now: </span>
             <span>{data.triggerEvent}</span>
           </div>
         )}

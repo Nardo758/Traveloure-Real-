@@ -7,8 +7,11 @@
  * shared card — Lane-3's filed compact gap, landed additively); the SHARED useRotation
  * hook advances the window every 8s (pause on hover/focus, frozen under
  * prefers-reduced-motion) so the hottest-first ordering rotates through all eight. The
- * mono ticker above reads the SAME rows — trend rendered only when above the confidence
- * floor (§13: a 0 score shows no number, never a fake one).
+ * mono ticker above reads the SAME rows.
+ *
+ * SH-1 items 1 and 3 (ledger `2026-10-19-sh1-banned-copy`): no trend score anywhere on the rail, and only LIVE cities
+ * (`beta_market_slugs`, via `GET /api/public/live-markets`) — the whole rail is hidden until more than one city is
+ * live (`liveRailCities`). Today Kyoto alone is live, so it is hidden.
  */
 import { useState } from "react";
 import { useLocation } from "wouter";
@@ -17,6 +20,7 @@ import { CityCard } from "@/components/travelpulse/CityCard";
 import { useRotation } from "@/hooks/use-rotation";
 import { getCityDiscoverHref } from "@/lib/city-discover-route";
 import { SectionHeader, OpenSection } from "./section-header";
+import { LIVE_MARKETS_ROUTE, liveRailCities } from "@shared/live-markets";
 
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
@@ -37,7 +41,8 @@ export function CitiesRail() {
   const { data } = useQuery<{ cities: PulseCity[] }>({
     queryKey: ["/api/travelpulse/cities"],
   });
-  const cities = data?.cities ?? [];
+  const { data: live } = useQuery<{ marketKeys: string[] }>({ queryKey: [LIVE_MARKETS_ROUTE] });
+  const cities = liveRailCities(data?.cities ?? [], live?.marketKeys);
   const offset = useRotation(cities.length, { paused: hovered });
 
   if (cities.length === 0) return null;
@@ -74,7 +79,6 @@ export function CitiesRail() {
           <span key={c.cityName}>
             {[
               c.cityName,
-              c.trendingScore && c.trendingScore > 0 ? `trend ${c.trendingScore}` : null,
               c.crowdBand ? `crowd ${c.crowdBand}` : null,
             ]
               .filter(Boolean)
@@ -99,7 +103,7 @@ export function CitiesRail() {
               cityName={c.cityName}
               country={c.country}
               imageUrl={c.imageUrl ?? null}
-              score={c.trendingScore ?? null}
+              score={null}
               crowdLevel={c.crowdBand ?? null}
               primaryLabel="View"
               onCardClick={() => navigate(getCityDiscoverHref(c.cityName))}

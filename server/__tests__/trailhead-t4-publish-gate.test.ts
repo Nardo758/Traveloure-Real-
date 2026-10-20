@@ -124,15 +124,15 @@ describe("T4 inventory-class vocabulary", () => {
 });
 
 describe("T4.4 render-time trend headline (never stored)", () => {
-  it("emits the market+event ceiling only when both signals are present", () => {
+  it("names only the imminent event — never \"‹Market› is trending\" (SH-1 item 1)", () => {
     assert.equal(
       buildTrendContext({ marketTrending: true, marketName: "Kyoto", imminentEventName: "Gion Matsuri" }),
-      "Kyoto is trending · Gion Matsuri approaching",
+      "Gion Matsuri approaching",
     );
   });
 
-  it("degrades honestly — trending-only, event-only, or nothing", () => {
-    assert.equal(buildTrendContext({ marketTrending: true, marketName: "Kyoto", imminentEventName: null }), "Kyoto is trending");
+  it("degrades honestly — event-only, or nothing", () => {
+    assert.equal(buildTrendContext({ marketTrending: true, marketName: "Kyoto", imminentEventName: null }), null);
     assert.equal(buildTrendContext({ marketTrending: false, marketName: "Kyoto", imminentEventName: "Gion Matsuri" }), "Gion Matsuri approaching");
     assert.equal(buildTrendContext({ marketTrending: false, marketName: "Kyoto", imminentEventName: null }), null);
   });

@@ -25,7 +25,7 @@ export interface MembershipCheckoutNotice {
 
 const REFUSAL_COPY: Record<MembershipCheckoutRefusal, MembershipCheckoutNotice> = {
   sales_disabled: {
-    title: "Plus is coming soon",
+    title: "Plus isn't available yet",
     description: "Plus purchases are not open yet. You can still set up your occasions now.",
   },
   plan_not_subscribable: {

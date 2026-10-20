@@ -1,0 +1,6 @@
+{ "_meta": { "attribution": "MIT-licensed open data" }, "rows": [
+  { "id": "a", "description": "Lanterns and geisha sightings at dusk", "secret_key": "plain" },
+  { "id": "b", "why_locals_love_it": "A secret courtyard", "verified": "status" },
+  { "id": "c", "note": "verified" }
+]
+}

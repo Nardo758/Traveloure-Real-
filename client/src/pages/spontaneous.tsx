@@ -8,7 +8,7 @@ export default function SpontaneousPage() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">Live Intel Engine</h1>
           <p className="text-muted-foreground max-w-2xl">
-            Discover spontaneous activities, trending experiences, and last-minute deals 
+            Discover spontaneous activities, experiences, and last-minute deals 
             happening in real-time. Enter a city to find opportunities happening tonight, 
             tomorrow, or this weekend.
           </p>

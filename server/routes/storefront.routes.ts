@@ -1302,9 +1302,9 @@ router.get("/s/:handle", async (req, res, next) => {
       ? `${displayName} — Book local services | Traveloure`
       : `${data.earner.name} — Book local experiences | Traveloure`;
     const description = isProvider
-      ? `${data.earner.bio ? `${data.earner.bio} ` : ""}${providerServiceCount} bookable service${providerServiceCount === 1 ? "" : "s"} from ${displayName} on Traveloure. Secure checkout, verified reviews.`
+      ? `${data.earner.bio ? `${data.earner.bio} ` : ""}${providerServiceCount} bookable service${providerServiceCount === 1 ? "" : "s"} from ${displayName} on Traveloure. Secure checkout, traveler reviews.`
       : data.earner.bio ??
-        `${count} bookable experience${count === 1 ? "" : "s"} from ${data.earner.name} on Traveloure. Secure checkout, verified reviews.`;
+        `${count} bookable experience${count === 1 ? "" : "s"} from ${data.earner.name} on Traveloure. Secure checkout, traveler reviews.`;
     const shareUrl = `https://traveloure.com/s/${data.earner.handle}`;
     const ogImage =
       data.earner.coverImageUrl ??
@@ -1414,7 +1414,7 @@ router.get("/services/:id", async (req, res, next) => {
     const title = `${service.serviceName} | Traveloure`;
     const description =
       service.description?.substring(0, 160) ??
-      `Book ${service.serviceName} on Traveloure — secure checkout, verified reviews.`;
+      `Book ${service.serviceName} on Traveloure — secure checkout, traveler reviews.`;
     const shareUrl = `https://traveloure.com/services/${service.id}`;
     // Managed covers are stored as `covers:${key}` — resolve to the absolute proxy URL.
     // CS-1 item 1: a blocked place's cover is never the share image.
@@ -1581,7 +1581,7 @@ router.get("/t/:slug", async (req, res, next) => {
 
     const title = `${preview.title} | Traveloure`;
     const description = [
-      `A ${preview.durationDays}-day ${preview.planLabel.toLowerCase()} for ${preview.market} by ${preview.expert.name}${preview.expert.localVerified ? ", a verified local" : ""}.`,
+      `A ${preview.durationDays}-day ${preview.planLabel.toLowerCase()} for ${preview.market} by ${preview.expert.name}${preview.expert.localVerified ? ", a local" : ""}.`,
       preview.priceLine,
       "See a sample day, then get the whole trip.",
     ].filter(Boolean).join(" ");

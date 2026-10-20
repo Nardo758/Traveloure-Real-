@@ -44,7 +44,6 @@ export function LuggageStorageCard({ item, className }: { item: CatalogItem; cla
               <Star className="h-3 w-3 fill-amber-400 text-amber-400" />{item.rating.toFixed(1)}
             </Badge>
           )}
-          <Badge variant="outline" className="text-xs">Stasher certified</Badge>
         </div>
 
         <div className="mt-3">

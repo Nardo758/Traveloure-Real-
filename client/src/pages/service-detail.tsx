@@ -25,7 +25,6 @@ import {
   User,
   Users,
   ShieldCheck,
-  Building2,
   Flag,
   Calendar,
   BookOpen,
@@ -1150,8 +1149,6 @@ export default function ServiceDetailPage() {
   const hasPickupAddress = IN_PERSON_METHODS.has(service.deliveryMethod) && !!service.pickupAddress;
   const hasTransportSignal = service.transportProvided === "yes" || service.transportProvided === "no";
   const hasAnyTrustLine =
-    !!providerVerification?.identityVerified ||
-    !!providerVerification?.businessVerified ||
     hasMeetingPoint ||
     hasPickupAddress ||
     hasTransportSignal;
@@ -1339,28 +1336,6 @@ export default function ServiceDetailPage() {
               )}
               {service.shortDescription && (
                 <p className="mt-3.5 text-[color:var(--earn-muted)] text-[13px] leading-[1.5]">{service.shortDescription}</p>
-              )}
-              {(providerVerification?.identityVerified || providerVerification?.businessVerified) && (
-                <div className="flex gap-[7px] flex-wrap items-center mt-4">
-                  {providerVerification?.identityVerified && (
-                    <span
-                      className="inline-flex items-center gap-[5px] rounded-full border border-[color:var(--earn-border)] bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)] text-[10px] font-bold px-2 py-[5px]"
-                      title="Provider identity verified"
-                      data-testid="badge-identity-verified"
-                    >
-                      <ShieldCheck className="w-[13px] h-[13px]" /> ID Verified
-                    </span>
-                  )}
-                  {providerVerification?.businessVerified && (
-                    <span
-                      className="inline-flex items-center gap-[5px] rounded-full border border-[color:var(--earn-border)] bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)] text-[10px] font-bold px-2 py-[5px]"
-                      title="Provider business verified"
-                      data-testid="badge-business-verified"
-                    >
-                      <Building2 className="w-[13px] h-[13px]" /> Business Verified
-                    </span>
-                  )}
-                </div>
               )}
               <div className="flex items-center gap-[13px] flex-wrap mt-3.5 text-[color:var(--earn-muted)] text-[12px]">
                 {displayLocation && (
@@ -2107,18 +2082,6 @@ export default function ServiceDetailPage() {
                   )}
                   {hasAnyTrustLine && (
                     <ul className="grid gap-2 mt-[11px]">
-                      {providerVerification?.identityVerified && (
-                        <li className="flex items-center gap-[7px] text-[10px] text-[color:var(--earn-ink)]" data-testid="trust-line-identity">
-                          <ShieldCheck className="w-[13px] h-[13px] text-[color:var(--earn-teal-ink)] shrink-0" />
-                          Identity verified
-                        </li>
-                      )}
-                      {providerVerification?.businessVerified && (
-                        <li className="flex items-center gap-[7px] text-[10px] text-[color:var(--earn-ink)]" data-testid="trust-line-business">
-                          <Building2 className="w-[13px] h-[13px] text-[color:var(--earn-teal-ink)] shrink-0" />
-                          Business verified
-                        </li>
-                      )}
                       {hasMeetingPoint && (
                         <li
                           className="flex items-start gap-[7px] text-[10px] text-[color:var(--earn-ink)]"
@@ -2515,11 +2478,6 @@ function ReviewCard({ review, serviceId }: { review: Review; serviceId: string }
                   <Star key={star} className="w-3.5 h-3.5" fill={star <= review.rating ? "currentColor" : "none"} stroke="currentColor" />
                 ))}
               </div>
-              {review.isVerified && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-[var(--earn-teal-wash)] text-[color:var(--earn-teal-ink)] text-[10px] font-semibold px-2 py-0.5">
-                  <CheckCircle className="w-3 h-3" /> Verified
-                </span>
-              )}
             </div>
             <p className="text-[11px] text-[color:var(--earn-muted)] mb-1">{format(new Date(review.createdAt), "MMM d, yyyy")}</p>
             {review.reviewText && (
