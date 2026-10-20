@@ -211,6 +211,14 @@ jobs:
           BASE_URL: http://localhost:5000
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           CI: 'true'
+      # Move before the next Playwright step. It writes the same playwright-json/ path, and the
+      # spec-arming gate only sees what is uploaded as playwright-json*.
+      - name: Keep the kyoto-draft-stub reports
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p reports/kyoto-draft-stub
+          [ -d playwright-report ] && mv playwright-report reports/kyoto-draft-stub/html || true
+          [ -d playwright-json ] && mv playwright-json reports/kyoto-draft-stub/json || true
       - name: "e2e-provider-console: Catalog map, Distribute, ServiceForm steps"
         id: provider_console
         if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
@@ -263,6 +271,13 @@ jobs:
           mkdir -p reports/unwired-specs
           [ -d playwright-report ] && mv playwright-report reports/unwired-specs/html || true
           [ -d playwright-json ] && mv playwright-json reports/unwired-specs/json || true
+      - name: Upload kyoto-draft-stub Playwright JSON report (the spec-arming gate reads playwright-json*)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-json-kyoto-draft-stub
+          path: reports/kyoto-draft-stub/json/
+          if-no-files-found: ignore
       - name: Upload i18n-key-parity Playwright JSON report (the spec-arming gate reads playwright-json*)
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
