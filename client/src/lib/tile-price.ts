@@ -4,7 +4,7 @@
  * SH-1 item 7 (Q7.3): a Fever event's price is the partner's, never ours, so it has no tile price at all — and when
  * the traveler chooses a price band, Fever events are LEFT OUT rather than passed through as "unpriced".
  */
-import { isPartnerPriced } from "./partner-price";
+import { amountOutsideDollarBand, isPartnerPriced } from "./partner-price";
 
 export interface PricedTile {
   kind: string;
@@ -40,11 +40,18 @@ export function extractTilePrice(item: PricedTile): number | null {
       if (d.isFree) return 0;
       return num(d.minPrice);
     case "supply-hotel":
+      return num(d.price) ?? num(d.pricePerNight) ?? num(d.priceFrom);
     case "supply-activity":
+      // A non-USD partner amount is not a dollar price (LC-1). Missing currency is not USD.
+      if (amountOutsideDollarBand(activityAmount(d), d.currency)) return null;
       return num(d.price) ?? num(d.pricePerNight) ?? num(d.priceFrom);
     default:
       return null;
   }
+}
+
+function activityAmount(data: any): unknown {
+  return data?.price ?? data?.pricePerNight ?? data?.priceFrom;
 }
 
 export function priceMatches(item: PricedTile, priceId: string): boolean {
@@ -53,6 +60,8 @@ export function priceMatches(item: PricedTile, priceId: string): boolean {
   if (!band) return true;
   // Q7.3: a chosen band leaves Fever events out.
   if (item.kind === "event" && isPartnerPriced(item.data)) return false;
+  // LC-1: a dollar band does not match a partner activity priced in another currency, or with none stated.
+  if (item.kind === "supply-activity" && amountOutsideDollarBand(activityAmount(item.data), item.data?.currency)) return false;
   const p = extractTilePrice(item);
   if (p === null) return true; // unpriced tiles are outside the priced domain
   return p >= band.min && p < band.max;

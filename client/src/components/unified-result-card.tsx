@@ -1,5 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { optimizeUnsplashUrl } from "@/lib/unsplash";
+import { formatSourceAmount } from "@/lib/partner-price";
+import { PARTNER_PRICE_LINK_LABEL } from "@/lib/browse-supply";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,7 +56,7 @@ export interface UnifiedResult {
   priceLevel?: string | null;
   /** Numeric price in the provider's currency. Shown as "$89" when present; overrides priceLevel display. */
   price?: number | null;
-  /** ISO-4217 currency code for the numeric price (e.g. "USD"). Defaults to "USD" when omitted. */
+  /** ISO-4217 currency code for the numeric price. Null when the source did not state one — never assumed USD. */
   currency?: string | null;
   /** Suffix appended after the price (e.g. "night" → "$89/night"). */
   priceSuffix?: string | null;
@@ -78,7 +80,7 @@ export interface UnifiedResult {
 /**
  * Convert a CatalogItem (from /api/catalog/* endpoints) to a UnifiedResult
  * that can be rendered by UnifiedResultCard. Passes the numeric price and
- * currency directly so the card shows "$89" instead of tier symbols.
+ * the source currency. A missing currency is null, not USD.
  */
 export function catalogItemToUnifiedResult(item: CatalogItem): UnifiedResult {
   const source: UnifiedResult["source"] =
@@ -98,7 +100,7 @@ export function catalogItemToUnifiedResult(item: CatalogItem): UnifiedResult {
     rating: item.rating ?? null,
     reviewCount: item.reviewCount ?? null,
     price: item.price ?? null,
-    currency: item.currency ?? "USD",
+    currency: item.currency ?? null,
     priceSuffix: item.type === "hotel" ? "night" : null,
     priceLevel: item.priceLevel ?? null,
     address: item.destination ?? null,
@@ -232,17 +234,11 @@ export function UnifiedResultCard({
   };
 
   const renderPrice = () => {
-    // Prefer the numeric price (e.g. "$89" or "$89/night") over tier symbols.
+    // Source currency only. No currency ⇒ "See current price", never a dollar sign on a yen amount.
     if (result.price != null && result.price > 0) {
-      const currency = result.currency ?? "USD";
-      // Use a compact currency symbol when currency is USD/EUR/GBP/etc; fall back to code.
-      const formatted = new Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency,
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
-      }).format(result.price);
-      const label = result.priceSuffix ? `${formatted}/${result.priceSuffix}` : formatted;
+      const formatted = formatSourceAmount(result.price, result.currency);
+      const shown = formatted ?? PARTNER_PRICE_LINK_LABEL;
+      const label = formatted && result.priceSuffix ? `${formatted}/${result.priceSuffix}` : shown;
       return (
         <span className="text-sm font-semibold text-green-700 dark:text-green-400" data-testid={`text-price-${result.id}`}>
           {label}

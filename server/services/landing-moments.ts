@@ -170,6 +170,13 @@ export const MOMENTS: MomentConfig[] = [
 ];
 
 export const MOMENT_KEYS: readonly string[] = MOMENTS.map((m) => m.key);
+
+/** LC-1: the home wedding tile (a Kyoto wedding over a Goa sunset photo) is not in the live set. */
+const HIDDEN_HOME_MOMENT_KEYS = new Set(["wedding"]);
+
+export function homeMomentConfigs(): MomentConfig[] {
+  return MOMENTS.filter((m) => !HIDDEN_HOME_MOMENT_KEYS.has(m.key));
+}
 export const MOMENT_EVENT_KINDS = ["impression", "tab", "dot", "cta"] as const;
 export type MomentEventKind = (typeof MOMENT_EVENT_KINDS)[number];
 
@@ -371,7 +378,7 @@ async function attributedPhotosForMoment(
 /** Real attributed photos win; otherwise each configured moment uses its honest representative fallback. */
 export async function resolveLandingMoments(): Promise<LiveMoment[]> {
   const live: LiveMoment[] = [];
-  for (const m of MOMENTS) {
+  for (const m of homeMomentConfigs()) {
     const attributed = await attributedPhotosForMoment(m.city, m.key);
     const selected = selectMomentPhotos(m.key, attributed.photos, attributed.builder);
     const resolvedPhotos = selected.photos;

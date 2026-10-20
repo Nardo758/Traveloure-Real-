@@ -354,8 +354,23 @@ function ProviderForm({ source, refCode, launchMarket }: { source: string | null
   );
 }
 
+/** The expert section draws only when a public Kyoto expert list has someone. Loading, an error and [] hide it. */
+export function kyotoExpertsSectionVisible(data: unknown, isSuccess: boolean): boolean {
+  return isSuccess && Array.isArray(data) && data.length > 0;
+}
+
 export default function LaunchWaitlistPage() {
   const { data: signup } = useQuery<SignupModeView>({ queryKey: ["/api/public/signup-mode"], retry: false });
+  const { data: kyotoExperts, isSuccess: kyotoExpertsLoaded } = useQuery<unknown>({
+    queryKey: ["/api/experts", "kyoto-public"],
+    queryFn: async () => {
+      const res = await fetch("/api/experts?location=Kyoto");
+      if (!res.ok) throw new Error("Failed to fetch Kyoto experts");
+      return res.json();
+    },
+    retry: false,
+  });
+  const showKyotoExperts = kyotoExpertsSectionVisible(kyotoExperts, kyotoExpertsLoaded);
   const { source, blocked } = waitlistSourceFromSearch(window.location.search, signup?.launchMarketSlug ?? null);
   // LW-1d: the raw short-link code the visitor arrived with (this page's ?ref=, else the session's). The server
   // decides any credit; the page never names a referrer.
@@ -412,18 +427,18 @@ export default function LaunchWaitlistPage() {
         <p className="mt-3">None of this is hard on its own. Put it together across a few packed days and one mistake costs you an afternoon.</p>
       </section>
 
+      {showKyotoExperts && (
       <section className="mt-12" data-testid="section-waitlist-coming">
-        <h2 className="text-2xl font-semibold">What's coming: local experts in Kyoto</h2>
-        <p className="mt-3">As experts join Traveloure in Kyoto, they'll be able to:</p>
+        <h2 className="text-2xl font-semibold">Local experts in Kyoto</h2>
+        <p className="mt-3">Kyoto experts on Traveloure can:</p>
         <ul className="mt-3 list-disc space-y-2 pl-5">
           <li><strong>Read your plan like a local.</strong> Spot the day that's overpacked, the stop that's closed by the time you get there, and the booking that should have been made last week.</li>
           <li><strong>Suggest better options.</strong> A different order, a quieter moment, or a backup for the day something doesn't run.</li>
-          <li><strong>Connect you with local providers.</strong> Guides, drivers and experiences, as providers join.</li>
           <li><strong>Keep it human.</strong> You'll talk to a real person who knows Kyoto, not a list of search results.</li>
         </ul>
-        <p className="mt-3">Planning a proposal or a wedding? That's what local experts are for, too.</p>
         <p className="mt-3">Your plan will live on one <strong>Trip Card</strong>, so everything for the trip is in one place.</p>
       </section>
+      )}
 
       <section id="join" className="mt-12 scroll-mt-20 rounded-xl border p-6" data-testid="section-waitlist-join">
         <h2 className="text-2xl font-semibold">Be first to book when Kyoto opens.</h2>

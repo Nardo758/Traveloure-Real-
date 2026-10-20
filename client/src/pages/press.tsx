@@ -5,8 +5,6 @@ import {
   COMPANY_FOUNDED_YEAR,
   COMPANY_HQ,
   COMPANY_LEGAL_NAME,
-  marketCountWord,
-  marketsInDisplayOrder,
 } from "@/lib/company-facts";
 
 /**
@@ -40,7 +38,7 @@ export default function PressPage() {
           <p>
             Traveloure is a planning platform where travelers describe an occasion and a place, and get a plan built
             around that place and checked by someone who lives there. It connects travelers with local experts, trip
-            planners and service providers in {marketCountWord()} cities across Asia, Europe and Latin America.{" "}
+            planners and service providers in Kyoto.{" "}
             {COMPANY_LEGAL_NAME} was founded in {COMPANY_FOUNDED_YEAR} and is based in {COMPANY_HQ}.
           </p>
         </CompanySection>
@@ -49,7 +47,7 @@ export default function PressPage() {
           <dl className="grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-[180px_1fr]">
             <dt className="font-semibold">Founded</dt><dd>{COMPANY_FOUNDED_YEAR}</dd>
             <dt className="font-semibold">Headquarters</dt><dd>{COMPANY_HQ}, USA</dd>
-            <dt className="font-semibold">Markets (beta)</dt><dd>{marketsInDisplayOrder().map((m) => m.cityName).join(", ")}</dd>
+            <dt className="font-semibold">Markets (beta)</dt><dd>Kyoto</dd>
             <dt className="font-semibold">Roles on the platform</dt><dd>travelers, local experts, trip planners, service providers, executive assistants</dd>
             <dt className="font-semibold">Model</dt><dd>pay-per-use planning (a Trip Pass per trip; Plus for occasions; Pro for professionals), plus a service fee on bookings. No memberships, credits or wallets.</dd>
             <dt className="font-semibold">Site</dt><dd>traveloure.com</dd>

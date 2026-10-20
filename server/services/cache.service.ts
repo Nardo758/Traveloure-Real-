@@ -254,7 +254,9 @@ export class CacheService {
         // Existing fields
         durationMinutes,
         price: activity.pricing?.summary?.fromPrice?.toString(),
-        currency: activity.pricing?.currency || "USD",
+        currency: typeof activity.pricing?.currency === "string" && /^[A-Za-z]{3}$/.test(activity.pricing.currency.trim())
+          ? activity.pricing.currency.trim().toUpperCase()
+          : null,
         rating: activity.reviews?.combinedAverageRating?.toString(),
         reviewCount: activity.reviews?.totalReviews || 0,
         imageUrl,
@@ -732,6 +734,8 @@ export class CacheService {
     if (filters.priceMin !== undefined || filters.priceMax !== undefined) {
       activities = activities.filter(a => {
         const price = a.price ? parseFloat(a.price) : 0;
+        const currency = (a.currency ?? "").trim().toUpperCase();
+        if (price > 0 && currency !== "USD") return false;
         if (filters.priceMin !== undefined && price < filters.priceMin) return false;
         if (filters.priceMax !== undefined && price > filters.priceMax) return false;
         return true;

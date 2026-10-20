@@ -256,7 +256,7 @@ export default function ExpertsPage() {
   }, [roleCounts, routeRole]);
 
   // Fetch experts from API with optional experience type, destination, neighbourhood, and role filter
-  const { data: apiExperts = [], isLoading: isLoadingExperts } = useQuery<any[]>({
+  const expertsQuery = useQuery<unknown>({
     queryKey: ["/api/experts", selectedExperienceType, debouncedNeighbourhoodQuery, selectedDestination, selectedRole, availableNowOnly],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -268,9 +268,17 @@ export default function ExpertsPage() {
       const url = params.toString() ? `/api/experts?${params.toString()}` : "/api/experts";
       const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch experts");
-      return res.json();
+      const body = await res.json();
+      // A non-list body used to throw in render (`.filter` on an object) and the page
+      // came back on this spinner. Treat it as a failed read so loading ends.
+      if (!Array.isArray(body)) throw new Error("Experts response was not a list");
+      return body;
     },
   });
+  const apiExperts = Array.isArray(expertsQuery.data) ? expertsQuery.data : [];
+  // `status === "pending"` is the only spinner. `isLoading` (pending AND fetching) stays
+  // true when a fetch never settles its status; a success `[]` and an error are both settled.
+  const isLoadingExperts = expertsQuery.status === "pending";
 
   // F-E1 (ruling 2026-08-30): when the requested role has no published supply, keep this
   // page honest (empty state, heading unchanged) and offer the roles that DO have supply
@@ -776,7 +784,7 @@ export default function ExpertsPage() {
 
           {/* Expert Cards Grid */}
           {isLoadingExperts ? (
-            <div className="flex items-center justify-center py-16">
+            <div className="flex items-center justify-center py-16" data-testid="experts-loading">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
               <span className="ml-2 text-muted-foreground">Loading experts...</span>
             </div>
@@ -810,25 +818,15 @@ export default function ExpertsPage() {
                 <Search className="w-8 h-8 text-[color:var(--earn-faint)]" />
               </div>
               <h3 className="text-lg font-semibold" style={HEADING_STYLE} data-testid="experts-empty-heading">
-                {availableNowOnly
-                  ? "Nobody is available right now"
-                  : selectedRole === "event_planner"
-                  ? "No event planners found"
-                  : selectedRole === "local_expert"
-                  ? `No local experts have published${selectedDestination !== "All Destinations" ? ` in ${selectedDestination}` : ""} yet`
-                  : "No experts found"}
+                No Kyoto experts are listed yet. Know Kyoto well? Apply to plan trips for travelers.
               </h3>
-              <p className="text-muted-foreground">
-                {availableNowOnly
-                  ? "Turn off \"Available now\" to see everyone — you can still message them and they'll reply when they're back."
-                  : selectedRole === "event_planner"
-                  ? "Try a trip planner instead, or adjust your filters."
-                  : selectedRole === "local_expert"
-                  ? fallbackRole
-                    ? "As locals publish their guides they'll show here — meanwhile, here's who's available now."
-                    : "As locals publish their guides they'll show here."
-                  : "Try adjusting your filters or search terms"}
-              </p>
+              <Link
+                href="/become-expert?type=local_expert"
+                className={`px-4 py-2 text-sm ${PAGE_LINK}`}
+                data-testid="button-apply-kyoto-expert"
+              >
+                Apply as a Kyoto expert
+              </Link>
               {selectedRole === "event_planner" && (
                 <Link
                   href={buildRoleHref("travel_expert")}

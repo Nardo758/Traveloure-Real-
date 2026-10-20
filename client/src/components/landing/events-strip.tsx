@@ -184,10 +184,20 @@ export function CityEventCards({
   );
 }
 
-/** Pure: whether the strip renders, and which cards — absent below the threshold. */
+/**
+ * Kyoto pages show dated events in the Kyoto market that are not outside the city.
+ * `outsideCity` is the existing distance rule (SH-1 item 4 / `eventPlacement`).
+ */
+export function kyotoPageEvents(events: readonly CityEventCard[]): CityEventCard[] {
+  return events.filter((e) => e.marketKey === "kyoto" && e.outsideCity !== true);
+}
+
+/** Pure: whether the strip renders, and which cards — absent below the threshold of Kyoto events. */
 export function stripCards(payload: CityEventsPayload | undefined | null): CityEventCard[] | null {
-  if (!payload || !showCityEventsStrip(payload.total)) return null;
-  return payload.events.slice(0, CITY_EVENTS_STRIP_MAX);
+  if (!payload) return null;
+  const events = kyotoPageEvents(payload.events);
+  if (!showCityEventsStrip(events.length)) return null;
+  return events.slice(0, CITY_EVENTS_STRIP_MAX);
 }
 
 export function EventsStripContent({

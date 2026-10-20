@@ -105,7 +105,7 @@ export function EventsCalendar() {
   const allEvents = data?.events ?? [];
   const allBands = data?.bands ?? [];
   const cityChips = [
-    { id: "all", label: "All eight cities", n: allEvents.length + allBands.length },
+    { id: "all", label: "All cities", n: allEvents.length + allBands.length },
     ...OPERATING_MARKETS.map((m) => ({
       id: m.marketKey,
       label: m.cityName,
