@@ -11,9 +11,9 @@
  * (`eventFactCoversDates`). Prose is never parsed into a date (§13), so a fact without structured
  * dates covers nothing. Never throws: a failed read is "none confirmed", which reduces, never invents.
  */
-import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "../../db";
-import { reviewedFactRow } from "./place-facts.service";
+import { liveFactRow, reviewedFactRow } from "./place-facts.service";
 import { cityEvents, contentSources, placeFacts } from "@shared/schema";
 import { isOfficialPublicFact } from "@shared/content-facts";
 import { cityEventCoversDates, eventFactCoversDates, type CoveringEvent } from "@shared/ai-place-text";
@@ -46,10 +46,10 @@ export async function coveringEventsForTrip(input: {
         and(
           eq(placeFacts.factType, "event"),
           eq(placeFacts.market, market),
-          isNull(placeFacts.supersededBy),
+          // CS-1 item 2: live only — not superseded, unexpired (`liveFactRow`).
+          liveFactRow(input.now),
           // CS-1 item 3: an event date is a safety fact — read only once a person has reviewed it.
           reviewedFactRow(),
-          or(isNull(placeFacts.expiresAt), gt(placeFacts.expiresAt, input.now ?? sql`now()`)),
         ),
       );
     const out: CoveringEvent[] = [];

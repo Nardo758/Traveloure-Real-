@@ -2532,6 +2532,9 @@ This document captures architectural decisions to maintain consistency across co
     The dated set is hours plus the safety set — `last_admission`, `last_service`, `closed_dates`, `transit`,
     `event`; `timed_entry_required` is not a dated fact (decision-maker, Oct 20, 2026). The "90 days" is the current
     value of `bot_fact_default_expiry_days`, the fallback when a source states no expiry setting.
+    **AMENDED — EXPIRED OFFICIAL HOURS (CS-1 item 2; ledger `2026-10-19-cs1-live-facts`).** In Leon's words:
+    "An expired official hours fact is not shown; the stop reads 'Hours not checked yet', with the stored official site
+    link when there is one." (decision-maker ruling in conversation, Oct 20, 2026)
 
 58. **PARTNER PAGE EXTRACTION RUNS ONLY WHERE THE PARTNER'S TERMS ALLOW IT, AND EVERY AFFILIATE PRODUCT
     SAYS WHICH WRITER MADE IT (decision-maker, Sep 30, 2026: "keep the capability, make it compliant" —

@@ -31,7 +31,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { claudeService } from "./claude.service";
 import { BlogError, createPost } from "./blog-posts.service";
 import { loadEventGuideFacts, type EventGuideFacts } from "./blog-event-facts.service";
-import { blogSlugExists, checkPlatformDraft, eventPostSources, promptFacts, type EventGuideDeps, type RawDraft } from "./blog-event-guide.service";
+import { blogSlugExists, checkPlatformDraft, eventPostSources, promptFacts, withFactStamps, type EventGuideDeps, type RawDraft } from "./blog-event-guide.service";
 import { getMarketByKey } from "./trend-engine/operating-markets";
 import { loadLegResolver } from "./travel-time.service";
 import { travelTimeServiceEnabled } from "../config/travel-time.config";
@@ -49,7 +49,7 @@ export const RACE_WEEKEND_SYSTEM_PROMPT = [
   "You write a short race-weekend guide for Traveloure: ONE motorsport event, reached from ONE city, from the JSON facts you are given and nothing else.",
   "gettingThere names the city the reader starts from and the mode (transit means by train or public transport; drive means by car). Say the venue is within reach of that city by that mode. Never give minutes, hours, kilometres, or a comparison between modes.",
   "Use only the facts' names, dates and times. Do not state prices, capacities, distances, durations, ratings, weather or any number the facts do not contain.",
-  "If venueFacts is empty, say nothing about the venue beyond its name. If alsoOn is empty, leave that section out. Where to stay: base the weekend in the gettingThere city; name stayNear neighbourhoods only if given.",
+  "If venueFacts is empty, say nothing about the venue beyond its name. Never write a date, a source name, or the words verified or confirmed about a venueFact: the post adds each fact's source and checked date itself. If alsoOn is empty, leave that section out. Where to stay: base the weekend in the gettingThere city; name stayNear neighbourhoods only if given.",
   "Write no URLs and no links. End by inviting the reader to start a plan around the race.",
   'Return JSON of the form {"title":"…","summary":"one sentence","body":"plain text, short paragraphs"}.',
 ].join("\n");
@@ -149,7 +149,7 @@ export async function draftRaceWeekend(
       slug,
       title: checked.title,
       summary: checked.summary || null,
-      body: checked.body,
+      body: withFactStamps(checked.body, facts),
       marketSlug: market.marketKey,
       cityEventId: facts.event.id,
       sources: eventPostSources(facts),

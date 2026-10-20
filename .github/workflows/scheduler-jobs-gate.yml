@@ -176,6 +176,12 @@ jobs:
       # it; machine writers never set verified_by; safety facts need the reviewer's expiry. RV1–RV7.
       - name: CS-1 fact review — unreviewed refresh facts are not read; approval needs the source's expiry
         run: npx tsx --test --test-force-exit server/__tests__/fact-review.db.test.ts
+      # CS-1 item 2 (ledger `2026-10-19-cs1-live-facts`): every fact reader reads live facts only — not superseded,
+      # unexpired; a machine-read fact with no expiry is refused at write and never read. LF1–LF7, LR1–LR2.
+      - name: CS-1 live facts — no expired fact is read by the plan, findings, public pages or generators
+        run: npx tsx --test --test-force-exit server/__tests__/live-facts.db.test.ts
+      - name: CS-1 live facts — the coverage census and where-to-stay drop an expired fact (no database)
+        run: npx tsx --test server/__tests__/live-facts-readers.test.ts
       # Places named-place gate (ledger `2026-09-30-places-named-gate`, production smoke test 3):
       # generic titles are never looked up, a mismatched answer is never attached, and the per-draft
       # cap reaches every day. G1–G4, fake Places API only.

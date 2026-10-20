@@ -61,6 +61,7 @@ import { freeStayShortList, readStayPick, stayPickIsShown, straightLineCloseness
 import { stayCloseStraightKm } from "../config/stay-closeness.config";
 import { pendingLookupItemIds } from "./content-facts/lookup-progress.pure";
 import { rankFactsByOrigin } from "./upsell-engine.service";
+import { neighbourhoodLinesFrom } from "./where-to-stay-lines";
 import {
   OptionSetError,
   addOption,
@@ -282,26 +283,14 @@ async function neighbourhoodOneLiners(
           // The REGISTRY's line, never Google's: a Places row is display-inside-a-plan data with its
           // own provenance line, and is not what R-x means by a registry fact.
           sql`${placeFacts.origin} <> 'places_api'`,
-          isNull(placeFacts.supersededBy),
           sql`lower(${placeFacts.placeRef}) IN (${sql.join(keys.map((k) => sql`${k}`), sql`, `)})`,
-          sql`(${placeFacts.expiresAt} IS NULL OR ${placeFacts.expiresAt} > now())`,
+          isNull(placeFacts.supersededBy),
         ),
       );
   } catch (err) {
     console.error("[where-to-stay] neighbourhood facts read failed:", (err as Error)?.message ?? err);
   }
-  for (const r of ranked) {
-    const mine = rows.filter((f) => [r.slug.toLowerCase(), r.name.toLowerCase()].includes(f.placeRef.toLowerCase()));
-    const best = rankFactsByOrigin(mine)[0];
-    const text = typeof (best?.value as any)?.text === "string" ? ((best!.value as any).text as string).trim() : "";
-    if (text) {
-      out.set(r.slug, { text, source: "registry" });
-      continue;
-    }
-    const d = spine.find((n) => n.slug === r.slug)?.description?.trim();
-    if (d) out.set(r.slug, { text: d, source: "spine" });
-  }
-  return out;
+  return neighbourhoodLinesFrom(ranked, spine, rows, rankFactsByOrigin);
 }
 
 /** Our own inventory for a city, located rows only: census hotel anchors + affiliate lodging listings. */

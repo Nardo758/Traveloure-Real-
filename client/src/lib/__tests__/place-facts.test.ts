@@ -33,7 +33,8 @@ test("F2: no date, no weekday; no hours fact, no line", () => {
 });
 
 test("F3: stale and unknown-checked facts", () => {
-  assert.equal(itemFactsLine([{ ...hours, stale: true }], "2026-11-11")!.text, "Wed · Open 24 hours · Google Maps · checked 2 Oct (may have changed)");
+  // CS-1 item 2 (ledger `2026-10-19-cs1-live-facts`): the "(may have changed)" suffix is retired.
+  assert.equal(itemFactsLine([{ ...hours, stale: true }], "2026-11-11")!.text, "Wed · Open 24 hours · Google Maps · checked 2 Oct");
   // No `checkedAt` on the wire (an older build's payload) ⇒ the date the server's provenance line states.
   assert.equal(itemFactsLine([{ ...hours, checkedAt: null }], "2026-11-11")!.text, "Wed · Open 24 hours · Google Maps · checked 2 Oct");
   assert.equal(itemFactsLine([{ ...hours, checkedAt: null, provenance: "Google Maps · checked 30 Sept 2026" }], "2026-11-11")!.text, "Wed · Open 24 hours · Google Maps · checked 30 Sep");

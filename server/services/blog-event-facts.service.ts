@@ -28,13 +28,13 @@
 import { and, eq, gte, isNull, lte, ne, sql } from "drizzle-orm";
 import { db } from "../db";
 import { cityEvents, cityNeighborhoods, contentSources, placeFacts, type CityEvent } from "@shared/schema";
-import { asFactOrigin, mustOmitOnPublicPage, publicFactAttribution } from "@shared/content-facts";
+import { asFactOrigin, mustOmitOnPublicPage, publicFactAttribution, reviewedFactLabel } from "@shared/content-facts";
 import { ticketUrlRefusal } from "@shared/city-events";
 import type { TravelTime } from "@shared/travel-time";
 import { toCityEventCard } from "./city-events.service";
 import { MARKET_TIMEZONES } from "./trend-engine/operating-markets";
 import { loadPartnerHosts } from "./partner-hosts.service";
-import { reviewedFactRow } from "./content-facts/place-facts.service";
+import { liveFactRow, reviewedFactRow } from "./content-facts/place-facts.service";
 import { loadEstimateReader, loadMarketCentroids } from "./travel-time-matrix.service";
 
 export interface EventGuideFacts {
@@ -57,6 +57,12 @@ export interface EventGuideFacts {
   };
   /** Publishable facts about the venue/event, as plain text. Empty = none publishable yet. */
   venueFacts: Array<{ factType: string; text: string }>;
+  /**
+   * CS-1 item 2: each venue fact that has a registry source and a check date, stamped BY CODE from those stored fields —
+   * "Checked <date> · Source: <official site>" (`reviewedFactLabel`, the market's zone). NEVER in the prompt
+   * (`promptFacts` omits it): the generators append the stamps to the post body themselves (`withFactStamps`).
+   */
+  factStamps: Array<{ factType: string; text: string; stamp: string }>;
   /**
    * Ruling R-p: one post source per official source a venue fact came from — "from <source>" linking
    * to the fact's URL, "checked <date>" as the publisher line. NEVER in the prompt (`promptFacts`
@@ -127,10 +133,11 @@ export async function loadEventGuideFacts(eventId: string, deps: EventFactsDeps 
     .select({ fact: placeFacts, sourceName: contentSources.name, sourceLicenseClass: contentSources.licenseClass, sourcePublicOk: contentSources.publicOk })
     .from(placeFacts)
     .leftJoin(contentSources, eq(contentSources.id, placeFacts.sourceId))
-    .where(and(eq(placeFacts.placeRefKind, "event_id"), eq(placeFacts.placeRef, row.id), isNull(placeFacts.supersededBy), reviewedFactRow()));
+    .where(and(eq(placeFacts.placeRefKind, "event_id"), eq(placeFacts.placeRef, row.id), liveFactRow(now), reviewedFactRow()));
   const venueFacts: EventGuideFacts["venueFacts"] = [];
   const venueFactSources: EventGuideFacts["venueFactSources"] = [];
   const attributedFacts: EventGuideFacts["attributedFacts"] = [];
+  const factStamps: EventGuideFacts["factStamps"] = [];
   for (const r of factRows) {
     const f = r.fact;
     if (asFactOrigin(f.origin) === null) continue;
@@ -144,13 +151,22 @@ export async function loadEventGuideFacts(eventId: string, deps: EventFactsDeps 
       sourcePublicOk: r.sourcePublicOk,
       sourceName: r.sourceName,
       sourceUrl: f.sourceUrl,
+      expiresAt: f.expiresAt,
+      supersededBy: f.supersededBy,
     };
-    if (mustOmitOnPublicPage(view)) continue;
+    // CS-1 item 2: the SQL above already reads live rows only; the public-page rule checks the same thing again.
+    if (mustOmitOnPublicPage(view, now)) continue;
     const text = factText(f.value);
     if (text === "") continue;
-    venueFacts.push({ factType: f.factType, text });
     // LG-1 item 5: the checked day in the event's market zone (none known ⇒ the UTC day).
-    const credit = publicFactAttribution(view, card.marketKey ? MARKET_TIMEZONES[card.marketKey] ?? null : null);
+    const tz = card.marketKey ? MARKET_TIMEZONES[card.marketKey] ?? null : null;
+    const credit = publicFactAttribution(view, tz);
+    venueFacts.push({ factType: f.factType, text });
+    const fetched = f.fetchedAt ? new Date(f.fetchedAt as any) : null;
+    const sourceName = r.sourceName?.trim();
+    if (sourceName && fetched && Number.isFinite(fetched.getTime())) {
+      factStamps.push({ factType: f.factType, text, stamp: reviewedFactLabel(fetched, sourceName, tz) });
+    }
     if (credit) attributedFacts.push({ factType: f.factType, text, ...credit });
     if (credit && !venueFactSources.some((s) => s.url === credit.sourceUrl)) {
       venueFactSources.push({ url: credit.sourceUrl, title: credit.label, publisher: credit.checked, retrievedAt: new Date(f.fetchedAt) });
@@ -207,6 +223,7 @@ export async function loadEventGuideFacts(eventId: string, deps: EventFactsDeps 
       ticketUrl,
     },
     venueFacts,
+    factStamps,
     venueFactSources,
     attributedFacts,
     stayNear,
