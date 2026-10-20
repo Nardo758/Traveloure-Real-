@@ -109,7 +109,8 @@ export function EventsCalendar() {
     ...OPERATING_MARKETS.map((m) => ({
       id: m.marketKey,
       label: m.cityName,
-      n: allEvents.filter((e) => e.marketKey === m.marketKey).length + allBands.filter((b) => b.marketKeys.includes(m.marketKey)).length,
+      // SH-1 item 4: an event outside the market city is not counted for it (`matchesCity`).
+      n: allEvents.filter((e) => matchesCity(e, m.marketKey)).length + allBands.filter((b) => b.marketKeys.includes(m.marketKey)).length,
     })),
   ];
 

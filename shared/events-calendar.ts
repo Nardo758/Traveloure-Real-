@@ -156,8 +156,17 @@ export function matchesKind(e: Pick<CalendarEvent, "vertical">, kind: KindFilter
   if (kind === "season") return false;
   return e.vertical === kind;
 }
-export function matchesCity(e: Pick<CalendarEvent, "marketKey">, city: string): boolean {
-  return city === "all" || e.marketKey === city;
+/**
+ * SH-1 item 4: an event outside its market city is not counted for, or listed under, that city — only under "all".
+ */
+export function matchesCity(e: Pick<CalendarEvent, "marketKey" | "outsideCity">, city: string): boolean {
+  return city === "all" || (e.marketKey === city && !e.outsideCity);
+}
+
+/** SH-1 item 4: the city an event counts toward in "N events · N cities" — its venue city when outside the market. */
+export function countedCityKey(e: Pick<CalendarEvent, "marketKey" | "city" | "outsideCity" | "venueCity" | "venue">): string {
+  if (e.outsideCity) return `venue:${(e.venueCity ?? e.venue).trim().toLowerCase()}`;
+  return e.marketKey ?? e.city;
 }
 export function bandMatches(b: SeasonBand, kind: KindFilter, city: string): boolean {
   return (kind === "all" || kind === "season") && (city === "all" || b.marketKeys.includes(city));
@@ -333,13 +342,17 @@ export function eventWhen(e: Pick<CalendarEvent, "firstDate" | "lastDate" | "sta
 }
 
 /**
- * Where it is. Only a STORED locality that differs from the market city says "outside the city"
- * (ruling A2.5); with none stored the row names the venue and the market city and claims nothing.
+ * Where it is. SH-1 item 4 (ledger `2026-10-19-sh1-venue-city`): the server's placement (`outsideCity`, `venueCity`)
+ * decides — "{Venue}, {Venue city} · Outside the city, planned from {City}". An outside event with no stated venue city
+ * names the venue alone before the note. A card from before the placement fields existed falls back to a STORED
+ * locality that differs from the market city (ruling A2.5); otherwise the row names the venue and the market city.
  */
-export function eventPlace(e: Pick<CalendarEvent, "venue" | "city" | "venueLocality">): string {
+export function eventPlace(e: Pick<CalendarEvent, "venue" | "city" | "venueLocality" | "outsideCity" | "venueCity">): string {
   const loc = e.venueLocality?.trim();
-  if (loc && loc.toLowerCase() !== e.city.trim().toLowerCase()) {
-    return `${e.venue}, ${loc} · outside the city, planned from ${e.city}`;
+  const outside = e.outsideCity ?? (!!loc && loc.toLowerCase() !== e.city.trim().toLowerCase());
+  if (outside) {
+    const vc = e.outsideCity !== undefined ? e.venueCity?.trim() : loc;
+    return `${vc ? `${e.venue}, ${vc}` : e.venue} · Outside the city, planned from ${e.city}`;
   }
   return `${e.venue} · ${e.city}`;
 }

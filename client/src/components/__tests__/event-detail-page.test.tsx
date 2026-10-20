@@ -70,7 +70,7 @@ const render = (p: EventPagePayload, onPlanAround = () => {}) =>
 describe("event page", () => {
   it("ED1 every stated fact renders", () => {
     const html = render(page());
-    for (const s of ["Kyoto Jazz Weekend", "Music", "Expo Commemorative Park", "Suita", "outside the city", "Starts in 12 days", "kyotojazz.example", "Gates open at 11:00.", "from Kyoto Official", "checked 2 Oct 2026", "More in Kyoto", "Gion Matsuri", "/events/gion-matsuri-2027", "3 Kyoto locals"]) {
+    for (const s of ["Kyoto Jazz Weekend", "Music", "Expo Commemorative Park", "Suita", "Outside the city", "Starts in 12 days", "kyotojazz.example", "Gates open at 11:00.", "from Kyoto Official", "checked 2 Oct 2026", "More in Kyoto", "Gion Matsuri", "/events/gion-matsuri-2027", "3 Kyoto locals"]) {
       assert.ok(html.includes(s), s);
     }
     assert.ok(html.includes('rel="nofollow noopener noreferrer"'));
@@ -83,7 +83,7 @@ describe("event page", () => {
     }
     assert.equal(html.includes("Good to know"), false);
     assert.equal(html.includes("verified"), false);
-    assert.equal(html.includes("outside the city"), false);
+    assert.equal(html.includes("Outside the city"), false);
   });
 
   it("ED3 no notes or comments section", () => {

@@ -19,6 +19,7 @@ import {
   showCityEventsStrip,
   type CityEventCard,
   type CityEventsPayload,
+  venueCityLabel,
 } from "@shared/city-events";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
 import { resolveBillboardCredit, type PhotoAttribution } from "@shared/landing-billboard";
@@ -132,8 +133,13 @@ function EventCard({
       )}
       <div className="flex flex-1 flex-col gap-[5px] px-3.5 pb-3.5 pt-3">
         <span className="text-[10px] uppercase tracking-[0.1em]" style={{ fontFamily: EARN_MONO, color: "var(--earn-teal-ink)" }}>
-          {event.city}
-          {event.neighbourhood ? ` · ${event.neighbourhood}` : ""}
+          {/* SH-1 item 4: an event outside the market city names its venue city and no neighbourhood. */}
+          {venueCityLabel(event) ?? (
+            <>
+              {event.city}
+              {event.neighbourhood ? ` · ${event.neighbourhood}` : ""}
+            </>
+          )}
         </span>
         <b className="text-[18px] font-semibold leading-tight" style={{ fontFamily: FRAUNCES, color: "var(--earn-navy)" }}>
           {event.series ?? event.title}
