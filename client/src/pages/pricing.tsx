@@ -70,9 +70,6 @@ interface PricingBundle {
   tripPass: PricingPlanRow;
   plusAnnual: PricingPlanRow;
   proMonthly: PricingPlanRow;
-  proRateStandard: number;
-  proRateStepped: number;
-  railsRate: number;
   proBandStep: number;
   conciergeBooking: { percent: number; capDollars: number; expertSharePercent: number };
   plusSalesEnabled: boolean;
@@ -273,7 +270,7 @@ export default function PricingPage() {
       price: "Free",
       icon: MapPinned,
       checklist: [
-        "Slip up, browse, book — you're in control",
+        "Plan, browse and save, at your own pace",
         `${pct(pricing.serviceFeePct)} service fee, capped at ${dollars(pricing.serviceFeeCapCents)}`,
         "Waived on bookings you make through a provider's link",
       ],
@@ -332,7 +329,7 @@ export default function PricingPage() {
         // writing allowances_snapshot.revisionsRemaining, so a pass sold today is honoured if the
         // lane lands. Do not re-add this line before it does — trip-pass-copy.test.ts fails if you do.
         "No service fee on that trip's bookings",
-        "Usually pays for itself in one booking",
+        "One price for the whole trip",
       ],
       cta: "Get a Trip Pass",
       variant: "coral" as const,
@@ -353,7 +350,7 @@ export default function PricingPage() {
       icon: UserRound,
       checklist: [
         "A named expert takes your trip end to end",
-        "They review, re-route, and book in your name.",
+        "They review and re-route your plan with you.",
         // D-5 (ledger `2026-09-15-d5-no-milestone-billing`): there is NO deposit-then-balance,
         // milestone or instalment billing for expert planning work. A done-for-you event is a
         // coordination engagement whose fee is quoted server-side and captured ONCE
@@ -537,7 +534,7 @@ export default function PricingPage() {
                 onClick={() =>
                   toast({
                     title: "Plus isn't available yet",
-                    description: "We're finishing Plus for your city. Check back shortly.",
+                    description: "Plus isn't open yet.",
                   })
                 }
                 data-testid="button-join-plus-waitlist"
@@ -672,28 +669,10 @@ export default function PricingPage() {
 
           <div className="rounded-2xl border border-[color:var(--earn-border)] bg-[var(--earn-card)] p-6">
             <div className="divide-y divide-[color:var(--earn-border)]">
+              {/* Expert commission percents are not shown here (ledger 2026-10-20-g02-g06-copy). Fee values are unchanged. */}
               <div className="flex items-center justify-between py-3" style={{ fontFamily: EARN_MONO }}>
                 <span className="text-[12px] text-[color:var(--earn-muted)]">
-                  Your commission on platform-sourced bookings
-                </span>
-                <span className="text-[13px] flex items-center gap-2">
-                  <span className="line-through text-[color:var(--earn-faint)]">{pct(pricing.proRateStandard)}</span>
-                  <span className="font-semibold text-[color:var(--earn-green-ink)]" data-testid="text-pro-rate-stepped">
-                    {pct(pricing.proRateStepped)}
-                  </span>
-                </span>
-              </div>
-              <div className="flex items-center justify-between py-3" style={{ fontFamily: EARN_MONO }}>
-                <span className="text-[12px] text-[color:var(--earn-muted)]">
-                  Own-sourced bookings via your short link
-                </span>
-                <span className="text-[13px] font-semibold" data-testid="text-pro-rate-rails">
-                  {pct(pricing.railsRate)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between py-3" style={{ fontFamily: EARN_MONO }}>
-                <span className="text-[12px] text-[color:var(--earn-muted)]">
-                  Demand view · wanted slots, trend, lead-time
+                  Demand view · wanted slots, lead time
                 </span>
                 <span className="text-[13px] font-semibold text-[color:var(--earn-teal-ink)]">included</span>
               </div>
