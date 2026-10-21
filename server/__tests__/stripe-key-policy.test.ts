@@ -47,8 +47,20 @@ test("checkStripeKeyPrefix: prod-strict + sk_live_ → ok", () => {
 test("checkStripeKeyPrefix: prod-strict + sk_test_ → FAILS (live key required in prod)", () => {
   const result = checkStripeKeyPrefix("sk_test_abcdef123456", true);
   assert.equal(result.ok, false);
-  assert.match(result.reason!, /must be a live secret key/);
+  assert.match(result.reason!, /must be a live key/);
   // Never leaks the full key — only an 8-char prefix preview.
+  assert.doesNotMatch(result.reason!, /abcdef123456/);
+});
+
+test("checkStripeKeyPrefix: prod-strict + rk_live_ → ok (restricted live key)", () => {
+  const result = checkStripeKeyPrefix("rk_live_abcdef123456", true);
+  assert.equal(result.ok, true);
+  assert.equal(result.reason, undefined);
+});
+
+test("checkStripeKeyPrefix: prod-strict + rk_test_ → FAILS", () => {
+  const result = checkStripeKeyPrefix("rk_test_abcdef123456", true);
+  assert.equal(result.ok, false);
   assert.doesNotMatch(result.reason!, /abcdef123456/);
 });
 
@@ -57,10 +69,22 @@ test("checkStripeKeyPrefix: non-prod + sk_test_ → ok", () => {
   assert.equal(result.ok, true);
 });
 
+test("checkStripeKeyPrefix: non-prod + rk_test_ → ok (restricted test key)", () => {
+  const result = checkStripeKeyPrefix("rk_test_abcdef123456", false);
+  assert.equal(result.ok, true);
+});
+
 test("checkStripeKeyPrefix: non-prod + sk_live_ → FAILS (live key forbidden outside prod — the money-safety half)", () => {
   const result = checkStripeKeyPrefix("sk_live_abcdef123456", false);
   assert.equal(result.ok, false);
-  assert.match(result.reason!, /TEST secret key/);
+  assert.match(result.reason!, /must be a test key/);
+  assert.doesNotMatch(result.reason!, /abcdef123456/);
+});
+
+test("checkStripeKeyPrefix: non-prod + rk_live_ → FAILS (live restricted key forbidden outside prod)", () => {
+  const result = checkStripeKeyPrefix("rk_live_abcdef123456", false);
+  assert.equal(result.ok, false);
+  assert.match(result.reason!, /must be a test key/);
   assert.doesNotMatch(result.reason!, /abcdef123456/);
 });
 

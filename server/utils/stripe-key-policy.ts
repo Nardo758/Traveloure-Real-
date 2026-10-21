@@ -2,14 +2,13 @@
  * Pure Stripe-key environment/prefix policy.
  *
  * Extracted from server/validate-env.ts (the primary, boot-time enforcement site) so the
- * "sk_live_ required in prod / sk_test_ required everywhere else" rule has exactly ONE
- * implementation. validate-env.ts calls this to decide whether to throw at boot; the H3
- * runtime-health check (server/services/runtime-health.service.ts) calls the SAME functions
- * to re-assert the rule as a read-only nightly signal, rather than re-deriving it (the same
- * "single implementation" discipline CLAUDE.md applies to fee literals, applied here to a
- * security rule instead). server/services/stripe.service.ts carries its own defense-in-depth
- * duplicate of this check (documented there as intentional, secondary enforcement) — left
- * untouched, out of scope for this file.
+ * "live key required in prod / test key required everywhere else" rule has exactly ONE
+ * implementation. A live key is `sk_live_` or `rk_live_`. A test key is `sk_test_` or
+ * `rk_test_`. Restricted keys (`rk_`) take the same split as secret keys (ledger
+ * `2026-10-21-saved-method-required`). validate-env.ts calls this to decide whether to
+ * throw at boot; the H3 runtime-health check (server/services/runtime-health.service.ts)
+ * calls the SAME functions to re-assert the rule as a read-only signal. stripe.service.ts
+ * calls this function too (ENVIRONMENT===PROD only) so the prefix list cannot drift.
  *
  * No side effects, no `process.env` read at import time — safe to import from a unit test
  * without triggering a boot-time throw.
@@ -33,34 +32,42 @@ export function isProdStrictEnv(env: NodeJS.ProcessEnv = process.env): boolean {
   );
 }
 
+const LIVE_KEY_PREFIXES = ["sk_live_", "rk_live_"] as const;
+const TEST_KEY_PREFIXES = ["sk_test_", "rk_test_"] as const;
+
+function hasKeyPrefix(key: string, prefixes: readonly string[]): boolean {
+  return prefixes.some((prefix) => key.startsWith(prefix));
+}
+
 /**
  * Validates a STRIPE_SECRET_KEY's prefix against the prod-strict rule:
- *   - prod-strict  ⇒ must start with "sk_live_"
- *   - otherwise    ⇒ must start with "sk_test_"
+ *   - prod-strict  ⇒ must start with "sk_live_" or "rk_live_"
+ *   - otherwise    ⇒ must start with "sk_test_" or "rk_test_"
  *
- * Never logs or returns the full key — only its first 8 characters, matching validate-env.ts's
- * existing truncation convention.
+ * A live restricted key is rejected outside production the same way a live secret
+ * key is. Never logs or returns the full key — only its first 8 characters, matching
+ * validate-env.ts's existing truncation convention.
  */
 export function checkStripeKeyPrefix(key: string, isProdStrict: boolean): StripeKeyPrefixCheck {
   const prefixPreview = key.slice(0, 8);
 
   if (isProdStrict) {
-    if (!key.startsWith("sk_live_")) {
+    if (!hasKeyPrefix(key, LIVE_KEY_PREFIXES)) {
       return {
         ok: false,
-        reason: `STRIPE_SECRET_KEY must be a live secret key (sk_live_...) in production. Current value's prefix is "${prefixPreview}...".`,
+        reason: `STRIPE_SECRET_KEY must be a live key (sk_live_ or rk_live_) in production. Current value's prefix is "${prefixPreview}...".`,
       };
     }
     return { ok: true };
   }
 
-  if (!key.startsWith("sk_test_")) {
+  if (!hasKeyPrefix(key, TEST_KEY_PREFIXES)) {
     return {
       ok: false,
       reason:
-        `STRIPE_SECRET_KEY must be a TEST secret key (sk_test_...) outside production. ` +
-        `Live keys (sk_live_...) are a hard stop in dev/E2E — real Stripe objects would be created ` +
-        `against the live account. Current value's prefix is "${prefixPreview}...".`,
+        `STRIPE_SECRET_KEY must be a test key (sk_test_ or rk_test_) outside production. ` +
+        `Live keys (sk_live_ or rk_live_) are a hard stop in dev and E2E — a live key would create ` +
+        `real Stripe objects. Current value's prefix is "${prefixPreview}...".`,
     };
   }
   return { ok: true };

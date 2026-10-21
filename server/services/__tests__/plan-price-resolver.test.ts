@@ -81,7 +81,7 @@ describe("plan price resolver — mode comes from the key prefix", () => {
   });
 
   test("R6: an unrecognised prefix is refused, never guessed into a mode", () => {
-    for (const k of ["rk_live_abc", "pk_test_abc", "abc123", "sk_abc"]) {
+    for (const k of ["pk_test_abc", "pk_live_abc", "abc123", "sk_abc", "rk_abc"]) {
       const r = resolvePlanPriceId({
         secretKey: k,
         stripePriceIdTest: P_TEST,
@@ -91,6 +91,21 @@ describe("plan price resolver — mode comes from the key prefix", () => {
       assert.equal(r.ok === false && r.reason, "unrecognised_key_mode");
       assert.equal(r.mode, null);
     }
+  });
+
+  test("R6b: a restricted key resolves the price column for its own mode", () => {
+    const live = resolvePlanPriceId({
+      secretKey: "rk_live_abc",
+      stripePriceIdTest: P_TEST,
+      stripePriceIdLive: P_LIVE,
+    });
+    assert.deepEqual(live, { ok: true, priceId: P_LIVE, mode: "live" });
+    const testMode = resolvePlanPriceId({
+      secretKey: "rk_test_abc",
+      stripePriceIdTest: P_TEST,
+      stripePriceIdLive: P_LIVE,
+    });
+    assert.deepEqual(testMode, { ok: true, priceId: P_TEST, mode: "test" });
   });
 
   test("R7: a BLANK column is NOT a price id — treated as never configured", () => {
@@ -117,11 +132,14 @@ describe("plan price resolver — mode comes from the key prefix", () => {
   test("R9: resolveStripeMode is total — every input lands on test, live or null", () => {
     assert.equal(resolveStripeMode("sk_test_x"), "test");
     assert.equal(resolveStripeMode("sk_live_x"), "live");
+    assert.equal(resolveStripeMode("rk_test_x"), "test");
+    assert.equal(resolveStripeMode("rk_live_x"), "live");
     assert.equal(resolveStripeMode("sk_test_ci_stub_key"), "test"); // the CI stub is a test key
     assert.equal(resolveStripeMode(""), null);
     assert.equal(resolveStripeMode(undefined), null);
     assert.equal(resolveStripeMode(null), null);
     assert.equal(resolveStripeMode("whatever"), null);
+    assert.equal(resolveStripeMode("rk_"), null);
   });
 
   test("R10: a refusal sentence names the COLUMN an operator must fill, and the expected prefixes", () => {
@@ -138,6 +156,7 @@ describe("plan price resolver — mode comes from the key prefix", () => {
     // pinning is the signature, asserted below, not the wording.
     const unknown = describePlanPriceRefusal("unrecognised_key_mode", null);
     assert.ok(unknown.includes("sk_test_") && unknown.includes("sk_live_"), unknown);
+    assert.ok(unknown.includes("rk_test_") && unknown.includes("rk_live_"), unknown);
     assert.equal(describePlanPriceRefusal.length, 2, "takes (reason, mode) only — no key parameter");
 
     // Every (reason, mode) pair produces a non-empty sentence: no refusal is nameless (§13).

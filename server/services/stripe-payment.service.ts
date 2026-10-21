@@ -42,6 +42,8 @@ import { upsertStripeMembership } from "./plan-membership-writer.service";
 import { isCanonicalBookingEmailPersistenceError } from "./canonical-booking-email.service";
 import { dispatchPaymentTrigger } from "../automations/payments/runtime";
 import { runUnderWebhookClaim } from "./webhook-claim.service";
+import { customerCreateIdempotencyKey, customerIdAfterCreate } from "./stripe-customer-create";
+import { vaultRecordLogLine, vaultWebhookDisposition } from "./vault-webhook";
 
 export const stripe = new Stripe(getStripeSecretKey() || '', {
   apiVersion: '2024-12-18.acacia' as any,
@@ -246,7 +248,7 @@ class StripePaymentService {
   //
   // The durable customer layer. Cards are vaulted by Stripe only — this codebase stores just
   // users.stripe_customer_id (migration 146) and reads payment_method ids live from Stripe.
-  // Replaces the fragile per-request customers.list({email}) lookup optimization.routes.ts had.
+  // Create is idempotent on the user id. An email-matched Customer is never adopted.
 
   isReady(): boolean {
     return !!getStripeSecretKey();
@@ -254,8 +256,15 @@ class StripePaymentService {
 
   /**
    * Get (or lazily create) the user's Stripe Customer, persisting the id. Resolution order:
-   * persisted id → email search (adopts a customer an older flow created) → create. Returns
-   * null when Stripe is unconfigured or the user has no email (never fabricates).
+   * persisted id, otherwise create. Returns null when Stripe is unconfigured or the user has
+   * no email (never fabricates). An email match is never adopted: `customers.list({ email })`
+   * can attach someone else's Customer (ledger `2026-10-21-saved-method-required`).
+   *
+   * Create is idempotent on the user id. Two concurrent creates therefore receive one
+   * Customer. The conditional update stores it only while the column is still NULL; a loser
+   * re-reads and returns the stored id, and does not use a Customer this attempt created
+   * when that id differs. `idempotencyKey` overrides the default for a recovery after a
+   * deleted Customer, which must not replay the deleted id.
    *
    * NOTE: this does NOT validate that a persisted id still exists in Stripe — that would cost
    * an extra API call on every hot-path invocation. A stored id can go stale (a row carrying a
@@ -264,7 +273,7 @@ class StripePaymentService {
    * Recovery from that lives in `retryOnMissingCustomer`/`withResolvedCustomer` below, at the
    * call sites that make the Stripe request — not here.
    */
-  async getOrCreateCustomer(userId: string): Promise<string | null> {
+  async getOrCreateCustomer(userId: string, opts?: { idempotencyKey?: string }): Promise<string | null> {
     if (!this.isReady()) return null;
     const existing = await db.execute(sql`
       SELECT stripe_customer_id, email, first_name, last_name FROM users WHERE id = ${userId} LIMIT 1
@@ -272,25 +281,56 @@ class StripePaymentService {
     const row = existing.rows?.[0] as any;
     if (!row) return null;
     if (row.stripe_customer_id) return String(row.stripe_customer_id);
+    if (!row.email) return null;
 
-    let customerId: string | null = null;
-    if (row.email) {
-      const found = await stripe.customers.list({ email: row.email, limit: 1 });
-      if (found.data.length > 0) customerId = found.data[0].id;
+    const idempotencyKey = opts?.idempotencyKey ?? customerCreateIdempotencyKey(userId);
+    let createdId: string;
+    try {
+      const created = await stripe.customers.create(
+        {
+          email: row.email,
+          name: [row.first_name, row.last_name].filter(Boolean).join(' ') || undefined,
+          metadata: { userId },
+        },
+        { idempotencyKey },
+      );
+      createdId = created.id;
+    } catch (err) {
+      // Same key, different parameters (email or name changed while the first
+      // request was in flight). If that request stored an id, use it. Do not
+      // create a second Customer under a new key.
+      const code = (err as { code?: string } | null)?.code;
+      if (code === 'idempotency_error') {
+        const stored = await this.readStoredStripeCustomerId(userId);
+        if (stored) return stored;
+      }
+      throw err;
     }
-    if (!customerId) {
-      if (!row.email) return null;
-      const created = await stripe.customers.create({
-        email: row.email,
-        name: [row.first_name, row.last_name].filter(Boolean).join(' ') || undefined,
-        metadata: { userId },
-      });
-      customerId = created.id;
-    }
-    await db.execute(sql`
-      UPDATE users SET stripe_customer_id = ${customerId} WHERE id = ${userId} AND stripe_customer_id IS NULL
+
+    const updated = await db.execute(sql`
+      UPDATE users SET stripe_customer_id = ${createdId}
+      WHERE id = ${userId} AND stripe_customer_id IS NULL
+      RETURNING stripe_customer_id
     `);
-    return customerId;
+    const returned = (updated.rows?.[0] as { stripe_customer_id?: string } | undefined)?.stripe_customer_id;
+    const updateReturnedId = returned ? String(returned) : null;
+    const rereadId = updateReturnedId ? null : await this.readStoredStripeCustomerId(userId);
+    const decision = customerIdAfterCreate({ createdId, updateReturnedId, rereadId });
+    if (decision.orphanedCreatedId) {
+      logger.warn(
+        { userId, createdCustomerId: decision.orphanedCreatedId, storedCustomerId: decision.returnId },
+        '[stripe] customer create was not the id stored for this user; the stored id is the one that will be used',
+      );
+    }
+    return decision.returnId;
+  }
+
+  private async readStoredStripeCustomerId(userId: string): Promise<string | null> {
+    const reread = await db.execute(sql`
+      SELECT stripe_customer_id FROM users WHERE id = ${userId} LIMIT 1
+    `);
+    const stored = (reread.rows?.[0] as { stripe_customer_id?: string | null } | undefined)?.stripe_customer_id;
+    return stored ? String(stored) : null;
   }
 
   /**
@@ -311,15 +351,18 @@ class StripePaymentService {
 
   /**
    * Recovery step for a confirmed-stale customer id: clear it (guarded so a concurrent
-   * recovery that already fixed the row isn't clobbered) and mint+persist a fresh customer via
-   * getOrCreateCustomer's own search-by-email/create flow. Returns null if no fresh customer
-   * could be created (e.g. the user has no email) so the caller can surface the ORIGINAL error.
+   * recovery that already fixed the row isn't clobbered) and mint+persist a fresh customer.
+   * The create key includes the stale id so Stripe does not replay the deleted Customer.
+   * Returns null if no fresh customer could be created (e.g. the user has no email) so the
+   * caller can surface the ORIGINAL error.
    */
   private async recreateCustomer(userId: string, staleCustomerId: string): Promise<string | null> {
     await db.execute(sql`
       UPDATE users SET stripe_customer_id = NULL WHERE id = ${userId} AND stripe_customer_id = ${staleCustomerId}
     `);
-    return this.getOrCreateCustomer(userId);
+    return this.getOrCreateCustomer(userId, {
+      idempotencyKey: customerCreateIdempotencyKey(userId, staleCustomerId),
+    });
   }
 
   /**
@@ -813,6 +856,12 @@ class StripePaymentService {
       // claim is a replay and skipped; a live claim held by another delivery answers 500 so Stripe
       // retries; a failure records `error`, leaves `completed_at` NULL and answers 500.
       const claimOutcome = await runUnderWebhookClaim(event, "platform", event, async () => {
+      // Saved-method events are a record only. They must not fall through into a
+      // payment handler, and they must not grow a local card table.
+      if (vaultWebhookDisposition(event.type) === "record_only") {
+        console.info(vaultRecordLogLine(event.type));
+        return;
+      }
       switch (event.type) {
         case 'payment_intent.succeeded':
           await this.handlePaymentSucceeded(event.data.object as Stripe.PaymentIntent);

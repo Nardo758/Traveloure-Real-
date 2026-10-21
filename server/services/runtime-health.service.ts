@@ -271,7 +271,7 @@ export function runH3LiveKeySanity(): QAResults {
     H3: {
       pass: check.ok,
       detail: check.ok
-        ? `OK: key prefix matches the ${prodStrict ? "production (sk_live_)" : "non-production (sk_test_)"} rule (${envLabel}).`
+        ? `OK: key prefix matches the ${prodStrict ? "production (sk_live_ or rk_live_)" : "non-production (sk_test_ or rk_test_)"} rule (${envLabel}).`
         : `FAIL: ${check.reason} (${envLabel}, prod-strict=${prodStrict}).`,
     },
   };
