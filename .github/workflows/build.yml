@@ -472,6 +472,10 @@ jobs:
       - if: ${{ !cancelled() }}
         name: Pending supply application timeline
         run: npx tsx --test shared/__tests__/application-status.test.ts
+      # City-knowledge pass rule, retakes, and the Kyoto fact-check pins. No database.
+      - if: ${{ !cancelled() }}
+        name: City-knowledge scoring
+        run: npx tsx --test shared/__tests__/city-knowledge-scoring.test.ts
       # CP-2: the /earn and /become-provider "keep N%" lines are built from the live bands only.
       - if: ${{ !cancelled() }}
         name: Fee keep copy pin (CP-2)
