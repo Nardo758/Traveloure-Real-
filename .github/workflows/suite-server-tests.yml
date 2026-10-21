@@ -130,6 +130,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/blog-footer-count.db.test.ts
       - name: LW-1h waitlist retention — opening stamp, never-converted rows only, audited deletes (node:test)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/waitlist-retention.db.test.ts
+      - name: S-22 waitlist apply path — live city invite once, no invite otherwise (node:test)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/s22-waitlist-apply.db.test.ts
       - name: GH-1 Google hours never stored or read; outcome rows in whole cents (node:test)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/gh1-no-google-hours.db.test.ts
       - name: CP-3 share image prints the author's own /r/ link — this trip only, /t/ otherwise (node:test)

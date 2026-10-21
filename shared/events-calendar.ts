@@ -18,6 +18,7 @@
  * city" line is drawn only where a locality is STORED and differs from the market city.
  */
 import type { CityEventCard, CityEventVertical } from "./city-events";
+import { namedArea } from "./fever-area";
 
 /**
  * One dated event as the calendar read sends it: the landing card plus the two fields the
@@ -32,6 +33,13 @@ export interface CalendarEvent extends CityEventCard {
    * Only the calendar read carries it; the landing strip's payload is unchanged.
    */
   sourceId: string;
+  /**
+   * A dated partner-catalog event (ledger `2026-10-21-event-card-partner-area`). It has no
+   * `city_events` page, so "Event details" is omitted. Absent on every city-event row.
+   */
+  partner?: boolean;
+  /** The approved partner's stored name. Null when the lookup found none — never a guessed name. */
+  partnerName?: string | null;
 }
 
 /**
@@ -354,7 +362,9 @@ export function eventPlace(e: Pick<CalendarEvent, "venue" | "city" | "venueLocal
     const vc = e.outsideCity !== undefined ? e.venueCity?.trim() : loc;
     return `${vc ? `${e.venue}, ${vc}` : e.venue} · Outside the city, planned from ${e.city}`;
   }
-  return `${e.venue} · ${e.city}`;
+  const venue = namedArea(e.venue);
+  if (!venue) return e.city.trim();
+  return `${venue} · ${e.city}`;
 }
 
 /** The soonest event in a list — the "Next up" chip. */

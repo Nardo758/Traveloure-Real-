@@ -49,6 +49,7 @@ import {
   clearApplicationDraft,
   describeSubmitError,
 } from "@/lib/application-draft";
+import { providerApplicationPrefillFromSearch } from "@shared/waitlist-apply-invite";
 
 // Namespaced so the expert and provider funnels' drafts never collide.
 const DRAFT_KEY = "traveloure_provider_application_draft";
@@ -128,8 +129,9 @@ export default function ServicesProviderPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const _urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
-  const _cityFromUrl = _urlParams.get('city') || '';
-  const _countryFromUrl = _urlParams.get('country') || '';
+  // S-22: a waitlist apply link prefills the fields this form already asks. A saved draft still wins
+  // (spread below). The signed-in email fill stays empty-only, so a link's email is kept.
+  const prefill = providerApplicationPrefillFromSearch(_urlParams.toString());
   // Offering carried from /earn ("I do this →") — pre-selects this offering in
   // the application. offeringTypeKey is the one canonical param across both
   // signup paths (the legacy offeringType spelling is retired).
@@ -137,16 +139,16 @@ export default function ServicesProviderPage() {
   const offeringNameFromUrl = _urlParams.get('offeringName') || '';
 
   const defaultFormData = {
-    businessName: "",
+    businessName: prefill.businessName,
     businessType: "",
     registrationNumber: "",
     taxId: "",
-    email: "",
+    email: prefill.email,
     phone: "",
     website: "",
     address: "",
-    city: _cityFromUrl,
-    country: _countryFromUrl,
+    city: prefill.city,
+    country: prefill.country,
     serviceCategories: [] as string[],
     description: "",
     // Gap 4 (ledger `2026-09-04-earn-contained-fixes`): `capacity`, `priceRange` and
@@ -513,6 +515,11 @@ export default function ServicesProviderPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                {!savedDraft && prefill.serviceTypeLabel ? (
+                  <p className="break-words text-sm text-muted-foreground" data-testid="text-waitlist-service-type">
+                    Type of service you named: {prefill.serviceTypeLabel}
+                  </p>
+                ) : null}
                 {/* QA F12(b): step 1's four required fields carry the same `*` + `aria-required`
                     marker the rest of the codebase uses. The four marked here are EXACTLY the four
                     `canProceed()` case 1 gates on — Business Name, Business Type, Email, Phone.
@@ -570,7 +577,7 @@ export default function ServicesProviderPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
                     <Label className="text-[#374151]">Email <span className="text-red-500">*</span></Label>
                     <Input
