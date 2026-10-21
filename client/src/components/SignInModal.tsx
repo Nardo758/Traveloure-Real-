@@ -219,11 +219,16 @@ export function SignInModal({
   };
 
   const handleReplitSignIn = () => {
-    if (returnTo) {
-      sessionStorage.setItem("traveloure_return_to", returnTo);
-    }
-    // LW-1b: a supply door carries its intent (and the page to return to) through the round trip.
-    window.location.href = intent === "supply" ? socialSignInHref("/api/login", { intent, returnTo, source: supplySourceTag(window.location.search) }) : "/api/login";
+    // Every role returns to the door's path, or to the page the guest is on when the door
+    // names none. A bare /api/login drops that path and the callback falls through to /dashboard.
+    const here = `${window.location.pathname}${window.location.search}`;
+    const dest = sanitizeReturnTo(returnTo) ?? sanitizeReturnTo(here);
+    if (dest) sessionStorage.setItem("traveloure_return_to", dest);
+    window.location.href = socialSignInHref("/api/login", {
+      intent,
+      returnTo: dest,
+      source: supplySourceTag(window.location.search),
+    });
   };
 
   return (
