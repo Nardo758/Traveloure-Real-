@@ -2115,8 +2115,13 @@ export const MIGRATION_FILES = [
   // 399 — DATA ONLY: the IMAGINE NOH continuous-run row (manual / imagine-noh-2026) gets withdrawn_at while it is still
   // live; nothing deleted. The four shows are seeded as one row each. SH-1 item 5, ledger 2026-10-19-sh1-show-dates.
   "399_imagine_noh_run_withdrawn.sql",
+  // 400 — Kyoto feed cleanup. Additive nullable columns on travel_pulse_hidden_gems (hidden_at, hours,
+  // admission, source_url, image_credit, fact_checked_on, description_hidden_at) and travel_pulse_happening_now.hidden_at
+  // (no DEFAULT/CHECK/index) plus the idempotent Kyoto hide, reword, neighbourhood and card data.
+  // The Meguro River light-up is hidden by title and not deleted. Ledger 2026-10-20-kyoto-feed-cleanup.
+  "400_kyoto_feed_cleanup.sql",
   // 401 — fever_address_geocodes: permanent Nominatim cache for a Fever address that has no coordinates.
-  // 400 is the hide-flag migration on the PR that merges first. PK only, no DEFAULT, no CHECK, no extra
-  // index. Ledger 2026-10-21-blog-checks-fever-area. Declared in shared/schema.ts.
+  // PK only, no DEFAULT, no CHECK, no extra index. Ledger 2026-10-21-blog-checks-fever-area. Declared in
+  // shared/schema.ts.
   "401_fever_address_geocodes.sql",
 ] as const;

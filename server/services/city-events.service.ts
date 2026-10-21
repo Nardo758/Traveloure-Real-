@@ -77,6 +77,12 @@ export interface CityEventSeedEntry {
   billedArtists?: string | null;
   blurb?: string | null;
   imagePath?: string | null;
+  /**
+   * Ticket sales have closed (or the card must not offer Plan around it). The insert stamps
+   * `withdrawn_at`. An existing row is left to the migration that withdraws it: this seeder is
+   * insert-only (ledger `2026-10-20-kyoto-feed-cleanup`).
+   */
+  withdrawn?: boolean;
 }
 
 export type CityEventRefusal =
@@ -158,6 +164,7 @@ export function buildCityEventRow(
       // same pair migration 362 backfills, so the free draft keeps its events list.
       sourceClass: "public",
       reuseClass: "link_only",
+      ...(entry.withdrawn ? { withdrawnAt: new Date() } : {}),
     },
   };
 }

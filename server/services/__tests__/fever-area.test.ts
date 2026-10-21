@@ -206,6 +206,23 @@ test("FA6: the table keeps the first answer, including a miss", async () => {
   }
 });
 
+test("FA8: a refused Fever title is dropped before any geocode", async () => {
+  let calls = 0;
+  const out = await toPublicFeverEvents(
+    [
+      event({ id: "blocked", title: "Hidden gems of Kyoto", venue: { name: "Hall", address: "9 Test Street" } }),
+      event({ id: "kept", title: "A night out", venue: { name: "Hall", coordinates: { lat: 35.0036, lng: 135.775 } } }),
+    ],
+    areaDeps({
+      neighborhoods: async () => [GION],
+      fetchImpl: async () => { calls++; return { ok: true, json: async () => [] }; },
+    }),
+  );
+  assert.equal(calls, 0);
+  assert.deepEqual(out.map((row) => row.id), ["kept"]);
+  assert.equal(out[0].areaName, "Gion");
+});
+
 test("FA7: geocoding is skipped when no contact email is configured, and a warm cache is still read", async () => {
   let calls = 0;
   const cold = memoryCache();

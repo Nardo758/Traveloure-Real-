@@ -30,6 +30,7 @@ import { feverService } from "./fever.service";
 import { toPublicFeverEvents } from "./fever-public";
 import { resolveBookability } from "@shared/bookability";
 import { toGemTeaser } from "@shared/gem-teaser";
+import { visibleGemCondition } from "./gem-visibility";
 import type { GemCuratedBy } from "@shared/gem-curated-by";
 import { buildTrendContext, normalizeInventoryClass, type InventoryClass } from "@shared/discover-stub";
 import {
@@ -361,7 +362,7 @@ class LocationViewService {
             count: sql<number>`cast(count(*) as int)`,
           })
           .from(travelPulseHiddenGems)
-          .where(eq(travelPulseHiddenGems.city, cityName))
+          .where(and(eq(travelPulseHiddenGems.city, cityName), visibleGemCondition()))
           .groupBy(travelPulseHiddenGems.neighborhood),
         db
           .select({
@@ -384,7 +385,7 @@ class LocationViewService {
         db
           .select()
           .from(travelPulseHiddenGems)
-          .where(eq(travelPulseHiddenGems.city, cityName))
+          .where(and(eq(travelPulseHiddenGems.city, cityName), visibleGemCondition()))
           .orderBy(desc(travelPulseHiddenGems.gemScore))
           // CS-1 item 1: no image of a place under a no_photos block.
           .then(async (rows) => { const blocks = await photoBlocks(); return rows.map((g) => hideBlockedGemImage(g, blocks)); }),
@@ -482,7 +483,7 @@ class LocationViewService {
     const gemsPromise = db
       .select()
       .from(travelPulseHiddenGems)
-      .where(eq(travelPulseHiddenGems.city, cityName))
+      .where(and(eq(travelPulseHiddenGems.city, cityName), visibleGemCondition()))
       .orderBy(desc(travelPulseHiddenGems.gemScore))
       // CS-1 item 1: no image of a place under a no_photos block.
       .then(async (rows) => { const blocks = await photoBlocks(); return rows.map((g) => hideBlockedGemImage(g, blocks)); })

@@ -4995,6 +4995,21 @@ export const travelPulseHiddenGems = pgTable("travel_pulse_hidden_gems", {
   verifiedBy: varchar("verified_by"),
   verifiedAt: timestamp("verified_at"),
   expiresAt: timestamp("expires_at"),
+  // Kyoto feed cleanup (migration 400; ledger `2026-10-20-kyoto-feed-cleanup`).
+  // Nullable, no DEFAULT, no CHECK, no index. hidden_at NULL = on the traveler feed;
+  // a timestamp withdraws the card. hours, admission, source_url, image_credit and
+  // fact_checked_on are the official fact line and photo credit. Server-stamped only —
+  // omitted from the insert schema (§19). discovery_status is not this flag.
+  hiddenAt: timestamp("hidden_at"),
+  hours: text("hours"),
+  admission: text("admission"),
+  sourceUrl: text("source_url"),
+  imageCredit: text("image_credit"),
+  factCheckedOn: date("fact_checked_on"),
+  // Set when description or why_locals_love_it still contains a banned phrase with no
+  // approved swap (hidden gem(s), or geisha outside "geisha district"). The stored text
+  // stays. NULL = the copy may be shown. Nullable, no DEFAULT, no CHECK, no index.
+  descriptionHiddenAt: timestamp("description_hidden_at"),
   // Timestamps
   detectedAt: timestamp("detected_at").defaultNow(),
   lastUpdated: timestamp("last_updated").defaultNow(),
@@ -5417,6 +5432,9 @@ export const travelPulseHappeningNow = pgTable("travel_pulse_happening_now", {
   
   isLive: boolean("is_live").default(false),
   detectedAt: timestamp("detected_at").defaultNow(),
+  // Migration 400. Nullable, no DEFAULT, no CHECK, no index. NULL = on the feed.
+  // A timestamp hides the row. The Sakura Light-Up title is hidden, not deleted.
+  hiddenAt: timestamp("hidden_at"),
 });
 
 // Extended TravelPulse schemas and types
@@ -5471,11 +5489,11 @@ export const cityMediaCache = pgTable("city_media_cache", {
 });
 
 export const insertTravelPulseCitySchema = createInsertSchema(travelPulseCities).omit({ id: true, lastUpdated: true, createdAt: true });
-export const insertTravelPulseHiddenGemSchema = createInsertSchema(travelPulseHiddenGems).omit({ id: true, detectedAt: true, lastUpdated: true, sourceClass: true, reuseClass: true, authorLabel: true, verifiedBy: true, verifiedAt: true, expiresAt: true });
+export const insertTravelPulseHiddenGemSchema = createInsertSchema(travelPulseHiddenGems).omit({ id: true, detectedAt: true, lastUpdated: true, sourceClass: true, reuseClass: true, authorLabel: true, verifiedBy: true, verifiedAt: true, expiresAt: true, hiddenAt: true, hours: true, admission: true, sourceUrl: true, imageCredit: true, factCheckedOn: true, descriptionHiddenAt: true });
 export const insertTravelPulseLiveActivitySchema = createInsertSchema(travelPulseLiveActivity).omit({ id: true, occurredAt: true });
 export const insertTravelPulseDiscoveryScoreSchema = createInsertSchema(travelPulseDiscoveryScores).omit({ id: true, lastActivityAt: true, createdAt: true });
 export const insertTravelPulseCityAlertSchema = createInsertSchema(travelPulseCityAlerts).omit({ id: true, createdAt: true });
-export const insertTravelPulseHappeningNowSchema = createInsertSchema(travelPulseHappeningNow).omit({ id: true, detectedAt: true });
+export const insertTravelPulseHappeningNowSchema = createInsertSchema(travelPulseHappeningNow).omit({ id: true, detectedAt: true, hiddenAt: true });
 export const insertCityMediaCacheSchema = createInsertSchema(cityMediaCache).omit({ id: true, fetchedAt: true });
 
 export type TravelPulseCity = typeof travelPulseCities.$inferSelect;
