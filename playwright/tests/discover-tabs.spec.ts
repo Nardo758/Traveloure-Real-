@@ -485,9 +485,9 @@ test.describe('city-feed bento — /discover/location', () => {
     for (const slug of ['gion', 'arashiyama']) {
       const tiles = await bentoTiles(page, slug);
       expect(tiles.length).toBeGreaterThan(0);
-      // Gion has an eligible local anchor; Arashiyama deliberately has no
-      // eligible expert, so it renders anchorless.
-      const expectedAnchors = slug === 'gion' ? 1 : 0;
+      // Gion's hero is the lead expert. Arashiyama has no expert and no
+      // ready-made, so its hero is the Wanted tile.
+      const expectedAnchors = 1;
       expect(tiles.filter((t) => t.role === 'anchor')).toHaveLength(expectedAnchors);
       // §3.2 may pull one ready-made to the leading slot in an anchorless
       // section. Every other non-anchor tile keeps its stream position.
@@ -538,13 +538,16 @@ test.describe('city-feed bento — /discover/location', () => {
       }
     }
     // Gion's anchor is the lead EXPERT → row-span-2 (full-section-height lead).
-    // Arashiyama has no anchor at all (the ready-made lead retired with its lane).
+    // Arashiyama's hero is the Wanted tile: wide, and not a tall expert.
     await expect(
       page.locator('[data-testid="bento-section-gion"] [data-bento-role="anchor"]'),
     ).toHaveAttribute('data-row-span', '2');
     await expect(
       page.locator('[data-testid="bento-section-arashiyama"] [data-bento-role="anchor"]'),
-    ).toHaveCount(0);
+    ).toHaveCount(1);
+    await expect(
+      page.locator('[data-testid="bento-section-arashiyama"] [data-bento-role="anchor"]'),
+    ).toHaveAttribute('data-row-span', '1');
   });
 
   test('5a. §3 rows use minmax(0, auto) and compact badges/actions remain inside their tiles', async ({ page }) => {
@@ -648,7 +651,12 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(page.getByTestId('bento-section-ohara')).not.toBeAttached();
     await expect(page.getByTestId('bento-section-arashiyama')).not.toBeAttached();
     const gionTiles = page.locator('[data-testid="bento-section-gion"] [data-testid^="bento-tile-"]');
-    await expect(gionTiles).toHaveCount(1);
+    // The expert is not an Eat tile, so the hero falls through to Wanted and
+    // the one matching gem stays beside it.
+    await expect(gionTiles).toHaveCount(2);
+    await expect(
+      page.locator('[data-testid="bento-section-gion"] [data-bento-role="anchor"]'),
+    ).toHaveAttribute('data-testid', 'bento-tile-neighbourhood-wanted-hero-gion');
     await expect(
       page.locator('[data-testid="bento-section-gion"] [data-testid="feed-card-gem-g-gion-3"]'),
     ).toHaveCount(1);
@@ -983,9 +991,9 @@ test.describe('city-feed bento — /discover/location', () => {
     );
     const oharaTiles = page.locator('[data-testid="bento-section-ohara"] [data-testid^="bento-tile-"]');
     await expect(oharaTiles).toHaveCount(1);
-    const wanted = page.getByTestId('bento-tile-wanted-ohara');
-    await expect(wanted).toHaveAttribute('data-bento-role', 'tile');
-    await expect(wanted).toHaveAttribute('data-col-span', '1');
+    const wanted = page.getByTestId('bento-tile-neighbourhood-wanted-hero-ohara');
+    await expect(wanted).toHaveAttribute('data-bento-role', 'anchor');
+    await expect(wanted).toHaveAttribute('data-col-span', '2');
     await expect(wanted).toHaveAttribute('data-row-span', '1');
     const join = page.getByTestId('link-neighbourhood-join-ohara');
     await expect(join).toHaveText('Join Traveloure');
@@ -1006,13 +1014,52 @@ test.describe('city-feed bento — /discover/location', () => {
     ).toHaveCount(1);
     await expect(
       page.locator('[data-testid="bento-section-arashiyama"] [data-bento-role="anchor"]'),
-    ).toHaveCount(0);
+    ).toHaveAttribute('data-testid', 'bento-tile-neighbourhood-wanted-hero-arashiyama');
     await expect(
       page.locator('[data-testid="bento-section-arashiyama"] [data-testid="feed-card-rec-1"]'),
     ).toHaveCount(1);
     await expect(
       page.locator('[data-testid="bento-section-nishiki"] [data-testid^="feed-card-rec-"]'),
     ).toHaveCount(0);
+  });
+
+  test('16. hero is ours — expert, then ready-made, then Wanted; a partner never takes the big slot', async ({ page }) => {
+    const anchorIds = await page.locator('[data-bento-role="anchor"]').evaluateAll((els) =>
+      els.map((el) => el.getAttribute('data-testid') ?? ''),
+    );
+    expect(anchorIds.length).toBeGreaterThan(0);
+    for (const id of anchorIds) {
+      expect(id).toMatch(/lead-expert|package-|neighbourhood-wanted-hero-/);
+      expect(id).not.toMatch(/rec-|external-stub|hotel-|activity-/);
+    }
+
+    await expect(
+      page.locator('[data-testid="bento-section-gion"] [data-bento-role="anchor"]'),
+    ).toHaveAttribute('data-testid', 'bento-tile-lead-expert');
+    const affiliate = page.getByTestId('bento-tile-rec-0');
+    await expect(affiliate).toHaveAttribute('data-bento-role', 'tile');
+    await expect(affiliate).toHaveAttribute('data-col-span', '1');
+
+    await expect(
+      page.locator('[data-testid="bento-section-nishiki"] [data-bento-role="anchor"]'),
+    ).toHaveAttribute('data-testid', 'bento-tile-package-rm-nishiki');
+    await expect(
+      page.locator('[data-testid="bento-section-nishiki"] [data-bento-role="anchor"]'),
+    ).toHaveAttribute('data-col-span', '2');
+    await expect(
+      page.locator('[data-testid="bento-section-nishiki"] [data-bento-role="anchor"]'),
+    ).toHaveAttribute('data-row-span', '1');
+
+    await expect(
+      page.locator('[data-testid="bento-section-arashiyama"] [data-bento-role="anchor"]'),
+    ).toHaveAttribute('data-testid', 'bento-tile-neighbourhood-wanted-hero-arashiyama');
+    const platform = page.getByTestId('bento-tile-rec-1');
+    await expect(platform).toHaveAttribute('data-bento-role', 'tile');
+    await expect(platform).toHaveAttribute('data-col-span', '1');
+
+    const stub = page.getByTestId('bento-tile-external-stub-stub-1');
+    await expect(stub).toHaveAttribute('data-bento-role', 'tile');
+    await expect(stub).toHaveAttribute('data-col-span', '1');
   });
 });
 

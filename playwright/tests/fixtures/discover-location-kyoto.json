@@ -58,6 +58,11 @@
           "gemCount": 3,
           "serviceCount": 0,
           "localExpert": null,
+          "readyMade": {
+            "id": "rm-nishiki",
+            "title": "A morning in Nishiki",
+            "destination": "Kyoto"
+          },
           "gems": [
             { "id": "g-nish-1", "placeName": "Nishiki Tenmangu Shrine", "placeType": "shrine", "neighborhood": "nishiki", "gemScore": 82, "imageUrl": null, "whyLocalsLoveIt": "A lantern-lined shrine tucked at the arcade's end.", "bestFor": ["temples"] },
             { "id": "g-nish-2", "placeName": "Aritsugu Knife Workshop", "placeType": "attraction", "neighborhood": "nishiki", "gemScore": 86, "imageUrl": null, "whyLocalsLoveIt": "Chefs' blades hand-finished while you watch." },

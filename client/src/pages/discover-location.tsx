@@ -41,7 +41,11 @@ import {
   type FeedItem,
 } from "@/lib/feed-stream";
 import { appendCityWideReadyMadeFill } from "@/lib/feed-composition";
-import { selectBentoAnchorIndex } from "@/lib/bento-anchor";
+import {
+  bentoBaseColSpan,
+  isPartnerOrThirdPartyFeedItem,
+  selectBentoHero,
+} from "@/lib/bento-anchor";
 import {
   resolveBentoCompactActionState,
   type BentoCompactActionState,
@@ -595,6 +599,14 @@ function BentoTile({
         />
       );
     case "wanted-slot":
+      if (item.data?.neighbourhoodWantedHero) {
+        return (
+          <NeighbourhoodWantedPanel
+            name={String(item.data.name ?? "")}
+            slug={String(item.data.slug ?? "")}
+          />
+        );
+      }
       return <FeedWantedSlotCard item={item} density="compact" />;
     case "earn-card":
       return <FeedEarnCard city={city} density="compact" />;
@@ -676,7 +688,7 @@ function assignBentoSpans(tiles: { item: FeedItem; order: number; isAnchor: bool
   const isExpertAnchor = (t: { item: FeedItem; isAnchor: boolean }) =>
     t.isAnchor && (t.item.kind === "lead-expert" || t.item.kind === "expert");
 
-  const base = tiles.map((t) => (t.isAnchor || t.item.kind === "package" ? 2 : 1));
+  const base = tiles.map((t) => bentoBaseColSpan(t.item, t.isAnchor));
   const rowSpans = tiles.map((t) => (isExpertAnchor(t) ? 2 : 1));
 
   // Pack the NON-anchor tiles (the anchor is placed first by the grid) through
@@ -695,7 +707,7 @@ function assignBentoSpans(tiles: { item: FeedItem; order: number; isAnchor: bool
     let need = deficit;
     for (let k = rowTiles.length - 1; k >= 0 && need > 0; k--) {
       const idx = rowTiles[k];
-      if (base[idx] === 1) {
+      if (base[idx] === 1 && !isPartnerOrThirdPartyFeedItem(tiles[idx].item)) {
         base[idx] = 2;
         need -= 1;
       }
@@ -728,39 +740,84 @@ function assignBentoSpans(tiles: { item: FeedItem; order: number; isAnchor: bool
  * Build the ordered tile list for a neighbourhood bento from an already-TAGGED
  * run ({item, order} — order = the tile's position in the neighbourhood's
  * merged stream run, assigned BEFORE any chip/price filtering so it stays the
- * order-preservation proof). The only expert reorder is the §2-priority
- * anchor. Without an eligible expert, the first ready-made leads as a normal
- * 2×1 tile; otherwise stream order is unchanged. Under an explicit price sort
- * the user's sort is the order, so every tile stays in place.
+ * order-preservation proof). The hero floats to the front: an eligible expert,
+ * else the first ready-made, else a Wanted tile. A partner card never floats
+ * and never widens. Under an explicit price sort the user's sort is the order,
+ * so every tile stays in place and no hero is minted.
  */
+function neighbourhoodWantedHeroItem(neighbourhood: any | null, city: string): FeedItem {
+  const name =
+    neighbourhood?.name ??
+    neighbourhood?.neighborhood_name ??
+    neighbourhood?.neighborhoodName ??
+    city;
+  const slug = String(neighbourhood?.slug ?? neighbourhood?.id ?? city ?? "city")
+    .trim()
+    .replace(/\s+/g, "-");
+  return {
+    kind: "wanted-slot",
+    id: `neighbourhood-wanted-hero-${slug}`,
+    data: { neighbourhoodWantedHero: true, name: String(name || slug), slug },
+  };
+}
+
 function buildBentoTiles(
   tagged: { item: FeedItem; order: number }[],
   floatAnchor: boolean = true,
   neighbourhood: any | null = null,
   city: string = "",
 ): PlacedTile[] {
-  if (tagged.length === 0) return [];
+  if (!floatAnchor) {
+    if (tagged.length === 0) return [];
+    return assignBentoSpans(tagged.map((t) => ({ ...t, isAnchor: false })));
+  }
+  if (tagged.length === 0) {
+    return assignBentoSpans([
+      { item: neighbourhoodWantedHeroItem(neighbourhood, city), order: -1, isAnchor: true },
+    ]);
+  }
   const withAnchor = tagged.map((t) => ({ ...t, isAnchor: false }));
-
-  const anchorIdx = floatAnchor
-    ? selectBentoAnchorIndex(withAnchor, neighbourhood, city)
-    : -1;
-  if (anchorIdx >= 0) {
-    withAnchor[anchorIdx].isAnchor = true;
-    const anchor = withAnchor[anchorIdx];
-    const rest = withAnchor.filter((_, i) => i !== anchorIdx);
+  const hero = selectBentoHero(withAnchor, neighbourhood, city);
+  if (hero.index !== null && hero.index >= 0) {
+    withAnchor[hero.index].isAnchor = true;
+    const anchor = withAnchor[hero.index];
+    const rest = withAnchor.filter((_, i) => i !== hero.index);
     return assignBentoSpans([anchor, ...rest]);
   }
+  return assignBentoSpans([
+    { item: neighbourhoodWantedHeroItem(neighbourhood, city), order: -1, isAnchor: true },
+    ...withAnchor,
+  ]);
+}
 
-  // §3.2: a ready-made can lead an anchorless section, but remains a 2×1 tile.
-  const readyMadeIdx = withAnchor.findIndex((t) => t.item.kind === "package");
-  if (readyMadeIdx >= 0) {
-    const readyMade = withAnchor[readyMadeIdx];
-    const rest = withAnchor.filter((_, i) => i !== readyMadeIdx);
-    return assignBentoSpans([readyMade, ...rest]);
-  }
-
-  return assignBentoSpans(withAnchor);
+function NeighbourhoodWantedPanel({ name, slug }: { name: string; slug: string }) {
+  return (
+    <div
+      className="flex h-full flex-col justify-between gap-2 rounded-xl border border-dashed p-3.5"
+      style={{ borderColor: "var(--earn-gold)", background: "var(--earn-gold-wash)" }}
+      data-testid={`neighbourhood-wanted-${slug}`}
+    >
+      <div className="min-w-0">
+        <div
+          className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em]"
+          style={{ color: "var(--earn-gold-ink)", fontFamily: EARN_MONO }}
+        >
+          Wanted here
+        </div>
+        <p className="text-[13px] font-semibold" style={{ color: "var(--earn-ink)" }}>
+          {neighbourhoodWantedBody(name || slug)}
+        </p>
+      </div>
+      <a
+        href={NEIGHBOURHOOD_WANTED_HREF}
+        className="inline-flex w-fit items-center rounded-md px-2.5 py-1 text-[11px] font-bold text-white"
+        style={{ background: "var(--earn-gold-ink)" }}
+        data-testid={`link-neighbourhood-join-${slug}`}
+      >
+        {NEIGHBOURHOOD_WANTED_BUTTON}
+      </a>
+    </div>
+  );
 }
 
 // ─── Neighbourhood bento group ────────────────────────────────────────────────
@@ -801,8 +858,15 @@ function BentoGroup({
   // a gem, service, expert or ready-made does not share this section — the
   // stream places those with the stocked neighbourhoods.
   const needsWanted = neighbourhoodSectionNeedsWantedTile(neighbourhood, runItems);
-  const placed = needsWanted ? [] : buildBentoTiles(taggedRun, floatAnchor, neighbourhood, city);
-  if (placed.length === 0 && !needsWanted) return null;
+  // An unstocked neighbourhood shows only its Wanted hero. Every other section,
+  // including the city-feed intro, floats expert → ready-made → Wanted.
+  const placed = buildBentoTiles(
+    needsWanted ? [] : taggedRun,
+    needsWanted || floatAnchor,
+    neighbourhood,
+    city,
+  );
+  if (placed.length === 0) return null;
 
   const nbName: string | null = neighbourhood
     ? (neighbourhood.name ?? neighbourhood.neighborhood_name ?? neighbourhood.neighborhoodName ?? null)
@@ -830,7 +894,7 @@ function BentoGroup({
               style={{ color: "var(--earn-coral-ink)", fontFamily: EARN_MONO }}
               data-testid={`bento-eyebrow-${nbSlug}`}
             >
-              {nbName.toUpperCase()} · {needsWanted ? 1 : placed.length}
+              {nbName.toUpperCase()} · {placed.length}
             </div>
             <h3
               className="text-[22px] font-semibold leading-tight"
@@ -870,43 +934,6 @@ function BentoGroup({
         className="grid grid-cols-1 min-[560px]:grid-cols-2 min-[1000px]:grid-cols-4 min-[1000px]:auto-rows-[minmax(0,auto)] gap-[14px]"
         data-testid={nbSlug ? `bento-grid-${nbSlug}` : "bento-grid-intro"}
       >
-        {needsWanted && nbSlug && (
-          <div
-            className="h-full min-w-0"
-            data-testid={`bento-tile-wanted-${nbSlug}`}
-            data-bento-role="tile"
-            data-order={0}
-            data-col-span={1}
-            data-row-span={1}
-            data-bento-action-state="not_bookable"
-          >
-            <div
-              className="flex h-full flex-col justify-between gap-2 rounded-xl border border-dashed p-3.5"
-              style={{ borderColor: "var(--earn-gold)", background: "var(--earn-gold-wash)" }}
-              data-testid={`neighbourhood-wanted-${nbSlug}`}
-            >
-              <div className="min-w-0">
-                <div
-                  className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em]"
-                  style={{ color: "var(--earn-gold-ink)", fontFamily: EARN_MONO }}
-                >
-                  Wanted here
-                </div>
-                <p className="text-[13px] font-semibold" style={{ color: "var(--earn-ink)" }}>
-                  {neighbourhoodWantedBody(nbName ?? nbSlug)}
-                </p>
-              </div>
-              <a
-                href={NEIGHBOURHOOD_WANTED_HREF}
-                className="inline-flex w-fit items-center rounded-md px-2.5 py-1 text-[11px] font-bold text-white"
-                style={{ background: "var(--earn-gold-ink)" }}
-                data-testid={`link-neighbourhood-join-${nbSlug}`}
-              >
-                {NEIGHBOURHOOD_WANTED_BUTTON}
-              </a>
-            </div>
-          </div>
-        )}
         {placed.map((tile) => (
           <div
             key={tile.item.id}
@@ -950,6 +977,19 @@ function nestedGemItems(neighbourhood: any): FeedItem[] {
   return ((neighbourhood?.gems ?? []) as any[])
     .slice(0, 4)
     .map((g) => ({ kind: "loose-gem" as FeedItem["kind"], id: `gem-${g.id}`, data: g }));
+}
+
+/** A ready-made on the neighbourhood record. Absent means the section has none. */
+function nestedReadyMadeItems(neighbourhood: any): FeedItem[] {
+  const listed = Array.isArray(neighbourhood?.packages) ? neighbourhood.packages : [];
+  const ready =
+    neighbourhood?.readyMade ??
+    neighbourhood?.ready_made ??
+    neighbourhood?.readyMadeTrip ??
+    neighbourhood?.ready_made_trip ??
+    listed[0];
+  if (!ready || typeof ready !== "object" || ready.id == null) return [];
+  return [{ kind: "package", id: `package-${ready.id}`, data: ready }];
 }
 
 /**
@@ -1039,7 +1079,9 @@ function FeedRenderer({
       flushGroup();
       currentNeighbourhood = item.data;
       // The neighbourhood's own gems lead its bento run (single rendering).
-      currentGroup.push(...nestedGemItems(item.data));
+      // A ready-made carried on the neighbourhood record joins that run; the
+      // hero rule floats it when no eligible expert is in the section.
+      currentGroup.push(...nestedGemItems(item.data), ...nestedReadyMadeItems(item.data));
     } else if (item.kind === "city-separator") {
       flushGroup();
       sections.push({ type: "city-separator", item });

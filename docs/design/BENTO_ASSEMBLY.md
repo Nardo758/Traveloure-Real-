@@ -45,14 +45,15 @@ Rules:
 
 ## 2. Anchor selection
 
-Exactly one anchor per section, chosen in this order; the first match wins; if none, the section has **no anchor** and starts at §3.3.
+Exactly one hero per section, including the city-feed intro. It is always ours. A partner, affiliate, or third-party card (Fever, LiteAPI, Tiqets, and the same class) never takes it and never widens past one column. The first match wins.
 
 1. Lead **local expert** scoped to the neighbourhood (an expert whose `expertForm.neighborhoods` includes it), highest rating, ties → most offerings.
 2. Local expert for the city.
 3. Trip planner for the city.
-4. None.
+4. The section's first ready-made trip.
+5. A Wanted tile already in the section, else the section's own Wanted panel (Join Traveloure → /earn).
 
-**Event planners are never anchors on a destination feed.** Providers are never anchors (their tiles are Service tiles).
+**Event planners are never anchors on a destination feed.** Providers are never anchors (their tiles are Service tiles). A price sort does not mint a hero; it also does not widen a partner card.
 
 The anchor tile's `from $N` fragment renders only when the expert has a priced planning offer (`expertLowestPrice`); otherwise the CTA is `Plan with {name}`.
 
