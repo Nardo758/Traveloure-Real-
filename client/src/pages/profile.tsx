@@ -441,6 +441,11 @@ export default function Profile() {
               <p id="email-readonly-note" className="text-xs text-muted-foreground" data-testid="text-email-readonly-note">
                 This is the email your account signs in with. It can't be changed here.
               </p>
+              {user?.authProvider && user.authProvider !== "email" ? (
+                <p className="text-xs text-muted-foreground" data-testid="text-provider-account-guidance">
+                  Signed in with a sign-in provider. Continue using that provider to access your account.
+                </p>
+              ) : null}
             </div>
 
             {/* QA F2 — THE "Location" INPUT WAS REMOVED, NOT WIRED (§13, and no schema change).
