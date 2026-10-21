@@ -613,12 +613,6 @@ function MoreInfoSheet({ open, onClose, cardType, data, saveItem }: MoreInfoShee
         </p>
       ) : null}
       <GemOfficialFacts gem={data} />
-      {data.imageCredit ? (
-        <p className="text-[12px] text-muted-foreground" data-testid={`gem-image-credit-sheet-${data.id}`}>
-          {data.imageCredit}
-        </p>
-      ) : null}
-      <GemOfficialFacts gem={data} />
     </div>
   );
 
