@@ -1,0 +1,69 @@
+name: migration-approval
+
+# H-32. A pull request that adds or changes a numbered migration needs a comment
+# from GitHub user Nardo758 (Leon) containing, for each number, the one citation
+# form (H-29):
+#
+#   Migration <NNN> SQL approved — Leon
+#
+# A plain hyphen is also accepted. Merging is not approval. The job name is the
+# status check, so it can be required later. This workflow does not edit branch
+# protection.
+#
+# issue_comment re-reads the thread when a comment is added, edited, or deleted.
+# That run uses the workflow on the default branch and GitHub reports it against
+# the default-branch SHA. The token is read-only, so the run cannot overwrite the
+# pull_request status check on the head commit. Re-run the pull_request job after
+# the comment to refresh that check.
+#
+# Permissions stay read-only. Conversation comments are issue comments, so the
+# token also has issues: read. No secret is used.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+    # CI-1b (c): docs-only and other-workflow-only changes do not trigger this workflow
+    # (scripts/ci/ci-skip-rules.cjs canonicalPaths; later entries win).
+    paths:
+      - '**'
+      - '!**/*.md'
+      - 'CLAUDE.md'
+      - 'generated/**'
+      - 'client/public/.well-known/**'
+      - '!.github/workflows/**'
+      - '.github/workflows/migration-approval.yml'
+  issue_comment:
+    types: [created, edited, deleted]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+concurrency:
+  group: migration-approval-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'ready_for_review' }}
+
+jobs:
+  migration-approval:
+    name: migration-approval
+    if: (github.event_name == 'issue_comment' && github.event.issue.pull_request != null) || (github.event_name == 'pull_request' && github.event.pull_request.draft == false)
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@v5.1.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Migration approval unit tests
+        run: node --test scripts/check-migration-approval.test.cjs
+
+      - name: Require Leon's migration approval comment
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+        run: node scripts/check-migration-approval.cjs
