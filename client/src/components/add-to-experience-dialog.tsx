@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import {
   Dialog,
@@ -12,13 +13,12 @@ import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { queryClient } from "@/lib/queryClient";
 import { useSearch } from "wouter";
-import { useTripContext } from "@/lib/trip-context";
-import { resolveTargetTripId } from "@/lib/trip-target";
+import { addItemFit } from "@/lib/trip-target";
+import { useAddPlanResolution } from "@/hooks/use-open-plans";
 import { ADDED_TO_PLAN_TITLE } from "@/lib/plan-vocabulary";
 import { syncActiveTripToContext } from "@/lib/trip-selection";
 import { PlanPickerList, useStartPlanThenAdd, type PickablePlan } from "@/components/plan-picker";
 import {
-  Plus,
   Loader2,
   LogIn,
 } from "lucide-react";
@@ -44,68 +44,18 @@ export function AddToExperienceDialog({
   open,
   onOpenChange,
 }: AddToExperienceDialogProps) {
-  const { user, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
   const { openSignInModal } = useSignInModal();
   const { toast } = useToast();
 
-  // ── SLIP CONVERGENCE (ledger 2026-09-03-slip-convergence) ──────────────────────────────────
-  // This dialog carried BOTH rails: the primary button wrote straight to /api/cart, while the
-  // per-trip buttons below already used the itinerary rail. A cart row born here has
-  // `itinerary_item_id IS NULL`, which `syncItemProjection` is permanently blind to — so the
-  // primary action put feed content somewhere the traveler's own plan could never show it, while
-  // the secondary action put identical content where it could. Two rails, one intent, opposite
-  // outcomes. The primary now converges on the SAME itinerary rail whenever a target trip
-  // resolves ("URL first, then the active TripContext" — client/src/lib/trip-target.ts, §18
-  // rule 1). No price is sent on either rail (§14). SUPERSEDED IN PART by RC-2 (ledger
-  // `2026-09-24-rc2-add-to-plan`): the trip-less cart fallback is gone — a signed-in member with
-  // no plan in hand picks one or starts one, and a guest meets the sign-in gate below.
+  // Ledger `2026-10-20-add-plan-open-plans`: `?tripId=` wins; exactly one open plan adds
+  // straight to it; two or more always show this picker. The tab pen is not a target.
+  // No price is sent (§14). The trip-less cart write is gone (RC-2).
   const searchString = useSearch();
-  const [tripCtx] = useTripContext();
-  const targetTripId = resolveTargetTripId(searchString, tripCtx);
-
-  const addToCartMutation = useMutation({
-    mutationFn: async () => {
-      // RC-2 (ledger 2026-09-24-rc2-add-to-plan): the trip-less `POST /api/cart` write that lived
-      // here is DELETED (§18c). This button renders only when a plan is in hand; with none, the
-      // member picks a plan or starts one — nothing lands in a trip-less cart.
-      if (!item || !targetTripId) return;
-      // Same payload shape the per-plan rail below builds — one rail, one body.
-      const res = await fetch(`/api/trips/${targetTripId}/itinerary-items`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          title: item.title,
-          description: item.description || "",
-          itemType: item.type || "experience",
-          dayNumber: 1,
-          status: "planned",
-          ...(item.city ? { locationName: item.city } : {}),
-          ...(item.scheduledDate ? { scheduledDate: item.scheduledDate } : {}),
-        }),
-      });
-      if (!res.ok) throw new Error("Failed to add to your plan");
-      return res.json();
-    },
-    onSuccess: () => {
-      if (targetTripId) {
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/itinerary-items`] });
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/plancard`] });
-      }
-      toast({
-        title: ADDED_TO_PLAN_TITLE,
-        description: `"${item?.title}" is on your plan — check out whenever you're ready.`,
-      });
-      onOpenChange(false);
-    },
-    onError: () => {
-      toast({
-        variant: "destructive",
-        title: "Could not add to your plan",
-        description: "Please try again.",
-      });
-    },
-  });
+  const fit = addItemFit(item);
+  const { openPlans, resolution } = useAddPlanResolution(searchString, fit);
+  const directTripId = resolution.status === "direct" ? resolution.tripId : "";
+  const directFired = useRef("");
 
   /** The plan-item body a feed item becomes on a chosen plan (dates known) or a new one (not yet). */
   const feedItemBody = (tripStartDate?: string | null): Record<string, unknown> => {
@@ -172,6 +122,32 @@ export function AddToExperienceDialog({
     startPlanThenAdd(feedItemBody(null));
   };
 
+  // A URL trip, or the only open plan, adds as soon as the dialog opens. Two or more
+  // stay on the picker below. The ref stops a second render from posting twice.
+  useEffect(() => {
+    if (!open) {
+      directFired.current = "";
+      return;
+    }
+    if (!isAuthenticated || !item || resolution.status !== "direct") return;
+    if (directFired.current === resolution.tripId) return;
+    directFired.current = resolution.tripId;
+    const openPlan = openPlans.find((row) => row.id === resolution.tripId);
+    const bound: PickablePlan = openPlan
+      ? {
+          id: openPlan.id,
+          title: openPlan.title,
+          destination: openPlan.city,
+          startDate: openPlan.startDate,
+          endDate: openPlan.endDate,
+        }
+      : { id: resolution.tripId };
+    if (openPlan) syncActiveTripToContext(bound);
+    addToTripMutation.mutate(bound);
+    // addToTripMutation.mutate is stable; directFired guards a repeat.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, isAuthenticated, item, resolution, openPlans]);
+
   if (!isAuthenticated) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -218,48 +194,23 @@ export function AddToExperienceDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {/* Primary, only when a plan is in hand: straight onto that plan. With none, the ONE
-            plan picker below is the whole dialog (RC-2) — pick a plan or start one. */}
-        {targetTripId && (
-        <button
-          type="button"
-          onClick={() => addToCartMutation.mutate()}
-          disabled={addToCartMutation.isPending}
-          className="w-full flex items-center gap-3 p-4 rounded-lg border-2 border-primary/40 bg-primary/5 hover:bg-primary/10 transition-colors text-left"
-          data-testid="button-add-content-to-cart"
-        >
-          <div className="w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center shrink-0">
-            {addToCartMutation.isPending ? (
-              <Loader2 className="w-5 h-5 animate-spin text-primary" />
-            ) : (
-              <Plus className="w-5 h-5 text-primary" />
-            )}
-          </div>
-          <div>
-            {/* Ledger 2026-09-03-slip-convergence: with a target trip resolved this button lands
-                the item on the PLAN, not the cart — say which, rather than promising a cart row
-                the traveler will not find (§13). */}
-            <p className="font-semibold text-sm">Add to my current plan</p>
-            <p className="text-xs text-muted-foreground">
-              Plan &amp; optimize whenever you're ready — nothing to set up now
-            </p>
-          </div>
-        </button>
+        {resolution.status === "direct" ? (
+          <p className="text-sm text-muted-foreground flex items-center gap-2" data-testid="text-adding-to-plan">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            Adding to your plan…
+          </p>
+        ) : resolution.status === "pending" ? (
+          <p className="text-sm text-muted-foreground" data-testid="text-add-plan-pending">
+            Checking your plans…
+          </p>
+        ) : (
+          <PlanPickerList
+            onPick={pickPlan}
+            onStartNew={startNewPlan}
+            disabled={addToTripMutation.isPending}
+            item={fit}
+          />
         )}
-
-        {targetTripId && (
-          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <div className="flex-1 border-t" />
-            or choose another plan
-            <div className="flex-1 border-t" />
-          </div>
-        )}
-
-        <PlanPickerList
-          onPick={pickPlan}
-          onStartNew={startNewPlan}
-          disabled={addToTripMutation.isPending}
-        />
       </DialogContent>
     </Dialog>
   );

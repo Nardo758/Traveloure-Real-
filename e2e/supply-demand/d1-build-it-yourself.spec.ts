@@ -227,33 +227,41 @@ test('D1: traveler finds A and B, plans Kyoto, adds both to the plan', async ({ 
     await addBtn.click().catch(() => {});
     await page.waitForTimeout(1200);
 
-    // RC-2/RC-5 class: if no plan was bound as "current", a PlanPickerDialog asks which plan.
+    // Ledger 2026-10-20-add-plan-open-plans: this account just minted one plan, so Add goes
+    // straight to it. The picker is the product only when two or more open plans exist.
+    // A row click only checks that plan; the add is the confirm button.
     const picker = testid(page, 'dialog-plan-picker');
     if (await appears(picker, 3000)) {
       await shot(page, 'D1', `07b-${listing.title.slice(0, 12)}`, 'plan-picker-shown');
-      fileFinding({
-        journey: 'D1',
-        step: `add-to-plan:${listing.title}:plan-picker`,
-        class: 'SPEC_DIVERGENCE',
-        severity: 'P3',
-        known: 'KNOWN:RC-5',
-        title: 'Adding to plan asked which plan (the just-minted plan was not bound as "current")',
-        expected: 'A plan minted moments earlier by the same session is the implicit target (RC-5)',
-        actual: 'PlanPickerDialog (dialog-plan-picker) opened instead of adding directly',
-        where: 'client/src/pages/service-detail.tsx (beginAdd -> decideAddTarget)',
-        evidence: { shot: `shots/D1-07b-${listing.title.slice(0, 12)}-plan-picker-shown.png` },
-        behavioural: true,
-      });
+      const accountPlans = await q(
+        `SELECT id FROM trips WHERE user_id = (SELECT id FROM users WHERE email = $1)`,
+        [email],
+      );
+      if (accountPlans.length < 2) {
+        fileFinding({
+          journey: 'D1',
+          step: `add-to-plan:${listing.title}:plan-picker`,
+          class: 'SPEC_DIVERGENCE',
+          severity: 'P2',
+          known: null,
+          title: 'Add to plan opened the picker with fewer than two plans on the account',
+          expected: 'Exactly one open plan adds straight to it (2026-10-20-add-plan-open-plans)',
+          actual: `dialog-plan-picker opened; trips for this account=${accountPlans.length}`,
+          where: 'client/src/pages/service-detail.tsx (beginAdd -> useAddPlanResolution)',
+          evidence: { shot: `shots/D1-07b-${listing.title.slice(0, 12)}-plan-picker-shown.png` },
+          behavioural: true,
+        });
+      }
       const pickBtn = testid(page, `button-pick-plan-${tripId}`);
       if (await appears(pickBtn, 3000)) {
         await pickBtn.click().catch(() => {});
-        await page.waitForTimeout(1000);
       } else {
-        // Confirm before assuming: our tripId may simply not be the first/only pickable row yet.
         const anyPickable = page.locator('[data-testid^="button-pick-plan-"]');
         if ((await anyPickable.count()) > 0) await anyPickable.first().click().catch(() => {});
-        await page.waitForTimeout(1000);
       }
+      const confirm = testid(page, 'button-plan-picker-confirm');
+      if (await appears(confirm, 3000)) await confirm.click().catch(() => {});
+      await page.waitForTimeout(1000);
     }
     await shot(page, 'D1', `08-${listing.title.slice(0, 12)}`, 'after-add-click');
 
