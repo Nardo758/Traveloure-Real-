@@ -5,6 +5,38 @@ and easy to reason about. Read it before authoring or landing a new migration.
 
 ---
 
+## Approval citation (H-29)
+
+There is one citation form for a migration comment. GitHub user **Nardo758** (Leon)
+writes it on the pull request, once for each migration number the pull request adds
+or changes:
+
+```
+Migration 401 SQL approved — Leon
+```
+
+Copy that sentence, with the migration's own number in place of `401`. The dash in
+the form is an em dash. The `migration-approval` check also accepts a plain hyphen
+(`Migration 401 SQL approved - Leon`) so a keyboard that cannot type the em dash
+still matches. Leading zeros are the same number (`Migration 052` and `Migration 52`).
+A letter suffix is part of the number (`025b` is not `25`). Nothing else matches.
+"Migration 401 SQL approved by Leon", a review approval, a commit message, and a
+note in this file are different sentences.
+
+Only a comment authored by Nardo758 counts. A comment from a bot, a comment whose
+body starts with `[bot:`, and the same sentence from anyone else do not count.
+Merging the pull request is not approval. A pull request that does not add or change
+a numbered migration passes without the sentence.
+
+The check is the GitHub Actions job `migration-approval`
+(`.github/workflows/migration-approval.yml`, `scripts/check-migration-approval.cjs`).
+It reads pull request comments with the default token. After the sentence is on the
+pull request, re-run that job so the status check on the head commit updates.
+Putting the sentence only in the SQL file, or only in `migration-files.ts`, does not
+satisfy the check.
+
+---
+
 ## Numbering
 
 - Migrations are numbered sequentially (`NNN_description.sql`).

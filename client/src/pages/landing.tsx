@@ -5,6 +5,7 @@ import { EventsStrip } from "@/components/landing/events-strip";
 import { CitiesRail } from "@/components/landing/cities-rail";
 import { EarnSection } from "@/components/landing/earn-section";
 import { SEOHead } from "@/components/seo-head";
+import { HOMEPAGE_META_DESCRIPTION } from "@/lib/g02-g06-copy";
 import { usePlanning } from "@/contexts/PlanningContext";
 
 export default function LandingPage() {
@@ -18,7 +19,7 @@ export default function LandingPage() {
     <div className="flex flex-col min-h-screen bg-background">
       <SEOHead
         title="Home"
-        description="Plan unforgettable experiences with Traveloure. From romantic getaways to corporate events, our AI-powered platform connects you with expert travel planners and service providers worldwide."
+        description={HOMEPAGE_META_DESCRIPTION}
         keywords={["travel platform", "AI travel planning", "event planning", "vacation booking", "travel services"]}
         url="/"
       />

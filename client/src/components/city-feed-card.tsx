@@ -23,6 +23,7 @@ import { ADD_TO_PLAN_LABEL } from "@/lib/plan-vocabulary";
 import { SaveToggle } from "@/components/SaveToggle";
 import { buildSaveItem } from "@/lib/saved-items";
 import type { SaveItemBody } from "@shared/saved-items";
+import { stripPartnerCardPhrase } from "@shared/banned-copy";
 
 // Bookability (native | deeplink | info_only) is DERIVED, never stored. The single
 // source of truth is `resolveBookability` in @shared/bookability — both this client
@@ -2043,13 +2044,24 @@ interface CityFeedCardSupplyProps {
 }
 
 export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, className, cardPosition, density = "full", compactActionState: _compactActionState }: CityFeedCardSupplyProps) {
+  const isActivity = kind === "supply-activity";
+  const cleanedName = typeof item.name === "string" && isActivity ? stripPartnerCardPhrase(item.name) : item.name;
+  const cleanedTitle = typeof item.title === "string" && isActivity ? stripPartnerCardPhrase(item.title) : item.title;
+  const itemName = String(cleanedName || cleanedTitle || "");
+  const description = isActivity && typeof item.description === "string"
+    ? stripPartnerCardPhrase(item.description)
+    : item.description;
+  const highlights = isActivity && Array.isArray(item.highlights)
+    ? item.highlights
+        .map((h: unknown) => (typeof h === "string" ? stripPartnerCardPhrase(h) : h))
+        .filter((h: unknown) => h !== "")
+    : item.highlights;
   const [imgLoaded, setImgLoaded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const askExpert = useAskExpert();
   // SH-1 item 11: Ask draws only when the server says this city has an expert to ask.
   const expertAvailable = useExpertAvailability({ city });
   const dbImageUrl = item.media?.[0]?.url || item.imageUrl || null;
-  const itemName = item.name || item.title || "";
   const isHotel = kind === "supply-hotel";
 
   const { photoUrl, loading } = useGemPhoto(
@@ -2065,6 +2077,8 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
     city,
     cardPosition,
   );
+  // G-02: an activity whose label is only a banned phrase is not a card. Hooks above still run.
+  if (isActivity && !itemName) return null;
   // #330: a stay or an activity is saved from its detail sheet (the compact card keeps its two
   // buttons). Keyed on the same id the impression uses; no id and no name ⇒ nothing to save.
   const supplySaveItem = buildSaveItem({
@@ -2201,7 +2215,16 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
           open={sheetOpen}
           onClose={() => setSheetOpen(false)}
           cardType="supply"
-          data={{ ...item, _kind: kind, _city: city, _getImpressionId: getImpIdSupply }}
+          data={{
+          ...item,
+          ...(typeof item.name === "string" ? { name: cleanedName } : {}),
+          ...(typeof item.title === "string" ? { title: cleanedTitle } : {}),
+          description,
+          highlights,
+          _kind: kind,
+          _city: city,
+          _getImpressionId: getImpIdSupply,
+        }}
           saveItem={supplySaveItem}
         />
       </>
@@ -2267,9 +2290,9 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
           <h3 className="font-semibold text-[15px] leading-tight line-clamp-2 tracking-tight">{itemName}</h3>
 
           {/* 2-line description */}
-          {item.description && (
+          {description && (
             <p className="text-[12px] text-muted-foreground line-clamp-2" data-testid={`supply-description-${item.id}`}>
-              {item.description}
+              {description}
             </p>
           )}
 
@@ -2343,7 +2366,16 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
         cardType="supply"
-        data={{ ...item, _kind: kind, _city: city, _getImpressionId: getImpIdSupply }}
+        data={{
+          ...item,
+          ...(typeof item.name === "string" ? { name: cleanedName } : {}),
+          ...(typeof item.title === "string" ? { title: cleanedTitle } : {}),
+          description,
+          highlights,
+          _kind: kind,
+          _city: city,
+          _getImpressionId: getImpIdSupply,
+        }}
         saveItem={supplySaveItem}
       />
     </>

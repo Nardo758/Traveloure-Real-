@@ -17,6 +17,7 @@ import { logger, databaseQueryDuration } from "../infrastructure";
 import { bookingComService } from "./booking-com.service";
 import { openTableService } from "./opentable.service";
 import { feverService } from "./fever.service";
+import { sanitizePartnerCardCopy } from "@shared/banned-copy";
 import { feverTitleBlocked } from "@shared/fever-title-filter";
 
 /** The partner's stated ISO currency, or null. Never substitutes USD (LC-1). */
@@ -373,7 +374,8 @@ class ExperienceCatalogService {
       .limit(limit)
       .offset(offset);
 
-    return activities.map(a => ({
+    return activities.flatMap(a => {
+      const row = sanitizePartnerCardCopy({
       id: a.id,
       type: "activity" as const,
       provider: a.provider || "viator",
@@ -395,7 +397,9 @@ class ExperienceCatalogService {
       bookingUrl: null,
       affiliateUrl: null,
       lastUpdated: a.lastUpdated,
-    }));
+    });
+      return row ? [row] : [];
+    });
   }
 
   private async searchEvents(params: CatalogSearchParams, limit: number, offset: number): Promise<EventItem[]> {
@@ -845,7 +849,7 @@ class ExperienceCatalogService {
 
         if (!activity) return null;
 
-        return {
+        return sanitizePartnerCardCopy({
           id: activity.id,
           type: "activity",
           provider: activity.provider || "viator",
@@ -867,7 +871,7 @@ class ExperienceCatalogService {
           bookingUrl: null,
           affiliateUrl: null,
           lastUpdated: activity.lastUpdated,
-        };
+        });
       }
 
       if (type === "event") {

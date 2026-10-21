@@ -253,10 +253,10 @@ export const HELP_ARTICLES: readonly HelpArticle[] = [
     slug: "what-a-local-does",
     title: "What a local expert does (and doesn't)",
     summary: "What a local expert can review, suggest and offer — and what stays your choice.",
-    keywords: ["local", "expert", "review", "suggest", "verified"],
+    keywords: ["local", "expert", "review", "suggest", "reviewed"],
     blocks: [
       { kind: "p", text: "A local expert lives in the city you're planning for. They can review your plan and tell you what to change, add their own suggestions, recommend one option over another when you're comparing, and offer their own experiences to book." },
-      { kind: "p", text: "They can't change what you've purchased, and they don't choose for you: when you're comparing hotels or venues, the choice is yours. Experts are verified before they appear on Traveloure and are paid only for what they offer or deliver." },
+      { kind: "p", text: "They can't change what you've purchased, and they don't choose for you: when you're comparing hotels or venues, the choice is yours. Every expert is reviewed by our team before they appear on Traveloure and are paid only for what they offer or deliver." },
     ],
   },
   {
@@ -265,7 +265,7 @@ export const HELP_ARTICLES: readonly HelpArticle[] = [
     summary: "Put up to three candidates side by side and see how each fits your plan.",
     keywords: ["compare", "comparison", "hotel", "venue", "restaurant", "candidates"],
     blocks: [
-      { kind: "p", text: "Open a comparison on any slot in your plan and add up to three candidates. We show each one's fit to your plan: how far it is from everything else you've planned, by walking or transit, plus price, rating and cancellation terms." },
+      { kind: "p", text: "Open a comparison on any slot in your plan and add up to three candidates. We show each one's fit to your plan: how it fits with the rest of your plan, plus price, rating and cancellation terms." },
       { kind: "p", text: "Choose one and it becomes the item; the others are kept as candidates. You can't finalize a plan with an open comparison, and an item you've already booked can't be put into one." },
     ],
   },
@@ -285,12 +285,12 @@ export const HELP_ARTICLES: readonly HelpArticle[] = [
     summary: "What a Trip Pass covers, Plus and Pro, the booking service fee and its cap, and AI task fees.",
     keywords: ["trip pass", "plus", "pro", "service fee", "fee", "cap", "price", "ai task"],
     blocks: [
-      { kind: "p", lead: "Trip Pass", text: "is bought once per trip and covers the AI optimization run, further AI tasks on that plan, and the service fee on bookings from that plan. Price: {tripPassPrice} per trip." },
+      { kind: "p", lead: "Trip Pass", text: "is bought once per trip and covers the AI optimization run, further AI tasks on that plan, and the service fee on bookings from that plan. The price is shown before you pay." },
       { kind: "p", lead: "Plus", text: "is an annual plan for people planning occasions through the year. Price: {plusPrice} per year.", when: "plusOnSale" },
-      { kind: "p", lead: "Plus", text: "is an annual plan for people planning occasions through the year. Coming soon.", when: "plusNotOnSale" },
+      { kind: "p", lead: "Plus", text: "is an annual plan for people planning occasions through the year. Plus isn't available yet.", when: "plusNotOnSale" },
       { kind: "p", lead: "Pro", text: "is for local experts, planners and providers; it's free through {proFreeUntil}." },
-      { kind: "p", lead: "Service fee:", text: "when you book through Traveloure, a service fee of {serviceFeePct} is added to the booking, capped at {serviceFeeCap} per booking. You see it on your plan and in the cart before you pay. Trip Pass holders don't pay the service fee on bookings from the plan the pass covers." },
-      { kind: "p", lead: "AI task fee:", text: "after the free first draft, each further AI task on a plan is {aiTaskFee}, shown before you confirm." },
+      { kind: "p", lead: "Service fee:", text: "when you book through Traveloure, a service fee is added to the booking. The price is shown before you pay. Trip Pass holders don't pay the service fee on bookings from the plan the pass covers." },
+      { kind: "p", lead: "AI task fee:", text: "after the free first draft, the price of each further AI task on a plan is shown before you pay." },
     ],
   },
   {
@@ -345,7 +345,7 @@ export const HELP_ARTICLES: readonly HelpArticle[] = [
     summary: "Offer what you know about your city: review plans, suggest changes, sell your own experiences.",
     keywords: ["become", "expert", "local", "earn", "apply", "pro"],
     blocks: [
-      { kind: "p", text: "If you live in one of our cities, you can offer what you know: reviewing travelers' plans, suggesting what to change, and selling your own experiences. You set your prices and availability. We verify you before you appear, and you're paid through Stripe when what you offer is delivered." },
+      { kind: "p", text: "If you live in one of our cities, you can offer what you know: reviewing travelers' plans, suggesting what to change, and selling your own experiences. You set your prices and availability. Our team reviews your application before you appear, and you're paid through Stripe when what you offer is delivered." },
       { kind: "p", text: "Pro is free through {proFreeUntil}." },
       { kind: "link", text: "Become a local expert", href: "/earn?role=local_expert" },
     ],

@@ -1,4 +1,4 @@
-import { filterFeedActivity } from "@shared/banned-copy";
+import { filterFeedActivity, sanitizePartnerCardCopy } from "@shared/banned-copy";
 
 /**
  * Feed stream composition algorithm.
@@ -328,7 +328,10 @@ export function buildFeedStream(
       data: h,
     })),
     ...(supplyActivities ?? [])
-      .map((a) => filterFeedActivity(a))
+      .map((a) => {
+        const titled = filterFeedActivity(a);
+        return titled == null ? null : sanitizePartnerCardCopy(titled);
+      })
       .filter((a): a is NonNullable<typeof a> => a != null)
       .slice(0, 3)
       .map((a) => ({

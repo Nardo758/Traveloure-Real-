@@ -1,4 +1,6 @@
 import { heroEyebrowFragments } from "@/lib/hero-eyebrow";
+import { isKyotoCity, KYOTO_CITY_DESCRIPTION } from "@/lib/g02-g06-copy";
+import { SEOHead } from "@/components/seo-head";
 import { SEASONAL_WRITER_LIVE, buildSeasonLine } from "@/lib/season-line";
 import { PRICE_OPTIONS, extractTilePrice, priceMatches } from "@/lib/tile-price";
 import { useRef, useEffect, useState } from "react";
@@ -182,7 +184,8 @@ function HeroBand({
   const seasonLine = !SEASONAL_WRITER_LIVE
     ? null
     : buildSeasonLine(seasonalEntry, monthName) ?? (highlight ? `${highlightEmoji} ${highlight}` : null);
-  const subLine: string | null = seasonLine;
+  // G-06: Kyoto's own description. Other cities keep the season line (null until a writer exists).
+  const subLine: string | null = isKyotoCity(city) ? KYOTO_CITY_DESCRIPTION : seasonLine;
 
   const datePillLabel = parsedDate ? `Planning ${monthName} ${dayOfMonth}` : null;
 
@@ -2094,6 +2097,13 @@ export default function DiscoverLocationPage() {
 
   return (
     <BrowseShell>
+      {isKyotoCity(city) ? (
+        <SEOHead
+          title={displayCity}
+          description={KYOTO_CITY_DESCRIPTION}
+          url={`/discover/location/${encodeURIComponent(city)}`}
+        />
+      ) : null}
       {/* ── Band (earn-grammar header + Marketplace rail) — FULL-BLEED ─────
           The band section carries its own inner `container max-w-6xl`, so it
           lives OUTSIDE the narrower body wrapper below and spans the viewport

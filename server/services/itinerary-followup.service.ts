@@ -9,6 +9,10 @@ import {
   ITINERARY_FOLLOWUPS, buildItineraryFollowupEmail, isItineraryFollowup,
   marketingPreferences, localMarketingClock, nextMarketingWindow,
 } from "./itinerary-followup-email";
+import { marketingUnsubscribeSkipReason } from "@shared/marketing-email-footer";
+import {
+  MARKETING_FOOTER_RETRY_MS, applyMarketingEmailFooter, logMarketingEmailSkip, readMarketingEmailFooter,
+} from "./marketing-email-footer";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export interface FollowupMetadata {
@@ -187,17 +191,31 @@ export async function deliverItineraryFollowup(outboxId: number, sender: (params
       destination: itinerary.destination, ...facts, baseUrl: getAppBaseUrl(), unsubscribeToken: meta.unsubscribeToken,
     });
     if (!message) return cancel("No currently bookable itinerary items");
+    const skipSend = async (reason: string) => {
+      logMarketingEmailSkip(row.emailType, reason, outboxId);
+      await tx.update(emailOutbox).set({
+        status: "pending",
+        retryAfter: new Date(now.getTime() + MARKETING_FOOTER_RETRY_MS),
+        lastError: reason,
+        updatedAt: now,
+      }).where(eq(emailOutbox.id, outboxId));
+      return "skipped" as const;
+    };
+    const identity = await readMarketingEmailFooter(tx);
+    if (!identity.ok) return skipSend(identity.reason);
+    const footered = applyMarketingEmailFooter(message, identity.footer);
+    if (!footered) return skipSend(marketingUnsubscribeSkipReason());
     const definition = ITINERARY_FOLLOWUPS.find((entry) => entry.kind === row.emailType)!;
     const deliveryMetadata = { ...meta, deliveryCalendarDay: clock.day };
     await tx.update(emailOutbox).set({
-      metadata: deliveryMetadata, subject: message.subject, html: message.html, textBody: message.text,
+      metadata: deliveryMetadata, subject: footered.subject, html: footered.html, textBody: footered.text,
     })
       .where(eq(emailOutbox.id, outboxId));
     const attemptCount = row.attemptCount + 1;
     // Reserve the calendar day even for ambiguous failures; retry only this same row/key.
     const result = await dispatchMessagingEvent(definition.automationId, "itinerary.followup_due",
       { itineraryId: meta.itineraryId }, { eligible: true }, async () => {
-        try { return await sender({ to: row.toEmail, ...message, idempotencyKey: `itinerary-followup-${outboxId}` }); }
+        try { return await sender({ to: row.toEmail, subject: footered.subject, html: footered.html, text: footered.text, idempotencyKey: `itinerary-followup-${outboxId}` }); }
         catch { return { ok: false, error: "Provider attempt failed" } as SendEmailResult; }
       });
     const dead = attemptCount >= row.maxAttempts;

@@ -17,7 +17,7 @@
  *      App routes for /concierge and /optimize
  *   S2 /my-events stays a plain route and its "Pay coordination fee" is not gated
  * COPY:
- *   C1 /pricing reads "They review, re-route, and book in your name."; "A Traveloure booking agent handles this for
+ *   C1 /pricing reads "They review and re-route your plan with you."; "A Traveloure booking agent handles this for
  *      you" and "Our trip planners handle all bookings" are gone; "book this on your behalf" stays
  *
  * Run: npx tsx --test client/src/components/__tests__/traveler-doors.test.tsx
@@ -149,7 +149,7 @@ describe("structural doors", () => {
 
 describe("copy", () => {
   it("C1 the three strings", () => {
-    assert.ok(read("client/src/pages/pricing.tsx").includes('"They review, re-route, and book in your name."'));
+    assert.ok(read("client/src/pages/pricing.tsx").includes('"They review and re-route your plan with you."'));
     assert.ok(!read("client/src/pages/pricing.tsx").includes("book for you"));
     assert.ok(!read("client/src/components/TwelveGoTransport.tsx").includes("A Traveloure booking agent handles this for you"));
     assert.ok(!read("client/src/pages/itinerary.tsx").includes("Our trip planners handle all bookings"));

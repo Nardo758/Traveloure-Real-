@@ -389,7 +389,7 @@ export default function VisaHelpPage() {
         width="content"
         eyebrow="AI-Powered Visa Requirements"
         title="Visa Help & Expert Guidance"
-        lead="Instantly look up visa requirements for any country, then connect with a visa expert for hands-on help."
+        lead="Check what you need to enter the country you're visiting."
       >
 
         {/* Lookup Form */}
@@ -639,7 +639,7 @@ export default function VisaHelpPage() {
               <Globe className="w-10 h-10 text-muted-foreground/40 mx-auto mb-3" />
               <p className="text-muted-foreground font-medium">No visa experts listed yet</p>
               <p className="text-sm text-muted-foreground mt-1">
-                Check back soon — we're onboarding visa specialists.
+                No visa experts are listed right now.
               </p>
               <Link href="/services?category=visa-assistance">
                 <Button variant="outline" className={`${PAGE_ACTION.secondary} mt-4`} data-testid="button-browse-experts">

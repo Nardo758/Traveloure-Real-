@@ -92,21 +92,23 @@ test("H3 articles 5 and 8 type no price, percent or time window", () => {
 test("H4 article 5 renders the pricing answer's numbers, and none without one", () => {
   const off = text("trip-pass-and-fees", SAMPLE);
   assert.equal(off.pricingOmitted, false);
-  assert.match(off.all, /Price: \$19 per trip\./);
-  assert.match(off.all, /a service fee of 7% is added to the booking, capped at \$25 per booking/);
-  assert.match(off.all, /each further AI task on a plan is \$1\.50/);
+  assert.match(off.all, /The price is shown before you pay/);
+  assert.match(off.all, /a service fee is added to the booking\. The price is shown before you pay/);
+  assert.match(off.all, /the price of each further AI task on a plan is shown before you pay/);
+  assert.doesNotMatch(off.all, /\$19|7%|\$1\.50|\$25 per booking/);
   assert.match(off.all, /free through 31 December 2026/);
-  assert.match(off.all, /Coming soon\./);
+  assert.match(off.all, /Plus isn't available yet\./);
+  assert.doesNotMatch(off.all, /Coming soon/);
   assert.doesNotMatch(off.all, /per year/, "no Plus price while Plus is not on sale");
 
   const on = text("trip-pass-and-fees", { ...SAMPLE, plusSalesEnabled: true });
   assert.match(on.all, /Price: \$25 per year\./);
-  assert.doesNotMatch(on.all, /Coming soon/);
+  assert.doesNotMatch(on.all, /Plus isn't available yet|Coming soon/);
 
   const none = text("trip-pass-and-fees", null);
   assert.equal(none.pricingOmitted, true);
   assert.doesNotMatch(none.all, /\$|\d+%|\{/, "no number and no raw placeholder without a pricing answer");
-  assert.doesNotMatch(none.all, /Coming soon|per year/, "neither Plus variant without a pricing answer");
+  assert.doesNotMatch(none.all, /Coming soon|per year|Plus isn't available yet/, "neither Plus variant without a pricing answer");
 });
 
 test("H5 article 8's windows are the shared constants the server's sweeps import", () => {
