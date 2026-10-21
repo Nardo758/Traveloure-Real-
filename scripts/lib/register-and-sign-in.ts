@@ -16,10 +16,27 @@ export type ScriptRequest = (
   body?: unknown,
 ) => Promise<{ status: number; json?: any; text: string }>;
 
+async function stampEmailVerified(email: string): Promise<void> {
+  if (!process.env.DATABASE_URL) {
+    throw new Error("registerAndSignIn requires DATABASE_URL to record email verification");
+  }
+  const { Client } = await import("pg");
+  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  try {
+    await client.query(
+      "UPDATE users SET email_verified = NOW() WHERE lower(email) = lower($1) AND email_verified IS NULL",
+      [email],
+    );
+  } finally {
+    await client.end();
+  }
+}
+
 export async function registerAndSignIn(
   req: ScriptRequest,
   account: { email: string; password: string; firstName?: string; lastName?: string },
-  options: { beforeSignIn?: () => Promise<void> } = {},
+  options: { beforeSignIn?: () => Promise<void>; leaveUnverified?: boolean } = {},
 ): Promise<{ id: string }> {
   const body = {
     email: account.email,
@@ -38,6 +55,7 @@ export async function registerAndSignIn(
     throw new Error(`register failed for ${account.email}: ${reg.status} ${reg.text.slice(0, 200)}`);
   }
   if (options.beforeSignIn) await options.beforeSignIn();
+  if (!options.leaveUnverified) await stampEmailVerified(account.email);
   const login = await req("POST", "/api/auth/login", { email: account.email, password: account.password });
   if (login.status !== 200) {
     throw new Error(`sign-in failed for ${account.email}: ${login.status} ${login.text.slice(0, 200)}`);

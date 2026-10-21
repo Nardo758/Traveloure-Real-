@@ -228,6 +228,7 @@ import { useClaimGuestTrips } from "@/hooks/use-claim-guest-trips";
 import { useClaimGuestConcierge } from "@/hooks/use-claim-guest-concierge";
 import { captureAcquisitionRef } from "@/lib/acquisition";
 import { sanitizeReturnTo } from "@/lib/safe-return-to";
+import { emailVerificationHoldRequired, isEmailVerificationHoldPath } from "@/lib/email-verification-hold";
 import { EMAIL_SIGN_IN_REQUIRED_MESSAGE, EMAIL_SIGN_IN_REQUIRED_PARAM } from "@shared/email-sign-in-required";
 
 // Fallback shown while a lazily-loaded route chunk is being fetched.
@@ -269,6 +270,10 @@ function ProtectedRoute({ component: Component, skipTermsCheck = false, required
         <Loader2 className="w-10 h-10 animate-spin text-primary" />
       </div>
     );
+  }
+
+  if (emailVerificationHoldRequired(user)) {
+    return <Redirect to="/verify-email" />;
   }
 
   // Check if user has accepted BOTH terms AND privacy policy (unless skipTermsCheck is true)
@@ -343,6 +348,7 @@ function AuthReturnToRestorer() {
 
   useEffect(() => {
     if (isLoading || !user || restoredRef.current) return;
+    if (emailVerificationHoldRequired(user)) return;
     restoredRef.current = true;
     const stored = sessionStorage.getItem("traveloure_return_to");
     if (!stored) return;
@@ -352,6 +358,20 @@ function AuthReturnToRestorer() {
       navigate(dest, { replace: true });
     }
   }, [isLoading, user, navigate]);
+
+  return null;
+}
+
+function EmailVerificationHoldRedirect() {
+  const { user, isLoading } = useAuth();
+  const [location, navigate] = useLocation();
+
+  useEffect(() => {
+    if (isLoading || !user) return;
+    if (!emailVerificationHoldRequired(user)) return;
+    if (isEmailVerificationHoldPath(window.location.pathname)) return;
+    navigate("/verify-email", { replace: true });
+  }, [isLoading, user, location, navigate]);
 
   return null;
 }
@@ -1397,6 +1417,7 @@ function GuestCartMigrator() {
 
   useEffect(() => {
     if (isLoading) return;
+    if (emailVerificationHoldRequired(user)) return;
     const isNowAuth = !!user;
     if (!wasAuthenticated.current && isNowAuth) {
       const guestSessionId = localStorage.getItem("traveloure_guest_session");
@@ -1458,6 +1479,7 @@ function App() {
                   <PenBinder />
                   <GuestCartMigrator />
                   <AuthReturnToRestorer />
+                  <EmailVerificationHoldRedirect />
                   <MaintenanceGate>
                     <Router />
                   </MaintenanceGate>

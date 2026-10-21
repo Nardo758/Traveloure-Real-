@@ -8,6 +8,8 @@ import type { Express } from "express";
 import { authStorage } from "./storage";
 import { sendWelcomeEmail } from "../../services/email.service";
 import { issueEmailVerification } from "./emailAuth";
+import { pathAfterAuth } from "../../services/email-verification.service";
+import { EMAIL_VERIFICATION_HOLD_PATH } from "@shared/email-verification-gate";
 import { getPlatformFlag, FLAG_REGISTRATION_ENABLED, getTravelerSignupMode, getLaunchMarketSlug } from "../../services/platform-flags";
 import { decideFirstTimeSignup, waitlistBlockedPath, TRAVELER_WAITLIST, type SignupIntent } from "@shared/launch-signup";
 import { stashSignupIntent, readSignupIntent, readSignupSourceTag, takeStashedReturnTo } from "./signup-intent-stash";
@@ -272,9 +274,17 @@ export function setupFacebookAuth(app: Express) {
       // LW-1b: return to the page the flow started from (read before req.logIn regenerates the session); the
       // influencer onboarding page stays the default when none was stashed.
       const returnTo = takeStashedReturnTo(req);
+      const fallback = returnTo ?? "/become-expert?influencer=true&auth=facebook";
       req.logIn(user, (loginErr) => {
         if (loginErr) return next(loginErr);
-        res.redirect(returnTo ?? "/become-expert?influencer=true&auth=facebook");
+        const userId = user?.claims?.sub ?? user?.id;
+        pathAfterAuth(req.session, userId, fallback)
+          .then((dest) => {
+            if (!res.headersSent) res.redirect(dest);
+          })
+          .catch(() => {
+            if (!res.headersSent) res.redirect(EMAIL_VERIFICATION_HOLD_PATH);
+          });
       });
     })(req, res, next);
   });

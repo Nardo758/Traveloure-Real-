@@ -30,6 +30,28 @@ export interface RegisterAndSignInOptions {
   lastName?: string;
   /** Extra register-body fields a suite already sends (`userType`, `intent`, `qaCode`, `signupSource`, …). */
   extra?: Record<string, unknown>;
+  /**
+   * S-09: suites that sign in through this helper get a verified address, so the
+   * hold screen does not take over. Pass true only when the test is about the hold.
+   */
+  leaveUnverified?: boolean;
+}
+
+async function stampEmailVerified(email: string): Promise<void> {
+  if (!process.env.DATABASE_URL) {
+    throw new Error("registerAndSignIn requires DATABASE_URL to record email verification");
+  }
+  const { Client } = await import("pg");
+  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  try {
+    await client.query(
+      "UPDATE users SET email_verified = NOW() WHERE lower(email) = lower($1) AND email_verified IS NULL",
+      [email],
+    );
+  } finally {
+    await client.end();
+  }
 }
 
 export async function registerAndSignIn(options: RegisterAndSignInOptions): Promise<SignedInActor> {
@@ -49,6 +71,7 @@ export async function registerAndSignIn(options: RegisterAndSignInOptions): Prom
     assert.fail(`register(${email}) failed (${reg.status}): ${await reg.text()}`);
   }
   await reg.arrayBuffer().catch(() => undefined);
+  if (!options.leaveUnverified) await stampEmailVerified(email);
 
   const login = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",

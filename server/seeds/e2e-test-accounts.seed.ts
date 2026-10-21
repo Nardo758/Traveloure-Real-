@@ -102,16 +102,16 @@ async function seedE2EAccounts() {
     const termsStamp = new Date();
 
     if (existing) {
-      if (!existing.termsAcceptedAt || !existing.privacyAcceptedAt) {
-        await db
-          .update(users)
-          .set({
-            termsAcceptedAt: existing.termsAcceptedAt ?? termsStamp,
-            privacyAcceptedAt: existing.privacyAcceptedAt ?? termsStamp,
-            updatedAt: termsStamp,
-          })
-          .where(eq(users.id, existing.id));
-        console.log(`  ✓ ${account.email} already exists (backfilled terms acceptance)`);
+      const patch: Record<string, unknown> = {};
+      if (!existing.termsAcceptedAt) patch.termsAcceptedAt = termsStamp;
+      if (!existing.privacyAcceptedAt) patch.privacyAcceptedAt = termsStamp;
+      // S-09: seeded sign-ins are the dev and e2e accounts. Stamp verification
+      // when it is still null so the verify screen does not hold them.
+      if (!existing.emailVerified) patch.emailVerified = termsStamp;
+      if (Object.keys(patch).length > 0) {
+        patch.updatedAt = termsStamp;
+        await db.update(users).set(patch).where(eq(users.id, existing.id));
+        console.log(`  ✓ ${account.email} already exists (backfilled ${Object.keys(patch).filter((k) => k !== "updatedAt").join(", ")})`);
       } else {
         console.log(`  ✓ ${account.email} already exists`);
       }
@@ -127,6 +127,7 @@ async function seedE2EAccounts() {
       authProvider: "email",
       termsAcceptedAt: termsStamp,
       privacyAcceptedAt: termsStamp,
+      emailVerified: termsStamp,
     });
     console.log(`  + Created ${account.email} (${account.role})`);
   }
@@ -152,6 +153,7 @@ async function seedE2EAccounts() {
     if (!row.password) patch.password = hash;
     if (!row.termsAcceptedAt) patch.termsAcceptedAt = new Date();
     if (!row.privacyAcceptedAt) patch.privacyAcceptedAt = new Date();
+    if (!row.emailVerified) patch.emailVerified = new Date();
     // Only claim the handle if it is genuinely free — never take one from another account.
     if (!row.handle) {
       const taken = await db
