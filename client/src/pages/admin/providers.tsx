@@ -20,6 +20,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { parseApiErrorMessage } from "@/lib/api-error";
 import { useToast } from "@/hooks/use-toast";
+import { attestationLabel } from "@shared/supply-registration";
 
 interface ProviderApplication {
   id: string;
@@ -34,6 +35,9 @@ interface ProviderApplication {
   businessType: string;
   serviceOffers?: string[];
   description?: string;
+  /** true = yes, false = Not applicable, null/absent = not answered. */
+  hasInsurance?: boolean | null;
+  hasLicense?: boolean | null;
   status: string;
   rejectionMessage?: string | null;
   createdAt: string;
@@ -68,6 +72,8 @@ interface PlatformProvider {
   address: string;
   serviceOffers: string[];
   description?: string;
+  hasInsurance?: boolean | null;
+  hasLicense?: boolean | null;
   createdAt: string;
   user: { id: string; name: string; email: string; profileImageUrl: string | null } | null;
   services: ProviderService[];
@@ -123,6 +129,36 @@ function serviceIconForOffering(displayName: string | null | undefined) {
   if (t.includes("fit") || t.includes("gym") || t.includes("yoga")) return Dumbbell;
   if (t.includes("music") || t.includes("entertain") || t.includes("dj")) return Music;
   return ShoppingBag;
+}
+
+function AttestationFacts({
+  insurance,
+  license,
+  id,
+}: {
+  insurance: boolean | null | undefined;
+  license: boolean | null | undefined;
+  id: string;
+}) {
+  const insuranceText = attestationLabel(insurance);
+  const licenseText = attestationLabel(license);
+  if (!insuranceText && !licenseText) return null;
+  return (
+    <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+      {insuranceText ? (
+        <div>
+          <p className="text-gray-500 text-xs">Insurance</p>
+          <p className="font-medium" data-testid={`text-admin-insurance-${id}`}>{insuranceText}</p>
+        </div>
+      ) : null}
+      {licenseText ? (
+        <div>
+          <p className="text-gray-500 text-xs">Licenses</p>
+          <p className="font-medium" data-testid={`text-admin-licenses-${id}`}>{licenseText}</p>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function ServiceStatusBadge({ status }: { status: string }) {
@@ -515,10 +551,20 @@ export default function AdminProviders() {
                             )}
                             <StripeStatusBadge provider={provider} />
                           </div>
-                          <div className="flex items-center gap-3 text-xs text-gray-500">
+                          <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
                             <span data-testid={`text-provider-business-type-${provider.id}`}>
                               Legal entity: {provider.businessType}
                             </span>
+                            {attestationLabel(provider.hasInsurance) ? (
+                              <span data-testid={`text-admin-insurance-${provider.id}`}>
+                                Insurance: {attestationLabel(provider.hasInsurance)}
+                              </span>
+                            ) : null}
+                            {attestationLabel(provider.hasLicense) ? (
+                              <span data-testid={`text-admin-licenses-${provider.id}`}>
+                                Licenses: {attestationLabel(provider.hasLicense)}
+                              </span>
+                            ) : null}
                             <span className="flex items-center gap-1">
                               <MapPin className="w-3 h-3" /> {provider.address}, {provider.country}
                             </span>
@@ -739,7 +785,7 @@ export default function AdminProviders() {
                         </Badge>
                       </div>
 
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-sm">
                         <div>
                           <p className="text-gray-500 text-xs">Business Type</p>
                           <p className="font-medium">{app.businessType}</p>
@@ -762,6 +808,8 @@ export default function AdminProviders() {
                           </div>
                         </div>
                       </div>
+
+                      <AttestationFacts id={app.id} insurance={app.hasInsurance} license={app.hasLicense} />
 
                       {app.description && (
                         <p className="text-sm text-gray-600 italic">
@@ -874,6 +922,8 @@ export default function AdminProviders() {
                           </Badge>
                         </div>
                       </div>
+
+                      <AttestationFacts id={app.id} insurance={app.hasInsurance} license={app.hasLicense} />
 
                       {app.rejectionMessage && (
                         <div className="bg-white border border-red-100 rounded p-3">

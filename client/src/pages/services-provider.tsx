@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -39,7 +40,14 @@ import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { isAffiliateCategory } from "@/lib/earn-roles";
-import { providerKeepLine, KEEP_RATES_ENDPOINT, type PublicKeepRates } from "@/lib/fee-keep-copy";
+import { providerReviewKeepLine, KEEP_RATES_ENDPOINT, type PublicKeepRates } from "@/lib/fee-keep-copy";
+import {
+  ATTESTATION_NOT_APPLICABLE,
+  PROVIDER_BUSINESS_TYPES,
+  attestationLabel,
+  optionalPhoneError,
+  restoreAttestationAnswers,
+} from "@shared/supply-registration";
 import { suggestHandle } from "@shared/handle-suggestion";
 import { HANDLE_MAX_LENGTH } from "@shared/handle";
 import { savePendingHandle } from "@/lib/pending-handle";
@@ -91,22 +99,72 @@ interface ServiceCategoryRow {
   categoryKey: string | null;
 }
 
-const businessTypes = [
-  "Sole Proprietorship",
-  "Partnership",
-  "LLC",
-  "Corporation",
-  "Non-Profit",
-];
-
-// The commission benefit is the provider rate the fee resolver applies today (CP-2); with no answer it is left out (§13).
+// The commission benefit is the provider's keep share from the fee resolver (S-21). With no answer it is left out.
 function platformBenefits(commissionLine: string | null) {
   return [
-    { icon: Users, text: "Access to qualified travelers" },
-    ...(commissionLine ? [{ icon: DollarSign, text: commissionLine }] : []),
-    { icon: Star, text: "Review and rating system" },
-    { icon: Shield, text: "Secure payment processing" },
+    { icon: Users, text: "Access to qualified travelers", testId: "text-benefit-travelers" },
+    ...(commissionLine ? [{ icon: DollarSign, text: commissionLine, testId: "text-provider-keep" }] : []),
+    { icon: Star, text: "Review and rating system", testId: "text-benefit-reviews" },
+    { icon: Shield, text: "Secure payment processing", testId: "text-benefit-payments" },
   ];
+}
+
+/**
+ * Old drafts stored an unticked insurance/licence box as `false`. That value now means
+ * Not applicable, so a draft from before this answer existed is read as unanswered.
+ */
+function restoreProviderForm<T extends {
+  hasInsurance: boolean | null;
+  hasLicense: boolean | null;
+  attestationAnswers?: boolean;
+}>(saved: Partial<T> | undefined, defaults: T): T {
+  const answers = restoreAttestationAnswers(saved);
+  return { ...defaults, ...saved, ...answers };
+}
+
+function AttestationField({
+  name,
+  legend,
+  yesLabel,
+  value,
+  onChange,
+}: {
+  name: "insurance" | "license";
+  legend: string;
+  yesLabel: string;
+  value: boolean | null;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <fieldset className="space-y-2">
+      <legend className="text-sm font-medium text-[#374151]">{legend}</legend>
+      <RadioGroup
+        value={value === true ? "yes" : value === false ? "na" : ""}
+        onValueChange={(next) => onChange(next === "yes")}
+        className="gap-2"
+      >
+        <div className="flex items-start gap-3">
+          <RadioGroupItem value="yes" id={`${name}-yes`} data-testid={`radio-${name}-yes`} className="mt-0.5" />
+          <label htmlFor={`${name}-yes`} className="text-sm text-[#374151]">{yesLabel}</label>
+        </div>
+        <div className="flex items-start gap-3">
+          <RadioGroupItem value="na" id={`${name}-na`} data-testid={`radio-${name}-na`} className="mt-0.5" />
+          <label htmlFor={`${name}-na`} className="text-sm text-[#374151]">{ATTESTATION_NOT_APPLICABLE}</label>
+        </div>
+      </RadioGroup>
+    </fieldset>
+  );
+}
+
+function AttestationReadout({ label, value, testId }: { label: string; value: boolean | null; testId: string }) {
+  const text = attestationLabel(value);
+  if (!text) return null;
+  return (
+    <div>
+      <span className="text-muted-foreground">{label}:</span>
+      <span className="ml-2 text-foreground font-medium" data-testid={testId}>{text}</span>
+    </div>
+  );
 }
 
 export default function ServicesProviderPage() {
@@ -114,7 +172,7 @@ export default function ServicesProviderPage() {
   const [, setLocation] = useLocation();
   const { user: signedInUser, isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const { data: keepRates } = useQuery<PublicKeepRates>({ queryKey: [KEEP_RATES_ENDPOINT], staleTime: 60_000 });
-  const benefits = platformBenefits(providerKeepLine(keepRates));
+  const benefits = platformBenefits(providerReviewKeepLine(keepRates));
   // #924: the application status carries the reviewer's feedback (current or previous rejection).
   const { data: appStatus } = useQuery<{ rejectionMessage?: string | null; previousRejection?: { message: string } | null }>({
     queryKey: ["/api/provider/application-status"],
@@ -161,8 +219,11 @@ export default function ServicesProviderPage() {
     // are REMOVED from intake rather than given invented columns. `taxId` stays — it is a
     // business fact, and it now ships as `businessRegistrationNumber` (the column that holds
     // it) instead of being dropped on the floor.
-    hasInsurance: false,
-    hasLicense: false,
+    // null = not answered. false = Not applicable. true = yes. Old drafts stored an
+    // unticked box as false; those are read back as unanswered (see restore below).
+    hasInsurance: null as boolean | null,
+    hasLicense: null as boolean | null,
+    attestationAnswers: true,
     agreeToTerms: false,
     // The handle the applicant chose on the last step. `null` = UNTOUCHED (the suggestion is shown
     // but not confirmed or edited); "" = deliberately cleared. Neither is a claim — see
@@ -175,9 +236,7 @@ export default function ServicesProviderPage() {
   // expired session never destroys their work. An already-signed-in user with no
   // draft gets the untouched defaults — no behavior change for them.
   const [savedDraft] = useState(() => loadApplicationDraft<typeof defaultFormData>(DRAFT_KEY));
-  const [formData, setFormData] = useState(() =>
-    savedDraft ? { ...defaultFormData, ...savedDraft.formData } : defaultFormData
-  );
+  const [formData, setFormData] = useState(() => restoreProviderForm(savedDraft?.formData, defaultFormData));
 
   // Gap 2: the category picker's rows. Public read (an applicant is a guest until submit),
   // 5-min cache — the taxonomy drifts slowly and an admin edit shows up promptly.
@@ -245,7 +304,8 @@ export default function ServicesProviderPage() {
   const canProceed = () => {
     switch (currentStep) {
       case 1:
-        return formData.businessName && formData.businessType && formData.email && formData.phone;
+        // Phone is optional (S-08). A typed number still has to pass the shared check.
+        return !!(formData.businessName && formData.businessType && formData.email) && optionalPhoneError(formData.phone) === null;
       case 2:
         // Gap 2 / D5 precedent (the Local Expert wizard's neighbourhood step): a category is
         // required only when the catalog HAS rows to pick. A confirmed-empty catalog is an
@@ -257,7 +317,7 @@ export default function ServicesProviderPage() {
           formData.description.length > 20
         );
       case 3:
-        return formData.address && formData.city && formData.country && formData.hasInsurance && formData.hasLicense;
+        return !!(formData.address && formData.city && formData.country) && formData.hasInsurance !== null && formData.hasLicense !== null;
       case 4:
         return formData.agreeToTerms;
       default:
@@ -291,7 +351,7 @@ export default function ServicesProviderPage() {
         businessName: formData.businessName,
         name: formData.businessName,
         email: formData.email,
-        mobile: formData.phone,
+        mobile: formData.phone.trim(),
         country: formData.country,
         // Intake-fixes C4: the city is ALSO sent discretely (migration 261 column) — the
         // concatenated address keeps its exact previous shape for anything reading the
@@ -314,13 +374,10 @@ export default function ServicesProviderPage() {
         ...(offeringKeyFromUrl ? { offeringTypeKey: offeringKeyFromUrl } : {}),
         description: formData.description,
         termsAndConditions: formData.agreeToTerms,
-        infoConfirmation: formData.hasLicense,
-        // Gap 3: `hasInsurance` is a REQUIRED tick to leave step 3 (see canProceed) and was
-        // never sent, so `service_provider_forms.has_insurance` was NULL for every applicant —
-        // and NULL on that column means "never asked" (migration 108), which was a lie the
-        // moment the wizard started gating on it. Sent only when ticked: an untouched box stays
-        // NULL rather than becoming an explicit `false` the applicant never asserted (§13).
-        ...(formData.hasInsurance ? { hasInsurance: true } : {}),
+        // S-19: true = yes, false = Not applicable. Step 3 does not let a blank through.
+        // info_confirmation is a different flag and is not this answer.
+        hasInsurance: formData.hasInsurance,
+        hasLicense: formData.hasLicense,
       };
       return apiRequest("POST", "/api/provider-application", applicationData);
     },
@@ -390,18 +447,18 @@ export default function ServicesProviderPage() {
       {/* Header */}
       <header className="bg-white border-b border-border sticky top-0 z-50">
         <div className="container mx-auto px-4 max-w-4xl">
-          <div className="flex items-center justify-between h-16">
-            <Link href="/earn" className="flex items-center gap-2 text-muted-foreground hover:text-foreground" data-testid="link-back">
+          <div className="flex items-center justify-between h-16 gap-2">
+            <Link href="/earn" className="flex items-center gap-2 shrink-0 text-muted-foreground hover:text-foreground" data-testid="link-back">
               <ArrowLeft className="w-5 h-5" />
               Back
             </Link>
             {/* QA F12(a): the page's visible title is its H1. It was a bare <span>, so this page
                 shipped with NO h1 at all. Styling is unchanged: Tailwind preflight resets an h1 to
                 inherited size/weight and zero margin, so the same two classes render identically. */}
-            <h1 className="font-semibold text-foreground" data-testid="heading-provider-registration">
+            <h1 className="min-w-0 truncate text-center text-sm font-semibold text-foreground sm:text-base" data-testid="heading-provider-registration">
               Service Provider Registration
             </h1>
-            <div className="w-20" />
+            <div className="w-8 shrink-0 sm:w-20" />
           </div>
         </div>
       </header>
@@ -409,12 +466,12 @@ export default function ServicesProviderPage() {
       {/* Progress Steps */}
       <div className="bg-white border-b border-border py-4">
         <div className="container mx-auto px-4 max-w-4xl">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-1 overflow-x-auto">
             {steps.map((step, idx) => (
               <div key={step.id} className="flex items-center">
                 <div
                   className={cn(
-                    "flex items-center gap-2 px-3 py-2 rounded-lg transition-colors",
+                    "flex items-center gap-2 px-1 py-2 sm:px-3 rounded-lg transition-colors",
                     currentStep === step.id
                       ? "bg-[#FFE3E8] text-primary"
                       : currentStep > step.id
@@ -439,7 +496,7 @@ export default function ServicesProviderPage() {
                 {idx < steps.length - 1 && (
                   <div
                     className={cn(
-                      "w-12 md:w-20 h-0.5 mx-2",
+                      "w-2 sm:w-12 md:w-20 h-0.5 mx-1 sm:mx-2",
                       currentStep > step.id ? "bg-green-300" : "bg-[#E5E7EB]"
                     )}
                   />
@@ -520,11 +577,10 @@ export default function ServicesProviderPage() {
                     Type of service you named: {prefill.serviceTypeLabel}
                   </p>
                 ) : null}
-                {/* QA F12(b): step 1's four required fields carry the same `*` + `aria-required`
-                    marker the rest of the codebase uses. The four marked here are EXACTLY the four
-                    `canProceed()` case 1 gates on — Business Name, Business Type, Email, Phone.
-                    Registration Number, Tax ID and Website are unmarked because the step does not
-                    gate on them. If that gate changes, these marks change with it. */}
+                {/* QA F12(b): the required marks are EXACTLY the fields step 1 gates on —
+                    Business Name, Business Type, Email. Phone is optional (S-08): a blank is
+                    allowed, and a typed number is checked. Registration Number, Tax ID and
+                    Website stay unmarked. */}
                 <div>
                   <Label className="text-[#374151]">Business Name <span className="text-red-500">*</span></Label>
                   <Input
@@ -547,7 +603,7 @@ export default function ServicesProviderPage() {
                       <SelectValue placeholder="Select business type" />
                     </SelectTrigger>
                     <SelectContent>
-                      {businessTypes.map((type) => (
+                      {PROVIDER_BUSINESS_TYPES.map((type) => (
                         <SelectItem key={type} value={type}>
                           {type}
                         </SelectItem>
@@ -556,7 +612,7 @@ export default function ServicesProviderPage() {
                   </Select>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
                     <Label className="text-[#374151]">Registration Number</Label>
                     <Input
@@ -590,15 +646,20 @@ export default function ServicesProviderPage() {
                     />
                   </div>
                   <div>
-                    <Label className="text-[#374151]">Phone <span className="text-red-500">*</span></Label>
+                    <Label className="text-[#374151]">Phone (optional)</Label>
                     <Input
                       type="tel"
                       value={formData.phone}
                       onChange={(e) => updateFormData("phone", e.target.value)}
                       className="mt-2 h-12 border-border"
-                      aria-required="true"
+                      aria-invalid={optionalPhoneError(formData.phone) !== null}
                       data-testid="input-phone"
                     />
+                    {optionalPhoneError(formData.phone) ? (
+                      <p className="mt-1 text-sm text-red-600" data-testid="text-phone-error">
+                        {optionalPhoneError(formData.phone)}
+                      </p>
+                    ) : null}
                   </div>
                 </div>
 
@@ -666,7 +727,7 @@ export default function ServicesProviderPage() {
                       business below and we'll follow up — we'll match you to a category ourselves.
                     </p>
                   ) : (
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       {serviceCategories.map((category) => (
                         <button
                           key={category.id}
@@ -732,7 +793,7 @@ export default function ServicesProviderPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
                     <Label className="text-[#374151]">City</Label>
                     <Input
@@ -760,29 +821,21 @@ export default function ServicesProviderPage() {
                     asking once here could only contradict the listings. Do not re-add them
                     without a column that holds them. */}
 
-                <div className="space-y-3 pt-4 border-t border-border">
-                  <div className="flex items-center gap-3">
-                    <Checkbox
-                      id="insurance"
-                      checked={formData.hasInsurance}
-                      onCheckedChange={(checked) => updateFormData("hasInsurance", checked)}
-                      data-testid="checkbox-insurance"
-                    />
-                    <label htmlFor="insurance" className="text-sm text-[#374151]">
-                      I have valid business liability insurance
-                    </label>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Checkbox
-                      id="license"
-                      checked={formData.hasLicense}
-                      onCheckedChange={(checked) => updateFormData("hasLicense", checked)}
-                      data-testid="checkbox-license"
-                    />
-                    <label htmlFor="license" className="text-sm text-[#374151]">
-                      I have all required business licenses and permits
-                    </label>
-                  </div>
+                <div className="space-y-4 pt-4 border-t border-border">
+                  <AttestationField
+                    name="insurance"
+                    legend="Business liability insurance"
+                    yesLabel="I have valid business liability insurance"
+                    value={formData.hasInsurance}
+                    onChange={(next) => updateFormData("hasInsurance", next)}
+                  />
+                  <AttestationField
+                    name="license"
+                    legend="Business licenses and permits"
+                    yesLabel="I have all required business licenses and permits"
+                    value={formData.hasLicense}
+                    onChange={(next) => updateFormData("hasLicense", next)}
+                  />
                 </div>
               </CardContent>
             </Card>
@@ -795,7 +848,7 @@ export default function ServicesProviderPage() {
                 <CardTitle className="text-2xl text-foreground">Review Your Registration</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
                   <div>
                     <span className="text-muted-foreground">Business Name:</span>
                     <span className="ml-2 text-foreground font-medium">{formData.businessName}</span>
@@ -814,6 +867,8 @@ export default function ServicesProviderPage() {
                     <span className="text-muted-foreground">Contact:</span>
                     <span className="ml-2 text-foreground font-medium">{formData.email}</span>
                   </div>
+                  <AttestationReadout label="Insurance" value={formData.hasInsurance} testId="text-review-insurance" />
+                  <AttestationReadout label="Licenses" value={formData.hasLicense} testId="text-review-licenses" />
                 </div>
 
                 <div>
@@ -829,10 +884,10 @@ export default function ServicesProviderPage() {
 
                 <div className="p-4 bg-[#F3F4F6] rounded-lg">
                   <h4 className="font-medium text-foreground mb-2">Platform Benefits:</h4>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {benefits.map((benefit) => (
-                      <div key={benefit.text} className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <benefit.icon className="w-4 h-4 text-primary" />
+                      <div key={benefit.text} className="flex items-center gap-2 text-sm text-muted-foreground" data-testid={benefit.testId}>
+                        <benefit.icon className="w-4 h-4 text-primary shrink-0" />
                         {benefit.text}
                       </div>
                     ))}

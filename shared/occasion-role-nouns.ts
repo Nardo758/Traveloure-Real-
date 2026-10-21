@@ -1,5 +1,5 @@
 /**
- * EVERY ROLE KEY, SPELLED OUT FOR READING (21 as of migration 285).
+ * EVERY ROLE KEY, SPELLED OUT FOR READING (22 as of migration 402).
  * Ledger `2026-09-04-which-event-hint`; cites `2026-09-04-roles-needed` (migration 280),
  * `2026-09-04-venue-category` (migration 285) and CLAUDE.md Locked Decision 31.
  *
@@ -41,6 +41,7 @@ export const OCCASION_ROLE_NOUNS: Record<OccasionRoleKey, string> = {
   childcare_family: "childcare",
   concierge_vip: "VIP concierges",
   dining_venue: "dining venues",
+  dinner_host: "dinner hosts",
   entertainment: "entertainment",
   event_coordinator: "event coordinators",
   florist: "florists",
