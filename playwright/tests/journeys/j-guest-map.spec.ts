@@ -156,3 +156,35 @@ test("8d — signed out: browse with no plan, add, sign up → exactly one plan,
   expect((await rows(`SELECT 1 FROM itinerary_items WHERE trip_id = $1`, [tripId])).length, "still one item").toBe(1);
   expect((await rows(`SELECT 1 FROM cart_items WHERE user_id = $1`, [user.id])).length, "no cart row").toBe(0);
 });
+
+test("8d — social sign-in from the guest map asks to come back to this page", async ({ page }) => {
+  test.setTimeout(60_000);
+  // Stop the round trip before any provider: the bug was this request going out with no returnTo.
+  await page.route("**/api/login*", async (route) => {
+    await route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>stopped</title>" });
+  });
+
+  await page.goto("/experiences");
+  await testid(page, "city-card-kyoto").click({ timeout: 20_000 });
+  await testid(page, "plan-entry-group-trips").click();
+  await testid(page, "button-plan-entry-start").click();
+  await expect(page).toHaveURL(/\/plans\/new\?view=map$/, { timeout: 15_000 });
+
+  await testid(page, "button-guest-map-start").click();
+  await expect(testid(page, "modal-sign-in")).toBeVisible({ timeout: 10_000 });
+
+  const pending = page.waitForRequest((req) => {
+    try {
+      return new URL(req.url()).pathname === "/api/login";
+    } catch {
+      return false;
+    }
+  });
+  await testid(page, "button-social-login").click();
+  const req = await pending;
+  const url = new URL(req.url());
+  expect(url.pathname).toBe("/api/login");
+  expect(url.searchParams.get("returnTo")).toBe("/plans/new?view=map");
+  expect(url.searchParams.get("intent")).toBeNull();
+  expect(url.searchParams.has("source")).toBe(false);
+});

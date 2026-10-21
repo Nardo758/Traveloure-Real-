@@ -1706,7 +1706,7 @@ function ClientSuggestPanel({ tripId, destination }: { tripId: string; destinati
             style={suggestFieldStyle}
           />
           <textarea
-            placeholder="Details (optional) — why this is special, how to book, insider tips…"
+            placeholder="Details (optional) — why this is special, how to book…"
             rows={2}
             value={form.description}
             onChange={(e) => setForm(f => ({ ...f, description: e.target.value }))}

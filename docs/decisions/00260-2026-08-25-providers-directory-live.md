@@ -1,0 +1,1 @@
+| 2026-08-25-providers-directory-live | 2026-08-25 | [advisory] | Supersedes the "parked until ≥10 storefronts" ruling. `/providers` is live with honest per-market count and an empty-market state. Test accounts to populate ≥3 storefronts per launch market. | `docs/design/MARKETPLACE_EXPERTS_EARN_GRAMMAR_SPEC.md` §0 |

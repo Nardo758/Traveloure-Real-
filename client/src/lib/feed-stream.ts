@@ -1,3 +1,5 @@
+import { filterFeedActivity } from "@shared/banned-copy";
+
 /**
  * Feed stream composition algorithm.
  *
@@ -5,10 +7,13 @@
  * and events so that:
  * - Gems with a `neighborhood` field are grouped inside their NeighborhoodContainer
  * - Gems with no neighborhood appear as loose cards
- * - No two NeighborhoodContainers are ever visually adjacent — this is a HARD
- *   guarantee, not best-effort. When real filler is insufficient, synthetic
- *   `"city-separator"` items (always rendered, no photo required) are inserted.
- * - Loose gems / expert cards / events are woven between containers
+ * - No two stocked neighbourhood sections are adjacent. An unstocked
+ *   neighbourhood (no gems, services, local expert or ready-made) stays in
+ *   neighbourhood order and does not take a filler slot, so it can sit
+ *   directly against the next stocked section. When real filler is
+ *   insufficient, synthetic `"city-separator"` items (always rendered, no
+ *   photo required) are inserted between stocked neighbourhoods.
+ * - Loose gems / expert cards / events are woven between stocked containers
  */
 
 export type FeedItemKind =
@@ -108,12 +113,141 @@ export function matchedServiceSuggestion(placeType: string | null | undefined): 
   }
 }
 
+/** Body copy for an unstocked neighbourhood's one Wanted tile. Marketing, exact. */
+export function neighbourhoodWantedBody(name: string): string {
+  return `Know ${name} well? We're looking for local experts and providers here.`;
+}
+
+export const NEIGHBOURHOOD_WANTED_BUTTON = "Join Traveloure";
+export const NEIGHBOURHOOD_WANTED_HREF = "/earn";
+
+function positiveCount(value: unknown): boolean {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0;
+}
+
+function presentList(value: unknown): boolean {
+  return Array.isArray(value) && value.length > 0;
+}
+
+/**
+ * A neighbourhood has nothing of its own to show: no gems, no services, no
+ * local expert and no ready-made. Those four are read off the neighbourhood
+ * record (the location-view payload), not off filler that happens to sit in
+ * the same bento window.
+ */
+export function neighbourhoodIsUnstocked(neighbourhood: any): boolean {
+  if (!neighbourhood || typeof neighbourhood !== "object") return false;
+  if (presentList(neighbourhood.gems) || positiveCount(neighbourhood.gemCount)) return false;
+  if (
+    positiveCount(neighbourhood.serviceCount) ||
+    presentList(neighbourhood.services)
+  ) {
+    return false;
+  }
+  if (neighbourhood.localExpert || neighbourhood.local_expert || neighbourhood.expert) return false;
+  if (
+    neighbourhood.readyMade ||
+    neighbourhood.ready_made ||
+    neighbourhood.readyMadeTrip ||
+    neighbourhood.ready_made_trip ||
+    presentList(neighbourhood.packages)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+const SECTION_INVENTORY_KINDS = new Set([
+  "loose-gem",
+  "vendor-service",
+  "expert",
+  "lead-expert",
+  "package",
+]);
+
+/**
+ * The section renders as a heading plus one Wanted tile when the neighbourhood
+ * itself is unstocked and the run did not already place a gem, service, expert
+ * or ready-made. A partner recommendation is not one of those and does not
+ * become the section anchor.
+ */
+export function neighbourhoodSectionNeedsWantedTile(
+  neighbourhood: any | null,
+  run: { kind: string }[],
+): boolean {
+  if (!neighbourhood || !neighbourhoodIsUnstocked(neighbourhood)) return false;
+  return !run.some((item) => SECTION_INVENTORY_KINDS.has(item.kind));
+}
+
+/**
+ * Put unstocked neighbourhood markers back into neighbourhood order without
+ * taking a filler slot. Each one lands immediately before the next stocked
+ * neighbourhood (after that previous section's trailing filler), or at the
+ * end when nothing stocked follows. Stocked items keep their relative order.
+ */
+export function placeUnstockedNeighbourhoods(
+  stream: FeedItem[],
+  orderedNeighbourhoods: FeedItem[],
+): FeedItem[] {
+  const markers = orderedNeighbourhoods.filter((item) => item.kind === "neighborhood");
+  const already = new Set(
+    stream.filter((item) => item.kind === "neighborhood").map((item) => item.id),
+  );
+  const pendingBefore = new Map<string, FeedItem[]>();
+  const trailing: FeedItem[] = [];
+  let pending: FeedItem[] = [];
+  for (const marker of markers) {
+    if (!neighbourhoodIsUnstocked(marker.data)) {
+      if (pending.length > 0) {
+        pendingBefore.set(marker.id, pending);
+        pending = [];
+      }
+      continue;
+    }
+    if (already.has(marker.id)) continue;
+    pending.push(marker);
+  }
+  trailing.push(...pending);
+  if (pendingBefore.size === 0 && trailing.length === 0) return stream;
+
+  const out: FeedItem[] = [];
+  const consumed = new Set<string>();
+  for (const item of stream) {
+    const before = item.kind === "neighborhood" ? pendingBefore.get(item.id) : undefined;
+    if (before) {
+      out.push(...before);
+      consumed.add(item.id);
+    }
+    out.push(item);
+  }
+  for (const marker of markers) {
+    if (!consumed.has(marker.id)) {
+      const before = pendingBefore.get(marker.id);
+      if (before) out.push(...before);
+    }
+  }
+  out.push(...trailing);
+  return out;
+}
+
+/** Drop unstocked neighbourhood markers so composition sees the stocked stream. */
+export function withoutUnstockedNeighbourhoods(stream: FeedItem[]): FeedItem[] {
+  return stream.filter(
+    (item) => item.kind !== "neighborhood" || !neighbourhoodIsUnstocked(item.data),
+  );
+}
+
 /**
  * Build the ordered FeedItem[] stream from raw data sections.
  *
- * Non-adjacency contract: ALL neighborhoods are emitted, and no two are ever
- * adjacent. When the filler pool is exhausted, a `city-separator` synthetic item
- * (always visible, no photo) is inserted as a guaranteed separator.
+ * Non-adjacency contract: ALL neighborhoods are emitted, and no two stocked
+ * ones are ever adjacent. An unstocked neighbourhood (no gems, services,
+ * expert or ready-made) stays in neighbourhood order and does not consume a
+ * filler slot, so the stocked sections keep the stream they had when empty
+ * neighbourhoods were omitted. When the filler pool is exhausted, a
+ * `city-separator` synthetic item (always visible, no photo) is inserted as
+ * a guaranteed separator between stocked neighbourhoods.
  */
 export function buildFeedStream(
   neighborhoods: any[],
@@ -147,7 +281,7 @@ export function buildFeedStream(
     }
   }
 
-  // ── 2. Build neighborhood FeedItems (only where gems exist) ─────────────
+  // ── 2. Build neighborhood FeedItems (every neighbourhood, including empty) ─
   //
   // Gems can arrive in two forms:
   //   a) Nested inside each neighborhood object (n.gems) — primary source
@@ -156,8 +290,10 @@ export function buildFeedStream(
   // We merge both: use n.gems when present, otherwise fall back to
   // gemsByNeighborhood. The merged gemCount is updated to match the actual
   // gems array so the header ("N things to do") is always accurate.
+  // A neighbourhood with no gems is kept. Services, localExpert and a
+  // ready-made on the record stock it; with none of those it stays in order
+  // and the bento draws one Wanted tile. It does not take a filler slot.
   const neighborhoodItems: FeedItem[] = neighborhoods
-    .filter((n) => (n.gems?.length ?? 0) > 0 || (gemsByNeighborhood.get(n.slug)?.length ?? 0) > 0)
     .map((n) => {
       const mergedGems: any[] = (n.gems?.length ? n.gems : null)
         ?? gemsByNeighborhood.get(n.slug)
@@ -191,11 +327,15 @@ export function buildFeedStream(
       id: `hotel-${h.id ?? Math.random()}`,
       data: h,
     })),
-    ...(supplyActivities ?? []).slice(0, 3).map((a) => ({
-      kind: "supply-activity" as FeedItemKind,
-      id: `activity-${a.id ?? Math.random()}`,
-      data: a,
-    })),
+    ...(supplyActivities ?? [])
+      .map((a) => filterFeedActivity(a))
+      .filter((a): a is NonNullable<typeof a> => a != null)
+      .slice(0, 3)
+      .map((a) => ({
+        kind: "supply-activity" as FeedItemKind,
+        id: `activity-${a.id ?? Math.random()}`,
+        data: a,
+      })),
     ...(platformServices ?? []).slice(0, serviceLimit).map((s) => ({
       kind: "vendor-service" as FeedItemKind,
       id: `vsvc-${s.id}`,
@@ -203,8 +343,14 @@ export function buildFeedStream(
     })),
   ];
 
-  // ── 4. Interleave neighborhoods with filler ──────────────────────────────
-  if (neighborhoodItems.length === 0) return fillerPool;
+  // ── 4. Interleave stocked neighborhoods with filler ─────────────────────
+  // Unstocked neighbourhoods are not part of this count: they must not move
+  // filler that already belongs to a section with gems, services, an expert
+  // or a ready-made.
+  const stockedItems = neighborhoodItems.filter((item) => !neighbourhoodIsUnstocked(item.data));
+  if (stockedItems.length === 0) {
+    return placeUnstockedNeighbourhoods(fillerPool, neighborhoodItems);
+  }
 
   const result: FeedItem[] = [];
   const filler = [...fillerPool];
@@ -212,20 +358,20 @@ export function buildFeedStream(
   // Minimum filler items to place between each pair of neighborhoods
   const MIN_FILLER_BETWEEN = 1;
 
-  for (let i = 0; i < neighborhoodItems.length; i++) {
+  for (let i = 0; i < stockedItems.length; i++) {
     // Insert filler before this neighborhood (except before the very first if pool is small)
-    if (i === 0 && filler.length > neighborhoodItems.length * MIN_FILLER_BETWEEN) {
+    if (i === 0 && filler.length > stockedItems.length * MIN_FILLER_BETWEEN) {
       // Distribute some filler before the first neighborhood
-      const pre = Math.min(2, filler.length - neighborhoodItems.length * MIN_FILLER_BETWEEN);
+      const pre = Math.min(2, filler.length - stockedItems.length * MIN_FILLER_BETWEEN);
       result.push(...filler.splice(0, pre));
     }
 
-    result.push(neighborhoodItems[i]);
+    result.push(stockedItems[i]);
 
     // Always place at least MIN_FILLER_BETWEEN items after this neighborhood
-    if (i < neighborhoodItems.length - 1) {
+    if (i < stockedItems.length - 1) {
       if (filler.length > 0) {
-        result.push(...filler.splice(0, Math.max(MIN_FILLER_BETWEEN, Math.floor(filler.length / (neighborhoodItems.length - i)))));
+        result.push(...filler.splice(0, Math.max(MIN_FILLER_BETWEEN, Math.floor(filler.length / (stockedItems.length - i)))));
       } else {
         // No real filler left — insert a city-separator as guaranteed spacer
         result.push({
@@ -240,7 +386,7 @@ export function buildFeedStream(
   // Remaining filler after the last neighborhood
   result.push(...filler);
 
-  return result;
+  return placeUnstockedNeighbourhoods(result, neighborhoodItems);
 }
 
 /**

@@ -20,7 +20,7 @@
  *     `client/src/lib/plan-stops-writer.ts` that the plan modal's step 2 also uses.
  *
  * WHY THE PLAN'S DESTINATION COMES FROM THE TRIP ROW AND NOT FROM `TripContext`. The target trip is
- * resolved "URL first, then the active TripContext" (`client/src/lib/trip-target.ts`), so a
+ * resolved by `client/src/lib/trip-target.ts` (`?tripId=`, else the open plans), so a
  * `?tripId=` handoff can name a DIFFERENT trip than the one the context's `destination` describes
  * (the #972 desync shape the context itself warns about). Comparing a listing against another
  * trip's destination would manufacture a false alert — the one failure this surface must never

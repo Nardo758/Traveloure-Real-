@@ -513,15 +513,15 @@ export async function seedInfluencerContent(experts: any[]) {
     // Amélie's Content (Paris)
     {
       influencerId: influencerExperts.find(e => e.email.includes('amelie'))?.id,
-      title: "Hidden Paris: 12 Courtyards and Gardens Parisians Love",
-      description: "Escape the tourist crowds and discover Paris's most charming hidden courtyards and gardens. These peaceful oases are where locals actually relax.",
+      title: "Quieter Paris: 12 Courtyards and Gardens Parisians Love",
+      description: "Escape the tourist crowds and discover Paris's quieter courtyards and gardens. These peaceful oases are where locals actually relax.",
       category: "Travel Guides",
       contentType: "guide",
       platform: "instagram",
       imageUrl: "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=800",
       destinations: ["Paris", "France"],
       experiences: ["Local Picks", "Local Experiences"],
-      tags: ["paris", "hidden-gems", "secret-paris", "france"],
+      tags: ["paris", "france"],
       viewCount: 32100,
       saveCount: 2847,
       isFeatured: true,

@@ -63,6 +63,14 @@ describe("OptimizerLead", () => {
     assert.equal(optimizeCtaLabel({ ...FEE, coveredByTripPass: true }), "Optimize · Included in your Trip Pass");
     assert.equal(optimizeCtaLabel(null), "Optimize");
     assert.equal(optimizeCtaLabel({ ...FEE, aiDisabled: true }), "Optimize");
+    const off = { ...FEE, aiDisabled: true, feeCents: 0, coveredByTripPass: true };
+    for (const html of [render({ fee: off }), render({ fee: off, tone: "board" })]) {
+      const t = text(html);
+      assert.match(t, /Optimize is unavailable right now/);
+      assert.doesNotMatch(html, /data-testid="slip-action-optimize"/);
+      assert.doesNotMatch(t, /\$0|Included in your Trip Pass|Unlock Full Optimization/);
+      assert.doesNotMatch(html, /optimizer-lead-rerun/);
+    }
   });
 
   it("R5 the price line", () => {

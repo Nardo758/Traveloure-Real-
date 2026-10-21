@@ -111,7 +111,7 @@ Comprehensive, production-quality seed data has been created for the Traveloure 
 
 ### 5. ✓ Influencer Content (15-20 Pieces)
 **Content Types Created:**
-- 📖 Travel Guides (6 pieces) - "Ultimate Kyoto Temple Guide", "Hidden Paris"
+- 📖 Travel Guides (6 pieces) - "Ultimate Kyoto Temple Guide", "Quieter Paris"
 - 🍽️ Food Reviews (4 pieces) - "Tokyo Ramen Crawl", "Best Croissants in Paris"
 - 💰 Budget Breakdowns (3 pieces) - "Thailand 10 Days Under $800"
 - 📸 Photography Guides (2 pieces) - "Japan Cherry Blossoms", "Iceland Northern Lights"

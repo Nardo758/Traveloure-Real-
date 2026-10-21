@@ -118,6 +118,16 @@ export async function finishComparisonGeneration(input: GenerationOutcomeInput) 
     const { runNow } = await import("./routing/plan-legs-queue");
     void runNow(result.tripId);
   }
+  // A paid run that stored no optimized version is refunded after the status commits.
+  // Never fails the outcome (§15b). Trip Pass runs and runs that stored a version no-op.
+  if (result.transitioned) {
+    try {
+      const { refundFailedPaidOptimizerRun } = await import("./optimizer-run-refund.service");
+      await refundFailedPaidOptimizerRun(input.comparisonId);
+    } catch (err) {
+      console.error("[Optimizer] paid-run refund failed (sweep will retry):", (err as Error)?.message ?? err);
+    }
+  }
   return result;
 }
 

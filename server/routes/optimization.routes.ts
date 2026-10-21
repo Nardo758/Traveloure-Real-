@@ -23,7 +23,8 @@ import { coversAction, tripPassRunsStatus } from "../services/trip-entitlement.s
 import { getUserId } from "../utils/auth";
 import { db } from "../db";
 import { itineraryComparisons, users, trips, userExperiences, experienceTypes, platformRevenue, coordinationFeeCredits, cartItems } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { OPTIMIZER_RUN_REFUND_REASON } from "@shared/optimizer-run-refund";
+import { eq, and, sql } from "drizzle-orm";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { complexityTier } from "../services/smart-sequencing.service";
 import {
@@ -684,7 +685,13 @@ router.post("/api/optimization-payments/confirm", isAuthenticated, async (req, r
     // no-op. amount_cents comes from Stripe (never the client); user_id is the session user (verified
     // above to match the PI). Non-Event optimizers (trip/experience branch) record no credit.
     const eventType = pi.metadata?.eventType as string | undefined;
-    if (isEventOptimizer(eventType)) {
+    const refundClaimed = await db.execute(sql`
+      SELECT 1 FROM refunds
+       WHERE stripe_payment_intent_id = ${paymentIntentId}
+         AND reason = ${OPTIMIZER_RUN_REFUND_REASON}
+       LIMIT 1
+    `);
+    if (isEventOptimizer(eventType) && (refundClaimed.rows ?? []).length === 0) {
       try {
         await db
           .insert(coordinationFeeCredits)

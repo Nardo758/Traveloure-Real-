@@ -45,7 +45,13 @@ export type OptimizationGateOutcome =
    * 409 `trip_empty_convert_cart`. Surfaced as data, never swallowed — each caller
    * owns its own honest UI for it.
    */
-  | { kind: "refused"; status: number; body: Record<string, unknown> };
+  | { kind: "refused"; status: number; body: Record<string, unknown> }
+  /**
+   * The fee row is `is_disabled`. A zero feeCents preview is not a free run; the charge
+   * endpoint answers `ai_concierge_disabled`. Callers show that Optimize is unavailable and
+   * do not open a pay sheet.
+   */
+  | { kind: "unavailable" };
 
 export interface OptimizationGateRequest {
   tripId?: string;
@@ -98,6 +104,9 @@ export async function requestOptimizationGate(
   const data: Record<string, unknown> = await res.json().catch(() => ({}));
 
   if (!res.ok) {
+    if (data.error === "ai_concierge_disabled") {
+      return { kind: "unavailable" };
+    }
     if (isTripEmptyRefusal(res.status, data)) {
       return { kind: "refused", status: res.status, body: data };
     }

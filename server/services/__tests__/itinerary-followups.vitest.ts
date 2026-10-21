@@ -17,7 +17,7 @@ import { MARKETING_EMAIL_FOOTER_FIELDS, type MarketingEmailFooterKey } from "@sh
 const FAKE_FOOTER: Record<MarketingEmailFooterKey, string> = {
   marketing_email_sender_name: "Example Sender LLC",
   marketing_email_opt_out_address: "opt-out@example.test",
-  marketing_email_postal_address: "100 Example Street, Exampleville EX 00000",
+  marketing_email_postal_address: "CONFIGURED-POSTAL-LINE-1",
   marketing_email_complaint_contact: "complaints@example.test",
 };
 async function rememberFooter() {

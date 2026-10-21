@@ -11,13 +11,11 @@
  *
  * This scheduler periodically flips orphaned `generating` rows to `failed` so the traveler sees
  * an honest failure state instead of a silent hang. A swept row still carries its
- * `optimizationPaymentId`, so `POST /api/itinerary-comparisons/:id/generate`'s regenerate-gate
- * branch (b) in server/routes.ts — "this comparison's own run was paid inside the free-rerun
- * window" — lets the traveler retry for free within 24h of the original `createdAt`, no new
- * charge. That branch keys on `optimizationPaymentId` + `createdAt`, not on `status`, so it
- * fires the same whether the row reads 'generating' or 'failed' — this sweep's real effect is
- * getting the row OUT of the perpetual 'generating' hang so the client can show a retry CTA
- * instead of polling a spinner forever.
+ * `optimizationPaymentId`. If that run stored an optimized version, regenerate may still reuse
+ * the payment inside the recorded-payment window. If it stored none, the outcome writer refunds
+ * the PaymentIntent and that payment does not authorize another run. The same pass re-drives a
+ * refund claim whose Stripe call did not finish, and claims a recent paid empty run whose
+ * process died before the claim was written.
  *
  * STALENESS THRESHOLD (5 minutes): the generation-outcome email contract treats an attempt
  * exceeding five minutes as failed. A live attempt owns a deadline timer; this sweep recovers
@@ -83,6 +81,10 @@ class ItineraryGenerationSweepSchedulerService {
     try {
       const staleBefore = new Date(Date.now() - STALE_THRESHOLD_MS);
       const swept = await storage.sweepStaleGeneratingComparisons(staleBefore);
+      const { retryPendingOptimizerRefunds, refundRecentUnclaimedPaidFailures, OPTIMIZER_REFUND_RETRY_WINDOW_MS } =
+        await import("./optimizer-run-refund.service");
+      await retryPendingOptimizerRefunds();
+      await refundRecentUnclaimedPaidFailures(new Date(Date.now() - OPTIMIZER_REFUND_RETRY_WINDOW_MS));
       const stats: SweepStats = { swept: swept.length, ranAt: new Date() };
       if (swept.length > 0) {
         // The outbox metadata records the timeout reason alongside this operational log.

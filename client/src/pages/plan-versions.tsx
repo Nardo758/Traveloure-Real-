@@ -21,6 +21,7 @@ import { TripPassCard } from "@/components/plancard/TripPassCard";
 import type { SlipData } from "@/components/plancard/SlipView";
 import { useOptimizerLeadData } from "@/components/plan/use-optimizer-lead-data";
 import { planVersionsTarget, versionsRunState } from "@/lib/plan-versions";
+import { OPTIMIZE_FAILED_REFUNDED, OPTIMIZE_FAILED_REFUND_PENDING } from "@/lib/optimize-failure-copy";
 
 const LegacyComparison = lazy(() => import("@/pages/itinerary-comparison"));
 
@@ -30,7 +31,7 @@ export default function PlanVersionsPage() {
   const [, setLocation] = useLocation();
 
   // The id as a comparison first (the slip, the cart and the run all link by comparison id).
-  const cmp = useQuery<{ comparison?: { id: string; tripId?: string | null; status?: string | null } }>({
+  const cmp = useQuery<{ comparison?: { id: string; tripId?: string | null; status?: string | null; optimizationFeeRefund?: "refunded" | "pending" | null } }>({
     queryKey: [`/api/itinerary-comparisons/${id}`],
     retry: false,
     enabled: !!id,
@@ -41,16 +42,17 @@ export default function PlanVersionsPage() {
   const plan = useQuery<SlipData>({ queryKey: [`/api/trips/${tripId}/plancard`], enabled: !!tripId, retry: false });
   // The plan's latest run, when we came in by plan id: its state is read off the comparison row.
   const latestId = target.kind === "plan" && target.comparisonStatus == null ? plan.data?.lastComparisonId ?? null : null;
-  const latest = useQuery<{ comparison?: { status?: string | null } }>({
+  const latest = useQuery<{ comparison?: { status?: string | null; optimizationFeeRefund?: "refunded" | "pending" | null } }>({
     queryKey: [`/api/itinerary-comparisons/${latestId}`],
     enabled: !!latestId,
     retry: false,
   });
   const runState = versionsRunState(target.kind === "plan" ? target.comparisonStatus ?? latest.data?.comparison?.status ?? null : null);
-  // A run in flight re-reads its comparison until it lands.
+  const feeRefund = cmp.data?.comparison?.optimizationFeeRefund ?? latest.data?.comparison?.optimizationFeeRefund ?? null;
+  // A run in flight re-reads its comparison until it lands. A refund still in flight re-reads until it is recorded.
   useQuery({
-    queryKey: ["plan-versions-poll", id, runState],
-    enabled: runState === "building" || runState === "awaiting_payment",
+    queryKey: ["plan-versions-poll", id, runState, feeRefund],
+    enabled: runState === "building" || runState === "awaiting_payment" || feeRefund === "pending",
     refetchInterval: 4000,
     queryFn: async () => {
       await cmp.refetch();
@@ -108,7 +110,15 @@ export default function PlanVersionsPage() {
         </p>
       ) : runState === "failed" ? (
         <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950/20" data-testid="plan-versions-failed">
-          This run didn't finish, and nothing on your plan changed. <Link href={optimizeHref} className="underline">Try Optimize again</Link>.
+          {feeRefund === "refunded" ? (
+            OPTIMIZE_FAILED_REFUNDED
+          ) : feeRefund === "pending" ? (
+            OPTIMIZE_FAILED_REFUND_PENDING
+          ) : (
+            <>
+              This run didn't finish, and nothing on your plan changed. <Link href={optimizeHref} className="underline">Try Optimize again</Link>.
+            </>
+          )}
         </p>
       ) : null}
       <VersionsBoard

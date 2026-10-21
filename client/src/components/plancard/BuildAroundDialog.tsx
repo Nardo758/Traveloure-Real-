@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { apiRequest } from "@/lib/queryClient";
-import { optimizeContinueLabel, optimizePayLine } from "@/lib/optimize-pay-copy";
+import { OPTIMIZE_UNAVAILABLE, optimizeContinueLabel, optimizePayLine, optimizeUnavailable } from "@/lib/optimize-pay-copy";
 import type { OptimizationFeeQuote } from "@/lib/optimization-preview";
 import type {
   ComparisonPinnedAnchor,
@@ -360,6 +360,12 @@ export function BuildAroundDialog({
         </div>
 
         <div className="border-t border-[color:var(--earn-border)] px-5 pb-5 pt-4 sm:px-6 sm:pb-6">
+          {optimizeUnavailable(fee) ? (
+            <p className="mb-4 text-sm text-[color:var(--earn-ink)]" data-testid="optimize-unavailable">
+              {OPTIMIZE_UNAVAILABLE}
+            </p>
+          ) : (
+            <>
           {selectedName ? (
             <p className="mb-2 text-sm text-[color:var(--earn-ink)]" data-testid="build-around-selected">
               Three versions built around {selectedName}.
@@ -368,6 +374,8 @@ export function BuildAroundDialog({
           <p className="mb-4 font-mono text-[11px] leading-5 text-[color:var(--earn-muted)]" data-testid="build-around-pay-line">
             {optimizePayLine(fee)}
           </p>
+            </>
+          )}
           <DialogFooter className="gap-2 sm:space-x-0">
             <Button
               type="button"
@@ -378,6 +386,7 @@ export function BuildAroundDialog({
             >
               Cancel
             </Button>
+            {optimizeUnavailable(fee) ? null : (
             <Button
               type="button"
               onClick={confirm}
@@ -388,6 +397,7 @@ export function BuildAroundDialog({
               {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {optimizeContinueLabel(fee)}
             </Button>
+            )}
           </DialogFooter>
         </div>
       </DialogContent>

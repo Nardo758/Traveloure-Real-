@@ -356,6 +356,19 @@ describe("S10 — the session stash", () => {
     assert.equal(readSignupIntent(req, 2_000), "traveler");
     assert.equal(takeStashedReturnTo(req, 2_000), null);
   });
+  it("a traveler's guest-map path is kept, and an open redirect is not", () => {
+    const req: any = { query: { returnTo: "/plans/new?view=map" }, session: {} };
+    stashSignupIntent(req, 1_000);
+    assert.equal(readSignupIntent(req, 2_000), "traveler");
+    assert.equal(takeStashedReturnTo(req, 2_000), "/plans/new?view=map");
+    assert.equal(takeStashedReturnTo(req, 2_000), null, "taking the path clears the stash");
+
+    for (const bad of ["//evil.example/x", "https://evil.example", "/\\evil.example", "https://traveloure.test.evil.example/plans/new"]) {
+      const attack: any = { query: { intent: "traveler", returnTo: bad }, session: {} };
+      stashSignupIntent(attack, 1_000);
+      assert.equal(takeStashedReturnTo(attack, 1_000), null, bad);
+    }
+  });
   it("an open redirect is dropped, an unknown intent is a traveler, a stale stash reads as nothing", () => {
     const req: any = { query: { intent: "admin", returnTo: "//evil.example/x" }, session: {} };
     stashSignupIntent(req, 1_000);

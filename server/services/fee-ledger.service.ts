@@ -545,6 +545,10 @@ export function optimizerRunTollLedgerKey(runId: string): string {
 export function optimizerRunTollWaiverLedgerKey(runId: string): string {
   return `fee-ledger:optimizer-run-waiver:${runId}`;
 }
+/** One reversal per PaymentIntent. A retry of a failed paid run writes this row once. */
+export function optimizerRunRefundTollLedgerKey(paymentIntentId: string): string {
+  return `fee-ledger:optimizer-run-reversal:pi:${paymentIntentId}`;
+}
 
 export interface AiTaskTollBand {
   id: string;
@@ -827,6 +831,86 @@ export async function recordOptimizerRunToll(input: OptimizerRunTollInput): Prom
     return { inserted: await appendFeeLedgerRows(rows) };
   } catch (err: any) {
     logger.error({ comparisonId: input.comparisonId, err: err?.message }, "[fee-ledger] optimizer toll write failed (non-fatal)");
+    return { inserted: 0, skipped: "error" };
+  }
+}
+
+/**
+ * Record the reversal of a PAID optimizer run whose payment was refunded because the run
+ * produced no optimized version. The fee row is the one keyed on the PaymentIntent (written
+ * when the run was authorized). If that row is missing, it is written first from Stripe's
+ * own amount — the charge happened — and the reversal is linked to it, the same pair the
+ * refused AI-task refund writes. Idempotent on the PaymentIntent. Never throws.
+ */
+export async function recordOptimizerRunRefundToll(opts: {
+  comparisonId: string;
+  tripId: string | null;
+  paymentIntentId: string;
+  amountCents: number;
+  stripeRefundId: string;
+  actor: string;
+}): Promise<TollRecordResult> {
+  try {
+    const paidKey = optimizerRunPaidTollLedgerKey(opts.paymentIntentId);
+    let orig = await db.execute(sql`
+      SELECT id, amount FROM fee_ledger
+       WHERE idempotency_key = ${paidKey} AND fee_type = 'ai_concierge_fee'
+       LIMIT 1
+    `);
+    let feeRow = (orig.rows ?? [])[0] as { id: string; amount: string } | undefined;
+    if (!feeRow) {
+      await appendFeeLedgerRows(buildOptimizerRunTollRows({
+        comparisonId: opts.comparisonId,
+        tripId: opts.tripId,
+        userExperienceId: null,
+        eventType: null,
+        tier: "unknown",
+        priceCents: opts.amountCents,
+        actor: opts.actor,
+        basis: "paid",
+        paymentIntentId: opts.paymentIntentId,
+      }));
+      orig = await db.execute(sql`
+        SELECT id, amount FROM fee_ledger
+         WHERE idempotency_key = ${paidKey} AND fee_type = 'ai_concierge_fee'
+         LIMIT 1
+      `);
+      feeRow = (orig.rows ?? [])[0] as { id: string; amount: string } | undefined;
+    }
+    if (!feeRow) return { inserted: 0, skipped: "fee_row_missing" };
+    const charged = Math.abs(Number(feeRow.amount) || 0);
+    if (!(charged > 0)) return { inserted: 0, skipped: "price_unresolved" };
+    const inserted = await appendFeeLedgerRows([
+      {
+        sourceType: OPTIMIZER_RUN_TOLL_SOURCE_TYPE,
+        sourceId: opts.comparisonId,
+        bookingId: null,
+        feeType: "reversal",
+        amount: -charged,
+        borneBy: "traveler",
+        bandId: null,
+        rateAsResolved: null,
+        rateSource: "flat",
+        stripePaymentRef: opts.paymentIntentId,
+        stripeRefundRef: opts.stripeRefundId,
+        reversesLedgerId: String(feeRow.id),
+        idempotencyKey: optimizerRunRefundTollLedgerKey(opts.paymentIntentId),
+        description: `Optimizer run fee refunded (comparison ${opts.comparisonId})`,
+        metadata: {
+          actor: opts.actor,
+          tripId: opts.tripId,
+          comparisonId: opts.comparisonId,
+          reversesLedgerId: String(feeRow.id),
+          refundAmount: charged,
+        },
+      },
+    ]);
+    return { inserted };
+  } catch (err: any) {
+    logger.error(
+      { comparisonId: opts.comparisonId, err: err?.message },
+      "[fee-ledger] optimizer refund toll write failed (non-fatal)",
+    );
     return { inserted: 0, skipped: "error" };
   }
 }

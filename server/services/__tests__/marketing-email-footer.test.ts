@@ -26,7 +26,7 @@ import { buildWaitlistOpenEmail, sendWaitlistOpenEmail } from "../waitlist-open-
 const FAKE: Record<MarketingEmailFooterKey, string> = {
   marketing_email_sender_name: "Example Sender LLC",
   marketing_email_opt_out_address: "opt-out@example.test",
-  marketing_email_postal_address: "100 Example Street\nExampleville EX 00000",
+  marketing_email_postal_address: "CONFIGURED-POSTAL-LINE-1\nCONFIGURED-POSTAL-LINE-2",
   marketing_email_complaint_contact: "complaints@example.test",
 };
 
@@ -110,8 +110,8 @@ test("the footer writes every configured value and keeps the existing unsubscrib
   assert.match(message.html, /Sender: Example Sender LLC/);
   assert.match(message.html, />opt-out@example\.test</);
   assert.match(message.text, /Opt out by email: opt-out@example\.test/);
-  assert.match(message.html, /100 Example Street<br>Exampleville EX 00000/);
-  assert.match(message.text, /100 Example Street\nExampleville EX 00000/);
+  assert.match(message.html, /CONFIGURED-POSTAL-LINE-1<br>CONFIGURED-POSTAL-LINE-2/);
+  assert.match(message.text, /CONFIGURED-POSTAL-LINE-1\nCONFIGURED-POSTAL-LINE-2/);
   assert.match(message.html, /Complaints: complaints@example\.test/);
   assert.match(message.html, /href="https:\/\/app\.example\.test\/email-preferences\/unsubscribe\/token-1"/);
   assert.match(message.text, /Unsubscribe: https:\/\/app\.example\.test\/email-preferences\/unsubscribe\/token-1/);
@@ -222,7 +222,7 @@ test("a marketing send is skipped until every setting is stored, then the stub r
       to: email, cityName: "Exampleville", unsubscribeUrl: "https://app.example.test/unsub",
       send: async (params) => {
         assert.match(params.text ?? "", /Complaints: complaints@example\.test/);
-        assert.match(params.html, /100 Example Street/);
+        assert.match(params.html, /CONFIGURED-POSTAL-LINE-1/);
         return { ok: true, id: "stub-open" };
       },
     });

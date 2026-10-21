@@ -10,8 +10,10 @@ import { useToast } from "@/hooks/use-toast";
 import { getOrCreateGuestSessionId } from "@/lib/guest-session";
 import { gemCategory, type MatchSuggestion } from "@/lib/feed-stream";
 import { resolveBookability, type Bookability } from "@shared/bookability";
+import { composeGemFactLine } from "@shared/gem-fact-line";
 import { useExpertAvailability } from "@/lib/expert-availability";
 import { isPartnerPriced, openPartnerPrice, partnerActivityPriceLabel } from "@/lib/partner-price";
+import { feverCardPlace } from "@/lib/fever-card-place";
 import { PARTNER_COMMISSION_NOTE, PARTNER_PRICE_LINK_LABEL } from "@/lib/browse-supply";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import type { BentoCompactActionState } from "@/lib/bento-action-state";
@@ -164,6 +166,49 @@ function CompactMetaLine({ text, testid }: { text: string; testid?: string }) {
 function gemAreaName(gem: any): string | null {
   const v = gem?.neighborhoodName ?? gem?.neighborhood_name ?? gem?.areaName ?? null;
   return typeof v === "string" && v.trim().length > 0 ? v : null;
+}
+
+/** CC BY-SA credit. Absent (including a CC0 photo) renders nothing. */
+function GemImageCredit({ gem, photoUrl }: { gem: any; photoUrl: string | null }) {
+  const credit = typeof gem?.imageCredit === "string" ? gem.imageCredit.trim() : "";
+  if (!credit || !photoUrl) return null;
+  return (
+    <p className="text-[10px] leading-snug text-muted-foreground" data-testid={`gem-image-credit-${gem.id}`}>
+      {credit}
+    </p>
+  );
+}
+
+/** Hours and admission, then "Checked … · Source: <link>". No hours and no admission → nothing. */
+function GemOfficialFacts({ gem }: { gem: any }) {
+  const line = composeGemFactLine({
+    hours: gem?.hours,
+    admission: gem?.admission,
+    sourceUrl: gem?.sourceUrl,
+    factCheckedOn: gem?.factCheckedOn,
+  });
+  if (!line) return null;
+  const ending = line.checkedLabel && line.sourceUrl;
+  return (
+    <p className="text-[11px] text-muted-foreground leading-snug" data-testid={`gem-fact-line-${gem.id}`}>
+      {line.lead}
+      {line.lead && ending ? ". " : null}
+      {ending ? (
+        <>
+          Checked {line.checkedLabel} · Source:{" "}
+          <a
+            href={line.sourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline break-all"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {line.sourceUrl}
+          </a>
+        </>
+      ) : null}
+    </p>
+  );
 }
 
 /** Gem attribution (2026-08-29 Replit-audit rulings 1+2): the server resolves
@@ -563,10 +608,18 @@ function MoreInfoSheet({ open, onClose, cardType, data, saveItem }: MoreInfoShee
           <p className="text-[13px] text-muted-foreground leading-relaxed">{data.whyLocalsLoveIt}</p>
         </div>
       )}
+      {typeof data.imageCredit === "string" && data.imageCredit.trim() ? (
+        <p className="text-[12px] text-muted-foreground" data-testid={`gem-image-credit-sheet-${data.id}`}>
+          {data.imageCredit.trim()}
+        </p>
+      ) : null}
+      <GemOfficialFacts gem={data} />
     </div>
   );
 
-  const renderEventContent = () => (
+  const renderEventContent = () => {
+    const partnerPlace = feverCardPlace(data);
+    return (
     <div className="flex flex-col gap-4 pt-2">
       {(data.description || data.shortDescription) && (
         <div>
@@ -589,7 +642,19 @@ function MoreInfoSheet({ open, onClose, cardType, data, saveItem }: MoreInfoShee
         </div>
       )}
 
-      {(data.venueName || data.venueAddress) && (
+      {partnerPlace ? (
+        (partnerPlace.label || partnerPlace.credit) && (
+          <div>
+            <p className="text-[13px] font-semibold text-foreground mb-1">Area</p>
+            {partnerPlace.label && (
+              <p className="text-[13px] text-foreground" data-testid="event-area">{partnerPlace.label}</p>
+            )}
+            {partnerPlace.credit && (
+              <p className="text-[11px] text-muted-foreground mt-1" data-testid="event-osm-credit">{partnerPlace.credit}</p>
+            )}
+          </div>
+        )
+      ) : (data.venueName || data.venueAddress) && (
         <div>
           <p className="text-[13px] font-semibold text-foreground mb-1">Venue</p>
           {data.venueName && <p className="text-[13px] text-foreground">{data.venueName}</p>}
@@ -626,7 +691,8 @@ function MoreInfoSheet({ open, onClose, cardType, data, saveItem }: MoreInfoShee
         </div>
       )}
     </div>
-  );
+    );
+  };
 
   const renderVendorServiceContent = () => (
     <div className="flex flex-col gap-4 pt-2">
@@ -844,7 +910,9 @@ export function CityFeedCardGem({
   const askExpert = useAskExpert();
   // SH-1 item 11: Ask draws only when the server says this city has an expert to ask.
   const expertAvailable = useExpertAvailability({ city });
-  const { photoUrl, loading } = useGemPhoto(gem.id, gem.placeName, city, gem.imageUrl);
+  // An official source with no stored image is text-only. A stock search would invent a photo.
+  const textOnly = !gem.imageUrl && typeof gem.sourceUrl === "string" && gem.sourceUrl.length > 0;
+  const { photoUrl, loading } = useGemPhoto(gem.id, gem.placeName, city, gem.imageUrl, { allowFetch: !textOnly });
   // What the heart saves (#330): the card's own identity, name, photo and city — a display cache
   // for the Saved places shelf. A photo is carried only when it is an http(s) or site path.
   const gemSaveItem = buildSaveItem({ contentType: "gem", contentId: gem.id, name: gem.placeName, image: photoUrl, city });
@@ -976,6 +1044,8 @@ export function CityFeedCardGem({
       {!compact && !isRow && bodyText && (
         <p className="text-[12px] text-muted-foreground line-clamp-2">{bodyText}</p>
       )}
+      {!compact && <GemImageCredit gem={gem} photoUrl={photoUrl} />}
+      {!compact && <GemOfficialFacts gem={gem} />}
 
       {/* Row layout body copy */}
       {isRow && bodyText && (
@@ -1165,6 +1235,8 @@ export function CityFeedCardGem({
             <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">
               {gem.placeName}
             </h3>
+            <GemImageCredit gem={gem} photoUrl={photoUrl} />
+            <GemOfficialFacts gem={gem} />
             <CompactMetaLine text={metaText} testid={`gem-facts-${gem.id}`} />
             {/* C1 (cosmetic-public-surfaces dispatch): the compact action row had no `flex-wrap`
                 (unlike the non-compact row above, which already carries it), so at a 4-col grid
@@ -1299,6 +1371,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
   // SH-1 item 7: a Fever event carries no amount and no partner URL — only an opaque token that the tracked redirect
   // resolves. The token stands for the partner link here (deeplink bookability); the URL never reaches the client.
   const partnerPriced = isPartnerPriced(event);
+  const partnerPlace = feverCardPlace(event);
   const priceToken: string | null = typeof event.bookingToken === "string" && event.bookingToken ? event.bookingToken : null;
   const [priceOpenFailed, setPriceOpenFailed] = useState(false);
   const bookability: Bookability = resolveBookability({ ...event, externalUrl: priceToken ?? undefined });
@@ -1336,7 +1409,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
     const dateStr = event.date
       ? new Date(event.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })
       : null;
-    const venueStr = event.venueName ? String(event.venueName) : null;
+    const venueStr = partnerPlace ? partnerPlace.label : (event.venueName ? String(event.venueName) : null);
     const priceStr = partnerPriced
       ? null
       : event.isFree
@@ -1378,6 +1451,9 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
           <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
             <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">{eventName}</h3>
             <CompactMetaLine text={metaText} testid={`event-facts-${event.id}`} />
+            {partnerPlace?.credit && (
+              <p className="text-[10px] text-muted-foreground truncate" data-testid={`event-osm-credit-${event.id}`}>{partnerPlace.credit}</p>
+            )}
             <div className="flex gap-1.5 pt-0.5 flex-wrap items-center mt-auto">
               {priceToken && (
                 <PartnerPriceButton
@@ -1488,7 +1564,11 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
                   : "",
                 label: "date",
               },
-              { value: event.venueName ? String(event.venueName) : "", label: "venue", testid: `event-venue-${event.id}` },
+              {
+                value: partnerPlace ? (partnerPlace.label ?? "") : (event.venueName ? String(event.venueName) : ""),
+                label: partnerPlace ? "area" : "venue",
+                testid: partnerPlace ? `event-area-${event.id}` : `event-venue-${event.id}`,
+              },
               {
                 value: partnerPriced ? "" : event.isFree ? "Free" : (event.priceRange ?? (event.minPrice ? `From $${event.minPrice}` : "")),
                 label: "price",
@@ -1496,6 +1576,9 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
             ]}
             testid={`event-facts-${event.id}`}
           />
+          {partnerPlace?.credit && (
+            <p className="text-[10px] text-muted-foreground" data-testid={`event-osm-credit-${event.id}`}>{partnerPlace.credit}</p>
+          )}
 
           {/* Source row — an event with an off-site ticketing URL is partner-fulfilled:
               a partner LABEL only, never the raw URL on the face (§16 /
