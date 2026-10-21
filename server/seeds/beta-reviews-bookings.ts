@@ -513,8 +513,8 @@ export async function seedInfluencerContent(experts: any[]) {
     // Amélie's Content (Paris)
     {
       influencerId: influencerExperts.find(e => e.email.includes('amelie'))?.id,
-      title: "Hidden Paris: 12 Courtyards and Gardens Parisians Love",
-      description: "Escape the tourist crowds and discover Paris's most charming hidden courtyards and gardens. These peaceful oases are where locals actually relax.",
+      title: "Quieter Paris: 12 Courtyards and Gardens Parisians Love",
+      description: "Escape the tourist crowds and discover Paris's quieter courtyards and gardens. These peaceful oases are where locals actually relax.",
       category: "Travel Guides",
       contentType: "guide",
       platform: "instagram",

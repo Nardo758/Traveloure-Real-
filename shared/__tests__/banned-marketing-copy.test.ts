@@ -125,3 +125,21 @@ test("a bare discoveryStatus token is not copy and stays the stored stage", () =
   const tokens = seed.match(/discoveryStatus: "trending"/g) ?? [];
   assert.equal(tokens.length, 4);
 });
+
+test("Sakura Light-Up is omitted from the seeds because the row has no calendar date", () => {
+  const json = read("server/data/happening-now.json");
+  const parsed = JSON.parse(json) as Array<Record<string, unknown>>;
+  assert.equal(parsed.some((row) => String(row.title).includes("Sakura Light-Up")), false);
+  assert.equal(parsed.every((row) => row.startsAt == null && row.endsAt == null && row.startDate == null), true);
+  const fn = read("server/services/travelpulse.service.ts");
+  const body = fn.slice(fn.indexOf("private async seedHappeningNow"), fn.indexOf("Seeded ${events.length} happening now events"));
+  assert.doesNotMatch(body, /title:\s*"Sakura Light-Up/);
+});
+
+test("the Paris beta title is Quieter Paris and the geiko line is gone", () => {
+  const beta = read("server/seeds/beta-reviews-bookings.ts");
+  assert.match(beta, /Quieter Paris: 12 Courtyards and Gardens Parisians Love/);
+  assert.match(beta, /Paris's quieter courtyards and gardens/);
+  assert.doesNotMatch(beta, /Hidden Paris|hidden courtyards|\bhidden\b/i);
+  assert.doesNotMatch(read("server/seeds/phase-4b-kyoto-city-intelligence.seed.ts"), /geiko/);
+});
