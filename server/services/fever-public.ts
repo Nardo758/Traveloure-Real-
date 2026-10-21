@@ -10,6 +10,7 @@
  * published either. Every traveler-reachable payload that carries a Fever event goes through `toPublicFeverEvents`
  * (Q7.4); the admin cache routes do not.
  */
+import { feverTitleBlocked } from "@shared/fever-title-filter";
 import { mintBookingTokens, type VaultedBooking } from "./affiliate-url-vault.service";
 import type { FeverEvent } from "./fever.service";
 
@@ -61,10 +62,12 @@ function project(e: FeverEvent): PublicFeverEvent {
 
 /** Project Fever events for a traveler: allowlisted fields, no amount, and the partner URL swapped for a token. */
 export async function toPublicFeverEvents(events: readonly FeverEvent[]): Promise<PublicFeverEvent[]> {
-  const out = events.map(project);
+  // Titles with the banned marketing phrases never get a token (ledger 2026-10-20-kyoto-feed-cleanup).
+  const kept = events.filter((e) => !feverTitleBlocked(e.title));
+  const out = kept.map(project);
   const entries: VaultedBooking[] = [];
   const at: number[] = [];
-  events.forEach((e, i) => {
+  kept.forEach((e, i) => {
     const url = str(e.affiliateUrl) ?? str(e.bookingUrl);
     if (!url) return;
     at.push(i);
