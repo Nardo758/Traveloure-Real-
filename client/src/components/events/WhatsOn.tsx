@@ -101,9 +101,14 @@ function EventRow({
       <span className="text-[12.5px]" style={{ color: "var(--earn-ink)" }} data-testid={`events-row-when-${event.id}`}>
         {eventWhen(event)}
       </span>
-      <span className="text-[12.5px]" style={{ color: "var(--earn-muted)" }} data-testid={`events-row-place-${event.id}`}>
+      <span className="text-[12.5px] break-words" style={{ color: "var(--earn-muted)" }} data-testid={`events-row-place-${event.id}`}>
         {eventPlace(event)}
       </span>
+      {event.partnerName ? (
+        <span className="text-[12.5px] break-words" style={{ color: "var(--earn-ink)" }} data-testid={`events-row-partner-${event.id}`}>
+          {event.partnerName}
+        </span>
+      ) : null}
     </>
   );
   const chipEl = (
@@ -142,7 +147,7 @@ function EventRow({
           {body}
           <div className="mt-1 flex flex-wrap items-center gap-3">
             <PlanButton event={event} filled onPlanAround={onPlanAround} />
-            <DetailsLink event={event} />
+            {event.partner ? null : <DetailsLink event={event} />}
           </div>
         </div>
       </article>
@@ -156,7 +161,7 @@ function EventRow({
         {body}
         <div className="mt-1 flex flex-wrap items-center gap-3">
           <PlanButton event={event} filled={false} onPlanAround={onPlanAround} />
-          <DetailsLink event={event} />
+          {event.partner ? null : <DetailsLink event={event} />}
         </div>
       </div>
     </article>

@@ -13,8 +13,10 @@
  * payload that carries a Fever event goes through `toPublicFeverEvents` (Q7.4); the admin cache routes do not.
  */
 import { feverTitleBlocked } from "@shared/fever-title-filter";
+import { namedArea } from "@shared/fever-area";
 import { mintBookingTokens, type VaultedBooking } from "./affiliate-url-vault.service";
 import { resolveFeverAreas, type FeverAreaDeps } from "./fever-area";
+import { approvedFeverPartnerName } from "./fever-partner-name";
 import type { FeverEvent } from "./fever.service";
 
 /** Every Fever event a traveler sees says where its price lives: with the partner. */
@@ -40,6 +42,8 @@ export interface PublicFeverEvent {
   isSoldOut: boolean;
   provider: typeof FEVER_PROVIDER;
   priceSource: typeof FEVER_PRICE_SOURCE;
+  /** The approved partner's stored name. Null when none is approved or the name is blank. */
+  partnerName: string | null;
   bookingToken?: string;
 }
 
@@ -47,7 +51,11 @@ function str(v: unknown): string | null {
   return typeof v === "string" && v.trim() ? v : null;
 }
 
-function project(e: FeverEvent, area: { areaName: string | null; osmCredit: string | null }): PublicFeverEvent {
+function project(
+  e: FeverEvent,
+  area: { areaName: string | null; osmCredit: string | null },
+  partnerName: string | null,
+): PublicFeverEvent {
   return {
     id: String(e.id),
     title: e.title,
@@ -64,16 +72,31 @@ function project(e: FeverEvent, area: { areaName: string | null; osmCredit: stri
     isSoldOut: e.isSoldOut === true,
     provider: FEVER_PROVIDER,
     priceSource: FEVER_PRICE_SOURCE,
+    partnerName,
   };
 }
 
+/** undefined looks the name up. An explicit null skips the lookup (tests). A thrown lookup is null. */
+async function shownPartnerName(deps: { partnerName?: string | null }): Promise<string | null> {
+  if (Object.prototype.hasOwnProperty.call(deps, "partnerName")) return namedArea(deps.partnerName);
+  try {
+    return namedArea(await approvedFeverPartnerName());
+  } catch {
+    return null;
+  }
+}
+
 /** Project Fever events for a traveler: allowlisted fields, no amount, no street, and the partner URL swapped for a token. */
-export async function toPublicFeverEvents(events: readonly FeverEvent[], deps: FeverAreaDeps = {}): Promise<PublicFeverEvent[]> {
+export async function toPublicFeverEvents(
+  events: readonly FeverEvent[],
+  deps: FeverAreaDeps & { partnerName?: string | null } = {},
+): Promise<PublicFeverEvent[]> {
   // #1607 drops a title that hits geisha, hidden gem(s), back alley, trending, or illuminations.
   // Those phrases are read from SURFACE_COPY_REFUSALS, not a second list.
   const kept = events.filter((e) => !feverTitleBlocked(e.title));
   const areas = await resolveFeverAreas(kept, deps);
-  const out = kept.map((e, i) => project(e, areas[i] ?? { areaName: null, osmCredit: null }));
+  const partnerName = await shownPartnerName(deps);
+  const out = kept.map((e, i) => project(e, areas[i] ?? { areaName: null, osmCredit: null }, partnerName));
   const entries: VaultedBooking[] = [];
   const at: number[] = [];
   kept.forEach((e, i) => {

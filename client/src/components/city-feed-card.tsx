@@ -13,7 +13,7 @@ import { resolveBookability, type Bookability } from "@shared/bookability";
 import { composeGemFactLine } from "@shared/gem-fact-line";
 import { useExpertAvailability } from "@/lib/expert-availability";
 import { isPartnerPriced, openPartnerPrice, partnerActivityPriceLabel } from "@/lib/partner-price";
-import { feverCardPlace } from "@/lib/fever-card-place";
+import { feverCardPlace, partnerDisplayName } from "@/lib/fever-card-place";
 import { PARTNER_COMMISSION_NOTE, PARTNER_PRICE_LINK_LABEL } from "@/lib/browse-supply";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import type { BentoCompactActionState } from "@/lib/bento-action-state";
@@ -619,6 +619,7 @@ function MoreInfoSheet({ open, onClose, cardType, data, saveItem }: MoreInfoShee
 
   const renderEventContent = () => {
     const partnerPlace = feverCardPlace(data);
+    const partnerName = partnerDisplayName(data.partnerName);
     return (
     <div className="flex flex-col gap-4 pt-2">
       {(data.description || data.shortDescription) && (
@@ -640,6 +641,10 @@ function MoreInfoSheet({ open, onClose, cardType, data, saveItem }: MoreInfoShee
             ))}
           </ul>
         </div>
+      )}
+
+      {partnerName && (
+        <p className="text-[13px] text-foreground break-words" data-testid="event-partner-name">{partnerName}</p>
       )}
 
       {partnerPlace ? (
@@ -672,6 +677,10 @@ function MoreInfoSheet({ open, onClose, cardType, data, saveItem }: MoreInfoShee
           )}
         </div>
       )}
+
+      {typeof data.bookingToken === "string" && data.bookingToken ? (
+        <p className="text-[13px] text-muted-foreground break-words" data-testid="event-partner-commission">{PARTNER_COMMISSION_NOTE}</p>
+      ) : null}
 
       {data.tips && (
         <div className="bg-amber-50 rounded-lg px-3 py-2.5">
@@ -1372,6 +1381,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
   // resolves. The token stands for the partner link here (deeplink bookability); the URL never reaches the client.
   const partnerPriced = isPartnerPriced(event);
   const partnerPlace = feverCardPlace(event);
+  const partnerName = partnerDisplayName(event.partnerName);
   const priceToken: string | null = typeof event.bookingToken === "string" && event.bookingToken ? event.bookingToken : null;
   const [priceOpenFailed, setPriceOpenFailed] = useState(false);
   const bookability: Bookability = resolveBookability({ ...event, externalUrl: priceToken ?? undefined });
@@ -1409,7 +1419,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
     const dateStr = event.date
       ? new Date(event.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })
       : null;
-    const venueStr = partnerPlace ? partnerPlace.label : (event.venueName ? String(event.venueName) : null);
+    const venueStr = partnerPlace ? null : (event.venueName ? String(event.venueName) : null);
     const priceStr = partnerPriced
       ? null
       : event.isFree
@@ -1449,10 +1459,16 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
             <CompactInfoCue testid={`info-cue-event-${event.id ?? event.eventId}`} />
           </div>
           <div className="p-3 flex flex-col gap-1.5 flex-1 min-w-0">
-            <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">{eventName}</h3>
+            <h3 className="font-semibold text-[15px] leading-tight tracking-tight break-words line-clamp-2">{eventName}</h3>
+            {partnerName && (
+              <p className="text-[12px] text-foreground break-words" data-testid={`event-partner-name-${event.id}`}>{partnerName}</p>
+            )}
+            {partnerPlace?.label && (
+              <p className="text-[12px] text-muted-foreground break-words" data-testid={`event-area-${event.id}`}>{partnerPlace.label}</p>
+            )}
             <CompactMetaLine text={metaText} testid={`event-facts-${event.id}`} />
             {partnerPlace?.credit && (
-              <p className="text-[10px] text-muted-foreground truncate" data-testid={`event-osm-credit-${event.id}`}>{partnerPlace.credit}</p>
+              <p className="text-[10px] text-muted-foreground break-words" data-testid={`event-osm-credit-${event.id}`}>{partnerPlace.credit}</p>
             )}
             <div className="flex gap-1.5 pt-0.5 flex-wrap items-center mt-auto">
               {priceToken && (
@@ -1500,6 +1516,10 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
                 </Button>
               )}
             </div>
+            {priceToken && (
+              <p className="text-[11px] text-muted-foreground break-words" data-testid={`event-partner-commission-${event.id}`}>{PARTNER_COMMISSION_NOTE}</p>
+            )}
+            {priceOpenFailed && <p className="text-[11px] text-destructive break-words">Couldn't open the partner's page. Try again in a moment.</p>}
           </div>
         </div>
         <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="event" data={event} />
@@ -1544,7 +1564,10 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
             {priceChip}
           </div>
 
-          <h3 className="font-semibold text-[15px] leading-tight line-clamp-2 tracking-tight">{eventName}</h3>
+          <h3 className="font-semibold text-[15px] leading-tight line-clamp-2 tracking-tight break-words">{eventName}</h3>
+          {partnerName && (
+            <p className="text-[12px] text-foreground break-words" data-testid={`event-partner-name-${event.id}`}>{partnerName}</p>
+          )}
 
           {/* 2-line description */}
           {(event.description || event.shortDescription) && (
@@ -1583,7 +1606,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
           {/* Source row — an event with an off-site ticketing URL is partner-fulfilled:
               a partner LABEL only, never the raw URL on the face (§16 /
               2026-08-25-card-source-link). Omitted when there is no source. */}
-          {priceToken && <SourceRow label="Partner ticketing" testid={`event-source-${event.id}`} />}
+          {priceToken && <SourceRow label={partnerName ?? "Partner ticketing"} testid={`event-source-${event.id}`} />}
 
           <div className="flex gap-1.5 pt-0.5 flex-wrap items-center">
             {priceToken && (
@@ -1630,7 +1653,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
             )}
           </div>
           {priceToken && (
-            <p className="text-[11px] text-muted-foreground" data-testid={`event-partner-commission-${event.id}`}>{PARTNER_COMMISSION_NOTE}</p>
+            <p className="text-[11px] text-muted-foreground break-words" data-testid={`event-partner-commission-${event.id}`}>{PARTNER_COMMISSION_NOTE}</p>
           )}
           {priceOpenFailed && <p className="text-[11px] text-destructive">Couldn't open the partner's page. Try again in a moment.</p>}
         </div>
