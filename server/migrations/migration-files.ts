@@ -2124,4 +2124,7 @@ export const MIGRATION_FILES = [
   // PK only, no DEFAULT, no CHECK, no extra index. Ledger 2026-10-21-blog-checks-fever-area. Declared in
   // shared/schema.ts.
   "401_fever_address_geocodes.sql",
+  // 402 — Dinner host category + service_provider_forms.has_license (nullable boolean,
+  // no DEFAULT/CHECK). Ledger 2026-10-21-supply-registration-fixes. HELD for Leon's comment.
+  "402_supply_registration.sql",
 ] as const;

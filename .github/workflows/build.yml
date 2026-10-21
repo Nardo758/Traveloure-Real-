@@ -469,6 +469,9 @@ jobs:
       - if: ${{ !cancelled() }}
         name: Fee keep copy pin (CP-2)
         run: npx tsx --test client/src/lib/__tests__/fee-keep-copy.test.ts
+      - if: ${{ !cancelled() }}
+        name: Supply registration pins (S-08 S-18 S-19 S-21)
+        run: npx tsx --test shared/__tests__/supply-registration.test.ts
       # LW-1g: the /earn Ready-Made calculator — empty boxes, the rate from the resolver, nothing on bad input,
       # no average/typical wording, hidden without Ready-Made Trips in the launch market.
       - if: ${{ !cancelled() }}
@@ -1727,6 +1730,12 @@ jobs:
       - if: ${{ !cancelled() }}
         name: Offering contract snapshot pin
         run: npx tsx --test server/__tests__/offering-contract-snapshot.test.ts
+      # Login enumeration (ledger 2026-10-21-login-enumeration): the credential check is pure.
+      # One scrypt and one 64-byte compare per attempt; the dummy path never authenticates.
+      # No database. The route-level loop is the db-suites step of the same name.
+      - if: ${{ !cancelled() }}
+        name: Login enumeration credential check
+        run: npx tsx --test server/__tests__/login-enumeration.test.ts
 
   traveler-charge-composition:
     needs: [changes]
@@ -2335,6 +2344,23 @@ jobs:
       - if: ${{ !cancelled() }}
         name: The profile photo is saved (S1-S3, K1-K2, R1-R5, C1-C3)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/profile-photo.db.test.ts
+      # ── login-enumeration ───────────────────────────────────────────
+      - name: "── login-enumeration (ledger 2026-10-21-login-enumeration)"
+        if: ${{ !cancelled() }}
+        run: |
+          echo "login-enumeration"
+      - name: Fresh database for this group (a clone of the migrated template)
+        if: ${{ !cancelled() }}
+        run: |
+          cd /tmp
+          sudo -u postgres dropdb --if-exists --force traveloure
+          sudo -u postgres createdb -T traveloure_template traveloure
+      # Unknown email, wrong password, and provider-only accounts share one 401 body and do one
+      # scrypt each. A correct password still regenerates the session. Deleted and suspended
+      # checks stay after the credential check. The test boots its own auth app on this database.
+      - if: ${{ !cancelled() }}
+        name: Login enumeration route (two fresh-account loops)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/login-enumeration.http.test.ts
 
 
   quote-born-charge:

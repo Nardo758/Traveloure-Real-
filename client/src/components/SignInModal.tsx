@@ -244,6 +244,9 @@ export function SignInModal({
           <DialogDescription className="text-center" data-testid="text-sign-in-description">
             {mode === "reset" ? t("modal.descReset") : mode === "signin" ? description : t("modal.descSignup")}
           </DialogDescription>
+          <p className="text-center text-xs text-muted-foreground" data-testid="text-signin-provider-guidance">
+            If you normally use a sign-in provider, use its sign-in button.
+          </p>
         </DialogHeader>
 
         {mode === "signup" && signupSubmitted ? (

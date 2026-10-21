@@ -90,6 +90,7 @@ jobs:
             playwright/tests/distribute-shell.spec.ts \
             playwright/tests/service-logistics-step.spec.ts \
             playwright/tests/auth-form-validation.spec.ts \
+            playwright/tests/auth/login-enumeration.spec.ts \
             playwright/tests/booking-payment-isolation.spec.ts \
             playwright/tests/concierge-phase-a.spec.ts \
             playwright/tests/create-service-layout.spec.ts \
@@ -252,7 +253,7 @@ jobs:
       - name: "e2e-spec-coverage: specs proven green by the Aug 16 sweep"
         id: spec_coverage
         if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
-        run: npx playwright test --project=chromium --workers=1 playwright/tests/auth-form-validation.spec.ts playwright/tests/booking-payment-isolation.spec.ts playwright/tests/concierge-phase-a.spec.ts playwright/tests/create-service-layout.spec.ts playwright/tests/executive-card-expand.spec.ts playwright/tests/expert-booking-decline-dialog.spec.ts playwright/tests/expert-inbox-questions.spec.ts playwright/tests/navbar-responsive.spec.ts playwright/tests/rbac-security.spec.ts playwright/tests/stripe-connect-reminder-notification.spec.ts
+        run: npx playwright test --project=chromium --workers=1 playwright/tests/auth-form-validation.spec.ts playwright/tests/auth/login-enumeration.spec.ts playwright/tests/booking-payment-isolation.spec.ts playwright/tests/concierge-phase-a.spec.ts playwright/tests/create-service-layout.spec.ts playwright/tests/executive-card-expand.spec.ts playwright/tests/expert-booking-decline-dialog.spec.ts playwright/tests/expert-inbox-questions.spec.ts playwright/tests/navbar-responsive.spec.ts playwright/tests/rbac-security.spec.ts playwright/tests/stripe-connect-reminder-notification.spec.ts
         env:
           BASE_URL: http://localhost:5000
           CI: 'true'

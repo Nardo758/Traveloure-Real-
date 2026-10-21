@@ -119,6 +119,7 @@ const PROVIDER_CATEGORY_IMPACT: Readonly<Record<OccasionRoleKey, "stay" | "on_gr
   childcare_family: "on_ground",
   concierge_vip: "on_ground",
   dining_venue: "on_ground",
+  dinner_host: "on_ground",
   entertainment: "on_ground",
   event_coordinator: "on_ground",
   florist: "on_ground",

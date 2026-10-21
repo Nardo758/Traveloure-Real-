@@ -86,6 +86,8 @@ const TAXONOMY_MIGRATIONS = [
   // TAXONOMY_REPAIRS below and the header's "REPAIR ENTRIES" section
   // (ledger `2026-09-06-category-key-repair`).
   "server/migrations/289_reconcile_service_category_keys.sql",
+  // `dinner_host` — ledger `2026-10-21-supply-registration-fixes`.
+  "server/migrations/402_supply_registration.sql",
 ];
 
 /**
