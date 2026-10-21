@@ -147,16 +147,42 @@ export function titleNamesAnArea(title: string | null | undefined): boolean {
 }
 
 /**
- * P0-e item 4 (decision-maker, Oct 12, 2026): an item whose ONLY distinctive words are the names of the
- * market's own neighbourhoods or wards ("Late Dinner in Shimogyo") names an area, not a place. Pure; the
- * caller passes the market's area names (`city_neighborhoods` rows + `MARKET_WARDS`). No area names, or
- * no distinctive words, ⇒ false.
+ * P0-e item 4 (decision-maker, Oct 12, 2026): an item whose distinctive words are exactly one or more
+ * WHOLE neighbourhood or ward names ("Late Dinner in Shimogyo") names an area, not a place. A word
+ * taken from a longer name is not that name: "Ginkaku-ji Temple" stays a place when the neighbourhood
+ * is "Ginkaku-ji & Philosopher's Path". Pure; the caller passes the market's area names
+ * (`city_neighborhoods` rows + `MARKET_WARDS`). No area names, or no distinctive words, ⇒ false.
  */
 export function tokensNameOnlyAreas(tokens: ReadonlySet<string>, areaNames: readonly string[], city: string | null | undefined): boolean {
   if (tokens.size === 0 || areaNames.length === 0) return false;
-  const areaTokens = new Set<string>();
-  for (const name of areaNames) distinctiveTokens(name, city).forEach((t) => areaTokens.add(t));
-  return Array.from(tokens).every((t) => areaTokens.has(t));
+  const areaSets = areaNames
+    .map((name) => distinctiveTokens(name, city))
+    .filter((set) => set.size > 0);
+  if (areaSets.length === 0) return false;
+  const remaining = new Set(tokens);
+  const areaLists = areaSets.map((set) => Array.from(set));
+  let matched = false;
+  let progressed = true;
+  while (progressed && remaining.size > 0) {
+    progressed = false;
+    for (let i = 0; i < areaLists.length; i++) {
+      const area = areaLists[i];
+      if (!area.every((token) => remaining.has(token))) continue;
+      // A shorter name that sits inside a longer name also fully present is not a separate area.
+      const partOfLarger = areaLists.some(
+        (other) =>
+          other.length > area.length &&
+          area.every((token) => other.includes(token)) &&
+          other.every((token) => remaining.has(token)),
+      );
+      if (partOfLarger) continue;
+      for (const token of area) remaining.delete(token);
+      matched = true;
+      progressed = true;
+      break;
+    }
+  }
+  return matched && remaining.size === 0;
 }
 
 /**

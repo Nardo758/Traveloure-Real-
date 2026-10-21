@@ -215,7 +215,7 @@ export default function ContentMappingPage() {
               data-testid="button-auto-index"
             >
               <Bot className={`h-4 w-4 mr-2 ${autoIndexMutation.isPending ? "animate-spin" : ""}`} />
-              {autoIndexMutation.isPending ? "Indexing…" : "Auto-Index Trending"}
+              {autoIndexMutation.isPending ? "Indexing…" : "Auto-Index"}
             </Button>
             <Button onClick={openCreate} data-testid="button-add-rule">
               <Plus className="h-4 w-4 mr-2" />
@@ -350,7 +350,7 @@ export default function ContentMappingPage() {
                   <Bot className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                   <p className="font-medium text-muted-foreground">No placement rules yet</p>
                   <p className="text-sm text-muted-foreground mt-1 mb-4">
-                    Use "Auto-Index Trending" to create rules from TravelPulse data, or add rules manually.
+                    Use "Auto-Index" to create rules from TravelPulse data, or add rules manually.
                   </p>
                   <div className="flex gap-2 justify-center">
                     <Button variant="outline" onClick={() => autoIndexMutation.mutate()} disabled={autoIndexMutation.isPending} data-testid="button-auto-index-empty">

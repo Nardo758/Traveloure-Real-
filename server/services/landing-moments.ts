@@ -347,6 +347,7 @@ async function attributedPhotosForMoment(
         ON f.user_id = u.id
        AND LOWER(TRIM(f.city)) = LOWER(TRIM(${city}))
       WHERE g.city ILIKE ${city}
+        AND g.hidden_at IS NULL
         AND g.moment_key = ${momentKey}
         AND g.image_url IS NOT NULL AND g.image_url <> ''
         AND COALESCE(g.ai_generated, false) = false

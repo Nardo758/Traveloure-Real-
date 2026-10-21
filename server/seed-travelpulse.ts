@@ -8,6 +8,7 @@ import {
   travelPulseHappeningNow,
 } from "@shared/schema";
 import { and, eq, ilike } from "drizzle-orm";
+import { happeningNowTitleHidden } from "@shared/kyoto-feed-cleanup";
 import { logger } from "./infrastructure";
 
 // Import JSON data directly so it gets bundled with the code
@@ -202,6 +203,7 @@ export async function seedTravelPulseData(): Promise<{ created: number }> {
           crowdLevel: event.crowdLevel,
           entryFee: event.entryFee,
           isLive: event.isLive,
+          hiddenAt: happeningNowTitleHidden(event.title) ? new Date("2026-10-20T00:00:00Z") : null,
           startsAt: new Date(),
           endsAt: new Date(Date.now() + 6 * 60 * 60 * 1000),
         });

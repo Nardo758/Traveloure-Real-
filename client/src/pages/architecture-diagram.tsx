@@ -54,14 +54,14 @@ const sections: DiagramSection[] = [
       {
         icon: TrendingUp,
         label: "TravelPulse Intelligence",
-        description: "Real-time city trends with 7-day data, hidden gems, and local insights",
+        description: "Real-time city data with 7-day data and local insights",
         color: "text-rose-500",
-        children: ["Daily AI-generated city intelligence", "Growth %, mention count, trending score", "Plan Now / Add to Multi-City queue"],
+        children: ["Daily AI-generated city intelligence", "Growth %, mention count", "Plan Now / Add to Multi-City queue"],
       },
       {
         icon: Eye,
-        label: "Hidden Gems Discovery",
-        description: "12-category local secrets finder powered by Anthropic Claude",
+        label: "Quieter spots",
+        description: "12-category local finder powered by Anthropic Claude",
         color: "text-rose-500",
         children: ["Off-the-beaten-path experiences", "Authentic local recommendations", "Category-based filtering"],
       },
@@ -225,7 +225,7 @@ const sections: DiagramSection[] = [
       {
         icon: Brain,
         label: "Anthropic Claude",
-        description: "Itinerary drafts and optimization, expert matching, content generation, hidden gems discovery, chat",
+        description: "Itinerary drafts and optimization, expert matching, content generation, local place discovery, chat",
         color: "text-cyan-500",
       },
       {
