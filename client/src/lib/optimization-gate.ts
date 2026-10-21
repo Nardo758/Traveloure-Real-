@@ -47,7 +47,7 @@ export type OptimizationGateOutcome =
    */
   | { kind: "refused"; status: number; body: Record<string, unknown> }
   /**
-   * The fee row is `is_disabled`. The preview's `feeCents: 0` is not a free run; the charge
+   * The fee row is `is_disabled`. A zero feeCents preview is not a free run; the charge
    * endpoint answers `ai_concierge_disabled`. Callers show that Optimize is unavailable and
    * do not open a pay sheet.
    */

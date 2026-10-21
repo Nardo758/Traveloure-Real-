@@ -170,6 +170,17 @@ export const ARTIFACT_REJECTION_REFUND_SOURCE = 'artifact_rejection_refund';
 // account's dispute/radar record, so it is never inferred (no invented fraud path).
 type StripeRefundReason = Stripe.RefundCreateParams.Reason;
 
+/**
+ * Cents already refunded on a PaymentIntent, read from an expanded `latest_charge`.
+ * PaymentIntent itself has no refunded-amount field. An unexpanded charge id answers
+ * zero — the caller must pass `expand: ['latest_charge']`.
+ */
+export function refundedCentsOnPaymentIntent(pi: Stripe.PaymentIntent): number {
+  const charge = pi.latest_charge;
+  if (!charge || typeof charge !== 'object') return 0;
+  return Number.isFinite(charge.amount_refunded) ? charge.amount_refunded : 0;
+}
+
 const STRIPE_REFUND_REASONS: readonly StripeRefundReason[] = [
   'duplicate',
   'fraudulent',
@@ -2065,14 +2076,11 @@ class StripePaymentService {
     paymentIntentId: string,
   ): Promise<{ id: string; status: string; amountReceivedCents: number; amountRefundedCents: number }> {
     const pi = await stripe.paymentIntents.retrieve(paymentIntentId, { expand: ['latest_charge'] });
-    const charge = (pi as any).latest_charge;
-    const amountRefundedCents =
-      charge && typeof charge === 'object' && Number.isFinite(charge.amount_refunded) ? Number(charge.amount_refunded) : 0;
     return {
       id: pi.id,
       status: pi.status,
       amountReceivedCents: Number(pi.amount_received ?? 0),
-      amountRefundedCents,
+      amountRefundedCents: refundedCentsOnPaymentIntent(pi),
     };
   }
 

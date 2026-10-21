@@ -12,8 +12,8 @@ export const OPTIMIZE_PAY_LINE = "You'll pay on the next screen; nothing runs un
 export const OPTIMIZE_COVERED_LINE = "Included in your Trip Pass — nothing is charged.";
 
 /**
- * A disabled Optimize fee (`optimization_fees.is_disabled`). The preview answers `feeCents: 0`
- * and `aiDisabled: true`; the payment endpoint refuses `ai_concierge_disabled`. Zero here is
+ * A disabled Optimize fee (`optimization_fees.is_disabled`). The preview answers a zero feeCents
+ * with `aiDisabled` set; the payment endpoint refuses `ai_concierge_disabled`. That zero quote is
  * "not offered", never a free run.
  */
 export const OPTIMIZE_UNAVAILABLE = "Optimize is unavailable right now.";

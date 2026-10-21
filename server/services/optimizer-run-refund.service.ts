@@ -27,7 +27,7 @@ import {
   optimizerRunRefundPendingId,
   type OptimizerFeeRefundState,
 } from "@shared/optimizer-run-refund";
-import { recordRefundAuditRow, stripe, stripePaymentService } from "./stripe-payment.service";
+import { recordRefundAuditRow, refundedCentsOnPaymentIntent, stripe, stripePaymentService } from "./stripe-payment.service";
 import { recordOptimizerRunRefundToll } from "./fee-ledger.service";
 import { logger } from "../infrastructure/logger";
 
@@ -213,7 +213,7 @@ export async function refundFailedPaidOptimizerRun(comparisonId: string): Promis
       if (ai > 0) return { state: "skipped", reason: "delivered" };
     }
 
-    const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+    const pi = await stripe.paymentIntents.retrieve(paymentIntentId, { expand: ["latest_charge"] });
     if (pi.metadata?.type !== "optimization_fee") {
       logger.error(
         { comparisonId, paymentIntentId, type: pi.metadata?.type ?? null },
@@ -221,7 +221,7 @@ export async function refundFailedPaidOptimizerRun(comparisonId: string): Promis
       );
       return { state: "skipped", reason: "not_optimization_fee" };
     }
-    const refundCents = pi.amount - (pi.amount_refunded ?? 0);
+    const refundCents = pi.amount - refundedCentsOnPaymentIntent(pi);
     const currency = (pi.currency || "usd").toLowerCase();
     if (refundCents <= 0) {
       const listed = await stripe.refunds.list({ payment_intent: paymentIntentId, limit: 5 });

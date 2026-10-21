@@ -773,11 +773,14 @@ async function verifyOptimizationPayment(params: {
   }
 
   try {
-    const pi = await stripeForOptimization.paymentIntents.retrieve(optimizationPaymentId);
+    const pi = await stripeForOptimization.paymentIntents.retrieve(optimizationPaymentId, {
+      expand: ["latest_charge"],
+    });
     if (pi.status !== "succeeded") {
       return { ok: false, status: 402, body: { error: "payment_not_confirmed", message: "Optimization payment has not been confirmed." } };
     }
-    if ((pi.amount_refunded ?? 0) > 0) {
+    const { refundedCentsOnPaymentIntent } = await import("./services/stripe-payment.service");
+    if (refundedCentsOnPaymentIntent(pi) > 0) {
       return {
         ok: false,
         status: 402,
