@@ -25,6 +25,10 @@ test("PE1 the name check: the two Kyoto examples are placeholders, real places a
   assert.equal(unnamedPlaceReason({ title: "Late Dinner in Shimogyo" }, "Kyoto", KYOTO_AREAS), "area_title", "only a ward's name");
   assert.equal(unnamedPlaceReason({ title: "Welcome Picnic in Higashiyama" }, "Kyoto", KYOTO_AREAS), "area_title", "only a neighbourhood's name");
   assert.equal(unnamedPlaceReason({ title: "Ginkaku-ji Temple" }, "Kyoto", KYOTO_AREAS), null);
+  const withGinkaku = [...KYOTO_AREAS, "Ginkaku-ji & Philosopher's Path"];
+  assert.equal(unnamedPlaceReason({ title: "Ginkaku-ji Temple" }, "Kyoto", withGinkaku), null, "a word of a longer neighbourhood name is still the temple");
+  assert.equal(unnamedPlaceReason({ title: "Philosopher's Path" }, "Kyoto", withGinkaku), null, "the path is not the whole neighbourhood");
+  assert.equal(unnamedPlaceReason({ title: "Ginkaku-ji & Philosopher's Path" }, "Kyoto", withGinkaku), "area_title", "the neighbourhood's own name");
   assert.equal(unnamedPlaceReason({ title: "Fushimi Inari Shrine" }, "Kyoto", KYOTO_AREAS), null, "a ward's name beside a place's is still a place");
   assert.equal(unnamedPlaceReason({ title: "Late Dinner in Shimogyo" }, "Kyoto"), null, "with no area names known the title is read as before");
   assert.equal(unnamedPlaceReason({ title: "Gion Walk" }, "Kyoto"), "area_title", "smoke 7's words still apply");
