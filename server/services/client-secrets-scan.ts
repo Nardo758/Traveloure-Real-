@@ -40,7 +40,7 @@ export function unsafeClientEnvIdents(text: string): string[] {
     }
     if (!SAFE_ENV_IDENTS.has(literal[2])) found.add(literal[2]);
   }
-  return [...found];
+  return Array.from(found);
 }
 
 export function clientFileHasSecretsRisk(filePath: string, text: string): boolean {
