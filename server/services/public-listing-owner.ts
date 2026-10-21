@@ -6,6 +6,8 @@
  * have a role and no form). An approved application stays public even if the role
  * update has not landed yet. A rejected row beside a later approved row does not hide
  * the account: approval is EXISTS, not "every row is approved".
+ * An account with no application row is not a pending applicant. Public reads keep
+ * that owner's already-approved listing (the fixture shape the deliverable gate uses).
  *
  * Storage imports this file. This file does not import storage.
  */
@@ -21,6 +23,10 @@ export function publicListingOwnerSql(ownerUserIdColumn: SQL | { getSQL(): SQL }
     EXISTS (SELECT 1 FROM users ou WHERE ou.id = ${ownerUserIdColumn} AND ou.role IN (${roles}))
     OR EXISTS (SELECT 1 FROM local_expert_forms lef WHERE lef.user_id = ${ownerUserIdColumn} AND lef.status = 'approved')
     OR EXISTS (SELECT 1 FROM service_provider_forms spf WHERE spf.user_id = ${ownerUserIdColumn} AND spf.status = 'approved')
+    OR (
+      NOT EXISTS (SELECT 1 FROM local_expert_forms lef0 WHERE lef0.user_id = ${ownerUserIdColumn})
+      AND NOT EXISTS (SELECT 1 FROM service_provider_forms spf0 WHERE spf0.user_id = ${ownerUserIdColumn})
+    )
   )`;
 }
 

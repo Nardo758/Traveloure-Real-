@@ -1,7 +1,8 @@
 /**
  * S-17: a pending account's listing stays off every public reader, even when the row
- * itself is forced approved and active. An earner with no form, and an account with an
- * approved application, stay public. The write gate allows a draft and refuses publish.
+ * itself is forced approved and active. An earner with no form, an account with no
+ * application, and an account with an approved application stay public. A rejected
+ * application with no approval stays off. The write gate allows a draft and refuses publish.
  *
  * DISPOSABLE DB ONLY.
  */
@@ -42,6 +43,8 @@ before(async () => {
     ["legacy", "service_provider"],
     ["earner", "local_expert"],
     ["both", "user"],
+    ["plain", "user"],
+    ["rejected", "user"],
   ] as const;
   for (const [k, role] of users) {
     await db.execute(sql`
@@ -69,7 +72,11 @@ before(async () => {
     INSERT INTO service_provider_forms (id, user_id, business_name, name, email, mobile, country, address, business_type, status)
     VALUES (${id("both-new")}, ${id("both")}, 'New Co', 'PS New', ${`${id("both")}@new.invalid`}, '555', 'Japan', '1 Road', 'tour', 'approved')
   `);
-  for (const k of ["pexpert", "pprovider", "approved", "legacy", "earner", "both"]) {
+  await db.execute(sql`
+    INSERT INTO service_provider_forms (id, user_id, business_name, name, email, mobile, country, address, business_type, status)
+    VALUES (${id("rejected-form")}, ${id("rejected")}, 'No Co', 'PS No', ${`${id("rejected")}@form.invalid`}, '555', 'Japan', '1 Road', 'tour', 'rejected')
+  `);
+  for (const k of ["pexpert", "pprovider", "approved", "legacy", "earner", "both", "plain", "rejected"]) {
     await db.execute(sql`
       INSERT INTO provider_services (id, user_id, service_name, description, price, status, approval_status, delivery_method, city)
       VALUES (${id(`${k}-svc`)}, ${id(k)}, ${`Fixture ${k} ${RUN}`}, 'fixture', '40.00', 'active', 'approved', 'in_person', ${CITY})
@@ -88,8 +95,8 @@ after(async () => {
   }
 });
 
-const PUBLIC = [id("approved-svc"), id("legacy-svc"), id("earner-svc"), id("both-svc")].sort();
-const HIDDEN = [id("pexpert-svc"), id("pprovider-svc")];
+const PUBLIC = [id("approved-svc"), id("legacy-svc"), id("earner-svc"), id("both-svc"), id("plain-svc")].sort();
+const HIDDEN = [id("pexpert-svc"), id("pprovider-svc"), id("rejected-svc")];
 
 test("public readers leave out pending owners even when the listing is approved and active", async () => {
   const search = await storage.unifiedSearch({ location: CITY, limit: 50 });
@@ -114,6 +121,8 @@ test("public readers leave out pending owners even when the listing is approved 
   assert.equal(await listingOwnerIsPublic(id("approved")), true);
   assert.equal(await listingOwnerIsPublic(id("legacy")), true);
   assert.equal(await listingOwnerIsPublic(id("both")), true);
+  assert.equal(await listingOwnerIsPublic(id("plain")), true);
+  assert.equal(await listingOwnerIsPublic(id("rejected")), false);
 
   const rows = [...HIDDEN, ...PUBLIC].map((svc) => ({ id: svc, userId: svc.replace(/-svc$/, "") }));
   assert.deepEqual(
