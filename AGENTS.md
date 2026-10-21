@@ -16,26 +16,37 @@ boot, then serves both the API and the frontend. There is no separate frontend s
 Docker for the root app (the `attached_assets/*` Dockerfiles belong to unrelated legacy reference projects).
 
 ### Environment already provisioned on the VM (persists via snapshot)
-- **PostgreSQL 16** is installed locally. DB `traveloure`, role `traveloure` (password `traveloure`, superuser).
-- Env vars are exported from `~/.bashrc` (the server does **NOT** load a `.env` file, so vars must live in the
-  shell): `DATABASE_URL`, `SESSION_SECRET`, and placeholder `STRIPE_SECRET_KEY`/`AMADEUS_API_KEY`/`AMADEUS_API_SECRET`.
-- The `npm install` update script refreshes dependencies on startup. `node_modules` is not snapshotted reliably;
-  if imports fail, run `npm install`.
+- **PostgreSQL 16** is installed in the image. Database `traveloure`, role `ubuntu` (peer auth over the local
+  socket, no password). The environment `start` script creates the role and database if they are missing and
+  starts the cluster (`sudo pg_ctlcluster 16 main start`). Nothing auto-starts Postgres before that script.
+- Login shells export dev defaults from `/etc/profile.d/traveloure-dev.sh`. `~/.bashrc` is not a reliable place
+  for them: non-interactive bash returns before any lines appended to it. A command that does not see the
+  variables should run under `bash -lc` or `source /etc/profile.d/traveloure-dev.sh`.
+- `DATABASE_URL` must be `postgresql://ubuntu@localhost/traveloure?host=/var/run/postgresql`. The `host` query
+  parameter is the unix socket (peer auth as `ubuntu`). A URL whose host `new URL()` cannot parse is refused by
+  `demoSeedDatabaseAllowed`, and demo expert/provider seeds are skipped. `localhost` alone needs a TCP password
+  this role does not have.
+- `SESSION_SECRET` and `STRIPE_SECRET_KEY` have local defaults in that profile script (the Stripe value is an
+  `sk_test_` placeholder, not a live key). A real secret in the environment wins. The server also loads `.env`
+  via dotenv and does not override variables that are already set.
+- Dependencies are installed with `npm ci` during the environment build. If a branch's lockfile differs and
+  imports fail, run `npm ci` again.
 
 ### Starting services (do this at the start of a session)
-- **Postgres may be down on a fresh pod** (no init system auto-starts it). Start it with:
-  `sudo pg_ctlcluster 16 main start` (check with `pg_lsclusters`). The seeded data directory persists in the snapshot.
-- **Run the app:** `npm run dev` (from `/workspace`, in a tmux session). It listens on `http://localhost:5000`.
-  Migrations and seeds run automatically at boot — a fresh DB is fully re-seeded.
-- Confirm health: `curl localhost:5000/api/health` (200) and `curl localhost:5000/api/ready` (JSON of per-service
-  status; `fail`/`warn` entries for XAI/Anthropic/Stripe-webhook/Resend are expected when those keys are absent).
+- The environment `start` script starts Postgres, then `npm run dev`, and leaves the dev server in the
+  foreground on `http://localhost:5000`. It exits immediately when `/api/health` is already 200, so a second
+  run does not bind the port again. If `start` did not run (`/tmp/cursor/start-user/` missing), start Postgres
+  and the dev server yourself from `/workspace`.
+- Migrations and seeds run on boot. Confirm health: `curl localhost:5000/api/health` (200) and
+  `curl localhost:5000/api/ready` (JSON of per-service status; `fail`/`warn` for Anthropic, the Stripe webhook
+  secret, and Resend are expected when those keys are absent).
 
 ### Non-obvious startup gotchas
-- **Hard startup requirements beyond the DB:** the server throws at import if `STRIPE_SECRET_KEY` is missing (must
-  be `sk_test_...` outside prod) and if `AMADEUS_API_KEY`/`AMADEUS_API_SECRET` are missing (SDK client constructed
-  at module load). Placeholders in `~/.bashrc` let it boot. **To exercise real Stripe payment flows or Amadeus
-  flight/hotel search, replace the placeholders with real test credentials** (add them as Secrets).
-- **AI features are off without keys.** `XAI_API_KEY`/`GROK_API_KEY` (itinerary generation, TravelPulse) and
+- **Hard startup requirement beyond the DB:** `server/services/stripe.service.ts` throws at import unless
+  `STRIPE_SECRET_KEY` (or `STRIPE_SECRET_KEY_TEST`) is set, and outside production it must start with `sk_test_`.
+  The profile default satisfies boot only. **Real Stripe payment flows need a real test secret** added as a
+  Secret; it overrides the placeholder. Amadeus is not required to boot.
+- **AI features are off without keys.** `GROK_API_KEY` (itinerary generation, TravelPulse) and
   `ANTHROPIC_API_KEY` (chat/optimization fallback) degrade gracefully when absent — the app runs, but AI-generation
   flows won't produce results. Other integrations (Resend email, Google Maps, Viator, Pexels, etc.) are all
   key-gated and skip cleanly when unset.
@@ -53,8 +64,8 @@ Password for all: `TestPass123!`
   **pre-existing** type errors on `main` (e.g. in `server/storage.ts`, `server/vite.ts`); they do not block the
   app because dev runs through `tsx` (no typecheck). Do not assume you broke the build if `check` is red — compare
   against `main`.
-- **Unit tests:** `npm test` (footer route coverage) and `npm run test:upsell-contract` (needs `DATABASE_URL` set —
-  source `~/.bashrc` first).
+- **Unit tests:** `npm test` (footer route coverage) and `npm run test:upsell-contract` (needs `DATABASE_URL` —
+  `source /etc/profile.d/traveloure-dev.sh` or use a login shell).
 - **E2E:** `npm run test:e2e` (Playwright) targets `http://localhost:5000`; needs the dev server running and
   Playwright browsers installed (`npx playwright install`), plus the seeded `*.traveloure.test` accounts.
 - **Build (prod):** `npm run build` then `npm start`. For development always use `npm run dev`, not the prod build.
