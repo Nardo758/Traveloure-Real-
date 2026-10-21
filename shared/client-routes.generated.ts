@@ -83,6 +83,8 @@ export const CLIENT_ROUTES: readonly string[] = [
   "/credits",
   "/credits-billing",
   "/dashboard",
+  "/dashboard/listing",
+  "/dashboard/listing/:id",
   "/deals",
   "/destinations",
   "/discover",

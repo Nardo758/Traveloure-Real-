@@ -97,22 +97,19 @@ export async function runQAVerify(): Promise<QARunSummary> {
   } catch { results.S3 = { pass: false, detail: "FS error" }; }
 
   // ── S4: no API secrets in client ────────────────────────────────────────
+  // File names only. __tests__ fixtures and a bare `process.env` mention are
+  // not accesses; any other identifier still fails (see client-secrets-scan.ts).
   try {
-    const { execSync } = await import("child_process");
-    const out = execSync(
-      "grep -r \"process\\.env\" ./client --include='*.ts' --include='*.tsx' -l 2>/dev/null || true",
-      { encoding: "utf-8" }
-    ).trim();
-    const files = out ? out.split("\n").filter(Boolean) : [];
-    const badFiles = files.filter(f => f !== "./client/src/App.tsx");
+    const { listClientSecretsRiskFiles } = await import("./client-secrets-scan");
+    const badFiles = listClientSecretsRiskFiles("client");
     const pass = badFiles.length === 0;
     results.S4 = {
       pass,
       detail: pass
-        ? `Only NODE_ENV usage in App.tsx — no secrets exposed`
+        ? "No client process.env secret access (NODE_ENV allowed; __tests__ excluded)"
         : `Secrets risk: ${badFiles.join(", ")}`,
     };
-  } catch { results.S4 = { pass: false, detail: "grep failed" }; }
+  } catch { results.S4 = { pass: false, detail: "secrets scan failed" }; }
 
   // ── S7: scrypt password hashing ─────────────────────────────────────────
   try {

@@ -15,6 +15,7 @@ import { affiliateProductsPage, parsePagination } from '../utils/pagination';
 import { toPublicServiceListing, toPublicListing, publicRouteSummary } from '../utils/public-service-listing';
 import { viewerSeesExactLocation, cityNeighborhoodNames } from '../services/listing-location-access.service';
 import { isConciergePoolAccount } from '../services/expert-routability';
+import { listingOwnerIsPublic, withoutUnapprovedOwnerListings } from '../services/public-listing-owner';
 import { dedupedRequest, callWithCircuitBreaker } from '../utils/requestDeduplication';
 import { sanitizeAiProviderFailure, retryAfterSecondsFromError } from '../utils/ai-error-sanitizer';
 import { aiFailureResponse } from '../services/ai-upstream-errors';
@@ -2439,6 +2440,10 @@ router.get("/api/services/:id", async (req, res) => {
     // probe for it. Its fallback is offered by notification and bought through the cart and checkout,
     // which read storage, never this route.
     if (await isConciergePoolAccount(rawService.userId)) {
+      return res.status(404).json({ message: "Service not found" });
+    }
+    // A pending account stays invisible by id too, same 404 as a missing listing.
+    if (!(await listingOwnerIsPublic(rawService.userId))) {
       return res.status(404).json({ message: "Service not found" });
     }
     // D3 leak-prevention: this is the public service-detail read — serviceFile is the
@@ -6631,7 +6636,10 @@ router.get("/api/search/experiences", isAuthenticated, async (req, res) => {
         // filterOutAwayOwners doc in content-query.service.ts): a currently-away owner's
         // listings drop out of platform search results; they reappear automatically once
         // the flag clears. Read-only — no provider_services row is touched.
-        const platformProviders = await filterOutAwayOwners(approvedProviders, (s: any) => s.userId);
+        const platformProviders = await withoutUnapprovedOwnerListings(
+          await filterOutAwayOwners(approvedProviders, (s: any) => s.userId),
+          (s: any) => s.userId,
+        );
         const dest = (destination || "").toLowerCase();
         const qLower = (q || "").toLowerCase();
         const catLower = (category || "").toLowerCase();

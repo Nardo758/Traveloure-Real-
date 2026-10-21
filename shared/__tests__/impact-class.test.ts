@@ -241,8 +241,8 @@ describe("impact class — the provider catalog", () => {
       assert.ok(impact !== null, `registry discipline "${k}" resolves to NO impact class`);
       assert.ok(impact === "stay" || impact === "on_ground", `discipline "${k}" resolved to "${impact}"`);
     }
-    // 21 disciplines + 4 aff_* as of migration 285 — the brief's own inventory.
-    assert.equal(disciplines.length, 21, `expected 21 provider disciplines, found ${disciplines.length}`);
+    // 22 disciplines + 4 aff_* as of migration 402 (`dinner_host`).
+    assert.equal(disciplines.length, 22, `expected 22 provider disciplines, found ${disciplines.length}`);
     assert.equal(registry.size - disciplines.length, 4, "expected exactly four aff_* affiliate sources");
   });
 

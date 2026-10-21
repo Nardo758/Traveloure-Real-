@@ -12,17 +12,32 @@
  *
  * Recipients: ADMIN_EMAIL env var (falls back to no-op if unset).
  * Email: sent via Resend through email.service.ts.
+ *
+ * Once per UTC date (ledger `2026-10-21-admin-qa-alerting`): a sent-marker on
+ * `platform_settings` so a restart or a second instance does not send again.
+ * The day is claimed only when there is something to report and Resend is
+ * configured. Nothing to report leaves the day unclaimed, so a later alert
+ * can still send once.
  */
 
 import { loadDeadEmailSummary, type DeadEmailSummary } from "./email-outbox.service";
 import Stripe from "stripe";
 import { db } from "../db";
 import { adminNotifications, users, webhookEvents } from "@shared/schema";
-import { eq, and, sql, gte, inArray } from "drizzle-orm";
+import { eq, and, sql, gte, inArray, desc } from "drizzle-orm";
 import { sendAdminDigestEmail } from "./email.service";
 import { getStripeSecretKey } from "../utils/stripe-key";
 import { runBackgroundJob } from "./background-job-runner";
 import { jitteredStartupDelay } from "./startup-delay";
+import { claimAdminDigestSend, releaseAdminDigestClaim } from "./admin-digest-claim";
+import {
+  adminDigestDateKey,
+  collapseUnresolvedLeadAlerts,
+  dedupeReconciliationMismatches,
+  digestPayoutExcludedSql,
+  UNRESOLVED_ALERT_FETCH_CAP,
+  type ReconciliationMismatchRow,
+} from "./admin-digest-shape";
 
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // every 24 hours
 
@@ -66,21 +81,32 @@ class AdminDigestSchedulerService {
         return;
       }
 
-      // ── A: Unread lead-routing alerts ───────────────────────────────────────
-      const unresolvedNotifications = await db
-        .select({ id: adminNotifications.id, message: adminNotifications.message, destination: adminNotifications.destination })
+      // ── A: Unread alerts. Load enough to collapse repeated drift lines without
+      // dropping real leads that the old limit(20) never reached.
+      const unresolvedRows = await db
+        .select({
+          id: adminNotifications.id,
+          message: adminNotifications.message,
+          destination: adminNotifications.destination,
+          createdAt: adminNotifications.createdAt,
+        })
         .from(adminNotifications)
         .where(eq(adminNotifications.isRead, false))
-        .limit(20);
+        .orderBy(desc(adminNotifications.createdAt), desc(adminNotifications.id))
+        .limit(UNRESOLVED_ALERT_FETCH_CAP);
+      const unresolvedNotifications = collapseUnresolvedLeadAlerts(unresolvedRows);
 
       // ── B: Experts without completed Stripe Connect ─────────────────────────
+      // Test, seed, and house accounts are excluded in SQL so the limit is not
+      // filled by internal rows. SHOW_DEMO_EXPERTS does not relax this.
       const expertsWithoutPayout = await db
         .select({ id: users.id, email: users.email, firstName: users.firstName, lastName: users.lastName })
         .from(users)
         .where(
           and(
             eq(users.role, "local_expert"),
-            sql`(${users.stripeAccountId} is null or ${users.stripeAccountStatus} <> 'complete')`
+            sql`(${users.stripeAccountId} is null or ${users.stripeAccountStatus} <> 'complete')`,
+            sql`NOT ${digestPayoutExcludedSql(sql`${users.isTest}`, sql`${users.email}`)}`,
           )
         )
         .limit(50);
@@ -140,8 +166,8 @@ class AdminDigestSchedulerService {
         console.log("[AdminDigest] STRIPE_SECRET_KEY not set — skipping Stripe gap check");
       }
 
-      // ── Section D: Pull recent reconciliation mismatches from admin_notifications ─
-      let reconciliationMismatches: { type: string; chargeId?: string; bookingId?: string; paymentIntentId?: string; amount?: number }[] = [];
+      // ── Section D: recent reconciliation mismatches, newest notification first ─
+      let reconciliationMismatches: ReconciliationMismatchRow[] = [];
       try {
         const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
         const recentReconNotifs = await db
@@ -152,15 +178,18 @@ class AdminDigestSchedulerService {
               eq(adminNotifications.type, "reconciliation_mismatch"),
               gte(adminNotifications.createdAt, oneDayAgo)
             )
-          );
+          )
+          .orderBy(desc(adminNotifications.createdAt), desc(adminNotifications.id));
+        const parsed: ReconciliationMismatchRow[] = [];
         for (const notif of recentReconNotifs) {
           try {
-            const parsed = JSON.parse((notif as any).reason ?? "[]");
-            if (Array.isArray(parsed)) reconciliationMismatches.push(...parsed);
+            const reason = JSON.parse((notif as { reason?: string | null }).reason ?? "[]");
+            if (Array.isArray(reason)) parsed.push(...reason);
           } catch (parseErr) {
             console.warn("[AdminDigest] Could not parse reconciliation notification reason — skipping entry:", parseErr);
           }
         }
+        reconciliationMismatches = dedupeReconciliationMismatches(parsed);
       } catch (err) {
         console.error("[AdminDigest] Failed to load reconciliation notifications:", err);
       }
@@ -186,14 +215,34 @@ class AdminDigestSchedulerService {
         return;
       }
 
-      await sendAdminDigestEmail({
-        toEmail: adminEmail,
-        unresolvedNotifications,
-        expertsWithoutPayout,
-        missedWebhooks,
-        reconciliationMismatches: reconciliationMismatches as any,
-        deadEmails,
-      });
+      // sendAdminDigestEmail no-ops without a client and would burn the day if we claimed first.
+      if (!process.env.RESEND_API_KEY) {
+        console.log("[AdminDigest] RESEND_API_KEY not set — skipping digest");
+        return;
+      }
+
+      const dateKey = adminDigestDateKey();
+      const claimed = await claimAdminDigestSend(dateKey);
+      if (!claimed) {
+        console.log(`[AdminDigest] Digest already claimed for ${dateKey} — skipping`);
+        return;
+      }
+
+      try {
+        await sendAdminDigestEmail({
+          toEmail: adminEmail,
+          unresolvedNotifications,
+          expertsWithoutPayout,
+          missedWebhooks,
+          reconciliationMismatches,
+          deadEmails,
+        });
+      } catch (sendErr) {
+        await releaseAdminDigestClaim(dateKey).catch((releaseErr) =>
+          console.error("[AdminDigest] Failed to release digest claim:", releaseErr),
+        );
+        throw sendErr;
+      }
 
       console.log(
         `[AdminDigest] Digest sent — ${unresolvedNotifications.length} unresolved alerts, ${expertsWithoutPayout.length} experts without payout, ${missedWebhooks.length} missed webhooks, ${reconciliationMismatches.length} reconciliation mismatch(es), ${deadEmails?.total ?? 0} undelivered email(s)`

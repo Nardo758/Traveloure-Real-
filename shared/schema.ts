@@ -8,6 +8,7 @@ import { withoutServerAuthoredBookingDetails } from "./booking-details-admission
 import { PLAN_PROPOSAL_STATUSES } from "./plan-proposals";
 import { PRICE_BASIS_VALUES } from "./price-basis";
 import { CANCELLATION_POLICY_TYPES, CANCELLATION_TIER_LABELS } from "./cancellation-schedule";
+import { OPTIONAL_PHONE_ERROR, optionalPhoneError } from "./supply-registration";
 // LAZY, and deliberately so — the same circularity `shared/models/chat.ts` documents from the
 // other side: this file re-exports that one (below), and that one imports `trips` from here.
 // Drizzle's `.references()` takes a CALLBACK it evaluates when the relation is built, never at
@@ -904,10 +905,17 @@ export const serviceProviderForms = pgTable("service_provider_forms", {
   // Canonical offering-type selection carried from /earn (migration 107).
   // FK to service_offering_types.offering_type_key — the provider catalog only.
   offeringTypeKey: varchar("offering_type_key", { length: 100 }).references(() => serviceOfferingTypes.offeringTypeKey, { onDelete: "set null" }),
-  // Applicant's self-attested insurance flag (migration 108). Nullable: NULL =
-  // never asked (pre-108 rows), distinct from an explicit false. The FEE-2
-  // brief's admin-validated insurance_tier evidence columns will sit beside it.
+  // Applicant's self-attested insurance flag (migration 108). Three answers, and
+  // they are not interchangeable (ledger `2026-10-21-supply-registration-fixes`):
+  // NULL = not answered, true = they hold liability insurance, false = Not applicable.
+  // false is a chosen answer, not a blank and not "no". The storefront still says
+  // Insured only when this is true. The FEE-2 brief's admin-validated insurance_tier
+  // evidence columns will sit beside it.
   hasInsurance: boolean("has_insurance"),
+  // Licence and permit attestation (migration 402). The same three answers as
+  // hasInsurance. Declared here so a deploy push cannot drop the column. This is
+  // not info_confirmation, which defaults to false and means something else.
+  hasLicense: boolean("has_license"),
   // Account-level office / place-of-business location (DECISIONS.md ruling 85, migration 207).
   // { address, lat, lng } — the provider's confirmed business location, captured via the SAME
   // confirm-gated LocationPointPicker the per-listing meeting pin uses (address typed OR pin
@@ -3032,6 +3040,16 @@ export const insertLocalExpertFormSchema = createInsertSchema(localExpertForms).
   const isNonEmptyArr = (v: unknown) => Array.isArray(v) && v.length > 0;
   const isNonEmptyStr = (v: unknown) => typeof v === "string" && v.trim().length > 0;
 
+  // S-08: phone is optional. A blank is stored as the absence of a number. A typed
+  // value has to pass the same check the wizard uses.
+  if (optionalPhoneError(data.phone)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["phone"],
+      message: OPTIONAL_PHONE_ERROR,
+    });
+  }
+
   if (!isNonEmptyStr(data.expertType)) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -3073,6 +3091,16 @@ export const insertServiceProviderFormSchema = createInsertSchema(serviceProvide
   identityVerificationStatus: true,
   identityVerifiedAt: true,
   businessVerificationStatus: true,
+}).extend({
+  // S-08: mobile stays NOT NULL on the table (a blank is an empty string, which
+  // readers treat as not provided). A typed number uses the shared phone check.
+  mobile: z.string().trim().max(50).refine((value) => optionalPhoneError(value) === null, {
+    message: OPTIONAL_PHONE_ERROR,
+  }),
+  // S-19: true, false (Not applicable) and null (unanswered) are all admissible.
+  // Omitting the key is the same as unanswered.
+  hasInsurance: z.boolean().nullable().optional(),
+  hasLicense: z.boolean().nullable().optional(),
 });
 export const insertServiceCategorySchema = createInsertSchema(serviceCategories).omit({ id: true, createdAt: true });
 export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcategories).omit({ id: true, createdAt: true });
@@ -3644,10 +3672,10 @@ export const experienceTypeSwitchesSchema = createInsertSchema(experienceTypes)
 export type ExperienceTypeSwitches = z.infer<typeof experienceTypeSwitchesSchema>;
 
 /**
- * The 20 hireable role keys an occasion may name (migration 280, ledger `2026-09-04-roles-needed`,
- * CLAUDE.md Locked Decision 31). These are `service_categories.category_key` values, and migration
- * 034 — the SOLE assigner of that column, 24 rows — is the authority that defines them. This
- * constant is a mirror of 034 for app-side validation, NOT a second source of truth:
+ * The hireable role keys an occasion may name (migration 280, ledger `2026-09-04-roles-needed`,
+ * CLAUDE.md Locked Decision 31; `dinner_host` added by migration 402). These are
+ * `service_categories.category_key` values. The taxonomy registry is the authority that
+ * defines them. This constant is a mirror for app-side validation, NOT a second source of truth:
  * `scripts/check-roles-needed-reachability.cjs` fails CI if the two ever disagree, so a key added
  * here without a category behind it cannot land.
  *
@@ -3663,6 +3691,8 @@ export const OCCASION_ROLE_KEYS = [
   "childcare_family",
   "concierge_vip",
   "dining_venue",
+  // `dinner_host` — migration 402, ledger `2026-10-21-supply-registration-fixes`.
+  "dinner_host",
   "entertainment",
   "event_coordinator",
   "florist",
