@@ -9,6 +9,7 @@
  * Pure helpers only; the route owns the session.
  */
 import crypto from "crypto";
+import { sameSiteReturnPath } from "@shared/safe-return-path";
 
 /** How long an issued `state` stays valid. A liveness window, not a fee or rate (§8). */
 export const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
@@ -44,8 +45,5 @@ export function isValidOAuthState(
  * never be turned into an open redirect.
  */
 export function safeReturnPath(candidate: unknown, fallback: string): string {
-  if (typeof candidate !== "string") return fallback;
-  if (!candidate.startsWith("/") || candidate.startsWith("//") || candidate.includes("\\")) return fallback;
-  if (/[\u0000-\u001f]/.test(candidate) || candidate.length > 512) return fallback;
-  return candidate;
+  return sameSiteReturnPath(candidate) ?? fallback;
 }
