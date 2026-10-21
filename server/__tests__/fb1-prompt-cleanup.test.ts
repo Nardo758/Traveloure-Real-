@@ -10,6 +10,9 @@
  *   PC5 the trip-generate route stores no canned fallback: a provider failure is answered by aiFailureResponse,
  *       the free draft is released, nothing is written
  *   PC6 POST /api/ai/generate-optimized-itineraries is still 410 unless its flag is set (R515)
+ *   PC7 the paid optimizer prompt carries no instruction to rank TravelPulse trending spots first
+ *       (ledger `2026-10-21-optimizer-no-trending-preference`). The city-intelligence block still
+ *       names the spots, the season and the local events.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -82,6 +85,35 @@ test("PC5 the trip-generate route stores no canned fallback", () => {
   assert.match(fail, /await aiFailureResponse\(aiErr/);
   assert.match(fail, /releaseFreeDraft\(freeDraftRunId\)/);
   assert.match(fail, /return res\.status\(failure\.status\)\.json\(failure\.body\)/);
+});
+
+/** Preference wording that would tell the model to rank TravelPulse trending spots first.
+ * Whitespace is required between the words, so a ledger slug on one line is not a hit.
+ */
+const TRENDING_PREFERENCE = /prefer(?:\s+\w+){0,6}\s+trending|trending(?:\s+\w+){0,6}\s+prefer|prefer these when selecting/i;
+
+test("PC7 the paid optimizer prompt does not prefer trending spots", () => {
+  const src = read("server/itinerary-optimizer.ts");
+  const start = src.indexOf("function buildCityIntelligenceSection");
+  const end = src.indexOf("function weightTrendingServices");
+  assert.ok(start > 0 && end > start, "city-intelligence section builder");
+  const section = src.slice(start, end);
+  assert.doesNotMatch(section, TRENDING_PREFERENCE);
+  assert.match(section, /TRENDING SPOTS:/);
+  assert.match(section, /trend score \$\{t\.trendScore\}/);
+  assert.match(section, /SEASONAL CONTEXT:/);
+  assert.match(section, /LOCAL EVENTS DURING TRIP/);
+  assert.match(section, /peak crowd hours/);
+  assert.match(section, /1\. Do NOT schedule crowd-heavy activities during peak crowd hours listed above\./);
+  assert.match(section, /2\. If a local event causes extreme crowd impact/);
+
+  const promptStart = src.indexOf("const prompt = `You are a travel optimization AI");
+  const promptEnd = src.indexOf("recordOptimizerRun", promptStart);
+  assert.ok(promptStart > 0 && promptEnd > promptStart, "paid optimizer prompt");
+  const prompt = src.slice(promptStart, promptEnd);
+  assert.match(prompt, /\$\{cityIntelligenceSection\}/);
+  assert.doesNotMatch(prompt, TRENDING_PREFERENCE);
+  assert.doesNotMatch(src, TRENDING_PREFERENCE);
 });
 
 test("PC6 POST /api/ai/generate-optimized-itineraries is 410 unless its flag is set", () => {

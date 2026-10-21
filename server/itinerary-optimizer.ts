@@ -714,7 +714,10 @@ async function fetchCityIntelligence(
   }
 }
 
-/** Format city intelligence into a compact prompt section. */
+/** Format city intelligence into a compact prompt section.
+ * Ledger `2026-10-21-optimizer-no-trending-preference`: the spots, their crowd hours, the season
+ * and the local events stay. The section does not tell the model to rank those spots first.
+ */
 function buildCityIntelligenceSection(intel: CityIntelligence): string {
   if (intel.trending.length === 0 && intel.calendarEvents.length === 0 && !intel.seasonTag) {
     return '';
@@ -727,7 +730,7 @@ function buildCityIntelligenceSection(intel: CityIntelligence): string {
   }
 
   if (intel.trending.length > 0) {
-    lines.push('TRENDING SPOTS (prefer these when selecting replacement activities):');
+    lines.push('TRENDING SPOTS:');
     for (const t of intel.trending) {
       let entry = `- ${t.name} (${t.type}, trend score ${t.trendScore})`;
       if (t.bestTime) entry += ` — best time: ${t.bestTime}`;
@@ -758,9 +761,8 @@ function buildCityIntelligenceSection(intel: CityIntelligence): string {
 
   lines.push('');
   lines.push('SCHEDULING RULES from city intelligence:');
-  lines.push('1. Prefer trending spots above as replacement candidates when proposing alternatives.');
-  lines.push('2. Do NOT schedule crowd-heavy activities during peak crowd hours listed above.');
-  lines.push('3. If a local event causes extreme crowd impact, avoid nearby areas that day or suggest early-morning timing.');
+  lines.push('1. Do NOT schedule crowd-heavy activities during peak crowd hours listed above.');
+  lines.push('2. If a local event causes extreme crowd impact, avoid nearby areas that day or suggest early-morning timing.');
 
   return lines.join('\n');
 }
