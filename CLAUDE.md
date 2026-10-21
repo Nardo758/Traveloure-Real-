@@ -1510,8 +1510,17 @@ This document captures architectural decisions to maintain consistency across co
     principal still charge only when the person clicks, and that click confirms on-session. The
     only unattended charge is a Stripe Billing membership renewal. A saved Apple Pay method is
     not reused while the person is present: Apple's terms require a new cryptogram for an
-    on-session payment. The account-setup screen is a later lane. Until it lands, signup can
-    still finish with no method; that is the divergence, not the rule. This amendment's code
+    on-session payment. The signed-in step has landed (ledger
+    `2026-10-21-signup-payment-step`). Register still does not create a session, so the
+    password form and social buttons do not embed Stripe. The first signed-in session,
+    including Facebook and Replit sign-in, runs PaymentMethodSetupGate, which reuses
+    AddCardDialog. An account created on or after 2026-10-21 (the ruling's own date) is
+    asked to save a method before continuing, and can sign out. An earlier account, or an
+    account whose createdAt cannot be read, gets a dismissible prompt for that sign-in and
+    is not locked out. The two SavePaymentMethodPrompt mounts stay the reminder at the
+    first paid action. A payment-method list that is still loading for an older account,
+    or that returns `available: false`, shows nothing: a missing answer is not "no method".
+    This amendment's code
     lane accepts `rk_test_` / `rk_live_` on the same live-versus-test split (a live key stays
     rejected outside production), makes Customer create idempotent on the user id and stops
     adopting the first email-match Customer, and records `setup_intent.succeeded` plus

@@ -90,7 +90,8 @@ export function SignupPage() {
       <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
         <div className="bg-white rounded-2xl border border-gray-200 p-8 w-full max-w-md" data-testid="signup-neutral-result">
           <h1 className="text-xl font-semibold text-gray-900 mb-3">{t("registered.title")}</h1>
-          <p className="text-sm text-gray-600 mb-6" data-testid="text-signup-neutral">{t("registered.body")}</p>
+          <p className="text-sm text-gray-600 mb-3" data-testid="text-signup-neutral">{t("registered.body")}</p>
+          <p className="text-sm text-gray-600 mb-6" data-testid="text-signup-payment-step">{t("registered.paymentStep")}</p>
           {/* The sign-in window also holds "Forgot password?", so one link serves both paths. */}
           <div className="flex flex-col gap-2 text-sm">
             <a href="/login" className="text-gray-900 underline" data-testid="link-neutral-sign-in">
