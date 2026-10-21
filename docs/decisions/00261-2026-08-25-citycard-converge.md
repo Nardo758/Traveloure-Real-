@@ -1,0 +1,1 @@
+| 2026-08-25-citycard-converge | 2026-08-25 | [advisory] | `CityCard` stays one component, two variants. `pulse` rebuilt on the family skeleton; `season` untouched. Consumers (`CityGrid`, `TrendingCities`, `GlobalCalendar`) unchanged. | `docs/design/MARKETPLACE_EXPERTS_EARN_GRAMMAR_SPEC.md` §0; lane 3 |

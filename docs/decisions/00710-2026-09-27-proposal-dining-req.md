@@ -1,0 +1,1 @@
+| 2026-09-27-proposal-dining-req | 2026-09-27 | [advisory] | **R141 — `proposal` KEEPS `dining_venue` AS REQ (decision-maker, Sep 27, 2026).** The alternative (REC, for an outdoor proposal) is not taken; "Not needed" closes it when the moment is outdoors. | numeric citation R141; `2026-09-27-proposal-dining-req`; R132 (0c) |

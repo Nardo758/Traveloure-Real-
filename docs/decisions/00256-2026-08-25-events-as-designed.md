@@ -1,0 +1,1 @@
+| 2026-08-25-events-as-designed | 2026-08-25 | [advisory] | `/events` body and calendar unchanged. Header adopts the shared masthead + rail only. | `docs/design/MARKETPLACE_EXPERTS_EARN_GRAMMAR_SPEC.md` §0 |

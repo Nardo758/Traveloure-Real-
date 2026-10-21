@@ -18,8 +18,9 @@
    shared module and the reconciliation cost more than the lane.
 4. Two recurring traps, both of which cost CI cycles this session: **a pin that asserts a literal
    string** (an exact URL, a handler slice, a fee total) goes red on a correct refactor — repair it
-   to assert the invariant, never delete it; and **`docs/DECISIONS.md` unions locally but not on
-   GitHub**, so any two open PRs that both append a row will show "dirty" until you merge `main` in.
+   to assert the invariant, never delete it; and **a shared `docs/DECISIONS.md` append conflicts
+   on GitHub** (it ignores the union driver). A ruling is `docs/decisions/pending/<id>.md`, so
+   concurrent PRs do not edit the same line.
 5. **STATE AS OF 2026-09-15, re-checked at `5d5f7ccc3292a967de26f02292ef30197051151d` by the
    section-3 re-sweep.** **Section 1 is FULLY RULED** — every question D-1..D-41 has an answer or a
    named owner; **UPDATED 2026-09-15 (later): section 1 has SIX NEW OPEN ROWS, D-45..D-50**, filed by the L16 Ask-AI drawer brief (`docs/design/ASK_AI_DRAWER_BRIEF.md`, ledger `2026-09-15-l16-ask-ai-drawer-brief`) — the create rail's thread/throttle/tier/input questions (D-45, D-46, D-47, D-50), the advisor's ask/pay/apply standing and the coverage read (D-48), and re-finalize on a final plan (D-49). **UPDATED 2026-09-16: ALL SIX ARE ANSWERED** (ledger `2026-09-16-l16-rulings-d45-d50`) — D-45/D-47/D-50 as recommended (D-50 tightened five ways), D-46 as recommended but amended in four places, and **D-48 and D-49 AGAINST the brief's recommendation** (D-48 makes APPLY owner-only at the route as well as PAY; D-49 moves the re-finalize call into lane 1). **Section 1 is fully ruled again.** Nothing above them re-opened; **section 2 is CLOSED** except the two rows struck open with their owners named

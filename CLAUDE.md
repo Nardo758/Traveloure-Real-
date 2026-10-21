@@ -1,6 +1,6 @@
 <!-- SLIMMED per Execution Protocol (DECISIONS.md ruling 26 §5, ruling 29) — 2026-08-04, as-of 5941a4ff.
      This file is an INDEX: invariants + pointers + boot-time operational notes ONLY.
-     - Decisions/rulings:     docs/DECISIONS.md (append-only ledger — OUTRANKS every brief; cite by number, never paraphrase)
+     - Decisions/rulings:     docs/decisions/<seq>-<id>.md (one file per ruling; docs/DECISIONS.md is the preamble and guard registry — OUTRANKS every brief; cite by number or slug, never paraphrase). A new ruling is docs/decisions/pending/<id>.md, not a line appended to the preamble.
      - Historical findings:   docs/findings/CLAUDE_MD_ARCHIVE.md (the 1,100+ lines moved out of this file, with as-of SHAs)
      - Guard registry:        docs/DECISIONS.md §Guard registry (guard = runs in CI; script-only = MISSING)
      - Merge write-back:      .github/PULL_REQUEST_TEMPLATE.md (every merge writes its own deltas back)
@@ -3488,16 +3488,18 @@ procedure and the usage-hygiene rules — lives in `docs/OPERATING_PROCEDURE.md`
 
 ### Merging and the ledger stamp (decision-maker, Oct 15, 2026 — ledger `2026-10-15-ledger-merge-rule`)
 
-PRs merge with their ledger rows still `R?`; after each merge `ledger-stamp.yml` numbers them on `main`
-(CI-1 Phase 1).
+PRs merge with their ledger rows still `R?`, each in its own file `docs/decisions/pending/<id>.md`.
+After each merge `ledger-stamp.yml` numbers that file on `main` and moves it to
+`docs/decisions/<seq>-<id>.md` (CI-1 Phase 1; one file per ruling, `2026-10-21-ledger-one-file`).
 - **The skip-CI marker belongs only in the stamp's own commit.** Never write it — the bracketed
   "skip ci" phrase — in a commit message, a squash commit's title or body, or a PR body (a squash
   merge can carry the body into the commit). GitHub then runs none of that push's workflows, the
   Ledger Stamp included. Set an explicit commit title and message on every squash merge.
-- **When merging `main` into a branch, `docs/DECISIONS.md` is never git's auto-merge.** The stamp
-  moves rows to the end of the ledger, so an auto-merge duplicates them or interleaves them. Take
-  `main`'s file verbatim, re-append only the branch's own `R?` row(s), in the order the PRs will
-  merge, and run `node scripts/check-decision-guards.cjs` before pushing.
+- **A new ruling is a new pending file.** Do not append a row to `docs/DECISIONS.md` and do not
+  edit an existing `docs/decisions/<seq>-*.md`. GitHub's mergeability check ignores custom merge
+  drivers, so a shared ledger line stays CONFLICTING after every merge. A branch that still carries
+  its row inside `docs/DECISIONS.md` takes main's preamble and moves that one line, still `R?` on
+  the heading and the citation, into `docs/decisions/pending/<id>.md`.
 
 ### Recording approvals
 
