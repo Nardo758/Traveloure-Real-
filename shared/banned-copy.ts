@@ -182,3 +182,36 @@ export function siteNeverSayHits(text: string | null | undefined): string[] {
 export function containsSiteNeverSay(text: string | null | undefined): boolean {
   return siteNeverSayHits(text).length > 0;
 }
+
+/**
+ * Blog publish check (ledger `2026-10-21-blog-checks-fever-area`). The words a platform draft and a
+ * publish are refused for, case-insensitive. Trending, Hidden Gem(s) and geisha are the EXISTING
+ * patterns (`BANNED` and the site list's bare geisha) — not a second spelling. "back alley" and
+ * "illuminations" are blog-only: they are not added to the item-title sanitizer or the site scan.
+ */
+const BLOG_ONLY: ReadonlyArray<{ words: string; re: RegExp }> = [
+  { words: "back alley", re: /\bback[\s-]+alleys?\b/i },
+  { words: "illuminations", re: /\billuminations?\b/i },
+];
+
+function blogPattern(words: string): RegExp | null {
+  const draft = BANNED.find((b) => b.words === words);
+  if (draft) return new RegExp(draft.re.source, "i");
+  const site = SITE_NEVER_SAY.find((b) => b.words === words);
+  if (site) return new RegExp(site.re.source, "i");
+  const extra = BLOG_ONLY.find((b) => b.words === words);
+  return extra ? new RegExp(extra.re.source, "i") : null;
+}
+
+const BLOG_BANNED_WORDS = ["trending", "hidden gem(s)", "geisha", "back alley", "illuminations"] as const;
+
+/** The blog banned phrases a text carries, in list order. Empty when it carries none. */
+export function blogBannedHits(text: string | null | undefined): string[] {
+  const t = String(text ?? "");
+  const hits: string[] = [];
+  for (const words of BLOG_BANNED_WORDS) {
+    const re = blogPattern(words);
+    if (re?.test(t)) hits.push(words);
+  }
+  return hits;
+}
