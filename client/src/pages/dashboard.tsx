@@ -156,8 +156,7 @@ export default function Dashboard() {
 
         {supply.data?.canSaveDraftListing && (
           <div
-            className="mb-6 rounded-lg border p-4"
-            style={{ borderColor: "var(--earn-line, #E8E8E2)" }}
+            className="mb-6 rounded-lg border border-border p-4"
             data-testid="card-pending-draft-listing"
           >
             <h2 className="text-lg font-semibold" style={{ fontFamily: FRAUNCES, color: "var(--earn-ink)" }}>
@@ -169,8 +168,7 @@ export default function Dashboard() {
             <div className="mt-3 flex flex-wrap gap-3">
               <Link href="/dashboard/listing">
                 <span
-                  className="inline-block px-4 py-2 rounded-lg text-white text-sm"
-                  style={{ background: "var(--earn-coral-ink, #FF385C)" }}
+                  className="inline-block px-4 py-2 rounded-lg text-sm text-white bg-[var(--earn-coral-ink)]"
                   data-testid="button-draft-listing"
                 >
                   Draft a listing
