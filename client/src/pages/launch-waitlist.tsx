@@ -25,6 +25,7 @@ import {
   WAITLIST_OTHER_CITY_PROMPT,
   waitlistCityName,
   waitlistConsentLine,
+  waitlistOtherCityProviderDone,
   WAITLIST_SERVICE_TYPES,
   WAITLIST_TRIP_TYPES,
   WAITLIST_WORRY_MAX,
@@ -32,7 +33,10 @@ import {
   type WaitlistTripType,
 } from "@shared/launch-waitlist";
 import { TRAVELER_WAITLIST_BUTTON, TRAVELER_WAITLIST_MESSAGE } from "@shared/launch-signup";
+import { LIVE_MARKETS_ROUTE } from "@shared/live-markets";
+import { waitlistProviderApplyInvite } from "@shared/waitlist-apply-invite";
 import { waitlistSourceFromSearch, type SignupModeView } from "@/lib/launch-waitlist-view";
+import { ProviderWaitlistResult } from "@/lib/waitlist-apply-done";
 import { arrivalRef } from "@/lib/ready-made-waitlist";
 import { getAcquisitionRef } from "@/lib/acquisition";
 
@@ -229,7 +233,17 @@ function TravelerForm({ source, refCode, launchMarket }: { source: string | null
   );
 }
 
-function ProviderForm({ source, refCode, launchMarket }: { source: string | null; refCode: string | null; launchMarket: string }) {
+function ProviderForm({
+  source,
+  refCode,
+  launchMarket,
+  liveMarketKeys,
+}: {
+  source: string | null;
+  refCode: string | null;
+  launchMarket: string;
+  liveMarketKeys: readonly string[];
+}) {
   const market = launchMarket;
   const [contactName, setContactName] = useState("");
   const [businessName, setBusinessName] = useState("");
@@ -272,11 +286,19 @@ function ProviderForm({ source, refCode, launchMarket }: { source: string | null
   }
 
   if (status === "done") {
-    return (
-      <p className="mt-6 rounded-lg border p-4" role="status" data-testid="text-provider-waitlist-done">
-        Thanks, we've got your details. We'll be in touch about joining Traveloure in Kyoto.
-      </p>
-    );
+    const invite = waitlistProviderApplyInvite({
+      marketKey: market,
+      liveMarketKeys,
+      email,
+      contactName,
+      businessName,
+      serviceType: serviceType || null,
+    });
+    const cityName = waitlistCityName(market);
+    const hold = market === "kyoto"
+      ? "Thanks, we've got your details. We'll be in touch about joining Traveloure in Kyoto."
+      : waitlistOtherCityProviderDone(cityName ?? market);
+    return <ProviderWaitlistResult invite={invite} hold={hold} />;
   }
 
   return (
@@ -345,6 +367,8 @@ export function kyotoExpertsSectionVisible(data: unknown, isSuccess: boolean): b
 
 export default function LaunchWaitlistPage() {
   const { data: signup } = useQuery<SignupModeView>({ queryKey: ["/api/public/signup-mode"], retry: false });
+  const { data: liveMarkets } = useQuery<{ marketKeys?: string[] }>({ queryKey: [LIVE_MARKETS_ROUTE], retry: false });
+  const liveMarketKeys = Array.isArray(liveMarkets?.marketKeys) ? liveMarkets.marketKeys : [];
   const { data: kyotoExperts, isSuccess: kyotoExpertsLoaded } = useQuery<unknown>({
     queryKey: ["/api/experts", "kyoto-public"],
     queryFn: async () => {
@@ -432,14 +456,14 @@ export default function LaunchWaitlistPage() {
         <TravelerForm key={launchMarket} source={source} refCode={refCode} launchMarket={launchMarket} />
       </section>
 
-      <section id="providers" className="mt-12 scroll-mt-20 rounded-xl border p-6" data-testid="section-waitlist-providers">
+      <section id="providers" className="mt-12 scroll-mt-20 rounded-xl border p-4 sm:p-6" data-testid="section-waitlist-providers">
         <h2 className="text-xl font-semibold">Know Kyoto? Help travelers plan it.</h2>
         {showKyotoExperts && (
           <p className="mt-3 text-muted-foreground" data-testid="text-waitlist-plan-with">
             Plan your Kyoto trip with local experts and businesses.
           </p>
         )}
-        <ProviderForm key={launchMarket} source={source} refCode={refCode} launchMarket={launchMarket} />
+        <ProviderForm key={launchMarket} source={source} refCode={refCode} launchMarket={launchMarket} liveMarketKeys={liveMarketKeys} />
         <p className="mt-6 text-sm">
           <Link href="/signup?intent=supply" className="underline" data-testid="link-waitlist-offer-services">Offer my services in Kyoto</Link>
         </p>
