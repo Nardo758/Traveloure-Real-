@@ -26,7 +26,7 @@ function render(item: Record<string, unknown>): string {
       QueryClientProvider,
       { client: queryClient },
       React.createElement(
-        Router,
+        Router as React.ComponentType<{ ssrPath: string; children?: React.ReactNode }>,
         { ssrPath: "/discover/location/Kyoto" },
         React.createElement(
           SignInModalProvider,
