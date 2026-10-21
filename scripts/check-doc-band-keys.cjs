@@ -61,8 +61,8 @@
  *   · **It does not read migrations or the database.** A key declared in the authority but never
  *     seeded passes. That is the reachability shape `check-category-reachability.cjs` and
  *     `check-roles-needed-reachability.cjs` own, one table over.
- *   · **`docs/DECISIONS.md` and `CLAUDE.md` are deliberately NOT scanned.** They are the
- *     historical record and legitimately quote wrong and retired keys as wrong.
+ *   · **`docs/DECISIONS.md`, `docs/decisions/`, and `CLAUDE.md` are deliberately NOT scanned.**
+ *     They are the historical record and legitimately quote wrong and retired keys as wrong.
  */
 
 const fs = require("fs");

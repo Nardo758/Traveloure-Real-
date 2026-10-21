@@ -3,4 +3,4 @@
 - [ ] **CLAUDE.md delta** for any state this merge changed — or explicit "no delta".
 - [ ] **Expired** any `deferred:` / expected-fail tags this merge satisfies.
 - [ ] **`superseded@<sha>`** annotation appended to any brief section whose volatile claims this merge invalidated (annotation, not rewrite).
-- [ ] **Ledger append** (docs/DECISIONS.md) if this lane executed or amended a ruling (implementation reference added to the ruling's line — as a new entry, never an edit).
+- [ ] **Ledger file** (`docs/decisions/pending/<YYYY-MM-DD-slug>.md`, one row, `R?`) if this lane executed or amended a ruling — a new file, never an edit of an existing row or of `docs/DECISIONS.md`.

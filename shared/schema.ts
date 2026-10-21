@@ -4374,6 +4374,20 @@ export const feverEventCache = pgTable("fever_event_cache", {
   uniqueIndex("idx_fever_event_cache_event_id").on(table.eventId),
 ]);
 
+/**
+ * Permanent Nominatim cache for a Fever address that arrived without coordinates
+ * (ledger `2026-10-21-blog-checks-fever-area`, migration 401). A row is the answer, including a
+ * miss (null lat/lng): it is not asked again. No DEFAULT, no CHECK, no expiry — a coordinate from
+ * OpenStreetMap is stored with its attribution and kept. Server-written only; no insert schema.
+ */
+export const feverAddressGeocodes = pgTable("fever_address_geocodes", {
+  addressKey: text("address_key").primaryKey(),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  attribution: text("attribution"),
+  lookedUpAt: timestamp("looked_up_at"),
+});
+
 // ============ USER FILTER PREFERENCES TABLE ============
 // Stores user's persistent filter and sorting preferences per item type
 

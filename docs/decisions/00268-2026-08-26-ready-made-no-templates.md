@@ -1,0 +1,1 @@
+| 2026-08-26-ready-made-no-templates | 2026-08-26 | [advisory] | Ready-Made surface shows ready-made trips only; expert templates shelf removed (`d52af1f8`). Supersedes the §3.2 preserve line for `/api/expert-templates` on `/ready-made`. Templates remain on expert profile and storefront `Templates` tabs. | `docs/design/MARKETPLACE_EXPERTS_EARN_GRAMMAR_SPEC.md` §3.2; `d52af1f8` |
