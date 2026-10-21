@@ -8,6 +8,7 @@ import { expertNuggetTags } from "@shared/content-tiers";
 import { db } from "../db";
 import { eq, and, desc, asc, like, sql, isNull } from "drizzle-orm";
 import { hideBlockedListingImages } from "./place-photo-blocks.service";
+import { visibleHappeningNowCondition } from "./gem-visibility";
 import {
   users, localExpertForms, serviceProviderForms, expertServiceOfferings,
   aiInteractions, notifications, providerServices, serviceCategories,
@@ -70,7 +71,7 @@ export async function getTravelPulseData(): Promise<{
   const [trending, cities, happeningNow] = await Promise.all([
     db.select().from(travelPulseTrending).limit(50),
     db.select().from(travelPulseCities).limit(20),
-    db.select().from(travelPulseHappeningNow).limit(20),
+    db.select().from(travelPulseHappeningNow).where(visibleHappeningNowCondition()).limit(20),
   ]);
   return { trending, cities, happeningNow };
 }

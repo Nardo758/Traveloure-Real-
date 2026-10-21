@@ -15,6 +15,7 @@
  */
 
 import { teamSeededGemTags } from "@shared/content-tiers";
+import { kyotoCopyNeedsDescriptionHide, rewordKyotoBannedCopy } from "@shared/kyoto-gem-copy";
 import { db } from "../db";
 import { travelPulseHiddenGems, providerServices } from "@shared/schema";
 import { and, eq } from "drizzle-orm";
@@ -90,14 +91,12 @@ const KYOTO_GEMS: GemSeed[] = [
   // Arashiyama (bamboo grove)
   {
     placeName: "Arashiyama Bamboo Grove",
-    placeType: "nature",
-    description: "Iconic bamboo forest paths with serene atmosphere",
-    whyLocalsLoveIt: "Visit before 8am to experience with few tourists",
-    priceRange: "$",
+    placeType: "attraction",
+    description: "A public path through tall bamboo, a short walk from Tenryu-ji's north gate.",
+    whyLocalsLoveIt: "",
+    priceRange: "",
     neighborhood: "arashiyama",
     city: "Kyoto",
-    latitude: "35.0094",
-    longitude: "135.6669",
   },
   {
     placeName: "Togetsukyo Bridge",
@@ -268,13 +267,15 @@ export async function seedPhase4KyotoFill(): Promise<{
       continue;
     }
 
+    const descriptionHidden = kyotoCopyNeedsDescriptionHide(gem.description, gem.whyLocalsLoveIt);
     await db.insert(travelPulseHiddenGems).values({
       ...teamSeededGemTags(), // FD-2: a team seed (ledger 2026-10-09-fd2-content-tier-tags)
       city: gem.city,
       placeName: gem.placeName,
       placeType: gem.placeType,
-      description: gem.description,
-      whyLocalsLoveIt: gem.whyLocalsLoveIt,
+      description: rewordKyotoBannedCopy(gem.description),
+      whyLocalsLoveIt: rewordKyotoBannedCopy(gem.whyLocalsLoveIt),
+      ...(descriptionHidden ? { descriptionHiddenAt: new Date("2026-10-20T00:00:00Z") } : {}),
       priceRange: gem.priceRange,
       neighborhood: gem.neighborhood,
       latitude: gem.latitude ? gem.latitude : null,

@@ -12,13 +12,21 @@ export function useGemPhoto(
   placeName: string,
   city: string,
   existingImageUrl: string | null | undefined,
+  opts?: { allowFetch?: boolean },
 ): { photoUrl: string | null; loading: boolean } {
+  const allowFetch = opts?.allowFetch !== false;
   const [photoUrl, setPhotoUrl] = useState<string | null>(existingImageUrl ?? null);
-  const [loading, setLoading] = useState(!existingImageUrl);
+  const [loading, setLoading] = useState(!existingImageUrl && allowFetch);
 
   useEffect(() => {
     if (existingImageUrl) {
       setPhotoUrl(existingImageUrl);
+      setLoading(false);
+      return;
+    }
+    // A card that stores no image and asks not to be filled stays on its gradient.
+    if (!allowFetch) {
+      setPhotoUrl(null);
       setLoading(false);
       return;
     }
@@ -44,7 +52,7 @@ export function useGemPhoto(
     })();
 
     return () => { cancelled = true; };
-  }, [gemId, placeName, city, existingImageUrl]);
+  }, [gemId, placeName, city, existingImageUrl, allowFetch]);
 
   return { photoUrl, loading };
 }

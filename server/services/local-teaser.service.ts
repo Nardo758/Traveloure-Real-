@@ -12,6 +12,7 @@
  * ruling 2's posture on an unknown).
  */
 import { and, eq, ilike, sql } from "drizzle-orm";
+import { visibleGemCondition } from "./gem-visibility";
 import { db } from "../db";
 import { cityNeighborhoods, itineraryItems, localKnowledgeNuggets, marketSeasonCalendars, travelPulseHiddenGems, trips } from "@shared/schema";
 import { localTeasersByDay, type LocalTeaser } from "@shared/free-draft-cap";
@@ -41,7 +42,7 @@ export async function localTeasersForTrip(tripId: string): Promise<Map<number, L
     const [gems, notes] = await Promise.all([
       db.select({ id: travelPulseHiddenGems.id, slug: travelPulseHiddenGems.neighborhood })
         .from(travelPulseHiddenGems)
-        .where(and(ilike(travelPulseHiddenGems.city, city), LIVE_LOCAL(travelPulseHiddenGems))),
+        .where(and(ilike(travelPulseHiddenGems.city, city), visibleGemCondition(), LIVE_LOCAL(travelPulseHiddenGems))),
       db.select({ neighbourhoodId: localKnowledgeNuggets.neighborhoodId, neighbourhoodName: localKnowledgeNuggets.linkedNeighbourhood, promotedGemId: localKnowledgeNuggets.promotedGemId })
         .from(localKnowledgeNuggets)
         .where(and(ilike(localKnowledgeNuggets.city, city), LIVE_LOCAL(localKnowledgeNuggets))),
