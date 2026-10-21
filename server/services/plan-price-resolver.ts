@@ -52,16 +52,18 @@ export interface PlanPriceInput {
 /**
  * The Stripe account a secret key addresses, or `null` when that cannot be established.
  *
- * Deliberately total and conservative: anything that is not one of the two known prefixes returns
- * `null` rather than being guessed into a mode. A stubbed CI key (`sk_test_ci_stub…`) is a TEST
+ * Deliberately total and conservative: anything that is not one of the known prefixes returns
+ * `null` rather than being guessed into a mode. Secret keys (`sk_`) and restricted keys (`rk_`)
+ * address the same mode: `rk_live_` is live, `rk_test_` is test (ledger
+ * `2026-10-21-saved-method-required`). A stubbed CI key (`sk_test_ci_stub…`) is a TEST
  * key by prefix and resolves accordingly, which is correct — it addresses no real account, but the
  * mode it claims is test.
  */
 export function resolveStripeMode(secretKey: string | null | undefined): StripeMode | null {
   const key = (secretKey ?? "").trim();
   if (!key) return null;
-  if (key.startsWith("sk_live_")) return "live";
-  if (key.startsWith("sk_test_")) return "test";
+  if (key.startsWith("sk_live_") || key.startsWith("rk_live_")) return "live";
+  if (key.startsWith("sk_test_") || key.startsWith("rk_test_")) return "test";
   return null;
 }
 
@@ -96,7 +98,7 @@ export function describePlanPriceRefusal(reason: PlanPriceRefusal, mode: StripeM
     case "no_stripe_key":
       return "No Stripe secret key is configured, so no subscription can be created.";
     case "unrecognised_key_mode":
-      return "The configured Stripe secret key starts with neither sk_test_ nor sk_live_, so its mode cannot be established.";
+      return "The configured Stripe secret key starts with neither sk_test_, rk_test_, sk_live_, nor rk_live_, so its mode cannot be established.";
     case "price_not_configured":
       return `No Stripe Price is configured for this plan in ${mode ?? "the active"} mode — set plans.stripe_price_id_${mode ?? "<mode>"}.`;
   }

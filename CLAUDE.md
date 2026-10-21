@@ -1503,6 +1503,20 @@ This document captures architectural decisions to maintain consistency across co
     oversight to be tidied up later: nothing is charged before a run, a pass or a booking, so
     asking for a card at the door costs signups and buys nothing. There is no variant of this —
     no "optional card field", no deferred-capture step, no card on an onboarding screen.
+    **AMENDED — SIGNUP REQUIRES A SAVED PAYMENT METHOD (decision-maker Leon Dixon, Oct 21, 2026 —
+    ledger `2026-10-21-saved-method-required`).** Clause (a) above is amended. Signup requires a
+    saved payment method (card, Apple Pay, Google Pay, or Link) through the existing SetupIntent,
+    Payment Element, and Express Checkout Element. Bookings, Optimize, expert Asks, and concierge
+    principal still charge only when the person clicks, and that click confirms on-session. The
+    only unattended charge is a Stripe Billing membership renewal. A saved Apple Pay method is
+    not reused while the person is present: Apple's terms require a new cryptogram for an
+    on-session payment. The account-setup screen is a later lane. Until it lands, signup can
+    still finish with no method; that is the divergence, not the rule. This amendment's code
+    lane accepts `rk_test_` / `rk_live_` on the same live-versus-test split (a live key stays
+    rejected outside production), makes Customer create idempotent on the user id and stops
+    adopting the first email-match Customer, and records `setup_intent.succeeded` plus
+    `payment_method.attached` / `payment_method.detached` with no fulfillment and no local card
+    table.
     **(b) A PAYMENT METHOD ENTERS THE ACCOUNT AT ONE OF EXACTLY TWO MOMENTS**, and both already
     existed: at FIRST PURCHASE (the Payment Element, vaulted against the durable Stripe customer
     with `setup_future_usage: off_session` — FP-1), or PROACTIVELY on the profile's Payment
