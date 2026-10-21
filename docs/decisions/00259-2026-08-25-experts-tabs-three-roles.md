@@ -1,0 +1,1 @@
+| 2026-08-25-experts-tabs-three-roles | 2026-08-25 | [advisory] | Service Providers is a nav item and rail link, never an experts tab. `experts.tsx` stays three roles. | `docs/design/MARKETPLACE_EXPERTS_EARN_GRAMMAR_SPEC.md` §0 |

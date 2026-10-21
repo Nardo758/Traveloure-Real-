@@ -1,0 +1,1 @@
+| 2026-08-25-discover-transcribe-in-place | 2026-08-25 | [advisory] | `discover.tsx` is not split this cycle. Split filed as FOLLOWUP. | `docs/design/MARKETPLACE_EXPERTS_EARN_GRAMMAR_SPEC.md` §0; `FOLLOWUPS.md` |

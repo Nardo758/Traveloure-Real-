@@ -1,51 +1,104 @@
 #!/usr/bin/env node
 /**
- * Ledger union-merge guard (Trailhead lane C, guard C1).
+ * Ledger layout guard (was the union-merge guard; ledger `2026-10-21-ledger-one-file`).
  *
- * Two enforcement facts, one script:
+ * GitHub's mergeability check ignores `.gitattributes` merge drivers, so
+ * `docs/DECISIONS.md merge=union` still left every open PR CONFLICTING after each
+ * append. Rulings are now one file each. This guard holds that shape:
  *
- *   MAIN MODE (default) — asserts `.gitattributes` declares the union merge
- *   driver for docs/DECISIONS.md (`docs/DECISIONS.md merge=union`). This is the
- *   config that makes parallel ledger appends AUTO-UNION instead of producing a
- *   textual merge conflict on the shared table tail (a class that has hit every
- *   parallel-pair ~3x). If the line is deleted or the path drifts, this fails.
+ *   · `docs/DECISIONS.md` carries no ledger row (it is the preamble);
+ *   · `.gitattributes` does not declare a union driver for it;
+ *   · `docs/decisions/NNNNN-<id>.md` is one LF line whose row id is `<id>`;
+ *   · `docs/decisions/pending/<id>.md` is the same, and both R? sides agree
+ *     (a PR adds a pending file; the stamp moves it to the next seq);
+ *   · a half-placeholder is refused;
+ *   · duplicate ids fail, except the frozen pair of id 113 (exactly two files);
+ *   · no other file sits in `docs/decisions/`.
  *
- *   --self-test (§18d precedent) — proves the PAIR that makes union-merge safe:
- *     (A) git's union driver actually keeps BOTH parallel-appended rows with NO
- *         conflict markers (exercised in a throwaway temp git repo), and
- *     (B) the ONE bad merge union can produce — two lanes claiming the SAME row
- *         id — is a DUPLICATE that the dup-slug lint
- *         (scripts/check-decision-guards.cjs) is built to catch. Part B both
- *         (i) shows a duplicate id physically results from a same-id union, and
- *         (ii) runs the real dup-slug lint's own --self-test (its ok2/ok7 dupe
- *         fixtures) to confirm the safety-net predicate still fails on a dup.
+ * --self-test proves a default (non-union) merge of two new pending files is
+ * clean, and that two appends to one shared file still conflict — which is why
+ * the row is a new file. It also runs the dup-slug lint's own self-test.
  *
- * Node built-ins only — no npm ci needed. The temp-repo steps shell out to the
- * `git` already on PATH in CI.
+ * Node built-ins only.
  */
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { execFileSync } = require("child_process");
+const {
+  ROW_ID_PREFIX_RE,
+  KNOWN_DUPLICATE_IDS,
+  placeholderSides,
+  ID_ALT,
+} = require("./check-decision-guards.cjs");
+const { PREAMBLE_REL, DIR_REL, PENDING_REL, SEQ_NAME_RE, loadEntries, readPreamble } = require("./ledger-files.cjs");
 
 const ROOT = path.resolve(__dirname, "..");
-const GITATTRIBUTES = path.join(ROOT, ".gitattributes");
-const LEDGER_REL = "docs/DECISIONS.md";
+const ID_RE = new RegExp(`^(?:${ID_ALT})$`);
 const UNION_LINE_RE = /^\s*docs\/DECISIONS\.md\s+merge=union\s*$/m;
 
-// The row-id regex from check-decision-guards.cjs (kept in sync deliberately —
-// this script's Part B only needs to recognise that a duplicate id physically
-// exists in a merged file; the authoritative dup detection is that script's).
-const ID_ALT = String.raw`\d{4}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*|\d+|R-[A-Z]`;
-const ROW_ID_PREFIX_RE = new RegExp(String.raw`^\|\s*(${ID_ALT})\s*\|`);
-
-function extractIds(text) {
-  const ids = [];
-  for (const line of text.split("\n")) {
-    const m = line.match(ROW_ID_PREFIX_RE);
-    if (m) ids.push(m[1]);
+function lintShape(root, { knownDuplicates = KNOWN_DUPLICATE_IDS } = {}) {
+  const problems = [];
+  const attrsPath = path.join(root, ".gitattributes");
+  const attrs = fs.existsSync(attrsPath) ? fs.readFileSync(attrsPath, "utf8") : "";
+  if (UNION_LINE_RE.test(attrs)) {
+    problems.push(".gitattributes still declares docs/DECISIONS.md merge=union — GitHub ignores it; do not bring it back");
   }
-  return ids;
+  const preamble = readPreamble(root);
+  for (const line of preamble.split("\n")) {
+    if (ROW_ID_PREFIX_RE.test(line)) {
+      problems.push(`${PREAMBLE_REL} still contains a ledger row (${line.slice(0, 80)}) — add docs/decisions/pending/<id>.md instead`);
+      break;
+    }
+  }
+  const dir = path.join(root, DIR_REL);
+  if (!fs.existsSync(dir)) {
+    problems.push(`${DIR_REL}/ is missing`);
+    return problems;
+  }
+  for (const name of fs.readdirSync(dir)) {
+    if (name === "pending" || SEQ_NAME_RE.test(name)) continue;
+    problems.push(`unexpected file in ${DIR_REL}/: ${name}`);
+  }
+  const pendingDir = path.join(root, PENDING_REL);
+  if (fs.existsSync(pendingDir)) {
+    for (const name of fs.readdirSync(pendingDir)) {
+      if (!name.endsWith(".md")) problems.push(`unexpected file in ${PENDING_REL}/: ${name}`);
+    }
+  }
+  const entries = loadEntries(root);
+  if (!entries.length) problems.push("no decision files");
+  const seqs = new Set();
+  const counts = {};
+  for (const e of entries) {
+    if (!e.ok) {
+      problems.push(`${e.rel}: ${e.reason}`);
+      continue;
+    }
+    if (!ID_RE.test(e.idFromName)) problems.push(`${e.rel}: filename id is not a ledger id`);
+    if (e.id !== e.idFromName) problems.push(`${e.rel}: row id ${e.id || "(none)"} does not match the filename`);
+    if (e.seq != null) {
+      if (seqs.has(e.seq)) problems.push(`duplicate seq ${e.seq}`);
+      seqs.add(e.seq);
+    }
+    const sides = placeholderSides(e.line);
+    if (sides.headQ !== sides.citeQ) problems.push(`${e.rel}: heading and citation disagree on R?`);
+    if (e.pending && !(sides.headQ && sides.citeQ)) {
+      problems.push(`${e.rel}: a pending file is authored as R? on the heading and the citation; the stamp moves it`);
+    }
+    if (e.id) counts[e.id] = (counts[e.id] || 0) + 1;
+  }
+  for (const [id, n] of Object.entries(counts)) {
+    if (n === 1) continue;
+    if (Object.prototype.hasOwnProperty.call(knownDuplicates, id) && n === 2) continue;
+    problems.push(`duplicate ruling id ${id} appears in ${n} files`);
+  }
+  for (const id of Object.keys(knownDuplicates)) {
+    if ((counts[id] || 0) !== 2) {
+      problems.push(`known duplicate id ${id} must stay a pair of files (found ${counts[id] || 0})`);
+    }
+  }
+  return problems;
 }
 
 function git(cwd, args) {
@@ -65,76 +118,123 @@ function git(cwd, args) {
   });
 }
 
-/**
- * Build a throwaway repo whose `.gitattributes` unions a ledger file, then
- * merge two branches that each appended one row. Returns the merged file text
- * and whether the merge exited cleanly (no conflict). `sameId` makes both
- * branches append the SAME id, to demonstrate the duplicate union can produce.
- */
-function simulateUnionMerge({ sameId }) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ledger-union-"));
+/** Default merge (no union driver) of two branches. `shared` appends one file; otherwise each branch adds its own. */
+function simulateMerge({ shared }) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ledger-files-"));
   try {
     git(dir, ["init", "-q", "-b", "main"]);
-    fs.writeFileSync(path.join(dir, ".gitattributes"), "ledger.md merge=union\n");
-    const header = ["| # | Date | Tag |", "|---|------|-----|", "| 1 | d | [advisory] |", ""].join("\n");
-    fs.writeFileSync(path.join(dir, "ledger.md"), header);
+    fs.mkdirSync(path.join(dir, "docs", "decisions", "pending"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "docs", "DECISIONS.md"), "# preamble\n");
     git(dir, ["add", "-A"]);
     git(dir, ["commit", "-qm", "base"]);
-
-    // Branch B: append one row.
-    git(dir, ["checkout", "-q", "-b", "laneB"]);
-    const idB = sameId ? "2026-08-21-shared" : "2026-08-21-lane-b";
-    fs.appendFileSync(path.join(dir, "ledger.md"), `| ${idB} | d | [advisory] | B |\n`);
-    git(dir, ["commit", "-qam", "laneB row"]);
-
-    // main: append a different row.
-    git(dir, ["checkout", "-q", "main"]);
-    const idA = sameId ? "2026-08-21-shared" : "2026-08-21-lane-a";
-    fs.appendFileSync(path.join(dir, "ledger.md"), `| ${idA} | d | [advisory] | A |\n`);
-    git(dir, ["commit", "-qam", "main row"]);
-
+    const pending = path.join(dir, "docs", "decisions", "pending");
+    if (shared) {
+      git(dir, ["checkout", "-q", "-b", "laneB"]);
+      fs.appendFileSync(path.join(dir, "docs", "DECISIONS.md"), "| 2026-08-21-lane-b | d | [advisory] | B |\n");
+      git(dir, ["commit", "-qam", "laneB"]);
+      git(dir, ["checkout", "-q", "main"]);
+      fs.appendFileSync(path.join(dir, "docs", "DECISIONS.md"), "| 2026-08-21-lane-a | d | [advisory] | A |\n");
+      git(dir, ["commit", "-qam", "main"]);
+    } else {
+      git(dir, ["checkout", "-q", "-b", "laneB"]);
+      fs.mkdirSync(pending, { recursive: true });
+      fs.writeFileSync(path.join(pending, "2026-08-21-lane-b.md"), "| 2026-08-21-lane-b | d | [advisory] | B |\n");
+      git(dir, ["add", "-A"]);
+      git(dir, ["commit", "-qm", "laneB"]);
+      git(dir, ["checkout", "-q", "main"]);
+      fs.mkdirSync(pending, { recursive: true });
+      fs.writeFileSync(path.join(pending, "2026-08-21-lane-a.md"), "| 2026-08-21-lane-a | d | [advisory] | A |\n");
+      git(dir, ["add", "-A"]);
+      git(dir, ["commit", "-qm", "main"]);
+    }
     let clean = true;
     try {
       git(dir, ["merge", "-q", "--no-edit", "laneB"]);
     } catch (_e) {
-      clean = false; // conflict
+      clean = false;
     }
-    const merged = fs.readFileSync(path.join(dir, "ledger.md"), "utf8");
-    return { merged, clean, idA, idB };
-  } finally {
+    return { dir, clean };
+  } catch (e) {
     fs.rmSync(dir, { recursive: true, force: true });
+    throw e;
+  }
+}
+
+function writeMini(root, files, preamble, attrs) {
+  fs.rmSync(path.join(root, DIR_REL), { recursive: true, force: true });
+  fs.mkdirSync(path.join(root, DIR_REL), { recursive: true });
+  fs.writeFileSync(path.join(root, ".gitattributes"), attrs);
+  fs.writeFileSync(path.join(root, PREAMBLE_REL), preamble);
+  for (const [rel, body] of Object.entries(files)) {
+    const abs = path.join(root, rel);
+    fs.mkdirSync(path.dirname(abs), { recursive: true });
+    fs.writeFileSync(abs, body.endsWith("\n") ? body : `${body}\n`);
   }
 }
 
 function selfTest() {
   const problems = [];
-
-  // (A) Distinct parallel appends: union keeps BOTH rows, no conflict markers.
-  const a = simulateUnionMerge({ sameId: false });
-  if (!a.clean) problems.push("A: union merge conflicted on distinct parallel appends (expected clean)");
-  if (a.merged.includes("<<<<<<<")) problems.push("A: conflict markers present after union merge");
-  if (!a.merged.includes(a.idA) || !a.merged.includes(a.idB)) {
-    problems.push("A: union merge dropped a row (both parallel appends must survive)");
-  }
-
-  // (B)(i) Same-id parallel appends: union still merges clean, and the result
-  //        now contains a DUPLICATE id — the one bad merge union can produce.
-  const b = simulateUnionMerge({ sameId: true });
-  if (!b.clean) problems.push("B(i): same-id union unexpectedly conflicted (union should still combine lines)");
-  const ids = extractIds(b.merged);
-  const dupes = ids.filter((v, i) => ids.indexOf(v) !== i);
-  if (!dupes.includes("2026-08-21-shared")) {
-    problems.push("B(i): expected a duplicate id in the same-id union result (the failure mode the lint catches)");
-  }
-
-  // (B)(ii) The safety-net lint's dup detection still fires. Run the real
-  //         check-decision-guards self-test (its ok2/ok7 duplicate fixtures).
+  const distinct = simulateMerge({ shared: false });
   try {
-    execFileSync("node", [path.join(ROOT, "scripts", "check-decision-guards.cjs"), "--self-test"], {
-      stdio: "pipe",
-    });
-  } catch (e) {
-    problems.push("B(ii): scripts/check-decision-guards.cjs --self-test failed — the dup-slug safety net is broken");
+    if (!distinct.clean) problems.push("A: two new pending files conflicted under the default merge");
+    const a = path.join(distinct.dir, "docs/decisions/pending/2026-08-21-lane-a.md");
+    const b = path.join(distinct.dir, "docs/decisions/pending/2026-08-21-lane-b.md");
+    if (!fs.existsSync(a) || !fs.existsSync(b)) problems.push("A: a pending file was dropped");
+    if (fs.readFileSync(path.join(distinct.dir, "docs/DECISIONS.md"), "utf8").includes("<<<<<<<")) {
+      problems.push("A: the preamble picked up conflict markers");
+    }
+  } finally {
+    fs.rmSync(distinct.dir, { recursive: true, force: true });
+  }
+  const shared = simulateMerge({ shared: true });
+  try {
+    if (shared.clean) problems.push("B: two appends to one ledger file merged clean — the shared-line conflict this guard exists for did not reproduce");
+  } finally {
+    fs.rmSync(shared.dir, { recursive: true, force: true });
+  }
+
+  const mini = fs.mkdtempSync(path.join(os.tmpdir(), "ledger-shape-"));
+  try {
+    const row = (id, head, cite) => `| ${id} | 2026-01-01 | [advisory] | ${head} | ${cite} |`;
+    const base = {
+      "docs/decisions/00001-113.md": row("113", "one", "refs"),
+      "docs/decisions/00002-113.md": row("113", "two", "refs"),
+      "docs/decisions/pending/2026-01-03-q.md": row("2026-01-03-q", "**R? — Q.**", "numeric citation R?"),
+    };
+    writeMini(mini, base, "# preamble\n", "# no union\n");
+    const happy = lintShape(mini);
+    if (happy.length) problems.push(`C: well-formed tree failed: ${happy.join(" | ")}`);
+
+    writeMini(mini, base, "# preamble\n| 9 | 2026-01-01 | [advisory] | stray |\n", "# no union\n");
+    if (!lintShape(mini).some((p) => p.includes(PREAMBLE_REL))) problems.push("D: a row in the preamble was accepted");
+
+    writeMini(mini, { ...base, "docs/decisions/00003-2026-01-04-nope.md": row("2026-01-04-other", "x", "y") }, "# preamble\n", "# no union\n");
+    if (!lintShape(mini).some((p) => p.includes("does not match"))) problems.push("E: a filename/id mismatch was accepted");
+
+    writeMini(
+      mini,
+      { ...base, "docs/decisions/00003-2026-01-04-dup.md": row("2026-01-04-dup", "x", "y"), "docs/decisions/00004-2026-01-04-dup.md": row("2026-01-04-dup", "x", "y") },
+      "# preamble\n",
+      "# no union\n",
+    );
+    if (!lintShape(mini).some((p) => p.includes("2026-01-04-dup"))) problems.push("F: a new duplicate id was accepted");
+
+    writeMini(mini, { "docs/decisions/00001-113.md": row("113", "only", "refs") }, "# preamble\n", "# no union\n");
+    if (!lintShape(mini).some((p) => p.includes("113"))) problems.push("G: a single frozen id 113 was accepted");
+
+    writeMini(mini, base, "# preamble\n", "docs/DECISIONS.md merge=union\n");
+    if (!lintShape(mini).some((p) => p.includes("merge=union"))) problems.push("H: the union driver was accepted");
+
+    writeMini(mini, { ...base, "docs/decisions/pending/2026-01-05-h.md": row("2026-01-05-h", "**R? — H.**", "numeric citation R300") }, "# preamble\n", "# no union\n");
+    if (!lintShape(mini).some((p) => p.includes("disagree"))) problems.push("I: a half-placeholder pending file was accepted");
+  } finally {
+    fs.rmSync(mini, { recursive: true, force: true });
+  }
+
+  try {
+    execFileSync("node", [path.join(ROOT, "scripts", "check-decision-guards.cjs"), "--self-test"], { stdio: "pipe" });
+  } catch (_e) {
+    problems.push("J: scripts/check-decision-guards.cjs --self-test failed — the dup-slug safety net is broken");
   }
 
   if (problems.length) {
@@ -142,27 +242,17 @@ function selfTest() {
     for (const p of problems) console.error("  - " + p);
     process.exit(1);
   }
-  console.log(
-    "self-test OK (A: union keeps both parallel rows, no conflict; " +
-      "B(i): same-id union yields a duplicate id; B(ii): dup-slug lint still catches it)"
-  );
+  console.log("self-test OK (two pending files merge clean; a shared append still conflicts; preamble rows, union driver, id mismatch, new dupes, a broken 113 pair and half-placeholders fail; dup-slug lint still passes its self-test)");
   process.exit(0);
 }
 
 if (process.argv.includes("--self-test")) selfTest();
 
-// Main mode: the .gitattributes union declaration must be present.
-if (!fs.existsSync(GITATTRIBUTES)) {
-  console.error(`FAIL  .gitattributes is missing — it must declare "${LEDGER_REL} merge=union".`);
+const problems = lintShape(ROOT);
+if (problems.length) {
+  for (const p of problems) console.error(`FAIL  ${p}`);
   process.exit(1);
 }
-const attrs = fs.readFileSync(GITATTRIBUTES, "utf8");
-if (!UNION_LINE_RE.test(attrs)) {
-  console.error(
-    `FAIL  .gitattributes does not declare the union merge driver for the ledger.\n` +
-      `      Expected a line: ${LEDGER_REL} merge=union\n` +
-      `      Without it, parallel ledger appends conflict on the table tail (Trailhead C1).`
-  );
-  process.exit(1);
-}
-console.log(`ledger-union-merge OK (${LEDGER_REL} merge=union declared in .gitattributes)`);
+const entries = loadEntries(ROOT);
+const pending = entries.filter((e) => e.pending).length;
+console.log(`ledger-files OK (${entries.length - pending} sequenced file(s), ${pending} pending; ${PREAMBLE_REL} has no row; no union driver)`);
