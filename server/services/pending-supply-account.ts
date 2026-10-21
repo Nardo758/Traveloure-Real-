@@ -73,7 +73,7 @@ export async function readSupplyAccount(userId: string): Promise<SupplyAccount> 
     const specialties = Array.isArray(expert.specialties) ? expert.specialties.length : 0;
     const timeline = buildExpertApplicationTimeline({
       hasForm: true,
-      formStatus: expert.status ?? null,
+      applicationStatus: expert.status ?? null,
       destinationsCount: destinations,
       specialtiesCount: specialties,
       hasBio: text(expert.bio),
@@ -97,7 +97,7 @@ export async function readSupplyAccount(userId: string): Promise<SupplyAccount> 
     const offers = provider.serviceOffers;
     const timeline = buildProviderApplicationTimeline({
       hasForm: true,
-      formStatus: provider.status ?? null,
+      applicationStatus: provider.status ?? null,
       hasServiceOffers: Array.isArray(offers) && offers.length > 0,
       hasOfferingTypeKey: text(provider.offeringTypeKey),
       hasDescription: text(provider.description),

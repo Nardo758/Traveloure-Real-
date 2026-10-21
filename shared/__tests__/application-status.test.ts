@@ -18,7 +18,7 @@ import {
 function expert(over: Partial<ExpertApplicationFacts> = {}): ExpertApplicationFacts {
   return {
     hasForm: true,
-    formStatus: "pending",
+    applicationStatus: "pending",
     destinationsCount: 1,
     specialtiesCount: 0,
     hasBio: true,
@@ -31,7 +31,7 @@ function expert(over: Partial<ExpertApplicationFacts> = {}): ExpertApplicationFa
 function provider(over: Partial<ProviderApplicationFacts> = {}): ProviderApplicationFacts {
   return {
     hasForm: true,
-    formStatus: "pending",
+    applicationStatus: "pending",
     hasServiceOffers: false,
     hasOfferingTypeKey: false,
     hasDescription: true,
@@ -49,7 +49,7 @@ function assertOneCurrent(steps: { status: string }[]) {
 }
 
 test("a missing expert form is not under review", () => {
-  const timeline = buildExpertApplicationTimeline(expert({ hasForm: false, formStatus: null, destinationsCount: 0, hasBio: false }));
+  const timeline = buildExpertApplicationTimeline(expert({ hasForm: false, applicationStatus: null, destinationsCount: 0, hasBio: false }));
   assert.equal(timeline.phase, "not_started");
   assert.equal(timeline.phaseTitle, "Not started");
   assert.equal(timeline.currentStepId, null);
@@ -96,7 +96,7 @@ test("admin review waits only after identity and business are verified", () => {
 });
 
 test("a rejected application does not mark review completed", () => {
-  const timeline = buildExpertApplicationTimeline(expert({ formStatus: "rejected", identityStatus: "pending", destinationsCount: 0, hasBio: false }));
+  const timeline = buildExpertApplicationTimeline(expert({ applicationStatus: "rejected", identityStatus: "pending", destinationsCount: 0, hasBio: false }));
   const review = timeline.steps.find((s) => s.title === "Admin Review");
   assert.equal(timeline.phase, "rejected");
   assert.equal(timeline.phaseTitle, "Not Approved");
@@ -108,7 +108,7 @@ test("a rejected application does not mark review completed", () => {
 });
 
 test("approval completes the timeline even when identity is still pending", () => {
-  const timeline = buildExpertApplicationTimeline(expert({ formStatus: "approved", identityStatus: "pending" }));
+  const timeline = buildExpertApplicationTimeline(expert({ applicationStatus: "approved", identityStatus: "pending" }));
   assert.equal(timeline.phase, "approved");
   assert.equal(timeline.phaseTitle, "Approved");
   assert.equal(timeline.currentStepId, null);

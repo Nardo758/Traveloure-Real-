@@ -32,7 +32,7 @@ export interface ApplicationTimeline {
 
 export interface ExpertApplicationFacts {
   hasForm: boolean;
-  formStatus: string | null;
+  applicationStatus: string | null;
   destinationsCount: number;
   specialtiesCount: number;
   hasBio: boolean;
@@ -44,7 +44,7 @@ export interface ExpertApplicationFacts {
 
 export interface ProviderApplicationFacts {
   hasForm: boolean;
-  formStatus: string | null;
+  applicationStatus: string | null;
   hasServiceOffers: boolean;
   hasOfferingTypeKey: boolean;
   hasDescription: boolean;
@@ -206,7 +206,7 @@ function assemble(specs: GateSpec[], outcome: "none" | "approved" | "rejected" |
 }
 
 export function buildExpertApplicationTimeline(facts: ExpertApplicationFacts): ApplicationTimeline {
-  const end = terminal(facts.hasForm ? facts.formStatus : "closed");
+  const end = terminal(facts.hasForm ? facts.applicationStatus : "closed");
   const expertiseDone = facts.destinationsCount > 0 || facts.specialtiesCount > 0;
   const portfolioDone = facts.hasBio || facts.hasPortfolio;
   const identity = identityGate(facts.identityStatus, facts.hasForm);
@@ -255,7 +255,7 @@ export function buildExpertApplicationTimeline(facts: ExpertApplicationFacts): A
 }
 
 export function buildProviderApplicationTimeline(facts: ProviderApplicationFacts): ApplicationTimeline {
-  const end = terminal(facts.hasForm ? facts.formStatus : "closed");
+  const end = terminal(facts.hasForm ? facts.applicationStatus : "closed");
   const categoriesDone = facts.hasServiceOffers || facts.hasOfferingTypeKey || facts.hasDescription;
   const identity = identityGate(facts.identityStatus, facts.hasForm);
   const business = businessGate(facts.businessStatus, identity === "done");

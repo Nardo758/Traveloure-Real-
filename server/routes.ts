@@ -3021,7 +3021,7 @@ ${bannedCopyPromptLine()}`;
       const identityStatus = (form as any)?.identityVerificationStatus ?? "pending";
       const timeline = buildExpertApplicationTimeline({
         hasForm: !!form,
-        formStatus: form?.status ?? null,
+        applicationStatus: form?.status ?? null,
         destinationsCount: Array.isArray(form?.destinations) ? (form.destinations as unknown[]).length : 0,
         specialtiesCount: Array.isArray(form?.specialties) ? (form.specialties as unknown[]).length : 0,
         hasBio: typeof form?.bio === "string" && form.bio.trim().length > 0,
@@ -3066,7 +3066,7 @@ ${bannedCopyPromptLine()}`;
       const offers = (form as any)?.serviceOffers;
       const timeline = buildProviderApplicationTimeline({
         hasForm: !!form,
-        formStatus: form?.status ?? null,
+        applicationStatus: form?.status ?? null,
         hasServiceOffers: Array.isArray(offers) && offers.length > 0,
         hasOfferingTypeKey: typeof form?.offeringTypeKey === "string" && form.offeringTypeKey.trim().length > 0,
         hasDescription: typeof form?.description === "string" && form.description.trim().length > 0,
