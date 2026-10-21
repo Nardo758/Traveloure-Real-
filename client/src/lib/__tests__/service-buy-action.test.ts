@@ -174,7 +174,8 @@ describe("service detail — the buy controls are the resolver's", () => {
     // that builds either step flips one entry rather than discovering the gap by clicking.
     assert.equal(SERVICE_DETAIL_ASK_LABEL.which_plan, null);
     assert.equal(SERVICE_DETAIL_ASK_LABEL.party, null);
-    // A member with several plans and no chip is asked which_plan — which this page never asks.
+    // The printed ask list still omits which_plan. Two or more open plans ask in the
+    // picker at the click; this preview does not promise that question on every listing.
     const many = render(p1(), { principal: "member", plans: "many" });
     assert.ok(many.unaskedSteps.includes("which_plan"));
     assert.ok(!many.asks.some((a) => a.step === "which_plan"));

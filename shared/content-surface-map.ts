@@ -67,7 +67,7 @@ export const PLATFORM_SURFACES = {
   "travelpulse-discover": {
     label: "TravelPulse Discover",
     path: "/discover",
-    description: "Main discover page — trending cities and curated city content",
+    description: "Main discover page — cities and curated city content",
     icon: "TrendingUp",
   },
   // Remediation P3: 'experience-discovery' RETIRED (its page was orphaned, /discover-experiences
@@ -248,7 +248,7 @@ export const PULSE_SCORE_TIERS = [
   { min: 1, max: 39, label: "Low activity (1–39)", color: "blue" },
   { min: 40, max: 59, label: "Moderate (40–59)", color: "green" },
   { min: 60, max: 74, label: "Busy (60–74)", color: "yellow" },
-  { min: 75, max: 89, label: "Trending (75–89)", color: "orange" },
+  { min: 75, max: 89, label: "75–89", color: "orange" },
   { min: 90, max: 100, label: "Hot! (90–100)", color: "red" },
 ] as const;
 
@@ -257,7 +257,7 @@ export function getPulseTierLabel(score: number): string {
   if (score < 40) return "Low activity";
   if (score < 60) return "Moderate";
   if (score < 75) return "Busy";
-  if (score < 90) return "Trending";
+  if (score < 90) return "75–89";
   return "Hot!";
 }
 

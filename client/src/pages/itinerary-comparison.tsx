@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { isBookedActivity } from "@/lib/item-booking-state";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { OPTIMIZE_FAILED_REFUNDED, OPTIMIZE_FAILED_REFUND_PENDING } from "@/lib/optimize-failure-copy";
 import { useAuth } from "@/hooks/use-auth";
 import VariantActionButtons, { VariantOptionsMenu } from '@/components/booking/VariantActionButtons';
 import { useLocation, useParams, useSearch } from "wouter";
@@ -209,6 +210,8 @@ interface Comparison {
   status: string;
   selectedVariantId: string | null;
   segmentationProposal?: SegmentationProposalDTO | null;
+  /** Set when a paid run stored no optimized version. Absent for an unpaid or delivered run. */
+  optimizationFeeRefund?: "refunded" | "pending" | null;
 }
 
 interface UpsellSuggestion {
@@ -1470,10 +1473,18 @@ export default function ItineraryComparisonPage() {
             <CardContent className="p-8 text-center">
               <AlertCircle className="h-12 w-12 mx-auto mb-4 text-destructive" />
               <h3 className="text-lg font-semibold mb-2">Generation failed</h3>
-              <p className="text-muted-foreground mb-6">
-                Something went wrong while optimizing your itinerary. Please try again.
-                {slipTripId ? " Your plan is untouched." : ""}
-              </p>
+              {data?.comparison?.optimizationFeeRefund ? (
+                <p className="text-muted-foreground mb-6" data-testid="optimize-failure-refund">
+                  {data.comparison.optimizationFeeRefund === "refunded"
+                    ? OPTIMIZE_FAILED_REFUNDED
+                    : OPTIMIZE_FAILED_REFUND_PENDING}
+                </p>
+              ) : (
+                <p className="text-muted-foreground mb-6">
+                  Something went wrong while optimizing your itinerary. Please try again.
+                  {slipTripId ? " Your plan is untouched." : ""}
+                </p>
+              )}
               <div className="flex justify-center gap-3">
                 <Button
                   variant="outline"
@@ -1483,18 +1494,20 @@ export default function ItineraryComparisonPage() {
                   <ArrowLeft className="mr-2 h-4 w-4" />
                   {backExit.label}
                 </Button>
-                <Button
-                  onClick={() => retryMutation.mutate()}
-                  disabled={retryMutation.isPending}
-                  data-testid="button-retry"
-                >
-                  {retryMutation.isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                  )}
-                  Try Again
-                </Button>
+                {!data?.comparison?.optimizationFeeRefund && (
+                  <Button
+                    onClick={() => retryMutation.mutate()}
+                    disabled={retryMutation.isPending}
+                    data-testid="button-retry"
+                  >
+                    {retryMutation.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                    )}
+                    Try Again
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -1505,9 +1518,17 @@ export default function ItineraryComparisonPage() {
             <CardContent className="p-8 text-center">
               <AlertCircle className="h-12 w-12 mx-auto mb-4 text-amber-500" />
               <h3 className="text-lg font-semibold mb-2">No optimized variants were generated</h3>
-              <p className="text-muted-foreground mb-6">
-                The AI optimization completed but didn't produce any alternative itineraries — this can happen if the trip is already well-optimized or if the AI timed out. You can retry generation or browse your original plan below.
-              </p>
+              {data?.comparison?.optimizationFeeRefund ? (
+                <p className="text-muted-foreground mb-6" data-testid="optimize-failure-refund">
+                  {data.comparison.optimizationFeeRefund === "refunded"
+                    ? OPTIMIZE_FAILED_REFUNDED
+                    : OPTIMIZE_FAILED_REFUND_PENDING}
+                </p>
+              ) : (
+                <p className="text-muted-foreground mb-6">
+                  The AI optimization completed but didn't produce any alternative itineraries — this can happen if the trip is already well-optimized or if the AI timed out. You can retry generation or browse your original plan below.
+                </p>
+              )}
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
                 <Button
                   variant="outline"
@@ -1517,6 +1538,7 @@ export default function ItineraryComparisonPage() {
                   <ArrowLeft className="mr-2 h-4 w-4" />
                   {backExit.label}
                 </Button>
+                {!data?.comparison?.optimizationFeeRefund && (
                 <Button
                   onClick={() => {
                     setAutoApplyError(null);
@@ -1532,6 +1554,7 @@ export default function ItineraryComparisonPage() {
                   )}
                   Retry Optimization
                 </Button>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -1546,11 +1569,19 @@ export default function ItineraryComparisonPage() {
             <CardContent className="p-6 text-center">
               <AlertCircle className="h-10 w-10 mx-auto mb-3 text-amber-500" />
               <h3 className="text-lg font-semibold mb-2">The optimizer didn't find any alternatives</h3>
-              <p className="text-muted-foreground mb-5 max-w-xl mx-auto">
-                The run completed but produced no alternative plans — this can happen when the plan
-                is already well-organized or the AI timed out. Your plan is untouched. You can re-run
-                the optimizer{slipTripId ? "" : " or go back to your cart"}.
-              </p>
+              {data?.comparison?.optimizationFeeRefund ? (
+                <p className="text-muted-foreground mb-5 max-w-xl mx-auto" data-testid="optimize-failure-refund">
+                  {data.comparison.optimizationFeeRefund === "refunded"
+                    ? OPTIMIZE_FAILED_REFUNDED
+                    : OPTIMIZE_FAILED_REFUND_PENDING}
+                </p>
+              ) : (
+                <p className="text-muted-foreground mb-5 max-w-xl mx-auto">
+                  The run completed but produced no alternative plans — this can happen when the plan
+                  is already well-organized or the AI timed out. Your plan is untouched. You can re-run
+                  the optimizer{slipTripId ? "" : " or go back to your cart"}.
+                </p>
+              )}
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
                 <Button
                   variant="outline"
@@ -1560,18 +1591,20 @@ export default function ItineraryComparisonPage() {
                   <ArrowLeft className="mr-2 h-4 w-4" />
                   {backExit.label}
                 </Button>
-                <Button
-                  onClick={() => retryMutation.mutate()}
-                  disabled={retryMutation.isPending}
-                  data-testid="button-retry-no-proposals"
-                >
-                  {retryMutation.isPending ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                  )}
-                  Re-run optimization
-                </Button>
+                {!data?.comparison?.optimizationFeeRefund && (
+                  <Button
+                    onClick={() => retryMutation.mutate()}
+                    disabled={retryMutation.isPending}
+                    data-testid="button-retry-no-proposals"
+                  >
+                    {retryMutation.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                    )}
+                    Re-run optimization
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>

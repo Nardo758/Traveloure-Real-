@@ -18,7 +18,7 @@ const destinationData = [
       { month: 9, rating: "good", averageTemp: "22-27°C", rainfall: "High", crowdLevel: "Medium", priceLevel: "Medium", weatherDescription: "Typhoon season but autumn colors begin." },
       { month: 10, rating: "best", averageTemp: "16-22°C", rainfall: "Medium", crowdLevel: "High", priceLevel: "High", weatherDescription: "Beautiful autumn foliage season." },
       { month: 11, rating: "best", averageTemp: "11-17°C", rainfall: "Low", crowdLevel: "High", priceLevel: "High", weatherDescription: "Peak autumn colors. Pleasant temperatures." },
-      { month: 12, rating: "good", averageTemp: "5-12°C", rainfall: "Low", crowdLevel: "Medium", priceLevel: "Medium", weatherDescription: "Early winter. Holiday illuminations and festivities." },
+      { month: 12, rating: "good", averageTemp: "5-12°C", rainfall: "Low", crowdLevel: "Medium", priceLevel: "Medium", weatherDescription: "Early winter. Festivities." },
     ],
     events: [
       { title: "Cherry Blossom Festival (Hanami)", eventType: "festival", startMonth: 3, endMonth: 4, description: "Japan's most celebrated seasonal event. Locals gather in parks to admire cherry blossoms.", tips: "Book hotels 3-6 months in advance. Ueno Park and Shinjuku Gyoen are popular spots." },

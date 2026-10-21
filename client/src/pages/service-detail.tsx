@@ -56,7 +56,8 @@ import { useLocale } from "@/hooks/use-locale";
 import { useTranslation } from "react-i18next";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useTripContext } from "@/lib/trip-context";
-import { quoteRequestTripId, resolveTargetTripId } from "@/lib/trip-target";
+import { quoteRequestTripId } from "@/lib/trip-target";
+import { useAddPlanResolution } from "@/hooks/use-open-plans";
 import { addedTitle } from "@/lib/plan-vocabulary";
 import { decideAddTarget } from "@/lib/add-target";
 import { PlanPickerDialog, useStartPlanThenAdd, type PickablePlan } from "@/components/plan-picker";
@@ -405,6 +406,8 @@ interface StayAvailabilityResponse {
 interface AddVars {
   proceed: boolean;
   userExperienceId?: string | null;
+  /** The plan this click was aimed at. Absent means the guest-cart write. */
+  tripId?: string;
 }
 
 /** The migration-277 body fragment for a set of add vars — present only when an answer exists. */
@@ -510,13 +513,22 @@ export default function ServiceDetailPage() {
   const [, navigate] = useLocation();
   // TRIP HANDOFF (F-2). The slip's "Browse services for this trip" CTA scopes the marketplace to
   // ONE trip (`/services?tripId=`); the grid forwards that id into this page's URL. Resolved through
-  // the SAME module the grid uses — client/src/lib/trip-target.ts, "URL first, then the active
-  // TripContext" — so the two surfaces cannot drift apart on which trip is active (§18 rule 1).
-  // Used ONLY to scope the cart row to a trip; it is never an amount, a rate or a payer identity
-  // (§14/§18/§19), and the server re-checks ownership of the trip it names.
+  // the SAME module the grid uses — client/src/lib/trip-target.ts — so the two surfaces cannot
+  // drift apart on which trip an add is for (§18 rule 1). Used ONLY to scope the plan item; it is
+  // never an amount, a rate or a payer identity (§14/§18/§19), and the server re-checks ownership
+  // of the trip it names.
   const searchString = useSearch();
   const [tripCtx] = useTripContext();
-  const targetTripId = resolveTargetTripId(searchString, tripCtx);
+  // Ledger `2026-10-20-add-plan-open-plans`. `?tripId=` wins. Otherwise exactly one open
+  // plan adds straight to it, and two or more always ask. The tab pen is not a target.
+  // A listing is not an event, so the picker checks a row on city only.
+  const { resolution } = useAddPlanResolution(searchString, {
+    city: service?.location,
+    isEvent: false,
+  });
+  const [chosenTripId, setChosenTripId] = useState<string | null>(null);
+  const directTripId = resolution.status === "direct" ? resolution.tripId : "";
+  const targetTripId = directTripId || chosenTripId || "";
   // A quote names a plan only when this page was opened from one (`?tripId=`).
   // Ambient TripContext is not that choice (roles-dev QA M8).
   const quoteTripId = quoteRequestTripId(searchString);
@@ -538,13 +550,16 @@ export default function ServiceDetailPage() {
   const planEvents = eventsForTrip(userExperiences, targetTripId);
   // The add that is waiting on an answer. `null` = no question pending. `kind` says which of the
   // page's two plan writes (a service, or a room's night range) the answer belongs to.
-  const [pendingAdd, setPendingAdd] = useState<{ kind: "service" | "room"; proceed: boolean } | null>(null);
-  // RC-2 (ledger 2026-09-24-rc2-add-to-plan): a signed-in member with no plan in hand is asked
+  const [pendingAdd, setPendingAdd] = useState<{ kind: "service" | "room"; proceed: boolean; tripId: string } | null>(null);
+  // RC-2 (ledger 2026-09-24-rc2-add-to-plan): a signed-in member with no single target is asked
   // WHICH plan (or to start one) — never handed a trip-less cart row. A picked plan is bound as the
   // current plan, and the add then re-enters `beginAdd` once `targetTripId` IS that plan, so the
   // location check and "Which event?" run against it exactly as for any other add (one door).
+  // The chosen id is cleared when the add finishes or is cancelled, so the next click with two
+  // or more open plans asks again.
   const [pickForAdd, setPickForAdd] = useState<{ kind: "service" | "room"; proceed: boolean } | null>(null);
   const [resumeAdd, setResumeAdd] = useState<{ kind: "service" | "room"; proceed: boolean; tripId: string } | null>(null);
+  const [heldAdd, setHeldAdd] = useState<{ kind: "service" | "room"; proceed: boolean } | null>(null);
   const startPlanThenAdd = useStartPlanThenAdd();
   // `beginAdd` is declared below the page's loading returns, so the effect reaches it by ref.
   const beginAddRef = useRef<((kind: "service" | "room", proceed: boolean) => void) | null>(null);
@@ -555,6 +570,14 @@ export default function ServiceDetailPage() {
       beginAddRef.current?.(kind, proceed);
     }
   }, [resumeAdd, targetTripId]);
+  // The open-plan list has not answered yet. Hold the click; do not open the picker and do
+  // not use the tab plan. When the list answers, the same door runs.
+  useEffect(() => {
+    if (!heldAdd || resolution.status === "pending") return;
+    const next = heldAdd;
+    setHeldAdd(null);
+    beginAddRef.current?.(next.kind, next.proceed);
+  }, [heldAdd, resolution.status]);
   // LOCATION MISMATCH (ledger 2026-09-04-location-mismatch). ONE gate for every add on this page:
   // the four buttons below (Book now / Add, and the room rung's twins) are four confirm points for
   // the SAME add, so they share one reader rather than each carrying a copy of the decision
@@ -585,23 +608,23 @@ export default function ServiceDetailPage() {
   // cart path below, unchanged — the sanctioned fallback until G2 (ledger row 5).
   // Not a money change: `estimatedCost` is display only, and the charge is still derived
   // server-side from the listing/slot rows (§14).
-  const planRoute = targetTripId ? planningRouteForTrip(targetTripId, tripCtx.endDate) : "/cart";
-
   // Ledger 2026-09-24-cart-two-paths: Book is the PURCHASE path. A trip-less add is already a cart
   // line; a plan add lands `in_planning`, so it is routed to `ready_for_checkout` through the ONE
   // routing rail (the same call the Finalize chooser makes) — the cart line is then the item's
   // projection (LD 39), so the purchase still shows on the plan. Either way the traveler lands on
   // the payment step, never on the optimize flow. If the routing is refused the item is still on
   // the plan, and the traveler is sent there and told, rather than to a cart without it (§13).
-  const completeBuyNow = async (created: Response | undefined) => {
-    if (!targetTripId) {
+  // `tripId` is the id the click captured. A later clear of the picked plan cannot retarget this.
+  const completeBuyNow = async (created: Response | undefined, tripId: string) => {
+    const planRoute = tripId ? planningRouteForTrip(tripId, tripCtx.endDate) : "/cart";
+    if (!tripId) {
       navigate(BUY_NOW_CART_PATH);
       return;
     }
     try {
       const item = (await created?.json()) as { id?: string } | undefined;
       if (!item?.id) throw new Error("no item id");
-      const routed = await apiRequest("POST", `/api/trips/${targetTripId}/items/${item.id}/route`, {
+      const routed = await apiRequest("POST", `/api/trips/${tripId}/items/${item.id}/route`, {
         to: "ready_for_checkout",
       });
       const body = (await routed.json().catch(() => null)) as { projection?: { action?: string } } | null;
@@ -677,8 +700,9 @@ export default function ServiceDetailPage() {
 
   const addToCartMutation = useMutation({
     mutationFn: async (_vars: AddVars) => {
-      if (targetTripId) {
-        return apiRequest("POST", `/api/trips/${targetTripId}/itinerary-items`, servicePlanItemBody(_vars));
+      const tripId = _vars.tripId ?? "";
+      if (tripId) {
+        return apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, servicePlanItemBody(_vars));
       }
       const scheduledDate = bookingDate
         ? new Date(`${bookingDate}T${bookingTime || "09:00"}:00`).toISOString()
@@ -691,20 +715,21 @@ export default function ServiceDetailPage() {
       });
     },
     onSuccess: (_data, vars) => {
-      if (!targetTripId) {
+      const tripId = vars.tripId ?? "";
+      if (!tripId) {
         trackEvent("service_added_to_cart", {
           surface: "service_detail",
           item_type: "service",
           has_scheduled_date: Boolean(selectedSlot?.date || bookingDate),
         });
       }
-      if (targetTripId) {
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/itinerary-items`] });
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/plancard`] });
+      if (tripId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
       }
       queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       if (vars.proceed) {
-        void completeBuyNow(_data as Response | undefined);
+        void completeBuyNow(_data as Response | undefined, tripId);
       } else {
         const when = selectedSlot
           ? `Slot held at checkout: ${format(new Date(`${selectedSlot.date}T00:00:00`), "MMM d, yyyy")}${selectedSlot.startTime ? ` at ${selectedSlot.startTime}` : ""}`
@@ -712,20 +737,21 @@ export default function ServiceDetailPage() {
             ? `Scheduled for ${format(new Date(`${bookingDate}T00:00:00`), "MMM d, yyyy")}${bookingTime ? ` at ${bookingTime}` : ""}`
             : "";
         toast({
-          title: addedTitle(!!targetTripId),
-          description: targetTripId
+          title: addedTitle(!!tripId),
+          description: tripId
             ? `${when ? `${when} · ` : ""}Find it on your plan — check out when you're ready.`
             : when || "Service has been added to your cart",
         });
       }
     },
-    onError: () => {
+    onError: (_err, vars) => {
       toast({
         title: "Error",
-        description: targetTripId ? "Failed to add to your plan" : "Failed to add to cart",
+        description: vars.tripId ? "Failed to add to your plan" : "Failed to add to cart",
         variant: "destructive",
       });
     },
+    onSettled: () => setChosenTripId(null),
   });
 
   // §17 Product Builder — PROPERTY rung: a room ('property_room' + pricingUnit='per_night')
@@ -867,11 +893,12 @@ export default function ServiceDetailPage() {
 
   const addRoomToCartMutation = useMutation({
     mutationFn: async (_vars: AddVars) => {
-      if (targetTripId) {
+      const tripId = _vars.tripId ?? "";
+      if (tripId) {
         // Same convergence as the service add above. `itemType: "accommodation"` is a real value
         // in `itineraryItemTypeEnum` — the stay renders AS a stay on the plan and feeds the
         // anchor logic, rather than passing as a generic activity.
-        return apiRequest("POST", `/api/trips/${targetTripId}/itinerary-items`, roomPlanItemBody(_vars));
+        return apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, roomPlanItemBody(_vars));
       }
       return apiRequest("POST", "/api/cart", {
         serviceId: id,
@@ -880,30 +907,32 @@ export default function ServiceDetailPage() {
       });
     },
     onSuccess: (_data, vars) => {
-      if (!targetTripId) {
+      const tripId = vars.tripId ?? "";
+      if (!tripId) {
         trackEvent("service_added_to_cart", {
           surface: "service_detail",
           item_type: "room",
           has_scheduled_date: Boolean(roomCheckIn && roomCheckOut),
         });
       }
-      if (targetTripId) {
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/itinerary-items`] });
-        queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/plancard`] });
+      if (tripId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
       }
       queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       if (vars.proceed) {
-        void completeBuyNow(_data as Response | undefined);
+        void completeBuyNow(_data as Response | undefined, tripId);
       } else {
         const nights = `${roomNights} night${roomNights === 1 ? "" : "s"} — ${format(new Date(`${roomCheckIn}T00:00:00`), "MMM d")} to ${format(new Date(`${roomCheckOut}T00:00:00`), "MMM d, yyyy")}`;
         toast({
-          title: addedTitle(!!targetTripId),
-          description: targetTripId
+          title: addedTitle(!!tripId),
+          description: tripId
             ? `${nights} · Find it on your plan — check out when you're ready.`
             : nights,
         });
       }
     },
+    onSettled: () => setChosenTripId(null),
     onError: () => {
       toast({
         title: "Error",
@@ -1097,19 +1126,25 @@ export default function ServiceDetailPage() {
       openSignInModal();
       return;
     }
-    // Signed in with no plan in hand ⇒ ask which plan (RC-2). The pure decision is shared with
+    // The open-plan list has not answered. Hold the click; the effect above re-enters this door.
+    if (resolution.status === "pending" && !chosenTripId) {
+      setHeldAdd({ kind, proceed });
+      return;
+    }
+    // Signed in with no single target ⇒ ask which plan (RC-2). The pure decision is shared with
     // the Discover grid; auth has answered here (a user row exists), so it is never "wait".
     if (decideAddTarget({ targetTripId, signedIn: true, authLoading: false }) === "pick") {
       setPickForAdd({ kind, proceed });
       return;
     }
+    const tripId = targetTripId;
     guardServiceAdd(() => {
-      if (targetTripId && shouldAskWhichEvent(planEvents)) {
-        setPendingAdd({ kind, proceed });
+      if (tripId && shouldAskWhichEvent(planEvents)) {
+        setPendingAdd({ kind, proceed, tripId });
         return;
       }
-      if (kind === "room") addRoomToCartMutation.mutate({ proceed });
-      else addToCartMutation.mutate({ proceed });
+      if (kind === "room") addRoomToCartMutation.mutate({ proceed, tripId });
+      else addToCartMutation.mutate({ proceed, tripId });
     });
   };
 
@@ -1136,9 +1171,9 @@ export default function ServiceDetailPage() {
   /** The picker's answer — an event id, or an EXPLICIT null for the implicit unnamed event. */
   const confirmPendingAdd = (userExperienceId: string | null) => {
     if (!pendingAdd) return;
-    const { kind, proceed } = pendingAdd;
-    if (kind === "room") addRoomToCartMutation.mutate({ proceed, userExperienceId });
-    else addToCartMutation.mutate({ proceed, userExperienceId });
+    const { kind, proceed, tripId } = pendingAdd;
+    if (kind === "room") addRoomToCartMutation.mutate({ proceed, userExperienceId, tripId });
+    else addToCartMutation.mutate({ proceed, userExperienceId, tripId });
     setPendingAdd(null);
   };
 
@@ -2403,12 +2438,18 @@ export default function ServiceDetailPage() {
         open={pickForAdd !== null}
         onOpenChange={(next) => { if (!next) setPickForAdd(null); }}
         itemName={service.serviceName}
+        item={{ city: service.location, isEvent: false }}
         onPick={pickPlanForAdd}
         onStartNew={startNewPlanForAdd}
       />
       <WhichEventDialog
         open={!!pendingAdd}
-        onOpenChange={(next) => { if (!next) setPendingAdd(null); }}
+        onOpenChange={(next) => {
+          if (!next) {
+            setPendingAdd(null);
+            setChosenTripId(null);
+          }
+        }}
         subject={{
           title: service.serviceName,
           meta: [
@@ -2422,7 +2463,10 @@ export default function ServiceDetailPage() {
         serviceCategoryKey={service.categoryKey ?? null}
         submitting={addToCartMutation.isPending || addRoomToCartMutation.isPending}
         onConfirm={confirmPendingAdd}
-        onCancel={() => setPendingAdd(null)}
+        onCancel={() => {
+          setPendingAdd(null);
+          setChosenTripId(null);
+        }}
       />
       <LocationMismatchDialog
         alert={mismatchGate.alert}
@@ -2430,7 +2474,11 @@ export default function ServiceDetailPage() {
         listingMeta={mismatchGate.listing?.meta ?? null}
         onAddAnyway={mismatchGate.confirm}
         onAddAsStop={mismatchGate.addAsStop}
-        onCancel={mismatchGate.cancel}
+        onCancel={() => {
+          setChosenTripId(null);
+          setResumeAdd(null);
+          mismatchGate.cancel();
+        }}
       />
     </Layout>
   );

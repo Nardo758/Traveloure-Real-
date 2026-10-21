@@ -36,11 +36,14 @@ import {
   type BlogContentType,
   type BlogReactionKind,
 } from "@shared/blog";
+import { blogBannedHits } from "@shared/banned-copy";
+import { calendarDay, proseDatesArePast } from "@shared/blog-publish-checks";
 import { blogFooterShown } from "@shared/blog-footer";
 import { BLOG_QUOTE_MAX_CHARS, BLOG_RANK_MIN_IMPRESSIONS } from "../config/blog.config";
 import { rankBlogPosts } from "./blog-ranking";
 import { liveSeriesInstances } from "./blog-event-facts.service";
 import { toCityEventCard } from "./city-events.service";
+import { getMarketByCityName, timezoneForMarket } from "./trend-engine/operating-markets";
 import { checkBylineEligibility, type BylineDecision } from "./blog-byline-gate.service";
 import { loadPartnerHosts } from "./partner-hosts.service";
 import { isOnPartnerHost, partnerHostOf } from "@shared/partner-hosts";
@@ -56,6 +59,8 @@ export interface BlogSourceInput {
 export interface BlogDeps {
   gate?: (expertId: string, marketSlug: string | null) => Promise<BylineDecision>;
   refusedHosts?: () => Promise<string[]>;
+  /** Pins "today" for the future-date test. A Date, the same shape `EventFactsDeps` and `WeeklyDeps` already use. */
+  now?: Date;
 }
 
 export class BlogError extends Error {
@@ -328,10 +333,33 @@ export interface PublishAuditContext {
   userAgent?: string | null;
 }
 
+/**
+ * Refuses a post that carries a blog banned phrase, or whose event has ended, or — when it is not
+ * tied to an event — whose prose dates have all ended. A "Checked <date>" stamp is not an event date.
+ */
+async function assertPublishableCopy(
+  post: { title: string; summary: string | null; body: string; cityEventId: string | null },
+  now: Date,
+): Promise<void> {
+  const text = `${post.title}\n${post.summary ?? ""}\n${post.body}`;
+  if (blogBannedHits(text).length > 0) throw new BlogError("banned_copy", 422);
+  if (post.cityEventId) {
+    const [ev] = await db.select().from(cityEvents).where(eq(cityEvents.id, post.cityEventId)).limit(1);
+    if (ev) {
+      const card = toCityEventCard(ev, null, now);
+      const tz = timezoneForMarket(getMarketByCityName(ev.city)?.marketKey);
+      if (card.lastDate < calendarDay(now, tz)) throw new BlogError("past_date", 422);
+    }
+    return;
+  }
+  if (proseDatesArePast(text, calendarDay(now, "Asia/Tokyo"))) throw new BlogError("past_date", 422);
+}
+
 export async function publishPost(id: string, adminId: string, deps: BlogDeps = {}, audit: PublishAuditContext = {}) {
   const post = await readStatus(id);
   if (!post) throw new BlogError("not_found", 404);
-  const now = new Date();
+  const now = deps.now ?? new Date();
+  await assertPublishableCopy(post, now);
   if (post.authorship === "expert") {
     await gateFor(deps, post.bylineExpertId ?? "", post.marketSlug);
     const [row] = await db.update(blogPosts)

@@ -244,6 +244,16 @@ jobs:
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY || 'sk_test_ci_stub_no_real_calls' }}
           JOURNEY_DB_WRITES_OK: '1'
 
+      - name: Paid Optimize failure refund (live Stripe test mode, skips visibly without the secret)
+        # One test-mode charge tagged optimization_fee, refunded once when the run
+        # stores no optimized version. Same skip contract as the proofs above.
+        if: always() && steps.run-journeys.outcome != 'skipped'
+        run: npx tsx --test server/__tests__/optimizer-run-refund.stripe.db.test.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY || 'sk_test_ci_stub_no_real_calls' }}
+          JOURNEY_DB_WRITES_OK: '1'
+
       - name: Cancellation preview is the refund (R166 — live Stripe test mode, skips visibly without the secret)
         # P1–P3 against the RUNNING app and the REAL Stripe test API: a real charge, the traveler's
         # GET /cancel-preview, POST /cancel, then Stripe's own refund — preview cents must equal

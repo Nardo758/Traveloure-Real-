@@ -1,0 +1,1 @@
+| 2026-08-25-discover-shell-removed | 2026-08-25 | [advisory] | Legacy tabbed Discover shell (`!surface` mode, `?tab=`, `articles` tab) removed from `discover.tsx`. `/discover` stays redirect-only. | `docs/design/MARKETPLACE_EXPERTS_EARN_GRAMMAR_SPEC.md` §0; lane 1 |

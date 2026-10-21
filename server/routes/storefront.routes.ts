@@ -36,6 +36,7 @@ import { isExpertHireable } from "../services/booking-actions.service";
 import fs from "fs";
 import path from "path";
 import { eq, and, sql, inArray, isNotNull, desc } from "drizzle-orm";
+import { visibleGemCondition } from "../services/gem-visibility";
 import { db } from "../db";
 import { users, providerServices, readyMadeTrips, localExpertForms, serviceProviderForms, serviceReviews, expertNeighborhoods, cityNeighborhoods, resolveBookingMode, serviceTranslations, travelPulseHiddenGems } from "@shared/schema";
 import { isContentLocale, effectiveSourceLocale } from "../services/service-translation.service";
@@ -926,7 +927,7 @@ async function loadStorefrontFromOwner(
     db
       .select({ count: sql<number>`cast(count(*) as int)` })
       .from(travelPulseHiddenGems)
-      .where(eq(travelPulseHiddenGems.curatedByExpertId, owner.id)),
+      .where(and(eq(travelPulseHiddenGems.curatedByExpertId, owner.id), visibleGemCondition())),
     // Whether the booking panel may offer "Share my plan": the SAME predicate the advisors rail
     // answers with (`isExpertHireable` — an approved expert profile, not the platform's reserved
     // concierge account). A panel that offered a share the server refuses would be a dead button.

@@ -80,7 +80,8 @@ import {
 } from "lucide-react";
 import { isExpertRole, isProviderRole } from "@shared/roles";
 import { useTripContext } from "@/lib/trip-context";
-import { resolveTargetTripId, serviceDetailHref } from "@/lib/trip-target";
+import { serviceDetailHref } from "@/lib/trip-target";
+import { useAddPlanResolution } from "@/hooks/use-open-plans";
 // The browse's OWN url contract, stated once and shared with every surface that links in (the
 // slip's D6 role chips are the first — ledger `2026-09-06-role-chips-filter`, §18 rule 1). This
 // page is the READER; a bare literal here is how a link and the page it points at drift apart.
@@ -440,8 +441,8 @@ function ServiceCard({
   isAdded?: boolean;
   /** The add button's words, from `addButtonLabel` — "Add to Cart" only for a guest (RC-2). */
   addLabelText?: string;
-  /** The trip this grid is scoped to (slip handoff / active TripContext), forwarded into the
-      detail link so opening a listing does not drop the trip the way it used to. */
+  /** A direct add target (URL `?tripId=` or the only open plan), forwarded into the
+      detail link. A tab plan is not stamped here — that would skip the picker. */
   targetTripId?: string;
 }) {
   const [, navigateTo] = useLocation();
@@ -1325,40 +1326,40 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
   // start one), and a guest keeps the client-local guest cart above. Nothing on this grid writes a
   // trip-less server cart row any more.
 
-  // cart-is-slip (Trip Card rebuild Phase 3b, row 12; ledger 2026-08-31-manifest-is-the-boundary):
-  // an Add-to-trip click resolves the TARGET trip — the ?tripId= handoff first, then the active
-  // TripContext — and lands the service on THAT trip's plan via the persona-journey rail
-  // (POST /api/trips/:tripId/itinerary-items), not the generic cart. Only a genuinely trip-less
-  // click (guest, or no active trip) falls through to the cart, which is the draft-migration path,
-  // unchanged. This is why the /services grid needs no bolt-on Add-to-trip on the trip page — the
-  // grid itself targets the active trip. Not a money endpoint: the item's estimatedCost is display
-  // only; the server strips origin/suggestedBy and derives provenance (§14 untouched).
-  const targetTripId = resolveTargetTripId(searchString, tripCtx);
+  // Ledger `2026-10-20-add-plan-open-plans`. `?tripId=` wins. Otherwise one open plan adds
+  // straight to it, and two or more always ask. The tab pen (`tripCtx`) is not a target.
+  // The write is still POST /api/trips/:tripId/itinerary-items. Not a money endpoint.
+  const { resolution } = useAddPlanResolution(searchString);
+  const [chosenTripId, setChosenTripId] = useState<string | null>(null);
+  const directTripId = resolution.status === "direct" ? resolution.tripId : "";
+  const targetTripId = directTripId || chosenTripId || "";
 
   const addToTripMutation = useMutation({
-    mutationFn: async (serviceId: string) => {
+    mutationFn: async ({ serviceId, tripId }: { serviceId: string; tripId: string }) => {
       setAddingToCartId(serviceId);
       const svc = result?.services?.find((s) => s.id === serviceId);
       // The ONE listing→item body (`listingPlanItemBody`), shared with "Start a new plan", so both
-      // ways onto a plan land the same row.
+      // ways onto a plan land the same row. The id rides the variables so a later clear of the
+      // picked plan cannot retarget this request.
       return apiRequest(
         "POST",
-        `/api/trips/${targetTripId}/itinerary-items`,
+        `/api/trips/${tripId}/itinerary-items`,
         listingPlanItemBody(svc ?? { id: serviceId }),
       );
     },
-    onSuccess: (_res, serviceId) => {
+    onSuccess: (_res, { serviceId, tripId }) => {
       setAddedServices((prev) => new Set(prev).add(serviceId));
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/itinerary-items`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${targetTripId}/plancard`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
       toast({ title: ADDED_TO_PLAN_TITLE, description: "Find it on your plan." });
       setAddingToCartId(null);
     },
-    onError: (error: any, serviceId: string) => {
+    onError: (error: any) => {
       console.error("[AddToTrip] addToTripMutation failed:", error);
       toast({ variant: "destructive", title: ADD_TO_PLAN_FAILED_TITLE, description: error?.message });
       setAddingToCartId(null);
     },
+    onSettled: () => setChosenTripId(null),
   });
 
   // LOCATION MISMATCH (ledger 2026-09-04-location-mismatch). `handleAddToCart` is the ONE place an
@@ -1388,7 +1389,12 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
   // picker; a definitive guest ⇒ the guest cart; auth still unanswered ⇒ the click is HELD until it
   // answers, never guessed either way (the cold-load race that once dropped members' selections
   // into localStorage, Stage-1 journey-1A).
-  const addTarget = decideAddTarget({ targetTripId, signedIn: !!user, authLoading });
+  // Pending (the open-plan list has not answered) is the same hold as auth: do not open the
+  // picker and do not use the tab plan.
+  const addTarget =
+    resolution.status === "pending" && !chosenTripId
+      ? "wait"
+      : decideAddTarget({ targetTripId, signedIn: !!user, authLoading });
   const [pickFor, setPickFor] = useState<string | null>(null);
   const [heldUntilAuth, setHeldUntilAuth] = useState<string | null>(null);
   // A picked plan is bound as the CURRENT plan first; the add then re-enters `handleAddToCart`
@@ -1407,18 +1413,17 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
   }, [resumeAdd, targetTripId]);
 
   useEffect(() => {
-    if (heldUntilAuth && !authLoading) {
-      const serviceId = heldUntilAuth;
-      setHeldUntilAuth(null);
-      runAddToCart(serviceId);
-    }
+    if (!heldUntilAuth || addTarget === "wait") return;
+    const serviceId = heldUntilAuth;
+    setHeldUntilAuth(null);
+    runAddToCart(serviceId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [heldUntilAuth, authLoading]);
+  }, [heldUntilAuth, addTarget]);
 
   const runAddToCart = (serviceId: string) => {
     switch (addTarget) {
       case "plan":
-        addToTripMutation.mutate(serviceId);
+        if (targetTripId) addToTripMutation.mutate({ serviceId, tripId: targetTripId });
         return;
       case "pick":
         setPickFor(serviceId);
@@ -1437,6 +1442,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
     setPickFor(null);
     if (!serviceId) return;
     syncActiveTripToContext(plan);
+    setChosenTripId(plan.id);
     setResumeAdd({ serviceId, tripId: plan.id });
   };
 
@@ -1915,7 +1921,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                               onAddToCart={handleAddToCart}
                               isAddingToCart={addingToCartId === service.id}
                               isAdded={addedServices.has(service.id)}
-                              targetTripId={targetTripId}
+                              targetTripId={directTripId}
                               addLabelText={addButtonLabel(addTarget)}
                             />
                           ))}
@@ -2164,7 +2170,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
               {/* TravelPulse Tab */}
               <TabsContent value="travelpulse">
                 {/* On the /destinations SURFACE the masthead is the page header, so
-                    suppress CityGrid's own "Trending Cities" header (no stacked dup). */}
+                    suppress CityGrid's own "Cities" header (no stacked dup). */}
                 <CityGrid selectedCityName={urlCity} hideHeader={!!surface} />
                 {/* SAVED PLACES MOVED HERE FROM HOME (lane L11, ledger
                     `2026-09-07-discover-in-shell`; CLAUDE.md Locked Decision 45 (8) — Home owns
@@ -2248,6 +2254,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
           if (!o) setPickFor(null);
         }}
         itemName={result?.services?.find((s) => s.id === pickFor)?.serviceName ?? null}
+        item={{ city: result?.services?.find((s) => s.id === pickFor)?.location, isEvent: false }}
         onPick={pickPlanForAdd}
         onStartNew={startNewPlanForAdd}
       />
@@ -2257,7 +2264,10 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
         listingMeta={mismatchGate.listing?.meta ?? null}
         onAddAnyway={mismatchGate.confirm}
         onAddAsStop={mismatchGate.addAsStop}
-        onCancel={mismatchGate.cancel}
+        onCancel={() => {
+          setChosenTripId(null);
+          mismatchGate.cancel();
+        }}
       />
     </>
   );

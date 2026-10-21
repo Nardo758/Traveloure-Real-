@@ -201,7 +201,8 @@ async function runJourney(page: Page, c: SellerCase): Promise<void> {
   await expect(card).toContainText(c.listing.serviceName);
   await card.click();
   await expect(page).toHaveURL(new RegExp(`/services/${listingId}`));
-  // The same listing page, addressed to the traveler's plan (`resolveTargetTripId` reads `?tripId=`).
+  // The same listing page, addressed to the traveler's plan. `?tripId=` still wins
+  // (ledger 2026-10-20-add-plan-open-plans), so this add does not open the picker.
   await page.goto(`/services/${listingId}?tripId=${tripId}`);
   await expect(page.getByTestId("text-service-name")).toHaveText(c.listing.serviceName, { timeout: 90_000 });
   await expect(page.getByTestId("text-price")).toHaveText(listedPrice(c.listing.price));

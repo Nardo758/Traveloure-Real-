@@ -83,7 +83,7 @@ export const ADD_TO_PLAN_FAILED_TITLE = `Couldn't add to your ${PLAN_NOUN_LOWER}
 
 /**
  * Pick the add label for a surface that may or may not have resolved a target container.
- * `hasTarget` is the truthiness of `resolveTargetTripId` (client/src/lib/trip-target.ts).
+ * `hasTarget` is whether the add already has a direct trip id (`resolveAddPlanTarget`).
  */
 export function addLabel(hasTarget: boolean): string {
   return hasTarget ? ADD_TO_PLAN_LABEL : ADD_TO_CART_LABEL;

@@ -18,6 +18,7 @@ import { bookingComService } from "./booking-com.service";
 import { openTableService } from "./opentable.service";
 import { feverService } from "./fever.service";
 import { sanitizePartnerCardCopy } from "@shared/banned-copy";
+import { feverTitleBlocked } from "@shared/fever-title-filter";
 
 /** The partner's stated ISO currency, or null. Never substitutes USD (LC-1). */
 function activityCurrency(value: string | null | undefined): string | null {
@@ -465,7 +466,7 @@ class ExperienceCatalogService {
       }
     }
 
-    return events.map(e => ({
+    return events.filter((e) => !feverTitleBlocked(e.title)).map(e => ({
       id: e.id,
       type: "event" as const,
       provider: e.provider || "fever",
@@ -879,7 +880,7 @@ class ExperienceCatalogService {
           .where(eq(feverEventCache.id, id))
           .limit(1);
 
-        if (!event) return null;
+        if (!event || feverTitleBlocked(event.title)) return null;
 
         return {
           id: event.id,

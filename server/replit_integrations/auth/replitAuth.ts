@@ -16,6 +16,7 @@ import { sendWelcomeEmail } from "../../services/email.service";
 import { getPlatformFlag, FLAG_REGISTRATION_ENABLED, getTravelerSignupMode, getLaunchMarketSlug } from "../../services/platform-flags";
 import { decideFirstTimeSignup, waitlistBlockedPath, TRAVELER_WAITLIST, type SignupIntent } from "@shared/launch-signup";
 import { stashSignupIntent, readSignupIntent, readSignupSourceTag, takeStashedReturnTo } from "./signup-intent-stash";
+import { safeReturnPath } from "../../utils/oauth-state";
 import { recordSignupSource } from "../../services/signup-source-record";
 import {
   decideEmailMerge,
@@ -266,11 +267,12 @@ export async function setupAuth(app: Express) {
         return;
       }
       if (!user) return res.redirect("/api/login");
-      // Read the stashed return path BEFORE req.logIn regenerates the session; default as before.
-      const returnTo = takeStashedReturnTo(req);
+      // Read the stashed return path BEFORE req.logIn regenerates the session.
+      // safeReturnPath is the open-redirect gate: a same-site path is honoured, anything else is /dashboard.
+      const returnTo = safeReturnPath(takeStashedReturnTo(req), "/dashboard");
       req.logIn(user, (loginErr) => {
         if (loginErr) return next(loginErr);
-        res.redirect(returnTo ?? "/dashboard");
+        res.redirect(returnTo);
       });
     })(req, res, next);
   });

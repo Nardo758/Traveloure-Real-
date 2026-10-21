@@ -875,7 +875,7 @@ class RecommendationService {
   }
 
   private generateExpertDescription(signal: ServiceDemandSignal): string {
-    const demandText = signal.demandLevel === "trending" ? "rapidly trending" :
+    const demandText = signal.demandLevel === "trending" ? "strong demand" :
                        signal.demandLevel === "very_high" ? "high demand" :
                        signal.demandLevel === "high" ? "growing demand" : "moderate demand";
 
@@ -900,7 +900,7 @@ class RecommendationService {
 
     const triggerEvents = signal.triggerEvents as string[] || [];
     if (triggerEvents.length > 0) {
-      items.push(`Leverage trending topics: ${triggerEvents[0]}`);
+      items.push(`Related topic: ${triggerEvents[0]}`);
     }
 
     items.push("Set competitive pricing based on market analysis");
@@ -1050,7 +1050,7 @@ class RecommendationService {
 
       if (signal.demandLevel === "trending") {
         matchScore += 20;
-        reasons.push("Trending in your destination");
+        reasons.push("In demand in your destination");
       } else if (signal.demandLevel === "very_high") {
         matchScore += 15;
         reasons.push("Popular with travelers");
@@ -1087,7 +1087,9 @@ class RecommendationService {
       recommendations.push({
         id: signal.id,
         title: `Explore ${this.formatServiceType(signal.serviceType)}`,
-        description: `Discover ${signal.demandLevel === "trending" ? "trending" : "popular"} ${this.formatServiceType(signal.serviceType).toLowerCase()} experiences in ${this.capitalizeCity(city)}.`,
+        description: signal.demandLevel === "trending"
+          ? `Discover ${this.formatServiceType(signal.serviceType).toLowerCase()} experiences in ${this.capitalizeCity(city)}.`
+          : `Discover popular ${this.formatServiceType(signal.serviceType).toLowerCase()} experiences in ${this.capitalizeCity(city)}.`,
         serviceType: signal.serviceType,
         city: city,
         matchScore: Math.min(100, matchScore),
@@ -1393,10 +1395,9 @@ class RecommendationService {
 
       if ((trend.trendScore || 0) >= 80) {
         matchScore += 25;
-        reasons.push("Highly trending destination");
       } else if ((trend.trendScore || 0) >= 60) {
         matchScore += 15;
-        reasons.push("Popular trending destination");
+        reasons.push("Popular destination");
       }
 
       const category = trend.destinationType || "travel";
@@ -1422,7 +1423,7 @@ class RecommendationService {
       recommendations.push({
         id: trend.id.toString(),
         title: `Explore ${trend.destinationName}`,
-        description: `Trending ${category} in ${cityName}${trend.country ? `, ${trend.country}` : ''}`,
+        description: `${category} in ${cityName}${trend.country ? `, ${trend.country}` : ''}`,
         serviceType: category,
         city: cityName,
         matchScore: Math.min(100, matchScore),

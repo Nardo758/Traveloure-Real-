@@ -624,7 +624,7 @@ export default function ProviderDashboard() {
                 <CardHeader className="pb-2 pt-3 px-3.5">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-[11px] font-extrabold tracking-wide" data-testid="text-trending-title">
-                      📈 TRENDING · {demandData.market.toUpperCase()}
+                      {demandData.market.toUpperCase()}
                     </CardTitle>
                   </div>
                 </CardHeader>

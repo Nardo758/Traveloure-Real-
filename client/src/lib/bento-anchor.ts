@@ -139,10 +139,95 @@ export function bentoAnchorPriority(
   return null;
 }
 
+const THIRD_PARTY_PROVIDERS = new Set([
+  "fever",
+  "liteapi",
+  "lite-api",
+  "tiqets",
+  "viator",
+  "getyourguide",
+  "amadeus",
+  "booking-com",
+  "booking.com",
+]);
+
+function itemRecords(item: FeedItem): any[] {
+  const data = item.data ?? {};
+  return [data, data.candidate].filter((record) => record && typeof record === "object");
+}
+
+function providerToken(record: any): string {
+  return normalizeToken(record?.provider ?? record?.vendor ?? record?.partner ?? record?.source);
+}
+
 /**
- * Find the first eligible expert according to §2. A null result is deliberate:
- * the section has no anchor, and the bento may still pull its first ready-made
- * into the leading 2×1 slot.
+ * A partner, affiliate, or third-party card. Fever, LiteAPI, Tiqets and the
+ * same class never occupy the section's hero span. A platform listing and a
+ * ready-made trip are ours.
+ */
+export function isPartnerOrThirdPartyFeedItem(item: FeedItem): boolean {
+  if (
+    item.kind === "external-stub" ||
+    item.kind === "supply-hotel" ||
+    item.kind === "supply-activity"
+  ) {
+    return true;
+  }
+  for (const record of itemRecords(item)) {
+    const source = normalizeToken(record.sourceType ?? record.source_type);
+    if (source === "affiliate" || source === "partner" || source === "external") return true;
+    if (THIRD_PARTY_PROVIDERS.has(providerToken(record))) return true;
+    if (record.priceSource === "partner") return true;
+    if (record.resolutionClass === "external" || record.inventoryClass === "external") return true;
+  }
+  return false;
+}
+
+/** Desktop column span before row packing. A third-party tile stays 1 wide. */
+export function bentoBaseColSpan(item: FeedItem, isAnchor: boolean): number {
+  if (isPartnerOrThirdPartyFeedItem(item)) return 1;
+  if (isAnchor || item.kind === "package") return 2;
+  return 1;
+}
+
+export type BentoHeroSelection =
+  | { kind: "expert"; index: number }
+  | { kind: "ready-made"; index: number }
+  | { kind: "wanted"; index: number | null };
+
+/**
+ * The one hero for a neighbourhood section or the city-feed intro.
+ * Order: an eligible expert (neighbourhood local, city local, then trip
+ * planner), else the first ready-made, else a Wanted tile. Index null means
+ * the section has no Wanted card yet and the renderer supplies one. A partner
+ * card is never returned.
+ */
+export function selectBentoHero(
+  tagged: TaggedBentoItem[],
+  neighbourhood: any | null,
+  city: string,
+): BentoHeroSelection {
+  const expertIndex = selectBentoAnchorIndex(tagged, neighbourhood, city);
+  if (expertIndex >= 0 && !isPartnerOrThirdPartyFeedItem(tagged[expertIndex].item)) {
+    return { kind: "expert", index: expertIndex };
+  }
+  const readyMadeIndex = tagged.findIndex(
+    (entry) => entry.item.kind === "package" && !isPartnerOrThirdPartyFeedItem(entry.item),
+  );
+  if (readyMadeIndex >= 0) return { kind: "ready-made", index: readyMadeIndex };
+  const wantedIndex = tagged.findIndex(
+    (entry) =>
+      entry.item.kind === "wanted-slot" &&
+      !entry.item.data?.neighbourhoodWantedHero &&
+      !isPartnerOrThirdPartyFeedItem(entry.item),
+  );
+  if (wantedIndex >= 0) return { kind: "wanted", index: wantedIndex };
+  return { kind: "wanted", index: null };
+}
+
+/**
+ * Find the first eligible expert according to §2. A negative result means no
+ * expert hero; `selectBentoHero` then uses a ready-made, else a Wanted tile.
  */
 export function selectBentoAnchorIndex(
   tagged: TaggedBentoItem[],

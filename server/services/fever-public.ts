@@ -6,11 +6,15 @@
  * client gets an opaque, expiring `bookingToken`, resolved by the `booking_token` branch of
  * `POST /api/content/affiliate-redirect`, which records the click (Q7.1).
  *
- * This is an ALLOWLIST (§14 posture): a field the partner adds later is not published by default. Coordinates are not
- * published either. Every traveler-reachable payload that carries a Fever event goes through `toPublicFeverEvents`
- * (Q7.4); the admin cache routes do not.
+ * This is an ALLOWLIST (§14 posture): a field the partner adds later is not published by default. Fever's own
+ * coordinates are used first for the area match and are not copied onto the public card. OpenStreetMap Nominatim
+ * runs only when those coordinates are missing and an address is present. The street address is not published
+ * either — the card shows the area name (ledger `2026-10-21-blog-checks-fever-area`). Every traveler-reachable
+ * payload that carries a Fever event goes through `toPublicFeverEvents` (Q7.4); the admin cache routes do not.
  */
+import { feverTitleBlocked } from "@shared/fever-title-filter";
 import { mintBookingTokens, type VaultedBooking } from "./affiliate-url-vault.service";
+import { resolveFeverAreas, type FeverAreaDeps } from "./fever-area";
 import type { FeverEvent } from "./fever.service";
 
 /** Every Fever event a traveler sees says where its price lives: with the partner. */
@@ -27,7 +31,10 @@ export interface PublicFeverEvent {
   category: string | null;
   subcategory: string | null;
   venueName: string | null;
-  venueAddress: string | null;
+  /** Kyoto neighbourhood from the point and `city_neighborhoods` centre+radius. Null when unplaced. */
+  areaName: string | null;
+  /** "© OpenStreetMap contributors" when the area or the point came from OpenStreetMap. */
+  osmCredit: string | null;
   date: string | null;
   endDate: string | null;
   isSoldOut: boolean;
@@ -40,7 +47,7 @@ function str(v: unknown): string | null {
   return typeof v === "string" && v.trim() ? v : null;
 }
 
-function project(e: FeverEvent): PublicFeverEvent {
+function project(e: FeverEvent, area: { areaName: string | null; osmCredit: string | null }): PublicFeverEvent {
   return {
     id: String(e.id),
     title: e.title,
@@ -50,7 +57,8 @@ function project(e: FeverEvent): PublicFeverEvent {
     category: str(e.category),
     subcategory: str(e.subcategory),
     venueName: str(e.venue?.name),
-    venueAddress: str(e.venue?.address),
+    areaName: area.areaName,
+    osmCredit: area.osmCredit,
     date: str(e.dates?.startDate),
     endDate: str(e.dates?.endDate),
     isSoldOut: e.isSoldOut === true,
@@ -59,12 +67,16 @@ function project(e: FeverEvent): PublicFeverEvent {
   };
 }
 
-/** Project Fever events for a traveler: allowlisted fields, no amount, and the partner URL swapped for a token. */
-export async function toPublicFeverEvents(events: readonly FeverEvent[]): Promise<PublicFeverEvent[]> {
-  const out = events.map(project);
+/** Project Fever events for a traveler: allowlisted fields, no amount, no street, and the partner URL swapped for a token. */
+export async function toPublicFeverEvents(events: readonly FeverEvent[], deps: FeverAreaDeps = {}): Promise<PublicFeverEvent[]> {
+  // #1607 drops a title that hits geisha, hidden gem(s), back alley, trending, or illuminations.
+  // Those phrases are read from SURFACE_COPY_REFUSALS, not a second list.
+  const kept = events.filter((e) => !feverTitleBlocked(e.title));
+  const areas = await resolveFeverAreas(kept, deps);
+  const out = kept.map((e, i) => project(e, areas[i] ?? { areaName: null, osmCredit: null }));
   const entries: VaultedBooking[] = [];
   const at: number[] = [];
-  events.forEach((e, i) => {
+  kept.forEach((e, i) => {
     const url = str(e.affiliateUrl) ?? str(e.bookingUrl);
     if (!url) return;
     at.push(i);
@@ -77,7 +89,7 @@ export async function toPublicFeverEvents(events: readonly FeverEvent[]): Promis
   return out;
 }
 
-export async function toPublicFeverEvent(event: FeverEvent): Promise<PublicFeverEvent> {
-  const [one] = await toPublicFeverEvents([event]);
+export async function toPublicFeverEvent(event: FeverEvent, deps: FeverAreaDeps = {}): Promise<PublicFeverEvent> {
+  const [one] = await toPublicFeverEvents([event], deps);
   return one;
 }

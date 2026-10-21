@@ -18,6 +18,7 @@ import { Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FREE_PLAN_COVERAGE_FOOTER, LEAD_DRAFT_FIRST, LEAD_EYEBROW, LEAD_VERSIONS, LEAD_ZERO, findingLine, findingStopLines, leadCoverageLine, leadDeltaLine, unlocatedStopGroups, type Finding, type LegCoverage } from "@shared/optimizer-lead";
 import { OPTIMIZE_RERUN_RULE, TRIP_PASS_COVERED_LABEL, formatMoneyCents, tripPassRunsLine, type OptimizationFeeQuote } from "@/lib/optimization-preview";
+import { OPTIMIZE_UNAVAILABLE, optimizeUnavailable } from "@/lib/optimize-pay-copy";
 
 /** P0-d: no coverage answer is an incomplete one — never an all-clear (§13). */
 const COVERAGE_UNKNOWN: LegCoverage = { complete: false, unlocated: [] };
@@ -178,6 +179,12 @@ function PlainOptimizerLead({ findings, coverage, routedPlan, hasPricedItems, fe
           {delta}
         </p>
       ) : null}
+      {optimizeUnavailable(fee) ? (
+        <p className="text-sm text-foreground" data-testid="optimize-unavailable">
+          {OPTIMIZE_UNAVAILABLE}
+        </p>
+      ) : (
+        <>
       <span title={disabledReason ?? undefined} className="block">
         <Button
           size="sm"
@@ -203,6 +210,8 @@ function PlainOptimizerLead({ findings, coverage, routedPlan, hasPricedItems, fe
       <p className="text-[11px] text-muted-foreground" data-testid="optimizer-lead-rerun">
         {OPTIMIZE_RERUN_RULE}
       </p>
+        </>
+      )}
     </section>
   );
 }
@@ -324,28 +333,37 @@ function BoardOptimizerLead({
           {delta}
         </p>
       ) : null}
+      {optimizeUnavailable(fee) ? (
+        <p className="text-sm text-white" data-testid="optimize-unavailable">
+          {OPTIMIZE_UNAVAILABLE}
+        </p>
+      ) : null}
       <div className="flex gap-2.5">
+        {optimizeUnavailable(fee) ? null : (
         <span title={disabledReason ?? undefined} className="flex flex-1">
           <button type="button" className={cta} onClick={onClick} disabled={!!disabledReason || busy} data-testid={testId}>
             <Sparkles className="h-4 w-4" />
             {ctaLabelOverride ?? optimizeBoardCtaLabel(fee)}
           </button>
         </span>
+        )}
         {secondary}
       </div>
-      {none || noStay ? null : (
+      {optimizeUnavailable(fee) || none || noStay ? null : (
         <p className={quiet} data-testid="optimizer-lead-versions">
           {LEAD_VERSIONS}
         </p>
       )}
-      {tripPassRunsLine(fee) ? (
+      {optimizeUnavailable(fee) || !tripPassRunsLine(fee) ? null : (
         <p className={quiet} data-testid="optimizer-lead-pass-runs">
           {tripPassRunsLine(fee)}
         </p>
-      ) : null}
+      )}
+      {optimizeUnavailable(fee) ? null : (
       <p className={quiet} data-testid="optimizer-lead-rerun">
         {OPTIMIZE_RERUN_RULE}
       </p>
+      )}
     </section>
   );
 }

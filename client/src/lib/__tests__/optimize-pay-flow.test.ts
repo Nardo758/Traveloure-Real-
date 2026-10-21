@@ -23,7 +23,7 @@ import {
   OPTIMIZATION_INTENT_CANCELABLE,
   reuseOrCreateOptimizationIntent,
 } from "../../../../server/services/optimization-intent.service";
-import { OPTIMIZE_COVERED_LINE, OPTIMIZE_PAY_LINE, optimizeContinueLabel, optimizePayLine } from "../optimize-pay-copy";
+import { OPTIMIZE_COVERED_LINE, OPTIMIZE_PAY_LINE, OPTIMIZE_UNAVAILABLE, optimizeContinueLabel, optimizePayLine, optimizeUnavailable } from "../optimize-pay-copy";
 import { BOOKING_CHECKOUT_HEADING, optimizeCheckoutHeading } from "../checkout-headings";
 import { cancelOptimizationPayment } from "../optimization-gate";
 
@@ -171,10 +171,20 @@ describe("the dialog and the sheet say what is being paid for", () => {
     assert.equal(optimizeContinueLabel({ ...fee, coveredByTripPass: true }), "Generate 3 versions");
     assert.equal(optimizePayLine({ ...fee, coveredByTripPass: true }), OPTIMIZE_COVERED_LINE);
     assert.equal(optimizeContinueLabel(null), "Continue", "no quote ⇒ no number (§13)");
+    const disabled = { ...fee, aiDisabled: true, feeCents: 0, coveredByTripPass: true };
+    assert.equal(optimizeUnavailable(disabled), true);
+    assert.equal(optimizePayLine(disabled), OPTIMIZE_UNAVAILABLE);
+    assert.equal(optimizeContinueLabel(disabled), OPTIMIZE_UNAVAILABLE, "a disabled fee is not a free or covered run");
+    assert.equal(/\d|\$|%/.test(OPTIMIZE_UNAVAILABLE), false);
     const dialog = read("client/src/components/plancard/BuildAroundDialog.tsx");
     assert.match(dialog, /\{optimizeContinueLabel\(fee\)\}/);
     assert.match(dialog, /data-testid="build-around-plan"/);
     assert.doesNotMatch(dialog, /\$\d|5\.99|599/, "no price literal in the dialog");
+    assert.match(dialog, /optimizeUnavailable\(fee\)/);
+    const cart = read("client/src/pages/cart.tsx");
+    assert.match(cart, /optimizeUnavailable\(optimizationPreview\)/);
+    assert.match(cart, /optimizeUnavailable\(cartNudge\)/);
+    assert.match(cart, /OPTIMIZE_UNAVAILABLE/);
     const rail = read("client/src/components/plancard/SlipRail.tsx");
     assert.match(rail, /planName=\{trip\.title \|\| trip\.destination\}\s+fee=\{leadData\.fee\}/);
   });

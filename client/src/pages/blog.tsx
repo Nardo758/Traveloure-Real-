@@ -35,14 +35,14 @@ export default function BlogPage() {
       <SEOHead
         title="Blog"
         url="/blog"
-        description="Destination guides and field notes signed by the local experts who wrote them."
+        description="Trip ideas, local know-how and planning guides from the people who know each city."
         noindex={noindex}
       />
       <section className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground py-16">
         <div className="container mx-auto px-4 max-w-6xl text-center">
           <h1 className="text-4xl md:text-5xl font-bold mb-4">Traveloure Blog</h1>
           <p className="text-xl text-primary-foreground/90 max-w-2xl mx-auto">
-            Guides and field notes, each signed by the local expert who wrote it
+            Trip ideas, local know-how and planning guides from the people who know each city.
           </p>
         </div>
       </section>
