@@ -77,6 +77,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient as sharedQueryClient } from "@/lib/queryClient";
 import { optimizeCheckoutHeading } from "@/lib/checkout-headings";
+import { OPTIMIZE_UNAVAILABLE } from "@/lib/optimize-pay-copy";
 import StripeCheckout from "@/components/booking/StripeCheckout";
 import { createComparison, type ComparisonPinnedAnchor } from "@/lib/create-comparison";
 import {
@@ -461,13 +462,18 @@ function BuildCard({
   }
 
   async function startOptimization(pinnedAnchor?: ComparisonPinnedAnchor) {
-    if (optimizing || creatingComparison || optimizeDisabledReason) return;
+    if (optimizing || creatingComparison || optimizeDisabledReason || leadData.fee?.aiDisabled) return;
     setOptimizing(true);
     try {
       const outcome = await requestOptimizationGate({
         tripId: trip.id,
         destination: trip.destination || undefined,
       });
+      if (outcome.kind === "unavailable") {
+        confirmedPinnedAnchor.current = undefined;
+        toast({ title: OPTIMIZE_UNAVAILABLE });
+        return;
+      }
       if (outcome.kind === "refused") {
         confirmedPinnedAnchor.current = undefined;
         toast({

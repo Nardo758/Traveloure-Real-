@@ -25,6 +25,7 @@ import { MapControlCenter } from "@/components/plancard/MapControlCenter";
 import type { PlanCardDay } from "@/components/plancard/plancard-types";
 import type { MapVersion } from "@/lib/map-scene";
 import { formatMoneyCents } from "@/lib/optimization-preview";
+import { OPTIMIZE_UNAVAILABLE } from "@/lib/optimize-pay-copy";
 import { retimeLine } from "@shared/version-board";
 import { COVERAGE_REDUCED_LINE, NO_VERSION_PASSES_LEAD, fixLine, issueLine } from "@shared/version-check";
 import { feasibilityLine } from "@shared/plan-feasibility";
@@ -117,14 +118,14 @@ export function VersionsBoard({
   const isDesktop = useIsDesktop();
   const versionsKey = [`/api/trips/${tripId}/versions`];
   const { data: view } = useQuery<VersionsBoardView>({ queryKey: versionsKey, retry: false, staleTime: 15_000 });
-  const { data: fee } = useQuery<{ feeCents?: number; currency?: string; coveredByTripPass?: boolean }>({
+  const { data: fee } = useQuery<{ feeCents?: number; currency?: string; coveredByTripPass?: boolean; aiDisabled?: boolean }>({
     // R321 S11-8: the SAME cache key the OptimizerLead's one data source reads.
     queryKey: ["/api/optimization-fee", { tripId }],
     retry: false,
     staleTime: 60_000,
   });
   const feeLabel =
-    fee?.coveredByTripPass ? "covered by your Trip Pass" : typeof fee?.feeCents === "number" && fee.feeCents > 0 ? formatMoneyCents(fee.feeCents, fee.currency ?? "USD") : null;
+    fee?.aiDisabled ? null : fee?.coveredByTripPass ? "covered by your Trip Pass" : typeof fee?.feeCents === "number" && fee.feeCents > 0 ? formatMoneyCents(fee.feeCents, fee.currency ?? "USD") : null;
 
   const [mode, setMode] = useState<"choose" | "compare">("choose");
   const [picks, setPicks] = useState<DayPicks>({});
@@ -729,16 +730,22 @@ export function VersionsBoard({
 
       {paidGate ? (
         <div className="order-4 flex flex-wrap items-center gap-2 rounded-xl border border-[color:var(--slip-gold)] bg-[color:var(--slip-gold-wash)] p-3 text-sm text-[color:var(--slip-ink)]" data-testid="versions-retime-paid">
-          <span>
-            Day {paidGate.dayNumber}: {paidGate.line}. Nothing has been changed.
-          </span>
+          {fee?.aiDisabled ? (
+            <span data-testid="optimize-unavailable">{OPTIMIZE_UNAVAILABLE}</span>
+          ) : (
+            <span>
+              Day {paidGate.dayNumber}: {paidGate.line}. Nothing has been changed.
+            </span>
+          )}
           <div className="ml-auto flex gap-2">
             <Button size="sm" variant="ghost" onClick={() => setPaidGate(null)}>
               Not now
             </Button>
+            {fee?.aiDisabled ? null : (
             <Button size="sm" onClick={onPaidRun} data-testid="versions-retime-paid-go">
               Go to Optimize
             </Button>
+            )}
           </div>
         </div>
       ) : null}

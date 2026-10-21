@@ -12,9 +12,10 @@
  *   2. Tier-level default row (event_type IS NULL)
  *   3. Code-level DEFAULT_FEE_CENTS fallback (§4.8 standard: $9.99 across tiers). fee-literal-ok: comment
  */
-import { and, desc, eq, isNull, or, inArray } from "drizzle-orm";
+import { and, desc, eq, isNull, or, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { optimizationFees, feeBands, coordinationFeeCredits } from "@shared/schema";
+import { OPTIMIZER_RUN_REFUND_REASON } from "@shared/optimizer-run-refund";
 import { complexityTier } from "./smart-sequencing.service";
 import { logger } from "../infrastructure/logger";
 import {
@@ -276,9 +277,16 @@ export async function resolveCoordinationFee(
  * Credits with event_type IS NULL are legacy "any event" rows — always eligible.
  */
 function buildCreditConditions(userId: string, eventType?: string | null) {
+  // A refunded (or refund-claimed) Optimize payment is not a credit toward coordination.
+  const notRefunded = sql`NOT EXISTS (
+    SELECT 1 FROM refunds r
+     WHERE r.stripe_payment_intent_id = ${coordinationFeeCredits.sourcePaymentIntentId}
+       AND r.reason = ${OPTIMIZER_RUN_REFUND_REASON}
+  )`;
   const base = [
     eq(coordinationFeeCredits.userId, userId),
     isNull(coordinationFeeCredits.consumedByCoordinationId),
+    notRefunded,
   ] as const;
   if (!eventType) return and(...base);
   return and(

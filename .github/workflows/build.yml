@@ -2720,6 +2720,10 @@ jobs:
       # printing the rows it proves (T1-T11). No Stripe call; the covered apply runs the real routes.
       - name: planning tolls recorded in fee_ledger (T1-T11)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/planning-tolls-ledger.db.test.ts
+      # A paid Optimize run that ends with no optimized version is refunded once
+      # (ledger `2026-10-20-optimize-paid-failure-refund`). Stripe is stubbed.
+      - name: paid Optimize failure refunds once (stub Stripe)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/optimizer-run-refund.db.test.ts
 
   from-state-guards:
     needs: [changes]

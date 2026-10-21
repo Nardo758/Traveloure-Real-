@@ -36,6 +36,7 @@ import { travelerChargeForRow } from './traveler-charge';
 import { computeRefundBreakdown, travelerFeeChargedOf } from './refund-breakdown';
 import { APP_REFUND_REFUSED_FROM_STATUSES, LEGACY_PREPAYMENT_STATUSES } from '../utils/booking-from-states';
 import { REFUND_ATTEMPT_KEY, REFUND_RECORD_KEY } from '../../shared/booking-refund-record';
+import { OPTIMIZER_RUN_REFUND_REASON, OPTIMIZER_RUN_REFUND_SOURCE } from '../../shared/optimizer-run-refund';
 import { getStripeSecretKey } from '../utils/stripe-key';
 import { upsertStripeMembership } from "./plan-membership-writer.service";
 import { isCanonicalBookingEmailPersistenceError } from "./canonical-booking-email.service";
@@ -169,6 +170,17 @@ export const ARTIFACT_REJECTION_REFUND_SOURCE = 'artifact_rejection_refund';
 // account's dispute/radar record, so it is never inferred (no invented fraud path).
 type StripeRefundReason = Stripe.RefundCreateParams.Reason;
 
+/**
+ * Cents already refunded on a PaymentIntent, read from an expanded `latest_charge`.
+ * PaymentIntent itself has no refunded-amount field. An unexpanded charge id answers
+ * zero — the caller must pass `expand: ['latest_charge']`.
+ */
+export function refundedCentsOnPaymentIntent(pi: Stripe.PaymentIntent): number {
+  const charge = pi.latest_charge;
+  if (!charge || typeof charge !== 'object') return 0;
+  return Number.isFinite(charge.amount_refunded) ? charge.amount_refunded : 0;
+}
+
 const STRIPE_REFUND_REASONS: readonly StripeRefundReason[] = [
   'duplicate',
   'fraudulent',
@@ -185,6 +197,9 @@ const INTERNAL_REFUND_REASON_MAP: Readonly<Record<string, StripeRefundReason>> =
   // platform could not deliver as read — money returned for an undelivered product, which is the
   // customer-facing class, never `duplicate` or `fraudulent`.
   ai_task_proposal_refused: 'requested_by_customer',
+  // A paid Optimize run produced no optimized version. The traveler paid for a run the
+  // platform did not deliver — customer-facing, never `duplicate` or `fraudulent`.
+  optimizer_run_failed: 'requested_by_customer',
   // R162: a payment that succeeded AFTER its booking was marked `failed` (failed is final). The
   // traveler is owed money for a booking the platform does not hold — customer-facing, never
   // `duplicate` (it is not a second charge for one booking) and never `fraudulent`.
@@ -1977,6 +1992,35 @@ class StripePaymentService {
   }
 
   /**
+   * A paid Optimize run that ended with no optimized version (ledger
+   * `2026-10-20-optimize-paid-failure-refund`). One more caller of the shared refund
+   * call site, never a second `stripe.refunds.create`. The claim is the pending
+   * `refunds` row `refundFailedPaidOptimizerRun` inserts BEFORE this call. The amount
+   * and the key arrive from that caller (Stripe's own remaining amount, one key per
+   * PaymentIntent). This method does not write the audit row: the caller promotes the
+   * pending row so a retry cannot insert a second one. Throws the raw Stripe error.
+   */
+  async refundFailedOptimizerRun(input: {
+    comparisonId: string;
+    paymentIntentId: string;
+    amountCents: number;
+    idempotencyKey: string;
+  }): Promise<{ id: string; status: string | null; chargeId: string | null; currency: string }> {
+    const refund = await this.createStripeRefundForBooking({
+      paymentIntentId: input.paymentIntentId,
+      amountCents: input.amountCents,
+      stripeReason: toStripeRefundReason(OPTIMIZER_RUN_REFUND_REASON),
+      idempotencyKey: input.idempotencyKey,
+      metadata: {
+        comparisonId: input.comparisonId,
+        source: OPTIMIZER_RUN_REFUND_SOURCE,
+      },
+    });
+    const chargeId = typeof refund.charge === 'string' ? refund.charge : (refund.charge as { id?: string } | null)?.id ?? null;
+    return { id: refund.id, status: refund.status ?? null, chargeId, currency: refund.currency || 'usd' };
+  }
+
+  /**
    * R162 (ledger `2026-09-27-failed-is-final`) — A LATE SUCCESS ON A `failed` BOOKING IS REFUNDED.
    * The FOURTH caller of the shared call site above, never a second `stripe.refunds.create` site
    * (§18 rule 1). `failed` is final: when a PaymentIntent whose booking(s) were marked `failed`
@@ -2032,14 +2076,11 @@ class StripePaymentService {
     paymentIntentId: string,
   ): Promise<{ id: string; status: string; amountReceivedCents: number; amountRefundedCents: number }> {
     const pi = await stripe.paymentIntents.retrieve(paymentIntentId, { expand: ['latest_charge'] });
-    const charge = (pi as any).latest_charge;
-    const amountRefundedCents =
-      charge && typeof charge === 'object' && Number.isFinite(charge.amount_refunded) ? Number(charge.amount_refunded) : 0;
     return {
       id: pi.id,
       status: pi.status,
       amountReceivedCents: Number(pi.amount_received ?? 0),
-      amountRefundedCents,
+      amountRefundedCents: refundedCentsOnPaymentIntent(pi),
     };
   }
 

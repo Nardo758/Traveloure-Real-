@@ -775,9 +775,22 @@ async function verifyOptimizationPayment(params: {
   }
 
   try {
-    const pi = await stripeForOptimization.paymentIntents.retrieve(optimizationPaymentId);
+    const pi = await stripeForOptimization.paymentIntents.retrieve(optimizationPaymentId, {
+      expand: ["latest_charge"],
+    });
     if (pi.status !== "succeeded") {
       return { ok: false, status: 402, body: { error: "payment_not_confirmed", message: "Optimization payment has not been confirmed." } };
+    }
+    const { refundedCentsOnPaymentIntent } = await import("./services/stripe-payment.service");
+    if (refundedCentsOnPaymentIntent(pi) > 0) {
+      return {
+        ok: false,
+        status: 402,
+        body: {
+          error: "payment_refunded",
+          message: "This payment was refunded, so it can't be used for another run. You can start Optimize again whenever you're ready.",
+        },
+      };
     }
     if (pi.metadata?.userId && pi.metadata.userId !== userId) {
       return { ok: false, status: 403, body: { error: "payment_belongs_to_another_user" } };
@@ -10507,19 +10520,30 @@ ${bannedCopyPromptLine()}`;
         return res.status(401).json({ message: "Unauthorized" });
       }
 
+      const { optimizationFeeRefundForComparison } = await import("./services/optimizer-run-refund.service");
+      const optimizationFeeRefund = await optimizationFeeRefundForComparison({
+        id: result.comparison.id,
+        status: result.comparison.status ?? null,
+        optimizationPaymentId: result.comparison.optimizationPaymentId ?? null,
+      });
+      const withRefund = {
+        ...result,
+        comparison: { ...result.comparison, optimizationFeeRefund },
+      };
+
       // A7 (§M5 / §F2 / R128, ledger `2026-09-30-a7-version-per-option`): behind the flag, each
       // version names the option it anchors on and carries only the badges its metrics EARN; the
       // open set's options no version names are listed "not run". Derived here, never stored.
       if (versionPerOptionEnabled()) {
-        const deco = await decorateComparison(result.comparison.tripId ?? null, result.variants as any);
+        const deco = await decorateComparison(withRefund.comparison.tripId ?? null, withRefund.variants as any);
         return res.json({
-          ...result,
-          variants: result.variants.map((v) => ({ ...v, ...deco.byVariant[v.id] })),
+          ...withRefund,
+          variants: withRefund.variants.map((v) => ({ ...v, ...deco.byVariant[v.id] })),
           notRunOptionIds: deco.notRunOptionIds,
         });
       }
 
-      res.json(result);
+      res.json(withRefund);
     } catch (error) {
       console.error("Error fetching comparison:", error);
       res.status(500).json({ message: "Failed to fetch comparison" });
@@ -10687,6 +10711,10 @@ ${bannedCopyPromptLine()}`;
       //       conditional update — the claim STAYS HERE (§15: the predicate decides, it never writes),
       //       so a PI can never be spent twice.
       // Otherwise 402: the comparison is untouched and no AI call is made.
+      // A paid run that stored no optimized version is refunded. That PaymentIntent does not
+      // authorize another run. A run that stored a version still reuses its payment inside the window.
+      const { recordedOptimizerPaymentForRetry } = await import("./services/optimizer-run-refund.service");
+      const recordedPaymentId = await recordedOptimizerPaymentForRetry(comparison);
       const runAuth = await resolveOptimizerRunAuthorization(
         {
           userId,
@@ -10694,7 +10722,7 @@ ${bannedCopyPromptLine()}`;
           tripId: comparison.tripId,
           userExperienceId: comparison.userExperienceId,
           optimizationPaymentId,
-          recordedPaymentId: comparison.optimizationPaymentId,
+          recordedPaymentId,
           recordedPaymentAt: comparison.createdAt,
         },
         optimizerRunAuthorizationDeps,
