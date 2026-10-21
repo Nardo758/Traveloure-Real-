@@ -1535,6 +1535,12 @@ This document captures architectural decisions to maintain consistency across co
     method on-session and keeps the `requires_action` sheet. Saved Apple Pay is not confirmed
     from that click. A key already used with the previous body is replayed as that body
     (ledger `2026-10-21-saved-method-onsession`). Membership renewals stay on Stripe Billing.
+    The three hosted Checkout Sessions no longer pass `payment_method_types`.
+    `checkout.session.completed` and `checkout.session.async_payment_succeeded`
+    fulfill expert-service and transport only when `payment_status` is `paid`.
+    `checkout.session.async_payment_failed` does not fulfill. Membership
+    entitlement stays on `customer.subscription.*` (ledger
+    `2026-10-21-checkout-dynamic-methods`).
     **(b) A PAYMENT METHOD ENTERS THE ACCOUNT AT ONE OF EXACTLY TWO MOMENTS**, and both already
     existed: at FIRST PURCHASE (the Payment Element, vaulted against the durable Stripe customer
     with `setup_future_usage: off_session` — FP-1), or PROACTIVELY on the profile's Payment

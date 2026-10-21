@@ -170,14 +170,9 @@ export async function createTransportBookingCheckout(
 
   // Create Stripe checkout session. The traveler fee (when not covered) is a SEPARATE, disclosed
   // line item — not folded into the transport unit price (which is the provider's amount).
-  // LD 43 audit note — NOT a PaymentIntent site and deliberately UNCHANGED by that lane. This is
-  // a hosted Stripe Checkout Session: wallets there are enabled by DASHBOARD configuration, not by
-  // `automatic_payment_methods`, and dropping this pin would also admit delayed-notification
-  // methods whose `checkout.session.completed` arrives unpaid — a webhook-behaviour change this
-  // rail has not been audited for. Recorded, not silently left: widening it is an operator +
-  // webhook decision, not a find-replace.
+  // Hosted Checkout uses the Dashboard's dynamic payment methods. Fulfillment
+  // waits for payment_status paid (ledger `2026-10-21-checkout-dynamic-methods`).
   const session = await stripe.checkout.sessions.create({
-    payment_method_types: ["card"],
     line_items: [
       {
         price_data: {

@@ -5,7 +5,7 @@
  * Sessions for cart-based bookings (multi-service checkout) and expert advisory service
  * purchases (review-only, review-and-book, full-concierge). It also owns the central
  * webhook event dispatcher: it routes `payment_intent.succeeded/failed/canceled`,
- * `charge.refunded`, and `checkout.session.completed` events to the appropriate handler,
+ * `charge.refunded`, and checkout-session events to the appropriate handler,
  * delegating transport-booking confirmation to stripe.service.ts via
  * `handleStripePaymentSuccess`. Refund creation (stripe.refunds.create) is owned here.
  *
@@ -46,6 +46,7 @@ import { dispatchPaymentTrigger } from "../automations/payments/runtime";
 import { runUnderWebhookClaim } from "./webhook-claim.service";
 import { customerCreateIdempotencyKey, customerIdAfterCreate } from "./stripe-customer-create";
 import { vaultRecordLogLine, vaultWebhookDisposition } from "./vault-webhook";
+import { checkoutSessionFulfillment, checkoutSessionWithholdLogLine } from "./checkout-session-fulfillment";
 
 export const stripe = new Stripe(getStripeSecretKey() || '', {
   apiVersion: '2024-12-18.acacia' as any,
@@ -899,13 +900,24 @@ class StripePaymentService {
           break;
 
         case 'checkout.session.completed':
+        case 'checkout.session.async_payment_succeeded':
+        case 'checkout.session.async_payment_failed': {
           const session = event.data.object as Stripe.Checkout.Session;
+          // Delayed methods complete the session before the payment is paid.
+          // Fulfillment waits for payment_status paid. A failed async payment
+          // never fulfills. Membership stays on customer.subscription.*.
+          const fulfillment = checkoutSessionFulfillment(event.type, session.payment_status);
+          if (fulfillment !== "fulfill") {
+            console.info(checkoutSessionWithholdLogLine(event.type, session.payment_status, session.id));
+            break;
+          }
           if (session.metadata?.type === 'expert_service') {
             await this.handleExpertServicePayment(session);
           } else if (session.metadata?.type === 'transport_booking') {
             await handleStripePaymentSuccess(session.id);
           }
           break;
+        }
 
         // ── Subscription lifecycle -> plan_memberships (2026-09-21-membership-writer) ──────
         // These three fell through to "Unhandled" before this lane, so a Stripe subscription
@@ -2423,13 +2435,10 @@ class StripePaymentService {
       const isZeroDecimal = effectiveCurrency === 'jpy';
       const unitAmount = isZeroDecimal ? Math.round(amount) : Math.round(amount * 100);
 
-      // LD 43 audit note — NOT a PaymentIntent site and deliberately UNCHANGED (same reasoning as
-      // the transport Checkout Session in stripe.service.ts: a hosted session's wallet set is
-      // dashboard-configured, and widening it admits async methods this rail's webhook has not
-      // been audited for). The expert-service PAYMENT INTENT above — the embedded sheet that
-      // actually ships — does offer wallets.
+      // Hosted Checkout uses the Dashboard's dynamic payment methods. Fulfillment
+      // waits for payment_status paid (ledger `2026-10-21-checkout-dynamic-methods`).
+      // The expert-service PaymentIntent above is the embedded sheet.
       const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
         mode: 'payment',
         customer_email: userEmail,
         line_items: [
@@ -2484,6 +2493,10 @@ class StripePaymentService {
 
   async handleExpertServicePayment(session: Stripe.Checkout.Session) {
     try {
+      if (session.payment_status !== "paid") {
+        console.info(checkoutSessionWithholdLogLine("checkout.session", session.payment_status, session.id));
+        return;
+      }
       const { userId, variantId, comparisonId, destination, serviceType, notes } = session.metadata || {};
       
       if (!userId || !variantId || !comparisonId) {
