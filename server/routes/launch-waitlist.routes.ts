@@ -4,7 +4,9 @@
 //                                      honeypot `homepage`. LW-2: an optional `market` — ONE operating-market key;
 //                                      absent ⇒ the `launch_market_slug` setting; any other value ⇒ 400
 //                                      UNKNOWN_MARKET. Always answers `{ ok: true }` — whether the address was
-//                                      already on the list is never revealed. No email is sent (Launch ruling 1).
+//                                      already on the list is never revealed. A provider row born for a live city
+//                                      may send one apply invite (S-22); a repeat, a traveler, a city that is not
+//                                      live, or a missing marketing footer sends nothing. The join still stands.
 //   GET  /api/admin/waitlist         — counts for one market (`?market=<key>|all`, default the launch market):
 //                                      travelers (by trip type and source) and providers (by service type) apart,
 //                                      never mixed; LW-2 `byMarket` gives every market's two totals. Admin only.
@@ -35,6 +37,7 @@ import {
 import { logger } from "../infrastructure/logger";
 import { csvCell } from "../utils/csv";
 import { resolveWaitlistReferral } from "../services/waitlist-referral.service";
+import { notifyWaitlistProviderApply } from "../services/waitlist-apply-invite-email";
 
 const router = Router();
 
@@ -57,7 +60,16 @@ router.post("/api/waitlist", strictRateLimiter, async (req, res) => {
     const credit = referral.credited
       ? { referrerUserId: referral.referrerUserId, shortLinkCode: referral.shortLinkCode }
       : null;
-    await joinWaitlist(body, marketSlug, credit);
+    const { inserted } = await joinWaitlist(body, marketSlug, credit);
+    await notifyWaitlistProviderApply({
+      inserted,
+      role: body.role ?? "traveler",
+      marketSlug,
+      email: body.email,
+      contactName: body.contactName ?? null,
+      businessName: body.businessName ?? null,
+      serviceType: body.serviceType ?? null,
+    });
     return res.json({ ok: true });
   } catch (err: any) {
     // Never log the address (no email in logs).

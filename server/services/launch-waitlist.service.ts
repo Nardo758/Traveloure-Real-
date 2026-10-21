@@ -54,7 +54,7 @@ export async function joinWaitlist(
   body: Omit<WaitlistJoinBody, "homepage" | "ref">,
   marketSlug: string,
   credit: WaitlistCredit | null = null,
-): Promise<void> {
+): Promise<{ inserted: boolean }> {
   const email = normalizeWaitlistEmail(body.email);
   const role = body.role ?? "traveler";
   const traveler = role === "traveler";
@@ -71,7 +71,9 @@ export async function joinWaitlist(
   const serviceType = traveler ? null : body.serviceType ?? null;
   // LC-1b: the optional "somewhere else" note. `area` is the existing varchar(120); NULL = not answered.
   const area = body.otherCity?.trim() ? body.otherCity.trim() : null;
-  await db.execute(sql`
+  // `created_at` is written only on insert. A repeat sets `updated_at` and leaves `created_at`, so the two
+  // are equal only when this statement born the row. That is the invite's once-per-sign-up gate (S-22).
+  const written = await db.execute(sql`
     INSERT INTO launch_waitlist
       (id, email, market_slug, role, source, trip_type, rough_month, worry,
        contact_name, business_name, service_type, area, referrer_user_id, short_link_code,
@@ -92,7 +94,12 @@ export async function joinWaitlist(
       area                 = EXCLUDED.area,
       consent_text_version = CASE WHEN launch_waitlist.consent_at IS NULL THEN EXCLUDED.consent_text_version ELSE launch_waitlist.consent_text_version END,
       consent_at           = COALESCE(launch_waitlist.consent_at, EXCLUDED.consent_at)
+    RETURNING created_at, updated_at
   `);
+  const row = written.rows[0] as { created_at?: Date | string; updated_at?: Date | string } | undefined;
+  const created = row?.created_at ? new Date(row.created_at).getTime() : NaN;
+  const updated = row?.updated_at ? new Date(row.updated_at).getTime() : NaN;
+  return { inserted: Number.isFinite(created) && created === updated };
 }
 
 /**
