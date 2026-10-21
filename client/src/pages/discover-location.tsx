@@ -28,7 +28,18 @@ import { ExpertCard } from "@/components/expert-card";
 import { FeedWantedSlotCard } from "@/components/feed/wanted-slot-card";
 import { FeedEarnCard } from "@/components/feed/earn-card";
 import { FeedReadyMadeCard } from "@/components/feed/ready-made-card";
-import { buildFeedStream, filterFeedStream, type FeedItem } from "@/lib/feed-stream";
+import {
+  buildFeedStream,
+  filterFeedStream,
+  neighbourhoodIsUnstocked,
+  neighbourhoodSectionNeedsWantedTile,
+  neighbourhoodWantedBody,
+  NEIGHBOURHOOD_WANTED_BUTTON,
+  NEIGHBOURHOOD_WANTED_HREF,
+  placeUnstockedNeighbourhoods,
+  withoutUnstockedNeighbourhoods,
+  type FeedItem,
+} from "@/lib/feed-stream";
 import { appendCityWideReadyMadeFill } from "@/lib/feed-composition";
 import { selectBentoAnchorIndex } from "@/lib/bento-anchor";
 import {
@@ -785,8 +796,13 @@ function BentoGroup({
   onBookRec?: (c: { offeringId: string; categoryKey: string }) => void;
   recLabels?: RecLabels;
 }) {
-  const placed = buildBentoTiles(taggedRun, floatAnchor, neighbourhood, city);
-  if (placed.length === 0) return null;
+  const runItems = taggedRun.map((entry) => entry.item);
+  // Unstocked neighbourhood: heading plus one Wanted tile. Filler that is not
+  // a gem, service, expert or ready-made does not share this section — the
+  // stream places those with the stocked neighbourhoods.
+  const needsWanted = neighbourhoodSectionNeedsWantedTile(neighbourhood, runItems);
+  const placed = needsWanted ? [] : buildBentoTiles(taggedRun, floatAnchor, neighbourhood, city);
+  if (placed.length === 0 && !needsWanted) return null;
 
   const nbName: string | null = neighbourhood
     ? (neighbourhood.name ?? neighbourhood.neighborhood_name ?? neighbourhood.neighborhoodName ?? null)
@@ -814,7 +830,7 @@ function BentoGroup({
               style={{ color: "var(--earn-coral-ink)", fontFamily: EARN_MONO }}
               data-testid={`bento-eyebrow-${nbSlug}`}
             >
-              {nbName.toUpperCase()} · {placed.length}
+              {nbName.toUpperCase()} · {needsWanted ? 1 : placed.length}
             </div>
             <h3
               className="text-[22px] font-semibold leading-tight"
@@ -854,6 +870,43 @@ function BentoGroup({
         className="grid grid-cols-1 min-[560px]:grid-cols-2 min-[1000px]:grid-cols-4 min-[1000px]:auto-rows-[minmax(0,auto)] gap-[14px]"
         data-testid={nbSlug ? `bento-grid-${nbSlug}` : "bento-grid-intro"}
       >
+        {needsWanted && nbSlug && (
+          <div
+            className="h-full min-w-0"
+            data-testid={`bento-tile-wanted-${nbSlug}`}
+            data-bento-role="tile"
+            data-order={0}
+            data-col-span={1}
+            data-row-span={1}
+            data-bento-action-state="not_bookable"
+          >
+            <div
+              className="flex h-full flex-col justify-between gap-2 rounded-xl border border-dashed p-3.5"
+              style={{ borderColor: "var(--earn-gold)", background: "var(--earn-gold-wash)" }}
+              data-testid={`neighbourhood-wanted-${nbSlug}`}
+            >
+              <div className="min-w-0">
+                <div
+                  className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em]"
+                  style={{ color: "var(--earn-gold-ink)", fontFamily: EARN_MONO }}
+                >
+                  Wanted here
+                </div>
+                <p className="text-[13px] font-semibold" style={{ color: "var(--earn-ink)" }}>
+                  {neighbourhoodWantedBody(nbName ?? nbSlug)}
+                </p>
+              </div>
+              <a
+                href={NEIGHBOURHOOD_WANTED_HREF}
+                className="inline-flex w-fit items-center rounded-md px-2.5 py-1 text-[11px] font-bold text-white"
+                style={{ background: "var(--earn-gold-ink)" }}
+                data-testid={`link-neighbourhood-join-${nbSlug}`}
+              >
+                {NEIGHBOURHOOD_WANTED_BUTTON}
+              </a>
+            </div>
+          </div>
+        )}
         {placed.map((tile) => (
           <div
             key={tile.item.id}
@@ -1042,7 +1095,15 @@ function FeedRenderer({
       if (sortMode === "price_desc") tagged = sortTaggedRunByPrice(tagged, "desc");
       return { ...section, taggedRun: tagged } as GroupSection & { taggedRun: { item: FeedItem; order: number }[] };
     })
-    .filter((s) => s.type !== "group" || (s as any).taggedRun.length > 0);
+    .filter((s) => {
+      if (s.type !== "group") return true;
+      const run = (s as GroupSection & { taggedRun: { item: FeedItem }[] }).taggedRun;
+      if (run.length > 0) return true;
+      // Chip and price filters drop a section with nothing left. On the full
+      // feed an unstocked neighbourhood still renders: heading + one Wanted tile.
+      if (activeFilter !== "all" || priceFilter !== "any") return false;
+      return neighbourhoodSectionNeedsWantedTile(s.neighbourhood, run.map((entry) => entry.item));
+    });
 
   // Mono jump list — the neighbourhoods that render under the gem/price filters
   // (drop-out aware), computed BEFORE the neighbourhood-only narrowing so a
@@ -1800,11 +1861,16 @@ export default function DiscoverLocationPage() {
   // this fallback into server/services/landing-hero.compose.ts.
   const recruitmentPool = uncoveredOfferings.length > 0 ? uncoveredOfferings : (expertOfferingTypes ?? []);
 
-  // Build raw wanted-slot data (no demand counts yet)
-  const rawWantedSlotsData: WantedSlotData[] = neighborhoods.slice(0, 5).map((nb: any, idx: number) => {
+  // Build raw wanted-slot data (no demand counts yet).
+  // The first five neighbourhoods in payload order (the server orders by name)
+  // still seed the filler recruitment cards. An unstocked neighbourhood is
+  // skipped — it already has the one Wanted tile in its own section, and the
+  // slot is not handed to the next neighbourhood (no backfill).
+  const rawWantedSlotsData: WantedSlotData[] = neighborhoods.slice(0, 5).flatMap((nb: any, idx: number) => {
+    if (neighbourhoodIsUnstocked(nb)) return [];
     const nbName = nb.name ?? nb.neighborhood_name ?? nb.neighborhoodName ?? toTitleCase(city);
     const offering = recruitmentPool[idx % Math.max(recruitmentPool.length, 1)];
-    return {
+    return [{
       offeringLabel: offering?.display_name ?? "Local expert guide",
       // Gap 15: the old fallback here was the literal `"guide"`, which is not an
       // `expert_offering_types` key. It matched nothing in the demand lookup below (silently
@@ -1815,7 +1881,7 @@ export default function DiscoverLocationPage() {
       neighborhoodName: nbName,
       city,
       neighborhoodId: String(nb.id ?? nb.slug ?? nbName),
-    };
+    }];
   });
 
   // Demand counts for wanted-slot enrichment — batch fetch from /api/services/demand
@@ -1861,10 +1927,17 @@ export default function DiscoverLocationPage() {
   // STRUCTURE: the stream passes through untouched and the bento renderer
   // filters each section per-tile (chipMatches), dropping neighbourhoods with
   // no matches (Phase 2c — no more dissolved flat grid).
+  //
+  // Unstocked neighbourhoods are already in `feedItems`, in neighbourhood
+  // order, and they took no filler slot. Composition runs on the stocked
+  // stream only, so the lead expert, recommendation cadence and wanted-slot
+  // spacing stay where they were. The markers are restored after the earn
+  // card and external stubs (below), which keeps those injections on the
+  // stocked index too.
   const composedItems =
     activeFilter === "all"
       ? composeDiscoverFeed(
-          feedItems,
+          withoutUnstockedNeighbourhoods(feedItems),
           discoverySlotResult.candidates,
           wantedSlotsData,
           leadExpert,
@@ -1897,7 +1970,10 @@ export default function DiscoverLocationPage() {
     if (externalStubItems.length > 0) {
       out.splice(Math.min(12, out.length), 0, ...externalStubItems);
     }
-    return out;
+    return placeUnstockedNeighbourhoods(
+      out,
+      feedItems.filter((item) => item.kind === "neighborhood"),
+    );
   })();
 
   // ── Header: read-only "where" value (city + trip dates) ─────────────────

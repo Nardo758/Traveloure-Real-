@@ -74,6 +74,7 @@ Order of operations, per section, on the composed item list `L` (in engine order
    3. an earn panel.
    If none apply, the row stays short.
 6. **Empty section** (after chip filtering, or no items): the section does not render.
+   superseded@2026-10-20-empty-neighbourhood-wanted — on the unfiltered feed, a neighbourhood with no gems, services, local expert or ready-made still renders its heading and one Wanted tile (Join Traveloure → /earn). Chip and price filters still drop it.
 
 Filtering (§6) runs before step 1 on `L`; assembly is recomputed from the filtered list.
 

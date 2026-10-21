@@ -394,8 +394,9 @@ test.describe('Marketplace surfaces — mobile viewport (375 px)', () => {
 // ── 7. City-feed bento — /discover/location (fixture-mocked, city-feed-bento) ─
 //
 // Phase 2 of the city-feed bento lane. Fully page.route-mocked (no DB seed):
-// a committed LocationViewPayload fixture with exactly two neighbourhoods —
-// 'gion' WITH a lead local expert, 'arashiyama' WITHOUT — plus a partner
+// a committed LocationViewPayload fixture. 'gion' WITH a lead local expert,
+// 'ohara' with no gems, services, expert or ready-made (heading + one Wanted
+// tile), 'arashiyama' WITHOUT an eligible expert — plus a partner
 // external stub, a wanted slot (via offering-types + a deterministic
 // composition config), gems, services and a ready-made so spans exercise.
 //
@@ -476,6 +477,7 @@ test.describe('city-feed bento — /discover/location', () => {
     });
     await expect(page.getByTestId('city-feed')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId('bento-section-gion')).toBeVisible();
+    await expect(page.getByTestId('bento-section-ohara')).toBeVisible();
     await expect(page.getByTestId('bento-section-arashiyama')).toBeVisible();
   });
 
@@ -624,6 +626,7 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(page.getByTestId('neighbourhood-chips')).not.toBeAttached();
     await expect(page.getByTestId('neighbourhood-jump-list')).toBeVisible();
     await expect(page.getByTestId('jump-gion')).toBeVisible();
+    await expect(page.getByTestId('jump-ohara')).toBeVisible();
     await expect(page.getByTestId('jump-arashiyama')).toBeVisible();
     // Popover holds only price and sort now.
     await page.getByTestId('button-filters').click();
@@ -642,6 +645,7 @@ test.describe('city-feed bento — /discover/location', () => {
     // tile) and drop arashiyama entirely.
     await page.getByTestId('spine-chip-eat').click();
     await expect(page.getByTestId('bento-section-gion')).toBeVisible();
+    await expect(page.getByTestId('bento-section-ohara')).not.toBeAttached();
     await expect(page.getByTestId('bento-section-arashiyama')).not.toBeAttached();
     const gionTiles = page.locator('[data-testid="bento-section-gion"] [data-testid^="bento-tile-"]');
     await expect(gionTiles).toHaveCount(1);
@@ -655,6 +659,7 @@ test.describe('city-feed bento — /discover/location', () => {
     // Back to All gems: both sections return.
     await page.getByTestId('spine-chip-all').click();
     await expect(page.getByTestId('bento-section-gion')).toBeVisible();
+    await expect(page.getByTestId('bento-section-ohara')).toBeVisible();
     await expect(page.getByTestId('bento-section-arashiyama')).toBeVisible();
   });
 
@@ -664,6 +669,7 @@ test.describe('city-feed bento — /discover/location', () => {
     await page.getByTestId('bento-see-all-gion').click();
     await expect(page).toHaveURL(/[?&]neighborhood=gion(&|$)/);
     await expect(page.getByTestId('bento-section-gion')).toBeVisible();
+    await expect(page.getByTestId('bento-section-ohara')).not.toBeAttached();
     await expect(page.getByTestId('bento-section-arashiyama')).not.toBeAttached();
     // Jump-list state: gion active, an "All neighbourhoods" restore link present.
     await expect(page.getByTestId('jump-all-neighbourhoods')).toBeVisible();
@@ -681,6 +687,7 @@ test.describe('city-feed bento — /discover/location', () => {
     await page.goBack();
     await expect(page).not.toHaveURL(/neighborhood=/);
     await expect(page.getByTestId('bento-section-gion')).toBeVisible();
+    await expect(page.getByTestId('bento-section-ohara')).toBeVisible();
     await expect(page.getByTestId('bento-section-arashiyama')).toBeVisible();
     await expect(page.getByTestId('jump-all-neighbourhoods')).not.toBeAttached();
   });
@@ -951,6 +958,61 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(sheet).not.toContainText(/Tourists \d+%/);
     await expect(sheet).not.toContainText('Goes mainstream');
     await page.keyboard.press('Escape');
+  });
+
+  test('15. empty neighbourhood — heading, one Wanted tile, order preserved, stocked sections unchanged', async ({ page }) => {
+    const sectionIds = await page.locator('[data-testid^="bento-section-"]').evaluateAll((els) =>
+      els.map((el) => el.getAttribute('data-testid')),
+    );
+    expect(sectionIds).toEqual([
+      'bento-section-gion',
+      'bento-section-ohara',
+      'bento-section-arashiyama',
+      'bento-section-nishiki',
+    ]);
+
+    const jumpIds = await page.locator('[data-testid^="jump-"]').evaluateAll((els) =>
+      els.map((el) => el.getAttribute('data-testid')),
+    );
+    expect(jumpIds).toEqual(['jump-gion', 'jump-ohara', 'jump-arashiyama', 'jump-nishiki']);
+
+    await expect(page.getByTestId('bento-heading-ohara')).toHaveText('Ohara');
+    await expect(page.getByTestId('bento-eyebrow-ohara')).toHaveText('OHARA · 1');
+    await expect(page.getByTestId('neighbourhood-wanted-ohara')).toContainText(
+      "Know Ohara well? We're looking for local experts and providers here.",
+    );
+    const oharaTiles = page.locator('[data-testid="bento-section-ohara"] [data-testid^="bento-tile-"]');
+    await expect(oharaTiles).toHaveCount(1);
+    const wanted = page.getByTestId('bento-tile-wanted-ohara');
+    await expect(wanted).toHaveAttribute('data-bento-role', 'tile');
+    await expect(wanted).toHaveAttribute('data-col-span', '1');
+    await expect(wanted).toHaveAttribute('data-row-span', '1');
+    const join = page.getByTestId('link-neighbourhood-join-ohara');
+    await expect(join).toHaveText('Join Traveloure');
+    await expect(join).toHaveAttribute('href', '/earn');
+    await expect(page.getByTestId('section-recruitment-ohara')).toHaveCount(0);
+
+    await expect(
+      page.locator('[data-testid="bento-section-gion"] [data-bento-role="anchor"]'),
+    ).toHaveCount(1);
+    await expect(
+      page.locator('[data-testid="bento-section-gion"] [data-testid="section-recruitment-gion"]'),
+    ).toHaveCount(1);
+    await expect(
+      page.locator('[data-testid="bento-section-gion"] [data-testid="feed-card-gem-g-gion-1"]'),
+    ).toHaveCount(1);
+    await expect(
+      page.locator('[data-testid="bento-section-gion"] [data-testid="feed-card-rec-0"]'),
+    ).toHaveCount(1);
+    await expect(
+      page.locator('[data-testid="bento-section-arashiyama"] [data-bento-role="anchor"]'),
+    ).toHaveCount(0);
+    await expect(
+      page.locator('[data-testid="bento-section-arashiyama"] [data-testid="feed-card-rec-1"]'),
+    ).toHaveCount(1);
+    await expect(
+      page.locator('[data-testid="bento-section-nishiki"] [data-testid^="feed-card-rec-"]'),
+    ).toHaveCount(0);
   });
 });
 
