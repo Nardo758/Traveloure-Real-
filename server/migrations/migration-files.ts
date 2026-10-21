@@ -2118,7 +2118,10 @@ export const MIGRATION_FILES = [
   // 400 — Kyoto feed cleanup. Additive nullable columns on travel_pulse_hidden_gems (hidden_at, hours,
   // admission, source_url, image_credit, fact_checked_on, description_hidden_at) and travel_pulse_happening_now.hidden_at
   // (no DEFAULT/CHECK/index) plus the idempotent Kyoto hide, reword, neighbourhood and card data.
-  // The Meguro River light-up is hidden by title and not deleted. This file is 400 so it merges
-  // before #1606 (geocode cache is 401). HELD for Leon's comment. Ledger 2026-10-20-kyoto-feed-cleanup.
+  // The Meguro River light-up is hidden by title and not deleted. Ledger 2026-10-20-kyoto-feed-cleanup.
   "400_kyoto_feed_cleanup.sql",
+  // 401 — fever_address_geocodes: permanent Nominatim cache for a Fever address that has no coordinates.
+  // PK only, no DEFAULT, no CHECK, no extra index. Ledger 2026-10-21-blog-checks-fever-area. Declared in
+  // shared/schema.ts.
+  "401_fever_address_geocodes.sql",
 ] as const;

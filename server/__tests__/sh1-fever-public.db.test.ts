@@ -52,19 +52,21 @@ after(async () => {
   await pool.end().catch(() => {});
 });
 
-test("FP1: the projection is an allowlist — no pricing, Free, URL or coordinates", async () => {
+test("FP1: the projection is an allowlist — no pricing, Free, URL, coordinates or street", async () => {
   const [p] = await toPublicFeverEvents([fixture({ isFree: true, pricing: { currency: "USD", minPrice: 0 } })]);
   assert.deepEqual(Object.keys(p).sort(), [
-    "bookingToken", "category", "date", "description", "endDate", "id", "imageUrl", "isSoldOut", "priceSource",
-    "provider", "shortDescription", "subcategory", "title", "venueAddress", "venueName",
+    "areaName", "bookingToken", "category", "date", "description", "endDate", "id", "imageUrl", "isSoldOut",
+    "osmCredit", "priceSource", "provider", "shortDescription", "subcategory", "title", "venueName",
   ].sort());
   const json = JSON.stringify(p);
-  for (const banned of ["pricing", "priceRange", "minPrice", "isFree", "Free", "currency", "bookingUrl", "affiliateUrl", "partner.example.test", "coordinates", "rating"]) {
+  for (const banned of ["pricing", "priceRange", "minPrice", "isFree", "Free", "currency", "bookingUrl", "affiliateUrl", "partner.example.test", "coordinates", "rating", "1 Test Street", "venueAddress"]) {
     assert.ok(!json.includes(banned), `projection carries "${banned}"`);
   }
   assert.equal(p.priceSource, "partner");
   assert.equal(p.provider, FEVER_PROVIDER);
   assert.equal(p.venueName, "Hall One");
+  assert.equal(p.areaName, null, "0,0 is a present coordinate and is not in a Kyoto neighbourhood");
+  assert.equal(p.osmCredit, null, "a Fever point outside every radius names no OpenStreetMap area");
   assert.equal(p.date, "2026-11-01T19:00:00Z");
 });
 
