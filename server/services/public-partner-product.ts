@@ -1,6 +1,10 @@
+import { sanitizePartnerCardCopy } from "@shared/banned-copy";
+
 /**
  * PX-2 (ledger `2026-10-18-public-partner-price-strip`; decision-maker, Oct 18, 2026): what a PUBLIC read of
  * a stored partner product may carry. Pure.
+ * G-02: the same public read drops "hidden gem(s)", "secret(s)" and "geisha" from its text, and omits
+ * a product whose name is only those phrases. Admin reads do not call this.
  *
  * PX-1 stripped the partner URLs (§16). A stored partner price has no source and no as-of time either —
  * Browse already shows "See current price" instead (PX-1 ruling 3) — so it leaves the public response the
@@ -32,13 +36,16 @@ function withoutPriceKeys(value: unknown): unknown {
   return value;
 }
 
-export function toPublicPartnerProduct<T extends Record<string, unknown>>(product: T): Omit<T, Stripped> {
+export function toPublicPartnerProduct<T extends Record<string, unknown>>(product: T): Omit<T, Stripped> | null {
   const out: Record<string, unknown> = { ...product };
   for (const k of PUBLIC_PARTNER_PRODUCT_STRIPPED_FIELDS) delete out[k];
   if ("metadata" in out && out.metadata != null) out.metadata = withoutPriceKeys(out.metadata);
-  return out as Omit<T, Stripped>;
+  return sanitizePartnerCardCopy(out) as Omit<T, Stripped> | null;
 }
 
 export function toPublicPartnerProducts<T extends Record<string, unknown>>(products: T[]): Array<Omit<T, Stripped>> {
-  return products.map(toPublicPartnerProduct);
+  return products.flatMap((product) => {
+    const pub = toPublicPartnerProduct(product);
+    return pub ? [pub] : [];
+  });
 }

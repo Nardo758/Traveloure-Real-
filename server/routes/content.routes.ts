@@ -3,7 +3,7 @@ import { toPublicPartnerProducts } from "../services/public-partner-product";
 import { claimFreeDraft, promoteFreeDraft, releaseFreeDraft, freeDraftRefusalBody, freeDraftStatus, FREE_DRAFT_REFUSAL_STATUS } from "../services/free-draft-cap.service";
 import { optimizedItinerariesGate } from "../config/optimized-itineraries.config";
 import { freeDraftCopy } from "@shared/free-draft-cap";
-import { bannedCopyPromptLine } from "@shared/banned-copy";
+import { bannedCopyPromptLine, sanitizePartnerCardCopy } from "@shared/banned-copy";
 import { zodErrorBody } from "../utils/zod-error-body";
 import { getTripRole } from "../utils/trip-role";
 import { demoSeedsAllowed, demoSeedSkipMessage } from "../seeds/lib/demo-seed-gate";
@@ -8959,7 +8959,12 @@ router.get("/api/affiliate/products/:id", async (req, res) => {
         return res.status(404).json({ message: "Product not found" });
       }
       // §16: see /api/affiliate/products — public DTOs carry no partner URLs.
-      res.json({ product: isAdmin ? product : stripProductUrls([product])[0] });
+      // G-02: a public name that is only a banned phrase is the same as no product.
+      const pub = stripProductUrls([product])[0];
+      if (!isAdmin && !pub) {
+        return res.status(404).json({ message: "Product not found" });
+      }
+      res.json({ product: isAdmin ? product : pub });
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get product", error: error.message });
     }
@@ -9080,40 +9085,44 @@ router.get("/api/content/discover", async (req, res) => {
       });
 
       // ── Normalizer helpers ────────────────────────────────────────────────────
-      const normalizeAffiliate = (p: any, isPinned = false) => ({
-        id: `affiliate-${p.id}`,
-        sourceId: p.id,
-        type: "affiliate" as const,
-        contentCategory: p.category || "experience",
-        title: p.name,
-        description: p.shortDescription || p.description || "",
-        cover_image: p.imageUrl || null,
-        // PX-1 (ruling 3): a partner's STORED price has no source and no as-of time, so no number is
-        // sent — the card offers the partner's current price instead.
-        price: null,
-        price_display: null,
-        // PX-1: a stored link from before AF-2 may hold the API token; it never leaves with it.
-        affiliate_url: scrubTravelpayoutsToken(p.affiliateUrl || p.productUrl || null),
-        source: "Affiliate Partner",
-        // Item ⑤: canonical origin + disclosure label (was a hardcoded "Affiliate Partner" — G7).
-        origin: "affiliate" as const,
-        originLabel: CONTENT_ORIGIN_TRAVELER_LABEL.affiliate, // "Paid partner"
-        // Item ④: CTA classifier so the shared resolveContentCTA can pick the right button.
-        bookingType: p.bookingType ?? null,
-        availabilityStatus: p.availabilityStatus ?? null,
-        rating: p.rating ? parseFloat(String(p.rating)) : null,
-        city: p.city || null,
-        country: p.country || null,
-        duration: p.duration || null,
-        highlights: p.highlights || [],
-        metadata: p.metadata || {},
-        isPinned,
-        tracking: {
-          productId: p.id,
-          partnerId: null as string | null,
-          isAffiliateTracked: true,
-        },
-      });
+      const normalizeAffiliate = (p: any, isPinned = false) => {
+        const card = {
+          id: `affiliate-${p.id}`,
+          sourceId: p.id,
+          type: "affiliate" as const,
+          contentCategory: p.category || "experience",
+          title: p.name,
+          description: p.shortDescription || p.description || "",
+          cover_image: p.imageUrl || null,
+          // PX-1 (ruling 3): a partner's STORED price has no source and no as-of time, so no number is
+          // sent — the card offers the partner's current price instead.
+          price: null,
+          price_display: null,
+          // PX-1: a stored link from before AF-2 may hold the API token; it never leaves with it.
+          affiliate_url: scrubTravelpayoutsToken(p.affiliateUrl || p.productUrl || null),
+          source: "Affiliate Partner",
+          // Item ⑤: canonical origin + disclosure label (was a hardcoded "Affiliate Partner" — G7).
+          origin: "affiliate" as const,
+          originLabel: CONTENT_ORIGIN_TRAVELER_LABEL.affiliate, // "Paid partner"
+          // Item ④: CTA classifier so the shared resolveContentCTA can pick the right button.
+          bookingType: p.bookingType ?? null,
+          availabilityStatus: p.availabilityStatus ?? null,
+          rating: p.rating ? parseFloat(String(p.rating)) : null,
+          city: p.city || null,
+          country: p.country || null,
+          duration: p.duration || null,
+          highlights: p.highlights || [],
+          metadata: p.metadata || {},
+          isPinned,
+          tracking: {
+            productId: p.id,
+            partnerId: null as string | null,
+            isAffiliateTracked: true,
+          },
+        };
+        // G-02: drop hidden-gem / secret / geisha phrases; a title left empty is not a card.
+        return sanitizePartnerCardCopy(card);
+      };
 
       const normalizeRegistry = (r: any, isPinned = false) => {
         const meta = r.metadata || {};
@@ -9152,9 +9161,9 @@ router.get("/api/content/discover", async (req, res) => {
 
       // ── Assemble final list ───────────────────────────────────────────────────
       // Order: pinned placed items → other placed items → ILIKE fallback items
-      const placedAffiliateCards = placedAffiliate.map(p =>
-        normalizeAffiliate(p, pinnedAffiliateIds.includes(p.id))
-      );
+      const placedAffiliateCards = placedAffiliate
+        .map(p => normalizeAffiliate(p, pinnedAffiliateIds.includes(p.id)))
+        .filter((c): c is NonNullable<typeof c> => c != null);
       const placedRegistryCards = placedRegistry.map(r =>
         normalizeRegistry(r, pinnedRegistryIds.includes(r.id))
       );
@@ -9168,7 +9177,7 @@ router.get("/api/content/discover", async (req, res) => {
         ...placedRegistryCards.filter(c => !c.isPinned),
       ];
       const fallbackItems = [
-        ...affiliateItems.map(p => normalizeAffiliate(p)),
+        ...affiliateItems.map(p => normalizeAffiliate(p)).filter((c): c is NonNullable<typeof c> => c != null),
         ...registryItems.map(r => normalizeRegistry(r)),
       ];
 

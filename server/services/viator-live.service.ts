@@ -19,6 +19,7 @@ import {
   viatorEndpoint,
   type ViatorSurface,
 } from "../config/viator.config";
+import { stripPartnerCardPhrase } from "@shared/banned-copy";
 
 export const VIATOR_ATTRIBUTION = "Viator";
 
@@ -87,11 +88,15 @@ export function toViatorLiveItem(p: any, surface: ViatorSurface): ViatorLiveItem
   const productCode = typeof p?.productCode === "string" ? p.productCode : null;
   if (!productCode) return null;
   const d = p.duration ?? {};
+  const rawTitle = typeof p.title === "string" ? p.title.trim() : "";
+  const title = rawTitle ? stripPartnerCardPhrase(rawTitle) : "Activity";
+  if (!title) return null;
+  const rawDescription = typeof p.description === "string" ? p.description : null;
   return {
     id: `viator-${productCode}`,
     productCode,
-    title: typeof p.title === "string" && p.title.trim() ? p.title.trim() : "Activity",
-    description: typeof p.description === "string" ? p.description : null,
+    title,
+    description: rawDescription == null ? null : stripPartnerCardPhrase(rawDescription) || null,
     imageUrl: pickImage(p.images),
     price: num(p.pricing?.summary?.fromPrice),
     currency: typeof p.pricing?.currency === "string" ? p.pricing.currency : null,
