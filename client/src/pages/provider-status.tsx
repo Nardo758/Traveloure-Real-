@@ -1,8 +1,13 @@
 import { DashboardLayout } from "@/components/dashboard-layout";
+import {
+  ApplicationProgressCard,
+  ApplicationStatusHeader,
+  StatusActionCard,
+  statusActionButtonClass,
+} from "@/components/application-status-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import {
   CheckCircle2,
   Clock,
@@ -14,7 +19,6 @@ import {
   ShieldCheck,
   ExternalLink,
   Loader2,
-  RefreshCw,
   Globe,
   XCircle,
 } from "lucide-react";
@@ -24,6 +28,8 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect } from "react";
 import { COMPANY_CONTACT_EMAIL } from "@/lib/company-facts";
+import { applicationStatusQuery } from "@/lib/application-status-query";
+import type { ApplicationPhase } from "@shared/application-status";
 
 interface ApplicationStep {
   id: number;
@@ -36,6 +42,10 @@ interface ApplicationStep {
 
 interface ApplicationStatus {
   steps: ApplicationStep[];
+  phase?: ApplicationPhase;
+  phaseTitle?: string;
+  phaseDetail?: string;
+  currentStepId?: number | null;
   overallStatus: string;
   rejectionMessage?: string | null;
   /** #924: the most recent EARLIER rejection's feedback, kept visible after a resubmission. */
@@ -68,18 +78,18 @@ function StepDot({ status, id }: { status: string; id: number }) {
 function StepCard({ step }: { step: ApplicationStep }) {
   const bg =
     step.status === "completed" ? "bg-green-50 dark:bg-green-900/20" :
-    step.status === "in_progress" ? "bg-[#FFF5F7] dark:bg-primary/10 border border-primary" :
+    step.status === "in_progress" ? "bg-muted border border-border" :
     step.status === "failed" ? "bg-red-50 dark:bg-red-900/20 border border-red-300" :
     "bg-gray-50 dark:bg-gray-800";
 
   return (
     <div className={`p-4 rounded-lg ${bg}`}>
-      <div className="flex items-center justify-between">
-        <div>
-          <h4 className="font-semibold text-foreground dark:text-white">{step.title}</h4>
-          <p className="text-sm text-muted-foreground mt-1">{step.description}</p>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between min-w-0">
+        <div className="min-w-0">
+          <h4 className="font-semibold text-foreground dark:text-white break-words">{step.title}</h4>
+          <p className="text-sm text-muted-foreground mt-1 break-words">{step.description}</p>
         </div>
-        <div>
+        <div className="shrink-0 self-start">
           {step.status === "completed" && <Badge className="bg-green-100 text-green-700"><CheckCheck className="w-3 h-3 mr-1" />Done</Badge>}
           {step.status === "in_progress" && <Badge className="bg-amber-100 text-amber-700"><Clock className="w-3 h-3 mr-1" />In Progress</Badge>}
           {step.status === "failed" && <Badge className="bg-red-100 text-red-700"><AlertCircle className="w-3 h-3 mr-1" />Needs Attention</Badge>}
@@ -95,9 +105,9 @@ function StepCard({ step }: { step: ApplicationStep }) {
 export default function ProviderStatusPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { data: appStatus, isLoading } = useQuery<ApplicationStatus>({
+  const { data: appStatus, isLoading, isFetching } = useQuery<ApplicationStatus>({
     queryKey: ["/api/provider/application-status"],
-    refetchInterval: 10000,
+    ...applicationStatusQuery,
   });
 
   const startIdVerification = useMutation({
@@ -142,7 +152,7 @@ export default function ProviderStatusPage() {
     }
   }, []);
 
-  if (isLoading) {
+  if (isLoading || (isFetching && !appStatus?.phase)) {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center h-64">
@@ -156,34 +166,30 @@ export default function ProviderStatusPage() {
   const identityStatus = appStatus?.identityVerificationStatus ?? "pending";
   const bizStatus = appStatus?.businessVerificationStatus ?? "pending";
   const completedSteps = steps.filter(s => s.status === "completed").length;
-  const progressPercentage = steps.length > 0 ? (completedSteps / steps.length) * 100 : 0;
-  const currentStep = steps.find(s => s.status === "in_progress") || steps.find(s => s.status === "pending" || s.status === "failed");
+  const currentStep = appStatus?.currentStepId != null ? steps.find(s => s.id === appStatus.currentStepId) : undefined;
   const overallStatus = appStatus?.overallStatus ?? "pending";
-
-
-  const overallBadge = overallStatus === "approved"
-    ? <Badge className="bg-green-100 text-green-700 px-4 py-2"><CheckCircle2 className="w-4 h-4 mr-2" />Approved</Badge>
-    : overallStatus === "rejected"
-    ? <Badge className="bg-red-100 text-red-700 px-4 py-2"><AlertCircle className="w-4 h-4 mr-2" />Not Approved</Badge>
-    : <Badge className="bg-amber-100 text-amber-700 px-4 py-2"><Clock className="w-4 h-4 mr-2" />Under Review</Badge>;
+  const phase = appStatus?.phase;
+  const badgeClass = phase === "approved"
+    ? "bg-green-100 text-green-700"
+    : phase === "rejected"
+    ? "bg-red-100 text-red-700"
+    : phase === "not_started"
+    ? "bg-gray-100 text-gray-700"
+    : "bg-amber-100 text-amber-700";
+  const PhaseIcon = phase === "approved" ? CheckCircle2 : phase === "rejected" ? AlertCircle : Clock;
+  const overallBadge = appStatus?.phaseTitle
+    ? <Badge className={`${badgeClass} px-4 py-2`} data-testid="badge-application-phase"><PhaseIcon className="w-4 h-4 mr-2" />{appStatus.phaseTitle}</Badge>
+    : null;
 
   return (
     <DashboardLayout>
-      <div className="p-6 space-y-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-foreground dark:text-white" data-testid="text-page-title">
-              Service Provider Application
-            </h1>
-            <p className="text-muted-foreground mt-1">Track your business verification progress</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/provider/application-status"] })} data-testid="button-refresh">
-              <RefreshCw className="w-4 h-4" />
-            </Button>
-            {overallBadge}
-          </div>
-        </div>
+      <div className="p-4 sm:p-6 space-y-6 min-w-0 max-w-full">
+        <ApplicationStatusHeader
+          title="Service Provider Application"
+          phaseDetail={appStatus?.phaseDetail}
+          badge={overallBadge}
+          onRefresh={() => queryClient.invalidateQueries({ queryKey: ["/api/provider/application-status"] })}
+        />
 
         {overallStatus !== "rejected" && appStatus?.previousRejection?.message && (
           <Card className="border border-amber-300 bg-amber-50 dark:bg-amber-900/20" data-testid="card-previous-rejection">
@@ -200,187 +206,204 @@ export default function ProviderStatusPage() {
         )}
 
         {overallStatus === "rejected" && (
-          <Card className="border-2 border-red-300 bg-red-50 dark:bg-red-900/20" data-testid="card-rejection-feedback">
-            <CardContent className="p-6">
-              <div className="flex items-start gap-4">
-                <div className="p-3 bg-red-500 rounded-full flex-shrink-0">
-                  <XCircle className="w-6 h-6 text-white" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-red-800 dark:text-red-300">Application Not Approved</h3>
-                  <p className="text-sm text-red-700 dark:text-red-400 mt-1 leading-relaxed" data-testid="text-rejection-message">
-                    {appStatus?.rejectionMessage
-                      ? appStatus.rejectionMessage
-                      : "Your application was not approved at this time. Please review the requirements and reapply when you are ready."}
-                  </p>
-                  <p className="text-xs text-red-600 dark:text-red-400 mt-2">
-                    Address the feedback above, then update your application and resubmit. If you need more clarity, our support team is happy to help.
-                  </p>
-                  <div className="flex flex-wrap gap-3 mt-4">
-                    <Link href="/become-provider">
-                      <Button
-                        size="sm"
-                        className="bg-red-600 hover:bg-red-700 text-white"
-                        data-testid="button-resubmit-application"
-                      >
-                        <ArrowRight className="w-4 h-4 mr-2" />
-                        Update &amp; Resubmit
-                      </Button>
-                    </Link>
-                    <a href={`mailto:${COMPANY_CONTACT_EMAIL}`} data-testid="link-contact-support">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="border-red-300 text-red-700 hover:bg-red-100 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/30"
-                      >
-                        <MessageSquare className="w-4 h-4 mr-2" />
-                        Contact Support
-                      </Button>
-                    </a>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <StatusActionCard
+            testId="card-rejection-feedback"
+            toneClassName="border-2 border-red-300 bg-red-50 dark:bg-red-900/20"
+            title="Application Not Approved"
+            titleClassName="text-red-800 dark:text-red-300"
+            icon={<div className="p-3 bg-red-500 rounded-full"><XCircle className="w-6 h-6 text-white" /></div>}
+            actions={
+              <>
+                <Link href="/become-provider" className="block w-full sm:w-auto">
+                  <Button
+                    className={statusActionButtonClass("bg-red-600 hover:bg-red-700 text-white")}
+                    data-testid="button-resubmit-application"
+                  >
+                    <ArrowRight className="w-4 h-4" />
+                    Update &amp; Resubmit
+                  </Button>
+                </Link>
+                <a href={`mailto:${COMPANY_CONTACT_EMAIL}`} className="block w-full sm:w-auto" data-testid="link-contact-support">
+                  <Button
+                    variant="outline"
+                    className={statusActionButtonClass("border-red-300 text-red-700 hover:bg-red-100 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/30")}
+                  >
+                    <MessageSquare className="w-4 h-4" />
+                    Contact Support
+                  </Button>
+                </a>
+              </>
+            }
+          >
+            <p className="text-red-700 dark:text-red-400 leading-relaxed" data-testid="text-rejection-message">
+              {appStatus?.rejectionMessage
+                ? appStatus.rejectionMessage
+                : "Your application was not approved at this time. Please review the requirements and reapply when you are ready."}
+            </p>
+            <p className="text-xs text-red-600 dark:text-red-400 mt-2">
+              Address the feedback above, then update your application and resubmit. If you need more clarity, our support team is happy to help.
+            </p>
+          </StatusActionCard>
         )}
 
-        <Card className="bg-gradient-to-r from-[#FF385C] to-[#E23350] text-white">
-          <CardContent className="p-6">
-            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-              <div>
-                <h3 className="text-xl font-semibold">Verification Progress</h3>
-                <p className="text-white/80 mt-1">{completedSteps} of {steps.length} steps completed</p>
-              </div>
-              <p className="text-4xl font-bold" data-testid="text-progress-percentage">{Math.round(progressPercentage)}%</p>
-            </div>
-            <Progress value={progressPercentage} className="mt-4 h-3 bg-white/20" />
-          </CardContent>
-        </Card>
+        <ApplicationProgressCard
+          title="Verification Progress"
+          completed={completedSteps}
+          total={steps.length}
+          urgent={phase === "rejected" || identityStatus === "failed" || bizStatus === "failed" || steps.some((step) => step.status === "failed")}
+        />
 
-        {/* Owner Identity Verification */}
-        {identityStatus !== "verified" ? (
-          <Card className="border-2 border-blue-300 bg-blue-50 dark:bg-blue-900/20">
-            <CardContent className="p-6">
-              <div className="flex items-start gap-4">
-                <div className="p-3 bg-blue-600 rounded-full flex-shrink-0">
-                  <ShieldCheck className="w-6 h-6 text-white" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-foreground dark:text-white">Business Owner ID Verification</h3>
-                  {identityStatus === "pending" && <p className="text-muted-foreground mt-1">Verify your government-issued ID and take a quick selfie. Supports passports, national IDs, and driver's licenses from 100+ countries.</p>}
-                  {identityStatus === "processing" && <p className="text-amber-600 mt-1 flex items-center gap-2"><Clock className="w-4 h-4" />Processing — usually takes a few minutes.</p>}
-                  {identityStatus === "failed" && <p className="text-red-600 mt-1 flex items-center gap-2"><AlertCircle className="w-4 h-4" />Verification was unsuccessful. Please try again.</p>}
-                </div>
-                <div className="flex-shrink-0">
-                  {identityStatus === "processing" ? (
-                    <Badge className="bg-amber-100 text-amber-700"><Clock className="w-3 h-3 mr-1" />Processing</Badge>
-                  ) : (
-                    <Button
-                      className="bg-blue-600 hover:bg-blue-700 text-white"
-                      onClick={() => startIdVerification.mutate()}
-                      disabled={startIdVerification.isPending}
-                      data-testid="button-verify-identity"
-                    >
-                      {startIdVerification.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ExternalLink className="w-4 h-4 mr-2" />}
-                      {identityStatus === "failed" ? "Retry" : "Verify Owner ID →"}
-                    </Button>
-                  )}
-                </div>
+        {phase === "approved" && identityStatus !== "verified" ? (
+          <StatusActionCard
+            testId="card-identity-before-live"
+            toneClassName="border-2 border-blue-300 bg-blue-50 dark:bg-blue-900/20"
+            title="Verify your identity before a listing can go live"
+            icon={<div className="p-3 bg-blue-600 rounded-full"><ShieldCheck className="w-6 h-6 text-white" /></div>}
+            actions={
+              <Button
+                className={statusActionButtonClass("bg-blue-600 hover:bg-blue-700 text-white")}
+                onClick={() => startIdVerification.mutate()}
+                disabled={startIdVerification.isPending}
+                data-testid="button-verify-identity"
+              >
+                {startIdVerification.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ExternalLink className="w-4 h-4" />}
+                Verify Owner ID →
+              </Button>
+            }
+          >
+            <p className="text-muted-foreground">Your application is approved. A listing stays private until this check is finished.</p>
+          </StatusActionCard>
+        ) : identityStatus !== "verified" ? (
+          <StatusActionCard
+            toneClassName={
+              identityStatus === "failed"
+                ? "border-2 border-red-300 bg-red-50 dark:bg-red-900/20"
+                : "border-2 border-blue-300 bg-blue-50 dark:bg-blue-900/20"
+            }
+            title="Business Owner ID Verification"
+            icon={
+              <div className={`p-3 rounded-full ${identityStatus === "failed" ? "bg-red-600" : "bg-blue-600"}`}>
+                <ShieldCheck className="w-6 h-6 text-white" />
               </div>
-            </CardContent>
-          </Card>
-        ) : (
-          <Card className="border-2 border-green-300 bg-green-50 dark:bg-green-900/20">
-            <CardContent className="p-4 flex items-center gap-3">
-              <ShieldCheck className="w-6 h-6 text-green-600" />
-              <div>
-                <p className="font-semibold text-green-800 dark:text-green-300">Owner identity check complete</p>
-                {appStatus?.identityVerifiedAt && <p className="text-sm text-green-600">Completed on {new Date(appStatus.identityVerifiedAt).toLocaleDateString()}</p>}
-              </div>
-              <Badge className="ml-auto bg-green-100 text-green-700"><CheckCircle2 className="w-3 h-3 mr-1" />Complete</Badge>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Business Verification — Stripe Connect KYB (Persona KYB retired Aug 2026).
-            businessVerificationStatus is now derived from the provider's Stripe Connect account
-            via the account.updated webhook. Stripe performs its own KYB during Express onboarding. */}
-        {bizStatus !== "verified" ? (
-          <Card className="border-2 border-purple-300 bg-purple-50 dark:bg-purple-900/20">
-            <CardContent className="p-6">
-              <div className="flex items-start gap-3 mb-4">
-                <div className="p-3 bg-purple-600 rounded-full flex-shrink-0">
-                  <Building2 className="w-6 h-6 text-white" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-foreground dark:text-white">Business Verification</h3>
-                  {bizStatus === "pending" && (
-                    <p className="text-muted-foreground mt-1">
-                      Complete your Stripe Connect onboarding to verify your business. Stripe collects and verifies your business details directly during the secure onboarding flow.
-                    </p>
-                  )}
-                  {bizStatus === "submitted" && (
-                    <p className="text-amber-600 mt-1 flex items-center gap-2">
-                      <Clock className="w-4 h-4" />Stripe is reviewing your business details — this usually completes within a few minutes.
-                    </p>
-                  )}
-                  {bizStatus === "failed" && (
-                    <p className="text-red-600 mt-1 flex items-center gap-2">
-                      <AlertCircle className="w-4 h-4" />Business verification was unsuccessful. Retry Connect onboarding or contact support.
-                    </p>
-                  )}
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-3 mt-2">
+            }
+            actions={
+              identityStatus === "processing" ? (
+                <Badge className="bg-amber-100 text-amber-700 self-start"><Clock className="w-3 h-3 mr-1" />Processing</Badge>
+              ) : (
                 <Button
-                  className="bg-purple-600 hover:bg-purple-700 text-white"
+                  className={statusActionButtonClass(
+                    identityStatus === "failed"
+                      ? "bg-red-600 hover:bg-red-700 text-white"
+                      : "bg-blue-600 hover:bg-blue-700 text-white",
+                  )}
+                  onClick={() => startIdVerification.mutate()}
+                  disabled={startIdVerification.isPending}
+                  data-testid="button-verify-identity"
+                >
+                  {startIdVerification.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ExternalLink className="w-4 h-4" />}
+                  {identityStatus === "failed" ? "Retry" : "Verify Owner ID →"}
+                </Button>
+              )
+            }
+          >
+            {identityStatus === "pending" && <p className="text-muted-foreground">Verify your government-issued ID and take a quick selfie. Supports passports, national IDs, and driver's licenses from 100+ countries.</p>}
+            {identityStatus === "processing" && <p className="text-amber-600 flex items-start gap-2"><Clock className="w-4 h-4 shrink-0 mt-0.5" />Processing — usually takes a few minutes.</p>}
+            {identityStatus === "failed" && <p className="text-red-600 flex items-start gap-2"><AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />Verification was unsuccessful. Please try again.</p>}
+          </StatusActionCard>
+        ) : (
+          <StatusActionCard
+            toneClassName="border-2 border-green-300 bg-green-50 dark:bg-green-900/20"
+            title="Owner identity check complete"
+            titleClassName="text-green-800 dark:text-green-300"
+            icon={<ShieldCheck className="w-6 h-6 text-green-600" />}
+            actions={<Badge className="bg-green-100 text-green-700 self-start"><CheckCircle2 className="w-3 h-3 mr-1" />Complete</Badge>}
+          >
+            {appStatus?.identityVerifiedAt ? <p className="text-green-600">Completed on {new Date(appStatus.identityVerifiedAt).toLocaleDateString()}</p> : null}
+          </StatusActionCard>
+        )}
+
+        {/* Business Verification — shown once identity is done, or after the application itself is approved.
+            While identity is the open step this card is omitted so two steps are not current at once. */}
+        {(identityStatus === "verified" || phase === "approved") && (bizStatus !== "verified" ? (
+          <StatusActionCard
+            toneClassName={
+              bizStatus === "failed"
+                ? "border-2 border-red-300 bg-red-50 dark:bg-red-900/20"
+                : "border-2 border-purple-300 bg-purple-50 dark:bg-purple-900/20"
+            }
+            title="Business Verification"
+            icon={
+              <div className={`p-3 rounded-full ${bizStatus === "failed" ? "bg-red-600" : "bg-purple-600"}`}>
+                <Building2 className="w-6 h-6 text-white" />
+              </div>
+            }
+            actions={
+              <>
+                <Button
+                  className={statusActionButtonClass(
+                    bizStatus === "failed"
+                      ? "bg-red-600 hover:bg-red-700 text-white"
+                      : "bg-purple-600 hover:bg-purple-700 text-white",
+                  )}
                   onClick={() => startConnectOnboarding.mutate()}
                   disabled={startConnectOnboarding.isPending || bizStatus === "submitted"}
                   data-testid="button-start-connect-onboarding"
                 >
                   {startConnectOnboarding.isPending
-                    ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    : <ExternalLink className="w-4 h-4 mr-2" />}
+                    ? <Loader2 className="w-4 h-4 animate-spin" />
+                    : <ExternalLink className="w-4 h-4" />}
                   {bizStatus === "failed" ? "Retry Connect Onboarding" : "Complete Connect Onboarding →"}
                 </Button>
                 {bizStatus === "failed" && (
-                  <a href={`mailto:${COMPANY_CONTACT_EMAIL}`}>
-                    <Button variant="outline" className="border-red-300 text-red-700 hover:bg-red-50 dark:border-red-700 dark:text-red-400">
-                      <MessageSquare className="w-4 h-4 mr-2" />Contact Support
+                  <a href={`mailto:${COMPANY_CONTACT_EMAIL}`} className="block w-full sm:w-auto">
+                    <Button variant="outline" className={statusActionButtonClass("border-red-300 text-red-700 hover:bg-red-50 dark:border-red-700 dark:text-red-400")}>
+                      <MessageSquare className="w-4 h-4" />Contact Support
                     </Button>
                   </a>
                 )}
-              </div>
-            </CardContent>
-          </Card>
+                {bizStatus === "submitted" && (
+                  <Badge className="bg-amber-100 text-amber-700 self-start"><Clock className="w-3 h-3 mr-1" />Processing</Badge>
+                )}
+              </>
+            }
+          >
+            {bizStatus === "pending" && (
+              <p className="text-muted-foreground">
+                Complete your Stripe Connect onboarding to verify your business. Stripe collects and verifies your business details directly during the secure onboarding flow.
+              </p>
+            )}
+            {bizStatus === "submitted" && (
+              <p className="text-amber-600 flex items-start gap-2">
+                <Clock className="w-4 h-4 shrink-0 mt-0.5" />Stripe is reviewing your business details — this usually completes within a few minutes.
+              </p>
+            )}
+            {bizStatus === "failed" && (
+              <p className="text-red-600 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />Business verification was unsuccessful. Retry Connect onboarding or contact support.
+              </p>
+            )}
+          </StatusActionCard>
         ) : (
-          <Card className="border-2 border-green-300 bg-green-50 dark:bg-green-900/20">
-            <CardContent className="p-4 flex items-center gap-3">
-              <Globe className="w-6 h-6 text-green-600" />
-              <div>
-                <p className="font-semibold text-green-800 dark:text-green-300">Business check complete</p>
-                <p className="text-sm text-green-600">Completed through Stripe Connect</p>
-              </div>
-              <Badge className="ml-auto bg-green-100 text-green-700"><CheckCircle2 className="w-3 h-3 mr-1" />Complete</Badge>
-            </CardContent>
-          </Card>
-        )}
+          <StatusActionCard
+            toneClassName="border-2 border-green-300 bg-green-50 dark:bg-green-900/20"
+            title="Business check complete"
+            titleClassName="text-green-800 dark:text-green-300"
+            icon={<Globe className="w-6 h-6 text-green-600" />}
+            actions={<Badge className="bg-green-100 text-green-700 self-start"><CheckCircle2 className="w-3 h-3 mr-1" />Complete</Badge>}
+          >
+            <p className="text-green-600">Completed through Stripe Connect</p>
+          </StatusActionCard>
+        ))}
 
         {currentStep && (
-          <Card className="border-2 border-primary bg-[#FFF5F7] dark:bg-primary/10">
-            <CardContent className="p-6">
-              <div className="flex items-start gap-4">
-                <div className="p-3 bg-primary rounded-full">
-                  <Clock className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-foreground dark:text-white">Current Step: {currentStep.title}</h3>
-                  <p className="text-muted-foreground mt-1">{currentStep.description}</p>
-                  {currentStep.note && <p className="text-amber-600 mt-2 flex items-center gap-2"><AlertCircle className="w-4 h-4" />{currentStep.note}</p>}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <StatusActionCard
+            toneClassName="border border-border bg-muted"
+            title={`Current Step: ${currentStep.title}`}
+            icon={<div className="p-3 bg-muted-foreground/80 rounded-full"><Clock className="w-6 h-6 text-white" /></div>}
+          >
+            <p className="text-muted-foreground">{currentStep.description}</p>
+            {currentStep.note && <p className="text-amber-600 mt-2 flex items-start gap-2"><AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />{currentStep.note}</p>}
+          </StatusActionCard>
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

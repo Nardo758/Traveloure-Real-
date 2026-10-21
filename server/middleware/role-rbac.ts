@@ -7,6 +7,8 @@ import { eq } from "drizzle-orm";
 // by isEA, not an expert-family member). EA pages consume /api/ea/* only, so dropping EA
 // from the expert family removes unused server surface, not a working path.
 import { isExpertRole, isProviderRole, isEarnerRole } from "@shared/roles";
+import { listingWriteRefusal } from "@shared/application-status";
+import { readSupplyAccount } from "../services/pending-supply-account";
 
 /**
  * isExpert — middleware that allows only expert-role users and admins.
@@ -49,6 +51,10 @@ export const isExpert = async (req: any, res: any, next: any) => {
  *
  * Queries the database for the real role — never trusts session claims alone.
  * Returns 401 if unauthenticated, 403 if wrong role.
+ *
+ * Pending draft saves do not go through this gate. `POST /api/vendors` and every other
+ * `isEarner` caller stay closed to `users.role = user`. The services prefix uses
+ * `isEarnerOrPendingDraft`.
  */
 export const isEarner = async (req: any, res: any, next: any) => {
   if (typeof req.isAuthenticated !== "function" || !req.isAuthenticated()) {
@@ -66,6 +72,32 @@ export const isEarner = async (req: any, res: any, next: any) => {
     next();
   } catch (err) {
     console.error("isEarner middleware error:", err);
+    return res.status(500).json({ message: "Authorization check failed" });
+  }
+};
+
+/**
+ * Services prefix only. An earner or admin passes. A pending applicant (`users.role = user`
+ * with an open application) may pass so they can save a private draft. Publish and submit
+ * stay refused in the handlers. An account with no open application still stops here.
+ */
+export const isEarnerOrPendingDraft = async (req: any, res: any, next: any) => {
+  if (typeof req.isAuthenticated !== "function" || !req.isAuthenticated()) {
+    return res.status(401).json({ message: "Authentication required" });
+  }
+  const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+  if (!userId) {
+    return res.status(401).json({ message: "Authentication required" });
+  }
+  try {
+    const [row] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId));
+    if (row && (isEarnerRole(row.role) || row.role === "admin")) return next();
+    const account = await readSupplyAccount(userId);
+    if (account.canSaveDraftListing) return next();
+    const decision = listingWriteRefusal(account, { draft: true, enteringReview: false, statusActive: false });
+    return res.status(403).json(decision ?? { message: "Expert or provider access required", code: "APPLICATION_REQUIRED" });
+  } catch (err) {
+    console.error("isEarnerOrPendingDraft middleware error:", err);
     return res.status(500).json({ message: "Authorization check failed" });
   }
 };

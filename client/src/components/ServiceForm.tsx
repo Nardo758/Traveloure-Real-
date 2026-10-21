@@ -321,6 +321,8 @@ interface ServiceFormProps {
   role: "expert" | "provider";
   id?: string;
   onSuccess?: (serviceId: string) => void;
+  /** Pending accounts save a private draft. Publish and submit stay hidden. */
+  draftOnly?: boolean;
 }
 
 /**
@@ -696,7 +698,7 @@ function PricingFeesHomeLink({ id }: { id?: string }) {
   );
 }
 
-export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
+export function ServiceForm({ role, id, onSuccess, draftOnly = false }: ServiceFormProps) {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const { user } = useAuth();
@@ -1368,7 +1370,8 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   };
 
   const createMutation = useMutation({
-    mutationFn: async (submitAction: "draft" | "submit" | "publish") => {
+    mutationFn: async (submitActionIn: "draft" | "submit" | "publish") => {
+      const submitAction = draftOnly ? "draft" : submitActionIn;
       // In-person / hybrid services must tell the traveler WHERE to meet before they go live.
       // Enforced at submit/publish only — a draft is allowed to be incomplete. Existing listings
       // are grandfathered until their next submit/publish (the has_insurance/F2 precedent).
@@ -1802,6 +1805,17 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           variant: "destructive",
         });
       }
+      if (draftOnly) {
+        const savedId: string | undefined = service?.id ?? id;
+        if (!isEditMode) { clearAutosave(); setAutosaveRestoredAt(null); }
+        toast({
+          title: "Draft saved",
+          description: "This listing stays private until your application is approved.",
+        });
+        if (savedId) navigate(`/dashboard/listing/${savedId}`);
+        return;
+      }
+
       if (role === "expert") {
         queryClient.invalidateQueries({ queryKey: ["/api/expert/service-listings"] });
       }
@@ -2223,7 +2237,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   // Submit for review, gated on the SAME `missingForFinal` the wizard's own final step already
   // uses (never a forked "is this ready" opinion) + links to the drawers this lane does not
   // rebuild (photos, deliverable, availability — all pre-existing surfaces).
-  if (isEditMode && role === "provider" && viewListingHome && existingService) {
+  if (isEditMode && role === "provider" && viewListingHome && existingService && !draftOnly) {
     const price = effectivePriceScalar({
       priceType: formData.priceType,
       basePrice: formData.basePrice,
@@ -2775,7 +2789,18 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           exists to prevent. The mock's A1 copy is adopted without its "usually within 2
           business days" clause until #7 is answered. This is COPY ONLY — no gate, no
           lifecycle change; the write path is untouched. ── */}
-      {!isEditMode && (
+      {draftOnly && (
+        <div
+          className="flex items-start gap-3 p-3 rounded-lg border border-blue-200 bg-blue-50 text-sm text-blue-900"
+          data-testid="notice-draft-until-approved"
+        >
+          <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          <p>
+            This listing is a draft. It cannot be published or shown publicly until your application is approved. Save it here and come back any time.
+          </p>
+        </div>
+      )}
+      {!isEditMode && !draftOnly && (
         <div
           className="flex items-start gap-3 p-3 rounded-lg border border-blue-200 bg-blue-50 text-sm text-blue-900"
           data-testid="notice-review-before-live"
@@ -5131,9 +5156,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             <Button
               variant="ghost"
               onClick={() =>
-                // Ruling 113: backing OUT of a provider CREATE flow returns to the Workstation
-                // (creation area). Edits — and the expert console — still land on the catalog.
-                navigate(!isEditMode && role === "provider" ? "/provider/workstation" : `/${role}/services`)
+                draftOnly
+                  ? navigate("/dashboard")
+                  // Ruling 113: backing OUT of a provider CREATE flow returns to the Workstation
+                  // (creation area). Edits — and the expert console — still land on the catalog.
+                  : navigate(!isEditMode && role === "provider" ? "/provider/workstation" : `/${role}/services`)
               }
               disabled={createMutation.isPending}
             >
@@ -5186,6 +5213,10 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               >
                 Next: {STEP_SHORT_TITLES[flow[effectiveStep]]}
               </Button>
+            ) : draftOnly ? (
+              <p className="text-xs text-muted-foreground sm:text-right" data-testid="text-draft-only-last-step">
+                Saving a draft is the last step until your application is approved.
+              </p>
             ) : role === "expert" ? (
               <Button
                 className="bg-primary hover:bg-primary/90"
@@ -5230,7 +5261,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           </div>
 
           {/* D-12 AMENDED: the mock's own Save-draft copy, stated beside the restored button. */}
-          {!isEditMode && (
+          {!isEditMode && !draftOnly && (
             <p className="text-xs text-muted-foreground sm:text-right" data-testid="text-footer-autosave">
               Saving creates the listing. You can leave and come back — nothing is lost, and review
               has not started.
