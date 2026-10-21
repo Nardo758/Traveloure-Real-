@@ -27,7 +27,7 @@ Exactly one tile type per feed item kind. Type determines span, content contract
 |---|---|---|---|---|---|---|---|
 | **Anchor** | lead expert (§2) | 2×2 | cover image, dark gradient overlay; gradient only if no image | none | role eyebrow (`LOCAL EXPERT`) + Fraunces 28 name | one-line bio (≤ 120 chars, truncate) | coral `Plan with {first name}[ · from $N]` · outline `View profile` |
 | **Ready-made** | ready-made / expert template | 2×1, photo-left 40% | listing image; gradient fallback | `READY-MADE · {N} DAYS` | coral eyebrow theme + title | `{City} · {N} days` then `$X · ★ r (n) · s sold` | teal `Get this trip` |
-| **Gem** | `gems[]` | 1×1 | image; tinted gradient fallback | `HIDDEN GEM` (green) + `Trending` (gold) when score ≥ 85 | name | `gem score {N} · best for {x}` | navy `Add to trip` · outline `Ask an expert` |
+| **Gem** | `gems[]` | 1×1 | image; tinted gradient fallback | `QUIETER SPOT` (green) | name | `gem score {N} · best for {x}` | navy `Add to trip` · outline `Ask an expert` |
 | **Service** | `services[]`, platform recommendation | 1×1 | image; gradient fallback | kind (`GUIDED WALK`, `PHOTOGRAPHY`…) + price pill `$N` | name | `{duration} · {source}` | teal `Book now` · navy `Add to trip` |
 | **Partner** | affiliate recommendation | 1×1 | image; gradient fallback | `PAID PARTNER` (gold) + price pill | name | `via {Partner}` or `recommended for this trip type` | gold `Book on {Partner}` (`Book on partner` if unnamed) · navy `Add to trip` |
 | **External** | external stub | 1×1 | dusk gradient (never an image we don't own) | `FROM THE WEB · NOT BOOKABLE HERE` | name | source domain + attribution line | outline `View source` only |
@@ -39,7 +39,7 @@ Rules:
 - A tile is never a different span than its type says. No stretching, no demotion.
 - A tile with no image gets a tinted gradient keyed to its kind; no glyph or emoji in the band.
 - Partner and External tiles **never** link to a storefront (§13/§16).
-- `Trending` requires `gemScore ≥ 85` on the 0–100 scale; `gemScore` of `0` or null means unscored (no badge, no fact).
+- A gem score of `0` or null means unscored (no score in the meta line).
 
 ---
 
@@ -108,7 +108,7 @@ Three states, decided by the item, never by position:
 - **Bodiless tiles** (wanted slot, earn/concierge/add-on panels — no detail page to open) carry a **mono text link** instead: `More info →` in Geist Mono, `--earn-teal-ink`, under the meta line, same treatment as the source row — never bordered, never colored as a button.
 - Never both: a tile with a tappable body shows the `ⓘ` cue; a bodiless panel shows the mono link. One info path per tile.
 
-Color note: **green (`--earn-green`) is status-only** — `✓ In your trip`, the `Hidden gem` tag — and never appears on a button or a link. The five hues each mean one thing: coral = the section's one primary CTA, teal = platform-bookable, gold = affiliate, navy = add/secondary, green = owned/confirmed status. No sixth color, no reuse.
+Color note: **green (`--earn-green`) is status-only** — `✓ In your trip`, the `Quieter spot` tag — and never appears on a button or a link. The five hues each mean one thing: coral = the section's one primary CTA, teal = platform-bookable, gold = affiliate, navy = add/secondary, green = owned/confirmed status. No sixth color, no reuse.
 
 ---
 
