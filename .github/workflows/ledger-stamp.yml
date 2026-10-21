@@ -1,11 +1,13 @@
 name: Ledger Stamp
 
 # CI-1 Phase 1 — POST-MERGE R-NUMBER STAMPING (decision-maker rulings, Oct 12, 2026; ledger
-# `2026-10-12-ci1-post-merge-stamp`). PRs merge with their ledger rows still `R?`. After each merge
-# to main that touches docs/DECISIONS.md, this job:
-#   1. moves every `R?` row to the end of the ledger and numbers it (scripts/assign-r-numbers.cjs --stamp),
-#      appending `; merged <sha7>` to its citation cell and replacing `R?` on CLAUDE.md lines naming its slug;
-#   2. refuses to commit anything outside docs/DECISIONS.md and CLAUDE.md;
+# `2026-10-12-ci1-post-merge-stamp`; one file per ruling, `2026-10-21-ledger-one-file`).
+# PRs merge with each new row still `R?` in its own `docs/decisions/pending/<id>.md`. After each
+# merge to main that touches docs/decisions/, this job:
+#   1. numbers every pending file and moves it to docs/decisions/<seq>-<id>.md
+#      (scripts/assign-r-numbers.cjs --stamp), appending `; merged <sha7>` to its citation cell
+#      and replacing `R?` on CLAUDE.md lines naming its slug;
+#   2. refuses to commit anything outside docs/decisions/ and CLAUDE.md;
 #   3. runs the ledger lint with --require-assigned and stamps ONLY if it passes;
 #   4. pushes a docs-only `[skip ci]` commit as the Ledger Stamp GitHub App — the ruleset's sole bypass
 #      actor — so the stamp triggers no gates and needs no merge-main push.
@@ -22,7 +24,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'docs/DECISIONS.md'
+      - 'docs/decisions/**'
   workflow_dispatch:
     inputs:
       auth_dry_run:
@@ -207,15 +209,23 @@ jobs:
             git fetch -q "$REMOTE" main
             git reset -q --hard FETCH_HEAD
             node scripts/assign-r-numbers.cjs --stamp | tee /tmp/stamp.txt
-            if git diff --quiet; then
+            # Untracked seq files count: `git diff` does not show them, and `git commit -a` would drop them.
+            if git diff --quiet && [ -z "$(git ls-files --others --exclude-standard -- docs/decisions CLAUDE.md)" ]; then
               echo "Nothing left to number (another run stamped it)."
               echo "stamped=" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            # Two files, never more.
-            OUTSIDE=$(git diff --name-only | grep -v -x -e 'docs/DECISIONS.md' -e 'CLAUDE.md' || true)
+            # The stamp rewrites decision files (a pending file moves to its seq name) and CLAUDE.md. Nothing else.
+            # `git commit -a` does not pick up the new seq file, so stage those paths explicitly.
+            git add -A -- docs/decisions CLAUDE.md
+            OUTSIDE=$(
+              { git diff --cached --name-only; git diff --name-only; } \
+                | grep -v -x -e 'CLAUDE.md' \
+                | grep -v -E '^docs/decisions/' \
+                | grep -v '^$' || true
+            )
             if [ -n "$OUTSIDE" ]; then
-              echo "::error::The stamp changed files outside docs/DECISIONS.md and CLAUDE.md: $OUTSIDE"
+              echo "::error::The stamp changed files outside docs/decisions/ and CLAUDE.md: $OUTSIDE"
               exit 1
             fi
             if ! node scripts/check-decision-guards.cjs --require-assigned > /tmp/lint-after.txt 2>&1; then
@@ -224,7 +234,7 @@ jobs:
               exit 1
             fi
             NUMBERS=$(grep -E '^R[0-9]+ ' /tmp/stamp.txt | tr '\n' ' ' | sed 's/  */ /g; s/ $//')
-            git commit -q -am "ledger: stamp ${NUMBERS} [skip ci]"
+            git commit -q -m "ledger: stamp ${NUMBERS} [skip ci]"
             if git push -q "$REMOTE" HEAD:main; then
               echo "stamped=${NUMBERS}" >> "$GITHUB_OUTPUT"
               {

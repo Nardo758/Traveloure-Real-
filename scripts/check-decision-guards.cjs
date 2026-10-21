@@ -2,10 +2,15 @@
 /**
  * Decision-ledger guard lint (ruling 26, sharpened by ruling 27).
  *
- * Parses docs/DECISIONS.md for `[guarded: name, name2]` tags and verifies every
+ * Parses the ledger for `[guarded: name, name2]` tags and verifies every
  * named guard actually RUNS IN CI — i.e. the guard name appears in at least one
  * .github/workflows/*.yml file. A script not wired into CI is not a guard
  * (ruling 27: "script-only = MISSING").
+ *
+ * The ledger is one file per ruling under `docs/decisions/` (sequenced
+ * `<seq>-<id>.md`, then `docs/decisions/pending/<id>.md`) plus the preamble
+ * `docs/DECISIONS.md` (rules, lane-local list, guard registry). A PR adds a
+ * pending file and does not append a row to the preamble.
  *
  * EVERY [guarded:] TAG IS READ (GW-1, ledger `2026-10-12-gw1-guard-tags`). Until GW-1 only a tag that
  * stood ALONE in its cell was parsed, so 458 of 537 guarded rows — every row with a note after the tag —
@@ -34,8 +39,8 @@
  *       "never reused"). The frozen set is read from the ledger's own numeric rows.
  *   (d) UNASSIGNED rows (ledger `2026-09-29-r-number-at-merge`): a row may be authored with the
  *       placeholder `**R? —` and `numeric citation R?`. It carries no number, so it cannot collide;
- *       the pair must still agree, and `scripts/assign-r-numbers.cjs --write` numbers it as the last
- *       step before merge. `--require-assigned` (run on pushes to main only) fails while any `R?`
+ *       the pair must still agree, and `scripts/assign-r-numbers.cjs --stamp` numbers it after
+ *       merge by rewriting that pending file. `--require-assigned` (the post-merge stamp only) fails while any `R?`
  *       remains, so a forgotten assignment is seen on the first main build, never silently kept.
  *   (e) ORDER (ledger `2026-10-03-r-number-order`): from the first row citing R`R_ORDER_FLOOR` or
  *       above, every later numbered row must cite a HIGHER number than the one before it in file
@@ -56,7 +61,6 @@ const fs = require("fs");
 const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
-const LEDGER = path.join(ROOT, "docs", "DECISIONS.md");
 const WORKFLOW_DIR = path.join(ROOT, ".github", "workflows");
 
 /**
@@ -103,7 +107,9 @@ function collectWorkflowText(dir) {
  * that named the number. Three such collisions happened in one night (rows 120/121/122). The
  * numeric series stays valid forever — those ids are cited across the briefs and must not move.
  */
-const ID_ALT = String.raw`\d{4}-\d{2}-\d{2}-[a-z0-9][a-z0-9-]*|\d+|R-[A-Z]`;
+// A dot is legal in a slug: `2026-08-31-landing-v2.5-close-out` is a real row. The
+// class stays tight enough that a guard-registry line (`| no conflict markers |`) does not match.
+const ID_ALT = String.raw`\d{4}-\d{2}-\d{2}-[a-z0-9][a-z0-9.-]*|\d+|R-[A-Z]`;
 const ROW_ID_RE = new RegExp(String.raw`^\|\s*(${ID_ALT})\s*\|\s*[\d-]+\s*\|\s*(\[[^\]]+\])\s*\|`);
 const ROW_ID_PREFIX_RE = new RegExp(String.raw`^\|\s*(${ID_ALT})\s*\|`);
 /**
@@ -303,6 +309,22 @@ function rowCells(line) {
   return line.trim().replace(/^\|/, "").replace(/\|$/, "").split(" | ").map((c) => c.trim());
 }
 
+/** True when the heading or the citation cell still carries the `R?` placeholder. */
+function isPlaceholderRow(line) {
+  if (!ROW_ID_PREFIX_RE.test(line)) return false;
+  const cells = rowCells(line);
+  return /^\*\*R\? —/.test(cells[3] ?? "") || /^numeric citation R\?(?![\w])/.test(cells[cells.length - 1] ?? "");
+}
+
+/** The two placeholder sides, so a half-placeholder (one side numbered) can be refused. */
+function placeholderSides(line) {
+  const cells = rowCells(line);
+  return {
+    headQ: /^\*\*R\? —/.test(cells[3] ?? ""),
+    citeQ: /^numeric citation R\?(?![\w])/.test(cells[cells.length - 1] ?? ""),
+  };
+}
+
 /** Ordering is enforced from this R-number on (rule e). Earlier rows are unchecked history. */
 const R_ORDER_FLOOR = 269;
 
@@ -389,7 +411,7 @@ function lintLedger({ ledgerText, workflowText, requireAssigned = false, knownDu
   const r = lintRNumbers(ledgerText);
   failures.push(...r.failures);
   if (requireAssigned && r.unassigned.length) {
-    failures.push(`Unassigned R-number (R?) on ${r.unassigned.length} row(s): ${r.unassigned.join(", ")} — run \`node scripts/assign-r-numbers.cjs --write\` (ledger \`2026-09-29-r-number-at-merge\`).`);
+    failures.push(`Unassigned R-number (R?) on ${r.unassigned.length} row(s): ${r.unassigned.join(", ")} — the post-merge stamp (\`node scripts/assign-r-numbers.cjs --stamp\`) numbers \`docs/decisions/pending/\` (ledger \`2026-09-29-r-number-at-merge\`).`);
   }
 
   const wiring = { workflowText, tests, reachable, workflowFiles, jobIds, configs };
@@ -583,25 +605,38 @@ function selfTest() {
     && gwUng.failures.length === 0 && gwUng.notes.some((n) => n.includes("UNGUARDED since R354"))
     && gwRet.failures.length === 0 && gwRet.notes.some((n) => n.includes("retired with R354"))
     && gwTested.failures.length === 0;
-  if (!ok || !ok2 || !ok3 || !ok4 || !ok5 || !ok6 || !ok7 || !ok8 || !ok9 || !ok10 || !ok11 || !ok12 || !ok13 || !ok14 || !ok15 || !ok16 || !ok17 || !ok18) {
+  // (o) a dotted slug is a row id (`2026-08-31-landing-v2.5-close-out`); a registry line is not.
+  const ok19 = ROW_ID_PREFIX_RE.test("| 2026-08-31-landing-v2.5-close-out | 2026-08-31 | [advisory] | x | y |")
+    && !ROW_ID_PREFIX_RE.test("| no conflict markers in tracked files | x |");
+  if (!ok || !ok2 || !ok3 || !ok4 || !ok5 || !ok6 || !ok7 || !ok8 || !ok9 || !ok10 || !ok11 || !ok12 || !ok13 || !ok14 || !ok15 || !ok16 || !ok17 || !ok18 || !ok19) {
     console.error("SELF-TEST FAILED", {
-      ok, ok2, ok3, ok4, ok5, ok6, ok7, ok8, ok9, ok10, ok11, ok12, ok13, ok14, ok15, ok16, ok17, ok18, gwPass, gwFail,
+      ok, ok2, ok3, ok4, ok5, ok6, ok7, ok8, ok9, ok10, ok11, ok12, ok13, ok14, ok15, ok16, ok17, ok18, ok19, gwPass, gwFail,
       textDupe: textDupe.failures, rOnlyDupe: rOnlyDupe.failures, known: known.failures, stale: stale.failures, rBad: rBad.failures, rAsc: rAsc.failures, rLate: rLate.failures,
       failures, warnings, dupe: dupe.failures, bad: bad.failures,
       slugGhost: slugGhost.failures, slugDupe: slugDupe.failures, slugBad: slugBad.failures,
     });
     process.exit(1);
   }
-  console.log("self-test OK (comment/job-name negatives, block scalars, malformed rows, date-slug ids incl. duplicate + malformed, R-number citation/duplicate/frozen-reuse, lane-local list incl. stale, R? placeholder + --require-assigned, R-number order from the floor, duplicate ids on rows with text after the tag + R-only copies + printed shrinking baseline, [guarded:] tags with text after them incl. reachable tests, job ids, runner configs, prose parts, none, retired and unguarded)");
+  console.log("self-test OK (comment/job-name negatives, block scalars, malformed rows, date-slug ids incl. duplicate + malformed + a dotted slug, R-number citation/duplicate/frozen-reuse, lane-local list incl. stale, R? placeholder + --require-assigned, R-number order from the floor, duplicate ids on rows with text after the tag + R-only copies + printed shrinking baseline, [guarded:] tags with text after them incl. reachable tests, job ids, runner configs, prose parts, none, retired and unguarded)");
   process.exit(0);
 }
 
-module.exports = { lintRNumbers, rowCells, readLaneLocalRows, ROW_ID_PREFIX_RE };
+module.exports = {
+  lintRNumbers,
+  rowCells,
+  readLaneLocalRows,
+  ROW_ID_PREFIX_RE,
+  KNOWN_DUPLICATE_IDS,
+  isPlaceholderRow,
+  placeholderSides,
+  ID_ALT,
+};
 if (require.main !== module) return;
 
 if (process.argv.includes("--self-test")) selfTest();
 
-const ledgerText = fs.readFileSync(LEDGER, "utf8");
+const { assembleLedgerText } = require("./ledger-files.cjs");
+const ledgerText = assembleLedgerText();
 const workflowText = collectWorkflowText(WORKFLOW_DIR);
 const requireAssigned = process.argv.includes("--require-assigned");
 const wired = require("./check-test-files-wired.cjs");

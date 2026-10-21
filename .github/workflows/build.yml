@@ -3340,10 +3340,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/assign-r-numbers.cjs --self-test
       # 
-      - name: ledger-union-merge · Ledger union-merge self-test
+      - name: ledger-files · One file per ruling self-test
         if: ${{ !cancelled() }}
         run: node scripts/check-ledger-union-merge.cjs --self-test
-      - name: ledger-union-merge · Ledger union-merge config guard
+      - name: ledger-files · One file per ruling (no shared ledger line)
         if: ${{ !cancelled() }}
         run: node scripts/check-ledger-union-merge.cjs
       # 
