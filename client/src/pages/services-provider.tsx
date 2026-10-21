@@ -137,7 +137,7 @@ function AttestationField({
 }) {
   return (
     <fieldset className="space-y-2">
-      <legend className="text-sm font-medium text-[#374151]">{legend}</legend>
+      <legend className="text-sm font-medium text-foreground">{legend}</legend>
       <RadioGroup
         value={value === true ? "yes" : value === false ? "na" : ""}
         onValueChange={(next) => onChange(next === "yes")}
@@ -145,11 +145,11 @@ function AttestationField({
       >
         <div className="flex items-start gap-3">
           <RadioGroupItem value="yes" id={`${name}-yes`} data-testid={`radio-${name}-yes`} className="mt-0.5" />
-          <label htmlFor={`${name}-yes`} className="text-sm text-[#374151]">{yesLabel}</label>
+          <label htmlFor={`${name}-yes`} className="text-sm text-foreground">{yesLabel}</label>
         </div>
         <div className="flex items-start gap-3">
           <RadioGroupItem value="na" id={`${name}-na`} data-testid={`radio-${name}-na`} className="mt-0.5" />
-          <label htmlFor={`${name}-na`} className="text-sm text-[#374151]">{ATTESTATION_NOT_APPLICABLE}</label>
+          <label htmlFor={`${name}-na`} className="text-sm text-foreground">{ATTESTATION_NOT_APPLICABLE}</label>
         </div>
       </RadioGroup>
     </fieldset>
