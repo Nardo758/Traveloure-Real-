@@ -31,6 +31,7 @@ import { planSuggestionEmailAutomation } from "../automations/messaging/plan-sug
 import { getPlatformFlag, FLAG_EMAIL_NOTIFICATIONS_ENABLED } from "./platform-flags";
 import { escHtml, stripCrLf } from "../utils/email-escape";
 import { reconciliationKindLabel } from "@shared/reconciliation-kinds";
+import { shapeAdminDigestLists } from "./admin-digest-shape";
 
 let cachedClient: Resend | null = null;
 function createClient(key: string): Resend {
@@ -1138,6 +1139,7 @@ interface DigestNotification {
   id: number;
   message: string;
   destination?: string | null;
+  createdAt?: Date | string | null;
 }
 
 interface DigestExpert {
@@ -1236,7 +1238,16 @@ export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<v
   const baseUrl = getAppBaseUrl();
   const date = new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
-  const notifRows = params.unresolvedNotifications
+  // Same collapse and dedupe the scheduler applies, so a caller that passes the
+  // raw rows still prints one line per booking/type and one drift alert.
+  const shaped = shapeAdminDigestLists({
+    unresolvedNotifications: params.unresolvedNotifications,
+    reconciliationMismatches: params.reconciliationMismatches ?? [],
+  });
+  const unresolvedNotifications = shaped.unresolvedNotifications;
+  const reconciliationMismatches = shaped.reconciliationMismatches;
+
+  const notifRows = unresolvedNotifications
     .map(
       (n) =>
         `<tr style="background:#FFF7F0">
@@ -1271,7 +1282,7 @@ export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<v
     )
     .join("");
 
-  const reconRows = (params.reconciliationMismatches ?? [])
+  const reconRows = reconciliationMismatches
     .map((m) => {
       // Ruling 40: the drift job now emits NINE classifications, not two. The old two-branch
       // ternary labelled every unrecognised kind "Booking confirmed — no charge", which would
@@ -1295,8 +1306,8 @@ export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<v
   <h2 style="color:#FF385C;margin-bottom:4px">Traveloure — Daily Admin Digest</h2>
   <p style="color:#6B7280;font-size:13px;margin-top:0">${date}</p>
 
-  ${params.unresolvedNotifications.length > 0 ? `
-  <h3 style="color:#92400E;margin-top:24px">⚠ Unresolved Lead Alerts (${params.unresolvedNotifications.length})</h3>
+  ${unresolvedNotifications.length > 0 ? `
+  <h3 style="color:#92400E;margin-top:24px">⚠ Unresolved Lead Alerts (${unresolvedNotifications.length})</h3>
   <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
     <thead>
       <tr style="background:#FEF3C7">
@@ -1346,8 +1357,8 @@ export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<v
   </a>
   ` : ""}
 
-  ${(params.reconciliationMismatches ?? []).length > 0 ? `
-  <h3 style="color:#B45309;margin-top:24px">🔴 Payment Reconciliation Mismatches (${params.reconciliationMismatches!.length})</h3>
+  ${reconciliationMismatches.length > 0 ? `
+  <h3 style="color:#B45309;margin-top:24px">🔴 Payment Reconciliation Mismatches (${reconciliationMismatches.length})</h3>
   <p style="color:#6B7280;font-size:13px">Daily Stripe ↔ database comparison found drift. Each row requires manual investigation in the Stripe dashboard before taking action.</p>
   <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
     <thead>
@@ -1371,12 +1382,12 @@ export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<v
 </div>`;
 
   const missedCount = (params.missedWebhooks ?? []).length;
-  const reconCount = (params.reconciliationMismatches ?? []).length;
+  const reconCount = reconciliationMismatches.length;
   const deadCount = params.deadEmails?.total ?? 0;
   await client.emails.send({
     from: getFromAddress(),
     to: params.toEmail,
-    subject: `[Traveloure Admin] Daily Digest — ${params.unresolvedNotifications.length} alerts, ${params.expertsWithoutPayout.length} payout gaps${missedCount > 0 ? `, ${missedCount} missed webhooks` : ""}${reconCount > 0 ? `, ${reconCount} recon mismatches` : ""}${deadCount > 0 ? `, ${deadCount} undelivered emails` : ""}`,
+    subject: `[Traveloure Admin] Daily Digest — ${unresolvedNotifications.length} alerts, ${params.expertsWithoutPayout.length} payout gaps${missedCount > 0 ? `, ${missedCount} missed webhooks` : ""}${reconCount > 0 ? `, ${reconCount} recon mismatches` : ""}${deadCount > 0 ? `, ${deadCount} undelivered emails` : ""}`,
     html,
   });
 

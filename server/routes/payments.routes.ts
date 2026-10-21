@@ -903,7 +903,11 @@ async function promoteAuthorizedCheckout(
     try {
       const handoff = await createHandoffRequestsForBooking(bookingId);
       if (handoff.handedOff > 0 || handoff.skipped > 0) {
-        console.log(`[checkout] concierge hand-off for booking ${bookingId}:`, handoff);
+        console.info(
+          `[checkout] concierge hand-off for booking ${bookingId}: handedOff=${handoff.handedOff} skipped=${handoff.skipped}` +
+            (handoff.reason ? ` reason=${handoff.reason}` : "") +
+            (handoff.planBasis ? ` planBasis=${handoff.planBasis}` : ""),
+        );
       }
     } catch (handoffErr) {
       console.error(`[checkout] concierge hand-off failed for booking ${bookingId} (booking stands):`, handoffErr);
@@ -3328,9 +3332,9 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
                   { code: "concurrent_claim" },
                 );
               }
-              console.log(
+              console.info(
                 `[payouts] superseded stale pending ${isProvider ? "provider" : "expert"} payout ` +
-                `${stale.id} for user ${userId} (age > ${STALE_PAYOUT_PROCESSING_DAYS}d)`,
+                `${stale.id} (age > ${STALE_PAYOUT_PROCESSING_DAYS}d)`,
               );
             }
             // Create the replacement inside the same transaction.
