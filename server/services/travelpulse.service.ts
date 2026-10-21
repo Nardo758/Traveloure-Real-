@@ -1,7 +1,6 @@
 import { displayCrowdBand, displayTrendScore, type DisplayCrowdBand } from "@shared/trend-display";
 import { hideBlockedGemImage, photoBlocks } from "./place-photo-blocks.service";
 import { visibleGemCondition, visibleHappeningNowCondition } from "./gem-visibility";
-import { happeningNowTitleHidden } from "@shared/kyoto-feed-cleanup";
 import { gemCopyForTraveler } from "@shared/kyoto-gem-copy";
 import { teamSeededGemTags } from "@shared/content-tiers";
 import { trendScoreMaxAgeHours } from "../config/trend-display.config";
@@ -957,23 +956,8 @@ export class TravelPulseService {
 
   private async seedHappeningNow(): Promise<void> {
     const now = new Date();
+    // Sakura Light-Up at Meguro River is omitted: its seed row had no calendar date.
     const events = [
-      {
-        city: "Tokyo",
-        eventType: "festival",
-        title: "Sakura Light-Up at Meguro River",
-        description: "Evening illumination of cherry blossoms along the river",
-        venue: "Meguro River",
-        startsAt: new Date(now.getTime() - 2 * 60 * 60 * 1000),
-        endsAt: new Date(now.getTime() + 4 * 60 * 60 * 1000),
-        crowdLevel: "packed",
-        entryFee: "Free",
-        isLive: true,
-        // The row stays. #1603 removes this seed entry. Until then a fresh insert is born hidden.
-        hiddenAt: happeningNowTitleHidden("Sakura Light-Up at Meguro River")
-          ? new Date("2026-10-20T00:00:00Z")
-          : null,
-      },
       {
         city: "Paris",
         eventType: "market",

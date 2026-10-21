@@ -167,9 +167,14 @@ test("KF5 migration 400 carries the hide list, the reword, the neighbourhoods an
   assert.equal(HAPPENING_NOW_TITLES_TO_HIDE.length, 1);
   assert.equal(happeningNowTitleHidden("Sakura Light-Up at Meguro River"), true);
   assert.equal(happeningNowTitleHidden("Marché aux Puces de Vanves"), false);
-  assert.match(read("server/data/happening-now.json"), /Sakura Light-Up at Meguro River/);
-  assert.match(read("server/services/travelpulse.service.ts"), /Sakura Light-Up at Meguro River/);
-  assert.match(read("server/services/travelpulse.service.ts"), /happeningNowTitleHidden/);
+  assert.doesNotMatch(read("server/data/happening-now.json"), /Sakura Light-Up at Meguro River/);
+  const seedFn = read("server/services/travelpulse.service.ts");
+  const seedBody = seedFn.slice(
+    seedFn.indexOf("private async seedHappeningNow"),
+    seedFn.indexOf("Seeded ${events.length} happening now events"),
+  );
+  assert.doesNotMatch(seedBody, /title:\s*"Sakura Light-Up/);
+  assert.match(seedFn, /Sakura Light-Up at Meguro River is omitted/);
   assert.match(read("server/seed-travelpulse.ts"), /happeningNowTitleHidden/);
   assert.match(read("server/routes/kyoto-gem-copy.routes.ts"), /\/api\/admin\/kyoto-gem-copy/);
   assert.match(read("server/routes.ts"), /kyotoGemCopyRoutes/);

@@ -82,7 +82,7 @@ export const LOCAL_SPECIALTY_OPTIONS: readonly LocalSpecialtyOption[] = [
   { value: "budget_tips", label: "Budget Tips", emoji: "💰" },
   { value: "luxury_access", label: "Luxury Access", emoji: "✨" },
   { value: "photography_spots", label: "Photography Spots", emoji: "📸" },
-  { value: "hidden_gems", label: "Hidden Gems", emoji: "💎" },
+  { value: "hidden_gems", label: "Quieter spots", emoji: "💎" },
 ] as const;
 
 const LOCAL_SPECIALTY_BY_VALUE = new Map(LOCAL_SPECIALTY_OPTIONS.map((o) => [o.value, o]));

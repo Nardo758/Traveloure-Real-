@@ -43,9 +43,9 @@ export const KYOTO_GEMS_TO_HIDE = [
 ] as const;
 
 /**
- * Happening-now titles hidden by migration 400. The row stays in the seed
- * (#1603 removes that seed entry). A database that already inserted it is
- * hidden by exact title, not deleted.
+ * Happening-now titles hidden by migration 400. #1603 removed this title from
+ * the seeds. A database that already inserted the row is hidden by exact title,
+ * not deleted. seed-travelpulse stamps hidden_at if the title is inserted again.
  */
 export const HAPPENING_NOW_TITLES_TO_HIDE = ["Sakura Light-Up at Meguro River"] as const;
 
