@@ -18,6 +18,7 @@ import { REGISTRATION_NEUTRAL_STATUS, registrationNeutralBody } from "@shared/re
 import {
   RESET_TOKEN_TTL_MIN, hashAuthToken, issuePasswordResetToken, consumePasswordResetToken,
 } from "../../services/password-reset-tokens.service";
+import { verifyLoginCredential } from "../../services/login-credentials.service";
 
 // Simple password hashing using Node's built-in crypto
 // For production, consider using bcrypt or argon2
@@ -27,18 +28,6 @@ async function hashPassword(password: string): Promise<string> {
     crypto.scrypt(password, salt, 64, (err, derivedKey) => {
       if (err) reject(err);
       resolve(salt + ":" + derivedKey.toString("hex"));
-    });
-  });
-}
-
-async function verifyPassword(password: string, hash: string): Promise<boolean> {
-  return new Promise((resolve, reject) => {
-    const [salt, key] = hash.split(":");
-    if (!salt || !key || !/^[0-9a-f]{128}$/i.test(key)) return resolve(false);
-    crypto.scrypt(password, salt, 64, (err, derivedKey) => {
-      if (err) reject(err);
-      const expected = Buffer.from(key, "hex");
-      resolve(expected.length === derivedKey.length && crypto.timingSafeEqual(expected, derivedKey));
     });
   });
 }
@@ -255,35 +244,19 @@ export function setupEmailAuth(app: Express): void {
 
       const { email, password } = validation.data;
 
-      // Find user
+      // Find user. Email normalization is the existing lowercase lookup.
       const user = await db
         .select()
         .from(users)
         .where(eq(users.email, email.toLowerCase()))
         .then((r) => r[0]);
 
-      if (!user) {
-        return res.status(401).json({
-          message: "Invalid email or password",
-        });
-      }
-
-      // Check if user has a password (might be OAuth-only or seeded user)
-      if (!user.password) {
-        const providerHint = user.authProvider === "replit" 
-          ? "Replit" 
-          : user.authProvider === "facebook" 
-            ? "Facebook/Instagram" 
-            : null;
-        const message = providerHint
-          ? `This account was created via ${providerHint}. Please sign in using ${providerHint} instead, or set a password first.`
-          : "This account does not have a password set. Please sign in using Replit or set a password.";
-        return res.status(401).json({ message });
-      }
-
-      // Verify password
-      const isValid = await verifyPassword(password, user.password);
-      if (!isValid) {
+      // One scrypt and one fixed-length compare for every syntactically valid attempt
+      // (login-credentials.service.ts). Unknown, provider-only, and unusable hashes
+      // take the dummy path and fail. A thrown error is operational — the outer catch
+      // answers 500, not 401. Deleted and suspended checks stay after this.
+      const passwordOk = await verifyLoginCredential(password, user?.password ?? null);
+      if (!passwordOk || !user) {
         return res.status(401).json({
           message: "Invalid email or password",
         });
