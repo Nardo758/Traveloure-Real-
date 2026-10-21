@@ -1,0 +1,1 @@
+| 2026-08-25-open-card-skeleton | 2026-08-25 | [advisory] | Every open card uses the ready-made detail skeleton: crumb → title block with byline → split hero → content panels → sticky action panel. Events body exempt. | `docs/design/MARKETPLACE_EXPERTS_EARN_GRAMMAR_SPEC.md` §0 |

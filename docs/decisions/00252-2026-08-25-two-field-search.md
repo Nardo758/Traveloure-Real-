@@ -1,0 +1,1 @@
+| 2026-08-25-two-field-search | 2026-08-25 | [advisory] | List surfaces use "What do you need help with?" + "Where are you going?" + Filters. "Where" pre-fills from `TripStrip` destination when a trip is in progress. Browse never writes: search filters the page, never mutates the trip. | `docs/design/MARKETPLACE_EXPERTS_EARN_GRAMMAR_SPEC.md` §0 |
