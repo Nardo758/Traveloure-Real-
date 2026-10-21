@@ -101,8 +101,10 @@ export const BUY_ACTION_UNRENDERABLE_SENTENCE =
  * "will be asked" — promising a question nobody asks is the same class of §13 lie as a button the
  * server refuses. The entries and their reasons:
  *   · `sign_in`    — REAL. `beginAdd` opens the sign-in modal before any write.
- *   · `which_plan` — NONE. The target plan is resolved from the URL / TripContext
- *                    (`resolveTargetTripId`); the page never asks which plan. The "Which event?"
+ *   · `which_plan` — NOT in this preview. A `?tripId=` and exactly one open plan add
+ *                    straight through. Two or more open plans ask in the plan picker at the
+ *                    click, which is not printed here: printing it would promise the question
+ *                    on every listing, including the ones that do not ask. The "Which event?"
  *                    dialog is a different question (migration 277) on an already-chosen plan.
  *   · `slot`       — REAL. The Availability card picks one (`selectedSlot`).
  *   · `party`      — NONE. The page renders party SIZE as a "Good to know" fact and has no step
