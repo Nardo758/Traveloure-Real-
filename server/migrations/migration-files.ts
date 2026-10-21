@@ -2127,4 +2127,8 @@ export const MIGRATION_FILES = [
   // 402 — Dinner host category + service_provider_forms.has_license (nullable boolean,
   // no DEFAULT/CHECK). Ledger 2026-10-21-supply-registration-fixes. HELD for Leon's comment.
   "402_supply_registration.sql",
+  // 403 — city-knowledge banks, attempts, and retake grants. No DEFAULT, no CHECK.
+  // The Kyoto file stays unverified; sign-off is a hash on the bank row.
+  // Ledger 2026-10-21-city-knowledge-test. HELD for Leon's comment.
+  "403_city_knowledge_test.sql",
 ] as const;

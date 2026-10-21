@@ -312,6 +312,14 @@ export default function ExpertStatusPage() {
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />{currentStep.note}
               </p>
             )}
+            {currentStep.title === "City-Knowledge Test" && (
+              <Link href="/expert/city-knowledge-test">
+                <Button className={`${statusActionButtonClass("bg-primary text-primary-foreground")} mt-3`} data-testid="button-city-knowledge-test">
+                  Open the city-knowledge test
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
+              </Link>
+            )}
           </StatusActionCard>
         )}
 

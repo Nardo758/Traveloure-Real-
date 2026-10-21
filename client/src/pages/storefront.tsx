@@ -168,6 +168,8 @@ interface StorefrontEarner {
   neighborhoods?: string[];
   localSpecialties?: string[];
   headline?: string | null;
+  /** Topic strengths from a signed-off city-knowledge pass. Labels only. */
+  cityKnowledgeBadges?: { topic: string; label: string }[];
 }
 
 interface StorefrontService {
@@ -752,6 +754,9 @@ export default function StorefrontPage() {
       values: Array.from(new Set([...(earner.neighborhoods ?? []), ...(earner.localSpecialties ?? [])])),
     },
   ].filter((group) => group.values.length > 0);
+  const cityKnowledgeBadges = (earner.cityKnowledgeBadges ?? []).filter(
+    (badge) => badge.label && !/vetted|verified expert/i.test(badge.label),
+  );
 
   // Honest "N ways to plan" note (continuity mock's summary callout): only rendered when the
   // earner genuinely sells across more than one lane — never implies three when there's one.
@@ -1055,7 +1060,7 @@ export default function StorefrontPage() {
           <div className="lg:col-start-1 lg:row-start-1 min-w-0">
         {/* Exactly one profile story: the bio and profile-backed chip groups live here rather
             than repeating header figures or hero copy. Empty facts are honestly omitted. */}
-        {(earner.bio || aboutGroups.length > 0) && (
+        {(earner.bio || aboutGroups.length > 0 || cityKnowledgeBadges.length > 0) && (
           <section className={`px-6 py-5 ${CARD_SHELL}`} data-testid="storefront-about">
             <div className={EYEBROW} style={{ fontFamily: EARN_MONO }}>
               About {firstName}
@@ -1079,6 +1084,20 @@ export default function StorefrontPage() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+            {cityKnowledgeBadges.length > 0 && (
+              <div className="mt-4" data-testid="city-knowledge-badges">
+                <h3 className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[color:var(--earn-faint)]" style={{ fontFamily: EARN_MONO }}>
+                  City knowledge
+                </h3>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {cityKnowledgeBadges.map((badge) => (
+                    <span key={badge.topic} className="rounded-full border border-[color:var(--earn-border)] bg-[var(--earn-chip)] px-2.5 py-1 text-xs text-[color:var(--earn-ink)]">
+                      {badge.label}
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
           </section>

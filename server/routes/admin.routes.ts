@@ -2990,10 +2990,18 @@ router.get("/api/admin/expert-applications", isAuthenticated, async (req, res) =
     }
     // FE-1 (a): the editable override is the platform fee; the expert-share column is shown
     // read-only ("Earner's share — deprecated, read-only").
+    const { adminSummaryForForms } = await import("../services/city-knowledge/attempt.service");
+    const cityKnowledge = await adminSummaryForForms(forms.map((f) => ({
+      id: f.id,
+      userId: f.userId,
+      expertType: f.expertType ?? null,
+      city: f.city ?? null,
+    })));
     const enriched = forms.map(f => ({
       ...f,
       commissionOverridePlatformFeePercent: overrideByUser.get(f.userId)?.platformFee ?? null,
       commissionOverrideExpertSharePercent: overrideByUser.get(f.userId)?.expertShare ?? null,
+      cityKnowledge: cityKnowledge.get(f.id) ?? null,
     }));
     res.json(enriched);
   });
@@ -3011,10 +3019,25 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
         status: localExpertForms.status,
         userId: localExpertForms.userId,
         expertType: localExpertForms.expertType,
+        city: localExpertForms.city,
       })
       .from(localExpertForms)
       .where(eq(localExpertForms.id, req.params.id));
     const priorStatus = existing?.status;
+
+    // A local expert is not approved for a city without a qualifying city-knowledge pass.
+    // Re-saving an application that is already approved does not ask again.
+    if (status === "approved" && priorStatus !== "approved" && existing?.userId) {
+      const { approvalForForm } = await import("../services/city-knowledge/attempt.service");
+      const gate = await approvalForForm({
+        expertType: existing.expertType,
+        city: existing.city,
+        userId: existing.userId,
+      });
+      if (!gate.allowed) {
+        return res.status(409).json({ message: gate.message });
+      }
+    }
 
     // ONE account, ONE earning role (ledger `2026-09-04-earn-role-safety`) — checked BEFORE the
     // form-status flip so a refusal leaves the application row untouched. `updateUserRole`

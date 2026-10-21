@@ -145,6 +145,7 @@ const TravelExpertsPage = lazy(() => import("@/pages/travel-experts"));
 const StartEventsPage = lazy(() => import("@/pages/start-events"));
 const ServicesProviderPage = lazy(() => import("@/pages/services-provider"));
 const ExpertStatusPage = lazy(() => import("@/pages/expert-status"));
+const CityKnowledgeTestPage = lazy(() => import("@/pages/expert/city-knowledge-test"));
 const ProviderStatusPage = lazy(() => import("@/pages/provider-status"));
 const AdminFeeBands = lazy(() => import("@/pages/admin/fee-bands"));
 const AdminOfferingTypes = lazy(() => import("@/pages/admin/offering-types"));
@@ -862,6 +863,9 @@ function Router() {
       </Route>
       <Route path="/expert-status">
         {() => <ProtectedRoute component={ExpertStatusPage} />}
+      </Route>
+      <Route path="/expert/city-knowledge-test">
+        {() => <ProtectedRoute component={CityKnowledgeTestPage} />}
       </Route>
       <Route path="/provider-status">
         {() => <ProtectedRoute component={ProviderStatusPage} />}

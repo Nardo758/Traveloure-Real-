@@ -856,6 +856,52 @@ export const localExpertForms = pgTable("local_expert_forms", {
   statusIdx: index("local_expert_forms_status_idx").on(table.status),
 }));
 
+// City-knowledge test (ledger 2026-10-21-city-knowledge-test, migration 403).
+// The question bank in the repo stays unverified. Sign-off is this row's hash, not a code change.
+// No DEFAULT and no CHECK: a missing status is unread, not a guessed "unverified".
+export const cityKnowledgeBanks = pgTable("city_knowledge_banks", {
+  cityKey: varchar("city_key", { length: 64 }).primaryKey(),
+  verificationStatus: varchar("verification_status", { length: 32 }),
+  signedOffHash: varchar("signed_off_hash", { length: 64 }),
+  bankJson: jsonb("bank_json"),
+  updatedAt: timestamp("updated_at"),
+  updatedBy: varchar("updated_by"),
+});
+
+export const cityKnowledgeAttempts = pgTable("city_knowledge_attempts", {
+  id: varchar("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  applicationId: varchar("application_id").notNull().references(() => localExpertForms.id, { onDelete: "cascade" }),
+  cityKey: varchar("city_key", { length: 64 }).notNull(),
+  attemptNumber: integer("attempt_number").notNull(),
+  status: varchar("status", { length: 32 }),
+  outcome: varchar("outcome", { length: 32 }),
+  drawSeed: varchar("draw_seed", { length: 64 }),
+  itemIds: jsonb("item_ids"),
+  sourceHashes: jsonb("source_hashes"),
+  result: jsonb("result"),
+  attentionFlag: boolean("attention_flag"),
+  startedAt: timestamp("started_at"),
+  partASubmittedAt: timestamp("part_a_submitted_at"),
+  submittedAt: timestamp("submitted_at"),
+  scoredAt: timestamp("scored_at"),
+}, (table) => ({
+  userCityIdx: index("city_knowledge_attempts_user_city_idx").on(table.userId, table.cityKey),
+  applicationIdx: index("city_knowledge_attempts_application_idx").on(table.applicationId),
+}));
+
+export const cityKnowledgeRetakeGrants = pgTable("city_knowledge_retake_grants", {
+  id: varchar("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  applicationId: varchar("application_id").notNull().references(() => localExpertForms.id, { onDelete: "cascade" }),
+  cityKey: varchar("city_key", { length: 64 }).notNull(),
+  forAttemptNumber: integer("for_attempt_number").notNull(),
+  grantedAt: timestamp("granted_at"),
+  grantedBy: varchar("granted_by"),
+}, (table) => ({
+  slotIdx: uniqueIndex("city_knowledge_retake_grants_slot_idx").on(table.applicationId, table.cityKey, table.forAttemptNumber),
+}));
+
 export const serviceProviderForms = pgTable("service_provider_forms", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
