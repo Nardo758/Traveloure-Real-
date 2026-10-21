@@ -278,15 +278,9 @@ test("F2-d: an admin publishes with no verification form row at all", async () =
   createdServiceIds.push(json.id);
 });
 
-// Default-deny: a role in neither family (plain "user") is blocked. Note: for THIS route the
-// pre-existing `isEarner` RBAC backstop (server/middleware/role-rbac.ts, mounted on
-// EARNER_SELF_SERVICE_PREFIXES in server/routes.ts) already rejects a plain "user" role before
-// the handler — and therefore before checkPublishVerificationGate — ever runs, on BOTH draft and
-// active writes ("Expert or provider access required", not VERIFICATION_GATE). That backstop is
-// what §12/§14-style default-deny for this endpoint actually rests on; the gate's own
-// "role in neither family" branch is additional defense-in-depth that this specific route can't
-// currently reach via HTTP (nothing in EARNER_SELF_SERVICE_PREFIXES lets a non-earner past the
-// front door), but stays correct if that middleware's coverage ever changes.
+// Default-deny: a role in neither family (plain "user") with no open application is blocked.
+// `isEarnerOrPendingDraft` lets a pending applicant through so they can save a draft; this
+// fixture's plain user has no application, so both draft and active writes still 403 before the F2 gate.
 test("F2-d2: a plain user (neither expert nor provider family) cannot publish — blocked upstream by the isEarner backstop", async () => {
   const { status, json } = await publish(plainUser.cookie, servicePayload());
   assert.equal(status, 403);

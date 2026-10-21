@@ -24,6 +24,7 @@ import { users } from "@shared/models/auth";
 import { noItemBookingDetail } from "@shared/no-item-booking";
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { getStripeSecretKey } from "../utils/stripe-key";
+import { checkStripeKeyPrefix } from "../utils/stripe-key-policy";
 // Ruling 2026-09-02-traveler-fee-applies-everywhere (path 4 — platform transport is merchant-of-record,
 // so the traveler service fee applies). ONE band-driven resolver (§8/§14), Trip-Pass suppression via
 // coversAction, and the shared service_bookings fee-ledger writer at confirmation.
@@ -44,26 +45,15 @@ if (!key) {
 
 // Primary enforcement lives in server/validate-env.ts (imported first in
 // server/index.ts, before this or any other Stripe-constructing module).
-// This is a defense-in-depth duplicate using the same canonical variable —
-// ENVIRONMENT === "PROD" — not NODE_ENV, which is unset on this deployment.
+// This is defense in depth on ENVIRONMENT === "PROD" — not NODE_ENV, which is
+// unset on this deployment. The prefix list itself is checkStripeKeyPrefix, so
+// sk_ and rk_ cannot drift from the boot policy.
 const isProd = process.env.ENVIRONMENT === "PROD";
-
-if (isProd) {
-  if (!key.startsWith("sk_live_")) {
-    throw new Error(
-      "STRIPE_SECRET_KEY must be a live secret key (sk_live_...) when ENVIRONMENT=PROD. " +
-        "Found a value that does not match — refusing to start."
-    );
-  }
-} else {
-  if (!key.startsWith("sk_test_")) {
-    throw new Error(
-      "STRIPE_SECRET_KEY must be a TEST secret key (sk_test_...) outside production (ENVIRONMENT=" +
-        (process.env.ENVIRONMENT || "undefined") +
-        "). A live key (sk_live_...) or publishable key (pk_...) was found instead. " +
-        "Live keys are never allowed in dev/E2E — update the STRIPE_SECRET_KEY_TEST secret with a sk_test_ key."
-    );
-  }
+const prefixCheck = checkStripeKeyPrefix(key, isProd);
+if (!prefixCheck.ok) {
+  throw new Error(
+    `${prefixCheck.reason} stripe.service.ts refuses to start (ENVIRONMENT=${process.env.ENVIRONMENT || "undefined"}).`,
+  );
 }
 
 const stripe = new Stripe(key, {

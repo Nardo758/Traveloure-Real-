@@ -98,7 +98,7 @@ import { IDENTITY_EDIT_FIELDS } from "@shared/edit-split";
 import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated, setupFacebookAuth, setupEmailAuth } from "./replit_integrations/auth";
 import { emailVerificationGate } from "./middleware/email-verification-gate";
-import { isExpert, isProvider, isEarner } from "./middleware/role-rbac";
+import { isExpert, isProvider, isEarner, isEarnerOrPendingDraft } from "./middleware/role-rbac";
 import { formatVendorAuditCsv } from "./utils/vendor-export";
 import { projectVendorForDirectory } from "./utils/vendor-read-scope";
 import { toPublicExpert, toPublicExperts } from "./utils/expert-read-scope";
@@ -381,6 +381,8 @@ import {
 import { checkOfferingActivationGate } from "./services/offering-activation-gate.service";
 import { listingPriceGate, listingReviewReadiness } from "./services/listing-price-gate";
 import { admitListingSaveIntent } from "@shared/listing-save-intent";
+import { buildExpertApplicationTimeline, buildProviderApplicationTimeline } from "@shared/application-status";
+import { readSupplyAccount, refuseUnapprovedListingWrite } from "./services/pending-supply-account";
 // Migration 292 / ledger `2026-09-12-listing-names-its-expert-offering`: the ONE admission of
 // `provider_services.expert_offering_type_key` off a request body (§19 allowlist), shared by the
 // two `/api/provider/services` write rails below — never a second copy (§18 rule 1).
@@ -1034,9 +1036,10 @@ export async function registerRoutes(
   // GAP 1 fix (expert-loop object-flow audit, Jul 30 2026): `/api/provider/services` is CLAUDE.md
   // §5's single shared offering-creation endpoint for BOTH roles (ServiceForm posts here for
   // role="expert" and role="provider" alike) — it does NOT belong under the provider-only
-  // PROVIDER_SELF_SERVICE_PREFIXES gate. Kept as its own prefix, gated by `isEarner`
-  // (expert-family OR provider OR admin — shared/roles.ts `isEarnerRole`), so the backstop still
-  // blocks a plain "user" role but no longer blocks legitimate expert-role writers.
+  // PROVIDER_SELF_SERVICE_PREFIXES gate. Kept as its own prefix, gated by
+  // `isEarnerOrPendingDraft` (earner, admin, or an open application saving a draft).
+  // `isEarner` itself stays a hard role gate — POST /api/vendors still refuses role user.
+  // Handlers still refuse publish. A plain user with no application is still refused here.
   const EARNER_SELF_SERVICE_PREFIXES = [
     "/api/provider/services",
   ];
@@ -1045,7 +1048,7 @@ export async function registerRoutes(
     const p: string = req.path;
     const matchesPrefix = (prefixes: string[]) =>
       prefixes.some((prefix) => p === prefix || p.startsWith(prefix + "/"));
-    if (matchesPrefix(EARNER_SELF_SERVICE_PREFIXES)) return isEarner(req, res, next);
+    if (matchesPrefix(EARNER_SELF_SERVICE_PREFIXES)) return isEarnerOrPendingDraft(req, res, next);
     if (matchesPrefix(EXPERT_SELF_SERVICE_PREFIXES)) return isExpert(req, res, next);
     if (matchesPrefix(PROVIDER_SELF_SERVICE_PREFIXES)) return isProvider(req, res, next);
     next();
@@ -2993,56 +2996,48 @@ ${bannedCopyPromptLine()}`;
     }
   });
 
-  // GET /api/expert/application-status — user-facing live step status for expert applicants
+  // GET /api/me/supply-account — one read for the dashboard card and the denial page.
+  app.get("/api/me/supply-account", isAuthenticated, async (req, res) => {
+    try {
+      const account = await readSupplyAccount(getUserId(req)!);
+      res.json({
+        kind: account.kind,
+        applicationStatus: account.applicationStatus,
+        phase: account.phase,
+        phaseTitle: account.phaseTitle,
+        phaseDetail: account.phaseDetail,
+        currentStepId: account.currentStepId,
+        canSaveDraftListing: account.canSaveDraftListing,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/expert/application-status — user-facing live step status for expert applicants.
+  // Steps come from the one walker in shared/application-status.ts.
   app.get("/api/expert/application-status", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const [form] = await db.select().from(localExpertForms).where(eq(localExpertForms.userId, userId)).limit(1);
       const identityStatus = (form as any)?.identityVerificationStatus ?? "pending";
-
-      const steps = [
-        {
-          id: 1,
-          title: "Basic Information",
-          description: "Personal details and contact information",
-          status: form ? "completed" : "pending",
-          completedAt: form ? new Date((form as any).createdAt).toLocaleDateString() : undefined,
-        },
-        {
-          id: 2,
-          title: "Expertise & Destinations",
-          description: "Your specialties and destination knowledge",
-          status: form && ((form.destinations as any[])?.length > 0 || (form.specialties as any[])?.length > 0) ? "completed" : form ? "in_progress" : "pending",
-        },
-        {
-          id: 3,
-          title: "Experience & Portfolio",
-          description: "Professional background and work samples",
-          status: form && (form.bio || (form as any).portfolio) ? "completed" : form ? "in_progress" : "pending",
-        },
-        {
-          id: 4,
-          title: "Identity Verification",
-          description: "Government ID and liveness check via Stripe Identity",
-          status: identityStatus === "verified" ? "completed" : identityStatus === "processing" ? "in_progress" : identityStatus === "failed" ? "failed" : form ? "in_progress" : "pending",
-          note: identityStatus === "pending" && form ? "Click 'Verify My Identity' above to begin" : undefined,
-        },
-        {
-          id: 5,
-          title: "Admin Review",
-          description: "Our team reviews your application — typically 2-3 business days",
-          status: form?.status === "approved" || form?.status === "rejected" ? "completed" : identityStatus === "verified" && form ? "in_progress" : "pending",
-        },
-        {
-          id: 6,
-          title: "Account Activation",
-          description: "Your expert account is activated and ready",
-          status: form?.status === "approved" ? "completed" : "pending",
-        },
-      ];
+      const timeline = buildExpertApplicationTimeline({
+        hasForm: !!form,
+        applicationStatus: form?.status ?? null,
+        destinationsCount: Array.isArray(form?.destinations) ? (form.destinations as unknown[]).length : 0,
+        specialtiesCount: Array.isArray(form?.specialties) ? (form.specialties as unknown[]).length : 0,
+        hasBio: typeof form?.bio === "string" && form.bio.trim().length > 0,
+        hasPortfolio: typeof (form as any)?.portfolio === "string" && (form as any).portfolio.trim().length > 0,
+        identityStatus,
+        basicCompletedAt: form ? new Date((form as any).createdAt).toLocaleDateString() : null,
+      });
 
       res.json({
-        steps,
+        steps: timeline.steps,
+        phase: timeline.phase,
+        phaseTitle: timeline.phaseTitle,
+        phaseDetail: timeline.phaseDetail,
+        currentStepId: timeline.currentStepId,
         overallStatus: form?.status ?? "pending",
         rejectionMessage: form?.status === "rejected" ? (form.rejectionMessage ?? null) : null,
         identityVerificationStatus: identityStatus,
@@ -3070,53 +3065,18 @@ ${bannedCopyPromptLine()}`;
         .where(eq(users.id, userId))
         .limit(1);
 
-      const steps = [
-        {
-          id: 1,
-          title: "Business Information",
-          description: "Business name, type, and contact details",
-          status: form ? "completed" : "pending",
-          completedAt: form ? new Date((form as any).createdAt).toLocaleDateString() : undefined,
-        },
-        {
-          id: 2,
-          title: "Service Categories",
-          description: "Types of services you offer",
-          status: form && form.serviceType ? "completed" : form ? "in_progress" : "pending",
-        },
-        {
-          id: 3,
-          title: "Location & Documentation",
-          description: "Location, compliance, and supporting documents",
-          status: form && (form.country || form.province) ? "completed" : form ? "in_progress" : "pending",
-        },
-        {
-          id: 4,
-          title: "Owner Identity Verification",
-          description: "Government ID verification for the business owner",
-          status: identityStatus === "verified" ? "completed" : identityStatus === "processing" ? "in_progress" : identityStatus === "failed" ? "failed" : form ? "in_progress" : "pending",
-          note: identityStatus === "pending" && form ? "Click 'Verify Owner ID' above to begin" : undefined,
-        },
-        {
-          id: 5,
-          title: "Business Verification",
-          description: "Registry check against national business databases",
-          status: bizStatus === "verified" ? "completed" : bizStatus === "submitted" ? "in_progress" : bizStatus === "failed" ? "failed" : form ? "in_progress" : "pending",
-          note: bizStatus === "pending" && form ? "Enter your business details above to begin" : undefined,
-        },
-        {
-          id: 6,
-          title: "Admin Review",
-          description: "Our team reviews your application — typically 3-5 business days",
-          status: form?.status === "approved" || form?.status === "rejected" ? "completed" : (bizStatus === "verified" && identityStatus === "verified") ? "in_progress" : "pending",
-        },
-        {
-          id: 7,
-          title: "Account Activation",
-          description: "Your provider account is activated and ready",
-          status: form?.status === "approved" ? "completed" : "pending",
-        },
-      ];
+      const offers = (form as any)?.serviceOffers;
+      const timeline = buildProviderApplicationTimeline({
+        hasForm: !!form,
+        applicationStatus: form?.status ?? null,
+        hasServiceOffers: Array.isArray(offers) && offers.length > 0,
+        hasOfferingTypeKey: typeof form?.offeringTypeKey === "string" && form.offeringTypeKey.trim().length > 0,
+        hasDescription: typeof form?.description === "string" && form.description.trim().length > 0,
+        hasLocation: !!(form && (form.country || form.city || form.address)),
+        identityStatus,
+        businessStatus: bizStatus,
+        basicCompletedAt: form ? new Date((form as any).createdAt).toLocaleDateString() : null,
+      });
 
       // #924: a resubmission creates a NEW row, and the current row outranks the rejected one, so
       // the reason the applicant was asked to address vanished the moment they resubmitted. The
@@ -3140,7 +3100,11 @@ ${bannedCopyPromptLine()}`;
       }
 
       res.json({
-        steps,
+        steps: timeline.steps,
+        phase: timeline.phase,
+        phaseTitle: timeline.phaseTitle,
+        phaseDetail: timeline.phaseDetail,
+        currentStepId: timeline.currentStepId,
         overallStatus: form?.status ?? "pending",
         rejectionMessage: form?.status === "rejected" ? (form.rejectionMessage ?? null) : null,
         previousRejection,
@@ -3181,10 +3145,14 @@ ${bannedCopyPromptLine()}`;
     const { withoutRideListings } = await import("./services/ride-listings");
     // SH-1 item 12: a test account's listings are never public (server/services/test-account.ts).
     const { withoutTestOwnerListings } = await import("./services/test-account");
-    const live = await withoutTestOwnerListings(
-      await withoutRideListings(
-        await withoutConciergePoolListings(await filterOutAwayOwners(approved, (s) => s.userId), (s) => s.userId),
-        (s) => s.id,
+    const { withoutUnapprovedOwnerListings } = await import("./services/public-listing-owner");
+    const live = await withoutUnapprovedOwnerListings(
+      await withoutTestOwnerListings(
+        await withoutRideListings(
+          await withoutConciergePoolListings(await filterOutAwayOwners(approved, (s) => s.userId), (s) => s.userId),
+          (s) => s.id,
+        ),
+        (s) => s.userId,
       ),
       (s) => s.userId,
     );
@@ -4077,6 +4045,17 @@ ${bannedCopyPromptLine()}`;
         (input as any).status = "draft";
       }
 
+      // A pending account may save a draft. Publish and a born-submitted create stay closed
+      // until the account is an earner. Absent saveIntent is not a draft.
+      const createWriteRefusal = await refuseUnapprovedListingWrite(userId, {
+        draft: saveIntent.draft,
+        enteringReview: !saveIntent.draft,
+        statusActive: (input as any).status === "active",
+      });
+      if (createWriteRefusal) {
+        return res.status(createWriteRefusal.status).json(createWriteRefusal.body);
+      }
+
       // ── THE LISTING NAMES ITS OWN EXPERT OFFERING (migration 292, ledger
       // `2026-09-12-listing-names-its-expert-offering`; punchlist D-13/V-12) ──────────────────
       // §19: `insertProviderServiceSchema` OMITS `expertOfferingTypeKey`, because under an
@@ -4499,6 +4478,15 @@ ${bannedCopyPromptLine()}`;
         (input as any).status = "draft";
       }
 
+      const patchWriteRefusal = await refuseUnapprovedListingWrite(userId, {
+        draft: saveIntent.draft,
+        enteringReview: saveIntent.submit || requestedApprovalStatus === "submitted",
+        statusActive: (input as any).status === "active",
+      });
+      if (patchWriteRefusal) {
+        return res.status(patchWriteRefusal.status).json(patchWriteRefusal.body);
+      }
+
       // THE LISTING NAMES ITS OWN EXPERT OFFERING — the UPDATE half (migration 292, ledger
       // `2026-09-12-listing-names-its-expert-offering`). Same ONE admission the create rail runs
       // (§18 rule 1), and the update path is checked as hard as the insert (§18 rule 2). An
@@ -4904,6 +4892,14 @@ ${bannedCopyPromptLine()}`;
       const currentApproval = service.approvalStatus ?? "draft";
       if (currentApproval !== "draft" && currentApproval !== "rejected") {
         return res.status(400).json({ message: "Only draft or rejected services can be submitted for review" });
+      }
+      const submitWriteRefusal = await refuseUnapprovedListingWrite(userId, {
+        draft: false,
+        enteringReview: true,
+        statusActive: false,
+      });
+      if (submitWriteRefusal) {
+        return res.status(submitWriteRefusal.status).json(submitWriteRefusal.body);
       }
       const submitted = await storage.submitProviderServiceListing(req.params.id);
       res.json(submitted ? omitFields(submitted as any, ["revenueShareRate"] as const) : submitted);
@@ -6019,6 +6015,14 @@ ${bannedCopyPromptLine()}`;
       }
       if (service.status !== "draft" && service.status !== "rejected") {
         return res.status(400).json({ message: "Can only submit draft or rejected services" });
+      }
+      const expertSubmitRefusal = await refuseUnapprovedListingWrite(userId, {
+        draft: false,
+        enteringReview: true,
+        statusActive: false,
+      });
+      if (expertSubmitRefusal) {
+        return res.status(expertSubmitRefusal.status).json(expertSubmitRefusal.body);
       }
 
       const submitted = await storage.submitProviderServiceListing(req.params.id);

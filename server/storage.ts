@@ -26,6 +26,7 @@ import { isPlatformConciergeUserId } from "./services/platform-concierge.service
 import { isEditorialUserId } from "./services/editorial-account.service";
 import { notConciergePoolListingSql } from "./services/expert-routability";
 import { notTestOwnerListingSql } from "./services/test-account";
+import { publicListingOwnerSql } from "./services/public-listing-owner";
 import { notRideListingSql } from "./services/ride-listings";
 // D-32..D-35 (ledger `2026-09-16-d32-d35-bundle-components`): the child-row BIRTH inside the checkout
 // claim's transaction, the ROW READ inside the mint, and the ONE reduced-figures derivation.
@@ -3253,6 +3254,8 @@ export class DatabaseStorage implements IStorage {
       await notConciergePoolListingSql(providerServices.userId),
       // SH-1 item 12: a test account's listings are never public (server/services/test-account.ts).
       notTestOwnerListingSql(providerServices.userId),
+      // A pending applicant's listing stays private even if the row is approved and active.
+      publicListingOwnerSql(providerServices.userId),
       // TC-3 catalog rides surface only as rides, never in browse (ledger `2026-10-11-tc3-ride-seed`).
       notRideListingSql(providerServices.id),
     ];
@@ -4125,7 +4128,7 @@ export class DatabaseStorage implements IStorage {
     const notPool = await notConciergePoolListingSql(providerServices.userId);
     // TC-3 catalog rides surface only as rides, never in search (ledger `2026-10-11-tc3-ride-seed`).
     // SH-1 item 12: a test account's listings are never public.
-    const baseConditions = [eq(providerServices.status, "active"), eq(providerServices.approvalStatus, "approved"), notPool, notRideListingSql(providerServices.id), notTestOwnerListingSql(providerServices.userId)];
+    const baseConditions = [eq(providerServices.status, "active"), eq(providerServices.approvalStatus, "approved"), notPool, notRideListingSql(providerServices.id), notTestOwnerListingSql(providerServices.userId), publicListingOwnerSql(providerServices.userId)];
 
     if (filters.categoryId) {
       baseConditions.push(eq(providerServices.categoryId, filters.categoryId));
@@ -5375,6 +5378,7 @@ export class DatabaseStorage implements IStorage {
         eq(providerServices.userId, expertId),
         eq(providerServices.approvalStatus, "approved"),
         eq(providerServices.status, "active"),
+        publicListingOwnerSql(providerServices.userId),
       ));
     // `revenueShareRate` added by ledger `2026-09-05-experts-public-projection`. Both callers of
     // this method are PUBLIC and unauthenticated — `GET /api/experts/:id/services` and the

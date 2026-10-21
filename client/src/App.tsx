@@ -1,6 +1,6 @@
 import { Switch, Route, Redirect, useLocation, useSearch } from "wouter";
 import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
+import { QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
@@ -26,6 +26,7 @@ import { MaintenanceGate } from "@/components/maintenance-screen";
 const LandingPage = lazy(() => import("@/pages/landing"));
 const LandingMockups = lazy(() => import("@/pages/landing-mockups"));
 const Dashboard = lazy(() => import("@/pages/dashboard"));
+const DashboardListing = lazy(() => import("@/pages/dashboard-listing"));
 const TripDetails = lazy(() => import("@/pages/trip-details"));
 const MyTrips = lazy(() => import("@/pages/my-trips"));
 const Profile = lazy(() => import("@/pages/profile"));
@@ -221,7 +222,8 @@ const SharedTripPage = lazy(() => import("@/pages/shared-trip"));
 const SharedSavedPlacesPage = lazy(() => import("@/pages/shared-saved-places"));
 const GuestInvitePage = lazy(() => import("@/pages/GuestInvitePage").then((m) => ({ default: m.GuestInvitePage })));
 const VisaHelpPage = lazy(() => import("@/pages/visa-help"));
-import { Loader2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Clock, Loader2, ShieldAlert, XCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 import { getRoleHomePath, userHasRequiredRole } from "@/lib/role-utils";
 import { useClaimGuestTrips } from "@/hooks/use-claim-guest-trips";
@@ -229,6 +231,8 @@ import { useClaimGuestConcierge } from "@/hooks/use-claim-guest-concierge";
 import { captureAcquisitionRef } from "@/lib/acquisition";
 import { sanitizeReturnTo } from "@/lib/safe-return-to";
 import { emailVerificationHoldRequired, isEmailVerificationHoldPath } from "@/lib/email-verification-hold";
+import { applicationStatusQuery } from "@/lib/application-status-query";
+import { accessDeniedCopy, type ApplicationPhase } from "@shared/application-status";
 import { EMAIL_SIGN_IN_REQUIRED_MESSAGE, EMAIL_SIGN_IN_REQUIRED_PARAM } from "@shared/email-sign-in-required";
 
 // Fallback shown while a lazily-loaded route chunk is being fetched.
@@ -240,6 +244,68 @@ function PageLoader() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <Loader2 className="w-10 h-10 animate-spin text-primary" />
+    </div>
+  );
+}
+
+function AccessDenied({ requiredRole, userRole }: { requiredRole: string; userRole: string }) {
+  const supplyPage = requiredRole === "expert" || requiredRole === "provider" || requiredRole === "earner";
+  const supplyQuery = useQuery<{
+    kind: "expert" | "provider" | null;
+    phase: ApplicationPhase;
+    canSaveDraftListing: boolean;
+  }>({
+    queryKey: ["/api/me/supply-account"],
+    enabled: supplyPage,
+    ...applicationStatusQuery,
+  });
+  const loadState = !supplyPage ? "ready" : supplyQuery.isError ? "error" : supplyQuery.isSuccess ? "ready" : "loading";
+  const supply = supplyQuery.data ?? null;
+  const copy = accessDeniedCopy({
+    requiredRole,
+    userRole,
+    loadState,
+    supply,
+  });
+  const phase = supply?.phase;
+  const StateIcon = loadState === "loading" || phase === "under_review"
+    ? Clock
+    : phase === "rejected"
+    ? XCircle
+    : phase === "action_needed"
+    ? AlertCircle
+    : phase === "approved"
+    ? CheckCircle2
+    : ShieldAlert;
+  const iconTone = phase === "rejected"
+    ? "bg-red-100 text-red-700"
+    : phase === "action_needed"
+    ? "bg-amber-100 text-amber-800"
+    : phase === "approved"
+    ? "bg-green-100 text-green-700"
+    : "bg-muted text-foreground";
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 py-10">
+      <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 text-left shadow-sm" data-testid="card-access-denied">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${iconTone}`}>
+            <StateIcon className="h-5 w-5" />
+          </div>
+          <h2 className="text-xl font-semibold text-foreground">Access Denied</h2>
+        </div>
+        <p className="mt-4 text-sm text-foreground break-words" data-testid="text-access-denied-reason">{copy.reason}</p>
+        <p className="mt-1 text-sm text-muted-foreground break-words" data-testid="text-access-denied-next">{copy.next}</p>
+        <div className="mt-6 flex flex-col gap-2">
+          {copy.actionHref && copy.actionLabel ? (
+            <Button asChild className="w-full" data-testid="button-access-denied-next">
+              <a href={copy.actionHref}>{copy.actionLabel}</a>
+            </Button>
+          ) : null}
+          <Button asChild variant="outline" className="w-full" data-testid="button-access-denied-back">
+            <a href={copy.backHref}>{copy.backLabel}</a>
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -284,13 +350,7 @@ function ProtectedRoute({ component: Component, skipTermsCheck = false, required
 
   // Check role-based access
   if (requiredRole && !userHasRequiredRole(user.role ?? "user", requiredRole)) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
-        <h2 className="text-2xl font-bold mb-2">Access Denied</h2>
-        <p className="text-muted-foreground mb-4">You don't have permission to access this page.</p>
-        <a href="/dashboard"><button className="px-4 py-2 bg-primary text-white rounded-lg">Back to Dashboard</button></a>
-      </div>
-    );
+    return <AccessDenied requiredRole={requiredRole} userRole={user.role ?? "user"} />;
   }
 
   return <Component {...rest} />;
@@ -791,6 +851,12 @@ function Router() {
       </Route>
 
       {/* Protected Dashboard Routes (use DashboardLayout - no global Layout) */}
+      <Route path="/dashboard/listing/:id">
+        {() => <ProtectedRoute component={DashboardListing} />}
+      </Route>
+      <Route path="/dashboard/listing">
+        {() => <ProtectedRoute component={DashboardListing} />}
+      </Route>
       <Route path="/dashboard">
         {() => <ProtectedRoute component={Dashboard} />}
       </Route>
