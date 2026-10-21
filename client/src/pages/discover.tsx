@@ -2164,7 +2164,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
               {/* TravelPulse Tab */}
               <TabsContent value="travelpulse">
                 {/* On the /destinations SURFACE the masthead is the page header, so
-                    suppress CityGrid's own "Trending Cities" header (no stacked dup). */}
+                    suppress CityGrid's own "Cities" header (no stacked dup). */}
                 <CityGrid selectedCityName={urlCity} hideHeader={!!surface} />
                 {/* SAVED PLACES MOVED HERE FROM HOME (lane L11, ledger
                     `2026-09-07-discover-in-shell`; CLAUDE.md Locked Decision 45 (8) — Home owns

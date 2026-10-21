@@ -15,7 +15,7 @@ import { useExpertAvailability } from "@/lib/expert-availability";
  * dark values — so the card themes automatically.
  *
  * Two variants:
- *   - "pulse":  trending grid — pulse score, Hot/Trending, travelers, price, crowds, deal, gems
+ *   - "pulse":  city grid — pulse score, Hot when isHot, travelers, price, crowds, deal, gems
  *   - "season": By-Date view — season score /10, ideal-month, event/package/expert counts
  */
 
@@ -44,7 +44,7 @@ export interface CityCardProps {
 
   // top-left photo badges
   isHot?: boolean;
-  trendLabel?: string | null; // season: "Ideal month" / "Good month"; pulse falls back to "Trending"
+  trendLabel?: string | null; // season: "Ideal month" / "Good month"; pulse shows "Hot" when isHot
   activeTravelers?: number | null;
   alertCount?: number | null;
   inTrip?: boolean;

@@ -956,7 +956,7 @@ export class TravelPulseService {
         city: "Tokyo",
         eventType: "festival",
         title: "Sakura Light-Up at Meguro River",
-        description: "Evening illumination of cherry blossoms along the river",
+        description: "Evening cherry blossoms along the river",
         venue: "Meguro River",
         startsAt: new Date(now.getTime() - 2 * 60 * 60 * 1000),
         endsAt: new Date(now.getTime() + 4 * 60 * 60 * 1000),

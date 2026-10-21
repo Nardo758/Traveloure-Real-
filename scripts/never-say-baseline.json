@@ -11,12 +11,8 @@
   "client/src/components/expert/ItemFactConfirm.tsx": {
     "verified": 2
   },
-  "client/src/components/expert/service-recommendations.tsx": {
-    "trending": 1
-  },
   "client/src/components/neighborhood-card.tsx": {
-    "coming soon": 1,
-    "hidden gem(s)": 1
+    "coming soon": 1
   },
   "client/src/lib/role-routes-config.ts": {
     "verified": 1
@@ -27,17 +23,11 @@
   "client/src/pages/admin/categories.tsx": {
     "verified": 1
   },
-  "client/src/pages/admin/content-mapping.tsx": {
-    "trending": 2
-  },
   "client/src/pages/admin/content-tracking.tsx": {
     "coming soon": 1
   },
   "client/src/pages/admin/experts.tsx": {
     "verified": 1
-  },
-  "client/src/pages/admin/gem-photo-backfill.tsx": {
-    "hidden gem(s)": 3
   },
   "client/src/pages/admin/neighborhood-claims.tsx": {
     "verified": 3
@@ -52,11 +42,6 @@
   "client/src/pages/admin/system.tsx": {
     "coming soon": 1
   },
-  "client/src/pages/architecture-diagram.tsx": {
-    "hidden gem(s)": 3,
-    "secret": 1,
-    "trending": 1
-  },
   "client/src/pages/ea/profile.tsx": {
     "coming soon": 1
   },
@@ -65,14 +50,10 @@
     "verified": 2
   },
   "client/src/pages/expert/analytics.tsx": {
-    "coming soon": 1,
-    "trending": 3
+    "coming soon": 1
   },
   "client/src/pages/expert/catalog.tsx": {
     "verified": 2
-  },
-  "client/src/pages/expert/content-studio.tsx": {
-    "hidden gem(s)": 1
   },
   "client/src/pages/expert/neighborhoods.tsx": {
     "verified": 2
@@ -87,11 +68,7 @@
     "verified": 3
   },
   "client/src/pages/expert/workspace.tsx": {
-    "insider": 1,
     "verified": 2
-  },
-  "client/src/pages/provider/dashboard.tsx": {
-    "trending": 1
   },
   "client/src/pages/provider/profile.tsx": {
     "verified": 1

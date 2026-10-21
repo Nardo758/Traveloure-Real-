@@ -145,9 +145,9 @@ export default function ExpertAnalytics({ embedded = false }: { embedded?: boole
   const actionableInsights = [
     {
       type: "opportunity",
-      title: "Trending destinations to promote",
+      title: "Destinations to promote",
       description: marketIntel?.trending?.[0]
-        ? `${marketIntel.trending[0].destination} is trending - ${marketIntel.trending[0].reason}`
+        ? `${marketIntel.trending[0].destination} — ${marketIntel.trending[0].reason}`
         : "Check market trends for new opportunities",
       action: "View trends",
       impact: "Increase visibility",
@@ -522,7 +522,7 @@ export default function ExpertAnalytics({ embedded = false }: { embedded?: boole
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <TrendingUp className="w-5 h-5 text-primary" />
-                        Trending Destinations
+                        Destinations
                       </CardTitle>
                       <CardDescription>Popular destinations travelers are searching for</CardDescription>
                     </CardHeader>

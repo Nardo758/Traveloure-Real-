@@ -569,7 +569,6 @@ export function LandingHeroContent({
   const tickerParts = hero?.city
     ? [
         hero.city,
-        hero.trend && hero.trend > 0 ? `trend ${hero.trend}` : null,
         hero.crowd ? `crowd ${hero.crowd}` : null,
       ].filter(Boolean)
     : [];
