@@ -1520,7 +1520,12 @@ This document captures architectural decisions to maintain consistency across co
     null when Stripe did not send them (ledger `2026-10-21-saved-method-list-and-express`). The
     SetupIntent dialog and the pay sheets mount the Express Checkout Element for Apple Pay,
     Google Pay, and Link; a wallet that element is showing is hidden on the Payment Element so
-    it is not offered twice. The hold sheet keeps Link off.
+    it is not offered twice. The hold sheet keeps Link off. Trip Pass, ready-made, expert-service,
+    and handoff authorization attach the Customer and `setup_future_usage: off_session` without
+    changing `tp-buy-` or `rm-buy-` (or the expert and handoff keys). A click confirms a saved
+    method on-session and keeps the `requires_action` sheet. Saved Apple Pay is not confirmed
+    from that click. A key already used with the previous body is replayed as that body
+    (ledger `2026-10-21-saved-method-onsession`). Membership renewals stay on Stripe Billing.
     **(b) A PAYMENT METHOD ENTERS THE ACCOUNT AT ONE OF EXACTLY TWO MOMENTS**, and both already
     existed: at FIRST PURCHASE (the Payment Element, vaulted against the durable Stripe customer
     with `setup_future_usage: off_session` — FP-1), or PROACTIVELY on the profile's Payment

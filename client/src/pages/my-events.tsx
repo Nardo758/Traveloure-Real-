@@ -32,6 +32,7 @@ import { COORDINATION_FEE_CHECKOUT_HEADING } from "@/lib/checkout-headings";
 import StripeCheckout from "@/components/booking/StripeCheckout";
 import { Crown, Calendar, MapPin, CheckCircle2, Loader2, Sparkles, RefreshCcw } from "lucide-react";
 import { useSavedPayment, formatCardLabel } from "@/hooks/use-saved-payment";
+import { ON_SESSION_CLICK_NOTE, SAVED_APPLE_PAY_CLICK_NOTE, savedMethodConfirmsOnClick } from "@shared/saved-payment-method";
 // Ledger `2026-09-07-my-events-fold`: the title / status / fee WORDS are shared with the slip's
 // Coordination card, so one engagement reads the same on both surfaces (§18 rule 1). The fee RAIL
 // below — quote, /pay, /pay/confirm — is untouched by that lane.
@@ -242,7 +243,7 @@ function EngagementCard({ engagement }: { engagement: Engagement }) {
           <div className="flex items-center gap-2 text-sm text-muted-foreground" data-testid={`text-refunded-${engagement.id}`}>
             <RefreshCcw className="w-4 h-4" /> This coordination fee was refunded and cannot be charged again.
           </div>
-        ) : savedPayment.hasDefault ? (
+        ) : savedPayment.hasDefault && savedMethodConfirmsOnClick(savedPayment.defaultCard) ? (
           <div className="space-y-2">
             <Button
               className="w-full"
@@ -262,17 +263,23 @@ function EngagementCard({ engagement }: { engagement: Engagement }) {
             >
               Use a different payment method
             </button>
+            <p className="text-xs text-muted-foreground text-center">{ON_SESSION_CLICK_NOTE}</p>
           </div>
         ) : (
-          <Button
-            className="w-full"
-            disabled={starting || feeLoading}
-            onClick={startPayment}
-            data-testid={`button-pay-fee-${engagement.id}`}
-          >
-            {starting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-            Pay coordination fee
-          </Button>
+          <div className="space-y-2">
+            {savedPayment.defaultCard && !savedMethodConfirmsOnClick(savedPayment.defaultCard) ? (
+              <p className="text-xs text-muted-foreground text-center">{SAVED_APPLE_PAY_CLICK_NOTE}</p>
+            ) : null}
+            <Button
+              className="w-full"
+              disabled={starting || feeLoading}
+              onClick={startPayment}
+              data-testid={`button-pay-fee-${engagement.id}`}
+            >
+              {starting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              Pay coordination fee
+            </Button>
+          </div>
         )}
       </CardContent>
 
