@@ -469,6 +469,9 @@ jobs:
       - if: ${{ !cancelled() }}
         name: Fee keep copy pin (CP-2)
         run: npx tsx --test client/src/lib/__tests__/fee-keep-copy.test.ts
+      - if: ${{ !cancelled() }}
+        name: Supply registration pins (S-08 S-18 S-19 S-21)
+        run: npx tsx --test shared/__tests__/supply-registration.test.ts
       # LW-1g: the /earn Ready-Made calculator — empty boxes, the rate from the resolver, nothing on bad input,
       # no average/typical wording, hidden without Ready-Made Trips in the launch market.
       - if: ${{ !cancelled() }}

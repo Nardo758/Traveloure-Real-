@@ -66,6 +66,7 @@ import {
   clearApplicationDraft,
   describeSubmitError,
 } from "@/lib/application-draft";
+import { OPTIONAL_PHONE_ERROR, optionalPhoneError } from "@shared/supply-registration";
 
 // Namespaced so the expert and provider funnels' drafts never collide.
 const DRAFT_KEY = "traveloure_expert_application_draft";
@@ -508,7 +509,7 @@ export default function TravelExpertsPage() {
     if (isLocalExpert) {
       switch (currentStep) {
         case 1:
-          return formData.firstName && formData.lastName && formData.email && formData.phone;
+          return !!(formData.firstName && formData.lastName && formData.email) && optionalPhoneError(formData.phone) === null;
         case 2:
           // D5 (amended): a claim is required only when the catalog has neighborhoods for this city.
           // No options ⇒ skippable (the server stamps no_neighborhoods_available_at at submit).
@@ -534,7 +535,7 @@ export default function TravelExpertsPage() {
     }
     switch (currentStep) {
       case 1:
-        return formData.firstName && formData.lastName && formData.email && formData.phone;
+        return !!(formData.firstName && formData.lastName && formData.email) && optionalPhoneError(formData.phone) === null;
       case 2:
         // Event Planner: the role is REQUIRED — it is the one field that decides which
         // `expert_offering_types` row this application is against. When the catalog itself could
@@ -604,7 +605,7 @@ export default function TravelExpertsPage() {
         firstName: formData.firstName,
         lastName: formData.lastName,
         email: formData.email,
-        phone: formData.phone,
+        phone: formData.phone.trim() || null,
         country: formData.country,
         city: formData.city,
         destinations: formData.destinations,
@@ -760,8 +761,8 @@ export default function TravelExpertsPage() {
       {/* Header */}
       <header className="bg-white border-b border-border sticky top-0 z-50">
         <div className="container mx-auto px-4 max-w-4xl">
-          <div className="flex items-center justify-between h-16">
-            <Link href="/earn" className="flex items-center gap-2 text-muted-foreground hover:text-foreground" data-testid="link-back">
+          <div className="flex items-center justify-between h-16 gap-2">
+            <Link href="/earn" className="flex items-center gap-2 shrink-0 text-muted-foreground hover:text-foreground" data-testid="link-back">
               <ArrowLeft className="w-5 h-5" />
               Back
             </Link>
@@ -770,10 +771,10 @@ export default function TravelExpertsPage() {
                 document-outline tool saw a page with no name. Styling is unchanged: Tailwind
                 preflight resets an h1 to inherited size/weight and zero margin, so the same two
                 classes render identically. */}
-            <h1 className="font-semibold text-foreground" data-testid="heading-expert-application">
+            <h1 className="min-w-0 truncate text-center text-sm font-semibold text-foreground sm:text-base" data-testid="heading-expert-application">
               {expertTypeTitle} Application
             </h1>
-            <div className="w-20" />
+            <div className="w-8 shrink-0 sm:w-20" />
           </div>
         </div>
       </header>
@@ -781,12 +782,12 @@ export default function TravelExpertsPage() {
       {/* Progress Steps */}
       <div className="bg-white border-b border-border py-4">
         <div className="container mx-auto px-4 max-w-4xl">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-1 overflow-x-auto">
             {steps.map((step, idx) => (
               <div key={step.id} className="flex items-center">
                 <div
                   className={cn(
-                    "flex items-center gap-2 px-3 py-2 rounded-lg transition-colors",
+                    "flex items-center gap-2 px-1 py-2 sm:px-3 rounded-lg transition-colors",
                     currentStep === step.id
                       ? "bg-[#FFE3E8] text-primary"
                       : currentStep > step.id
@@ -811,7 +812,7 @@ export default function TravelExpertsPage() {
                 {idx < steps.length - 1 && (
                   <div
                     className={cn(
-                      "w-8 md:w-12 h-0.5 mx-2",
+                      "w-2 sm:w-8 md:w-12 h-0.5 mx-1 sm:mx-2",
                       currentStep > step.id ? "bg-green-300" : "bg-[#E5E7EB]"
                     )}
                   />
@@ -977,14 +978,10 @@ export default function TravelExpertsPage() {
                   </div>
                 </div>
 
-                {/* QA F12(b): step 1's four required fields carry the marker this page already uses
-                    for required fields on later steps (`*` + `aria-required`). The four marked here
-                    are EXACTLY the four `canProceed()` case 1 gates on — First/Last name, Email,
-                    Phone — for both the local-expert and the general branch; Country and City are
-                    deliberately unmarked because step 1 does not gate on them (the local-expert
-                    branch asks for the city again, and gates, on step 2). If that gate changes,
-                    these marks change with it. */}
-                <div className="grid grid-cols-2 gap-4">
+                {/* QA F12(b): the required marks are the fields step 1 gates on — First/Last
+                    name and Email, for both branches. Phone is optional (S-08). Country and City
+                    stay unmarked because step 1 does not gate on them. */}
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
                     <Label className="text-[#374151]">First Name <span className="text-red-500">*</span></Label>
                     <Input
@@ -1018,17 +1015,23 @@ export default function TravelExpertsPage() {
                   />
                 </div>
                 <div>
-                  <Label className="text-[#374151]">Phone <span className="text-red-500">*</span></Label>
+                  <Label className="text-[#374151]">Phone (optional)</Label>
                   <Input
                     type="tel"
                     value={formData.phone}
                     onChange={(e) => updateFormData("phone", e.target.value)}
                     className="mt-2 h-12 border-border"
-                    aria-required="true"
+                    aria-invalid={optionalPhoneError(formData.phone) !== null}
+                    aria-describedby={optionalPhoneError(formData.phone) ? "phone-error" : undefined}
                     data-testid="input-phone"
                   />
+                  {optionalPhoneError(formData.phone) ? (
+                    <p id="phone-error" className="mt-1 text-sm text-red-600" data-testid="text-phone-error">
+                      {OPTIONAL_PHONE_ERROR}
+                    </p>
+                  ) : null}
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
                     <Label className="text-[#374151]">Country</Label>
                     <Input
