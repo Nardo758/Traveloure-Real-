@@ -5,7 +5,7 @@
  * Sessions for cart-based bookings (multi-service checkout) and expert advisory service
  * purchases (review-only, review-and-book, full-concierge). It also owns the central
  * webhook event dispatcher: it routes `payment_intent.succeeded/failed/canceled`,
- * `charge.refunded`, and `checkout.session.completed` events to the appropriate handler,
+ * `charge.refunded`, and checkout-session events to the appropriate handler,
  * delegating transport-booking confirmation to stripe.service.ts via
  * `handleStripePaymentSuccess`. Refund creation (stripe.refunds.create) is owned here.
  *
@@ -28,6 +28,8 @@ import { kickLegacyConfirmationDelivery, persistLegacyBookingConfirmationEmail }
 import { trackFunnelEvent } from '../utils/funnelTracker';
 import { logger } from '../infrastructure/logger';
 import { resolveSavedCardChargeId } from './saved-card-choice';
+import { mapStripePaymentMethod, savedMethodConfirmsOnClick, type SavedPaymentMethod } from '../../shared/saved-payment-method';
+import { createPaymentIntentPreservingKey } from './stripe-intent-key';
 // RELEASE-ALL-NIGHTS hotfix (§18b-class): the ONE shared derivation of a booking's full claimed-
 // slot set (see its docblock in checkout-claim.service.ts) — used here so refundServiceBooking's
 // release can never drift from voidClaim's / updateServiceBookingStatus's.
@@ -44,6 +46,7 @@ import { dispatchPaymentTrigger } from "../automations/payments/runtime";
 import { runUnderWebhookClaim } from "./webhook-claim.service";
 import { customerCreateIdempotencyKey, customerIdAfterCreate } from "./stripe-customer-create";
 import { vaultRecordLogLine, vaultWebhookDisposition } from "./vault-webhook";
+import { checkoutSessionFulfillment, checkoutSessionWithholdLogLine } from "./checkout-session-fulfillment";
 
 export const stripe = new Stripe(getStripeSecretKey() || '', {
   apiVersion: '2024-12-18.acacia' as any,
@@ -456,10 +459,10 @@ class StripePaymentService {
     return result ?? null;
   }
 
-  /** Saved cards for the session user — read live from Stripe, safe display fields only. */
+  /** Saved payment methods for the session user — read live from Stripe, safe display fields only. */
   async listSavedPaymentMethods(userId: string): Promise<{
     defaultPaymentMethodId: string | null;
-    methods: Array<{ id: string; brand: string; last4: string; expMonth: number; expYear: number }>;
+    methods: SavedPaymentMethod[];
   }> {
     const result = await this.withResolvedCustomer(userId, async (customerId) => {
       const [customer, methods] = await Promise.all([
@@ -467,12 +470,12 @@ class StripePaymentService {
         (async () => {
           const collected: Stripe.PaymentMethod[] = [];
           let startingAfter: string | undefined;
-          // Stripe's default page is 10. Stopping there hid every later card, so the
-          // traveler could not remove them (payments QA bug 6).
+          // Stripe's default page is 10. Stopping there hid every later method, so the
+          // traveler could not remove them (payments QA bug 6). Omitting `type` lists
+          // every current and future type (ledger `2026-10-21-saved-method-list-and-express`).
           for (let page = 0; page < 10; page++) {
             const batch = await stripe.paymentMethods.list({
               customer: customerId,
-              type: 'card',
               limit: 100,
               ...(startingAfter ? { starting_after: startingAfter } : {}),
             });
@@ -489,13 +492,10 @@ class StripePaymentService {
           : null;
       return {
         defaultPaymentMethodId: defaultPm,
-        methods: methods.data.map((pm) => ({
-          id: pm.id,
-          brand: pm.card?.brand ?? 'card',
-          last4: pm.card?.last4 ?? '',
-          expMonth: pm.card?.exp_month ?? 0,
-          expYear: pm.card?.exp_year ?? 0,
-        })),
+        methods: methods.data.flatMap((pm) => {
+          const mapped = mapStripePaymentMethod(pm);
+          return mapped ? [mapped] : [];
+        }),
       };
     });
     return result ?? { defaultPaymentMethodId: null, methods: [] };
@@ -531,15 +531,16 @@ class StripePaymentService {
   }
 
   /**
-   * FP-1 one-click: charge the user's saved default card OFF-SESSION (create+confirm in one
-   * server-side call). The AMOUNT always comes from the caller's server-side fee derivation
+   * One-click while the person is here: confirm the saved method on-session.
+   * The AMOUNT always comes from the caller's server-side fee derivation
    * (§14) and the caller supplies a deterministic idempotencyKey (§15).
+   * Saved Apple Pay is not confirmed here (ledger `2026-10-21-saved-method-onsession`).
    *
    * Outcomes (never throws for the expected cases):
    *   'succeeded'        — charged; caller proceeds exactly as if the Elements flow confirmed.
    *   'requires_action'  — the bank demands 3DS; clientSecret returned so the client falls back
    *                        to the payment sheet for this one charge.
-   *   'no_saved_method'  — nothing vaulted (or Stripe unconfigured); caller uses the normal sheet.
+   *   'no_saved_method'  — nothing vaulted, Apple Pay, or Stripe unconfigured; caller uses the sheet.
    */
   async chargeSavedMethod(
     userId: string,
@@ -560,7 +561,9 @@ class StripePaymentService {
     if (!this.isReady()) return { status: 'no_saved_method' };
     const { defaultPaymentMethodId, methods } = await this.listSavedPaymentMethods(userId);
     const paymentMethodId = resolveSavedCardChargeId(methods, defaultPaymentMethodId, params.paymentMethodId);
-    if (!paymentMethodId) return { status: 'no_saved_method' };
+    const chosen = paymentMethodId ? methods.find((method) => method.id === paymentMethodId) : null;
+    // Saved Apple Pay is not confirmed from a click. The sheet lets the device make a new cryptogram.
+    if (!chosen || !savedMethodConfirmsOnClick(chosen)) return { status: 'no_saved_method' };
     const customerId = await this.getOrCreateCustomer(userId);
     if (!customerId) return { status: 'no_saved_method' };
 
@@ -569,29 +572,27 @@ class StripePaymentService {
       // listSavedPaymentMethods() read above and this charge (low-probability race — the common
       // stale-id case already short-circuits to 'no_saved_method' above, since a recreated
       // customer starts with zero saved payment methods).
-      const pi = await this.retryOnMissingCustomer(userId, customerId, (cid, attempt) =>
-        // ld43-wallets-exempt: off-session confirm against a NAMED saved payment_method. Stripe
-        // rejects `automatic_payment_methods` alongside `payment_method` + `confirm: true` +
-        // `off_session: true` — this call exists precisely BECAUSE a method is already vaulted, so
-        // there is nothing for Stripe to offer. The wallet choice was made when the card was saved
-        // (LD 43(b)); the interactive fallback this method degrades to (`no_saved_method`) is the
-        // one that offers them.
-        stripe.paymentIntents.create(
-          {
-            amount: params.amountCents,
-            currency: (params.currency ?? 'usd').toLowerCase(),
-            customer: cid,
-            payment_method: paymentMethodId,
-            off_session: true,
-            confirm: true,
-            metadata: params.metadata,
-            description: params.description,
-          },
-          // Stripe rejects reusing an idempotencyKey with different params (`customer` differs
-          // on the recovery retry) — vary the key on attempt 2 so the retry can actually land.
-          { idempotencyKey: attempt === 1 ? params.idempotencyKey : `${params.idempotencyKey}-recover` },
-        ),
-      );
+      const pi = await this.retryOnMissingCustomer(userId, customerId, (cid, attempt) => {
+        const key = attempt === 1 ? params.idempotencyKey : `${params.idempotencyKey}-recover`;
+        const onSession = {
+          amount: params.amountCents,
+          currency: (params.currency ?? 'usd').toLowerCase(),
+          customer: cid,
+          payment_method: paymentMethodId,
+          confirm: true,
+          metadata: params.metadata,
+          description: params.description,
+        };
+        // ld43-wallets-exempt: a named method is confirmed without automatic_payment_methods.
+        // The previous body also set off_session. A key already used with that body is replayed
+        // as-is so the retry returns the original PaymentIntent. New clicks omit off_session.
+        const legacyOffSession = { ...onSession, off_session: true as const };
+        return createPaymentIntentPreservingKey(
+          (body) => stripe.paymentIntents.create(body, { idempotencyKey: key }),
+          onSession,
+          legacyOffSession,
+        );
+      });
       if (pi.status === 'succeeded') return { status: 'succeeded', paymentIntentId: pi.id };
       if (pi.status === 'requires_action' && pi.client_secret) {
         return { status: 'requires_action', paymentIntentId: pi.id, clientSecret: pi.client_secret };
@@ -608,7 +609,7 @@ class StripePaymentService {
       if (errPi?.client_secret) {
         return { status: 'requires_action', paymentIntentId: errPi.id, clientSecret: errPi.client_secret };
       }
-      logger.warn({ err: err?.message, userId }, '[FP-1] off-session charge failed without recoverable PI');
+      logger.warn({ err: err?.message, userId }, '[FP-1] on-session saved-method charge failed without recoverable PI');
       return { status: 'no_saved_method' };
     }
   }
@@ -691,6 +692,8 @@ class StripePaymentService {
             defaultPaymentMethodId,
             options?.savedPaymentMethodId,
           );
+          const chosen = offSessionMethodId ? methods.find((method) => method.id === offSessionMethodId) : null;
+          if (chosen && !savedMethodConfirmsOnClick(chosen)) offSessionMethodId = null;
         } catch {
           offSessionMethodId = null; // treat a lookup failure as "no saved card", never as an error
         }
@@ -733,9 +736,14 @@ class StripePaymentService {
         // redirect-based method enabled in the Stripe dashboard would strand the traveler on the
         // wrong page. Wallets are NOT redirect methods, so none of them is suppressed by this.
         ...(offSessionMethodId && customerId
-          ? { payment_method: offSessionMethodId, off_session: true, confirm: true }
+          ? { payment_method: offSessionMethodId, confirm: true }
           : { automatic_payment_methods: { enabled: true, allow_redirects: 'never' as const } }),
       });
+      const legacyPaymentIntentParams = (customerId: string | null) => {
+        const next = buildPaymentIntentParams(customerId);
+        if (!(offSessionMethodId && customerId)) return next;
+        return { ...next, off_session: true as const };
+      };
 
       // Stripe rejects reusing an idempotencyKey with different params (`customer` differs on
       // the recovery retry) — vary the key on attempt 2 so the retry can actually land.
@@ -750,9 +758,17 @@ class StripePaymentService {
       // the builder above). ONE author of these params, two callers (§18 rule 1).
       const paymentIntent = fpCustomerId
         ? await this.retryOnMissingCustomer(userId, fpCustomerId, (cid, attempt) =>
-            stripe.paymentIntents.create(buildPaymentIntentParams(cid), requestOptionsForAttempt(attempt)),
+            createPaymentIntentPreservingKey(
+              (body) => stripe.paymentIntents.create(body, requestOptionsForAttempt(attempt)),
+              buildPaymentIntentParams(cid),
+              legacyPaymentIntentParams(cid),
+            ),
           )
-        : await stripe.paymentIntents.create(buildPaymentIntentParams(null), stripeRequestOptions);
+        : await createPaymentIntentPreservingKey(
+            (body) => stripe.paymentIntents.create(body, stripeRequestOptions),
+            buildPaymentIntentParams(null),
+            legacyPaymentIntentParams(null),
+          );
 
       // Store payment intent in database
       const metadataJson = JSON.stringify(paymentIntent.metadata);
@@ -884,13 +900,24 @@ class StripePaymentService {
           break;
 
         case 'checkout.session.completed':
+        case 'checkout.session.async_payment_succeeded':
+        case 'checkout.session.async_payment_failed': {
           const session = event.data.object as Stripe.Checkout.Session;
+          // Delayed methods complete the session before the payment is paid.
+          // Fulfillment waits for payment_status paid. A failed async payment
+          // never fulfills. Membership stays on customer.subscription.*.
+          const fulfillment = checkoutSessionFulfillment(event.type, session.payment_status);
+          if (fulfillment !== "fulfill") {
+            console.info(checkoutSessionWithholdLogLine(event.type, session.payment_status, session.id));
+            break;
+          }
           if (session.metadata?.type === 'expert_service') {
             await this.handleExpertServicePayment(session);
           } else if (session.metadata?.type === 'transport_booking') {
             await handleStripePaymentSuccess(session.id);
           }
           break;
+        }
 
         // ── Subscription lifecycle -> plan_memberships (2026-09-21-membership-writer) ──────
         // These three fell through to "Unhandled" before this lane, so a Stripe subscription
@@ -2173,25 +2200,31 @@ class StripePaymentService {
     /** Smoke 13 #6: the `expert_requests` row this hold belongs to — named on the PaymentIntent. */
     requestId?: string | null;
   }): Promise<{ clientSecret: string | null; paymentIntentId: string; amountCents: number }> {
-    const pi = await stripe.paymentIntents.create(
-      {
-        amount: Math.round(input.amountCents),
-        currency: 'usd',
-        capture_method: 'manual',
-        metadata: {
-          type: 'expert_handoff',
-          userId: input.userId,
-          tripId: input.tripId,
-          handoffKind: input.kind,
-          ...(input.requestId ? { handoffRequestId: input.requestId } : {}),
-          ...(input.travelerServiceFee ? { travelerServiceFee: JSON.stringify(input.travelerServiceFee).substring(0, 480) } : {}),
-        },
-        description: `Local expert handoff${input.destination ? ` - ${input.destination}` : ''}`,
-        // LD 43(c): wallets on this platform charge too; the handoff sheet confirms with
-        // `redirect: 'if_required'` and has no redirect-return page.
-        automatic_payment_methods: { enabled: true, allow_redirects: 'never' as const },
+    const customerId = await this.getOrCreateCustomer(input.userId).catch(() => null);
+    const legacy = {
+      amount: Math.round(input.amountCents),
+      currency: 'usd' as const,
+      capture_method: 'manual' as const,
+      metadata: {
+        type: 'expert_handoff',
+        userId: input.userId,
+        tripId: input.tripId,
+        handoffKind: input.kind,
+        ...(input.requestId ? { handoffRequestId: input.requestId } : {}),
+        ...(input.travelerServiceFee ? { travelerServiceFee: JSON.stringify(input.travelerServiceFee).substring(0, 480) } : {}),
       },
-      { idempotencyKey: input.idempotencyKey },
+      description: `Local expert handoff${input.destination ? ` - ${input.destination}` : ''}`,
+      // LD 43(c): wallets on this platform charge too; the handoff sheet confirms with
+      // `redirect: 'if_required'` and has no redirect-return page.
+      automatic_payment_methods: { enabled: true, allow_redirects: 'never' as const },
+    };
+    const next = customerId
+      ? { ...legacy, customer: customerId, setup_future_usage: 'off_session' as const }
+      : legacy;
+    const pi = await createPaymentIntentPreservingKey(
+      (body) => stripe.paymentIntents.create(body, { idempotencyKey: input.idempotencyKey }),
+      next,
+      legacy,
     );
     return { clientSecret: pi.client_secret, paymentIntentId: pi.id, amountCents: pi.amount };
   }
@@ -2324,35 +2357,43 @@ class StripePaymentService {
       const isZeroDecimal = effectiveCurrency === 'jpy';
       const stripeAmount = isZeroDecimal ? Math.round(amount) : Math.round(amount * 100);
 
-      const paymentIntent = await stripe.paymentIntents.create(
-        {
-          amount: stripeAmount,
-          currency: effectiveCurrency,
-          metadata: {
-            type: 'expert_service',
-            userId,
-            variantId: variantId.toString(),
-            comparisonId: comparisonId.toString(),
-            destination,
-            serviceType,
-            notes: notes.substring(0, 450),
-            // Ruling 2026-09-02 (path 5): the traveler-fee snapshot as a compact JSON string, read
-            // back at request confirmation to write the fee_ledger row (bounded well under 500 chars).
-            ...(travelerServiceFee ? { travelerServiceFee: JSON.stringify(travelerServiceFee).substring(0, 480) } : {}),
-          },
-          description: `Expert ${serviceTitles[serviceType]} - ${destination}`,
-          receipt_email: userEmail,
-          // LD 43(c): wallets on this platform charge too. allow_redirects 'never' — the expert
-          // service sheet confirms with `redirect: 'if_required'` and has no redirect-return page.
-          automatic_payment_methods: {
-            enabled: true,
-            allow_redirects: 'never' as const,
-          },
+      const customerId = await this.getOrCreateCustomer(userId).catch(() => null);
+      const legacy = {
+        amount: stripeAmount,
+        currency: effectiveCurrency,
+        metadata: {
+          type: 'expert_service',
+          userId,
+          variantId: variantId.toString(),
+          comparisonId: comparisonId.toString(),
+          destination,
+          serviceType,
+          notes: notes.substring(0, 450),
+          // Ruling 2026-09-02 (path 5): the traveler-fee snapshot as a compact JSON string, read
+          // back at request confirmation to write the fee_ledger row (bounded well under 500 chars).
+          ...(travelerServiceFee ? { travelerServiceFee: JSON.stringify(travelerServiceFee).substring(0, 480) } : {}),
         },
-        // §15 (MONEY_MAP F-3): deterministic key — variantId+comparisonId+serviceType+userId is
-        // the stable identity of this logical charge (a retry can't mint a second uncaptured PI;
-        // a different serviceType/variant for the same user is a genuinely different charge).
-        { idempotencyKey: `expert-svc-${variantId}-${comparisonId}-${serviceType}-${userId}` },
+        description: `Expert ${serviceTitles[serviceType]} - ${destination}`,
+        receipt_email: userEmail,
+        // LD 43(c): wallets on this platform charge too. allow_redirects 'never' — the expert
+        // service sheet confirms with `redirect: 'if_required'` and has no redirect-return page.
+        automatic_payment_methods: {
+          enabled: true,
+          allow_redirects: 'never' as const,
+        },
+      };
+      const next = customerId
+        ? { ...legacy, customer: customerId, setup_future_usage: 'off_session' as const }
+        : legacy;
+      // §15 (MONEY_MAP F-3): deterministic key — variantId+comparisonId+serviceType+userId is
+      // the stable identity of this logical charge (a retry can't mint a second uncaptured PI;
+      // a different serviceType/variant for the same user is a genuinely different charge).
+      const paymentIntent = await createPaymentIntentPreservingKey(
+        (body) => stripe.paymentIntents.create(body, {
+          idempotencyKey: `expert-svc-${variantId}-${comparisonId}-${serviceType}-${userId}`,
+        }),
+        next,
+        legacy,
       );
 
       return {
@@ -2394,13 +2435,10 @@ class StripePaymentService {
       const isZeroDecimal = effectiveCurrency === 'jpy';
       const unitAmount = isZeroDecimal ? Math.round(amount) : Math.round(amount * 100);
 
-      // LD 43 audit note — NOT a PaymentIntent site and deliberately UNCHANGED (same reasoning as
-      // the transport Checkout Session in stripe.service.ts: a hosted session's wallet set is
-      // dashboard-configured, and widening it admits async methods this rail's webhook has not
-      // been audited for). The expert-service PAYMENT INTENT above — the embedded sheet that
-      // actually ships — does offer wallets.
+      // Hosted Checkout uses the Dashboard's dynamic payment methods. Fulfillment
+      // waits for payment_status paid (ledger `2026-10-21-checkout-dynamic-methods`).
+      // The expert-service PaymentIntent above is the embedded sheet.
       const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
         mode: 'payment',
         customer_email: userEmail,
         line_items: [
@@ -2455,6 +2493,10 @@ class StripePaymentService {
 
   async handleExpertServicePayment(session: Stripe.Checkout.Session) {
     try {
+      if (session.payment_status !== "paid") {
+        console.info(checkoutSessionWithholdLogLine("checkout.session", session.payment_status, session.id));
+        return;
+      }
       const { userId, variantId, comparisonId, destination, serviceType, notes } = session.metadata || {};
       
       if (!userId || !variantId || !comparisonId) {

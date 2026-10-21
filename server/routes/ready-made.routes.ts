@@ -35,6 +35,8 @@ import { holdWindowDays } from "../config/earnings-hold.config";
 import { getBand } from "../services/commission";
 import { unsplashService } from "../services/unsplash.service";
 import { getStripeSecretKey } from "../utils/stripe-key";
+import { stripePaymentService } from "../services/stripe-payment.service";
+import { createPaymentIntentPreservingKey } from "../services/stripe-intent-key";
 import { waitlistPurchaseDecisionFor } from "../services/waitlist-purchase-gate";
 import { resolveTripTimezone } from "../services/trip-timezone";
 import { resolveMarketSlug } from "../services/trend-engine/operating-markets";
@@ -1428,25 +1430,31 @@ router.post("/api/ready-made/:id/purchase", isAuthenticated, async (req, res) =>
     const stripeClient = new Stripe(getStripeSecretKey() || "", {
       apiVersion: "2024-12-18.acacia" as any,
     });
-    const paymentIntent = await stripeClient.paymentIntents.create(
-      {
-        // §14: server-derived from the listing, price locked at PI creation. Slice B1: every public price
-        // line prints `readyMadeBuyerTotalCents`, which ready-made-preview P4 pins equal to this amount.
-        amount: listing.priceCents,
-        currency: "usd",
-        metadata: {
-          type: "ready_made_purchase",
-          listingId: listing.id,
-          buyerId: userId,
-        },
-        description: `Traveloure ready-made trip: ${listing.title}`,
-        // LD 43(c): wallets on every platform charge. `allow_redirects: 'never'` — the buy sheet
-        // confirms with `redirect: 'if_required'` and the clone step runs after confirm on this
-        // page, so a redirect-based method would strand the buyer away from it.
-        automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+    const customerId = await stripePaymentService.getOrCreateCustomer(userId).catch(() => null);
+    const legacy = {
+      // §14: server-derived from the listing, price locked at PI creation. Slice B1: every public price
+      // line prints `readyMadeBuyerTotalCents`, which ready-made-preview P4 pins equal to this amount.
+      amount: listing.priceCents,
+      currency: "usd" as const,
+      metadata: {
+        type: "ready_made_purchase",
+        listingId: listing.id,
+        buyerId: userId,
       },
-      // §15: retrying the purchase re-uses the same PI instead of minting a second charge.
-      { idempotencyKey: `rm-buy-${listing.id}-${userId}` },
+      description: `Traveloure ready-made trip: ${listing.title}`,
+      // LD 43(c): wallets on every platform charge. `allow_redirects: 'never'` — the buy sheet
+      // confirms with `redirect: 'if_required'` and the clone step runs after confirm on this
+      // page, so a redirect-based method would strand the buyer away from it.
+      automatic_payment_methods: { enabled: true, allow_redirects: "never" as const },
+    };
+    const next = customerId
+      ? { ...legacy, customer: customerId, setup_future_usage: "off_session" as const }
+      : legacy;
+    // §15: retrying the purchase re-uses the same PI instead of minting a second charge. The key string is unchanged.
+    const paymentIntent = await createPaymentIntentPreservingKey(
+      (body) => stripeClient.paymentIntents.create(body, { idempotencyKey: `rm-buy-${listing.id}-${userId}` }),
+      next,
+      legacy,
     );
 
     return res.status(202).json({

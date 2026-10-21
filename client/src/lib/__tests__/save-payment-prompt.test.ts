@@ -11,11 +11,11 @@
  *     not knowing that none does, and treating it as the latter is how a soft prompt turns into
  *     nagging someone who already saved a card.
  *
- * (2) SIGNUP COLLECTS NOTHING (A*). LD 43(a) is a conversion decision and it is unenforceable by
- *     a runtime assertion — the failure mode is somebody adding a card field to an auth screen,
- *     which no unit test of an existing screen catches. So it is pinned as a STATIC fact about
- *     the auth surfaces: they import neither the prompt, nor the add-card dialog, nor the
- *     payment-methods rail, transitively through nothing.
+ * (2) THE PASSWORD FORM STILL EMBEDS NO PAYMENT RAIL (A*). Locked Decision 43(a) was amended
+ *     (ledger `2026-10-21-signup-payment-step`): a saved method is required after sign-in.
+ *     Register does not create a session, so Signup and the other auth-named screens still
+ *     import neither this prompt, nor AddCardDialog, nor Stripe. The step is
+ *     PaymentMethodSetupGate, proved in payment-method-setup.test.ts.
  *
  * NEGATIVE SPACE: these are source and predicate facts. They do not prove a browser rendered
  * anything, do not prove Stripe offered a wallet (device + dashboard + LD 43(e)'s operator-side
@@ -149,23 +149,27 @@ test("A3: the prompt states no amount (§14 — it charges nothing and prices no
   assert.equal(/\$\{[^}]*(price|amount|cents|Cents)[^}]*\}|toFixed\(2\)/.test(promptSrc), false);
 });
 
-test("A4: LD 43(a) — Signup imports neither the prompt, nor AddCardDialog, nor any payment rail", () => {
+test("A4: the password sign-up page still imports no payment rail", () => {
+  // Register answers without a session, so this page cannot open a SetupIntent. The required
+  // step is PaymentMethodSetupGate after sign-in (ledger `2026-10-21-signup-payment-step`).
   for (const forbidden of [
     "SavePaymentMethodPrompt",
     "AddCardDialog",
     "PaymentMethodsCard",
+    "PaymentMethodSetupGate",
     "use-saved-payment",
     "payment-methods",
     "@stripe/",
   ]) {
-    assert.equal(signupSrc.includes(forbidden), false, `Signup.tsx references ${forbidden} — LD 43(a) says signup collects no payment method, ever`);
+    assert.equal(signupSrc.includes(forbidden), false, `Signup.tsx references ${forbidden}`);
   }
+  assert.match(signupSrc, /registered\.paymentStep/);
 });
 
-test("A5: no auth-shaped page anywhere reaches a payment rail", () => {
-  // Broader than A4 on purpose: LD 43(a) is about the MOMENT, not one filename, so a renamed or
-  // added auth screen is covered. Stated limit: it matches on file NAME, so an auth screen with
-  // an unrelated name is outside it.
+test("A5: auth-named pages still embed no payment rail", () => {
+  // The signed-in step lives in PaymentMethodSetupGate, whose file name is not auth-shaped.
+  // Stated limit: this sweep matches on file NAME, so an auth screen with an unrelated name
+  // is outside it. The gate's own pins are payment-method-setup.test.ts.
   const authish: string[] = [];
   const walk = (dir: string) => {
     for (const entry of readdirSync(dir)) {
@@ -187,7 +191,7 @@ test("A5: no auth-shaped page anywhere reaches a payment rail", () => {
       offenders.push(relative(ROOT, file));
     }
   }
-  assert.deepEqual(offenders, [], `auth surfaces must collect no payment method (LD 43(a)): ${offenders.join(", ")}`);
+  assert.deepEqual(offenders, [], `auth-named pages must not embed a payment rail: ${offenders.join(", ")}`);
 });
 
 test("A6: the prompt has exactly the TWO mounts the ruling names, and no third", () => {

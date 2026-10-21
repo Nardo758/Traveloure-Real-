@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { User } from "@shared/models/auth";
 import { forgetPhonePushOnSignOut } from "@/lib/web-push";
+import { clearPaymentMethodPromptDismissed } from "@/lib/payment-method-setup";
 
 async function fetchUser(): Promise<User | null> {
   const response = await fetch("/api/auth/user", {
@@ -28,6 +29,7 @@ async function logout(): Promise<void> {
   // redirecting on failure would show a logged-out UI over a live session.
   // LD 53: a shared device stops receiving this account's phone notices (bounded, never fails).
   await forgetPhonePushOnSignOut();
+  clearPaymentMethodPromptDismissed();
   const response = await fetch("/api/auth/logout", {
     method: "POST",
     credentials: "include",

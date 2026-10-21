@@ -1510,13 +1510,37 @@ This document captures architectural decisions to maintain consistency across co
     principal still charge only when the person clicks, and that click confirms on-session. The
     only unattended charge is a Stripe Billing membership renewal. A saved Apple Pay method is
     not reused while the person is present: Apple's terms require a new cryptogram for an
-    on-session payment. The account-setup screen is a later lane. Until it lands, signup can
-    still finish with no method; that is the divergence, not the rule. This amendment's code
+    on-session payment. The signed-in step has landed (ledger
+    `2026-10-21-signup-payment-step`). Register still does not create a session, so the
+    password form and social buttons do not embed Stripe. The first signed-in session,
+    including Facebook and Replit sign-in, runs PaymentMethodSetupGate, which reuses
+    AddCardDialog. An account created on or after 2026-10-21 (the ruling's own date) is
+    asked to save a method before continuing, and can sign out. An earlier account, or an
+    account whose createdAt cannot be read, gets a dismissible prompt for that sign-in and
+    is not locked out. The two SavePaymentMethodPrompt mounts stay the reminder at the
+    first paid action. A payment-method list that is still loading for an older account,
+    or that returns `available: false`, shows nothing: a missing answer is not "no method".
+    This amendment's code
     lane accepts `rk_test_` / `rk_live_` on the same live-versus-test split (a live key stays
     rejected outside production), makes Customer create idempotent on the user id and stops
     adopting the first email-match Customer, and records `setup_intent.succeeded` plus
     `payment_method.attached` / `payment_method.detached` with no fulfillment and no local card
-    table.
+    table. The saved-method list returns every Stripe type and leaves brand, last4, and expiry
+    null when Stripe did not send them (ledger `2026-10-21-saved-method-list-and-express`). The
+    SetupIntent dialog and the pay sheets mount the Express Checkout Element for Apple Pay,
+    Google Pay, and Link; a wallet that element is showing is hidden on the Payment Element so
+    it is not offered twice. The hold sheet keeps Link off. Trip Pass, ready-made, expert-service,
+    and handoff authorization attach the Customer and `setup_future_usage: off_session` without
+    changing `tp-buy-` or `rm-buy-` (or the expert and handoff keys). A click confirms a saved
+    method on-session and keeps the `requires_action` sheet. Saved Apple Pay is not confirmed
+    from that click. A key already used with the previous body is replayed as that body
+    (ledger `2026-10-21-saved-method-onsession`). Membership renewals stay on Stripe Billing.
+    The three hosted Checkout Sessions no longer pass `payment_method_types`.
+    `checkout.session.completed` and `checkout.session.async_payment_succeeded`
+    fulfill expert-service and transport only when `payment_status` is `paid`.
+    `checkout.session.async_payment_failed` does not fulfill. Membership
+    entitlement stays on `customer.subscription.*` (ledger
+    `2026-10-21-checkout-dynamic-methods`).
     **(b) A PAYMENT METHOD ENTERS THE ACCOUNT AT ONE OF EXACTLY TWO MOMENTS**, and both already
     existed: at FIRST PURCHASE (the Payment Element, vaulted against the durable Stripe customer
     with `setup_future_usage: off_session` — FP-1), or PROACTIVELY on the profile's Payment

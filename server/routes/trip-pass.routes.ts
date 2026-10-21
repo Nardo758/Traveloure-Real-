@@ -21,6 +21,8 @@ import { db } from "../db";
 import { trips } from "@shared/schema";
 import { getUserId } from "../utils/auth";
 import { getStripeSecretKey } from "../utils/stripe-key";
+import { stripePaymentService } from "../services/stripe-payment.service";
+import { createPaymentIntentPreservingKey } from "../services/stripe-intent-key";
 import { PLAN_KEYS, requirePlan } from "../services/plans.service";
 import { getActiveTripPass, grantTripPass } from "../services/trip-entitlement.service";
 import { tripPassRunsPerTrip } from "../config/trip-pass-runs.config";
@@ -90,24 +92,30 @@ router.post("/api/trips/:tripId/trip-pass/purchase", isAuthenticated, async (req
     const stripeClient = new Stripe(getStripeSecretKey() || "", {
       apiVersion: "2024-12-18.acacia" as any,
     });
-    const paymentIntent = await stripeClient.paymentIntents.create(
-      {
-        amount: plan.priceCents,
-        currency: "usd",
-        metadata: {
-          type: "trip_pass_purchase",
-          tripId: trip!.id,
-          buyerId: userId,
-        },
-        description: `Traveloure Trip Pass — ${trip!.title ?? trip!.id}`,
-        // LD 43(c): wallets on every platform charge (Apple Pay / Google Pay / Link).
-        // `allow_redirects: 'never'` — TripPassCard confirms through the shared StripeCheckout,
-        // whose single return_url is /booking/confirmation, which is not this flow's landing
-        // (purchase/confirm runs in the dialog). Wallets are not redirect methods, so none is lost.
-        automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+    const customerId = await stripePaymentService.getOrCreateCustomer(userId).catch(() => null);
+    const legacy = {
+      amount: plan.priceCents,
+      currency: "usd" as const,
+      metadata: {
+        type: "trip_pass_purchase",
+        tripId: trip!.id,
+        buyerId: userId,
       },
-      // §15: a retry re-uses the same PI instead of minting a second charge.
-      { idempotencyKey: `tp-buy-${trip!.id}-${userId}` },
+      description: `Traveloure Trip Pass — ${trip!.title ?? trip!.id}`,
+      // LD 43(c): wallets on every platform charge (Apple Pay / Google Pay / Link).
+      // `allow_redirects: 'never'` — TripPassCard confirms through the shared StripeCheckout,
+      // whose single return_url is /booking/confirmation, which is not this flow's landing
+      // (purchase/confirm runs in the dialog). Wallets are not redirect methods, so none is lost.
+      automatic_payment_methods: { enabled: true, allow_redirects: "never" as const },
+    };
+    const next = customerId
+      ? { ...legacy, customer: customerId, setup_future_usage: "off_session" as const }
+      : legacy;
+    // §15: a retry re-uses the same PI instead of minting a second charge. The key string is unchanged.
+    const paymentIntent = await createPaymentIntentPreservingKey(
+      (body) => stripeClient.paymentIntents.create(body, { idempotencyKey: `tp-buy-${trip!.id}-${userId}` }),
+      next,
+      legacy,
     );
 
     return res.status(202).json({
