@@ -279,8 +279,8 @@ test("F2-d: an admin publishes with no verification form row at all", async () =
 });
 
 // Default-deny: a role in neither family (plain "user") with no open application is blocked.
-// `isEarner` lets a pending applicant through so they can save a draft; this fixture's plain
-// user has no application, so both draft and active writes still 403 before the F2 gate.
+// `isEarnerOrPendingDraft` lets a pending applicant through so they can save a draft; this
+// fixture's plain user has no application, so both draft and active writes still 403 before the F2 gate.
 test("F2-d2: a plain user (neither expert nor provider family) cannot publish — blocked upstream by the isEarner backstop", async () => {
   const { status, json } = await publish(plainUser.cookie, servicePayload());
   assert.equal(status, 403);

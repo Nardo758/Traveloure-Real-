@@ -97,7 +97,7 @@ import { isActionableBooking, isProvisionalBooking } from "@shared/booking-visib
 import { IDENTITY_EDIT_FIELDS } from "@shared/edit-split";
 import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated, setupFacebookAuth, setupEmailAuth } from "./replit_integrations/auth";
-import { isExpert, isProvider, isEarner } from "./middleware/role-rbac";
+import { isExpert, isProvider, isEarner, isEarnerOrPendingDraft } from "./middleware/role-rbac";
 import { formatVendorAuditCsv } from "./utils/vendor-export";
 import { projectVendorForDirectory } from "./utils/vendor-read-scope";
 import { toPublicExpert, toPublicExperts } from "./utils/expert-read-scope";
@@ -1034,10 +1034,10 @@ export async function registerRoutes(
   // GAP 1 fix (expert-loop object-flow audit, Jul 30 2026): `/api/provider/services` is CLAUDE.md
   // §5's single shared offering-creation endpoint for BOTH roles (ServiceForm posts here for
   // role="expert" and role="provider" alike) — it does NOT belong under the provider-only
-  // PROVIDER_SELF_SERVICE_PREFIXES gate. Kept as its own prefix, gated by `isEarner`
-  // (expert-family OR provider OR admin — shared/roles.ts `isEarnerRole`). A plain user with an
-  // open application may pass, and the handlers still refuse publish. A plain user with no
-  // application is still refused here.
+  // PROVIDER_SELF_SERVICE_PREFIXES gate. Kept as its own prefix, gated by
+  // `isEarnerOrPendingDraft` (earner, admin, or an open application saving a draft).
+  // `isEarner` itself stays a hard role gate — POST /api/vendors still refuses role user.
+  // Handlers still refuse publish. A plain user with no application is still refused here.
   const EARNER_SELF_SERVICE_PREFIXES = [
     "/api/provider/services",
   ];
@@ -1046,7 +1046,7 @@ export async function registerRoutes(
     const p: string = req.path;
     const matchesPrefix = (prefixes: string[]) =>
       prefixes.some((prefix) => p === prefix || p.startsWith(prefix + "/"));
-    if (matchesPrefix(EARNER_SELF_SERVICE_PREFIXES)) return isEarner(req, res, next);
+    if (matchesPrefix(EARNER_SELF_SERVICE_PREFIXES)) return isEarnerOrPendingDraft(req, res, next);
     if (matchesPrefix(EXPERT_SELF_SERVICE_PREFIXES)) return isExpert(req, res, next);
     if (matchesPrefix(PROVIDER_SELF_SERVICE_PREFIXES)) return isProvider(req, res, next);
     next();
