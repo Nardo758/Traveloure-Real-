@@ -29,9 +29,31 @@ import { isProdStrictEnv, checkStripeKeyPrefix } from "../utils/stripe-key-polic
 import { getStripeSecretKey, getStripeWebhookSecret } from "../utils/stripe-key";
 import type { QAResults } from "./qa-verify.service";
 
-function baseUrl(): string {
-  const port = process.env.PORT || "5000";
+/**
+ * Where H1 probes the running app. `QA_RUNTIME_BASE_URL` wins (trailing slash
+ * stripped). Otherwise loopback on `PORT`, default 5000 — the same port
+ * `server/index.ts` listens on. `APP_BASE_URL` is the email/link origin and is
+ * not a probe target.
+ */
+export function resolveQaProbeBaseUrl(env: NodeJS.ProcessEnv = process.env): string {
+  const configured = (env.QA_RUNTIME_BASE_URL ?? "").trim().replace(/\/+$/, "");
+  if (configured) return configured;
+  const port = (env.PORT ?? "").trim() || "5000";
   return `http://127.0.0.1:${port}`;
+}
+
+/** Probe budget. Default 20s. Clamped to 1s–120s. A non-numeric value keeps the default. */
+export function resolveQaProbeTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  const fallback = 20_000;
+  const raw = (env.QA_RUNTIME_PROBE_TIMEOUT_MS ?? "").trim();
+  if (!raw) return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(120_000, Math.max(1_000, Math.trunc(n)));
+}
+
+function baseUrl(): string {
+  return resolveQaProbeBaseUrl();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -49,7 +71,7 @@ interface RouteProbeResult {
   detail: string;
 }
 
-async function fetchWithTimeout(url: string, timeoutMs = 5000): Promise<Response> {
+async function fetchWithTimeout(url: string, timeoutMs = resolveQaProbeTimeoutMs()): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -528,8 +550,11 @@ export function runH7AdminNotificationReach(adminUsersWithEmail: number | null):
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function runRuntimeHealth(): Promise<QAResults> {
-  const [h1, h4, h5, h6] = await Promise.all([
-    runH1RouteLiveness().catch((err) => ({ H1a: { pass: false, detail: `H1 threw: ${err?.message ?? err}` } } as QAResults)),
+  // H1 used to share a Promise.all with H5 (the invariant script, same DB pool,
+  // up to 60s). The 5s probe abort then fired while the app was listening.
+  // Probes run first, against QA_RUNTIME_BASE_URL or this process's port.
+  const h1 = await runH1RouteLiveness().catch((err) => ({ H1a: { pass: false, detail: `H1 threw: ${err?.message ?? err}` } } as QAResults));
+  const [h4, h5, h6] = await Promise.all([
     runH4ProviderHealthRollup().catch((err) => ({ H4: { pass: false, detail: `H4 threw: ${err?.message ?? err}` } } as QAResults)),
     runH5DataInvariants().catch((err) => ({ H5: { pass: false, detail: `H5 threw: ${err?.message ?? err}` } } as QAResults)),
     runH6SchedulerLiveness().catch((err) => ({ H6: { pass: false, detail: `H6 threw: ${err?.message ?? err}` } } as QAResults)),

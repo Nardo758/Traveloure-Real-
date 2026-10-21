@@ -362,12 +362,12 @@ router.post('/confirm-payment', isAuthenticated, async (req, res) => {
     // Fast-path: if the webhook already confirmed this booking, return success immediately
     const existing = await storage.getBookingStatusForUser(bookingId, userId);
     if (existing?.status === 'confirmed') {
-      console.log(`[confirm-payment] booking ${bookingId} already confirmed by webhook — returning success`);
+      console.info(`[confirm-payment] booking ${bookingId} already confirmed by webhook — returning success`);
       return res.json({ success: true, message: 'Booking confirmed', source: 'webhook' });
     }
 
     // Fallback: webhook hasn't fired yet (or this is local dev) — confirm it now
-    console.log(`[confirm-payment] webhook hasn't confirmed booking ${bookingId} yet — running fallback confirmation`);
+    console.info(`[confirm-payment] webhook hasn't confirmed booking ${bookingId} yet — running fallback confirmation`);
     await bookingService.confirmBookingPayment(bookingId, paymentIntentId, userId);
 
     res.json({ success: true, message: 'Booking confirmed', source: 'fallback' });

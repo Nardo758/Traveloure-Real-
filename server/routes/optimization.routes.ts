@@ -430,7 +430,7 @@ router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
     // actually authorized (`recordOptimizerRunToll` at the two run points in server/routes.ts,
     // ruling `2026-09-25-planning-tolls`) as a fee + `fee_waiver` pair — never a $0 row.
     if (tripId && (await coversAction(String(tripId), "optimizer_run"))) {
-      console.log(`[trip-pass] optimizer charge suppressed (covered_by:trip_pass) trip=${tripId}`);
+      console.info(`[trip-pass] optimizer charge suppressed (covered_by:trip_pass) trip=${tripId}`);
       return res.json({ coveredByTripPass: true, feeCents: 0, currency, complexityTier: tier });
     }
 
