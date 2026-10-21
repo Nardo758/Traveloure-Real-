@@ -1166,7 +1166,7 @@ export default function ContentStudio() {
                       <FormItem>
                         <FormLabel>Title</FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g., Hidden Gems of Tokyo" {...field} data-testid="input-title" />
+                          <Input placeholder="e.g., Quieter spots in Tokyo" {...field} data-testid="input-title" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

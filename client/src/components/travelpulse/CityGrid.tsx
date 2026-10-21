@@ -75,7 +75,7 @@ interface CityGridProps {
   onCitySelect?: (city: TravelPulseCity) => void;
   selectedCityName?: string;
   // When the caller already renders a page header for this grid (the /destinations
-  // Marketplace surface masthead), suppress the internal "Trending Cities" header so
+  // Marketplace surface masthead), suppress the internal "Cities" header so
   // the two don't stack as a duplicate header.
   hideHeader?: boolean;
 }

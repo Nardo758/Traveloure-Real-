@@ -951,19 +951,8 @@ export class TravelPulseService {
 
   private async seedHappeningNow(): Promise<void> {
     const now = new Date();
+    // Sakura Light-Up at Meguro River is omitted: its seed row had no calendar date.
     const events = [
-      {
-        city: "Tokyo",
-        eventType: "festival",
-        title: "Sakura Light-Up at Meguro River",
-        description: "Evening illumination of cherry blossoms along the river",
-        venue: "Meguro River",
-        startsAt: new Date(now.getTime() - 2 * 60 * 60 * 1000),
-        endsAt: new Date(now.getTime() + 4 * 60 * 60 * 1000),
-        crowdLevel: "packed",
-        entryFee: "Free",
-        isLive: true,
-      },
       {
         city: "Paris",
         eventType: "market",

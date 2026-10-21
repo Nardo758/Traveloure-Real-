@@ -224,7 +224,7 @@ npm run seed:beta
 
 | Type | Count | Example |
 |------|-------|---------|
-| **Travel Guides** | 6 | "Ultimate Kyoto Temple Guide", "Hidden Paris" |
+| **Travel Guides** | 6 | "Ultimate Kyoto Temple Guide", "Quieter Paris" |
 | **Food Reviews** | 4 | "Tokyo Ramen Crawl", "Best Croissants in Paris" |
 | **Budget Breakdowns** | 3 | "Thailand 10 Days Under $800", "Travel 12 Months on $25K" |
 | **Photography Guides** | 2 | "Japan Cherry Blossoms", "Iceland Northern Lights" |

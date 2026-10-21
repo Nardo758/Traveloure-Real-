@@ -42,7 +42,7 @@ export function NeighborhoodCard({
             <Sparkles className="w-4 h-4 text-amber-500" />
             <div>
               <p className="text-2xl font-bold">{gemCount}</p>
-              <p className="text-xs text-muted-foreground">Hidden Gems</p>
+              <p className="text-xs text-muted-foreground">Quieter spots</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
