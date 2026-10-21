@@ -2115,8 +2115,8 @@ export const MIGRATION_FILES = [
   // 399 — DATA ONLY: the IMAGINE NOH continuous-run row (manual / imagine-noh-2026) gets withdrawn_at while it is still
   // live; nothing deleted. The four shows are seeded as one row each. SH-1 item 5, ledger 2026-10-19-sh1-show-dates.
   "399_imagine_noh_run_withdrawn.sql",
-  // 400 — fever_address_geocodes: permanent Nominatim cache for a Fever address that has no coordinates.
-  // PK only, no DEFAULT, no CHECK, no extra index. Ledger 2026-10-21-blog-checks-fever-area. Declared in
-  // shared/schema.ts.
-  "400_fever_address_geocodes.sql",
+  // 401 — fever_address_geocodes: permanent Nominatim cache for a Fever address that has no coordinates.
+  // 400 is the hide-flag migration on the PR that merges first. PK only, no DEFAULT, no CHECK, no extra
+  // index. Ledger 2026-10-21-blog-checks-fever-area. Declared in shared/schema.ts.
+  "401_fever_address_geocodes.sql",
 ] as const;

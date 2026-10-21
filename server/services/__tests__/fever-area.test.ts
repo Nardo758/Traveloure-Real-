@@ -11,20 +11,27 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { eq } from "drizzle-orm";
 import type { NeighborhoodRow } from "@shared/neighborhood-placement";
-import { FEVER_OSM_CREDIT } from "@shared/fever-area";
+import { FEVER_OSM_CREDIT, feverAddressKey } from "@shared/fever-area";
 import { db } from "../../db";
 import { feverAddressGeocodes } from "@shared/schema";
 import type { FeverEvent } from "../fever.service";
 import {
-  FEVER_NOMINATIM_USER_AGENT,
   NOMINATIM_MIN_INTERVAL_MS,
   dbFeverGeocodeCache,
+  feverNominatimUserAgent,
   resolveFeverAreas,
   type CachedGeocode,
+  type FeverAreaDeps,
   type FeverGeocodeCache,
 } from "../fever-area";
 import { toPublicFeverEvents } from "../fever-public";
 import { PUBLIC_NOMINATIM_BASE_URL } from "../../config/geocoder.config";
+
+const CONTACT = "ops@example.test";
+
+function areaDeps(extra: FeverAreaDeps = {}): FeverAreaDeps {
+  return { contactEmail: CONTACT, ...extra };
+}
 
 const GION: NeighborhoodRow = {
   id: "gion", city: "Kyoto", name: "Gion", slug: "gion",
@@ -75,10 +82,10 @@ test("FA1: Fever's own coordinates are kept and Nominatim is not called", async 
   let calls = 0;
   const [area] = await resolveFeverAreas(
     [event({ venue: { name: "Hall One", address: "1 Test Street", coordinates: { lat: 35.0036, lng: 135.775 } } })],
-    {
+    areaDeps({
       neighborhoods: async () => [GION],
       fetchImpl: async () => { calls++; return { ok: true, json: async () => [] }; },
-    },
+    }),
   );
   assert.equal(calls, 0);
   assert.equal(area.areaName, "Gion");
@@ -92,11 +99,13 @@ test("FA2: a missing point is geocoded once, with the User-Agent, and the second
     seen.push({ url, ua: init.headers["User-Agent"] });
     return { ok: true, json: async () => [{ lat: "35.0036", lon: "135.7750" }] };
   };
-  const deps = { neighborhoods: async () => [GION], cache, fetchImpl, ...clock() };
+  const deps = areaDeps({ neighborhoods: async () => [GION], cache, fetchImpl, ...clock() });
   const [first] = await resolveFeverAreas([event()], deps);
   const [second] = await resolveFeverAreas([event()], deps);
   assert.equal(seen.length, 1);
-  assert.equal(seen[0].ua, FEVER_NOMINATIM_USER_AGENT);
+  assert.equal(seen[0].ua, feverNominatimUserAgent(CONTACT));
+  assert.match(seen[0].ua, /^Traveloure\//);
+  assert.equal(seen[0].ua.includes(CONTACT), true);
   assert.ok(seen[0].url.startsWith(`${PUBLIC_NOMINATIM_BASE_URL}/search?`));
   const q = new URL(seen[0].url).searchParams.get("q");
   assert.equal(q, "1 Test Street, Kyoto, Japan");
@@ -114,12 +123,12 @@ test("FA3: two lookups in one pass wait out the one-request-a-second interval", 
       event({ id: "a", venue: { name: "Hall", address: "1 Test Street" } }),
       event({ id: "b", venue: { name: "Hall", address: "2 Test Street" } }),
     ],
-    {
+    areaDeps({
       neighborhoods: async () => [GION],
       cache,
       ...c,
       fetchImpl: async () => { calls++; return { ok: true, json: async () => [{ lat: "35.0036", lon: "135.7750" }] }; },
-    },
+    }),
   );
   assert.equal(calls, 2);
   assert.deepEqual(c.sleeps, [NOMINATIM_MIN_INTERVAL_MS]);
@@ -130,7 +139,7 @@ test("FA4: a miss is cached and a failure is not", async () => {
   const { cache, rows } = memoryCache();
   let calls = 0;
   const miss = async () => { calls++; return { ok: true, json: async () => [] }; };
-  const deps = { neighborhoods: async () => [GION], cache, fetchImpl: miss, ...clock() };
+  const deps = areaDeps({ neighborhoods: async () => [GION], cache, fetchImpl: miss, ...clock() });
   const [first] = await resolveFeverAreas([event()], deps);
   const [second] = await resolveFeverAreas([event()], deps);
   assert.equal(calls, 1, "a cached miss is not asked again");
@@ -147,7 +156,7 @@ test("FA4: a miss is cached and a failure is not", async () => {
     if (flaps === 1) return { ok: false, json: async () => [] };
     return { ok: true, json: async () => [{ lat: "35.0036", lon: "135.7750" }] };
   };
-  const again = { neighborhoods: async () => [GION], cache: flaky.cache, fetchImpl, ...clock() };
+  const again = areaDeps({ neighborhoods: async () => [GION], cache: flaky.cache, fetchImpl, ...clock() });
   const [down] = await resolveFeverAreas([event()], again);
   const [up] = await resolveFeverAreas([event()], again);
   assert.equal(flaps, 2, "an unreachable lookup is not cached");
@@ -158,12 +167,12 @@ test("FA4: a miss is cached and a failure is not", async () => {
 
 test("FA5: the public payload names the area and carries no street and no point", async () => {
   const { cache } = memoryCache();
-  const [p] = await toPublicFeverEvents([event()], {
+  const [p] = await toPublicFeverEvents([event()], areaDeps({
     neighborhoods: async () => [GION],
     cache,
     ...clock(),
     fetchImpl: async () => ({ ok: true, json: async () => [{ lat: "35.0036", lon: "135.7750" }] }),
-  });
+  }));
   assert.equal(p.areaName, "Gion");
   assert.equal(p.osmCredit, FEVER_OSM_CREDIT);
   assert.equal(p.venueName, "Hall One");
@@ -175,7 +184,7 @@ test("FA5: the public payload names the area and carries no street and no point"
 
   const [outside] = await resolveFeverAreas(
     [event({ venue: { name: "Hall", coordinates: { lat: 35.68, lng: 139.76 } } })],
-    { neighborhoods: async () => [GION], fetchImpl: async () => { throw new Error("should not geocode"); } },
+    areaDeps({ neighborhoods: async () => [GION], fetchImpl: async () => { throw new Error("should not geocode"); } }),
   );
   assert.equal(outside.areaName, null);
   assert.equal(outside.osmCredit, null);
@@ -195,4 +204,38 @@ test("FA6: the table keeps the first answer, including a miss", async () => {
   } finally {
     await db.delete(feverAddressGeocodes).where(eq(feverAddressGeocodes.addressKey, key));
   }
+});
+
+test("FA7: geocoding is skipped when no contact email is configured, and a warm cache is still read", async () => {
+  let calls = 0;
+  const cold = memoryCache();
+  const [skipped] = await resolveFeverAreas(
+    [
+      event({ id: "a", venue: { name: "Hall", address: "1 Test Street" } }),
+      event({ id: "b", venue: { name: "Hall", address: "2 Test Street" } }),
+    ],
+    {
+      contactEmail: null,
+      neighborhoods: async () => [GION],
+      cache: cold.cache,
+      fetchImpl: async () => { calls++; return { ok: true, json: async () => [{ lat: "35.0036", lon: "135.7750" }] }; },
+    },
+  );
+  assert.equal(calls, 0, "unset contact does not call Nominatim and does not bulk-geocode");
+  assert.equal(cold.rows.size, 0, "a skipped lookup is not stored as a miss");
+  assert.equal(skipped.areaName, null);
+  assert.equal(skipped.osmCredit, null);
+
+  const warm = memoryCache();
+  const key = feverAddressKey("1 Test Street, Kyoto, Japan");
+  await warm.cache.put({ addressKey: key, latitude: 35.0036, longitude: 135.775, attribution: FEVER_OSM_CREDIT });
+  const [cached] = await resolveFeverAreas([event()], {
+    contactEmail: null,
+    neighborhoods: async () => [GION],
+    cache: warm.cache,
+    fetchImpl: async () => { calls++; throw new Error("cache is read before any request"); },
+  });
+  assert.equal(calls, 0);
+  assert.equal(cached.areaName, "Gion");
+  assert.equal(cached.osmCredit, FEVER_OSM_CREDIT);
 });

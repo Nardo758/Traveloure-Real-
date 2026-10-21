@@ -4376,7 +4376,7 @@ export const feverEventCache = pgTable("fever_event_cache", {
 
 /**
  * Permanent Nominatim cache for a Fever address that arrived without coordinates
- * (ledger `2026-10-21-blog-checks-fever-area`, migration 400). A row is the answer, including a
+ * (ledger `2026-10-21-blog-checks-fever-area`, migration 401). A row is the answer, including a
  * miss (null lat/lng): it is not asked again. No DEFAULT, no CHECK, no expiry — a coordinate from
  * OpenStreetMap is stored with its attribution and kept. Server-written only; no insert schema.
  */

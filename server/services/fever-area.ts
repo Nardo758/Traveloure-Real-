@@ -1,11 +1,13 @@
 /**
  * fever-area.ts — a Fever event's Kyoto area (ledger `2026-10-21-blog-checks-fever-area`).
  *
- * Keep Fever's own coordinates when it sends them. When it does not, and it does send an address,
- * geocode that address once with OpenStreetMap Nominatim (at most one request a second, an honest
- * User-Agent) and cache the answer permanently — a miss included, a network failure not. The point
- * is then matched to a Kyoto neighbourhood by centre and radius. The card is given the area name
- * and, when OpenStreetMap was used, the ODbL credit. The street address is never returned.
+ * Fever's own coordinates are used first and are never published. When they are missing and an
+ * address is present, the cache is read before any network call. OpenStreetMap Nominatim is the
+ * fallback, one address at a time, at most one request a second. The User-Agent names Traveloure
+ * and a contact email from NOMINATIM_CONTACT_EMAIL. When that variable is unset, geocoding is
+ * skipped and nothing is cached for the skip. A hit and a miss are cached; a network failure is not.
+ * The point is then matched to a Kyoto neighbourhood by centre and radius. The card is given the
+ * area name and, when OpenStreetMap was used, the ODbL credit. The street address is never returned.
  */
 import { eq, sql } from "drizzle-orm";
 import { db } from "../db";
@@ -25,8 +27,16 @@ import type { FeverEvent } from "./fever.service";
 
 export { FEVER_OSM_CREDIT, NOMINATIM_MIN_INTERVAL_MS };
 
-/** Nominatim's usage policy: identify the application. No email, no secret. */
-export const FEVER_NOMINATIM_USER_AGENT = "Traveloure/1.0 (Kyoto event area match; +https://traveloure.com)";
+/**
+ * Nominatim's usage policy: name the application and a contact. The email is read from the
+ * environment (Leon sets NOMINATIM_CONTACT_EMAIL). Nothing here is a committed address. An empty
+ * value means do not call Nominatim.
+ */
+export function feverNominatimUserAgent(email: string | null | undefined): string | null {
+  const contact = String(email ?? "").replace(/[\r\n]/g, "").trim();
+  if (!contact) return null;
+  return `Traveloure/1.0 (${contact})`;
+}
 
 export interface FeverArea {
   areaName: string | null;
@@ -57,6 +67,8 @@ export interface FeverAreaDeps {
   pace?: () => Promise<void>;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
+  /** Set to null to skip geocoding. Omit to read NOMINATIM_CONTACT_EMAIL. */
+  contactEmail?: string | null;
 }
 
 function numOrNull(v: string | null): number | null {
@@ -128,12 +140,13 @@ async function geocodeAddress(
   query: string,
   fetchImpl: FetchLike,
   pace: () => Promise<void>,
+  userAgent: string,
 ): Promise<{ lat: number; lng: number } | null | "unreachable"> {
   await pace();
   const url = `${PUBLIC_NOMINATIM_BASE_URL}/search?${new URLSearchParams({ q: query, format: "jsonv2", limit: "1" })}`;
   try {
     const res = await fetchImpl(url, {
-      headers: { "User-Agent": FEVER_NOMINATIM_USER_AGENT, "Accept-Language": "en" },
+      headers: { "User-Agent": userAgent, "Accept-Language": "en" },
       signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) return "unreachable";
@@ -153,6 +166,7 @@ async function oneArea(
   cache: FeverGeocodeCache,
   fetchImpl: FetchLike,
   pace: () => Promise<void>,
+  userAgent: string | null,
 ): Promise<FeverArea> {
   const own = feverPoint(event);
   if (own) {
@@ -164,13 +178,15 @@ async function oneArea(
   const query = nominatimSearchQuery(address, event.city, event.country);
   const key = feverAddressKey(query);
   if (!key) return { areaName: null, osmCredit: null };
+  // Cache before every request. A stored answer is used whether or not geocoding is configured.
   const cached = await cache.get(key);
   if (cached) {
     const point = cached.latitude != null && cached.longitude != null ? { lat: cached.latitude, lng: cached.longitude } : null;
     const areaName = point ? kyotoAreaName(point.lat, point.lng, neighborhoods) : null;
     return { areaName, osmCredit: creditFor(point != null, areaName) };
   }
-  const hit = await geocodeAddress(query, fetchImpl, pace);
+  if (!userAgent) return { areaName: null, osmCredit: null };
+  const hit = await geocodeAddress(query, fetchImpl, pace, userAgent);
   if (hit === "unreachable") return { areaName: null, osmCredit: null };
   await cache.put({
     addressKey: key,
@@ -182,14 +198,17 @@ async function oneArea(
   return { areaName, osmCredit: creditFor(hit != null, areaName) };
 }
 
-/** One area per event, in order. Neighborhoods are read once. Geocoding is paced. */
+/** One area per event, in order. One lookup at a time. Neighborhoods are read once. Geocoding is paced. */
 export async function resolveFeverAreas(events: readonly FeverEvent[], deps: FeverAreaDeps = {}): Promise<FeverArea[]> {
   if (events.length === 0) return [];
   const neighborhoods = await (deps.neighborhoods ?? loadKyotoNeighborhoods)();
   const cache = deps.cache ?? dbFeverGeocodeCache;
   const fetchImpl = deps.fetchImpl ?? ((url, init) => fetch(url, init) as Promise<{ ok: boolean; json(): Promise<unknown> }>);
   const pace = deps.pace ?? (deps.sleep || deps.now ? createNominatimPacer({ sleep: deps.sleep, now: deps.now }) : sharedPacer);
+  const userAgent = feverNominatimUserAgent(
+    deps.contactEmail !== undefined ? deps.contactEmail : process.env.NOMINATIM_CONTACT_EMAIL,
+  );
   const out: FeverArea[] = [];
-  for (const event of events) out.push(await oneArea(event, neighborhoods, cache, fetchImpl, pace));
+  for (const event of events) out.push(await oneArea(event, neighborhoods, cache, fetchImpl, pace, userAgent));
   return out;
 }

@@ -1,4 +1,5 @@
--- 400 — fever_address_geocodes (ledger `2026-10-21-blog-checks-fever-area`).
+-- 401 — fever_address_geocodes (ledger `2026-10-21-blog-checks-fever-area`, renumbered in
+-- `2026-10-21-blog-fever-followup` so the hide-flag migration can take 400).
 --
 -- A Fever event with an address and no coordinates is geocoded once through OpenStreetMap Nominatim.
 -- The answer is kept permanently, including a miss (null latitude/longitude), so the same address is

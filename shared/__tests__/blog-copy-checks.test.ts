@@ -1,10 +1,11 @@
 /**
- * Blog publish checks (ledger `2026-10-21-blog-checks-fever-area`).
- * The five phrases and the future-date rule, pure — no database.
+ * Blog publish checks (ledger `2026-10-21-blog-checks-fever-area`, widened by
+ * `2026-10-21-blog-fever-followup`). One shared list for the blog and the feed title, plus the
+ * future-date rule. Pure — no database.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { blogBannedHits, containsBannedCopy } from "../banned-copy";
+import { blogBannedHits, containsBannedCopy, stripSurfaceCopy, SURFACE_COPY_REFUSALS } from "../banned-copy";
 import {
   calendarDay,
   hasStructuredDates,
@@ -15,18 +16,47 @@ import {
 
 const TODAY = "2026-10-21";
 
-test("BC-blog: the five phrases, case-insensitive, and nothing else on the draft list", () => {
-  for (const phrase of ["Trending", "trending", "HIDDEN GEM", "hidden gems", "Geisha", "geishas", "back alley", "Back-Alley", "back alleys", "Illuminations", "illumination"]) {
+test("BC-blog: one shared list, case-insensitive, reused sources", () => {
+  const phrases = [
+    "Vetted", "VERIFIED", "certified", "Licensed", "authenticated",
+    "HIDDEN GEM", "hidden gems", "secret", "secrets", "insider", "insider tips", "Insider's",
+    "no hidden fees", "no markup", "no mark-up",
+    "Trending", "trending", "TREND", "TREND 3",
+    "Geisha", "geishas", "maiko", "geiko", "geikos",
+    "spotting", "sightings", "sighting",
+    "back alley", "Back-Alley", "back alleys",
+    "coming soon", "Illuminations", "illumination",
+  ];
+  const leavesAWord = new Set(["insider tips"]);
+  for (const phrase of phrases) {
     assert.ok(blogBannedHits(phrase).length > 0, phrase);
+    if (!leavesAWord.has(phrase)) assert.equal(stripSurfaceCopy(phrase), "", phrase);
   }
+  assert.equal(stripSurfaceCopy("insider tips"), "Tips");
+  assert.deepEqual(blogBannedHits("A secret insider spot, vetted, no markup."), [
+    "vetted", "secret", "insider", "no markup",
+  ]);
   assert.deepEqual(blogBannedHits("A trending hidden gem with a geisha in a back alley at the illuminations."), [
-    "trending", "hidden gem(s)", "geisha", "back alley", "illuminations",
+    "hidden gem(s)", "trending", "geisha", "back alley", "illuminations",
   ]);
   assert.deepEqual(blogBannedHits("A quiet week in Kyoto."), []);
-  assert.equal(blogBannedHits("A secret insider spot, vetted, no markup.").length, 0, "the rest of the draft list is not a blog refusal");
+  assert.deepEqual(blogBannedHits("trends and a secretary tour"), []);
+  assert.equal(blogBannedHits("the fee is waived").length, 0);
+  assert.ok(blogBannedHits("Hosts keep a 10% commission.").includes("fee or earnings amount"));
+  assert.ok(blogBannedHits("Earn $20 tonight").includes("fee or earnings amount"));
+  assert.ok(blogBannedHits("a ¥500 fee").includes("fee or earnings amount"));
+  assert.equal(stripSurfaceCopy("Hidden gems of Kyoto"), "Kyoto");
+  assert.equal(stripSurfaceCopy("Secret Garden Tour"), "Garden Tour");
+  assert.equal(stripSurfaceCopy("Secretary tour"), "Secretary tour");
+  assert.equal(stripSurfaceCopy("Kyoto walk"), "Kyoto walk");
+  const hiddenGem = SURFACE_COPY_REFUSALS.find((e) => e.words === "hidden gem(s)");
+  const geisha = SURFACE_COPY_REFUSALS.find((e) => e.words === "geisha");
+  assert.equal(hiddenGem?.source, "\\bhidden\\s+gems?\\b");
+  assert.equal(geisha?.source, "\\bgeishas?\\b");
   assert.equal(containsBannedCopy("geisha"), false, "bare geisha stays off the item-title list");
   assert.equal(containsBannedCopy("back alley"), false);
   assert.equal(containsBannedCopy("illuminations"), false);
+  assert.equal(containsBannedCopy("geiko"), false);
   assert.equal(containsBannedCopy("Trending"), true, "trending is reused from the draft list");
   assert.equal(containsBannedCopy("hidden gems"), true);
 });

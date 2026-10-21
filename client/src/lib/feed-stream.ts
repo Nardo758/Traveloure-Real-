@@ -1,3 +1,5 @@
+import { filterFeedActivity } from "@shared/banned-copy";
+
 /**
  * Feed stream composition algorithm.
  *
@@ -191,11 +193,15 @@ export function buildFeedStream(
       id: `hotel-${h.id ?? Math.random()}`,
       data: h,
     })),
-    ...(supplyActivities ?? []).slice(0, 3).map((a) => ({
-      kind: "supply-activity" as FeedItemKind,
-      id: `activity-${a.id ?? Math.random()}`,
-      data: a,
-    })),
+    ...(supplyActivities ?? [])
+      .map((a) => filterFeedActivity(a))
+      .filter((a): a is NonNullable<typeof a> => a != null)
+      .slice(0, 3)
+      .map((a) => ({
+        kind: "supply-activity" as FeedItemKind,
+        id: `activity-${a.id ?? Math.random()}`,
+        data: a,
+      })),
     ...(platformServices ?? []).slice(0, serviceLimit).map((s) => ({
       kind: "vendor-service" as FeedItemKind,
       id: `vsvc-${s.id}`,

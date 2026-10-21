@@ -169,14 +169,21 @@ const NOW = new Date("2026-10-21T03:00:00Z"); // noon in Asia/Tokyo
 
 test("E8: banned phrases and a date that has already ended are refused; today and a later series date are not", async () => {
   const facts = (await loadEventGuideFacts(EV, { partnerHosts: noHosts }))!;
-  for (const phrase of ["Trending", "HIDDEN GEMS", "Geisha", "back alley", "Back-Alleys", "Illuminations"]) {
+  for (const phrase of [
+    "Trending", "HIDDEN GEMS", "Geisha", "back alley", "Back-Alleys", "Illuminations",
+    "vetted", "insider tips", "coming soon", "geiko", "maiko", "TREND", "no markup",
+  ]) {
     assert.deepEqual(
       checkEventGuideDraft({ title: "A night out", body: `Come for the ${phrase}.` }, facts),
       { error: "event_guide_banned_copy" },
       phrase,
     );
   }
-  assert.ok(!("error" in checkEventGuideDraft({ title: "A night out", body: "A secret spot locals like." }, facts)), "secret is not on the blog list");
+  assert.deepEqual(
+    checkEventGuideDraft({ title: "A night out", body: "Hosts keep a 10% commission." }, facts),
+    { error: "event_guide_banned_copy" },
+  );
+  assert.ok(!("error" in checkEventGuideDraft({ title: "A night out", body: "A quiet week in Kyoto." }, facts)));
 
   const past = checkPlatformDraft(
     { title: "A night out", body: "Stay close to the venue." },

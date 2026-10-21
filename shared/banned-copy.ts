@@ -184,34 +184,116 @@ export function containsSiteNeverSay(text: string | null | undefined): boolean {
 }
 
 /**
- * Blog publish check (ledger `2026-10-21-blog-checks-fever-area`). The words a platform draft and a
- * publish are refused for, case-insensitive. Trending, Hidden Gem(s) and geisha are the EXISTING
- * patterns (`BANNED` and the site list's bare geisha) — not a second spelling. "back alley" and
- * "illuminations" are blog-only: they are not added to the item-title sanitizer or the site scan.
+ * Phrases that are not on the draft list or the site scan. They stay out of `BANNED` and
+ * `SITE_NEVER_SAY` so item titles and the seed scan keep their own rules.
  */
 const BLOG_ONLY: ReadonlyArray<{ words: string; re: RegExp }> = [
   { words: "back alley", re: /\bback[\s-]+alleys?\b/i },
   { words: "illuminations", re: /\billuminations?\b/i },
 ];
 
-function blogPattern(words: string): RegExp | null {
-  const draft = BANNED.find((b) => b.words === words);
-  if (draft) return new RegExp(draft.re.source, "i");
-  const site = SITE_NEVER_SAY.find((b) => b.words === words);
-  if (site) return new RegExp(site.re.source, "i");
-  const extra = BLOG_ONLY.find((b) => b.words === words);
-  return extra ? new RegExp(extra.re.source, "i") : null;
+function draftSource(words: string): string {
+  const entry = BANNED.find((b) => b.words === words);
+  if (!entry) throw new Error(`SURFACE_COPY_REFUSALS: "${words}" is not on the draft list`);
+  return entry.re.source;
 }
 
-const BLOG_BANNED_WORDS = ["trending", "hidden gem(s)", "geisha", "back alley", "illuminations"] as const;
+function siteSource(words: string): string {
+  const entry = SITE_NEVER_SAY.find((b) => b.words === words);
+  if (!entry) throw new Error(`SURFACE_COPY_REFUSALS: "${words}" is not on the site list`);
+  return entry.re.source;
+}
 
-/** The blog banned phrases a text carries, in list order. Empty when it carries none. */
+function blogOnlySource(words: string): string {
+  const entry = BLOG_ONLY.find((b) => b.words === words);
+  if (!entry) throw new Error(`SURFACE_COPY_REFUSALS: "${words}" is not a blog-only pattern`);
+  return entry.re.source;
+}
+
+/**
+ * A currency amount or a percent beside a fee, commission, or earnings word, in either order,
+ * inside one sentence. A bare number with neither a currency mark nor a percent is not a claim.
+ */
+const FEE_OR_EARNINGS_AMOUNT = String.raw`(?:\b(?:fees?|commissions?|earn(?:ed|ing|ings)?)\b[^.\n]{0,40}?(?:(?:[$€£¥]|\b(?:USD|EUR|GBP|JPY)\b)\s*\d[\d,]*(?:\.\d+)?|\d[\d,]*(?:\.\d+)?\s*(?:%|percent|\b(?:USD|EUR|GBP|JPY)\b))|(?:(?:[$€£¥]|\b(?:USD|EUR|GBP|JPY)\b)\s*\d[\d,]*(?:\.\d+)?|\d[\d,]*(?:\.\d+)?\s*(?:%|percent|\b(?:USD|EUR|GBP|JPY)\b))[^.\n]{0,40}?\b(?:fees?|commissions?|earn(?:ed|ing|ings)?)\b)`;
+
+/**
+ * The ONE list a platform blog and a feed activity title are refused for
+ * (ledger `2026-10-21-blog-fever-followup`). Every phrase that already has a pattern takes that
+ * pattern's source — `BANNED`, then `SITE_NEVER_SAY`, then the two blog-only patterns — and is not
+ * spelled again. `checkPlatformDraft` and `publishPost` read it through `blogBannedHits`. The feed
+ * title filter reads the same array. Nothing here is added to the item-title sanitizer or the site scan.
+ */
+export const SURFACE_COPY_REFUSALS: readonly { words: string; source: string }[] = [
+  { words: "vetted", source: draftSource("vetted") },
+  { words: "verified", source: draftSource("verified") },
+  { words: "certified", source: draftSource("certified") },
+  { words: "licensed", source: draftSource("licensed") },
+  { words: "authenticated", source: draftSource("authenticated") },
+  { words: "hidden gem(s)", source: draftSource("hidden gem(s)") },
+  { words: "secret", source: draftSource("secret") },
+  { words: "insider", source: draftSource("insider") },
+  { words: "no hidden fees", source: draftSource("no hidden fees") },
+  { words: "no markup", source: draftSource("no markup") },
+  { words: "trending", source: draftSource("trending") },
+  { words: "TREND", source: `(?:${siteSource("TREND <n>")}|\\btrend\\b)` },
+  { words: "geisha", source: siteSource("geisha") },
+  { words: "maiko", source: siteSource("maiko") },
+  { words: "geiko", source: String.raw`\bgeikos?\b` },
+  { words: "spotting/sightings", source: String.raw`\b(?:spotting|sightings?)\b` },
+  { words: "back alley", source: blogOnlySource("back alley") },
+  { words: "coming soon", source: siteSource("coming soon") },
+  { words: "illuminations", source: blogOnlySource("illuminations") },
+  { words: "fee or earnings amount", source: FEE_OR_EARNINGS_AMOUNT },
+];
+
+function refusalPattern(source: string, flags: string): RegExp {
+  return new RegExp(source, flags);
+}
+
+/** The shared-list phrases a text carries, in list order. Empty when it carries none. */
 export function blogBannedHits(text: string | null | undefined): string[] {
   const t = String(text ?? "");
   const hits: string[] = [];
-  for (const words of BLOG_BANNED_WORDS) {
-    const re = blogPattern(words);
-    if (re?.test(t)) hits.push(words);
+  for (const entry of SURFACE_COPY_REFUSALS) {
+    if (refusalPattern(entry.source, "i").test(t)) hits.push(entry.words);
   }
   return hits;
+}
+
+/** Drop shared-list phrases from a feed title and tidy what remains. An untouched string is returned as it was. */
+export function stripSurfaceCopy(text: string | null | undefined): string {
+  const original = String(text ?? "");
+  if (!original) return "";
+  let t = original;
+  let hit = false;
+  for (const entry of SURFACE_COPY_REFUSALS) {
+    const next = t.replace(refusalPattern(entry.source, "gi"), " ");
+    if (next !== t) hit = true;
+    t = next;
+  }
+  if (!hit) return original;
+  t = t.replace(/\b(?:and|with|of|in|at|to|for|the|a|an)\b(?=\s*[,:;!?.])/gi, " ");
+  const out = tidy(t);
+  if (!/[A-Za-z0-9]/.test(out)) return "";
+  if (/^(?:a|an|the|and|with|of|in|at|to|for)$/i.test(out)) return "";
+  return out;
+}
+
+/**
+ * Feed title filter. The activity's title and name are cleaned with `stripSurfaceCopy`. The card is
+ * omitted when a name was present and nothing of it remains, or when only a title was present and
+ * nothing of it remains.
+ */
+export function filterFeedActivity<T extends { name?: unknown; title?: unknown }>(record: T): T | null {
+  if (!record || typeof record !== "object") return record;
+  const out = { ...record } as T & { name?: unknown; title?: unknown };
+  if (typeof record.title === "string") out.title = stripSurfaceCopy(record.title);
+  if (typeof record.name === "string") out.name = stripSurfaceCopy(record.name);
+  const hadName = typeof record.name === "string";
+  const hadTitle = typeof record.title === "string";
+  const name = typeof out.name === "string" ? out.name.trim() : "";
+  const title = typeof out.title === "string" ? out.title.trim() : "";
+  if (hadName && !name) return null;
+  if (!hadName && hadTitle && !title) return null;
+  return out;
 }

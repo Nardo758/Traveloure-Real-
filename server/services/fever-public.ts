@@ -6,10 +6,11 @@
  * client gets an opaque, expiring `bookingToken`, resolved by the `booking_token` branch of
  * `POST /api/content/affiliate-redirect`, which records the click (Q7.1).
  *
- * This is an ALLOWLIST (§14 posture): a field the partner adds later is not published by default. Coordinates are
- * used to name a Kyoto area and are not published. The street address is not published either — the card shows the
- * area name (ledger `2026-10-21-blog-checks-fever-area`). Every traveler-reachable payload that carries a Fever
- * event goes through `toPublicFeverEvents` (Q7.4); the admin cache routes do not.
+ * This is an ALLOWLIST (§14 posture): a field the partner adds later is not published by default. Fever's own
+ * coordinates are used first for the area match and are not copied onto the public card. OpenStreetMap Nominatim
+ * runs only when those coordinates are missing and an address is present. The street address is not published
+ * either — the card shows the area name (ledger `2026-10-21-blog-checks-fever-area`). Every traveler-reachable
+ * payload that carries a Fever event goes through `toPublicFeverEvents` (Q7.4); the admin cache routes do not.
  */
 import { mintBookingTokens, type VaultedBooking } from "./affiliate-url-vault.service";
 import { resolveFeverAreas, type FeverAreaDeps } from "./fever-area";
