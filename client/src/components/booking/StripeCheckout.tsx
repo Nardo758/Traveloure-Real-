@@ -4,7 +4,7 @@
  * PHASE 5: Stripe init deferred — loadStripe only fires on first mount.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { loadStripe, Stripe, StripeElements } from '@stripe/stripe-js';
 import {
   PaymentElement,
@@ -12,6 +12,8 @@ import {
   useStripe,
   useElements,
 } from '@stripe/react-stripe-js';
+import { paymentElementOptions, paymentElementWalletsToHide } from '@shared/saved-payment-method';
+import { WalletExpressCheckout } from '@/components/payment/wallet-express-checkout';
 import { CreditCard, Lock, AlertCircle } from 'lucide-react';
 import { helpArticlePath } from '@shared/help-article-slugs';
 
@@ -54,22 +56,19 @@ export const SINGLE_ATTEMPT_CLOSED_MESSAGE =
 function CheckoutForm({ clientSecret, amount, bookingIds, onSuccess, onError, singleAttempt }: CheckoutFormProps) {
   const stripe = useStripe();
   const elements = useElements();
+  const confirmingRef = useRef(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [isReady, setIsReady] = useState(false);
+  const [expressSettled, setExpressSettled] = useState(false);
+  const [hideWallets, setHideWallets] = useState<ReturnType<typeof paymentElementWalletsToHide>>(null);
   // R162: once a real attempt was declined, a single-attempt form never re-confirms this intent.
   const [closed, setClosed] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!stripe || !elements || !isReady || closed) {
-      return;
-    }
-
+  const runConfirm = async (): Promise<boolean> => {
+    if (!stripe || !elements || closed) return false;
     setIsProcessing(true);
     setErrorMessage('');
-
     try {
       const { error, paymentIntent } = await stripe.confirmPayment({
         elements,
@@ -94,44 +93,76 @@ function CheckoutForm({ clientSecret, amount, bookingIds, onSuccess, onError, si
           setErrorMessage(error.message || 'Payment failed');
         }
         if (!elementShowsIt) onError(error.message || 'Payment failed');
-      } else if (paymentIntent) {
+        return false;
+      }
+      if (paymentIntent) {
         if (paymentIntent.status === 'succeeded') {
           onSuccess(paymentIntent.id);
-        } else if (paymentIntent.status === 'processing') {
+          return true;
+        }
+        if (paymentIntent.status === 'processing') {
           // Async payment (e.g. bank transfer) — webhook will fire payment_intent.succeeded
           onSuccess(paymentIntent.id);
-        } else if (paymentIntent.status === 'requires_action') {
+          return true;
+        }
+        if (paymentIntent.status === 'requires_action') {
           // 3DS redirect-back landed here without completing — user should check email/banking app
           setErrorMessage(
             'Your bank requires additional verification. Please check your banking app or the email from your bank, then return here to confirm your booking.'
           );
           onError('requires_action');
-        } else {
-          setErrorMessage(
-            `Payment could not be completed (status: ${paymentIntent.status}). Please try again or use a different card.`
-          );
-          onError(`Unexpected status: ${paymentIntent.status}`);
+          return false;
         }
+        setErrorMessage(
+          `Payment could not be completed (status: ${paymentIntent.status}). Please try again or use a different card.`
+        );
+        onError(`Unexpected status: ${paymentIntent.status}`);
+        return false;
       }
+      return false;
     } catch (err: any) {
       setErrorMessage(err.message || 'An unexpected error occurred');
       onError(err.message || 'An unexpected error occurred');
+      return false;
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!stripe || !elements || !isReady || closed || confirmingRef.current) return;
+    confirmingRef.current = true;
+    try {
+      await runConfirm();
+    } finally {
+      confirmingRef.current = false;
     }
   };
 
   return (
     <form onSubmit={handleSubmit} className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1 space-y-6 overflow-y-auto pr-1">
+        <WalletExpressCheckout
+          link="auto"
+          confirmingRef={confirmingRef}
+          onConfirm={runConfirm}
+          onWalletsKnown={(available) => {
+            setHideWallets(paymentElementWalletsToHide(available));
+            setExpressSettled(true);
+          }}
+        />
         {/* Payment Element */}
         <div className="min-h-[200px] rounded-lg border border-gray-200 bg-white p-4">
+          {expressSettled ? (
           <PaymentElement
+            options={paymentElementOptions(hideWallets)}
             onReady={() => setIsReady(true)}
             onLoadError={(error) => {
               setErrorMessage(error.error.message || 'Failed to load payment form');
             }}
           />
+          ) : null}
           {!isReady && (
             <div className="flex items-center justify-center py-8">
               <div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />

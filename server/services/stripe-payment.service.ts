@@ -28,6 +28,7 @@ import { kickLegacyConfirmationDelivery, persistLegacyBookingConfirmationEmail }
 import { trackFunnelEvent } from '../utils/funnelTracker';
 import { logger } from '../infrastructure/logger';
 import { resolveSavedCardChargeId } from './saved-card-choice';
+import { mapStripePaymentMethod, type SavedPaymentMethod } from '../../shared/saved-payment-method';
 // RELEASE-ALL-NIGHTS hotfix (§18b-class): the ONE shared derivation of a booking's full claimed-
 // slot set (see its docblock in checkout-claim.service.ts) — used here so refundServiceBooking's
 // release can never drift from voidClaim's / updateServiceBookingStatus's.
@@ -456,10 +457,10 @@ class StripePaymentService {
     return result ?? null;
   }
 
-  /** Saved cards for the session user — read live from Stripe, safe display fields only. */
+  /** Saved payment methods for the session user — read live from Stripe, safe display fields only. */
   async listSavedPaymentMethods(userId: string): Promise<{
     defaultPaymentMethodId: string | null;
-    methods: Array<{ id: string; brand: string; last4: string; expMonth: number; expYear: number }>;
+    methods: SavedPaymentMethod[];
   }> {
     const result = await this.withResolvedCustomer(userId, async (customerId) => {
       const [customer, methods] = await Promise.all([
@@ -467,12 +468,12 @@ class StripePaymentService {
         (async () => {
           const collected: Stripe.PaymentMethod[] = [];
           let startingAfter: string | undefined;
-          // Stripe's default page is 10. Stopping there hid every later card, so the
-          // traveler could not remove them (payments QA bug 6).
+          // Stripe's default page is 10. Stopping there hid every later method, so the
+          // traveler could not remove them (payments QA bug 6). Omitting `type` lists
+          // every current and future type (ledger `2026-10-21-saved-method-list-and-express`).
           for (let page = 0; page < 10; page++) {
             const batch = await stripe.paymentMethods.list({
               customer: customerId,
-              type: 'card',
               limit: 100,
               ...(startingAfter ? { starting_after: startingAfter } : {}),
             });
@@ -489,13 +490,10 @@ class StripePaymentService {
           : null;
       return {
         defaultPaymentMethodId: defaultPm,
-        methods: methods.data.map((pm) => ({
-          id: pm.id,
-          brand: pm.card?.brand ?? 'card',
-          last4: pm.card?.last4 ?? '',
-          expMonth: pm.card?.exp_month ?? 0,
-          expYear: pm.card?.exp_year ?? 0,
-        })),
+        methods: methods.data.flatMap((pm) => {
+          const mapped = mapStripePaymentMethod(pm);
+          return mapped ? [mapped] : [];
+        }),
       };
     });
     return result ?? { defaultPaymentMethodId: null, methods: [] };

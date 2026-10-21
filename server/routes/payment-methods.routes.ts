@@ -54,12 +54,12 @@ router.post("/api/me/payment-methods/setup-intent", isAuthenticated, async (req:
     }
     const result = await stripePaymentService.createSetupIntent(sessionUserId(req));
     if (!result) {
-      return res.status(503).json({ error: "stripe_unavailable", message: "Couldn't start the add-card flow. Try again later." });
+      return res.status(503).json({ error: "stripe_unavailable", message: "Couldn't start saving a payment method. Try again later." });
     }
     return res.json(result);
   } catch (err: any) {
     console.error("[payment-methods] setup-intent failed:", err);
-    return res.status(500).json({ message: "Failed to start the add-card flow" });
+    return res.status(500).json({ message: "Couldn't start saving a payment method." });
   }
 });
 

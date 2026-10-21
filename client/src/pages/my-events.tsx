@@ -260,7 +260,7 @@ function EngagementCard({ engagement }: { engagement: Engagement }) {
               disabled={oneClickPaying || starting || feeLoading}
               data-testid={`button-use-different-card-${engagement.id}`}
             >
-              Use a different card
+              Use a different payment method
             </button>
           </div>
         ) : (

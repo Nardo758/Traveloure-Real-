@@ -1516,7 +1516,11 @@ This document captures architectural decisions to maintain consistency across co
     rejected outside production), makes Customer create idempotent on the user id and stops
     adopting the first email-match Customer, and records `setup_intent.succeeded` plus
     `payment_method.attached` / `payment_method.detached` with no fulfillment and no local card
-    table.
+    table. The saved-method list returns every Stripe type and leaves brand, last4, and expiry
+    null when Stripe did not send them (ledger `2026-10-21-saved-method-list-and-express`). The
+    SetupIntent dialog and the pay sheets mount the Express Checkout Element for Apple Pay,
+    Google Pay, and Link; a wallet that element is showing is hidden on the Payment Element so
+    it is not offered twice. The hold sheet keeps Link off.
     **(b) A PAYMENT METHOD ENTERS THE ACCOUNT AT ONE OF EXACTLY TWO MOMENTS**, and both already
     existed: at FIRST PURCHASE (the Payment Element, vaulted against the durable Stripe customer
     with `setup_future_usage: off_session` — FP-1), or PROACTIVELY on the profile's Payment

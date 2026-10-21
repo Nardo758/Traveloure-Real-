@@ -84,6 +84,7 @@ import StripeCheckout from "@/components/booking/StripeCheckout";
 import { UpsellSlot, UpsellErrorBoundary } from "@/components/UpsellSlot";
 import { getAcquisitionRef } from "@/lib/acquisition";
 import { useSavedPayment, formatCardLabel } from "@/hooks/use-saved-payment";
+import type { SavedPaymentMethod } from "@shared/saved-payment-method";
 import { trackEvent } from "@/lib/analytics";
 import { itemKindChipFor } from "@shared/item-kind";
 import { isContentCartLine } from "@shared/cart-content-line";
@@ -955,7 +956,7 @@ export default function CartPage() {
   const { data: savedMethodsData } = useQuery<{
     available: boolean;
     defaultPaymentMethodId: string | null;
-    methods: Array<{ id: string; brand: string; last4: string }>;
+    methods: SavedPaymentMethod[];
   }>({
     queryKey: ["/api/me/payment-methods"],
     enabled: !!user,
@@ -1166,7 +1167,9 @@ export default function CartPage() {
         ).catch(() => {});
         toast({
           title: "Booked & paid",
-          description: `Charged to your saved ${selectedSavedCard?.brand ?? "card"} •••• ${selectedSavedCard?.last4 ?? ""}.`,
+          description: formatCardLabel(selectedSavedCard)
+            ? `Charged to ${formatCardLabel(selectedSavedCard)}.`
+            : "Charged to your saved payment method.",
         });
         queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
         queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
@@ -2772,7 +2775,7 @@ export default function CartPage() {
                             disabled={oneClickLoading || paymentLoading || creatingComparison}
                             data-testid="button-use-different-card-optimization"
                           >
-                            Use a different card
+                            Use a different payment method
                           </button>
                         </div>
                       ) : !optimizationPayment && (
@@ -3242,7 +3245,7 @@ export default function CartPage() {
                           ) : selectedSavedCard ? (
                             <>
                               <CheckCircle className="w-4 h-4 mr-2" />
-                              {`Book & Pay — ${selectedSavedCard.brand} •••• ${selectedSavedCard.last4}`}
+                              {`Book & Pay — ${formatCardLabel(selectedSavedCard)}`}
                             </>
                           ) : (
                             <>
@@ -3262,12 +3265,12 @@ export default function CartPage() {
                                 }}
                               >
                                 <SelectTrigger className="w-full" data-testid="select-saved-card">
-                                  <SelectValue placeholder="Choose a saved card" />
+                                  <SelectValue placeholder="Choose a saved payment method" />
                                 </SelectTrigger>
                                 <SelectContent>
                                   {savedMethods.map((method) => (
                                     <SelectItem key={method.id} value={method.id}>
-                                      {method.brand} •••• {method.last4}
+                                      {formatCardLabel(method)}
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
@@ -3280,17 +3283,17 @@ export default function CartPage() {
                                 onClick={() => setPayWithNewCard((current) => !current)}
                                 data-testid="button-use-different-card"
                               >
-                                {payWithNewCard ? "Use a saved card" : "Use a different card"}
+                                {payWithNewCard ? "Use a saved payment method" : "Use a different payment method"}
                               </button>
                               <Link href="/profile#payment-methods" className="text-muted-foreground underline-offset-2 hover:underline">
-                                Manage saved cards
+                                Manage saved payment methods
                               </Link>
                             </div>
                           </div>
                         )}
                         {selectedSavedCard && (
                           <p className="text-xs text-muted-foreground text-center w-full">
-                            One click — your saved card is charged immediately. No further steps.
+                            One click — your saved payment method is charged immediately. No further steps.
                           </p>
                         )}
                         </>
