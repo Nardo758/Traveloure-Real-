@@ -24,6 +24,8 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect } from "react";
 import { COMPANY_CONTACT_EMAIL } from "@/lib/company-facts";
+import { applicationStatusQuery } from "@/lib/application-status-query";
+import type { ApplicationPhase } from "@shared/application-status";
 
 interface ApplicationStep {
   id: number;
@@ -36,6 +38,10 @@ interface ApplicationStep {
 
 interface ApplicationStatus {
   steps: ApplicationStep[];
+  phase?: ApplicationPhase;
+  phaseTitle?: string;
+  phaseDetail?: string;
+  currentStepId?: number | null;
   overallStatus: string;
   rejectionMessage?: string | null;
   /** #924: the most recent EARLIER rejection's feedback, kept visible after a resubmission. */
@@ -95,9 +101,9 @@ function StepCard({ step }: { step: ApplicationStep }) {
 export default function ProviderStatusPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { data: appStatus, isLoading } = useQuery<ApplicationStatus>({
+  const { data: appStatus, isLoading, isFetching } = useQuery<ApplicationStatus>({
     queryKey: ["/api/provider/application-status"],
-    refetchInterval: 10000,
+    ...applicationStatusQuery,
   });
 
   const startIdVerification = useMutation({
@@ -142,7 +148,7 @@ export default function ProviderStatusPage() {
     }
   }, []);
 
-  if (isLoading) {
+  if (isLoading || (isFetching && !appStatus?.phase)) {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center h-64">
@@ -157,15 +163,20 @@ export default function ProviderStatusPage() {
   const bizStatus = appStatus?.businessVerificationStatus ?? "pending";
   const completedSteps = steps.filter(s => s.status === "completed").length;
   const progressPercentage = steps.length > 0 ? (completedSteps / steps.length) * 100 : 0;
-  const currentStep = steps.find(s => s.status === "in_progress") || steps.find(s => s.status === "pending" || s.status === "failed");
+  const currentStep = appStatus?.currentStepId != null ? steps.find(s => s.id === appStatus.currentStepId) : undefined;
   const overallStatus = appStatus?.overallStatus ?? "pending";
-
-
-  const overallBadge = overallStatus === "approved"
-    ? <Badge className="bg-green-100 text-green-700 px-4 py-2"><CheckCircle2 className="w-4 h-4 mr-2" />Approved</Badge>
-    : overallStatus === "rejected"
-    ? <Badge className="bg-red-100 text-red-700 px-4 py-2"><AlertCircle className="w-4 h-4 mr-2" />Not Approved</Badge>
-    : <Badge className="bg-amber-100 text-amber-700 px-4 py-2"><Clock className="w-4 h-4 mr-2" />Under Review</Badge>;
+  const phase = appStatus?.phase;
+  const badgeClass = phase === "approved"
+    ? "bg-green-100 text-green-700"
+    : phase === "rejected"
+    ? "bg-red-100 text-red-700"
+    : phase === "not_started"
+    ? "bg-gray-100 text-gray-700"
+    : "bg-amber-100 text-amber-700";
+  const PhaseIcon = phase === "approved" ? CheckCircle2 : phase === "rejected" ? AlertCircle : Clock;
+  const overallBadge = appStatus?.phaseTitle
+    ? <Badge className={`${badgeClass} px-4 py-2`} data-testid="badge-application-phase"><PhaseIcon className="w-4 h-4 mr-2" />{appStatus.phaseTitle}</Badge>
+    : null;
 
   return (
     <DashboardLayout>
@@ -175,7 +186,7 @@ export default function ProviderStatusPage() {
             <h1 className="text-2xl md:text-3xl font-bold text-foreground dark:text-white" data-testid="text-page-title">
               Service Provider Application
             </h1>
-            <p className="text-muted-foreground mt-1">Track your business verification progress</p>
+            <p className="text-muted-foreground mt-1" data-testid="text-application-phase-detail">{appStatus?.phaseDetail}</p>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/provider/application-status"] })} data-testid="button-refresh">
@@ -258,7 +269,30 @@ export default function ProviderStatusPage() {
         </Card>
 
         {/* Owner Identity Verification */}
-        {identityStatus !== "verified" ? (
+        {phase === "approved" && identityStatus !== "verified" ? (
+          <Card className="border-2 border-blue-300 bg-blue-50 dark:bg-blue-900/20" data-testid="card-identity-before-live">
+            <CardContent className="p-6">
+              <div className="flex items-start gap-4">
+                <div className="p-3 bg-blue-600 rounded-full flex-shrink-0">
+                  <ShieldCheck className="w-6 h-6 text-white" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-foreground dark:text-white">Verify your identity before a listing can go live</h3>
+                  <p className="text-muted-foreground mt-1">Your application is approved. A listing stays private until this check is finished.</p>
+                </div>
+                <Button
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  onClick={() => startIdVerification.mutate()}
+                  disabled={startIdVerification.isPending}
+                  data-testid="button-verify-identity"
+                >
+                  {startIdVerification.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ExternalLink className="w-4 h-4 mr-2" />}
+                  Verify Owner ID →
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : identityStatus !== "verified" ? (
           <Card className="border-2 border-blue-300 bg-blue-50 dark:bg-blue-900/20">
             <CardContent className="p-6">
               <div className="flex items-start gap-4">
@@ -302,10 +336,9 @@ export default function ProviderStatusPage() {
           </Card>
         )}
 
-        {/* Business Verification — Stripe Connect KYB (Persona KYB retired Aug 2026).
-            businessVerificationStatus is now derived from the provider's Stripe Connect account
-            via the account.updated webhook. Stripe performs its own KYB during Express onboarding. */}
-        {bizStatus !== "verified" ? (
+        {/* Business Verification — shown once identity is done, or after the application itself is approved.
+            While identity is the open step this card is omitted so two steps are not current at once. */}
+        {(identityStatus === "verified" || phase === "approved") && (bizStatus !== "verified" ? (
           <Card className="border-2 border-purple-300 bg-purple-50 dark:bg-purple-900/20">
             <CardContent className="p-6">
               <div className="flex items-start gap-3 mb-4">
@@ -364,7 +397,7 @@ export default function ProviderStatusPage() {
               <Badge className="ml-auto bg-green-100 text-green-700"><CheckCircle2 className="w-3 h-3 mr-1" />Complete</Badge>
             </CardContent>
           </Card>
-        )}
+        ))}
 
         {currentStep && (
           <Card className="border-2 border-primary bg-[#FFF5F7] dark:bg-primary/10">

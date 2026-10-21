@@ -23,6 +23,8 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect } from "react";
 import { helpArticlePath } from "@shared/help-article-slugs";
+import { applicationStatusQuery } from "@/lib/application-status-query";
+import type { ApplicationPhase } from "@shared/application-status";
 
 interface ApplicationStep {
   id: number;
@@ -35,6 +37,10 @@ interface ApplicationStep {
 
 interface ApplicationStatus {
   steps: ApplicationStep[];
+  phase?: ApplicationPhase;
+  phaseTitle?: string;
+  phaseDetail?: string;
+  currentStepId?: number | null;
   overallStatus: string;
   rejectionMessage: string | null;
   identityVerificationStatus: string;
@@ -97,9 +103,9 @@ export default function ExpertStatusPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: appStatus, isLoading } = useQuery<ApplicationStatus>({
+  const { data: appStatus, isLoading, isFetching } = useQuery<ApplicationStatus>({
     queryKey: ["/api/expert/application-status"],
-    refetchInterval: 10000,
+    ...applicationStatusQuery,
   });
 
   const startVerificationMutation = useMutation({
@@ -127,7 +133,7 @@ export default function ExpertStatusPage() {
     }
   }, []);
 
-  if (isLoading) {
+  if (isLoading || (isFetching && !appStatus?.phase)) {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center h-64">
@@ -141,14 +147,20 @@ export default function ExpertStatusPage() {
   const identityStatus = appStatus?.identityVerificationStatus ?? "pending";
   const completedSteps = steps.filter(s => s.status === "completed").length;
   const progressPercentage = steps.length > 0 ? (completedSteps / steps.length) * 100 : 0;
-  const currentStep = steps.find(s => s.status === "in_progress") || steps.find(s => s.status === "pending" || s.status === "failed");
+  const currentStep = appStatus?.currentStepId != null ? steps.find(s => s.id === appStatus.currentStepId) : undefined;
   const overallStatus = appStatus?.overallStatus ?? "pending";
-
-  const overallBadge = overallStatus === "approved"
-    ? <Badge className="bg-green-100 text-green-700 px-4 py-2"><CheckCircle2 className="w-4 h-4 mr-2" />Approved</Badge>
-    : overallStatus === "rejected"
-    ? <Badge className="bg-red-100 text-red-700 px-4 py-2"><AlertCircle className="w-4 h-4 mr-2" />Not Approved</Badge>
-    : <Badge className="bg-amber-100 text-amber-700 px-4 py-2"><Clock className="w-4 h-4 mr-2" />Under Review</Badge>;
+  const phase = appStatus?.phase;
+  const badgeClass = phase === "approved"
+    ? "bg-green-100 text-green-700"
+    : phase === "rejected"
+    ? "bg-red-100 text-red-700"
+    : phase === "not_started"
+    ? "bg-gray-100 text-gray-700"
+    : "bg-amber-100 text-amber-700";
+  const PhaseIcon = phase === "approved" ? CheckCircle2 : phase === "rejected" ? AlertCircle : Clock;
+  const overallBadge = appStatus?.phaseTitle
+    ? <Badge className={`${badgeClass} px-4 py-2`} data-testid="badge-application-phase"><PhaseIcon className="w-4 h-4 mr-2" />{appStatus.phaseTitle}</Badge>
+    : null;
 
   return (
     <DashboardLayout>
@@ -158,7 +170,7 @@ export default function ExpertStatusPage() {
             <h1 className="text-2xl md:text-3xl font-bold text-foreground dark:text-white" data-testid="text-page-title">
               Expert Application Status
             </h1>
-            <p className="text-muted-foreground mt-1">Track your progress to becoming a trip planner</p>
+            <p className="text-muted-foreground mt-1" data-testid="text-application-phase-detail">{appStatus?.phaseDetail}</p>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/expert/application-status"] })} data-testid="button-refresh">
@@ -230,7 +242,31 @@ export default function ExpertStatusPage() {
         )}
 
         {/* Identity Verification Action Card */}
-        {identityStatus !== "verified" && (
+        {phase === "approved" && identityStatus !== "verified" && (
+          <Card className="border-2 border-blue-300 bg-blue-50 dark:bg-blue-900/20" data-testid="card-identity-before-live">
+            <CardContent className="p-6">
+              <div className="flex items-start gap-4">
+                <div className="p-3 bg-blue-600 rounded-full flex-shrink-0">
+                  <ShieldCheck className="w-6 h-6 text-white" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-foreground dark:text-white">Verify your identity before a listing can go live</h3>
+                  <p className="text-muted-foreground mt-1">Your application is approved. A listing stays private until this check is finished.</p>
+                </div>
+                <Button
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  onClick={() => startVerificationMutation.mutate()}
+                  disabled={startVerificationMutation.isPending}
+                  data-testid="button-verify-identity"
+                >
+                  {startVerificationMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ExternalLink className="w-4 h-4 mr-2" />}
+                  Verify My Identity →
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+        {phase !== "approved" && identityStatus !== "verified" && (
           <Card className="border-2 border-blue-300 bg-blue-50 dark:bg-blue-900/20">
             <CardContent className="p-6">
               <div className="flex items-start gap-4">

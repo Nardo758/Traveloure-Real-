@@ -5,6 +5,8 @@ import { Loader2, Plus, Sparkles } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { useQuery } from "@tanstack/react-query";
+import { applicationStatusQuery } from "@/lib/application-status-query";
+import type { ApplicationPhase } from "@shared/application-status";
 import { WhileYouWereAway } from "@/components/dashboard/WhileYouWereAway";
 import { ComingUp, useUpcoming } from "@/components/dashboard/ComingUp";
 import { HomeCity } from "@/components/dashboard/HomeCity";
@@ -75,6 +77,22 @@ export default function Dashboard() {
   // R-C / L2 home-honesty (ledger `2026-09-07-home-honesty`): every create door on this page opens
   // the ONE IntakePanel. Kept as landed; the D11 modal-collapse is a separate lane.
   const [intakeOpen, setIntakeOpen] = useState(false);
+  const supply = useQuery<{
+    kind: "expert" | "provider" | null;
+    phase: ApplicationPhase;
+    phaseTitle: string;
+    phaseDetail: string;
+    canSaveDraftListing: boolean;
+  }>({
+    queryKey: ["/api/me/supply-account"],
+    enabled: !!user?.id,
+    ...applicationStatusQuery,
+  });
+  const ownListings = useQuery<Array<{ id: string; serviceName?: string | null; approvalStatus?: string | null }>>({
+    queryKey: ["/api/provider/services"],
+    enabled: !!supply.data?.canSaveDraftListing,
+    ...applicationStatusQuery,
+  });
 
   const now = new Date();
   const allPlans = trips ?? [];
@@ -135,6 +153,52 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+
+        {supply.data?.canSaveDraftListing && (
+          <div
+            className="mb-6 rounded-lg border p-4"
+            style={{ borderColor: "var(--earn-line, #E8E8E2)" }}
+            data-testid="card-pending-draft-listing"
+          >
+            <h2 className="text-lg font-semibold" style={{ fontFamily: FRAUNCES, color: "var(--earn-ink)" }}>
+              {supply.data.phaseTitle}
+            </h2>
+            <p className="text-sm mt-1" style={{ color: "var(--earn-muted)" }} data-testid="text-pending-draft-detail">
+              {supply.data.phaseDetail}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-3">
+              <Link href="/dashboard/listing">
+                <span
+                  className="inline-block px-4 py-2 rounded-lg text-white text-sm"
+                  style={{ background: "var(--earn-coral-ink, #FF385C)" }}
+                  data-testid="button-draft-listing"
+                >
+                  Draft a listing
+                </span>
+              </Link>
+              <Link href={supply.data.kind === "provider" ? "/provider-status" : "/expert-status"}>
+                <span className="inline-block px-4 py-2 text-sm underline" data-testid="link-application-status">
+                  Application status
+                </span>
+              </Link>
+            </div>
+            {(() => {
+              const drafts = (ownListings.data ?? []).filter((row) => row.approvalStatus === "draft" && row.serviceName?.trim());
+              if (drafts.length === 0) return null;
+              return (
+                <ul className="mt-3 space-y-1" data-testid="list-draft-listings">
+                  {drafts.map((row) => (
+                    <li key={row.id}>
+                      <Link href={`/dashboard/listing/${row.id}`}>
+                        <span className="text-sm underline">{row.serviceName}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              );
+            })()}
+          </div>
+        )}
 
         <div className="flex gap-6">
           {/* LEFT: the time axis */}

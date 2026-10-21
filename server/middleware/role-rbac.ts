@@ -7,6 +7,8 @@ import { eq } from "drizzle-orm";
 // by isEA, not an expert-family member). EA pages consume /api/ea/* only, so dropping EA
 // from the expert family removes unused server surface, not a working path.
 import { isExpertRole, isProviderRole, isEarnerRole } from "@shared/roles";
+import { listingWriteRefusal } from "@shared/application-status";
+import { readSupplyAccount } from "../services/pending-supply-account";
 
 /**
  * isExpert — middleware that allows only expert-role users and admins.
@@ -47,6 +49,10 @@ export const isExpert = async (req: any, res: any, next: any) => {
  * analytics, earnings) stays provider-only via `isProvider` below — the backstop is kept, not
  * removed, just corrected to match who is actually allowed to write to this endpoint.
  *
+ * A pending applicant is still `users.role = user`. They may pass this prefix only to save a
+ * private draft. Publish and submit stay refused in the handlers. An account with no open
+ * application still stops here.
+ *
  * Queries the database for the real role — never trusts session claims alone.
  * Returns 401 if unauthenticated, 403 if wrong role.
  */
@@ -61,7 +67,10 @@ export const isEarner = async (req: any, res: any, next: any) => {
   try {
     const [row] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId));
     if (!row || (!isEarnerRole(row.role) && row.role !== "admin")) {
-      return res.status(403).json({ message: "Expert or provider access required" });
+      const account = await readSupplyAccount(userId);
+      if (account.canSaveDraftListing) return next();
+      const decision = listingWriteRefusal(account, { draft: true, enteringReview: false, statusActive: false });
+      return res.status(403).json(decision ?? { message: "Expert or provider access required", code: "APPLICATION_REQUIRED" });
     }
     next();
   } catch (err) {

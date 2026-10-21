@@ -22,6 +22,7 @@ import { db } from "../db";
 import { resolveCanonicalCity } from "../utils/canonical-city";
 import { notConciergePoolListingSql } from "./expert-routability";
 import { notTestOwnerListingSql } from "./test-account";
+import { publicListingOwnerSql } from "./public-listing-owner";
 import { notRideListingSql } from "./ride-listings";
 import { cityNeighborhoods, travelPulseHiddenGems, providerServices, serviceProviderForms, serviceCategories, expertNeighborhoods, users, dmoRawContent, dmoExtractedPlaces, travelPulseCalendarEvents } from "@shared/schema";
 import { eq, sql, and, or, isNull, ilike, inArray, notInArray, asc, desc, gte } from "drizzle-orm";
@@ -373,6 +374,7 @@ class LocationViewService {
           .where(
             and(
               eq(providerServices.status, "active"),
+              publicListingOwnerSql(providerServices.userId),
               // FP-1 / B4: same structured-first scoping as the services query below.
               cityScopePredicate(cityName),
             ),
@@ -559,6 +561,7 @@ class LocationViewService {
           await notConciergePoolListingSql(providerServices.userId),
           // SH-1 item 12: a test account's listings are never public.
           notTestOwnerListingSql(providerServices.userId),
+          publicListingOwnerSql(providerServices.userId),
           // TC-3 catalog rides are not city-page listings (ledger `2026-10-11-tc3-ride-seed`).
           notRideListingSql(providerServices.id),
           // FP-1 / B4: structured `city` first, free-text `location` only as the grandfathering

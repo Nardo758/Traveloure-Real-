@@ -25,6 +25,7 @@ import { loadLiveStatus } from "../services/live-status.service";
 import { Router } from "express";
 import { isExpertIdRoutable, isPublicExpertAccount } from "../services/expert-routability";
 import { isTestAccountId, testAccountSql } from "../services/test-account";
+import { publicListingOwnerSql } from "../services/public-listing-owner";
 import { zodErrorBody } from "../utils/zod-error-body";
 import { getUserId, getDbRole } from "../utils/auth";
 import { sanitizeInput } from "../utils/sanitize";
@@ -677,6 +678,7 @@ async function loadStorefrontFromOwner(
         eq(providerServices.userId, owner.id),
         eq(providerServices.approvalStatus, "approved"),
         eq(providerServices.status, "active"),
+        publicListingOwnerSql(providerServices.userId),
       ),
     );
   // A ROOM (`parent_service_id` set) is booked from its PROPERTY's page, never as a card of its
@@ -1080,6 +1082,7 @@ async function loadProviderStorefrontDirectory() {
         eq(providerServices.userId, users.id),
         eq(providerServices.approvalStatus, "approved"),
         eq(providerServices.status, "active"),
+        publicListingOwnerSql(providerServices.userId),
       ),
     )
     .where(
@@ -1154,6 +1157,7 @@ async function loadProviderStorefrontDirectory() {
               inArray(providerServices.userId, ownerIds),
               eq(providerServices.approvalStatus, "approved"),
               eq(providerServices.status, "active"),
+              publicListingOwnerSql(providerServices.userId),
             ),
           ),
       ]);
@@ -1406,6 +1410,7 @@ router.get("/services/:id", async (req, res, next) => {
           eq(providerServices.id, req.params.id),
           eq(providerServices.approvalStatus, "approved"),
           eq(providerServices.status, "active"),
+          publicListingOwnerSql(providerServices.userId),
         ),
       )
       .limit(1);
