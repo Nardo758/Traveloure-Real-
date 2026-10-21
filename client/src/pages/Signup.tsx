@@ -1,11 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { TRAVELER_WAITLIST, normalizeSignupIntent, waitlistBlockedPath } from "@shared/launch-signup";
 import { isRegistrationNeutral } from "@shared/registration-neutral";
+import { supplySignupContinuation } from "@shared/supply-entry";
 import { sanitizeReturnTo } from "@/lib/safe-return-to";
 import { useTranslation } from "react-i18next";
 
 export function SignupPage() {
   const { t } = useTranslation("auth");
+  // S-01: intent=supply continues into the role's application (or /earn when no role
+  // is named). The account form stays for travelers and for ?qa=1.
+  const [supplyContinuation] = useState(() => supplySignupContinuation(window.location.search));
+  useLayoutEffect(() => {
+    if (supplyContinuation.kind === "account") return;
+    window.location.replace(supplyContinuation.href);
+  }, [supplyContinuation]);
 
   const params = new URLSearchParams(window.location.search);
   const refToken = params.get("ref") || "";
@@ -18,7 +26,7 @@ export function SignupPage() {
 
   // LW-1b: in waitlist mode a traveler has nothing to sign up for here — go to the launch market's waitlist.
   useEffect(() => {
-    if (intent === "supply" || showQaCode) return;
+    if (supplyContinuation.kind !== "account" || intent === "supply" || showQaCode) return;
     let cancelled = false;
     fetch("/api/public/signup-mode", { credentials: "include" })
       .then((r) => (r.ok ? r.json() : null))
@@ -27,7 +35,7 @@ export function SignupPage() {
       })
       .catch(() => { /* the server still refuses on submit */ });
     return () => { cancelled = true; };
-  }, [intent, showQaCode]);
+  }, [intent, showQaCode, supplyContinuation]);
 
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [error, setError] = useState("");
@@ -35,6 +43,8 @@ export function SignupPage() {
   // AUTH-1 fix 3b: the server answers a new and an existing address the same way and signs nobody in, so a
   // completed sign-up shows one neutral state — never the dashboard, never "account created".
   const [submitted, setSubmitted] = useState(false);
+
+  if (supplyContinuation.kind !== "account") return null;
 
   const handleSubmit = async () => {
     setLoading(true);

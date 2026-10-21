@@ -21,6 +21,7 @@ import {
   type TickerItemCreate,
   type TickerItemPatch,
 } from "@shared/ticker";
+import { publicSupplyEntryHref } from "@shared/supply-entry";
 
 export const TICKER_CACHE_MS = 30_000;
 const cache = new Map<string, { at: number; items: PublicTickerItem[] }>();
@@ -101,9 +102,13 @@ export async function publicTickerItems(marketSlug: string): Promise<PublicTicke
       AND ${BLOG_LINK_OK}
     ORDER BY t.sort_order ASC NULLS LAST, t.id ASC
   `);
+  // The stored join line is `/signup?intent=supply` (migration 384). The public read
+  // continues that door into the role chooser or the named application. The row itself
+  // is unchanged, and the admin editor still shows the stored href.
   const items = (r.rows as any[])
     .map((row) => ({ text: String(row.text), href: row.href === null ? null : String(row.href) }))
-    .filter((item) => hrefStillLive(item.href));
+    .filter((item) => hrefStillLive(item.href))
+    .map((item) => ({ text: item.text, href: publicSupplyEntryHref(item.href) }));
   cache.set(marketSlug, { at: Date.now(), items });
   return items;
 }
