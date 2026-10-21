@@ -12,6 +12,38 @@ import { deliverItineraryFollowup, type FollowupMetadata } from "../itinerary-fo
 import { deliverQueuedEmail, _outboxTestHooks } from "../email-outbox.service";
 import { ITINERARY_FOLLOWUPS, type ItineraryFollowupKind } from "../itinerary-followup-email";
 import type { SendEmailParams } from "../email.service";
+import { MARKETING_EMAIL_FOOTER_FIELDS, type MarketingEmailFooterKey } from "@shared/marketing-email-footer";
+
+const FAKE_FOOTER: Record<MarketingEmailFooterKey, string> = {
+  marketing_email_sender_name: "Example Sender LLC",
+  marketing_email_opt_out_address: "opt-out@example.test",
+  marketing_email_postal_address: "CONFIGURED-POSTAL-LINE-1",
+  marketing_email_complaint_contact: "complaints@example.test",
+};
+async function rememberFooter() {
+  const prior = new Map<MarketingEmailFooterKey, string | null>();
+  for (const field of MARKETING_EMAIL_FOOTER_FIELDS) {
+    const result = await db.execute(sql`SELECT setting_value FROM platform_settings WHERE setting_key = ${field.key}`);
+    prior.set(field.key, (result.rows[0] as { setting_value?: string } | undefined)?.setting_value ?? null);
+    await db.execute(sql`
+      INSERT INTO platform_settings (setting_key, setting_value, updated_at)
+      VALUES (${field.key}, ${FAKE_FOOTER[field.key]}, NOW())
+      ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = NOW()
+    `);
+  }
+  return prior;
+}
+async function restoreFooter(prior: Map<MarketingEmailFooterKey, string | null>) {
+  for (const field of MARKETING_EMAIL_FOOTER_FIELDS) {
+    const value = prior.get(field.key);
+    if (value == null) await db.execute(sql`DELETE FROM platform_settings WHERE setting_key = ${field.key}`);
+    else await db.execute(sql`
+      INSERT INTO platform_settings (setting_key, setting_value, updated_at)
+      VALUES (${field.key}, ${value}, NOW())
+      ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = NOW()
+    `);
+  }
+}
 
 vi.mock("../email.service", async (original) => ({
   ...await original<typeof import("../email.service")>(), getAppBaseUrl: () => "https://app.example.test",
@@ -33,6 +65,7 @@ async function withFixture(run: (fixture: Fixture) => Promise<void>, options: {
     destination: `QA ${randomUUID().slice(0, 16)}`, serviceId: randomUUID(),
   };
   vi.stubEnv("ITINERARY_OUTCOME_TEST_EMAIL", fixture.email);
+  const priorFooter = await rememberFooter();
   try {
     await db.transaction(async (tx) => {
       await tx.insert(users).values([
@@ -69,6 +102,7 @@ async function withFixture(run: (fixture: Fixture) => Promise<void>, options: {
     });
     await run(fixture);
   } finally {
+    await restoreFooter(priorFooter);
     delete _outboxTestHooks.sendEmailFn;
     await db.transaction(async (tx) => {
       await tx.delete(affiliateBookingRequests).where(eq(affiliateBookingRequests.userId, fixture.userId));
@@ -100,6 +134,8 @@ for (let loop = 1; loop <= 2; loop++) {
         expect(await deliverItineraryFollowup(id, send)).toBe("sent");
         expect(send).toHaveBeenCalledTimes(1);
         expect(send.mock.calls[0][0].idempotencyKey).toBe(`itinerary-followup-${id}`);
+        expect(send.mock.calls[0][0].html).toContain("Example Sender LLC");
+        expect(send.mock.calls[0][0].text).toContain("Opt out by email: opt-out@example.test");
         const [row] = await db.select().from(emailOutbox).where(eq(emailOutbox.id, id));
         expect(row.status).toBe("sent");
         expect(row.html.includes("Prices may change")).toBe(entry.hours === 120);

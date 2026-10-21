@@ -62,19 +62,6 @@ async function getSettingValue(key: string): Promise<string | null> {
 }
 
 /**
- * A raw platform setting, or null when the row is missing or the read fails.
- * Callers that must not proceed without the value fail closed on null.
- */
-export async function readPlatformSetting(key: string): Promise<string | null> {
-  try {
-    return await getSettingValue(key);
-  } catch (err) {
-    console.error(`[platform-flags] read failed for ${key}:`, err);
-    return null;
-  }
-}
-
-/**
  * Read a boolean platform flag. Missing rows fall back to `defaultValue`.
  * On DB error the default is returned (fail-open for maintenance mode so a
  * DB hiccup can't lock everyone out; callers log the error).

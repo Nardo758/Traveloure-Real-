@@ -1,7 +1,8 @@
 // S-22: the one confirmation email for a provider who joins the waitlist of a live city.
 // The sentences live in shared/waitlist-apply-invite.ts. This file builds the message and sends it.
-// No postal address and no phone are written here — the footer is readMarketingEmailFooter(), and a
-// missing footer does not send (fail closed). A repeat sign-up does not send again.
+// The footer is the shared marketing footer (ledger 2026-10-20-marketing-email-footer). This file
+// writes no address and no phone. A missing required footer value does not send (fail closed).
+// A repeat sign-up does not send again.
 import { escHtml, stripCrLf } from "../utils/email-escape";
 import { logger } from "../infrastructure/logger";
 import { normalizeWaitlistEmail } from "@shared/launch-waitlist";
@@ -13,7 +14,7 @@ import {
 } from "@shared/waitlist-apply-invite";
 import { getAppBaseUrl } from "./email.service";
 import { enqueueEmail } from "./email-outbox.service";
-import { readMarketingEmailFooter } from "./marketing-email-footer";
+import { logMarketingEmailSkip, readMarketingEmailFooter, renderMarketingEmailFooter } from "./marketing-email-footer";
 import { getBetaMarketSlugs } from "./platform-flags";
 
 export function buildWaitlistApplyInviteMessage(input: {
@@ -87,16 +88,23 @@ export async function notifyWaitlistProviderApply(input: {
       serviceType: input.serviceType,
     });
     if (!invite) return "skipped";
-    const footer = await readMarketingEmailFooter();
-    if (!shouldSendWaitlistApplyInvite({ inserted: true, role: "provider", invite, footerPresent: footer !== null })) {
-      logger.error("[waitlist] apply invite not sent: marketing_email_postal_address is unset");
+    const identity = await readMarketingEmailFooter();
+    if (!identity.ok) {
+      logMarketingEmailSkip(WAITLIST_APPLY_INVITE_EMAIL_TYPE, identity.reason);
       return "skipped";
     }
+    if (!shouldSendWaitlistApplyInvite({ inserted: true, role: "provider", invite, footerPresent: true })) {
+      return "skipped";
+    }
+    // The shared renderer owns the footer words. It is placed inside this document; appending it
+    // after the document would land outside </html>. The unsubscribe link is the configured
+    // opt-out address: this sign-up has no user, and launch_waitlist.unsubscribed_at has no writer.
+    const foot = renderMarketingEmailFooter(identity.footer, `mailto:${identity.footer.optOutAddress}`);
     const message = buildWaitlistApplyInviteMessage({
       mail: invite.mail,
       applyUrl: `${getAppBaseUrl()}${invite.path}`,
-      footerHtml: footer!.html,
-      footerText: footer!.text,
+      footerHtml: foot.html,
+      footerText: foot.text,
     });
     await enqueueEmail({
       to: normalizeWaitlistEmail(input.email),

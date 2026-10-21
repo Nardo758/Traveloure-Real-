@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Settings,
   Server,
@@ -28,6 +29,7 @@ import { deliveryDisplay } from "@/lib/email-delivery-status";
 import { BUSY_BUS_MARKETS, SEASON_WINDOWS_HELP, seasonWindowsSettingKey } from "@shared/busy-bus";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
 import { parseTravelerSignupMode, TRAVELER_SIGNUP_MODE_SETTING, type TravelerSignupMode } from "@shared/launch-signup";
+import { MARKETING_EMAIL_FOOTER_FIELDS } from "@shared/marketing-email-footer";
 
 interface PlatformSettingRow {
   setting_key: string;
@@ -351,6 +353,8 @@ export default function AdminSystem() {
                 />
               </div>
 
+              <MarketingEmailFooterFields rows={settingsRows} disabled={settingsLoading} />
+
               {PHONE_DELIVERY_SWITCH_ROWS.map((row) => (
                 <div key={row.key} className="flex items-center justify-between">
                   <div className="space-y-0.5">
@@ -584,5 +588,78 @@ function SeasonWindowsCard({ market, rows }: { market: string; rows: PlatformSet
         </Button>
       </CardContent>
     </Card>
+  );
+}
+
+/** Marketing mail reads these four platform_settings rows. A blank row is not filled in here. */
+function MarketingEmailFooterFields({ rows, disabled }: { rows: PlatformSettingRow[] | undefined; disabled?: boolean }) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const stored = Object.fromEntries(
+    MARKETING_EMAIL_FOOTER_FIELDS.map((field) => [
+      field.key,
+      rows?.find((row) => row.setting_key === field.key)?.setting_value ?? "",
+    ]),
+  );
+  const [draft, setDraft] = React.useState<Record<string, string> | null>(null);
+  const values = draft ?? stored;
+  const save = useMutation({
+    mutationFn: async (next: Record<string, string>) => {
+      for (const field of MARKETING_EMAIL_FOOTER_FIELDS) {
+        await apiRequest("PATCH", `/api/admin/platform-settings/${field.key}`, {
+          settingValue: (next[field.key] ?? "").trim(),
+        });
+      }
+    },
+    onSuccess: () => {
+      setDraft(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/platform-settings"] });
+      toast({ title: "Marketing email footer saved" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Could not save the marketing email footer", description: err.message, variant: "destructive" });
+    },
+  });
+  return (
+    <div className="space-y-3 pt-2 border-t border-gray-100" data-testid="marketing-email-footer-fields">
+      <div className="space-y-0.5">
+        <Label className="text-base">Marketing email footer</Label>
+        <p className="text-sm text-gray-500">
+          Sender name, opt-out email, postal address, and complaint contact. A marketing email is not sent while any of these is blank.
+        </p>
+      </div>
+      {MARKETING_EMAIL_FOOTER_FIELDS.map((field) => (
+        <div key={field.key} className="space-y-1">
+          <Label htmlFor={field.key} className="text-sm">{field.label}</Label>
+          {field.multiline ? (
+            <Textarea
+              id={field.key}
+              value={values[field.key] ?? ""}
+              disabled={disabled || save.isPending}
+              onChange={(event) => setDraft({ ...values, [field.key]: event.target.value })}
+              data-testid={`input-${field.key}`}
+            />
+          ) : (
+            <Input
+              id={field.key}
+              value={values[field.key] ?? ""}
+              disabled={disabled || save.isPending}
+              onChange={(event) => setDraft({ ...values, [field.key]: event.target.value })}
+              data-testid={`input-${field.key}`}
+            />
+          )}
+        </div>
+      ))}
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={disabled || save.isPending}
+        onClick={() => save.mutate(values)}
+        data-testid="button-save-marketing-email-footer"
+      >
+        {save.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+        Save marketing email footer
+      </Button>
+    </div>
   );
 }

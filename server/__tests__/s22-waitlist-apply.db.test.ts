@@ -3,13 +3,13 @@
  * provider row born in a live city while the marketing footer setting is present.
  *
  *   S22e  Kyoto (on the live list) with the footer set: one outbox row, the ruled subject and body,
- *         a responsive message, and the footer text from the setting.
+ *         a responsive message, and the shared marketing footer.
  *   S22f  A second sign-up for the same address writes no second email.
  *   S22g  A provider in a city that is not live gets no invite. A traveler in a live city gets none.
  *         An existing row that signs up again gets none. With the footer unset, a new live-city
  *         provider gets none.
  *
- * The footer value is a fixture token, not a postal address. Rows and the setting are restored.
+ * Footer values are fixture tokens, not a postal address. Rows and the settings are restored.
  * Run: npx tsx --test server/__tests__/s22-waitlist-apply.db.test.ts
  */
 import { after, before, test } from "node:test";
@@ -30,11 +30,20 @@ const { joinWaitlist } = await import("../services/launch-waitlist.service");
 const { notifyWaitlistProviderApply, buildWaitlistApplyInviteMessage } = await import("../services/waitlist-apply-invite-email");
 const { _outboxTestHooks } = await import("../services/email-outbox.service");
 const { invalidatePlatformFlagCache } = await import("../services/platform-flags");
-const { MARKETING_EMAIL_POSTAL_ADDRESS_SETTING } = await import("../services/marketing-email-footer");
+const { MARKETING_EMAIL_FOOTER_FIELDS } = await import("@shared/marketing-email-footer");
 const { BETA_MARKET_SLUGS_SETTING } = await import("@shared/ticker");
 const { WAITLIST_APPLY_INVITE_EMAIL_TYPE, waitlistApplyMail } = await import("@shared/waitlist-apply-invite");
 
 const FOOTER = "S22-FOOTER-FIXTURE";
+const SENDER = "S22-SENDER-FIXTURE";
+const OPT_OUT = "s22-opt-out@example.test";
+const COMPLAINT = "s22-complaints@example.test";
+const FOOTER_VALUES: Record<string, string> = {
+  marketing_email_sender_name: SENDER,
+  marketing_email_opt_out_address: OPT_OUT,
+  marketing_email_postal_address: FOOTER,
+  marketing_email_complaint_contact: COMPLAINT,
+};
 const RUN = crypto.randomUUID().slice(0, 8);
 const emailFor = (n: string) => `s22-${n}-${RUN}@traveloure.test`;
 const prior = new Map<string, string | null>();
@@ -75,11 +84,11 @@ async function signUp(email: string, market: string, role: "provider" | "travele
 }
 
 before(async () => {
-  for (const key of [MARKETING_EMAIL_POSTAL_ADDRESS_SETTING, BETA_MARKET_SLUGS_SETTING]) {
+  for (const key of [...MARKETING_EMAIL_FOOTER_FIELDS.map((field) => field.key), BETA_MARKET_SLUGS_SETTING]) {
     const r = await pool.query(`SELECT setting_value FROM platform_settings WHERE setting_key = $1`, [key]);
     prior.set(key, r.rows.length ? String(r.rows[0].setting_value) : null);
   }
-  await setSetting(MARKETING_EMAIL_POSTAL_ADDRESS_SETTING, FOOTER);
+  for (const [key, value] of Object.entries(FOOTER_VALUES)) await setSetting(key, value);
   await setSetting(BETA_MARKET_SLUGS_SETTING, JSON.stringify(["kyoto"]));
   _outboxTestHooks.sendEmailFn = async () => ({ ok: true, id: "s22-test" });
 });
@@ -108,12 +117,18 @@ test("S22e — a new Kyoto provider gets one responsive invite with the footer",
   assert.ok(rows[0].text_body.startsWith(mail.body));
   assert.ok(rows[0].text_body.includes(mail.cta));
   assert.ok(rows[0].text_body.includes(FOOTER));
+  assert.ok(rows[0].text_body.includes(`Sender: ${SENDER}`));
+  assert.ok(rows[0].text_body.includes(`Opt out by email: ${OPT_OUT}`));
+  assert.ok(rows[0].text_body.includes(`Complaints: ${COMPLAINT}`));
+  assert.ok(rows[0].text_body.includes(`Unsubscribe: mailto:${OPT_OUT}`));
   assert.ok(rows[0].html.includes("width=device-width"));
   assert.ok(rows[0].html.includes("width:100%"));
   assert.ok(rows[0].html.includes("max-width:600px"));
   assert.ok(rows[0].html.includes(mail.preheader));
   assert.ok(rows[0].html.includes("Apply as a Kyoto provider"));
   assert.ok(rows[0].html.includes(FOOTER));
+  assert.ok(rows[0].html.includes(`Sender: ${SENDER}`));
+  assert.ok(rows[0].html.includes(`mailto:${OPT_OUT}`));
   assert.equal(rows[0].html.includes("tel:"), false);
   assert.doesNotMatch(rows[0].html, /\b\d{3}[-.)]\s*\d{3}[-.\s]\d{4}\b/);
   assert.ok(rows[0].html.includes("/become-provider?"));
@@ -152,13 +167,13 @@ test("S22g — a non-live city, a traveler, an existing row and a missing footer
   assert.equal(replay.inserted, false, "a row that already existed is not a new sign-up");
   assert.equal((await invites(existing)).length, 0);
 
-  await setSetting(MARKETING_EMAIL_POSTAL_ADDRESS_SETTING, null);
+  await setSetting("marketing_email_postal_address", null);
   const bare = emailFor("nofooter");
   const bareJoin = await signUp(bare, "kyoto", "provider");
   assert.equal(bareJoin.inserted, true);
   assert.equal(bareJoin.outcome, "skipped");
   assert.equal((await invites(bare)).length, 0);
-  await setSetting(MARKETING_EMAIL_POSTAL_ADDRESS_SETTING, FOOTER);
+  await setSetting("marketing_email_postal_address", FOOTER);
 
   const message = buildWaitlistApplyInviteMessage({
     mail: waitlistApplyMail("Kyoto", "Ada"),

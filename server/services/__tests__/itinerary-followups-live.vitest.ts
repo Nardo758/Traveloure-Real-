@@ -11,6 +11,7 @@ import {
 import { persistGenerationOutcome } from "../itinerary-generation-outcome.service";
 import { deliverQueuedEmail } from "../email-outbox.service";
 import { ITINERARY_FOLLOWUPS, type ItineraryFollowupKind } from "../itinerary-followup-email";
+import { readMarketingEmailFooter } from "../marketing-email-footer";
 
 // Only the URL resolver is overridden: transport, registry, outbox claims and provider are real.
 vi.mock("../email.service", async (original) => ({
@@ -54,6 +55,8 @@ test("cleanup only explicitly recorded live verification fixtures", async () => 
 
 test("two real provider-delivered loops per follow-up; authenticated destination and actual outbox", async () => {
   if (process.env.CLEANUP_ITINERARY_FOLLOWUP_LIVE_TESTS === "1") return;
+  const footer = await readMarketingEmailFooter();
+  if (!footer.ok) throw new Error(footer.reason);
   expect(await db.select({ id: users.id }).from(users).where(eq(users.email, inbox))).toHaveLength(0);
   const provider = new Resend(process.env.RESEND_API_KEY);
   for (let loop = 1; loop <= 2; loop++) for (const entry of ITINERARY_FOLLOWUPS) {
