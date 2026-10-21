@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { earnKeepSentence, providerKeepLine, platformTakePercent } from "../fee-keep-copy";
+import { earnKeepSentence, providerKeepLine, providerReviewKeepLine, platformTakePercent } from "../fee-keep-copy";
 
 test("K1: today's resolver rates render the line, without the beta-cohort clause", () => {
   assert.equal(
@@ -36,4 +36,15 @@ test("K4 (FE-2): a cohort rate carries the F3 clause, with the server's notice d
   );
   // A cohort with no rate still gives no sentence.
   assert.equal(earnKeepSentence({ expertPlatformRate: null, expertCohort: { label: "beta", noticeDays: 30 } }), null);
+});
+
+test("K5 (S-21): the provider review line is the earner's share, and a missing rate hides it", () => {
+  assert.equal(providerReviewKeepLine({ providerPlatformRate: 0.12 }), "You keep 88% of each booking");
+  assert.equal(providerReviewKeepLine({ providerPlatformRate: 0 }), "You keep 100% of each booking");
+  for (const bad of [null, undefined, "", "x", 1, 1.5, -0.1]) {
+    assert.equal(providerReviewKeepLine({ providerPlatformRate: bad as any }), null);
+  }
+  assert.equal(providerReviewKeepLine(null), null);
+  // /earn keeps its own sentence.
+  assert.equal(providerKeepLine({ providerPlatformRate: 0.12 }), "Providers keep 88% (12%).");
 });

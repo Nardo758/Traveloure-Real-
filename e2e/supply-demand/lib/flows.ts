@@ -51,8 +51,8 @@ export async function applyAsProvider(
   await fillIfVisible(page, 'input-address', '1 Kyoto Fixture Street');
   await fillIfVisible(page, 'input-city', opts.city ?? 'Kyoto');
   await fillIfVisible(page, 'input-country', opts.country ?? 'Japan');
-  await checkIfVisible(page, 'checkbox-insurance');
-  await checkIfVisible(page, 'checkbox-license');
+  await clickIfVisible(page, 'radio-insurance-yes');
+  await clickIfVisible(page, 'radio-license-yes');
   await testid(page, 'button-next-step').click();
 
   // Step 4: Review + terms
