@@ -76,5 +76,5 @@ export function buildItineraryFollowupEmail(input: {
   const text = [greeting, intro, suggestion, urgency, `Revisit your itinerary: ${planUrl}`,
     input.kind === "itinerary_followup_24h" && input.expertName ? `Find a local expert: ${expertsUrl.href}` : "",
     `Unsubscribe: ${unsubscribeUrl}`].filter(Boolean).join("\n\n");
-  return { subject, html, text };
+  return { subject, html, text, unsubscribeUrl };
 }
