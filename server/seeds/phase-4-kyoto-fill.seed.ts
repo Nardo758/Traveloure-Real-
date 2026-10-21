@@ -90,14 +90,12 @@ const KYOTO_GEMS: GemSeed[] = [
   // Arashiyama (bamboo grove)
   {
     placeName: "Arashiyama Bamboo Grove",
-    placeType: "nature",
-    description: "Iconic bamboo forest paths with serene atmosphere",
-    whyLocalsLoveIt: "Visit before 8am to experience with few tourists",
-    priceRange: "$",
+    placeType: "attraction",
+    description: "A public path through tall bamboo, a short walk from Tenryu-ji's north gate.",
+    whyLocalsLoveIt: "",
+    priceRange: "",
     neighborhood: "arashiyama",
     city: "Kyoto",
-    latitude: "35.0094",
-    longitude: "135.6669",
   },
   {
     placeName: "Togetsukyo Bridge",

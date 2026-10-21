@@ -1,5 +1,7 @@
 import { displayCrowdBand, displayTrendScore, type DisplayCrowdBand } from "@shared/trend-display";
 import { hideBlockedGemImage, photoBlocks } from "./place-photo-blocks.service";
+import { visibleGemCondition, visibleHappeningNowCondition } from "./gem-visibility";
+import { happeningNowTitleHidden } from "@shared/kyoto-feed-cleanup";
 import { teamSeededGemTags } from "@shared/content-tiers";
 import { trendScoreMaxAgeHours } from "../config/trend-display.config";
 import { db } from "../db";
@@ -380,7 +382,7 @@ export class TravelPulseService {
     const gems = await db
       .select()
       .from(travelPulseHiddenGems)
-      .where(eq(travelPulseHiddenGems.city, city))
+      .where(and(eq(travelPulseHiddenGems.city, city), visibleGemCondition()))
       .orderBy(desc(travelPulseHiddenGems.gemScore))
       .limit(limit);
 
@@ -400,6 +402,7 @@ export class TravelPulseService {
       .from(travelPulseHiddenGems)
       .where(and(
         eq(travelPulseHiddenGems.city, city),
+        visibleGemCondition(),
         sql`${travelPulseHiddenGems.sourceClass} IN ('public', 'local')`,
         sql`(${travelPulseHiddenGems.sourceClass} <> 'local' OR ${travelPulseHiddenGems.expiresAt} IS NULL OR ${travelPulseHiddenGems.expiresAt} > NOW())`,
       ))
@@ -441,7 +444,8 @@ export class TravelPulseService {
       .where(
         and(
           eq(travelPulseHappeningNow.city, city),
-          lte(travelPulseHappeningNow.startsAt, now)
+          lte(travelPulseHappeningNow.startsAt, now),
+          visibleHappeningNowCondition(),
         )
       )
       .orderBy(desc(travelPulseHappeningNow.startsAt));
@@ -963,6 +967,10 @@ export class TravelPulseService {
         crowdLevel: "packed",
         entryFee: "Free",
         isLive: true,
+        // The row stays. #1603 removes this seed entry. Until then a fresh insert is born hidden.
+        hiddenAt: happeningNowTitleHidden("Sakura Light-Up at Meguro River")
+          ? new Date("2026-10-20T00:00:00Z")
+          : null,
       },
       {
         city: "Paris",

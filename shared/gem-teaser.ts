@@ -17,6 +17,10 @@
  * unreachable from the public teaser until someone names it here. The spec
  * (`server/services/__tests__/gem-teaser.test.ts`) asserts the exact key set —
  * widen it only with a ruling.
+ *
+ * Widened by ledger `2026-10-20-kyoto-feed-cleanup` for the official fact line and the
+ * photo credit (`imageCredit`, `hours`, `admission`, `sourceUrl`, `factCheckedOn`).
+ * `hiddenAt` stays off the teaser: a hidden row is omitted by the list, not flagged here.
  */
 
 import type { GemCuratedBy } from "./gem-curated-by";
@@ -36,6 +40,11 @@ export const GEM_TEASER_KEYS = [
   "gemScore",
   "neighborhood",
   "curatedBy",
+  "imageCredit",
+  "hours",
+  "admission",
+  "sourceUrl",
+  "factCheckedOn",
 ] as const;
 
 export type GemTeaserKey = (typeof GEM_TEASER_KEYS)[number];
@@ -57,6 +66,11 @@ export interface GemTeaser {
   gemScore: number | null;
   neighborhood: string | null;
   curatedBy: GemCuratedBy | null;
+  imageCredit: string | null;
+  hours: string | null;
+  admission: string | null;
+  sourceUrl: string | null;
+  factCheckedOn: string | Date | null;
 }
 
 /**

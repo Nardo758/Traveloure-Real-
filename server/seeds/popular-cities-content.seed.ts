@@ -26,6 +26,7 @@
  */
 
 import { teamSeededGemTags } from "@shared/content-tiers";
+import { kyotoGemSeedOverlay } from "@shared/kyoto-feed-cleanup";
 import { db } from "../db";
 import { travelPulseHiddenGems } from "@shared/schema";
 import { and, eq, isNull, or } from "drizzle-orm";
@@ -49,7 +50,7 @@ interface GemSeed {
   whyLocalsLoveIt: string;
   bestFor: string[];
   priceRange: string;
-  neighborhood: string;
+  neighborhood: string | null;
   imageUrl?: string;
 }
 
@@ -282,7 +283,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     whyLocalsLoveIt: "The seasonally changing menu is sourced entirely from the temple's own garden. An experience impossible to replicate.",
     bestFor: ["fine dining", "vegetarian", "cultural immersion"],
     priceRange: "$$$",
-    neighborhood: "nishijin",
+    neighborhood: null,
     imageUrl: "https://images.unsplash.com/photo-1492571350019-22de08371fd3?auto=format&fit=crop&w=800&q=80",
   },
   {
@@ -344,7 +345,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     whyLocalsLoveIt: "The Japanese imperial hospitality tradition is alive here. No-one rushes you, no-one under 18, pure Kyoto.",
     bestFor: ["luxury stay", "couples", "authentic ryokan"],
     priceRange: "$$$$",
-    neighborhood: "higashiyama",
+    neighborhood: null,
     imageUrl: "https://images.unsplash.com/photo-1548165892-cd6be85a7f69?auto=format&fit=crop&w=800&q=80",
   },
   {
@@ -385,7 +386,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     whyLocalsLoveIt: "Autumn maples reflected in the still canal at 7am.",
     bestFor: ["photography", "autumn foliage", "walking", "golden hour"],
     priceRange: "$",
-    neighborhood: "higashiyama",
+    neighborhood: null,
     imageUrl: "https://images.unsplash.com/photo-1601823984263-6ec76b4c8aaf?auto=format&fit=crop&w=800&q=80",
   },
 
@@ -1833,6 +1834,7 @@ export async function seedPopularCitiesContent(): Promise<{ gems: number }> {
       continue;
     }
 
+    const overlay = kyotoGemSeedOverlay(gem.city, gem.placeName);
     await db.insert(travelPulseHiddenGems).values({
       ...teamSeededGemTags(), // FD-2: a team seed (ledger 2026-10-09-fd2-content-tier-tags)
       city: gem.city,
@@ -1852,7 +1854,9 @@ export async function seedPopularCitiesContent(): Promise<{ gems: number }> {
       whyLocalsLoveIt: gem.whyLocalsLoveIt,
       bestFor: gem.bestFor,
       priceRange: gem.priceRange,
-      neighborhood: gem.neighborhood,
+      neighborhood: overlay.neighborhood === undefined ? gem.neighborhood : overlay.neighborhood,
+      // Migration 400 hides these names; the seed runs after migrations, so a fresh boot must stamp it too.
+      ...(overlay.hidden ? { hiddenAt: new Date("2026-10-20T00:00:00Z") } : {}),
       imageUrl: gem.imageUrl,
       aiGenerated: false,
     });

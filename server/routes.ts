@@ -149,6 +149,7 @@ import {
 import { db } from "./db";
 import { getPlatformFlag, FLAG_MAINTENANCE_MODE } from "./services/platform-flags";
 import { applyPropertyLocationPrivacy } from "./services/property-location-privacy.service";
+import { visibleGemCondition, visibleHappeningNowCondition } from "./services/gem-visibility";
 import { filterOutAwayOwners } from "./services/content-query.service";
 import { resolveMissingItemCoordinates } from "./services/trip-plan.service";
 import { resolveMarketSlug } from "./services/trend-engine/operating-markets";
@@ -5019,7 +5020,7 @@ ${bannedCopyPromptLine()}`;
           gemScore: travelPulseHiddenGems.gemScore,
         })
         .from(travelPulseHiddenGems)
-        .where(ilike(travelPulseHiddenGems.city, city))
+        .where(and(ilike(travelPulseHiddenGems.city, city), visibleGemCondition()))
         .orderBy(desc(travelPulseHiddenGems.gemScore))
         .limit(limit);
       return res.json(rows);
@@ -8869,7 +8870,11 @@ ${bannedCopyPromptLine()}`;
       // Fetch all trending destinations from TravelPulse
       const allTrending = await db.select().from(travelPulseTrending).limit(50);
       const allCities = await db.select().from(travelPulseCities).limit(20);
-      const allHappeningNow = await db.select().from(travelPulseHappeningNow).limit(20);
+      const allHappeningNow = await db
+        .select()
+        .from(travelPulseHappeningNow)
+        .where(visibleHappeningNowCondition())
+        .limit(20);
       
       // Filter trending to match expert's markets
       let filteredTrending = allTrending;

@@ -43,6 +43,12 @@ const FULL_ROW = {
   curatedByExpertId: "exp-yuki", // raw id — REMOVED (ships only as resolved curatedBy)
   detectedAt: new Date("2026-08-01T00:00:00Z"),
   lastUpdated: new Date("2026-08-20T00:00:00Z"),
+  hiddenAt: null, // visibility flag — REMOVED (a hidden row is omitted by the list)
+  hours: "Mar–Nov 8:30–17:00",
+  admission: "Adult ¥1,000",
+  sourceUrl: "https://www.example.test/place",
+  imageCredit: "Example / Wikimedia Commons, CC BY-SA 4.0",
+  factCheckedOn: "2026-10-20",
   curatedBy: { id: "exp-yuki", firstName: "Yuki", lastName: "Tanaka", profileImageUrl: null },
 };
 
@@ -76,6 +82,7 @@ describe("toGemTeaser — the ruled teaser set only (audit ruling 3)", () => {
     assert.equal("aiGeneratedAt" in teaser, false);
     assert.equal("detectedAt" in teaser, false);
     assert.equal("lastUpdated" in teaser, false);
+    assert.equal("hiddenAt" in teaser, false, "hiddenAt is not a public field");
   });
 
   test("teaser fields pass through intact, including resolved attribution", () => {
@@ -83,6 +90,9 @@ describe("toGemTeaser — the ruled teaser set only (audit ruling 3)", () => {
     assert.equal(teaser.placeName, "Hanamikoji Street");
     assert.equal(teaser.gemScore, 87);
     assert.equal(teaser.whyLocalsLoveIt, "Golden-hour lanterns before the crowds arrive.");
+    assert.equal(teaser.hours, "Mar–Nov 8:30–17:00");
+    assert.equal(teaser.imageCredit, "Example / Wikimedia Commons, CC BY-SA 4.0");
+    assert.equal(teaser.factCheckedOn, "2026-10-20");
     assert.deepEqual(teaser.bestFor, ["photography", "evening walk"]);
     assert.deepEqual(teaser.curatedBy, {
       id: "exp-yuki",

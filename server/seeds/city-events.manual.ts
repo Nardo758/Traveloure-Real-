@@ -299,6 +299,9 @@ export const MANUAL_CITY_EVENTS: readonly CityEventSeedEntry[] = [
     startTimeKnown: true,
     vertical: "music",
     ticketUrl: "https://kyotoconcerthall.org/en/",
+    // G-01: ticket sales have closed. Migration 400 withdraws a row already stored; a fresh boot
+    // inserts it withdrawn so the card never offers Plan around it.
+    withdrawn: true,
   },
   // Two nights, two rows. The venue is in Osaka, outside the Kyoto market but within its leg budget.
   {
