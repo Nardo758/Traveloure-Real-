@@ -27,6 +27,7 @@
 
 import { teamSeededGemTags } from "@shared/content-tiers";
 import { kyotoGemSeedOverlay } from "@shared/kyoto-feed-cleanup";
+import { kyotoCopyNeedsDescriptionHide, rewordKyotoBannedCopy } from "@shared/kyoto-gem-copy";
 import { db } from "../db";
 import { travelPulseHiddenGems } from "@shared/schema";
 import { and, eq, isNull, or } from "drizzle-orm";
@@ -1835,6 +1836,7 @@ export async function seedPopularCitiesContent(): Promise<{ gems: number }> {
     }
 
     const overlay = kyotoGemSeedOverlay(gem.city, gem.placeName);
+    const descriptionHidden = kyotoCopyNeedsDescriptionHide(gem.city.toLowerCase() === "kyoto" ? gem.description : null, gem.city.toLowerCase() === "kyoto" ? gem.whyLocalsLoveIt : null);
     await db.insert(travelPulseHiddenGems).values({
       ...teamSeededGemTags(), // FD-2: a team seed (ledger 2026-10-09-fd2-content-tier-tags)
       city: gem.city,
@@ -1850,13 +1852,14 @@ export async function seedPopularCitiesContent(): Promise<{ gems: number }> {
       gemScore: gem.gemScore,
       discoveryStatus: gem.discoveryStatus,
       daysUntilMainstream: gem.daysUntilMainstream,
-      description: gem.description,
-      whyLocalsLoveIt: gem.whyLocalsLoveIt,
+      description: gem.city.toLowerCase() === "kyoto" ? rewordKyotoBannedCopy(gem.description) : gem.description,
+      whyLocalsLoveIt: gem.city.toLowerCase() === "kyoto" ? rewordKyotoBannedCopy(gem.whyLocalsLoveIt) : gem.whyLocalsLoveIt,
       bestFor: gem.bestFor,
       priceRange: gem.priceRange,
       neighborhood: overlay.neighborhood === undefined ? gem.neighborhood : overlay.neighborhood,
       // Migration 400 hides these names; the seed runs after migrations, so a fresh boot must stamp it too.
       ...(overlay.hidden ? { hiddenAt: new Date("2026-10-20T00:00:00Z") } : {}),
+      ...(descriptionHidden ? { descriptionHiddenAt: new Date("2026-10-20T00:00:00Z") } : {}),
       imageUrl: gem.imageUrl,
       aiGenerated: false,
     });

@@ -2116,7 +2116,7 @@ export const MIGRATION_FILES = [
   // live; nothing deleted. The four shows are seeded as one row each. SH-1 item 5, ledger 2026-10-19-sh1-show-dates.
   "399_imagine_noh_run_withdrawn.sql",
   // 400 — Kyoto feed cleanup. Additive nullable columns on travel_pulse_hidden_gems (hidden_at, hours,
-  // admission, source_url, image_credit, fact_checked_on) and travel_pulse_happening_now.hidden_at
+  // admission, source_url, image_credit, fact_checked_on, description_hidden_at) and travel_pulse_happening_now.hidden_at
   // (no DEFAULT/CHECK/index) plus the idempotent Kyoto hide, reword, neighbourhood and card data.
   // The Meguro River light-up is hidden by title and not deleted. This file is 400 so it merges
   // before #1606 (geocode cache is 401). HELD for Leon's comment. Ledger 2026-10-20-kyoto-feed-cleanup.

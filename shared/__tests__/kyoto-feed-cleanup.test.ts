@@ -19,7 +19,7 @@ import path from "node:path";
 import { feverTitleBlocked } from "../fever-title-filter";
 import { gemRowHidden } from "../gem-visibility";
 import { composeGemFactLine } from "../gem-fact-line";
-import { rewordKyotoBannedCopy } from "../kyoto-gem-copy";
+import { kyotoUnswappedPhrase, rewordKyotoBannedCopy, scanKyotoGemSeedSource } from "../kyoto-gem-copy";
 import {
   BAMBOO_IMAGE_URL,
   GION_OLD_STREETS_DESCRIPTION,
@@ -90,14 +90,26 @@ test("KF3 the fact line ends with the checked date and the source link; bamboo h
   assert.equal(composeGemFactLine({ hours: "9:00–17:00" })?.checkedLabel, "", "a missing checked date is not invented");
 });
 
-test("KF4 banned wording is removed without a new claim", () => {
+test("KF4 approved swaps stay, and hidden gem text is not cut into a fragment", () => {
   assert.equal(rewordKyotoBannedCopy("Walk the geisha district at dusk."), "Walk the district at dusk.");
   assert.equal(rewordKyotoBannedCopy("Turn into the back alleys behind the teahouses."), "Turn into the lanes behind the teahouses.");
   assert.equal(rewordKyotoBannedCopy("One back alley stays quiet."), "One lane stays quiet.");
-  assert.equal(rewordKyotoBannedCopy("A hidden gem locals keep to themselves."), "locals keep to themselves.");
-  assert.equal(rewordKyotoBannedCopy("Kyoto's hidden gems."), "Kyoto's.");
+  assert.equal(rewordKyotoBannedCopy("A hidden gem locals keep to themselves."), "A hidden gem locals keep to themselves.");
+  assert.equal(rewordKyotoBannedCopy("Kyoto's hidden gems."), "Kyoto's hidden gems.");
   assert.equal(rewordKyotoBannedCopy("Wooden machiya townhouses."), "Wooden machiya townhouses.");
-  assert.equal(rewordKyotoBannedCopy("A hidden gem."), null);
+  assert.equal(rewordKyotoBannedCopy("A hidden gem."), "A hidden gem.");
+  assert.equal(kyotoUnswappedPhrase("Kyoto's hidden gems."), "hidden gems");
+  assert.equal(kyotoUnswappedPhrase("Walk the geisha district at dusk."), null);
+  assert.equal(kyotoUnswappedPhrase("One back alley stays quiet."), null);
+  assert.equal(kyotoUnswappedPhrase("A geisha dinner."), "geisha");
+  for (const sample of [
+    rewordKyotoBannedCopy("Kyoto's hidden gems."),
+    rewordKyotoBannedCopy("A hidden gem locals keep to themselves."),
+    rewordKyotoBannedCopy("Walk the geisha district at dusk."),
+  ]) {
+    assert.notEqual(sample, "Kyoto's.");
+    assert.equal(sample?.includes("Kyoto's."), false);
+  }
   assert.equal(KYOTO_GEMS_TO_HIDE.includes("Gion's back alleys" as never), false, "card 36 is reworded, not hidden");
   assert.equal(KYOTO_GEMS_TO_HIDE.length, 28);
 });
@@ -139,6 +151,14 @@ test("KF5 migration 400 carries the hide list, the reword, the neighbourhoods an
   assert.ok(sql.includes("'Kanga-an Temple Shojin Ryori'"));
   assert.ok(sql.includes("'Tofuku-ji Temple'"));
   assert.match(sql, /not assigned to kurama-kibune/i);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS description_hidden_at timestamp/);
+  assert.match(sql, /\\mgeisha\[\[:space:\]\]\+district\\M', 'district'/);
+  assert.match(sql, /\\mback\[\[:space:\]\]\+alleys\\M', 'lanes'/);
+  assert.match(sql, /\\mback\[\[:space:\]\]\+alley\\M', 'lane'/);
+  assert.doesNotMatch(sql, /hidden\[\[:space:\]\]\+gems\?\\M', ''/);
+  assert.doesNotMatch(sql, /\\mgeishas\?\\M', ''/);
+  assert.doesNotMatch(sql, /THEN NULL/);
+  assert.match(sql, /SET description_hidden_at = now\(\)/);
   assert.match(sql, /source_id ILIKE '%uchida%'/);
   assert.match(sql, /place_name ILIKE '%Uchida%'/);
   assert.match(sql, /ALTER TABLE travel_pulse_happening_now ADD COLUMN IF NOT EXISTS hidden_at timestamp/);
@@ -151,6 +171,22 @@ test("KF5 migration 400 carries the hide list, the reword, the neighbourhoods an
   assert.match(read("server/services/travelpulse.service.ts"), /Sakura Light-Up at Meguro River/);
   assert.match(read("server/services/travelpulse.service.ts"), /happeningNowTitleHidden/);
   assert.match(read("server/seed-travelpulse.ts"), /happeningNowTitleHidden/);
+  assert.match(read("server/routes/kyoto-gem-copy.routes.ts"), /\/api\/admin\/kyoto-gem-copy/);
+  assert.match(read("server/routes.ts"), /kyotoGemCopyRoutes/);
+  const script = read("scripts/list-kyoto-unswapped-gem-copy.ts");
+  assert.match(script, /BEGIN READ ONLY/);
+  assert.doesNotMatch(script, /\b(INSERT|UPDATE|DELETE)\b/);
+  const seedRows = [
+    "server/seeds/popular-cities-content.seed.ts",
+    "server/seeds/phase-4-kyoto-fill.seed.ts",
+    "server/data/hidden-gems.json",
+    "playwright/tests/fixtures/discover-location-kyoto.json",
+  ].flatMap((file) => scanKyotoGemSeedSource(read(file)));
+  assert.deepEqual(seedRows, []);
+  assert.equal(
+    scanKyotoGemSeedSource('{\n  city: "Kyoto",\n  placeName: "Sample",\n  description: "Kyoto\'s hidden gems.",\n}').map((row) => row.description).join("\n"),
+    "Kyoto's hidden gems.",
+  );
   const seed = read("server/seeds/popular-cities-content.seed.ts");
   assert.match(seed, /kyotoGemSeedOverlay/);
 });

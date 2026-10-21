@@ -2,6 +2,7 @@ import { displayCrowdBand, displayTrendScore, type DisplayCrowdBand } from "@sha
 import { hideBlockedGemImage, photoBlocks } from "./place-photo-blocks.service";
 import { visibleGemCondition, visibleHappeningNowCondition } from "./gem-visibility";
 import { happeningNowTitleHidden } from "@shared/kyoto-feed-cleanup";
+import { gemCopyForTraveler } from "@shared/kyoto-gem-copy";
 import { teamSeededGemTags } from "@shared/content-tiers";
 import { trendScoreMaxAgeHours } from "../config/trend-display.config";
 import { db } from "../db";
@@ -388,7 +389,7 @@ export class TravelPulseService {
 
     // CS-1 item 1: a gem of a place under a no_photos block shows no image (hidden, never deleted).
     const blocks = await photoBlocks();
-    return gems.map((g) => hideBlockedGemImage(g, blocks));
+    return gems.map((g) => gemCopyForTraveler(hideBlockedGemImage(g, blocks)));
   }
 
   /**
@@ -397,7 +398,7 @@ export class TravelPulseService {
    * (NULL = no expiry stated, live). Hidden at build time — nothing is deleted and no status is written.
    */
   async getDraftEligibleGems(city: string, limit: number = 10): Promise<TravelPulseHiddenGem[]> {
-    return db
+    const gems = await db
       .select()
       .from(travelPulseHiddenGems)
       .where(and(
@@ -408,6 +409,7 @@ export class TravelPulseService {
       ))
       .orderBy(desc(travelPulseHiddenGems.gemScore))
       .limit(limit);
+    return gems.map((g) => gemCopyForTraveler(g));
   }
 
   async getLiveActivity(city: string, limit: number = 20): Promise<TravelPulseLiveActivity[]> {

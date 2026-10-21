@@ -49,6 +49,7 @@ const FULL_ROW = {
   sourceUrl: "https://www.example.test/place",
   imageCredit: "Example / Wikimedia Commons, CC BY-SA 4.0",
   factCheckedOn: "2026-10-20",
+  descriptionHiddenAt: null,
   curatedBy: { id: "exp-yuki", firstName: "Yuki", lastName: "Tanaka", profileImageUrl: null },
 };
 
@@ -83,6 +84,19 @@ describe("toGemTeaser — the ruled teaser set only (audit ruling 3)", () => {
     assert.equal("detectedAt" in teaser, false);
     assert.equal("lastUpdated" in teaser, false);
     assert.equal("hiddenAt" in teaser, false, "hiddenAt is not a public field");
+    assert.equal("descriptionHiddenAt" in teaser, false, "descriptionHiddenAt is not a public field");
+  });
+
+  test("a description_hidden_at row shows no description and no why-text", () => {
+    const teaser = toGemTeaser({
+      ...FULL_ROW,
+      description: "Kyoto's hidden gems.",
+      whyLocalsLoveIt: "A hidden gem locals keep to themselves.",
+      descriptionHiddenAt: new Date("2026-10-20T00:00:00Z"),
+    });
+    assert.equal(teaser.description, null);
+    assert.equal(teaser.whyLocalsLoveIt, null);
+    assert.equal(JSON.stringify(teaser).includes("Kyoto's."), false);
   });
 
   test("teaser fields pass through intact, including resolved attribution", () => {

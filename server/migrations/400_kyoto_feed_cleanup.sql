@@ -12,8 +12,12 @@
 --   · hide the 28 Kyoto gems whose cleanup action starts with HIDE, by exact place_name, only
 --     while hidden_at is still null. Card 36 (Gion's back alleys) is NOT in that list: it is
 --     renamed "Gion's old streets" and reworded. The CSV marks 36 KEEP.
---   · strip geisha / back alley(s) / hidden gem(s) from other Kyoto description and
---     why_locals_love_it text. A second run matches nothing because the phrases are gone.
+--   · approved swaps only, on Kyoto description and why_locals_love_it: "geisha district"
+--     becomes "district", "back alleys" becomes "lanes", "back alley" becomes "lane".
+--     "hidden gem(s)" and a remaining "geisha" word are not rewritten and not deleted.
+--   · description_hidden_at (nullable timestamp, no DEFAULT, no CHECK, no index) is set
+--     when description or why_locals_love_it still matches one of those unswapped phrases.
+--     The card then shows no description. The stored sentence stays.
 --   · Arashiyama centroid 35.0158, 135.6745, radius 2.20 km, only when a value differs.
 --   · insert Ginkaku-ji & Philosopher's Path and Kurama & Kibune. Kurama/Kibune CARDS stay
 --     city-wide (neighbourhood NULL), per the area mapping, not the new slug.
@@ -36,6 +40,7 @@ ALTER TABLE travel_pulse_hidden_gems ADD COLUMN IF NOT EXISTS admission text;
 ALTER TABLE travel_pulse_hidden_gems ADD COLUMN IF NOT EXISTS source_url text;
 ALTER TABLE travel_pulse_hidden_gems ADD COLUMN IF NOT EXISTS image_credit text;
 ALTER TABLE travel_pulse_hidden_gems ADD COLUMN IF NOT EXISTS fact_checked_on date;
+ALTER TABLE travel_pulse_hidden_gems ADD COLUMN IF NOT EXISTS description_hidden_at timestamp;
 ALTER TABLE travel_pulse_happening_now ADD COLUMN IF NOT EXISTS hidden_at timestamp;
 
 -- Happening-now. Exact title. The row stays.
@@ -103,56 +108,50 @@ WHERE withdrawn_at IS NULL
     OR coalesce(blurb, '') ILIKE '%Uchida%'
   );
 
--- Card 36. why_locals_love_it is cleared when it still contains a banned phrase, because the card
--- prefers that field over description. A clean why-text is left as the host wrote it.
+-- Card 36. The approved description is written. why_locals_love_it is not cleared: an unswapped
+-- banned phrase is hidden by description_hidden_at below, and the stored sentence stays.
 UPDATE travel_pulse_hidden_gems
 SET place_name = 'Gion''s old streets',
     description = $gion$Walk the lanes of Gion, Kyoto's historic teahouse district, with its wooden machiya townhouses.$gion$,
-    neighborhood = 'gion',
-    why_locals_love_it = CASE
-      WHEN why_locals_love_it ~* '\m(geishas?|back[[:space:]]+alleys?|hidden[[:space:]]+gems?)\M' THEN NULL
-      ELSE why_locals_love_it
-    END
+    neighborhood = 'gion'
 WHERE city ILIKE 'kyoto'
   AND place_name IN ('Gion''s back alleys', 'Gion''s old streets')
   AND (
     place_name IS DISTINCT FROM 'Gion''s old streets'
     OR description IS DISTINCT FROM $gion$Walk the lanes of Gion, Kyoto's historic teahouse district, with its wooden machiya townhouses.$gion$
     OR neighborhood IS DISTINCT FROM 'gion'
-    OR why_locals_love_it ~* '\m(geishas?|back[[:space:]]+alleys?|hidden[[:space:]]+gems?)\M'
   );
 
--- Same replacements as rewordKyotoBannedCopy (shared/kyoto-gem-copy.ts). Only rows that still
--- contain a banned phrase are written, so a second run changes nothing.
+-- Approved swaps only. Same replacements as rewordKyotoBannedCopy. A second run matches nothing.
 UPDATE travel_pulse_hidden_gems
-SET description = NULLIF(btrim(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(
+SET description = regexp_replace(regexp_replace(regexp_replace(
         description,
         '\mgeisha[[:space:]]+district\M', 'district', 'gi'),
-        '\m(?:a|an|the)[[:space:]]+hidden[[:space:]]+gems?\M', '', 'gi'),
-        '\mhidden[[:space:]]+gems?\M', '', 'gi'),
         '\mback[[:space:]]+alleys\M', 'lanes', 'gi'),
-        '\mback[[:space:]]+alley\M', 'lane', 'gi'),
-        '\mgeishas?\M', '', 'gi'),
-      '[[:space:]]+([.,;:!?])', '\1', 'g'),
-      '[[:space:]]{2,}', ' ', 'g'),
-      '^[[:punct:][:space:]]+$', '', 'g')), '')
+        '\mback[[:space:]]+alley\M', 'lane', 'gi')
 WHERE city ILIKE 'kyoto'
-  AND description ~* '\m(geishas?|back[[:space:]]+alleys?|hidden[[:space:]]+gems?)\M';
+  AND description ~* '\m(geisha[[:space:]]+district|back[[:space:]]+alleys?)\M';
 
 UPDATE travel_pulse_hidden_gems
-SET why_locals_love_it = NULLIF(btrim(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(
+SET why_locals_love_it = regexp_replace(regexp_replace(regexp_replace(
         why_locals_love_it,
         '\mgeisha[[:space:]]+district\M', 'district', 'gi'),
-        '\m(?:a|an|the)[[:space:]]+hidden[[:space:]]+gems?\M', '', 'gi'),
-        '\mhidden[[:space:]]+gems?\M', '', 'gi'),
         '\mback[[:space:]]+alleys\M', 'lanes', 'gi'),
-        '\mback[[:space:]]+alley\M', 'lane', 'gi'),
-        '\mgeishas?\M', '', 'gi'),
-      '[[:space:]]+([.,;:!?])', '\1', 'g'),
-      '[[:space:]]{2,}', ' ', 'g'),
-      '^[[:punct:][:space:]]+$', '', 'g')), '')
+        '\mback[[:space:]]+alley\M', 'lane', 'gi')
 WHERE city ILIKE 'kyoto'
-  AND why_locals_love_it ~* '\m(geishas?|back[[:space:]]+alleys?|hidden[[:space:]]+gems?)\M';
+  AND why_locals_love_it ~* '\m(geisha[[:space:]]+district|back[[:space:]]+alleys?)\M';
+
+-- Unswapped phrases. The text is not modified. Runs after the swaps, so "geisha district" is already gone.
+UPDATE travel_pulse_hidden_gems
+SET description_hidden_at = now()
+WHERE description_hidden_at IS NULL
+  AND city ILIKE 'kyoto'
+  AND (
+    coalesce(description, '') ~* '\mhidden[[:space:]]+gems?\M'
+    OR coalesce(why_locals_love_it, '') ~* '\mhidden[[:space:]]+gems?\M'
+    OR coalesce(description, '') ~* '\mgeishas?\M'
+    OR coalesce(why_locals_love_it, '') ~* '\mgeishas?\M'
+  );
 
 UPDATE city_neighborhoods
 SET centroid_lat = 35.0158,

@@ -24,6 +24,7 @@
  */
 
 import type { GemCuratedBy } from "./gem-curated-by";
+import { gemCopyForTraveler } from "./kyoto-gem-copy";
 
 /** The exact keys a teaser row may carry (before derived fields like `bookability`). */
 export const GEM_TEASER_KEYS = [
@@ -78,10 +79,11 @@ export interface GemTeaser {
  * Pick-based: keys are copied by NAME from GEM_TEASER_KEYS, so anything not
  * ruled in — including a column added later — never reaches the payload.
  */
-export function toGemTeaser(row: Record<string, unknown> & { curatedBy?: GemCuratedBy | null }): GemTeaser {
+export function toGemTeaser(row: Record<string, unknown> & { curatedBy?: GemCuratedBy | null; descriptionHiddenAt?: Date | string | null }): GemTeaser {
+  const source = gemCopyForTraveler(row);
   const out: Record<string, unknown> = {};
   for (const key of GEM_TEASER_KEYS) {
-    out[key] = key in row ? (row as Record<string, unknown>)[key] : null;
+    out[key] = key in source ? (source as Record<string, unknown>)[key] : null;
   }
   out.curatedBy = row.curatedBy ?? null;
   return out as unknown as GemTeaser;
