@@ -178,10 +178,12 @@ test("access denied names an application under review and the draft that is stil
     loadState: "ready",
     supply: { kind: "expert", phase: "under_review", canSaveDraftListing: true },
   });
-  assert.match(copy.reason, /under review/);
-  assert.match(copy.next, /draft listing/);
-  assert.match(copy.next, /after approval/);
-  assert.equal(copy.secondaryHref, "/dashboard/listing");
+  assert.equal(copy.reason, "Your application is under review.");
+  assert.equal(copy.next, "Save a private draft until this page opens after approval.");
+  assert.equal(copy.actionHref, "/dashboard/listing");
+  assert.equal(copy.actionLabel, "Draft a listing");
+  assert.equal(copy.backHref, "/dashboard");
+  assert.equal(copy.backLabel, "Back to Dashboard");
 });
 
 test("access denied for a missing application does not say under review", () => {
@@ -191,9 +193,12 @@ test("access denied for a missing application does not say under review", () => 
     loadState: "ready",
     supply: { kind: null, phase: "not_started", canSaveDraftListing: false },
   });
-  assert.match(copy.reason, /approved providers/);
+  assert.equal(copy.reason, "This page is for approved providers.");
   assert.doesNotMatch(copy.reason, /under review/);
-  assert.equal(copy.secondaryHref, "/become-provider");
+  assert.equal(copy.next, "Submit a provider application to open it.");
+  assert.equal(copy.actionHref, "/become-provider");
+  assert.equal(copy.actionLabel, "Apply as a provider");
+  assert.equal(copy.backLabel, "Back to Dashboard");
 });
 
 test("a provider who opens an expert page is sent to the provider console", () => {
@@ -203,8 +208,38 @@ test("a provider who opens an expert page is sent to the provider console", () =
     loadState: "ready",
     supply: null,
   });
-  assert.match(copy.reason, /for experts/);
-  assert.equal(copy.primaryHref, "/provider/dashboard");
+  assert.equal(copy.reason, "This page is for experts.");
+  assert.equal(copy.actionHref, "/provider/dashboard");
+  assert.equal(copy.actionLabel, "Provider console");
+  assert.equal(copy.backHref, "/dashboard");
+});
+
+test("an open step sends the reader to application status", () => {
+  const copy = accessDeniedCopy({
+    requiredRole: "provider",
+    userRole: "user",
+    loadState: "ready",
+    supply: { kind: "provider", phase: "action_needed", canSaveDraftListing: true },
+  });
+  assert.equal(copy.reason, "Your application still needs a step from you.");
+  assert.equal(copy.next, "Finish the open step on your application status page.");
+  assert.equal(copy.actionHref, "/provider-status");
+  assert.equal(copy.actionLabel, "Go to application status");
+  assert.equal(copy.backLabel, "Back to Dashboard");
+});
+
+test("a rejected application offers an update, with the dashboard as the way back", () => {
+  const copy = accessDeniedCopy({
+    requiredRole: "expert",
+    userRole: "user",
+    loadState: "ready",
+    supply: { kind: "expert", phase: "rejected", canSaveDraftListing: false },
+  });
+  assert.equal(copy.reason, "Your application was not approved.");
+  assert.equal(copy.next, "Update it and resubmit so this page can open.");
+  assert.equal(copy.actionHref, "/expert/apply");
+  assert.equal(copy.actionLabel, "Update application");
+  assert.equal(copy.backHref, "/dashboard");
 });
 
 test("an unknown role keeps the permission sentence", () => {
@@ -214,5 +249,8 @@ test("an unknown role keeps the permission sentence", () => {
     loadState: "ready",
     supply: null,
   });
-  assert.match(copy.reason, /don't have permission/);
+  assert.equal(copy.reason, "You don't have permission to access this page.");
+  assert.equal(copy.next, "Your dashboard is the way back.");
+  assert.equal(copy.actionHref, undefined);
+  assert.equal(copy.backLabel, "Back to Dashboard");
 });

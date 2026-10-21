@@ -222,7 +222,8 @@ const SharedTripPage = lazy(() => import("@/pages/shared-trip"));
 const SharedSavedPlacesPage = lazy(() => import("@/pages/shared-saved-places"));
 const GuestInvitePage = lazy(() => import("@/pages/GuestInvitePage").then((m) => ({ default: m.GuestInvitePage })));
 const VisaHelpPage = lazy(() => import("@/pages/visa-help"));
-import { Loader2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Clock, Loader2, ShieldAlert, XCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 import { getRoleHomePath, userHasRequiredRole } from "@/lib/role-utils";
 import { useClaimGuestTrips } from "@/hooks/use-claim-guest-trips";
@@ -258,22 +259,51 @@ function AccessDenied({ requiredRole, userRole }: { requiredRole: string; userRo
     ...applicationStatusQuery,
   });
   const loadState = !supplyPage ? "ready" : supplyQuery.isError ? "error" : supplyQuery.isSuccess ? "ready" : "loading";
+  const supply = supplyQuery.data ?? null;
   const copy = accessDeniedCopy({
     requiredRole,
     userRole,
     loadState,
-    supply: supplyQuery.data ?? null,
+    supply,
   });
+  const phase = supply?.phase;
+  const StateIcon = loadState === "loading" || phase === "under_review"
+    ? Clock
+    : phase === "rejected"
+    ? XCircle
+    : phase === "action_needed"
+    ? AlertCircle
+    : phase === "approved"
+    ? CheckCircle2
+    : ShieldAlert;
+  const iconTone = phase === "rejected"
+    ? "bg-red-100 text-red-700"
+    : phase === "action_needed"
+    ? "bg-amber-100 text-amber-800"
+    : phase === "approved"
+    ? "bg-green-100 text-green-700"
+    : "bg-muted text-foreground";
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 px-6 text-center">
-      <h2 className="text-2xl font-bold mb-2">Access Denied</h2>
-      <p className="text-muted-foreground mb-2 max-w-md" data-testid="text-access-denied-reason">{copy.reason}</p>
-      <p className="text-muted-foreground mb-4 max-w-md" data-testid="text-access-denied-next">{copy.next}</p>
-      <div className="flex flex-col sm:flex-row gap-3">
-        <a href={copy.primaryHref}><button className="px-4 py-2 bg-primary text-white rounded-lg">{copy.primaryLabel}</button></a>
-        {copy.secondaryHref && copy.secondaryLabel ? (
-          <a href={copy.secondaryHref}><button className="px-4 py-2 border border-gray-300 rounded-lg" data-testid="button-access-denied-next">{copy.secondaryLabel}</button></a>
-        ) : null}
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4 py-10">
+      <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 text-left shadow-sm" data-testid="card-access-denied">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${iconTone}`}>
+            <StateIcon className="h-5 w-5" />
+          </div>
+          <h2 className="text-xl font-semibold text-foreground">Access Denied</h2>
+        </div>
+        <p className="mt-4 text-sm text-foreground break-words" data-testid="text-access-denied-reason">{copy.reason}</p>
+        <p className="mt-1 text-sm text-muted-foreground break-words" data-testid="text-access-denied-next">{copy.next}</p>
+        <div className="mt-6 flex flex-col gap-2">
+          {copy.actionHref && copy.actionLabel ? (
+            <Button asChild className="w-full" data-testid="button-access-denied-next">
+              <a href={copy.actionHref}>{copy.actionLabel}</a>
+            </Button>
+          ) : null}
+          <Button asChild variant="outline" className="w-full" data-testid="button-access-denied-back">
+            <a href={copy.backHref}>{copy.backLabel}</a>
+          </Button>
+        </div>
       </div>
     </div>
   );

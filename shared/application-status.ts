@@ -375,13 +375,14 @@ export interface AccessDeniedInput {
 export interface AccessDeniedCopy {
   reason: string;
   next: string;
-  primaryHref: string;
-  primaryLabel: string;
-  secondaryHref?: string;
-  secondaryLabel?: string;
+  /** The action that fits this state. Absent when the only step is the dashboard. */
+  actionHref?: string;
+  actionLabel?: string;
+  backHref: string;
+  backLabel: string;
 }
 
-const BACK = { primaryHref: "/dashboard", primaryLabel: "Back to Dashboard" };
+const BACK = { backHref: "/dashboard", backLabel: "Back to Dashboard" };
 
 function applyHref(kind: "expert" | "provider" | null, requiredRole: string): string {
   if (kind === "provider" || (kind == null && requiredRole === "provider")) return "/become-provider";
@@ -396,112 +397,92 @@ function statusHref(kind: "expert" | "provider" | null): string {
  * Plain reason and next step for a page the role check refused.
  * Supply pages (expert, provider, earner) read the application. Other pages keep a short reason.
  */
+function denied(
+  reason: string,
+  next: string,
+  action?: { actionHref: string; actionLabel: string },
+): AccessDeniedCopy {
+  return { ...BACK, reason, next, ...action };
+}
+
 export function accessDeniedCopy(input: AccessDeniedInput): AccessDeniedCopy {
   const supplyPage = input.requiredRole === "expert" || input.requiredRole === "provider" || input.requiredRole === "earner";
   if (supplyPage && input.loadState === "loading") {
-    return { ...BACK, reason: "Checking your account.", next: "This page stays closed until that check finishes." };
+    return denied("Checking your account.", "This page stays closed until that check finishes.");
   }
   if (supplyPage && input.loadState === "error") {
-    return {
-      ...BACK,
-      reason: "We couldn't load your application status. This page stays closed.",
-      next: "Go back to your dashboard and try again.",
-    };
+    return denied("We couldn't load your application status.", "Go back to your dashboard and try again.");
   }
   if (input.requiredRole === "admin") {
-    return { ...BACK, reason: "This page is for administrators.", next: "Your dashboard is the way back." };
+    return denied("This page is for administrators.", "Your dashboard is the way back.");
   }
   if (input.requiredRole === "executive_assistant") {
-    return { ...BACK, reason: "This page is for executive assistants.", next: "Your dashboard is the way back." };
+    return denied("This page is for executive assistants.", "Your dashboard is the way back.");
   }
   if (isProviderRole(input.userRole) && input.requiredRole === "expert") {
-    return {
-      reason: "This page is for experts.",
-      next: "Your provider console is where you manage your listings.",
-      primaryHref: "/provider/dashboard",
-      primaryLabel: "Provider console",
-    };
+    return denied("This page is for experts.", "Your provider console is where you manage your listings.", {
+      actionHref: "/provider/dashboard",
+      actionLabel: "Provider console",
+    });
   }
   if (isExpertRole(input.userRole) && input.requiredRole === "provider") {
-    return {
-      reason: "This page is for providers.",
-      next: "Your expert console is where you manage your listings.",
-      primaryHref: "/expert/today",
-      primaryLabel: "Expert console",
-    };
+    return denied("This page is for providers.", "Your expert console is where you manage your listings.", {
+      actionHref: "/expert/today",
+      actionLabel: "Expert console",
+    });
   }
 
   const supply = input.supply;
   const pendingSupply = supplyPage && !isEarnerRole(input.userRole) && input.userRole !== "admin";
   if (pendingSupply && supply) {
     const draft = supply.canSaveDraftListing
-      ? { secondaryHref: "/dashboard/listing", secondaryLabel: "Draft a listing" }
-      : {};
+      ? { actionHref: "/dashboard/listing", actionLabel: "Draft a listing" }
+      : undefined;
+    const status = { actionHref: statusHref(supply.kind), actionLabel: "Go to application status" };
     if (supply.phase === "under_review") {
-      return {
-        ...BACK,
-        ...draft,
-        reason: "Your application is under review, so this page is closed.",
-        next: "You can save a draft listing from your dashboard. It stays private until your application is approved. This page opens after approval.",
-      };
+      return denied(
+        "Your application is under review.",
+        draft ? "Save a private draft until this page opens after approval." : "This page opens after approval.",
+        draft ?? status,
+      );
     }
     if (supply.phase === "action_needed") {
-      return {
-        ...BACK,
-        ...draft,
-        reason: "Your application still needs a step from you, so this page is closed.",
-        next: "Finish the open step on your application status page. You can save a draft listing from your dashboard while you wait. This page opens after your application is approved.",
-        secondaryHref: supply.canSaveDraftListing ? "/dashboard/listing" : statusHref(supply.kind),
-        secondaryLabel: supply.canSaveDraftListing ? "Draft a listing" : "Application status",
-      };
+      return denied(
+        "Your application still needs a step from you.",
+        "Finish the open step on your application status page.",
+        status,
+      );
     }
     if (supply.phase === "rejected") {
-      return {
-        ...BACK,
-        reason: "Your application was not approved, so this page is closed.",
-        next: "Update and resubmit your application. This page opens after it is approved.",
-        secondaryHref: applyHref(supply.kind, input.requiredRole),
-        secondaryLabel: "Update application",
-      };
+      return denied("Your application was not approved.", "Update it and resubmit so this page can open.", {
+        actionHref: applyHref(supply.kind, input.requiredRole),
+        actionLabel: "Update application",
+      });
     }
     if (supply.phase === "approved") {
-      return {
-        ...BACK,
-        ...draft,
-        reason: "Your application is approved, but this page opens once your account is activated.",
-        next: "You can save a draft listing from your dashboard until then. It stays private.",
-      };
+      return denied(
+        "Your application is approved.",
+        "This page opens once your account is activated.",
+        draft,
+      );
     }
     if (input.requiredRole === "provider") {
-      return {
-        ...BACK,
-        reason: "This page is for approved providers.",
-        next: "Submit a provider application first. After you submit, you can save a draft listing from your dashboard. This page opens once your application is approved.",
-        secondaryHref: "/become-provider",
-        secondaryLabel: "Apply as a provider",
-      };
+      return denied("This page is for approved providers.", "Submit a provider application to open it.", {
+        actionHref: "/become-provider",
+        actionLabel: "Apply as a provider",
+      });
     }
     if (input.requiredRole === "expert") {
-      return {
-        ...BACK,
-        reason: "This page is for approved experts.",
-        next: "Submit an expert application first. After you submit, you can save a draft listing from your dashboard. This page opens once your application is approved.",
-        secondaryHref: "/expert/apply",
-        secondaryLabel: "Apply as an expert",
-      };
+      return denied("This page is for approved experts.", "Submit an expert application to open it.", {
+        actionHref: "/expert/apply",
+        actionLabel: "Apply as an expert",
+      });
     }
-    return {
-      ...BACK,
-      reason: "This page is for approved experts and providers.",
-      next: "Submit an application first. After you submit, you can save a draft listing from your dashboard. This page opens once your application is approved.",
-      secondaryHref: "/expert/apply",
-      secondaryLabel: "Apply as an expert",
-    };
+    return denied("This page is for approved experts and providers.", "Submit an application to open it.", {
+      actionHref: "/expert/apply",
+      actionLabel: "Apply as an expert",
+    });
   }
 
-  return {
-    ...BACK,
-    reason: "You don't have permission to access this page.",
-    next: "Your dashboard is the way back.",
-  };
+  return denied("You don't have permission to access this page.", "Your dashboard is the way back.");
 }

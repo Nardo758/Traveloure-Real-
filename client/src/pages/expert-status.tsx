@@ -1,12 +1,16 @@
 import { DashboardLayout } from "@/components/dashboard-layout";
+import {
+  ApplicationProgressCard,
+  ApplicationStatusHeader,
+  StatusActionCard,
+  statusActionButtonClass,
+} from "@/components/application-status-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import {
   CheckCircle2,
   Clock,
-  FileText,
   Star,
   MessageSquare,
   AlertCircle,
@@ -15,7 +19,6 @@ import {
   ShieldCheck,
   ExternalLink,
   Loader2,
-  RefreshCw,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -71,18 +74,18 @@ function StepDot({ status, id }: { status: string; id: number }) {
 function StepCard({ step }: { step: ApplicationStep }) {
   const bg =
     step.status === "completed" ? "bg-green-50 dark:bg-green-900/20" :
-    step.status === "in_progress" ? "bg-[#FFF5F7] dark:bg-primary/10 border border-primary" :
+    step.status === "in_progress" ? "bg-muted border border-border" :
     step.status === "failed" ? "bg-red-50 dark:bg-red-900/20 border border-red-300" :
     "bg-gray-50 dark:bg-gray-800";
 
   return (
     <div className={`p-4 rounded-lg ${bg}`}>
-      <div className="flex items-center justify-between">
-        <div>
-          <h4 className="font-semibold text-foreground dark:text-white">{step.title}</h4>
-          <p className="text-sm text-muted-foreground mt-1">{step.description}</p>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between min-w-0">
+        <div className="min-w-0">
+          <h4 className="font-semibold text-foreground dark:text-white break-words">{step.title}</h4>
+          <p className="text-sm text-muted-foreground mt-1 break-words">{step.description}</p>
         </div>
-        <div className="text-right">
+        <div className="shrink-0 self-start">
           {step.status === "completed" && <Badge className="bg-green-100 text-green-700"><CheckCheck className="w-3 h-3 mr-1" />Completed</Badge>}
           {step.status === "in_progress" && <Badge className="bg-amber-100 text-amber-700"><Clock className="w-3 h-3 mr-1" />In Progress</Badge>}
           {step.status === "failed" && <Badge className="bg-red-100 text-red-700"><AlertCircle className="w-3 h-3 mr-1" />Needs Attention</Badge>}
@@ -146,7 +149,6 @@ export default function ExpertStatusPage() {
   const steps = appStatus?.steps ?? [];
   const identityStatus = appStatus?.identityVerificationStatus ?? "pending";
   const completedSteps = steps.filter(s => s.status === "completed").length;
-  const progressPercentage = steps.length > 0 ? (completedSteps / steps.length) * 100 : 0;
   const currentStep = appStatus?.currentStepId != null ? steps.find(s => s.id === appStatus.currentStepId) : undefined;
   const overallStatus = appStatus?.overallStatus ?? "pending";
   const phase = appStatus?.phase;
@@ -164,183 +166,153 @@ export default function ExpertStatusPage() {
 
   return (
     <DashboardLayout>
-      <div className="p-6 space-y-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-foreground dark:text-white" data-testid="text-page-title">
-              Expert Application Status
-            </h1>
-            <p className="text-muted-foreground mt-1" data-testid="text-application-phase-detail">{appStatus?.phaseDetail}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/expert/application-status"] })} data-testid="button-refresh">
-              <RefreshCw className="w-4 h-4" />
-            </Button>
-            {overallBadge}
-          </div>
-        </div>
+      <div className="p-4 sm:p-6 space-y-6 min-w-0 max-w-full">
+        <ApplicationStatusHeader
+          title="Expert Application Status"
+          phaseDetail={appStatus?.phaseDetail}
+          badge={overallBadge}
+          onRefresh={() => queryClient.invalidateQueries({ queryKey: ["/api/expert/application-status"] })}
+        />
 
-        <Card className="bg-gradient-to-r from-[#FF385C] to-[#E23350] text-white">
-          <CardContent className="p-6">
-            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-              <div>
-                <h3 className="text-xl font-semibold">Application Progress</h3>
-                <p className="text-white/80 mt-1">{completedSteps} of {steps.length} steps completed</p>
-              </div>
-              <div className="text-right">
-                <p className="text-4xl font-bold" data-testid="text-progress-percentage">{Math.round(progressPercentage)}%</p>
-              </div>
-            </div>
-            <Progress value={progressPercentage} className="mt-4 h-3 bg-white/20" />
-          </CardContent>
-        </Card>
+        <ApplicationProgressCard
+          title="Application Progress"
+          completed={completedSteps}
+          total={steps.length}
+          urgent={phase === "rejected" || identityStatus === "failed" || steps.some((step) => step.status === "failed")}
+        />
 
         {/* Rejection callout — only shown when the application was not approved */}
         {overallStatus === "rejected" && (
-          <Card className="border-2 border-red-300 bg-red-50 dark:bg-red-900/20" data-testid="card-rejection-details">
-            <CardContent className="p-6">
-              <div className="flex items-start gap-4">
-                <div className="p-3 bg-red-500 rounded-full flex-shrink-0">
-                  <AlertCircle className="w-6 h-6 text-white" />
+          <StatusActionCard
+            testId="card-rejection-details"
+            toneClassName="border-2 border-red-300 bg-red-50 dark:bg-red-900/20"
+            title="Application Not Approved"
+            titleClassName="text-red-800 dark:text-red-300"
+            icon={<div className="p-3 bg-red-500 rounded-full"><AlertCircle className="w-6 h-6 text-white" /></div>}
+            actions={
+              <a href="/expert/apply" className="block w-full sm:w-auto">
+                <Button className={statusActionButtonClass("bg-red-600 hover:bg-red-700 text-white")} data-testid="button-reapply">
+                  Update &amp; Resubmit Application
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
+              </a>
+            }
+          >
+            {appStatus?.rejectionMessage ? (
+              <div className="space-y-3">
+                <div className="rounded-lg bg-red-100 dark:bg-red-900/30 px-4 py-3 border border-red-200 dark:border-red-700">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-red-600 dark:text-red-400 mb-1">
+                    Reason from our review team
+                  </p>
+                  <p className="text-sm text-red-800 dark:text-red-200 leading-relaxed" data-testid="text-rejection-reason">
+                    {appStatus.rejectionMessage}
+                  </p>
                 </div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-red-800 dark:text-red-300">Application Not Approved</h3>
-                  {appStatus?.rejectionMessage ? (
-                    <div className="mt-2 space-y-3">
-                      <div className="rounded-lg bg-red-100 dark:bg-red-900/30 px-4 py-3 border border-red-200 dark:border-red-700">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-red-600 dark:text-red-400 mb-1">
-                          Reason from our review team
-                        </p>
-                        <p className="text-sm text-red-800 dark:text-red-200 leading-relaxed" data-testid="text-rejection-reason">
-                          {appStatus.rejectionMessage}
-                        </p>
-                      </div>
-                      <p className="text-sm text-red-700 dark:text-red-400">
-                        Please address the feedback above and resubmit your application.
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="text-muted-foreground mt-1 text-sm">
-                      Our review team did not leave a specific reason. Please review your application, make any improvements, and reapply.
-                    </p>
-                  )}
-                  <div className="mt-4">
-                    <a href="/expert/apply">
-                      <button
-                        className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-                        data-testid="button-reapply"
-                      >
-                        Update &amp; Resubmit Application
-                        <ArrowRight className="w-4 h-4" />
-                      </button>
-                    </a>
-                  </div>
-                </div>
+                <p className="text-sm text-red-700 dark:text-red-400">
+                  Please address the feedback above and resubmit your application.
+                </p>
               </div>
-            </CardContent>
-          </Card>
+            ) : (
+              <p className="text-muted-foreground">
+                Our review team did not leave a specific reason. Please review your application, make any improvements, and reapply.
+              </p>
+            )}
+          </StatusActionCard>
         )}
 
-        {/* Identity Verification Action Card */}
         {phase === "approved" && identityStatus !== "verified" && (
-          <Card className="border-2 border-blue-300 bg-blue-50 dark:bg-blue-900/20" data-testid="card-identity-before-live">
-            <CardContent className="p-6">
-              <div className="flex items-start gap-4">
-                <div className="p-3 bg-blue-600 rounded-full flex-shrink-0">
-                  <ShieldCheck className="w-6 h-6 text-white" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-foreground dark:text-white">Verify your identity before a listing can go live</h3>
-                  <p className="text-muted-foreground mt-1">Your application is approved. A listing stays private until this check is finished.</p>
-                </div>
+          <StatusActionCard
+            testId="card-identity-before-live"
+            toneClassName="border-2 border-blue-300 bg-blue-50 dark:bg-blue-900/20"
+            title="Verify your identity before a listing can go live"
+            icon={<div className="p-3 bg-blue-600 rounded-full"><ShieldCheck className="w-6 h-6 text-white" /></div>}
+            actions={
+              <Button
+                className={statusActionButtonClass("bg-blue-600 hover:bg-blue-700 text-white")}
+                onClick={() => startVerificationMutation.mutate()}
+                disabled={startVerificationMutation.isPending}
+                data-testid="button-verify-identity"
+              >
+                {startVerificationMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ExternalLink className="w-4 h-4" />}
+                Verify My Identity →
+              </Button>
+            }
+          >
+            <p className="text-muted-foreground">Your application is approved. A listing stays private until this check is finished.</p>
+          </StatusActionCard>
+        )}
+        {phase !== "approved" && identityStatus !== "verified" && (
+          <StatusActionCard
+            toneClassName={
+              identityStatus === "failed"
+                ? "border-2 border-red-300 bg-red-50 dark:bg-red-900/20"
+                : "border-2 border-blue-300 bg-blue-50 dark:bg-blue-900/20"
+            }
+            title="Identity Verification Required"
+            icon={
+              <div className={`p-3 rounded-full ${identityStatus === "failed" ? "bg-red-600" : "bg-blue-600"}`}>
+                <ShieldCheck className="w-6 h-6 text-white" />
+              </div>
+            }
+            actions={
+              identityStatus === "processing" ? (
+                <Badge className="bg-amber-100 text-amber-700 self-start"><Clock className="w-3 h-3 mr-1" />Processing</Badge>
+              ) : (
                 <Button
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  className={statusActionButtonClass(
+                    identityStatus === "failed"
+                      ? "bg-red-600 hover:bg-red-700 text-white"
+                      : "bg-blue-600 hover:bg-blue-700 text-white",
+                  )}
                   onClick={() => startVerificationMutation.mutate()}
                   disabled={startVerificationMutation.isPending}
                   data-testid="button-verify-identity"
                 >
-                  {startVerificationMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ExternalLink className="w-4 h-4 mr-2" />}
-                  Verify My Identity →
+                  {startVerificationMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ExternalLink className="w-4 h-4" />}
+                  {identityStatus === "failed" ? "Retry Verification" : "Verify My Identity →"}
                 </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-        {phase !== "approved" && identityStatus !== "verified" && (
-          <Card className="border-2 border-blue-300 bg-blue-50 dark:bg-blue-900/20">
-            <CardContent className="p-6">
-              <div className="flex items-start gap-4">
-                <div className="p-3 bg-blue-600 rounded-full flex-shrink-0">
-                  <ShieldCheck className="w-6 h-6 text-white" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-foreground dark:text-white">Identity Verification Required</h3>
-                  {identityStatus === "pending" && (
-                    <p className="text-muted-foreground mt-1">Verify your government-issued ID and take a quick selfie. Takes about 2 minutes and supports passports, national IDs, and driver's licenses from 100+ countries.</p>
-                  )}
-                  {identityStatus === "processing" && (
-                    <p className="text-amber-600 mt-1 flex items-center gap-2"><Clock className="w-4 h-4" />Your verification is being processed. Usually takes a few minutes.</p>
-                  )}
-                  {identityStatus === "failed" && (
-                    <p className="text-red-600 mt-1 flex items-center gap-2"><AlertCircle className="w-4 h-4" />Verification was unsuccessful. Please try again with a clear photo of your ID.</p>
-                  )}
-                </div>
-                <div className="flex-shrink-0">
-                  {identityStatus === "processing" ? (
-                    <Badge className="bg-amber-100 text-amber-700"><Clock className="w-3 h-3 mr-1" />Processing</Badge>
-                  ) : (
-                    <Button
-                      className="bg-blue-600 hover:bg-blue-700 text-white"
-                      onClick={() => startVerificationMutation.mutate()}
-                      disabled={startVerificationMutation.isPending}
-                      data-testid="button-verify-identity"
-                    >
-                      {startVerificationMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ExternalLink className="w-4 h-4 mr-2" />}
-                      {identityStatus === "failed" ? "Retry Verification" : "Verify My Identity →"}
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              )
+            }
+          >
+            {identityStatus === "pending" && (
+              <p className="text-muted-foreground">Verify your government-issued ID and take a quick selfie. Takes about 2 minutes and supports passports, national IDs, and driver's licenses from 100+ countries.</p>
+            )}
+            {identityStatus === "processing" && (
+              <p className="text-amber-600 flex items-center gap-2"><Clock className="w-4 h-4 shrink-0" />Your verification is being processed. Usually takes a few minutes.</p>
+            )}
+            {identityStatus === "failed" && (
+              <p className="text-red-600 flex items-start gap-2"><AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />Verification was unsuccessful. Please try again with a clear photo of your ID.</p>
+            )}
+          </StatusActionCard>
         )}
 
         {identityStatus === "verified" && (
-          <Card className="border-2 border-green-300 bg-green-50 dark:bg-green-900/20">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <ShieldCheck className="w-6 h-6 text-green-600" />
-                <div>
-                  <p className="font-semibold text-green-800 dark:text-green-300">Identity check complete</p>
-                  {appStatus?.identityVerifiedAt && (
-                    <p className="text-sm text-green-600">Completed on {new Date(appStatus.identityVerifiedAt).toLocaleDateString()}</p>
-                  )}
-                </div>
-                <Badge className="ml-auto bg-green-100 text-green-700"><CheckCircle2 className="w-3 h-3 mr-1" />Complete</Badge>
-              </div>
-            </CardContent>
-          </Card>
+          <StatusActionCard
+            toneClassName="border-2 border-green-300 bg-green-50 dark:bg-green-900/20"
+            title="Identity check complete"
+            titleClassName="text-green-800 dark:text-green-300"
+            icon={<ShieldCheck className="w-6 h-6 text-green-600" />}
+            actions={<Badge className="bg-green-100 text-green-700 self-start"><CheckCircle2 className="w-3 h-3 mr-1" />Complete</Badge>}
+          >
+            {appStatus?.identityVerifiedAt ? (
+              <p className="text-green-600">Completed on {new Date(appStatus.identityVerifiedAt).toLocaleDateString()}</p>
+            ) : null}
+          </StatusActionCard>
         )}
 
         {currentStep && (
-          <Card className="border-2 border-primary bg-[#FFF5F7] dark:bg-primary/10">
-            <CardContent className="p-6">
-              <div className="flex items-start gap-4">
-                <div className="p-3 bg-primary rounded-full">
-                  <Clock className="w-6 h-6 text-white" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-foreground dark:text-white">Current Step: {currentStep.title}</h3>
-                  <p className="text-muted-foreground mt-1">{currentStep.description}</p>
-                  {currentStep.note && (
-                    <p className="text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-2">
-                      <AlertCircle className="w-4 h-4" />{currentStep.note}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <StatusActionCard
+            toneClassName="border border-border bg-muted"
+            title={`Current Step: ${currentStep.title}`}
+            icon={<div className="p-3 bg-muted-foreground/80 rounded-full"><Clock className="w-6 h-6 text-white" /></div>}
+          >
+            <p className="text-muted-foreground">{currentStep.description}</p>
+            {currentStep.note && (
+              <p className="text-amber-600 dark:text-amber-400 mt-2 flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />{currentStep.note}
+              </p>
+            )}
+          </StatusActionCard>
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
