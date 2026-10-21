@@ -4,6 +4,10 @@ Architectural decisions, invariants, and product intent live in `CLAUDE.md` (roo
 schema, routing, fees, migrations, or approval flows. This file only carries operational setup guidance for
 Cursor Cloud agents.
 
+A new ledger ruling is a new file, `docs/decisions/pending/<YYYY-MM-DD-slug>.md` (one table row, heading
+and citation both `R?`). Do not append to `docs/DECISIONS.md` and do not edit an existing
+`docs/decisions/<seq>-*.md`. The post-merge stamp numbers the pending file.
+
 ## Cursor Cloud specific instructions
 
 This is a single full-stack TypeScript app (`rest-express`): an Express API + Vite/React SPA served together on

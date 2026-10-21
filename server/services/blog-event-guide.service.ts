@@ -17,11 +17,13 @@
 import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { blogPosts } from "@shared/schema";
+import { blogBannedHits } from "@shared/banned-copy";
+import { calendarDay, hasStructuredDates, proseDatesArePast, structuredDatesArePast } from "@shared/blog-publish-checks";
 import { firstForeignLink, firstInventedNumber, numbersInFacts } from "@shared/draft-facts-check";
 import { claudeService } from "./claude.service";
 import { BlogError, createPost, type BlogDeps } from "./blog-posts.service";
 import { loadEventGuideFacts, type EventFactsDeps, type EventGuideFacts } from "./blog-event-facts.service";
-import { OPERATING_MARKETS } from "./trend-engine/operating-markets";
+import { OPERATING_MARKETS, getMarketByCityName, timezoneForMarket } from "./trend-engine/operating-markets";
 
 export type RawDraft = { title?: unknown; summary?: unknown; body?: unknown };
 
@@ -73,22 +75,39 @@ export function eventGuideSlug(facts: EventGuideFacts): string {
   return `event-weekend-${facts.event.firstDate}-${words || "event"}`.slice(0, 160).replace(/-+$/, "");
 }
 
+/** The zone the facts' calendar days are read in: the event's, the series' or the trip's city. */
+function timeZoneForFacts(facts: unknown): string {
+  if (!facts || typeof facts !== "object") return "Asia/Tokyo";
+  const f = facts as { event?: { city?: unknown }; instances?: Array<{ city?: unknown }>; trip?: { city?: unknown } };
+  const city = [f.event?.city, f.instances?.[0]?.city, f.trip?.city].find((c): c is string => typeof c === "string" && c.trim().length > 0);
+  if (!city) return "Asia/Tokyo";
+  return timezoneForMarket(getMarketByCityName(city)?.marketKey);
+}
+
 /**
- * Pure. The ONE draft check every event post type runs (§18 rule 1): a title and body, no number the
- * given facts do not carry, no link at all, and no operating-market city outside `ownCities`. Each
- * refusal is `<prefix>_<reason>`.
+ * Pure. The ONE draft check every event post type runs (§18 rule 1): a title and body, no banned
+ * phrase, no event or trip date that has already ended, no number the given facts do not carry,
+ * no link at all, and no operating-market city outside `ownCities`. Each refusal is `<prefix>_<reason>`.
+ * `now` is injectable so a test can pin "today".
  */
 export function checkPlatformDraft(
   raw: RawDraft,
   factsForNumbers: unknown,
   ownCities: readonly string[],
   prefix: string,
+  now: Date = new Date(),
 ): { title: string; summary: string; body: string } | { error: string } {
   const title = typeof raw.title === "string" ? raw.title.trim() : "";
   const body = typeof raw.body === "string" ? raw.body.trim() : "";
   const summary = typeof raw.summary === "string" ? raw.summary.trim() : "";
   if (!title || !body) return { error: `${prefix}_malformed` };
   const text = `${title}\n${summary}\n${body}`;
+  if (blogBannedHits(text).length > 0) return { error: `${prefix}_banned_copy` };
+  const today = calendarDay(now, timeZoneForFacts(factsForNumbers));
+  const past = hasStructuredDates(factsForNumbers)
+    ? structuredDatesArePast(factsForNumbers, today)
+    : proseDatesArePast(text, today);
+  if (past) return { error: `${prefix}_past_date` };
   if (UNSUPPORTED_MEASUREMENT.test(text)) return { error: `${prefix}_unknown_number` };
   if (firstInventedNumber(text, numbersInFacts(factsForNumbers)) !== null) return { error: `${prefix}_unknown_number` };
   if (firstForeignLink(text, []) !== null) return { error: `${prefix}_foreign_link` };

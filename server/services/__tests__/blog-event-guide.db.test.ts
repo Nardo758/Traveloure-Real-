@@ -10,6 +10,8 @@
  *       the admin create rail cannot make an event type by hand
  *   E7  the public read's "Start this plan" door comes from the LIVE event row, carries no id, and
  *       disappears when the event is withdrawn
+ *   E8  the draft check refuses a banned phrase and an event or trip date that has already ended
+ *   E9  publish refuses the same two things and leaves the post a draft
  *
  *   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/traveloure \
  *     npx tsx --test --test-force-exit server/services/__tests__/blog-event-guide.db.test.ts
@@ -21,7 +23,7 @@ import { db } from "../../db";
 import { cityEvents, placeFacts } from "@shared/schema";
 import { BlogError, createPost, getPublishedBySlug, publishPost } from "../blog-posts.service";
 import { loadEventGuideFacts, rankStayNear } from "../blog-event-facts.service";
-import { checkEventGuideDraft, draftEventWeekendGuide, eventGuideSlug, promptFacts } from "../blog-event-guide.service";
+import { checkEventGuideDraft, checkPlatformDraft, draftEventWeekendGuide, eventGuideSlug, promptFacts } from "../blog-event-guide.service";
 import { lettersOnlyId } from "../../__tests__/fixtures/letters-only-id";
 import { numbersInFacts } from "@shared/draft-facts-check";
 
@@ -31,6 +33,7 @@ const RUN = lettersOnlyId();
 const ADMIN = `evguide-${RUN}-admin`;
 const EV = `evguide-${RUN}-ev`;
 const NEIGHBOUR = `evguide-${RUN}-nb`;
+const PAST = `evguide-${RUN}-past`;
 const DAY = 86_400_000;
 const start = new Date(Date.now() + 30 * DAY);
 const noHosts = async () => [] as string[];
@@ -62,7 +65,7 @@ before(async () => {
 after(async () => {
   await db.execute(sql`DELETE FROM blog_posts WHERE created_by = ${ADMIN}`).catch(() => {});
   await db.execute(sql`DELETE FROM place_facts WHERE place_ref = ${EV}`).catch(() => {});
-  await db.execute(sql`DELETE FROM city_events WHERE id IN (${EV}, ${NEIGHBOUR})`).catch(() => {});
+  await db.execute(sql`DELETE FROM city_events WHERE id IN (${EV}, ${NEIGHBOUR}, ${PAST})`).catch(() => {});
   await db.execute(sql`DELETE FROM users WHERE id = ${ADMIN}`).catch(() => {});
 });
 
@@ -160,4 +163,141 @@ test("E7: the public door is the LIVE event row, carries no id, and goes when th
   await db.update(cityEvents).set({ withdrawnAt: new Date() }).where(eq(cityEvents.id, EV));
   assert.equal((await getPublishedBySlug(slug))!.planDoor, null);
   await db.update(cityEvents).set({ withdrawnAt: null }).where(eq(cityEvents.id, EV));
+});
+
+const NOW = new Date("2026-10-21T03:00:00Z"); // noon in Asia/Tokyo
+
+test("E8: banned phrases and a date that has already ended are refused; today and a later series date are not", async () => {
+  const facts = (await loadEventGuideFacts(EV, { partnerHosts: noHosts }))!;
+  for (const phrase of [
+    "Trending", "HIDDEN GEMS", "Geisha", "back alley", "Back-Alleys", "Illuminations",
+    "vetted", "insider tips", "coming soon", "geiko", "maiko", "TREND", "no markup",
+  ]) {
+    assert.deepEqual(
+      checkEventGuideDraft({ title: "A night out", body: `Come for the ${phrase}.` }, facts),
+      { error: "event_guide_banned_copy" },
+      phrase,
+    );
+  }
+  assert.deepEqual(
+    checkEventGuideDraft({ title: "A night out", body: "Hosts keep a 10% commission." }, facts),
+    { error: "event_guide_banned_copy" },
+  );
+  assert.ok(!("error" in checkEventGuideDraft({ title: "A night out", body: "A quiet week in Kyoto." }, facts)));
+
+  const past = checkPlatformDraft(
+    { title: "A night out", body: "Stay close to the venue." },
+    { event: { city: "Kyoto", lastDate: "2026-10-20" } },
+    ["Kyoto"],
+    "event_guide",
+    NOW,
+  );
+  assert.deepEqual(past, { error: "event_guide_past_date" });
+
+  const today = checkPlatformDraft(
+    { title: "A night out", body: "Stay close to the venue." },
+    { event: { city: "Kyoto", lastDate: "2026-10-21" } },
+    ["Kyoto"],
+    "event_guide",
+    NOW,
+  );
+  assert.ok(!("error" in today), JSON.stringify(today));
+
+  const seriesOpen = checkPlatformDraft(
+    { title: "A night out", body: "Stay close to the venue." },
+    { instances: [{ city: "Kyoto", lastDate: "2026-10-01" }, { city: "Kyoto", lastDate: "2026-11-01" }] },
+    ["Kyoto"],
+    "series_follow",
+    NOW,
+  );
+  assert.ok(!("error" in seriesOpen), JSON.stringify(seriesOpen));
+
+  const seriesOver = checkPlatformDraft(
+    { title: "A night out", body: "Stay close to the venue." },
+    { instances: [{ city: "Kyoto", lastDate: "2026-09-01" }, { city: "Kyoto", lastDate: "2026-10-01" }] },
+    ["Kyoto"],
+    "series_follow",
+    NOW,
+  );
+  assert.deepEqual(seriesOver, { error: "series_follow_past_date" });
+
+  const tripOver = checkPlatformDraft(
+    { title: "A night out", body: "Stay close to the venue." },
+    { trip: { city: "Kyoto", endDate: "2026-10-01" } },
+    ["Kyoto"],
+    "event_guide",
+    NOW,
+  );
+  assert.deepEqual(tripOver, { error: "event_guide_past_date" });
+
+  const structuredWins = checkPlatformDraft(
+    { title: "A night out", body: "The hall opened on 1 January 2020." },
+    { event: { city: "Kyoto", firstDate: "2099-01-01", lastDate: "2099-01-01" } },
+    ["Kyoto"],
+    "event_guide",
+    NOW,
+  );
+  assert.notEqual("error" in structuredWins && structuredWins.error, "event_guide_past_date");
+
+  const proseOnly = checkPlatformDraft(
+    { title: "A night out", body: "The hall opened on 1 January 2020." },
+    { event: { city: "Kyoto" } },
+    ["Kyoto"],
+    "event_guide",
+    NOW,
+  );
+  assert.deepEqual(proseOnly, { error: "event_guide_past_date" });
+});
+
+test("E9: publish refuses banned copy and a past event, and a future prose date still publishes", async () => {
+  const banned = await createPost(
+    { contentType: "travelpulse_weekly", slug: `pulse-banned-${RUN}`, title: "This week", body: "A hidden gem of a week." },
+    ADMIN,
+  );
+  await assert.rejects(
+    publishPost(banned.id, ADMIN),
+    (e: unknown) => e instanceof BlogError && e.code === "banned_copy" && e.status === 422,
+  );
+  assert.equal((await db.execute(sql`SELECT status FROM blog_posts WHERE id = ${banned.id}`)).rows[0].status, "draft");
+
+  const prosePast = await createPost(
+    { contentType: "travelpulse_weekly", slug: `pulse-past-${RUN}`, title: "This week", body: "On 1 January 2020 the week began." },
+    ADMIN,
+  );
+  await assert.rejects(
+    publishPost(prosePast.id, ADMIN, { now: NOW }),
+    (e: unknown) => e instanceof BlogError && e.code === "past_date" && e.status === 422,
+  );
+
+  const proseFuture = await createPost(
+    {
+      contentType: "travelpulse_weekly",
+      slug: `pulse-future-${RUN}`,
+      title: "Kyoto in November",
+      body: "Checked 1 January 2020\nSee you on 1 June 2099.",
+    },
+    ADMIN,
+  );
+  const published = await publishPost(proseFuture.id, ADMIN, { now: NOW });
+  assert.equal(published.status, "published");
+
+  await db.insert(cityEvents).values({
+    id: PAST, source: "manual", sourceId: `${PAST}-src`, title: `Past Night ${RUN}`,
+    city: "Kyoto", venue: "A hall", startsAt: new Date("2020-01-15T03:00:00Z"), nights: 1,
+  } as any);
+  const eventPost = await createPost(
+    {
+      contentType: "event_weekend_guide",
+      slug: `past-event-${RUN}`,
+      title: "A night that ended",
+      body: "Stay close to the venue. See you on 1 June 2099.",
+      cityEventId: PAST,
+    },
+    ADMIN,
+  );
+  await assert.rejects(
+    publishPost(eventPost.id, ADMIN, { now: NOW }),
+    (e: unknown) => e instanceof BlogError && e.code === "past_date" && e.status === 422,
+  );
+  assert.equal((await db.execute(sql`SELECT status FROM blog_posts WHERE id = ${eventPost.id}`)).rows[0].status, "draft");
 });
