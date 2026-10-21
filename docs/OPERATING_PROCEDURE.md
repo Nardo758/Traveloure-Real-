@@ -41,8 +41,10 @@ to dispatch, relay and decision.
   `Claude-Session: <the session URL>`. No model identifier anywhere in repo artifacts.
 - PR body ends with `🤖 Generated with [Claude Code](https://claude.com/claude-code)` and the
   session URL on its own line. Fill the merge write-back checklist truthfully.
-- One `docs/DECISIONS.md` row per lane, keyed `YYYY-MM-DD-<kebab-slug>` (never a number,
-  never a renumber). CLAUDE.md delta only when a ruling is executed or amended.
+- One ledger file per lane: `docs/decisions/pending/<YYYY-MM-DD-slug>.md`, a single table
+  row authored as `R?` (never a number, never a renumber, never an edit of
+  `docs/DECISIONS.md` or of an existing `docs/decisions/<seq>-*.md`). CLAUDE.md delta only
+  when a ruling is executed or amended.
 - **Every new test is wired into `build.yml` in a job that runs `npm ci`** — never a
   "Node built-ins only" guard job (a test that imports `shared/` pulls in `zod`; #812 lost a
   CI cycle to this).
@@ -60,9 +62,10 @@ to dispatch, relay and decision.
 ## 4 · Landing procedure (serial, one PR at a time)
 
 1. `git fetch origin main <branch>`; merge `origin/main` into the branch with a **merge
-   commit**. `docs/DECISIONS.md` resolves as a **union** (its driver runs locally, not on
-   GitHub — a GitHub conflict badge on a ledger-appending PR is usually this and nothing
-   else; verify with `git merge-tree --write-tree`). CLAUDE.md keeps Locked Decisions in
+   commit**. A ledger row is its own pending file, so two lanes do not edit the same line.
+   GitHub does not honor a union merge driver; do not append to `docs/DECISIONS.md`. A branch
+   that still has its row in that file takes main's preamble and moves the row into
+   `docs/decisions/pending/<id>.md`. CLAUDE.md keeps Locked Decisions in
    numeric order. `build.yml` keeps **both** sides' appended jobs, and its `TSC_BASELINE` is
    whatever `build.yml` on `main` says — **read it, never restate it here**. It only ever moves
    DOWN, the gate fails on UNDER as well as over, and a sibling lane can lower it mid-flight, so
@@ -115,5 +118,6 @@ it was on `main`) and is refused.
 - Build order and landing status: the "After the Finish" artifact (section 7).
 - Ratified UI: the "Slip as the Surface" canvas; a canvas claim with no data source is
   redrawn, not built.
-- Rulings: CLAUDE.md Locked Decisions (frozen numbers) and `docs/DECISIONS.md` (date-slug
-  rows). This file changes only by a decision-maker's word, recorded as a ledger row.
+- Rulings: CLAUDE.md Locked Decisions (frozen numbers) and `docs/decisions/<seq>-<id>.md`
+  (date-slug rows; `docs/DECISIONS.md` is the preamble). This file changes only by a
+  decision-maker's word, recorded as a ledger row.

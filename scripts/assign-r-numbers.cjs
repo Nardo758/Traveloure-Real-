@@ -20,33 +20,28 @@
  * Last step before merge: run it, then `node scripts/check-decision-guards.cjs --require-assigned` and
  * check its EXIT CODE (never through a pipe that hides it), commit, and let CI re-run on that head.
  *
- * POST-MERGE STAMPING (CI-1 Phase 1, decision-maker rulings Oct 12, 2026). PRs merge with their rows still `R?`;
- * `.github/workflows/ledger-stamp.yml` runs `--stamp` on main after each merge, which:
- *   · moves every `R?` row to the END of the ledger, in file order (a concurrent merge may have left one above a
- *     numbered row; ascending-contiguous must hold without a merge-main push);
- *   · numbers them as above and appends `; merged <sha7>` to each one's citation cell — the first-parent commit on
- *     main that added the row (ruling 2: no new column);
+ * POST-MERGE STAMPING (CI-1 Phase 1, decision-maker rulings Oct 12, 2026; file-per-ruling,
+ * ledger `2026-10-21-ledger-one-file`). PRs merge with their rows still `R?` in
+ * `docs/decisions/pending/`. `.github/workflows/ledger-stamp.yml` runs `--stamp` on main, which:
+ *   · numbers every `R?` file in file order (sequenced placeholders first, then pending by filename) and
+ *     moves it to `docs/decisions/<next-seq>-<id>.md`, so a placeholder never stays ahead of a higher number;
+ *   · appends `; merged <sha7>` to each one's citation cell — the first-parent commit that added the row;
  *   · replaces `R?` with the number on any CLAUDE.md line that names that row's slug.
- * It never touches any other file, and the workflow refuses a commit that changes anything but those two.
+ * It never touches the preamble. The workflow refuses a commit outside `docs/decisions/` and CLAUDE.md.
  *
  * Usage:  node scripts/assign-r-numbers.cjs            # dry run: print the mapping
- *         node scripts/assign-r-numbers.cjs --write    # rewrite docs/DECISIONS.md
+ *         node scripts/assign-r-numbers.cjs --write    # number pending files in the working tree
  *         node scripts/assign-r-numbers.cjs --stamp    # post-merge: move last, number, merged sha, CLAUDE.md
  *         node scripts/assign-r-numbers.cjs --self-test
+ *
+ * A row lives in its own file (`docs/decisions/pending/<id>.md` until numbered, then
+ * `docs/decisions/<seq>-<id>.md`). This script rewrites those files and never the preamble.
  * Node built-ins only.
  */
 const fs = require("fs");
 const path = require("path");
-const { lintRNumbers, rowCells, ROW_ID_PREFIX_RE } = require("./check-decision-guards.cjs");
-
-const LEDGER = path.resolve(__dirname, "..", "docs", "DECISIONS.md");
-
-/** True for a ledger row still carrying the `R?` heading or citation. */
-function isPlaceholderRow(line) {
-  if (!ROW_ID_PREFIX_RE.test(line)) return false;
-  const cells = rowCells(line);
-  return /^\*\*R\? —/.test(cells[3] ?? "") || /^numeric citation R\?(?![\w])/.test(cells[cells.length - 1] ?? "");
-}
+const { lintRNumbers, rowCells, ROW_ID_PREFIX_RE, isPlaceholderRow } = require("./check-decision-guards.cjs");
+const { loadEntries, sequencedRel } = require("./ledger-files.cjs");
 
 /** Pure: every `R?` row moved after the last ledger row, in file order. No `R?` row ⇒ text unchanged. */
 function moveUnassignedToEnd(ledgerText) {
@@ -161,17 +156,92 @@ function selfTest() {
     console.error("SELF-TEST FAILED", { ok1, ok2, ok3, ok4, ok5, ok6, ok7, ok8, assigned: a.assigned, failures: after.failures, moved: moved.text });
     process.exit(1);
   }
-  console.log("self-test OK (next past highest cited, file order, frozen skipped, half-placeholder refused, quoted placeholder in prose untouched, idempotent, R? moved last + merged sha, no-op without R?, CLAUDE.md slug lines only)");
+  // A9: file-per-ruling. A pending R? becomes the next seq file; a second pass writes nothing.
+  // A placeholder sitting between numbered files moves to a new seq at the end.
+  const os = require("os");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ledger-stamp-"));
+  const seqDir = path.join(dir, "docs", "decisions");
+  const pendDir = path.join(seqDir, "pending");
+  fs.mkdirSync(pendDir, { recursive: true });
+  const row = (id, head, cite) => `| ${id} | 2026-01-02 | [advisory] | ${head} | ${cite} |\n`;
+  fs.writeFileSync(path.join(seqDir, "00001-2026-01-02-a.md"), row("2026-01-02-a", "**R5 — A.**", "numeric citation R5"));
+  fs.writeFileSync(path.join(pendDir, "2026-01-03-late.md"), row("2026-01-03-late", "**R? — Late.**", "numeric citation R?"));
+  fs.writeFileSync(path.join(dir, "docs", "DECISIONS.md"), "# preamble\n\nNo rows here.\n");
+  const first = planStamp(loadEntries(dir), { mergedSha: () => "abc1234" });
+  applyPlan(dir, first);
+  const stamped = fs.readFileSync(path.join(seqDir, "00002-2026-01-03-late.md"), "utf8");
+  const ok9 = first.refused.length === 0
+    && first.writes.length === 1
+    && first.writes[0].toRel === "docs/decisions/00002-2026-01-03-late.md"
+    && stamped === row("2026-01-03-late", "**R6 — Late.**", "numeric citation R6; merged abc1234")
+    && !fs.existsSync(path.join(pendDir, "2026-01-03-late.md"))
+    && planStamp(loadEntries(dir)).writes.length === 0
+    && fs.readFileSync(path.join(seqDir, "00001-2026-01-02-a.md"), "utf8") === row("2026-01-02-a", "**R5 — A.**", "numeric citation R5");
+  fs.writeFileSync(path.join(seqDir, "00002-2026-01-03-mid.md"), row("2026-01-03-mid", "**R? — Mid.**", "numeric citation R?"));
+  fs.writeFileSync(path.join(seqDir, "00003-2026-01-04-b.md"), row("2026-01-04-b", "**R6 — B.**", "numeric citation R6"));
+  const movedFiles = planStamp(loadEntries(dir), { mergedSha: () => "def5678" });
+  applyPlan(dir, movedFiles);
+  const ok10 = movedFiles.writes.length === 1
+    && movedFiles.writes[0].toRel === "docs/decisions/00004-2026-01-03-mid.md"
+    && !fs.existsSync(path.join(seqDir, "00002-2026-01-03-mid.md"))
+    && fs.readFileSync(path.join(seqDir, "00004-2026-01-03-mid.md"), "utf8").includes("**R7 — Mid.**")
+    && fs.readFileSync(path.join(seqDir, "00004-2026-01-03-mid.md"), "utf8").includes("merged def5678")
+    && fs.readFileSync(path.join(seqDir, "00003-2026-01-04-b.md"), "utf8").includes("**R6 — B.**");
+  fs.rmSync(dir, { recursive: true, force: true });
+  if (!(ok1 && ok2 && ok3 && ok4 && ok5 && ok6 && ok7 && ok8 && ok9 && ok10)) {
+    console.error("SELF-TEST FAILED", { ok1, ok2, ok3, ok4, ok5, ok6, ok7, ok8, ok9, ok10, assigned: a.assigned, failures: after.failures, moved: moved.text, first, movedFiles });
+    process.exit(1);
+  }
+  console.log("self-test OK (next past highest cited, file order, frozen skipped, half-placeholder refused, quoted placeholder in prose untouched, idempotent, R? moved last + merged sha, no-op without R?, CLAUDE.md slug lines only, pending file numbered into the next seq, mid-list placeholder moved to the end)");
   process.exit(0);
 }
 
-if (process.argv.includes("--self-test")) selfTest();
+/**
+ * Number every placeholder entry and move it to the next seq after the files that are already numbered.
+ * Does not touch the disk. `opts.mergedSha(id)` is forwarded to `assign`.
+ */
+function planStamp(entries, opts = {}) {
+  const bad = entries.filter((e) => !e.ok || !e.id);
+  if (bad.length) {
+    return { assigned: [], refused: [], writes: [], error: bad.map((e) => `${e.rel}: ${e.reason || "no row id"}`).join("; ") };
+  }
+  const placeholders = entries.filter((e) => isPlaceholderRow(e.line));
+  const kept = entries.filter((e) => !isPlaceholderRow(e.line));
+  const ordered = [...kept, ...placeholders];
+  const joined = ordered.map((e) => e.line).join("\n");
+  const result = assign(joined, opts);
+  const outLines = ordered.length ? result.text.split("\n") : [];
+  if (outLines.length !== ordered.length) {
+    return { assigned: result.assigned, refused: result.refused, writes: [], error: `line count ${outLines.length} != ${ordered.length}` };
+  }
+  let seq = entries.reduce((m, e) => Math.max(m, e.seq || 0), 0);
+  const refused = new Set(result.refused);
+  const writes = [];
+  ordered.forEach((e, i) => {
+    if (!placeholders.includes(e) || refused.has(e.id)) return;
+    seq += 1;
+    writes.push({ fromRel: e.rel, toRel: sequencedRel(seq, e.id), line: outLines[i] });
+  });
+  return { assigned: result.assigned, refused: result.refused, writes, error: null };
+}
 
-/** The first-parent commit on the current branch that added the row's line, or null when history does not reach it. */
+function applyPlan(root, plan) {
+  if (plan.error) throw new Error(plan.error);
+  for (const w of plan.writes) {
+    const to = path.join(root, w.toRel);
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    const body = w.line.endsWith("\n") ? w.line : `${w.line}\n`;
+    fs.writeFileSync(to, body);
+    const from = path.join(root, w.fromRel);
+    if (path.resolve(from) !== path.resolve(to) && fs.existsSync(from)) fs.unlinkSync(from);
+  }
+}
+
+/** The oldest first-parent commit that added the row under docs/decisions/, or null. */
 function mergedShaFromGit(id) {
   const { execFileSync } = require("child_process");
   try {
-    const out = execFileSync("git", ["log", "--first-parent", "--format=%h", "--abbrev=7", "-S", `| ${id} |`, "--", "docs/DECISIONS.md"], {
+    const out = execFileSync("git", ["log", "--first-parent", "--format=%h", "--abbrev=7", "-S", `| ${id} |`, "--", "docs/decisions"], {
       cwd: path.resolve(__dirname, ".."),
       encoding: "utf8",
     }).trim().split("\n").filter(Boolean);
@@ -181,25 +251,33 @@ function mergedShaFromGit(id) {
   }
 }
 
+module.exports = { assign, moveUnassignedToEnd, stampClaudeMd, planStamp, applyPlan };
+if (require.main !== module) return;
+
+if (process.argv.includes("--self-test")) selfTest();
+
+const root = path.resolve(__dirname, "..");
 const stamp = process.argv.includes("--stamp");
-const text0 = fs.readFileSync(LEDGER, "utf8");
-const text = stamp ? moveUnassignedToEnd(text0) : text0;
-const { text: out, assigned, refused } = assign(text, stamp ? { mergedSha: mergedShaFromGit } : {});
-for (const id of refused) console.error(`REFUSED ${id}: heading and citation disagree on R? — fix the row by hand.`);
-for (const { id, n } of assigned) console.log(`R${n}  ${id}`);
-if (!assigned.length && !refused.length) console.log("no R? rows to number");
-if (refused.length) process.exit(1);
-if ((process.argv.includes("--write") || stamp) && assigned.length) {
-  fs.writeFileSync(LEDGER, out);
-  console.log(`wrote ${assigned.length} number(s) to docs/DECISIONS.md`);
+const plan = planStamp(loadEntries(root), stamp ? { mergedSha: mergedShaFromGit } : {});
+if (plan.error) {
+  console.error(plan.error);
+  process.exit(1);
 }
-if (stamp && assigned.length) {
-  for (const { id } of assigned) {
+for (const id of plan.refused) console.error(`REFUSED ${id}: heading and citation disagree on R? — fix the row by hand.`);
+for (const { id, n } of plan.assigned) console.log(`R${n}  ${id}`);
+if (!plan.assigned.length && !plan.refused.length) console.log("no R? rows to number");
+if (plan.refused.length) process.exit(1);
+if ((process.argv.includes("--write") || stamp) && plan.writes.length) {
+  applyPlan(root, plan);
+  console.log(`wrote ${plan.writes.length} number(s) under docs/decisions/`);
+}
+if (stamp && plan.assigned.length) {
+  for (const { id } of plan.assigned) {
     if (!mergedShaFromGit(id)) console.error(`WARNING ${id}: no first-parent commit on this branch adds the row; no merged sha written.`);
   }
-  const CLAUDE_MD = path.resolve(__dirname, "..", "CLAUDE.md");
+  const CLAUDE_MD = path.join(root, "CLAUDE.md");
   const md = fs.readFileSync(CLAUDE_MD, "utf8");
-  const mdOut = stampClaudeMd(md, assigned);
+  const mdOut = stampClaudeMd(md, plan.assigned);
   if (mdOut !== md) {
     fs.writeFileSync(CLAUDE_MD, mdOut);
     console.log("stamped CLAUDE.md lines naming the numbered slugs");
