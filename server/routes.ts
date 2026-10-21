@@ -149,6 +149,7 @@ import {
 import { db } from "./db";
 import { getPlatformFlag, FLAG_MAINTENANCE_MODE } from "./services/platform-flags";
 import { applyPropertyLocationPrivacy } from "./services/property-location-privacy.service";
+import { visibleGemCondition, visibleHappeningNowCondition } from "./services/gem-visibility";
 import { filterOutAwayOwners } from "./services/content-query.service";
 import { resolveMissingItemCoordinates } from "./services/trip-plan.service";
 import { resolveMarketSlug } from "./services/trend-engine/operating-markets";
@@ -281,6 +282,7 @@ import bookingModePromptRoutes from "./routes/booking-mode-prompt.routes";
 import blogRoutes from "./routes/blog.routes";
 import contentSourcesRoutes from "./routes/content-sources.routes";
 import placePhotoBlocksRoutes from "./routes/place-photo-blocks.routes";
+import kyotoGemCopyRoutes from "./routes/kyoto-gem-copy.routes";
 import contentFactsRoutes from "./routes/content-facts.routes";
 import storefrontRoutes from "./routes/storefront.routes";
 import seoRoutes from "./routes/seo.routes";
@@ -1200,6 +1202,8 @@ export async function registerRoutes(
   app.use(contentSourcesRoutes);
   // CS-1 item 1: per-place no_photos (admin, under the §2 blanket guard).
   app.use(placePhotoBlocksRoutes);
+  // Kyoto gem copy still waiting on a marketing replacement (read-only, under the §2 blanket guard).
+  app.use(kyotoGemCopyRoutes);
   // Expert-action fresh lookup (A6 (3), ledger `2026-10-01-a6-tavily-extract`): §12 write-status
   // advisor only; spend capped per plan/day/source; the free draft never reaches it.
   app.use(contentFactsRoutes);
@@ -5030,12 +5034,15 @@ ${bannedCopyPromptLine()}`;
           placeType: travelPulseHiddenGems.placeType,
           description: travelPulseHiddenGems.description,
           gemScore: travelPulseHiddenGems.gemScore,
+          descriptionHiddenAt: travelPulseHiddenGems.descriptionHiddenAt,
         })
         .from(travelPulseHiddenGems)
-        .where(ilike(travelPulseHiddenGems.city, city))
+        .where(and(ilike(travelPulseHiddenGems.city, city), visibleGemCondition()))
         .orderBy(desc(travelPulseHiddenGems.gemScore))
         .limit(limit);
-      return res.json(rows);
+      return res.json(rows.map(({ descriptionHiddenAt, ...row }) => (
+        descriptionHiddenAt ? { ...row, description: null } : row
+      )));
     } catch (err: any) {
       console.error("Error fetching city gems:", err);
       res.status(500).json({ message: "Failed to fetch gems" });
@@ -8882,7 +8889,11 @@ ${bannedCopyPromptLine()}`;
       // Fetch all trending destinations from TravelPulse
       const allTrending = await db.select().from(travelPulseTrending).limit(50);
       const allCities = await db.select().from(travelPulseCities).limit(20);
-      const allHappeningNow = await db.select().from(travelPulseHappeningNow).limit(20);
+      const allHappeningNow = await db
+        .select()
+        .from(travelPulseHappeningNow)
+        .where(visibleHappeningNowCondition())
+        .limit(20);
       
       // Filter trending to match expert's markets
       let filteredTrending = allTrending;

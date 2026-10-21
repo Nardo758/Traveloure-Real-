@@ -21,32 +21,32 @@ import { claudeService } from "./claude.service";
 
 const CATEGORY_PROMPTS: Record<DiscoveryCategory, string> = {
   local_food_secrets: "hidden local restaurants, street food stalls, family-run eateries, and authentic food experiences that tourists rarely find",
-  hidden_viewpoints: "secret viewpoints, scenic overlooks, rooftop spots, and lesser-known places with breathtaking views",
+  hidden_viewpoints: "viewpoints, scenic overlooks, rooftop spots, and lesser-known places with breathtaking views",
   off_tourist_path: "off-the-beaten-path attractions, underrated neighborhoods, and authentic local experiences away from tourist crowds",
   seasonal_events: "local festivals, seasonal celebrations, traditional events, and cultural gatherings that only locals know about",
   cultural_experiences: "authentic cultural experiences, traditional workshops, local customs, and immersive cultural activities",
-  secret_beaches: "hidden beaches, secluded coves, lesser-known coastal spots, and secret swimming locations",
+  secret_beaches: "hidden beaches, secluded coves, lesser-known coastal spots, and swimming locations",
   street_art: "street art murals, graffiti hotspots, urban art districts, and creative neighborhoods with artistic expression",
   local_markets: "authentic local markets, farmers markets, flea markets, and traditional bazaars where locals shop",
   sunset_spots: "best sunset viewing locations, romantic evening spots, and magical golden hour destinations",
-  historic_gems: "overlooked historical sites, hidden archaeological spots, forgotten monuments, and secret historical locations",
-  nature_escapes: "hidden nature trails, secret gardens, peaceful parks, and natural retreats away from crowds",
+  historic_gems: "overlooked historical sites, hidden archaeological spots, forgotten monuments, and historical locations",
+  nature_escapes: "hidden nature trails, gardens, peaceful parks, and natural retreats away from crowds",
   nightlife_secrets: "underground bars, speakeasies, local hangouts, live music venues, and authentic nightlife spots"
 };
 
 const CATEGORY_LABELS: Record<DiscoveryCategory, string> = {
-  local_food_secrets: "Local Food Secrets",
+  local_food_secrets: "Local Food",
   hidden_viewpoints: "Hidden Viewpoints",
   off_tourist_path: "Off the Tourist Path",
   seasonal_events: "Seasonal Events",
   cultural_experiences: "Cultural Experiences",
-  secret_beaches: "Secret Beaches",
+  secret_beaches: "Beaches",
   street_art: "Street Art",
   local_markets: "Local Markets",
   sunset_spots: "Sunset Spots",
   historic_gems: "Historic Gems",
   nature_escapes: "Nature Escapes",
-  nightlife_secrets: "Nightlife Secrets"
+  nightlife_secrets: "Nightlife"
 };
 
 interface DiscoveredGem {
@@ -191,7 +191,7 @@ class GemDiscoveryService {
     const categoryDescription = CATEGORY_PROMPTS[category];
     const categoryLabel = CATEGORY_LABELS[category];
 
-    const systemPrompt = `You are a local travel expert and cultural insider with deep knowledge of hidden gems and authentic experiences around the world. You specialize in discovering ${categoryDescription}.
+    const systemPrompt = `You are a local travel expert with deep knowledge of places and authentic experiences around the world. You specialize in discovering ${categoryDescription}.
 
 Your goal is to uncover truly special places that:
 - Most tourists never find
@@ -201,7 +201,7 @@ Your goal is to uncover truly special places that:
 
 Respond ONLY with valid JSON. No markdown, no code blocks, just raw JSON.`;
 
-    const userPrompt = `Discover ${maxGems} hidden gems in ${destination} for the category "${categoryLabel}".
+    const userPrompt = `Discover ${maxGems} places in ${destination} for the category "${categoryLabel}".
 
 For each gem, provide:
 1. name: The actual name of the place/experience

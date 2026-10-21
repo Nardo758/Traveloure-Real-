@@ -13,6 +13,7 @@
  * fields: no user id (Locked Decision 40), and no price composed here.
  */
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
+import { visibleGemCondition } from "./gem-visibility";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { db } from "../db";
@@ -247,6 +248,7 @@ async function gemCandidates(marketKey: string): Promise<BillboardGemCandidate[]
     })
     .from(travelPulseHiddenGems)
     .leftJoin(users, eq(users.id, travelPulseHiddenGems.curatedByExpertId))
+    .where(visibleGemCondition())
     .orderBy(sql`${travelPulseHiddenGems.gemScore} DESC NULLS LAST`);
   return rows
     .filter((row) => resolveMarketSlug(row.city) === marketKey)
