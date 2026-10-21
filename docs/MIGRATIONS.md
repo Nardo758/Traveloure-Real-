@@ -4,6 +4,18 @@
 > tooling actually runs against the DB. Update it any time the workflow
 > changes.
 
+## Approval citation (H-29)
+
+The one citation form for a migration comment is a pull request comment from
+GitHub user **Nardo758** (Leon):
+
+`Migration <NNN> SQL approved — Leon`
+
+The `migration-approval` check requires that sentence for every numbered
+migration the pull request adds or changes. A plain hyphen is the accepted
+variant of the same sentence. Merging is not approval. The authoring rules
+are in `server/migrations/AUTHORING.md`.
+
 ## Today's reality (push-managed, with documentary SQL artifacts)
 
 The repo's actual deploy path is **`npm run db:push`** (`drizzle-kit push`).
