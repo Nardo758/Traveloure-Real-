@@ -37,6 +37,17 @@ export function parseNominatimPoint(body: unknown): { lat: number; lng: number }
   return { lat, lng };
 }
 
+/**
+ * A display name, or null when it was never stated. Blank and "Unknown" are the same absence:
+ * the card shows nothing rather than a placeholder.
+ */
+export function namedArea(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const name = value.trim();
+  if (!name || /^unknown$/i.test(name)) return null;
+  return name;
+}
+
 /** The Kyoto neighbourhood name whose centre+radius contains the point, or null. */
 export function kyotoAreaName(
   lat: number,

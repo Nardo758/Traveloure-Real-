@@ -56,7 +56,7 @@ test("FP1: the projection is an allowlist — no pricing, Free, URL, coordinates
   const [p] = await toPublicFeverEvents([fixture({ isFree: true, pricing: { currency: "USD", minPrice: 0 } })]);
   assert.deepEqual(Object.keys(p).sort(), [
     "areaName", "bookingToken", "category", "date", "description", "endDate", "id", "imageUrl", "isSoldOut",
-    "osmCredit", "priceSource", "provider", "shortDescription", "subcategory", "title", "venueName",
+    "osmCredit", "partnerName", "priceSource", "provider", "shortDescription", "subcategory", "title", "venueName",
   ].sort());
   const json = JSON.stringify(p);
   for (const banned of ["pricing", "priceRange", "minPrice", "isFree", "Free", "currency", "bookingUrl", "affiliateUrl", "partner.example.test", "coordinates", "rating", "1 Test Street", "venueAddress"]) {

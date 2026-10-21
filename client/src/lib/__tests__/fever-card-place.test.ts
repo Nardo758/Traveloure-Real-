@@ -6,7 +6,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { FEVER_CARD_OSM_CREDIT, feverCardPlace } from "../fever-card-place";
+import { blogBannedHits } from "@shared/banned-copy";
+import { PARTNER_COMMISSION_NOTE } from "../browse-supply";
+import { FEVER_CARD_OSM_CREDIT, feverCardPlace, partnerDisplayName } from "../fever-card-place";
 
 test("FC1: a partner card uses the area name and the exact credit", () => {
   const place = feverCardPlace({
@@ -17,7 +19,18 @@ test("FC1: a partner card uses the area name and the exact credit", () => {
   assert.deepEqual(place, { label: "Gion", credit: FEVER_CARD_OSM_CREDIT });
 });
 
-test("FC2: a credit that is not the ODbL sentence is dropped, and a non-partner card is unchanged", () => {
+test("FC2: Unknown is not an area, and the commission sentence is the existing partner line", () => {
+  assert.deepEqual(feverCardPlace({ provider: "fever", areaName: "Unknown", osmCredit: FEVER_CARD_OSM_CREDIT }), {
+    label: null, credit: FEVER_CARD_OSM_CREDIT,
+  });
+  assert.equal(partnerDisplayName(" Fever "), "Fever");
+  assert.equal(partnerDisplayName("Unknown"), null);
+  assert.equal(partnerDisplayName(""), null);
+  assert.deepEqual(blogBannedHits(PARTNER_COMMISSION_NOTE), []);
+  assert.equal(/\d/.test(PARTNER_COMMISSION_NOTE), false);
+});
+
+test("FC2b: a credit that is not the ODbL sentence is dropped, and a non-partner card is unchanged", () => {
   assert.deepEqual(feverCardPlace({ provider: "fever", areaName: "Gion", osmCredit: "maps by us" }), {
     label: "Gion", credit: null,
   });
@@ -37,4 +50,11 @@ test("FC3: the event card puts the street and the maps link on the non-partner a
   assert.match(sheet, /maps\.google\.com/);
   assert.match(src, /event-osm-credit-\$\{event\.id\}/);
   assert.match(src, /partnerPlace \? \(partnerPlace\.label/);
+  const card = src.slice(src.indexOf("export function CityFeedCardEvent"), src.indexOf("function trackEventPriceOpen"));
+  const compactAt = card.indexOf('if (density === "compact")');
+  const compact = card.slice(compactAt, card.indexOf("\n  return (", compactAt));
+  assert.ok(compact.includes("PARTNER_COMMISSION_NOTE"), "the compact card says the commission line");
+  assert.match(compact, /event-partner-name-/);
+  assert.match(compact, /event-area-/);
+  assert.match(compact, /break-words/);
 });

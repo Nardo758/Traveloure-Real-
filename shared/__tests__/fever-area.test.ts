@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { NeighborhoodRow } from "../neighborhood-placement";
-import { feverAddressKey, kyotoAreaName, nominatimSearchQuery, parseNominatimPoint } from "../fever-area";
+import { feverAddressKey, kyotoAreaName, namedArea, nominatimSearchQuery, parseNominatimPoint } from "../fever-area";
 
 const GION: NeighborhoodRow = {
   id: "gion", city: "Kyoto", name: "Gion", slug: "gion",
@@ -26,6 +26,15 @@ test("FA: a point inside a Kyoto radius takes that name; outside takes none; ano
   assert.equal(kyotoAreaName(35.0094, 135.6668, rows), "Arashiyama");
   assert.equal(kyotoAreaName(35.0236, 135.775, rows), null, "about 2 km north of Gion, outside the 1.5 km radius");
   assert.equal(kyotoAreaName(35.0036, 135.775, [NAMBA]), null, "an Osaka row is not a Kyoto area");
+});
+
+test("FA: a missing area is omitted, including the word Unknown", () => {
+  assert.equal(namedArea(" Gion "), "Gion");
+  assert.equal(namedArea(""), null);
+  assert.equal(namedArea("   "), null);
+  assert.equal(namedArea("Unknown"), null);
+  assert.equal(namedArea(" unknown "), null);
+  assert.equal(namedArea(null), null);
 });
 
 test("FA: the Nominatim query and the cache key", () => {

@@ -17,6 +17,7 @@ import { demoSeedsAllowed } from "../seeds/lib/demo-seed-gate";
 import { db } from "../db";
 import { feverEventCache } from "@shared/schema";
 import { and, eq, lt } from "drizzle-orm";
+import { catalogPlace, type CatalogPlaceInput } from "./fever-catalog-place";
 
 export interface FeverEvent {
   id: string;
@@ -39,6 +40,8 @@ export interface FeverEvent {
   dates: {
     startDate: string;
     endDate?: string;
+    /** False when LaunchDate was absent and startDate was filled only so the field is non-empty. */
+    stated?: boolean;
     sessions?: Array<{
       id: string;
       datetime: string;
@@ -120,6 +123,15 @@ interface ImpactCatalogItem {
   ExpirationDate?: string;
   Category?: string;
   Labels?: string[];
+  Address?: string;
+  VenueAddress?: string;
+  Location?: string;
+  Latitude?: number | string;
+  Longitude?: number | string;
+  Text1?: string;
+  Text2?: string;
+  Text3?: string;
+  Venue?: string;
 }
 
 interface ImpactApiConfig {
@@ -392,7 +404,9 @@ class FeverService {
   private transformCatalogItemToEvent(item: ImpactCatalogItem, city: FeverCity): FeverEvent {
     // Parse category from Labels or Category field
     const category = this.inferCategory(item.Category, item.Labels);
-    
+    const place = catalogPlace(item as CatalogPlaceInput);
+    const launch = typeof item.LaunchDate === "string" ? item.LaunchDate.trim() : "";
+
     return {
       id: item.CatalogItemId,
       title: item.Name,
@@ -405,9 +419,15 @@ class FeverService {
       city: city.name,
       cityCode: city.code,
       country: city.country,
+      venue: place ? {
+        name: place.name ?? "",
+        address: place.address,
+        coordinates: place.coordinates,
+      } : undefined,
       dates: {
-        startDate: item.LaunchDate || new Date().toISOString(),
+        startDate: launch || new Date().toISOString(),
         endDate: item.ExpirationDate,
+        stated: launch.length > 0,
       },
       pricing: {
         currency: item.Currency || 'USD',

@@ -43,6 +43,7 @@ import {
 } from "@shared/events-calendar";
 import { timezoneForMarket } from "./trend-engine/operating-markets";
 import { loadOutsideCityThresholdKm, toCityEventCard } from "./city-events.service";
+import { loadDatedPartnerEvents } from "./partner-calendar.service";
 
 export interface BandRow {
   id: string;
@@ -98,7 +99,11 @@ export function composeCalendarEvents(
     const venueLocality = (row as CityEvent & { venueLocality?: string | null }).venueLocality ?? null;
     out.push({ ...card, vertical: isCityEventVertical(row.vertical) ? row.vertical : null, venueLocality, sourceId: row.sourceId });
   }
-  return out.sort((a, b) => (a.firstDate === b.firstDate ? a.startsAt.localeCompare(b.startsAt) : a.firstDate < b.firstDate ? -1 : 1));
+  return out.sort(bySoonest);
+}
+
+function bySoonest(a: CalendarEvent, b: CalendarEvent): number {
+  return a.firstDate === b.firstDate ? a.startsAt.localeCompare(b.startsAt) : a.firstDate < b.firstDate ? -1 : 1;
 }
 
 /** Pure: month-level season rows → bands for the markets' countries, over the window. */
@@ -206,9 +211,17 @@ export async function loadEventsCalendar(now: Date = new Date()): Promise<Events
     .select({ cityName: travelPulseCities.cityName, vibeTags: travelPulseCities.vibeTags })
     .from(travelPulseCities);
 
+  const dated = composeCalendarEvents(eventRows, hoodNames, months, now, await loadOutsideCityThresholdKm());
+  // A partner-catalog failure must not take the city-events calendar down with it.
+  let partner: CalendarEvent[] = [];
+  try {
+    partner = await loadDatedPartnerEvents(now, months);
+  } catch (err) {
+    console.warn("[events-calendar] partner events omitted", err);
+  }
   return {
     months,
-    events: composeCalendarEvents(eventRows, hoodNames, months, now, await loadOutsideCityThresholdKm()),
+    events: [...dated, ...partner].sort(bySoonest),
     bands: composeBands(bandRows, months),
     places: composePlaces(seasonRows, pulseRows),
   };
