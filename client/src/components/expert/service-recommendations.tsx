@@ -5,7 +5,6 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import { 
-  TrendingUp, 
   Lightbulb,
   Target,
   ArrowRight,
@@ -133,12 +132,6 @@ export function ExpertServiceRecommendations() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap mb-1">
                   <h4 className="font-medium">{rec.title}</h4>
-                  {rec.supportingData.demandLevel === "trending" && (
-                    <Badge variant="default" className="bg-primary">
-                      <TrendingUp className="w-3 h-3 mr-1" />
-                      Trending
-                    </Badge>
-                  )}
                 </div>
                 <p className="text-sm text-muted-foreground mb-2">{rec.description}</p>
                 <div className="flex items-center gap-3 flex-wrap text-xs">

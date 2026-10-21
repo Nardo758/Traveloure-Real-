@@ -223,9 +223,9 @@ npm run dev
 - Authorize Instagram Business account
 - Create content:
   - Type: "Travel Guide"
-  - Title: "Hidden Gems of Tokyo"
+  - Title: "Quieter spots in Tokyo"
   - Destination: "Tokyo, Japan"
-  - Description: "Discover secret spots..."
+  - Description: "Discover spots..."
   - Image URL: `https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=800`
   - Click "Generate Hashtags"
   - Toggle "Publish to Instagram"

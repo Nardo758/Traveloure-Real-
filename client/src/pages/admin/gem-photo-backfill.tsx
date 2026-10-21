@@ -49,10 +49,10 @@ export default function AdminGemPhotoBackfill() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-              Hidden Gem Photo Backfill
+              Gem Photo Backfill
             </h2>
             <p className="text-sm text-gray-500 mt-1">
-              Fetch and assign cover photos for hidden gems that are missing an image URL.
+              Fetch and assign cover photos for places that are missing an image URL.
             </p>
           </div>
           <Button
@@ -143,7 +143,7 @@ export default function AdminGemPhotoBackfill() {
           <CardContent className="py-4 px-5">
             <p className="text-sm text-blue-700 dark:text-blue-300 font-medium mb-1">How it works</p>
             <p className="text-sm text-blue-600 dark:text-blue-400">
-              The backfill queries all hidden gems where <code className="font-mono text-xs">image_url</code> is
+              The backfill queries all places where <code className="font-mono text-xs">image_url</code> is
               null or empty, then uses the AI discovery service to fetch and assign a relevant photo for each one.
               Gems that already have a photo are skipped automatically.
             </p>
