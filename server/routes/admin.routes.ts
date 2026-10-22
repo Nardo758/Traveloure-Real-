@@ -226,6 +226,13 @@ import {
   MESSAGE_REPORT_DECISION_ACTION,
   PROVIDER_SERVICE_RESOURCE,
   MESSAGE_REPORT_RESOURCE,
+  EMAIL_OUTBOX_RETRY_ACTION,
+  OUT_OF_BAND_REFUND_CLEARED_ACTION,
+  AUTO_CANCEL_CONFIG_ACTION,
+  AUTO_CANCEL_RUN_ACTION,
+  EMAIL_OUTBOX_RESOURCE,
+  SERVICE_BOOKING_RESOURCE,
+  AUTO_CANCEL_RESOURCE,
 } from "../services/admin-decision-audit";
 import { bandLockedByCohort } from "../services/expert-rate-cohort.service";
 import { expertCohortSettingRefusal } from "@shared/expert-rate-cohort";
@@ -243,6 +250,7 @@ import { sanitizeInput } from "../utils/sanitize";
 import { escHtml } from "../utils/email-escape";
 import { logger } from "../infrastructure/logger";
 import { hasPaymentOnRecord, NO_PAYMENT_ON_RECORD } from "@shared/payment-on-record";
+import { listAuditLogs, parseAuditLogQuery } from "../services/audit-log-query";
 
 const router = Router();
 
@@ -695,12 +703,15 @@ router.post("/api/admin/bookings/:bookingId/out-of-band-refund/clear", isAuthent
     if (!outcome.cleared) {
       return res.status(404).json({ message: "No refund-outside-the-platform mark on this booking" });
     }
-    const auditWarning = await recordAdminAudit({
+    // Ops gap 8: the mark's before → after, through gap 13's one helper. The booking's status is unchanged.
+    const auditWarning = await recordAdminDecisionAudit({
       actorId: user.id,
       actorRole: user.role,
-      action: "out_of_band_refund_cleared",
-      resourceType: "service_booking",
+      action: OUT_OF_BAND_REFUND_CLEARED_ACTION,
+      resourceType: SERVICE_BOOKING_RESOURCE,
       resourceId: bookingId,
+      beforeStatus: "refunded_outside_platform",
+      afterStatus: "cleared",
       metadata: {
         note: parsed.data.note,
         refundIds: outcome.refundIds,
@@ -2247,8 +2258,20 @@ router.patch("/api/admin/bookings/auto-cancel/config", isAuthenticated, async (r
     return res.status(400).json({ message: "Invalid config", errors: parsed.error.flatten() });
   }
   try {
+    const before = bookingExpiryScheduler.getConfig();
     const updated = bookingExpiryScheduler.updateConfig(parsed.data);
-    res.json({ config: updated });
+    const auditWarning = await recordAdminDecisionAudit({
+      actorId: user.id,
+      actorRole: user.role,
+      action: AUTO_CANCEL_CONFIG_ACTION,
+      resourceType: AUTO_CANCEL_RESOURCE,
+      resourceId: "staleThresholdHours",
+      beforeStatus: String(before.staleThresholdHours),
+      afterStatus: String(updated.staleThresholdHours),
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    });
+    res.json({ config: updated, ...(auditWarning ? { auditWarning } : {}) });
   } catch (err: any) {
     res.status(400).json({ message: err.message });
   }
@@ -2257,18 +2280,45 @@ router.patch("/api/admin/bookings/auto-cancel/config", isAuthenticated, async (r
 /**
  * POST /api/admin/bookings/auto-cancel/run
  * Manually triggers the auto-cancel sweep immediately.
+ * `?dryRun=1` (ops gap 8) answers `{ dryRun: true, count }` — how many bookings a run now would cancel —
+ * and acts on nothing, so the admin confirm step can show the count. A dry run writes no audit row.
  */
 router.post("/api/admin/bookings/auto-cancel/run", isAuthenticated, async (req, res) => {
   const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
+  if (req.query.dryRun === "1") {
+    try {
+      return res.json({ dryRun: true, count: await bookingExpiryScheduler.countStale() });
+    } catch (err: any) {
+      console.error("Auto-cancel dry run error:", err);
+      return res.status(500).json({ message: "Failed to count bookings for auto-cancel" });
+    }
+  }
   if (bookingExpiryScheduler.isCurrentlyRunning()) {
     return res.status(409).json({ message: "Auto-cancel sweep is already in progress" });
   }
   try {
     const stats = await bookingExpiryScheduler.triggerManualRun();
-    res.json({ message: "Auto-cancel sweep completed", stats });
+    const auditWarning = await recordAdminDecisionAudit({
+      actorId: user.id,
+      actorRole: user.role,
+      action: AUTO_CANCEL_RUN_ACTION,
+      resourceType: AUTO_CANCEL_RESOURCE,
+      resourceId: "run",
+      beforeStatus: null,
+      afterStatus: null,
+      metadata: {
+        cancelledCount: stats.cancelledCount,
+        bookingIds: stats.bookingIds,
+        errorCount: stats.errors.length,
+        staleThresholdHours: bookingExpiryScheduler.getConfig().staleThresholdHours,
+      },
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    });
+    res.json({ message: "Auto-cancel sweep completed", stats, ...(auditWarning ? { auditWarning } : {}) });
   } catch (err: any) {
     console.error("Manual auto-cancel sweep error:", err);
     res.status(500).json({ message: "Auto-cancel sweep failed", error: err.message });
@@ -6908,6 +6958,25 @@ router.get("/api/admin/audit-logs/role-changes", isAuthenticated, requireAdminLo
 });
 
 /**
+ * GET /api/admin/audit-logs/all  (ops gap 12, fix queue row 112; ledger `2026-10-22-audit-log-all-actions`)
+ * Every audited action, newest first, paged (`limit` capped at AUDIT_LOG_PAGE_MAX, `offset`), filtered by `action`,
+ * `actor` (a user id, or an email), `resourceType`, `resourceId` and `dateFrom`/`dateTo` (YYYY-MM-DD, inclusive).
+ * The same guard as role-changes: `isAuthenticated` + `requireAdminLocal`, under the blanket `/api/admin` guard (§2).
+ * A malformed date or page is a 400.
+ */
+router.get("/api/admin/audit-logs/all", isAuthenticated, requireAdminLocal, async (req, res) => {
+  const parsed = parseAuditLogQuery(req.query as Record<string, unknown>);
+  if (!parsed.ok) return res.status(400).json({ message: "Invalid filter", code: parsed.reason });
+  try {
+    const result = await listAuditLogs(parsed.filters);
+    res.json({ ...result, limit: parsed.filters.limit, offset: parsed.filters.offset });
+  } catch (err) {
+    console.error("Audit-log list error:", (err as Error)?.message);
+    res.status(500).json({ message: "Failed to fetch audit logs" });
+  }
+});
+
+/**
  * GET /api/admin/audit-logs?resourceType=&resourceId=  (provenance spine move 5)
  * The per-resource audit timeline: every logged action against ONE resource, newest first. Makes
  * the "write-only in practice" audit log readable — the approve/reject/edit-review/refund/dispute
@@ -9910,31 +9979,50 @@ router.get("/api/admin/email-outbox", isAuthenticated, async (req, res) => {
  */
 router.post("/api/admin/email-outbox/:id/retry", isAuthenticated, async (req, res) => {
   try {
+    const user = await getFullAdminUser(getUserId(req)!);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
     const id = parseInt(req.params.id, 10);
     if (!id || isNaN(id)) return res.status(400).json({ message: "Invalid id" });
 
+    // Ops gap 8: the row is locked and its prior status read in the same statement as the reset, so
+    // the audit row's before status is the one this retry replaced.
     const updated = await db.execute(sql`
-      UPDATE email_outbox
+      UPDATE email_outbox AS o
       SET    status        = 'pending',
              attempt_count = 0,
              last_error    = NULL,
              retry_after   = NULL,
              updated_at    = NOW()
-      WHERE  id            = ${id}
-        AND  status       IN ('failed', 'dead')
-      RETURNING id, status, to_email, subject
+      FROM   (SELECT id, status AS prior_status FROM email_outbox WHERE id = ${id} FOR UPDATE) AS p
+      WHERE  o.id          = p.id
+        AND  p.prior_status IN ('failed', 'dead')
+      RETURNING o.id, o.status, o.to_email, o.subject, p.prior_status
     `);
 
     if (!updated.rows.length) {
       return res.status(404).json({ message: "Row not found or not in a retryable status" });
     }
+    const { prior_status: priorStatus, ...row } = updated.rows[0] as Record<string, unknown> & { prior_status: string };
+    const auditWarning = await recordAdminDecisionAudit({
+      actorId: user.id,
+      actorRole: user.role,
+      action: EMAIL_OUTBOX_RETRY_ACTION,
+      resourceType: EMAIL_OUTBOX_RESOURCE,
+      resourceId: String(id),
+      beforeStatus: priorStatus,
+      afterStatus: "pending",
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    });
 
     // Fire the drain in the background — don't wait for delivery.
     drainOutboxForAdminRetry(id).catch(err =>
       console.error("[admin/email-outbox/retry] drainOutbox error:", err)
     );
 
-    res.json({ ok: true, row: updated.rows[0] });
+    res.json({ ok: true, row, ...(auditWarning ? { auditWarning } : {}) });
   } catch (err: any) {
     console.error("[admin/email-outbox/retry] error:", err);
     res.status(500).json({ message: "Failed to retry outbox row", error: err.message });
