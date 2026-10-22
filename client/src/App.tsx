@@ -233,6 +233,7 @@ import { sanitizeReturnTo } from "@/lib/safe-return-to";
 import { applicationStatusQuery } from "@/lib/application-status-query";
 import { accessDeniedCopy, type ApplicationPhase } from "@shared/application-status";
 import { EMAIL_SIGN_IN_REQUIRED_MESSAGE, EMAIL_SIGN_IN_REQUIRED_PARAM } from "@shared/email-sign-in-required";
+import { PaymentMethodSetupGate } from "@/components/payment/PaymentMethodSetupGate";
 
 // Fallback shown while a lazily-loaded route chunk is being fetched.
 // Routes are code-split (React.lazy) so the browser and the Vite dev server
@@ -1524,6 +1525,7 @@ function App() {
                   <PenBinder />
                   <GuestCartMigrator />
                   <AuthReturnToRestorer />
+                  <PaymentMethodSetupGate />
                   <MaintenanceGate>
                     <Router />
                   </MaintenanceGate>

@@ -441,8 +441,8 @@ router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
     // per-request customers.list({email}) lookup this endpoint previously carried.
     const stripeCustomerId = (await stripePaymentService.getOrCreateCustomer(userId)) ?? undefined;
 
-    // FP-1 one-click: when the client asks to use the saved card, charge it OFF-SESSION —
-    // create+confirm in one server call, no payment sheet. The amount is the same server-derived
+    // One-click: when the client asks to use the saved method, confirm it on-session.
+    // The amount is the same server-derived
     // priceCents (§14 unchanged; useSavedCard is a consent flag, never an amount). On success the
     // client calls the normal /confirm with this PI id — the confirm contract is unchanged. If
     // the bank demands 3DS we return the clientSecret and the client falls back to the sheet.

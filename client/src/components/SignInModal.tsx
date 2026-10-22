@@ -256,6 +256,7 @@ export function SignInModal({
             </div>
             <p className="font-medium text-gray-900">{t("registered.title")}</p>
             <p className="text-sm text-muted-foreground" data-testid="text-signup-neutral">{t("registered.body")}</p>
+            <p className="text-sm text-muted-foreground" data-testid="text-signup-payment-step">{t("registered.paymentStep")}</p>
             <div className="flex justify-center gap-4">
               <button
                 type="button"

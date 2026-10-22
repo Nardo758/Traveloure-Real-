@@ -11,14 +11,9 @@
  * to hasDefault=false. The newest vaulted card is not treated as a default.
  */
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { savedPaymentMethodLabel, type SavedPaymentMethod } from "@shared/saved-payment-method";
 
-export interface SavedCard {
-  id: string;
-  brand: string;
-  last4: string;
-  expMonth: number;
-  expYear: number;
-}
+export type SavedCard = SavedPaymentMethod;
 
 interface PaymentMethodsResponse {
   available: boolean;
@@ -54,9 +49,8 @@ export function useSavedPayment(enabled: boolean = true) {
   };
 }
 
-/** "Visa ••4242" — the label the one-click buttons show. */
+/** The label the one-click buttons show. Null brand or last4 is not filled in. */
 export function formatCardLabel(card: SavedCard | null): string {
   if (!card) return "";
-  const brand = card.brand.charAt(0).toUpperCase() + card.brand.slice(1);
-  return `${brand} ••${card.last4}`;
+  return savedPaymentMethodLabel(card);
 }

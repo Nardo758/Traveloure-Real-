@@ -2,10 +2,10 @@
  * SavePaymentMethodPrompt — the ONE soft prompt of Locked Decision 43(d)
  * (ledger `2026-09-05-payment-method-posture` / `2026-09-05-wallets-on-platform-intents`).
  *
- * LD 43(a) is that signup collects no payment method, ever. This component is the other half of
- * that ruling: the two moments where offering to save one is useful rather than a toll gate —
- * after a Trip Pass purchase, and at Finalize when the plan actually holds bookable rows. It is
- * mounted at those two places and nowhere else, and it must never appear on an auth surface.
+ * The account-setup step is PaymentMethodSetupGate (ledger `2026-10-21-signup-payment-step`),
+ * not a third mount of this prompt. This component stays the soft offer at two moments —
+ * after a Trip Pass purchase, and at Finalize when the plan actually holds bookable rows.
+ * It is mounted at those two places and nowhere else, and it must never appear on an auth surface.
  *
  * ONE ADD-CARD RAIL. It opens the EXISTING `AddCardDialog` (H7 SetupIntent) rather than growing a
  * second vaulting path — a second add-card flow would be the derivation-drift class §18 rule 1

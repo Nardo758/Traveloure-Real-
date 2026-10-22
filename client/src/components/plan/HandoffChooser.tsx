@@ -9,9 +9,11 @@
  *
  * Mounted ONCE per slip through `HandoffChooserHost`, which listens for `openHandoffChooser`.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
+import { paymentElementOptions, paymentElementWalletsToHide } from "@shared/saved-payment-method";
+import { WalletExpressCheckout } from "@/components/payment/wallet-express-checkout";
 import type { Stripe } from "@stripe/stripe-js";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -59,12 +61,15 @@ async function postJson(url: string, body: unknown) {
 export function HoldForm({ amountCents, onHeld, line, cta }: { amountCents: number; onHeld: () => void; line?: string; cta?: string }) {
   const stripe = useStripe();
   const elements = useElements();
+  const confirmingRef = useRef(false);
   const [ready, setReady] = useState(false);
+  const [expressSettled, setExpressSettled] = useState(false);
+  const [hideWallets, setHideWallets] = useState<ReturnType<typeof paymentElementWalletsToHide>>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
-  const submit = async () => {
-    if (!stripe || !elements) return;
+  const confirm = async (): Promise<boolean> => {
+    if (!stripe || !elements) return false;
     setBusy(true);
     setError(null);
     const { error: err, paymentIntent } = await stripe.confirmPayment({
@@ -76,20 +81,54 @@ export function HoldForm({ amountCents, onHeld, line, cta }: { amountCents: numb
     setAttempt((n) => n + 1);
     // Smoke 13 #8: EVERY declined confirm says why — Stripe's own decline message, whether it comes
     // back as an error or as the intent's `last_payment_error` — never a silent second press.
-    if (err) return setError(err.message || "Your card couldn't be held.");
+    if (err) {
+      setError(err.message || "Your card couldn't be held.");
+      return false;
+    }
     // A manual-capture intent stops at `requires_capture`: the hold is in place, nothing is taken.
-    if (paymentIntent && (paymentIntent.status === "requires_capture" || paymentIntent.status === "succeeded")) return onHeld();
+    if (paymentIntent && (paymentIntent.status === "requires_capture" || paymentIntent.status === "succeeded")) {
+      onHeld();
+      return true;
+    }
     const declined = (paymentIntent as any)?.last_payment_error?.message as string | undefined;
     setError(declined || `The hold isn't in place yet (${paymentIntent?.status ?? "unknown"}).`);
+    return false;
   };
+  const submit = async () => {
+    if (confirmingRef.current) return;
+    confirmingRef.current = true;
+    try {
+      await confirm();
+    } finally {
+      confirmingRef.current = false;
+    }
+  };
+  const walletOptions = paymentElementOptions(hideWallets);
   return (
     <div className="space-y-3" data-testid="handoff-hold-form">
+      {/* Link stays off here (Smoke 13 #8): the Express button would be a second confirm beside
+          "Place the hold", the same reason the Payment Element hides Link. */}
+      <WalletExpressCheckout
+        link="never"
+        confirmingRef={confirmingRef}
+        onConfirm={confirm}
+        onWalletsKnown={(available) => {
+          setHideWallets(paymentElementWalletsToHide(available));
+          setExpressSettled(true);
+        }}
+      />
       {/* Smoke 13 #8 (decision-maker, Oct 6, 2026): Link draws its OWN confirm inside the Payment
           Element, a second button beside "Place the hold". On the hold sheets Link is hidden so
           "Place the hold" is the one action; cards and Apple/Google Pay stay (LD 43(c)). Stripe
           cannot exclude Link on the PaymentIntent, so this is the Element's own `wallets.link`
-          option — current Stripe.js v3 (loaded unpinned) reads it; the installed type predates it. */}
-      <PaymentElement onReady={() => setReady(true)} options={{ wallets: { link: "never" } } as any} />
+          option — current Stripe.js v3 (loaded unpinned) reads it; the installed type predates it.
+          Apple Pay and Google Pay are hidden here only when the Express element above is showing them. */}
+      {expressSettled ? (
+      <PaymentElement
+        onReady={() => setReady(true)}
+        options={{ wallets: { link: "never", ...(walletOptions?.wallets ?? {}) } } as any}
+      />
+      ) : null}
       {/* keyed on the attempt so a repeated decline re-announces even when its words are the same */}
       {error ? <p key={attempt} role="alert" className="text-sm text-destructive" data-testid="handoff-hold-error">{error}</p> : null}
       <p className="text-xs text-muted-foreground">
