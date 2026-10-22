@@ -19,7 +19,7 @@ import { storage } from "../storage";
 import { placesLookupsPerDraft } from "../config/content-facts.config";
 import { enrichPlanItems, officialHoursStoredFor, type PlacesCallGate } from "./content-facts/place-facts.service";
 import type { SourceAdapter } from "./content-facts/source-adapter";
-import { loadStopHours } from "./optimizer-lead.service";
+import { loadStopHoursChecked } from "./optimizer-lead.service";
 import { tripGetsRoutedLegs, tripLegsShown } from "./routing/plan-routed-legs.service";
 import { legIsRouted, planLegsSkipReason, routedFactsOf } from "./routing/plan-legs";
 import { routingAdapter } from "./routing/index";
@@ -120,11 +120,12 @@ export async function loadStopChecks(tripId: string, itemId: string, now: Date =
   const savedAt = item.createdAt ? new Date(item.createdAt as any) : now;
   const withinWindow = now.getTime() - savedAt.getTime() < ADD_CHECKS_WINDOW_MS;
 
-  // Hours — the findings' own lines for this stop.
-  const h = await loadStopHours(tripId, itemId);
+  // Hours — the findings' own lines for this stop, and each one's fix (row 124: the plan check narrowed to this stop,
+  // so a closed date is checked whether or not the stop states a time).
+  const h = await loadStopHoursChecked(tripId, itemId);
   let hours: StopHoursCheck;
-  if (!h.hasTime) hours = { status: "no_time" };
-  else if (h.checked) hours = { status: "checked", lines: h.lines, ...(h.caveat ? { caveat: h.caveat } : {}) };
+  if (h.checked) hours = { status: "checked", lines: h.lines, ...(h.caveat ? { caveat: h.caveat } : {}), ...(h.fixes.length ? { fixes: h.fixes } : {}) };
+  else if (!h.hasTime) hours = { status: "no_time" };
   else if (withinWindow && !(await lookupReported(tripId, itemId, savedAt))) hours = { status: "pending" };
   else hours = { status: "not_checked" };
 

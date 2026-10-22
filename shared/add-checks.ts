@@ -11,6 +11,7 @@
  * the map and the engine answered nothing.
  */
 import type { LegMode } from "./travel-speeds";
+import type { PlanFix } from "./plan-check";
 
 /** How long after a save the checks may still be arriving (the 2 s leg debounce plus one lookup). */
 export const ADD_CHECKS_WINDOW_MS = 30_000;
@@ -22,7 +23,13 @@ export const HOURS_NOT_CHECKED_LINE = "Hours not checked for this stop";
 
 export type StopHoursCheck =
   /** Hours (or a last entry) cover the stop at its time; `lines` are the findings' own lines, empty = no conflict. */
-  | { status: "checked"; lines: string[]; caveat?: string }
+  | {
+      status: "checked";
+      lines: string[];
+      caveat?: string;
+      /** Row 124: the plan check's own fix for each line (e.g. `move_day` for a closed date); absent ⇒ none. */
+      fixes?: PlanFix[];
+    }
   /** No hours fact covers the stop and none is coming. */
   | { status: "not_checked" }
   /** The stop has no start time, so there is nothing to check its hours against. */

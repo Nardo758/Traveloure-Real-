@@ -9,6 +9,9 @@
  *   CDB2 the trip loader feeds it to the checker: the Temple is `closed_on_arrival` / `closed_date`, fix `move_day`
  *   CDB3 an expired fact never reaches the checker
  *   CDB4 the crawler no longer asks for `closure`, and `closure` is no longer a fact type
+ *   CDB5 row 124 (ledger `2026-10-22-add-check-closed-dates`): the single-stop add-check reads the same fact — a stop
+ *        added on a named date gets the plan check's "closed on that date" line and its `move_day` fix, with or
+ *        without a start time; a stop on another date gets neither
  *
  * DISPOSABLE DB ONLY.
  */
@@ -27,6 +30,7 @@ const { loadPlanCheckInput } = await import("../services/optimizer-lead.service"
 const { FACT_TYPES_FOR_NEED } = await import("../services/content-facts/tavily-extract-adapter");
 const { FACT_TYPES } = await import("@shared/content-facts");
 const { checkPlan } = await import("@shared/plan-check");
+const { loadStopChecks } = await import("../services/add-checks.service");
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const id = (s: string) => `fb1c-${RUN}-${s}`;
@@ -34,6 +38,8 @@ const owner = id("owner");
 const trip = id("trip");
 const noZone = id("nozone");
 const NOW = new Date();
+// Past the add-check window, so nothing reads as still arriving.
+const LATER = new Date(NOW.getTime() + 60 * 60_000);
 
 const closed = (tripId: string, k: string, ranges: Array<{ from: string; to: string }>, quote: string, expiresAt: Date | null = null) =>
   recordFacts(
@@ -54,7 +60,8 @@ async function seed(tripId: string, timezone: string | null) {
     VALUES (${tripId}, ${owner}, 'FB-1 closed', 'Kyoto, Japan', 'kyoto', '2027-11-08', '2027-11-09', 'draft', ${timezone})`);
   await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, day_number, title, item_type, start_time, duration_minutes, origin, sort_order) VALUES
     (${`${tripId}-t`}, ${tripId}, 1, 'Temple', 'activity', '10:00', 60, 'ai', 1),
-    (${`${tripId}-m`}, ${tripId}, 2, 'Market', 'activity', '10:00', 60, 'ai', 1)`);
+    (${`${tripId}-m`}, ${tripId}, 2, 'Market', 'activity', '10:00', 60, 'ai', 1),
+    (${`${tripId}-g`}, ${tripId}, 1, 'Garden', 'activity', NULL, NULL, 'traveler', 2)`);
 }
 
 before(async () => {
@@ -92,6 +99,28 @@ test("CDB2 the loader feeds the checker: closed_date, move_day", async () => {
   assert.deepEqual(t?.fix, { action: "move_day", itemId: `${trip}-t`, day: 1 });
   assert.equal(t?.source.url, "https://official.example.jp/news");
   assert.equal(issues.some((i) => i.stop?.itemId === `${trip}-m`), false, "the refused fact never reaches the checker");
+});
+
+test("CDB5 the single-stop add-check reads closed_dates the way the plan check does", async () => {
+  // The Garden has no start time; the plan check counts a closed date "whether or not it states a time".
+  assert.equal(await closed(trip, "g", [{ from: "2027-11-08", to: "2027-11-08" }], "Closed on November 8."), 1);
+  const { input } = await loadPlanCheckInput(trip);
+  const plan = checkPlan(input).issues;
+  for (const k of ["t", "g"]) {
+    const itemId = `${trip}-${k}`;
+    const checks = await loadStopChecks(trip, itemId, LATER);
+    assert.equal(checks?.hours.status, "checked", `${k}: checked`);
+    const hours = checks!.hours as Extract<NonNullable<typeof checks>["hours"], { status: "checked" }>;
+    assert.equal(hours.lines.length, 1, `${k}: one line`);
+    assert.match(hours.lines[0], /: Closed on Monday, November 8\. Move this stop to another day\.$/);
+    const planIssue = plan.find((i) => i.stop?.itemId === itemId);
+    assert.equal(planIssue?.why, "closed_date", `${k}: the plan check names it too`);
+    assert.deepEqual(hours.fixes, [planIssue!.fix], `${k}: the plan check's own fix`);
+    assert.deepEqual(hours.fixes, [{ action: "move_day", itemId, day: 1 }]);
+  }
+  // Day 2's Market: its fact was refused, so nothing names its date.
+  const m = await loadStopChecks(trip, `${trip}-m`, LATER);
+  assert.equal(m?.hours.status, "not_checked");
 });
 
 test("CDB3 an expired fact never reaches the checker", async () => {

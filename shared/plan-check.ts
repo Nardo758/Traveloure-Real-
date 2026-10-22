@@ -525,3 +525,22 @@ export function checkPlan(input: PlanCheckInput): PlanCheckResult {
   const legDays = legNotCheckedDays(input.stops.map((r) => ({ dayNumber: r.dayNumber, open: r.point })));
   return { findings: leadFindings(found), allFindings, issues, notChecked: [...pathNotChecked(notCheckedDays), ...legNotChecked(legDays)] };
 }
+
+/** The findings a single stop's hours check reads (row 124). */
+export const STOP_HOURS_FINDING_KINDS = ["closed_on_arrival", "after_last_admission", "closes_before_visit_end"] as const;
+
+/**
+ * Pure. THE PLAN CHECK NARROWED TO ONE STOP (row 124, ledger `2026-10-22-add-check-closed-dates`): `checkPlan` over the
+ * input with every other stop, leg, ride, anchor and energy row removed, so the single-stop add-check reads the same
+ * rules — closed dates included — and never a second copy of them (§18 rule 1). Returns the stop's hours findings
+ * and their issues (each with its one fix).
+ */
+export function checkStop(input: PlanCheckInput, itemId: string): { findings: Finding[]; issues: PlanIssue[] } {
+  const narrowed: PlanCheckInput = { ...input, stops: input.stops.filter((s) => s.id === itemId), legs: [], lastServices: [], anchors: [], energy: [] };
+  const r = checkPlan(narrowed);
+  const kinds = STOP_HOURS_FINDING_KINDS as readonly string[];
+  return {
+    findings: r.allFindings.filter((f) => kinds.includes(f.kind)),
+    issues: r.issues.filter((i) => kinds.includes(i.type) && i.stop?.itemId === itemId),
+  };
+}
