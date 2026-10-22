@@ -12,6 +12,8 @@
 //                                     pass authCritical and skip only this flag.
 //                                     Every provider send, including those, stays
 //                                     behind canQueueGenerationNotice.
+//                                     EMAIL_SENDS_ENABLED is a separate gate in
+//                                     front of this flag and is not skipped.
 //
 // Reads are cached for a short TTL so hot request paths (the maintenance
 // middleware runs on every /api request) don't hit the DB each time. The admin

@@ -18,6 +18,7 @@ vi.mock("../email.service", async (original) => ({
   ...await original<typeof import("../email.service")>(),
   getAppBaseUrl: () => `https://${process.env.REPLIT_DEV_DOMAIN}`,
 }));
+process.env.EMAIL_SENDS_ENABLED = "true";
 if (process.env.RUN_ITINERARY_FOLLOWUP_LIVE_TESTS !== "1" || process.env.NODE_ENV === "production") {
   throw new Error("Live verification requires explicit development-only authorization");
 }

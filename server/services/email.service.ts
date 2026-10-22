@@ -11,6 +11,10 @@
  *                         without verification but messages silently bounce.)
  *   EMAIL_REPLY_TO       Human reply-to address, e.g. "admin@traveloure.com"
  *
+ * EMAIL_SENDS_ENABLED is the production send gate. Mail leaves this process
+ * only when that variable is exactly true. It is checked before every other
+ * gate, including for password reset and verification.
+ *
  * Legacy alias: EMAIL_FROM is still read as a fallback for EMAIL_FROM_NOREPLY
  * so existing deployments that predate the rename continue to work.
  *
@@ -29,11 +33,17 @@ import { planDeliveredEmailAutomation } from "../automations/messaging/plan-deli
 import { planApprovedEmailAutomation } from "../automations/messaging/plan-approved-email";
 import { planChangesRequestedEmailAutomation } from "../automations/messaging/plan-changes-requested-email";
 import { planSuggestionEmailAutomation } from "../automations/messaging/plan-suggestion-email";
+import { logger } from "../infrastructure/logger";
 import { getPlatformFlag, FLAG_EMAIL_NOTIFICATIONS_ENABLED } from "./platform-flags";
 import { canQueueGenerationNotice } from "./itinerary-outcome-email";
 import { escHtml, stripCrLf } from "../utils/email-escape";
 import { reconciliationKindLabel } from "@shared/reconciliation-kinds";
 import { shapeAdminDigestLists } from "./admin-digest-shape";
+
+/** Production send gate. Only the exact string true allows a provider call. */
+export function emailSendsEnabled(value: string | undefined = process.env.EMAIL_SENDS_ENABLED): boolean {
+  return value === "true";
+}
 
 let cachedClient: Resend | null = null;
 function createClient(key: string): Resend {
@@ -94,8 +104,8 @@ export interface SendEmailParams {
   generationNotice?: boolean;
   /**
    * Password reset and email verification only. Skips the notifications kill
-   * switch. Never forwarded to the provider. The development no-send gate
-   * still applies.
+   * switch. Never forwarded to the provider. EMAIL_SENDS_ENABLED and the
+   * development no-send gate still apply.
    */
   authCritical?: boolean;
   /** Optional files, including vendor coordination calendar invitations. */
@@ -107,10 +117,11 @@ export interface SendEmailResult {
   id?: string;
   error?: string;
   /**
-   * The provider was not called. `development_gate` is canQueueGenerationNotice.
-   * `kill_switch` is email_notifications_enabled. Neither is a failed attempt.
+   * The provider was not called. `sends_disabled` is EMAIL_SENDS_ENABLED.
+   * `development_gate` is canQueueGenerationNotice.
+   * `kill_switch` is email_notifications_enabled. None of these is a failed attempt.
    */
-  suppressed?: "development_gate" | "kill_switch";
+  suppressed?: "sends_disabled" | "development_gate" | "kill_switch";
 }
 
 /**
@@ -121,10 +132,25 @@ export interface SendEmailResult {
  * it never throws into the caller.
  */
 export async function sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
+  // EMAIL_SENDS_ENABLED is in front of canQueueGenerationNotice and the admin
+  // kill switch. Auth-critical mail does not skip it. Nothing about the
+  // recipient is logged.
+  if (!emailSendsEnabled()) {
+    logger.warn(
+      { reason: "EMAIL_SENDS_ENABLED", authCritical: params.authCritical === true },
+      "[email] send refused; EMAIL_SENDS_ENABLED is not true",
+    );
+    return {
+      ok: false,
+      error: "EMAIL_SENDS_ENABLED is not true",
+      suppressed: "sends_disabled",
+    };
+  }
+
   // canQueueGenerationNotice (server/services/itinerary-outcome-email.ts) is the
-  // no-send gate. It runs on the address this call would actually hand the
-  // provider, before the kill switch and before Resend. A development signup QA
-  // redirect therefore cannot skip it, and neither can an outbox retry.
+  // development no-send gate. It runs on the address this call would actually
+  // hand the provider, before the kill switch and before Resend. A development
+  // signup QA redirect therefore cannot skip it, and neither can an outbox retry.
   const recipients = Array.isArray(params.to) ? params.to : [params.to];
   if (!recipients.every((email) => canQueueGenerationNotice(email))) {
     return { ok: false, error: "No approved development inbox", suppressed: "development_gate" };

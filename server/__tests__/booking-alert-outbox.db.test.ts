@@ -21,6 +21,8 @@ import { after, afterEach, before, test } from "node:test";
 import { buildBookingAlertEmailPayload } from "../services/email.service";
 import { _outboxTestHooks, enqueueBookingAlertEmail } from "../services/email-outbox.service";
 
+process.env.EMAIL_SENDS_ENABLED = "true";
+
 const { Pool } = await import("pg");
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 

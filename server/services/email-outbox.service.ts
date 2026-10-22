@@ -50,6 +50,7 @@ import { LegacyBookingEmailPersistenceError } from "./legacy-booking-email-persi
 import {
   buildBookingAlertEmailPayload,
   buildBookingConfirmationEmailPayload,
+  emailSendsEnabled,
   type BookingAlertParams,
   type BookingConfirmationParams,
   type SendEmailParams,
@@ -137,7 +138,7 @@ async function sendThroughNoSendGate(params: SendEmailParams): Promise<SendEmail
 
 async function settleWithoutAttempt(
   outboxId: number | null,
-  status: "cancelled" | "pending",
+  status: "cancelled" | "pending" | "held",
   lastError: string,
   retryAfter: Date | null,
 ): Promise<void> {
@@ -306,6 +307,14 @@ export interface DrainOutboxResult {
 }
 
 async function drainOutboxImpl(): Promise<DrainOutboxResult> {
+  if (!emailSendsEnabled()) {
+    logger.warn(
+      { reason: "EMAIL_SENDS_ENABLED" },
+      "[email-outbox] drain refused; EMAIL_SENDS_ENABLED is not true",
+    );
+    return { drained: 0 };
+  }
+
   type ClaimedRow = {
     id:            number;
     to_email:      string;
@@ -330,7 +339,7 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
       WITH candidates AS (
         SELECT id FROM email_outbox
         WHERE (
-          status IN ('pending', 'failed')
+          status IN ('pending', 'failed', 'held')
           AND (retry_after IS NULL OR retry_after <= NOW())
         )
         OR (
@@ -388,7 +397,7 @@ export async function deliverQueuedEmail(outboxId: number): Promise<void> {
     const result = await db.execute(sql`
       UPDATE email_outbox SET status = 'processing',
         retry_after = NOW() + INTERVAL '10 minutes', updated_at = NOW()
-      WHERE id = ${outboxId} AND status IN ('pending', 'failed')
+      WHERE id = ${outboxId} AND status IN ('pending', 'failed', 'held')
         AND (retry_after IS NULL OR retry_after <= NOW())
       RETURNING to_email, subject, html, text_body, reply_to, attempt_count, max_attempts, email_type, metadata
     `);
@@ -470,6 +479,18 @@ async function attemptDelivery(
     return;
   }
 
+  // EMAIL_SENDS_ENABLED refuses every row, including password reset and
+  // verification. The row stays held with its attempt count unchanged and is
+  // not scheduled for another try until a drain runs with sends allowed.
+  if (!emailSendsEnabled()) {
+    await settleWithoutAttempt(outboxId, "held", "EMAIL_SENDS_ENABLED is not true", null);
+    logger.warn(
+      { outboxId, emailType: current.emailType, reason: "EMAIL_SENDS_ENABLED", authCritical },
+      "[email-outbox] send refused; EMAIL_SENDS_ENABLED is not true",
+    );
+    return;
+  }
+
   // A paused outbox still delivers resets and verification. Every other kind is
   // held with its attempt count unchanged, so the pause cannot exhaust the row.
   if (!authCritical) {
@@ -539,6 +560,14 @@ async function attemptDelivery(
 
   if (outboxId === null) return; // no row to update
 
+  if (result.suppressed === "sends_disabled") {
+    await settleWithoutAttempt(outboxId, "held", result.error ?? "EMAIL_SENDS_ENABLED is not true", null);
+    logger.warn(
+      { outboxId, emailType: current.emailType, reason: "EMAIL_SENDS_ENABLED" },
+      "[email-outbox] send refused; EMAIL_SENDS_ENABLED is not true",
+    );
+    return;
+  }
   if (result.suppressed === "development_gate") {
     await settleWithoutAttempt(outboxId, "cancelled", result.error ?? "No approved development inbox", null);
     logger.info({ outboxId, emailType: current.emailType }, "[email-outbox] refused by canQueueGenerationNotice");

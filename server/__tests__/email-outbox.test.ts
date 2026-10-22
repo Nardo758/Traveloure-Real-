@@ -29,10 +29,12 @@
  * – db.insert is patched for enqueueEmail() tests.
  */
 
-import { describe, it, before, after, afterEach } from "node:test";
+import { describe, it, before, beforeEach, after, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
 import { db } from "../db.js";
+import { logger } from "../infrastructure/logger.js";
+import { sendEmail } from "../services/email.service.js";
 import { invalidatePlatformFlagCache } from "../services/platform-flags.js";
 import {
   _nextRetryAfter,
@@ -50,6 +52,10 @@ let origInsert:  typeof db.insert;
 before(() => {
   origExecute = db.execute.bind(db);
   origInsert  = db.insert.bind(db);
+});
+
+beforeEach(() => {
+  process.env.EMAIL_SENDS_ENABLED = "true";
 });
 
 after(() => {
@@ -552,5 +558,174 @@ describe("drainOutbox — no-send gate, kill switch, and auth link expiry", () =
 
     assert.deepEqual(seen, [html, html]);
     assert.ok(captured.slice(1).join("\n").includes("sent"));
+  });
+});
+
+describe("EMAIL_SENDS_ENABLED", () => {
+  const priorEnv = process.env.NODE_ENV;
+  const priorSends = process.env.EMAIL_SENDS_ENABLED;
+  const recipient = "secret-person@example.com";
+
+  afterEach(() => {
+    if (priorEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = priorEnv;
+    if (priorSends === undefined) delete process.env.EMAIL_SENDS_ENABLED;
+    else process.env.EMAIL_SENDS_ENABLED = priorSends;
+    process.env.EMAIL_SENDS_ENABLED = "true";
+  });
+
+  function captureWarn() {
+    const lines: Array<{ obj: unknown; msg?: string }> = [];
+    const orig = logger.warn.bind(logger);
+    (logger as unknown as { warn: (obj: unknown, msg?: string) => void }).warn = (obj, msg) => {
+      lines.push({ obj, msg });
+      return orig(obj as object, msg);
+    };
+    return {
+      lines,
+      restore() {
+        (logger as unknown as { warn: typeof orig }).warn = orig;
+      },
+    };
+  }
+
+  function assertNoRecipient(lines: Array<{ obj: unknown; msg?: string }>) {
+    const text = JSON.stringify(lines);
+    assert.equal(text.includes(recipient), false);
+    assert.equal(text.includes("@"), false);
+    assert.ok(lines.some((line) => line.msg?.includes("EMAIL_SENDS_ENABLED is not true")));
+  }
+
+  for (const value of [undefined, "", "false"] as const) {
+    it(`sendEmail refuses when EMAIL_SENDS_ENABLED is ${value === undefined ? "unset" : value === "" ? "empty" : value}`, async () => {
+      if (value === undefined) delete process.env.EMAIL_SENDS_ENABLED;
+      else process.env.EMAIL_SENDS_ENABLED = value;
+      process.env.NODE_ENV = "production";
+      const captured = captureWarn();
+      try {
+        const result = await sendEmail({
+          to: recipient,
+          subject: "Reset your Traveloure password",
+          html: "<p>reset</p>",
+          authCritical: true,
+        });
+        assert.equal(result.ok, false);
+        assert.equal(result.suppressed, "sends_disabled");
+        assert.equal(result.error, "EMAIL_SENDS_ENABLED is not true");
+        assertNoRecipient(captured.lines);
+      } finally {
+        captured.restore();
+      }
+    });
+  }
+
+  it("sendEmail proceeds past the production gate only when EMAIL_SENDS_ENABLED is true", async () => {
+    process.env.EMAIL_SENDS_ENABLED = "true";
+    process.env.NODE_ENV = "development";
+    delete process.env.ITINERARY_OUTCOME_TEST_EMAIL;
+    const result = await sendEmail({
+      to: recipient,
+      subject: "Reset your Traveloure password",
+      html: "<p>reset</p>",
+      authCritical: true,
+    });
+    assert.equal(result.suppressed, "development_gate");
+  });
+
+  it("sendEmail in production refuses an authCritical send when the variable is unset", async () => {
+    delete process.env.EMAIL_SENDS_ENABLED;
+    process.env.NODE_ENV = "production";
+    const result = await sendEmail({
+      to: recipient,
+      subject: "Confirm your Traveloure email",
+      html: "<p>verify</p>",
+      authCritical: true,
+    });
+    assert.equal(result.suppressed, "sends_disabled");
+  });
+
+  for (const value of [undefined, "", "false"] as const) {
+    it(`drain does not claim or send when EMAIL_SENDS_ENABLED is ${value === undefined ? "unset" : value === "" ? "empty" : value}`, async () => {
+      if (value === undefined) delete process.env.EMAIL_SENDS_ENABLED;
+      else process.env.EMAIL_SENDS_ENABLED = value;
+      const row = makeClaimedRow({
+        to_email: recipient,
+        email_type: "password_reset",
+        metadata: { authCritical: true, linkExpiresAt: new Date(Date.now() + 60_000).toISOString() },
+      });
+      const { captured } = patchExecute([row]);
+      let providerCalls = 0;
+      _outboxTestHooks.sendEmailFn = async () => {
+        providerCalls += 1;
+        return { ok: true, id: "should-not-send" };
+      };
+      const capturedLog = captureWarn();
+      try {
+        await drainOutbox();
+        await drainOutbox();
+      } finally {
+        capturedLog.restore();
+      }
+      assert.equal(providerCalls, 0);
+      assert.equal(captured.length, 0);
+      assertNoRecipient(capturedLog.lines);
+    });
+  }
+
+  it("drain sends when EMAIL_SENDS_ENABLED is true and later claims held rows", async () => {
+    process.env.EMAIL_SENDS_ENABLED = "true";
+    const row = makeClaimedRow({ email_type: "password_reset", metadata: { authCritical: true } });
+    const { captured } = patchExecute([row]);
+    let providerCalls = 0;
+    _outboxTestHooks.sendEmailFn = async () => {
+      providerCalls += 1;
+      return { ok: true, id: "allowed" };
+    };
+    await drainOutbox();
+    assert.equal(providerCalls, 1);
+    const claimSql = captured[0] ?? "";
+    assert.ok(claimSql.includes("held"), claimSql);
+    assert.ok(captured.slice(1).join("\n").includes("sent"));
+  });
+
+  it("an immediate authCritical enqueue is held, not retried, when the variable is unset", async () => {
+    delete process.env.EMAIL_SENDS_ENABLED;
+    const captured: string[] = [];
+    (db as any).insert = () => ({
+      values() {
+        return { returning: () => Promise.resolve([{ id: 77 }]) };
+      },
+    });
+    (db as any).execute = (query: any) => {
+      const sqlString = typeof query?.queryChunks !== "undefined"
+        ? (query.queryChunks as unknown[]).map(chunkToString).join("")
+        : String(query);
+      captured.push(sqlString);
+      return Promise.resolve({ rows: [] });
+    };
+    let providerCalls = 0;
+    _outboxTestHooks.sendEmailFn = async () => {
+      providerCalls += 1;
+      return { ok: true, id: "should-not-send" };
+    };
+    const capturedLog = captureWarn();
+    try {
+      await enqueueEmail({
+        to: recipient,
+        subject: "Reset your Traveloure password",
+        html: "<p>reset</p>",
+        emailType: "password_reset",
+        authCritical: true,
+      });
+    } finally {
+      capturedLog.restore();
+    }
+    assert.equal(providerCalls, 0);
+    const updateSql = captured.join("\n");
+    assert.ok(updateSql.includes("held"), updateSql);
+    assert.ok(updateSql.includes("EMAIL_SENDS_ENABLED is not true"));
+    assert.equal(updateSql.includes("attempt_count"), false);
+    assert.equal(updateSql.includes(recipient), false);
+    assertNoRecipient(capturedLog.lines);
   });
 });

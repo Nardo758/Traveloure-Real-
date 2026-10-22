@@ -49,6 +49,7 @@ beforeEach(() => {
   stored = [];
   inserts = 0;
   sends = 0;
+  process.env.EMAIL_SENDS_ENABLED = "true";
   invalidatePlatformFlagCache();
   origTransaction = db.transaction.bind(db);
   origExecute = db.execute.bind(db);

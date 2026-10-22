@@ -3,7 +3,7 @@
  * no network (react-dom/server, the `booking-lifecycle-panels` posture). Synthetic rows only.
  *
  *   OT1  email outbox: the last error is shown; Retry is drawn only on failed/dead rows; the status filter lists
- *        the four statuses with their counts
+ *        the statuses with their counts, including held
  *   OT2  out-of-band refunds: each row links to its service booking detail; the "does not move money" line is shown
  *   OT3  auto-cancel: the threshold and last run are shown; the confirm step states the dry run's count
  *   OT4  the pure rules: retryable statuses, the note minimum, the threshold range, the count sentences
@@ -52,7 +52,7 @@ describe("ops gap 8 tabs", () => {
     assert.ok(html.includes('data-testid="ops-outbox-retry-101"'));
     assert.ok(html.includes('data-testid="ops-outbox-retry-102"'));
     assert.equal(html.includes('data-testid="ops-outbox-retry-103"'), false);
-    for (const s of ["pending", "failed", "dead", "sent"]) assert.ok(html.includes(`value="${s}"`));
+    for (const s of ["pending", "held", "failed", "dead", "sent"]) assert.ok(html.includes(`value="${s}"`));
     assert.ok(html.includes("3 emails"));
     const empty = render(<EmailOutboxTab initialStatus="dead" />, [[outboxListUrl("dead"), { rows: [], total: 0 }]]);
     assert.ok(empty.includes(T.outboxEmptyFiltered));
