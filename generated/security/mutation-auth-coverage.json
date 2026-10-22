@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "generatedBy": "scripts/generate-mutation-auth-coverage.ts",
   "manifest": "generated/security/mutation-auth-manifest.json",
-  "manifestSha256": "b680eb444fdee71ba0d1caa0cfbe3d9e47a5a5a27eabdeb1791f350ba019c30f",
+  "manifestSha256": "1a4dfaf9a8d9982525681b73a1fc20f4f9c17b2aab15e91cfc260af3aab4d0f9",
   "evidence": {
     "path": "generated/security/mutation-auth-evidence.json",
     "state": "evidence manifest SHA-256 is stale",
@@ -10,8 +10,8 @@
   },
   "totals": {
     "tested": 0,
-    "total": 706,
-    "remaining": 706,
+    "total": 708,
+    "remaining": 708,
     "categories": {
       "payments": {
         "tested": 0,
@@ -27,7 +27,7 @@
       },
       "other": {
         "tested": 0,
-        "total": 243
+        "total": 245
       }
     }
   },
@@ -6512,6 +6512,26 @@
     },
     {
       "method": "POST",
+      "rawPath": "/api/auth/change-unverified-email",
+      "path": "/api/auth/change-unverified-email",
+      "effectivePath": "/api/auth/change-unverified-email",
+      "source": "server/replit_integrations/auth/emailAuth.ts",
+      "line": 457,
+      "risk": "other",
+      "expectedAuth": "unknown",
+      "expectedRoles": [],
+      "expectedOwnership": "unknown",
+      "expectedBoundary": "public-or-system",
+      "ownershipApplies": false,
+      "fixtureStatus": "unknown",
+      "testStatus": "unknown",
+      "diagnostics": [],
+      "key": "POST /api/auth/change-unverified-email",
+      "tested": false,
+      "reason": "Public-or-system boundary is intentionally outside the strict protected-endpoint test set."
+    },
+    {
+      "method": "POST",
       "rawPath": "/api/auth/forgot-password",
       "path": "/api/auth/forgot-password",
       "effectivePath": "/api/auth/forgot-password",
@@ -6587,6 +6607,26 @@
       "testStatus": "unknown",
       "diagnostics": [],
       "key": "POST /api/auth/register",
+      "tested": false,
+      "reason": "Public-or-system boundary is intentionally outside the strict protected-endpoint test set."
+    },
+    {
+      "method": "POST",
+      "rawPath": "/api/auth/resend-verification",
+      "path": "/api/auth/resend-verification",
+      "effectivePath": "/api/auth/resend-verification",
+      "source": "server/replit_integrations/auth/emailAuth.ts",
+      "line": 430,
+      "risk": "other",
+      "expectedAuth": "unknown",
+      "expectedRoles": [],
+      "expectedOwnership": "unknown",
+      "expectedBoundary": "public-or-system",
+      "ownershipApplies": false,
+      "fixtureStatus": "unknown",
+      "testStatus": "unknown",
+      "diagnostics": [],
+      "key": "POST /api/auth/resend-verification",
       "tested": false,
       "reason": "Public-or-system boundary is intentionally outside the strict protected-endpoint test set."
     },

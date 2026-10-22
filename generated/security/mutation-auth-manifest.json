@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "generatedBy": "scripts/generate-mutation-auth-manifest.ts",
   "entrypoint": "server/routes.ts",
-  "mutationCount": 714,
-  "rawRegistrationCount": 714,
-  "uniqueMethodNormalizedPathCount": 706,
-  "distinctMethodPathCount": 706,
+  "mutationCount": 716,
+  "rawRegistrationCount": 716,
+  "uniqueMethodNormalizedPathCount": 708,
+  "distinctMethodPathCount": 708,
   "duplicateRegistrations": [
     {
       "methodPath": "POST /api/chats",
@@ -132,19 +132,19 @@
     "payments": 31,
     "admin": 186,
     "user-data": 246,
-    "other": 243
+    "other": 245
   },
   "boundaryTotals": {
     "admin-role": 186,
     "session-self": 362,
     "resource-owner": 102,
     "signature": 6,
-    "public-or-system": 50,
+    "public-or-system": 52,
     "unknown": 0
   },
   "historicalComparison": {
     "count": 546,
-    "delta": 168,
+    "delta": 170,
     "note": "The historical count is a comparison-only baseline; generation reads only the current source mount graph."
   },
   "diagnostics": [],
@@ -3610,11 +3610,45 @@
     },
     {
       "method": "POST",
+      "rawPath": "/api/auth/resend-verification",
+      "path": "/api/auth/resend-verification",
+      "effectivePath": "/api/auth/resend-verification",
+      "source": "server/replit_integrations/auth/emailAuth.ts",
+      "line": 430,
+      "risk": "other",
+      "expectedAuth": "unknown",
+      "expectedRoles": [],
+      "expectedOwnership": "unknown",
+      "expectedBoundary": "public-or-system",
+      "ownershipApplies": false,
+      "fixtureStatus": "unknown",
+      "testStatus": "unknown",
+      "diagnostics": []
+    },
+    {
+      "method": "POST",
       "rawPath": "/api/auth/send-verification",
       "path": "/api/auth/send-verification",
       "effectivePath": "/api/auth/send-verification",
       "source": "server/replit_integrations/auth/emailAuth.ts",
       "line": 454,
+      "risk": "other",
+      "expectedAuth": "unknown",
+      "expectedRoles": [],
+      "expectedOwnership": "unknown",
+      "expectedBoundary": "public-or-system",
+      "ownershipApplies": false,
+      "fixtureStatus": "unknown",
+      "testStatus": "unknown",
+      "diagnostics": []
+    },
+    {
+      "method": "POST",
+      "rawPath": "/api/auth/change-unverified-email",
+      "path": "/api/auth/change-unverified-email",
+      "effectivePath": "/api/auth/change-unverified-email",
+      "source": "server/replit_integrations/auth/emailAuth.ts",
+      "line": 457,
       "risk": "other",
       "expectedAuth": "unknown",
       "expectedRoles": [],

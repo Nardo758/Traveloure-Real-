@@ -1,11 +1,11 @@
 # Mounted mutation authorization inventory
 
-Generated from `server/routes.ts`. **714** raw mounted mutation registrations and **706** unique METHOD+normalizedPath pairs were found.
+Generated from `server/routes.ts`. **716** raw mounted mutation registrations and **708** unique METHOD+normalizedPath pairs were found.
 
-The unique-pair count is **+160** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
+The unique-pair count is **+162** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
 
-Category totals: payments 31; admin 186; user-data 246; other 243.
-Boundary totals: admin-role 186; session-self 362; resource-owner 102; signature 6; public-or-system 50; unknown 0.
+Category totals: payments 31; admin 186; user-data 246; other 245.
+Boundary totals: admin-role 186; session-self 362; resource-owner 102; signature 6; public-or-system 52; unknown 0.
 
 | Method | Normalized path | Risk | Boundary | Ownership applicable | Expected ownership | Registrations | Fixture | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -189,11 +189,13 @@ Boundary totals: admin-role 186; session-self 362; resource-owner 102; signature
 | PUT | `/api/anchors/:id` | other | resource-owner | no | verified | `server/routes/trips.routes.ts:1691` | unknown | unknown |
 | POST | `/api/auth/accept-terms` | other | session-self | no | unknown | `server/replit_integrations/auth/routes.ts:147` | unknown | unknown |
 | DELETE | `/api/auth/account` | user-data | session-self | no | unknown | `server/replit_integrations/auth/routes.ts:203` | unknown | unknown |
+| POST | `/api/auth/change-unverified-email` | other | public-or-system | no | unknown | `server/replit_integrations/auth/emailAuth.ts:457` | unknown | unknown |
 | POST | `/api/auth/forgot-password` | other | public-or-system | no | unknown | `server/replit_integrations/auth/emailAuth.ts:364` | unknown | unknown |
 | POST | `/api/auth/login` | other | session-self | no | unknown | `server/replit_integrations/auth/emailAuth.ts:246` | unknown | unknown |
 | POST | `/api/auth/logout` | other | public-or-system | no | unknown | `server/replit_integrations/auth/emailAuth.ts:533` | unknown | unknown |
 | POST | `/api/auth/register` | other | public-or-system | no | unknown | `server/replit_integrations/auth/emailAuth.ts:118` | unknown | unknown |
 | POST | `/api/auth/reset-password` | other | public-or-system | no | unknown | `server/replit_integrations/auth/emailAuth.ts:421` | unknown | unknown |
+| POST | `/api/auth/resend-verification` | other | public-or-system | no | unknown | `server/replit_integrations/auth/emailAuth.ts:430` | unknown | unknown |
 | POST | `/api/auth/send-verification` | other | public-or-system | no | unknown | `server/replit_integrations/auth/emailAuth.ts:454` | unknown | unknown |
 | POST | `/api/auth/verify-email` | other | public-or-system | no | unknown | `server/replit_integrations/auth/emailAuth.ts:492` | unknown | unknown |
 | POST | `/api/blog/posts/:slug/reactions` | other | session-self | no | unknown | `server/routes/blog.routes.ts:231` | unknown | unknown |
