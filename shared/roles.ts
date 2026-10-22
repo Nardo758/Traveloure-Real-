@@ -6,7 +6,9 @@
  *   expert-family: "expert" | "local_expert" | "travel_expert" | "event_planner"
  *   provider:      "service_provider"          (the bare string "provider" is NEVER a stored role —
  *                                               `role === "provider"` comparisons are always false)
- *   other:         "executive_assistant" | "admin" | "user"
+ *   other:         "executive_assistant" | "admin" | "support" | "moderator" | "user"
+ *   staff:         "admin" | "support" | "moderator"  (admin is unchanged; support and moderator
+ *                  are additive — they are not earners and they are not a replacement for admin)
  *
  * Console-family decisions this module encodes (do not fork per-file lists again):
  *   • executive_assistant is NOT expert-family. The EA console (/ea/*, isEA guard) is its own
@@ -43,4 +45,18 @@ export function isProviderRole(role: string | null | undefined): boolean {
 /** True iff `role` can earn on the platform (expert-family or provider). */
 export function isEarnerRole(role: string | null | undefined): boolean {
   return isExpertRole(role) || isProviderRole(role);
+}
+
+/**
+ * Staff roles. `admin` keeps every admin route. `support` and `moderator` are additive:
+ * what each may do is the permission map in `shared/staff-permissions.ts`, not this list.
+ * None of these earn. A hand-written copy of this list is a defect — email-merge refusal
+ * and the staff gate both import it.
+ */
+export const STAFF_ROLES = ["admin", "support", "moderator"] as const;
+export type StaffRole = (typeof STAFF_ROLES)[number];
+
+/** True iff `role` is a stored staff role (admin, support, or moderator). */
+export function isStaffRole(role: string | null | undefined): role is StaffRole {
+  return role != null && (STAFF_ROLES as readonly string[]).includes(role);
 }

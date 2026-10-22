@@ -5,12 +5,14 @@
  * Run: npx tsx scripts/rbac-audit.ts
  */
 
+import { staffMayPassBlanketGuard } from "../shared/staff-permissions";
+
 const BASE = "http://localhost:5000";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type Cookie = string;
-type Role = "traveler" | "expert" | "provider" | "admin" | "guest";
+type Role = "traveler" | "expert" | "provider" | "admin" | "support" | "moderator" | "guest";
 interface Session { role: Role; cookie: Cookie; userId: string }
 interface TestResult {
   attemptingRole: Role;
@@ -231,6 +233,78 @@ async function runTests(sessions: Record<Role, Session | null>): Promise<TestRes
   const expertEscalation = await probe("POST", "/api/admin/neighborhoods/backfill", sess("expert"), {});
   results.push(result("expert", "POST /api/admin/neighborhoods/backfill (escalation)", expertEscalation.status, [403, 401]));
 
+  // ── F0: support and moderator — their jobs, and a hard no on money ────────
+  // Probes are checked against the same map the blanket guard uses, so a path
+  // that drifts out of the map fails here before any HTTP call.
+  const STAFF_ALLOWED: Array<{ role: "support" | "moderator"; method: string; path: string; body?: Record<string, unknown> }> = [
+    { role: "support", method: "GET", path: "/api/admin/contact-submissions" },
+    { role: "support", method: "PATCH", path: "/api/admin/contact-submissions/missing-id", body: { status: "resolved" } },
+    { role: "support", method: "GET", path: "/api/admin/bookings/service/missing-id" },
+    { role: "moderator", method: "GET", path: "/api/admin/message-reports" },
+    { role: "moderator", method: "PATCH", path: "/api/admin/message-reports/missing-id", body: { status: "dismissed" } },
+    { role: "moderator", method: "GET", path: "/api/admin/conversations?contextKind=booking&contextId=missing" },
+    { role: "moderator", method: "PATCH", path: "/api/admin/services/missing-id/status", body: { status: "paused" } },
+  ];
+  const STAFF_DENIED: Array<{ role: "support" | "moderator"; method: string; path: string; body?: Record<string, unknown> }> = [
+    { role: "support", method: "GET", path: "/api/admin/message-reports" },
+    { role: "support", method: "GET", path: "/api/admin/conversations?contextKind=booking&contextId=missing" },
+    { role: "support", method: "PATCH", path: "/api/admin/services/missing-id/status", body: { status: "paused" } },
+    { role: "moderator", method: "GET", path: "/api/admin/contact-submissions" },
+    { role: "moderator", method: "GET", path: "/api/admin/bookings/service/missing-id" },
+    { role: "support", method: "GET", path: "/api/admin/payouts" },
+    { role: "moderator", method: "GET", path: "/api/admin/payouts" },
+    { role: "support", method: "GET", path: "/api/admin/fee-bands" },
+    { role: "moderator", method: "GET", path: "/api/admin/fee-bands" },
+    { role: "support", method: "GET", path: "/api/admin/revenue" },
+    { role: "moderator", method: "GET", path: "/api/admin/revenue" },
+    { role: "support", method: "POST", path: "/api/admin/bookings/missing-id/exception-refund", body: { amount: 1, reason: "audit" } },
+    { role: "moderator", method: "POST", path: "/api/admin/bookings/missing-id/exception-refund", body: { amount: 1, reason: "audit" } },
+    { role: "support", method: "DELETE", path: "/api/admin/services/missing-id" },
+    { role: "moderator", method: "DELETE", path: "/api/admin/services/missing-id" },
+    { role: "support", method: "POST", path: "/api/admin/bookings/service/missing-id/resolve", body: { outcome: "cancelled", reason: "audit" } },
+  ];
+  for (const probe of STAFF_ALLOWED) {
+    if (!staffMayPassBlanketGuard(probe.role, probe.method, probe.path)) {
+      throw new Error(`rbac staff probe is not on the permission map: ${probe.role} ${probe.method} ${probe.path}`);
+    }
+  }
+  for (const probe of STAFF_DENIED) {
+    if (staffMayPassBlanketGuard(probe.role, probe.method, probe.path)) {
+      throw new Error(`rbac staff probe must stay admin-only: ${probe.role} ${probe.method} ${probe.path}`);
+    }
+  }
+  for (const role of ["support", "moderator"] as const) {
+    if (!sessions[role]) {
+      results.push({
+        attemptingRole: role,
+        target: `${role} account login`,
+        blocked: false,
+        dataLeak: "⚠ STAFF ACCOUNT MISSING",
+        status: 0,
+        expected: [200],
+        note: `seed ${role}@traveloure-test.com (password matches the other rbac accounts) with users.role='${role}'`,
+      });
+      continue;
+    }
+    for (const item of STAFF_ALLOWED.filter((p) => p.role === role)) {
+      const { status } = await probe(item.method, item.path, sess(role), item.body);
+      const granted = status !== 401 && status !== 403;
+      results.push({
+        attemptingRole: role,
+        target: `${item.method} ${item.path} (staff job)`,
+        blocked: granted,
+        dataLeak: granted ? `${role} — expected access ✓` : `⚠ STAFF LOCKED OUT (HTTP ${status})`,
+        status,
+        expected: [200, 404],
+        note: granted ? "expected access — staff permission granted" : "staff permission refused",
+      });
+    }
+    for (const item of STAFF_DENIED.filter((p) => p.role === role)) {
+      const { status } = await probe(item.method, item.path, sess(role), item.body);
+      results.push(result(role, `${item.method} ${item.path}`, status, [403, 401]));
+    }
+  }
+
   // ── F: Admin must succeed on its own routes ───────────────────────────────
   // These run last. After earlier admin-bucket probes the 30-req/min bucket
   // may be exhausted; 429 here is a rate-throttle artifact, NOT an RBAC issue.
@@ -242,6 +316,9 @@ async function runTests(sessions: Record<Role, Session | null>): Promise<TestRes
     { method: "GET", path: "/api/admin/users" },
     { method: "GET", path: "/api/admin/service-requests" },
     { method: "GET", path: "/api/admin/experts" },
+    { method: "GET", path: "/api/admin/contact-submissions" },
+    { method: "GET", path: "/api/admin/fee-bands" },
+    { method: "GET", path: "/api/admin/payouts" },
   ];
   for (const { method, path, body } of adminRouteChecks) {
     const { status } = await probe(method, path, sess("admin"), body);
@@ -272,7 +349,7 @@ async function main() {
   // ── 1. Authenticate all roles ─────────────────────────────────────────────
   console.log("1. Authenticating test accounts…");
   const sessions: Record<Role, Session | null> = {
-    traveler: null, expert: null, provider: null, admin: null, guest: null,
+    traveler: null, expert: null, provider: null, admin: null, support: null, moderator: null, guest: null,
   };
 
   const creds: Array<{ role: Role; email: string; password: string }> = [
@@ -280,6 +357,13 @@ async function main() {
     { role: "expert",   email: "expert@traveloure-test.com",   password: "TestPass@1234" },
     { role: "provider", email: "provider@traveloure-test.com", password: "TestPass@1234" },
     { role: "admin",    email: "admin@traveloure-test.com",    password: "TestPass@1234" },
+  ];
+
+  // Additive staff accounts. A missing login is reported inside the staff
+  // section (the four accounts above stay the ones that abort the run).
+  const staffCreds: Array<{ role: "support" | "moderator"; email: string; password: string }> = [
+    { role: "support", email: "support@traveloure-test.com", password: "TestPass@1234" },
+    { role: "moderator", email: "moderator@traveloure-test.com", password: "TestPass@1234" },
   ];
 
   let loginFails = 0;
@@ -297,6 +381,16 @@ async function main() {
   if (loginFails > 0) {
     console.error(`\n⚠  ${loginFails} login(s) failed. Run scripts/seed-ci-test-users.ts first.\n`);
     if (loginFails === 4) process.exit(1);
+  }
+
+  for (const { role, email, password } of staffCreds) {
+    try {
+      const { cookie, userId } = await login(email, password);
+      sessions[role] = { role, cookie, userId };
+      console.log(`   ✓ ${role.padEnd(10)} logged in  userId=${userId}`);
+    } catch (err: any) {
+      console.error(`   ✗ ${role.padEnd(10)} login FAILED: ${err.message}`);
+    }
   }
 
   // ── 2. Run RBAC probes ────────────────────────────────────────────────────
@@ -319,7 +413,7 @@ async function main() {
 
   for (const r of results) {
     // Admin own-access rows: "blocked" means "correctly authorized"
-    const isAdminOwnAccess = r.attemptingRole === "admin" && r.note.includes("expected access");
+    const isAdminOwnAccess = r.note.includes("expected access");
     const pass = r.blocked;
     const icon = pass ? "✓" : "✗";
     const blockedLabel = isAdminOwnAccess

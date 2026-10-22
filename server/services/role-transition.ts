@@ -37,8 +37,9 @@
  *   • same family → same family (travel_expert → local_expert). That is a re-evaluation of one
  *     application by review, not a second earning role.
  *   • the same role again — an idempotent re-approval must stay a no-op, not a 409.
- *   • → a NON-earning role (`user`, `admin`). Removing the existing role is exactly how an
- *     account is freed up for the other family, so it must never be refused.
+ *   • → a NON-earning role (`user`, `admin`, `support`, `moderator`). Removing the existing
+ *     role is exactly how an account is freed up for the other family, so it must never be
+ *     refused. Support and moderator are staff, not a fourth earning family.
  */
 import { EXPERT_ROLES, PROVIDER_ROLES } from "../../shared/roles";
 

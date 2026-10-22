@@ -55,7 +55,7 @@ test("RC5: the end date is inclusive; a blank end date never ends; a malformed o
 
 test("RC6: cohorts apply to travel_expert, local_expert and event_planner only", () => {
   for (const role of ["travel_expert", "local_expert", "event_planner"]) assert.equal(isExpertCohortRole(role), true);
-  for (const role of ["executive_assistant", "expert", "service_provider", "admin", "user", null]) {
+  for (const role of ["executive_assistant", "expert", "service_provider", "admin", "support", "moderator", "user", null]) {
     assert.equal(isExpertCohortRole(role as any), false, String(role));
   }
 });

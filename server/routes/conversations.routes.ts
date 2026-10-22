@@ -26,6 +26,7 @@ import { zodErrorBody } from "../utils/zod-error-body";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { getUserId } from "../utils/auth";
+import { requireStaff } from "../utils/staff-access";
 import { sanitizeText } from "../utils/text-sanitizer";
 import { contactStartBodySchema } from "@shared/contact-address";
 import { conversationContextKindEnum, type ConversationContextKind } from "@shared/schema";
@@ -155,15 +156,15 @@ const adminQuerySchema = z.object({
 /**
  * GET /api/admin/conversations?contextKind=&contextId=
  *
- * Which conversations exist about one booking / service / storefront handle. Rides §2's BLANKET
- * `adminApiGuard` (`app.use("/api/admin", adminApiGuard)` in routes.ts) — deliberately NO
- * per-endpoint admin check, which is the opt-in pattern §2 exists to forbid.
+ * Which conversations exist about one booking / service / storefront handle. This is the
+ * moderator "report context" read. It still rides §2's BLANKET `adminApiGuard`; `requireStaff`
+ * is the permission split (moderator or admin), not a replacement for that guard.
  *
- * READ-ONLY, and deliberately WITHOUT MESSAGE BODIES: whether an admin may read what two people
- * said to each other is a separate decision nobody has made, and shipping it as a side effect of a
- * context index would be making it silently.
+ * READ-ONLY, and deliberately WITHOUT MESSAGE BODIES: whether a staff member may read what two
+ * people said to each other is a separate decision nobody has made, and shipping it as a side
+ * effect of a context index would be making it silently.
  */
-router.get("/api/admin/conversations", async (req, res) => {
+router.get("/api/admin/conversations", isAuthenticated, requireStaff("report_context"), async (req, res) => {
   try {
     const parsed = adminQuerySchema.safeParse(req.query);
     if (!parsed.success) {

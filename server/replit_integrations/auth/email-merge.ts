@@ -7,7 +7,7 @@
 //
 //   - a merge needs an EXPLICIT verified-email signal from the provider (`email_verified === true` on an
 //     OIDC claim set; Facebook's passport profile carries no such signal, so Facebook never merges);
-//   - a merge NEVER lands on a privileged account (admin), whatever the signal;
+//   - a merge NEVER lands on a privileged account (any staff role), whatever the signal;
 //   - a refused merge creates NO second account for the same email: the person is told to sign in with
 //     their email and password (`EMAIL_SIGN_IN_REQUIRED`);
 //   - merges and refusals are logged by user id only — never the email.
@@ -15,8 +15,10 @@
 // Pure: no db, no logger. The callers (replitAuth.ts upsertUser, facebookAuth.ts facebookVerify) read the
 // owner row, ask this, and act.
 
-/** Roles a social sign-in may never be merged into. `admin` is the only staff role `users.role` carries. */
-export const EMAIL_MERGE_REFUSED_ROLES: readonly string[] = ["admin"];
+import { STAFF_ROLES } from "@shared/roles";
+
+/** Roles a social sign-in may never be merged into. Every staff role, from shared/roles.ts. */
+export const EMAIL_MERGE_REFUSED_ROLES: readonly string[] = STAFF_ROLES;
 
 export type EmailMergeDecision =
   | { merge: true }

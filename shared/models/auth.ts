@@ -21,7 +21,10 @@ export const sessions = pgTable(
 // - service_provider: Hotels, restaurants, tours, experiences
 // - executive_assistant: Manage travel for high-net-worth clients
 // - expert: Legacy role (maps to travel_expert)
-// - admin: Platform administration
+// - admin: Platform administration (every admin route)
+// - support: Staff. Contact submissions and read-only booking detail. Not an admin.
+// - moderator: Staff. Message reports, report context, and listing status. Not an admin.
+// users.role is varchar(30) with NO database CHECK, so these two need no migration.
 export const userRoleEnum = [
   "user",
   "travel_expert",
@@ -30,7 +33,9 @@ export const userRoleEnum = [
   "service_provider",
   "executive_assistant",
   "expert", // Legacy - kept for backwards compatibility
-  "admin"
+  "admin",
+  "support",
+  "moderator",
 ] as const;
 
 // User storage table.
