@@ -166,7 +166,7 @@ function AddCardForm({ onSuccess, onCancel }: { onSuccess: () => void; onCancel:
   );
 }
 
-export function AddCardDialog({ triggerLabel = "Add payment method" }: { triggerLabel?: string }) {
+export function AddCardDialog({ triggerLabel = "Add a payment method" }: { triggerLabel?: string }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);

@@ -258,7 +258,7 @@ test("the gate renders the shared offer and does not lock the account out", () =
   assert.equal(gate.includes("Sign out"), false);
   assert.equal(gate.includes("logout"), false);
   const dialog = read("client", "src", "components", "payment", "AddCardDialog.tsx");
-  assert.match(dialog, /triggerLabel = "Add payment method"/);
+  assert.match(dialog, /triggerLabel = "Add a payment method"/);
   const prompt = read("client", "src", "components", "payment", "SavePaymentMethodPrompt.tsx");
   assert.match(prompt, /<AddCardDialog \/>/);
   assert.equal(prompt.includes("triggerLabel"), false);
