@@ -295,6 +295,12 @@ test("resolves named re-exports used by authentication registration helpers", ()
  *
  * 711 / 703 → 712 / 704 (ledger `2026-10-19-cs1-fact-review`): POST /api/admin/bot-proposals/refresh-facts/:id/approve —
  * an admin's review of official-refresh output, behind the blanket /api/admin guard.
+ * 714 / 706 → 720 / 712 (ledger `2026-10-21-city-knowledge-test`): POST /api/expert/city-knowledge/start,
+ * POST /api/expert/city-knowledge/answer and POST /api/expert/city-knowledge/part-b — the applicant's own
+ * sitting, session-authenticated, outside the expert-prefix role backstop because a pending application is
+ * not the expert role (user-data 246 → 249, session-self 362 → 365); POST /api/admin/city-knowledge/:cityKey/sign-off,
+ * PUT /api/admin/city-knowledge/:cityKey and POST /api/admin/expert-applications/:id/city-knowledge/retake —
+ * admin-only behind the blanket /api/admin guard (admin 186 → 189, admin-role 186 → 189).
  *
  * THE COUNTS ARE THE POINT: they exist so a route appearing or vanishing from
  * the mounted graph fails here. Now that the file is wired into CI, changing a
@@ -303,8 +309,8 @@ test("resolves named re-exports used by authentication registration helpers", ()
 test("current mounted graph parity includes auth helpers and shared api paths", () => {
   const root = process.cwd();
   const result = extractMountedMutations(path.join(root, "server/routes.ts"), root);
-  assert.equal(result.mutations.length, 714);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 706);
+  assert.equal(result.mutations.length, 720);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 712);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -314,14 +320,15 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "generated/security/mutation-auth-manifest.json"), "utf8"));
   const markdown = fs.readFileSync(path.join(root, "generated/security/mutation-auth-inventory.md"), "utf8");
   const endpointRows = markdown.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| ---")).slice(1);
-  assert.equal(endpointRows.length, 706);
+  assert.equal(endpointRows.length, 712);
   // 709 / 701 (ledger `2026-10-18-fd4-share-projection`): the shadowed quick-start twin is deleted; unique paths stay 701.
   // 710 / 702 (ledger `2026-10-19-fb1-free-retime`): + POST /api/trips/:tripId/retime-fixes/:itemId/apply.
   // 712 / 704 (ledger `2026-10-18-cs1-source-signoff`): the sign-off and photo-block POSTs.
   // 713 / 705 (ledger `2026-10-19-sh1-test-flag`): + PATCH /api/admin/users/:id/test-flag.
   // 714 / 706 (ledger `2026-10-19-cs1-fact-review`): the refresh-fact approve POST.
-  assert.equal(manifest.rawRegistrationCount, 714);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 706);
+  // 720 / 712 (ledger `2026-10-21-city-knowledge-test`): the three applicant sittings and the three admin bank/retake writes.
+  assert.equal(manifest.rawRegistrationCount, 720);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 712);
   // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R274): user-data,
   // session-self; the owner/delegate check runs in the service before any write.
   // + POST /api/admin/content-sources/:id/public-ok (ledger `2026-10-03-official-facts-public-ok`, R278):
@@ -364,7 +371,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // check (planRole "choose") runs in the service before any write.
   // admin 182 → 184 (ledger `2026-10-18-cs1-source-signoff`): the sign-off and photo-block POSTs are both admin; +1 SH-1 test-flag.
   // admin 185 → 186 (ledger `2026-10-19-cs1-fact-review`): the refresh-fact approve POST.
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 186, "user-data": 246, other: 243 });
+  // admin 186 → 189, user-data 246 → 249 (ledger `2026-10-21-city-knowledge-test`): three admin writes, three applicant sittings.
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 189, "user-data": 249, other: 243 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
@@ -399,7 +407,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   assert.deepEqual(manifest.boundaryTotals, {
   // admin-role 182 → 184 (ledger `2026-10-18-cs1-source-signoff`): the same two admin POSTs; +1 SH-1 test-flag.
   // admin-role 185 → 186 (ledger `2026-10-19-cs1-fact-review`): the refresh-fact approve POST.
-    "admin-role": 186, "session-self": 362, "resource-owner": 102,
+  // admin-role 186 → 189, session-self 362 → 365 (ledger `2026-10-21-city-knowledge-test`).
+    "admin-role": 189, "session-self": 365, "resource-owner": 102,
     signature: 6, "public-or-system": 50, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [

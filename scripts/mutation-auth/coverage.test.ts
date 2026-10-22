@@ -21,7 +21,7 @@ test("coverage report has exact strict totals and a disposition for every unique
   assert.ok(coverage.endpoints.every((item: any) => typeof item.tested === "boolean" && item.reason));
   assert.equal(coverage.totals.tested, coverage.endpoints.filter((item: any) => item.tested).length);
   assert.equal(coverage.totals.remaining, manifestKeys.size - coverage.totals.tested);
-  assert.equal(coverage.endpoints.filter((item: any) => item.reason.startsWith("Explicitly excluded")).length, 26);
+  assert.equal(coverage.endpoints.filter((item: any) => item.reason.startsWith("Explicitly excluded")).length, 29);
 });
 
 function generateWithEvidence(evidence: unknown, missing = false) {
