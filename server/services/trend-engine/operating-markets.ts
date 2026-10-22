@@ -17,20 +17,11 @@ import { MARKET_ALIASES } from "../../config/market-aliases.config";
 
 /**
  * Partner Demand 2B (ledger 2026-08-18-partner-demand-2b): IANA timezone per operating market, so
- * the demand rollup's daily grain uses the MARKET-LOCAL date (not UTC) — a slip observed at 23:30
- * in Kyoto belongs to that Kyoto day, not the next UTC day. Keyed by marketKey; the `unmapped`
- * bucket has no single timezone and uses UTC (documented honestly at the rollup, R13).
+ * the demand rollup's daily grain uses the MARKET-LOCAL date (not UTC). The map now lives in
+ * `shared/market-today.ts` (SH-1 Launch PR 5) so the client reads the same one; re-exported here.
  */
-export const MARKET_TIMEZONES: Readonly<Record<string, string>> = {
-  kyoto: "Asia/Tokyo",
-  goa: "Asia/Kolkata",
-  mumbai: "Asia/Kolkata",
-  jaipur: "Asia/Kolkata",
-  edinburgh: "Europe/London",
-  porto: "Europe/Lisbon",
-  bogota: "America/Bogota",
-  cartagena: "America/Bogota",
-};
+import { MARKET_TIMEZONES } from "@shared/market-today";
+export { MARKET_TIMEZONES };
 
 /** The IANA timezone for a market slug, or "UTC" for the unmapped bucket / an unknown slug (§13 —
  *  an unknown market has no local calendar to claim, so it falls back to UTC honestly). */

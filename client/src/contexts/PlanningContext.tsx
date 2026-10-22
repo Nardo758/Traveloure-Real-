@@ -122,8 +122,8 @@ export interface PlanningSource {
   experienceSlug?: string;
   /**
    * THE EVENT A PLAN IS BUILT AROUND (landing reorder, ledger `2026-09-28-city-events`): passed by
-   * "Plan around it" on the city-events strip and the /events "Coming up" block. On open, and only
-   * when no plan is bound, it seeds the pre-trip context with the event's city, its dates (one
+   * "Plan around it" on the city-events strip and the /events "Coming up" block. PlanEntry carries it
+   * into the mint (SH-1 Launch Q15.2: nothing is written to the pre-trip context on open) — the event's city, its dates (one
    * night = a single day, two or more = the range — the Moments/Trips split is made per EVENT from
    * its nights), the main moment (its first date and local start time) and the event itself as a
    * pending event, so the plan minted from it carries the event as its anchor and as a real
@@ -138,6 +138,12 @@ export interface PlanningSource {
     startTime: string | null;
     venue: string;
   };
+  /** SH-1 Launch Q14.3: the anchor's `city_events.source_id` — sent with the mint so the server refuses an ended event. */
+  eventSourceId?: string;
+  /** SH-1 item 5: the anchor's `series_key` — PlanEntry reads its sibling shows for the night picker. */
+  seriesKey?: string;
+  /** SH-1 Launch Q14.1: the anchor's series of shows — every show's local date (two or more sibling rows). */
+  showDates?: readonly string[];
   /**
    * AUTHORING MODE — this door is an EXPERT building a plan for a CLIENT (ledger
    * `2026-09-04-step4-variants-fields`). It relabels step 4's actor ("Who is traveling with your
@@ -371,21 +377,10 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
     if (next?.experienceSlug && !getTripContext().tripId) {
       updateTripContext({ experienceSlug: next.experienceSlug });
     }
-    // The event a door is built around seeds the unbound pen with the event's own facts (see
-    // `PlanningSource.anchor`). Never onto a pen bound to a plan: that plan's dates are its own.
-    // PlanEntry does not read the pen for the event (P-H1): it carries the anchor in its own state
-    // straight into the mint, so a traveler with a current plan still gets the event.
-    if (next?.anchor && !getTripContext().tripId) {
-      const a = next.anchor;
-      updateTripContext({
-        ...(next.city ? { destination: next.city } : {}),
-        startDate: a.firstDate,
-        endDate: a.lastDate,
-        mainMomentDate: a.firstDate,
-        ...(a.startTime ? { mainMomentTime: a.startTime } : {}),
-        pendingEvents: [{ title: a.title, eventDate: a.firstDate, ...(a.startTime ? { startTime: a.startTime } : {}), location: a.venue }],
-      });
-    }
+    // SH-1 Launch Q15.2 (ledger `2026-10-22-sh1-launch-pr5`): the event a door is built around is NOT written to the
+    // pen on open — PlanEntry carries the anchor in its own state straight into the mint (P-H1), and the plan's dates
+    // and event are written on Start a plan. So closing the pop-up has nothing of this door's to clear, and makes no
+    // server call. The occasion write above stays (ruling `2026-09-26-occasion-read-only`, C6).
     // E2 ruling 1: PlanEntry only CREATES plans; the edit window only edits the bound one.
     const bound = !!(getTripContext().tripId || next?.tripId);
     if (!bound || next?.newPlan) {
@@ -461,7 +456,13 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
           branch: branch === "ai" ? "ai" : "myself",
           door: (from?.door as string | undefined) ?? null,
           answers: entryAnswers(start),
-          source: { experienceSlug: start.occasionSlug, city: start.city, country: start.country, destination: start.destination },
+          source: {
+            experienceSlug: start.occasionSlug,
+            city: start.city,
+            country: start.country,
+            destination: start.destination,
+            ...(start.eventSourceId ? { eventSourceId: start.eventSourceId } : {}),
+          },
           ...(from?.pendingMapAdd ? { pendingAdd: from.pendingMapAdd } : {}),
         });
         setEntryOpen(false);
@@ -482,6 +483,7 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
             ...(door ? { door } : {}),
             occasionSource: start.occasionAsked ? "asked" : "door_prefilled",
             ...(finish ? { finish } : {}),
+            ...(start.eventSourceId ? { eventSourceId: start.eventSourceId } : {}),
           },
         },
         undefined,
@@ -683,6 +685,7 @@ function entryStartFromRecord(record: PendingPlanRecord): PlanEntryStart | null 
     ...(a.startDate && a.endDate ? { startDate: a.startDate, endDate: a.endDate } : {}),
     occasionSlug,
     ...(ev ? { event: { title: ev.title, eventDate: ev.eventDate ?? a.startDate, startTime: ev.startTime ?? null, location: ev.location ?? "" } } : {}),
+    ...(record.source.eventSourceId ? { eventSourceId: record.source.eventSourceId } : {}),
     view,
     occasionAsked: true,
   };

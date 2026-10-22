@@ -58,6 +58,8 @@ import { admitItemCoordSource } from "@shared/item-coord-source";
 import { assessServiceDeletion } from "./services/service-delete-guard.service";
 import { itineraryItemRebuildDeletable } from "./services/itinerary-rebuild-guard";
 import { splitTripMintBody, tripCreatedEventData } from "./services/trip-mint-entry";
+import { checkMintEvent } from "./services/plan-event-mint.service";
+import { clampToMarketToday } from "@shared/market-today";
 import { resolveAiDraftModel } from "./services/ai-draft-model";
 import { buildStubTripItinerary, isE2eAiStubEnabled } from "./services/ai-draft-stub";
 import { buildTravelerFeePreview, type TravelerFeePreviewInputLine } from "./services/traveler-fee-preview.service"; // R144 (ledger 2026-09-27-service-fee-before-checkout)
@@ -1492,6 +1494,23 @@ export async function registerRoutes(
       // stamped — `dates_confirmed_at` stays NULL, so every reader calls the window a placeholder and
       // the slip asks for dates (LD 42 D12: the fact, not the schema, says no date was invented).
       // `datesConfirmedAt` is still `.omit()`ed from the body schema (§19).
+      // SH-1 Launch Q14.3/Q15.3 (ledger `2026-10-22-sh1-launch-pr5`): a plan built around an event names its
+      // `city_events` row. An ended or unknown event is refused before any write; otherwise the start moves to the
+      // later of itself and the market's today (`clampToMarketToday`, the picker's own rule).
+      if (mintEntry?.eventSourceId) {
+        const verdict = await checkMintEvent(mintEntry.eventSourceId);
+        if (!verdict.ok) {
+          return res.status(409).json({
+            code: verdict.reason,
+            message: verdict.reason === "event_ended" ? "This event has ended" : "This event is not on our calendar",
+          });
+        }
+        if (sanitizedInput.startDate && sanitizedInput.endDate) {
+          const start = clampToMarketToday(String(sanitizedInput.startDate), verdict.marketKey);
+          sanitizedInput.startDate = start as any;
+          if (String(sanitizedInput.endDate) < start) sanitizedInput.endDate = start as any;
+        }
+      }
       const datesChosenByTraveler = !!(sanitizedInput.startDate && sanitizedInput.endDate);
       const placeholderDay = datesChosenByTraveler ? null : placeholderMintDay(sanitizedInput.destination);
       const trip = await storage.createTrip(

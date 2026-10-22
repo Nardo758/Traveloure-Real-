@@ -32,18 +32,21 @@ import {
   occasionPickerGroupFor,
   type OccasionPickerGroup,
 } from "@shared/experience-group";
-import type { CityEventCard, CityEventsPayload } from "@shared/city-events";
+import { countdownLabel, type CityEventCard, type CityEventsPayload } from "@shared/city-events";
+import { EventRow } from "@/components/events/EventRow";
 import type { ExperienceType } from "@shared/schema";
 import {
-  asksWhichNight,
+  EVENT_OCCASION_SLUG,
   canStartPlan,
   chosenOccasionSlug,
-  eventNightDates,
   eventsByMonth,
   eventsOverlapping,
   initialPlanEntry,
   nextMonth,
+  nightPickerOptions,
+  withSeriesShows,
   planEntryDestination,
+  planEntryMintDates,
   planEntryEventRow,
   planEntryView,
   startsStraightAway,
@@ -71,6 +74,8 @@ export interface PlanEntryStart {
   occasionSlug: string;
   occasionId?: string;
   event?: { title: string; eventDate: string; startTime: string | null; location: string };
+  /** SH-1 Launch Q14.3: the `city_events.source_id` the plan is built around — the server refuses an ended one. */
+  eventSourceId?: string;
   view: "map" | "list";
   /** Funnel fact: was the occasion answered here, or carried by the door. */
   occasionAsked: boolean;
@@ -190,13 +195,17 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
     enabled: open,
     staleTime: 5 * 60_000,
   });
-  const needsEvents = open && (state.around === "date" || state.around === "event");
+  // SH-1 Q14.1: a series' show dates come from its sibling rows in the same upcoming list.
+  const needsEvents = open && (state.around === "date" || state.around === "event" || !!state.event?.seriesKey);
   const { data: eventsPayload } = useQuery<CityEventsPayload>({
     queryKey: ["/api/city-events/upcoming"],
     enabled: needsEvents,
     staleTime: 5 * 60_000,
   });
   const events: CityEventCard[] = eventsPayload?.events ?? [];
+  useEffect(() => {
+    if (state.event?.seriesKey && !state.event.showDates && events.length > 0) setState((s) => withSeriesShows(s, events));
+  }, [state.event, events]);
 
   const occasionRows = occasions ?? [];
   const pickedSlug = chosenOccasionSlug(state);
@@ -214,9 +223,11 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
       setState((s) => ({ ...s, occasionSlug: null }));
       return;
     }
+    // SH-1 Q16.1: around an event the group follows the nights; the carried event slug does not move it.
+    if (state.event && state.occasionSlug === EVENT_OCCASION_SLUG) return;
     const g = occasionPickerGroupFor(row);
     if (g && g !== state.group) setState((s) => ({ ...s, group: g }));
-  }, [state.occasionSlug, occasionRows, state.group]);
+  }, [state.occasionSlug, occasionRows, state.group, state.event]);
 
   const start = async () => {
     if (!canStartPlan(state) || starting || !state.market) return;
@@ -227,8 +238,10 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
       destination: planEntryDestination(m),
       city: m.cityName,
       country: m.country,
-      ...(state.startDate && state.endDate ? { startDate: state.startDate, endDate: state.endDate } : {}),
+      // SH-1 Q15.3: the start no earlier than the market's today — the server applies the same clamp at mint.
+      ...(planEntryMintDates(state) ?? {}),
       occasionSlug: pickedSlug,
+      ...(state.event?.eventSourceId ? { eventSourceId: state.event.eventSourceId } : {}),
       ...(pickedRow?.id ? { occasionId: pickedRow.id } : {}),
       ...(planEntryEventRow(state) ? { event: planEntryEventRow(state)! } : {}),
       view: planEntryView(state, pickedRow),
@@ -280,25 +293,46 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
     </div>
   );
 
+  // SH-1 Launch item 13: the picker's rows are the shared EventRow (DateBlock and countdown chip on every row).
   const eventButton = (e: CityEventCard) => (
-    <button
+    <EventRow
       key={e.id}
-      type="button"
-      data-testid={`plan-entry-event-${e.id}`}
-      onClick={() => {
-        setState((s) => withEvent(s, { title: e.series ?? e.title, city: e.city, country: OPERATING_MARKETS.find((m) => m.marketKey === e.marketKey)?.country ?? null, venue: e.venue, firstDate: e.firstDate, lastDate: e.lastDate, startTime: e.startTime }));
+      id={e.id}
+      testIdPrefix="plan-entry-event"
+      selectTestId={`plan-entry-event-${e.id}`}
+      onSelect={() => {
+        // SH-1 Q14.1: a series of shows (sibling rows on one series_key) offers its shows; Q16.2: the pick carries "show".
+        setState((s) =>
+          withSeriesShows(
+            withEvent(
+              s,
+              {
+                title: e.series ?? e.title,
+                city: e.city,
+                country: OPERATING_MARKETS.find((m) => m.marketKey === e.marketKey)?.country ?? null,
+                venue: e.venue,
+                firstDate: e.firstDate,
+                lastDate: e.lastDate,
+                startTime: e.startTime,
+                ...(e.sourceId ? { eventSourceId: e.sourceId } : {}),
+                seriesKey: e.seriesKey ?? null,
+              },
+              EVENT_OCCASION_SLUG,
+            ),
+            events,
+          ),
+        );
         setStep("occasion");
       }}
-      className="flex w-full items-baseline justify-between gap-3 rounded-lg border px-3 py-2.5 text-left hover:bg-[#FAFAF8]"
-      style={{ borderColor: "var(--earn-line, #E8E8E2)" }}
-    >
-      <span className="text-[14px] font-medium" style={{ color: "var(--earn-navy, #1A1A18)" }}>{e.series ?? e.title}</span>
-      <span className="shrink-0 text-[12px]" style={{ fontFamily: MONO, color: "#7A7A72" }}>
-        {e.city} · {rangeLabel(e.firstDate, e.lastDate)}
-      </span>
-    </button>
+      firstDate={e.firstDate}
+      countdown={countdownLabel(e.daysUntil)}
+      title={e.series ?? e.title}
+      lines={[{ text: `${e.city} · ${rangeLabel(e.firstDate, e.lastDate)}`, tone: "muted" }]}
+    />
   );
 
+  // SH-1 Q14.1/Q14.2: the nights still to come in the market's today; no market ⇒ no picker.
+  const nightOptions = nightPickerOptions(state);
   const heading = straight ? "Starting your plan…" : title;
   return (
     <>
@@ -413,12 +447,12 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
                   .join(" · ")}
               </p>
 
-              {state.event && asksWhichNight(state.event) && (
+              {nightOptions && (
                 <div className="space-y-2">
                   <p className="text-[13px] font-semibold" style={{ color: "var(--earn-navy, #1A1A18)" }}>Which night?</p>
                   <div className="flex flex-wrap gap-2">
                     <Chip active={!state.night} onClick={() => setState((s) => withNight(s, null))} testId="plan-entry-night-all">All of it</Chip>
-                    {eventNightDates(state.event).map((d) => (
+                    {nightOptions.map((d) => (
                       <Chip key={d} active={state.night === d} onClick={() => setState((s) => withNight(s, d))} testId={`plan-entry-night-${d}`}>
                         {dayLabel(d)}
                       </Chip>

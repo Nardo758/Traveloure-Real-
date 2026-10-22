@@ -14,6 +14,7 @@ test("PR1: Event details is omitted for a partner row, and the commission senten
   assert.match(src, /events-row-partner-/);
   const uses = src.match(/<DetailsLink event=\{event\} \/>/g) ?? [];
   const gated = src.match(/event\.partner \? null : <DetailsLink event=\{event\} \/>/g) ?? [];
-  assert.equal(uses.length, 2);
-  assert.equal(gated.length, 2);
+  // SH-1 Launch item 13 (architect, Oct 22, 2026): WhatsOn's two row variants collapsed into the shared EventRow.
+  assert.equal(uses.length, 1);
+  assert.equal(gated.length, 1);
 });
