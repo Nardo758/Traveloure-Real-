@@ -3,8 +3,9 @@
  * prompt may render (CLAUDE.md Locked Decision 43(d); ledger `2026-09-05-payment-method-posture`).
  *
  * The ruling gives the prompt exactly two mounts — after a Trip Pass purchase, and at Finalize
- * when the plan holds bookable rows — and one shape: soft, dismissible, never blocking, and
- * NEVER at signup. This module holds the predicate so both mounts read the same answer rather
+ * when the plan holds bookable rows — and one shape: soft, dismissible, never blocking.
+ * The signed-in account-setup step is a different component
+ * (ledger `2026-10-21-signup-payment-step`). This module holds the predicate so both mounts read the same answer rather
  * than each re-deriving it (§18 rule 1); a second copy is how one surface starts nagging a user
  * who already has a card on file.
  *
