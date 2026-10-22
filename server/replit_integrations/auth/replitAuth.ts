@@ -20,6 +20,9 @@ import { safeReturnPath } from "../../utils/oauth-state";
 import { pathAfterAuth } from "../../services/email-verification.service";
 import { EMAIL_VERIFICATION_HOLD_PATH } from "@shared/email-verification-gate";
 import { recordSignupSource } from "../../services/signup-source-record";
+import { sessionPoolConfig } from "../../db-pool-config";
+import { isConnectTimeoutError } from "../../services/connect-timeout";
+import { logger } from "../../infrastructure/logger";
 import {
   decideEmailMerge,
   oidcEmailVerified,
@@ -42,7 +45,9 @@ export function getSession() {
   const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
   const pgStore = connectPg(session);
   const sessionStore = new pgStore({
-    conString: process.env.DATABASE_URL,
+    // conObject is the pool constructor. connectionString lives inside it
+    // (connect-pg-simple ignores conString once conObject is set).
+    conObject: sessionPoolConfig(process.env.DATABASE_URL ?? ""),
     createTableIfMissing: true,
     ttl: sessionTtl,
     tableName: "sessions",
@@ -162,11 +167,37 @@ export async function upsertUser(claims: any, opts: { intent?: SignupIntent; sou
   return user.id;
 }
 
+const LIVENESS_PROBES = new Set(["/api/health", "/api/ready", "/api/version"]);
+
+function isLivenessProbe(req: { method: string; path: string }): boolean {
+  return req.method === "GET" && LIVENESS_PROBES.has(req.path);
+}
+
 export async function setupAuth(app: Express) {
   app.set("trust proxy", 1);
-  app.use(getSession());
-  app.use(passport.initialize());
-  app.use(passport.session());
+  const sessionMiddleware = getSession();
+  const passportInit = passport.initialize();
+  const passportSession = passport.session();
+  // Liveness and readiness must not wait on the session store. A cookieless
+  // probe never calls store.get, but a connect timeout on any other request
+  // used to reach the global 500 handler while Neon was waking.
+  app.use((req, res, next) => {
+    if (isLivenessProbe(req)) return next();
+    sessionMiddleware(req, res, (err?: unknown) => {
+      if (err && isConnectTimeoutError(err)) {
+        logger.warn(
+          { err, path: req.path },
+          "session store connect timed out; request continues without a session",
+        );
+        return next();
+      }
+      if (err) return next(err as Error);
+      passportInit(req, res, (err2?: unknown) => {
+        if (err2) return next(err2 as Error);
+        passportSession(req, res, next);
+      });
+    });
+  });
 
   // Must register before the REPL_ID early-return: email/password login
   // (emailAuth.ts req.login) depends on these in every environment, not

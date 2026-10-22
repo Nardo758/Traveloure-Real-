@@ -250,7 +250,7 @@ test("B9 the boot line names the build, and says unknown when it cannot", () => 
   assert.ok(unknown.startsWith("[build] "), "one grep-able prefix beside [Migrations]");
 });
 
-test("S1 the shipped wiring: ONE resolver, both endpoints, build id on the 503 branch too", () => {
+test("S1 the shipped wiring: ONE resolver, both endpoints, build id on the degraded branches too", () => {
   const index = read("server/index.ts");
   const content = read("server/routes/content.routes.ts");
 
@@ -269,14 +269,14 @@ test("S1 the shipped wiring: ONE resolver, both endpoints, build id on the 503 b
     "the deploy-freshness check still reads /api/version",
   );
 
-  // /api/health carries the SAME object, on success AND on both failure branches.
+  // /api/health carries the SAME object, on success AND on both degraded branches.
   const healthBlock = content.slice(content.indexOf('router.get("/api/health"'));
   const health = healthBlock.slice(0, healthBlock.indexOf('router.get("/api/status"'));
   assert.ok(health.includes("const build = getBuildInfo();"), "health resolves once per request");
   assert.equal(
     (health.match(/timestamp: new Date\(\)\.toISOString\(\), build/g) ?? []).length,
     3,
-    "build id on the ok branch AND both 503 branches — 'which build is failing' is the question",
+    "build id on the ok branch AND both degraded branches — 'which build is up' is the question",
   );
 
   // The build step writes the file AFTER the bundle (script/build.ts rm -rf's dist first).

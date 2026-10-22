@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { logger } from "./logger";
+import { isConnectTimeoutError } from "../services/connect-timeout";
 
 export class AppError extends Error {
   public readonly statusCode: number;
@@ -135,6 +136,25 @@ export function globalErrorHandler(
     }
 
     res.status(err.statusCode).json(response);
+    return;
+  }
+
+  // A Neon wake-up is not an internal fault. 503 tells the caller to retry
+  // and keeps a platform healthcheck from recording a 500 burst.
+  if (isConnectTimeoutError(err)) {
+    logger.warn(
+      { err, requestId, path: req.path, method: req.method },
+      "database connect timed out",
+    );
+    res.status(503).json({
+      error: {
+        message: "Database is waking up",
+        code: "DATABASE_CONNECT_TIMEOUT",
+        statusCode: 503,
+        timestamp: new Date().toISOString(),
+        requestId,
+      },
+    });
     return;
   }
 

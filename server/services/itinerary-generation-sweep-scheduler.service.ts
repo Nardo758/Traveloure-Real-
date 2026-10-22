@@ -34,6 +34,8 @@ import { storage } from "../storage";
 import { logger } from "../infrastructure/logger";
 import { runBackgroundJob } from "./background-job-runner";
 import { jitteredStartupDelay } from "./startup-delay";
+import { isConnectTimeoutError } from "./connect-timeout";
+import { SWEEP_CONNECT_BACKOFF_MS, SweepConnectBackoff } from "./sweep-connect-backoff";
 
 const CHECK_INTERVAL_MS = 60 * 1000; // recovery after restart; live attempts also own deadline timers
 const FIRST_RUN_DELAY_MS = 90 * 1000; // shortly after startup, once the DB has settled
@@ -43,11 +45,15 @@ interface SweepStats {
   swept: number;
   ranAt: Date;
   error?: string;
+  /** Set while a Neon connect timeout is still inside its cooldown. Cron must not stamp success. */
+  skipped?: "connect-backoff";
+  backedOff?: boolean;
 }
 
 class ItineraryGenerationSweepSchedulerService {
   private timer: NodeJS.Timeout | null = null;
   private lastStats: SweepStats | null = null;
+  private connectBackoff = new SweepConnectBackoff();
 
   start(): void {
     if (this.timer) {
@@ -78,6 +84,19 @@ class ItineraryGenerationSweepSchedulerService {
 
   /** Run one sweep pass. Safe to call ad-hoc (e.g. an admin trigger or a test). */
   async runSweep(): Promise<SweepStats> {
+    const now = Date.now();
+    if (this.connectBackoff.isCoolingDown(now)) {
+      // Still inside the one-warn episode. Do not open another connection, and
+      // do not look like a successful pass to the cron stamp (`error` is set).
+      const stats: SweepStats = {
+        swept: 0,
+        ranAt: new Date(),
+        error: "database connect backoff",
+        skipped: "connect-backoff",
+      };
+      this.lastStats = stats;
+      return stats;
+    }
     try {
       const staleBefore = new Date(Date.now() - STALE_THRESHOLD_MS);
       const swept = await storage.sweepStaleGeneratingComparisons(staleBefore);
@@ -96,10 +115,26 @@ class ItineraryGenerationSweepSchedulerService {
         }
         console.log(`[ItineraryGenerationSweep] Swept ${swept.length} orphaned 'generating' comparison(s) to 'failed'`);
       }
+      this.connectBackoff.noteSuccess();
       this.lastStats = stats;
       return stats;
-    } catch (err: any) {
-      const stats: SweepStats = { swept: 0, ranAt: new Date(), error: err?.message || String(err) };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (isConnectTimeoutError(err)) {
+        // Returned, not thrown: runBackgroundJob's short retry would hold a
+        // slot and open more connections while Neon is still waking.
+        const shouldLog = this.connectBackoff.noteTimeout(Date.now());
+        if (shouldLog) {
+          logger.warn(
+            { err, backoffMs: SWEEP_CONNECT_BACKOFF_MS },
+            "[ItineraryGenerationSweep] database connect timed out; backing off",
+          );
+        }
+        const stats: SweepStats = { swept: 0, ranAt: new Date(), error: message, backedOff: true };
+        this.lastStats = stats;
+        return stats;
+      }
+      const stats: SweepStats = { swept: 0, ranAt: new Date(), error: message };
       console.error("[ItineraryGenerationSweep] Sweep pass failed:", err);
       this.lastStats = stats;
       return stats;

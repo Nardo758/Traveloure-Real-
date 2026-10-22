@@ -122,7 +122,7 @@ function sourceStatusField(provider: string): { sourceStatus: { status: string; 
   };
 }
 import {
-  dbHealthCheck, getServiceOfferingTypes, getExpertOfferingTypes,
+  dbHealthCheckWithin, getServiceOfferingTypes, getExpertOfferingTypes,
   getFeedCompositionConfig, insertContactSubmission, getAdminUserIds,
   getUserById, insertExpertChat, insertChatNotification,
   insertAiBlueprint, getProviderCountsByCategory, getExperienceTypeById,
@@ -375,8 +375,9 @@ function mapFeverCategoryToEventTypeLocal(category: string): string {
   // the same answer (§18 rule 1). It is a commit sha and a timestamp: not a secret, and
   // deliberately not an env dump. §13: `commit: null` + `source: "unknown"` when nothing could
   // name the build — a fabricated sha would be compared, match nothing, and blame the code.
-  // Present on the 503 branch too: "which build is failing" is exactly the question a failing
-  // health probe raises.
+  // Present when the database is down too: "which build is up" is the question a
+  // platform healthcheck asks. HTTP stays 200 — a Neon wake-up is not a dead process.
+  // `migrations: null` is still not a publish pass (ledger `2026-09-29-health-last-migration`).
   router.get("/api/health", async (_req, res) => {
     const build = getBuildInfo();
     // Ledger `2026-09-30-health-flags` (+ `2026-10-04-health-flight-flag`): operator switches as booleans only — never a value.
@@ -387,7 +388,7 @@ function mapFeverCategoryToEventTypeLocal(category: string): string {
     // P0-b item 6: whether the Maps key is SET — a boolean, never the value.
     const keys = healthKeyPresence();
     try {
-      const ok = await dbHealthCheck();
+      const ok = await dbHealthCheckWithin();
       if (ok) {
         // Ledger `2026-09-29-health-last-migration`: the database's own migration state, read
         // from `schema_migrations` in registry order (§20 — read, never inferred). A failed read
@@ -406,10 +407,10 @@ function mapFeverCategoryToEventTypeLocal(category: string): string {
         const supply = { hotels: await readHotelSupply().catch(() => null) };
         res.json({ status: "ok", db: true, timestamp: new Date().toISOString(), build, flags, egress, mapsCaps, keys, migrations, trendScores, supply });
       } else {
-        res.status(503).json({ status: "error", db: false, timestamp: new Date().toISOString(), build, flags, egress, mapsCaps, keys });
+        res.status(200).json({ status: "degraded", db: false, timestamp: new Date().toISOString(), build, flags, egress, mapsCaps, keys, migrations: null, trendScores: null, supply: null });
       }
     } catch {
-      res.status(503).json({ status: "error", db: false, timestamp: new Date().toISOString(), build, flags, egress, mapsCaps, keys });
+      res.status(200).json({ status: "degraded", db: false, timestamp: new Date().toISOString(), build, flags, egress, mapsCaps, keys, migrations: null, trendScores: null, supply: null });
     }
   });
 

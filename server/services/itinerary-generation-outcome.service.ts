@@ -1,5 +1,5 @@
 import { and, eq, lt, sql } from "drizzle-orm";
-import { db } from "../db";
+import { backgroundDb, db } from "../db";
 import { emailOutbox, itineraryComparisons, users } from "@shared/schema";
 import { dispatchMessagingEvent } from "../automations/messaging/runtime";
 import {
@@ -132,7 +132,10 @@ export async function finishComparisonGeneration(input: GenerationOutcomeInput) 
 }
 
 export async function sweepTimedOutGenerations(staleBefore: Date) {
-  const candidates = await db.select({
+  // Candidate read uses the small background pool. A Neon wake-up waiting on
+  // connectionTimeoutMillis must not occupy a request-pool slot. Terminal
+  // writes stay on `db` and run only after this select has connected.
+  const candidates = await backgroundDb.select({
     id: itineraryComparisons.id, userId: itineraryComparisons.userId,
     startedAt: itineraryComparisons.updatedAt,
   }).from(itineraryComparisons).where(and(

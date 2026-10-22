@@ -77,7 +77,17 @@ test("maintenance poller reloads only on a healthy response", async (t) => {
   await tick();
   assert.equal(reloadCount, 0, "network error must not reload");
 
-  // 4. Healthy 200 → exactly one reload, and polling stops.
+  // 4. Process is up, database is still waking → no reload.
+  fetchImpl = async () => jsonResponse(200, { status: "degraded", db: false });
+  await tick();
+  assert.equal(reloadCount, 0, "200 with db:false must not reload");
+
+  // 5. Unparseable 200 → no reload.
+  fetchImpl = async () => new Response("not-json", { status: 200 });
+  await tick();
+  assert.equal(reloadCount, 0, "unparseable 200 must not reload");
+
+  // 6. Healthy 200 → exactly one reload, and polling stops.
   fetchImpl = async () => jsonResponse(200, { status: "ok", db: true });
   await tick();
   assert.equal(reloadCount, 1, "healthy 200 must trigger reload");
