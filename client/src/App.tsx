@@ -14,12 +14,13 @@ import { useAuth } from "@/hooks/use-auth";
 import { PenBinder } from "@/components/pen-binder";
 import { useLocale } from "@/hooks/use-locale";
 import { TripQueueProvider } from "@/contexts/TripQueueContext";
+import { SignInModal } from "@/components/SignInModal";
 import { SignInModalProvider, useSignInModal } from "@/contexts/SignInModalContext";
 import { PlanningProvider } from "@/contexts/PlanningContext";
 import { GuestTripProvider } from "@/contexts/GuestTripContext";
 import { ActiveConsoleProvider } from "@/contexts/ActiveConsoleContext";
 import { ConsoleAwareLayout } from "@/components/console-aware-layout";
-import { useEffect, useRef, lazy, Suspense } from "react";
+import { useEffect, useRef, useState, lazy, Suspense } from "react";
 import { PageErrorBoundary } from "@/components/page-error-boundary";
 import { MaintenanceGate } from "@/components/maintenance-screen";
 
@@ -231,10 +232,11 @@ import { useClaimGuestTrips } from "@/hooks/use-claim-guest-trips";
 import { useClaimGuestConcierge } from "@/hooks/use-claim-guest-concierge";
 import { captureAcquisitionRef } from "@/lib/acquisition";
 import { sanitizeReturnTo } from "@/lib/safe-return-to";
+import { decideLoginRoute } from "@/lib/login-route";
 import { emailVerificationHoldRequired, isEmailVerificationHoldPath } from "@/lib/email-verification-hold";
 import { applicationStatusQuery } from "@/lib/application-status-query";
 import { accessDeniedCopy, type ApplicationPhase } from "@shared/application-status";
-import { EMAIL_SIGN_IN_REQUIRED_MESSAGE, EMAIL_SIGN_IN_REQUIRED_PARAM } from "@shared/email-sign-in-required";
+import { EMAIL_SIGN_IN_REQUIRED_MESSAGE } from "@shared/email-sign-in-required";
 import { PaymentMethodSetupGate } from "@/components/payment/PaymentMethodSetupGate";
 
 // Fallback shown while a lazily-loaded route chunk is being fetched.
@@ -358,44 +360,49 @@ function ProtectedRoute({ component: Component, skipTermsCheck = false, required
   return <Component {...rest} />;
 }
 
-/* Direct /login URL (bookmarks, emailed links, redirects): open the sign-in
-   modal over the landing page instead of falling through to the 404 route.
-   Honors ?returnTo=/path so the user lands where they were headed after auth. */
+/* Direct /login URL (bookmarks, emailed links, redirects).
+   Signed out: stay here and show the sign-in modal over the landing page.
+   A safe ?returnTo= (or ?redirect=) is kept for after auth — see decideLoginRoute.
+   Signed in: leave for that path, or home. /signup is a different route. */
 function LoginRoute() {
   const { user, isLoading } = useAuth();
-  const { openSignInModal } = useSignInModal();
   const [, navigate] = useLocation();
+  const search = useSearch();
+  const [signInOpen, setSignInOpen] = useState(true);
+  const decision = isLoading ? null : decideLoginRoute({ isSignedIn: !!user, search });
+  const redirectTo = decision?.kind === "redirect" ? decision.to : null;
+  const signInReturnTo = decision?.kind === "sign-in" ? decision.returnTo : undefined;
 
   useEffect(() => {
-    if (isLoading) return;
-    const params = new URLSearchParams(window.location.search);
-    // Only allow same-origin destinations (prevent open redirects); see
-    // sanitizeReturnTo for how "/\evil.com"-style tricks are caught.
-    const returnTo = sanitizeReturnTo(
-      params.get("returnTo") || params.get("redirect"),
-    );
+    if (!redirectTo) return;
+    navigate(redirectTo, { replace: true });
+  }, [redirectTo, navigate]);
 
-    if (user) {
-      navigate(returnTo ?? "/", { replace: true });
-      return;
-    }
-    if (returnTo) {
-      sessionStorage.setItem("traveloure_return_to", returnTo);
-    }
-    navigate("/", { replace: true });
-    // LW-1-0: a social sign-in whose email belongs to an existing account was not merged into it
-    // (server/replit_integrations/auth/email-merge.ts) — say so, and offer email and password.
-    const emailSignInRequired = params.get("error") === EMAIL_SIGN_IN_REQUIRED_PARAM;
-    openSignInModal({
-      title: "Sign in to your account",
-      description: emailSignInRequired
-        ? EMAIL_SIGN_IN_REQUIRED_MESSAGE
-        : "Welcome back! Sign in to continue planning your travels.",
-      returnTo,
-    });
-  }, [isLoading, user, openSignInModal, navigate]);
+  useEffect(() => {
+    if (decision?.kind !== "sign-in" || !signInReturnTo) return;
+    sessionStorage.setItem("traveloure_return_to", signInReturnTo);
+  }, [decision?.kind, signInReturnTo]);
 
-  return <PageLoader />;
+  if (!decision || decision.kind !== "sign-in") return <PageLoader />;
+
+  // LW-1-0: a social sign-in whose email belongs to an existing account was not merged into it
+  // (server/replit_integrations/auth/email-merge.ts) — say so, and offer email and password.
+  return (
+    <Layout>
+      <LandingPage />
+      <SignInModal
+        open={signInOpen}
+        onOpenChange={setSignInOpen}
+        title="Sign in to your account"
+        description={
+          decision.emailSignInRequired
+            ? EMAIL_SIGN_IN_REQUIRED_MESSAGE
+            : "Welcome back! Sign in to continue planning your travels."
+        }
+        returnTo={signInReturnTo}
+      />
+    </Layout>
+  );
 }
 
 /* OAuth (Replit) sign-in is a server-side redirect: the callback lands on "/"
