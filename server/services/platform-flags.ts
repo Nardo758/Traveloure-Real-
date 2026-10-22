@@ -7,10 +7,11 @@
 //                                     sign-up path: POST /api/auth/register, a first-time
 //                                     Replit OIDC sign-in and a first-time Facebook sign-in.
 //                                     Existing accounts still sign in.
-//   email_notifications_enabled     — "false" makes sendEmail() a logged no-op
-//                                     (auth-critical emails — password reset,
-//                                     verification — bypass sendEmail and are
-//                                     never gated)
+//   email_notifications_enabled     — "false" makes sendEmail() a logged no-op.
+//                                     Password-reset and verification outbox rows
+//                                     pass authCritical and skip only this flag.
+//                                     Every provider send, including those, stays
+//                                     behind canQueueGenerationNotice.
 //
 // Reads are cached for a short TTL so hot request paths (the maintenance
 // middleware runs on every /api request) don't hit the DB each time. The admin

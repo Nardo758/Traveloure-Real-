@@ -33,6 +33,7 @@ import { describe, it, before, after, afterEach } from "node:test";
 import assert from "node:assert/strict";
 
 import { db } from "../db.js";
+import { invalidatePlatformFlagCache } from "../services/platform-flags.js";
 import {
   _nextRetryAfter,
   BACKOFF_MINUTES,
@@ -76,6 +77,8 @@ function makeClaimedRow(overrides: Partial<{
   reply_to:      string | null;
   attempt_count: number;
   max_attempts:  number;
+  email_type: string;
+  metadata: unknown;
 }>): Record<string, unknown> {
   return {
     id:            1,
@@ -394,5 +397,160 @@ describe("attemptDelivery — stale-sender conditional update", () => {
       updateSql.includes("status") && updateSql.includes("processing"),
       `failure-path update must be conditional on status='processing'; got:\n${captured.slice(1).join("\n")}`
     );
+  });
+});
+
+describe("drainOutbox — no-send gate, kill switch, and auth link expiry", () => {
+  const priorEnv = process.env.NODE_ENV;
+  const priorInbox = process.env.ITINERARY_OUTCOME_TEST_EMAIL;
+
+  afterEach(() => {
+    if (priorEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = priorEnv;
+    if (priorInbox === undefined) delete process.env.ITINERARY_OUTCOME_TEST_EMAIL;
+    else process.env.ITINERARY_OUTCOME_TEST_EMAIL = priorInbox;
+    invalidatePlatformFlagCache();
+  });
+
+  it("refuses a real send when canQueueGenerationNotice does not allow the recipient", async () => {
+    process.env.NODE_ENV = "development";
+    delete process.env.ITINERARY_OUTCOME_TEST_EMAIL;
+    invalidatePlatformFlagCache();
+    const row = makeClaimedRow({ email_type: "payment_failed" });
+    const { captured } = patchExecute([row]);
+    delete _outboxTestHooks.sendEmailFn;
+
+    await drainOutbox();
+
+    const updateSql = captured.slice(1).join("\n");
+    assert.ok(updateSql.includes("cancelled"), `gate refusal must cancel without a provider attempt; got:\n${updateSql}`);
+    assert.ok(updateSql.includes("No approved development inbox"));
+    assert.equal(updateSql.includes("attempt_count"), false);
+  });
+
+  it("holds a non-auth row when notifications are disabled and does not count an attempt", async () => {
+    invalidatePlatformFlagCache();
+    const row = makeClaimedRow({ email_type: "payment_failed", attempt_count: 2 });
+    let providerCalls = 0;
+    _outboxTestHooks.sendEmailFn = async () => {
+      providerCalls += 1;
+      return { ok: true, id: "should-not-send" };
+    };
+    const captured: string[] = [];
+    let claimed = false;
+    (db as any).execute = (query: any) => {
+      const sqlString = typeof query?.queryChunks !== "undefined"
+        ? (query.queryChunks as unknown[]).map(chunkToString).join("")
+        : String(query);
+      captured.push(sqlString);
+      if (!claimed) {
+        claimed = true;
+        return Promise.resolve({ rows: [row] });
+      }
+      if (sqlString.includes("platform_settings")) {
+        return Promise.resolve({ rows: [{ setting_value: "false" }] });
+      }
+      return Promise.resolve({ rows: [] });
+    };
+
+    await drainOutbox();
+
+    assert.equal(providerCalls, 0);
+    const updateSql = captured.slice(1).join("\n");
+    assert.ok(updateSql.includes("pending"), updateSql);
+    assert.ok(updateSql.includes("Email notifications are disabled by platform settings"));
+    assert.equal(updateSql.includes("attempt_count"), false);
+  });
+
+  it("still sends an auth row when notifications are disabled", async () => {
+    invalidatePlatformFlagCache();
+    const row = makeClaimedRow({
+      email_type: "password_reset",
+      html: "<p>reset link https://app.example/reset-password?token=issued</p>",
+      metadata: { authCritical: true, linkExpiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString() },
+    });
+    let seenHtml = "";
+    _outboxTestHooks.sendEmailFn = async (params) => {
+      seenHtml = params.html;
+      return { ok: true, id: "auth-sent" };
+    };
+    const captured: string[] = [];
+    let claimed = false;
+    (db as any).execute = (query: any) => {
+      const sqlString = typeof query?.queryChunks !== "undefined"
+        ? (query.queryChunks as unknown[]).map(chunkToString).join("")
+        : String(query);
+      captured.push(sqlString);
+      if (!claimed) {
+        claimed = true;
+        return Promise.resolve({ rows: [row] });
+      }
+      if (sqlString.includes("platform_settings")) {
+        return Promise.resolve({ rows: [{ setting_value: "false" }] });
+      }
+      return Promise.resolve({ rows: [] });
+    };
+
+    await drainOutbox();
+
+    assert.ok(seenHtml.includes("token=issued"));
+    const updateSql = captured.slice(1).join("\n");
+    assert.ok(updateSql.includes("sent"), updateSql);
+    assert.ok(updateSql.includes("auth-sent"));
+  });
+
+  it("does not resend an auth link after its issued expiry", async () => {
+    const row = makeClaimedRow({
+      email_type: "email_verification",
+      html: "<p>https://app.example/verify-email?token=original</p>",
+      metadata: { authCritical: true, linkExpiresAt: new Date(Date.now() - 1000).toISOString() },
+    });
+    const { captured } = patchExecute([row]);
+    let providerCalls = 0;
+    _outboxTestHooks.sendEmailFn = async () => {
+      providerCalls += 1;
+      return { ok: true, id: "expired" };
+    };
+
+    await drainOutbox();
+
+    assert.equal(providerCalls, 0);
+    const updateSql = captured.slice(1).join("\n");
+    assert.ok(updateSql.includes("cancelled"), updateSql);
+    assert.ok(updateSql.includes("Auth link expired before delivery"));
+    assert.equal(updateSql.includes("token=original"), false);
+  });
+
+  it("retries a failed provider attempt with the same stored html", async () => {
+    invalidatePlatformFlagCache();
+    const html = "<p>https://app.example/reset-password?token=same-link</p>";
+    const seen: string[] = [];
+    let attempt = 0;
+    _outboxTestHooks.sendEmailFn = async (params) => {
+      seen.push(params.html);
+      attempt += 1;
+      return attempt === 1 ? { ok: false, error: "Resend 503" } : { ok: true, id: "retried" };
+    };
+
+    const first = makeClaimedRow({
+      email_type: "password_reset",
+      html,
+      attempt_count: 0,
+      metadata: { authCritical: true, linkExpiresAt: new Date(Date.now() + 60_000).toISOString() },
+    });
+    patchExecute([first]);
+    await drainOutbox();
+
+    const second = makeClaimedRow({
+      email_type: "password_reset",
+      html,
+      attempt_count: 1,
+      metadata: { authCritical: true, linkExpiresAt: new Date(Date.now() + 60_000).toISOString() },
+    });
+    const { captured } = patchExecute([second]);
+    await drainOutbox();
+
+    assert.deepEqual(seen, [html, html]);
+    assert.ok(captured.slice(1).join("\n").includes("sent"));
   });
 });

@@ -27,7 +27,7 @@ function stages() {
     { name: "Booking durable delivery / retry", db: true,
       files: ["server/__tests__/booking-alert-outbox.db.test.ts"] },
     { name: "Outbox retry / leases / dedupe / cancellation",
-      files: ["server/__tests__/email-outbox.test.ts"] },
+      files: ["server/__tests__/email-outbox.test.ts", "server/__tests__/critical-email-outbox.test.ts"] },
     { name: "Retained registry contract suites",
        files: walk("server/automations").filter(file => /\/__tests__\/.*\.test\.ts$/.test(file) &&
          !file.endsWith("/automation-baseline-harness.test.ts")) },
