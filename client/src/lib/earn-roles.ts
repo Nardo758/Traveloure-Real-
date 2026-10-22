@@ -59,6 +59,7 @@ export {
 export type { ExpertTier, EventPlannerOfferingKey } from "@shared/expert-offerings";
 
 import { EXPERT_TIERS, isEventPlannerOfferingKey, type ExpertTier } from "@shared/expert-offerings";
+import { SUPPLY_APPLICATION_BY_ROLE } from "@shared/supply-entry";
 
 export type RoleKey = "service_provider" | "event_planner" | "trip_planner" | "local_expert";
 export type Track = "in-person" | "remote";
@@ -121,7 +122,7 @@ export const EARN_ROLES: EarnRole[] = [
     label: "Service Provider",
     track: "in-person",
     blurb: "List your hotel, restaurant, tour, or experience on our platform",
-    signupPath: "/become-provider",
+    signupPath: SUPPLY_APPLICATION_BY_ROLE.service_provider,
   },
   {
     key: "event_planner",
@@ -132,21 +133,21 @@ export const EARN_ROLES: EarnRole[] = [
     // event PLANNER → expert track). Entry points used to disagree — this card sent people
     // into the provider form while the nav sent them into the expert application. All
     // Event Planner entries now land on the chooser.
-    signupPath: "/start/events",
+    signupPath: SUPPLY_APPLICATION_BY_ROLE.event_planner,
   },
   {
     key: "trip_planner",
     label: "Trip Planner",
     track: "remote",
     blurb: "Design personalized itineraries and guide travelers through every step of their journey",
-    signupPath: "/become-expert?type=travel_expert",
+    signupPath: SUPPLY_APPLICATION_BY_ROLE.trip_planner,
   },
   {
     key: "local_expert",
     label: "Local Expert",
     track: "remote",
     blurb: "Guide travelers through your city with personalized tours and local tips",
-    signupPath: "/become-expert?type=local_expert",
+    signupPath: SUPPLY_APPLICATION_BY_ROLE.local_expert,
   },
 ];
 
@@ -154,7 +155,7 @@ export const EARN_ROLES: EarnRole[] = [
 export const EA_SIGNUP = {
   label: "Executive Assistant",
   blurb: "Manage travel and events for high-net-worth clients",
-  signupPath: "/become-expert?type=executive_assistant",
+  signupPath: SUPPLY_APPLICATION_BY_ROLE.executive_assistant,
 };
 
 /**

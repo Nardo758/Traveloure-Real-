@@ -37,6 +37,7 @@ import { Layout } from "@/components/layout";
 import { PageLayout, SectionTitle, PAGE_ACTION, PAGE_LINK } from "@/components/company/company-page";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useAuth } from "@/hooks/use-auth";
+import { LOCAL_EXPERT_APPLY_PATH } from "@shared/supply-entry";
 import { apiRequest } from "@/lib/queryClient";
 import { Star, ArrowRight, AlertCircle, PackageOpen, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -157,7 +158,7 @@ export default function EarnPage() {
   const searchString = useSearch();
   const [, navigate] = useLocation();
   const { openSignInModal } = useSignInModal();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
 
   // ── Gap 14 (ledger `2026-09-04-earn-contained-fixes`): "Don't see your trade?" ──────────
   // The catalog is finite and admin-edited, and a person whose trade is not on it had nowhere
@@ -189,6 +190,23 @@ export default function EarnPage() {
       setRequestDescription("");
     },
   });
+
+  // S-10: the Local Expert card can have an empty catalog, so "I do this" never renders.
+  // This button is the role's own application, with or without a published offering.
+  // Signed out, the existing sign-in modal returns to that application (#1601).
+  const applyAsLocalExpert = () => {
+    if (authLoading) return;
+    if (!isAuthenticated) {
+      openSignInModal({
+        intent: "supply",
+        returnTo: LOCAL_EXPERT_APPLY_PATH,
+        title: "Sign in to apply as a Local Expert",
+        description: "Create an account or sign in, and you'll come back to the Local Expert application.",
+      });
+      return;
+    }
+    navigate(LOCAL_EXPERT_APPLY_PATH);
+  };
 
   const openOfferingRequest = () => {
     if (!isAuthenticated) {
@@ -379,10 +397,21 @@ export default function EarnPage() {
         {/* ── Catalog: the selected role's full mapped offering list ───── */}
         <section className="rounded-xl border bg-card p-5 sm:p-6">
           <div>
-            <div className="flex items-baseline justify-between mb-3">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <SectionTitle testId="earn-catalog-title">
                 {activeRole.label} · all services
               </SectionTitle>
+              {activeKey === "local_expert" && (
+                <Button
+                  type="button"
+                  onClick={applyAsLocalExpert}
+                  disabled={authLoading}
+                  className={PAGE_ACTION.primary}
+                  data-testid="earn-apply-local-expert"
+                >
+                  Apply as a Local Expert
+                </Button>
+              )}
             </div>
             {catalogLoading ? (
               <p className="text-sm text-[color:var(--earn-muted)]">Loading offerings…</p>
