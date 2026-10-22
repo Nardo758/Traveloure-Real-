@@ -2983,7 +2983,8 @@ router.patch("/api/admin/contact-submissions/:id", isAuthenticated, requireStaff
     }
     try {
       const actor = await getFullAdminUser(getUserId(req)!);
-      if (!actor) return res.status(401).json({ message: "Authentication required" });
+      const actorRole = actor?.role;
+      if (!actor || !actorRole) return res.status(401).json({ message: "Authentication required" });
       const body = parsed.data;
       if (body.assignedAdminId && !(await isSupportAssignee(body.assignedAdminId))) {
         return res.status(400).json({ message: "assignedAdminId must be an admin account" });
@@ -2993,7 +2994,7 @@ router.patch("/api/admin/contact-submissions/:id", isAuthenticated, requireStaff
       const id = req.params.id;
       const common = {
         actorId: actor.id,
-        actorRole: actor.role,
+        actorRole,
         resourceType: CONTACT_SUBMISSION_RESOURCE,
         resourceId: id,
         ipAddress: req.ip ?? null,
