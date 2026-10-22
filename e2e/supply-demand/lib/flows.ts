@@ -11,6 +11,8 @@
  * not, or the request was never sent.
  */
 import type { Page } from '@playwright/test';
+import { q } from './db';
+import { fileFinding } from './findings';
 import { testid, fillIfVisible, clickIfVisible, checkIfVisible, appears, actAndAwait, ok2xx, LIST_LOAD_MS } from './ui';
 
 export async function selectByTrigger(page: Page, triggerTestId: string, optionText?: string): Promise<void> {
@@ -194,8 +196,85 @@ export async function adminApproveProviderApplication(page: Page, businessName: 
   return ok2xx(status);
 }
 
+/**
+ * A local expert cannot be approved until the city bank is signed off and the applicant has a
+ * qualifying pass (ledger `2026-10-21-city-knowledge-test`). These specs approve a Kyoto applicant
+ * so a later journey can hire them; they do not sit the 20-item exam. Sign-off goes through the
+ * admin route. The pass row is a harness write, the same class as the identity seed: the committed
+ * Kyoto file stays unverified, and this database row is what lets Approve enable.
+ */
+async function seedQualifyingCityKnowledgePass(page: Page, email: string): Promise<void> {
+  const listed = await page.request.get('/api/admin/expert-applications');
+  if (!listed.ok()) return;
+  const forms: unknown = await listed.json().catch(() => null);
+  if (!Array.isArray(forms)) return;
+  const form = forms.find((row) => {
+    const candidate = row as { email?: string; expertType?: string };
+    return typeof candidate.email === 'string' && candidate.email.toLowerCase() === email.toLowerCase()
+      && candidate.expertType === 'local_expert';
+  }) as { id?: string; userId?: string; cityKnowledge?: { cityKey?: string | null } } | undefined;
+  const cityKey = form?.cityKnowledge?.cityKey;
+  if (!form?.id || !form.userId || !cityKey) return;
+
+  const signed = await page.request.post(`/api/admin/city-knowledge/${cityKey}/sign-off`);
+  if (!signed.ok()) return;
+  const banks = await q<{ signed_off_hash: string | null }>(
+    `SELECT signed_off_hash FROM city_knowledge_banks WHERE city_key = $1`,
+    [cityKey],
+  );
+  const hash = banks[0]?.signed_off_hash;
+  if (!hash) return;
+  const already = await q(
+    `SELECT id FROM city_knowledge_attempts
+      WHERE application_id = $1 AND outcome = 'pass' AND attention_flag IS NOT TRUE
+        AND result->>'bankContentHash' = $2
+      LIMIT 1`,
+    [form.id, hash],
+  );
+  if (already.length > 0) return;
+
+  const result = {
+    bankContentHash: hash,
+    scoresComplete: true,
+    numericPass: true,
+    percents: { partA: 100, b1: 100, b2: 100 },
+    partB: 100,
+    overall: 100,
+    topics: [],
+    attentionReasons: [],
+    partA: { correct: 20, drawn: 20 },
+    briefs: [],
+    answers: [],
+  };
+  await q(
+    `INSERT INTO city_knowledge_attempts
+       (id, user_id, application_id, city_key, attempt_number, status, outcome, result, attention_flag, scored_at, submitted_at)
+     VALUES (gen_random_uuid()::text, $1, $2, $3,
+             COALESCE((SELECT MAX(attempt_number) FROM city_knowledge_attempts WHERE application_id = $2), 0) + 1,
+             'scored', 'pass', $4::jsonb, false, NOW(), NOW())`,
+    [form.userId, form.id, cityKey, JSON.stringify(result)],
+  );
+  fileFinding({
+    id: `city-knowledge-pass-seed-${form.id}`,
+    journey: 'harness',
+    step: 'admin-approve-expert:city-knowledge-pass',
+    class: 'SPEC_DIVERGENCE',
+    severity: 'P3',
+    known: '2026-10-21-city-knowledge-test',
+    title: 'seeded step: a qualifying city-knowledge pass so a local-expert application can be approved',
+    expected: 'Approve stays disabled until the bank is signed off and the applicant has a qualifying pass',
+    actual:
+      `POST /api/admin/city-knowledge/${cityKey}/sign-off, then INSERT city_knowledge_attempts ` +
+      `(outcome=pass, attention_flag=false, result.bankContentHash=${hash}) for application ${form.id}. ` +
+      'The sitting itself is not this harness\'s subject. The Kyoto file in the repo stays unverified.',
+    where: 'e2e/supply-demand/lib/flows.ts seedQualifyingCityKnowledgePass',
+    behavioural: true,
+  });
+}
+
 /** /admin/experts → Applications tab → approve by matching applicant name/email text. */
 export async function adminApproveExpertApplication(page: Page, matchText: string): Promise<boolean> {
+  await seedQualifyingCityKnowledgePass(page, matchText);
   await page.goto('/admin/experts');
   await testid(page, 'button-tab-applications').click().catch(() => {});
   const card = page.locator('[data-testid^="card-application-"]', { hasText: matchText });
