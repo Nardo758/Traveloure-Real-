@@ -22,16 +22,22 @@ import {
   BOT_TOKEN_PREFIX,
   admitBotFact,
   admitBotSource,
+  botKindExpiryRule,
   botProposalDedupeInput,
   botTokenLive,
   factForKind,
   isBotProposalKind,
   isBotScope,
+  isNotOfficialSiteHost,
+  textClaimsVerification,
+  urlHost,
   type BotProposalKind,
   type BotScope,
 } from "@shared/bot-proposals";
 import { PAGE_READ_ORIGINS, type LicenseClass } from "@shared/content-facts";
-import { admitFeasibilityFact, isFeasibilityFactType } from "@shared/feasibility-facts";
+import { admitFeasibilityFact, closedDatesExpiryDay, isFeasibilityFactType, parseClosedDates } from "@shared/feasibility-facts";
+import { isOnPartnerHost } from "@shared/partner-hosts";
+import { loadPartnerHosts } from "./partner-hosts.service";
 import { resolveReviewedExpiry, type ReviewExpiryRefusal } from "@shared/fact-review";
 import { buildCoverageReport, type CoverageSourceRow } from "@shared/content-coverage";
 import { recordFacts } from "./content-facts/place-facts.service";
@@ -187,9 +193,24 @@ export type ProposalRefusal =
   | "not_feasible"
   | "source_not_eligible"
   | "url_not_https"
-  | "url_off_source_host";
+  | "url_off_source_host"
+  | "url_not_official_site"
+  | "text_claims_verification"
+  | "dates_past";
 
 const TEXT_MAX = 500;
+
+/**
+ * Row 126 (CS-1 Q10): the page and the source's homepage must be the place's own official site — never a map or
+ * search host, an OTA, or a partner's domain (the registry's hosts, read by the ONE `loadPartnerHosts`).
+ */
+async function officialSiteRefusal(sourceUrl: string | null | undefined, homepage: string | null | undefined): Promise<"url_not_official_site" | null> {
+  const hosts = [urlHost(sourceUrl ?? null), urlHost(homepage ?? null)];
+  if (hosts.some((h) => isNotOfficialSiteHost(h))) return "url_not_official_site";
+  const partners = await loadPartnerHosts();
+  if (hosts.some((h) => h && isOnPartnerHost(h, partners))) return "url_not_official_site";
+  return null;
+}
 
 /**
  * File a proposal. Admitted only when the kind is one of Phase 1's two, the place is a place id, the source row is
@@ -209,6 +230,8 @@ export async function fileBotProposal(
   if (!Number.isFinite(checkedMs) || checkedMs > Date.now() + 60_000) return { ok: false, reason: "bad_checked_at" };
   const text = typeof body.text === "string" ? body.text.trim() : "";
   if (!text || text.length > TEXT_MAX) return { ok: false, reason: "bad_text" };
+  // Row 126: a bot never claims a check; the traveler's stamp is written by code from stored fields.
+  if (textClaimsVerification(text)) return { ok: false, reason: "text_claims_verification" };
   const quote = typeof body.quote === "string" ? body.quote.trim() : "";
   if (!quote) return { ok: false, reason: "no_quote" };
   if (quote.length > factQuoteMaxChars()) return { ok: false, reason: "quote_too_long" };
@@ -222,8 +245,15 @@ export async function fileBotProposal(
   const [src] = sourceId ? await db.select().from(contentSources).where(eq(contentSources.id, sourceId)).limit(1) : [];
   const verdict = admitBotSource(src ?? null, sourceUrl);
   if (!verdict.ok) return { ok: false, reason: verdict.reason };
+  const notOfficial = await officialSiteRefusal(sourceUrl, src?.homepage ?? null);
+  if (notOfficial) return { ok: false, reason: notOfficial };
 
   const value = { text, quote, ...fields };
+  // Row 126: closed dates that have all passed would be stored already expired — refused, never filed.
+  if (factType === "closed_dates") {
+    const v = parseClosedDates(value);
+    if (!v || closedDatesExpiryDay(v) <= new Date().toISOString().slice(0, 10)) return { ok: false, reason: "dates_past" };
+  }
   if (isFeasibilityFactType(factType)) {
     const f = admitFeasibilityFact({ factType, value, origin: BOT_FACT_ORIGIN, license: "official", sourceUrl });
     if (!f.ok) return { ok: false, reason: "not_feasible" };
@@ -302,7 +332,17 @@ export async function listBotProposalsForReview(status: string) {
   return out;
 }
 
-export type ApproveRefusal = "not_found" | "not_pending" | "bad_kind" | "source_not_eligible" | "url_not_https" | "url_off_source_host" | "fact_refused" | ReviewExpiryRefusal;
+export type ApproveRefusal =
+  | "not_found"
+  | "not_pending"
+  | "bad_kind"
+  | "source_not_eligible"
+  | "url_not_https"
+  | "url_off_source_host"
+  | "url_not_official_site"
+  | "fact_refused"
+  | "expiry_from_dates"
+  | ReviewExpiryRefusal;
 
 /**
  * Approve. Checked first, then ONE transaction: claim `pending → approved` (the statement is the guard, §15), write
@@ -324,12 +364,31 @@ export async function approveBotProposal(
   const [src] = p.sourceId ? await db.select().from(contentSources).where(eq(contentSources.id, p.sourceId)).limit(1) : [];
   const verdict = admitBotSource(src ?? null, p.sourceUrl);
   if (!verdict.ok) return { ok: false, reason: verdict.reason };
+  const notOfficial = await officialSiteRefusal(p.sourceUrl, src?.homepage ?? null);
+  if (notOfficial) return { ok: false, reason: notOfficial };
   const [setting] = await db.select({ v: platformSettingsTable.settingValue }).from(platformSettingsTable).where(eq(platformSettingsTable.settingKey, BOT_FACT_DEFAULT_EXPIRY_SETTING)).limit(1);
   const { factType, need } = factForKind(p.kind);
   // CS-1 item 3: the expiry is the reviewer's — no later than the source's expiry setting (falling back to the
   // platform setting), counted from this approval, the fact's check date. Hours may take that latest date.
-  const expiry = resolveReviewedExpiry({ factType, checkedAt: now, sourceIntervalDays: src!.refreshIntervalDays, settingValue: setting?.v ?? null, entered: opts.expiresAt, now });
-  if (!expiry.ok) return { ok: false, reason: expiry.reason };
+  // Row 126: closed dates take their expiry from the dates (the one writer stamps it); timed entry needs the
+  // reviewer's date, capped by the same setting.
+  const rule = botKindExpiryRule(p.kind);
+  let expiresAt: Date | null = null;
+  if (rule === "from_dates") {
+    if (opts.expiresAt !== undefined && opts.expiresAt !== null && opts.expiresAt !== "") return { ok: false, reason: "expiry_from_dates" };
+  } else {
+    const expiry = resolveReviewedExpiry({
+      factType,
+      checkedAt: now,
+      sourceIntervalDays: src!.refreshIntervalDays,
+      settingValue: setting?.v ?? null,
+      entered: opts.expiresAt,
+      now,
+      requireEntered: rule === "reviewer_required",
+    });
+    if (!expiry.ok) return { ok: false, reason: expiry.reason };
+    expiresAt = expiry.expiresAt;
+  }
   const factId = crypto.randomUUID();
   const draft = {
     id: factId,
@@ -348,7 +407,7 @@ export async function approveBotProposal(
     fetchedAt: now,
     verifiedAt: now,
     verifiedBy: adminId,
-    expiresAt: expiry.expiresAt,
+    expiresAt,
     costCents: 0,
   };
   const pre = admitBotFact(draft);

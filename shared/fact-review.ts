@@ -39,6 +39,7 @@ const DAY_MS = 86_400_000;
  *   · safety     — `entered` is required (`expiry_required`).
  *   · hours      — `entered` optional; absent ⇒ `latest`.
  *   · `entered` must parse, be after `now`, and be no later than `latest`.
+ *   · `requireEntered` (row 126, a bot's timed-entry proposal): `entered` is required whatever the type.
  */
 export function resolveReviewedExpiry(input: {
   factType: string;
@@ -47,6 +48,7 @@ export function resolveReviewedExpiry(input: {
   settingValue: string | null | undefined;
   entered?: unknown;
   now: Date;
+  requireEntered?: boolean;
 }): { ok: true; expiresAt: Date; latest: Date } | { ok: false; reason: ReviewExpiryRefusal; latest?: Date } {
   const days = botFactExpiryDays(input.sourceIntervalDays, input.settingValue);
   if (days === null) return { ok: false, reason: "expiry_unset" };
@@ -54,7 +56,7 @@ export function resolveReviewedExpiry(input: {
   const raw = input.entered;
   const given = raw !== undefined && raw !== null && raw !== "";
   if (!given) {
-    if (isSafetyFactType(input.factType)) return { ok: false, reason: "expiry_required", latest };
+    if (isSafetyFactType(input.factType) || input.requireEntered) return { ok: false, reason: "expiry_required", latest };
     if (latest.getTime() <= input.now.getTime()) return { ok: false, reason: "expiry_past", latest };
     return { ok: true, expiresAt: latest, latest };
   }
