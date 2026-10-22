@@ -41,24 +41,42 @@ test("the seeded bank stays unverified", () => {
 test("fact-check pins for the items Leon marked", () => {
   const k28 = item("K28");
   const correct = k28.options.find((option: { id: string }) => option.id === "b").text as string;
-  assert.match(correct, /last boat is 15:30/);
+  assert.match(correct, /last boat is the 15:00/);
+  assert.match(correct, /second Monday of December/);
   assert.match(correct, /last boat is 14:30/);
-  assert.match(correct, /when the boat is full/);
-  assert.doesNotMatch(correct, /hourly until 13 Dec/);
+  assert.match(correct, /when they fill/);
+  assert.doesNotMatch(correct, /15:30/);
+  assert.doesNotMatch(correct, /1 to 13 December/);
   assert.equal(k28.status, "active");
+  assert.equal(k28.factCheck, "ok");
 
   const hozu = claim("b1-hozugawa");
   assert.equal(hozu.status, "active");
-  assert.match(hozu.text, /15:30/);
-  assert.match(hozu.text, /14:30/);
-  assert.doesNotMatch(hozu.text, /hourly until 13 Dec/);
+  assert.match(hozu.text, /last boat is 15:00/);
+  assert.match(hozu.text, /second Monday of December/);
+  assert.doesNotMatch(hozu.text, /15:30/);
+  assert.doesNotMatch(hozu.text, /9:00 to 13:00/);
 
   for (const id of ["K17", "K26", "K27", "K31"]) {
     const row = item(id);
-    assert.equal(row.status, "inactive", id);
-    assert.equal(row.factCheck, "unverified", id);
-    assert.equal(isDrawable(row, "2026-10-21"), false, id);
+    assert.equal(row.status, "active", id);
+    assert.equal(row.factCheck, "ok", id);
+    assert.equal(isDrawable(row, "2026-10-22"), true, id);
   }
+  assert.match(item("K17").answerText, /00:00 Japan time/);
+  assert.match(item("K17").answerText, /JR Pass cannot be used/);
+  const k26 = item("K26").options.find((option: { id: string }) => option.id === "b").text as string;
+  assert.match(k26, /60 steps/);
+  assert.match(k26, /no elevator/);
+  assert.match(k26, /Torokko Saga/);
+  const k27 = item("K27").options.find((option: { id: string }) => option.id === "a").text as string;
+  assert.match(k27, /Mid-November to early December/);
+  assert.match(k27, /temperature/);
+  assert.deepEqual(item("K27").correctOptionIds, ["a"]);
+  const k31 = item("K31").options.find((option: { id: string }) => option.id === "b").text as string;
+  assert.match(k31, /Obstructing someone's path/);
+  assert.doesNotMatch(item("K31").prompt, /not statutory/i);
+  assert.doesNotMatch(item("K31").prompt, /Kosode/i);
   for (const id of ["b1-sagano-daily", "b1-sagano-rain-refund"]) {
     const row = claim(id);
     assert.equal(row.status, "inactive", id);
@@ -87,7 +105,7 @@ test("the draw holds back inactive and expired items", () => {
   const drawn = drawItemIds(bank.items, "2026-10-21", "fact-check-seed");
   assert.ok(drawn);
   assert.equal(drawn!.length, 20);
-  for (const id of ["K17", "K26", "K27", "K31"]) assert.equal(drawn!.includes(id), false);
+  for (const id of ["K17", "K26", "K27", "K31"]) assert.equal(isDrawable(item(id), "2026-10-21"), true);
   const later = drawItemIds(bank.items, "2026-10-24", "fact-check-seed");
   assert.ok(later);
   assert.equal(later!.includes("K30"), false);
@@ -256,9 +274,13 @@ test("routing bands and the timing cap use only supplied facts", () => {
   const closed = evaluateTiming([{ date: "2026-11-30", stopName: "Katsura Villa", plannedArrival: "10:00" }], facts);
   assert.equal(closed.violations >= 1, true);
   const hozu = evaluateTiming([{ date: "2026-12-02", stopName: "Hozugawa boat", plannedArrival: "15:00" }], facts);
-  assert.equal(hozu.violations, 1);
-  const early = evaluateTiming([{ date: "2026-11-30", stopName: "Hozugawa boat", plannedArrival: "15:30" }], facts);
-  assert.equal(early.violations, 0);
+  assert.equal(hozu.violations, 0);
+  const late = evaluateTiming([{ date: "2026-11-30", stopName: "Hozugawa boat", plannedArrival: "15:30" }], facts);
+  assert.equal(late.violations, 1);
+  const winter = evaluateTiming([{ date: "2026-12-14", stopName: "Hozugawa boat", plannedArrival: "15:00" }], facts);
+  assert.equal(winter.violations, 1);
+  const winterOnTime = evaluateTiming([{ date: "2026-12-14", stopName: "Hozugawa boat", plannedArrival: "14:30" }], facts);
+  assert.equal(winterOnTime.violations, 0);
   const sagano = evaluateTiming([{ date: "2026-12-01", stopName: "Sagano Romantic Train", plannedArrival: "10:00" }], facts);
   assert.equal(sagano.unverifiable, true);
   assert.equal(sagano.violations, 0);
