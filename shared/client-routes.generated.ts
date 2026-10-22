@@ -121,6 +121,7 @@ export const CLIENT_ROUTES: readonly string[] = [
   "/expert/bookings",
   "/expert/calendar",
   "/expert/catalog",
+  "/expert/city-knowledge-test",
   "/expert/clients",
   "/expert/clients/:id",
   "/expert/content-studio",

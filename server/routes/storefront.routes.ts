@@ -951,6 +951,8 @@ async function loadStorefrontFromOwner(
   // Locked Decision 54: the same live status the /experts list shows (one loader, §18 rule 1).
   const live = (await loadLiveStatus([owner.id])).get(owner.id);
 
+  const cityKnowledgeBadges = await (await import("../services/city-knowledge/attempt.service")).badgesForUser(owner.id);
+
   return {
     earner: {
       // NO `id`. CLAUDE.md Locked Decision 40 (ledger `2026-09-05-user-id-is-internal`), lane 2:
@@ -973,6 +975,7 @@ async function loadStorefrontFromOwner(
       profileImageUrl: owner.profileImageUrl ?? null,
       role: owner.role,
       handle: owner.handle,
+      ...(cityKnowledgeBadges.length > 0 ? { cityKnowledgeBadges } : {}),
       averageRating: earnerAverageRating,
       reviewCount: expertReviewCount,
       expertReviewCount,

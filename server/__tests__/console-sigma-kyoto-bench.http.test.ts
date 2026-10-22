@@ -233,10 +233,10 @@ test("K2: approving a nonexistent application is a 404", async () => {
 });
 
 // ---------------------------------------------------------------------------
-// K3 (ruling 23): the full lifecycle on the probe applicant — pending → admin
-// approval over real HTTP → DB facts: form approved + users.role clamped flip.
+// K3: a Kyoto local expert is not approved without a qualifying city-knowledge pass.
+// The bank file is unverified, so this probe stays pending and the role stays traveler.
 // ---------------------------------------------------------------------------
-test("K3: admin approval flips form to 'approved' and users.role to the clamped expertType", async () => {
+test("K3: a Kyoto local expert cannot be approved without a city-knowledge pass", async () => {
   const [form] = await db.select().from(localExpertForms).where(eq(localExpertForms.userId, probeApplicantId));
   assert.equal(form.status, "pending", "lifecycle precondition: K1 left the probe application pending");
 
@@ -245,12 +245,14 @@ test("K3: admin approval flips form to 'approved' and users.role to the clamped 
     headers: { "content-type": "application/json", cookie: adminCookie },
     body: JSON.stringify({ status: "approved" }),
   });
-  assert.equal(res.status, 200, await res.clone().text());
+  assert.equal(res.status, 409, await res.clone().text());
+  const body = await res.json() as { message?: string };
+  assert.match(body.message ?? "", /city-knowledge/);
 
   const [after1] = await db.select({ s: localExpertForms.status }).from(localExpertForms).where(eq(localExpertForms.id, form.id));
-  assert.equal(after1.s, "approved");
+  assert.equal(after1.s, "pending");
   const [u] = await db.select({ role: users.role }).from(users).where(eq(users.id, probeApplicantId));
-  assert.equal(u.role, "local_expert", "approval must flip users.role to the form's (clamped) expertType");
+  assert.equal(u.role, "traveler", "a refused approval must not flip the role");
 });
 
 // ---------------------------------------------------------------------------
@@ -295,8 +297,28 @@ test("K4: durable Kyoto bench fixture exists via the full lifecycle (reconciling
     });
   }
   if (form.status !== "approved") {
-    // pending (fresh or interrupted) or rejected — the admin approval route is the
-    // lifecycle-legitimate repair for both.
+    // The city-knowledge gate is the same route. This fixture satisfies it with a
+    // scored pass against the current bank hash, then the admin PATCH approves.
+    const { signOffBank, passingScoreResult } = await import("../services/city-knowledge/attempt.service");
+    const { loadCityKnowledgeBank } = await import("../services/city-knowledge/bank");
+    const { cityKnowledgeAttempts } = await import("../../shared/schema");
+    const signed = await signOffBank("kyoto", adminId);
+    assert.equal(signed.status, 200, "message" in signed ? signed.message : "sign-off");
+    const loaded = await loadCityKnowledgeBank("kyoto");
+    assert.equal(loaded?.signedOff, true);
+    await db.insert(cityKnowledgeAttempts).values({
+      id: crypto.randomUUID(),
+      userId: bench.id,
+      applicationId: form.id,
+      cityKey: "kyoto",
+      attemptNumber: 1,
+      status: "scored",
+      outcome: "pass",
+      attentionFlag: false,
+      startedAt: new Date(),
+      scoredAt: new Date(),
+      result: passingScoreResult(loaded!.contentHash),
+    });
     const res = await fetch(`${baseUrl}/api/admin/expert-applications/${form.id}/status`, {
       method: "PATCH",
       headers: { "content-type": "application/json", cookie: adminCookie },

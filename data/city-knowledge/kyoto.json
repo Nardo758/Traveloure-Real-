@@ -1,0 +1,784 @@
+{
+  "cityKey": "kyoto",
+  "cityName": "Kyoto",
+  "timeZone": "Asia/Tokyo",
+  "verificationStatus": "unverified",
+  "factCheckedOn": "2026-10-21",
+  "note": "Draft bank. Fact-check of 21 Oct 2026 is applied. The whole bank stays unverified until Leon signs off. Inactive items are not drawn.",
+  "zones": [
+    { "zone": "Kyoto Sta", "match": ["kyoto station", "kyoto sta"] },
+    { "zone": "Central", "match": ["nijo", "nijō", "nijo-jo", "nijo castle"] },
+    { "zone": "Higashiyama", "match": ["kiyomizu", "gion", "yasaka", "ninenzaka", "sannenzaka", "chawan-zaka", "kiyomizu-zaka"] },
+    { "zone": "Okazaki–Ginkaku-ji", "match": ["ginkaku"] },
+    { "zone": "Kita (Kinkaku-ji)", "match": ["kinkaku"] },
+    { "zone": "Arashiyama–Sagano", "match": ["arashiyama", "sagano", "bamboo", "togetsukyo", "togetsu"] },
+    { "zone": "Nishikyō (Katsura, Saihō-ji)", "match": ["katsura", "saiho", "saihō", "koke-dera", "moss temple"] },
+    { "zone": "Fushimi–Tōfuku-ji", "match": ["fushimi", "tofuku", "tōfuku"] }
+  ],
+  "timingFacts": [
+    {
+      "id": "katsura-closed-2026-11-30",
+      "match": ["katsura"],
+      "factCheck": "ok",
+      "status": "active",
+      "closedDates": ["2026-11-30"],
+      "fixedReservation": true
+    },
+    {
+      "id": "gosho-closed-2026-11-30",
+      "match": ["imperial palace", "kyoto gosho", "gosho"],
+      "factCheck": "ok",
+      "status": "active",
+      "closedDates": ["2026-11-30"]
+    },
+    {
+      "id": "museum-closed-2026-11-30",
+      "match": ["national museum", "kyoto national museum"],
+      "factCheck": "ok",
+      "status": "active",
+      "closedDates": ["2026-11-30"]
+    },
+    {
+      "id": "ninomaru-closed-2026-12-01",
+      "match": ["ninomaru"],
+      "factCheck": "ok",
+      "status": "active",
+      "closedDates": ["2026-12-01"]
+    },
+    {
+      "id": "nijo-entry",
+      "match": ["nijo", "nijō"],
+      "factCheck": "ok",
+      "status": "active",
+      "closedMonthDays": ["12-29", "12-30", "12-31"],
+      "windows": [{ "from": "01-01", "to": "12-31", "lastEntry": "16:00" }]
+    },
+    {
+      "id": "ginkaku-hours",
+      "match": ["ginkaku"],
+      "factCheck": "ok",
+      "status": "active",
+      "windows": [
+        { "from": "03-01", "to": "11-30", "lastEntry": "17:00" },
+        { "from": "12-01", "to": "02-29", "lastEntry": "16:30" }
+      ]
+    },
+    {
+      "id": "tofukuji-hours",
+      "match": ["tofuku", "tōfuku"],
+      "factCheck": "ok",
+      "status": "active",
+      "windows": [
+        { "from": "04-01", "to": "12-06", "lastEntry": "16:00" },
+        { "from": "12-07", "to": "03-31", "lastEntry": "15:30" }
+      ]
+    },
+    {
+      "id": "kiyomizu-hours",
+      "match": ["kiyomizu"],
+      "factCheck": "ok",
+      "status": "active",
+      "windows": [
+        { "fromDate": "2026-11-21", "toDate": "2026-11-30", "lastEntry": "21:00" },
+        { "from": "09-01", "to": "11-20", "lastEntry": "18:00" }
+      ]
+    },
+    {
+      "id": "kinkaku-hours",
+      "match": ["kinkaku"],
+      "factCheck": "ok",
+      "status": "inactive",
+      "factCheckNote": "Published hours are 9:00–17:00 and the page gives no last-admission time. Not used as a last-entry fact."
+    },
+    {
+      "id": "fushimi-always-open",
+      "match": ["fushimi inari", "fushimi"],
+      "factCheck": "ok",
+      "status": "active",
+      "alwaysOpen": true
+    },
+    {
+      "id": "hozugawa-boats",
+      "match": ["hozugawa", "hozu"],
+      "factCheck": "ok",
+      "status": "active",
+      "closedDates": ["2026-02-01", "2026-02-04", "2026-09-02", "2026-12-29", "2026-12-30", "2026-12-31", "2027-01-01", "2027-01-02", "2027-01-03", "2027-01-04"],
+      "windows": [
+        { "from": "03-10", "to": "11-30", "weekdays": "weekday", "lastEntry": "15:30" },
+        { "from": "12-01", "to": "12-13", "weekdays": "weekday", "lastEntry": "14:30" }
+      ]
+    },
+    {
+      "id": "saihoji-reservation",
+      "match": ["saiho", "saihō", "koke-dera", "moss temple"],
+      "factCheck": "ok",
+      "status": "active",
+      "fixedReservation": true
+    }
+  ],
+  "items": [
+    {
+      "id": "K01",
+      "topic": "HRS",
+      "type": "mc",
+      "select": "one",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "A client reaches Tōfuku-ji at 16:10 on 20 October. Can they enter?",
+      "options": [
+        { "id": "a", "text": "Yes, the gate closes 16:30" },
+        { "id": "b", "text": "No, last admission is 16:00" },
+        { "id": "c", "text": "Yes, autumn hours run to 17:00" },
+        { "id": "d", "text": "Only the Hōjō garden" }
+      ],
+      "correctOptionIds": ["b"],
+      "answerText": "No. From 1 Apr to 13 Nov, viewing runs 9:00–16:00, reception ends 16:00 and the gate closes 16:30. From 7 Dec to 31 Mar, reception ends 15:30.",
+      "sources": [{ "url": "https://tofukuji.jp/guide/", "checkedOn": "2026-10-21" }]
+    },
+    {
+      "id": "K02",
+      "topic": "HRS",
+      "type": "sa",
+      "select": "one",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "What is the last time to enter Nijō-jō Castle on a normal day, and what time does the castle close?",
+      "acceptAllOf": [["16:00", "4:00 pm", "4 pm"], ["17:00", "5:00 pm", "5 pm"]],
+      "answerText": "Entry by 16:00; the castle closes at 17:00. Ninomaru-goten reception runs 8:45–16:10.",
+      "sources": [{ "url": "https://nijo-jocastle.city.kyoto.lg.jp/guide/annai/?lang=en", "checkedOn": "2026-10-21" }]
+    },
+    {
+      "id": "K03",
+      "topic": "HRS",
+      "type": "mc",
+      "select": "one",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "On which days is Nijō-jō's Ninomaru-goten Palace closed?",
+      "options": [
+        { "id": "a", "text": "Every Monday" },
+        { "id": "b", "text": "Every Tuesday in January, July, August and December; 26–28 Dec; 1–3 Jan" },
+        { "id": "c", "text": "Third Monday of each month" },
+        { "id": "d", "text": "Never" }
+      ],
+      "correctOptionIds": ["b"],
+      "answerText": "Every Tuesday in January, July, August and December; 26–28 Dec; 1–3 Jan. If that Tuesday is a public holiday, the palace opens and closes the next day instead. The whole castle closes 29–31 Dec.",
+      "sources": [{ "url": "https://nijo-jocastle.city.kyoto.lg.jp/guide/annai/?lang=en", "checkedOn": "2026-10-21" }]
+    },
+    {
+      "id": "K04",
+      "topic": "HRS",
+      "type": "mc",
+      "select": "one",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "A client wants to pop into Ginkaku-ji around 16:45 on Thursday 3 December 2026. What do you tell them?",
+      "options": [
+        { "id": "a", "text": "Fine, it closes at 17:00" },
+        { "id": "b", "text": "Too late: winter hours (1 Dec – end Feb) are 9:00–16:30" },
+        { "id": "c", "text": "Fine, the autumn special viewing runs late" },
+        { "id": "d", "text": "It's closed Thursdays" }
+      ],
+      "correctOptionIds": ["b"],
+      "answerText": "Too late. Summer hours (1 Mar – 30 Nov) are 8:30–17:00. Winter hours (1 Dec – end Feb) are 9:00–16:30. The autumn special viewing runs 1 Nov – 5 Dec 2026, and the source gives no late opening.",
+      "sources": [{ "url": "https://www.shokoku-ji.jp/ginkakuji/", "checkedOn": "2026-10-21" }]
+    },
+    {
+      "id": "K05",
+      "topic": "HRS",
+      "type": "sa",
+      "select": "one",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "What are Kinkaku-ji's published visiting hours?",
+      "acceptAllOf": [["9:00", "09:00"], ["17:00"]],
+      "answerText": "9:00–17:00. The page gives no separate last-admission time.",
+      "sources": [{ "url": "https://www.shokoku-ji.jp/kinkakuji/", "checkedOn": "2026-10-21" }]
+    },
+    {
+      "id": "K06",
+      "topic": "HRS",
+      "type": "mc",
+      "select": "one",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "On 25 November 2026, what is the latest a client can enter Kiyomizu-dera?",
+      "options": [
+        { "id": "a", "text": "17:30" },
+        { "id": "b", "text": "18:00" },
+        { "id": "c", "text": "21:00" },
+        { "id": "d", "text": "21:30" }
+      ],
+      "correctOptionIds": ["c"],
+      "answerText": "21:00. The autumn night viewing runs 21–30 Nov, with the gate closing at 21:30 and reception ending at 21:00. From 1 Sep to 20 Nov the temple keeps 6:00–18:00.",
+      "sources": [{ "url": "https://www.kiyomizudera.or.jp/access/hours/", "checkedOn": "2026-10-21" }]
+    },
+    {
+      "id": "K07",
+      "topic": "HRS",
+      "type": "mc",
+      "select": "all",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "Which of these is closed on Mondays? Choose all that apply.",
+      "options": [
+        { "id": "a", "text": "Kyoto Imperial Palace" },
+        { "id": "b", "text": "Katsura Imperial Villa" },
+        { "id": "c", "text": "Kyoto National Museum" },
+        { "id": "d", "text": "Fushimi Inari Taisha" }
+      ],
+      "correctOptionIds": ["a", "b", "c"],
+      "answerText": "Kyoto Imperial Palace, Katsura Imperial Villa, and Kyoto National Museum. A Monday public holiday means they open that day and close on Tuesday. Fushimi Inari never closes its gates.",
+      "sources": [
+        { "url": "https://kyoto-gosho.kunaicho.go.jp/en/visit", "checkedOn": "2026-10-21" },
+        { "url": "https://www.kyohaku.go.jp/eng/visit/", "checkedOn": "2026-10-21" }
+      ]
+    },
+    {
+      "id": "K08",
+      "topic": "HRS",
+      "type": "sa",
+      "select": "one",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "Kyoto Imperial Palace (Gosho): does a client need a reservation, what does it cost, and when are the free English guided tours?",
+      "acceptAllOf": [["no reservation", "reservation is not", "without a reservation", "not required", "no booking"], ["free"], ["10:00"], ["14:00"]],
+      "answerText": "No reservation is needed and entry is free. English tours run at 10:00 and 14:00 and take about 50 minutes.",
+      "sources": [{ "url": "https://kyoto-gosho.kunaicho.go.jp/en/visit", "checkedOn": "2026-10-21" }]
+    },
+    {
+      "id": "K09",
+      "topic": "RES",
+      "type": "sa",
+      "select": "one",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "A client wants Katsura Imperial Villa on 14 February. When is the earliest they can apply online?",
+      "acceptAllOf": [["05:00", "5:00"], ["1 november", "november 1", "1 nov"]],
+      "answerText": "05:00 JST on 1 November. Online applications open on the 1st of the month three months ahead.",
+      "sources": [{ "url": "https://kyoto-gosho.kunaicho.go.jp/pdf/visit-1A3_en.pdf", "checkedOn": "2026-10-21" }]
+    },
+    {
+      "id": "K10",
+      "topic": "RES",
+      "type": "mc",
+      "select": "one",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "As their Traveloure expert, you offer to submit the Katsura application for your clients. What's the problem?",
+      "options": [
+        { "id": "a", "text": "None" },
+        { "id": "b", "text": "Applications by proxy, travel agents or related industries are not accepted. The visitor must apply." },
+        { "id": "c", "text": "Experts must pay a fee" },
+        { "id": "d", "text": "Only Japanese residents can apply" }
+      ],
+      "correctOptionIds": ["b"],
+      "answerText": "Applications by proxy, travel agents or related industries are not accepted. The visitor must apply.",
+      "sources": [{ "url": "https://kyoto-gosho.kunaicho.go.jp/pdf/visit-1A3_en.pdf", "checkedOn": "2026-10-21" }]
+    },
+    {
+      "id": "K11",
+      "topic": "RES",
+      "type": "mc",
+      "select": "one",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "A family of four (parents, children aged 15 and 10) wants a Katsura Villa tour on a December afternoon. Which statement is correct?",
+      "options": [
+        { "id": "a", "text": "All four can go at 16:20" },
+        { "id": "b", "text": "The 10-year-old cannot enter (minimum age 12), and there are no 16:00/16:20 tours from October to February" },
+        { "id": "c", "text": "Only the adults pay, ¥500 each" },
+        { "id": "d", "text": "The 15-year-old needs a separate application" }
+      ],
+      "correctOptionIds": ["b"],
+      "answerText": "The 10-year-old cannot enter (minimum age 12), and there are no 16:00/16:20 tours from October to February. The fee is ¥1,000 for ages 18+ and free for ages 12–17.",
+      "sources": [{ "url": "https://kyoto-gosho.kunaicho.go.jp/pdf/visit-1A3_en.pdf", "checkedOn": "2026-10-21" }]
+    },
+    {
+      "id": "K12",
+      "topic": "RES",
+      "type": "mc",
+      "select": "one",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "The same family asks about Kyoto Sentō Imperial Palace. Which is correct?",
+      "options": [
+        { "id": "a", "text": "English tours at 9:20" },
+        { "id": "b", "text": "Visitors must be 18 or over; tours are in Japanese only, with free multilingual audio guides while they last; admission is free" },
+        { "id": "c", "text": "No application is needed" },
+        { "id": "d", "text": "Minimum age is 12" }
+      ],
+      "correctOptionIds": ["b"],
+      "answerText": "Visitors must be 18 or over. Tours are in Japanese only, with free multilingual audio guides while they last. Admission is free.",
+      "sources": [{ "url": "https://kyoto-gosho.kunaicho.go.jp/pdf/visit-1A2_en.pdf", "checkedOn": "2026-10-21" }]
+    },
+    {
+      "id": "K13",
+      "topic": "RES",
+      "type": "mc",
+      "select": "one",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "A couple wants to see Saihō-ji (Koke-dera, the Moss Temple). Which plan works?",
+      "options": [
+        { "id": "a", "text": "Walk in at opening" },
+        { "id": "b", "text": "Book online from 2 months before until 23:59 JST the day before; from ¥4,000 per person plus a ¥110 system fee; credit card" },
+        { "id": "c", "text": "Book through the Imperial Household Agency" },
+        { "id": "d", "text": "Book with a JR ticket office" }
+      ],
+      "correctOptionIds": ["b"],
+      "answerText": "Book online from 2 months before until 23:59 JST the day before. From ¥4,000 per person plus a ¥110 system fee, by credit card. Each reservation covers at most 2 people, and everyone must be 13 or older.",
+      "sources": [
+        { "url": "https://intosaihoji.com/en/nichinichi/online/", "checkedOn": "2026-10-21" },
+        { "url": "https://saihoji-kokedera.com/en/", "checkedOn": "2026-10-21" }
+      ]
+    },
+    {
+      "id": "K14",
+      "topic": "RES",
+      "type": "sa",
+      "select": "one",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "A client booked Saihō-ji online and cancels 2 days before the visit. What cancellation fee applies?",
+      "acceptAllOf": [["50%", "50 percent", "fifty percent"]],
+      "answerText": "50%. Cancelling up to 4 days before is free, 3 to 1 days before costs 50%, and the same day costs 100%. The ¥110 system fee is never refunded.",
+      "sources": [{ "url": "https://intosaihoji.com/en/nichinichi/online/", "checkedOn": "2026-10-21" }]
+    },
+    {
+      "id": "K15",
+      "topic": "RES",
+      "type": "mc",
+      "select": "one",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "A client overseas has no Japanese credit card and wants to apply to Saihō-ji by post. Which is correct?",
+      "options": [
+        { "id": "a", "text": "Not possible" },
+        { "id": "b", "text": "Airmail must arrive between 2 months and 1 month before the visit; pay in cash at reception on the day" },
+        { "id": "c", "text": "A postcard postmarked the day before" },
+        { "id": "d", "text": "Fax application" }
+      ],
+      "correctOptionIds": ["b"],
+      "answerText": "Airmail must arrive between 2 months and 1 month before the visit. Pay in cash at reception on the day.",
+      "sources": [{ "url": "https://saihoji-kokedera.com/postcard/en/", "checkedOn": "2026-10-21" }]
+    },
+    {
+      "id": "K16",
+      "topic": "RES",
+      "type": "mc",
+      "select": "one",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "Nijō-jō's Honmaru-goten Palace: how do visitors get in?",
+      "options": [
+        { "id": "a", "text": "Walk in" },
+        { "id": "b", "text": "Buy a web ticket in advance and choose a time slot" },
+        { "id": "c", "text": "Apply to the Imperial Household Agency" },
+        { "id": "d", "text": "Only on the third Monday" }
+      ],
+      "correctOptionIds": ["b"],
+      "answerText": "Buy a web ticket in advance and choose a time slot. Reception runs 9:30–16:00. The palace is closed the third Monday of each month and the following day.",
+      "sources": [{ "url": "https://nijo-jocastle.city.kyoto.lg.jp/guide/annai/?lang=en", "checkedOn": "2026-10-21" }]
+    },
+    {
+      "id": "K17",
+      "topic": "RES",
+      "type": "sa",
+      "select": "one",
+      "status": "inactive",
+      "factCheck": "unverified",
+      "inactiveReason": "Official FAQ blocked automated fetch on 21 Oct 2026. Not drawn until re-checked.",
+      "prompt": "When do Sagano Romantic Train advance tickets go on sale, and can a JR Pass be used?",
+      "acceptAllOf": [["one month"], ["not valid", "cannot", "can't", "no"]],
+      "answerText": "Not drawn. The 15 Oct draft said tickets go on sale online at 00:00 JST one month before boarding and a JR Pass is not valid. That was not confirmed on 21 Oct 2026.",
+      "sources": [{ "url": "https://www.sagano-kanko.co.jp/en/faq/", "checkedOn": "2026-10-21" }]
+    },
+    {
+      "id": "K18",
+      "topic": "RES",
+      "type": "sa",
+      "select": "one",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "A couple pays ¥90,000 per night, room only (that is, ¥45,000 per person per night), for 2 nights. What is the Kyoto accommodation tax in total?",
+      "acceptAllOf": [["4000", "4,000"]],
+      "answerText": "¥4,000. The ¥20,000–49,999 band is ¥1,000 per person per night, so ¥1,000 × 2 people × 2 nights.",
+      "sources": [{ "url": "https://www.city.kyoto.lg.jp/gyozai/page/0000236942.html", "checkedOn": "2026-10-21" }]
+    },
+    {
+      "id": "K19",
+      "topic": "RES",
+      "type": "mc",
+      "select": "one",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "What are the accommodation-tax bands from 1 March 2026 (per person per night, by room charge)?",
+      "options": [
+        { "id": "a", "text": "Under ¥6,000: ¥200. ¥6,000–19,999: ¥400. ¥20,000–49,999: ¥1,000. ¥50,000–99,999: ¥4,000. ¥100,000 or more: ¥10,000" },
+        { "id": "b", "text": "¥200 / ¥500 / ¥1,000 (the old three bands)" },
+        { "id": "c", "text": "A flat 3%" },
+        { "id": "d", "text": "¥200 / ¥400 / ¥1,000 / ¥2,000 / ¥5,000" }
+      ],
+      "correctOptionIds": ["a"],
+      "answerText": "Under ¥6,000: ¥200. ¥6,000–19,999: ¥400. ¥20,000–49,999: ¥1,000. ¥50,000–99,999: ¥4,000. ¥100,000 or more: ¥10,000.",
+      "sources": [
+        { "url": "https://www.city.kyoto.lg.jp/gyozai/page/0000236942.html", "checkedOn": "2026-10-21" },
+        { "url": "https://www.city.kyoto.lg.jp/gyozai/page/0000346704.html", "checkedOn": "2026-10-21" }
+      ]
+    },
+    {
+      "id": "K20",
+      "topic": "RES",
+      "type": "mc",
+      "select": "one",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "A client booked and prepaid the old tax before the revision was finalised, for a stay in April 2026. Which tax applies?",
+      "options": [
+        { "id": "a", "text": "The old rate, because the booking date decides" },
+        { "id": "b", "text": "The new rate, because the stay date decides; the property must collect the difference" },
+        { "id": "c", "text": "Neither" },
+        { "id": "d", "text": "The client chooses" }
+      ],
+      "correctOptionIds": ["b"],
+      "answerText": "The new rate, because the stay date decides. The property must collect the difference.",
+      "sources": [{ "url": "https://www.city.kyoto.lg.jp/gyozai/page/0000346704.html", "checkedOn": "2026-10-21" }]
+    },
+    {
+      "id": "K21",
+      "topic": "TRN",
+      "type": "mc",
+      "select": "one",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "It's a Tuesday in November. The client asks whether to take the ¥500 sightseeing express bus EX100 from Kyoto Station to Kiyomizu. Your answer?",
+      "options": [
+        { "id": "a", "text": "Yes, from stop D1" },
+        { "id": "b", "text": "It doesn't run today: EX100/EX101 run only on Saturdays, Sundays and public holidays" },
+        { "id": "c", "text": "Yes, but only with a JR Pass" },
+        { "id": "d", "text": "It runs only in the evening" }
+      ],
+      "correctOptionIds": ["b"],
+      "answerText": "EX100/EX101 run only on Saturdays, Sundays and public holidays.",
+      "sources": [
+        { "url": "https://www.city.kyoto.lg.jp/kotsu/page/0000358942.html", "checkedOn": "2026-10-21" },
+        { "url": "https://www2.city.kyoto.lg.jp/kotsu/webguide/ja/bus/limited_express.html", "checkedOn": "2026-10-21" }
+      ]
+    },
+    {
+      "id": "K22",
+      "topic": "TRN",
+      "type": "mc",
+      "select": "all",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "Kyoto Station to Kiyomizu-dera on a peak-season weekday: which route does Kyoto's official tourism site recommend over the crowded direct city bus to Gojō-zaka? Choose all that apply.",
+      "options": [
+        { "id": "a", "text": "JR Nara Line to Tōfukuji, then Keihan to Kiyomizu-Gojō, then walk about 25 minutes" },
+        { "id": "b", "text": "Subway Karasuma Line to Kujō, then City Bus 202 or 207 from the Subway Kujō Sta. (Ōishibashi) stop to Gojō-zaka" },
+        { "id": "c", "text": "Subway via Karasuma-Oike, then the Tōzai Line to Higashiyama, then walk about 35 minutes via Nene-no-michi, Ninenzaka and Sannenzaka" },
+        { "id": "d", "text": "Taxi along Shijō-dōri at 11:00" }
+      ],
+      "correctOptionIds": ["a", "b", "c"],
+      "answerText": "The three rail-and-walk routes. A taxi along Shijō-dōri at 11:00 is not one of the recommended routes.",
+      "sources": [{ "url": "https://kyoto.travel/en/getting-around/comfortable-access-to-higashiyama-kiyomizu-dera-temple/", "checkedOn": "2026-10-21" }]
+    },
+    {
+      "id": "K23",
+      "topic": "TRN",
+      "type": "mc",
+      "select": "one",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "Kiyomizu-dera says map apps sometimes route visitors along paths that cannot enter the grounds. What are the only two ways in?",
+      "options": [
+        { "id": "a", "text": "Up Kiyomizu-zaka to the front of the Niōmon gate, or up Chawan-zaka to the disaster-prevention road" },
+        { "id": "b", "text": "From Kōdai-ji through the back gate, or from Yasaka Shrine" },
+        { "id": "c", "text": "From the Otowa Waterfall car park" },
+        { "id": "d", "text": "Any lane off Sannenzaka" }
+      ],
+      "correctOptionIds": ["a"],
+      "answerText": "Up Kiyomizu-zaka to the front of the Niōmon gate, or up Chawan-zaka to the disaster-prevention road. The temple has no car park.",
+      "sources": [{ "url": "https://www.kiyomizudera.or.jp/access/hours/", "checkedOn": "2026-10-21" }]
+    },
+    {
+      "id": "K24",
+      "topic": "TRN",
+      "type": "mc",
+      "select": "one",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "A client takes the JR Sagano Line from Kyoto Station to Arashiyama. Which practical tip comes from official guidance?",
+      "options": [
+        { "id": "a", "text": "The Sagano Line platform is far from the other lines, and the front cars are crowded, so board from the back of the platform" },
+        { "id": "b", "text": "Take City Bus 11 along Shijō for speed" },
+        { "id": "c", "text": "Hankyu runs direct from Kyoto Station" },
+        { "id": "d", "text": "Randen leaves from Kyoto Station" }
+      ],
+      "correctOptionIds": ["a"],
+      "answerText": "The Sagano Line platform is far from the other lines, and the front cars are crowded, so board from the back of the platform.",
+      "sources": [{ "url": "https://kyoto.travel/en/getting-around/comfortable-access-to-saga-arashiyama/", "checkedOn": "2026-10-21" }]
+    },
+    {
+      "id": "K25",
+      "topic": "TRN",
+      "type": "sa",
+      "select": "one",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "What does the Subway & Bus 1-Day Pass cost for an adult, and does it cover the EX100 sightseeing express?",
+      "acceptAllOf": [["1100", "1,100"], ["yes", "covers", "covered", "valid", "included"]],
+      "answerText": "¥1,100, and yes, it covers the EX100.",
+      "sources": [{ "url": "https://www.city.kyoto.lg.jp/kotsu/page/0000358942.html", "checkedOn": "2026-10-21" }]
+    },
+    {
+      "id": "K26",
+      "topic": "TRN",
+      "type": "mc",
+      "select": "one",
+      "status": "inactive",
+      "factCheck": "unverified",
+      "inactiveReason": "Official Sagano site blocked automated fetch on 21 Oct 2026. Not drawn.",
+      "prompt": "Your client uses a wheelchair and wants the Sagano Romantic Train plus the bamboo grove. Which station advice is correct?",
+      "options": [
+        { "id": "a", "text": "Board at Torokko Arashiyama, closest to the grove" },
+        { "id": "b", "text": "Use Torokko Saga: Torokko Arashiyama has about 60 steps and no elevator. Request the wheelchair space after buying tickets, through the chatbot." },
+        { "id": "c", "text": "Board at Hozukyo" },
+        { "id": "d", "text": "Wheelchairs aren't allowed" }
+      ],
+      "correctOptionIds": ["b"],
+      "answerText": "Not drawn. The 15 Oct draft's station advice was not confirmed from the official site on 21 Oct 2026.",
+      "sources": [{ "url": "https://www.sagano-kanko.co.jp/en/faq/", "checkedOn": "2026-10-21" }]
+    },
+    {
+      "id": "K27",
+      "topic": "SEA",
+      "type": "mc",
+      "select": "one",
+      "status": "inactive",
+      "factCheck": "unverified",
+      "inactiveReason": "The 2026 calendar could not be fetched. A search reading conflicts with the draft. Not drawn until re-checked by hand.",
+      "prompt": "Under the Sagano Romantic Train's published 2026 operating calendar, which date has no service?",
+      "options": [
+        { "id": "a", "text": "Sat 21 Nov" },
+        { "id": "b", "text": "Wed 16 Dec" },
+        { "id": "c", "text": "Mon 30 Nov" },
+        { "id": "d", "text": "Tue 1 Dec" }
+      ],
+      "correctOptionIds": ["b"],
+      "answerText": "Not drawn. The draft said Wed 16 Dec has no service. A 21 Oct 2026 search reading of the official PDF says 16 Dec is a normal service day. Do not use until re-checked by hand.",
+      "sources": [{ "url": "https://www.sagano-kanko.co.jp/cms/wp-content/uploads/2026/03/2026年運転計画カレンダー4月11日臨時列車追加日本語-1.pdf", "checkedOn": "2026-10-21" }]
+    },
+    {
+      "id": "K28",
+      "topic": "SEA",
+      "type": "mc",
+      "select": "one",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "Hozugawa river boat ride, 2026. Which statement is correct?",
+      "options": [
+        { "id": "a", "text": "It stops for any rain" },
+        { "id": "b", "text": "On weekdays from 10 March to 30 November the boats leave hourly from 9:00 to 14:00 and the last boat is 15:30. On weekdays from 1 to 13 December they leave hourly from 9:00 to 13:00 and the last boat is 14:30. On weekends and holidays they leave when the boat is full, not hourly. During the season a boat in rain is covered and still runs; it is cancelled for storms or high water. Winter boats this year run open, without the cover." },
+        { "id": "c", "text": "It runs year-round, including New Year" },
+        { "id": "d", "text": "The adult fare is ¥3,000" }
+      ],
+      "correctOptionIds": ["b"],
+      "answerText": "Weekday boats from 10 March to 30 November leave hourly from 9:00 to 14:00, last boat 15:30. Weekdays 1–13 December: hourly 9:00–13:00, last boat 14:30. Weekends and holidays leave when full. In season, rain is covered and the boat runs; storms or high water cancel it. Winter boats this year run open, without the cover. Also closed 29 Dec–4 Jan, and for safety checks on 1 Feb, 4 Feb and 2 Sep 2026. Adults ¥6,000. Passengers under 80 cm cannot board. November private charter is ¥162,000 per boat.",
+      "sources": [
+        { "url": "https://www.hozugawakudari.jp/service/timetable", "checkedOn": "2026-10-21" },
+        { "url": "https://www.hozugawakudari.jp/tickets", "checkedOn": "2026-10-21" }
+      ]
+    },
+    {
+      "id": "K29",
+      "topic": "SEA",
+      "type": "mc",
+      "select": "one",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "Tōfuku-ji during its autumn period (14 Nov – 6 Dec 2026). Which is correct?",
+      "options": [
+        { "id": "a", "text": "The combined Hōjō + Tsūtenkyō ticket is cheapest" },
+        { "id": "b", "text": "No combined ticket is sold. Tsūtenkyō–Kaisandō is ¥1,000 for adults and opens at 8:30. Photography on Tsūtenkyō and Gaunkyō may be restricted. Tripods, sketching and unpermitted commercial photography are banned at all times." },
+        { "id": "c", "text": "It is open until 18:00" },
+        { "id": "d", "text": "Tripods are allowed on the bridge" }
+      ],
+      "correctOptionIds": ["b"],
+      "answerText": "No combined ticket is sold. Tsūtenkyō–Kaisandō is ¥1,000 for adults and opens at 8:30. Photography on Tsūtenkyō and Gaunkyō may be restricted. The official text does not limit that restriction to weekends or holidays. Tripods, sketching and unpermitted commercial photography are banned at all times. The Hōjō garden fee rises to ¥600 from 1 Nov 2026.",
+      "sources": [
+        { "url": "https://tofukuji.jp/guide/", "checkedOn": "2026-10-21" }
+      ]
+    },
+    {
+      "id": "K30",
+      "topic": "SEA",
+      "type": "sa",
+      "select": "one",
+      "status": "active",
+      "factCheck": "ok",
+      "expiresAfter": "2026-10-23",
+      "prompt": "What are the 2026 date and rain date for the Jidai Matsuri, and where and when does the procession start?",
+      "acceptAllOf": [["22 october", "october 22", "22 oct"], ["23 october", "october 23", "23 oct"], ["12:00", "noon"]],
+      "answerText": "Thursday 22 Oct 2026, moved to 23 Oct if it rains. The procession leaves Kyoto Gosho at 12:00. Retire this item after 23 Oct 2026.",
+      "sources": [{ "url": "https://ja.kyoto.travel/event/single.php?event_id=7049", "checkedOn": "2026-10-21" }]
+    },
+    {
+      "id": "K31",
+      "topic": "ETQ",
+      "type": "mc",
+      "select": "one",
+      "status": "inactive",
+      "factCheck": "unverified",
+      "inactiveReason": "The claim that the ¥10,000 sign is not statutory comes from a news report, not an official source. Not drawn.",
+      "prompt": "Kosode-kōji in Gion displays a sign threatening a ¥10,000 fine for unauthorised entry. What is accurate?",
+      "options": [
+        { "id": "a", "text": "It's a city ordinance fine" },
+        { "id": "b", "text": "It's a private road managed by the local council; tourists are asked not to enter or take photos; the ¥10,000 fine on the sign is not statutory" },
+        { "id": "c", "text": "It applies only at night" },
+        { "id": "d", "text": "Only to tour groups" }
+      ],
+      "correctOptionIds": ["b"],
+      "answerText": "Not drawn. Private road, no entry and no photos are on gionminami.jp. The 'not statutory' half was not confirmed from an official source on 21 Oct 2026.",
+      "sources": [
+        { "url": "https://gionminami.jp/?page_id=578", "checkedOn": "2026-10-21" },
+        { "url": "https://kyoto.travel/en/responsible-travel/gion-manner-message-from-southern-gionmachi/", "checkedOn": "2026-10-21" }
+      ]
+    },
+    {
+      "id": "K32",
+      "topic": "ETQ",
+      "type": "mc",
+      "select": "one",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "A client wants a photo with a maiko they see walking in Gion. What do you advise?",
+      "options": [
+        { "id": "a", "text": "Ask politely, it's fine" },
+        { "id": "b", "text": "Don't stop, touch, follow or photograph geiko or maiko without permission. They are at work from the moment they leave home. If the client wants to see Kyomai dance, suggest the Gion Corner performances (daily at 18:00 or 19:00)." },
+        { "id": "c", "text": "Offer a tip" },
+        { "id": "d", "text": "Photograph from across the street" }
+      ],
+      "correctOptionIds": ["b"],
+      "answerText": "Don't stop, touch, follow or photograph geiko or maiko without permission. Gion Corner performances are daily at 18:00 or 19:00.",
+      "sources": [
+        { "url": "https://kyoto.travel/en/responsible-travel/gion-manner-message-from-southern-gionmachi/", "checkedOn": "2026-10-21" },
+        { "url": "https://gionminami.jp/?page_id=867", "checkedOn": "2026-10-21" }
+      ]
+    },
+    {
+      "id": "K33",
+      "topic": "ETQ",
+      "type": "mc",
+      "select": "one",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "At the Kyoto Imperial Palace, a photographer wants to shoot a couple. Which is allowed?",
+      "options": [
+        { "id": "a", "text": "Ordinary photography is allowed; tripods and similar equipment for commercial filming are not; drones, food and alcohol are banned" },
+        { "id": "b", "text": "Anything goes" },
+        { "id": "c", "text": "No photography at all" },
+        { "id": "d", "text": "A drone with permission at the gate" }
+      ],
+      "correctOptionIds": ["a"],
+      "answerText": "Ordinary photography is allowed. Tripods and similar equipment for commercial filming are not. Drones, food and alcohol are banned.",
+      "sources": [{ "url": "https://kyoto-gosho.kunaicho.go.jp/en/visit", "checkedOn": "2026-10-21" }]
+    },
+    {
+      "id": "K34",
+      "topic": "EVT",
+      "type": "sa",
+      "select": "one",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "Roughly when is sunset in Kyoto on 25 November 2026? And which Kiyomizu-dera gate does the temple itself call a sunset-viewing site?",
+      "acceptAllOf": [["16:47"], ["sai-mon", "saimon", "west gate"]],
+      "answerText": "16:47 JST. The gate is the Sai-mon (West Gate).",
+      "sources": [
+        { "url": "https://eco.mtk.nao.ac.jp/koyomi/dni/2026/s2711.html", "checkedOn": "2026-10-21" },
+        { "url": "https://www.kiyomizudera.or.jp/en/visit/", "checkedOn": "2026-10-21" }
+      ]
+    }
+  ],
+  "briefs": [
+    {
+      "id": "b1",
+      "weight": 0.3,
+      "title": "4-day first-timer",
+      "prompt": "Two adults, first time in Japan, hotel near Kyoto Station. Monday 30 November – Thursday 3 December 2026. They want Kiyomizu-dera, Fushimi Inari, Arashiyama (bamboo plus something on the river or train), Nijō-jō, Ginkaku-ji, one garden that needs a reservation, and autumn colour without the worst crowds. Moderate walkers. No car. A taxi is fine for some legs, not every leg. They return Thursday evening from Kyoto Station.",
+      "gemMinimum": 3,
+      "scoringClaims": [
+        {
+          "id": "b1-closures",
+          "status": "active",
+          "factCheck": "ok",
+          "text": "On Monday 30 November 2026, Katsura Villa, the Kyoto Imperial Palace and the Kyoto National Museum are closed. On Tuesday 1 December 2026, Nijō-jō's Ninomaru-goten is closed. The castle grounds are not the same closure."
+        },
+        {
+          "id": "b1-last-entry",
+          "status": "active",
+          "factCheck": "ok",
+          "text": "Ginkaku-ji winter hours from 1 December close at 16:30. Tōfuku-ji last admission is 16:00 until 6 December. Nijō-jō entry ends at 16:00."
+        },
+        {
+          "id": "b1-kiyomizu-night",
+          "status": "active",
+          "factCheck": "ok",
+          "text": "Monday 30 November 2026 is the last night of Kiyomizu-dera autumn night viewing. Last entry is 21:00 and the gate closes at 21:30. Jōju-in garden special viewing runs 21–30 November, 10:00–16:00 and 18:00–20:30 last entry."
+        },
+        {
+          "id": "b1-hozugawa",
+          "status": "active",
+          "factCheck": "ok",
+          "text": "30 November 2026 is a weekday in the 10 March–30 November window: boats leave hourly from 9:00 to 14:00 and the last boat is 15:30. On weekdays from 1 to 13 December the boats leave hourly from 9:00 to 13:00 and the last boat is 14:30. Weekends and holidays leave when full, not hourly. During the season a boat in rain is covered and still runs; storms or high water cancel it."
+        },
+        {
+          "id": "b1-sagano-daily",
+          "status": "inactive",
+          "factCheck": "unverified",
+          "text": "Sagano runs every day from 30 November to 3 December 2026."
+        },
+        {
+          "id": "b1-sagano-rain-refund",
+          "status": "inactive",
+          "factCheck": "unverified",
+          "text": "The Sagano open car gets no refund for rain."
+        },
+        {
+          "id": "b1-reservations",
+          "status": "active",
+          "factCheck": "ok",
+          "text": "Saihō-ji is booked by the clients themselves. Katsura applications are not accepted from a travel agent; the client applies. There are no 16:00 or 16:20 Katsura tours from October to February."
+        },
+        {
+          "id": "b1-ex100",
+          "status": "active",
+          "factCheck": "ok",
+          "text": "EX100 does not run Monday to Thursday."
+        }
+      ]
+    },
+    {
+      "id": "b2",
+      "weight": 0.2,
+      "title": "Sunset proposal",
+      "prompt": "A couple staying near Kyoto Station. Proposal on Wednesday 25 November 2026, ideally at sunset with autumn colour. One partner is planning in secret. They want a photographer, a calm spot for the moment itself, and dinner afterwards. Plan the day from 13:00, with a rain backup.",
+      "gemMinimum": 1,
+      "scoringClaims": [
+        {
+          "id": "b2-sunset",
+          "status": "active",
+          "factCheck": "ok",
+          "text": "Sunset in Kyoto on 25 November 2026 is 16:47 JST. EX100 does not run on a Wednesday. Kiyomizu-dera last entry that night is 21:00 and the gate closes at 21:30."
+        },
+        {
+          "id": "b2-photo-rules",
+          "status": "active",
+          "factCheck": "ok",
+          "text": "Tōfuku-ji bans tripods and unpermitted commercial shoots, and photography on Tsūtenkyō and Gaunkyō may be restricted. The Imperial Palace bans tripods and commercial filming equipment. Do not stop, touch, follow or photograph geiko or maiko without permission."
+        }
+      ]
+    }
+  ]
+}

@@ -274,6 +274,7 @@ import adminPlaceCoordsRoutes from "./routes/admin-place-coords.routes";
 import { dedupedRequest, callWithCircuitBreaker } from "./utils/requestDeduplication";
 import { aiFailureResponse, isNonRetryableAiError, reportAiUpstreamError } from "./services/ai-upstream-errors";
 import adminRoutes from "./routes/admin.routes";
+import cityKnowledgeRoutes from "./routes/city-knowledge.routes";
 import { insertAccessAuditLog } from "./services/admin-query.service";
 import expertsRoutes from "./routes/experts.routes";
 import eaRoutes from "./routes/ea.routes";
@@ -1186,6 +1187,7 @@ export async function registerRoutes(
   app.use("/api/webhooks", webhooksRoutes);
   // Admin routes — role-guarded endpoints for platform administration
   app.use(adminRoutes);
+  app.use(cityKnowledgeRoutes);
 
   // Executive-Assistant (EA) console — /api/ea/* namespace, guarded by isEA (RBAC)
   app.use(eaRoutes);
@@ -3019,6 +3021,9 @@ ${bannedCopyPromptLine()}`;
       const userId = getUserId(req)!;
       const [form] = await db.select().from(localExpertForms).where(eq(localExpertForms.userId, userId)).limit(1);
       const identityStatus = (form as any)?.identityVerificationStatus ?? "pending";
+      const cityKnowledgeFacts = form?.expertType === "local_expert"
+        ? await (await import("./services/city-knowledge/attempt.service")).timelineFactsForForm(form)
+        : {};
       const timeline = buildExpertApplicationTimeline({
         hasForm: !!form,
         applicationStatus: form?.status ?? null,
@@ -3028,6 +3033,7 @@ ${bannedCopyPromptLine()}`;
         hasPortfolio: typeof (form as any)?.portfolio === "string" && (form as any).portfolio.trim().length > 0,
         identityStatus,
         basicCompletedAt: form ? new Date((form as any).createdAt).toLocaleDateString() : null,
+        ...cityKnowledgeFacts,
       });
 
       res.json({

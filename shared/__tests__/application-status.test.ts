@@ -242,6 +242,55 @@ test("a rejected application offers an update, with the dashboard as the way bac
   assert.equal(copy.backHref, "/dashboard");
 });
 
+test("a local expert takes the city-knowledge test before review", () => {
+  const waiting = buildExpertApplicationTimeline(expert({
+    destinationsCount: 0,
+    specialtiesCount: 0,
+    hasBio: false,
+    hasPortfolio: false,
+    identityStatus: "verified",
+    requiresCityKnowledge: true,
+    profileReady: true,
+    cityKnowledge: "open",
+    cityKnowledgeNote: "The question bank is still being checked. A result is saved. It cannot approve your application until the bank is signed off.",
+  }));
+  const testStep = waiting.steps.find((step) => step.title === "City-Knowledge Test");
+  assert.equal(testStep?.status, "in_progress");
+  assert.equal(waiting.steps.find((step) => step.title === "Admin Review")?.status, "pending");
+  assert.equal(waiting.phase, "action_needed");
+  assert.match(waiting.phaseDetail, /city-knowledge test|question bank/i);
+  assert.equal(waiting.steps.filter((step) => step.status === "in_progress").length, 1);
+
+  const recorded = buildExpertApplicationTimeline(expert({
+    destinationsCount: 0,
+    specialtiesCount: 0,
+    hasBio: false,
+    identityStatus: "verified",
+    requiresCityKnowledge: true,
+    profileReady: true,
+    cityKnowledge: "open",
+    cityKnowledgeNote: "Your result is recorded. Review has not started, because this result cannot authorize approval yet.",
+  }));
+  assert.match(recorded.phaseDetail, /Review has not started/);
+  assert.equal(recorded.steps.find((step) => step.title === "Admin Review")?.status, "pending");
+
+  const passed = buildExpertApplicationTimeline(expert({
+    identityStatus: "verified",
+    requiresCityKnowledge: true,
+    profileReady: true,
+    cityKnowledge: "done",
+  }));
+  assert.equal(passed.steps.find((step) => step.title === "City-Knowledge Test")?.status, "completed");
+  assert.equal(passed.steps.find((step) => step.title === "Admin Review")?.status, "in_progress");
+  assert.equal(passed.phase, "under_review");
+});
+
+test("travel experts keep the six-step timeline", () => {
+  const timeline = buildExpertApplicationTimeline(expert({ identityStatus: "verified" }));
+  assert.equal(timeline.steps.some((step) => step.title === "City-Knowledge Test"), false);
+  assert.equal(timeline.steps.find((step) => step.title === "Admin Review")?.status, "in_progress");
+});
+
 test("an unknown role keeps the permission sentence", () => {
   const copy = accessDeniedCopy({
     requiredRole: "moderator",
