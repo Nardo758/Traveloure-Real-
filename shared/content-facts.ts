@@ -386,7 +386,9 @@ export function factProvenanceLine(fact: FactLike & { sourceName?: string | null
   const at = toMs(fact.fetchedAt);
   // CS-1 item 3: a reviewed dated fact read from an official page reads "Checked <date> · Source: <site>" — never
   // "verified". The check date is the read; the review is not shown.
-  if (at !== null && isPageReadOrigin(fact.origin) && isDatedFactType(fact.factType) && factIsReviewed(fact)) {
+  // Row 126 (#1580's stamp): an approved bot fact of any type carries the same code-written stamp — a person reviewed it.
+  const botReviewed = fact.origin === "bot_proposal" && typeof fact.verifiedBy === "string" && fact.verifiedBy.trim() !== "";
+  if (at !== null && isPageReadOrigin(fact.origin) && ((isDatedFactType(fact.factType) && factIsReviewed(fact)) || botReviewed)) {
     return reviewedFactLabel(new Date(at), name, timeZone);
   }
   const verified = fact.origin === "expert_nugget" && fact.verifiedAt ? " · verified" : "";

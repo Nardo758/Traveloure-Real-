@@ -17,6 +17,8 @@
  *        midnight after the last listed date, in the plan's zone (the market's for a registry fact)
  *   BD10 a timed-entry proposal is hidden until approved; approval without an expiry is refused, an expiry past the
  *        source's setting is refused, a good one goes live
+ *   BD12 the seam with row 125: once an approved timed-entry or closed-dates fact passes its expiry, neither the plan
+ *        check nor the slip's warning raises anything — the item's flag drops on expiry, a booking id or a purchase only
  *   BD11 a source that is not the place's own official site — Google, an OTA, a partner's domain — is refused by name;
  *        so is proposal text that claims to be verified or confirmed
  *
@@ -348,6 +350,20 @@ test("BD10 timed entry: hidden until reviewed; the reviewer's expiry is required
   assert.equal((await approveBotProposal(filed.proposal.id, id("admin"), new Date(), { expiresAt: good })).ok, true);
   assert.equal((await planIssues()).includes("timed_entry_required"), true);
   assert.equal((await pageTypes()).includes("timed_entry_required"), true);
+  // #1580's stamp, code-written from the stored fields: "Checked <date> · Source: <official site>".
+  const view = ((await factsForTrip(PLAN))[STOP] ?? []).find((f) => f.factType === "timed_entry_required");
+  assert.match(view!.provenance, /^Checked \d{1,2} [A-Z][a-z]{2} \d{4} · Source: Kinkaku-ji \(Shokoku-ji\)$/);
+});
+
+test("BD12 an expired approved fact raises nothing in the plan check or on the slip", async () => {
+  await seedPlan126();
+  await db.execute(sql`UPDATE place_facts SET expires_at = now() - interval '1 minute' WHERE place_ref = ${PLACE} AND origin = 'bot_proposal'`);
+  const issues = await planIssues();
+  assert.equal(issues.includes("timed_entry_required"), false, "expired timed entry: no flag");
+  assert.equal(issues.includes("closed_date"), false, "expired closed dates: no finding");
+  const types = await pageTypes();
+  assert.equal(types.includes("timed_entry_required"), false, "expired: no slip warning");
+  assert.equal(types.includes("closed_dates"), false);
 });
 
 test("BD11 only the place's own official site; no claim of verification in the text", async () => {

@@ -117,4 +117,13 @@ test("BP8 row 126: expiry rules, the official site, no claimed check", async () 
   assert.equal(textClaimsVerification("Verified closed"), true);
   assert.equal(textClaimsVerification("confirmed by staff"), true);
   assert.equal(textClaimsVerification("Closed for maintenance"), false);
+  // #1580's stamp for an approved bot fact of any type, code-written: never the bot's words, never "verified".
+  const stamped = factProvenanceLine(
+    { origin: BOT_FACT_ORIGIN, factType: "timed_entry_required", license: "official", verifiedBy: "admin-1", fetchedAt: now, sourceName: "Nijo Castle official site" } as any,
+    now,
+    "Asia/Tokyo",
+  );
+  assert.equal(stamped, "Checked 15 Oct 2026 · Source: Nijo Castle official site");
+  const unreviewed = factProvenanceLine({ origin: BOT_FACT_ORIGIN, factType: "timed_entry_required", license: "official", verifiedBy: null, fetchedAt: now, sourceName: "Nijo" } as any, now);
+  assert.doesNotMatch(unreviewed, /^Checked/);
 });

@@ -741,7 +741,8 @@ function toView(r: FactRow, now: Date, sources: Map<string, SourceFacts> = new M
     sourcePublicOk: src?.publicOk ?? null,
     // CS-1 item 3: a reviewed dated fact names its source ("Checked <date> · Source: <site>").
     verifiedBy: r.verifiedBy,
-    sourceName: isDatedFactType(r.factType) ? src?.name ?? null : null,
+    // Row 126: an approved bot fact names its source too (the stamp is code-written from this field).
+    sourceName: isDatedFactType(r.factType) || r.origin === BOT_FACT_ORIGIN ? src?.name ?? null : null,
   };
   return {
     id: r.id,
