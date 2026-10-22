@@ -347,3 +347,13 @@ export function admitFeasibilityFact(d: {
 
 /** Rulings 1/3: the tag pair a feasibility fact is born with, whatever its writer. */
 export const FEASIBILITY_FACT_TAGS = { sourceClass: "public" as const, reuseClass: "link_only" as const };
+
+/**
+ * Row 125 (ledger `2026-10-22-timed-entry-booked`): the ONE answer to "is this stop's timed slot held?". Only the
+ * server's own booking record counts — the item's `booking_id` or `routing_status = 'purchased'`, both server-written
+ * and omitted from every client body (§19). A traveler's self-report (`booking_status`, `booking_reference`,
+ * `confirmation_number`) or any client-side state never drops the timed-entry flag. Pure.
+ */
+export function timedEntrySlotHeld(item: { bookingId?: string | null; routingStatus?: string | null }): boolean {
+  return !!item.bookingId || item.routingStatus === "purchased";
+}
