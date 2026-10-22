@@ -243,6 +243,7 @@ import { sanitizeInput } from "../utils/sanitize";
 import { escHtml } from "../utils/email-escape";
 import { logger } from "../infrastructure/logger";
 import { hasPaymentOnRecord, NO_PAYMENT_ON_RECORD } from "@shared/payment-on-record";
+import { listAuditLogs, parseAuditLogQuery } from "../services/audit-log-query";
 
 const router = Router();
 
@@ -6894,6 +6895,25 @@ router.get("/api/admin/audit-logs/role-changes", isAuthenticated, requireAdminLo
     res.json({ ...result, limit, offset });
   } catch (err) {
     console.error("Audit-log role-changes error:", err);
+    res.status(500).json({ message: "Failed to fetch audit logs" });
+  }
+});
+
+/**
+ * GET /api/admin/audit-logs/all  (ops gap 12, fix queue row 112; ledger `2026-10-22-audit-log-all-actions`)
+ * Every audited action, newest first, paged (`limit` capped at AUDIT_LOG_PAGE_MAX, `offset`), filtered by `action`,
+ * `actor` (a user id, or an email), `resourceType`, `resourceId` and `dateFrom`/`dateTo` (YYYY-MM-DD, inclusive).
+ * The same guard as role-changes: `isAuthenticated` + `requireAdminLocal`, under the blanket `/api/admin` guard (§2).
+ * A malformed date or page is a 400.
+ */
+router.get("/api/admin/audit-logs/all", isAuthenticated, requireAdminLocal, async (req, res) => {
+  const parsed = parseAuditLogQuery(req.query as Record<string, unknown>);
+  if (!parsed.ok) return res.status(400).json({ message: "Invalid filter", code: parsed.reason });
+  try {
+    const result = await listAuditLogs(parsed.filters);
+    res.json({ ...result, limit: parsed.filters.limit, offset: parsed.filters.offset });
+  } catch (err) {
+    console.error("Audit-log list error:", (err as Error)?.message);
     res.status(500).json({ message: "Failed to fetch audit logs" });
   }
 });
