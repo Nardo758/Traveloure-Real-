@@ -22,6 +22,7 @@ import {
   AUDIT_LOG_COPY as T,
   EMPTY_AUDIT_FILTERS,
   auditLogAllQuery,
+  auditStatusChange,
   hasAuditFilters,
   type AuditLogAllFilters,
 } from "@/lib/audit-log-all";
@@ -356,6 +357,7 @@ interface AuditLogAllRow {
   resource_id: string | null;
   target_user_id: string | null;
   target_email: string | null;
+  metadata: unknown;
 }
 
 interface AuditLogAllResponse {
@@ -501,7 +503,14 @@ function AllActionsView() {
                       <TableCell className="whitespace-nowrap font-mono text-xs text-muted-foreground">
                         {log.created_at ? new Date(log.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—"}
                       </TableCell>
-                      <TableCell><Badge variant="outline" className="text-xs">{log.action}</Badge></TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs">{log.action}</Badge>
+                        {auditStatusChange(log.metadata) && (
+                          <div className="mt-1 font-mono text-xs text-muted-foreground" data-testid={`audit-row-status-${log.id}`}>
+                            {auditStatusChange(log.metadata)}
+                          </div>
+                        )}
+                      </TableCell>
                       <TableCell>
                         <div className="text-sm">{userLabel(log.actor_first_name, log.actor_last_name, log.actor_email, log.actor_id)}</div>
                         <div className="text-xs text-muted-foreground">{log.actor_role}</div>

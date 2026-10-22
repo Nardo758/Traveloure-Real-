@@ -54,3 +54,15 @@ export function auditLogAllQuery(filters: AuditLogAllFilters, page: number, page
 export function hasAuditFilters(f: AuditLogAllFilters): boolean {
   return Object.values(f).some((v) => v.trim() !== "");
 }
+
+/**
+ * Pure. Gap 13's status change on a row (`metadata.beforeStatus` → `metadata.afterStatus`), as "before → after"; an
+ * absent side reads "—". Null when the row records neither (most rows), so the cell shows nothing extra.
+ */
+export function auditStatusChange(metadata: unknown): string | null {
+  const m = metadata && typeof metadata === "object" ? (metadata as Record<string, unknown>) : null;
+  const before = typeof m?.beforeStatus === "string" && m.beforeStatus.trim() ? m.beforeStatus.trim() : null;
+  const after = typeof m?.afterStatus === "string" && m.afterStatus.trim() ? m.afterStatus.trim() : null;
+  if (!before && !after) return null;
+  return `${before ?? "—"} → ${after ?? "—"}`;
+}
