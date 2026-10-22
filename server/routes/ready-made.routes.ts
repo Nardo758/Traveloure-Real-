@@ -1505,9 +1505,9 @@ router.post("/api/ready-made/:id/purchase/confirm", isAuthenticated, async (req,
 
     // Record the purchase and fulfil, through the ONE shared implementation the WEBHOOK also
     // drives (ledger 2026-09-12-readymade-recovery-path; §15c's "one implementation, two callers"
-    // one table over). The row's UNIQUE stripe_payment_intent_id is still the replay guard (§15):
-    // a duplicate confirm — or a webhook delivery that got here first — inserts nothing and falls
-    // through to fulfil idempotently. This route's own gates above are UNCHANGED and stay the
+    // one table over). The insert's untargeted ON CONFLICT is the replay guard (§15) for both
+    // unique indexes: a duplicate confirm — or a webhook delivery that got here first — inserts
+    // nothing and falls through to fulfil idempotently. This route's own gates above are UNCHANGED and stay the
     // outer layer; `expect` re-states them to the shared implementation so the inner layer refuses
     // a mismatch on its own too (the §18/§19 two-layer placement).
     const recorded = await (
@@ -1528,6 +1528,9 @@ router.post("/api/ready-made/:id/purchase/confirm", isAuthenticated, async (req,
       }
       if (recorded.reason === "metadata_mismatch" || recorded.reason === "amount_not_fully_captured") {
         return res.status(400).json({ message: recorded.message });
+      }
+      if (recorded.reason === "active_purchase_exists") {
+        return res.status(409).json({ message: recorded.message });
       }
       if (recorded.reason === "listing_not_found" || recorded.reason === "buyer_not_found") {
         return res.status(404).json({ message: recorded.message });

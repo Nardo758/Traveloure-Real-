@@ -1266,6 +1266,112 @@ test("N24c: THE RACE — a delivery landing alongside the buyer's own confirm pr
   );
 });
 
+test("N24c2: A REPEAT PURCHASE after a refund is a new row, and the refunded row stays refunded", async () => {
+  // `idx_rmp_buyer_trip_active` excludes refunded/revoked, so the same buyer can buy the same
+  // listing again on a new PaymentIntent. The insert must take that path: a second live row, the
+  // first row left refunded.
+  const { recordAndFulfilReadyMadePurchase } = await import("../services/ready-made-purchase.service");
+  const buyerId = await makeBuyer("c2");
+  const firstPi = `pi_${RUN}_n24c2a`;
+  const secondPi = `pi_${RUN}_n24c2b`;
+
+  const first = await recordAndFulfilReadyMadePurchase({
+    intent: rmPiFor({ id: firstPi, buyerId }),
+    actor: "webhook",
+  });
+  assert.equal(first.ok, true);
+  const firstRow = await purchaseByPi(firstPi);
+  assert.equal(firstRow.status, "cloned");
+  await db.execute(sql`UPDATE ready_made_purchases SET status = 'refunded' WHERE id = ${firstRow.id}`);
+
+  const second = await recordAndFulfilReadyMadePurchase({
+    intent: rmPiFor({ id: secondPi, buyerId }),
+    actor: "webhook",
+  });
+  assert.equal(second.ok, true, "a new payment after a refund records");
+  const secondRow = await purchaseByPi(secondPi);
+  assert.ok(secondRow);
+  assert.notEqual(secondRow.id, firstRow.id);
+  assert.equal(secondRow.status, "cloned");
+  const firstAfter = await purchaseByPi(firstPi);
+  assert.equal(firstAfter.status, "refunded", "DB FACT: the refunded row was not moved back to paid or cloned");
+  assert.equal(await countPurchasesForPi(firstPi), 1);
+  assert.equal(await countPurchasesForPi(secondPi), 1);
+  assert.equal(await countClonesFor(buyerId), 2, "DB FACT: the new purchase minted its own clone");
+  assert.equal(await countEarningsFor(secondRow.id), 1);
+  assert.equal(await countEarningsFor(firstRow.id), 1, "DB FACT: the first author credit was not rewritten");
+});
+
+test("N24c3: A succeeded redelivery AFTER a refund leaves the row refunded", async () => {
+  // Out of order: the purchase is already refunded, then `payment_intent.succeeded` is delivered
+  // again (or the buyer's confirm lands late). The PaymentIntent matches the refunded row, so the
+  // insert conflicts on stripe_payment_intent_id and fulfilment must not run the money leg.
+  const { recordAndFulfilReadyMadePurchase } = await import("../services/ready-made-purchase.service");
+  const buyerId = await makeBuyer("c3");
+  const piId = `pi_${RUN}_n24c3`;
+  const intent = rmPiFor({ id: piId, buyerId });
+
+  const first = await recordAndFulfilReadyMadePurchase({ intent, actor: "webhook" });
+  assert.equal(first.ok, true);
+  const row = await purchaseByPi(piId);
+  await db.execute(sql`UPDATE ready_made_purchases SET status = 'refunded' WHERE id = ${row.id}`);
+  await db.execute(sql`
+    UPDATE expert_earnings SET status = 'reversed'
+    WHERE reference_id = ${row.id} AND type = 'ready_made_sale'
+  `);
+
+  const again = await recordAndFulfilReadyMadePurchase({
+    intent,
+    actor: "buyer_confirm",
+    expect: { listingId: ids.listing, buyerId },
+  });
+  assert.equal(again.ok, true);
+  assert.equal((again as any).createdRow, false);
+  assert.equal((again as any).purchaseId, row.id);
+  assert.equal((again as any).fulfilment.purchase.status, "refunded");
+  assert.equal((again as any).fulfilment.authorCredit, undefined, "a terminal row runs no money leg");
+  const after = await purchaseByPi(piId);
+  assert.equal(after.status, "refunded", "DB FACT: the refunded row was not reactivated");
+  assert.equal(await countPurchasesForPi(piId), 1);
+  assert.equal(await countClonesFor(buyerId), 1, "DB FACT: the late signal minted no second trip");
+  assert.equal(await countEarningsFor(row.id), 1);
+  const earning = await earningRowFor(row.id);
+  assert.equal(earning.status, "reversed", "DB FACT: the reversal stands");
+});
+
+test("N24c4: A SECOND PaymentIntent while a purchase is live is an error and writes nothing", async () => {
+  // The partial unique index is a real refusal, not an idempotent replay. Adopting the live row
+  // would fulfil a different payment. Metadata that does not match is N24d; this is the same
+  // buyer and listing on a different PaymentIntent.
+  const { recordAndFulfilReadyMadePurchase } = await import("../services/ready-made-purchase.service");
+  const buyerId = await makeBuyer("c4");
+  const firstPi = `pi_${RUN}_n24c4a`;
+  const secondPi = `pi_${RUN}_n24c4b`;
+
+  const first = await recordAndFulfilReadyMadePurchase({
+    intent: rmPiFor({ id: firstPi, buyerId }),
+    actor: "webhook",
+  });
+  assert.equal(first.ok, true);
+  const row = await purchaseByPi(firstPi);
+
+  const second = await recordAndFulfilReadyMadePurchase({
+    intent: rmPiFor({ id: secondPi, buyerId }),
+    actor: "buyer_confirm",
+    expect: { listingId: ids.listing, buyerId },
+  });
+  assert.equal(second.ok, false);
+  assert.equal((second as any).reason, "active_purchase_exists");
+  assert.equal(await countPurchasesForPi(secondPi), 0, "DB FACT: the second payment has no purchase row");
+  assert.equal(await countPurchasesForPi(firstPi), 1);
+  const after = await purchaseByPi(firstPi);
+  assert.equal(after.id, row.id);
+  assert.equal(after.status, "cloned", "DB FACT: the live purchase was not replaced or refunded");
+  assert.equal(await countClonesFor(buyerId), 1);
+  assert.equal(await countEarningsFor(row.id), 1);
+  assert.equal(await countRevenueFor(row.id), 1);
+});
+
 test("N24d: A CLIENT-SUPPLIED PaymentIntent FULFILS NOTHING — §15c's clause, this rail's N17c", async () => {
   // §15c: only a SIGNATURE-VERIFIED Stripe delivery may resolve a purchase from PaymentIntent
   // metadata ALONE. Any other actor must name the buyer and listing its own authenticated context

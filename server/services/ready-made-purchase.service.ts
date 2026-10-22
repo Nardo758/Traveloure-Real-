@@ -428,13 +428,23 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
 // PaymentIntents that ALREADY EXIST, not only for future ones.
 //
 // IDEMPOTENCY IS STRUCTURAL AND STAYS THAT WAY (§15).
-// `ready_made_purchases.stripe_payment_intent_id` is NOT NULL and UNIQUE, so the
-// INSERT … ON CONFLICT DO NOTHING *is* the guard — never a check-then-insert, which is the TOCTOU
-// bug this codebase has already paid for. Downstream, `fulfillReadyMadePurchase`'s atomic
-// `paid → cloned` conditional is the second guard: the loser deletes its own orphan clone and only
-// the WINNER credits the author. So a double signal — a webhook delivery racing the buyer's own
-// confirm, or two deliveries of the same event — yields ONE row, ONE clone trip, ONE author earning
-// and ONE platform-revenue row.
+// Two unique indexes cover the row, and the INSERT defers to BOTH. `stripe_payment_intent_id`
+// is NOT NULL and UNIQUE (one row per payment). `idx_rmp_buyer_trip_active` is a partial UNIQUE
+// on (buyer_id, ready_made_trip_id) WHERE status IN ('paid','cloned') — one live purchase of a
+// listing per buyer. A refunded or revoked row sits outside that partial index, so a later
+// payment from the same buyer inserts a new row and the terminal row is never the conflict
+// target and never updated. The statement is an untargeted INSERT … ON CONFLICT DO NOTHING,
+// which Postgres applies to every unique index. A targeted `ON CONFLICT (stripe_payment_intent_id)`
+// does not: under concurrency the two inserts of the SAME payment both pass that arbiter and one
+// then fails with 23505 on `idx_rmp_buyer_trip_active` (a deadlock 40P01 or a serialization
+// failure 40001 is the same two-index race and is retried). A 23505 that still escapes is
+// resolved by reading the row for THIS payment intent. A conflict that is not this payment
+// intent is `active_purchase_exists` — the other live purchase is not adopted. Downstream,
+// `fulfillReadyMadePurchase`'s atomic `paid → cloned` conditional is the second guard: the loser
+// deletes its own orphan clone and only the WINNER credits the author. A double signal — a
+// webhook delivery racing the buyer's own confirm, or two deliveries of the same event — yields
+// ONE row, ONE clone trip, ONE author earning and ONE platform-revenue row. A row that is already
+// `refunded` or `revoked` stays that way: fulfilment does not run the money leg for it.
 //
 // §15b — IRREVERSIBLE EFFECTS FOLLOW AUTHORIZATION. This runs only after Stripe's own word that the
 // money is captured, and it re-runs nothing non-idempotent that the confirm path may already have
@@ -500,6 +510,7 @@ export type ReadyMadeRecordRefusal =
   | "unverified_actor_without_expectation"
   | "listing_not_found"
   | "buyer_not_found"
+  | "active_purchase_exists"
   | "purchase_row_unresolvable";
 
 export type ReadyMadeRecordResult =
@@ -629,31 +640,25 @@ async function performRecordAndFulfilReadyMadePurchase(
     };
   }
 
-  // ── 4. The row. The UNIQUE stripe_payment_intent_id IS the guard (§15) ──────────────────────
+  // ── 4. The row. Both unique indexes are the guard (§15) ────────────────────────────────────
   // One purchase per payment, ever — a second delivery, a retry, or the buyer's own confirm
   // arriving alongside inserts nothing and falls through to the idempotent fulfilment below.
-  const inserted = await db
-    .insert(readyMadePurchases)
-    .values({
-      buyerId,
-      readyMadeTripId: listingId,
-      pricePaidCents: intent.amount, // what Stripe captured — never re-read the listing, never a client number
-      currency: (intent.currency ?? "usd").toUpperCase(),
-      stripePaymentIntentId: intent.id,
-      status: "paid",
-    } as any)
-    .onConflictDoNothing({ target: readyMadePurchases.stripePaymentIntentId })
-    .returning({ id: readyMadePurchases.id });
-
-  const purchaseId =
-    inserted[0]?.id ??
-    (
-      await db
-        .select({ id: readyMadePurchases.id })
-        .from(readyMadePurchases)
-        .where(eq(readyMadePurchases.stripePaymentIntentId, intent.id))
-        .limit(1)
-    )[0]?.id;
+  // A different payment that collides with a still-live purchase of this listing is refused.
+  const recorded = await insertReadyMadePurchaseRow({
+    buyerId,
+    readyMadeTripId: listingId,
+    pricePaidCents: intent.amount, // what Stripe captured — never re-read the listing, never a client number
+    currency: (intent.currency ?? "usd").toUpperCase(),
+    stripePaymentIntentId: intent.id,
+  });
+  if (recorded.refused === "active_purchase_exists") {
+    return {
+      ok: false,
+      reason: "active_purchase_exists",
+      message: `buyer ${buyerId} already has a live purchase of listing ${listingId}; PaymentIntent ${intent.id} was not recorded`,
+    };
+  }
+  const purchaseId = recorded.id;
   if (!purchaseId) {
     return {
       ok: false,
@@ -664,7 +669,94 @@ async function performRecordAndFulfilReadyMadePurchase(
 
   // ── 5. The ONE fulfilment, unchanged and idempotent (§18 rule 1) ────────────────────────────
   const fulfilment = await fulfillReadyMadePurchase(purchaseId);
-  return { ok: true, purchaseId, createdRow: Boolean(inserted[0]?.id), fulfilment };
+  return { ok: true, purchaseId, createdRow: recorded.createdRow, fulfilment };
+}
+
+/** Postgres raises these when two inserts lock `stripe_payment_intent_id` and
+ *  `idx_rmp_buyer_trip_active` in an order that cycles or fails to serialize. The
+ *  statement is safe to run again: the committed row is then the conflict target. */
+const READY_MADE_INSERT_RETRY_CODES = new Set(["40P01", "40001"]);
+const READY_MADE_INSERT_ATTEMPTS = 3;
+
+function postgresErrorOf(err: unknown): { code?: string; constraint?: string } | undefined {
+  let current: unknown = err;
+  for (let depth = 0; current && typeof current === "object" && depth < 5; depth++) {
+    const candidate = current as { code?: unknown; constraint?: unknown; cause?: unknown };
+    if (typeof candidate.code === "string") {
+      return {
+        code: candidate.code,
+        constraint: typeof candidate.constraint === "string" ? candidate.constraint : undefined,
+      };
+    }
+    current = candidate.cause;
+  }
+  return undefined;
+}
+
+async function purchaseIdForPaymentIntent(paymentIntentId: string): Promise<string | undefined> {
+  const [row] = await db
+    .select({ id: readyMadePurchases.id })
+    .from(readyMadePurchases)
+    .where(eq(readyMadePurchases.stripePaymentIntentId, paymentIntentId))
+    .limit(1);
+  return row?.id;
+}
+
+type ReadyMadePurchaseInsert =
+  | { id: string; createdRow: boolean; refused?: undefined }
+  | { id?: undefined; createdRow?: undefined; refused: "active_purchase_exists" };
+
+/**
+ * Insert the purchase for this PaymentIntent, or resolve the row a concurrent inserter
+ * already committed for the same PaymentIntent.
+ *
+ * Untargeted `ON CONFLICT DO NOTHING` is required. The table has two unique indexes, and
+ * a target of only `stripe_payment_intent_id` leaves `idx_rmp_buyer_trip_active` uncovered:
+ * Postgres then raises 23505 on that partial index (constraint `idx_rmp_buyer_trip_active`)
+ * for one of two concurrent inserts of the same payment. The row the other transaction
+ * committed is this payment's row and is the one both callers fulfil.
+ *
+ * An empty insert whose PaymentIntent is not on the table is the partial index refusing a
+ * second live purchase (a different PaymentIntent). That purchase is not adopted.
+ */
+async function insertReadyMadePurchaseRow(values: {
+  buyerId: string;
+  readyMadeTripId: string;
+  pricePaidCents: number;
+  currency: string;
+  stripePaymentIntentId: string;
+}): Promise<ReadyMadePurchaseInsert> {
+  for (let attempt = 0; attempt < READY_MADE_INSERT_ATTEMPTS; attempt++) {
+    try {
+      const inserted = await db
+        .insert(readyMadePurchases)
+        .values({
+          buyerId: values.buyerId,
+          readyMadeTripId: values.readyMadeTripId,
+          pricePaidCents: values.pricePaidCents,
+          currency: values.currency,
+          stripePaymentIntentId: values.stripePaymentIntentId,
+          status: "paid",
+        } as any)
+        .onConflictDoNothing()
+        .returning({ id: readyMadePurchases.id });
+      if (inserted[0]?.id) return { id: inserted[0].id, createdRow: true };
+      const existingId = await purchaseIdForPaymentIntent(values.stripePaymentIntentId);
+      if (existingId) return { id: existingId, createdRow: false };
+      return { refused: "active_purchase_exists" };
+    } catch (err) {
+      const pg = postgresErrorOf(err);
+      if (pg?.code === "23505") {
+        const existingId = await purchaseIdForPaymentIntent(values.stripePaymentIntentId);
+        if (existingId) return { id: existingId, createdRow: false };
+        if (pg.constraint === "idx_rmp_buyer_trip_active") return { refused: "active_purchase_exists" };
+      }
+      const retry = pg?.code != null && READY_MADE_INSERT_RETRY_CODES.has(pg.code) && attempt < READY_MADE_INSERT_ATTEMPTS - 1;
+      if (retry) continue;
+      throw err;
+    }
+  }
+  throw new Error("ready-made purchase insert retries exhausted");
 }
 
 /**
