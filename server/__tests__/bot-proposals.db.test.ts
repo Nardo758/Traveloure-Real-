@@ -12,6 +12,15 @@
  *   BD7 the overdue read names REGISTRY rows only: never a plan's fact, never a Places fact
  *   BD8 HTTP: flag off ⇒ 404; no token ⇒ 401; wrong scope ⇒ 403; a strict body; a bot reads only its own
  *       proposals; no response carries a user id, email or plan id
+ *   BD9  row 126 (ledger `2026-10-22-bot-closed-dates-timed-entry`): a closed-dates proposal is hidden from the plan
+ *        check and the plan page until a person approves it; approval takes no reviewer expiry — it expires at
+ *        midnight after the last listed date, in the plan's zone (the market's for a registry fact)
+ *   BD10 a timed-entry proposal is hidden until approved; approval without an expiry is refused, an expiry past the
+ *        source's setting is refused, a good one goes live
+ *   BD12 the seam with row 125: once an approved timed-entry or closed-dates fact passes its expiry, neither the plan
+ *        check nor the slip's warning raises anything — the item's flag drops on expiry, a booking id or a purchase only
+ *   BD11 a source that is not the place's own official site — Google, an OTA, a partner's domain — is refused by name;
+ *        so is proposal text that claims to be verified or confirmed
  *
  * DISPOSABLE DB ONLY.
  */
@@ -32,6 +41,9 @@ import {
   revokeBotAccount,
 } from "../services/bot-proposals.service";
 import botRoutes from "../routes/bot.routes";
+import { factsForTrip } from "../services/content-facts/place-facts.service";
+import { loadPlanCheckInput } from "../services/optimizer-lead.service";
+import { checkPlan } from "@shared/plan-check";
 import { botLimiter, resetBotLimiterForTests } from "../middleware/bot-limiter";
 
 const RUN = crypto.randomUUID().slice(0, 8);
@@ -266,5 +278,115 @@ test("BD8 HTTP: flag, auth, scope, body, own proposals only, no ids leak", async
   } finally {
     if (prev === undefined) delete process.env.BOT_API_ENABLED;
     else process.env.BOT_API_ENABLED = prev;
+  }
+});
+
+// ── Row 126: closed dates and timed entry ──────────────────────────────────────────────────────────
+
+const PLAN = id("plan126");
+const STOP = id("stop126");
+const PLACE = `ChIJ-${RUN}-nijo`;
+async function seedPlan126() {
+  const [exists] = ((await db.execute(sql`SELECT 1 FROM trips WHERE id = ${PLAN}`)) as any).rows;
+  if (exists) return;
+  await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, market_slug, timezone, start_date, end_date, status)
+    VALUES (${PLAN}, ${id("owner")}, 'Row 126', 'Kyoto, Japan', 'kyoto', 'Asia/Tokyo', '2027-05-10', '2027-05-11', 'planning')`);
+  await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, day_number, title, item_type, start_time, duration_minutes, origin, sort_order, google_place_id)
+    VALUES (${STOP}, ${PLAN}, 1, 'Nijo Castle', 'activity', '10:00', 60, 'traveler', 1, ${PLACE})`);
+}
+const planIssues = async () => checkPlan((await loadPlanCheckInput(PLAN)).input).issues.filter((i) => i.stop?.itemId === STOP).map((i) => i.why);
+const pageTypes = async () => ((await factsForTrip(PLAN))[STOP] ?? []).map((f) => f.factType);
+
+test("BD9 closed dates: hidden until reviewed; the expiry is the day after the last date", async () => {
+  await seedPlan126();
+  const filed = await fileBotProposal(
+    bot,
+    proposal({
+      kind: "place_fact.closed_dates",
+      placeId: PLACE,
+      sourceUrl: "https://www.shokoku-ji.jp/news/",
+      text: "Closed for maintenance",
+      quote: "May 10, 2027: closed for maintenance.",
+      fields: { ranges: [{ from: "2027-05-10", to: "2027-05-10" }] },
+    }),
+  );
+  assert.equal(filed.ok, true, JSON.stringify(filed));
+  if (!filed.ok) return;
+  assert.equal((await factRows(PLACE)).length, 0, "pending is not a fact");
+  assert.equal((await planIssues()).includes("closed_date"), false, "the plan check does not see a pending proposal");
+  assert.equal((await pageTypes()).includes("closed_dates"), false, "the plan page does not see it either");
+  assert.deepEqual(await approveBotProposal(filed.proposal.id, id("admin"), new Date(), { expiresAt: "2027-06-01T00:00:00Z" }), { ok: false, reason: "expiry_from_dates" }, "the reviewer does not set it");
+  const ok = await approveBotProposal(filed.proposal.id, id("admin"));
+  assert.equal(ok.ok, true, JSON.stringify(ok));
+  const f = (await factRows(PLACE)).find((r) => r.fact_type === "closed_dates");
+  assert.equal(new Date(f.expires_at).toISOString(), "2027-05-10T15:00:00.000Z", "midnight 2027-05-11, Asia/Tokyo");
+  assert.equal(f.verified_by, id("admin"));
+  assert.equal((await planIssues()).includes("closed_date"), true, "after review, the plan check names it");
+});
+
+test("BD10 timed entry: hidden until reviewed; the reviewer's expiry is required and capped", async () => {
+  await seedPlan126();
+  const filed = await fileBotProposal(
+    bot,
+    proposal({
+      kind: "place_fact.timed_entry_required",
+      placeId: PLACE,
+      sourceUrl: "https://www.shokoku-ji.jp/reserve/",
+      text: "Timed entry",
+      quote: "Entry by timed reservation. Slots open 30 days ahead.",
+      fields: { required: true, opensDaysAhead: 30 },
+    }),
+  );
+  assert.equal(filed.ok, true, JSON.stringify(filed));
+  if (!filed.ok) return;
+  assert.equal((await planIssues()).includes("timed_entry_required"), false, "pending: not in the plan check");
+  assert.equal((await pageTypes()).includes("timed_entry_required"), false, "pending: not on the page");
+  assert.equal((await approveBotProposal(filed.proposal.id, id("admin"))).ok, false);
+  assert.deepEqual(await approveBotProposal(filed.proposal.id, id("admin")), { ok: false, reason: "expiry_required" });
+  const tooLate = new Date(Date.now() + 31 * 86_400_000).toISOString();
+  assert.deepEqual(await approveBotProposal(filed.proposal.id, id("admin"), new Date(), { expiresAt: tooLate }), { ok: false, reason: "expiry_after_limit" }, "the source's 30-day setting caps it");
+  assert.equal((await factRows(PLACE)).some((r) => r.fact_type === "timed_entry_required"), false, "a refused review writes nothing");
+  const good = new Date(Date.now() + 20 * 86_400_000).toISOString();
+  assert.equal((await approveBotProposal(filed.proposal.id, id("admin"), new Date(), { expiresAt: good })).ok, true);
+  assert.equal((await planIssues()).includes("timed_entry_required"), true);
+  assert.equal((await pageTypes()).includes("timed_entry_required"), true);
+  // #1580's stamp, code-written from the stored fields: "Checked <date> · Source: <official site>".
+  const view = ((await factsForTrip(PLAN))[STOP] ?? []).find((f) => f.factType === "timed_entry_required");
+  assert.match(view!.provenance, /^Checked \d{1,2} [A-Z][a-z]{2} \d{4} · Source: Kinkaku-ji \(Shokoku-ji\)$/);
+});
+
+test("BD12 an expired approved fact raises nothing in the plan check or on the slip", async () => {
+  await seedPlan126();
+  await db.execute(sql`UPDATE place_facts SET expires_at = now() - interval '1 minute' WHERE place_ref = ${PLACE} AND origin = 'bot_proposal'`);
+  const issues = await planIssues();
+  assert.equal(issues.includes("timed_entry_required"), false, "expired timed entry: no flag");
+  assert.equal(issues.includes("closed_date"), false, "expired closed dates: no finding");
+  const types = await pageTypes();
+  assert.equal(types.includes("timed_entry_required"), false, "expired: no slip warning");
+  assert.equal(types.includes("closed_dates"), false);
+});
+
+test("BD11 only the place's own official site; no claim of verification in the text", async () => {
+  const google = id("google");
+  const ota = id("ota");
+  const partnerSrc = id("partnersrc");
+  const partner = id("partner");
+  await db.execute(sql`INSERT INTO content_sources (id, name, homepage, market, adapter, covers, does_not_cover, license_class, terms_checked_at, active, refresh_interval_days)
+    VALUES (${google}, 'Maps', 'https://www.google.com/', 'kyoto', 'manual', ARRAY['stop.hours'], ARRAY[]::text[], 'official', now(), true, 30),
+           (${ota}, 'OTA', 'https://www.klook.com/', 'kyoto', 'manual', ARRAY['stop.hours'], ARRAY[]::text[], 'official', now(), true, 30),
+           (${partnerSrc}, 'Partner', ${`https://tickets.partner-${RUN}.example/`}, 'kyoto', 'manual', ARRAY['stop.hours'], ARRAY[]::text[], 'official', now(), true, 30)`);
+  await db.execute(sql`INSERT INTO affiliate_partners (id, name, website_url, category) VALUES (${partner}, ${partner}, ${`https://partner-${RUN}.example/`}, 'tours')`);
+  try {
+    const closed = (over: Record<string, unknown>) =>
+      fileBotProposal(bot, proposal({ kind: "place_fact.closed_dates", placeId: `ChIJ-${RUN}-q10`, text: "Closed", quote: "Closed May 12, 2027.", fields: { ranges: [{ from: "2027-05-12", to: "2027-05-12" }] }, ...over }));
+    assert.deepEqual(await closed({ sourceId: google, sourceUrl: "https://www.google.com/maps/place/x" }), { ok: false, reason: "url_not_official_site" });
+    assert.deepEqual(await closed({ sourceId: ota, sourceUrl: "https://www.klook.com/activity/1/" }), { ok: false, reason: "url_not_official_site" });
+    assert.deepEqual(await closed({ sourceId: partnerSrc, sourceUrl: `https://tickets.partner-${RUN}.example/nijo` }), { ok: false, reason: "url_not_official_site" });
+    assert.deepEqual(await closed({ text: "Verified closed" }), { ok: false, reason: "text_claims_verification" });
+    assert.deepEqual(await closed({ text: "Confirmed by the castle" }), { ok: false, reason: "text_claims_verification" });
+    const n = ((await db.execute(sql`SELECT count(*)::int AS n FROM bot_proposals WHERE place_ref = ${`ChIJ-${RUN}-q10`}`)) as any).rows[0].n;
+    assert.equal(n, 0, "nothing stored for a refusal");
+  } finally {
+    await db.execute(sql`DELETE FROM affiliate_partners WHERE id = ${partner}`);
   }
 });

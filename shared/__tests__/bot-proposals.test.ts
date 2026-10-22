@@ -9,6 +9,8 @@
  *       through public_ok — and is never confirmable into a nugget
  *   BP6 the label ruling: the provenance line names the source and "checked <date>", never "Traveloure team"
  *   BP7 the dedupe key ignores key order
+ *   BP8 row 126: closed dates take their expiry from the dates, timed entry needs the reviewer's; a map, search or OTA
+ *       host is never the official site; a bot's text never claims "verified" or "confirmed"
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -17,7 +19,10 @@ import {
   admitBotFact,
   admitBotSource,
   botFactExpiryDays,
+  botKindExpiryRule,
   botProposalDedupeInput,
+  isNotOfficialSiteHost,
+  textClaimsVerification,
   botTokenLive,
   isValidExpiryDaysSetting,
   tokenHasScope,
@@ -95,4 +100,30 @@ test("BP7 the dedupe key ignores key order", () => {
   const a = botProposalDedupeInput({ kind: "place_fact.hours", placeRef: "p1", sourceUrl: "https://x/", value: { text: "t", quote: "q", weekdayDescriptions: ["Monday: 9:00 AM – 5:00 PM"] } });
   const b = botProposalDedupeInput({ kind: "place_fact.hours", placeRef: "p1", sourceUrl: "https://x/", value: { weekdayDescriptions: ["Monday: 9:00 AM – 5:00 PM"], quote: "q", text: "t" } });
   assert.equal(a, b);
+});
+
+test("BP8 row 126: expiry rules, the official site, no claimed check", async () => {
+  const { resolveReviewedExpiry } = await import("../fact-review");
+  assert.equal(botKindExpiryRule("place_fact.closed_dates"), "from_dates");
+  assert.equal(botKindExpiryRule("place_fact.timed_entry_required"), "reviewer_required");
+  assert.equal(botKindExpiryRule("place_fact.hours"), "review_rule");
+  const base = { factType: "timed_entry_required", checkedAt: now, sourceIntervalDays: 30, settingValue: "90", now };
+  assert.equal((resolveReviewedExpiry(base) as any).ok, true, "without the flag, timed entry keeps CS-1's default");
+  assert.equal((resolveReviewedExpiry({ ...base, requireEntered: true }) as any).reason, "expiry_required");
+  for (const h of ["www.google.com", "maps.google.co.jp", "goo.gl", "www.klook.com", "www.booking.com", "jp.trip.com", "www.tripadvisor.jp", null]) {
+    assert.equal(isNotOfficialSiteHost(h), true, String(h));
+  }
+  for (const h of ["www.shokoku-ji.jp", "nijo-jocastle.city.kyoto.lg.jp"]) assert.equal(isNotOfficialSiteHost(h), false, h);
+  assert.equal(textClaimsVerification("Verified closed"), true);
+  assert.equal(textClaimsVerification("confirmed by staff"), true);
+  assert.equal(textClaimsVerification("Closed for maintenance"), false);
+  // #1580's stamp for an approved bot fact of any type, code-written: never the bot's words, never "verified".
+  const stamped = factProvenanceLine(
+    { origin: BOT_FACT_ORIGIN, factType: "timed_entry_required", license: "official", verifiedBy: "admin-1", fetchedAt: now, sourceName: "Nijo Castle official site" } as any,
+    now,
+    "Asia/Tokyo",
+  );
+  assert.equal(stamped, "Checked 15 Oct 2026 · Source: Nijo Castle official site");
+  const unreviewed = factProvenanceLine({ origin: BOT_FACT_ORIGIN, factType: "timed_entry_required", license: "official", verifiedBy: null, fetchedAt: now, sourceName: "Nijo" } as any, now);
+  assert.doesNotMatch(unreviewed, /^Checked/);
 });

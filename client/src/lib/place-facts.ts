@@ -195,6 +195,8 @@ export function stopEntryLimit(
 
 /** The warning's lead, then the fact's own source and check date, and its caveat when stale. */
 function sourcedWarning(lead: string, fact: FactView, timeZone?: string | null): { text: string; sourceUrl: string | null } {
+  // #1580 / row 126: a reviewed fact's provenance IS the code-written stamp ("Checked <date> · Source: <site>"), used whole.
+  if (/^Checked .+ · Source: .+/.test(fact.provenance ?? "")) return { text: `${lead} · ${fact.provenance}`, sourceUrl: fact.sourceUrl };
   const checked = factCheckedLabel(fact.checkedAt, timeZone) ?? provenanceCheckedLabel(fact.provenance);
   const parts = [lead, sourceName(fact.provenance)];
   if (checked) parts.push(`checked ${checked}`);

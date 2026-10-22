@@ -7,6 +7,11 @@
  *     admin approves it. A pending proposal is never a `place_facts` row; a rejected one never touches the table.
  *   · TWO KINDS IN PHASE 1: an hours fact and a last-admission fact for a stop. Bots never propose nugget-type
  *     facts (decision-maker, label ruling).
+ *   · ROW 126 ADDS TWO (decision-maker, Oct 22, 2026: "bots may propose closed dates and timed entry — Leon"; ledger
+ *     `2026-10-22-bot-closed-dates-timed-entry`): closed dates (a list of ranges) and timed entry
+ *     (`{ required, opensDaysAhead? }`). Proposals only, the same review queue. The source must be the place's own
+ *     official site — never Google, an OTA or a partner's domain (CS-1 Q10) — and the bot's words never claim a
+ *     check: "verified" and "confirmed" are refused. The stamp a traveler reads is written by code from stored fields.
  *   · SCOPES ARE PER ENDPOINT, not per bot: a token carries the list of endpoints it may call.
  *   · AN APPROVED FACT shows only its provenance line — "<source name> · checked <approval date>" — never an
  *     author label and never "Traveloure team" (LD 65). `verified_by` is the approving admin, kept for audit.
@@ -15,7 +20,7 @@
 export const BOT_SCOPES = ["coverage:read", "facts:read", "proposals:write", "proposals:read"] as const;
 export type BotScope = (typeof BOT_SCOPES)[number];
 
-export const BOT_PROPOSAL_KINDS = ["place_fact.hours", "place_fact.last_admission"] as const;
+export const BOT_PROPOSAL_KINDS = ["place_fact.hours", "place_fact.last_admission", "place_fact.closed_dates", "place_fact.timed_entry_required"] as const;
 export type BotProposalKind = (typeof BOT_PROPOSAL_KINDS)[number];
 
 export const BOT_PROPOSAL_STATUSES = ["pending", "approved", "rejected"] as const;
@@ -33,10 +38,51 @@ export const BOT_API_FLAG_ENV = "BOT_API_ENABLED" as const;
 /** The token's printed prefix, so a leaked value is recognisable in a scanner. The rest is random. */
 export const BOT_TOKEN_PREFIX = "tvb_" as const;
 
-const KIND_FACT: Record<BotProposalKind, { factType: "hours" | "last_admission"; need: "stop.hours" }> = {
+export type BotFactType = "hours" | "last_admission" | "closed_dates" | "timed_entry_required";
+
+const KIND_FACT: Record<BotProposalKind, { factType: BotFactType; need: "stop.hours" }> = {
   "place_fact.hours": { factType: "hours", need: "stop.hours" },
   "place_fact.last_admission": { factType: "last_admission", need: "stop.hours" },
+  "place_fact.closed_dates": { factType: "closed_dates", need: "stop.hours" },
+  "place_fact.timed_entry_required": { factType: "timed_entry_required", need: "stop.hours" },
 };
+
+/**
+ * Row 126: where an approved fact's expiry comes from.
+ *   · `from_dates`        closed dates — midnight after the last listed date, in the plan's zone (the market's for a
+ *                         registry fact); stamped by the one writer, never entered by the reviewer.
+ *   · `reviewer_required` timed entry — the reviewer's date, capped by the source's expiry setting (falling back to
+ *                         `bot_fact_default_expiry_days`).
+ *   · `review_rule`       hours and last admission — CS-1's `resolveReviewedExpiry` as it stands.
+ */
+export type BotExpiryRule = "from_dates" | "reviewer_required" | "review_rule";
+export function botKindExpiryRule(kind: BotProposalKind): BotExpiryRule {
+  if (kind === "place_fact.closed_dates") return "from_dates";
+  if (kind === "place_fact.timed_entry_required") return "reviewer_required";
+  return "review_rule";
+}
+
+/**
+ * Row 126 (CS-1 Q10): host labels that are never a place's own official site — maps and search, and the online travel
+ * agencies. A partner's domain is refused through the registry's own hosts (`isOnPartnerHost`), not this list.
+ */
+export const NOT_OFFICIAL_SITE_LABELS = [
+  "google", "googleapis", "goo", "bing", "yahoo",
+  "booking", "expedia", "agoda", "hotels", "trip", "tripadvisor", "klook", "kkday", "viator", "getyourguide", "tiqets",
+  "airbnb", "cookly", "rakuten", "jalan", "ikyu",
+] as const;
+
+/** Pure. Is this host a map, search or OTA host (any label of it is on the list)? */
+export function isNotOfficialSiteHost(host: string | null | undefined): boolean {
+  if (!host) return true;
+  const labels = host.toLowerCase().replace(/\.$/, "").split(".");
+  return labels.some((l) => (NOT_OFFICIAL_SITE_LABELS as readonly string[]).includes(l));
+}
+
+/** Pure. Does the bot's text claim a check? A bot never writes "verified" or "confirmed" — a person's review does. */
+export function textClaimsVerification(text: string): boolean {
+  return /\b(verified|verify|confirmed|confirm)\b/i.test(text.normalize("NFKC"));
+}
 
 export function isBotScope(v: unknown): v is BotScope {
   return typeof v === "string" && (BOT_SCOPES as readonly string[]).includes(v);
@@ -46,7 +92,7 @@ export function isBotProposalKind(v: unknown): v is BotProposalKind {
 }
 
 /** The fact type and need a proposal kind writes. */
-export function factForKind(kind: BotProposalKind): { factType: "hours" | "last_admission"; need: "stop.hours" } {
+export function factForKind(kind: BotProposalKind): { factType: BotFactType; need: "stop.hours" } {
   return KIND_FACT[kind];
 }
 

@@ -1,6 +1,6 @@
 /**
- * /admin/bot-proposals — BOT-1 Phase 1's review queue (ledger `2026-10-15-bot1-phase1`). A bot's proposed hours or
- * last-admission fact for a stop, beside the fact stored now (read live). Approve writes the fact through the one
+ * /admin/bot-proposals — BOT-1 Phase 1's review queue (ledger `2026-10-15-bot1-phase1`). A bot's proposed hours,
+ * last-admission, closed-dates or timed-entry fact for a stop (row 126), beside the fact stored now (read live). Approve writes the fact through the one
  * writer with you as its verifier; reject needs a reason and writes nothing to the facts table. Any admin may
  * approve (decision C). An approved fact shows only "<source name> · checked <approval date>" — never an author.
  */
@@ -15,7 +15,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { BOT_PROPOSAL_STATUSES, type BotProposalStatus } from "@shared/bot-proposals";
+import { BOT_PROPOSAL_STATUSES, botKindExpiryRule, isBotProposalKind, type BotProposalStatus } from "@shared/bot-proposals";
+
+/** Row 126: the queue's kind labels (FOUNDER WORDING REVIEW on the PR). */
+const KIND_LABELS: Record<string, string> = {
+  "place_fact.hours": "Opening hours",
+  "place_fact.last_admission": "Last admission",
+  "place_fact.closed_dates": "Closed dates",
+  "place_fact.timed_entry_required": "Timed entry",
+};
+/** Row 126: closed dates take no reviewer expiry (FOUNDER WORDING REVIEW on the PR). */
+const CLOSED_DATES_EXPIRY_NOTE = "Expires the day after the last closed date. There is no expiry to enter.";
+/** The expiry the reviewer must enter: a safety fact's, and a bot's timed-entry proposal's (row 126). */
+const expiryRequired = (kind: string) => kind === "place_fact.last_admission" || (isBotProposalKind(kind) && botKindExpiryRule(kind) === "reviewer_required");
+const expiryFromDates = (kind: string) => isBotProposalKind(kind) && botKindExpiryRule(kind) === "from_dates";
 
 interface ReviewRow {
   id: string;
@@ -41,6 +54,8 @@ const REFUSALS: Record<string, string> = {
   source_not_eligible: "The source is no longer active, official and terms-checked.",
   url_not_https: "The page is not an https address.",
   url_off_source_host: "The page is not on the source's own site.",
+  url_not_official_site: "The page is not the place's own official site (a map, an OTA or a partner's site).",
+  expiry_from_dates: CLOSED_DATES_EXPIRY_NOTE,
   expiry_unset: "No expiry is set: the source has no refresh interval and bot_fact_default_expiry_days is missing.",
   fact_refused: "The facts writer refused this fact (missing source, quote or official license).",
   bad_kind: "This proposal's kind is not one Phase 1 can apply.",
@@ -95,6 +110,13 @@ function valueLines(v: Record<string, unknown> | null | undefined): string {
     const names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     return Object.entries(by).map(([d, t]) => `${names[Number(d)] ?? d}: ${t ?? "—"}`).join("\n") + ((v as any).season ? `\n(season ${(v as any).season.from}–${(v as any).season.to})` : "");
   }
+  // Row 126 (FOUNDER WORDING REVIEW on the PR): closed dates as ranges, timed entry as its two fields.
+  const ranges = (v as any).ranges;
+  if (Array.isArray(ranges)) return ranges.map((r: any) => (r.from === r.to ? `Closed ${r.from}` : `Closed ${r.from} – ${r.to}`)).join("\n");
+  if ((v as any).required === true) {
+    const n = (v as any).opensDaysAhead;
+    return Number.isInteger(n) ? `Timed entry required · slots open ${n} days ahead` : "Timed entry required";
+  }
   return typeof (v as any).text === "string" ? (v as any).text : "—";
 }
 
@@ -122,7 +144,7 @@ function ProposalCard({ row, onDone }: { row: ReviewRow; onDone: () => void }) {
     <Card data-testid={`bot-proposal-${row.id}`}>
       <CardHeader>
         <CardTitle className="text-base">
-          {row.kind === "place_fact.hours" ? "Opening hours" : "Last admission"} · <span className="font-mono text-sm">{row.placeRef}</span>
+          {KIND_LABELS[row.kind] ?? row.kind} · <span className="font-mono text-sm">{row.placeRef}</span>
         </CardTitle>
         <CardDescription>
           From {row.botName ?? "an unknown bot"} · {row.market ?? "no market"} · read {day(row.checkedAt)} · filed {day(row.createdAt)}
@@ -162,12 +184,18 @@ function ProposalCard({ row, onDone }: { row: ReviewRow; onDone: () => void }) {
         </div>
         {row.status === "pending" ? (
           <div className="space-y-2">
-            <ExpiryField id={row.id} safety={row.kind === "place_fact.last_admission"} value={expiry} onChange={setExpiry} />
+            {expiryFromDates(row.kind) ? (
+              <p className="text-xs text-muted-foreground" data-testid={`expiry-from-dates-${row.id}`}>
+                {CLOSED_DATES_EXPIRY_NOTE}
+              </p>
+            ) : (
+              <ExpiryField id={row.id} safety={expiryRequired(row.kind)} value={expiry} onChange={setExpiry} />
+            )}
             <Textarea placeholder="Reason, if you reject" value={reason} onChange={(e) => setReason(e.target.value)} data-testid={`bot-proposal-reason-${row.id}`} />
             <div className="flex gap-2">
               <Button
                 onClick={() => approve.mutate()}
-                disabled={approve.isPending || reject.isPending || (row.kind === "place_fact.last_admission" && !expiry)}
+                disabled={approve.isPending || reject.isPending || (expiryRequired(row.kind) && !expiry)}
                 data-testid={`bot-proposal-approve-${row.id}`}
               >
                 Approve
