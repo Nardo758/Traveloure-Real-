@@ -23,6 +23,7 @@ import {
   betaMarketSlugs, launchCityName, tickerButton,
 } from "@shared/ticker";
 import { EXPERT_HOOK_CITIES_HELP, EXPERT_HOOK_CITIES_SETTING, expertHookCities } from "@shared/expert-hook";
+import { publicSupplyEntryHref } from "@shared/supply-entry";
 
 interface AdminTickerItem {
   id: string;
@@ -284,7 +285,8 @@ export default function AdminTicker() {
   const betaCities = betaCityNames(
     betaMarketSlugs(settings.data?.find((r) => r.setting_key === BETA_MARKET_SLUGS_SETTING)?.setting_value ?? null, data?.marketSlug ?? null),
   );
-  const showing = items.filter((i) => i.showing).map((i) => ({ text: i.text ?? "", href: i.href }));
+  // Preview matches the public ribbon. The editor field below still shows the stored href.
+  const showing = items.filter((i) => i.showing).map((i) => ({ text: i.text ?? "", href: publicSupplyEntryHref(i.href) }));
 
   return (
     <AdminLayout title="Ticker">

@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SEOHead } from "@/components/seo-head";
+import { supplySignupContinuation } from "@shared/supply-entry";
 import {
   WAITLIST_CONSENT_PRIVACY_LINK,
   WAITLIST_EMAIL_ERROR,
@@ -39,6 +40,12 @@ import { waitlistSourceFromSearch, type SignupModeView } from "@/lib/launch-wait
 import { ProviderWaitlistResult } from "@/lib/waitlist-apply-done";
 import { arrivalRef } from "@/lib/ready-made-waitlist";
 import { getAcquisitionRef } from "@/lib/acquisition";
+
+/** The waitlist's "offer services" door uses the same continuation as the homepage join line. */
+function offerServicesHref(): string {
+  const next = supplySignupContinuation("?intent=supply");
+  return next.kind === "account" ? "/signup?intent=supply" : next.href;
+}
 
 const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MONTHS = [
@@ -465,7 +472,7 @@ export default function LaunchWaitlistPage() {
         )}
         <ProviderForm key={launchMarket} source={source} refCode={refCode} launchMarket={launchMarket} liveMarketKeys={liveMarketKeys} />
         <p className="mt-6 text-sm">
-          <Link href="/signup?intent=supply" className="underline" data-testid="link-waitlist-offer-services">Offer my services in Kyoto</Link>
+          <Link href={offerServicesHref()} className="underline" data-testid="link-waitlist-offer-services">Offer my services in Kyoto</Link>
         </p>
       </section>
     </div>

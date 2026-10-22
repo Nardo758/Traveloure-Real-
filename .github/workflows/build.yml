@@ -1200,6 +1200,12 @@ jobs:
       - if: ${{ !cancelled() }}
         name: Ticker rules and ribbon render
         run: npx tsx --test client/src/lib/__tests__/ticker-rules.test.ts client/src/components/__tests__/ticker-ribbon.test.tsx
+      # S-01 / S-10 (ledger `2026-10-21-supply-entry-paths`): the homepage join line and a
+      # role-less supply sign-up continue into the one application per role, and the Local
+      # Expert card's apply path is a same-site return. Pure — no DB, no server boot.
+      - if: ${{ !cancelled() }}
+        name: Supply entry paths (S-01, S-10)
+        run: npx tsx --test server/__tests__/supply-entry-paths.test.ts
       - if: ${{ !cancelled() }}
         name: Switched traveler doors (event_concierge, handoff_booking) and their copy
         run: npx tsx --test client/src/components/__tests__/traveler-doors.test.tsx
