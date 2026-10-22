@@ -21,9 +21,6 @@ import { db } from "../db";
 import { itineraryItems, trips } from "@shared/schema";
 import { rowCoordinatesTrusted } from "@shared/ai-place-text";
 import {
-  afterLastAdmission,
-  closedOnArrival,
-  closesBeforeVisitEnd,
   findingStopLines,
   parseDayHours,
   planLegCoverage,
@@ -31,7 +28,7 @@ import {
   type LegCoverage,
   type NotChecked,
 } from "@shared/optimizer-lead";
-import { checkPlan, feasibilityView, type PlanCheckInput } from "@shared/plan-check";
+import { checkPlan, checkStop, feasibilityView, type PlanCheckInput, type PlanFix } from "@shared/plan-check";
 import { planDayIsPast } from "@shared/plan-timing";
 import { factPointsForTrip, feasibilityFactsForTrip, placeRefsForTrip } from "./content-facts/place-facts.service";
 import { openCoordsForItemIds, openCoordsForPlaceIds } from "./routing/open-place-coords.service";
@@ -264,32 +261,43 @@ export async function loadDayFeasibility(
  * AP-1 (ledger `2026-10-13-ap1-save-then-warn`): ONE stop's hours, read from the SAME feasibility view the
  * findings and the day line read (§18 rule 1). `lines` are the findings' own stop lines for this item; a stop
  * the hours or last entry cover with no conflict has none. Read behind the caller's own plan gate.
+ *
+ * Row 124 (ledger `2026-10-22-add-check-closed-dates`): the lines and `fixes` come from `checkStop` — the plan check
+ * narrowed to this stop — so a stored `closed_dates` fact naming the stop's date gives the same "closed on that date"
+ * line and `move_day` fix the plan check gives, with or without a start time (FB-1 step 5b).
  */
-export async function loadStopHours(
+export async function loadStopHoursChecked(
   tripId: string,
   itemId: string,
-): Promise<{ found: boolean; hasTime: boolean; checked: boolean; lines: string[]; caveat?: string }> {
+): Promise<{ found: boolean; hasTime: boolean; checked: boolean; lines: string[]; caveat?: string; fixes: PlanFix[] }> {
   const [row] = await db
     .select({ id: itineraryItems.id })
     .from(itineraryItems)
     .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId)))
     .limit(1);
   const { input, found } = await loadPlanCheckInput(tripId);
-  if (!found) return { found: false, hasTime: false, checked: false, lines: [] };
+  if (!found) return { found: false, hasTime: false, checked: false, lines: [], fixes: [] };
   const own = input.stops.find((r) => r.id === itemId);
-  if (!own) return { found: !!row, hasTime: false, checked: false, lines: [] };
+  if (!own) return { found: !!row, hasTime: false, checked: false, lines: [], fixes: [] };
   const ctx = feasibilityView(input);
   const it = ctx.timed.find((t) => t.id === itemId);
-  if (!it || !it.startTime) return { found: true, hasTime: false, checked: false, lines: [] };
+  const closed = ctx.closedOn.has(itemId);
+  const hasTime = !!it?.startTime;
+  if (!it || (!hasTime && !closed)) return { found: true, hasTime: false, checked: false, lines: [], fixes: [] };
   const h = ctx.hours.get(itemId);
-  const hoursChecked = !!(h && it.dateIso && parseDayHours(h.weekdayDescriptions, new Date(`${it.dateIso}T00:00:00Z`).getUTCDay()));
-  const checked = hoursChecked || ctx.lastEntry.has(itemId);
-  const one = [it];
-  const lastMinute = new Map<string, number>(Array.from(ctx.lastEntry.entries()).map(([k, v]) => [k, v.minute]));
-  const found2 = [closedOnArrival(one, ctx.hours, input.tripStartIso), afterLastAdmission(one, lastMinute), closesBeforeVisitEnd(one, ctx.hours, input.tripStartIso)].filter(
-    (f): f is Finding => f !== null,
-  );
-  const lines = found2.flatMap((f) => findingStopLines(f));
-  const caveat = found2.find((f) => f.caveat)?.caveat;
-  return { found: true, hasTime: true, checked, lines, ...(caveat ? { caveat } : {}) };
+  const hoursChecked = !!(hasTime && h && it.dateIso && parseDayHours(h.weekdayDescriptions, new Date(`${it.dateIso}T00:00:00Z`).getUTCDay()));
+  const checked = hoursChecked || (hasTime && ctx.lastEntry.has(itemId)) || closed;
+  const { findings, issues } = checkStop(input, itemId);
+  const lines = findings.flatMap((f) => findingStopLines(f));
+  const caveat = findings.find((f) => f.caveat)?.caveat;
+  return { found: true, hasTime, checked, lines, ...(caveat ? { caveat } : {}), fixes: issues.map((i) => i.fix) };
+}
+
+/** The same read without the fixes (the FB-1 parity golden pins this shape). */
+export async function loadStopHours(
+  tripId: string,
+  itemId: string,
+): Promise<{ found: boolean; hasTime: boolean; checked: boolean; lines: string[]; caveat?: string }> {
+  const { fixes: _fixes, ...rest } = await loadStopHoursChecked(tripId, itemId);
+  return rest;
 }
