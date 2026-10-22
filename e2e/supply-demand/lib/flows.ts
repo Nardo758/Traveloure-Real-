@@ -246,13 +246,20 @@ async function seedQualifyingCityKnowledgePass(page: Page, email: string): Promi
     briefs: [],
     answers: [],
   };
+  // $2 cannot appear both as the inserted application id and inside the attempt-number
+  // subquery: Postgres reports "inconsistent types deduced for parameter $2" and the
+  // serial suite stops before Approve.
+  const next = await q<{ n: number | string }>(
+    `SELECT COALESCE(MAX(attempt_number), 0) + 1 AS n
+       FROM city_knowledge_attempts WHERE application_id = $1`,
+    [form.id],
+  );
+  const attemptNumber = Number(next[0]?.n ?? 1);
   await q(
     `INSERT INTO city_knowledge_attempts
        (id, user_id, application_id, city_key, attempt_number, status, outcome, result, attention_flag, scored_at, submitted_at)
-     VALUES (gen_random_uuid()::text, $1, $2, $3,
-             COALESCE((SELECT MAX(attempt_number) FROM city_knowledge_attempts WHERE application_id = $2), 0) + 1,
-             'scored', 'pass', $4::jsonb, false, NOW(), NOW())`,
-    [form.userId, form.id, cityKey, JSON.stringify(result)],
+     VALUES (gen_random_uuid()::text, $1, $2, $3, $4, 'scored', 'pass', $5::jsonb, false, NOW(), NOW())`,
+    [form.userId, form.id, cityKey, attemptNumber, JSON.stringify(result)],
   );
   fileFinding({
     id: `city-knowledge-pass-seed-${form.id}`,
