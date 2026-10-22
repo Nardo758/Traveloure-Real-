@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useAuth } from "./use-auth";
 import { useGuestTrips } from "@/contexts/GuestTripContext";
+import { emailVerificationHoldRequired } from "@/lib/email-verification-hold";
 
 /**
  * Automatically claims guest trips when a user signs up.
@@ -12,8 +13,9 @@ export function useClaimGuestTrips() {
 
   useEffect(() => {
     // When user becomes authenticated and they have guest trips, claim them
+    if (emailVerificationHoldRequired(user)) return;
     if (user && Object.keys(guestTrips).length > 0) {
       claimTrips(user.id);
     }
-  }, [user?.id, guestTrips, claimTrips]);
+  }, [user, user?.id, guestTrips, claimTrips]);
 }

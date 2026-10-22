@@ -46,8 +46,8 @@ async function insertUser(opts: { email: string; password: string | null; authPr
   const id = crypto.randomUUID();
   await withDb(async (client) => {
     await client.query(
-      `INSERT INTO users (id, email, password, first_name, last_name, role, auth_provider, terms_accepted_at, privacy_accepted_at, is_deleted, is_suspended)
-       VALUES ($1, $2, $3, 'Enum', 'Test', 'user', $4, NOW(), NOW(), false, false)`,
+      `INSERT INTO users (id, email, password, first_name, last_name, role, auth_provider, terms_accepted_at, privacy_accepted_at, email_verified, is_deleted, is_suspended)
+       VALUES ($1, $2, $3, 'Enum', 'Test', 'user', $4, NOW(), NOW(), NOW(), false, false)`,
       [id, opts.email, opts.password, opts.authProvider],
     );
   });

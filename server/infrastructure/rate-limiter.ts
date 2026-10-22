@@ -58,6 +58,12 @@ class InMemoryRateLimiter {
     clearInterval(this.cleanupInterval);
     this.store.clear();
   }
+
+  resetPrefix(prefix: string): void {
+    for (const key of Array.from(this.store.keys())) {
+      if (key.startsWith(prefix)) this.store.delete(key);
+    }
+  }
 }
 
 const limiterStore = new InMemoryRateLimiter();
@@ -175,6 +181,30 @@ export const searchRateLimiter = createRateLimiter({
   maxRequests: 30,
   keyGenerator: (req) => `search:${req.ip || "unknown"}`,
 });
+
+/**
+ * Verification letters (public resend, signed-in resend, change-email).
+ * Separate from authRateLimiter: that limiter skips loopback whenever NODE_ENV
+ * is not production, which would make the cap untestable on the CI login job.
+ * This one skips loopback only when RATE_LIMIT_LOOPBACK_SKIP=1. The key includes
+ * the path, so the three routes do not share a bucket. The 6th request in a
+ * window is 429. It does not look at the email, so the limit is the same
+ * whether or not an account exists.
+ */
+export const verificationEmailRateLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  maxRequests: 5,
+  keyGenerator: (req) => `verify-email:${req.ip || "unknown"}:${req.path}`,
+  skip: (req) => loopbackSkip(req),
+});
+
+/** Test-only. Clears verification-email buckets so a suite can start from zero. */
+export function resetRateLimitKeysForTests(prefix: string): void {
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error("resetRateLimitKeysForTests is test-only");
+  }
+  limiterStore.resetPrefix(prefix);
+}
 
 export const authRateLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,

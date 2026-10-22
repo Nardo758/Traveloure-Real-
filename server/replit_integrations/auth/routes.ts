@@ -7,6 +7,7 @@ import { eq, inArray, sql as drizzleSql } from "drizzle-orm";
 import { users } from "@shared/models/auth";
 import { localExpertForms, serviceProviderForms, expertRequests, trips } from "@shared/schema";
 import { sanitizeText } from "../../utils/text-sanitizer";
+import { readEmailVerificationGate } from "../../services/email-verification.service";
 
 // The recorded version is the one the Terms page displays — one constant both read.
 import { CURRENT_TERMS_VERSION, CURRENT_PRIVACY_VERSION } from "@shared/legal-versions";
@@ -16,6 +17,21 @@ function sanitizeUser(user: any) {
   if (!user) return user;
   const { password, instagramAccessToken, ...safeUser } = user;
   return safeUser;
+}
+
+/** Adds the S-09 hold flags. Payment method is not required in this lane. */
+async function withVerificationState(user: any, session: any) {
+  const safe = sanitizeUser(user);
+  if (!safe?.id) return safe;
+  const gate = await readEmailVerificationGate(
+    { id: safe.id, emailVerified: safe.emailVerified ?? null },
+    session,
+  );
+  return {
+    ...safe,
+    emailVerificationRequired: gate.emailVerificationRequired,
+    nextStep: gate.nextStep,
+  };
 }
 
 const acceptTermsSchema = z.object({
@@ -46,7 +62,7 @@ export function registerAuthRoutes(app: Express): void {
         return res.json({ authenticated: false, user: null });
       }
       const user = await authStorage.getUser(userId);
-      res.json({ authenticated: true, user: sanitizeUser(user) });
+      res.json({ authenticated: true, user: await withVerificationState(user, req.session) });
     } catch (error) {
       console.error("Error checking session:", error);
       res.json({ authenticated: false, user: null });
@@ -61,7 +77,7 @@ export function registerAuthRoutes(app: Express): void {
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
-      res.json(sanitizeUser(user));
+      res.json(await withVerificationState(user, req.session));
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
@@ -125,7 +141,7 @@ export function registerAuthRoutes(app: Express): void {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const user = await authStorage.getUser(userId);
-      res.json(sanitizeUser(user));
+      res.json(await withVerificationState(user, req.session));
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
@@ -136,7 +152,7 @@ export function registerAuthRoutes(app: Express): void {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const user = await authStorage.getUser(userId);
-      res.json(sanitizeUser(user));
+      res.json(await withVerificationState(user, req.session));
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
@@ -168,7 +184,7 @@ export function registerAuthRoutes(app: Express): void {
 
       res.json({ 
         success: true, 
-        user: sanitizeUser(user),
+        user: await withVerificationState(user, req.session),
         message: "Terms and privacy policy accepted successfully" 
       });
     } catch (error) {

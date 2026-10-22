@@ -17,6 +17,8 @@ import { getPlatformFlag, FLAG_REGISTRATION_ENABLED, getTravelerSignupMode, getL
 import { decideFirstTimeSignup, waitlistBlockedPath, TRAVELER_WAITLIST, type SignupIntent } from "@shared/launch-signup";
 import { stashSignupIntent, readSignupIntent, readSignupSourceTag, takeStashedReturnTo } from "./signup-intent-stash";
 import { safeReturnPath } from "../../utils/oauth-state";
+import { pathAfterAuth } from "../../services/email-verification.service";
+import { EMAIL_VERIFICATION_HOLD_PATH } from "@shared/email-verification-gate";
 import { recordSignupSource } from "../../services/signup-source-record";
 import {
   decideEmailMerge,
@@ -272,7 +274,14 @@ export async function setupAuth(app: Express) {
       const returnTo = safeReturnPath(takeStashedReturnTo(req), "/dashboard");
       req.logIn(user, (loginErr) => {
         if (loginErr) return next(loginErr);
-        res.redirect(returnTo);
+        const userId = user?.claims?.sub ?? user?.id;
+        pathAfterAuth(req.session, userId, returnTo)
+          .then((dest) => {
+            if (!res.headersSent) res.redirect(dest);
+          })
+          .catch(() => {
+            if (!res.headersSent) res.redirect(EMAIL_VERIFICATION_HOLD_PATH);
+          });
       });
     })(req, res, next);
   });

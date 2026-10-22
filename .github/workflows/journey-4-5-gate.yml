@@ -145,6 +145,7 @@ jobs:
           NODE_ENV: development
           CI: 'true'
           JOURNEY_STRIPE_UNAVAILABLE: '1'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
 
       - name: Upload report
         if: always()

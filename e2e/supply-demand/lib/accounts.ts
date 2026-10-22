@@ -6,6 +6,7 @@
  * fallback, and using it MUST be logged as a finding by the caller.
  */
 import type { Page } from '@playwright/test';
+import { q } from './db';
 import { E2E_PASSWORD } from './run-id';
 
 export type NewAccount = {
@@ -34,6 +35,13 @@ export async function signupViaUi(page: Page, acc: NewAccount): Promise<void> {
   if (status === null || status < 200 || status >= 300) {
     throw new Error(`signupViaUi(${acc.email}): ${status === null ? 'the signup form never sent POST /api/auth/register' : `POST /api/auth/register answered ${status}`}`);
   }
+  // The UI created the account. Record email_verified on that row so the S-09 hold
+  // does not stop a fixture that the spec is about to sign in. Same stamp as
+  // playwright/utils/auth.ts registerAndSignIn. Not a server bypass.
+  await q(
+    'UPDATE users SET email_verified = NOW() WHERE lower(email) = lower($1) AND email_verified IS NULL',
+    [acc.email],
+  );
   // Give the app time to redirect/settle post-signup (varies by role/onboarding gate).
   await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
   // Registration does not prove a session (AUTH-1): sign in on the page's own cookie jar.

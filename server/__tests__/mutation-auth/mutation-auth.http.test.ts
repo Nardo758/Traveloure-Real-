@@ -145,7 +145,7 @@ async function createAndLogin(label: "A" | "B"): Promise<FixtureUser> {
   const email = `mutation-auth-${runId}-${label.toLowerCase()}@example.invalid`;
   await db.insert(users).values({
     id, email, password: await hashPassword(password), firstName: "Mutation", lastName: `User${label}`,
-    role: "user", authProvider: "email",
+    role: "user", authProvider: "email", emailVerified: new Date(),
   });
   createdUserIds.push(id);
   const login = await request("/api/auth/login", { method: "POST", body: { email, password } });

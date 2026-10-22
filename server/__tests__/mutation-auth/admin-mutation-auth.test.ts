@@ -126,6 +126,7 @@ before(async () => {
     lastName: "Authorization Audit",
     role: "user",
     authProvider: "email",
+    emailVerified: new Date(),
   });
 
   const login = await fetch(`${BASE_URL}/api/auth/login`, {

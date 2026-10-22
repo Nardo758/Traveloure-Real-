@@ -4,9 +4,10 @@ import crypto from "crypto";
  * Fixed-work password check for email login (ledger `2026-10-21-login-enumeration`).
  *
  * This module does not look up accounts and does not create sessions. The route
- * looks the account up, then calls `verifyLoginCredential`. A later gate (fix-queue
- * S-09, enforce email verification) can sit beside this check in the route without
- * folding the comparison back into `emailAuth.ts`.
+ * looks the account up, then calls `verifyLoginCredential`. S-09's verification
+ * gate sits beside this check in the login route and in
+ * `email-verification-gate` middleware. Do not fold the comparison back into
+ * `emailAuth.ts`, and do not turn an unverified password into a distinct 401.
  *
  * Every call does one scrypt (Node defaults: N=16384, r=8, p=1, keylen 64 — the
  * same call `hashPassword` in emailAuth.ts makes) and one 64-byte comparison.

@@ -2,9 +2,9 @@ import type { Express } from "express";
 import { z } from "zod";
 import crypto from "crypto";
 import { db } from "../../db";
-import { users, emailVerificationTokens } from "@shared/models/auth";
-import { and, eq, gt, isNull } from "drizzle-orm";
-import { sendPasswordResetEmail, sendEmailVerificationEmail, getAppBaseUrl } from "../../services/email.service";
+import { users } from "@shared/models/auth";
+import { eq } from "drizzle-orm";
+import { sendPasswordResetEmail, getAppBaseUrl } from "../../services/email.service";
 import { enqueueSignupWelcome } from "../../services/signup-welcome-outbox.service";
 import { deliverQueuedEmail } from "../../services/email-outbox.service";
 import { trackFunnelEvent } from "../../utils/funnelTracker";
@@ -16,9 +16,28 @@ import { decideFirstTimeSignup, normalizeSignupIntent, waitlistBlockedPath, TRAV
 import { CURRENT_TERMS_VERSION, CURRENT_PRIVACY_VERSION } from "@shared/legal-versions";
 import { REGISTRATION_NEUTRAL_STATUS, registrationNeutralBody } from "@shared/registration-neutral";
 import {
-  RESET_TOKEN_TTL_MIN, hashAuthToken, issuePasswordResetToken, consumePasswordResetToken,
+  RESET_TOKEN_TTL_MIN, issuePasswordResetToken, consumePasswordResetToken,
 } from "../../services/password-reset-tokens.service";
 import { verifyLoginCredential } from "../../services/login-credentials.service";
+import { verificationEmailRateLimiter } from "../../infrastructure/rate-limiter";
+import {
+  VERIFICATION_RESEND_MESSAGE,
+  VERIFICATION_EMAIL_CHANGE_MESSAGE,
+  VERIFY_EMAIL_SUCCESS_MESSAGE,
+  VERIFY_EMAIL_INVALID_MESSAGE,
+} from "@shared/email-verification-gate";
+import {
+  issueEmailVerification,
+  readEmailVerificationGate,
+  stampGrandfatherOnSession,
+  consumeEmailVerificationToken,
+  deliverVerificationResend,
+  sendVerificationForSessionUser,
+  changeUnverifiedEmail,
+} from "../../services/email-verification.service";
+import { isEmailUniqueViolation } from "./email-unique-violation";
+
+export { issueEmailVerification, isEmailUniqueViolation };
 
 // Simple password hashing using Node's built-in crypto
 // For production, consider using bcrypt or argon2
@@ -70,37 +89,6 @@ const loginSchema = z.object({
   // (b) locks out anyone whose real password has leading/trailing spaces. Compare exactly.
   password: z.string().min(1, "Password is required"),
 });
-
-// ─── Email verification issuer ───────────────────────────────────────────────
-// Same token shape as the password reset: the raw token is emailed, only its sha256 is stored,
-// single-use with a TTL. Exported so a first-time Facebook account gets the same verification email
-// an email sign-up gets (AUTH-1 Finding A (i): Facebook is never trusted as verified).
-const VERIFY_TOKEN_TTL_HOURS = 24;
-
-export async function issueEmailVerification(userId: string, email: string, firstName: string | null): Promise<void> {
-  const raw = crypto.randomBytes(32).toString("hex");
-  const tokenHash = hashAuthToken(raw);
-  const expiresAt = new Date(Date.now() + VERIFY_TOKEN_TTL_HOURS * 60 * 60 * 1000);
-  await db.insert(emailVerificationTokens).values({ userId, tokenHash, expiresAt });
-  const verifyUrl = `${getAppBaseUrl()}/verify-email?token=${encodeURIComponent(raw)}`;
-  await sendEmailVerificationEmail({
-    toEmail: email,
-    firstName,
-    verifyUrl,
-    expiresInHours: VERIFY_TOKEN_TTL_HOURS,
-  });
-}
-
-/**
- * AUTH-1 fix 3b: true only for the users.email unique index (`users_email_unique`), checked on the error and on the
- * driver error drizzle wraps it in. Any other unique index, constraint or fault is not a duplicate sign-up.
- */
-export function isEmailUniqueViolation(err: unknown): boolean {
-  for (let e: any = err, depth = 0; e && depth < 4; e = e.cause, depth += 1) {
-    if (e.code === "23505") return e.constraint === "users_email_unique";
-  }
-  return false;
-}
 
 export function setupEmailAuth(app: Express): void {
   // Register new user with email/password
@@ -276,6 +264,14 @@ export function setupEmailAuth(app: Express): void {
         });
       }
 
+      // S-09 sits beside the credential check. A correct password still creates a
+      // session. An unverified account with no activity is limited to the verify
+      // screen by emailVerificationGate. The 401 body above is unchanged.
+      const gate = await readEmailVerificationGate({
+        id: user.id,
+        emailVerified: user.emailVerified,
+      });
+
       // Create session
       const sessionUser = {
         claims: {
@@ -302,8 +298,11 @@ export function setupEmailAuth(app: Express): void {
             return res.status(500).json({ message: "Failed to create session" });
           }
 
+          stampGrandfatherOnSession(req.session, gate.access, user.emailVerified);
           res.json({
             message: "Logged in successfully",
+            emailVerificationRequired: gate.emailVerificationRequired,
+            nextStep: gate.nextStep,
             user: {
               id: user.id,
               email: user.email,
@@ -420,48 +419,67 @@ export function setupEmailAuth(app: Express): void {
   });
 
   // ─── Email verification on signup ──────────────────────────────────────────
-  // The issuer is issueEmailVerification above, shared with the Facebook sign-in.
+  // issueEmailVerification (email-verification.service.ts) is shared with Facebook.
+  // Every answer below is the same sentence whether or not the address exists,
+  // except a missing session (401) and a malformed change-email body (400).
 
-  // POST /api/auth/send-verification — authenticated; (re)issues a token to the
-  // caller's email. Used by the "Resend verification email" UI button.
-  app.post("/api/auth/send-verification", async (req, res) => {
+  const resendSchema = z.object({
+    email: z.string().email().max(254),
+  }).strict();
+
+  app.post("/api/auth/resend-verification", verificationEmailRateLimiter, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      if (!userId) {
-        return res.status(401).json({ message: "Authentication required" });
-      }
-      const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-      if (!user || !user.email) {
-        return res.status(404).json({ message: "Account not found" });
-      }
-      if (user.emailVerified) {
-        return res.status(200).json({ message: "Email already verified." });
-      }
-      // Burn any prior unused tokens for this user — only the newest link
-      // should be valid.
-      await db
-        .update(emailVerificationTokens)
-        .set({ usedAt: new Date() })
-        .where(and(
-          eq(emailVerificationTokens.userId, userId),
-          isNull(emailVerificationTokens.usedAt),
-        ));
-      await issueEmailVerification(userId, user.email, user.firstName ?? null);
-      return res.status(200).json({
-        message: "Verification email sent. Check your inbox.",
-      });
-    } catch (error) {
-      console.error("Send verification error:", error);
-      return res.status(500).json({ message: "Failed to send verification email" });
+      const parsed = resendSchema.safeParse(req.body);
+      if (parsed.success) await deliverVerificationResend(parsed.data.email);
+    } catch {
+      console.error("[auth/resend-verification] failed");
     }
+    return res.status(200).json({ message: VERIFICATION_RESEND_MESSAGE });
+  });
+
+  app.post("/api/auth/send-verification", verificationEmailRateLimiter, async (req, res) => {
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    if (!userId) {
+      return res.status(401).json({ message: "Authentication required" });
+    }
+    try {
+      await sendVerificationForSessionUser(userId);
+    } catch {
+      console.error("[auth/send-verification] failed");
+    }
+    return res.status(200).json({ message: VERIFICATION_RESEND_MESSAGE });
+  });
+
+  const changeEmailSchema = z.object({
+    email: z.string().email("Invalid email address").max(254, "Email is too long"),
+  }).strict();
+
+  app.post("/api/auth/change-unverified-email", verificationEmailRateLimiter, async (req, res) => {
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    if (!userId) {
+      return res.status(401).json({ message: "Authentication required" });
+    }
+    const parsed = changeEmailSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        message: "Validation failed",
+        errors: parsed.error.errors,
+      });
+    }
+    try {
+      await changeUnverifiedEmail(userId, parsed.data.email, req.session);
+    } catch {
+      console.error("[auth/change-unverified-email] failed");
+    }
+    return res.status(200).json({ message: VERIFICATION_EMAIL_CHANGE_MESSAGE });
   });
 
   const verifyEmailSchema = z.object({
     token: z.string().min(32, "Invalid verification token").max(128, "Invalid verification token"),
   });
 
-  // POST /api/auth/verify-email — public; client posts the raw token from the
-  // /verify-email?token=… URL. On success, stamps users.emailVerified.
+  // POST /api/auth/verify-email — public. Single-use, expiring, and a repeat of
+  // a link that already verified the address returns the same success.
   app.post("/api/auth/verify-email", async (req, res) => {
     try {
       const parsed = verifyEmailSchema.safeParse(req.body);
@@ -471,30 +489,13 @@ export function setupEmailAuth(app: Express): void {
           errors: parsed.error.errors,
         });
       }
-      const tokenHash = hashAuthToken(parsed.data.token);
-      const now = new Date();
-      const tokenRow = await db
-        .select()
-        .from(emailVerificationTokens)
-        .where(and(
-          eq(emailVerificationTokens.tokenHash, tokenHash),
-          isNull(emailVerificationTokens.usedAt),
-          gt(emailVerificationTokens.expiresAt, now),
-        ))
-        .then((r) => r[0]);
-      if (!tokenRow) {
-        return res.status(400).json({
-          message: "This verification link is invalid or has expired. Please request a new one.",
-        });
+      const result = await consumeEmailVerificationToken(parsed.data.token);
+      if (result !== "verified") {
+        return res.status(400).json({ message: VERIFY_EMAIL_INVALID_MESSAGE });
       }
-      await db.update(users).set({ emailVerified: now }).where(eq(users.id, tokenRow.userId));
-      await db
-        .update(emailVerificationTokens)
-        .set({ usedAt: now })
-        .where(eq(emailVerificationTokens.id, tokenRow.id));
-      return res.json({ message: "Email verified successfully." });
-    } catch (error) {
-      console.error("Verify email error:", error);
+      return res.json({ message: VERIFY_EMAIL_SUCCESS_MESSAGE });
+    } catch {
+      console.error("[auth/verify-email] failed");
       return res.status(500).json({ message: "Failed to verify email" });
     }
   });

@@ -9,12 +9,15 @@
  * An account created before the ruling gets a dismissible prompt. A newer
  * account is asked to save a method before continuing, and can sign out.
  * `available: false` renders nothing, so a failed list read is not a lock-out.
+ * An account still held for email confirmation does not see this step: verify
+ * comes first (S-09), and this overlay would cover that screen.
  */
 import { useState } from "react";
 import { AddCardDialog } from "@/components/payment/AddCardDialog";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { useSavedPayment } from "@/hooks/use-saved-payment";
+import { emailVerificationHoldRequired } from "@/lib/email-verification-hold";
 import {
   EXISTING_ACCOUNT_PAYMENT_PROMPT,
   PAYMENT_METHOD_CHECKING,
@@ -32,7 +35,7 @@ import {
 export function PaymentMethodSetupGate() {
   const { user, isLoading: userLoading, isAuthenticated, logout, isLoggingOut } = useAuth();
   const termsPending = !!user && (!user.termsAcceptedAt || !user.privacyAcceptedAt);
-  const ask = isAuthenticated && !userLoading && !termsPending;
+  const ask = isAuthenticated && !userLoading && !termsPending && !emailVerificationHoldRequired(user);
   const { available, methods, isLoading, isFetching } = useSavedPayment(ask);
   const [dismissed, setDismissed] = useState(() => readPaymentMethodPromptDismissed());
 

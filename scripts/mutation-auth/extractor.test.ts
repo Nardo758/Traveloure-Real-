@@ -302,6 +302,12 @@ test("resolves named re-exports used by authentication registration helpers", ()
  * PUT /api/admin/city-knowledge/:cityKey and POST /api/admin/expert-applications/:id/city-knowledge/retake —
  * admin-only behind the blanket /api/admin guard (admin 186 → 189, admin-role 186 → 189).
  *
+ * 720 / 712 → 722 / 714 (S-09, on top of `2026-10-21-city-knowledge-test`): POST /api/auth/resend-verification
+ * and POST /api/auth/change-unverified-email. The resend rail answers the same sentence whether or not the
+ * address exists. The change rail 401s without a session, the same shape as send-verification. The text
+ * heuristic sees neither `isAuthenticated` nor `getUserId`, so both class other / public-or-system.
+ * other 243 → 245, public-or-system 50 → 52.
+ *
  * THE COUNTS ARE THE POINT: they exist so a route appearing or vanishing from
  * the mounted graph fails here. Now that the file is wired into CI, changing a
  * number is a decision that needs its reason stated, exactly as this one does.
@@ -309,8 +315,8 @@ test("resolves named re-exports used by authentication registration helpers", ()
 test("current mounted graph parity includes auth helpers and shared api paths", () => {
   const root = process.cwd();
   const result = extractMountedMutations(path.join(root, "server/routes.ts"), root);
-  assert.equal(result.mutations.length, 720);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 712);
+  assert.equal(result.mutations.length, 722);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 714);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -320,15 +326,16 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "generated/security/mutation-auth-manifest.json"), "utf8"));
   const markdown = fs.readFileSync(path.join(root, "generated/security/mutation-auth-inventory.md"), "utf8");
   const endpointRows = markdown.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| ---")).slice(1);
-  assert.equal(endpointRows.length, 712);
+  assert.equal(endpointRows.length, 714);
   // 709 / 701 (ledger `2026-10-18-fd4-share-projection`): the shadowed quick-start twin is deleted; unique paths stay 701.
   // 710 / 702 (ledger `2026-10-19-fb1-free-retime`): + POST /api/trips/:tripId/retime-fixes/:itemId/apply.
   // 712 / 704 (ledger `2026-10-18-cs1-source-signoff`): the sign-off and photo-block POSTs.
   // 713 / 705 (ledger `2026-10-19-sh1-test-flag`): + PATCH /api/admin/users/:id/test-flag.
   // 714 / 706 (ledger `2026-10-19-cs1-fact-review`): the refresh-fact approve POST.
   // 720 / 712 (ledger `2026-10-21-city-knowledge-test`): the three applicant sittings and the three admin bank/retake writes.
-  assert.equal(manifest.rawRegistrationCount, 720);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 712);
+  // 722 / 714 (S-09): + POST /api/auth/resend-verification and POST /api/auth/change-unverified-email.
+  assert.equal(manifest.rawRegistrationCount, 722);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 714);
   // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R274): user-data,
   // session-self; the owner/delegate check runs in the service before any write.
   // + POST /api/admin/content-sources/:id/public-ok (ledger `2026-10-03-official-facts-public-ok`, R278):
@@ -372,7 +379,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // admin 182 → 184 (ledger `2026-10-18-cs1-source-signoff`): the sign-off and photo-block POSTs are both admin; +1 SH-1 test-flag.
   // admin 185 → 186 (ledger `2026-10-19-cs1-fact-review`): the refresh-fact approve POST.
   // admin 186 → 189, user-data 246 → 249 (ledger `2026-10-21-city-knowledge-test`): three admin writes, three applicant sittings.
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 189, "user-data": 249, other: 243 });
+  // other 243 → 245 (S-09): the resend and change-unverified-email rails.
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 189, "user-data": 249, other: 245 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
@@ -408,8 +416,10 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // admin-role 182 → 184 (ledger `2026-10-18-cs1-source-signoff`): the same two admin POSTs; +1 SH-1 test-flag.
   // admin-role 185 → 186 (ledger `2026-10-19-cs1-fact-review`): the refresh-fact approve POST.
   // admin-role 186 → 189, session-self 362 → 365 (ledger `2026-10-21-city-knowledge-test`).
+  // public-or-system 50 → 52 (S-09): the resend and change-unverified-email rails. The change rail
+  // still 401s without a session; the heuristic does not see that check, same as send-verification.
     "admin-role": 189, "session-self": 365, "resource-owner": 102,
-    signature: 6, "public-or-system": 50, unknown: 0,
+    signature: 6, "public-or-system": 52, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
     `${mutation.method} ${mutation.effectivePath}`, mutation,

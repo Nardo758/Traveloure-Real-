@@ -97,6 +97,7 @@ import { isActionableBooking, isProvisionalBooking } from "@shared/booking-visib
 import { IDENTITY_EDIT_FIELDS } from "@shared/edit-split";
 import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated, setupFacebookAuth, setupEmailAuth } from "./replit_integrations/auth";
+import { emailVerificationGate } from "./middleware/email-verification-gate";
 import { isExpert, isProvider, isEarner, isEarnerOrPendingDraft } from "./middleware/role-rbac";
 import { formatVendorAuditCsv } from "./utils/vendor-export";
 import { projectVendorForDirectory } from "./utils/vendor-read-scope";
@@ -884,6 +885,7 @@ export async function registerRoutes(
   // Auth setup
   try {
     await setupAuth(app);
+    app.use(emailVerificationGate);
     registerAuthRoutes(app);
     setupFacebookAuth(app);
     setupEmailAuth(app);

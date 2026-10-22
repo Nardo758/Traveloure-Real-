@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { TRAVELER_WAITLIST, normalizeSignupIntent, waitlistBlockedPath } from "@shared/launch-signup";
 import { isRegistrationNeutral } from "@shared/registration-neutral";
 import { sanitizeReturnTo } from "@/lib/safe-return-to";
+import { resendVerificationEmail } from "@/lib/email-verification-hold";
 import { useTranslation } from "react-i18next";
 
 export function SignupPage() {
@@ -35,6 +36,7 @@ export function SignupPage() {
   // AUTH-1 fix 3b: the server answers a new and an existing address the same way and signs nobody in, so a
   // completed sign-up shows one neutral state — never the dashboard, never "account created".
   const [submitted, setSubmitted] = useState(false);
+  const [resendState, setResendState] = useState<"idle" | "sending" | "sent" | "wait" | "error">("idle");
 
   const handleSubmit = async () => {
     setLoading(true);
@@ -94,6 +96,28 @@ export function SignupPage() {
           <p className="text-sm text-gray-600 mb-6" data-testid="text-signup-payment-step">{t("registered.paymentStep")}</p>
           {/* The sign-in window also holds "Forgot password?", so one link serves both paths. */}
           <div className="flex flex-col gap-2 text-sm">
+            <button
+              type="button"
+              className="text-gray-900 underline text-left disabled:opacity-60"
+              disabled={resendState === "sending"}
+              data-testid="button-resend-verification"
+              onClick={async () => {
+                setResendState("sending");
+                const outcome = await resendVerificationEmail(form.email);
+                setResendState(outcome === "sent" ? "sent" : outcome === "rate_limited" ? "wait" : "error");
+              }}
+            >
+              {resendState === "sending" ? t("registered.resending") : t("registered.resend")}
+            </button>
+            {resendState === "sent" && (
+              <p className="text-gray-600" data-testid="text-resend-result">{t("registered.resendResult")}</p>
+            )}
+            {resendState === "wait" && (
+              <p className="text-gray-600" data-testid="text-resend-result">{t("registered.resendWait")}</p>
+            )}
+            {resendState === "error" && (
+              <p className="text-gray-600" data-testid="text-resend-result">{t("signupPage.genericError")}</p>
+            )}
             <a href="/login" className="text-gray-900 underline" data-testid="link-neutral-sign-in">
               {t("registered.signIn")}
             </a>

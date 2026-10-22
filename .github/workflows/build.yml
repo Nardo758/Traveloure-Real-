@@ -2372,6 +2372,12 @@ jobs:
       - if: ${{ !cancelled() }}
         name: Login enumeration route (two fresh-account loops)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/login-enumeration.http.test.ts
+      # S-09: unverified email/password accounts stay on the verify screen. The
+      # resend cap is asserted here because this job does not set
+      # RATE_LIMIT_LOOPBACK_SKIP. The test boots its own auth app.
+      - if: ${{ !cancelled() }}
+        name: Email verification gate (S-09)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/email-verification-gate.http.test.ts
 
 
   quote-born-charge:

@@ -108,6 +108,12 @@ test("8d — signed out: browse with no plan, add, sign up → exactly one plan,
   expect(await page.evaluate(() => sessionStorage.getItem("traveloure_pending_plan")), "the record is kept").not.toBeNull();
   const [pre] = await rows<{ n: number }>(`SELECT COUNT(*)::int AS n FROM trips t JOIN users u ON u.id = t.user_id WHERE u.email = $1`, [email]);
   expect(pre.n, "signing up creates no plan").toBe(0);
+  // The modal created the account through the UI. Record email_verified on that
+  // disposable row so sign-in is not held on /verify-email. The server gate is unchanged.
+  await rows(
+    `UPDATE users SET email_verified = NOW() WHERE lower(email) = lower($1) AND email_verified IS NULL`,
+    [email],
+  );
 
   // Then sign in, in the same window.
   await testid(page, "link-neutral-sign-in").click();

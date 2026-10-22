@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "./use-auth";
+import { emailVerificationHoldRequired } from "@/lib/email-verification-hold";
 
 /**
  * Automatically claims an orphaned guest concierge request after any auth
@@ -20,6 +21,7 @@ export function useClaimGuestConcierge() {
 
   useEffect(() => {
     if (!user) return;
+    if (emailVerificationHoldRequired(user)) return;
     if (claimedRef.current) return;
 
     const requestId = sessionStorage.getItem("guestConciergeRequestId");
@@ -59,5 +61,5 @@ export function useClaimGuestConcierge() {
         navigate(destination);
       }
     })();
-  }, [user?.id, navigate]);
+  }, [user, user?.id, navigate]);
 }

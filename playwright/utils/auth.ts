@@ -218,9 +218,26 @@ export async function acceptTerms(page: Page): Promise<void> {
  * assert `connect.sid` or re-read `/api/auth/user` — a caller that needs that proof calls
  * `assertAuthenticatedSession` after it.
  */
+async function stampEmailVerified(email: string): Promise<void> {
+  if (!process.env.DATABASE_URL) {
+    throw new Error("registerAndSignIn requires DATABASE_URL to record email verification");
+  }
+  const { Client } = await import("pg");
+  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  try {
+    await client.query(
+      "UPDATE users SET email_verified = NOW() WHERE lower(email) = lower($1) AND email_verified IS NULL",
+      [email],
+    );
+  } finally {
+    await client.end();
+  }
+}
+
 export async function registerAndSignIn(
   ctx: APIRequestContext,
-  account: { email: string; password: string; firstName?: string; lastName?: string; extra?: Record<string, unknown> },
+  account: { email: string; password: string; firstName?: string; lastName?: string; extra?: Record<string, unknown>; leaveUnverified?: boolean },
   base: string = baseUrl(),
 ): Promise<{ id: string; email: string; user: AuthenticatedUser & Record<string, unknown> }> {
   const reg = await ctx.post(`${base}/api/auth/register`, {
@@ -235,6 +252,7 @@ export async function registerAndSignIn(
   if (reg.status() < 200 || reg.status() >= 300) {
     throw new Error(`register(${account.email}) failed (${reg.status()}): ${await reg.text()}`);
   }
+  if (!account.leaveUnverified) await stampEmailVerified(account.email);
   const login = await ctx.post(`${base}/api/auth/login`, {
     data: { email: account.email, password: account.password },
   });
