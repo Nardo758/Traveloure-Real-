@@ -10,7 +10,9 @@
  *   P5 a month-level season shows in the band and in "In season all month", never on a day
  *   P6 "Where to go" lists Kyoto only (LC-1b)
  *   P7 (2b, ledger `2026-10-06-event-page`) from a row, "Event details" opens the event's own page
- *   P8 on the page, "Plan around it" opens the pop-up with the event's dates and venue filled in
+ *   P8 on the page, "Plan around it" opens the pop-up with the event filled in; opening writes nothing to the
+ *      planning context (SH-1 Launch Q15.2, ledger `2026-10-22-sh1-launch-pr5`: dates and the event are written on
+ *      Start a plan, never on open); after Start a plan the dates, the event and its source id are written
  *   P9 an address with no live event is the "not on our calendar" page, not an empty shell
  */
 import { test, expect, type Page } from '@playwright/test';
@@ -171,17 +173,28 @@ test.describe('/events — the year ahead (2026-10-06-events-calendar)', () => {
     await expect(page.getByText(/comment/i)).toHaveCount(0);
   });
 
-  test('P8 on the page, Plan around it opens the pop-up with the event filled in', async ({ page }) => {
+  test('P8 on the page, Plan around it opens the pop-up with the event filled in, and writes nothing on open', async ({ page }) => {
     await mockEventPage(page);
     await page.goto(`${BASE_URL}/events/fixture-underway`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
     await page.getByTestId('event-detail-plan').click();
     await expect(page.getByTestId('plan-entry')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId('plan-entry-summary')).toContainText('Fixture underway');
+    await expect(page.getByTestId('plan-entry-summary')).toContainText('Kyoto');
+    // SH-1 Launch Q15.2: no dates and no pending event are written to the pen by opening the pop-up.
     const pens = await page.evaluate(() => Object.keys(sessionStorage).map((k) => sessionStorage.getItem(k) ?? ''));
-    const pen = pens.map((v) => { try { return JSON.parse(v); } catch { return null; } }).find((v) => v && v.startDate);
-    expect(pen?.startDate).toBe(plus(-1));
-    expect(pen?.endDate).toBe(plus(1));
-    expect(pen?.destination).toBe('Kyoto');
-    expect(JSON.stringify(pen?.pendingEvents ?? [])).toContain('Kyocera Dome Osaka');
+    const parsed = pens.map((v) => { try { return JSON.parse(v); } catch { return null; } }).filter((v) => v && typeof v === 'object');
+    expect(parsed.some((v) => v.startDate || v.endDate || (Array.isArray(v.pendingEvents) && v.pendingEvents.length > 0))).toBe(false);
+    // On Start a plan (a guest here): the dates, the event and its source id are written — the start no earlier than
+    // Kyoto's today (Q15.3), the end the event's own last day.
+    await page.getByTestId('button-plan-entry-start').click();
+    await expect.poll(async () => page.evaluate(() => sessionStorage.getItem('traveloure_pending_plan')), { timeout: 10_000 }).not.toBeNull();
+    const record = await page.evaluate(() => JSON.parse(sessionStorage.getItem('traveloure_pending_plan') ?? 'null'));
+    const kyotoToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const firstDay = plus(-1) > kyotoToday ? plus(-1) : kyotoToday;
+    expect(record?.answers?.startDate).toBe(firstDay);
+    expect(record?.answers?.endDate).toBe(plus(1) < firstDay ? firstDay : plus(1));
+    expect(JSON.stringify(record?.answers?.events ?? [])).toContain('Fixture underway');
+    expect(record?.source?.eventSourceId).toBe('fixture-underway');
   });
 
   test('P9 an unknown address is the not-on-our-calendar page', async ({ page }) => {

@@ -22,6 +22,8 @@ import {
   type OccasionPickerGroup,
 } from "@shared/experience-group";
 import { cityEventPlanShape } from "@shared/city-events";
+import { isShowSeries, seriesShowDates, upcomingShowDates } from "@shared/event-page";
+import { clampToMarketToday, marketToday } from "@shared/market-today";
 import { exactOperatingMarket } from "./experiences-entry";
 
 export type PlanAround = "place" | "date" | "event";
@@ -38,7 +40,22 @@ export interface PlanEntryEvent {
   lastDate: string;
   /** Local "HH:MM", or null when the organiser published only the date. */
   startTime: string | null;
+  /** SH-1 Launch Q14.3: the event's `city_events.source_id`, sent with the mint so the server can refuse an ended event. */
+  eventSourceId?: string | null;
+  /** SH-1 item 5: the row's `series_key`; PlanEntry reads its sibling shows from the upcoming list. */
+  seriesKey?: string | null;
+  /**
+   * SH-1 item 5 / Launch Q14.1: a series of shows stored as sibling rows on one `series_key` — every show's local date
+   * (`seriesShowDates`). Present only for a series of two or more shows; the night picker offers these, not a range.
+   */
+  showDates?: readonly string[];
 }
+
+/**
+ * SH-1 Launch Q16.2: the occasion an event pick carries — the same slug every "Plan around it" door passes
+ * (`CITY_EVENT_OCCASION_SLUG`). The group still follows the nights (Q16.1); "More specific" overrides.
+ */
+export const EVENT_OCCASION_SLUG = "show";
 
 export interface PlanEntryState {
   around: PlanAround | null;
@@ -63,6 +80,12 @@ export interface PlanEntrySource {
   /** A starting group (the nav's `?group=`, already an exact key) — E3 ruling 3. */
   group?: OccasionPickerGroup;
   anchor?: { title: string; firstDate: string; lastDate: string; startTime: string | null; venue: string };
+  /** SH-1 Launch Q14.3: the anchor's `city_events.source_id` (beside the anchor, which stays the event's own facts). */
+  eventSourceId?: string;
+  /** SH-1 item 5: the anchor's `series_key`, so PlanEntry can read its sibling shows. */
+  seriesKey?: string;
+  /** SH-1 Launch Q14.1: the anchor's series of shows — every show's local date, when two or more. */
+  showDates?: readonly string[];
 }
 
 export const DEFAULT_GROUP: OccasionPickerGroup = "trips";
@@ -100,21 +123,86 @@ export function eventNightDates(e: Pick<PlanEntryEvent, "firstDate" | "lastDate"
   return out;
 }
 
-/** Apply an event pick: its city, its full date range, its row. The group follows its length. */
-export function withEvent(state: PlanEntryState, e: PlanEntryEvent): PlanEntryState {
-  const market = exactOperatingMarket(e.city) ?? exactOperatingMarket(e.country ? `${e.city}, ${e.country}` : e.city);
+/** The market a city event belongs to (exact match on the event's city), or null. */
+function eventMarket(e: Pick<PlanEntryEvent, "city" | "country">): OperatingMarket | null {
+  return exactOperatingMarket(e.city) ?? exactOperatingMarket(e.country ? `${e.city}, ${e.country}` : e.city);
+}
+
+/** SH-1 Q14.1: a series of shows offers its shows; anything else its contiguous nights. */
+function eventIsShowSeries(e: Pick<PlanEntryEvent, "showDates">): boolean {
+  return !!e.showDates && isShowSeries(e.showDates);
+}
+
+/**
+ * Pure. SH-1 Launch Q14.1/Q14.2: the nights the picker offers, clamped to the market's today (`clampToMarketToday`'s
+ * rule): a series of shows offers its shows still to come (`upcomingShowDates`); a contiguous run its nights from
+ * today on. No market ⇒ no picker (null). A run that offers fewer than two nights asks nothing (null).
+ */
+export function nightPickerOptions(state: Pick<PlanEntryState, "event" | "market">, now: Date = new Date()): string[] | null {
+  const e = state.event;
+  if (!e || !state.market) return null;
+  const today = marketToday(state.market.marketKey, now);
+  if (eventIsShowSeries(e)) {
+    const shows = upcomingShowDates(e.showDates!, today);
+    return shows.length >= 2 ? shows : null;
+  }
+  if (!asksWhichNight(e)) return null;
+  const nights = eventNightDates(e).filter((d) => d >= today);
+  return nights.length >= 2 ? nights : null;
+}
+
+/**
+ * Pure. SH-1 Q14.1: give the chosen event its series' show dates, read from sibling rows on its `series_key`
+ * (`seriesShowDates`). Unchanged when it has no key, already has them, or the key names fewer than two shows.
+ */
+export function withSeriesShows(state: PlanEntryState, rows: readonly { seriesKey?: string | null; firstDate: string }[]): PlanEntryState {
+  const e = state.event;
+  if (!e?.seriesKey || e.showDates) return state;
+  const shows = seriesShowDates(rows, e.seriesKey);
+  if (!isShowSeries(shows)) return state;
+  // The show the traveler picked stays the chosen night (its own date); the picker now offers the series' others.
+  return { ...state, event: { ...e, showDates: shows }, night: state.night ?? (shows.includes(e.firstDate) ? e.firstDate : null) };
+}
+
+/** The whole run as the event row states it; a series spans its first to last show. Clamped only at mint (Q15.3). */
+function wholeRun(e: PlanEntryEvent): { startDate: string; endDate: string } {
+  if (eventIsShowSeries(e)) {
+    const shows = Array.from(new Set(e.showDates!)).sort();
+    return { startDate: shows[0], endDate: shows[shows.length - 1] };
+  }
+  return { startDate: e.firstDate, endDate: e.lastDate };
+}
+
+/**
+ * Pure. SH-1 Launch Q14.2/Q15.3: the dates a plan is minted with — the chosen dates, the start moved to the later of
+ * itself and the market's today (`clampToMarketToday`; UTC today with no market). The server applies the same clamp.
+ */
+export function planEntryMintDates(state: Pick<PlanEntryState, "startDate" | "endDate" | "market">, now: Date = new Date()): { startDate: string; endDate: string } | null {
+  if (!state.startDate || !state.endDate) return null;
+  const startDate = clampToMarketToday(state.startDate, state.market?.marketKey ?? null, now);
+  return { startDate, endDate: state.endDate < startDate ? startDate : state.endDate };
+}
+
+/**
+ * Apply an event pick: its city, its run from the market's today on, its row. The group follows its length (Q16.1);
+ * the occasion is the slug the door or the pop-up passed (Q16.2 — "show"), kept until "More specific" replaces it.
+ */
+export function withEvent(state: PlanEntryState, e: PlanEntryEvent, occasionSlug: string | null = null, now: Date = new Date()): PlanEntryState {
+  const market = eventMarket(e);
   const group = groupForEvent(e);
+  const run = wholeRun(e);
+  const options = nightPickerOptions({ event: e, market }, now);
   return {
     ...state,
     around: state.around ?? "event",
     market,
     event: e,
-    startDate: e.firstDate,
-    endDate: e.lastDate,
+    ...run,
     // A Moment around a long run defaults to ONE night (the brief); a trip keeps the whole run.
-    night: asksWhichNight(e) && group === "moments" ? e.firstDate : null,
+    night: options && group === "moments" ? options[0] : null,
+    ...(options && group === "moments" ? { startDate: options[0], endDate: options[0] } : {}),
     group,
-    occasionSlug: null,
+    occasionSlug: occasionSlug?.trim() || null,
   };
 }
 
@@ -123,7 +211,7 @@ export function withNight(state: PlanEntryState, night: string | null): PlanEntr
   if (!state.event) return state;
   return night
     ? { ...state, night, startDate: night, endDate: night }
-    : { ...state, night: null, startDate: state.event.firstDate, endDate: state.event.lastDate };
+    : { ...state, night: null, ...wholeRun(state.event) };
 }
 
 /** Where a door lands PlanEntry, and with what already answered. */
@@ -131,15 +219,23 @@ export function initialPlanEntry(source: PlanEntrySource | null | undefined): { 
   const state = emptyPlanEntry();
   if (!source) return { state, step: "around" };
   if (source.anchor && source.city) {
-    const next = withEvent(state, {
-      title: source.anchor.title,
-      city: source.city,
-      country: source.country ?? null,
-      venue: source.anchor.venue,
-      firstDate: source.anchor.firstDate,
-      lastDate: source.anchor.lastDate,
-      startTime: source.anchor.startTime,
-    });
+    const next = withEvent(
+      state,
+      {
+        title: source.anchor.title,
+        city: source.city,
+        country: source.country ?? null,
+        venue: source.anchor.venue,
+        firstDate: source.anchor.firstDate,
+        lastDate: source.anchor.lastDate,
+        startTime: source.anchor.startTime,
+        ...(source.eventSourceId ? { eventSourceId: source.eventSourceId } : {}),
+        ...(source.seriesKey ? { seriesKey: source.seriesKey } : {}),
+        ...(source.showDates && isShowSeries(source.showDates) ? { showDates: source.showDates } : {}),
+      },
+      // Q16: the door's slug is kept; the group follows the nights.
+      source.experienceSlug ?? null,
+    );
     return { state: { ...next, around: "event" }, step: "occasion" };
   }
   const named = source.city
@@ -178,7 +274,9 @@ export function planEntryView(
   state: PlanEntryState,
   occasionRow: ExperienceGroupRow | null | undefined,
 ): "map" | "list" {
-  const group = occasionRow ? experienceGroupFor(occasionRow) : state.group;
+  // SH-1 Q16.1: around an event the group follows the nights; the carried "show" slug does not move the landing view.
+  const eventSlug = !!state.event && state.occasionSlug === EVENT_OCCASION_SLUG;
+  const group = occasionRow && !eventSlug ? experienceGroupFor(occasionRow) : state.group;
   if (group === "trips" || group === "group_travel") return "map";
   if (state.event && state.startDate && state.endDate && state.startDate !== state.endDate) return "map";
   return "list";
