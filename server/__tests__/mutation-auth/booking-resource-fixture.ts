@@ -100,6 +100,7 @@ export async function createLoginFixture(
   await db.insert(users).values({
     id: input.id, email, password: await hashPassword(password),
     firstName: input.firstName, lastName: "Authorization Audit", role: input.role, authProvider: "email",
+    emailVerified: new Date(),
   });
   const login = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST", headers: { "content-type": "application/json" },

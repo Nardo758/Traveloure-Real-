@@ -51,6 +51,7 @@ async function createFixtureUser(loop: number, role = "user") {
     lastName: `Loop${loop}`,
     role,
     authProvider: "email",
+    emailVerified: new Date(),
   });
   createdUserIds.push(id);
   return { id, email, password };

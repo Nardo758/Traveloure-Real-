@@ -176,17 +176,18 @@ async function main() {
     const result = await pool.query<{ id: string }>(
       `INSERT INTO users (
          id, email, password, role, first_name, last_name,
-         auth_provider, terms_accepted_at, privacy_accepted_at
+         auth_provider, terms_accepted_at, privacy_accepted_at, email_verified
        )
        VALUES (
          gen_random_uuid(), $1, $2, $3, $4, $5,
-         'email', $6, $6
+         'email', $6, $6, $6
        )
        ON CONFLICT (email) DO UPDATE
          SET password            = EXCLUDED.password,
              role                = EXCLUDED.role,
              terms_accepted_at   = COALESCE(users.terms_accepted_at, EXCLUDED.terms_accepted_at),
-             privacy_accepted_at = COALESCE(users.privacy_accepted_at, EXCLUDED.privacy_accepted_at)
+             privacy_accepted_at = COALESCE(users.privacy_accepted_at, EXCLUDED.privacy_accepted_at),
+             email_verified      = COALESCE(users.email_verified, EXCLUDED.email_verified)
        RETURNING id`,
       [user.email, hashed, user.role, user.firstName, user.lastName, now],
     );

@@ -403,7 +403,7 @@ async function main(): Promise<void> {
       const result = await tx.execute(sql`
         INSERT INTO users (
           id, email, password, role, first_name, last_name, bio,
-          auth_provider, terms_accepted_at, privacy_accepted_at,
+          auth_provider, terms_accepted_at, privacy_accepted_at, email_verified,
           home_city, is_deleted, is_suspended, updated_at
         )
         VALUES (
@@ -415,6 +415,7 @@ async function main(): Promise<void> {
           ${persona.lastName},
           ${persona.bio},
           'email',
+          ${acceptedAt},
           ${acceptedAt},
           ${acceptedAt},
           ${persona.homeCity ?? null},
@@ -431,6 +432,7 @@ async function main(): Promise<void> {
           auth_provider = EXCLUDED.auth_provider,
           terms_accepted_at = COALESCE(users.terms_accepted_at, EXCLUDED.terms_accepted_at),
           privacy_accepted_at = COALESCE(users.privacy_accepted_at, EXCLUDED.privacy_accepted_at),
+          email_verified = COALESCE(users.email_verified, EXCLUDED.email_verified),
           home_city = EXCLUDED.home_city,
           is_deleted = false,
           is_suspended = false,

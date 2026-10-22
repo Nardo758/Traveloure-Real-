@@ -457,6 +457,7 @@ jobs:
         env:
           BASE_URL: http://localhost:5000
           CI: 'true'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       - name: Keep the home reports
         if: ${{ !cancelled() }}
         run: |
@@ -532,6 +533,7 @@ jobs:
         env:
           BASE_URL: http://localhost:5000
           CI: 'true'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       - name: Keep the cart-redirect reports
         if: ${{ !cancelled() }}
         run: |
