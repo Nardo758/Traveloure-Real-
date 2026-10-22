@@ -18,6 +18,7 @@ name: Scheduler Jobs Gate
 #   internal-jobs-heartbeat.db       — cron liveness: roster-driven staleness; a skip never stamps (L6)
 #   internal-spa-fallback-exemption  — a dead /internal route can never be answered 200-HTML (L3)
 #   startup-delay                    — the boot-herd floor+jitter contract
+#   neon-connect-timeout             — pool settings, sweep backoff, liveness vs readiness
 #   check-jobs-cron-roster           — jobs-cron.yml has ONE cron schedule + posts every in-scope
 #                                       JOB_CADENCE route (ledger 2026-09-20-jobs-cron-single-schedule)
 #   post-internal-jobs.test.sh       — the cron script's cold-start warm-up + bounded 404/503 retry
@@ -243,3 +244,6 @@ jobs:
 
       - name: Boot-herd startup delay — floor + jitter contract
         run: npx tsx --test server/services/__tests__/startup-delay.test.ts
+
+      - name: Neon connect timeouts — pool, sweep backoff, readiness retry
+        run: npx tsx --test server/services/__tests__/neon-connect-timeout.test.ts

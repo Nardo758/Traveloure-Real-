@@ -38,6 +38,10 @@ function activate(msg?: string) {
  * endpoint. As soon as the server stops answering 503 { maintenance: true },
  * reload the page so the visitor resumes automatically — no manual refresh.
  * Idempotent: repeated calls won't stack timers.
+ *
+ * A 200 with `db: false` means the process is up and the database is still
+ * waking. Reloading then would loop. A 200 that does not mention `db` (an
+ * older server) still counts as recovered.
  */
 function startMaintenancePolling(): void {
   if (pollTimer !== null) return;
@@ -48,10 +52,16 @@ function startMaintenancePolling(): void {
         credentials: "same-origin",
       });
       // Only an explicitly healthy (2xx) response counts as recovered.
-      // Anything else — the maintenance 503, a DB-unhealthy 503 from
-      // /api/health, a 5xx while the server restarts — means keep waiting,
-      // otherwise a flapping backend would cause a 30s reload loop.
+      // Anything else — the maintenance 503, a 5xx while the server restarts —
+      // means keep waiting, otherwise a flapping backend would cause a 30s reload loop.
       if (!res.ok) return;
+      let body: { db?: unknown } | null = null;
+      try {
+        body = await res.json();
+      } catch {
+        return;
+      }
+      if (body == null || body.db === false) return;
       if (pollTimer !== null) {
         clearInterval(pollTimer);
         pollTimer = null;

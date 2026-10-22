@@ -1,17 +1,13 @@
 /**
  * jitteredStartupDelay — boot-herd mitigation (scheduler-reliability lane #1712).
  *
- * On a cold Autoscale boot, the DB seeding pipeline and ~20 scheduler first-passes all contend for
- * the single 20-slot connection pool (`server/db.ts`, connectionTimeoutMillis 5000). When they
- * cluster in the first few minutes, an acquire waits past 5s and throws "timeout exceeded when
- * trying to connect" — the shared root cause of the four #1712 production sightings (earnings-release
- * timeout, auto-complete DB error, health-check 500 bursts, seed connection timeout).
- *
- * This does NOT resize or retune the pool (filed as the follow-on lane). It is the cheap, behavior-
- * preserving half: enforce a FLOOR of 60s so no scheduler fires during the boot window, and add up
- * to `STARTUP_DELAY_SPREAD_MS` of random jitter so the first passes fan out across time instead of
- * stampeding together. It only ever pushes a first pass LATER, never earlier, so no job's behavior
- * regresses — the recurring interval is unchanged.
+ * On a cold Autoscale boot, the DB seeding pipeline and the scheduler first-passes all want
+ * connections while Neon may still be waking. The pool settings that tolerate that wake-up live
+ * in `server/db-pool-config.ts` (longer connect timeout, keepalive, a separate small background
+ * pool). This delay is the other half: a FLOOR of 60s so no scheduler fires during the boot
+ * window, plus up to `STARTUP_DELAY_SPREAD_MS` of jitter so the first passes fan out instead of
+ * stampeding. It only ever pushes a first pass LATER, never earlier — the recurring interval is
+ * unchanged.
  */
 export const STARTUP_DELAY_FLOOR_MS = 60_000;
 export const STARTUP_DELAY_SPREAD_MS = 60_000;

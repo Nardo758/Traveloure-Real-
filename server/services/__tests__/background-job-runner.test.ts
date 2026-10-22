@@ -14,6 +14,10 @@ test("classifies transient PostgreSQL connection failures without treating ordin
     isTransientDatabaseError(new Error("timeout exceeded when trying to connect to postgres")),
     true,
   );
+  assert.equal(
+    isTransientDatabaseError(new Error("Connection terminated due to connection timeout")),
+    true,
+  );
   assert.equal(isTransientDatabaseError(new Error("duplicate key value violates unique constraint")), false);
 });
 

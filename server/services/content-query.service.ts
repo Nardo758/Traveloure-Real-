@@ -34,16 +34,17 @@ import { itineraryItemRebuildDeletable } from "./itinerary-rebuild-guard";
 import { assertAiDraftEligible, itineraryItemNotPlanAnchor } from "./ai-draft-eligibility";
 import { logBannedCopyDrops, newBannedCopyDrops, sanitizeCanonicalItems, sanitizeGeneratedPlan } from "../utils/ai-draft-sanitize";
 import { coveringEventsForTrip } from "./content-facts/covering-events";
+import { livenessDatabaseReachable } from "./db-readiness";
 
 // ─── Health ───────────────────────────────────────────────────────────────────
 
-export async function dbHealthCheck(): Promise<boolean> {
-  try {
-    await db.execute(sql`SELECT 1`);
-    return true;
-  } catch {
-    return false;
-  }
+/** Single-flight SELECT 1 with the liveness budget. A burst shares one connect. */
+export function dbHealthCheck(): Promise<boolean> {
+  return livenessDatabaseReachable();
+}
+
+export function dbHealthCheckWithin(budgetMs?: number): Promise<boolean> {
+  return livenessDatabaseReachable(budgetMs);
 }
 
 // ─── Offering Types ───────────────────────────────────────────────────────────

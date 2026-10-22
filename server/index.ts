@@ -55,6 +55,7 @@ import { runNightlyQA } from "./jobs/nightlyQA";
 import { runStripeReconciliation } from "./jobs/stripeReconciliation";
 import { runPaymentSchedule } from "./automations/payments/runtime";
 import { getStripeSecretKey, getStripeWebhookSecret } from "./utils/stripe-key";
+import { probeDatabaseReady } from "./services/db-readiness";
 import { runAvailabilityMaterializationSweep } from "./jobs/availabilityMaterializationSweep";
 import { runDemandRollup } from "./jobs/demandRollup";
 import { runOnepagerRevalidation } from "./jobs/onepagerRevalidation";
@@ -91,8 +92,9 @@ const httpServer = createServer(app);
 
 // MT-1: pass the session middleware in at call time (registerRoutes hasn't run yet, but
 // the `connection` handler only fires at runtime, well after setupAuth has applied it to
-// the app — no ordering issue). getSession() builds its own connect-pg-simple middleware
-// instance against the same `sessions` table/secret, so it verifies the same cookies.
+// the app — no ordering issue). getSession() builds its own connect-pg-simple pool
+// (sessionPoolConfig: max 2, same Neon connect/idle/keepalive as the request pool)
+// against the same `sessions` table/secret, so it verifies the same cookies.
 setupWebSocket(httpServer, getSession());
 
 declare module "http" {
@@ -190,7 +192,7 @@ export function getSeedingStatus(): { complete: boolean; durationMs: number | nu
 // CI uses this to fast-fail with a clear diagnostic when a required secret
 // is absent, instead of burning 60 s inside the test suite.
 // No auth required: CI hits it before login is possible.
-app.get("/api/ready", (_req: Request, res: Response) => {
+app.get("/api/ready", async (_req: Request, res: Response) => {
   const seeding = getSeedingStatus();
 
   if (!seeding.complete) {
@@ -204,52 +206,71 @@ app.get("/api/ready", (_req: Request, res: Response) => {
   type CheckResult = { status: "ok" | "warn" | "fail"; message: string };
   const checks: Record<string, CheckResult> = {};
 
-  // No `ai_xai` check: xAI has no caller since ledger `2026-09-30-retire-xai`, and a readiness
-  // gate on an unused key would fail a deploy that has correctly stopped carrying it.
-  const claudePresent = Boolean(process.env.ANTHROPIC_API_KEY);
-  checks.ai_claude = {
-    status: claudePresent ? "ok" : "warn",
-    message: claudePresent
-      ? "ANTHROPIC_API_KEY present"
-      : "ANTHROPIC_API_KEY missing — AI drafts, optimization and chat will fail",
-  };
+  try {
+    // No `ai_xai` check: xAI has no caller since ledger `2026-09-30-retire-xai`, and a readiness
+    // gate on an unused key would fail a deploy that has correctly stopped carrying it.
+    const claudePresent = Boolean(process.env.ANTHROPIC_API_KEY);
+    checks.ai_claude = {
+      status: claudePresent ? "ok" : "warn",
+      message: claudePresent
+        ? "ANTHROPIC_API_KEY present"
+        : "ANTHROPIC_API_KEY missing — AI drafts, optimization and chat will fail",
+    };
 
-  const stripePresent = Boolean(getStripeSecretKey());
-  checks.stripe = {
-    status: stripePresent ? "ok" : "fail",
-    message: stripePresent
-      ? "Stripe key present"
-      : "Stripe key missing (STRIPE_SECRET_KEY_TEST and STRIPE_SECRET_KEY both unset) — payments will fail",
-  };
+    const stripePresent = Boolean(getStripeSecretKey());
+    checks.stripe = {
+      status: stripePresent ? "ok" : "fail",
+      message: stripePresent
+        ? "Stripe key present"
+        : "Stripe key missing (STRIPE_SECRET_KEY_TEST and STRIPE_SECRET_KEY both unset) — payments will fail",
+    };
 
-  const resendPresent = Boolean(process.env.RESEND_API_KEY);
-  checks.email = {
-    status: resendPresent ? "ok" : "warn",
-    message: resendPresent
-      ? "RESEND_API_KEY present"
-      : "RESEND_API_KEY missing — digest emails will not send",
-  };
+    const resendPresent = Boolean(process.env.RESEND_API_KEY);
+    checks.email = {
+      status: resendPresent ? "ok" : "warn",
+      message: resendPresent
+        ? "RESEND_API_KEY present"
+        : "RESEND_API_KEY missing — digest emails will not send",
+    };
 
-  const webhookPresent = Boolean(getStripeWebhookSecret("platform"));
-  checks.webhook = {
-    status: webhookPresent ? "ok" : "fail",
-    message: webhookPresent
-      ? "Stripe platform webhook signing secret present for this environment"
-      : "Stripe platform webhook signing secret missing for this environment — webhooks will be rejected",
-  };
+    const webhookPresent = Boolean(getStripeWebhookSecret("platform"));
+    checks.webhook = {
+      status: webhookPresent ? "ok" : "fail",
+      message: webhookPresent
+        ? "Stripe platform webhook signing secret present for this environment"
+        : "Stripe platform webhook signing secret missing for this environment — webhooks will be rejected",
+    };
 
-  const hasFail = Object.values(checks).some((c) => c.status === "fail");
-  const hasWarn = Object.values(checks).some((c) => c.status === "warn");
-  const overall = hasFail ? "fail" : hasWarn ? "warn" : "ok";
+    // Short retry: a Neon compute that is already waking should pass. A miss is
+    // 503, never 500. `ready` follows the database; missing keys still fail the
+    // status without claiming the database is down.
+    const database = await probeDatabaseReady();
+    checks.database = {
+      status: database.ok ? "ok" : "fail",
+      message: database.ok ? "database reachable" : "database unreachable",
+    };
 
-  return res.status(hasFail ? 503 : 200).json({
-    ready: true,
-    status: overall,
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV ?? "unknown",
-    seedingDurationMs: seeding.durationMs,
-    checks,
-  });
+    const hasFail = Object.values(checks).some((c) => c.status === "fail");
+    const hasWarn = Object.values(checks).some((c) => c.status === "warn");
+    const overall = hasFail ? "fail" : hasWarn ? "warn" : "ok";
+
+    return res.status(hasFail ? 503 : 200).json({
+      ready: database.ok,
+      status: overall,
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV ?? "unknown",
+      seedingDurationMs: seeding.durationMs,
+      checks,
+    });
+  } catch (err) {
+    logger.warn({ err }, "Readiness check failed");
+    return res.status(503).json({
+      ready: false,
+      status: "fail",
+      message: "Readiness check failed",
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 
 // Build-identity endpoint — lets CI (and a human on a post-publish walkthrough) confirm it is
@@ -1073,9 +1094,9 @@ function gracefulShutdown(signal: string): void {
 
     // Close the PostgreSQL connection pool
     try {
-      const { pool } = await import("./db");
-      await pool.end();
-      logger.info("Database pool closed cleanly");
+      const { pool, backgroundPool } = await import("./db");
+      await Promise.all([pool.end(), backgroundPool.end()]);
+      logger.info("Database pools closed cleanly");
     } catch (err) {
       logger.error({ err }, "Error closing database pool during shutdown");
     }

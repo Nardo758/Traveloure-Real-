@@ -1,4 +1,5 @@
 import { logger } from "../infrastructure/logger";
+import { isConnectTimeoutError } from "./connect-timeout";
 
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_INITIAL_BACKOFF_MS = 250;
@@ -64,6 +65,7 @@ export interface BackgroundJobOptions {
 }
 
 export function isTransientDatabaseError(error: unknown): boolean {
+  if (isConnectTimeoutError(error)) return true;
   if (!error || typeof error !== "object") return false;
 
   const candidate = error as { code?: unknown; message?: unknown };

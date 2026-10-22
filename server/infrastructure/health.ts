@@ -5,6 +5,7 @@ import { logger } from "./logger";
 import { getCircuitBreakerStatus } from "./circuit-breaker";
 import { getStripeSecretKey } from "../utils/stripe-key";
 import { getBackgroundJobStats } from "../services/background-job-runner";
+import { probeDatabaseReady } from "../services/db-readiness";
 
 interface HealthCheck {
   status: "healthy" | "unhealthy" | "degraded";
@@ -18,27 +19,6 @@ interface HealthStatus {
   version: string;
   uptime: number;
   checks: Record<string, HealthCheck>;
-}
-
-async function checkDatabase(): Promise<HealthCheck> {
-  const start = Date.now();
-  try {
-    // pool.query owns and releases its client even when SELECT 1 fails. Using
-    // pool.connect() here previously leaked a checked-out client on that error
-    // path, eventually making background jobs time out while acquiring a slot.
-    await pool.query("SELECT 1");
-    return {
-      status: "healthy",
-      latency: Date.now() - start,
-    };
-  } catch (error) {
-    logger.error({ err: error }, "Database health check failed");
-    return {
-      status: "unhealthy",
-      latency: Date.now() - start,
-      message: error instanceof Error ? error.message : "Unknown error",
-    };
-  }
 }
 
 async function checkDatabasePool(): Promise<HealthCheck> {
@@ -169,8 +149,16 @@ export function createHealthRouter(): Router {
         },
       };
 
-      const checks = {
-        database: await checkDatabase(),
+      // Liveness does not open a database connection. A Neon wake-up used to
+      // make this handler wait on the pool and the platform recorded HTTP 500
+      // bursts. `checks.database` stays so monitors still see the field; it is
+      // not a probe and it does not change the status code. Reachability is
+      // GET /health/ready (and GET /api/ready).
+      const checks: Record<string, HealthCheck> = {
+        database: {
+          status: "degraded",
+          message: "not probed on liveness — GET /health/ready reports the database",
+        },
         database_pool: await checkDatabasePool(),
         background_jobs: checkBackgroundJobs(),
         memory: await checkMemory(),
@@ -178,12 +166,9 @@ export function createHealthRouter(): Router {
         ...serviceChecks,
       };
 
-      const allHealthy = Object.values(checks).every(
-        (check) => check.status === "healthy"
-      );
-      const anyUnhealthy = Object.values(checks).some(
-        (check) => check.status === "unhealthy"
-      );
+      const gating = Object.entries(checks).filter(([name]) => name !== "database");
+      const allHealthy = gating.every(([, check]) => check.status === "healthy");
+      const anyUnhealthy = gating.some(([, check]) => check.status === "unhealthy");
 
       const overallStatus: "healthy" | "unhealthy" | "degraded" = anyUnhealthy
         ? "unhealthy"
@@ -213,21 +198,22 @@ export function createHealthRouter(): Router {
 
   router.get("/health/ready", async (_req: Request, res: Response) => {
     try {
-      const dbCheck = await checkDatabase();
-      
-      if (dbCheck.status === "unhealthy") {
+      const dbCheck = await probeDatabaseReady();
+
+      if (!dbCheck.ok) {
         res.status(503).json({
           ready: false,
           message: "Database not available",
         });
         return;
       }
-      
+
       res.json({
         ready: true,
         message: "Service is ready to accept traffic",
       });
     } catch (error) {
+      logger.warn({ err: error }, "Readiness check failed");
       res.status(503).json({
         ready: false,
         message: "Readiness check failed",

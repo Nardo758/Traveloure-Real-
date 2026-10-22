@@ -3,7 +3,7 @@
  *
  *   F1  exactly the named switches, each a boolean; "1" is on and anything else is off
  *   F2  no env VALUE ever leaves: a secret-looking value in any variable is never in the output
- *   F3  the route wires it on every branch (source pin: the ok answer and both 503 answers)
+ *   F3  the route wires it on every branch (source pin: the ok answer and both degraded answers)
  *   F6  step 9c D6 (ledger `2026-10-07-step9c-leg-options`): `mapsCaps` — each Maps caller's effective
  *       daily cap as a NUMBER, keyed by caller; never an env name, never a non-numeric env value
  *   F7  P0-b item 6 (ledger `2026-10-11-p0b-routing-follow-ups`): `keys.googleMaps` — whether the Maps key
