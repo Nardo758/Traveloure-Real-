@@ -1060,9 +1060,11 @@ class StripePaymentService {
     //
     // The `webhook` actor is what licenses resolving the buyer from `metadata.buyerId` alone: this
     // object came from a signature-verified Stripe delivery (§15c/§17b's SERVER_VERIFIED_ACTORS).
-    // Idempotent by construction — the UNIQUE `stripe_payment_intent_id` and the atomic
+    // Idempotent by construction — an untargeted ON CONFLICT across both unique indexes
+    // (`stripe_payment_intent_id` and `idx_rmp_buyer_trip_active`) and the atomic
     // `paid → cloned` claim — so a second delivery, or a race with the buyer's own confirm, creates
-    // exactly one row, one clone and one author earning. Never fails the webhook: the purchase row
+    // exactly one row, one clone and one author earning. A live purchase of the same listing on a
+    // different PaymentIntent is refused and left for the detector. Never fails the webhook: the purchase row
     // is the money truth and the detector still reports anything this could not resolve (§13).
     // A ready-made PI belongs to no other rail, so this returns rather than falling through.
     if (paymentIntent.metadata?.type === 'ready_made_purchase') {
