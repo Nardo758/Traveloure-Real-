@@ -4,7 +4,7 @@
   "timeZone": "Asia/Tokyo",
   "verificationStatus": "unverified",
   "factCheckedOn": "2026-10-21",
-  "note": "Draft bank. Fact-check of 21 Oct 2026 is applied. The whole bank stays unverified until Leon signs off. Inactive items are not drawn.",
+  "note": "Draft bank. Fact-check of 21 Oct 2026 is applied. K17, K26, K27, K28 and K31 were rechecked on 22 Oct 2026. The whole bank stays unverified until Leon signs off. Inactive items are not drawn.",
   "zones": [
     { "zone": "Kyoto Sta", "match": ["kyoto station", "kyoto sta"] },
     { "zone": "Central", "match": ["nijo", "nijō", "nijo-jo", "nijo castle"] },
@@ -104,8 +104,9 @@
       "status": "active",
       "closedDates": ["2026-02-01", "2026-02-04", "2026-09-02", "2026-12-29", "2026-12-30", "2026-12-31", "2027-01-01", "2027-01-02", "2027-01-03", "2027-01-04"],
       "windows": [
-        { "from": "03-10", "to": "11-30", "weekdays": "weekday", "lastEntry": "15:30" },
-        { "from": "12-01", "to": "12-13", "weekdays": "weekday", "lastEntry": "14:30" }
+        { "fromDate": "2026-03-10", "toDate": "2026-12-13", "lastEntry": "15:00" },
+        { "fromDate": "2026-01-05", "toDate": "2026-03-09", "lastEntry": "14:30" },
+        { "fromDate": "2026-12-14", "toDate": "2027-03-09", "lastEntry": "14:30" }
       ]
     },
     {
@@ -386,13 +387,12 @@
       "topic": "RES",
       "type": "sa",
       "select": "one",
-      "status": "inactive",
-      "factCheck": "unverified",
-      "inactiveReason": "Official FAQ blocked automated fetch on 21 Oct 2026. Not drawn until re-checked.",
-      "prompt": "When do Sagano Romantic Train advance tickets go on sale, and can a JR Pass be used?",
-      "acceptAllOf": [["one month"], ["not valid", "cannot", "can't", "no"]],
-      "answerText": "Not drawn. The 15 Oct draft said tickets go on sale online at 00:00 JST one month before boarding and a JR Pass is not valid. That was not confirmed on 21 Oct 2026.",
-      "sources": [{ "url": "https://www.sagano-kanko.co.jp/en/faq/", "checkedOn": "2026-10-21" }]
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "When do individual Sagano Romantic Train advance tickets go on sale, and can a JR Pass be used?",
+      "acceptAllOf": [["one month", "1 month", "previous month"], ["not valid", "cannot", "can't", "not accepted", "not covered"]],
+      "answerText": "Advance tickets go on sale at 00:00 Japan time on the same calendar day of the previous month. If the previous month has no such day, the railway names a different start: tickets for 29 March go on sale at 00:00 on 1 March. A JR Pass cannot be used.",
+      "sources": [{ "url": "https://www.sagano-kanko.co.jp/faq/", "checkedOn": "2026-10-22" }]
     },
     {
       "id": "K18",
@@ -537,38 +537,36 @@
       "topic": "TRN",
       "type": "mc",
       "select": "one",
-      "status": "inactive",
-      "factCheck": "unverified",
-      "inactiveReason": "Official Sagano site blocked automated fetch on 21 Oct 2026. Not drawn.",
-      "prompt": "Your client uses a wheelchair and wants the Sagano Romantic Train plus the bamboo grove. Which station advice is correct?",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "A client uses a wheelchair and wants the Sagano Romantic Train and the bamboo grove. Which boarding advice matches the railway's own guidance?",
       "options": [
-        { "id": "a", "text": "Board at Torokko Arashiyama, closest to the grove" },
-        { "id": "b", "text": "Use Torokko Saga: Torokko Arashiyama has about 60 steps and no elevator. Request the wheelchair space after buying tickets, through the chatbot." },
-        { "id": "c", "text": "Board at Hozukyo" },
-        { "id": "d", "text": "Wheelchairs aren't allowed" }
+        { "id": "a", "text": "Board at Torokko Arashiyama, the station closest to the grove" },
+        { "id": "b", "text": "Board at Torokko Saga. Torokko Arashiyama has 60 steps between the platform and the gate and no elevator. The grove is closest to Torokko Arashiyama, but the railway recommends Torokko Saga for a wheelchair or a cane. After buying an advance ticket, ask for a wheelchair space through the railway's website chatbot. You cannot reserve that space yourself." },
+        { "id": "c", "text": "Board at Torokko Hozukyo" },
+        { "id": "d", "text": "Wheelchairs are not allowed on the train" }
       ],
       "correctOptionIds": ["b"],
-      "answerText": "Not drawn. The 15 Oct draft's station advice was not confirmed from the official site on 21 Oct 2026.",
-      "sources": [{ "url": "https://www.sagano-kanko.co.jp/en/faq/", "checkedOn": "2026-10-21" }]
+      "answerText": "Board at Torokko Saga. Torokko Arashiyama has 60 steps between the platform and the gate and no elevator. The bamboo grove is closest to Torokko Arashiyama, and the railway recommends Torokko Saga for a wheelchair or a cane. Wheelchair spaces are not self-reserved: buy an advance ticket, then request the space through the website chatbot. The station exchanges it on the day.",
+      "sources": [{ "url": "https://www.sagano-kanko.co.jp/faq/", "checkedOn": "2026-10-22" }]
     },
     {
       "id": "K27",
       "topic": "SEA",
       "type": "mc",
       "select": "one",
-      "status": "inactive",
-      "factCheck": "unverified",
-      "inactiveReason": "The 2026 calendar could not be fetched. A search reading conflicts with the draft. Not drawn until re-checked by hand.",
-      "prompt": "Under the Sagano Romantic Train's published 2026 operating calendar, which date has no service?",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "The Sagano Scenic Railway's own FAQ gives a rough season for autumn leaves along the line. Which statement matches it?",
       "options": [
-        { "id": "a", "text": "Sat 21 Nov" },
-        { "id": "b", "text": "Wed 16 Dec" },
-        { "id": "c", "text": "Mon 30 Nov" },
-        { "id": "d", "text": "Tue 1 Dec" }
+        { "id": "a", "text": "Mid-November to early December, and the timing can change with the temperature" },
+        { "id": "b", "text": "The first two weeks of October, on the same dates every year" },
+        { "id": "c", "text": "1–15 December, with no year-to-year change" },
+        { "id": "d", "text": "Weekends in November only" }
       ],
-      "correctOptionIds": ["b"],
-      "answerText": "Not drawn. The draft said Wed 16 Dec has no service. A 21 Oct 2026 search reading of the official PDF says 16 Dec is a normal service day. Do not use until re-checked by hand.",
-      "sources": [{ "url": "https://www.sagano-kanko.co.jp/cms/wp-content/uploads/2026/03/2026年運転計画カレンダー4月11日臨時列車追加日本語-1.pdf", "checkedOn": "2026-10-21" }]
+      "correctOptionIds": ["a"],
+      "answerText": "Mid-November to early December, and the timing can change with the temperature. The same FAQ puts cherry blossom at roughly late March to early April, also depending on temperature.",
+      "sources": [{ "url": "https://www.sagano-kanko.co.jp/faq/", "checkedOn": "2026-10-22" }]
     },
     {
       "id": "K28",
@@ -580,15 +578,16 @@
       "prompt": "Hozugawa river boat ride, 2026. Which statement is correct?",
       "options": [
         { "id": "a", "text": "It stops for any rain" },
-        { "id": "b", "text": "On weekdays from 10 March to 30 November the boats leave hourly from 9:00 to 14:00 and the last boat is 15:30. On weekdays from 1 to 13 December they leave hourly from 9:00 to 13:00 and the last boat is 14:30. On weekends and holidays they leave when the boat is full, not hourly. During the season a boat in rain is covered and still runs; it is cancelled for storms or high water. Winter boats this year run open, without the cover." },
+        { "id": "b", "text": "From 10 March through 13 December 2026, weekday boats leave hourly from 9:00 through 15:00, and the last boat is the 15:00 departure. Boarding for that boat closes at 15:00. On Saturdays, Sundays and holidays in that period, boats leave when they fill, not on the hourly times. From the second Monday of December through 9 March, the last boat is 14:30. In rain, a cover goes on and the boat still runs; it is cancelled for storms or high water. This year's winter boats run open, without the cover." },
         { "id": "c", "text": "It runs year-round, including New Year" },
         { "id": "d", "text": "The adult fare is ¥3,000" }
       ],
       "correctOptionIds": ["b"],
-      "answerText": "Weekday boats from 10 March to 30 November leave hourly from 9:00 to 14:00, last boat 15:30. Weekdays 1–13 December: hourly 9:00–13:00, last boat 14:30. Weekends and holidays leave when full. In season, rain is covered and the boat runs; storms or high water cancel it. Winter boats this year run open, without the cover. Also closed 29 Dec–4 Jan, and for safety checks on 1 Feb, 4 Feb and 2 Sep 2026. Adults ¥6,000. Passengers under 80 cm cannot board. November private charter is ¥162,000 per boat.",
+      "answerText": "From 10 March through 13 December 2026, weekday boats leave hourly from 9:00 through 15:00, and the last boat is the 15:00 departure. Boarding for that boat closes at 15:00. On Saturdays, Sundays and holidays in that period, boats leave when they fill. From the second Monday of December through 9 March, the last boat is 14:30. In rain, a cover goes on and the boat still runs; storms or high water cancel it. This year's winter boats run open, without the cover. Also closed 29 Dec–4 Jan, and for safety checks on 1 Feb, 4 Feb and 2 Sep 2026.",
       "sources": [
-        { "url": "https://www.hozugawakudari.jp/service/timetable", "checkedOn": "2026-10-21" },
-        { "url": "https://www.hozugawakudari.jp/tickets", "checkedOn": "2026-10-21" }
+        { "url": "https://www.hozugawakudari.jp/service/timetable", "checkedOn": "2026-10-22" },
+        { "url": "https://www.hozugawakudari.jp/tickets", "checkedOn": "2026-10-22" },
+        { "url": "https://www.hozugawakudari.jp/tickets/reservation", "checkedOn": "2026-10-22" }
       ]
     },
     {
@@ -629,21 +628,20 @@
       "topic": "ETQ",
       "type": "mc",
       "select": "one",
-      "status": "inactive",
-      "factCheck": "unverified",
-      "inactiveReason": "The claim that the ¥10,000 sign is not statutory comes from a news report, not an official source. Not drawn.",
-      "prompt": "Kosode-kōji in Gion displays a sign threatening a ¥10,000 fine for unauthorised entry. What is accurate?",
+      "status": "active",
+      "factCheck": "ok",
+      "prompt": "Kyoto's official tourism site publishes the Southern Gionmachi manner message. Which act does that message tie to a fine of less than ¥10,000?",
       "options": [
-        { "id": "a", "text": "It's a city ordinance fine" },
-        { "id": "b", "text": "It's a private road managed by the local council; tourists are asked not to enter or take photos; the ¥10,000 fine on the sign is not statutory" },
-        { "id": "c", "text": "It applies only at night" },
-        { "id": "d", "text": "Only to tour groups" }
+        { "id": "a", "text": "Throwing away garbage" },
+        { "id": "b", "text": "Obstructing someone's path, or following them" },
+        { "id": "c", "text": "Damaging property" },
+        { "id": "d", "text": "The message names no fines" }
       ],
       "correctOptionIds": ["b"],
-      "answerText": "Not drawn. Private road, no entry and no photos are on gionminami.jp. The 'not statutory' half was not confirmed from an official source on 21 Oct 2026.",
+      "answerText": "Obstructing someone's path, or following them. The message also names detention of less than 30 days for those acts. Garbage is a separate ordinance fine of up to ¥30,000. Damaging property is named at up to ¥300,000.",
       "sources": [
-        { "url": "https://gionminami.jp/?page_id=578", "checkedOn": "2026-10-21" },
-        { "url": "https://kyoto.travel/en/responsible-travel/gion-manner-message-from-southern-gionmachi/", "checkedOn": "2026-10-21" }
+        { "url": "https://kyoto.travel/en/responsible-travel/gion-manner-message-from-southern-gionmachi/", "checkedOn": "2026-10-22" },
+        { "url": "https://ja.kyoto.travel/news/format.php?id=428", "checkedOn": "2026-10-22" }
       ]
     },
     {
@@ -731,7 +729,7 @@
           "id": "b1-hozugawa",
           "status": "active",
           "factCheck": "ok",
-          "text": "30 November 2026 is a weekday in the 10 March–30 November window: boats leave hourly from 9:00 to 14:00 and the last boat is 15:30. On weekdays from 1 to 13 December the boats leave hourly from 9:00 to 13:00 and the last boat is 14:30. Weekends and holidays leave when full, not hourly. During the season a boat in rain is covered and still runs; storms or high water cancel it."
+          "text": "30 November through 3 December 2026 falls inside the 10 March–13 December window. Weekday boats leave hourly from 9:00 through 15:00 and the last boat is 15:00. Weekends and holidays in that window leave when full, not hourly. The 14:30 last boat starts on the second Monday of December and runs through 9 March. In rain a cover goes on and the boat still runs; storms or high water cancel it."
         },
         {
           "id": "b1-sagano-daily",
