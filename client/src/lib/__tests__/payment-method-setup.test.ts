@@ -12,6 +12,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { LOCAL_EXPERT_APPLY_PATH, SUPPLY_APPLICATION_BY_ROLE, supplySignupContinuation } from "@shared/supply-entry";
+import { EXPERT_ROLES, PROVIDER_ROLES } from "@shared/roles";
 import {
   PAYMENT_METHOD_PROMPT_DISMISS_KEY,
   REQUIRED_PAYMENT_STEP_BODY,
@@ -21,6 +23,7 @@ import {
   clearPaymentMethodPromptDismissed,
   paymentMethodSetupMode,
   readPaymentMethodPromptDismissed,
+  supplyPaymentGateSkipped,
   writePaymentMethodPromptDismissed,
   type PaymentMethodSetupInput,
 } from "../payment-method-setup";
@@ -131,6 +134,99 @@ test("signup surfaces say the step is after sign-in and do not import the gate",
     assert.equal(src.includes("PaymentMethodSetupGate"), false);
     assert.equal(src.includes("AddCardDialog"), false);
   }
+});
+
+test("a traveler on a traveler page is asked for a saved method", () => {
+  for (const pathname of ["/", "/cart", "/plans/abc", "/bookings", "/experts", "/providers", "/experts/some-id"]) {
+    assert.equal(paymentMethodSetupMode({ ...READY, pathname, role: "user" }), "required", pathname);
+    assert.equal(supplyPaymentGateSkipped({ pathname, role: "user" }), false, pathname);
+  }
+});
+
+test("supply routes hide the gate, including /earn and the local-expert sign-in return", () => {
+  const earn = supplySignupContinuation("?intent=supply");
+  assert.equal(earn.kind, "chooser");
+  const local = supplySignupContinuation("?intent=supply&role=local_expert");
+  assert.equal(local.kind, "application");
+  const paths = [
+    "/earn",
+    "/earn?role=local_expert",
+    "/earn/",
+    earn.kind === "chooser" ? earn.href : "",
+    LOCAL_EXPERT_APPLY_PATH,
+    local.kind === "application" ? local.href : "",
+    "/become-expert",
+    "/become-provider",
+    "/start/events",
+    "/expert/apply",
+    "/provider/new-service",
+    "/expert-status",
+    "/provider-status",
+    "/expert/city-knowledge-test",
+    "/expert/dashboard",
+    "/expert/today",
+    "/provider/dashboard",
+    "/provider/services/new",
+    "/travel-experts",
+    "/services-provider",
+    ...Object.values(SUPPLY_APPLICATION_BY_ROLE),
+  ];
+  for (const pathname of paths) {
+    assert.equal(paymentMethodSetupMode({ ...READY, pathname, role: "user" }), "hidden", pathname);
+    assert.equal(
+      paymentMethodSetupMode({ ...READY, pathname, role: "user", isLoading: true }),
+      "hidden",
+      `${pathname} loading`,
+    );
+  }
+});
+
+test("an earner role skips the gate on a supply flow and on a traveler page", () => {
+  for (const role of [...EXPERT_ROLES, ...PROVIDER_ROLES]) {
+    assert.equal(
+      paymentMethodSetupMode({ ...READY, pathname: "/expert/today", role }),
+      "hidden",
+      role,
+    );
+    assert.equal(paymentMethodSetupMode({ ...READY, pathname: "/cart", role }), "hidden", `${role} on /cart`);
+  }
+  assert.equal(paymentMethodSetupMode({ ...READY, pathname: "/provider/dashboard", role: "service_provider" }), "hidden");
+  assert.equal(paymentMethodSetupMode({ ...READY, pathname: "/ea/dashboard", role: "executive_assistant" }), "required");
+  assert.equal(paymentMethodSetupMode({ ...READY, pathname: "/cart", role: "provider" }), "required");
+});
+
+test("a recorded supply sign-up skips the gate; a missing tag does not", () => {
+  assert.equal(
+    paymentMethodSetupMode({ ...READY, pathname: "/cart", role: "user", signupSource: "ig_dm" }),
+    "hidden",
+  );
+  assert.equal(
+    paymentMethodSetupMode({ ...READY, pathname: "/cart", role: "user", signupSource: "  " }),
+    "required",
+  );
+  assert.equal(
+    paymentMethodSetupMode({ ...READY, pathname: "/cart", role: "user", signupSource: null }),
+    "required",
+  );
+  assert.equal(
+    paymentMethodSetupMode({ ...READY, pathname: LOCAL_EXPERT_APPLY_PATH, role: "user", signupSource: null }),
+    "hidden",
+  );
+});
+
+test("the gate asks the one helper and does not restate supply routes", () => {
+  const gate = read("client", "src", "components", "payment", "PaymentMethodSetupGate.tsx");
+  const setup = read("client", "src", "lib", "payment-method-setup.ts");
+  assert.match(gate, /supplyPaymentGateSkipped\(/);
+  assert.match(gate, /pathname: location/);
+  assert.match(gate, /role: user\?\.role/);
+  assert.match(gate, /signupSource: user\?\.signupSource/);
+  assert.equal(/startsWith\(/.test(gate), false);
+  assert.equal(gate.includes("SUPPLY_APPLICATION_BY_ROLE"), false);
+  assert.equal(gate.includes("isEarnerRole"), false);
+  const modeFn = setup.slice(setup.indexOf("export function paymentMethodSetupMode"));
+  assert.ok(modeFn.indexOf("supplyPaymentGateSkipped") < modeFn.indexOf('return "required"'));
+  assert.match(setup, /SUPPLY_APPLICATION_BY_ROLE/);
 });
 
 test("the gate renders the shared copy constants and does not restate them", () => {

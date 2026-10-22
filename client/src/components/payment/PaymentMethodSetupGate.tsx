@@ -11,8 +11,12 @@
  * `available: false` renders nothing, so a failed list read is not a lock-out.
  * An account still held for email confirmation does not see this step: verify
  * comes first (S-09), and this overlay would cover that screen.
+ *
+ * Supply routes and supply accounts skip it (`supplyPaymentGateSkipped`).
+ * That includes `/earn` and the sign-in return to `/become-expert?type=local_expert`.
  */
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { AddCardDialog } from "@/components/payment/AddCardDialog";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
@@ -29,13 +33,20 @@ import {
   accountRequiresSavedMethod,
   paymentMethodSetupMode,
   readPaymentMethodPromptDismissed,
+  supplyPaymentGateSkipped,
   writePaymentMethodPromptDismissed,
 } from "@/lib/payment-method-setup";
 
 export function PaymentMethodSetupGate() {
+  const [location] = useLocation();
   const { user, isLoading: userLoading, isAuthenticated, logout, isLoggingOut } = useAuth();
   const termsPending = !!user && (!user.termsAcceptedAt || !user.privacyAcceptedAt);
-  const ask = isAuthenticated && !userLoading && !termsPending && !emailVerificationHoldRequired(user);
+  const supplySkipped = supplyPaymentGateSkipped({
+    pathname: location,
+    role: user?.role,
+    signupSource: user?.signupSource,
+  });
+  const ask = isAuthenticated && !userLoading && !termsPending && !emailVerificationHoldRequired(user) && !supplySkipped;
   const { available, methods, isLoading, isFetching } = useSavedPayment(ask);
   const [dismissed, setDismissed] = useState(() => readPaymentMethodPromptDismissed());
 
@@ -49,6 +60,9 @@ export function PaymentMethodSetupGate() {
     isLoading: listPending,
     methodCount: methods.length,
     dismissedThisSession: dismissed,
+    pathname: location,
+    role: user?.role,
+    signupSource: user?.signupSource,
   });
 
   if (mode === "hidden") return null;
