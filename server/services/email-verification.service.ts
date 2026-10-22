@@ -12,6 +12,7 @@
  * requests skip the activity read. A failed activity read holds the account.
  */
 import crypto from "crypto";
+import type { Session, SessionData } from "express-session";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
 import { users, emailVerificationTokens } from "@shared/models/auth";
@@ -27,9 +28,15 @@ import { nextSignupStep, type SignupStep } from "@shared/signup-steps";
 
 export const VERIFY_TOKEN_TTL_HOURS = 24;
 
-export interface EmailVerificationSession {
-  emailVerificationGrandfathered?: boolean;
+declare module "express-session" {
+  interface SessionData {
+    /** S-09: unverified account left open because it already has platform activity. */
+    emailVerificationGrandfathered?: boolean;
+  }
 }
+
+/** The express session. Session's private constructor is why the parameter is this type. */
+export type EmailVerificationSession = Session & Partial<SessionData>;
 
 export interface EmailVerificationGateState {
   access: EmailVerificationAccess;
