@@ -40,6 +40,13 @@ export interface ExpertApplicationFacts {
   /** pending | processing | verified | failed */
   identityStatus: string;
   basicCompletedAt?: string | null;
+  /** Local experts only. Travel experts keep the six-step timeline. */
+  requiresCityKnowledge?: boolean;
+  /** City plus a knowledge proof or a local specialty. Does not invent destinations or a bio. */
+  profileReady?: boolean;
+  /** open until a result can authorize approval. done only then. */
+  cityKnowledge?: "open" | "done";
+  cityKnowledgeNote?: string;
 }
 
 export interface ProviderApplicationFacts {
@@ -126,6 +133,9 @@ function detailFor(phase: ApplicationPhase, current: GateSpec | null): string {
   if (current.gate === "failed" && title === "Business Verification") return BUSINESS_FAILED_DETAIL;
   if (title === "Identity Verification" || title === "Owner Identity Verification") return IDENTITY_ACTION_DETAIL;
   if (title === "Business Verification") return BUSINESS_ACTION_DETAIL;
+  if (title === "City-Knowledge Test") {
+    return current.note ?? "Take the city-knowledge test for your city. Review starts after a result that can authorize approval.";
+  }
   return PROFILE_ACTION_DETAIL;
 }
 
@@ -207,10 +217,13 @@ function assemble(specs: GateSpec[], outcome: "none" | "approved" | "rejected" |
 
 export function buildExpertApplicationTimeline(facts: ExpertApplicationFacts): ApplicationTimeline {
   const end = terminal(facts.hasForm ? facts.applicationStatus : "closed");
-  const expertiseDone = facts.destinationsCount > 0 || facts.specialtiesCount > 0;
-  const portfolioDone = facts.hasBio || facts.hasPortfolio;
+  const localProfile = facts.requiresCityKnowledge === true && facts.profileReady === true;
+  const expertiseDone = facts.destinationsCount > 0 || facts.specialtiesCount > 0 || localProfile;
+  const portfolioDone = facts.hasBio || facts.hasPortfolio || localProfile;
   const identity = identityGate(facts.identityStatus, facts.hasForm);
-  const profileDone = facts.hasForm && expertiseDone && portfolioDone && identity === "done";
+  const cityKnowledgeDone = facts.requiresCityKnowledge === true && facts.cityKnowledge === "done";
+  const profileDone = facts.hasForm && expertiseDone && portfolioDone && identity === "done"
+    && (facts.requiresCityKnowledge !== true || cityKnowledgeDone);
   const specs: GateSpec[] = [
     {
       id: 1,
@@ -237,19 +250,31 @@ export function buildExpertApplicationTimeline(facts: ExpertApplicationFacts): A
       gate: identity,
       note: "Click 'Verify My Identity' above to begin",
     },
-    {
+  ];
+  if (facts.requiresCityKnowledge) {
+    const readyForTest = facts.hasForm && expertiseDone && portfolioDone && identity === "done";
+    specs.push({
       id: 5,
+      title: "City-Knowledge Test",
+      description: "A timed test on the city you applied for",
+      gate: !readyForTest ? "not_yet" : cityKnowledgeDone ? "done" : "open",
+      note: facts.cityKnowledgeNote,
+    });
+  }
+  specs.push(
+    {
+      id: facts.requiresCityKnowledge ? 6 : 5,
       title: "Admin Review",
       description: "Our team reviews your application — typically 2-3 business days",
       gate: profileDone ? "waiting" : "not_yet",
     },
     {
-      id: 6,
+      id: facts.requiresCityKnowledge ? 7 : 6,
       title: "Account Activation",
       description: "Your expert account is activated and ready",
       gate: "not_yet",
     },
-  ];
+  );
   const outcome = !facts.hasForm || end === "closed" ? "none" : end === "approved" ? "approved" : end === "rejected" ? "rejected" : "open";
   return assemble(specs, outcome, facts.basicCompletedAt ?? null);
 }

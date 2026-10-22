@@ -291,6 +291,7 @@ export function SignInModal({
             {resendState === "error" && (
               <p className="text-sm text-muted-foreground" data-testid="text-resend-result">{t("signupPage.genericError")}</p>
             )}
+            <p className="text-sm text-muted-foreground" data-testid="text-signup-payment-step">{t("registered.paymentStep")}</p>
             <div className="flex justify-center gap-4">
               <button
                 type="button"

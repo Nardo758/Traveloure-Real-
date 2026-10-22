@@ -16,9 +16,9 @@
  *     Stripe rendered a wallet: that depends on the traveler's device, the methods enabled in the
  *     Stripe dashboard, and — for Apple Pay — the one-time domain registration LD 43(e) records as
  *     an OPERATOR step. No test can assert an operator did that.
- *   • It scans `paymentIntents.create` only. `checkout.sessions.create` is a different rail whose
- *     method set is dashboard-configured; A7 CENSUSES the sites that use it and pins each as
- *     deliberately unchanged so that decision stays visible, not so it is blessed.
+ *   • It scans `paymentIntents.create` only. `checkout.sessions.create` is a different rail.
+ *     A7 censuses those sites and pins that they do not pass `payment_method_types`.
+ *     Fulfillment of those sessions waits for `payment_status` paid.
  *   • It says nothing about AMOUNTS or IDEMPOTENCY. Those are §14/§15 and have their own suites;
  *     the A-block here only pins that this lane did not disturb the keys it walked past.
  *
@@ -162,12 +162,13 @@ test("A1: the shared createPaymentIntent's INTERACTIVE branch offers wallets —
   );
 });
 
-test("A2: the one-click OFF-SESSION branches stay named-method + confirm (Stripe rejects the alternative)", () => {
-  // The exemption is not a shortcut: `automatic_payment_methods` is mutually exclusive with
-  // `payment_method` + `confirm: true` + `off_session: true`. The wallet choice on this path was
-  // made when the card was vaulted.
-  assert.match(paymentSvc, /payment_method:\s*offSessionMethodId,\s*off_session:\s*true,\s*confirm:\s*true/);
-  assert.match(paymentSvc, /off_session:\s*true,\s*\n\s*confirm:\s*true,/);
+test("A2: a click confirms a named saved method on-session; the old off-session body is only the key replay", () => {
+  // Ledger `2026-10-21-saved-method-onsession`. automatic_payment_methods stays off this branch
+  // because a method is already named. off_session is not set on a new click. The previous
+  // off_session body is replayed only when that idempotency key was already used with it.
+  assert.match(paymentSvc, /payment_method: offSessionMethodId, confirm: true/);
+  assert.match(paymentSvc, /off_session: true as const/);
+  assert.match(paymentSvc, /savedMethodConfirmsOnClick/);
   assert.match(paymentSvc, /ld43-wallets-exempt:/);
 });
 
@@ -211,28 +212,19 @@ test("A6: §14 — this lane changed no amount, and none is body-sourced at the 
   }
 });
 
-test("A7: EVERY hosted Checkout Session stays card-pinned AND annotated as a live decision", () => {
-  // Not a PaymentIntent rail. Recorded rather than quietly skipped: a hosted session's method set
-  // is dashboard-configured, and widening it also admits delayed-notification methods whose
-  // `checkout.session.completed` can arrive unpaid — a webhook change this lane did not audit.
-  //
-  // A CENSUS, not a list of two named files. It was a list until the membership-checkout rail
-  // (ledger `2026-09-21-membership-checkout`) added a THIRD session site, at which point the old
-  // form was still green while no longer covering the set it claimed to — the shape §18d exists to
-  // refuse. Census form means a FOURTH site cannot arrive unpinned.
+test("A7: EVERY hosted Checkout Session omits payment_method_types and names the paid gate", () => {
+  // A CENSUS, not a list of two named files. A fourth checkout.sessions.create
+  // cannot arrive with a method pin. Comments may name the parameter; the call
+  // itself must not pass it. Fulfillment waits for payment_status paid.
   const sessionSites = serverSources(SERVER)
-    .filter((f) => readFileSync(f, "utf-8").includes("checkout.sessions.create"));
+    .filter((f) => stripComments(readFileSync(f, "utf-8")).includes("checkout.sessions.create"));
 
   assert.ok(sessionSites.length >= 3, `expected at least 3 Checkout Session sites, found ${sessionSites.length}`);
 
   for (const file of sessionSites) {
     const src = readFileSync(file, "utf-8");
     const where = relative(ROOT, file);
-    assert.match(src, /LD 43 audit note/, `${where}: Checkout Session lost its audit note`);
-    assert.match(
-      src,
-      /payment_method_types:\s*\[["']card["']\]/,
-      `${where}: Checkout Session changed unexpectedly`,
-    );
+    assert.equal(stripComments(src).includes("payment_method_types"), false, `${where}: Checkout Session pins payment method types`);
+    assert.match(src, /payment_status/, `${where}: Checkout Session lost its paid-gate note`);
   }
 });

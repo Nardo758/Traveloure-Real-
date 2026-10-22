@@ -637,10 +637,19 @@ test("T8: a paid session confirms the option; a replayed delivery against a conf
     amount_total: 24999,
     metadata: { type: "transport_booking", bookingId, optionId },
   });
+  // The webhook gate reads payment_status on the delivery itself. A real
+  // checkout.session.completed session carries it; an absent status is withheld
+  // before the retrieve below is consulted.
   const delivery = () =>
     stripePaymentService.handleWebhook({
       type: "checkout.session.completed",
-      data: { object: { id: sessionId, metadata: { type: "transport_booking" } } },
+      data: {
+        object: {
+          id: sessionId,
+          payment_status: "paid",
+          metadata: { type: "transport_booking" },
+        },
+      },
     } as any);
 
   try {

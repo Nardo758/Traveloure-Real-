@@ -13,9 +13,11 @@
  * Honest states (§13): unavailable (Stripe unconfigured / setup-intent 503) renders plain text,
  * never a fake form.
  */
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
+import { paymentElementOptions, paymentElementWalletsToHide } from "@shared/saved-payment-method";
+import { WalletExpressCheckout } from "@/components/payment/wallet-express-checkout";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -49,14 +51,15 @@ function getStripePromise() {
 function AddCardForm({ onSuccess, onCancel }: { onSuccess: () => void; onCancel: () => void }) {
   const stripe = useStripe();
   const elements = useElements();
+  const confirmingRef = useRef(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isReady, setIsReady] = useState(false);
+  const [expressSettled, setExpressSettled] = useState(false);
+  const [hideWallets, setHideWallets] = useState<ReturnType<typeof paymentElementWalletsToHide>>(null);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!stripe || !elements || !isReady) return;
-
+  const confirmSetup = async (): Promise<boolean> => {
+    if (!stripe || !elements) return false;
     setIsSubmitting(true);
     setErrorMessage("");
     try {
@@ -69,32 +72,57 @@ function AddCardForm({ onSuccess, onCancel }: { onSuccess: () => void; onCancel:
       });
 
       if (error) {
-        setErrorMessage(error.message || "Couldn't save the card.");
-        return;
+        setErrorMessage(error.message || "Couldn't save this payment method.");
+        return false;
       }
       if (setupIntent?.status === "succeeded") {
         onSuccess();
-        return;
+        return true;
       }
       setErrorMessage(
         setupIntent?.status
-          ? `Couldn't save the card (status: ${setupIntent.status}). Please try again.`
-          : "Couldn't save the card. Please try again."
+          ? `Couldn't save this payment method (status: ${setupIntent.status}). Please try again.`
+          : "Couldn't save this payment method. Please try again."
       );
+      return false;
     } catch (err: any) {
       setErrorMessage(err?.message || "An unexpected error occurred.");
+      return false;
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!stripe || !elements || !isReady || confirmingRef.current) return;
+    confirmingRef.current = true;
+    try {
+      await confirmSetup();
+    } finally {
+      confirmingRef.current = false;
+    }
+  };
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4" data-testid="form-add-card">
+      <WalletExpressCheckout
+        link="auto"
+        confirmingRef={confirmingRef}
+        onConfirm={confirmSetup}
+        onWalletsKnown={(available) => {
+          setHideWallets(paymentElementWalletsToHide(available));
+          setExpressSettled(true);
+        }}
+      />
       <div className="border border-border rounded-lg p-3 min-h-[180px]">
-        <PaymentElement
-          onReady={() => setIsReady(true)}
-          onLoadError={(e) => setErrorMessage(e.error.message || "Failed to load payment form")}
-        />
+        {expressSettled ? (
+          <PaymentElement
+            options={paymentElementOptions(hideWallets)}
+            onReady={() => setIsReady(true)}
+            onLoadError={(e) => setErrorMessage(e.error.message || "Failed to load payment form")}
+          />
+        ) : null}
         {!isReady && (
           <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
             <Loader2 className="w-5 h-5 mr-2 animate-spin" />
@@ -112,7 +140,7 @@ function AddCardForm({ onSuccess, onCancel }: { onSuccess: () => void; onCancel:
 
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <Lock className="w-3.5 h-3.5 shrink-0" />
-        <span>Your card details are handled directly by Stripe and never touch our servers.</span>
+        <span>Payment details are handled by Stripe and never touch our servers.</span>
       </div>
 
       <div className="flex justify-end gap-2">
@@ -131,7 +159,7 @@ function AddCardForm({ onSuccess, onCancel }: { onSuccess: () => void; onCancel:
           data-testid="button-confirm-add-card"
         >
           {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-          Save card
+          Save payment method
         </Button>
       </div>
     </form>
@@ -151,7 +179,7 @@ export function AddCardDialog() {
     },
     onError: (err: any) => {
       toast({
-        title: "Couldn't start the add-card flow",
+        title: "Couldn't start saving a payment method",
         description: err?.message || "Payments aren't available right now.",
         variant: "destructive",
       });
@@ -166,7 +194,7 @@ export function AddCardDialog() {
 
   const handleSuccess = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/me/payment-methods"] });
-    toast({ title: "Card added" });
+    toast({ title: "Payment method saved" });
     setOpen(false);
     setupIntentMutation.reset();
   };
@@ -183,21 +211,21 @@ export function AddCardDialog() {
     <>
       <Button variant="outline" size="sm" onClick={handleOpen} data-testid="button-add-card">
         <Plus className="w-4 h-4 mr-1.5" />
-        Add card
+        Add payment method
       </Button>
 
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="sm:max-w-md max-h-[min(90dvh,800px)] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Add a card</DialogTitle>
+            <DialogTitle>Add a payment method</DialogTitle>
             <DialogDescription>
-              Save a card to pay booking and coordination fees with one click.
+              Save a card, Apple Pay, Google Pay, or Link. Wallets show up when this device supports them. Stripe stores the details, not Traveloure.
             </DialogDescription>
           </DialogHeader>
 
           {setupIntentMutation.isError ? (
             <p className="text-sm text-muted-foreground py-6 text-center" data-testid="text-add-card-unavailable">
-              Adding a card isn't available right now. Try again later.
+              Adding a payment method isn't available right now. Try again later.
             </p>
           ) : loading ? (
             <div className="flex items-center justify-center py-10 text-muted-foreground text-sm">
@@ -216,7 +244,7 @@ export function AddCardDialog() {
             </Elements>
           ) : (
             <p className="text-sm text-muted-foreground py-6 text-center" data-testid="text-add-card-unavailable">
-              Adding a card isn't available right now. Try again later.
+              Adding a payment method isn't available right now. Try again later.
             </p>
           )}
         </DialogContent>

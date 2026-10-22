@@ -23,13 +23,16 @@ const outputDir = process.env.MUTATION_AUTH_COVERAGE_OUTPUT_DIR ?? path.join(roo
 const keyOf = endpointKey;
 
 // These endpoints are intentionally *not* promoted from a session test to an
-// authorization proof. They are the 30 session-self endpoints explicitly
+// authorization proof. They are the session-self endpoints explicitly
 // excluded by expert-provider-mutation-auth.test.ts and require real handler
 // resources before a wrong-role/owner result is meaningful.
+// 26 → 29 (ledger `2026-10-21-city-knowledge-test`): the applicant's three sittings.
 const handlerFixtureExclusions = new Set([
   "POST /api/expert/ai-tasks/:taskId/approve", "POST /api/expert/ai-tasks/:taskId/regenerate",
   "POST /api/expert/ai-tasks/:taskId/reject", "POST /api/expert/ai-tasks/delegate",
   "POST /api/expert/assignments/:assignmentId/accept", "POST /api/expert/bookings/:id/complete",
+  "POST /api/expert/city-knowledge/start", "POST /api/expert/city-knowledge/answer",
+  "POST /api/expert/city-knowledge/part-b",
   "PATCH /api/expert/bookings/:id/status", "POST /api/expert/reviews/:id/respond",
   "PATCH /api/expert/role", "POST /api/expert/trips/:tripId/vendors",
   "DELETE /api/expert/vendors/:vendorId", "PUT /api/expert/vendors/:vendorId",
@@ -154,7 +157,7 @@ if (rows.some((row) => row.tested === undefined || !row.reason)) throw new Error
 const totals = (items: typeof rows) => ({ tested: items.filter((item) => item.tested).length, total: items.length });
 const overall = totals(rows);
 const categories = Object.fromEntries((["payments", "admin", "user-data", "other"] as Risk[]).map((risk) => [risk, totals(rows.filter((row) => row.risk === risk))]));
-if (rows.filter((row) => handlerFixtureExclusions.has(row.key)).length !== 26) throw new Error("Expected exactly 26 handler-fixture exclusions");
+if (rows.filter((row) => handlerFixtureExclusions.has(row.key)).length !== 29) throw new Error("Expected exactly 29 handler-fixture exclusions");
 
 const report = {
   schemaVersion: 1, generatedBy: "scripts/generate-mutation-auth-coverage.ts",
@@ -178,7 +181,7 @@ const markdown = [
   "- An endpoint is tested only when a passing, non-skipped suite in the fresh evidence artifact names that exact endpoint in its required context. Route classification alone never promotes coverage.",
   "- Totals are a strict endpoint union, not a sum of evidence dimensions. Endpoints with both unauthenticated and cross-owner evidence are counted once.",
   "- The confirmed optimization-confirm ownership bug is fixed: missing or mismatched Stripe `metadata.userId` is rejected before DB/revenue writes.",
-  "- Payments/user-data signature endpoints (2) are counted only for unsigned-request coverage. Session-self payments/user-data endpoints are counted from fresh unauthenticated evidence, except the 26 explicit handler-fixture exclusions below; only those exclusions are **not tested**.",
+  "- Payments/user-data signature endpoints (2) are counted only for unsigned-request coverage. Session-self payments/user-data endpoints are counted from fresh unauthenticated evidence, except the 29 explicit handler-fixture exclusions below; only those exclusions are **not tested**.",
   "", "## Remaining risk", "",
   "Untested endpoints below need endpoint-appropriate coverage. In particular, excluded expert/provider workflows require real handler-owned resources; public/system routes and all other-category routes have no authorization assertion in this strict report.",
   "", "## Untested endpoints", "",

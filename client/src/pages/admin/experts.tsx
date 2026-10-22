@@ -62,6 +62,25 @@ interface ExpertApplication {
     note?: string;
   } | null;
   localSpecialties?: string[];
+  cityKnowledge?: {
+    cityKey: string | null;
+    bankSignedOff: boolean;
+    approvalAllowed: boolean;
+    approvalMessage: string | null;
+    mayGrantRetake: boolean;
+    retake: { state: string; eligibleAt?: string };
+    latest: null | {
+      outcome: string | null;
+      attention: boolean;
+      overallPercent: number | null;
+      partAPercent: number | null;
+      partBPercent: number | null;
+      attentionReasons?: string[];
+      topics?: { label: string; percent: number; flagged: boolean }[];
+      briefs?: { id: string; percent: number | null; metrics: Record<string, { score: number | null; rationale: string }> }[];
+      partA?: { correct: number; drawn: number };
+    };
+  } | null;
 }
 
 function RejectionReasonEditor({
@@ -249,6 +268,28 @@ export default function AdminExperts() {
     },
     onError: (error: any) => {
       toast({ variant: "destructive", title: "Save failed", description: error?.message ?? "Try again." });
+    },
+  });
+
+  const retakeMutation = useMutation({
+    mutationFn: async (id: string) => apiRequest("POST", `/api/admin/expert-applications/${id}/city-knowledge/retake`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/expert-applications"] });
+      toast({ title: "Retake granted", description: "The wait still applies. A fail was not changed to a pass." });
+    },
+    onError: (error: any) => {
+      toast({ variant: "destructive", title: "Retake was not granted", description: error?.message ?? "Try again." });
+    },
+  });
+
+  const signOffMutation = useMutation({
+    mutationFn: async (cityKey: string) => apiRequest("POST", `/api/admin/city-knowledge/${cityKey}/sign-off`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/expert-applications"] });
+      toast({ title: "Bank signed off" });
+    },
+    onError: (error: any) => {
+      toast({ variant: "destructive", title: "Sign-off failed", description: error?.message ?? "Try again." });
     },
   });
 
@@ -554,6 +595,54 @@ export default function AdminExperts() {
                       <p className="text-sm text-gray-600 italic">"{app.bio.slice(0, 150)}{app.bio.length > 150 ? "..." : ""}"</p>
                     )}
 
+                    {app.expertType === "local_expert" && app.cityKnowledge && (
+                      <div className="text-sm space-y-2 rounded border border-border bg-muted/40 p-2.5" data-testid={`city-knowledge-${app.id}`}>
+                        <div className="font-medium">City-knowledge test</div>
+                        <p className="text-xs text-muted-foreground">
+                          {app.cityKnowledge.bankSignedOff ? "Bank signed off" : "Bank not signed off"}
+                          {app.cityKnowledge.latest ? ` · ${app.cityKnowledge.latest.outcome ?? "in progress"}` : " · no sitting yet"}
+                          {app.cityKnowledge.latest?.attention ? " · Needs attention" : ""}
+                        </p>
+                        {app.cityKnowledge.latest && (
+                          <p className="text-xs">
+                            Overall {app.cityKnowledge.latest.overallPercent == null ? "not scored" : `${Math.floor(app.cityKnowledge.latest.overallPercent)}%`}
+                            {" · "}Part A {app.cityKnowledge.latest.partAPercent == null ? "not scored" : `${Math.floor(app.cityKnowledge.latest.partAPercent)}%`}
+                            {" · "}Part B {app.cityKnowledge.latest.partBPercent == null ? "not scored" : `${Math.floor(app.cityKnowledge.latest.partBPercent)}%`}
+                            {app.cityKnowledge.latest.partA ? ` · ${app.cityKnowledge.latest.partA.correct}/${app.cityKnowledge.latest.partA.drawn} factual` : ""}
+                          </p>
+                        )}
+                        {(app.cityKnowledge.latest?.topics ?? []).map((topic) => (
+                          <p key={topic.label} className="text-xs">{topic.label}: {Math.floor(topic.percent)}%{topic.flagged ? " · below 60%" : ""}</p>
+                        ))}
+                        {(app.cityKnowledge.latest?.attentionReasons ?? []).map((reason) => (
+                          <p key={reason} className="text-xs text-amber-700">{reason}</p>
+                        ))}
+                        {(app.cityKnowledge.latest?.briefs ?? []).map((brief) => (
+                          <div key={brief.id} className="text-xs space-y-1">
+                            <p className="font-medium">{brief.id === "b1" ? "4-day first-timer" : "Sunset proposal"} · {brief.percent == null ? "not scored" : `${Math.floor(brief.percent)}%`}</p>
+                            {Object.entries(brief.metrics ?? {}).map(([metric, review]) => (
+                              <p key={metric}>Metric {metric}: {review.score == null ? "not scored" : review.score}{review.rationale ? ` — ${review.rationale}` : ""}</p>
+                            ))}
+                          </div>
+                        ))}
+                        {app.cityKnowledge.approvalMessage && (
+                          <p className="text-xs">{app.cityKnowledge.approvalMessage}</p>
+                        )}
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          {app.cityKnowledge.mayGrantRetake && (
+                            <Button size="sm" variant="outline" className="w-full sm:w-auto" disabled={retakeMutation.isPending} onClick={() => retakeMutation.mutate(app.id)} data-testid={`button-grant-retake-${app.id}`}>
+                              Grant a retake
+                            </Button>
+                          )}
+                          {!app.cityKnowledge.bankSignedOff && app.cityKnowledge.cityKey && (
+                            <Button size="sm" variant="outline" className="w-full sm:w-auto" disabled={signOffMutation.isPending} onClick={() => signOffMutation.mutate(app.cityKnowledge!.cityKey!)} data-testid={`button-sign-off-${app.id}`}>
+                              Sign off this bank
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                     <div className="space-y-2 pt-2">
                       {/* Identity verification status badge */}
                       <div className="flex flex-wrap gap-2">
@@ -585,7 +674,7 @@ export default function AdminExperts() {
                             }
                             updateStatusMutation.mutate({ id: app.id, status: "approved", rejectionMessage: overrideNote });
                           }}
-                          disabled={updateStatusMutation.isPending}
+                          disabled={updateStatusMutation.isPending || app.cityKnowledge?.approvalAllowed === false}
                           data-testid={`button-approve-${app.id}`}
                         >
                           <CheckCircle className="w-4 h-4 mr-1" /> Approve

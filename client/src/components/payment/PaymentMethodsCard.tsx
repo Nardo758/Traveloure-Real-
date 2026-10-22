@@ -13,6 +13,7 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useSavedPayment, type SavedCard } from "@/hooks/use-saved-payment";
+import { savedPaymentMethodLabel } from "@shared/saved-payment-method";
 import { AddCardDialog } from "@/components/payment/AddCardDialog";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -43,7 +44,7 @@ function CardRow({
   onRemove: () => void;
   busy: boolean;
 }) {
-  const brand = card.brand.charAt(0).toUpperCase() + card.brand.slice(1);
+  const label = savedPaymentMethodLabel(card);
   return (
     <div
       className="flex items-center justify-between gap-3 rounded-lg border border-border p-3"
@@ -53,11 +54,13 @@ function CardRow({
         <CreditCard className="w-5 h-5 text-muted-foreground shrink-0" />
         <div>
           <p className="text-sm font-medium text-foreground dark:text-white">
-            {brand} ••{card.last4}
+            {label}
           </p>
-          <p className="text-xs text-muted-foreground">
-            Expires {String(card.expMonth).padStart(2, "0")}/{card.expYear}
-          </p>
+          {card.expMonth != null && card.expYear != null ? (
+            <p className="text-xs text-muted-foreground">
+              Expires {String(card.expMonth).padStart(2, "0")}/{card.expYear}
+            </p>
+          ) : null}
         </div>
         {isDefault && (
           <Badge variant="secondary" className="gap-1">
@@ -105,11 +108,11 @@ export function PaymentMethodsCard() {
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: "Default card updated" });
+      toast({ title: "Default payment method updated" });
       refresh();
     },
     onError: (err: any) => {
-      toast({ title: "Couldn't update default card", description: err?.message, variant: "destructive" });
+      toast({ title: "Couldn't update the default payment method", description: err?.message, variant: "destructive" });
     },
     onSettled: () => setPendingId(null),
   });
@@ -121,11 +124,11 @@ export function PaymentMethodsCard() {
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: "Card removed" });
+      toast({ title: "Payment method removed" });
       refresh();
     },
     onError: (err: any) => {
-      toast({ title: "Couldn't remove card", description: err?.message, variant: "destructive" });
+      toast({ title: "Couldn't remove this payment method", description: err?.message, variant: "destructive" });
     },
     onSettled: () => {
       setPendingId(null);
@@ -142,7 +145,7 @@ export function PaymentMethodsCard() {
             Payment Methods
           </CardTitle>
           <CardDescription className="text-muted-foreground">
-            Saved cards let you pay booking and coordination fees with one click. Card details are stored by Stripe, not on Traveloure.
+            Saved payment methods let you pay booking and coordination fees with one click. Stripe stores the details, not Traveloure.
           </CardDescription>
         </div>
         {!isLoading && available && <AddCardDialog />}
@@ -156,7 +159,7 @@ export function PaymentMethodsCard() {
           </p>
         ) : methods.length === 0 ? (
           <p className="text-sm text-muted-foreground" data-testid="text-payment-methods-empty">
-            No saved cards yet. A card is saved automatically the next time you pay for a booking or fee.
+            No saved payment method yet. One is saved the next time you pay for a booking or fee, or you can add one now.
           </p>
         ) : (
           <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
@@ -177,14 +180,11 @@ export function PaymentMethodsCard() {
       <AlertDialog open={!!removeTarget} onOpenChange={(open) => !open && setRemoveTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove this card?</AlertDialogTitle>
+            <AlertDialogTitle>Remove this payment method?</AlertDialogTitle>
             <AlertDialogDescription>
-              {removeTarget && (
-                <>
-                  {removeTarget.brand.charAt(0).toUpperCase() + removeTarget.brand.slice(1)} ••{removeTarget.last4}{" "}
-                  will be removed from your account. You can add it again at your next checkout.
-                </>
-              )}
+              {removeTarget
+                ? `${savedPaymentMethodLabel(removeTarget)} will be removed from your account. You can add it again later.`
+                : null}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

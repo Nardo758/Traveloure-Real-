@@ -84,6 +84,12 @@ import StripeCheckout from "@/components/booking/StripeCheckout";
 import { UpsellSlot, UpsellErrorBoundary } from "@/components/UpsellSlot";
 import { getAcquisitionRef } from "@/lib/acquisition";
 import { useSavedPayment, formatCardLabel } from "@/hooks/use-saved-payment";
+import {
+  ON_SESSION_CLICK_NOTE,
+  SAVED_APPLE_PAY_CLICK_NOTE,
+  savedMethodConfirmsOnClick,
+  type SavedPaymentMethod,
+} from "@shared/saved-payment-method";
 import { trackEvent } from "@/lib/analytics";
 import { itemKindChipFor } from "@shared/item-kind";
 import { isContentCartLine } from "@shared/cart-content-line";
@@ -955,7 +961,7 @@ export default function CartPage() {
   const { data: savedMethodsData } = useQuery<{
     available: boolean;
     defaultPaymentMethodId: string | null;
-    methods: Array<{ id: string; brand: string; last4: string }>;
+    methods: SavedPaymentMethod[];
   }>({
     queryKey: ["/api/me/payment-methods"],
     enabled: !!user,
@@ -969,6 +975,7 @@ export default function CartPage() {
   const selectedSavedCard = payWithNewCard
     ? null
     : savedMethods.find((m) => m.id === (chosenCardId ?? savedMethodsData?.defaultPaymentMethodId)) ?? null;
+  const clickChargesSaved = !!selectedSavedCard && savedMethodConfirmsOnClick(selectedSavedCard);
 
   const convertToItineraryMutation = useMutation({
     mutationFn: async (payload: {
@@ -1096,7 +1103,7 @@ export default function CartPage() {
         // B2: ask for the off-session confirm only when a vaulted card is known to exist. The
         // server re-verifies independently (a stale/false claim here degrades to the interactive
         // sheet, never an error) and derives every amount from the claimed rows (§14).
-        ...(selectedSavedCard
+        ...(clickChargesSaved && selectedSavedCard
           ? { useSavedCard: true, savedPaymentMethodId: selectedSavedCard.id }
           : {}),
         // S4: raw captured short-link code; the SERVER derives the attribution source
@@ -1166,7 +1173,9 @@ export default function CartPage() {
         ).catch(() => {});
         toast({
           title: "Booked & paid",
-          description: `Charged to your saved ${selectedSavedCard?.brand ?? "card"} •••• ${selectedSavedCard?.last4 ?? ""}.`,
+          description: formatCardLabel(selectedSavedCard)
+            ? `Charged to ${formatCardLabel(selectedSavedCard)}.`
+            : "Charged to your saved payment method.",
         });
         queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
         queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
@@ -2745,7 +2754,7 @@ export default function CartPage() {
 
                       {/* FP-2: one-click when a default saved card exists and this isn't the
                           free re-run (nothing to charge there). */}
-                      {optimizeUnavailable(optimizationPreview) ? null : !optimizationPayment && !optimizationPreview.freeRerun && savedPayment.hasDefault ? (
+                      {optimizeUnavailable(optimizationPreview) ? null : !optimizationPayment && !optimizationPreview.freeRerun && savedPayment.hasDefault && savedMethodConfirmsOnClick(savedPayment.defaultCard) ? (
                         <div className="space-y-2">
                           <Button
                             className="w-full bg-primary hover:bg-primary/90"
@@ -2772,10 +2781,15 @@ export default function CartPage() {
                             disabled={oneClickLoading || paymentLoading || creatingComparison}
                             data-testid="button-use-different-card-optimization"
                           >
-                            Use a different card
+                            Use a different payment method
                           </button>
+                          <p className="text-xs text-muted-foreground text-center">{ON_SESSION_CLICK_NOTE}</p>
                         </div>
                       ) : !optimizationPayment && (
+                        <>
+                        {savedPayment.defaultCard && !savedMethodConfirmsOnClick(savedPayment.defaultCard) ? (
+                          <p className="text-xs text-muted-foreground text-center">{SAVED_APPLE_PAY_CLICK_NOTE}</p>
+                        ) : null}
                         <Button
                           className="w-full bg-primary hover:bg-primary/90"
                           size="lg"
@@ -2793,6 +2807,7 @@ export default function CartPage() {
                             : (paymentLoading ? "Setting up..." : "Unlock Full Optimization")
                           }
                         </Button>
+                        </>
                       )}
                     </CardContent>
                   </Card>
@@ -3239,10 +3254,10 @@ export default function CartPage() {
                               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                               Processing...
                             </>
-                          ) : selectedSavedCard ? (
+                          ) : clickChargesSaved && selectedSavedCard ? (
                             <>
                               <CheckCircle className="w-4 h-4 mr-2" />
-                              {`Book & Pay — ${selectedSavedCard.brand} •••• ${selectedSavedCard.last4}`}
+                              {`Book & Pay — ${formatCardLabel(selectedSavedCard)}`}
                             </>
                           ) : (
                             <>
@@ -3262,12 +3277,12 @@ export default function CartPage() {
                                 }}
                               >
                                 <SelectTrigger className="w-full" data-testid="select-saved-card">
-                                  <SelectValue placeholder="Choose a saved card" />
+                                  <SelectValue placeholder="Choose a saved payment method" />
                                 </SelectTrigger>
                                 <SelectContent>
                                   {savedMethods.map((method) => (
                                     <SelectItem key={method.id} value={method.id}>
-                                      {method.brand} •••• {method.last4}
+                                      {formatCardLabel(method)}
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
@@ -3280,19 +3295,23 @@ export default function CartPage() {
                                 onClick={() => setPayWithNewCard((current) => !current)}
                                 data-testid="button-use-different-card"
                               >
-                                {payWithNewCard ? "Use a saved card" : "Use a different card"}
+                                {payWithNewCard ? "Use a saved payment method" : "Use a different payment method"}
                               </button>
                               <Link href="/profile#payment-methods" className="text-muted-foreground underline-offset-2 hover:underline">
-                                Manage saved cards
+                                Manage saved payment methods
                               </Link>
                             </div>
                           </div>
                         )}
-                        {selectedSavedCard && (
+                        {clickChargesSaved ? (
                           <p className="text-xs text-muted-foreground text-center w-full">
-                            One click — your saved card is charged immediately. No further steps.
+                            {ON_SESSION_CLICK_NOTE}
                           </p>
-                        )}
+                        ) : selectedSavedCard ? (
+                          <p className="text-xs text-muted-foreground text-center w-full">
+                            {SAVED_APPLE_PAY_CLICK_NOTE}
+                          </p>
+                        ) : null}
                         </>
                       ) : !checkoutPaymentIntent ? (
                         <div className="w-full text-center text-muted-foreground text-sm">

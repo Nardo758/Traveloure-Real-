@@ -163,13 +163,11 @@ export async function startMembershipCheckout(
   try {
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
-      // LD 43 audit note — a hosted Checkout Session, NOT a PaymentIntent site, and pinned for the
-      // same reason the transport and expert-service sessions are: a hosted session's method set is
-      // DASHBOARD-configured rather than set by `automatic_payment_methods`, and dropping the pin
-      // also admits delayed-notification methods whose `checkout.session.completed` can arrive
-      // UNPAID — a webhook-behaviour change LD 43 explicitly did not authorize. Widening it is an
-      // operator + webhook lane, not a find-replace. Recorded, not silently inherited.
-      payment_method_types: ["card"],
+      // Hosted Checkout uses the Dashboard's dynamic payment methods. A delayed
+      // method can complete this session before payment_status is paid. Membership
+      // entitlement stays on customer.subscription.* (incomplete maps to lapsed)
+      // and these session events do not write plan_memberships
+      // (ledger `2026-10-21-checkout-dynamic-methods`).
       // NO amount, currency or interval is stated here. The Price is the authority (§14).
       line_items: [{ price: price.priceId, quantity: 1 }],
       customer: customerId,

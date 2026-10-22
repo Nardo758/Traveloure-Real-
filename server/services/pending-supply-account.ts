@@ -71,6 +71,9 @@ export async function readSupplyAccount(userId: string): Promise<SupplyAccount> 
   if (chosen.kind === "expert" && expert) {
     const destinations = Array.isArray(expert.destinations) ? expert.destinations.length : 0;
     const specialties = Array.isArray(expert.specialties) ? expert.specialties.length : 0;
+    const cityKnowledgeFacts = expert.expertType === "local_expert"
+      ? await (await import("./city-knowledge/attempt.service")).timelineFactsForForm(expert)
+      : {};
     const timeline = buildExpertApplicationTimeline({
       hasForm: true,
       applicationStatus: expert.status ?? null,
@@ -80,6 +83,7 @@ export async function readSupplyAccount(userId: string): Promise<SupplyAccount> 
       hasPortfolio: text(expert.portfolio),
       identityStatus: expert.identityVerificationStatus ?? "pending",
       basicCompletedAt: expert.createdAt ? new Date(expert.createdAt).toLocaleDateString() : null,
+      ...cityKnowledgeFacts,
     });
     return {
       kind: "expert",
