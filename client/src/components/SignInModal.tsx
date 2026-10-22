@@ -15,6 +15,7 @@ import { LogIn, Mail, Lock, User, Loader2 } from "lucide-react";
 import { isRegistrationNeutral } from "@shared/registration-neutral";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
+import { authFailureMessage, readAuthResponse } from "@/lib/auth-response";
 import { getRoleHomePath } from "@/lib/role-utils";
 import { sanitizeReturnTo } from "@/lib/safe-return-to";
 import { TRAVELER_WAITLIST, type SignupIntent } from "@shared/launch-signup";
@@ -153,31 +154,34 @@ export function SignInModal({
         credentials: "include",
       });
 
-      const data = await response.json();
+      const read = await readAuthResponse(response);
+      const genericError = t("signupPage.genericError");
 
-      if (mode === "signup" && isRegistrationNeutral(response.status, data)) {
+      if (mode === "signup" && read.kind === "json" && isRegistrationNeutral(response.status, read.data)) {
         setSignupSubmitted(true);
         return;
       }
 
-      if (!response.ok) {
+      if (read.kind === "non-json" || !response.ok) {
         // LW-1b: traveler sign-up is waitlist-only — go to the waitlist page the server named. No email in the URL.
-        if (response.status === 403 && data?.code === TRAVELER_WAITLIST) {
+        if (read.kind === "json" && response.status === 403 && read.data.code === TRAVELER_WAITLIST) {
+          const redirectTo = typeof read.data.redirectTo === "string" ? read.data.redirectTo : undefined;
           onOpenChange(false);
-          window.location.href = sanitizeReturnTo(data.redirectTo) ?? "/";
+          window.location.href = sanitizeReturnTo(redirectTo) ?? "/";
           return;
         }
-        throw new Error(data.message || "Authentication failed");
+        throw new Error(authFailureMessage(read, genericError, "Authentication failed"));
       }
       // Only a sign-in reaches here with a session. A sign-up answered with anything but the neutral contract is
       // not treated as signed in.
-      if (mode !== "signin") throw new Error("Authentication failed");
+      if (mode !== "signin" || read.kind !== "json") throw new Error("Authentication failed");
+      const data = read.data;
 
       if (data.emailVerificationRequired === true) {
         queryClient.setQueryData(["/api/auth/user"], {
-          ...data.user,
+          ...(data.user ?? {}),
           emailVerificationRequired: true,
-          nextStep: data.nextStep ?? "verify_email",
+          nextStep: typeof data.nextStep === "string" ? data.nextStep : "verify_email",
         });
         onOpenChange(false);
         window.location.href = "/verify-email";
@@ -189,7 +193,7 @@ export function SignInModal({
 
       toast({
         title: "Welcome back!",
-        description: data.message,
+        description: typeof data.message === "string" ? data.message : undefined,
       });
 
       onOpenChange(false);
@@ -204,7 +208,7 @@ export function SignInModal({
         sanitizeReturnTo(returnTo) ?? sanitizeReturnTo(sessionReturnTo);
       window.location.href = safeDest ?? getRoleHomePath(role);
     } catch (error: any) {
-      const msg = error.message || "Something went wrong";
+      const msg = error.message || t("signupPage.genericError");
       // TEST 10 — set in-DOM error for aria-live announcement; also toast for visual users
       setAuthError(msg);
       toast({ title: "Error", description: msg, variant: "destructive" });
@@ -218,11 +222,18 @@ export function SignInModal({
     if (!formData.email) return;
     setIsLoading(true);
     try {
-      await fetch("/api/auth/forgot-password", {
+      const response = await fetch("/api/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: formData.email }),
       });
+      const read = await readAuthResponse(response);
+      if (read.kind === "non-json") {
+        const msg = t("signupPage.genericError");
+        setAuthError(msg);
+        toast({ title: "Error", description: msg, variant: "destructive" });
+        return;
+      }
       setResetSent(true);
     } catch {
       setResetSent(true);

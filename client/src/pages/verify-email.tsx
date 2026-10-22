@@ -14,9 +14,10 @@ import { Button } from "@/components/ui/button";
 import { CheckCircle2, AlertCircle, Loader2, Mail } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { getRoleHomePath } from "@/lib/role-utils";
+import { readAuthResponse } from "@/lib/auth-response";
 import { emailVerificationHoldRequired } from "@/lib/email-verification-hold";
 
-type State = "verifying" | "success" | "invalid" | "missing-token";
+type State = "verifying" | "success" | "invalid" | "unavailable" | "missing-token";
 
 export default function VerifyEmailPage() {
   const { t } = useTranslation("auth");
@@ -41,12 +42,16 @@ export default function VerifyEmailPage() {
           body: JSON.stringify({ token }),
         });
         if (cancelled) return;
-        if (res.ok) {
+        const read = await readAuthResponse(res);
+        if (cancelled) return;
+        if (res.ok && read.kind === "json") {
           queryClient.setQueryData(["/api/auth/user"], (prev: unknown) => {
             if (!prev || typeof prev !== "object") return prev;
             return { ...(prev as object), emailVerificationRequired: false, nextStep: null };
           });
           setState("success");
+        } else if (read.kind === "non-json") {
+          setState("unavailable");
         } else {
           setState("invalid");
         }
@@ -70,8 +75,12 @@ export default function VerifyEmailPage() {
         method: "POST",
         credentials: "include",
       });
-      if (res.status === 429) setResendState("wait");
-      else if (!res.ok) setResendState("error");
+      if (res.status === 429) {
+        setResendState("wait");
+        return;
+      }
+      const read = await readAuthResponse(res);
+      if (!res.ok || read.kind === "non-json") setResendState("error");
       else setResendState("sent");
     } catch {
       setResendState("error");
@@ -88,8 +97,12 @@ export default function VerifyEmailPage() {
         credentials: "include",
         body: JSON.stringify({ email: changeEmail }),
       });
-      if (res.status === 429) setChangeState("wait");
-      else if (!res.ok) setChangeState("error");
+      if (res.status === 429) {
+        setChangeState("wait");
+        return;
+      }
+      const read = await readAuthResponse(res);
+      if (!res.ok || read.kind === "non-json") setChangeState("error");
       else {
         setChangeState("sent");
         queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
@@ -131,6 +144,26 @@ export default function VerifyEmailPage() {
           <CardContent>
             <Link href={homeHref}>
               <Button className="w-full" data-testid="button-verify-go-home">Go to Traveloure</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      </main>
+    );
+  }
+
+  if (token && state === "unavailable") {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-muted/30 px-4">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2" data-testid="text-verify-unavailable">
+              <AlertCircle className="w-5 h-5 text-destructive" />
+              {t("signupPage.genericError")}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Link href="/">
+              <Button className="w-full" data-testid="button-verify-unavailable">Back to sign in</Button>
             </Link>
           </CardContent>
         </Card>

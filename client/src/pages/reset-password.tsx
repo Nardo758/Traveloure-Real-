@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Lock, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { AUTH_GENERIC_ERROR, authFailureMessage, readAuthResponse } from "@/lib/auth-response";
 
 export default function ResetPasswordPage() {
   const [, setLocation] = useLocation();
@@ -110,10 +111,11 @@ export default function ResetPasswordPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, newPassword }),
       });
+      const read = await readAuthResponse(res);
+      if (read.kind === "non-json") throw new Error(AUTH_GENERIC_ERROR);
       if (res.ok) { setDone(true); return; }
       if (res.status === 400) { setInvalidToken(true); return; }
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.message || `Reset failed (${res.status})`);
+      throw new Error(authFailureMessage(read, AUTH_GENERIC_ERROR, `Reset failed (${res.status})`));
     } catch (err: any) {
       toast({ title: "Couldn't reset password", description: err?.message ?? "Please try again.", variant: "destructive" });
     } finally {
