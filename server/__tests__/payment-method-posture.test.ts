@@ -162,12 +162,13 @@ test("A1: the shared createPaymentIntent's INTERACTIVE branch offers wallets —
   );
 });
 
-test("A2: the one-click OFF-SESSION branches stay named-method + confirm (Stripe rejects the alternative)", () => {
-  // The exemption is not a shortcut: `automatic_payment_methods` is mutually exclusive with
-  // `payment_method` + `confirm: true` + `off_session: true`. The wallet choice on this path was
-  // made when the card was vaulted.
-  assert.match(paymentSvc, /payment_method:\s*offSessionMethodId,\s*off_session:\s*true,\s*confirm:\s*true/);
-  assert.match(paymentSvc, /off_session:\s*true,\s*\n\s*confirm:\s*true,/);
+test("A2: a click confirms a named saved method on-session; the old off-session body is only the key replay", () => {
+  // Ledger `2026-10-21-saved-method-onsession`. automatic_payment_methods stays off this branch
+  // because a method is already named. off_session is not set on a new click. The previous
+  // off_session body is replayed only when that idempotency key was already used with it.
+  assert.match(paymentSvc, /payment_method: offSessionMethodId, confirm: true/);
+  assert.match(paymentSvc, /off_session: true as const/);
+  assert.match(paymentSvc, /savedMethodConfirmsOnClick/);
   assert.match(paymentSvc, /ld43-wallets-exempt:/);
 });
 

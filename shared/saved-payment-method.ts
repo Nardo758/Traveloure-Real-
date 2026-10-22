@@ -130,6 +130,22 @@ export function paymentElementOptions(
  * already says the site does not accept it. Apple Pay, Google Pay, and Link
  * follow the device. `link` is `never` on the hold sheet (Smoke 13 #8).
  */
+/**
+ * A click may confirm a saved method while the person is here. Saved Apple Pay
+ * is not one of those: Apple requires a new cryptogram from the device.
+ * Ledger `2026-10-21-saved-method-onsession`.
+ */
+export function savedMethodConfirmsOnClick(method: { wallet?: string | null } | null | undefined): boolean {
+  if (!method) return false;
+  return method.wallet !== "apple_pay";
+}
+
+export const ON_SESSION_CLICK_NOTE =
+  "This click confirms the charge while you are here. If your bank asks for another step, the payment sheet opens.";
+
+export const SAVED_APPLE_PAY_CLICK_NOTE =
+  "Saved Apple Pay is not charged from this button. The payment sheet asks this device to approve it.";
+
 export function expressCheckoutPaymentMethods(link: "auto" | "never"): {
   applePay: "auto";
   googlePay: "auto";
