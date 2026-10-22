@@ -158,8 +158,7 @@ import { calculateCommission, BookingType } from "../utils/commissionCalculator"
 import { revertPurchasedItemsForBooking } from "../services/item-routing.service";
 import { RoleTransitionError } from "../services/role-transition";
 import {
-  getAdminRole, getFullAdminUser, insertAccessAuditLog, recordAdminAudit, getContactSubmissions,
-  updateContactSubmission, getAllUsersBasic, getUserCommissionOverrides,
+  getAdminRole, getFullAdminUser, insertAccessAuditLog, recordAdminAudit, getAllUsersBasic, getUserCommissionOverrides,
   updateUserRole, assertUserRoleTransitionAllowed, getUserVerificationStatus, getUserCommissionOverride,
   setUserCommissionOverride, insertNotification, getAdminNotifications,
   getApprovedProviderForms, getProviderUserInfo, getProviderServicesForUser,
@@ -233,7 +232,13 @@ import {
   EMAIL_OUTBOX_RESOURCE,
   SERVICE_BOOKING_RESOURCE,
   AUTO_CANCEL_RESOURCE,
+  SUPPORT_STATUS_ACTION,
+  SUPPORT_ASSIGN_ACTION,
+  SUPPORT_NOTE_ACTION,
+  CONTACT_SUBMISSION_RESOURCE,
 } from "../services/admin-decision-audit";
+import { SUPPORT_STATUSES, isSupportStatus, supportPatchBodySchema, SUPPORT_FIRST_RESPONSE_HOURS_SETTING, isValidSupportFirstResponseHoursSetting } from "@shared/support-intake";
+import { applySupportPatch, isSupportAssignee, listSupportAssignees, listSupportSubmissions } from "../services/support-inbox.service";
 import { bandLockedByCohort } from "../services/expert-rate-cohort.service";
 import { expertCohortSettingRefusal } from "@shared/expert-rate-cohort";
 import { parseAdminBookingListQuery } from "@shared/admin-booking-list";
@@ -2949,35 +2954,75 @@ router.get("/api/admin/revenue", isAuthenticated, async (req, res) => {
     }
   });
 
-  // Admin: list contact submissions
+  // Admin: the support inbox (ops gap 7, ledger `2026-10-22-support-intake-queue`). List by status, newest first;
+  // each row carries `overdue` (null while `support_first_response_hours` is unset), plus the assignable admins.
 router.get("/api/admin/contact-submissions", isAuthenticated, requireStaff("contact_submissions"), async (req, res) => {
     try {
-      const status = req.query.status as string | undefined;
-      const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
-
-      const submissions = await getContactSubmissions(status, limit);
-
-      res.json(submissions);
+      const rawStatus = typeof req.query.status === "string" && req.query.status !== "" ? req.query.status : null;
+      if (rawStatus !== null && !isSupportStatus(rawStatus)) {
+        return res.status(400).json({ message: `status must be one of ${SUPPORT_STATUSES.join(", ")}` });
+      }
+      const limit = parseInt(req.query.limit as string) || 50;
+      const [list, assignees] = await Promise.all([listSupportSubmissions(rawStatus, limit), listSupportAssignees()]);
+      res.json({ ...list, assignees });
     } catch (err) {
       console.error("List contact submissions error:", err);
       res.status(500).json({ message: "Failed to load contact submissions" });
     }
   });
 
-  // Admin: update contact submission status
+  // Admin: set a submission's status, assignee and note. A `.strict()` pick (§19); an empty body is 400 and changes
+  // nothing. Each field sent writes one audit row through `recordAdminDecisionAudit`, after the update commits.
 router.patch("/api/admin/contact-submissions/:id", isAuthenticated, requireStaff("contact_submissions"), async (req, res) => {
+    const parsed = supportPatchBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({
+        message: "Send at least one of status, assignedAdminId or responseNotes; nothing else is accepted.",
+        issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })),
+      });
+    }
     try {
-      const { status, responseNotes, assignedAdminId } = req.body;
-      const updates: any = {};
-      if (status) updates.status = status;
-      if (status === "resolved") updates.resolvedAt = new Date();
-      if (responseNotes !== undefined) updates.responseNotes = responseNotes;
-      if (assignedAdminId !== undefined) updates.assignedAdminId = assignedAdminId;
-
-      const updated = await updateContactSubmission(req.params.id, updates);
-
-      if (!updated) return res.status(404).json({ message: "Submission not found" });
-      res.json(updated);
+      const actor = await getFullAdminUser(getUserId(req)!);
+      if (!actor) return res.status(401).json({ message: "Authentication required" });
+      const body = parsed.data;
+      if (body.assignedAdminId && !(await isSupportAssignee(body.assignedAdminId))) {
+        return res.status(400).json({ message: "assignedAdminId must be an admin account" });
+      }
+      const result = await applySupportPatch(req.params.id, body);
+      if (!result.ok) return res.status(404).json({ message: "Submission not found" });
+      const id = req.params.id;
+      const common = {
+        actorId: actor.id,
+        actorRole: actor.role,
+        resourceType: CONTACT_SUBMISSION_RESOURCE,
+        resourceId: id,
+        ipAddress: req.ip ?? null,
+        userAgent: req.get("user-agent") ?? null,
+      };
+      const warnings: string[] = [];
+      const push = (w: string | undefined) => { if (w) warnings.push(w); };
+      if (body.status !== undefined) {
+        push(await recordAdminDecisionAudit({ ...common, action: SUPPORT_STATUS_ACTION, beforeStatus: result.before.status, afterStatus: result.after.status }));
+      }
+      if (body.assignedAdminId !== undefined) {
+        push(await recordAdminDecisionAudit({
+          ...common,
+          action: SUPPORT_ASSIGN_ACTION,
+          beforeStatus: result.before.assignedAdminId,
+          afterStatus: result.after.assignedAdminId,
+          targetUserId: result.after.assignedAdminId,
+        }));
+      }
+      if (body.responseNotes !== undefined) {
+        push(await recordAdminDecisionAudit({
+          ...common,
+          action: SUPPORT_NOTE_ACTION,
+          beforeStatus: result.before.responseNotes ? "noted" : null,
+          afterStatus: result.after.responseNotes ? "noted" : null,
+          metadata: { noteLength: result.after.responseNotes?.length ?? 0 },
+        }));
+      }
+      res.json({ ...result.row, ...(warnings.length ? { auditWarning: warnings.join("; ") } : {}) });
     } catch (err) {
       console.error("Update contact submission error:", err);
       res.status(500).json({ message: "Failed to update contact submission" });
@@ -8421,6 +8466,14 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       // ED-1 footer count: the published-post minimum for the footer's Blog link is a whole number.
       if (settingKey === BLOG_FOOTER_MIN_PUBLISHED_SETTING && !isValidBlogFooterMinPublishedSetting(settingValue)) {
         return res.status(400).json({ error: `${settingKey} must be a whole number from 1 to 9999`, got: settingValue });
+      }
+      // Ops gap 7: the support first-response target in hours (1–720). An empty value leaves it unset, so nothing is
+      // overdue and the digest's overdue count is null.
+      if (
+        settingKey === SUPPORT_FIRST_RESPONSE_HOURS_SETTING &&
+        !(String(settingValue ?? "").trim() === "" || isValidSupportFirstResponseHoursSetting(settingValue))
+      ) {
+        return res.status(400).json({ error: `${settingKey} must be a whole number of hours from 1 to 720, or empty`, got: settingValue });
       }
       // LW-1b: the traveler sign-up switch is exactly 'waitlist' or 'open' (shared/launch-signup.ts), and the
       // launch market is a slug — a junk value must never reach the sign-up gates or the waitlist redirect.

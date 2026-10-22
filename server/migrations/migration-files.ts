@@ -2131,4 +2131,7 @@ export const MIGRATION_FILES = [
   // The Kyoto file stays unverified; sign-off is a hash on the bank row.
   // Ledger 2026-10-21-city-knowledge-test. HELD for Leon's comment.
   "403_city_knowledge_test.sql",
+  // Ops gap 7: contact_submissions.first_response_at, nullable, no default. Ledger 2026-10-22-support-intake-queue.
+  // HELD for "Migration 404 SQL approved — Leon".
+  "404_contact_first_response.sql",
 ] as const;

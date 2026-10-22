@@ -14,6 +14,7 @@ import { sql, type SQL } from "drizzle-orm";
 import { isSeedExpertEmail, seedEmailSql } from "./expert-routability";
 import { isTestAccount, testAccountSql } from "./test-account";
 import { emailDomain } from "./qa-trip-pass.service";
+import { supportSubmissionOverdue, type SupportRowFacts } from "@shared/support-intake";
 
 /** House accounts. Not a seed domain and not the QA-domain setting. */
 export const DIGEST_INTERNAL_EMAIL_DOMAIN = "traveloure.internal";
@@ -151,4 +152,29 @@ export function digestPayoutExcludedSql(isTestExpr: SQL, emailExpr: SQL): SQL {
     OR ${seedEmailSql(emailExpr)}
     OR lower(split_part(coalesce(${emailExpr}, ''), '@', 2)) = ${DIGEST_INTERNAL_EMAIL_DOMAIN}
   )`;
+}
+
+/**
+ * Ops gap 7 (ledger `2026-10-22-support-intake-queue`): the support inbox's digest counts. Shape only — the digest's
+ * sender and its email gate are not changed by this. `new` counts status `new`; `unassigned` counts open rows with no
+ * assignee; `overdue` is null while `support_first_response_hours` is unset, never 0.
+ */
+export interface SupportDigestCounts {
+  new: number;
+  unassigned: number;
+  overdue: number | null;
+}
+
+export function supportDigestCounts(rows: readonly SupportRowFacts[], targetHours: number | null, now: Date): SupportDigestCounts {
+  let fresh = 0;
+  let unassigned = 0;
+  let overdue = 0;
+  for (const row of rows) {
+    const status = row.status ?? "new";
+    const open = status === "new" || status === "in_progress";
+    if (status === "new") fresh += 1;
+    if (open && !row.assignedAdminId) unassigned += 1;
+    if (supportSubmissionOverdue(row, targetHours, now) === true) overdue += 1;
+  }
+  return { new: fresh, unassigned, overdue: targetHours == null ? null : overdue };
 }

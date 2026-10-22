@@ -136,6 +136,8 @@ const menuGroups = [
     items: [
       { title: "AI Costs", href: "/admin/ai-costs", icon: Cpu },
       { title: "Feedback", href: "/admin/feedback", icon: MessageSquareText },
+      // Ops gap 7: contact-form submissions (ledger `2026-10-22-support-intake-queue`).
+      { title: "Support inbox", href: "/admin/support", icon: MessageSquareText },
       { title: "Platform APIs", href: "/admin/platform-providers", icon: PlugZap },
       // Data hub links the one-off backfill tools (neighborhoods, gem photos).
       { title: "Data", href: "/admin/data", icon: Database },
