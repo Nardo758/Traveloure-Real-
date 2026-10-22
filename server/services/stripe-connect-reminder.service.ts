@@ -1,12 +1,15 @@
 /**
  * Stripe Connect Reminder Scheduler
  *
- * Runs every 3 days. Sends an in-app notification to approved providers
- * (role = service_provider or local_expert) who have not yet completed
- * Stripe Connect onboarding (stripeAccountStatus is null or not 'complete').
+ * Runs every 72 hours. Sends an in-app notification to providers and experts who
+ * have not finished Stripe Connect. Providers are read from the users Connect
+ * columns. Experts are read from local_expert_forms.stripe_connect_status, and an
+ * expert whose only open step is Identity is skipped. The Money link follows the
+ * expert-family role set, not a single role string.
  *
- * Throttle: one reminder per user per 3-day window — checked against the
- * notifications table so the cadence survives server restarts.
+ * Throttle: one reminder per user per 72 hours — the same constant the manual
+ * admin routes use — checked against the notifications table so the cadence
+ * survives server restarts. Notification rows only; this service does not send email.
  *
  * Restart-safety: on startup the scheduler queries the most recent
  * stripe_connect_reminder notification to determine how long ago the last
@@ -15,14 +18,26 @@
  */
 
 import { db } from "../db";
-import { users, notifications } from "@shared/schema";
-import { eq, and, sql, or, isNull, gte, inArray, desc } from "drizzle-orm";
+import { users, notifications, localExpertForms } from "@shared/schema";
+import { EXPERT_ROLES } from "@shared/roles";
+import { eq, and, sql, or, gte, inArray, desc } from "drizzle-orm";
 import { jitteredStartupDelay } from "./startup-delay";
 import { runPaymentSchedule } from "../automations/payments/runtime";
+import { recordAdminDecisionAudit } from "./admin-decision-audit";
+import {
+  STRIPE_CONNECT_REMINDER_COOLDOWN_MS,
+  STRIPE_CONNECT_REMINDER_TYPE,
+  STRIPE_CONNECT_REMINDER_AUDIT_ACTION,
+  MANUAL_STRIPE_REMINDER_TITLE,
+  MANUAL_STRIPE_REMINDER_MESSAGE,
+  SCHEDULED_STRIPE_REMINDER_TITLE,
+  SCHEDULED_STRIPE_REMINDER_MESSAGE,
+  candidateNeedsStripeConnectReminder,
+  stripeConnectReminderLink,
+  reminderCooldownCutoff,
+} from "./stripe-connect-reminder-policy";
 
-const CHECK_INTERVAL_MS = 3 * 24 * 60 * 60 * 1000; // 72 hours
-const REMINDER_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 72 hours
-const REMINDER_TYPE = "stripe_connect_reminder";
+const CHECK_INTERVAL_MS = STRIPE_CONNECT_REMINDER_COOLDOWN_MS;
 
 class StripeConnectReminderService {
   private timer: NodeJS.Timeout | null = null;
@@ -51,7 +66,7 @@ class StripeConnectReminderService {
       const [lastNotification] = await db
         .select({ createdAt: notifications.createdAt })
         .from(notifications)
-        .where(eq(notifications.type, REMINDER_TYPE))
+        .where(eq(notifications.type, STRIPE_CONNECT_REMINDER_TYPE))
         .orderBy(desc(notifications.createdAt))
         .limit(1);
 
@@ -109,21 +124,7 @@ class StripeConnectReminderService {
 
   private async runReminders(): Promise<void> {
     try {
-      // Find approved providers/experts without a complete Stripe Connect account
-      // stripe_account_id / stripe_account_status live on the users table in the DB
-      // but are not yet reflected in the Drizzle TypeScript model — use raw SQL fragments.
-      const pendingUsers = await db
-        .select({ id: users.id, role: users.role })
-        .from(users)
-        .where(
-          and(
-            or(
-              eq(users.role, "service_provider"),
-              eq(users.role, "travel_expert")
-            ),
-            sql`("users"."stripe_account_id" is null or "users"."stripe_account_status" is null or "users"."stripe_account_status" not in ('complete', 'active'))`
-          )
-        );
+      const pendingUsers = await stripeConnectReminderCandidates();
 
       if (pendingUsers.length === 0) {
         console.log("[StripeConnectReminder] No users pending Stripe Connect setup");
@@ -132,15 +133,15 @@ class StripeConnectReminderService {
 
       const userIds = pendingUsers.map(u => u.id);
 
-      // Find users who already received a reminder in the cooldown window
-      const cooldownCutoff = new Date(Date.now() - REMINDER_COOLDOWN_MS);
+      // Find users who already received a reminder in the cooldown window.
+      const cooldownCutoff = reminderCooldownCutoff();
       const recentlyNotified = await db
         .select({ userId: notifications.userId })
         .from(notifications)
         .where(
           and(
             inArray(notifications.userId, userIds),
-            eq(notifications.type, REMINDER_TYPE),
+            eq(notifications.type, STRIPE_CONNECT_REMINDER_TYPE),
             gte(notifications.createdAt, cooldownCutoff)
           )
         );
@@ -156,13 +157,11 @@ class StripeConnectReminderService {
 
       const notificationRows = toNotify.map(u => ({
         userId: u.id,
-        type: REMINDER_TYPE,
-        title: "Set up payouts to get paid",
-        message:
-          "You have been approved but haven't connected your Stripe account yet. Complete Stripe Connect setup so you can receive payouts for your bookings.",
-        // C8/C9: the Earnings module is renamed Money on BOTH consoles (§17) —
-        // /expert/earnings → /expert/money (C8) and /provider/earnings → /provider/money (C9).
-        data: { link: u.role === "local_expert" ? "/expert/money" : "/provider/money" } as Record<string, unknown>,
+        type: STRIPE_CONNECT_REMINDER_TYPE,
+        title: SCHEDULED_STRIPE_REMINDER_TITLE,
+        message: SCHEDULED_STRIPE_REMINDER_MESSAGE,
+        // C8/C9: the Earnings module is renamed Money on BOTH consoles (§17).
+        data: { link: stripeConnectReminderLink(u.role) } as Record<string, unknown>,
       }));
 
       await db.insert(notifications).values(notificationRows);
@@ -174,6 +173,116 @@ class StripeConnectReminderService {
       console.error("[StripeConnectReminder] Failed to run reminders:", err);
     }
   }
+}
+
+export type StripeConnectReminderCandidate = {
+  id: string;
+  role: string | null;
+  stripeAccountId: string | null;
+  stripeAccountStatus: string | null;
+  formStripeConnectStatus: string | null;
+  identityVerificationStatus: string | null;
+};
+
+/**
+ * Earners the scheduler may remind. Providers use the users Connect columns.
+ * Experts use the expert-form Connect column and skip an Identity-only gap.
+ * One row per user.
+ */
+export async function stripeConnectReminderCandidates(): Promise<StripeConnectReminderCandidate[]> {
+  const providerOpen = sql`(${users.stripeAccountId} is null or ${users.stripeAccountStatus} is null or ${users.stripeAccountStatus} not in ('complete', 'active'))`;
+  const expertConnectOpen = sql`(${localExpertForms.stripeConnectStatus} is null or ${localExpertForms.stripeConnectStatus} not in ('complete', 'active'))`;
+  const rows = await db
+    .select({
+      id: users.id,
+      role: users.role,
+      stripeAccountId: users.stripeAccountId,
+      stripeAccountStatus: users.stripeAccountStatus,
+      formStripeConnectStatus: localExpertForms.stripeConnectStatus,
+      identityVerificationStatus: localExpertForms.identityVerificationStatus,
+    })
+    .from(users)
+    .leftJoin(localExpertForms, eq(localExpertForms.userId, users.id))
+    .where(
+      or(
+        and(eq(users.role, "service_provider"), providerOpen),
+        and(inArray(users.role, [...EXPERT_ROLES]), expertConnectOpen),
+      ),
+    );
+
+  const seen = new Set<string>();
+  const candidates: StripeConnectReminderCandidate[] = [];
+  for (const row of rows) {
+    const candidate: StripeConnectReminderCandidate = {
+      id: row.id,
+      role: row.role ?? null,
+      stripeAccountId: row.stripeAccountId ?? null,
+      stripeAccountStatus: row.stripeAccountStatus ?? null,
+      formStripeConnectStatus: row.formStripeConnectStatus ?? null,
+      identityVerificationStatus: row.identityVerificationStatus ?? null,
+    };
+    if (!candidateNeedsStripeConnectReminder(candidate)) continue;
+    if (seen.has(candidate.id)) continue;
+    seen.add(candidate.id);
+    candidates.push(candidate);
+  }
+  return candidates;
+}
+
+export async function reminderCooldownActive(userId: string, now = Date.now()): Promise<boolean> {
+  const [row] = await db
+    .select({ id: notifications.id })
+    .from(notifications)
+    .where(
+      and(
+        eq(notifications.userId, userId),
+        eq(notifications.type, STRIPE_CONNECT_REMINDER_TYPE),
+        gte(notifications.createdAt, reminderCooldownCutoff(now)),
+      ),
+    )
+    .limit(1);
+  return !!row;
+}
+
+export type AdminRemindResult =
+  | { ok: true; auditWarning?: string }
+  | { ok: false; reason: "cooldown" };
+
+/**
+ * Manual admin reminder. Inserts one notification row, then one audit row.
+ * A cooldown refusal writes neither. Does not send email.
+ */
+export async function adminRemindStripeConnect(input: {
+  actorId: string;
+  actorRole: string;
+  targetUserId: string;
+  targetRole: string | null;
+  earnerKind: "expert" | "provider";
+  ipAddress?: string | null;
+  userAgent?: string | null;
+}): Promise<AdminRemindResult> {
+  if (await reminderCooldownActive(input.targetUserId)) return { ok: false, reason: "cooldown" };
+  await db.insert(notifications).values({
+    userId: input.targetUserId,
+    type: STRIPE_CONNECT_REMINDER_TYPE,
+    title: MANUAL_STRIPE_REMINDER_TITLE,
+    message: MANUAL_STRIPE_REMINDER_MESSAGE,
+    data: { link: stripeConnectReminderLink(input.targetRole) },
+  });
+  const auditWarning = await recordAdminDecisionAudit({
+    actorId: input.actorId,
+    actorRole: input.actorRole,
+    action: STRIPE_CONNECT_REMINDER_AUDIT_ACTION,
+    resourceType: "user",
+    resourceId: input.targetUserId,
+    targetUserId: input.targetUserId,
+    beforeStatus: null,
+    afterStatus: "reminded",
+    ipAddress: input.ipAddress,
+    userAgent: input.userAgent,
+    metadata: { earnerKind: input.earnerKind, emailSent: false },
+  });
+  return auditWarning ? { ok: true, auditWarning } : { ok: true };
 }
 
 export const stripeConnectReminderScheduler = new StripeConnectReminderService();

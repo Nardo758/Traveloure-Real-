@@ -37,6 +37,7 @@ import { OUT_OF_BAND_REFUND_KEY, outOfBandRefundOf } from "@shared/out-of-band-r
 import { paymentOnRecordSql } from "./services/payment-on-record";
 import { hasPaymentOnRecord, NO_PAYMENT_ON_RECORD } from "@shared/payment-on-record";
 import { isProviderRole } from "@shared/roles";
+import { externalPayoutMethod, type PayoutStatusUpdateOptions } from "./config/payout.config";
 import { isPriceBasis } from "@shared/price-basis";
 import type { TripListItem } from "@shared/routes";
 import { omitFields } from "./utils/data-sanitizer";
@@ -180,6 +181,11 @@ import { HELD_VARIANT_STATUS } from "@shared/version-check";
 function variantIsShownSql() {
   return sqlOp`${itineraryVariants.status} IS DISTINCT FROM ${HELD_VARIANT_STATUS}`;
 }
+function completedPayoutGuard(statusColumn: any, options?: PayoutStatusUpdateOptions) {
+  if (options?.onlyFrom?.length) return inArray(statusColumn, [...options.onlyFrom]);
+  return sqlOp`${statusColumn} <> 'completed'`;
+}
+
 type PayoutClaimResult<T> = {
   payout?: T;
   reason?: 'insufficient_releasable_earnings' | 'already_processing' | 'terminal';
@@ -1010,9 +1016,9 @@ export interface IStorage {
 
   getAllProviderPayouts(status?: string): Promise<(ProviderPayout & { requesterName?: string; requesterEmail?: string })[]>;
 
-  updateExpertPayoutStatus(id: string, status: string, notes?: string, transactionId?: string): Promise<ExpertPayout>;
+  updateExpertPayoutStatus(id: string, status: string, notes?: string, transactionId?: string, options?: PayoutStatusUpdateOptions): Promise<ExpertPayout>;
 
-  updateProviderPayoutStatus(id: string, status: string, notes?: string, payoutReference?: string): Promise<ProviderPayout>;
+  updateProviderPayoutStatus(id: string, status: string, notes?: string, payoutReference?: string, options?: PayoutStatusUpdateOptions): Promise<ProviderPayout>;
 
   claimExpertPayoutForProcessing(id: string): Promise<PayoutClaimResult<ExpertPayout>>;
 
@@ -6718,11 +6724,16 @@ export class DatabaseStorage implements IStorage {
   // guard), so both call sites for a completed payout — PATCH /api/admin/payouts/:id (post-transfer)
   // and the transfer.created/transfer.paid webhook — share this one choke point and only the first
   // to actually flip the row runs the earnings flip; the other sees 0 rows updated and no-ops.
-  async updateExpertPayoutStatus(id: string, status: string, notes?: string, transactionId?: string): Promise<ExpertPayout> {
+  // `onlyFrom` narrows the completed transition (external mark-paid: pending or approved).
+  // The Stripe path omits it and still matches any non-completed row, including processing.
+  async updateExpertPayoutStatus(id: string, status: string, notes?: string, transactionId?: string, options?: PayoutStatusUpdateOptions): Promise<ExpertPayout> {
     const updates: any = { status };
     if (status === 'completed' || status === 'failed') updates.processedAt = new Date();
     if (notes) updates.failureReason = notes;
     if (transactionId) updates.transactionId = transactionId;
+    if (status === 'completed' && options?.payoutMethod !== undefined) {
+      updates.payoutMethod = externalPayoutMethod(options.payoutMethod);
+    }
 
     if (status === 'failed') {
       return db.transaction(async (tx) => {
@@ -6748,13 +6759,15 @@ export class DatabaseStorage implements IStorage {
     return db.transaction(async (tx) => {
       const [updated] = await tx.update(expertPayouts)
         .set(updates)
-        .where(and(eq(expertPayouts.id, id), sqlOp`${expertPayouts.status} <> 'completed'`))
+        .where(and(eq(expertPayouts.id, id), completedPayoutGuard(expertPayouts.status, options)))
         .returning();
       if (!updated) {
         // Already completed by the other call site / a retry — idempotent no-op, no re-flip.
+        if (options?.applied) options.applied.current = false;
         const [existing] = await tx.select().from(expertPayouts).where(eq(expertPayouts.id, id));
         return existing as ExpertPayout;
       }
+      if (options?.applied) options.applied.current = true;
       await this.markEarningsPaidOutForPayoutTx(tx, 'expert', updated.expertId, id, parseFloat(updated.amount));
       return updated;
     });
@@ -6833,12 +6846,15 @@ export class DatabaseStorage implements IStorage {
     return this.claimPayoutForProcessing(id, 'provider') as Promise<PayoutClaimResult<ProviderPayout>>;
   }
 
-  async updateProviderPayoutStatus(id: string, status: string, notes?: string, payoutReference?: string): Promise<ProviderPayout> {
+  async updateProviderPayoutStatus(id: string, status: string, notes?: string, payoutReference?: string, options?: PayoutStatusUpdateOptions): Promise<ProviderPayout> {
     const updates: any = { status };
     if (status === 'processing') updates.processedAt = new Date();
     if (status === 'completed') updates.completedAt = new Date();
     if (notes) updates.notes = notes;
     if (payoutReference) updates.payoutReference = payoutReference;
+    if (status === 'completed' && options?.payoutMethod !== undefined) {
+      updates.payoutMethod = externalPayoutMethod(options.payoutMethod);
+    }
 
     if (status === 'failed') {
       return db.transaction(async (tx) => {
@@ -6862,12 +6878,14 @@ export class DatabaseStorage implements IStorage {
     return db.transaction(async (tx) => {
       const [updated] = await tx.update(providerPayouts)
         .set(updates)
-        .where(and(eq(providerPayouts.id, id), sqlOp`${providerPayouts.status} <> 'completed'`))
+        .where(and(eq(providerPayouts.id, id), completedPayoutGuard(providerPayouts.status, options)))
         .returning();
       if (!updated) {
+        if (options?.applied) options.applied.current = false;
         const [existing] = await tx.select().from(providerPayouts).where(eq(providerPayouts.id, id));
         return existing as ProviderPayout;
       }
+      if (options?.applied) options.applied.current = true;
       await this.markEarningsPaidOutForPayoutTx(tx, 'provider', updated.providerId, id, parseFloat(updated.amount));
       return updated;
     });
