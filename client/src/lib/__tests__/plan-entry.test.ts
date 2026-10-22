@@ -9,6 +9,9 @@
  *   E6  dates: This weekend, Next month (whole month); events overlapping a window, in order
  *   E7  a typed city we do not serve suggests the same country first, else all eight (ruling 5)
  *   E8  landing view: trips / group travel / a multi-day event → map; the rest → list
+ *   E9  SH-1 Launch PR 5 (ledger `2026-10-22-sh1-launch-pr5`): the night picker offers a series' shows still to come,
+ *       or a run's nights from the market's today; no market ⇒ no picker; the mint dates start no earlier than the
+ *       market's today (UTC with no market); an event pick inside the pop-up carries "show", "More specific" overrides
  *
  * Run: npx tsx --test client/src/lib/__tests__/plan-entry.test.ts
  */
@@ -25,6 +28,10 @@ import {
   eventsOverlapping,
   initialPlanEntry,
   nextMonth,
+  nightPickerOptions,
+  planEntryMintDates,
+  withSeriesShows,
+  EVENT_OCCASION_SLUG,
   planEntryEventRow,
   planEntryView,
   startsStraightAway,
@@ -48,7 +55,7 @@ test("E1: where each door opens", () => {
   assert.equal(ev.state.startDate, "2026-10-09");
   assert.equal(ev.state.endDate, "2026-10-11");
   assert.equal(ev.state.event?.title, "Japanese Grand Prix");
-  assert.equal(ev.state.occasionSlug, null, "an event decides its group, not the door's slug");
+  assert.equal(ev.state.occasionSlug, "show", "the door's slug is kept; the group follows the nights (SH-1 Q16)");
   assert.equal(initialPlanEntry({ city: "Paris" }).step, "around", "an unserved city is not a pick");
 });
 
@@ -142,4 +149,45 @@ test("E9: a starting group (?group=) seeds the group, an exact key only (E3 ruli
   const deep = initialPlanEntry({ city: "Kyoto", experienceSlug: "wedding", group: "hosted_events" });
   assert.equal(deep.step, "occasion", "a city and an occasion land on Step 2");
   assert.equal(deep.state.group, "hosted_events");
+});
+
+test("E9: the night picker and the mint dates read the market's today", () => {
+  // 2027-03-10 23:30 UTC is already 2027-03-11 in Kyoto.
+  const now = new Date("2027-03-10T23:30:00Z");
+  const ev = (a: string, b: string, over: Record<string, unknown> = {}) => ({ title: "X", city: "Kyoto", country: "Japan", venue: "V", firstDate: a, lastDate: b, startTime: null, ...over });
+  // A contiguous run: nights from the market's today on.
+  const run = withEvent(emptyPlanEntry(), ev("2027-03-08", "2027-03-20"), null, now);
+  assert.deepEqual(nightPickerOptions(run, now)?.[0], "2027-03-11");
+  assert.equal(nightPickerOptions(run, now)?.length, 10);
+  // A series of shows: the shows still to come, not a range.
+  const shows = ["2027-03-05", "2027-03-11", "2027-03-14", "2027-03-20"];
+  const series = withEvent(emptyPlanEntry(), ev("2027-03-11", "2027-03-11", { showDates: shows }), EVENT_OCCASION_SLUG, now);
+  assert.deepEqual(nightPickerOptions(series, now), ["2027-03-11", "2027-03-14", "2027-03-20"]);
+  assert.equal(series.occasionSlug, "show", "an event pick inside the pop-up carries show");
+  assert.equal(series.group, "moments", "the group follows the nights");
+  // One show left ⇒ nothing to pick.
+  assert.equal(nightPickerOptions(series, new Date("2027-03-15T00:00:00Z")), null);
+  // No market ⇒ no picker.
+  assert.equal(nightPickerOptions({ event: run.event, market: null }, now), null);
+  // The mint dates: the start moves to the market's today; UTC today with no market.
+  assert.deepEqual(planEntryMintDates({ startDate: "2027-03-08", endDate: "2027-03-20", market: run.market }, now), { startDate: "2027-03-11", endDate: "2027-03-20" });
+  assert.deepEqual(planEntryMintDates({ startDate: "2027-03-08", endDate: "2027-03-20", market: null }, now), { startDate: "2027-03-10", endDate: "2027-03-20" });
+  assert.deepEqual(planEntryMintDates({ startDate: "2027-04-01", endDate: "2027-04-02", market: run.market }, now), { startDate: "2027-04-01", endDate: "2027-04-02" });
+  assert.equal(planEntryMintDates({ startDate: null, endDate: null, market: null }, now), null);
+});
+
+test("E10: a series' show dates come from its sibling rows on one series_key", () => {
+  const now = new Date("2027-03-10T23:30:00Z");
+  const picked = withEvent(emptyPlanEntry(), { title: "Noh", city: "Kyoto", country: "Japan", venue: "Hall", firstDate: "2027-03-14", lastDate: "2027-03-14", startTime: null, seriesKey: "noh-2027" }, EVENT_OCCASION_SLUG, now);
+  const rows = [
+    { seriesKey: "noh-2027", firstDate: "2027-03-11" },
+    { seriesKey: "noh-2027", firstDate: "2027-03-14" },
+    { seriesKey: "noh-2027", firstDate: "2027-03-20" },
+    { seriesKey: "other", firstDate: "2027-03-12" },
+  ];
+  const s = withSeriesShows(picked, rows);
+  assert.deepEqual(s.event?.showDates, ["2027-03-11", "2027-03-14", "2027-03-20"]);
+  assert.equal(s.night, "2027-03-14", "the picked show stays the chosen night");
+  assert.deepEqual(nightPickerOptions(s, now), ["2027-03-11", "2027-03-14", "2027-03-20"]);
+  assert.equal(withSeriesShows(picked, rows.slice(1, 2)), picked, "one show is not a series");
 });

@@ -300,6 +300,8 @@ export interface CityEventCard {
    * one series (`seriesShowDates`, `shared/event-page.ts`). null = not part of a stated series.
    */
   seriesKey?: string | null;
+  /** SH-1 Launch Q14.3: the row's public `source_id` (its event page address); the plan mint names the event by it. */
+  sourceId?: string;
 }
 
 export interface CityEventsPayload {

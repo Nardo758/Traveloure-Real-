@@ -39,6 +39,8 @@ import { loadEventGuideFacts, type EventGuideFacts } from "./blog-event-facts.se
 import { verifiedLocalIds } from "./landing-billboard.service";
 import { getExpertHookCities } from "./platform-flags";
 
+import { eventHasEnded } from "@shared/market-today";
+
 export const MORE_IN_CITY_MAX = 6;
 
 /** Pure. The one live, renderable row an address names — or why there is none. */
@@ -61,12 +63,10 @@ export function composeMoreInCity(rows: readonly CityEvent[], selfId: string, no
     if (r.id === selfId || r.withdrawnAt || !isRenderableCityEvent(r)) continue;
     const card = toCityEventCard(r, null, now);
     if (card.lastDate < localDate(now, timezoneForMarket(card.marketKey))) continue;
-    out.push({ sourceId: r.sourceId, title: card.title, venue: card.venue, firstDate: card.firstDate, lastDate: card.lastDate, startsAt: card.startsAt });
+    // SH-1 Launch item 13: the whole card, with its source id — the row is the shared EventRow.
+    out.push({ ...card, sourceId: r.sourceId });
   }
-  return out
-    .sort((a, b) => a.startsAt.localeCompare(b.startsAt) || a.title.localeCompare(b.title))
-    .slice(0, max)
-    .map(({ startsAt: _s, ...row }) => row);
+  return out.sort((a, b) => a.startsAt.localeCompare(b.startsAt) || a.title.localeCompare(b.title)).slice(0, max);
 }
 
 /** Pure. The payload from the row, its facts, the city's other events and the verified count. */
@@ -89,10 +89,13 @@ export function composeEventPage(
     row.seriesKey,
   );
   const series = isShowSeries(showDates) ? seriesShowLabel(showDates, localDate(now, timezoneForMarket(event.marketKey))) : null;
+  // SH-1 Launch Q14.3: ended = every show (or the run's last day) before the market's today.
+  const ended = eventHasEnded(isShowSeries(showDates) ? showDates : [event.lastDate], event.marketKey, now);
   return {
     event,
     countdown: series ?? eventPageCountdown(countdownLabel(event.daysUntil)),
     ...(isShowSeries(showDates) ? { showDates } : {}),
+    ...(ended ? { ended: true as const } : {}),
     organizer: url && host ? { url, host } : null,
     goodToKnow: facts.attributedFacts.map((f) => ({ factType: f.factType, text: f.text, label: f.label, sourceUrl: f.sourceUrl, checked: f.checked })),
     moreInCity,

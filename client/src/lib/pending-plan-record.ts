@@ -49,7 +49,14 @@ export interface PendingPlanRecord {
   door: string | null;
   answers: DraftAnswers;
   /** The door's own pre-fills, so the replayed modal opens as the door opened it. */
-  source: { experienceSlug?: string | null; city?: string | null; country?: string | null; destination?: string | null };
+  source: {
+    experienceSlug?: string | null;
+    city?: string | null;
+    country?: string | null;
+    destination?: string | null;
+    /** SH-1 Launch Q14.3: the event's `city_events.source_id`, so the replayed mint can refuse it once it has ended. */
+    eventSourceId?: string | null;
+  };
   /** 8d: the guest map's one pending add, if the guest pressed Add (v2 only). */
   pendingAdd?: PendingMapAdd | null;
 }

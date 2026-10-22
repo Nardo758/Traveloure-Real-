@@ -87,6 +87,10 @@ export const tripMintEntrySchema = z
     door: z.enum(PLAN_DOORS).optional(),
     occasionSource: z.enum(OCCASION_SOURCES).optional(),
     finish: z.enum(PLAN_FINISHES).optional(),
+    // SH-1 Launch Q14.3/Q15.3 (ledger `2026-10-22-sh1-launch-pr5`): the `city_events.source_id` a plan is built around. The
+    // mint looks it up to refuse an ended event and to clamp the start to the market's today; it is never stored on
+    // the trip and never a funnel property.
+    eventSourceId: z.string().trim().min(1).max(200).optional(),
   })
   .strict();
 export type TripMintEntry = z.infer<typeof tripMintEntrySchema>;

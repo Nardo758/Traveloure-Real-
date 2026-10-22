@@ -168,6 +168,8 @@ export function buildTripMintBody(basics: SlipBasics): TripMintBody {
   if (basics.entry?.door) entry.door = basics.entry.door;
   if (basics.entry?.occasionSource) entry.occasionSource = basics.entry.occasionSource;
   if (basics.entry?.finish) entry.finish = basics.entry.finish;
+  // SH-1 Launch Q14.3: the event the plan is built around; the server refuses an ended one.
+  if (basics.entry?.eventSourceId) entry.eventSourceId = basics.entry.eventSourceId;
   if (Object.keys(entry).length > 0) body.entry = entry;
   return body;
 }

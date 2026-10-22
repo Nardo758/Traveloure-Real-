@@ -25,23 +25,9 @@ import { planAroundSource } from "@/components/landing/events-strip";
 import type { PlanningSource } from "@/contexts/PlanningContext";
 import LANDING_PHOTO_ATTRIBUTION from "../../../public/images/landing/ATTRIBUTION.json";
 import { MONO } from "./MonthGrid";
+import { EventRow } from "./EventRow";
 
 const FRAUNCES = "'Fraunces', Georgia, serif";
-const MON = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-
-function DateBlock({ date, light }: { date: string; light?: boolean }) {
-  return (
-    <div className="flex w-[44px] shrink-0 flex-col items-center leading-none" style={{ color: light ? "white" : "var(--earn-navy)" }}>
-      <span className="text-[10px] tracking-[0.1em]" style={{ fontFamily: MONO }}>
-        {MON[Number(date.slice(5, 7)) - 1]}
-      </span>
-      <span className="text-[22px] font-semibold" style={{ fontFamily: FRAUNCES }}>
-        {Number(date.slice(8))}
-      </span>
-    </div>
-  );
-}
-
 function PlanButton({ event, filled, onPlanAround }: { event: CalendarEvent; filled: boolean; onPlanAround: (s: PlanningSource) => void }) {
   return (
     <button
@@ -73,98 +59,33 @@ function DetailsLink({ event }: { event: CalendarEvent }) {
   );
 }
 
-function EventRow({
-  event,
-  primary,
-  isNext,
-  onPlanAround,
-}: {
-  event: CalendarEvent;
-  primary: boolean;
-  isNext: boolean;
-  onPlanAround: (s: PlanningSource) => void;
-}) {
-  const countdown = countdownLabel(event.daysUntil);
-  const chip = `${isNext ? "Next up · " : ""}${countdown}`;
-  const photo = primary ? cityEventPhoto(event.imagePath, event.marketKey) : null;
+/** One "What's on" row — the shared `EventRow` with this surface's words (SH-1 Launch item 13). */
+function WhatsOnRow({ event, isNext, onPlanAround }: { event: CalendarEvent; isNext: boolean; onPlanAround: (s: PlanningSource) => void }) {
+  const photo = cityEventPhoto(event.imagePath, event.marketKey);
   const credit = photo?.fallback ? resolveBillboardCredit(photo.src, LANDING_PHOTO_ATTRIBUTION as PhotoAttribution[]) : null;
-  // A city photo is shown only with its credit, and always says it is the city, not the event.
-  const showPhoto = !!photo && (!photo.fallback || !!credit);
-  const body = (
-    <>
-      <span className="text-[10px] uppercase tracking-[0.1em]" style={{ fontFamily: MONO, color: "var(--earn-teal-ink)" }} data-testid={`events-row-tag-${event.id}`}>
-        {eventTag(event)}
-      </span>
-      <h3 className="text-[17px] font-semibold leading-tight" style={{ fontFamily: FRAUNCES, color: "var(--earn-navy)" }}>
-        {event.title}
-      </h3>
-      <span className="text-[12.5px]" style={{ color: "var(--earn-ink)" }} data-testid={`events-row-when-${event.id}`}>
-        {eventWhen(event)}
-      </span>
-      <span className="text-[12.5px] break-words" style={{ color: "var(--earn-muted)" }} data-testid={`events-row-place-${event.id}`}>
-        {eventPlace(event)}
-      </span>
-      {event.partnerName ? (
-        <span className="text-[12.5px] break-words" style={{ color: "var(--earn-ink)" }} data-testid={`events-row-partner-${event.id}`}>
-          {event.partnerName}
-        </span>
-      ) : null}
-    </>
-  );
-  const chipEl = (
-    <span
-      className="rounded-[6px] border px-[7px] py-[3px] text-[9.5px] uppercase tracking-[0.08em]"
-      style={{ fontFamily: MONO, color: "var(--earn-ink)", borderColor: "var(--earn-border)", background: "var(--earn-card)" }}
-      data-testid={`events-row-countdown-${event.id}`}
-    >
-      {chip}
-    </span>
-  );
-  if (primary) {
-    return (
-      <article className="overflow-hidden rounded-[14px] border" style={{ borderColor: "var(--earn-border)", background: "var(--earn-card)" }} data-testid={`events-row-${event.id}`} data-primary="true">
-        {showPhoto ? (
-          <div className="relative h-[150px]">
-            <img src={photo!.src} alt="" aria-hidden="true" className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
-            <div className="absolute inset-0" style={{ background: "linear-gradient(to bottom, rgba(0,0,0,0.35), rgba(0,0,0,0.05) 60%)" }} aria-hidden="true" />
-            <div className="absolute left-3 top-3">
-              <DateBlock date={event.firstDate} light />
-            </div>
-            <div className="absolute right-3 top-3">{chipEl}</div>
-            {photo!.fallback && credit && (
-              <span className="absolute bottom-1.5 right-2 text-[9px] text-white/90" style={{ fontFamily: MONO }} data-testid={`events-row-credit-${event.id}`}>
-                City photo, not the event · {credit.creator} · {credit.site}
-              </span>
-            )}
-          </div>
-        ) : (
-          <div className="flex items-start justify-between gap-2 px-4 pt-3.5">
-            <DateBlock date={event.firstDate} />
-            {chipEl}
-          </div>
-        )}
-        <div className="flex flex-col gap-[5px] px-4 pb-4 pt-3">
-          {body}
-          <div className="mt-1 flex flex-wrap items-center gap-3">
-            <PlanButton event={event} filled onPlanAround={onPlanAround} />
-            {event.partner ? null : <DetailsLink event={event} />}
-          </div>
-        </div>
-      </article>
-    );
-  }
+  // Q13.3: a city photo is shown only with its credit, and always says it is the city, not the event; none ⇒ no block.
+  const shown = photo && (!photo.fallback || credit) ? { src: photo.src, credit: photo.fallback && credit ? `City photo, not the event · ${credit.creator} · ${credit.site}` : null } : null;
   return (
-    <article className="flex gap-3 rounded-[12px] border p-3" style={{ borderColor: "var(--earn-border)", background: "var(--earn-card)" }} data-testid={`events-row-${event.id}`}>
-      <DateBlock date={event.firstDate} />
-      <div className="flex min-w-0 flex-1 flex-col gap-[4px]">
-        <div className="flex flex-wrap items-center justify-between gap-2">{chipEl}</div>
-        {body}
-        <div className="mt-1 flex flex-wrap items-center gap-3">
-          <PlanButton event={event} filled={false} onPlanAround={onPlanAround} />
+    <EventRow
+      id={event.id}
+      testIdPrefix="events-row"
+      firstDate={event.firstDate}
+      countdown={`${isNext ? "Next up · " : ""}${countdownLabel(event.daysUntil)}`}
+      tag={eventTag(event)}
+      title={event.title}
+      photo={shown}
+      lines={[
+        { text: eventWhen(event), testId: `events-row-when-${event.id}` },
+        { text: eventPlace(event), testId: `events-row-place-${event.id}`, tone: "muted" },
+        ...(event.partnerName ? [{ text: event.partnerName, testId: `events-row-partner-${event.id}` }] : []),
+      ]}
+      actions={
+        <>
+          <PlanButton event={event} filled={isNext} onPlanAround={onPlanAround} />
           {event.partner ? null : <DetailsLink event={event} />}
-        </div>
-      </div>
-    </article>
+        </>
+      }
+    />
   );
 }
 
@@ -221,8 +142,8 @@ export function WhatsOn({
         )}
       </div>
 
-      {rows.map((e, i) => (
-        <EventRow key={e.id} event={e} primary={i === 0} isNext={e.id === nextId} onPlanAround={onPlanAround} />
+      {rows.map((e) => (
+        <WhatsOnRow key={e.id} event={e} isNext={e.id === nextId} onPlanAround={onPlanAround} />
       ))}
 
       {bands.length > 0 && (
