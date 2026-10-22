@@ -14,7 +14,14 @@
  * A missing or unreadable createdAt is not treated as a new account. A list read
  * that is still loading, or that came back `available: false`, is not "no method"
  * (§13) and never locks the account out.
+ *
+ * Supply sessions skip the overlay (ledger `2026-10-22-card-gate-skip-supply`).
+ * `supplyPaymentGateSkipped` is the one decision: a supply route, an earner role,
+ * or a recorded supply sign-up. Traveler booking and pay pages stay on the gate.
+ * No supply API requires a saved method; this overlay is the only block.
  */
+import { isEarnerRole } from "@shared/roles";
+import { SUPPLY_APPLICATION_BY_ROLE } from "@shared/supply-entry";
 
 /** The ruling's own date (Leon Dixon, Oct 21, 2026). Not a product timer. */
 export const SAVED_METHOD_REQUIRED_FROM = "2026-10-21T00:00:00.000Z";
@@ -54,6 +61,76 @@ export interface PaymentMethodSetupInput {
   isLoading: boolean;
   methodCount: number;
   dismissedThisSession: boolean;
+  /** Current location, query included or not. Supply routes skip the overlay. */
+  pathname?: string | null;
+  /** `users.role`. Earner roles skip the overlay on every page. */
+  role?: string | null;
+  /**
+   * `users.signup_source`. Written only by `recordSignupSource`, and only for a
+   * supply sign-up that offered a source tag. A non-empty value is that sign-up.
+   */
+  signupSource?: string | null;
+}
+
+/**
+ * Routes the traveler card gate must not cover.
+ * Application hrefs come from `SUPPLY_APPLICATION_BY_ROLE` (the #1621 join path),
+ * so `/earn?role=local_expert` → sign-in `returnTo` `/become-expert?type=local_expert`
+ * stays on that list. `/earn` is the role-less continuation. Expert and provider
+ * consoles use a segment boundary so `/experts` and `/providers` stay traveler pages.
+ */
+const SUPPLY_ROUTE_PREFIXES = [
+  "/earn",
+  "/expert-status",
+  "/provider-status",
+  "/travel-experts",
+  "/services-provider",
+  "/partner-with-us",
+] as const;
+
+function normalizedGatePath(pathname: string | null | undefined): string {
+  const bare = (pathname ?? "").split("#")[0].split("?")[0].trim();
+  if (!bare) return "/";
+  const withSlash = bare.startsWith("/") ? bare : `/${bare}`;
+  return withSlash.length > 1 ? withSlash.replace(/\/+$/, "") : withSlash;
+}
+
+function pathUnder(path: string, prefix: string): boolean {
+  return path === prefix || path.startsWith(`${prefix}/`);
+}
+
+/** True for a supply application, chooser, status page, or expert/provider console. */
+export function isSupplyPaymentGatePath(pathname: string | null | undefined): boolean {
+  const path = normalizedGatePath(pathname);
+  if (path === "/expert" || path.startsWith("/expert/")) return true;
+  if (path === "/provider" || path.startsWith("/provider/")) return true;
+  if (SUPPLY_ROUTE_PREFIXES.some((prefix) => pathUnder(path, prefix))) return true;
+  for (const href of Object.values(SUPPLY_APPLICATION_BY_ROLE)) {
+    if (pathUnder(path, normalizedGatePath(href))) return true;
+  }
+  return false;
+}
+
+/**
+ * True when `recordSignupSource` stored a tag. Intent itself is not a column:
+ * the writer runs only for `intent=supply`, and a supply sign-up with no tag
+ * stays NULL. That account is exempted by the route it is on.
+ */
+export function hasRecordedSupplySignup(signupSource: string | null | undefined): boolean {
+  return typeof signupSource === "string" && signupSource.trim().length > 0;
+}
+
+/** The one skip. A supply route, an earner role, or a recorded supply sign-up. */
+export function supplyPaymentGateSkipped(input: {
+  pathname?: string | null;
+  role?: string | null;
+  signupSource?: string | null;
+}): boolean {
+  return (
+    isSupplyPaymentGatePath(input.pathname) ||
+    isEarnerRole(input.role) ||
+    hasRecordedSupplySignup(input.signupSource)
+  );
 }
 
 const REQUIRED_FROM_MS = Date.parse(SAVED_METHOD_REQUIRED_FROM);
@@ -67,6 +144,7 @@ export function accountRequiresSavedMethod(createdAt: string | Date | null | und
 }
 
 export function paymentMethodSetupMode(input: PaymentMethodSetupInput): PaymentMethodSetupMode {
+  if (supplyPaymentGateSkipped(input)) return "hidden";
   if (!input.signedIn || input.termsPending) return "hidden";
   const requires = accountRequiresSavedMethod(input.createdAt);
   if (input.isLoading) return requires ? "checking" : "hidden";
