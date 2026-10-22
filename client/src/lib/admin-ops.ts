@@ -115,11 +115,11 @@ export function parseThresholdHours(raw: string): number | null {
 
 /** The confirm step's sentence, from the dry run's count. */
 export function autoCancelConfirmLine(count: number, hours: number): string {
-  if (count === 0) return `No bookings have waited more than ${hours} hours for payment. Nothing will be cancelled.`;
+  if (count === 0) return `No bookings have waited more than ${hours} hours for payment. Nothing will be canceled.`;
   const noun = count === 1 ? "1 booking has" : `${count} bookings have`;
-  return `${noun} waited more than ${hours} hours for payment and will be cancelled.`;
+  return `${noun} waited more than ${hours} hours for payment and will be canceled.`;
 }
 
 export function autoCancelRanLine(cancelled: number): string {
-  return cancelled === 1 ? "1 booking cancelled" : `${cancelled} bookings cancelled`;
+  return cancelled === 1 ? "1 booking canceled" : `${cancelled} bookings canceled`;
 }

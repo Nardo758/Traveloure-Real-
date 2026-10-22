@@ -311,5 +311,8 @@ test("O7: the admin clear route takes a strict, required note and nothing else",
   const src = fs.readFileSync(path.resolve(import.meta.dirname, "../routes/admin.routes.ts"), "utf8");
   assert.match(src, /const outOfBandRefundClearBody = z\.object\(\{ note: z\.string\(\)\.trim\(\)\.min\(10\)\.max\(2000\) \}\)\.strict\(\);/);
   assert.match(src, /router\.post\("\/api\/admin\/bookings\/:bookingId\/out-of-band-refund\/clear"/);
-  assert.match(src, /action: "out_of_band_refund_cleared"/);
+  // Ops gap 8: the action name moved into gap 13's audit helper module; the recorded value is unchanged.
+  assert.match(src, /action: OUT_OF_BAND_REFUND_CLEARED_ACTION/);
+  const audit = fs.readFileSync(path.resolve(import.meta.dirname, "../services/admin-decision-audit.ts"), "utf8");
+  assert.match(audit, /export const OUT_OF_BAND_REFUND_CLEARED_ACTION = "out_of_band_refund_cleared";/);
 });

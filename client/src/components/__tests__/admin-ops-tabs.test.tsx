@@ -82,7 +82,7 @@ describe("ops gap 8 tabs", () => {
     }]];
     const html = render(<AutoCancelTab />, seed);
     assert.ok(html.includes('value="48"'));
-    assert.ok(html.includes("2 bookings cancelled"));
+    assert.ok(html.includes("2 bookings canceled"));
     assert.ok(html.includes(T.autoRunNow));
     assert.equal(html.includes('data-testid="ops-auto-cancel-confirm"'), false, "no run without the confirm step");
     const confirm = render(<AutoCancelTab initialConfirmCount={3} />, seed);
@@ -100,7 +100,7 @@ describe("ops gap 8 tabs", () => {
     assert.equal(outOfBandRefundedLabel({ amountCents: 500 }), "$5.00");
     assert.equal(outOfBandRefundedLabel(null), null);
     assert.deepEqual(["0", "1", "720", "721", "abc", ""].map(parseThresholdHours), [null, 1, 720, null, null, null]);
-    assert.ok(autoCancelConfirmLine(0, 48).includes("Nothing will be cancelled"));
+    assert.ok(autoCancelConfirmLine(0, 48).includes("Nothing will be canceled"));
     assert.ok(autoCancelConfirmLine(1, 48).startsWith("1 booking has"));
   });
 });
