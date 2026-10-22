@@ -10,6 +10,7 @@
  *   · a verified-locals line of 0 — the count is null and the line is absent.
  */
 import { formatDayShort, type CalendarEvent } from "./events-calendar";
+import type { CityEventCard } from "./city-events";
 
 /** A "Good to know" line: an official, public_ok, attributable fact (ruling R-p). */
 export interface EventPageFact {
@@ -22,14 +23,19 @@ export interface EventPageFact {
   checked: string;
 }
 
-/** One "More in <city>" row: a live event in the same city that has not ended. */
-export interface EventPageMoreRow {
+/**
+ * One "More in <city>" row: a live event in the same city that has not ended. SH-1 Launch item 13 (architect, Oct 22,
+ * 2026): composed server-side as the city-events card, with its source id — fields added, none removed — so the row is
+ * the shared EventRow with its countdown chip. Every card field is optional on the type so a row from before this change
+ * still reads.
+ */
+export type EventPageMoreRow = {
   sourceId: string;
   title: string;
   venue: string;
   firstDate: string;
   lastDate: string;
-}
+} & Partial<Omit<CityEventCard, "title" | "venue" | "firstDate" | "lastDate">>;
 
 export interface EventPagePayload {
   /** The event, shaped by the same card the calendar uses, with its address. */
@@ -56,7 +62,16 @@ export interface EventPagePayload {
    * series label ("On now" / "Next show <date>").
    */
   showDates?: string[];
+  /**
+   * SH-1 Launch Q14.3 (ledger `2026-10-22-sh1-launch-pr5`): the event has fully ended in its market (every show, for a
+   * series of shows). The page then says "This event has ended", shows no countdown and offers no "Plan around it";
+   * the mint refuses it server-side. Absent = not ended.
+   */
+  ended?: true;
 }
+
+/** SH-1 Launch Q14.3: what a page for an ended event says (FOUNDER WORDING REVIEW on the PR). */
+export const EVENT_ENDED_LINE = "This event has ended";
 
 /** The longest source id the page will look up; anything longer is answered 404 without a read. */
 export const EVENT_SOURCE_ID_MAX = 200;

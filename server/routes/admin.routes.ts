@@ -215,6 +215,18 @@ import {
   getRoleChangeAuditLogs,
   getAuditLogsForResource,
 } from "../services/admin-query.service";
+import {
+  recordAdminDecisionAudit,
+  featuredDecisionStatus,
+  tagListDecisionStatus,
+  LISTING_STATUS_ACTION,
+  LISTING_FEATURED_ACTION,
+  LISTING_AFFINITY_TAGS_ACTION,
+  LISTING_DELETE_ACTION,
+  MESSAGE_REPORT_DECISION_ACTION,
+  PROVIDER_SERVICE_RESOURCE,
+  MESSAGE_REPORT_RESOURCE,
+} from "../services/admin-decision-audit";
 import { bandLockedByCohort } from "../services/expert-rate-cohort.service";
 import { expertCohortSettingRefusal } from "@shared/expert-rate-cohort";
 import { parseAdminBookingListQuery } from "@shared/admin-booking-list";
@@ -4849,15 +4861,42 @@ router.get("/api/admin/services", isAuthenticated, async (req, res) => {
   });
 
 
+async function decisionActor(req: any): Promise<{
+  actorId: string;
+  actorRole: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+}> {
+  const actorId = getUserId(req)!;
+  const actor = await storage.getUser(actorId);
+  return {
+    actorId,
+    actorRole: actor?.role ?? "unknown",
+    ipAddress: req.ip ?? null,
+    userAgent: req.get?.("user-agent") ?? null,
+  };
+}
+
 router.patch("/api/admin/services/:id/status", isAuthenticated, requireStaff("listing_status"), async (req, res) => {
     try {
       const { status } = req.body;
       if (!["active", "paused", "draft", "suspended"].includes(status)) {
         return res.status(400).json({ message: "Invalid status" });
       }
+      const existing = await getProviderServiceById(req.params.id);
+      if (!existing) return res.status(404).json({ message: "Service not found" });
       const updated = await updateProviderServiceStatus(req.params.id, status);
       if (!updated) return res.status(404).json({ message: "Service not found" });
-      res.json(updated);
+      const auditWarning = await recordAdminDecisionAudit({
+        ...(await decisionActor(req)),
+        action: LISTING_STATUS_ACTION,
+        resourceType: PROVIDER_SERVICE_RESOURCE,
+        resourceId: req.params.id,
+        targetUserId: existing.userId,
+        beforeStatus: existing.status ?? null,
+        afterStatus: updated.status ?? null,
+      });
+      res.json(auditWarning ? { ...updated, auditWarning } : updated);
     } catch (err: any) {
       res.status(500).json({ message: "Failed to update service status", error: err.message });
     }
@@ -4871,9 +4910,20 @@ router.patch("/api/admin/services/:id/featured", isAuthenticated, async (req, re
       if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
 
       const { isFeatured } = req.body;
+      const existing = await getProviderServiceById(req.params.id);
+      if (!existing) return res.status(404).json({ message: "Service not found" });
       const updated = await updateProviderServiceFeatured(req.params.id, Boolean(isFeatured));
       if (!updated) return res.status(404).json({ message: "Service not found" });
-      res.json(updated);
+      const auditWarning = await recordAdminDecisionAudit({
+        ...(await decisionActor(req)),
+        action: LISTING_FEATURED_ACTION,
+        resourceType: PROVIDER_SERVICE_RESOURCE,
+        resourceId: req.params.id,
+        targetUserId: existing.userId,
+        beforeStatus: featuredDecisionStatus(existing.isFeatured),
+        afterStatus: featuredDecisionStatus(updated.isFeatured),
+      });
+      res.json(auditWarning ? { ...updated, auditWarning } : updated);
     } catch (err: any) {
       res.status(500).json({ message: "Failed to update featured status", error: err.message });
     }
@@ -4897,9 +4947,20 @@ router.patch("/api/admin/services/:id/affinity-tags", isAuthenticated, async (re
       ];
       const sanitized: string[] = contentAffinityTags.filter((t: any) => typeof t === "string" && validTags.includes(t));
 
+      const existing = await getProviderServiceById(req.params.id);
+      if (!existing) return res.status(404).json({ message: "Service not found" });
       const updated = await updateProviderServiceAffinityTags(req.params.id, sanitized);
       if (!updated) return res.status(404).json({ message: "Service not found" });
-      res.json(updated);
+      const auditWarning = await recordAdminDecisionAudit({
+        ...(await decisionActor(req)),
+        action: LISTING_AFFINITY_TAGS_ACTION,
+        resourceType: PROVIDER_SERVICE_RESOURCE,
+        resourceId: req.params.id,
+        targetUserId: existing.userId,
+        beforeStatus: tagListDecisionStatus(existing.contentAffinityTags),
+        afterStatus: tagListDecisionStatus(updated.contentAffinityTags),
+      });
+      res.json(auditWarning ? { ...updated, auditWarning } : updated);
     } catch (err: any) {
       res.status(500).json({ message: "Failed to update affinity tags", error: err.message });
     }
@@ -4942,14 +5003,26 @@ router.delete("/api/admin/services/:id", isAuthenticated, async (req, res) => {
         return { softDeleted: false as const, bookingCount: 0 };
       });
 
+      const auditWarning = await recordAdminDecisionAudit({
+        ...(await decisionActor(req)),
+        action: LISTING_DELETE_ACTION,
+        resourceType: PROVIDER_SERVICE_RESOURCE,
+        resourceId: req.params.id,
+        targetUserId: row.userId,
+        beforeStatus: row.status ?? null,
+        afterStatus: outcome.softDeleted ? "suspended" : "deleted",
+        metadata: { softDeleted: outcome.softDeleted, bookingCount: outcome.bookingCount },
+      });
+
       if (outcome.softDeleted) {
         return res.json({
           ok: true,
           softDeleted: true,
           message: `Service has ${outcome.bookingCount} booking(s) — it was archived (suspended) instead of deleted so booking history stays intact.`,
+          ...(auditWarning ? { auditWarning } : {}),
         });
       }
-      res.json({ ok: true });
+      res.json({ ok: true, ...(auditWarning ? { auditWarning } : {}) });
     } catch (err: any) {
       // Migration 151 (§17): bundle_components.component_service_id is ON DELETE RESTRICT —
       // a service inside a bundle can't be deleted until removed from it. Surface the FK
@@ -7648,13 +7721,32 @@ router.patch("/api/admin/message-reports/:id", isAuthenticated, requireStaff("me
     if (!VALID_STATUSES.includes(status)) {
       return res.status(400).json({ message: `status must be one of: ${VALID_STATUSES.join(", ")}` });
     }
+    const [existing] = await db
+      .select({
+        id: messageReports.id,
+        status: messageReports.status,
+        reportedUserId: messageReports.reportedUserId,
+      })
+      .from(messageReports)
+      .where(eq(messageReports.id, req.params.id));
+    if (!existing) return res.status(404).json({ message: "Report not found" });
     const [updated] = await db
       .update(messageReports)
       .set({ status, adminNote: adminNote ?? null, reviewedBy: actorId, reviewedAt: new Date() })
       .where(eq(messageReports.id, req.params.id))
       .returning({ id: messageReports.id, status: messageReports.status });
     if (!updated) return res.status(404).json({ message: "Report not found" });
-    res.json(updated);
+    const auditWarning = await recordAdminDecisionAudit({
+      ...(await decisionActor(req)),
+      action: MESSAGE_REPORT_DECISION_ACTION,
+      resourceType: MESSAGE_REPORT_RESOURCE,
+      resourceId: req.params.id,
+      targetUserId: existing.reportedUserId,
+      beforeStatus: existing.status ?? null,
+      afterStatus: updated.status ?? null,
+      metadata: { adminNote: adminNote ?? null },
+    });
+    res.json(auditWarning ? { ...updated, auditWarning } : updated);
   } catch (err) {
     console.error("Admin message-report update error:", err);
     res.status(500).json({ message: "Failed to update report" });

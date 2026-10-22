@@ -18,7 +18,9 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "wouter";
 import { ArrowLeft } from "lucide-react";
 import { eventDetailPath, eventPlace, eventTag, eventWhen, VERTICAL_LABELS } from "@shared/events-calendar";
-import { cityLocalsLine, type EventPagePayload } from "@shared/event-page";
+import { EVENT_ENDED_LINE, cityLocalsLine, type EventPagePayload } from "@shared/event-page";
+import { countdownLabel } from "@shared/city-events";
+import { EventRow } from "@/components/events/EventRow";
 import { planAroundSource } from "@/components/landing/events-strip";
 import { usePlanning, type PlanningSource } from "@/contexts/PlanningContext";
 
@@ -93,7 +95,7 @@ export default function EventDetailPage() {
 
 /** The page body, from the payload alone — rendered by the route and by the render test. */
 export function EventDetailBody({ page, onPlanAround }: { page: EventPagePayload; onPlanAround: (s: PlanningSource) => void }) {
-  const { event, countdown, organizer, goodToKnow, moreInCity, cityLocals } = page;
+  const { event, countdown, organizer, goodToKnow, moreInCity, cityLocals, ended } = page;
   const localsLine = cityLocalsLine(cityLocals, event.city);
   const verticalLabel = event.vertical ? VERTICAL_LABELS[event.vertical] : null;
 
@@ -116,13 +118,20 @@ export function EventDetailBody({ page, onPlanAround }: { page: EventPagePayload
         <p className="text-[14px]" style={{ color: "var(--earn-muted)" }} data-testid="event-detail-place">
           {eventPlace(event)}
         </p>
-        <span
-          className="self-start rounded-[6px] border px-2 py-[3px] text-[10.5px] uppercase tracking-[0.08em]"
-          style={{ fontFamily: MONO, color: "var(--earn-ink)", borderColor: "var(--earn-border)", background: "var(--earn-card)" }}
-          data-testid="event-detail-countdown"
-        >
-          {countdown}
-        </span>
+        {/* SH-1 Launch Q14.3: an ended event says so, with no countdown and no Plan around it. */}
+        {ended ? (
+          <p className="text-[15px] font-semibold" style={{ color: "var(--earn-ink)" }} data-testid="event-detail-ended">
+            {EVENT_ENDED_LINE}
+          </p>
+        ) : (
+          <span
+            className="self-start rounded-[6px] border px-2 py-[3px] text-[10.5px] uppercase tracking-[0.08em]"
+            style={{ fontFamily: MONO, color: "var(--earn-ink)", borderColor: "var(--earn-border)", background: "var(--earn-card)" }}
+            data-testid="event-detail-countdown"
+          >
+            {countdown}
+          </span>
+        )}
       </header>
 
       <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_300px]">
@@ -165,17 +174,16 @@ export function EventDetailBody({ page, onPlanAround }: { page: EventPagePayload
               <ul className="flex flex-col gap-2">
                 {moreInCity.map((m) => (
                   <li key={m.sourceId}>
-                    <Link
+                    {/* SH-1 Launch item 13: the shared EventRow — DateBlock and countdown chip on every row. */}
+                    <EventRow
+                      id={m.sourceId}
+                      testIdPrefix="event-detail-more"
                       href={eventDetailPath(m.sourceId)}
-                      className="flex flex-col rounded-[12px] border p-3 hover:bg-black/[0.02]"
-                      style={{ borderColor: "var(--earn-border)", background: "var(--earn-card)" }}
-                      data-testid={`event-detail-more-${m.sourceId}`}
-                    >
-                      <span className="text-[15px] font-semibold" style={{ fontFamily: FRAUNCES, color: "var(--earn-navy)" }}>{m.title}</span>
-                      <span className="text-[12.5px]" style={{ color: "var(--earn-muted)" }}>
-                        {m.firstDate === m.lastDate ? formatShort(m.firstDate) : `${formatShort(m.firstDate)} – ${formatShort(m.lastDate)}`} · {m.venue}
-                      </span>
-                    </Link>
+                      firstDate={m.firstDate}
+                      countdown={typeof m.daysUntil === "number" ? countdownLabel(m.daysUntil) : null}
+                      title={m.title}
+                      lines={[{ text: `${m.firstDate === m.lastDate ? formatShort(m.firstDate) : `${formatShort(m.firstDate)} – ${formatShort(m.lastDate)}`} · ${m.venue}`, tone: "muted" }]}
+                    />
                   </li>
                 ))}
               </ul>
@@ -184,17 +192,21 @@ export function EventDetailBody({ page, onPlanAround }: { page: EventPagePayload
         </div>
 
         <aside className="flex flex-col gap-3 self-start rounded-[14px] border p-4" style={{ borderColor: "var(--earn-border)", background: "var(--earn-card)" }}>
-          <button
-            type="button"
-            onClick={() => onPlanAround(planAroundSource(event, "event_detail"))}
-            className="inline-flex min-h-[44px] items-center justify-center rounded-[10px] bg-primary px-4 text-[14px] font-semibold text-primary-foreground"
-            data-testid="event-detail-plan"
-          >
-            Plan around it
-          </button>
-          <p className="text-[12.5px]" style={{ color: "var(--earn-muted)" }}>
-            Starts a plan in {event.city} with this event's dates and venue filled in.
-          </p>
+          {!ended && (
+            <>
+              <button
+                type="button"
+                onClick={() => onPlanAround(planAroundSource(event, "event_detail", page.showDates))}
+                className="inline-flex min-h-[44px] items-center justify-center rounded-[10px] bg-primary px-4 text-[14px] font-semibold text-primary-foreground"
+                data-testid="event-detail-plan"
+              >
+                Plan around it
+              </button>
+              <p className="text-[12.5px]" style={{ color: "var(--earn-muted)" }}>
+                Starts a plan in {event.city} with this event's dates and venue filled in.
+              </p>
+            </>
+          )}
           {localsLine && (
             <p className="text-[13px] font-semibold" style={{ color: "var(--earn-ink)" }} data-testid="event-detail-locals">
               {localsLine}

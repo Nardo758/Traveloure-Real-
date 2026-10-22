@@ -421,6 +421,8 @@ export function toCityEventCard(row: CityEvent, neighbourhood: string | null, no
     venueLocality: row.venueLocality ?? null,
     // SH-1 item 5: sibling rows on one key are one series of shows (`seriesShowDates`).
     seriesKey: row.seriesKey ?? null,
+    // SH-1 Launch Q14.3: the event's public address (the event page reads it); the plan mint names the event by it.
+    sourceId: row.sourceId,
     ticketUrl: row.ticketUrl,
     blurb: row.blurb,
     imagePath: row.imagePath,
