@@ -166,7 +166,7 @@ function AddCardForm({ onSuccess, onCancel }: { onSuccess: () => void; onCancel:
   );
 }
 
-export function AddCardDialog() {
+export function AddCardDialog({ triggerLabel = "Add a payment method" }: { triggerLabel?: string }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -211,7 +211,7 @@ export function AddCardDialog() {
     <>
       <Button variant="outline" size="sm" onClick={handleOpen} data-testid="button-add-card">
         <Plus className="w-4 h-4 mr-1.5" />
-        Add payment method
+        {triggerLabel}
       </Button>
 
       <Dialog open={open} onOpenChange={handleOpenChange}>

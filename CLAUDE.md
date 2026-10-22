@@ -1504,8 +1504,8 @@ This document captures architectural decisions to maintain consistency across co
     asking for a card at the door costs signups and buys nothing. There is no variant of this —
     no "optional card field", no deferred-capture step, no card on an onboarding screen.
     **AMENDED — SIGNUP REQUIRES A SAVED PAYMENT METHOD (decision-maker Leon Dixon, Oct 21, 2026 —
-    ledger `2026-10-21-saved-method-required`).** Clause (a) above is amended. Signup requires a
-    saved payment method (card, Apple Pay, Google Pay, or Link) through the existing SetupIntent,
+    ledger `2026-10-21-saved-method-required`).** Clause (a) above is amended. A saved payment
+    method (card, Apple Pay, Google Pay, or Link) is offered, skippable, through the existing SetupIntent,
     Payment Element, and Express Checkout Element. Bookings, Optimize, expert Asks, and concierge
     principal still charge only when the person clicks, and that click confirms on-session. The
     only unattended charge is a Stripe Billing membership renewal. A saved Apple Pay method is
@@ -1514,13 +1514,17 @@ This document captures architectural decisions to maintain consistency across co
     `2026-10-21-signup-payment-step`). Register still does not create a session, so the
     password form and social buttons do not embed Stripe. The first signed-in session,
     including Facebook and Replit sign-in, runs PaymentMethodSetupGate, which reuses
-    AddCardDialog. An account created on or after 2026-10-21 (the ruling's own date) is
-    asked to save a method before continuing, and can sign out. An earlier account, or an
-    account whose createdAt cannot be read, gets a dismissible prompt for that sign-in and
-    is not locked out. The two SavePaymentMethodPrompt mounts stay the reminder at the
-    first paid action. A payment-method list that is still loading for an older account,
-    or that returns `available: false`, shows nothing: a missing answer is not "no method".
-    This amendment's code
+    AddCardDialog.
+    **AMENDED — OFFERED, SKIPPABLE (decision-maker Leon Dixon, Oct 22, 2026 — ledger
+    `2026-10-22-card-gate-skippable`).** The createdAt cutoff is removed. Every account
+    sees one dismissible prompt, not a lock-out: "Save a payment method for the next time
+    you pay. You can skip this and keep using your account." The actions are "Add a payment
+    method" and "Not now". "Not now" hides the prompt until the next sign-in. The step does
+    not offer Sign out and does not say a saved method is required before continuing.
+    Supply flows see no prompt (`supplyPaymentGateSkipped`). The two SavePaymentMethodPrompt
+    mounts stay the reminder at Trip Pass and Finalize. A list that is still loading, or
+    that returns `available: false`, shows nothing: a missing answer is not "no method".
+    The `2026-10-21-saved-method-required` code
     lane accepts `rk_test_` / `rk_live_` on the same live-versus-test split (a live key stays
     rejected outside production), makes Customer create idempotent on the user id and stops
     adopting the first email-match Customer, and records `setup_intent.succeeded` plus

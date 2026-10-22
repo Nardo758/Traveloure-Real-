@@ -12,7 +12,8 @@
  *     nagging someone who already saved a card.
  *
  * (2) THE PASSWORD FORM STILL EMBEDS NO PAYMENT RAIL (A*). Locked Decision 43(a) was amended
- *     (ledger `2026-10-21-signup-payment-step`): a saved method is required after sign-in.
+ *     (ledger `2026-10-21-signup-payment-step`, amended `2026-10-22-card-gate-skippable`):
+ *     a saved method is offered and skippable after sign-in.
  *     Register does not create a session, so Signup and the other auth-named screens still
  *     import neither this prompt, nor AddCardDialog, nor Stripe. The step is
  *     PaymentMethodSetupGate, proved in payment-method-setup.test.ts.
@@ -150,8 +151,8 @@ test("A3: the prompt states no amount (§14 — it charges nothing and prices no
 });
 
 test("A4: the password sign-up page still imports no payment rail", () => {
-  // Register answers without a session, so this page cannot open a SetupIntent. The required
-  // step is PaymentMethodSetupGate after sign-in (ledger `2026-10-21-signup-payment-step`).
+  // Register answers without a session, so this page cannot open a SetupIntent. The offered
+  // step is PaymentMethodSetupGate after sign-in (ledger `2026-10-22-card-gate-skippable`).
   for (const forbidden of [
     "SavePaymentMethodPrompt",
     "AddCardDialog",
