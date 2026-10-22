@@ -86,6 +86,23 @@ class BookingExpirySchedulerService {
     return this.isRunning;
   }
 
+  /**
+   * Ops gap 8 (ledger `2026-10-22-admin-ops-screens`): how many bookings a run now would cancel, without
+   * acting. The same WHERE and LIMIT the sweep's SELECT uses, so the confirm step's count is the sweep's.
+   * It counts cancellations only; the no-response notices the pass also sends are not counted.
+   */
+  async countStale(): Promise<number> {
+    const r = await db.execute(sql`
+      SELECT COUNT(*)::int AS n FROM (
+        SELECT b.id FROM bookings b
+        WHERE b.status = 'pending_payment'
+          AND b.created_at < NOW() - (${this.config.staleThresholdHours} || ' hours')::interval
+        LIMIT 500
+      ) s
+    `);
+    return Number((r.rows[0] as { n?: number } | undefined)?.n ?? 0);
+  }
+
   async triggerManualRun(): Promise<AutoCancelStats> {
     return this.runCancellation();
   }

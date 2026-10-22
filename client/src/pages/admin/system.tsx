@@ -30,6 +30,11 @@ import { BUSY_BUS_MARKETS, SEASON_WINDOWS_HELP, seasonWindowsSettingKey } from "
 import { OPERATING_MARKETS } from "@shared/operating-markets";
 import { parseTravelerSignupMode, TRAVELER_SIGNUP_MODE_SETTING, type TravelerSignupMode } from "@shared/launch-signup";
 import { MARKETING_EMAIL_FOOTER_FIELDS } from "@shared/marketing-email-footer";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ADMIN_OPS_COPY } from "@/lib/admin-ops";
+import { EmailOutboxTab } from "@/components/admin/ops/EmailOutboxTab";
+import { OutOfBandRefundsTab } from "@/components/admin/ops/OutOfBandRefundsTab";
+import { AutoCancelTab } from "@/components/admin/ops/AutoCancelTab";
 
 interface PlatformSettingRow {
   setting_key: string;
@@ -222,7 +227,19 @@ export default function AdminSystem() {
 
   return (
     <AdminLayout title="System Settings">
-      <div className="p-6 space-y-6">
+      {/* Ops gap 8 (ledger `2026-10-22-admin-ops-screens`): Settings stays the default tab. */}
+      <Tabs defaultValue="settings" className="p-6">
+        <TabsList className="flex-wrap h-auto">
+          <TabsTrigger value="settings" data-testid="system-tab-settings">{ADMIN_OPS_COPY.tabSettings}</TabsTrigger>
+          <TabsTrigger value="outbox" data-testid="system-tab-outbox">{ADMIN_OPS_COPY.tabEmailOutbox}</TabsTrigger>
+          <TabsTrigger value="refunds" data-testid="system-tab-refunds">{ADMIN_OPS_COPY.tabOutOfBandRefunds}</TabsTrigger>
+          <TabsTrigger value="auto-cancel" data-testid="system-tab-auto-cancel">{ADMIN_OPS_COPY.tabAutoCancel}</TabsTrigger>
+        </TabsList>
+        <TabsContent value="outbox"><EmailOutboxTab /></TabsContent>
+        <TabsContent value="refunds"><OutOfBandRefundsTab /></TabsContent>
+        <TabsContent value="auto-cancel"><AutoCancelTab /></TabsContent>
+        <TabsContent value="settings">
+      <div className="space-y-6">
         {/* Slow query monitor (relocated from Dashboard) */}
         <SlowQueryWidget />
 
@@ -534,6 +551,8 @@ export default function AdminSystem() {
           </CardContent>
         </Card>
       </div>
+        </TabsContent>
+      </Tabs>
     </AdminLayout>
   );
 }
