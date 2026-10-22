@@ -4,6 +4,7 @@
  * stays on the verify screen.
  */
 import { EMAIL_VERIFICATION_HOLD_PATH } from "@shared/email-verification-gate";
+import { readAuthResponse } from "@/lib/auth-response";
 
 export function emailVerificationHoldRequired(user: object | null | undefined): boolean {
   if (!user || typeof user !== "object") return false;
@@ -27,7 +28,8 @@ export async function resendVerificationEmail(email: string): Promise<Verificati
       body: JSON.stringify({ email }),
     });
     if (res.status === 429) return "rate_limited";
-    if (!res.ok) return "error";
+    const read = await readAuthResponse(res);
+    if (!res.ok || read.kind === "non-json") return "error";
     return "sent";
   } catch {
     return "error";

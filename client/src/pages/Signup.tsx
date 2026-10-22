@@ -3,6 +3,7 @@ import { TRAVELER_WAITLIST, normalizeSignupIntent, waitlistBlockedPath } from "@
 import { isRegistrationNeutral } from "@shared/registration-neutral";
 import { supplySignupContinuation } from "@shared/supply-entry";
 import { sanitizeReturnTo } from "@/lib/safe-return-to";
+import { authFailureMessage, readAuthResponse } from "@/lib/auth-response";
 import { resendVerificationEmail } from "@/lib/email-verification-hold";
 import { useTranslation } from "react-i18next";
 
@@ -30,9 +31,11 @@ export function SignupPage() {
     if (supplyContinuation.kind !== "account" || intent === "supply" || showQaCode) return;
     let cancelled = false;
     fetch("/api/public/signup-mode", { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((m) => {
-        if (!cancelled && m?.mode === "waitlist") window.location.replace(waitlistBlockedPath(m.launchMarketSlug));
+      .then((r) => readAuthResponse(r))
+      .then((read) => {
+        if (cancelled || read.kind !== "json" || !read.ok || read.data.mode !== "waitlist") return;
+        const slug = typeof read.data.launchMarketSlug === "string" ? read.data.launchMarketSlug : null;
+        window.location.replace(waitlistBlockedPath(slug));
       })
       .catch(() => { /* the server still refuses on submit */ });
     return () => { cancelled = true; };
@@ -75,17 +78,18 @@ export function SignupPage() {
           // NOTE: NO role field — server always assigns "user"
         }),
       });
-      const data = await res.json();
-      if (isRegistrationNeutral(res.status, data)) {
+      const read = await readAuthResponse(res);
+      if (read.kind === "json" && isRegistrationNeutral(res.status, read.data)) {
         setSubmitted(true);
         return;
       }
-      if (!res.ok) {
-        if (res.status === 403 && data?.code === TRAVELER_WAITLIST) {
-          window.location.replace(sanitizeReturnTo(data.redirectTo) ?? "/");
-          return;
-        }
-        setError(data.message || t("signupPage.failed"));
+      if (read.kind === "json" && res.status === 403 && read.data.code === TRAVELER_WAITLIST) {
+        const redirectTo = typeof read.data.redirectTo === "string" ? read.data.redirectTo : undefined;
+        window.location.replace(sanitizeReturnTo(redirectTo) ?? "/");
+        return;
+      }
+      if (read.kind === "non-json" || !res.ok) {
+        setError(authFailureMessage(read, t("signupPage.genericError"), t("signupPage.failed")));
         return;
       }
       // Any other 2xx is not the contract this page knows; say so rather than claim an account exists.
