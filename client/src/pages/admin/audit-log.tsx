@@ -14,7 +14,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useQuery } from "@tanstack/react-query";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Shield, ChevronLeft, ChevronRight, Loader2, Search, X } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  AUDIT_LOG_ALL_PAGE_SIZE,
+  AUDIT_LOG_COPY as T,
+  EMPTY_AUDIT_FILTERS,
+  auditLogAllQuery,
+  hasAuditFilters,
+  type AuditLogAllFilters,
+} from "@/lib/audit-log-all";
 
 interface RoleChangeLog {
   id: string;
@@ -63,7 +73,7 @@ function roleBadgeVariant(role: string | null | undefined): "default" | "seconda
   return "outline";
 }
 
-export default function AdminAuditLog() {
+function RoleChangesView() {
   const [page, setPage] = useState(1);
   const [targetUserFilter, setTargetUserFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -119,19 +129,7 @@ export default function AdminAuditLog() {
     appliedFilters.targetUserId || appliedFilters.dateFrom || appliedFilters.dateTo;
 
   return (
-    <AdminLayout title="Role Change Audit Log">
-      <div className="space-y-6 p-6">
-        {/* Header */}
-        <div className="flex items-center gap-3">
-          <Shield className="h-6 w-6 text-muted-foreground" />
-          <div>
-            <h1 className="text-2xl font-bold">Role Change Audit Log</h1>
-            <p className="text-sm text-muted-foreground">
-              Complete history of every user role change made by admins
-            </p>
-          </div>
-        </div>
-
+    <div className="space-y-6">
         {/* Filters */}
         <Card>
           <CardHeader>
@@ -341,6 +339,215 @@ export default function AdminAuditLog() {
             </Button>
           </div>
         )}
+      </div>
+  );
+}
+
+interface AuditLogAllRow {
+  id: string;
+  created_at: string;
+  action: string;
+  actor_id: string;
+  actor_role: string;
+  actor_first_name: string | null;
+  actor_last_name: string | null;
+  actor_email: string | null;
+  resource_type: string;
+  resource_id: string | null;
+  target_user_id: string | null;
+  target_email: string | null;
+}
+
+interface AuditLogAllResponse {
+  logs: AuditLogAllRow[];
+  total: number;
+  actions: string[];
+  resourceTypes: string[];
+  limit: number;
+  offset: number;
+}
+
+const ANY = "__any__";
+
+/**
+ * Ops gap 12 (ledger `2026-10-22-audit-log-all-actions`): every audited action, paged, filtered by action, actor,
+ * resource and date through `GET /api/admin/audit-logs/all`.
+ */
+function AllActionsView() {
+  const [page, setPage] = useState(1);
+  const [draft, setDraft] = useState<AuditLogAllFilters>(EMPTY_AUDIT_FILTERS);
+  const [applied, setApplied] = useState<AuditLogAllFilters>(EMPTY_AUDIT_FILTERS);
+  const query = auditLogAllQuery(applied, page);
+  const { data, isLoading, isError } = useQuery<AuditLogAllResponse>({
+    queryKey: ["/api/admin/audit-logs/all", query],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/audit-logs/all?${query}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch audit logs");
+      return res.json();
+    },
+  });
+  const logs = data?.logs ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.ceil(total / AUDIT_LOG_ALL_PAGE_SIZE);
+  const filtered = hasAuditFilters(applied);
+  const set = (k: keyof AuditLogAllFilters) => (v: string) => setDraft((d) => ({ ...d, [k]: v === ANY ? "" : v }));
+
+  return (
+    <div className="space-y-6" data-testid="audit-log-all">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{T.filterTitle}</CardTitle>
+          <CardDescription>{T.filterDescription}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="flex min-w-[200px] flex-col gap-1">
+              <Label>{T.filterAction}</Label>
+              <Select value={draft.action || ANY} onValueChange={set("action")}>
+                <SelectTrigger data-testid="audit-filter-action"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ANY}>{T.filterActionAny}</SelectItem>
+                  {(data?.actions ?? []).map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex min-w-[220px] flex-col gap-1">
+              <Label htmlFor="audit-actor">{T.filterActor}</Label>
+              <Input id="audit-actor" value={draft.actor} onChange={(e) => set("actor")(e.target.value)} data-testid="audit-filter-actor" />
+            </div>
+            <div className="flex min-w-[200px] flex-col gap-1">
+              <Label>{T.filterResourceType}</Label>
+              <Select value={draft.resourceType || ANY} onValueChange={set("resourceType")}>
+                <SelectTrigger data-testid="audit-filter-resource-type"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ANY}>{T.filterResourceTypeAny}</SelectItem>
+                  {(data?.resourceTypes ?? []).map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex min-w-[200px] flex-col gap-1">
+              <Label htmlFor="audit-resource-id">{T.filterResourceId}</Label>
+              <Input id="audit-resource-id" value={draft.resourceId} onChange={(e) => set("resourceId")(e.target.value)} data-testid="audit-filter-resource-id" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="audit-from">{T.filterFrom}</Label>
+              <Input id="audit-from" type="date" value={draft.dateFrom} onChange={(e) => set("dateFrom")(e.target.value)} data-testid="audit-filter-from" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="audit-to">{T.filterTo}</Label>
+              <Input id="audit-to" type="date" value={draft.dateTo} onChange={(e) => set("dateTo")(e.target.value)} data-testid="audit-filter-to" />
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={() => { setPage(1); setApplied(draft); }} className="flex items-center gap-1" data-testid="audit-filter-apply">
+                <Search className="h-4 w-4" />
+                Apply
+              </Button>
+              {filtered && (
+                <Button variant="outline" onClick={() => { setDraft(EMPTY_AUDIT_FILTERS); setApplied(EMPTY_AUDIT_FILTERS); setPage(1); }} className="flex items-center gap-1">
+                  <X className="h-4 w-4" />
+                  Clear
+                </Button>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base" data-testid="audit-all-total">
+              {isLoading ? "Loading…" : `${total.toLocaleString()} event${total === 1 ? "" : "s"}`}
+            </CardTitle>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                Page {page} of {totalPages}
+                <Button variant="ghost" size="icon" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="icon" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : isError ? (
+            <div className="py-12 text-center text-sm text-destructive">Failed to load audit log. Please try again.</div>
+          ) : logs.length === 0 ? (
+            <div className="py-12 text-center text-sm text-muted-foreground" data-testid="audit-all-empty">
+              {filtered ? T.emptyFiltered : T.empty}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="whitespace-nowrap">{T.colTime}</TableHead>
+                    <TableHead>{T.colAction}</TableHead>
+                    <TableHead>{T.colActor}</TableHead>
+                    <TableHead>{T.colResource}</TableHead>
+                    <TableHead>{T.colTarget}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {logs.map((log) => (
+                    <TableRow key={log.id} data-testid={`audit-row-${log.id}`}>
+                      <TableCell className="whitespace-nowrap font-mono text-xs text-muted-foreground">
+                        {log.created_at ? new Date(log.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—"}
+                      </TableCell>
+                      <TableCell><Badge variant="outline" className="text-xs">{log.action}</Badge></TableCell>
+                      <TableCell>
+                        <div className="text-sm">{userLabel(log.actor_first_name, log.actor_last_name, log.actor_email, log.actor_id)}</div>
+                        <div className="text-xs text-muted-foreground">{log.actor_role}</div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm">{log.resource_type}</div>
+                        {log.resource_id && <div className="font-mono text-xs text-muted-foreground">{log.resource_id}</div>}
+                      </TableCell>
+                      <TableCell>
+                        {log.target_user_id ? <span className="text-sm">{log.target_email ?? log.target_user_id}</span> : <span className="text-xs text-muted-foreground">—</span>}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+export default function AdminAuditLog() {
+  return (
+    <AdminLayout title={T.pageTitle}>
+      <div className="space-y-6 p-6">
+        <div className="flex items-center gap-3">
+          <Shield className="h-6 w-6 text-muted-foreground" />
+          <div>
+            <h1 className="text-2xl font-bold">{T.pageTitle}</h1>
+            <p className="text-sm text-muted-foreground">{T.pageSubtitle}</p>
+          </div>
+        </div>
+        <Tabs defaultValue="all">
+          <TabsList>
+            <TabsTrigger value="all" data-testid="audit-tab-all">{T.tabAll}</TabsTrigger>
+            <TabsTrigger value="roles" data-testid="audit-tab-roles">{T.tabRoleChanges}</TabsTrigger>
+          </TabsList>
+          <TabsContent value="all" className="mt-4">
+            <AllActionsView />
+          </TabsContent>
+          <TabsContent value="roles" className="mt-4">
+            <RoleChangesView />
+          </TabsContent>
+        </Tabs>
       </div>
     </AdminLayout>
   );
