@@ -252,11 +252,12 @@ async function enqueueEmailImpl(params: EnqueueEmailParams): Promise<number | nu
   }
 
   if (deliver) {
-    await attemptDelivery(outboxId, { ...params, authCritical: params.authCritical || values.metadata.authCritical === true }, {
+    const metadata = readMetadata(values.metadata);
+    await attemptDelivery(outboxId, { ...params, authCritical: params.authCritical || metadata.authCritical === true }, {
       attemptCount: 0,
       maxAttempts: 6,
       emailType: values.emailType,
-      metadata: readMetadata(values.metadata),
+      metadata,
     });
   }
 
