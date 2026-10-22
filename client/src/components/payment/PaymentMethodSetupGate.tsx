@@ -13,6 +13,7 @@
  * step: verify comes first (S-09), and this overlay would cover that screen.
  *
  * Supply routes and supply accounts skip it (`supplyPaymentGateSkipped`).
+ * That includes `/earn` and the sign-in return to `/become-expert?type=local_expert`.
  */
 import { useState } from "react";
 import { useLocation } from "wouter";

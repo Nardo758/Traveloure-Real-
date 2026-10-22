@@ -238,6 +238,7 @@ test("the gate asks the one helper and does not restate supply routes", () => {
   assert.match(setup, /SUPPLY_APPLICATION_BY_ROLE/);
   assert.equal(setup.includes('return "required"'), false);
   assert.equal(setup.includes("accountRequiresSavedMethod"), false);
+  assert.equal(setup.includes("SAVED_METHOD_REQUIRED_FROM"), false);
   assert.equal(setup.includes("before you continue"), false);
 });
 

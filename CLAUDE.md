@@ -1545,6 +1545,13 @@ This document captures architectural decisions to maintain consistency across co
     `checkout.session.async_payment_failed` does not fulfill. Membership
     entitlement stays on `customer.subscription.*` (ledger
     `2026-10-21-checkout-dynamic-methods`).
+    **AMENDED — SUPPLY FLOWS SKIP THE TRAVELER CARD GATE (Oct 22, 2026 — ledger
+    `2026-10-22-card-gate-skip-supply`).** The overlay does not run on a supply route
+    (`/earn`, the application hrefs in `SUPPLY_APPLICATION_BY_ROLE` including the
+    sign-in return `/become-expert?type=local_expert`, expert and provider consoles,
+    and the city-knowledge test) or for an earner role or a recorded `users.signup_source`.
+    `/experts` and `/providers` stay traveler pages. Traveler booking and pay flows
+    are unchanged. One helper, `supplyPaymentGateSkipped`, decides it. No migration.
     **(b) A PAYMENT METHOD ENTERS THE ACCOUNT AT ONE OF EXACTLY TWO MOMENTS**, and both already
     existed: at FIRST PURCHASE (the Payment Element, vaulted against the durable Stripe customer
     with `setup_future_usage: off_session` — FP-1), or PROACTIVELY on the profile's Payment

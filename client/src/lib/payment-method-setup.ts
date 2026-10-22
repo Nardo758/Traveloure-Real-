@@ -18,6 +18,7 @@
  * Supply sessions skip the prompt (ledger `2026-10-22-card-gate-skip-supply`).
  * `supplyPaymentGateSkipped` is the one decision: a supply route, an earner role,
  * or a recorded supply sign-up. Traveler pages stay on the prompt.
+ * No supply API requires a saved method; this prompt is the only block.
  */
 import { isEarnerRole } from "@shared/roles";
 import { SUPPLY_APPLICATION_BY_ROLE } from "@shared/supply-entry";
@@ -51,7 +52,7 @@ export interface PaymentMethodSetupInput {
   dismissedThisSession: boolean;
   /** Current location, query included or not. Supply routes skip the prompt. */
   pathname?: string | null;
-  /** `users.role`. Earner roles skip the prompt on every page. */
+  /** `users.role`. Earner roles skip the prompt on every page, including /cart. */
   role?: string | null;
   /**
    * `users.signup_source`. Written only by `recordSignupSource`, and only for a
@@ -62,8 +63,9 @@ export interface PaymentMethodSetupInput {
 
 /**
  * Routes the traveler card prompt must not cover.
- * Application hrefs come from `SUPPLY_APPLICATION_BY_ROLE`, so the sign-in
- * return `/become-expert?type=local_expert` stays on that list. `/earn` is the
+ * Application hrefs come from `SUPPLY_APPLICATION_BY_ROLE` (the #1621 join path),
+ * so `/earn?role=local_expert` → sign-in return `/become-expert?type=local_expert`
+ * stays on that list. `/earn` is the
  * role-less continuation. Expert and provider consoles use a segment boundary
  * so `/experts` and `/providers` stay traveler pages.
  */
