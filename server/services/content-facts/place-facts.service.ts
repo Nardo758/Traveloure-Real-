@@ -45,7 +45,7 @@ import { isPointOfInterest, matchNamesItem, namedPlaceTokens, placeLookupText, t
 import { loadMarketAreaNames } from "./market-areas";
 import { mayFetchFresh, resolveFreshFetchBudget, type FreshFetchContext } from "./fresh-fetch";
 import { placeFactTags, resolveFactPrecedence } from "@shared/content-tiers";
-import { admitFeasibilityFact, closedDatesExpiryDay, hoursSeason, isFeasibilityFactType, parseClosedDates } from "@shared/feasibility-facts";
+import { admitFeasibilityFact, closedDatesExpiryDay, hoursSeason, isFeasibilityFactType, parseClosedDates, timedEntrySlotHeld } from "@shared/feasibility-facts";
 import { zonedMidnight } from "@shared/plan-timing";
 import { MARKET_TIMEZONES } from "../trend-engine/operating-markets";
 import { REFRESH_ORIGIN, admitRefreshFact } from "@shared/official-refresh";
@@ -937,8 +937,20 @@ export async function hoursWaitingForTrip(tripId: string, now: Date = new Date()
   return out;
 }
 
+/**
+ * Row 125: the plan's items whose timed slot is held (`timedEntrySlotHeld`). The checker and the slip's warning both
+ * skip these, so a booked stop is never told to book ahead.
+ */
+async function timedEntryHeldItemIds(tripId: string): Promise<Set<string>> {
+  const rows = await db
+    .select({ id: itineraryItems.id, bookingId: itineraryItems.bookingId, routingStatus: itineraryItems.routingStatus })
+    .from(itineraryItems)
+    .where(eq(itineraryItems.tripId, tripId));
+  return new Set(rows.filter((r) => timedEntrySlotHeld(r)).map((r) => r.id));
+}
+
 export async function factsForTrip(tripId: string, now: Date = new Date()): Promise<Record<string, FactView[]>> {
-  const [rows, timeZone] = await Promise.all([rowsForTrip(tripId, undefined, now), planTimeZone(tripId)]);
+  const [rows, timeZone, held] = await Promise.all([rowsForTrip(tripId, undefined, now), planTimeZone(tripId), timedEntryHeldItemIds(tripId)]);
   // P0-e addition 7 (decision-maker, Oct 12, 2026): a row's hours are the SAME facts the feasibility checks
   // read — the plan's own rows plus the official rows stored for the item's place id, official first
   // (`resolveFactPrecedence`) — so an official hours fact replaces the Google line, and the row's closing
@@ -1003,7 +1015,8 @@ export async function factsForTrip(tripId: string, now: Date = new Date()): Prom
     const te = (resolveFactPrecedence(teRows.map((r) => ({ ...r, sourceClass: r.sourceClass, license: r.license })), "timed_entry_required") as FactRow[]).find(
       (r) => !isFactStale(r, now) && admitFeasibilityFact(r).ok,
     );
-    const teView = te ? toView(te, now, sources, timeZone) : null;
+    // Row 125: a stop whose slot is held (a booking id, or a purchase) carries no timed-entry warning.
+    const teView = te && !held.has(itemId) ? toView(te, now, sources, timeZone) : null;
     if (teView) views.push(teView);
     seen.add("timed_entry_required");
     for (const r of rankFactsByOrigin(list.filter((x) => x.factType !== "hours"), now)) {
@@ -1338,7 +1351,7 @@ export async function feasibilityFactsForTrip(tripId: string, market: string | n
   const timeZone = await planTimeZone(tripId);
   const placeOf = await itemPlaceIdsForTrip(tripId, own);
   const stored = await storedOfficialFacts(Array.from(new Set(placeOf.values())), ["hours", "last_admission", "closed_dates", "timed_entry_required"], now);
-  const sources = await sourcesFor([...own, ...stored]);
+  const [sources, held] = await Promise.all([sourcesFor([...own, ...stored]), timedEntryHeldItemIds(tripId)]);
   const byItem = withStoredOfficial(own, placeOf, stored);
 
   const hours = new Map<string, FeasibilityHours[]>();
@@ -1399,7 +1412,8 @@ export async function feasibilityFactsForTrip(tripId: string, market: string | n
     }
     // FB-1 step 5c: every unexpired, admitted `timed_entry_required` fact for the item, official first.
     const teRows = ranked.filter((r) => r.factType === "timed_entry_required" && !isFactStale(r, now) && admitFeasibilityFact(r).ok);
-    if (teRows.length) {
+    // Row 125: a stop whose slot is held (a booking id, or a purchase) is not flagged.
+    if (teRows.length && !held.has(itemId)) {
       timedEntry.set(
         itemId,
         teRows.map((r) => ({

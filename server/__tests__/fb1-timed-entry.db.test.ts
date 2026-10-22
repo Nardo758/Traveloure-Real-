@@ -9,6 +9,9 @@
  *   TDB2 the loader feeds the checker: one `book_ahead` issue per stop; the slip's facts carry the fact for its warning
  *   TDB3 free retime still offers the Temple's retime fix (the flag is not a new problem)
  *   TDB4 a paid run: every version keeps the flag and passes the gate; "Your plan, fixed" flags day 1 only
+ *   TDB5 row 125 (ledger `2026-10-22-timed-entry-booked`): the flag drops for an item only when it carries a
+ *        `booking_id` or `routing_status = 'purchased'` — flagged → booked → gone; flagged → an edit with no booking
+ *        (the traveler's own booking status, reference or confirmation number) → still flagged
  *
  * DISPOSABLE DB ONLY.
  */
@@ -131,4 +134,31 @@ test("TDB4 every version keeps the flag and passes; Your plan, fixed flags day 1
   const view = await loadFixedPlan(paid);
   assert.ok(view, "a shown Your plan, fixed");
   assert.deepEqual(view!.days.map((d) => d.day), [1], "day 2 carries only the timed-entry flag");
+});
+
+test("TDB5 the flag drops only on a booking id or a purchase, never on a self-report", async () => {
+  const v = `${free}-v`;
+  const flagged = async () => {
+    const { input } = await loadPlanCheckInput(free);
+    const issue = checkPlan(input).issues.some((i) => i.type === "timed_entry_required" && i.stop?.itemId === v);
+    const view = ((await factsForTrip(free))[v] ?? []).some((f) => f.factType === "timed_entry_required");
+    assert.equal(issue, view, "the checker and the slip's warning agree");
+    return issue;
+  };
+  assert.equal(await flagged(), true, "flagged");
+  // An edit with no booking: the traveler's own booking status, reference and confirmation number.
+  await db.execute(sql`UPDATE itinerary_items SET booking_status = 'confirmed', booking_reference = 'SELF-1', confirmation_number = 'SELF-2', title = 'Villa (booked myself)' WHERE id = ${v}`);
+  assert.equal(await flagged(), true, "a self-report keeps the flag");
+  // A booking id ⇒ gone.
+  const booking = id("booking");
+  await db.execute(sql`INSERT INTO service_bookings (id, total_amount) VALUES (${booking}, 0)`);
+  await db.execute(sql`UPDATE itinerary_items SET booking_id = ${booking} WHERE id = ${v}`);
+  assert.equal(await flagged(), false, "a booking id drops the flag");
+  await db.execute(sql`UPDATE itinerary_items SET booking_id = NULL WHERE id = ${v}`);
+  await db.execute(sql`DELETE FROM service_bookings WHERE id = ${booking}`);
+  assert.equal(await flagged(), true, "flagged again once the booking is gone");
+  // A purchase ⇒ gone.
+  await db.execute(sql`UPDATE itinerary_items SET routing_status = 'purchased' WHERE id = ${v}`);
+  assert.equal(await flagged(), false, "a purchase drops the flag");
+  await db.execute(sql`UPDATE itinerary_items SET routing_status = 'in_planning' WHERE id = ${v}`);
 });
