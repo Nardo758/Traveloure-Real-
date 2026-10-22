@@ -573,12 +573,12 @@ class StripePaymentService {
       // stale-id case already short-circuits to 'no_saved_method' above, since a recreated
       // customer starts with zero saved payment methods).
       const pi = await this.retryOnMissingCustomer(userId, customerId, (cid, attempt) => {
-        const key = attempt === 1 ? params.idempotencyKey : `${params.idempotencyKey}-recover`;
         const onSession = {
           amount: params.amountCents,
           currency: (params.currency ?? 'usd').toLowerCase(),
           customer: cid,
-          payment_method: paymentMethodId,
+          // `chosen` is the narrowed method. paymentMethodId stays `string | null`.
+          payment_method: chosen.id,
           confirm: true,
           metadata: params.metadata,
           description: params.description,
@@ -588,7 +588,11 @@ class StripePaymentService {
         // as-is so the retry returns the original PaymentIntent. New clicks omit off_session.
         const legacyOffSession = { ...onSession, off_session: true as const };
         return createPaymentIntentPreservingKey(
-          (body) => stripe.paymentIntents.create(body, { idempotencyKey: key }),
+          (body) =>
+            stripe.paymentIntents.create(body, {
+              // The recover suffix stays on this property so the idempotency-key pin can see it.
+              idempotencyKey: attempt === 1 ? params.idempotencyKey : `${params.idempotencyKey}-recover`,
+            }),
           onSession,
           legacyOffSession,
         );
