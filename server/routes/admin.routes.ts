@@ -12,6 +12,7 @@ import { seasonWindowsSettingRefusal } from "@shared/busy-bus";
 import { enteredStatus } from "../utils/form-status-transition";
 import { zodErrorBody } from "../utils/zod-error-body";
 import { getUserId } from "../utils/auth";
+import { requireStaff } from "../utils/staff-access";
 import { assertReadyMadeComplete } from "./ready-made.routes";
 import { resolveConciergeTierView } from "../utils/concierge-tier-filter";
 import { pgTextArray } from "../services/upsell-query.service";
@@ -869,9 +870,9 @@ router.post("/api/admin/bookings/:bookingId/lost-chargeback/reconcile", isAuthen
 // can never be confused with the `:bookingId/<action>` routes above. Every read and every resolve is
 // written to the access audit log.
 // The paths are literals (not a shared constant) so the mutation-auth inventory can read them.
-router.get("/api/admin/bookings/:kind(service|legacy|liteapi)/:id", isAuthenticated, async (req, res) => {
+router.get("/api/admin/bookings/:kind(service|legacy|liteapi)/:id", isAuthenticated, requireStaff("booking_detail_read"), async (req, res) => {
   const user = await getFullAdminUser(getUserId(req)!);
-  if (!user || user.role !== "admin") {
+  if (!user) {
     return res.status(403).json({ message: "Admin access required" });
   }
   try {
@@ -2887,14 +2888,8 @@ router.get("/api/admin/revenue", isAuthenticated, async (req, res) => {
   });
 
   // Admin: list contact submissions
-router.get("/api/admin/contact-submissions", isAuthenticated, async (req, res) => {
+router.get("/api/admin/contact-submissions", isAuthenticated, requireStaff("contact_submissions"), async (req, res) => {
     try {
-      const userId = getUserId(req)!;
-      const adminUser = await getFullAdminUser(userId);
-      if (!adminUser || adminUser.role !== "admin") {
-        return res.status(403).json({ message: "Admin access required" });
-      }
-
       const status = req.query.status as string | undefined;
       const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
 
@@ -2908,14 +2903,8 @@ router.get("/api/admin/contact-submissions", isAuthenticated, async (req, res) =
   });
 
   // Admin: update contact submission status
-router.patch("/api/admin/contact-submissions/:id", isAuthenticated, async (req, res) => {
+router.patch("/api/admin/contact-submissions/:id", isAuthenticated, requireStaff("contact_submissions"), async (req, res) => {
     try {
-      const userId = getUserId(req)!;
-      const adminUser = await getFullAdminUser(userId);
-      if (!adminUser || adminUser.role !== "admin") {
-        return res.status(403).json({ message: "Admin access required" });
-      }
-
       const { status, responseNotes, assignedAdminId } = req.body;
       const updates: any = {};
       if (status) updates.status = status;
@@ -4859,12 +4848,8 @@ router.get("/api/admin/services", isAuthenticated, async (req, res) => {
   });
 
 
-router.patch("/api/admin/services/:id/status", isAuthenticated, async (req, res) => {
+router.patch("/api/admin/services/:id/status", isAuthenticated, requireStaff("listing_status"), async (req, res) => {
     try {
-      const userId = getUserId(req)!;
-      const user = await storage.getUser(userId);
-      if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
-
       const { status } = req.body;
       if (!["active", "paused", "draft", "suspended"].includes(status)) {
         return res.status(400).json({ message: "Invalid status" });
@@ -7583,12 +7568,8 @@ router.get("/api/admin/reports/destination-benchmark/:destination", isAuthentica
 // GET  /api/admin/message-reports   — list reports filterable by status
 // PATCH /api/admin/message-reports/:id — update status + optional admin note
 
-router.get("/api/admin/message-reports", isAuthenticated, async (req, res) => {
+router.get("/api/admin/message-reports", isAuthenticated, requireStaff("message_reports"), async (req, res) => {
   try {
-    const actorId = getUserId(req)!;
-    const adminCheck = await getAdminRole(actorId);
-    if (!adminCheck || adminCheck.role !== "admin") return res.status(403).json({ message: "Admin access required" });
-
     const statusParam = (req.query.status as string) || "pending";
     const rows = await db
       .select({
@@ -7639,11 +7620,9 @@ router.get("/api/admin/message-reports", isAuthenticated, async (req, res) => {
   }
 });
 
-router.patch("/api/admin/message-reports/:id", isAuthenticated, async (req, res) => {
+router.patch("/api/admin/message-reports/:id", isAuthenticated, requireStaff("message_reports"), async (req, res) => {
   try {
     const actorId = getUserId(req)!;
-    const adminCheck = await getAdminRole(actorId);
-    if (!adminCheck || adminCheck.role !== "admin") return res.status(403).json({ message: "Admin access required" });
     const { status, adminNote } = req.body;
     const VALID_STATUSES = ["reviewed", "actioned", "dismissed"];
     if (!VALID_STATUSES.includes(status)) {

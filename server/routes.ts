@@ -13,6 +13,7 @@ import { zodErrorBody } from "./utils/zod-error-body";
 import express from "express";
 import { randomBytes, randomUUID } from "node:crypto";
 import { getUserId, getDbRole } from "./utils/auth";
+import { staffMayPassBlanketGuard } from "@shared/staff-permissions";
 // ONE ownership predicate for a custom venue (ledger `2026-09-05-custom-venues-owner-scope`).
 import { isCustomVenueOwner } from "./utils/custom-venue-owner";
 import { isBusinessVerificationStatus } from "./utils/earner-verification";
@@ -914,7 +915,10 @@ export async function registerRoutes(
       const user = uid
         ? await db.select().from(users).where(eq(users.id, uid)).then((r) => r[0])
         : undefined;
-      if (!user || user.role !== "admin") {
+      // Admin passes every /api/admin route. support and moderator pass only the
+      // routes on the staff permission map. Every other path — payouts, refunds,
+      // fees, deletes — stays admin-only. Per-route checks on those paths are unchanged.
+      if (!user || !staffMayPassBlanketGuard(user.role, req.method, req.originalUrl || req.path)) {
         return res.status(403).json({ message: "Admin access required" });
       }
       // #1434 — account STATUS, checked after the role so a non-admin's answer is unchanged.
