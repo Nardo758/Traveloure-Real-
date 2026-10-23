@@ -242,6 +242,20 @@ test("generic user payloads and logs do not carry a payout handle", () => {
   assert.equal(err.message.includes(ROUTING), false);
 });
 
+/**
+ * The post-merge stamp moves `docs/decisions/pending/<slug>.md` to
+ * `docs/decisions/<seq>-<slug>.md` and replaces `R?` with a number. A reader that
+ * names only the pending path fails the moment that stamp lands.
+ */
+function rulingBySlug(slug: string): string {
+  const pending = path.resolve(`docs/decisions/pending/${slug}.md`);
+  if (fs.existsSync(pending)) return fs.readFileSync(pending, "utf8");
+  const dir = path.resolve("docs/decisions");
+  const name = fs.readdirSync(dir).find((entry) => entry.endsWith(`-${slug}.md`));
+  assert.ok(name, `${slug} is not in docs/decisions`);
+  return fs.readFileSync(path.join(dir, name!), "utf8");
+}
+
 test("mark-paid schema is unchanged and the expert Connect duplicate is recorded as a follow-up", () => {
   const admin = fs.readFileSync(path.resolve("server/services/payout-admin.service.ts"), "utf8");
   const start = admin.indexOf("export const markPaidBodySchema");
@@ -257,9 +271,9 @@ test("mark-paid schema is unchanged and the expert Connect duplicate is recorded
   assert.equal(meta.includes("payoutHandle"), false);
   assert.equal(meta.includes("payout_handle"), false);
 
-  const decision = fs.readFileSync(path.resolve("docs/decisions/pending/2026-10-23-payout-setup-server.md"), "utf8");
-  assert.match(decision, /\*\*R\? —/);
-  assert.match(decision, /numeric citation R\?/);
+  const decision = rulingBySlug("2026-10-23-payout-setup-server");
+  assert.match(decision, /\*\*R(\?|\d+) —/);
+  assert.match(decision, /numeric citation R(\?|\d+)/);
   assert.match(decision, /Migration 408 SQL approved — Leon/);
   assert.match(decision, /FOLLOW-UP/);
   assert.match(decision, /local_expert_forms/);
