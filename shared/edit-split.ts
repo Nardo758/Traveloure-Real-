@@ -38,6 +38,10 @@ export const IDENTITY_EDIT_FIELDS = [
   // acceptance obligation on an approved listing is not a wording change — so on an APPROVED
   // listing it re-enters review beside the delivery method rather than moving the live row.
   "declaredArtifactDeliverable",
+  // `themeId` is migration 409 (ledger `2026-10-23-experience-themes`). The theme
+  // is what a traveler filters by, the same class as category: changing it on an
+  // approved listing re-enters review. A suggestion ("Other") is not this field.
+  "themeId",
 ] as const;
 
 export type IdentityEditField = (typeof IDENTITY_EDIT_FIELDS)[number];
@@ -60,6 +64,7 @@ export const IDENTITY_EDIT_LANE: { fields: IdentityEditField[]; label: string }[
   { fields: ["deliveryMethod"], label: "Delivery method" },
   { fields: ["productShape"], label: "Product shape (service / bundle / property)" },
   { fields: ["declaredArtifactDeliverable"], label: "Declared artifact deliverable" },
+  { fields: ["themeId"], label: "Theme" },
 ];
 
 // Every identity field must be named by exactly one display row — a field added to
