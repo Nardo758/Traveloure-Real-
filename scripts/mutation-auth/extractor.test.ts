@@ -317,6 +317,12 @@ test("resolves named re-exports used by authentication registration helpers", ()
  * Session user only (`/api/me` classifies user-data / session-self). GET /api/me/payout-setup
  * is a read and is not a mutation. user-data 249 → 250, session-self 365 → 366.
  *
+ * 725 / 717 → 729 / 721 (ledger `2026-10-23-experience-themes`): POST /api/admin/experience-themes,
+ * PATCH /api/admin/experience-themes/:id, POST /api/admin/experience-theme-suggestions/:id/accept
+ * and POST /api/admin/experience-theme-suggestions/:id/dismiss. All four are admin behind the
+ * blanket /api/admin guard (admin 191 → 195, admin-role 191 → 195). The public and admin GETs
+ * are reads and are not mutations.
+ *
  * THE COUNTS ARE THE POINT: they exist so a route appearing or vanishing from
  * the mounted graph fails here. Now that the file is wired into CI, changing a
  * number is a decision that needs its reason stated, exactly as this one does.
@@ -324,8 +330,8 @@ test("resolves named re-exports used by authentication registration helpers", ()
 test("current mounted graph parity includes auth helpers and shared api paths", () => {
   const root = process.cwd();
   const result = extractMountedMutations(path.join(root, "server/routes.ts"), root);
-  assert.equal(result.mutations.length, 725);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 717);
+  assert.equal(result.mutations.length, 729);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 721);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -335,7 +341,7 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "generated/security/mutation-auth-manifest.json"), "utf8"));
   const markdown = fs.readFileSync(path.join(root, "generated/security/mutation-auth-inventory.md"), "utf8");
   const endpointRows = markdown.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| ---")).slice(1);
-  assert.equal(endpointRows.length, 717);
+  assert.equal(endpointRows.length, 721);
   // 709 / 701 (ledger `2026-10-18-fd4-share-projection`): the shadowed quick-start twin is deleted; unique paths stay 701.
   // 710 / 702 (ledger `2026-10-19-fb1-free-retime`): + POST /api/trips/:tripId/retime-fixes/:itemId/apply.
   // 712 / 704 (ledger `2026-10-18-cs1-source-signoff`): the sign-off and photo-block POSTs.
@@ -345,8 +351,11 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // 722 / 714 (S-09): + POST /api/auth/resend-verification and POST /api/auth/change-unverified-email.
   // 724 / 716 (gap 9): + POST /api/admin/experts/:userId/remind-stripe and POST /api/admin/payouts/:id/mark-paid.
   // 725 / 717 (ledger 2026-10-23-payout-setup-server): + PUT /api/me/payout-setup.
-  assert.equal(manifest.rawRegistrationCount, 725);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 717);
+  // 729 / 721 (ledger `2026-10-23-experience-themes`): + POST /api/admin/experience-themes,
+  // PATCH /api/admin/experience-themes/:id, POST /api/admin/experience-theme-suggestions/:id/accept
+  // and POST /api/admin/experience-theme-suggestions/:id/dismiss.
+  assert.equal(manifest.rawRegistrationCount, 729);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 721);
   // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R274): user-data,
   // session-self; the owner/delegate check runs in the service before any write.
   // + POST /api/admin/content-sources/:id/public-ok (ledger `2026-10-03-official-facts-public-ok`, R278):
@@ -393,7 +402,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // other 243 → 245 (S-09): the resend and change-unverified-email rails.
   // admin 189 → 191 (gap 9): the expert Stripe reminder and the external mark-paid POST.
   // user-data 249 → 250 (ledger 2026-10-23-payout-setup-server): PUT /api/me/payout-setup.
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 191, "user-data": 250, other: 245 });
+  // admin 191 → 195 (ledger `2026-10-23-experience-themes`): the theme catalog POST and PATCH, and the suggestion accept and dismiss POSTs.
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 195, "user-data": 250, other: 245 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
@@ -433,7 +443,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // still 401s without a session; the heuristic does not see that check, same as send-verification.
   // admin-role 189 → 191 (gap 9): the expert Stripe reminder and the external mark-paid POST.
   // session-self 365 → 366 (ledger 2026-10-23-payout-setup-server): PUT /api/me/payout-setup.
-    "admin-role": 191, "session-self": 366, "resource-owner": 102,
+  // admin-role 191 → 195 (ledger `2026-10-23-experience-themes`): the same four admin writes.
+    "admin-role": 195, "session-self": 366, "resource-owner": 102,
     signature: 6, "public-or-system": 52, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
