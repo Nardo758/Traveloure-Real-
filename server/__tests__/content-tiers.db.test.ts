@@ -13,7 +13,12 @@
  *   D6  ruling 3: verifying an untagged gem makes the verifier its author (no team label); a second press
  *       is 409 and an unknown gem 404; the verified gem then reaches a draft
  *   D7  place_facts are born tagged from origin + license (recordFacts)
- *   D8  ruling 8: the nightly census counts expired local content and changes nothing
+ *   D8  ruling 8: the nightly census counts expired local content and changes nothing; a clean
+ *       target config is status ok, HTTP 200 { ok: true }
+ *   D9  a missing refresh source completes the run: status failed, one error line per missing source,
+ *       HTTP 200 { ok: false } — not a 500 — and no success heartbeat
+ *   D10 a valid target is still checked when another source is missing; the counts and coverage still run
+ *   D11 a census read failure is still HTTP 500
  *
  * DISPOSABLE DB ONLY: every row is keyed by a per-run prefix and deleted afterwards.
  */
@@ -24,13 +29,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { eq, inArray, like, sql } from "drizzle-orm";
 import { db, pool } from "../db";
-import { insertItineraryItemSchema, itineraryItems, placeFacts, travelPulseHiddenGems } from "@shared/schema";
+import { insertItineraryItemSchema, itineraryItems, jobHeartbeats, placeFacts, travelPulseHiddenGems } from "@shared/schema";
+import type { ContentSourceTargets } from "@shared/content-source-targets";
 import { storage } from "../storage";
 import { travelPulseService } from "../services/travelpulse.service";
 import { verifyGem } from "../services/gem-promotion.service";
 import { recordFacts } from "../services/content-facts/place-facts.service";
 import { placesCacheMaxDays } from "../config/content-facts.config";
-import { runContentExpiryCensus } from "../jobs/contentExpiryCensus";
+import { contentExpiryCensusCrashed, contentExpiryCensusReportedFailure, runContentExpiryCensus } from "../jobs/contentExpiryCensus";
+import { runJob } from "../routes/internal.routes";
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const id = (s: string) => `ctt-${RUN}-${s}`;
@@ -48,6 +55,31 @@ async function gemRow(gid: string) {
   return r;
 }
 
+function hoursTarget(sourceId: string, host: string): ContentSourceTargets {
+  return {
+    [sourceId]: [{
+      label: "Hours",
+      url: `https://${host}/hours`,
+      need: "stop.hours",
+      anchor: { kind: "place", placeId: "ChIJcensusplace1" },
+    }],
+  };
+}
+
+function missingSourceLine(sourceId: string): string {
+  return `${sourceId}: unknown_source — no content_sources row has this id`;
+}
+
+/** The same two predicates the census route passes to `runJob`. */
+function censusHttp(job: string, targets?: ContentSourceTargets) {
+  return runJob(
+    job,
+    () => runContentExpiryCensus(targets ? { targets } : {}),
+    contentExpiryCensusCrashed,
+    { isReportedFailure: contentExpiryCensusReportedFailure },
+  );
+}
+
 before(async () => {
   const host = new URL(process.env.DATABASE_URL ?? "postgres://localhost").hostname.toLowerCase();
   if (process.env.JOURNEY_DB_WRITES_OK !== "1" && !["localhost", "127.0.0.1", "::1", ""].includes(host)) {
@@ -62,7 +94,8 @@ before(async () => {
 
 after(async () => {
   await db.delete(placeFacts).where(like(placeFacts.placeRef, `ctt-${RUN}-%`));
-  await db.execute(sql`DELETE FROM content_sources WHERE id = ${id("src")}`);
+  await db.execute(sql`DELETE FROM content_sources WHERE id LIKE ${`ctt-${RUN}-%`}`);
+  await db.execute(sql`DELETE FROM job_heartbeats WHERE job_name LIKE ${`census-%-${RUN}`}`);
   await db.delete(itineraryItems).where(eq(itineraryItems.tripId, TRIP));
   await db.delete(travelPulseHiddenGems).where(eq(travelPulseHiddenGems.city, CITY));
   await db.execute(sql`DELETE FROM trips WHERE id = ${TRIP}`);
@@ -199,13 +232,96 @@ test("D8 — ruling 8: the census counts expired local content and changes nothi
     VALUES ('ginkakuji_official', 'Ginkaku-ji official site', 'https://www.shokoku-ji.jp/', 'kyoto', 'tavily_extract', ARRAY['stop.hours'], ARRAY[]::text[], 'official', false)
     ON CONFLICT (id) DO NOTHING RETURNING id`);
   let out: Awaited<ReturnType<typeof runContentExpiryCensus>>;
+  let http: Awaited<ReturnType<typeof censusHttp>>;
   try {
     out = await runContentExpiryCensus();
+    http = await censusHttp(`census-ok-${RUN}`);
   } finally {
     if (inserted.rows.length) await db.execute(sql`DELETE FROM content_sources WHERE id = 'ginkakuji_official'`);
   }
   assert.deepEqual(out.errors, {});
+  assert.equal(out.status, "ok");
+  assert.deepEqual(out.targetProblems, []);
   assert.ok((out.expiredLocal.travel_pulse_hidden_gems ?? 0) >= 1);
   assert.equal(typeof out.untaggedGems, "number");
   assert.deepEqual(await gemRow(g), before, "nothing is deleted or rewritten");
+  assert.equal(http.status, 200);
+  assert.equal(http.body.ok, true);
+  assert.equal((http.body.result as ContentExpiryShape).status, "ok");
+  assert.deepEqual((http.body.result as ContentExpiryShape).errors, {});
+  assert.deepEqual((http.body.result as ContentExpiryShape).targetProblems, []);
+});
+
+type ContentExpiryShape = Awaited<ReturnType<typeof runContentExpiryCensus>>;
+
+test("D9 — a missing source completes the run: status failed, one line each, HTTP 200, not a 500", async () => {
+  const a = id("miss-a");
+  const b = id("miss-b");
+  const targets = {
+    ...hoursTarget(a, `a-${RUN}.example.test`),
+    ...hoursTarget(b, `b-${RUN}.example.test`),
+  };
+  const job = `census-miss-${RUN}`;
+  const beforeHb = await db.select().from(jobHeartbeats).where(eq(jobHeartbeats.jobName, job));
+  const out = await runContentExpiryCensus({ targets });
+  assert.equal(out.status, "failed");
+  assert.deepEqual(out.errors, {});
+  assert.deepEqual(out.targetProblems, [missingSourceLine(a), missingSourceLine(b)]);
+  assert.equal(typeof out.expiredLocal.travel_pulse_hidden_gems, "number", "the count still finished");
+  const http = await censusHttp(job, targets);
+  assert.equal(http.status, 200);
+  assert.equal(http.body.ok, false);
+  assert.equal(http.body.job, job);
+  assert.equal(http.body.error, [missingSourceLine(a), missingSourceLine(b)].join("\n"));
+  assert.equal(String(http.body.error).split("\n").length, 2);
+  const result = http.body.result as ContentExpiryShape;
+  assert.equal(result.status, "failed");
+  assert.deepEqual(result.targetProblems, out.targetProblems);
+  const afterHb = await db.select().from(jobHeartbeats).where(eq(jobHeartbeats.jobName, job));
+  assert.deepEqual(afterHb, beforeHb, "a target-problem run does not stamp a success heartbeat");
+});
+
+test("D10 — a valid target is still checked when another source is missing", async () => {
+  const valid = id("src-ok");
+  const missing = id("src-missing");
+  const host = `ok-${RUN}.example.test`;
+  await db.execute(sql`INSERT INTO content_sources (id, name, homepage, market, adapter, covers, does_not_cover, license_class, active)
+    VALUES (${valid}, 'D10 source', ${`https://${host}/`}, 'kyoto', 'manual', ARRAY['stop.hours'], ARRAY[]::text[], 'official', false)`);
+  try {
+    const targets = { ...hoursTarget(valid, host), ...hoursTarget(missing, `no-${RUN}.example.test`) };
+    const out = await runContentExpiryCensus({ targets });
+    assert.equal(out.status, "failed");
+    assert.deepEqual(out.errors, {});
+    assert.deepEqual(out.targetProblems, [missingSourceLine(missing)]);
+    assert.equal(out.targetProblems.some((line) => line.includes(valid)), false);
+    for (const table of ["travel_pulse_hidden_gems", "local_knowledge_nuggets", "place_facts"]) {
+      assert.equal(typeof out.expiredLocal[table], "number", `${table} was counted`);
+    }
+    assert.equal(typeof out.untaggedGems, "number");
+    assert.ok(out.coverage.kyoto, "the coverage pass still ran");
+    const http = await censusHttp(`census-mix-${RUN}`, targets);
+    assert.equal(http.status, 200);
+    assert.equal(http.body.ok, false);
+    assert.deepEqual((http.body.result as ContentExpiryShape).targetProblems, [missingSourceLine(missing)]);
+  } finally {
+    await db.execute(sql`DELETE FROM content_sources WHERE id = ${valid}`);
+  }
+});
+
+test("D11 — a census read failure is still HTTP 500", async () => {
+  const job = `census-read-${RUN}`;
+  const http = await runJob(
+    job,
+    async () => ({
+      status: "failed",
+      errors: { travel_pulse_hidden_gems: "relation missing" },
+      targetProblems: [missingSourceLine("ghost")],
+    }),
+    contentExpiryCensusCrashed,
+    { isReportedFailure: contentExpiryCensusReportedFailure },
+  );
+  assert.equal(http.status, 500);
+  assert.equal(http.body.ok, false);
+  assert.equal(http.body.error, `job ${job} reported failure`);
+  assert.deepEqual((http.body.result as { targetProblems: string[] }).targetProblems, [missingSourceLine("ghost")]);
 });

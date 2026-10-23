@@ -29,7 +29,7 @@ import { runBackgroundJob, isBackgroundJobSkip } from "../services/background-jo
 import { storage } from "../storage";
 import { runBookingAutoCompletion } from "../jobs/bookingAutoCompletion";
 import { runFactsRecheck } from "../jobs/factsRecheck";
-import { runContentExpiryCensus } from "../jobs/contentExpiryCensus";
+import { contentExpiryCensusCrashed, contentExpiryCensusReportedFailure, runContentExpiryCensus } from "../jobs/contentExpiryCensus";
 import { runWaitlistRetention } from "../jobs/waitlistRetention";
 import { runOfficialRefresh } from "../jobs/officialRefresh";
 import { runLiteapiSync } from "../jobs/liteapiSync";
@@ -101,10 +101,17 @@ function requireInternalSecret(req: Request, res: Response, next: NextFunction) 
  *   - an overlap/cap SENTINEL    → 200 { ok:true, skipped:true, reason }  (a pass was mid-flight)
  *   - a bare `undefined`         → 500 { ok:false, error: contract }      (see below)
  *   - a result flagged failed    → 500 { ok:false, error, result } (isFailure predicate)
+ *   - a reported failure         → 200 { ok:false, error, result } (isReportedFailure; no heartbeat)
  *   - otherwise                  → 200 { ok:true, result }
  *
  * `isFailure` lets jobs that catch internally and return a status/error field (rather than throw)
  * still surface as a visible 500 to the cron.
+ *
+ * `isReportedFailure` is the same body with HTTP 200. The jobs-cron caller
+ * (`scripts/ci/post-internal-jobs.sh`) already reads that shape: HTTP 200 whose `.ok` is not true
+ * is a reported failure, not retried, and not an HTTP 500. It returns the error string to put on
+ * `error`, or null when this result is not one. A success heartbeat is not stamped. The census uses
+ * it for a refresh-target problem (ledger `2026-10-22-census-missing-source`).
  *
  * WHY `undefined` IS AN ERROR, NOT A SKIP (lane: internal-jobs-hardening, L4): this mapping used to
  * read `result === undefined → skipped`, but `runBackgroundJob` returned `undefined` for BOTH a
@@ -125,6 +132,8 @@ export async function runJob(
   options: {
     isSkip?: (result: any) => boolean;
     useBackgroundJobRunner?: boolean;
+    /** A finished run that failed its own check. String → 200 { ok:false, error, result }, no stamp. */
+    isReportedFailure?: (result: any) => string | null | undefined;
   } = {},
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   try {
@@ -158,6 +167,13 @@ export async function runJob(
       // the cron prints an allowlist instead of the body, this log is the record.
       logger.error({ job: name, error: String(error), result }, "[internal-jobs] job reported failure");
       return { status: 500, body: { ok: false, job: name, error: String(error), result } };
+    }
+    const reported = options.isReportedFailure?.(result);
+    if (typeof reported === "string" && reported.length > 0) {
+      // Same diagnosis log as the 500 branch (L5). The cron prints no body on this path either
+      // ("HTTP 200 but ok is not true"), so this log is the record of each line.
+      logger.error({ job: name, error: reported, result }, "[internal-jobs] job reported failure");
+      return { status: 200, body: { ok: false, job: name, error: reported, result } };
     }
     const body = { ok: true, job: name, result };
     // A REAL pass — stamp the heartbeat. Never on the skip branch above (L6/H2): a job stuck in
@@ -426,8 +442,27 @@ router.post("/internal/jobs/facts-recheck", requireInternalSecret, async (_req, 
 
 // FD-2 ruling 8 (ledger `2026-10-09-fd2-content-tier-tags`): count expired local content, per table. Counts
 // only — nothing is deleted or rewritten. A table it cannot read is an error and never stamps a success.
+//
+// WHAT THIS RETURNS (ledger `2026-10-22-census-missing-source`; the jobs-cron caller is
+// `scripts/ci/post-internal-jobs.sh`, which passes a route only on HTTP 200 + JSON + `.ok == true`):
+//   - clean run → 200 { ok: true, job, result } with result.status "ok", result.targetProblems [],
+//     result.errors {}. A success heartbeat is stamped. Unchanged.
+//   - refresh-target problem (a source id with no registry row, an off-host url, …) → 200
+//     { ok: false, job, error, result }. `error` is one `targetProblemLine` per problem, separated
+//     by newlines (a missing source is one line). result.status is "failed", result.targetProblems
+//     is those lines, result.errors is {}. The caller already treats 200 without ok:true as a
+//     reported failure and does not retry it. This is not an HTTP 500, and no success heartbeat
+//     is stamped. SS-1 ruling 2's fail-loudly stays: the run is failed and the lines are listed
+//     here and in the server log.
+//   - a read that could not finish, or a thrown exception → 500 { ok: false, job, error, result }
+//     (or { ok: false, job, error } when the call threw). Unchanged.
 router.post("/internal/jobs/content-expiry-census", requireInternalSecret, async (_req, res) => {
-  const { status, body } = await runJob("content-expiry-census", () => runContentExpiryCensus(), (r) => Object.keys(r?.errors ?? {}).length > 0);
+  const { status, body } = await runJob(
+    "content-expiry-census",
+    () => runContentExpiryCensus(),
+    contentExpiryCensusCrashed,
+    { isReportedFailure: contentExpiryCensusReportedFailure },
+  );
   res.status(status).json(body);
 });
 
