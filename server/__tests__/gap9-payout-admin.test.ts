@@ -119,6 +119,9 @@ test("reminder and mark-paid modules do not send email or touch the email gate",
   assert.equal(helper.includes("sendEmail"), false);
   assert.equal(helper.includes("canQueueGenerationNotice"), false);
   assert.match(helper, /adminRemindStripeConnect/);
+  assert.match(helper, /sent\.status/);
+  assert.match(service, /isRoutableExpert\(/);
+  assert.match(service, /providerNeedsStripeConnectReminder\(/);
 
   const notRoutable = source("server/services/expert-routability.ts");
   const fnStart = notRoutable.indexOf("export async function listNotRoutableExperts");

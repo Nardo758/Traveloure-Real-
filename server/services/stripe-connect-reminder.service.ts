@@ -24,6 +24,7 @@ import { eq, and, sql, or, gte, inArray, desc } from "drizzle-orm";
 import { jitteredStartupDelay } from "./startup-delay";
 import { runPaymentSchedule } from "../automations/payments/runtime";
 import { recordAdminDecisionAudit } from "./admin-decision-audit";
+import { isRoutableExpert } from "./expert-routability";
 import {
   STRIPE_CONNECT_REMINDER_COOLDOWN_MS,
   STRIPE_CONNECT_REMINDER_TYPE,
@@ -33,6 +34,7 @@ import {
   SCHEDULED_STRIPE_REMINDER_TITLE,
   SCHEDULED_STRIPE_REMINDER_MESSAGE,
   candidateNeedsStripeConnectReminder,
+  providerNeedsStripeConnectReminder,
   stripeConnectReminderLink,
   reminderCooldownCutoff,
 } from "./stripe-connect-reminder-policy";
@@ -246,11 +248,62 @@ export async function reminderCooldownActive(userId: string, now = Date.now()): 
 
 export type AdminRemindResult =
   | { ok: true; auditWarning?: string }
-  | { ok: false; reason: "cooldown" };
+  | { ok: false; reason: "cooldown" | "already_set_up"; status: 429 | 409; message: string };
+
+const REMINDER_COOLDOWN_MESSAGE = "A Stripe Connect reminder was already sent to this account within the last 72 hours.";
+const EXPERT_ALREADY_ROUTABLE_MESSAGE = "This expert is already routable.";
+const PROVIDER_ALREADY_SET_UP_MESSAGE = "This provider is already set up for payouts.";
+
+/**
+ * True when `isRoutableExpert` accepts any application on this account.
+ * The comparisons stay in that function.
+ */
+async function expertIsAlreadyRoutable(userId: string): Promise<boolean> {
+  const [account] = await db
+    .select({ email: users.email, isTest: users.isTest })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  const forms = await db
+    .select({
+      applicationStatus: localExpertForms.status,
+      identityVerificationStatus: localExpertForms.identityVerificationStatus,
+      stripeConnectStatus: localExpertForms.stripeConnectStatus,
+    })
+    .from(localExpertForms)
+    .where(eq(localExpertForms.userId, userId));
+  return forms.some((form) => isRoutableExpert({
+    applicationStatus: form.applicationStatus,
+    identityVerificationStatus: form.identityVerificationStatus,
+    stripeConnectStatus: form.stripeConnectStatus,
+    email: account?.email,
+    isTest: account?.isTest,
+  }));
+}
+
+/**
+ * Providers have no routability predicate. Fully set up means
+ * `providerNeedsStripeConnectReminder` is false for the users Connect columns.
+ */
+async function providerIsAlreadySetUp(userId: string): Promise<boolean> {
+  const [account] = await db
+    .select({
+      stripeAccountId: users.stripeAccountId,
+      stripeAccountStatus: users.stripeAccountStatus,
+    })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return !providerNeedsStripeConnectReminder({
+    stripeAccountId: account?.stripeAccountId,
+    stripeAccountStatus: account?.stripeAccountStatus,
+  });
+}
 
 /**
  * Manual admin reminder. Inserts one notification row, then one audit row.
- * A cooldown refusal writes neither. Does not send email.
+ * A routable expert, a provider who is already set up, or a cooldown refusal
+ * writes neither. Does not send email.
  */
 export async function adminRemindStripeConnect(input: {
   actorId: string;
@@ -261,7 +314,20 @@ export async function adminRemindStripeConnect(input: {
   ipAddress?: string | null;
   userAgent?: string | null;
 }): Promise<AdminRemindResult> {
-  if (await reminderCooldownActive(input.targetUserId)) return { ok: false, reason: "cooldown" };
+  const alreadySetUp = input.earnerKind === "expert"
+    ? await expertIsAlreadyRoutable(input.targetUserId)
+    : await providerIsAlreadySetUp(input.targetUserId);
+  if (alreadySetUp) {
+    return {
+      ok: false,
+      reason: "already_set_up",
+      status: 409,
+      message: input.earnerKind === "expert" ? EXPERT_ALREADY_ROUTABLE_MESSAGE : PROVIDER_ALREADY_SET_UP_MESSAGE,
+    };
+  }
+  if (await reminderCooldownActive(input.targetUserId)) {
+    return { ok: false, reason: "cooldown", status: 429, message: REMINDER_COOLDOWN_MESSAGE };
+  }
   await db.insert(notifications).values({
     userId: input.targetUserId,
     type: STRIPE_CONNECT_REMINDER_TYPE,

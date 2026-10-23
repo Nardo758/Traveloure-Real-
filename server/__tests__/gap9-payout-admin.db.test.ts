@@ -539,6 +539,87 @@ test("scheduler candidates skip Identity-only experts and a stale users Connect 
   assert.equal(mine.has(providerOpen), true);
 });
 
+test("a routable expert and a set-up provider are refused with no notification and no audit", async () => {
+  const routable = await adminRemindStripeConnect({
+    actorId: adminId,
+    actorRole: "admin",
+    targetUserId: routableId,
+    targetRole: "travel_expert",
+    earnerKind: "expert",
+  });
+  assert.equal(routable.ok, false);
+  if (!routable.ok) {
+    assert.equal(routable.status, 409);
+    assert.equal(routable.reason, "already_set_up");
+    assert.equal(routable.message, "This expert is already routable.");
+  }
+  assert.equal(await notificationCount(routableId), 0);
+  assert.equal(await auditCount("stripe_connect_reminder", routableId), 0);
+
+  await db.execute(sql`
+    INSERT INTO notifications (id, user_id, type, title, message, created_at)
+    VALUES (
+      ${crypto.randomUUID()},
+      ${routableId},
+      'stripe_connect_reminder',
+      'Complete Your Payout Setup',
+      'An admin has sent you a reminder to complete your Stripe Connect setup so you can receive payouts. Visit your Money page to get started.',
+      now()
+    )
+  `);
+  const stillRoutable = await adminRemindStripeConnect({
+    actorId: adminId,
+    actorRole: "admin",
+    targetUserId: routableId,
+    targetRole: "travel_expert",
+    earnerKind: "expert",
+  });
+  assert.equal(stillRoutable.ok, false);
+  if (!stillRoutable.ok) assert.equal(stillRoutable.status, 409);
+  assert.equal(await notificationCount(routableId), 1);
+  assert.equal(await auditCount("stripe_connect_reminder", routableId), 0);
+
+  const provider = await adminRemindStripeConnect({
+    actorId: adminId,
+    actorRole: "admin",
+    targetUserId: providerComplete,
+    targetRole: "service_provider",
+    earnerKind: "provider",
+  });
+  assert.equal(provider.ok, false);
+  if (!provider.ok) {
+    assert.equal(provider.status, 409);
+    assert.equal(provider.reason, "already_set_up");
+    assert.equal(provider.message, "This provider is already set up for payouts.");
+  }
+  assert.equal(await notificationCount(providerComplete), 0);
+  assert.equal(await auditCount("stripe_connect_reminder", providerComplete), 0);
+
+  const identityOnlyRemind = await adminRemindStripeConnect({
+    actorId: adminId,
+    actorRole: "admin",
+    targetUserId: notRoutableId,
+    targetRole: "travel_expert",
+    earnerKind: "expert",
+  });
+  assert.equal(identityOnlyRemind.ok, true);
+  assert.equal(await notificationCount(notRoutableId), 1);
+  assert.equal(await auditCount("stripe_connect_reminder", notRoutableId), 1);
+
+  const openProvider = await adminRemindStripeConnect({
+    actorId: adminId,
+    actorRole: "admin",
+    targetUserId: providerOpen,
+    targetRole: "service_provider",
+    earnerKind: "provider",
+  });
+  assert.equal(openProvider.ok, true);
+  assert.equal(await notificationCount(providerOpen), 1);
+  assert.equal(await auditCount("stripe_connect_reminder", providerOpen), 1);
+  assert.equal(await emailCount(`${routableId}@payout-admin.invalid`), 0);
+  assert.equal(await emailCount(`${providerComplete}@payout-admin.invalid`), 0);
+});
+
 test("not-routable experts are the accounts the routable predicate refuses", async () => {
   const rows = await listNotRoutableExperts();
   const mine = new Set(rows.filter((row) => row.userId.startsWith(P)).map((row) => row.userId));

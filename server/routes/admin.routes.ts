@@ -3471,6 +3471,7 @@ router.get("/api/admin/providers/stripe-incomplete-count", isAuthenticated, asyn
   });
 
   // Admin: Stripe Connect reminder. Notification row + one audit row. No email.
+  // A routable expert, or a provider already set up for payouts, is 409 with neither row.
   // The expert and provider routes share adminRemindStripeConnect (72h cooldown).
 async function postStripeConnectReminder(req: any, res: any, earnerKind: "expert" | "provider") {
     const user = await getFullAdminUser(getUserId(req)!);
@@ -3489,7 +3490,7 @@ async function postStripeConnectReminder(req: any, res: any, earnerKind: "expert
       earnerKind,
     });
     if (!sent.ok) {
-      return res.status(429).json({ message: "A Stripe Connect reminder was already sent to this account within the last 72 hours." });
+      return res.status(sent.status).json({ message: sent.message });
     }
     res.json(sent.auditWarning ? { ok: true, auditWarning: sent.auditWarning } : { ok: true });
   }
