@@ -617,11 +617,39 @@ export async function claimHandle(page: Page, consoleHome: '/provider/dashboard'
   return ok2xx(status);
 }
 
+/**
+ * A new listing and a draft leaving review must name one catalog theme before submit
+ * (ledger `2026-10-23-experience-themes`). The picker lives on Basics and unmounts on later
+ * steps, so this runs while that step is still on screen. An already-pressed catalog chip
+ * is left alone. "Other" is not chosen: a suggestion is not a published theme.
+ */
+async function pickListingTheme(page: Page): Promise<boolean> {
+  const picker = testid(page, 'listing-theme-picker');
+  if (!(await appears(picker, 5000))) return false;
+  const catalog = picker.locator('[data-testid^="theme-option-"]:not([data-testid="theme-option-other"])');
+  const already = catalog.locator('[aria-pressed="true"]');
+  if ((await already.count()) > 0) return true; // count-ok: the picker has rendered (awaited above)
+  const preferred = testid(page, 'theme-option-city_itinerary');
+  const chip = (await appears(preferred, 8000)) ? preferred : catalog.first();
+  if (!(await appears(chip, 8000))) return false;
+  await chip.click({ timeout: 3000 }).catch(() => {});
+  const handle = await chip.elementHandle();
+  if (!handle) return false;
+  const pressed = await page
+    .waitForFunction((el) => el?.getAttribute('aria-pressed') === 'true', handle, { timeout: 3000 })
+    .then(() => true)
+    .catch(() => false);
+  return pressed;
+}
+
 export async function walkServiceFormToReview(
   page: Page,
   maxSteps = 8,
   opts: { neighborhoodSlug?: string } = {},
 ): Promise<number> {
+  // Confirm a theme while Basics (and the picker) is still mounted. Later steps hide it;
+  // the choice stays in form state through submit.
+  await pickListingTheme(page);
   // The listing-home checklist's "Describe it in 140+ characters" row lands here — top it up
   // if it's short, regardless of how this function was reached (create or edit-mode entry).
   const descField = testid(page, 'service-description');

@@ -164,6 +164,7 @@ export const adminRoutesConfig: RoleRouteConfig[] = [
   { href: '/admin/revenue',             description: 'Revenue overview' },
   { href: '/admin/analytics',           description: 'Platform analytics' },
   { href: '/admin/categories',          description: 'Service categories' },
+  { href: '/admin/experience-themes',   description: 'Listing themes and theme suggestions' },
   // NOTE: /admin/expert-templates is the expert_service_offerings (ESO) onboarding catalog —
   // a name collision with the retired `expert_templates` marketplace, not that lane.
   { href: '/admin/expert-templates',    description: 'Expert service template library (ESO)' },
