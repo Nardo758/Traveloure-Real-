@@ -12,7 +12,9 @@ import { NAV_LEAF_ICONS } from "@/components/layout";
 // L1 / LD 45 (7): the page's chrome is the console shell for a signed-in
 // traveler, the public Layout for a guest — one chooser, never per-page.
 import { BrowseShell } from "@/components/browse-shell";
-import { buildServicesBrowseHref } from "@/lib/services-browse";
+import { buildServicesBrowseHref, SERVICES_BROWSE_THEME_PARAM } from "@/lib/services-browse";
+import { DiscoverThemeFilter } from "@/components/discover-theme-filter";
+import { parseDiscoverThemeParam } from "@shared/experience-themes";
 import { AddToExperienceDialog } from "@/components/add-to-experience-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -1528,6 +1530,15 @@ export default function DiscoverLocationPage() {
   // reload and browser-back clears it. `buildNeighbourhoodHref` preserves every
   // other param (date/country); `setNeighbourhoodFilter` navigates to it.
   const neighbourhoodFilter = searchParams.get("neighborhood");
+  const themeParsed = parseDiscoverThemeParam(searchParams.get(SERVICES_BROWSE_THEME_PARAM) ?? undefined);
+  const selectedThemeSlugs = themeParsed.ok ? themeParsed.slugs : [];
+  const setThemeSlugs = (next: string[]) => {
+    const params = new URLSearchParams(searchString);
+    if (next.length > 0) params.set(SERVICES_BROWSE_THEME_PARAM, next.join(","));
+    else params.delete(SERVICES_BROWSE_THEME_PARAM);
+    const qs = params.toString();
+    navigate(`/discover/location/${cityRaw}${qs ? `?${qs}` : ""}`);
+  };
   const buildNeighbourhoodHref = (slug: string | null): string => {
     const next = new URLSearchParams(searchString);
     if (slug) next.set("neighborhood", slug);
@@ -1657,6 +1668,29 @@ export default function DiscoverLocationPage() {
   const supplyHotels = data?.recommendations?.data?.hotels ?? [];
   const supplyActivities = data?.recommendations?.data?.activities ?? [];
   const platformServices = data?.services?.data ?? [];
+  const { data: experienceThemeCatalog } = useQuery<{ themes: { id: string; slug: string; label: string }[] }>({
+    queryKey: ["/api/experience-themes"],
+    staleTime: 5 * 60_000,
+  });
+  const { data: themedDiscover, isError: themedDiscoverError, error: themedDiscoverQueryError } = useQuery<{ services: any[] }>({
+    queryKey: ["/api/discover", "location-theme", city, selectedThemeSlugs.join(",")],
+    enabled: selectedThemeSlugs.length > 0 && !!city,
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.set("location", city);
+      params.set(SERVICES_BROWSE_THEME_PARAM, selectedThemeSlugs.join(","));
+      params.set("limit", "50");
+      const res = await fetch(`/api/discover?${params.toString()}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.message || "Failed to fetch");
+      }
+      return res.json();
+    },
+  });
+  // No theme selected: the location payload, which includes listings with no theme.
+  // A selected theme asks /api/discover so the filter is server-side and the location cache stays untouched.
+  const servicesForFeed = selectedThemeSlugs.length > 0 ? (themedDiscover?.services ?? []) : platformServices;
   // Trailhead T4.3: published external stubs + the render-time trend headline.
   const externalStubs = data?.externalStubs?.data?.stubs ?? [];
   const externalTrendContext = data?.externalStubs?.data?.trendContext ?? null;
@@ -1755,7 +1789,7 @@ export default function DiscoverLocationPage() {
     ? buildFeedStream(
         neighborhoods, allGems,
         activeFilter === "all" ? feedExperts : experts,
-        events, supplyHotels, supplyActivities, platformServices,
+        events, supplyHotels, supplyActivities, servicesForFeed,
         undefined,
         activeFilter === "all" ? undefined : Number.POSITIVE_INFINITY,
       )
@@ -1907,7 +1941,7 @@ export default function DiscoverLocationPage() {
   const chipCounts: Record<string, number> = (() => {
     if (!data) return {};
     const searchStream = buildFeedStream(
-      neighborhoods, allGems, experts, events, supplyHotels, supplyActivities, platformServices,
+      neighborhoods, allGems, experts, events, supplyHotels, supplyActivities, servicesForFeed,
       undefined,
       Number.POSITIVE_INFINITY,
     );
@@ -2062,6 +2096,17 @@ export default function DiscoverLocationPage() {
 
             {/* ── Spine chip rail (Phase 2c — the visible gem-type filter) ── */}
             <SpineChipRail active={activeFilter} counts={chipCounts} onSelect={setActiveFilter} />
+
+            <DiscoverThemeFilter
+              themes={experienceThemeCatalog?.themes ?? []}
+              selected={selectedThemeSlugs}
+              onChange={setThemeSlugs}
+            />
+            {( !themeParsed.ok || themedDiscoverError) && (
+              <p className="text-sm text-destructive mb-3" data-testid="text-theme-filter-error">
+                {themedDiscoverQueryError instanceof Error ? themedDiscoverQueryError.message : "Unknown theme."}
+              </p>
+            )}
 
             {/* Lead expert, wanted slots, and engine recommendations are no
                 longer stacked blocks here — the feed-composition layer
