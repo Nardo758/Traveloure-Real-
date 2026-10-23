@@ -173,6 +173,8 @@ test("the blanket guard and only the gap routes call the shared helper", () => {
     'router.get("/api/admin/bookings/:kind(service|legacy|liteapi)/:id", isAuthenticated, requireStaff("booking_detail_read")',
     'router.get("/api/admin/message-reports", isAuthenticated, requireStaff("message_reports")',
     'router.patch("/api/admin/message-reports/:id", isAuthenticated, requireStaff("message_reports")',
+    // Ops gap 10: the thread behind a report rides its own grant, never message_reports.
+    'router.get("/api/admin/message-reports/:id/context", isAuthenticated, requireStaff("report_context")',
     'router.patch("/api/admin/services/:id/status", isAuthenticated, requireStaff("listing_status")',
   ];
   for (const line of wired) assert.ok(admin.includes(line), line);

@@ -117,6 +117,8 @@ import { getExtractedPlacesCounts, isConcludedEmptyMarker } from "../services/dm
 import { getLatestDmoExtractionRun } from "../services/dmo-extraction-runs.service";
 import { cityNeighborhoods, expertNeighborhoods, dmoRawContent, dmoSources, dmoExtractedPlaces } from "@shared/schema";
 import { messageReports, userBlocks } from "@shared/schema";
+import { clampReportContextCount } from "@shared/report-context";
+import { loadReportContext } from "../services/report-context.service";
 import { countItemKindsForTrip } from "../services/item-kind-counts.service";
 import { emailOutbox } from "@shared/schema";
 import { drainOutboxForAdminRetry } from "../services/email-outbox.service";
@@ -223,6 +225,7 @@ import {
   LISTING_AFFINITY_TAGS_ACTION,
   LISTING_DELETE_ACTION,
   MESSAGE_REPORT_DECISION_ACTION,
+  MESSAGE_REPORT_CONTEXT_VIEWED_ACTION,
   PROVIDER_SERVICE_RESOURCE,
   MESSAGE_REPORT_RESOURCE,
   EMAIL_OUTBOX_RETRY_ACTION,
@@ -7814,6 +7817,37 @@ router.get("/api/admin/message-reports", isAuthenticated, requireStaff("message_
   } catch (err) {
     console.error("Admin message-reports list error:", err);
     res.status(500).json({ message: "Failed to fetch reports" });
+  }
+});
+
+// Ops gap 10 (ledger `2026-10-22-report-message-context`): the read-only thread behind one report. Its own grant,
+// `report_context` (reading private messages is not `message_reports`). `before`/`after` are clamped to 25 each,
+// default 10. Every successful open writes exactly one audit row; a refused or unknown report writes none.
+router.get("/api/admin/message-reports/:id/context", isAuthenticated, requireStaff("report_context"), async (req, res) => {
+  try {
+    const before = clampReportContextCount(req.query.before);
+    const after = clampReportContextCount(req.query.after);
+    const result = await loadReportContext(req.params.id, before, after);
+    if (!result) return res.status(404).json({ message: "Report not found" });
+    const auditWarning = await recordAdminDecisionAudit({
+      ...(await decisionActor(req)),
+      action: MESSAGE_REPORT_CONTEXT_VIEWED_ACTION,
+      resourceType: MESSAGE_REPORT_RESOURCE,
+      resourceId: req.params.id,
+      targetUserId: result.reportedUserId,
+      beforeStatus: null,
+      afterStatus: null,
+      metadata: {
+        mode: result.payload.mode,
+        before: result.payload.before,
+        after: result.payload.after,
+        messageCount: result.payload.messages.length,
+      },
+    });
+    res.json(auditWarning ? { ...result.payload, auditWarning } : result.payload);
+  } catch (err) {
+    console.error("Admin message-report context error:", err);
+    res.status(500).json({ message: "Failed to load the conversation" });
   }
 });
 

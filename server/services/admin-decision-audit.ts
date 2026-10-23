@@ -18,6 +18,8 @@ export const LISTING_FEATURED_ACTION = "provider_service_featured";
 export const LISTING_AFFINITY_TAGS_ACTION = "provider_service_affinity_tags";
 export const LISTING_DELETE_ACTION = "provider_service_delete";
 export const MESSAGE_REPORT_DECISION_ACTION = "message_report_decision";
+// Ops gap 10: staff opened the thread behind a message report (a read of private messages, audited per open).
+export const MESSAGE_REPORT_CONTEXT_VIEWED_ACTION = "message_report_context_viewed";
 // Ops gap 8 (ledger `2026-10-22-admin-ops-screens`): the three ops screens on /admin/system.
 export const EMAIL_OUTBOX_RETRY_ACTION = "email_outbox_retry";
 export const OUT_OF_BAND_REFUND_CLEARED_ACTION = "out_of_band_refund_cleared";
