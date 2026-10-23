@@ -2142,4 +2142,8 @@ export const MIGRATION_FILES = [
   // HELD for "Migration 406 SQL approved — Leon". Ledger 2026-10-22-boot-seed-stamps.
   // Declared in shared/schema.ts.
   "406_boot_seed_stamps.sql",
+  // 407 — DATA ONLY. Japan country-level Koyo tips cleared. Exact title + country, country-level
+  // rows only, and only while the old tips text is present. No other column changes. No ALTER.
+  // HELD for "Migration 407 SQL approved — Leon". Ledger 2026-10-23-koyo-drop-tips.
+  "407_koyo_country_tips.sql",
 ] as const;
