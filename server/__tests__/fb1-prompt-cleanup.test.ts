@@ -35,12 +35,16 @@ function routeHandler(src: string, marker: string): string {
 
 test("PC1 the free draft's prompt", () => {
   const src = read("server/services/ai-generation.service.ts");
-  assert.doesNotMatch(src, /Hidden Gems to Consider/);
-  assert.doesNotMatch(src, /Prioritize trending/i);
-  assert.doesNotMatch(src, /Factor in crowd levels/i);
-  assert.doesNotMatch(src, /Current Crowd Level/, "no crowd data feeds the model");
-  assert.doesNotMatch(src, /Include hidden gems/i);
-  assert.match(src, /Prioritize must-see attractions\./);
+  // R-07 moved the TravelPulse block, wording unchanged, into the shared formatter.
+  const pulse = read("server/services/travelpulse-traveler-projection.ts");
+  for (const body of [src, pulse]) {
+    assert.doesNotMatch(body, /Hidden Gems to Consider/);
+    assert.doesNotMatch(body, /Prioritize trending/i);
+    assert.doesNotMatch(body, /Factor in crowd levels/i);
+    assert.doesNotMatch(body, /Current Crowd Level/, "no crowd data feeds the model");
+    assert.doesNotMatch(body, /Include hidden gems/i);
+  }
+  assert.match(pulse, /Prioritize must-see attractions\./);
   assert.match(src, NEVER_SAY);
 });
 
