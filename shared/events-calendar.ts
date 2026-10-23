@@ -5,7 +5,9 @@
  * Three tables, three places on the page, never joined (brief, "The model the boards draw"):
  *   - a DATED event (`city_events`) marks the days it covers and lists in "What's on";
  *   - a MONTH-LEVEL season (`destination_events`, months and no date) shows in the month's
- *     "All month" band and never on a day;
+ *     "All month" band and never on a day. `hasWindow` is true only when an admin
+ *     `season_windows_<market>` range overlaps that band; with no window the band stays
+ *     whole-month and is still returned;
  *   - how good a month is for a city (`destination_seasons`) feeds "Where to go".
  *
  * Every derivation the page draws is here, so the marks on the grid and the rows in "What's on"
@@ -19,6 +21,7 @@
  */
 import type { CityEventCard, CityEventVertical } from "./city-events";
 import { namedArea } from "./fever-area";
+import { OPERATING_MARKETS } from "./operating-markets";
 
 /**
  * One dated event as the calendar read sends it: the landing card plus the two fields the
@@ -59,10 +62,16 @@ export interface SeasonBand {
   country: string;
   /** Market keys this band applies to (the markets in its country, or its own city). */
   marketKeys: string[];
-  /** The window months it shows in, YYYY-MM. */
+  /** The window months it shows in, YYYY-MM. A band with no admin window keeps every one of these. */
   months: string[];
-  /** "October and November", "July", "March to May". */
+  /** "October and November", "July", "March to May". Whole months, either way. */
   span: string;
+  /**
+   * True when one of this band's markets has an admin `season_windows_<market>` range that
+   * overlaps `months`. False means no window was entered (or none overlaps): the band is still
+   * returned and still covers its whole months. No code default, and nothing here invents dates.
+   */
+  hasWindow: boolean;
 }
 
 export const SEASON_GROUPS = ["best", "good", "average", "off", "unrated"] as const;
@@ -250,6 +259,119 @@ export function bandSpan(startMonth: number, endMonth: number | null): string {
   if (end === startMonth) return s;
   const len = ((end - startMonth + 12) % 12) + 1;
   return len === 2 ? `${s} and ${MONTH_NAMES[end - 1]}` : `${s} to ${MONTH_NAMES[end - 1]}`;
+}
+
+/** One month-level `destination_events` row, as the calendar read hands it to `composeBands`. */
+export interface BandRow {
+  id: string;
+  title: string;
+  country: string;
+  city: string | null;
+  startMonth: number | null;
+  endMonth: number | null;
+  specificDate: string | null;
+  isRecurring: boolean | null;
+  year: number | null;
+}
+
+/** Admin windows keyed by market. A missing or empty list is no window — never a default. */
+export type BandWindowsByMarket = Readonly<Record<string, readonly { from: string; to: string }[] | undefined>>;
+
+const lower = (s: string | null | undefined) => (s ?? "").trim().toLowerCase();
+const bandTitleKey = (title: string) => title.trim().toLowerCase().replace(/\s+/g, " ");
+
+/**
+ * True when one of `marketKeys` has an admin window whose dates overlap one of `months` (YYYY-MM).
+ * An empty list, a market with no entry, or a window in a year the band is not showing is false.
+ */
+export function bandHasWindow(
+  months: readonly string[],
+  marketKeys: readonly string[],
+  windowsByMarket: BandWindowsByMarket,
+): boolean {
+  for (const key of marketKeys) {
+    for (const w of windowsByMarket[key] ?? []) {
+      if (!w || typeof w.from !== "string" || typeof w.to !== "string") continue;
+      for (const ym of months) {
+        if (w.from <= monthLast(ym) && w.to >= monthFirst(ym)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Month-level season rows → bands over the window.
+ *
+ * A row that names an operating-market city applies to that city. A country row applies to every
+ * operating market in that country. A city row whose title matches a country row (trimmed,
+ * case-insensitive) replaces that country row for that city; a different title sits beside it.
+ * A city the eight markets do not include is omitted. A blank city is a country row.
+ *
+ * `windowsByMarket` is `season_windows_<market>` already parsed. It is not seeded and has no code
+ * default: no overlap ⇒ `hasWindow` false, and the band is still returned for its whole months.
+ */
+export function composeBands(
+  rows: readonly BandRow[],
+  months: readonly string[],
+  windowsByMarket: BandWindowsByMarket = {},
+): SeasonBand[] {
+  const built: Array<{ band: SeasonBand; titleKey: string; cityScoped: boolean }> = [];
+  for (const r of rows) {
+    if (r.startMonth == null || r.specificDate) continue; // a dated row is never a band (E1)
+    if (r.startMonth < 1 || r.startMonth > 12 || (r.endMonth != null && (r.endMonth < 1 || r.endMonth > 12))) continue;
+    const inCountry = OPERATING_MARKETS.filter((m) => lower(m.country) === lower(r.country));
+    if (inCountry.length === 0) continue;
+    const cityName = (r.city ?? "").trim();
+    // A row naming one of our cities applies to that city; a country row to the country's markets,
+    // and the band says the COUNTRY, never a city it does not name (E5).
+    const ownCity = cityName ? inCountry.find((m) => lower(m.cityName) === lower(cityName)) : undefined;
+    if (cityName && !ownCity) continue;
+    const bandMs = bandMonths({ startMonth: r.startMonth, endMonth: r.endMonth, isRecurring: r.isRecurring, year: r.year }, months);
+    if (bandMs.length === 0) continue;
+    const marketKeys = ownCity ? [ownCity.marketKey] : inCountry.map((m) => m.marketKey);
+    built.push({
+      cityScoped: !!ownCity,
+      titleKey: bandTitleKey(r.title),
+      band: {
+        id: r.id,
+        title: r.title,
+        place: ownCity ? ownCity.cityName : inCountry[0].country,
+        country: inCountry[0].country,
+        marketKeys,
+        months: bandMs,
+        span: bandSpan(r.startMonth, r.endMonth),
+        hasWindow: bandHasWindow(bandMs, marketKeys, windowsByMarket),
+      },
+    });
+  }
+
+  const cityTitles = new Map<string, Set<string>>();
+  for (const b of built) {
+    if (!b.cityScoped) continue;
+    for (const key of b.band.marketKeys) {
+      let titles = cityTitles.get(key);
+      if (!titles) cityTitles.set(key, (titles = new Set()));
+      titles.add(b.titleKey);
+    }
+  }
+
+  const out: SeasonBand[] = [];
+  for (const b of built) {
+    if (b.cityScoped) {
+      out.push(b.band);
+      continue;
+    }
+    const marketKeys = b.band.marketKeys.filter((key) => !cityTitles.get(key)?.has(b.titleKey));
+    if (marketKeys.length === 0) continue;
+    const unchanged = marketKeys.length === b.band.marketKeys.length;
+    out.push(
+      unchanged
+        ? b.band
+        : { ...b.band, marketKeys, hasWindow: bandHasWindow(b.band.months, marketKeys, windowsByMarket) },
+    );
+  }
+  return out.sort((a, b) => (a.months[0] === b.months[0] ? a.title.localeCompare(b.title) : a.months[0] < b.months[0] ? -1 : 1));
 }
 
 /** A season row's rating, read into the four groups the board draws; anything else is unrated. */

@@ -3,7 +3,7 @@ import { PUBLIC_REUSABLE_TAGS } from "@shared/content-tiers";
 import { destinationEvents, destinationSeasons } from "@shared/schema";
 import { eq, inArray } from "drizzle-orm";
 
-const destinationData = [
+export const destinationCalendarSeed = [
   {
     country: "Japan",
     seasons: [
@@ -21,10 +21,12 @@ const destinationData = [
       { month: 12, rating: "good", averageTemp: "5-12°C", rainfall: "Low", crowdLevel: "Medium", priceLevel: "Medium", weatherDescription: "Early winter. Festivities." },
     ],
     events: [
-      { title: "Cherry Blossom Festival (Hanami)", eventType: "festival", startMonth: 3, endMonth: 4, description: "Japan's most celebrated seasonal event. Locals gather in parks to admire cherry blossoms.", tips: "Book hotels 3-6 months in advance. Ueno Park and Shinjuku Gyoen are popular spots." },
+      // H-19: season bands, not a festival. Country-level rows carry no city tips. Day windows are
+      // season_windows_<market>, which this seed does not write — Leon enters them in admin.
+      { title: "Cherry blossom season (Hanami)", eventType: "season", startMonth: 3, endMonth: 4, description: "Japan's most celebrated seasonal event. Locals gather in parks to admire cherry blossoms.", tips: null },
       { title: "Golden Week", eventType: "holiday", startMonth: 5, endMonth: 5, description: "Week-long national holiday when many Japanese travel domestically.", tips: "Avoid traveling during this period as prices spike and attractions are crowded." },
       { title: "Gion Matsuri", eventType: "festival", startMonth: 7, endMonth: 7, description: "Kyoto's famous month-long festival with spectacular float processions.", tips: "The main procession on July 17th draws massive crowds. Stay near Shijo Street." },
-      { title: "Autumn Foliage Season (Koyo)", eventType: "season", startMonth: 10, endMonth: 11, description: "Brilliant red and orange autumn colors across Japan.", tips: "Kyoto's temples and Tokyo's gardens are spectacular during this time." },
+      { title: "Autumn Foliage Season (Koyo)", eventType: "season", startMonth: 10, endMonth: 11, description: "Brilliant red and orange autumn colors across Japan.", tips: null },
     ]
   },
   {
@@ -295,12 +297,31 @@ const destinationData = [
   }
 ];
 
+/** The row the seeder inserts for one country-level event. No city, and no season-window dates. */
+export function destinationEventSeedRow(
+  country: string,
+  event: (typeof destinationCalendarSeed)[number]["events"][number],
+) {
+  return {
+    country,
+    title: event.title,
+    description: event.description,
+    eventType: event.eventType,
+    startMonth: event.startMonth,
+    endMonth: event.endMonth,
+    isRecurring: true,
+    tips: event.tips,
+    status: "approved" as const,
+    sourceType: "system" as const,
+  };
+}
+
 export async function seedDestinationCalendar() {
   console.log("Seeding destination calendar data...");
 
   // Deploy-speed fast path: two DISTINCT-country queries decide whether the
   // per-destination existence checks can be skipped entirely.
-  const countries = destinationData.map((d) => d.country);
+  const countries = destinationCalendarSeed.map((d) => d.country);
   const [seasonCountryRows, eventCountryRows] = await Promise.all([
     db
       .selectDistinct({ country: destinationSeasons.country })
@@ -318,7 +339,7 @@ export async function seedDestinationCalendar() {
     return;
   }
 
-  for (const destination of destinationData) {
+  for (const destination of destinationCalendarSeed) {
     // Check if seasons already exist for this country
     const existingSeasons = await db.select().from(destinationSeasons).where(eq(destinationSeasons.country, destination.country));
     
@@ -349,18 +370,7 @@ export async function seedDestinationCalendar() {
     if (existingEvents.length === 0) {
       // Seed events
       for (const event of destination.events) {
-        await db.insert(destinationEvents).values({
-          country: destination.country,
-          title: event.title,
-          description: event.description,
-          eventType: event.eventType,
-          startMonth: event.startMonth,
-          endMonth: event.endMonth,
-          isRecurring: true,
-          tips: event.tips,
-          status: "approved",
-          sourceType: "system",
-        });
+        await db.insert(destinationEvents).values(destinationEventSeedRow(destination.country, event));
       }
       console.log(`  → Seeded ${destination.events.length} events for ${destination.country}`);
     } else {

@@ -6,8 +6,8 @@
  *   · a Japan national holiday, or a substitute holiday, from the committed Cabinet Office list
  *     (`server/data/japan-holidays.json`) — both read "national holiday";
  *   · a Saturday or Sunday inside one of the market's peak windows. The windows are ADMIN CONFIG with no code
- *     default (`platform_settings.season_windows_<market>`, shared with SH-1's "In season" badge): no row ⇒ no window,
- *     so the weekend reason is off until dates are entered.
+ *     default (`platform_settings.season_windows_<market>`, shared with the events-calendar band `hasWindow`
+ *     flag and SH-1's "In season" badge): no row ⇒ no window, so the weekend reason is off until dates are entered.
  * Nothing else: a weekday outside these, a day the list does not cover, or a plan whose dates are not confirmed carries
  * no flag — never a guess (§13).
  *
@@ -75,7 +75,7 @@ export function busyBusReason(dateIso: string, holidays: readonly JapanHoliday[]
   return null;
 }
 
-// ── the season windows setting (shared with SH-1's "In season" badge) ────────────────────────────
+// ── the season windows setting (events-calendar bands and SH-1's "In season" badge) ───────────────
 
 export const SEASON_WINDOWS_SETTING_PREFIX = "season_windows_";
 export const seasonWindowsSettingKey = (market: string) => `${SEASON_WINDOWS_SETTING_PREFIX}${market}`;
