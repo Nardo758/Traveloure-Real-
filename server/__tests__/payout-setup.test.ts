@@ -78,6 +78,31 @@ test("bank and routing shapes are rejected; a PayPal email or username is not", 
   assert.equal(validatePayoutSetupWrite({ payoutMethodType: "other", payoutHandle: "  user42@paypal.com " }).ok, true);
 });
 
+test("a bank word glued to 6 or 7 digits is rejected", () => {
+  const rejected = [
+    "acct123456",
+    "acct1234567",
+    "account123456789",
+    "routing021000021",
+    "rtn021000021",
+    "aba123456789",
+  ];
+  for (const value of rejected) {
+    assert.equal(payoutHandleLooksLikeBankOrRouting(value), true, value);
+    assert.equal(usablePayoutHandle(value), null, value);
+    const write = validatePayoutSetupWrite({ payoutMethodType: "paypal", payoutHandle: value });
+    assert.equal(write.ok, false);
+    if (!write.ok) {
+      assert.equal(write.error, "payout_handle_rejected");
+      assert.equal(write.message.includes(value), false);
+      assert.equal(/\d{6,}/.test(write.message), false);
+    }
+  }
+  for (const value of ["accountable", "acct12345", "accountable123456"]) {
+    assert.equal(payoutHandleLooksLikeBankOrRouting(value), false, value);
+  }
+});
+
 test("stripe_connect stores no handle, and a body cannot name another user", () => {
   const stripe = validatePayoutSetupWrite({ payoutMethodType: "stripe_connect", payoutHandle: null });
   assert.deepEqual(stripe, { ok: true, payoutMethodType: "stripe_connect", payoutHandle: null });

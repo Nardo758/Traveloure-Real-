@@ -42,10 +42,6 @@ function configuredSecretValues(env: NodeJS.ProcessEnv = process.env): string[] 
   return out.sort((x, y) => y.length - x.length);
 }
 
-/**
- * Text with every credential-looking query value masked AND every configured secret's value masked,
- * wherever it appears (a URL quoted in an error message, a partner's echoed request). Never throws.
- */
 const PAYOUT_HANDLE_LOG_KEYS = new Set(["payoutHandle", "payout_handle"]);
 
 /** Drop payout-handle values from structured logs. A handle must not carry a bank or routing number into a log line. */
@@ -91,6 +87,10 @@ export function redactPayoutHandleText(text: string): string {
   );
 }
 
+/**
+ * Text with every credential-looking query value masked AND every configured secret's value masked,
+ * wherever it appears (a URL quoted in an error message, a partner's echoed request). Never throws.
+ */
 export function redactSecretsInText(text: string, env: NodeJS.ProcessEnv = process.env): string {
   if (typeof text !== "string" || text.length === 0) return text;
   let out = text.replace(/([?&])([^=&\s"'<>]+)=([^&\s"'<>]*)/g, (m, sep: string, k: string) => {

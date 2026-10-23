@@ -515,4 +515,53 @@ describe("payout setup database", { concurrency: 1 }, () => {
     assert.equal(meta.includes("payoutHandle"), false);
     assert.equal(meta.includes("payout_handle"), false);
   });
+
+  test("a Stripe claim re-reads setup, and a paypal switch releases an unsent claim", async () => {
+    const past = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    await earning("provider_earnings", "provider_id", stripeId, "10.00", "releasable", past);
+    const payoutId = id("race");
+    await db.execute(sql`
+      INSERT INTO provider_payouts (id, provider_id, amount, status)
+      VALUES (${payoutId}, ${stripeId}, '10.00', 'pending')
+    `);
+    await db.execute(sql`
+      UPDATE users SET payout_method_type = 'paypal', payout_handle = ${`race${RUN}@example.test`}
+      WHERE id = ${stripeId}
+    `);
+    const blocked = await storage.claimProviderPayoutForStripeTransfer(payoutId, stripeId);
+    assert.equal(blocked.payout, undefined);
+    assert.equal(blocked.reason, "payout_setup_blocked");
+    assert.equal(blocked.error, "payout_not_stripe_transfer");
+    assert.equal(blocked.message?.includes("race"), false);
+    assert.equal(await payoutStatus("provider_payouts", payoutId), "pending");
+
+    await db.execute(sql`
+      UPDATE users SET payout_method_type = NULL, payout_handle = NULL WHERE id = ${stripeId}
+    `);
+    const claimed = await storage.claimProviderPayoutForStripeTransfer(payoutId, stripeId);
+    assert.ok(claimed.payout, JSON.stringify(claimed));
+    assert.equal(claimed.payout.status, "processing");
+    const reserved = await db.execute(sql`
+      SELECT count(*)::int AS n FROM provider_earnings
+      WHERE provider_id = ${stripeId} AND payout_id = ${payoutId} AND status = 'releasable'
+    `);
+    assert.equal(Number((reserved.rows[0] as any)?.n), 1);
+
+    await db.execute(sql`
+      UPDATE users SET payout_method_type = 'paypal', payout_handle = ${`race${RUN}@example.test`}
+      WHERE id = ${stripeId}
+    `);
+    const released = await storage.recheckStripeTransferBeforeSend(payoutId, "provider", stripeId);
+    assert.equal(released.proceed, false);
+    assert.equal("reason" in released, false);
+    if (!released.proceed && !("reason" in released)) {
+      assert.equal(released.error, "payout_not_stripe_transfer");
+    }
+    assert.equal(await payoutStatus("provider_payouts", payoutId), "pending");
+    const cleared = await db.execute(sql`
+      SELECT count(*)::int AS n FROM provider_earnings
+      WHERE provider_id = ${stripeId} AND payout_id = ${payoutId}
+    `);
+    assert.equal(Number((cleared.rows[0] as any)?.n), 0);
+  });
 });

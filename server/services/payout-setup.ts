@@ -32,7 +32,10 @@ export const PAYOUT_NOT_STRIPE_TRANSFER_MESSAGE =
 export const ADMIN_PAYOUT_NOT_CREATED_MESSAGE =
   "Payout setup is not complete. No payout was created.";
 
-const BANK_KEYWORD = /\b(routing|rtn|aba|account|acct|iban|swift|bic|sort[\s-]?code|bsb|micr)\b/i;
+// A keyword glued to digits (`acct1234567`) has no trailing word boundary: the next
+// character is a word character. `(?=\d|\b)` still matches that shape, and still
+// refuses a longer word such as `accountable`.
+const BANK_KEYWORD = /\b(routing|rtn|aba|account|acct|iban|swift|bic|sort[\s-]?code|bsb|micr)(?=\d|\b)/i;
 
 /**
  * True when the text looks like a bank account number, a routing number, or an IBAN.

@@ -121,7 +121,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { isExpertRole, isProviderRole, isEarnerRole } from "@shared/roles";
-import { decidePayoutRequest } from "../services/payout-setup";
+import { decidePayoutRequest, validatePayoutSetupWrite } from "../services/payout-setup";
 import { lockPayoutRequestDecision, readOwnPayoutSetup, readPayoutFacts, saveOwnPayoutSetup } from "../services/payout-setup.service";
 import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS, effectivePayoutMinimumCents, isPayoutStale, STALE_PAYOUT_PROCESSING_DAYS } from "../config/payout.config";
 import { eq, and, or, like, ilike, sql, desc, count, ne, isNotNull, asc, inArray } from "drizzle-orm";
@@ -3198,7 +3198,12 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
     const userId = getUserId(req);
     if (!userId) return res.status(401).json({ error: "not_authenticated", message: "Not authenticated" });
     try {
-      const result = await saveOwnPayoutSetup(userId, req.body);
+      const write = validatePayoutSetupWrite(req.body);
+      if (!write.ok) return res.status(400).json({ error: write.error, message: write.message });
+      const result = await saveOwnPayoutSetup(userId, {
+        payoutMethodType: write.payoutMethodType,
+        payoutHandle: write.payoutHandle,
+      });
       if (!result.ok) return res.status(result.status).json({ error: result.error, message: result.message });
       return res.json(result.setup);
     } catch (error: any) {

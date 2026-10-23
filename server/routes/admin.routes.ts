@@ -6164,8 +6164,10 @@ router.patch("/api/admin/payouts/:id", isAuthenticated, async (req, res) => {
           return res.status(404).json({ error: "Payout not found" });
         }
 
-        // Hold, re-read under the users row lock, before any Stripe call or claim.
-        // A complete paypal/other method is not a Stripe transfer. mark-paid is unchanged.
+        // Fast refuse before the platform-balance read. This transaction commits
+        // here, so it does not authorize the transfer. The claim re-reads setup
+        // under the payout row lock and the users row lock, and both locks are
+        // released before createTransfer. mark-paid is unchanged.
         const transferDecision = await db.transaction(async (tx) =>
           lockStripeTransferDecision(tx, recipientId, requesterType as "expert" | "provider"),
         );
@@ -6210,9 +6212,12 @@ router.patch("/api/admin/payouts/:id", isAuthenticated, async (req, res) => {
           // concurrent call / retry already owns this payout → do NOT transfer again. The DB
           // transition is the guard (a check-then-transfer is the double-spend TOCTOU we're closing).
           const claimResult = requesterType === 'expert'
-            ? await storage.claimExpertPayoutForProcessing(id)
-            : await storage.claimProviderPayoutForProcessing(id);
+            ? await storage.claimExpertPayoutForStripeTransfer(id, recipientId)
+            : await storage.claimProviderPayoutForStripeTransfer(id, recipientId);
           if (!claimResult.payout) {
+            if (claimResult.reason === 'payout_setup_blocked') {
+              return res.status(400).json({ error: claimResult.error, message: claimResult.message });
+            }
             if (claimResult.reason === 'insufficient_releasable_earnings') {
               return res.status(409).json({
                 error: "Payout remains pending: insufficient undisputed, unreserved releasable earnings to fund this payout.",
@@ -6228,7 +6233,27 @@ router.patch("/api/admin/payouts/:id", isAuthenticated, async (req, res) => {
             });
           }
 
+          // Claim has committed. Re-read setup and release the users lock before Stripe.
+          // A paypal switch after the claim returns this payout to pending and does not transfer.
+          const sendGate = await storage.recheckStripeTransferBeforeSend(
+            id,
+            requesterType as 'expert' | 'provider',
+            recipientId,
+          );
+          if (!sendGate.proceed) {
+            if ('reason' in sendGate) {
+              return res.status(409).json({
+                error: "Payout is no longer claimed for a Stripe transfer.",
+                payoutId: id,
+              });
+            }
+            return res.status(400).json({ error: sendGate.error, message: sendGate.message });
+          }
+
           try {
+            // The users-row lock is not held across this call. A method change that
+            // lands after the re-check above and before Stripe accepts the transfer
+            // is the window left open so a database lock is not held across HTTP.
             const transfer = await stripeConnectService.createTransfer(
               payoutAmountNum,
               'usd',

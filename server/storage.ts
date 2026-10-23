@@ -38,6 +38,7 @@ import { paymentOnRecordSql } from "./services/payment-on-record";
 import { hasPaymentOnRecord, NO_PAYMENT_ON_RECORD } from "@shared/payment-on-record";
 import { isProviderRole } from "@shared/roles";
 import { externalPayoutMethod, type PayoutStatusUpdateOptions } from "./config/payout.config";
+import { lockStripeTransferDecision } from "./services/payout-setup.service";
 import { isPriceBasis } from "@shared/price-basis";
 import type { TripListItem } from "@shared/routes";
 import { omitFields } from "./utils/data-sanitizer";
@@ -188,8 +189,19 @@ function completedPayoutGuard(statusColumn: any, options?: PayoutStatusUpdateOpt
 
 type PayoutClaimResult<T> = {
   payout?: T;
-  reason?: 'insufficient_releasable_earnings' | 'already_processing' | 'terminal';
+  reason?: 'insufficient_releasable_earnings' | 'already_processing' | 'terminal' | 'payout_setup_blocked';
+  error?: 'payout_setup_incomplete' | 'payout_not_stripe_transfer';
+  message?: string;
 };
+
+/**
+ * Pre-Stripe re-read. `proceed: true` means the users-row lock was taken and
+ * already released; the caller must not hold it across the Stripe HTTP call.
+ */
+type StripeTransferSendGate =
+  | { proceed: true }
+  | { proceed: false; error: 'payout_setup_incomplete' | 'payout_not_stripe_transfer'; message: string }
+  | { proceed: false; reason: 'not_processing' };
 import type {
   NeighborhoodRow as MarketNeighborhoodRow,
   CoverageTargetRow as MarketCoverageTargetRow,
@@ -1023,6 +1035,16 @@ export interface IStorage {
   claimExpertPayoutForProcessing(id: string): Promise<PayoutClaimResult<ExpertPayout>>;
 
   claimProviderPayoutForProcessing(id: string): Promise<PayoutClaimResult<ProviderPayout>>;
+
+  claimExpertPayoutForStripeTransfer(id: string, recipientId: string): Promise<PayoutClaimResult<ExpertPayout>>;
+
+  claimProviderPayoutForStripeTransfer(id: string, recipientId: string): Promise<PayoutClaimResult<ProviderPayout>>;
+
+  recheckStripeTransferBeforeSend(
+    id: string,
+    earnerType: 'expert' | 'provider',
+    recipientId: string,
+  ): Promise<StripeTransferSendGate>;
 
   markEarningsPaidOutForPayout(
     earnerType: 'expert' | 'provider',
@@ -6784,9 +6806,26 @@ export class DatabaseStorage implements IStorage {
   private async claimPayoutForProcessing(
     id: string,
     earnerType: 'expert' | 'provider',
+    gate?: { recipientId: string },
   ): Promise<PayoutClaimResult<ExpertPayout | ProviderPayout>> {
     return db.transaction(async (tx) => {
       const payoutTable = earnerType === 'expert' ? expertPayouts : providerPayouts;
+      if (gate) {
+        // Payout row first, then the users row inside lockStripeTransferDecision.
+        // PUT /api/me/payout-setup locks only users, so this order does not deadlock with it.
+        const [locked] = earnerType === 'expert'
+          ? await tx.select({ status: expertPayouts.status, ownerId: expertPayouts.expertId })
+            .from(expertPayouts).where(eq(expertPayouts.id, id)).for('update')
+          : await tx.select({ status: providerPayouts.status, ownerId: providerPayouts.providerId })
+            .from(providerPayouts).where(eq(providerPayouts.id, id)).for('update');
+        if (!locked || locked.ownerId !== gate.recipientId) return { reason: 'terminal' as const };
+        if (locked.status === 'processing') return { reason: 'already_processing' as const };
+        if (locked.status === 'completed' || locked.status === 'failed') return { reason: 'terminal' as const };
+        const decision = await lockStripeTransferDecision(tx, gate.recipientId, earnerType);
+        if (decision.action === 'block') {
+          return { reason: 'payout_setup_blocked' as const, error: decision.error, message: decision.message };
+        }
+      }
       const [row] = await tx.update(payoutTable)
         .set({ status: 'processing', processedAt: new Date() })
         .where(and(eq(payoutTable.id, id), sqlOp`${payoutTable.status} NOT IN ('completed','processing','failed')`))
@@ -6844,6 +6883,54 @@ export class DatabaseStorage implements IStorage {
 
   async claimProviderPayoutForProcessing(id: string): Promise<PayoutClaimResult<ProviderPayout>> {
     return this.claimPayoutForProcessing(id, 'provider') as Promise<PayoutClaimResult<ProviderPayout>>;
+  }
+
+  async claimExpertPayoutForStripeTransfer(id: string, recipientId: string): Promise<PayoutClaimResult<ExpertPayout>> {
+    return this.claimPayoutForProcessing(id, 'expert', { recipientId }) as Promise<PayoutClaimResult<ExpertPayout>>;
+  }
+
+  async claimProviderPayoutForStripeTransfer(id: string, recipientId: string): Promise<PayoutClaimResult<ProviderPayout>> {
+    return this.claimPayoutForProcessing(id, 'provider', { recipientId }) as Promise<PayoutClaimResult<ProviderPayout>>;
+  }
+
+  /**
+   * Re-reads payout setup after the claim has committed. The payout row is locked
+   * first and the users row second; both locks end when this transaction commits,
+   * before any Stripe HTTP call. A method that is no longer a Stripe transfer
+   * returns the unsent claim to pending and clears releasable reservations.
+   */
+  async recheckStripeTransferBeforeSend(
+    id: string,
+    earnerType: 'expert' | 'provider',
+    recipientId: string,
+  ): Promise<StripeTransferSendGate> {
+    return db.transaction(async (tx) => {
+      const payoutTable = earnerType === 'expert' ? expertPayouts : providerPayouts;
+      const [locked] = earnerType === 'expert'
+        ? await tx.select({
+          status: expertPayouts.status,
+          ownerId: expertPayouts.expertId,
+          transferRef: expertPayouts.transactionId,
+        }).from(expertPayouts).where(eq(expertPayouts.id, id)).for('update')
+        : await tx.select({
+          status: providerPayouts.status,
+          ownerId: providerPayouts.providerId,
+          transferRef: providerPayouts.payoutReference,
+        }).from(providerPayouts).where(eq(providerPayouts.id, id)).for('update');
+      if (!locked || locked.status !== 'processing' || locked.ownerId !== recipientId || locked.transferRef) {
+        return { proceed: false, reason: 'not_processing' as const };
+      }
+      const decision = await lockStripeTransferDecision(tx, recipientId, earnerType);
+      if (decision.action === 'transfer') return { proceed: true as const };
+      await tx.update(payoutTable)
+        .set({ status: 'pending', processedAt: null })
+        .where(and(eq(payoutTable.id, id), eq(payoutTable.status, 'processing')));
+      const earningsTable = earnerType === 'expert' ? expertEarnings : providerEarnings;
+      await tx.update(earningsTable)
+        .set({ payoutId: null })
+        .where(and(eq(earningsTable.payoutId, id), eq(earningsTable.status, 'releasable')));
+      return { proceed: false, error: decision.error, message: decision.message };
+    });
   }
 
   async updateProviderPayoutStatus(id: string, status: string, notes?: string, payoutReference?: string, options?: PayoutStatusUpdateOptions): Promise<ProviderPayout> {
