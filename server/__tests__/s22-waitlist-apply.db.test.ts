@@ -83,6 +83,8 @@ async function signUp(email: string, market: string, role: "provider" | "travele
   return { ...written, outcome };
 }
 
+process.env.EMAIL_SENDS_ENABLED = "true";
+
 before(async () => {
   for (const key of [...MARKETING_EMAIL_FOOTER_FIELDS.map((field) => field.key), BETA_MARKET_SLUGS_SETTING]) {
     const r = await pool.query(`SELECT setting_value FROM platform_settings WHERE setting_key = $1`, [key]);

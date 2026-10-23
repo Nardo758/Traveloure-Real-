@@ -69,7 +69,7 @@ export const ADMIN_OPS_COPY = {
 } as const;
 
 /** The outbox statuses the list endpoint filters on. */
-export const OUTBOX_STATUSES = ["pending", "failed", "dead", "sent"] as const;
+export const OUTBOX_STATUSES = ["pending", "held", "failed", "dead", "sent"] as const;
 
 /** Mirrors the retry endpoint's own WHERE (`status IN ('failed','dead')`); the server is the guard. */
 export function outboxRetryable(status: string | null | undefined): boolean {

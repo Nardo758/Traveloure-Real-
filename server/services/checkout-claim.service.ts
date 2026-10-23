@@ -1449,6 +1449,7 @@ type PaymentFailedEmailSender = (params: {
   toEmail: string;
   userName: string | null;
   bookingTitle: string | null;
+  bookingId?: string;
 }) => Promise<void>;
 
 /**
@@ -1511,6 +1512,7 @@ export async function markCheckoutPaymentFailed(opts: {
         toEmail: row.email,
         userName: [row.first_name, row.last_name].filter(Boolean).join(" ") || null,
         bookingTitle: row.title ?? null,
+        bookingId: r.id,
       }).catch((e: any) => logger.error({ bookingId: r.id, err: e?.message }, "[payment-failed] email send error"));
     } catch (mailErr: any) {
       logger.error({ bookingId: r.id, err: mailErr?.message }, "[payment-failed] email resolve error");

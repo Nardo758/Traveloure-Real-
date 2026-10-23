@@ -3177,6 +3177,8 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
                 sendExpertApplicationApprovalEmail({
                   toEmail: approvedApplicant.email,
                   firstName: approvedApplicant.firstName ?? null,
+                  applicationId: req.params.id,
+                  priorStatus: updated.priorStatus ?? null,
                 });
               } catch (err) {
                 console.error("[admin] Failed to send expert approval email (non-fatal):", err);
@@ -3207,6 +3209,8 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
                 toEmail: applicant.email,
                 firstName: applicant.firstName ?? null,
                 rejectionMessage: rejectionMessage ?? null,
+                applicationId: req.params.id,
+                priorStatus: updated.priorStatus ?? null,
               });
             } catch (err) {
               console.error("[admin] Failed to send expert rejection email (non-fatal):", err);
@@ -3597,6 +3601,8 @@ router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, asy
               sendProviderApplicationApprovalEmail({
                 toEmail: providerUser.email,
                 firstName: providerUser.firstName ?? null,
+                applicationId: req.params.id,
+                priorStatus: updated.priorStatus ?? null,
               });
             }
           },
@@ -3632,6 +3638,8 @@ router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, asy
               toEmail: providerUser.email,
               firstName: providerUser.firstName ?? null,
               rejectionMessage: rejectionMessage ?? null,
+              applicationId: req.params.id,
+              priorStatus: updated.priorStatus ?? null,
             });
           }
         },
@@ -3679,6 +3687,7 @@ router.patch("/api/admin/provider-applications/:id/rejection-reason", isAuthenti
             toEmail: providerUser.email,
             firstName: providerUser.firstName ?? null,
             rejectionMessage: rejectionMessage,
+            applicationId: req.params.id,
           });
         }
       },
