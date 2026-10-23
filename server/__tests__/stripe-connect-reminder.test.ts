@@ -30,7 +30,7 @@ import { stripeConnectReminderScheduler } from '../services/stripe-connect-remin
 function makeChain(value: unknown = null): any {
   const chain: any = {};
   const p = Promise.resolve(value);
-  const methods = ['from', 'where', 'set', 'values', 'limit', 'orderBy', 'returning'];
+  const methods = ['from', 'where', 'set', 'values', 'limit', 'orderBy', 'returning', 'leftJoin'];
   for (const m of methods) {
     chain[m] = (..._: unknown[]) => chain;
   }
@@ -182,7 +182,7 @@ describe('StripeConnectReminderService.runReminders()', () => {
     );
   });
 
-  it('(C) recently-notified provider is skipped within the 3-day cooldown', async () => {
+  it('(C) recently-notified provider is skipped within the 72-hour cooldown', async () => {
     let insertCalled = false;
 
     // First select returns the unconnected provider as pending
@@ -237,6 +237,79 @@ describe('StripeConnectReminderService.runReminders()', () => {
       FRESH_PROVIDER.id,
       'only the non-recently-notified provider must receive a notification',
     );
+  });
+
+  it('(E) an Identity-only expert is skipped — Connect already complete', async () => {
+    let insertCalled = false;
+    (db as any).select = makeSelectSequence([
+      [{
+        id: 'expert-identity-only',
+        role: 'travel_expert',
+        stripeAccountId: null,
+        stripeAccountStatus: 'onboarding_incomplete',
+        formStripeConnectStatus: 'complete',
+        identityVerificationStatus: 'pending',
+      }],
+    ]);
+    (db as any).insert = () => ({
+      values() {
+        insertCalled = true;
+        return Promise.resolve();
+      },
+    });
+
+    await (stripeConnectReminderScheduler as any).runReminders();
+
+    assert.strictEqual(insertCalled, false, 'Identity-only must not insert a reminder');
+  });
+
+  it('(E) travel_expert with an open expert-form Connect status links to /expert/money', async () => {
+    const insertedRows: any[][] = [];
+    (db as any).select = makeSelectSequence([
+      [{
+        id: 'expert-stale-users-column',
+        role: 'travel_expert',
+        stripeAccountId: 'acct_stale',
+        stripeAccountStatus: 'complete',
+        formStripeConnectStatus: 'not_started',
+        identityVerificationStatus: 'verified',
+      }],
+      [],
+    ]);
+    (db as any).insert = () => ({
+      values(rows: any[]) {
+        insertedRows.push(rows);
+        return Promise.resolve();
+      },
+    });
+
+    await (stripeConnectReminderScheduler as any).runReminders();
+
+    assert.strictEqual(insertedRows.length, 1);
+    assert.strictEqual(insertedRows[0][0].userId, 'expert-stale-users-column');
+    assert.strictEqual(insertedRows[0][0].data?.link, '/expert/money');
+  });
+
+  it('(E) a provider the query returned with Connect complete is not reminded', async () => {
+    let insertCalled = false;
+    (db as any).select = makeSelectSequence([
+      [{
+        id: CONNECTED_PROVIDER.id,
+        role: CONNECTED_PROVIDER.role,
+        stripeAccountId: CONNECTED_PROVIDER.stripeAccountId,
+        stripeAccountStatus: CONNECTED_PROVIDER.stripeAccountStatus,
+      }],
+    ]);
+    (db as any).insert = () => ({
+      values() {
+        insertCalled = true;
+        return Promise.resolve();
+      },
+    });
+
+    await (stripeConnectReminderScheduler as any).runReminders();
+
+    assert.strictEqual(insertCalled, false);
   });
 
   it('(D) runReminders() is a no-op when there are zero pending users', async () => {

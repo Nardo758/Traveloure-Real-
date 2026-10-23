@@ -237,6 +237,9 @@ import {
   SUPPORT_NOTE_ACTION,
   CONTACT_SUBMISSION_RESOURCE,
 } from "../services/admin-decision-audit";
+import { listNotRoutableExperts } from "../services/expert-routability";
+import { adminRemindStripeConnect } from "../services/stripe-connect-reminder.service";
+import { listOwedEarners, markPaidBodySchema, markPayoutPaidExternally } from "../services/payout-admin.service";
 import { SUPPORT_STATUSES, isSupportStatus, supportPatchBodySchema, SUPPORT_FIRST_RESPONSE_HOURS_SETTING, isValidSupportFirstResponseHoursSetting } from "@shared/support-intake";
 import { applySupportPatch, isSupportAssignee, listSupportAssignees, listSupportSubmissions } from "../services/support-inbox.service";
 import { bandLockedByCohort } from "../services/expert-rate-cohort.service";
@@ -3037,6 +3040,20 @@ router.patch("/api/admin/contact-submissions/:id", isAuthenticated, requireStaff
 // Restricted experts are automatically excluded from lead routing but may still hold
 // active assignments made before the restriction — admin must review and reassign.
 
+router.get("/api/admin/experts/not-routable", isAuthenticated, async (req, res) => {
+    const user = await getFullAdminUser(getUserId(req)!);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    try {
+      const experts = await listNotRoutableExperts();
+      res.json({ count: experts.length, experts });
+    } catch (err) {
+      console.error("Admin not-routable experts error:", err);
+      res.status(500).json({ message: "Failed to fetch experts who are not routable" });
+    }
+  });
+
 router.get("/api/admin/experts/stripe-restricted", isAuthenticated, async (req, res) => {
     const user = await getFullAdminUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
@@ -3552,22 +3569,37 @@ router.get("/api/admin/providers/stripe-incomplete-count", isAuthenticated, asyn
     res.json({ count });
   });
 
-  // Admin: Send a Stripe Connect reminder notification to a provider
-router.post("/api/admin/providers/:userId/remind-stripe", isAuthenticated, async (req, res) => {
+  // Admin: Stripe Connect reminder. Notification row + one audit row. No email.
+  // A routable expert, or a provider already set up for payouts, is 409 with neither row.
+  // The expert and provider routes share adminRemindStripeConnect (72h cooldown).
+async function postStripeConnectReminder(req: any, res: any, earnerKind: "expert" | "provider") {
     const user = await getFullAdminUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
-    const { userId } = req.params;
-    await insertNotification({
-      userId,
-      type: "stripe_connect_reminder",
-      title: "Complete Your Payout Setup",
-      message: "An admin has sent you a reminder to complete your Stripe Connect setup so you can receive payouts. Visit your Money page to get started.",
-      // C9: provider Earnings module renamed Money (§17) — /provider/earnings redirects here.
-      data: { link: "/provider/money" },
+    const target = await storage.getUser(req.params.userId);
+    const roleOk = earnerKind === "expert" ? isExpertRole(target?.role) : isProviderRole(target?.role);
+    if (!target || !roleOk) {
+      return res.status(404).json({ message: "Account not found" });
+    }
+    const sent = await adminRemindStripeConnect({
+      ...(await decisionActor(req)),
+      targetUserId: target.id,
+      targetRole: target.role,
+      earnerKind,
     });
-    res.json({ ok: true });
+    if (!sent.ok) {
+      return res.status(sent.status).json({ message: sent.message });
+    }
+    res.json(sent.auditWarning ? { ok: true, auditWarning: sent.auditWarning } : { ok: true });
+  }
+
+router.post("/api/admin/experts/:userId/remind-stripe", isAuthenticated, async (req, res) => {
+    await postStripeConnectReminder(req, res, "expert");
+  });
+
+router.post("/api/admin/providers/:userId/remind-stripe", isAuthenticated, async (req, res) => {
+    await postStripeConnectReminder(req, res, "provider");
   });
 
   // Admin: Update provider application status
@@ -5983,6 +6015,22 @@ router.get("/api/admin/payouts", isAuthenticated, async (req, res) => {
     }
   });
 
+router.get("/api/admin/payouts/owed", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const earners = await listOwedEarners();
+      res.json({ earners });
+    } catch (error: any) {
+      console.error("Error fetching amounts owed:", error);
+      res.status(500).json({ message: "Failed to get amounts owed", error: error.message });
+    }
+  });
+
 
 router.post("/api/admin/payouts", isAuthenticated, async (req, res) => {
     try {
@@ -6238,6 +6286,36 @@ router.patch("/api/admin/payouts/:id", isAuthenticated, async (req, res) => {
       res.json(updated);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to update payout", error: error.message });
+    }
+  });
+
+router.post("/api/admin/payouts/:id/mark-paid", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      if (!userId) return res.status(401).json({ message: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user || user.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+      const parsed = markPaidBodySchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid mark-paid request" });
+      }
+      const actor = await decisionActor(req);
+      const result = await markPayoutPaidExternally({
+        payoutId: req.params.id,
+        requesterType: parsed.data.requesterType,
+        method: parsed.data.method,
+        notes: parsed.data.notes,
+        actorId: actor.actorId,
+        actorRole: actor.actorRole,
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent,
+      });
+      if (!result.ok) return res.status(result.status).json({ message: result.message });
+      res.json(result.auditWarning ? { ...result.payout, auditWarning: result.auditWarning } : result.payout);
+    } catch (error: any) {
+      res.status(500).json({ message: "Failed to mark payout paid", error: error.message });
     }
   });
 

@@ -64,6 +64,37 @@ export function isPayoutStale(payout: { requestedAt?: Date | string | null; stat
   return ageDays > STALE_PAYOUT_PROCESSING_DAYS;
 }
 
+/**
+ * Recorded on an admin completion that did not go through Stripe Connect.
+ * `externalPayoutMethod` never returns `stripe`.
+ */
+export const EXTERNAL_PAYOUT_METHOD = "external";
+
+const PAYOUT_METHOD_LABEL = /^[a-z][a-z0-9_]{0,48}$/;
+
+/**
+ * A method label stored on an externally completed payout.
+ * Blank, unknown, and any `stripe` spelling become `external`.
+ */
+export function externalPayoutMethod(label: string | null | undefined): string {
+  const trimmed = String(label ?? "").trim().toLowerCase();
+  if (!trimmed || trimmed === "stripe" || !PAYOUT_METHOD_LABEL.test(trimmed)) return EXTERNAL_PAYOUT_METHOD;
+  return trimmed;
+}
+
+/** Optional arguments for the payout status updaters. Absent on the Stripe completion path. */
+export type PayoutStatusUpdateOptions = {
+  /** Set only when an admin completes the payout outside Stripe. Never stored as `stripe`. */
+  payoutMethod?: string;
+  /** When set, a `completed` transition matches only these current statuses. */
+  onlyFrom?: readonly string[];
+  /** Set when this call's completed UPDATE matched a row. Omitted by the Stripe path. */
+  applied?: { current: boolean };
+};
+
+/** Statuses an admin may move to `completed` on the external mark-paid rail. */
+export const EXTERNAL_MARK_PAID_FROM = ["pending", "approved"] as const;
+
 export function effectivePayoutMinimumCents(
   userMinimumDollars: string | number | null | undefined,
 ): number {

@@ -203,6 +203,55 @@ export function publicExpertSql(applicationStatusExpr: SQL, emailExpr: SQL, isTe
   return sql`(${applicationStatusExpr} = 'approved'${seedClause} AND NOT ${testAccountSql(isTestExpr, emailExpr)})`;
 }
 
+export type NotRoutableExpertRow = {
+  userId: string;
+  role: string | null;
+  email: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  applicationStatus: string | null;
+  identityVerificationStatus: string | null;
+  stripeConnectStatus: string | null;
+};
+
+/**
+ * Experts the routing predicate refuses. The predicate is `routableExpertFilterSql`
+ * (the SQL form of `isRoutableExpert`, including the pool and editorial exclusions).
+ * This list does not restate that rule.
+ */
+export async function listNotRoutableExperts(): Promise<NotRoutableExpertRow[]> {
+  const { db } = await import("../db");
+  const { EXPERT_ROLES } = await import("@shared/roles");
+  const filter = await routableExpertFilterSql();
+  const roles = sql.join([...EXPERT_ROLES].map((role) => sql`${role}`), sql`, `);
+  const r = await db.execute(sql`
+    SELECT DISTINCT ON (u.id)
+      u.id AS user_id,
+      u.role,
+      u.email,
+      u.first_name,
+      u.last_name,
+      lef.status AS application_status,
+      lef.identity_verification_status,
+      lef.stripe_connect_status
+    FROM users u
+    LEFT JOIN local_expert_forms lef ON lef.user_id = u.id
+    WHERE (u.role IN (${roles}) OR lef.user_id IS NOT NULL)
+      AND NOT (${filter})
+    ORDER BY u.id
+  `);
+  return (r.rows ?? []).map((row: any) => ({
+    userId: String(row.user_id),
+    role: row.role ?? null,
+    email: row.email ?? null,
+    firstName: row.first_name ?? null,
+    lastName: row.last_name ?? null,
+    applicationStatus: row.application_status ?? null,
+    identityVerificationStatus: row.identity_verification_status ?? null,
+    stripeConnectStatus: row.stripe_connect_status ?? null,
+  }));
+}
+
 /** Is this ONE account routable (approved + Identity verified + Connect complete + not seed + not the pool)? */
 export async function isExpertIdRoutable(userId: string | null | undefined): Promise<boolean> {
   if (!userId) return false;
