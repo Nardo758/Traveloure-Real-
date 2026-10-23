@@ -89,7 +89,7 @@ describe("events calendar rules", () => {
     // Day marks come from dated events only — a band contributes nothing to any day.
     const marks = dayMarks([], "2026-10");
     assert.ok(marks.every((m) => m.count === 0 && !m.longRun), "no dated event, no mark — whatever the bands say");
-    const band: SeasonBand = { id: "b", title: "Autumn foliage", place: "Japan", country: "Japan", marketKeys: ["kyoto"], months: ["2026-10", "2026-11"], span: "October and November" };
+    const band: SeasonBand = { id: "b", title: "Autumn foliage", place: "Japan", country: "Japan", marketKeys: ["kyoto"], months: ["2026-10", "2026-11"], span: "October and November", hasWindow: false };
     assert.equal(bandsInPeriod([band], "2026-11-03", "2026-11-03").length, 1, "a day in November shows the band in the list");
     assert.equal(bandsInPeriod([band], "2026-12-01", "2026-12-31").length, 0);
   });

@@ -2134,4 +2134,8 @@ export const MIGRATION_FILES = [
   // Ops gap 7: contact_submissions.first_response_at, nullable, no default. Ledger 2026-10-22-support-intake-queue.
   // HELD for "Migration 404 SQL approved — Leon".
   "404_contact_first_response.sql",
+  // 405 — DATA ONLY. Japan country-level Hanami title/event_type/tips and Koyo tips. Exact title +
+  // country, and only while the old text is present. No ALTER. HELD for "Migration 405 SQL approved — Leon".
+  // Wording held for "Wording approved — Leon". Ledger 2026-10-23-season-bands-admin-windows.
+  "405_season_band_copy.sql",
 ] as const;

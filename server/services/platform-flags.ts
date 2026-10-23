@@ -156,7 +156,7 @@ export async function getBlogFooterMinPublished(): Promise<number> {
  * FB-1 expert hook (ledger `2026-10-18-fb1-expert-hook`): the cities whose hook names a local and may offer the chooser.
  * A missing row, a read error or an invalid value ⇒ none (the switch defaults off). Cached like the flags.
  */
-/** FB-1 step 5d: a market's peak windows (`season_windows_<market>`). No row, unreadable or invalid ⇒ none — no code default. */
+/** A market's peak windows (`season_windows_<market>`): busy-bus and the events-calendar band flag. No row, unreadable or invalid ⇒ none — no code default. */
 export async function getSeasonWindows(market: string): Promise<SeasonWindow[]> {
   try {
     return seasonWindows(await getSettingValue(seasonWindowsSettingKey(market)));

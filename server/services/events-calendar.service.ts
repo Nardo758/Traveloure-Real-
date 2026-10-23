@@ -10,7 +10,9 @@
  *     strip keeps reading events that have not started yet.
  *   - the month-level seasons from `destination_events` (approved, a start month, no specific
  *     date), for the countries of the eight operating markets, expanded over every month they
- *     span. Dated `destination_events` rows are never painted on a day (ruling E1).
+ *     span. A city row replaces a same-title country row for that city; a different title sits
+ *     beside it. `hasWindow` is the admin `season_windows_<market>` overlap — no row means the
+ *     band stays whole-month and is still returned. Dated rows are never painted on a day (E1).
  *   - one row per operating market for "Where to go": its vibe tags and its season rating per
  *     month — the city's own row, else its country's, else none (ruling E6: never dropped).
  *
@@ -29,8 +31,7 @@ import {
 import { OPERATING_MARKETS } from "@shared/operating-markets";
 import { isCityEventVertical, isRenderableCityEvent, localDate } from "@shared/city-events";
 import {
-  bandMonths,
-  bandSpan,
+  composeBands,
   monthLast,
   seasonGroup,
   windowMonths,
@@ -39,23 +40,13 @@ import {
   type CalendarPlace,
   type EventsCalendarPayload,
   type MonthSeason,
-  type SeasonBand,
 } from "@shared/events-calendar";
+import { getSeasonWindows } from "./platform-flags";
 import { timezoneForMarket } from "./trend-engine/operating-markets";
 import { loadOutsideCityThresholdKm, toCityEventCard } from "./city-events.service";
 import { loadDatedPartnerEvents } from "./partner-calendar.service";
 
-export interface BandRow {
-  id: string;
-  title: string;
-  country: string;
-  city: string | null;
-  startMonth: number | null;
-  endMonth: number | null;
-  specificDate: string | null;
-  isRecurring: boolean | null;
-  year: number | null;
-}
+export type { BandRow } from "@shared/events-calendar";
 
 export interface SeasonRow {
   country: string;
@@ -104,33 +95,6 @@ export function composeCalendarEvents(
 
 function bySoonest(a: CalendarEvent, b: CalendarEvent): number {
   return a.firstDate === b.firstDate ? a.startsAt.localeCompare(b.startsAt) : a.firstDate < b.firstDate ? -1 : 1;
-}
-
-/** Pure: month-level season rows → bands for the markets' countries, over the window. */
-export function composeBands(rows: readonly BandRow[], months: readonly string[]): SeasonBand[] {
-  const out: SeasonBand[] = [];
-  for (const r of rows) {
-    if (r.startMonth == null || r.specificDate) continue; // a dated row is never a band (E1)
-    if (r.startMonth < 1 || r.startMonth > 12 || (r.endMonth != null && (r.endMonth < 1 || r.endMonth > 12))) continue;
-    const inCountry = OPERATING_MARKETS.filter((m) => lower(m.country) === lower(r.country));
-    if (inCountry.length === 0) continue;
-    // A row naming one of our cities applies to that city; a country row (all seeded rows) to the
-    // country's markets, and the band says the COUNTRY, never a city it does not name (E5).
-    const ownCity = r.city ? inCountry.find((m) => lower(m.cityName) === lower(r.city)) : undefined;
-    if (r.city && !ownCity) continue;
-    const bandMs = bandMonths({ startMonth: r.startMonth, endMonth: r.endMonth, isRecurring: r.isRecurring, year: r.year }, months);
-    if (bandMs.length === 0) continue;
-    out.push({
-      id: r.id,
-      title: r.title,
-      place: ownCity ? ownCity.cityName : inCountry[0].country,
-      country: inCountry[0].country,
-      marketKeys: ownCity ? [ownCity.marketKey] : inCountry.map((m) => m.marketKey),
-      months: bandMs,
-      span: bandSpan(r.startMonth, r.endMonth),
-    });
-  }
-  return out.sort((a, b) => (a.months[0] === b.months[0] ? a.title.localeCompare(b.title) : a.months[0] < b.months[0] ? -1 : 1));
 }
 
 /** Pure: the eight markets, each with its vibe tags and per-month season (city row, else country). */
@@ -219,10 +183,16 @@ export async function loadEventsCalendar(now: Date = new Date()): Promise<Events
   } catch (err) {
     console.warn("[events-calendar] partner events omitted", err);
   }
+  const windowsByMarket: Record<string, Awaited<ReturnType<typeof getSeasonWindows>>> = {};
+  await Promise.all(
+    OPERATING_MARKETS.map(async (m) => {
+      windowsByMarket[m.marketKey] = await getSeasonWindows(m.marketKey);
+    }),
+  );
   return {
     months,
     events: [...dated, ...partner].sort(bySoonest),
-    bands: composeBands(bandRows, months),
+    bands: composeBands(bandRows, months, windowsByMarket),
     places: composePlaces(seasonRows, pulseRows),
   };
 }
