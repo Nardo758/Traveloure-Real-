@@ -6,6 +6,7 @@ import { getCircuitBreakerStatus } from "./circuit-breaker";
 import { getStripeSecretKey } from "../utils/stripe-key";
 import { getBackgroundJobStats } from "../services/background-job-runner";
 import { probeDatabaseReady } from "../services/db-readiness";
+import { getSeedingStatus, seedingBlocksReady } from "../seeds/lib/boot-seeding-state";
 
 interface HealthCheck {
   status: "healthy" | "unhealthy" | "degraded";
@@ -198,6 +199,16 @@ export function createHealthRouter(): Router {
 
   router.get("/health/ready", async (_req: Request, res: Response) => {
     try {
+      // Same seeding gate as GET /api/ready (ledger `2026-10-22-boot-seed-stamps`). A skip counts
+      // as complete only after the locked re-read has decided. GET /health does not consult it.
+      if (seedingBlocksReady(getSeedingStatus())) {
+        res.status(503).json({
+          ready: false,
+          message: "Database seeding in progress",
+        });
+        return;
+      }
+
       const dbCheck = await probeDatabaseReady();
 
       if (!dbCheck.ok) {
