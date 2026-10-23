@@ -257,9 +257,13 @@ test("mark-paid schema is unchanged and the expert Connect duplicate is recorded
   assert.equal(meta.includes("payoutHandle"), false);
   assert.equal(meta.includes("payout_handle"), false);
 
-  const decision = fs.readFileSync(path.resolve("docs/decisions/pending/2026-10-23-payout-setup-server.md"), "utf8");
-  assert.match(decision, /\*\*R\? —/);
-  assert.match(decision, /numeric citation R\?/);
+  // The ledger stamp moves a pending file to docs/decisions/<seq>-<id>.md and numbers it after merge, so this reads
+  // the stamped file and never a docs/decisions/pending/ path (architect, Oct 23, 2026).
+  const stamped = fs.readdirSync(path.resolve("docs/decisions")).filter((f) => /^\d+-2026-10-23-payout-setup-server\.md$/.test(f));
+  assert.equal(stamped.length, 1, "exactly one stamped ledger file for this ruling");
+  const decision = fs.readFileSync(path.resolve("docs/decisions", stamped[0]), "utf8");
+  assert.match(decision, /\*\*R\d+ —/);
+  assert.match(decision, /numeric citation R\d+/);
   assert.match(decision, /Migration 408 SQL approved — Leon/);
   assert.match(decision, /FOLLOW-UP/);
   assert.match(decision, /local_expert_forms/);
