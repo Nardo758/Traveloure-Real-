@@ -57,8 +57,6 @@ interface TravelPulseCity {
   trendingScore: number;
   crowdLevel: string;
   vibeTags: string[];
-  currentHighlight?: string | null;
-  highlightEmoji?: string | null;
   weatherScore?: number | null;
   avgHotelPrice?: string | null;
   priceChange?: string | null;
@@ -210,7 +208,6 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
         activeTravelers={city.activeTravelers}
         alertCount={city.totalAlerts}
         inTrip={inQueue}
-        highlight={city.currentHighlight}
         vibeTags={vibeTags}
         avgPrice={city.avgHotelPrice}
         priceChangePct={Math.round(priceChange)}

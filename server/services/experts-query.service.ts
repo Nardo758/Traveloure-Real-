@@ -9,6 +9,7 @@ import { db } from "../db";
 import { eq, and, desc, asc, like, sql, isNull } from "drizzle-orm";
 import { hideBlockedListingImages } from "./place-photo-blocks.service";
 import { visibleHappeningNowCondition } from "./gem-visibility";
+import { omitTravelerSeasonalFields } from "./travelpulse-traveler-projection";
 import {
   users, localExpertForms, serviceProviderForms, expertServiceOfferings,
   aiInteractions, notifications, providerServices, serviceCategories,
@@ -73,7 +74,8 @@ export async function getTravelPulseData(): Promise<{
     db.select().from(travelPulseCities).limit(20),
     db.select().from(travelPulseHappeningNow).where(visibleHappeningNowCondition()).limit(20),
   ]);
-  return { trending, cities, happeningNow };
+  // R-07: this is a whole-row city read. Strip the seasonal pair before any caller can return it.
+  return { trending, cities: cities.map((city) => omitTravelerSeasonalFields(city)), happeningNow };
 }
 
 // ─── Expert AI Tasks ──────────────────────────────────────────────────────────

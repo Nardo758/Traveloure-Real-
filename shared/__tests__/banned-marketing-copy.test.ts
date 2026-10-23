@@ -109,7 +109,10 @@ test("the named swaps are the words Marketing asked for", () => {
   assert.match(read("shared/expert-vocabulary.ts"), /label: "Quieter spots"/);
   assert.match(read("docs/design/BENTO_ASSEMBLY.md"), /`QUIETER SPOT` \(green\)/);
   assert.doesNotMatch(read("docs/design/BENTO_ASSEMBLY.md"), /`Trending`/);
-  assert.match(read("server/seeds/phase-4b-kyoto-city-intelligence.seed.ts"), /Winter at Kodai-ji and Shorenin/);
+  // R-07: "Winter at Kodai-ji and Shorenin" lived only in currentHighlight. The seed no longer writes that field.
+  const kyotoSeed = read("server/seeds/phase-4b-kyoto-city-intelligence.seed.ts");
+  assert.doesNotMatch(kyotoSeed, /currentHighlight\s*:/);
+  assert.doesNotMatch(kyotoSeed, /Winter at Kodai-ji and Shorenin/);
   const blog = read("client/src/pages/blog.tsx");
   const intro = "Trip ideas, local know-how and planning guides from the people who know each city.";
   assert.equal(blog.includes(intro), true);

@@ -86,7 +86,9 @@ test("DP1: item 8 — the header, the date strip and the highlight add-on sit be
   assert.ok(!page.includes("Local experts, bookable services"), "the fixed header line is gone");
   assert.match(page, /const seasonLine = !SEASONAL_WRITER_LIVE/);
   assert.match(page, /\{SEASONAL_WRITER_LIVE && scheduledDate && \(/);
-  assert.match(page, /highlight=\{SEASONAL_WRITER_LIVE \? currentHighlight : null\}/);
+  assert.match(page, /highlight=\{null\}/);
+  assert.equal(page.includes("currentHighlight"), false);
+  assert.equal(page.includes("aiSeasonalHighlights"), false);
   assert.ok(!page.includes("¥"), "no hard-coded yen");
 });
 

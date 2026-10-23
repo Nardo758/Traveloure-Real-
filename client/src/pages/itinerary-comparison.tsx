@@ -260,38 +260,6 @@ interface TransportLegApiResponse {
 }
 
 /**
- * The TravelPulse API exposes seasonal highlights from a JSONB column. Older
- * records may contain a free-text summary, while current records are monthly
- * objects. Keep the review context optional when the shape is unknown rather
- * than allowing destination intelligence to crash the entire slip.
- */
-function seasonalHighlightForTrip(raw: unknown, startDate?: string): string | null {
-  if (typeof raw === "string") {
-    return raw.trim() || null;
-  }
-
-  if (!Array.isArray(raw) || !startDate) {
-    return null;
-  }
-
-  const tripMonth = Number(startDate.slice(5, 7));
-  if (!Number.isInteger(tripMonth) || tripMonth < 1 || tripMonth > 12) {
-    return null;
-  }
-
-  const monthName = new Intl.DateTimeFormat("en", { month: "long" })
-    .format(new Date(Date.UTC(2024, tripMonth - 1, 1)))
-    .toLowerCase();
-  const matchedEntry = raw.find((entry) => {
-    if (!entry || typeof entry !== "object") return false;
-    const month = (entry as { month?: unknown }).month;
-    return month === tripMonth || (typeof month === "string" && month.toLowerCase() === monthName);
-  }) as { highlight?: unknown } | undefined;
-
-  return typeof matchedEntry?.highlight === "string" ? matchedEntry.highlight.trim() || null : null;
-}
-
-/**
  * §16: partner-fulfilled plan items (12Go ground transport, Fever events) book through the
  * in-platform booking-agent rail — never a raw affiliate anchor. The client sends only the
  * partner key + route context; the server builds the deep link, keeps it server-side, and a
@@ -993,7 +961,6 @@ export default function ItineraryComparisonPage() {
       trendingScore?: number;
       crowdLevel?: string;
       weatherScore?: number;
-      aiSeasonalHighlights?: unknown;
       aiUpcomingEvents?: string;
       aiTravelTips?: string;
       aiLocalInsights?: string;
@@ -1767,11 +1734,7 @@ export default function ItineraryComparisonPage() {
                   const trending = (trendingData?.experiences ?? [])
                     .filter((e) => e?.name)
                     .slice(0, 3);
-                  const seasonal = seasonalHighlightForTrip(
-                    travelPulseData?.city?.aiSeasonalHighlights,
-                    data?.comparison?.startDate,
-                  );
-                  if (trending.length === 0 && !seasonal) return null;
+                  if (trending.length === 0) return null;
                   return (
                     <div
                       className="review-panel mb-4 space-y-2 rounded-xl border p-3"
@@ -1785,15 +1748,6 @@ export default function ItineraryComparisonPage() {
                               Now{primaryCity ? ` in ${primaryCity}` : ""}:{" "}
                             </span>
                             {trending.map((e) => e.name).join(" · ")}
-                          </p>
-                        </div>
-                      )}
-                      {seasonal && (
-                        <div className="flex items-start gap-2 text-sm" data-testid="preview-seasonal">
-                          <Calendar className="w-4 h-4 mt-0.5 shrink-0" style={{ color: "var(--earn-teal-ink)" }} />
-                          <p>
-                            <span className="font-medium">Popular around your travel dates: </span>
-                            {seasonal}
                           </p>
                         </div>
                       )}

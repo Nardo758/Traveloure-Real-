@@ -1,8 +1,9 @@
 /**
  * Phase 4b — Seed travel_pulse_cities with a Kyoto row.
  *
- * This populates all 9 AI insight fields required by the §8 Insights section
+ * This populates the AI insight fields required by the §8 Insights section
  * of the LocationView and the hero city-fact block (§1).
+ * R-07: currentHighlight, highlightEmoji and aiSeasonalHighlights are not written.
  *
  * Idempotent: upserts on (city_name, country). Safe to re-run.
  */
@@ -33,8 +34,6 @@ async function seed() {
         pulseScore: 88,
         crowdLevel: "moderate",
         vibeTags: ["cultural", "romantic", "foodie", "nature", "relaxation"] as any,
-        currentHighlight: "Cherry blossom season transforms ancient temple gardens",
-        highlightEmoji: "🌸",
         totalHiddenGems: 35,
         lastRefreshStatus: "ok",
         aiGeneratedAt: new Date(),
@@ -70,20 +69,6 @@ async function seed() {
           "Kyoto rewards slow travel. The city's 1,600+ temples and shrines can feel overwhelming; locals suggest anchoring to a single neighborhood each day rather than rushing between landmarks. Neighbourhoods like Nishijin are still largely tourist-free — morning walks there reveal real Kyoto life: tofu shops, textile weavers, and age-old bakeries. Kyoto taxi drivers are famously courteous and knowledgeable; a short taxi ride with a veteran driver often doubles as a free city tour. The local whisky bar scene along Kiyamachi is world-class and mostly unknown outside Japan.",
         aiSafetyNotes:
           "Kyoto is exceptionally safe — one of Japan's lowest crime-rate cities. Standard precautions apply: watch belongings on crowded festival days, stay on designated paths in forested shrine areas after dark. Summer typhoon season (July–September) occasionally disrupts transport; check JMA forecasts. The main risk for tourists is heat exhaustion in July–August when temperatures reach 38°C with high humidity — carry water and use the shaded arcade streets (shotengai).",
-        aiSeasonalHighlights: [
-          { month: "March", rating: 9, highlight: "Early plum blossoms at Kitano Tenmangu" },
-          { month: "April", rating: 10, highlight: "Peak cherry blossoms — Maruyama Park, Philosopher's Path, Arashiyama" },
-          { month: "May", rating: 8, highlight: "Aoi Matsuri procession and vivid fresh greenery" },
-          { month: "June", rating: 6, highlight: "Hydrangea bloom at Mimuroto-ji; rainy season begins" },
-          { month: "July", rating: 7, highlight: "Gion Matsuri — Japan's most famous summer festival" },
-          { month: "August", rating: 6, highlight: "Daimonji bonfire on Aug 16; hot but festive" },
-          { month: "September", rating: 7, highlight: "Typhoon shoulder month; crowds thin, prices drop" },
-          { month: "October", rating: 9, highlight: "Early autumn colour; Kurama Fire Festival" },
-          { month: "November", rating: 10, highlight: "Peak koyo (autumn leaves) — Eikan-do, Tofuku-ji, Arashiyama" },
-          { month: "December", rating: 7, highlight: "Winter at Kodai-ji and Shorenin" },
-          { month: "January", rating: 6, highlight: "Quiet off-season; temples serene in frost" },
-          { month: "February", rating: 7, highlight: "Ume (plum) blossoms; Setsubun bean-throwing at Yoshida Shrine" },
-        ] as any,
         aiAvoidDates: [
           {
             dateRange: "Golden Week (Apr 29 – May 5)",
@@ -122,8 +107,6 @@ async function seed() {
     trendingScore: 92,
     crowdLevel: "moderate",
     vibeTags: ["cultural", "romantic", "foodie", "nature", "relaxation"] as any,
-    currentHighlight: "Cherry blossom season transforms ancient temple gardens",
-    highlightEmoji: "🌸",
     currentWeather: { condition: "Partly Cloudy", tempC: 22, humidity: 65 } as any,
     weatherScore: 78,
     avgHotelPrice: "18500",
@@ -169,20 +152,6 @@ async function seed() {
       "Kyoto rewards slow travel. The city's 1,600+ temples and shrines can feel overwhelming; locals suggest anchoring to a single neighbourhood each day rather than rushing between landmarks. Neighbourhoods like Nishijin are still largely tourist-free — morning walks there reveal real Kyoto life: tofu shops, textile weavers, and age-old bakeries. Kyoto taxi drivers are famously courteous and knowledgeable; a short taxi ride with a veteran driver often doubles as a free city tour. The local whisky bar scene along Kiyamachi is world-class and mostly unknown outside Japan.",
     aiSafetyNotes:
       "Kyoto is exceptionally safe — one of Japan's lowest crime-rate cities. Standard precautions apply: watch belongings on crowded festival days, stay on designated paths in forested shrine areas after dark. Summer typhoon season (July–September) occasionally disrupts transport; check JMA forecasts. The main risk for tourists is heat exhaustion in July–August when temperatures reach 38°C with high humidity — carry water and use the shaded arcade streets (shotengai).",
-    aiSeasonalHighlights: [
-      { month: "March", rating: 9, highlight: "Early plum blossoms at Kitano Tenmangu" },
-      { month: "April", rating: 10, highlight: "Peak cherry blossoms — Maruyama Park, Philosopher's Path, Arashiyama" },
-      { month: "May", rating: 8, highlight: "Aoi Matsuri procession and vivid fresh greenery" },
-      { month: "June", rating: 6, highlight: "Hydrangea bloom at Mimuroto-ji; rainy season begins" },
-      { month: "July", rating: 7, highlight: "Gion Matsuri — Japan's most famous summer festival" },
-      { month: "August", rating: 6, highlight: "Daimonji bonfire on Aug 16; hot but festive" },
-      { month: "September", rating: 7, highlight: "Typhoon shoulder month; crowds thin, prices drop" },
-      { month: "October", rating: 9, highlight: "Early autumn colour; Kurama Fire Festival" },
-      { month: "November", rating: 10, highlight: "Peak koyo (autumn leaves) — Eikan-do, Tofuku-ji, Arashiyama" },
-      { month: "December", rating: 7, highlight: "Winter at Kodai-ji and Shorenin" },
-      { month: "January", rating: 6, highlight: "Quiet off-season; temples serene in frost" },
-      { month: "February", rating: 7, highlight: "Ume (plum) blossoms; Setsubun bean-throwing at Yoshida Shrine" },
-    ] as any,
     aiAvoidDates: [
       {
         dateRange: "Golden Week (Apr 29 – May 5)",

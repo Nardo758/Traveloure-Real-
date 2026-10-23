@@ -5,7 +5,7 @@
     "city": "Kyoto",
     "country": null,
     "generatedAt": "2026-08-25T00:00:00.000Z",
-    "hero": { "data": { "city": { "currentHighlight": null, "pulseScore": 72, "crowdLevel": "moderate", "aiSeasonalHighlights": [] } }, "error": null },
+    "hero": { "data": { "city": { "pulseScore": 72, "crowdLevel": "moderate" } }, "error": null },
     "recommendations": { "data": { "hotels": [], "activities": [] }, "error": null },
     "events": { "data": { "events": [] }, "error": null },
     "neighborhoods": {
