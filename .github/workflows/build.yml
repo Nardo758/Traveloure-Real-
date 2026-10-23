@@ -362,7 +362,9 @@ jobs:
           # 113 measured 2026-10-21 (S-17/S-20 pending supply dashboard): the provider status
           # builder read serviceType and province, columns service_provider_forms does not have.
           # Those two TS2339 errors were this baseline. Removing the reads removed the errors.
-          TSC_BASELINE: '113'
+          # 111 measured 2026-10-23 (ledger 2026-10-23-payout-setup-server): tsc --noEmit on this
+          # branch reports 111. The payout-setup files add no type errors. Locked in, same PR.
+          TSC_BASELINE: '111'
           TSC_TIMEOUT_S: '900'
           NODE_OPTIONS: '--max-old-space-size=5120'
         run: |
