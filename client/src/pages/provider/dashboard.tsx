@@ -23,7 +23,7 @@ import {
   FileText,
 } from "lucide-react";
 import { Link } from "wouter";
-import { PayoutBanner } from "@/components/expert/PayoutBanner";
+import { PayoutSetupPrompt } from "@/components/payout/PayoutSetupPrompt";
 import { SetupChecklistCard } from "@/components/backoffice/SetupChecklistCard";
 import { useAuth } from "@/hooks/use-auth";
 // Ledger 90 (FP-5, X1): the ONE booking-visibility predicate shared with Inbox, Customers, Money
@@ -241,10 +241,6 @@ function TodayDemandCard({ signal }: { signal: TopDemandSignal | null | undefine
 export default function ProviderDashboard() {
   const { user } = useAuth();
 
-  const { data: stripeStatus } = useQuery<{ connected: boolean; status: string }>({
-    queryKey: ["/api/stripe/connect/status"],
-  });
-
   // Refresh every 30 s so booking counts and revenue update without a reload.
   const { data: analytics, isLoading: analyticsLoading } = useQuery<ProviderAnalytics>({
     queryKey: ["/api/provider/analytics/dashboard"],
@@ -370,10 +366,8 @@ export default function ProviderDashboard() {
   return (
     <ProviderLayout title="Dashboard">
       <div className="p-5 space-y-3">
-        <PayoutBanner
-          stripeConnectStatus={stripeStatus?.status ?? "not_started"}
-          isPayable={stripeStatus?.connected ?? false}
-        />
+        {/* Row 115: the in-app payout prompt, from /api/me/payout-setup (onboarding, or first earning). */}
+        <PayoutSetupPrompt hasEarnings={(analytics?.summary?.totalRevenue ?? 0) > 0} settingsHref="/provider/settings" />
 
         {/* Vacation mode banner (mockup §06b) — business-level flag only, read-only here.
             Rendered above the KPIs per spec, linking to Settings' Vacation Mode card. */}

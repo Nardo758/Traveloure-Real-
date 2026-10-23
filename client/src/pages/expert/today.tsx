@@ -21,6 +21,7 @@
  *     is /expert/share-promote).
  */
 import { useQuery } from "@tanstack/react-query";
+import { PayoutSetupPrompt } from "@/components/payout/PayoutSetupPrompt";
 import { Link } from "wouter";
 import { ExpertLayout } from "@/components/expert/expert-layout";
 import { PageHeader, EmptyState } from "@/components/backoffice/primitives";
@@ -392,15 +393,9 @@ function MoneyStripSection() {
         {stripeLoading ? (
           <Skeleton className="h-9 rounded-lg" />
         ) : !stripeStatus?.connected ? (
-          <Link href="/expert/money">
-            <div
-              className="bg-amber-50 border border-amber-300 rounded-lg p-3 flex items-center justify-between gap-3 cursor-pointer hover:bg-amber-100/60 transition-colors"
-              data-testid="banner-today-stripe-connect"
-            >
-              <p className="text-sm text-amber-900">Connect a Stripe account to receive payouts.</p>
-              <span className="text-xs font-medium text-amber-700 flex-shrink-0">Set up →</span>
-            </div>
-          </Link>
+          // Row 115: the in-app payout prompt (onboarding, or first earning once anything is earned). It reads
+          // /api/me/payout-setup, so a PayPal or other setup that is complete shows nothing here.
+          <PayoutSetupPrompt hasEarnings={(summary?.totalEarnings ?? 0) > 0} settingsHref="/expert/settings" />
         ) : (
           <p className="text-xs text-console-mid" data-testid="text-today-stripe-connected">
             {/* Server vocabulary is active | under_review | onboarding_incomplete (audit B-2 —

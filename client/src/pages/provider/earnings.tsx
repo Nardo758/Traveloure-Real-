@@ -1,4 +1,5 @@
 import { ProviderLayout } from "@/components/provider/provider-layout";
+import { PAYOUT_SETUP_COPY, payoutSetupBlock } from "@/lib/payout-setup";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -420,8 +421,10 @@ export default function ProviderEarnings() {
         toast({ title: "Request already pending", description: "You already have a payout request under review." });
       } else if (msg.includes("payout_processing_stale")) {
         toast({ title: "Payout stuck in processing", description: "Your payout has been in processing for over 14 days. Contact support to resolve it.", variant: "destructive" });
-      } else if (msg.includes("stripe_not_connected")) {
-        toast({ title: "Stripe account required", description: "Connect your Stripe account before requesting a payout. Finish setup in Settings.", variant: "destructive" });
+      } else if (payoutSetupBlock(err)) {
+        // Row 115: a request refused for payout setup (stripe_not_connected or payout_setup_incomplete) shows the
+        // server's own message, as-is.
+        toast({ title: PAYOUT_SETUP_COPY.payoutBlockedTitle, description: payoutSetupBlock(err)!, variant: "destructive" });
       } else if (msg.includes("below_minimum")) {
         // Ledger 90 (FP-5, S2): no client-side "$10.00" literal — the server states the effective
         // threshold (and whether it is the platform floor or this provider's own Settings value).
