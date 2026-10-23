@@ -215,6 +215,7 @@ export const adminRoutesConfig: RoleRouteConfig[] = [
   { href: '/admin/bot-proposals',       description: 'Bot proposals — facts a bot read from an official page, approved or rejected by an admin' },
   { href: '/admin/bot-accounts',        description: 'Bot accounts — create a bot (token shown once) and revoke it' },
   { href: '/admin/audit-log',           description: 'Administrative audit log' },
+  { href: '/admin/support',             description: 'Support inbox — contact-form submissions, assigned and closed by an admin' },
 ];
 
 // ── Convenience accessors ─────────────────────────────────────────────────────

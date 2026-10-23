@@ -2098,6 +2098,8 @@ export const contactSubmissions = pgTable("contact_submissions", {
   assignedAdminId: varchar("assigned_admin_id").references(() => users.id, { onDelete: "set null" }),
   resolvedAt: timestamp("resolved_at"),
   responseNotes: text("response_notes"),
+  // Ops gap 7 (migration 404): when a submission first got a response. NULL = none recorded; no default.
+  firstResponseAt: timestamp("first_response_at"),
   ipAddress: varchar("ip_address", { length: 45 }),
   userAgent: text("user_agent"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -2110,6 +2112,7 @@ export const insertContactSubmissionSchema = createInsertSchema(contactSubmissio
   status: true,
   assignedAdminId: true,
   responseNotes: true,
+  firstResponseAt: true,
 });
 export type ContactSubmission = typeof contactSubmissions.$inferSelect;
 export type InsertContactSubmission = z.infer<typeof insertContactSubmissionSchema>;
