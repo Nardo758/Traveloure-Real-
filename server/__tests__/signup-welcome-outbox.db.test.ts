@@ -22,6 +22,7 @@ import {
   parseWelcomeVerificationWindowDays,
 } from "../../shared/welcome-verification";
 
+process.env.EMAIL_SENDS_ENABLED = "true";
 const enabled = process.env.NODE_ENV === "test" && process.env.RUN_SIGNUP_WELCOME_DB_TESTS === "1";
 const fixtureIds: string[] = [];
 const originalTransport = _outboxTestHooks.sendEmailFn;

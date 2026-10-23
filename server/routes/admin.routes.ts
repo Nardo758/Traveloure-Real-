@@ -158,8 +158,7 @@ import { calculateCommission, BookingType } from "../utils/commissionCalculator"
 import { revertPurchasedItemsForBooking } from "../services/item-routing.service";
 import { RoleTransitionError } from "../services/role-transition";
 import {
-  getAdminRole, getFullAdminUser, insertAccessAuditLog, recordAdminAudit, getContactSubmissions,
-  updateContactSubmission, getAllUsersBasic, getUserCommissionOverrides,
+  getAdminRole, getFullAdminUser, insertAccessAuditLog, recordAdminAudit, getAllUsersBasic, getUserCommissionOverrides,
   updateUserRole, assertUserRoleTransitionAllowed, getUserVerificationStatus, getUserCommissionOverride,
   setUserCommissionOverride, insertNotification, getAdminNotifications,
   getApprovedProviderForms, getProviderUserInfo, getProviderServicesForUser,
@@ -226,10 +225,23 @@ import {
   MESSAGE_REPORT_DECISION_ACTION,
   PROVIDER_SERVICE_RESOURCE,
   MESSAGE_REPORT_RESOURCE,
+  EMAIL_OUTBOX_RETRY_ACTION,
+  OUT_OF_BAND_REFUND_CLEARED_ACTION,
+  AUTO_CANCEL_CONFIG_ACTION,
+  AUTO_CANCEL_RUN_ACTION,
+  EMAIL_OUTBOX_RESOURCE,
+  SERVICE_BOOKING_RESOURCE,
+  AUTO_CANCEL_RESOURCE,
+  SUPPORT_STATUS_ACTION,
+  SUPPORT_ASSIGN_ACTION,
+  SUPPORT_NOTE_ACTION,
+  CONTACT_SUBMISSION_RESOURCE,
 } from "../services/admin-decision-audit";
 import { listNotRoutableExperts } from "../services/expert-routability";
 import { adminRemindStripeConnect } from "../services/stripe-connect-reminder.service";
 import { listOwedEarners, markPaidBodySchema, markPayoutPaidExternally } from "../services/payout-admin.service";
+import { SUPPORT_STATUSES, isSupportStatus, supportPatchBodySchema, SUPPORT_FIRST_RESPONSE_HOURS_SETTING, isValidSupportFirstResponseHoursSetting } from "@shared/support-intake";
+import { applySupportPatch, isSupportAssignee, listSupportAssignees, listSupportSubmissions } from "../services/support-inbox.service";
 import { bandLockedByCohort } from "../services/expert-rate-cohort.service";
 import { expertCohortSettingRefusal } from "@shared/expert-rate-cohort";
 import { parseAdminBookingListQuery } from "@shared/admin-booking-list";
@@ -699,12 +711,15 @@ router.post("/api/admin/bookings/:bookingId/out-of-band-refund/clear", isAuthent
     if (!outcome.cleared) {
       return res.status(404).json({ message: "No refund-outside-the-platform mark on this booking" });
     }
-    const auditWarning = await recordAdminAudit({
+    // Ops gap 8: the mark's before → after, through gap 13's one helper. The booking's status is unchanged.
+    const auditWarning = await recordAdminDecisionAudit({
       actorId: user.id,
       actorRole: user.role,
-      action: "out_of_band_refund_cleared",
-      resourceType: "service_booking",
+      action: OUT_OF_BAND_REFUND_CLEARED_ACTION,
+      resourceType: SERVICE_BOOKING_RESOURCE,
       resourceId: bookingId,
+      beforeStatus: "refunded_outside_platform",
+      afterStatus: "cleared",
       metadata: {
         note: parsed.data.note,
         refundIds: outcome.refundIds,
@@ -2251,8 +2266,20 @@ router.patch("/api/admin/bookings/auto-cancel/config", isAuthenticated, async (r
     return res.status(400).json({ message: "Invalid config", errors: parsed.error.flatten() });
   }
   try {
+    const before = bookingExpiryScheduler.getConfig();
     const updated = bookingExpiryScheduler.updateConfig(parsed.data);
-    res.json({ config: updated });
+    const auditWarning = await recordAdminDecisionAudit({
+      actorId: user.id,
+      actorRole: user.role,
+      action: AUTO_CANCEL_CONFIG_ACTION,
+      resourceType: AUTO_CANCEL_RESOURCE,
+      resourceId: "staleThresholdHours",
+      beforeStatus: String(before.staleThresholdHours),
+      afterStatus: String(updated.staleThresholdHours),
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    });
+    res.json({ config: updated, ...(auditWarning ? { auditWarning } : {}) });
   } catch (err: any) {
     res.status(400).json({ message: err.message });
   }
@@ -2261,18 +2288,45 @@ router.patch("/api/admin/bookings/auto-cancel/config", isAuthenticated, async (r
 /**
  * POST /api/admin/bookings/auto-cancel/run
  * Manually triggers the auto-cancel sweep immediately.
+ * `?dryRun=1` (ops gap 8) answers `{ dryRun: true, count }` — how many bookings a run now would cancel —
+ * and acts on nothing, so the admin confirm step can show the count. A dry run writes no audit row.
  */
 router.post("/api/admin/bookings/auto-cancel/run", isAuthenticated, async (req, res) => {
   const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
+  if (req.query.dryRun === "1") {
+    try {
+      return res.json({ dryRun: true, count: await bookingExpiryScheduler.countStale() });
+    } catch (err: any) {
+      console.error("Auto-cancel dry run error:", err);
+      return res.status(500).json({ message: "Failed to count bookings for auto-cancel" });
+    }
+  }
   if (bookingExpiryScheduler.isCurrentlyRunning()) {
     return res.status(409).json({ message: "Auto-cancel sweep is already in progress" });
   }
   try {
     const stats = await bookingExpiryScheduler.triggerManualRun();
-    res.json({ message: "Auto-cancel sweep completed", stats });
+    const auditWarning = await recordAdminDecisionAudit({
+      actorId: user.id,
+      actorRole: user.role,
+      action: AUTO_CANCEL_RUN_ACTION,
+      resourceType: AUTO_CANCEL_RESOURCE,
+      resourceId: "run",
+      beforeStatus: null,
+      afterStatus: null,
+      metadata: {
+        cancelledCount: stats.cancelledCount,
+        bookingIds: stats.bookingIds,
+        errorCount: stats.errors.length,
+        staleThresholdHours: bookingExpiryScheduler.getConfig().staleThresholdHours,
+      },
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    });
+    res.json({ message: "Auto-cancel sweep completed", stats, ...(auditWarning ? { auditWarning } : {}) });
   } catch (err: any) {
     console.error("Manual auto-cancel sweep error:", err);
     res.status(500).json({ message: "Auto-cancel sweep failed", error: err.message });
@@ -2903,35 +2957,76 @@ router.get("/api/admin/revenue", isAuthenticated, async (req, res) => {
     }
   });
 
-  // Admin: list contact submissions
+  // Admin: the support inbox (ops gap 7, ledger `2026-10-22-support-intake-queue`). List by status, newest first;
+  // each row carries `overdue` (null while `support_first_response_hours` is unset), plus the assignable admins.
 router.get("/api/admin/contact-submissions", isAuthenticated, requireStaff("contact_submissions"), async (req, res) => {
     try {
-      const status = req.query.status as string | undefined;
-      const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
-
-      const submissions = await getContactSubmissions(status, limit);
-
-      res.json(submissions);
+      const rawStatus = typeof req.query.status === "string" && req.query.status !== "" ? req.query.status : null;
+      if (rawStatus !== null && !isSupportStatus(rawStatus)) {
+        return res.status(400).json({ message: `status must be one of ${SUPPORT_STATUSES.join(", ")}` });
+      }
+      const limit = parseInt(req.query.limit as string) || 50;
+      const [list, assignees] = await Promise.all([listSupportSubmissions(rawStatus, limit), listSupportAssignees()]);
+      res.json({ ...list, assignees });
     } catch (err) {
       console.error("List contact submissions error:", err);
       res.status(500).json({ message: "Failed to load contact submissions" });
     }
   });
 
-  // Admin: update contact submission status
+  // Admin: set a submission's status, assignee and note. A `.strict()` pick (§19); an empty body is 400 and changes
+  // nothing. Each field sent writes one audit row through `recordAdminDecisionAudit`, after the update commits.
 router.patch("/api/admin/contact-submissions/:id", isAuthenticated, requireStaff("contact_submissions"), async (req, res) => {
+    const parsed = supportPatchBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({
+        message: "Send at least one of status, assignedAdminId or responseNotes; nothing else is accepted.",
+        issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })),
+      });
+    }
     try {
-      const { status, responseNotes, assignedAdminId } = req.body;
-      const updates: any = {};
-      if (status) updates.status = status;
-      if (status === "resolved") updates.resolvedAt = new Date();
-      if (responseNotes !== undefined) updates.responseNotes = responseNotes;
-      if (assignedAdminId !== undefined) updates.assignedAdminId = assignedAdminId;
-
-      const updated = await updateContactSubmission(req.params.id, updates);
-
-      if (!updated) return res.status(404).json({ message: "Submission not found" });
-      res.json(updated);
+      const actor = await getFullAdminUser(getUserId(req)!);
+      const actorRole = actor?.role;
+      if (!actor || !actorRole) return res.status(401).json({ message: "Authentication required" });
+      const body = parsed.data;
+      if (body.assignedAdminId && !(await isSupportAssignee(body.assignedAdminId))) {
+        return res.status(400).json({ message: "assignedAdminId must be an admin account" });
+      }
+      const result = await applySupportPatch(req.params.id, body);
+      if (!result.ok) return res.status(404).json({ message: "Submission not found" });
+      const id = req.params.id;
+      const common = {
+        actorId: actor.id,
+        actorRole,
+        resourceType: CONTACT_SUBMISSION_RESOURCE,
+        resourceId: id,
+        ipAddress: req.ip ?? null,
+        userAgent: req.get("user-agent") ?? null,
+      };
+      const warnings: string[] = [];
+      const push = (w: string | undefined) => { if (w) warnings.push(w); };
+      if (body.status !== undefined) {
+        push(await recordAdminDecisionAudit({ ...common, action: SUPPORT_STATUS_ACTION, beforeStatus: result.before.status, afterStatus: result.after.status }));
+      }
+      if (body.assignedAdminId !== undefined) {
+        push(await recordAdminDecisionAudit({
+          ...common,
+          action: SUPPORT_ASSIGN_ACTION,
+          beforeStatus: result.before.assignedAdminId,
+          afterStatus: result.after.assignedAdminId,
+          targetUserId: result.after.assignedAdminId,
+        }));
+      }
+      if (body.responseNotes !== undefined) {
+        push(await recordAdminDecisionAudit({
+          ...common,
+          action: SUPPORT_NOTE_ACTION,
+          beforeStatus: result.before.responseNotes ? "noted" : null,
+          afterStatus: result.after.responseNotes ? "noted" : null,
+          metadata: { noteLength: result.after.responseNotes?.length ?? 0 },
+        }));
+      }
+      res.json({ ...result.row, ...(warnings.length ? { auditWarning: warnings.join("; ") } : {}) });
     } catch (err) {
       console.error("Update contact submission error:", err);
       res.status(500).json({ message: "Failed to update contact submission" });
@@ -3145,6 +3240,8 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
                 sendExpertApplicationApprovalEmail({
                   toEmail: approvedApplicant.email,
                   firstName: approvedApplicant.firstName ?? null,
+                  applicationId: req.params.id,
+                  priorStatus: updated.priorStatus ?? null,
                 });
               } catch (err) {
                 console.error("[admin] Failed to send expert approval email (non-fatal):", err);
@@ -3175,6 +3272,8 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
                 toEmail: applicant.email,
                 firstName: applicant.firstName ?? null,
                 rejectionMessage: rejectionMessage ?? null,
+                applicationId: req.params.id,
+                priorStatus: updated.priorStatus ?? null,
               });
             } catch (err) {
               console.error("[admin] Failed to send expert rejection email (non-fatal):", err);
@@ -3580,6 +3679,8 @@ router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, asy
               sendProviderApplicationApprovalEmail({
                 toEmail: providerUser.email,
                 firstName: providerUser.firstName ?? null,
+                applicationId: req.params.id,
+                priorStatus: updated.priorStatus ?? null,
               });
             }
           },
@@ -3615,6 +3716,8 @@ router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, asy
               toEmail: providerUser.email,
               firstName: providerUser.firstName ?? null,
               rejectionMessage: rejectionMessage ?? null,
+              applicationId: req.params.id,
+              priorStatus: updated.priorStatus ?? null,
             });
           }
         },
@@ -3662,6 +3765,7 @@ router.patch("/api/admin/provider-applications/:id/rejection-reason", isAuthenti
             toEmail: providerUser.email,
             firstName: providerUser.firstName ?? null,
             rejectionMessage: rejectionMessage,
+            applicationId: req.params.id,
           });
         }
       },
@@ -8451,6 +8555,14 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       if (settingKey === BLOG_FOOTER_MIN_PUBLISHED_SETTING && !isValidBlogFooterMinPublishedSetting(settingValue)) {
         return res.status(400).json({ error: `${settingKey} must be a whole number from 1 to 9999`, got: settingValue });
       }
+      // Ops gap 7: the support first-response target in hours (1–720). An empty value leaves it unset, so nothing is
+      // overdue and the digest's overdue count is null.
+      if (
+        settingKey === SUPPORT_FIRST_RESPONSE_HOURS_SETTING &&
+        !(String(settingValue ?? "").trim() === "" || isValidSupportFirstResponseHoursSetting(settingValue))
+      ) {
+        return res.status(400).json({ error: `${settingKey} must be a whole number of hours from 1 to 720, or empty`, got: settingValue });
+      }
       // LW-1b: the traveler sign-up switch is exactly 'waitlist' or 'open' (shared/launch-signup.ts), and the
       // launch market is a slug — a junk value must never reach the sign-up gates or the waitlist redirect.
       if (settingKey === TRAVELER_SIGNUP_MODE_SETTING && !isTravelerSignupModeValue(settingValue)) {
@@ -9999,31 +10111,50 @@ router.get("/api/admin/email-outbox", isAuthenticated, async (req, res) => {
  */
 router.post("/api/admin/email-outbox/:id/retry", isAuthenticated, async (req, res) => {
   try {
+    const user = await getFullAdminUser(getUserId(req)!);
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
     const id = parseInt(req.params.id, 10);
     if (!id || isNaN(id)) return res.status(400).json({ message: "Invalid id" });
 
+    // Ops gap 8: the row is locked and its prior status read in the same statement as the reset, so
+    // the audit row's before status is the one this retry replaced.
     const updated = await db.execute(sql`
-      UPDATE email_outbox
+      UPDATE email_outbox AS o
       SET    status        = 'pending',
              attempt_count = 0,
              last_error    = NULL,
              retry_after   = NULL,
              updated_at    = NOW()
-      WHERE  id            = ${id}
-        AND  status       IN ('failed', 'dead')
-      RETURNING id, status, to_email, subject
+      FROM   (SELECT id, status AS prior_status FROM email_outbox WHERE id = ${id} FOR UPDATE) AS p
+      WHERE  o.id          = p.id
+        AND  p.prior_status IN ('failed', 'dead')
+      RETURNING o.id, o.status, o.to_email, o.subject, p.prior_status
     `);
 
     if (!updated.rows.length) {
       return res.status(404).json({ message: "Row not found or not in a retryable status" });
     }
+    const { prior_status: priorStatus, ...row } = updated.rows[0] as Record<string, unknown> & { prior_status: string };
+    const auditWarning = await recordAdminDecisionAudit({
+      actorId: user.id,
+      actorRole: user.role,
+      action: EMAIL_OUTBOX_RETRY_ACTION,
+      resourceType: EMAIL_OUTBOX_RESOURCE,
+      resourceId: String(id),
+      beforeStatus: priorStatus,
+      afterStatus: "pending",
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    });
 
     // Fire the drain in the background — don't wait for delivery.
     drainOutboxForAdminRetry(id).catch(err =>
       console.error("[admin/email-outbox/retry] drainOutbox error:", err)
     );
 
-    res.json({ ok: true, row: updated.rows[0] });
+    res.json({ ok: true, row, ...(auditWarning ? { auditWarning } : {}) });
   } catch (err: any) {
     console.error("[admin/email-outbox/retry] error:", err);
     res.status(500).json({ message: "Failed to retry outbox row", error: err.message });

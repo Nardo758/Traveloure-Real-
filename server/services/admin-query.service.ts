@@ -3,7 +3,7 @@ import { guardedDeleteProviderService } from "./service-delete-guard";
 import { assertRoleTransitionAllowed } from "./role-transition";
 import { stampApprovalCohort } from "./expert-rate-cohort.service";
 import {
-  users, contactSubmissions, notifications, accessAuditLogs,
+  users, notifications, accessAuditLogs,
   serviceBookings, providerServices, serviceReviews, reviewModerationLogs,
   expertPayouts, providerPayouts, serviceOfferingTypes, expertOfferingTypes,
   trips, expertServiceCategories, expertServiceOfferings, localExpertForms,
@@ -188,20 +188,6 @@ export async function recordAdminAudit(values: AccessAuditLogValues): Promise<st
     });
     return warning;
   }
-}
-
-// ─── Contact Submissions ──────────────────────────────────────────────────────
-
-export async function getContactSubmissions(status?: string, limit = 50) {
-  const base = db.select().from(contactSubmissions);
-  if (status) {
-    return base.where(eq(contactSubmissions.status, status)).orderBy(desc(contactSubmissions.createdAt)).limit(limit);
-  }
-  return base.orderBy(desc(contactSubmissions.createdAt)).limit(limit);
-}
-
-export async function updateContactSubmission(id: string, updates: Record<string, any>) {
-  return db.update(contactSubmissions).set(updates).where(eq(contactSubmissions.id, id)).returning().then(r => r[0] ?? null);
 }
 
 // ─── Users ────────────────────────────────────────────────────────────────────

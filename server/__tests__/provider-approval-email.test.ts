@@ -255,6 +255,8 @@ describe('PATCH /api/admin/provider-applications/:id/status — approval email',
     assert.deepStrictEqual(capturedEmailCalls[0], {
       toEmail: 'provider@example.com',
       firstName: 'Alice',
+      applicationId: 'application-1',
+      priorStatus: null,
     });
   });
 

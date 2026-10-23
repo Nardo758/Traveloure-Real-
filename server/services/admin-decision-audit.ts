@@ -18,9 +18,22 @@ export const LISTING_FEATURED_ACTION = "provider_service_featured";
 export const LISTING_AFFINITY_TAGS_ACTION = "provider_service_affinity_tags";
 export const LISTING_DELETE_ACTION = "provider_service_delete";
 export const MESSAGE_REPORT_DECISION_ACTION = "message_report_decision";
+// Ops gap 8 (ledger `2026-10-22-admin-ops-screens`): the three ops screens on /admin/system.
+export const EMAIL_OUTBOX_RETRY_ACTION = "email_outbox_retry";
+export const OUT_OF_BAND_REFUND_CLEARED_ACTION = "out_of_band_refund_cleared";
+export const AUTO_CANCEL_CONFIG_ACTION = "booking_auto_cancel_config";
+export const AUTO_CANCEL_RUN_ACTION = "booking_auto_cancel_run";
+// Ops gap 7 (ledger `2026-10-22-support-intake-queue`): the support inbox's three writes.
+export const SUPPORT_STATUS_ACTION = "support_submission_status";
+export const SUPPORT_ASSIGN_ACTION = "support_submission_assign";
+export const SUPPORT_NOTE_ACTION = "support_submission_note";
 
 export const PROVIDER_SERVICE_RESOURCE = "provider_service";
 export const MESSAGE_REPORT_RESOURCE = "message_report";
+export const EMAIL_OUTBOX_RESOURCE = "email_outbox";
+export const SERVICE_BOOKING_RESOURCE = "service_booking";
+export const AUTO_CANCEL_RESOURCE = "booking_auto_cancel";
+export const CONTACT_SUBMISSION_RESOURCE = "contact_submission";
 
 /** `true` / `false` / null — null stays null so an unset flag is not recorded as unfeatured. */
 export function featuredDecisionStatus(value: boolean | null | undefined): string | null {

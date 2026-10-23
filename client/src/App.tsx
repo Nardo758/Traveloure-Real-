@@ -169,6 +169,7 @@ const AdminDiscoverImpressions = lazy(() => import("@/pages/admin/discover-impre
 const AdminQAChecklist = lazy(() => import("@/pages/admin/qa-checklist"));
 const AdminContentOps = lazy(() => import("@/pages/admin/content-ops"));
 const AdminAuditLog = lazy(() => import("@/pages/admin/audit-log"));
+const AdminSupport = lazy(() => import("@/pages/admin/support"));
 const ExpertContentStudio = lazy(() => import("@/pages/expert/content-studio"));
 const ExpertNeighborhoods = lazy(() => import("@/pages/expert/neighborhoods"));
 const ExpertBlogReview = lazy(() => import("@/pages/expert/blog-review"));
@@ -1426,6 +1427,9 @@ function Router() {
       </Route>
       <Route path="/admin/audit-log">
         {() => <ProtectedRoute component={AdminAuditLog} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/support">
+        {() => <ProtectedRoute component={AdminSupport} requiredRole="admin" />}
       </Route>
 
       {/* Redirects for consolidated/renamed pages */}

@@ -16,7 +16,7 @@ import { decideFirstTimeSignup, normalizeSignupIntent, waitlistBlockedPath, TRAV
 import { CURRENT_TERMS_VERSION, CURRENT_PRIVACY_VERSION } from "@shared/legal-versions";
 import { REGISTRATION_NEUTRAL_STATUS, registrationNeutralBody } from "@shared/registration-neutral";
 import {
-  RESET_TOKEN_TTL_MIN, issuePasswordResetToken, consumePasswordResetToken,
+  RESET_TOKEN_TTL_MIN, issuePasswordResetToken, consumePasswordResetToken, hashAuthToken,
 } from "../../services/password-reset-tokens.service";
 import { verifyLoginCredential } from "../../services/login-credentials.service";
 import { verificationEmailRateLimiter } from "../../infrastructure/rate-limiter";
@@ -353,15 +353,17 @@ export function setupEmailAuth(app: Express): void {
       if (user && user.password) {
         // Skip OAuth-only accounts (no password set) — generating a reset for
         // them would be a no-op + signal that the email exists in another way.
-        const { raw } = await issuePasswordResetToken(user.id);
+        const issued = await issuePasswordResetToken(user.id);
 
-        const resetUrl = `${getAppBaseUrl()}/reset-password?token=${encodeURIComponent(raw)}`;
+        const resetUrl = `${getAppBaseUrl()}/reset-password?token=${encodeURIComponent(issued.raw)}`;
         try {
           await sendPasswordResetEmail({
             toEmail: user.email!,
             firstName: user.firstName ?? null,
             resetUrl,
             expiresInMinutes: RESET_TOKEN_TTL_MIN,
+            linkExpiresAt: issued.expiresAt,
+            tokenHash: hashAuthToken(issued.raw),
           });
         } catch (emailErr) {
           // Don't surface delivery state to the client. Log for ops; the token

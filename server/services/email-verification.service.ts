@@ -174,13 +174,21 @@ export async function mintEmailVerificationToken(userId: string): Promise<{ raw:
   return { raw, expiresAt };
 }
 
-function dispatchVerificationEmail(userId: string, email: string, firstName: string | null, raw: string): void {
+function dispatchVerificationEmail(
+  userId: string,
+  email: string,
+  firstName: string | null,
+  raw: string,
+  expiresAt: Date,
+): void {
   const verifyUrl = `${getAppBaseUrl()}/verify-email?token=${encodeURIComponent(raw)}`;
   void sendEmailVerificationEmail({
     toEmail: email,
     firstName,
     verifyUrl,
     expiresInHours: VERIFY_TOKEN_TTL_HOURS,
+    linkExpiresAt: expiresAt,
+    tokenHash: hashAuthToken(raw),
   }).catch(() => {
     console.error("[email-verification] delivery failed for user", userId);
   });
@@ -191,13 +199,15 @@ export async function issueEmailVerification(
   email: string,
   firstName: string | null,
 ): Promise<void> {
-  const { raw } = await mintEmailVerificationToken(userId);
-  const verifyUrl = `${getAppBaseUrl()}/verify-email?token=${encodeURIComponent(raw)}`;
+  const issued = await mintEmailVerificationToken(userId);
+  const verifyUrl = `${getAppBaseUrl()}/verify-email?token=${encodeURIComponent(issued.raw)}`;
   await sendEmailVerificationEmail({
     toEmail: email,
     firstName,
     verifyUrl,
     expiresInHours: VERIFY_TOKEN_TTL_HOURS,
+    linkExpiresAt: issued.expiresAt,
+    tokenHash: hashAuthToken(issued.raw),
   });
 }
 
@@ -216,16 +226,16 @@ export async function deliverVerificationResend(email: string): Promise<void> {
     .where(eq(users.email, email.toLowerCase()))
     .limit(1);
   if (!user?.email || user.emailVerified || user.isDeleted || user.isSuspended) return;
-  const { raw } = await mintEmailVerificationToken(user.id);
-  dispatchVerificationEmail(user.id, user.email, user.firstName, raw);
+  const issued = await mintEmailVerificationToken(user.id);
+  dispatchVerificationEmail(user.id, user.email, user.firstName, issued.raw, issued.expiresAt);
 }
 
 /** Signed-in resend. No letter when the address is already verified or the account is closed. */
 export async function sendVerificationForSessionUser(userId: string): Promise<void> {
   const user = await loadGateUser(userId);
   if (!user?.email || user.emailVerified || user.isDeleted || user.isSuspended) return;
-  const { raw } = await mintEmailVerificationToken(user.id);
-  dispatchVerificationEmail(user.id, user.email, user.firstName, raw);
+  const issued = await mintEmailVerificationToken(user.id);
+  dispatchVerificationEmail(user.id, user.email, user.firstName, issued.raw, issued.expiresAt);
 }
 
 export type ConsumeVerificationResult = "verified" | "invalid";
@@ -287,8 +297,8 @@ export async function changeUnverifiedEmail(
   if (access !== "hold") return;
   const next = nextEmail.toLowerCase();
   if (next === user.email.toLowerCase()) {
-    const { raw } = await mintEmailVerificationToken(user.id);
-    dispatchVerificationEmail(user.id, user.email, user.firstName, raw);
+    const issued = await mintEmailVerificationToken(user.id);
+    dispatchVerificationEmail(user.id, user.email, user.firstName, issued.raw, issued.expiresAt);
     return;
   }
   const [taken] = await db.select({ id: users.id }).from(users).where(eq(users.email, next)).limit(1);
@@ -309,6 +319,6 @@ export async function changeUnverifiedEmail(
     throw err;
   }
   if (!updated) return;
-  const { raw } = await mintEmailVerificationToken(userId);
-  dispatchVerificationEmail(userId, next, user.firstName, raw);
+  const issued = await mintEmailVerificationToken(userId);
+  dispatchVerificationEmail(userId, next, user.firstName, issued.raw, issued.expiresAt);
 }

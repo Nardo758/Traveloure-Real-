@@ -218,6 +218,15 @@ export async function deliverItineraryFollowup(outboxId: number, sender: (params
         try { return await sender({ to: row.toEmail, subject: footered.subject, html: footered.html, text: footered.text, idempotencyKey: `itinerary-followup-${outboxId}` }); }
         catch { return { ok: false, error: "Provider attempt failed" } as SendEmailResult; }
       });
+    if (result.suppressed === "development_gate" || result.suppressed === "kill_switch") {
+      await tx.update(emailOutbox).set({
+        status: result.suppressed === "development_gate" ? "cancelled" : "pending",
+        lastError: result.error ?? "Send refused before the provider",
+        retryAfter: result.suppressed === "kill_switch" ? new Date(now.getTime() + 5 * 60_000) : null,
+        updatedAt: new Date(),
+      }).where(eq(emailOutbox.id, outboxId));
+      return result.suppressed === "development_gate" ? "cancelled" as const : "deferred" as const;
+    }
     const dead = attemptCount >= row.maxAttempts;
     await tx.update(emailOutbox).set({
       status: result.ok ? "sent" : dead ? "dead" : "failed", attemptCount,

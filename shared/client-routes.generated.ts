@@ -56,6 +56,7 @@ export const CLIENT_ROUTES: readonly string[] = [
   "/admin/service-approvals",
   "/admin/service-requests",
   "/admin/services",
+  "/admin/support",
   "/admin/system",
   "/admin/template-approvals",
   "/admin/ticker",
