@@ -2146,4 +2146,8 @@ export const MIGRATION_FILES = [
   // rows only, and only while the old tips text is present. No other column changes. No ALTER.
   // HELD for "Migration 407 SQL approved — Leon". Ledger 2026-10-23-koyo-drop-tips.
   "407_koyo_country_tips.sql",
+  // 408 — users.payout_method_type + users.payout_handle. Additive nullable, no DEFAULT, no CHECK.
+  // HELD for "Migration 408 SQL approved — Leon". Ledger 2026-10-23-payout-setup-server.
+  // Declared in shared/models/auth.ts.
+  "408_payout_setup.sql",
 ] as const;

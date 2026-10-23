@@ -82,6 +82,8 @@ function leakyExpertRow(): Record<string, any> {
     stripeAccountId: "acct_123",
     stripeAccountStatus: "active",
     canReceivePayments: true,
+    payoutMethodType: "other",
+    payoutHandle: "021000021",
     notificationEmail: "biz@example.com",
     updatedAt: new Date("2025-01-01T00:00:00Z"),
     isDeleted: false,
@@ -171,7 +173,7 @@ const MUST_NOT_APPEAR_TOP_LEVEL = [
   "termsVersion", "privacyVersion", "instagramUserId", "instagramAccessToken",
   "authProvider", "commissionOverrideExpertSharePercent", "providerVerificationStatus",
   "backgroundCheckConfirmed", "preferredCurrency", "stripeCustomerId", "stripeAccountId",
-  "stripeAccountStatus", "canReceivePayments", "notificationEmail", "updatedAt",
+  "stripeAccountStatus", "canReceivePayments", "payoutMethodType", "payoutHandle", "notificationEmail", "updatedAt",
   "isDeleted", "deletedAt", "isSuspended", "suspendedAt", "suspensionReason",
   "vacationUntil", "vacationMessage", "emailBookingAlerts", "homeCity",
 ] as const;
@@ -199,6 +201,7 @@ test("P1 — no credential, contact or payment-identity column survives to the p
   assert.equal(JSON.stringify(out).includes("ada@example.com"), false, "no account email anywhere in the payload");
   assert.equal(JSON.stringify(out).includes("IGQV-secret"), false, "no Instagram token anywhere in the payload");
   assert.equal(JSON.stringify(out).includes("acct_123"), false, "no Stripe Connect account id anywhere in the payload");
+  assert.equal(JSON.stringify(out).includes("021000021"), false, "no payout handle anywhere in the payload");
 });
 
 test("P2 — every allowlisted display field is still published, with its value intact", () => {
