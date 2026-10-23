@@ -20,6 +20,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { AdminErrorBanner } from "@/components/admin/AdminErrorBanner";
+import { OwedEarnersCard } from "@/components/admin/payout-ops/OwedEarnersCard";
+import { MarkPaidDialog, type MarkPaidTarget } from "@/components/admin/payout-ops/MarkPaidDialog";
+import { PAYOUT_OPS_COPY, markPaidOffered, payoutMethodLabel } from "@/lib/payout-ops";
 import {
   Table,
   TableBody,
@@ -93,13 +96,9 @@ function getStatusBadge(status: string | null) {
   }
 }
 
+// Gap 9: one label table, shared with Mark paid, so an externally paid row shows its method as stored.
 function getMethodLabel(method: string | null): string {
-  const labels: Record<string, string> = {
-    bank_transfer: "Bank Transfer",
-    paypal: "PayPal",
-    stripe: "Stripe",
-  };
-  return labels[method || ""] || method || "Not specified";
+  return payoutMethodLabel(method) ?? "Not specified";
 }
 
 export default function AdminPayouts() {
@@ -110,6 +109,7 @@ export default function AdminPayouts() {
     action: "approve" | "reject" | "execute";
   }>({ open: false, payout: null, action: "approve" });
   const [actionNotes, setActionNotes] = useState("");
+  const [markPaidTarget, setMarkPaidTarget] = useState<MarkPaidTarget | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -207,6 +207,8 @@ export default function AdminPayouts() {
   return (
     <AdminLayout title="Payouts Management">
       <div className="p-6 space-y-6">
+        <OwedEarnersCard />
+        <MarkPaidDialog target={markPaidTarget} onClose={() => setMarkPaidTarget(null)} />
         {/* L4 fix: a failed GET /api/admin/payouts used to fall straight through to zeroed
             stat cards + "No payout requests found" — a broken money queue looked identical
             to an empty one. Show the failure and skip the fabricated-zero stats instead. */}
@@ -396,7 +398,21 @@ export default function AdminPayouts() {
                                     Execute Payout
                                   </Button>
                                 )}
-                                {payout.status === "completed" && (
+                                {markPaidOffered(payout.status) && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => setMarkPaidTarget({ id: payout.id, requesterType: payout.requesterType, amount: payout.amount, requesterName: payout.requesterName })}
+                                    data-testid={`button-mark-paid-${payout.id}`}
+                                  >
+                                    {PAYOUT_OPS_COPY.markPaid}
+                                  </Button>
+                                )}
+                                {payout.status === "completed" && payout.payoutMethod && payout.payoutMethod !== "stripe" ? (
+                                  <span className="text-sm text-gray-500" data-testid={`text-paid-externally-${payout.id}`}>
+                                    {PAYOUT_OPS_COPY.paidExternally(getMethodLabel(payout.payoutMethod))}
+                                  </span>
+                                ) : payout.status === "completed" && (
                                   <span className="text-sm text-gray-500">
                                     {payout.transactionId || payout.payoutReference || "Completed"}
                                   </span>
