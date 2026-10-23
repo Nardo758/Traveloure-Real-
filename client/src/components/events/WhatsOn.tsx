@@ -7,6 +7,7 @@
  * one, and "Plan around it" — the existing `planAroundSource(event, "events_page")` door — and
  * "Event details", the event's own page (2b, ledger `2026-10-06-event-page`; brief item 25).
  */
+import { splitBandsBySeason } from "@/lib/season-band";
 import { Link } from "wouter";
 import { cityEventPhoto, countdownLabel } from "@shared/city-events";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
@@ -146,27 +147,42 @@ export function WhatsOn({
         <WhatsOnRow key={e.id} event={e} isNext={e.id === nextId} onPlanAround={onPlanAround} />
       ))}
 
-      {bands.length > 0 && (
-        <div className="flex flex-col gap-2 rounded-[12px] border p-3" style={{ borderColor: "var(--earn-border)", background: "var(--earn-teal-wash)" }} data-testid="events-in-season">
-          <span className="text-[10.5px] uppercase tracking-[0.12em]" style={{ fontFamily: MONO, color: "var(--earn-teal-ink)" }}>
-            In season all month
-          </span>
-          {bands.map((b) => (
-            <div key={b.id} className="flex flex-col gap-0.5" data-testid={`events-band-${b.id}`}>
-              <span className="text-[14px] font-semibold" style={{ color: "var(--earn-navy)" }}>
-                {b.title}
-              </span>
-              <span className="text-[12px]" style={{ color: "var(--earn-muted)" }}>
-                {b.place} · {b.span} · no fixed dates published
-              </span>
-              {/* Ruling E9: the band's link goes to the destinations browse. */}
-              <Link href="/destinations" className="text-[12.5px] font-semibold underline-offset-2 hover:underline" style={{ color: "var(--earn-teal-ink)" }}>
-                {`See ${cityNamesOf(b) || b.place} in ${monthName}`}
-              </Link>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* A band with an admin season window carries "In season all month"; one without still shows for the whole
+          month, in the same card without that heading. A band is never hidden (ruling, Oct 22). */}
+      {(() => {
+        const { inSeason, noWindow } = splitBandsBySeason(bands);
+        const bandRow = (b: SeasonBand) => (
+          <div key={b.id} className="flex flex-col gap-0.5" data-testid={`events-band-${b.id}`}>
+            <span className="text-[14px] font-semibold" style={{ color: "var(--earn-navy)" }}>
+              {b.title}
+            </span>
+            <span className="text-[12px]" style={{ color: "var(--earn-muted)" }}>
+              {b.place} · {b.span} · no fixed dates published
+            </span>
+            {/* Ruling E9: the band's link goes to the destinations browse. */}
+            <Link href="/destinations" className="text-[12.5px] font-semibold underline-offset-2 hover:underline" style={{ color: "var(--earn-teal-ink)" }}>
+              {`See ${cityNamesOf(b) || b.place} in ${monthName}`}
+            </Link>
+          </div>
+        );
+        return (
+          <>
+            {inSeason.length > 0 && (
+              <div className="flex flex-col gap-2 rounded-[12px] border p-3" style={{ borderColor: "var(--earn-border)", background: "var(--earn-teal-wash)" }} data-testid="events-in-season">
+                <span className="text-[10.5px] uppercase tracking-[0.12em]" style={{ fontFamily: MONO, color: "var(--earn-teal-ink)" }}>
+                  In season all month
+                </span>
+                {inSeason.map(bandRow)}
+              </div>
+            )}
+            {noWindow.length > 0 && (
+              <div className="flex flex-col gap-2 rounded-[12px] border p-3" style={{ borderColor: "var(--earn-border)" }} data-testid="events-bands-no-window">
+                {noWindow.map(bandRow)}
+              </div>
+            )}
+          </>
+        );
+      })()}
 
       {empty && (
         <div className="flex flex-col gap-2 rounded-[12px] border border-dashed p-4" style={{ borderColor: "var(--earn-border-dash)" }} data-testid="events-empty">

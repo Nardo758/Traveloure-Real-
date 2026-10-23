@@ -23,6 +23,8 @@ export const destinationCalendarSeed = [
     events: [
       // H-19: season bands, not a festival. Country-level rows carry no city tips. Day windows are
       // season_windows_<market>, which this seed does not write — Leon enters them in admin.
+      // Koyo's country row writes no tips (2026-10-23-koyo-drop-tips). Migration 407 clears that
+      // text on a row this seed already wrote, and only while the old tips are still present.
       { title: "Cherry blossom season (Hanami)", eventType: "season", startMonth: 3, endMonth: 4, description: "Japan's most celebrated seasonal event. Locals gather in parks to admire cherry blossoms.", tips: null },
       { title: "Golden Week", eventType: "holiday", startMonth: 5, endMonth: 5, description: "Week-long national holiday when many Japanese travel domestically.", tips: "Avoid traveling during this period as prices spike and attractions are crowded." },
       { title: "Gion Matsuri", eventType: "festival", startMonth: 7, endMonth: 7, description: "Kyoto's famous month-long festival with spectacular float processions.", tips: "The main procession on July 17th draws massive crowds. Stay near Shijo Street." },
