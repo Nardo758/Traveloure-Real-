@@ -243,6 +243,8 @@ import {
 import { listNotRoutableExperts } from "../services/expert-routability";
 import { adminRemindStripeConnect, reminderCooldownEndsAt } from "../services/stripe-connect-reminder.service";
 import { listOwedEarners, markPaidBodySchema, markPayoutPaidExternally } from "../services/payout-admin.service";
+import { ADMIN_PAYOUT_NOT_CREATED_MESSAGE, buildPayoutSetup } from "../services/payout-setup";
+import { lockAdminCreateAllowed, lockStripeTransferDecision, readPayoutFacts } from "../services/payout-setup.service";
 import { SUPPORT_STATUSES, isSupportStatus, supportPatchBodySchema, SUPPORT_FIRST_RESPONSE_HOURS_SETTING, isValidSupportFirstResponseHoursSetting } from "@shared/support-intake";
 import { applySupportPatch, isSupportAssignee, listSupportAssignees, listSupportSubmissions } from "../services/support-inbox.service";
 import { bandLockedByCohort } from "../services/expert-rate-cohort.service";
@@ -6056,6 +6058,16 @@ router.post("/api/admin/payouts", isAuthenticated, async (req, res) => {
       if (!['expert', 'provider'].includes(requesterType)) {
         return res.status(400).json({ error: "requesterType must be 'expert' or 'provider'" });
       }
+      const earnerType = requesterType as "expert" | "provider";
+      // Earnings can exist before setup. A payout row cannot. Re-checked under a row lock at insert.
+      const earlyFacts = await readPayoutFacts(requesterId);
+      const earlySetup = earlyFacts ? buildPayoutSetup(earlyFacts, earnerType) : null;
+      if (!earlySetup?.setupComplete) {
+        return res.status(400).json({
+          error: "payout_setup_incomplete",
+          message: ADMIN_PAYOUT_NOT_CREATED_MESSAGE,
+        });
+      }
 
       let summary;
       if (requesterType === 'expert') {
@@ -6081,22 +6093,42 @@ router.post("/api/admin/payouts", isAuthenticated, async (req, res) => {
 
       let payout;
       const now = new Date();
-      if (requesterType === 'expert') {
-        payout = await storage.createExpertPayout({
-          expertId: requesterId,
-          amount: (payoutAmountCents / 100).toFixed(2),
-          status: "pending",
-          requestedAt: now,
-          notes: notes || "Admin-triggered payout",
+      const amount = (payoutAmountCents / 100).toFixed(2);
+      const payoutNotes = notes || "Admin-triggered payout";
+      try {
+        payout = await db.transaction(async (tx) => {
+          const allowed = await lockAdminCreateAllowed(tx, requesterId, earnerType);
+          if (!allowed.ok) {
+            throw Object.assign(new Error("payout_setup_incomplete"), {
+              code: allowed.error,
+              clientMessage: allowed.message,
+            });
+          }
+          if (earnerType === "expert") {
+            // expert_payouts has no notes column. The admin note lives in metadata.
+            const [inserted] = await tx.insert(expertPayouts).values({
+              expertId: requesterId,
+              amount,
+              status: "pending",
+              requestedAt: now,
+              metadata: { source: "admin_request", note: payoutNotes },
+            }).returning();
+            return inserted;
+          }
+          const [inserted] = await tx.insert(providerPayouts).values({
+            providerId: requesterId,
+            amount,
+            status: "pending",
+            requestedAt: now,
+            notes: payoutNotes,
+          }).returning();
+          return inserted;
         });
-      } else {
-        payout = await storage.createProviderPayout({
-          providerId: requesterId,
-          amount: (payoutAmountCents / 100).toFixed(2),
-          status: "pending",
-          requestedAt: now,
-          notes: notes || "Admin-triggered payout",
-        });
+      } catch (createErr: any) {
+        if (createErr?.code === "payout_setup_incomplete") {
+          return res.status(400).json({ error: createErr.code, message: createErr.clientMessage });
+        }
+        throw createErr;
       }
 
       res.status(201).json({ ...payout, requesterType });
@@ -6130,6 +6162,15 @@ router.patch("/api/admin/payouts/:id", isAuthenticated, async (req, res) => {
 
         if (!recipientId) {
           return res.status(404).json({ error: "Payout not found" });
+        }
+
+        // Hold, re-read under the users row lock, before any Stripe call or claim.
+        // A complete paypal/other method is not a Stripe transfer. mark-paid is unchanged.
+        const transferDecision = await db.transaction(async (tx) =>
+          lockStripeTransferDecision(tx, recipientId, requesterType as "expert" | "provider"),
+        );
+        if (transferDecision.action === "block") {
+          return res.status(400).json({ error: transferDecision.error, message: transferDecision.message });
         }
 
         const recipientStripe = await storage.getUserStripeAccount(recipientId);

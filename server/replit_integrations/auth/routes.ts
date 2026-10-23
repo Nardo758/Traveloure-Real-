@@ -15,7 +15,8 @@ import { CURRENT_TERMS_VERSION, CURRENT_PRIVACY_VERSION } from "@shared/legal-ve
 // Sanitize user object to remove sensitive fields before sending to client
 function sanitizeUser(user: any) {
   if (!user) return user;
-  const { password, instagramAccessToken, ...safeUser } = user;
+  // payoutHandle is returned only by GET/PUT /api/me/payout-setup, never on the session user.
+  const { password, instagramAccessToken, payoutHandle, payout_handle, ...safeUser } = user;
   return safeUser;
 }
 

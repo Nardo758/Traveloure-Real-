@@ -844,6 +844,9 @@ export const localExpertForms = pgTable("local_expert_forms", {
   identityVerificationSessionId: varchar("identity_verification_session_id", { length: 255 }),
   identityVerificationStatus: varchar("identity_verification_status", { length: 20 }).default("pending"),
   identityVerifiedAt: timestamp("identity_verified_at"),
+  // Expert Connect status for payout setup (ledger 2026-10-23-payout-setup-server). The users row
+  // also has stripe_account_id / stripe_account_status / can_receive_payments. Those users columns
+  // are a duplicate for experts. Retiring them is a follow-up and is not done in that lane.
   stripeConnectStatus: varchar("stripe_connect_status", { length: 20 }).default("not_started"),
   status: varchar("status", { length: 20 }).default("pending"),
   rejectionMessage: text("rejection_message"),

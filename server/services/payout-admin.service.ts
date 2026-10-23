@@ -17,6 +17,8 @@ import {
   type PayoutStatusUpdateOptions,
 } from "../config/payout.config";
 import { recordAdminDecisionAudit } from "./admin-decision-audit";
+import { readAdminPayoutSetups } from "./payout-setup.service";
+import type { AdminPayoutSetup } from "./payout-setup";
 
 export const PAYOUT_MARK_PAID_ACTION = "payout_mark_paid";
 
@@ -71,6 +73,11 @@ export type OwedEarnerRow = OwedEarner & {
   canReceiveTransfer: boolean;
   pendingPayoutCount: number;
   pendingPayoutTotal: number;
+  /**
+   * Payout setup for this earner. The handle itself is not included: a stored value can be a
+   * contact handle, and a rejected bank-like value must not leave the database on this read.
+   */
+  payoutSetup: AdminPayoutSetup;
 };
 
 export function canReceiveTransfer(account: { stripeAccountId: string | null; canReceivePayments: boolean | null }): boolean {
@@ -108,18 +115,32 @@ export async function listOwedEarners(): Promise<OwedEarnerRow[]> {
     const rows = await db.select({ id: users.id, firstName: users.firstName, lastName: users.lastName }).from(users).where(inArray(users.id, ids));
     for (const r of rows) names.set(r.id, [r.firstName, r.lastName].filter(Boolean).join(" ") || null);
   }
+  const setups = await readAdminPayoutSetups(owedRows.map((row) => ({ earnerId: row.earnerId, earnerType: row.earnerType })));
   const out: OwedEarnerRow[] = [];
   for (const row of owedRows) {
     const [account, pendingPayouts] = await Promise.all([
       storage.getUserStripeAccount(row.earnerId),
       pendingPayoutsFor(row.earnerType, row.earnerId),
     ]);
+    const payoutSetup = setups.get(`${row.earnerType}:${row.earnerId}`) ?? {
+      earnerType: row.earnerType,
+      connectStatus: null,
+      connectSource: row.earnerType === "expert" ? "local_expert_forms" as const : "users" as const,
+      stripeAccountPresent: false,
+      canReceivePayments: false,
+      stripeTransferReady: false,
+      payoutMethodType: null,
+      payoutHandlePresent: false,
+      payoutHandleAccepted: false,
+      setupComplete: false,
+    };
     out.push({
       ...row,
       displayName: names.get(row.earnerId) ?? null,
       canReceiveTransfer: canReceiveTransfer(account),
       pendingPayoutCount: pendingPayouts.count,
       pendingPayoutTotal: pendingPayouts.total,
+      payoutSetup,
     });
   }
   return out;

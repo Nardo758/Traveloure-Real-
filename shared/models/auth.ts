@@ -101,6 +101,14 @@ export const users = pgTable("users", {
   stripeAccountId: varchar("stripe_account_id", { length: 255 }),
   stripeAccountStatus: varchar("stripe_account_status", { length: 50 }),
   canReceivePayments: boolean("can_receive_payments").default(false),
+  // Payout setup (migration 408, HELD, ledger 2026-10-23-payout-setup-server).
+  // payout_method_type is app-enforced: stripe_connect | paypal | other. NULL = not chosen.
+  // payout_handle is a PayPal email or username. Bank account and routing numbers are rejected
+  // in server/services/payout-setup.ts and are never logged. Providers: this users row is the
+  // payout source of truth. Experts: Connect status stays local_expert_forms.stripe_connect_status;
+  // these two columns are the method the earner records. Written only by saveOwnPayoutSetup.
+  payoutMethodType: varchar("payout_method_type", { length: 32 }),
+  payoutHandle: varchar("payout_handle", { length: 254 }),
   // Notification email (migration 207): experts/providers can set a separate business
   // email for booking alert emails. Falls back to `email` when null. Never used for
   // login/auth — account email is always authoritative for security flows.

@@ -313,6 +313,10 @@ test("resolves named re-exports used by authentication registration helpers", ()
  * (admin 189 → 191, admin-role 189 → 191). POST /api/admin/providers/:userId/remind-stripe already
  * existed; the handler changed and the path did not. The owed and not-routable reads are GETs.
  *
+ * 724 / 716 → 725 / 717 (ledger 2026-10-23-payout-setup-server): PUT /api/me/payout-setup.
+ * Session user only (`/api/me` classifies user-data / session-self). GET /api/me/payout-setup
+ * is a read and is not a mutation. user-data 249 → 250, session-self 365 → 366.
+ *
  * THE COUNTS ARE THE POINT: they exist so a route appearing or vanishing from
  * the mounted graph fails here. Now that the file is wired into CI, changing a
  * number is a decision that needs its reason stated, exactly as this one does.
@@ -320,8 +324,8 @@ test("resolves named re-exports used by authentication registration helpers", ()
 test("current mounted graph parity includes auth helpers and shared api paths", () => {
   const root = process.cwd();
   const result = extractMountedMutations(path.join(root, "server/routes.ts"), root);
-  assert.equal(result.mutations.length, 724);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 716);
+  assert.equal(result.mutations.length, 725);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 717);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -331,7 +335,7 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "generated/security/mutation-auth-manifest.json"), "utf8"));
   const markdown = fs.readFileSync(path.join(root, "generated/security/mutation-auth-inventory.md"), "utf8");
   const endpointRows = markdown.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| ---")).slice(1);
-  assert.equal(endpointRows.length, 716);
+  assert.equal(endpointRows.length, 717);
   // 709 / 701 (ledger `2026-10-18-fd4-share-projection`): the shadowed quick-start twin is deleted; unique paths stay 701.
   // 710 / 702 (ledger `2026-10-19-fb1-free-retime`): + POST /api/trips/:tripId/retime-fixes/:itemId/apply.
   // 712 / 704 (ledger `2026-10-18-cs1-source-signoff`): the sign-off and photo-block POSTs.
@@ -340,8 +344,9 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // 720 / 712 (ledger `2026-10-21-city-knowledge-test`): the three applicant sittings and the three admin bank/retake writes.
   // 722 / 714 (S-09): + POST /api/auth/resend-verification and POST /api/auth/change-unverified-email.
   // 724 / 716 (gap 9): + POST /api/admin/experts/:userId/remind-stripe and POST /api/admin/payouts/:id/mark-paid.
-  assert.equal(manifest.rawRegistrationCount, 724);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 716);
+  // 725 / 717 (ledger 2026-10-23-payout-setup-server): + PUT /api/me/payout-setup.
+  assert.equal(manifest.rawRegistrationCount, 725);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 717);
   // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R274): user-data,
   // session-self; the owner/delegate check runs in the service before any write.
   // + POST /api/admin/content-sources/:id/public-ok (ledger `2026-10-03-official-facts-public-ok`, R278):
@@ -387,7 +392,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // admin 186 → 189, user-data 246 → 249 (ledger `2026-10-21-city-knowledge-test`): three admin writes, three applicant sittings.
   // other 243 → 245 (S-09): the resend and change-unverified-email rails.
   // admin 189 → 191 (gap 9): the expert Stripe reminder and the external mark-paid POST.
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 191, "user-data": 249, other: 245 });
+  // user-data 249 → 250 (ledger 2026-10-23-payout-setup-server): PUT /api/me/payout-setup.
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 191, "user-data": 250, other: 245 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
@@ -426,7 +432,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // public-or-system 50 → 52 (S-09): the resend and change-unverified-email rails. The change rail
   // still 401s without a session; the heuristic does not see that check, same as send-verification.
   // admin-role 189 → 191 (gap 9): the expert Stripe reminder and the external mark-paid POST.
-    "admin-role": 191, "session-self": 365, "resource-owner": 102,
+  // session-self 365 → 366 (ledger 2026-10-23-payout-setup-server): PUT /api/me/payout-setup.
+    "admin-role": 191, "session-self": 366, "resource-owner": 102,
     signature: 6, "public-or-system": 52, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
@@ -442,6 +449,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   assert.equal(byEndpoint.get("POST /api/admin/payouts/:id/mark-paid").expectedBoundary, "admin-role");
   assert.equal(byEndpoint.get("POST /api/admin/experts/:userId/remind-stripe").expectedBoundary, "admin-role");
   assert.equal(byEndpoint.get("POST /api/admin/providers/:userId/remind-stripe").expectedBoundary, "admin-role");
+  assert.equal(byEndpoint.get("PUT /api/me/payout-setup").risk, "user-data");
+  assert.equal(byEndpoint.get("PUT /api/me/payout-setup").expectedBoundary, "session-self");
   const createTrip = byEndpoint.get("POST /api/trips");
   assert.equal(createTrip.risk, "user-data");
   assert.equal(createTrip.expectedAuth, "public");

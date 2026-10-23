@@ -121,6 +121,8 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { isExpertRole, isProviderRole, isEarnerRole } from "@shared/roles";
+import { decidePayoutRequest } from "../services/payout-setup";
+import { lockPayoutRequestDecision, readOwnPayoutSetup, readPayoutFacts, saveOwnPayoutSetup } from "../services/payout-setup.service";
 import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS, effectivePayoutMinimumCents, isPayoutStale, STALE_PAYOUT_PROCESSING_DAYS } from "../config/payout.config";
 import { eq, and, or, like, ilike, sql, desc, count, ne, isNotNull, asc, inArray } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
@@ -3177,6 +3179,34 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
     }
   });
 
+  // ─── Earner payout setup (ledger 2026-10-23-payout-setup-server) ─────────────
+  // Own row only. The session user id is the only address. The handle is not logged.
+  router.get("/api/me/payout-setup", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ error: "not_authenticated", message: "Not authenticated" });
+    try {
+      const result = await readOwnPayoutSetup(userId);
+      if (!result.ok) return res.status(result.status).json({ error: result.error, message: result.message });
+      return res.json(result.setup);
+    } catch (error: any) {
+      console.error("payout setup read failed", { code: error?.code ?? null });
+      return res.status(500).json({ error: "payout_setup_read_failed", message: "Failed to read payout setup" });
+    }
+  });
+
+  router.put("/api/me/payout-setup", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ error: "not_authenticated", message: "Not authenticated" });
+    try {
+      const result = await saveOwnPayoutSetup(userId, req.body);
+      if (!result.ok) return res.status(result.status).json({ error: result.error, message: result.message });
+      return res.json(result.setup);
+    } catch (error: any) {
+      console.error("payout setup save failed", { code: error?.code ?? null });
+      return res.status(500).json({ error: "payout_setup_save_failed", message: "Failed to save payout setup" });
+    }
+  });
+
   // ─── Self-service payout request (provider/expert) ───────────────────────────
   // The payout MODEL OF RECORD stays admin-initiated processing (Payout rail note). This
   // only lets an earner REQUEST a payout of their own cleared balance; the request lands as
@@ -3205,12 +3235,12 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
       // admin queue with no way back to explain why it stalled. Surface the same honest,
       // actionable block up front so a not-ready earner learns why immediately instead of
       // a request that can never be fulfilled. §14: read is session-scoped (own account).
-      const payoutAccount = await storage.getUserStripeAccount(userId);
-      if (!payoutAccount.stripeAccountId || !payoutAccount.canReceivePayments) {
-        return res.status(400).json({
-          error: "stripe_not_connected",
-          message: "Connect your Stripe account before requesting a payout. Finish setup in Settings to get started.",
-        });
+      // A complete paypal/other method passes this block and still only creates a pending
+      // row — this handler does not call Stripe or any other payout API. The row lock
+      // inside the insert re-checks the same decision.
+      const payoutDecision = decidePayoutRequest(await readPayoutFacts(userId));
+      if (payoutDecision.action === "block") {
+        return res.status(400).json({ error: payoutDecision.error, message: payoutDecision.message });
       }
 
       // §15: one open request at a time. Three sub-cases:
@@ -3313,6 +3343,10 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
           `No Stripe transfer was issued for this row.`;
         try {
           payout = await db.transaction(async (tx) => {
+            const held = await lockPayoutRequestDecision(tx, userId);
+            if (held.action === "block") {
+              throw Object.assign(new Error("payout_request_blocked"), { code: held.error, clientMessage: held.message });
+            }
             for (const stale of stalePending) {
               const cancelled = isProvider
                 ? await tx
@@ -3359,13 +3393,39 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
               message: "Your payout was just picked up for processing. Please try again in a moment.",
             });
           }
+          if (txErr.code === "stripe_not_connected" || txErr.code === "payout_setup_incomplete") {
+            return res.status(400).json({ error: txErr.code, message: txErr.clientMessage });
+          }
           throw txErr;
         }
       } else {
-        // No stale pending rows — normal creation path (unchanged).
-        payout = isProvider
-          ? await storage.createProviderPayout({ providerId: userId, amount, status: "pending", notes: "Requested by provider" })
-          : await storage.createExpertPayout({ expertId: userId, amount, status: "pending", metadata: { source: "self_request" } });
+        // No stale pending rows. Lock the users row and insert in one transaction so a
+        // concurrent clear of payout setup cannot land a payout the hold already refused.
+        try {
+          payout = await db.transaction(async (tx) => {
+            const held = await lockPayoutRequestDecision(tx, userId);
+            if (held.action === "block") {
+              throw Object.assign(new Error("payout_request_blocked"), { code: held.error, clientMessage: held.message });
+            }
+            if (isProvider) {
+              const [inserted] = await tx
+                .insert(providerPayouts)
+                .values({ providerId: userId, amount, status: "pending", notes: "Requested by provider" })
+                .returning();
+              return inserted;
+            }
+            const [inserted] = await tx
+              .insert(expertPayouts)
+              .values({ expertId: userId, amount, status: "pending", metadata: { source: "self_request" } })
+              .returning();
+            return inserted;
+          });
+        } catch (txErr: any) {
+          if (txErr.code === "stripe_not_connected" || txErr.code === "payout_setup_incomplete") {
+            return res.status(400).json({ error: txErr.code, message: txErr.clientMessage });
+          }
+          throw txErr;
+        }
       }
 
       res.status(201).json({ ...payout, requesterType: isProvider ? "provider" : "expert" });

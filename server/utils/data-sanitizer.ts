@@ -84,12 +84,27 @@ export function maskPhone(phone: string | null | undefined): string | null {
 /**
  * Sanitize user data based on the requester's role
  */
+/**
+ * A payout handle can be a PayPal email. A value that failed the bank-number check must not
+ * ride along on a generic user payload (ledger 2026-10-23-payout-setup-server). The earner's
+ * own payout-setup read is the one response that returns a usable handle.
+ */
+export function withoutPayoutHandle<T extends Record<string, any>>(data: T): T {
+  if (!data || typeof data !== "object") return data;
+  if (!("payoutHandle" in data) && !("payout_handle" in data)) return data;
+  const copy = { ...data };
+  delete copy.payoutHandle;
+  delete copy.payout_handle;
+  return copy;
+}
+
 export function sanitizeUserForRole<T extends Record<string, any>>(
   userData: T,
   requesterRole: string,
   isOwnProfile: boolean = false
 ): Partial<T> {
-  const { password, ...withoutPassword } = userData;
+  const stripped = withoutPayoutHandle(userData);
+  const { password, ...withoutPassword } = stripped;
   const safeData = withoutPassword as T;
 
   if (isOwnProfile) {

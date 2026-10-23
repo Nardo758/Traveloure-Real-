@@ -2142,4 +2142,8 @@ export const MIGRATION_FILES = [
   // HELD for "Migration 406 SQL approved — Leon". Ledger 2026-10-22-boot-seed-stamps.
   // Declared in shared/schema.ts.
   "406_boot_seed_stamps.sql",
+  // 408 — users.payout_method_type + users.payout_handle. Additive nullable, no DEFAULT, no CHECK.
+  // HELD for "Migration 408 SQL approved — Leon". Ledger 2026-10-23-payout-setup-server.
+  // Declared in shared/models/auth.ts. 407 is claimed by open PR #1653 (koyo country tips).
+  "408_payout_setup.sql",
 ] as const;

@@ -46,6 +46,51 @@ function configuredSecretValues(env: NodeJS.ProcessEnv = process.env): string[] 
  * Text with every credential-looking query value masked AND every configured secret's value masked,
  * wherever it appears (a URL quoted in an error message, a partner's echoed request). Never throws.
  */
+const PAYOUT_HANDLE_LOG_KEYS = new Set(["payoutHandle", "payout_handle"]);
+
+/** Drop payout-handle values from structured logs. A handle must not carry a bank or routing number into a log line. */
+export function censorPayoutHandleKeys(arg: unknown): unknown {
+  if (Array.isArray(arg)) {
+    let changed = false;
+    const next = arg.map((item) => {
+      const redacted = censorPayoutHandleKeys(item);
+      if (redacted !== item) changed = true;
+      return redacted;
+    });
+    return changed ? next : arg;
+  }
+  if (arg && typeof arg === "object" && !(arg instanceof Error) && Object.getPrototypeOf(arg) === Object.prototype) {
+    let changed = false;
+    const out: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(arg as Record<string, unknown>)) {
+      if (PAYOUT_HANDLE_LOG_KEYS.has(key)) {
+        out[key] = "[REDACTED]";
+        changed = true;
+        continue;
+      }
+      const redacted = censorPayoutHandleKeys(value);
+      if (redacted !== value) changed = true;
+      out[key] = redacted;
+    }
+    return changed ? out : arg;
+  }
+  return arg;
+}
+
+/** Mask a payoutHandle / payout_handle assignment inside a logged string. */
+export function redactPayoutHandleText(text: string): string {
+  if (!text) return text;
+  return text.replace(
+    /(["']?)(?:payoutHandle|payout_handle)\1\s*[:=]\s*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\S+)/gi,
+    (match) => {
+      const sep = match.match(/[:=]/);
+      const key = match.slice(0, sep?.index ?? match.length).trimEnd();
+      const quoted = /["']$/.test(key) || match.includes(":\"");
+      return quoted ? `${key}${sep?.[0] ?? ":"}"[REDACTED]"` : `${key}${sep?.[0] ?? "="}[REDACTED]`;
+    },
+  );
+}
+
 export function redactSecretsInText(text: string, env: NodeJS.ProcessEnv = process.env): string {
   if (typeof text !== "string" || text.length === 0) return text;
   let out = text.replace(/([?&])([^=&\s"'<>]+)=([^&\s"'<>]*)/g, (m, sep: string, k: string) => {
@@ -65,28 +110,29 @@ export function redactSecretsInText(text: string, env: NodeJS.ProcessEnv = proce
 
 /** One log argument with secrets masked: strings, Error messages/stacks, and plain objects (one level). */
 export function redactLogArg(arg: unknown): unknown {
-  if (typeof arg === "string") return redactSecretsInText(arg);
+  if (typeof arg === "string") return redactPayoutHandleText(redactSecretsInText(arg));
   // An argument with nothing to mask is passed through untouched (an Error keeps its cause and code).
   if (arg instanceof Error) {
-    const message = redactSecretsInText(arg.message);
-    const stack = arg.stack ? redactSecretsInText(arg.stack) : arg.stack;
+    const message = redactPayoutHandleText(redactSecretsInText(arg.message));
+    const stack = arg.stack ? redactPayoutHandleText(redactSecretsInText(arg.stack)) : arg.stack;
     if (message === arg.message && stack === arg.stack) return arg;
     const copy = new Error(message);
     copy.name = arg.name;
     copy.stack = stack;
     return copy;
   }
-  if (arg && typeof arg === "object" && !Array.isArray(arg) && Object.getPrototypeOf(arg) === Object.prototype) {
-    let changed = false;
+  const censored = censorPayoutHandleKeys(arg);
+  if (censored && typeof censored === "object" && !Array.isArray(censored) && Object.getPrototypeOf(censored) === Object.prototype) {
+    let changed = censored !== arg;
     const o: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(arg as Record<string, unknown>)) {
+    for (const [k, v] of Object.entries(censored as Record<string, unknown>)) {
       const r = typeof v === "string" || v instanceof Error ? redactLogArg(v) : v;
       if (r !== v) changed = true;
       o[k] = r;
     }
-    return changed ? o : arg;
+    return changed ? o : censored;
   }
-  return arg;
+  return censored;
 }
 
 const CONSOLE_METHODS = ["log", "info", "warn", "error", "debug"] as const;
@@ -161,9 +207,13 @@ export const logger = pino({
       "req.body.password",
       "req.body.token",
       "req.body.apiKey",
+      "req.body.payoutHandle",
+      "req.body.payout_handle",
       "*.password",
       "*.token",
       "*.secret",
+      "*.payoutHandle",
+      "*.payout_handle",
     ],
     censor: "[REDACTED]",
   },

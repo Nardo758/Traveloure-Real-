@@ -13,11 +13,15 @@ export interface IAuthStorage {
 }
 
 /**
- * SH-1 item 12 (§19 layer 2): `isTest` is written only by the admin test-flag route and at QA sign-up, never
- * through these generic writers — whatever object a caller hands them.
+ * §19 layer 2. `isTest` is written only by the admin test-flag route and at QA sign-up.
+ * `payoutMethodType` / `payoutHandle` are written only by saveOwnPayoutSetup
+ * (ledger 2026-10-23-payout-setup-server). These generic writers drop all three,
+ * whatever object a caller hands them.
  */
-function withoutTestFlag<T extends Partial<UpsertUser>>(data: T): Omit<T, "isTest"> {
-  const { isTest: _ignored, ...rest } = data;
+function withoutServerOwnedUserFields<T extends Partial<UpsertUser>>(
+  data: T,
+): Omit<T, "isTest" | "payoutMethodType" | "payoutHandle"> {
+  const { isTest: _test, payoutMethodType: _method, payoutHandle: _handle, ...rest } = data;
   return rest;
 }
 
@@ -33,7 +37,7 @@ class AuthStorage implements IAuthStorage {
   }
 
   async upsertUser(input: UpsertUser): Promise<User> {
-    const userData = withoutTestFlag(input) as UpsertUser;
+    const userData = withoutServerOwnedUserFields(input) as UpsertUser;
     const [user] = await db
       .insert(users)
       .values(userData)
@@ -52,7 +56,7 @@ class AuthStorage implements IAuthStorage {
     const [user] = await db
       .update(users)
       .set({
-        ...withoutTestFlag(data),
+        ...withoutServerOwnedUserFields(data),
         updatedAt: new Date(),
       })
       .where(eq(users.id, id))
