@@ -96,8 +96,7 @@ interface CityData {
   trending_score: number;
   crowd_level: string;
   vibe_tags: string[];
-  current_highlight: string;
-  highlight_emoji?: string;
+  // R-07: cities.json may still carry current_highlight and highlight_emoji. This seed does not read them.
   weather_score: number;
   avg_hotel_price: number;
   price_change: number;
@@ -237,8 +236,6 @@ export async function seedTravelPulseData(): Promise<{ created: number }> {
           trendingScore: city.trending_score,
           crowdLevel: city.crowd_level,
           vibeTags: city.vibe_tags,
-          currentHighlight: city.current_highlight,
-          highlightEmoji: city.highlight_emoji,
           weatherScore: city.weather_score,
           avgHotelPrice: city.avg_hotel_price?.toString(),
           priceChange: city.price_change?.toString(),
