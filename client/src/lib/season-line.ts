@@ -1,10 +1,9 @@
 /**
  * SH-1 item 8 (ledger `2026-10-19-sh1-destination-page`): the destination header's season line.
  *
- * `travel_pulse_cities.ai_seasonal_highlights` and `current_highlight` have NO live writer (the refresh was removed —
- * server/index.ts), so the header shows the city name only and every reader of those fields sits behind
- * `SEASONAL_WRITER_LIVE`: the hero's season and highlight lines, the date strip, and the strip's highlight-keyed
- * add-on. Turn it on only when a refresh writer exists again.
+ * R-07 drops those city fields from every traveler payload, so the header shows the city name only.
+ * `SEASONAL_WRITER_LIVE` stays false: the hero season line, the date strip, and the highlight-keyed
+ * add-on do not turn on to read fields the API no longer sends.
  */
 export const SEASONAL_WRITER_LIVE = false;
 

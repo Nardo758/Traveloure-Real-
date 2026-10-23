@@ -238,6 +238,12 @@ jobs:
       - name: Demo seeders gated out of production (ledger 2026-09-19-demo-seeders-gated)
         run: npx tsx --test server/__tests__/demo-seeders-gated.test.ts
 
+      # 2026-10-22-boot-seed-stamps: a matching boot stamp skips seeding after the lock, a changed
+      # input reruns only that seeder, a failed seeder leaves its stamp unwritten, and both ready
+      # routes stay false until the pass or the skip finishes. Pure — no database.
+      - name: Boot seed stamps (ledger 2026-10-22-boot-seed-stamps)
+        run: npx tsx --test server/__tests__/boot-seed-stamps.test.ts
+
       # 2026-09-15-d41-item-quantity (punchlist D-41 = yes, migration 298): a plan item may carry a
       # unit count, NULL = one unit. The pure half — §19 omits it from the item insert schema and
       # strips it in storage; the count crosses between `cart_items` and `itinerary_items` in ONE

@@ -36,6 +36,7 @@ import { trendEntities, trendScores } from "@shared/schema";
 import { OPERATING_MARKETS } from "./trend-engine/operating-markets";
 import { CONFIDENCE_FLOOR } from "./trend-engine/trend-score.service";
 import crypto from "crypto";
+import { omitTravelerSeasonalFields } from "./travelpulse-traveler-projection";
 
 
 /**
@@ -43,7 +44,7 @@ import crypto from "crypto";
  * legacy `crowd_level` / `pulse_score` are not on it, and `trendingScore` is the resolver's (0 = not
  * shown — the rail's suppression path).
  */
-export type PublicTrendingCity = Omit<TravelPulseCity, "crowdLevel" | "pulseScore"> & {
+export type PublicTrendingCity = Omit<TravelPulseCity, "crowdLevel" | "pulseScore" | "currentHighlight" | "aiSeasonalHighlights"> & {
   trendingScore: number;
   /** TravelPulse PR 2: the resolver's crowd band through `displayCrowdBand`; null = no label (§13). */
   crowdBand: DisplayCrowdBand | null;
@@ -301,7 +302,9 @@ export class TravelPulseService {
       // PR 1: the legacy crowd label and pulse score are NOT spread onto a public row. PR 2 (ledger
       // `2026-09-30-travelpulse-crowd-band`): Crowd is the resolver's band under its OWN key,
       // `crowdBand`, through the ONE display rule — the legacy `crowdLevel` never returns.
-      const { crowdLevel: _legacyCrowd, pulseScore: _legacyPulse, ...publicCity } = city;
+      const { crowdLevel: _legacyCrowd, pulseScore: _legacyPulse, ...withoutLegacy } = city;
+      // R-07: a whole-row spread must drop the seasonal pair explicitly.
+      const publicCity = omitTravelerSeasonalFields(withoutLegacy);
       const crowdBand = displayCrowdBand(
         rd ? { band: rd.crowdBand, confidence: rd.crowdConfidence, computedAt: rd.computedAt } : null,
         { confidenceFloor: CONFIDENCE_FLOOR, maxAgeHours: trendScoreMaxAgeHours() },
@@ -366,7 +369,10 @@ export class TravelPulseService {
     // TravelPulse PR 1 (ledger `2026-09-29-travelpulse-hygiene`): the public city projection carries
     // the RESOLVER's Trend number (null ⇒ none shown) and never the legacy, Grok- or seed-written
     // `pulse_score` / `trending_score` / `crowd_level` (trend-engine audit §3). Crowd returns in PR 2.
-    const { crowdLevel: _legacyCrowd, pulseScore: _legacyPulse, trendingScore: _legacyTrend, ...publicCity } = city;
+    const { crowdLevel: _legacyCrowd, pulseScore: _legacyPulse, trendingScore: _legacyTrend, ...withoutLegacy } = city;
+    // R-07: the public city object is a row spread. Drop the seasonal pair here so every
+    // caller (city page, discover hero, draft context) inherits the strip.
+    const publicCity = omitTravelerSeasonalFields(withoutLegacy);
     const trendingScore = await this.resolverTrendForCity(city.cityName);
     return {
       city: { ...publicCity, trendingScore },
@@ -485,8 +491,6 @@ export class TravelPulseService {
         trendingScore: 92,
         crowdLevel: "busy",
         vibeTags: ["cultural", "foodie", "nightlife", "adventure"],
-        currentHighlight: "Cherry Blossom Season",
-        highlightEmoji: null,
         weatherScore: 85,
         avgHotelPrice: "245.00",
         priceChange: "-12.5",
@@ -510,8 +514,6 @@ export class TravelPulseService {
         trendingScore: 78,
         crowdLevel: "moderate",
         vibeTags: ["romantic", "cultural", "foodie", "luxury"],
-        currentHighlight: "Fashion Week",
-        highlightEmoji: null,
         weatherScore: 72,
         avgHotelPrice: "320.00",
         priceChange: "8.3",
@@ -535,8 +537,6 @@ export class TravelPulseService {
         trendingScore: 95,
         crowdLevel: "busy",
         vibeTags: ["relaxation", "adventure", "nature", "budget"],
-        currentHighlight: "Nyepi Festival Prep",
-        highlightEmoji: null,
         weatherScore: 65,
         avgHotelPrice: "89.00",
         priceChange: "-5.2",
@@ -560,8 +560,6 @@ export class TravelPulseService {
         trendingScore: 84,
         crowdLevel: "packed",
         vibeTags: ["nightlife", "cultural", "foodie", "luxury"],
-        currentHighlight: "Broadway Season",
-        highlightEmoji: null,
         weatherScore: 60,
         avgHotelPrice: "395.00",
         priceChange: "15.2",
@@ -585,8 +583,6 @@ export class TravelPulseService {
         trendingScore: 82,
         crowdLevel: "moderate",
         vibeTags: ["cultural", "foodie", "nightlife", "relaxation"],
-        currentHighlight: "La Merce Festival",
-        highlightEmoji: null,
         weatherScore: 90,
         avgHotelPrice: "185.00",
         priceChange: "-3.8",
@@ -610,8 +606,6 @@ export class TravelPulseService {
         trendingScore: 88,
         crowdLevel: "busy",
         vibeTags: ["luxury", "adventure", "nightlife", "family"],
-        currentHighlight: "Dubai Shopping Festival",
-        highlightEmoji: null,
         weatherScore: 78,
         avgHotelPrice: "275.00",
         priceChange: "-18.5",
@@ -635,8 +629,6 @@ export class TravelPulseService {
         trendingScore: 91,
         crowdLevel: "moderate",
         vibeTags: ["cultural", "foodie", "budget", "romantic"],
-        currentHighlight: "Fado Festival Month",
-        highlightEmoji: null,
         weatherScore: 88,
         avgHotelPrice: "135.00",
         priceChange: "-7.2",
@@ -660,8 +652,6 @@ export class TravelPulseService {
         trendingScore: 75,
         crowdLevel: "moderate",
         vibeTags: ["adventure", "nature", "relaxation", "nightlife"],
-        currentHighlight: "Vivid Sydney Lights",
-        highlightEmoji: null,
         weatherScore: 82,
         avgHotelPrice: "225.00",
         priceChange: "4.5",
@@ -685,8 +675,6 @@ export class TravelPulseService {
         trendingScore: 86,
         crowdLevel: "busy",
         vibeTags: ["foodie", "budget", "nightlife", "cultural"],
-        currentHighlight: "Songkran Preparations",
-        highlightEmoji: null,
         weatherScore: 55,
         avgHotelPrice: "65.00",
         priceChange: "-8.9",
@@ -710,8 +698,6 @@ export class TravelPulseService {
         trendingScore: 89,
         crowdLevel: "moderate",
         vibeTags: ["cultural", "adventure", "budget", "foodie"],
-        currentHighlight: "Ramadan Nights",
-        highlightEmoji: null,
         weatherScore: 92,
         avgHotelPrice: "95.00",
         priceChange: "-22.3",
@@ -735,8 +721,6 @@ export class TravelPulseService {
         trendingScore: 76,
         crowdLevel: "busy",
         vibeTags: ["cultural", "foodie", "romantic", "luxury"],
-        currentHighlight: "Easter Week",
-        highlightEmoji: null,
         weatherScore: 85,
         avgHotelPrice: "210.00",
         priceChange: "12.1",
@@ -760,8 +744,6 @@ export class TravelPulseService {
         trendingScore: 93,
         crowdLevel: "quiet",
         vibeTags: ["adventure", "nature", "luxury", "foodie"],
-        currentHighlight: "Whale Season",
-        highlightEmoji: null,
         weatherScore: 88,
         avgHotelPrice: "145.00",
         priceChange: "-15.8",

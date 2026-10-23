@@ -6,7 +6,6 @@ import {
   MapPin,
   Lightbulb,
   Shield,
-  Leaf,
   Smartphone,
   Users,
 } from "lucide-react";
@@ -18,7 +17,6 @@ const INSIGHT_ICONS = {
   mustSee: MapPin,
   tips: Lightbulb,
   safety: Shield,
-  seasonal: Leaf,
   weather: Smartphone,
   local: Users,
 };
@@ -38,7 +36,6 @@ interface InsightsCardProps {
     aiMustSeeAttractions?: string | string[];
     aiTravelTips?: string | string[];
     aiSafetyNotes?: string;
-    aiSeasonalHighlights?: string;
     aiWeatherInsights?: string;
     aiLocalInsights?: string;
   };
@@ -102,14 +99,6 @@ export function InsightsCard({ insights }: InsightsCardProps) {
       title: "Safety Notes",
       value: insights.aiSafetyNotes,
       icon: INSIGHT_ICONS.safety,
-    });
-  }
-
-  if (insights?.aiSeasonalHighlights) {
-    items.push({
-      title: "Seasonal Highlights",
-      value: insights.aiSeasonalHighlights,
-      icon: INSIGHT_ICONS.seasonal,
     });
   }
 

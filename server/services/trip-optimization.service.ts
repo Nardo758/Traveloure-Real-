@@ -1,5 +1,6 @@
 import { aiGenerationService, RealTimeIntelligenceResult, AutonomousItineraryResult, TravelPulseContext } from "./ai-generation.service";
 import { travelPulseService } from "./travelpulse.service";
+import { optimizationCityPromptFields } from "./travelpulse-traveler-projection";
 
 export interface CartItem {
   id: string;
@@ -72,13 +73,7 @@ class TripOptimizationService {
       if (cityIntelligence?.city) {
         const city = cityIntelligence.city;
         travelPulseContext = {
-          trendingScore: typeof city.trendingScore === 'number' ? city.trendingScore : undefined,
-          aiBudgetEstimate: typeof city.aiBudgetEstimate === 'string' ? city.aiBudgetEstimate : undefined,
-          aiTravelTips: typeof city.aiTravelTips === 'string' ? city.aiTravelTips : undefined,
-          aiLocalInsights: typeof city.aiLocalInsights === 'string' ? city.aiLocalInsights : undefined,
-          aiMustSeeAttractions: typeof city.aiMustSeeAttractions === 'string' ? city.aiMustSeeAttractions : undefined,
-          aiSeasonalHighlights: typeof city.aiSeasonalHighlights === 'string' ? city.aiSeasonalHighlights : undefined,
-          aiUpcomingEvents: typeof city.aiUpcomingEvents === 'string' ? city.aiUpcomingEvents : undefined,
+          ...optimizationCityPromptFields(city),
           hiddenGems: cityIntelligence.hiddenGems?.slice(0, 5).map(g => ({
             name: g.placeName,
             description: g.description ?? "",

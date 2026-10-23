@@ -22,7 +22,6 @@ interface HomeCityResponse {
 
 interface TravelPulseCityRow {
   cityName: string;
-  currentHighlight?: string | null;
   dealAlert?: string | null;
   priceChange?: string | number | null;
   priceTrend?: string | null;
@@ -98,7 +97,7 @@ export function HomeCity({ enabled }: { enabled: boolean }) {
   const cityRow = (pulse?.cities ?? []).find((c) => cityMatches(c.cityName, homeCity));
   const trendLines: Array<{ label: string; value: string }> = [];
   if (cityRow) {
-    const text = cityRow.currentHighlight || cityRow.dealAlert;
+    const text = cityRow.dealAlert;
     if (text) trendLines.push({ label: "Now", value: text });
     const pc = cityRow.priceChange != null ? Number(cityRow.priceChange) : NaN;
     if (Number.isFinite(pc)) trendLines.push({ label: "Prices", value: `${pc > 0 ? "+" : ""}${pc}%` });

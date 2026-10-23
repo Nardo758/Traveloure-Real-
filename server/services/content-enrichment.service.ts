@@ -38,6 +38,20 @@ export interface CityEnrichedContent {
   trendingNow: EnrichedRecommendation[];
 }
 
+/** R-07: enrichment input never copies currentHighlight into whatsHotNow. */
+export function cityEnrichmentInput(
+  city: { aiMustSeeAttractions?: unknown; currentHighlight?: string | null },
+  hiddenGemsData: Array<{ name: string; type: string; whySpecial: string; priceRange: string }>,
+): {
+  hiddenGems: Array<{ name: string; type: string; whySpecial: string; priceRange: string }>;
+  mustSeeAttractions: string[];
+} {
+  return {
+    hiddenGems: hiddenGemsData,
+    mustSeeAttractions: (city.aiMustSeeAttractions as string[]) || [],
+  };
+}
+
 class ContentEnrichmentService {
   
   async enrichCityRecommendations(
@@ -46,7 +60,6 @@ class ContentEnrichmentService {
     aiRecommendations: {
       hiddenGems: Array<{ name: string; type: string; whySpecial: string; priceRange: string }>;
       mustSeeAttractions: string[];
-      whatsHotNow?: string;
     }
   ): Promise<CityEnrichedContent> {
     console.log(`[ContentEnrichment] Enriching recommendations for ${cityName}, ${country}`);
@@ -67,22 +80,9 @@ class ContentEnrichmentService {
       )
     );
 
+    // R-07: currentHighlight is not a search seed. trendingNow stays empty rather than
+    // naming a seasonal highlight the traveler payload no longer carries.
     const trendingNow: EnrichedRecommendation[] = [];
-    if (aiRecommendations.whatsHotNow) {
-      const trending = await serpService.searchVenueByName(
-        aiRecommendations.whatsHotNow, 
-        cityName, 
-        country
-      );
-      if (trending) {
-        trendingNow.push(this.toEnrichedRecommendation(trending, {
-          name: aiRecommendations.whatsHotNow,
-          type: 'trending',
-          reason: 'Currently trending in the city',
-          source: 'grok'
-        }));
-      }
-    }
 
     return {
       cityName,
@@ -341,11 +341,7 @@ class ContentEnrichmentService {
         priceRange: gem.priceRange || '$$',
       }));
 
-      const aiRecommendations = {
-        hiddenGems: hiddenGemsData,
-        mustSeeAttractions: (city.aiMustSeeAttractions as string[]) || [],
-        whatsHotNow: city.currentHighlight || undefined,
-      };
+      const aiRecommendations = cityEnrichmentInput(city, hiddenGemsData);
 
       return this.enrichCityRecommendations(
         city.cityName,

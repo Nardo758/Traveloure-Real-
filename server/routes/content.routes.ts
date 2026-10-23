@@ -263,6 +263,7 @@ import webhooksRoutes from "./webhooks.routes";
 import { affiliateClicks } from "@shared/schema";
 import { isExpertRole } from "@shared/roles";
 import { travelPulseService } from "../services/travelpulse.service";
+import { omitTravelerSeasonalFields } from "../services/travelpulse-traveler-projection";
 import { travelPulseScheduler } from "../services/travelpulse-scheduler.service";
 import { trackAnthropicResponse } from "../services/ai-cost-tracker";
 import { sanitizeInput } from "../utils/sanitize";
@@ -5628,7 +5629,9 @@ router.get("/api/travelpulse/help-decide", async (req, res) => {
 router.get("/api/travelpulse/cities", async (req, res) => {
     try {
       const limit = parseInt(req.query.limit as string) || 20;
-      const cities = await travelPulseService.getTrendingCities(limit);
+      const cities = (await travelPulseService.getTrendingCities(limit)).map((city) =>
+        omitTravelerSeasonalFields(city),
+      );
       res.json({ cities, count: cities.length });
     } catch (error: any) {
       console.error("Error fetching trending cities:", error);
@@ -5646,8 +5649,11 @@ router.get("/api/travelpulse/cities/:cityName", async (req, res) => {
       if (!intelligence) {
         return res.status(404).json({ message: "City not found" });
       }
-      
-      res.json(intelligence);
+
+      res.json({
+        ...intelligence,
+        city: omitTravelerSeasonalFields(intelligence.city),
+      });
     } catch (error: any) {
       console.error("Error fetching city intelligence:", error);
       res.status(500).json({ message: "Failed to fetch city intelligence", error: error.message });
@@ -6128,7 +6134,10 @@ router.get("/api/travelpulse/global-calendar", async (req, res) => {
           // Skip cities with neither seasonal data nor events for this month
           if (!season && events.length === 0) return null;
 
-          return {
+          // R-07: getAllCities is a whole-row read. The helper strips the seasonal pair even
+          // if a later edit spreads `city` into this object. `highlights` below is
+          // destination_seasons, a different column, and stays.
+          return omitTravelerSeasonalFields({
             id: city.id,
             cityName: city.cityName,
             country: city.country,
@@ -6139,7 +6148,6 @@ router.get("/api/travelpulse/global-calendar", async (req, res) => {
             trendingScore: resolverTrends.get(city.cityName.toLowerCase()) ?? null,
             vibeTags: city.vibeTags as string[] || [],
             weatherScore: city.weatherScore,
-            currentHighlight: city.currentHighlight,
             highlightEmoji: city.highlightEmoji,
             // Seasonal data for this month (null when the city is events-only)
             seasonalRating: season?.rating || null,
@@ -6163,7 +6171,7 @@ router.get("/api/travelpulse/global-calendar", async (req, res) => {
             // AI data
             aiBestTimeToVisit: city.aiBestTimeToVisit,
             aiBudgetEstimate: city.aiBudgetEstimate as any,
-          };
+          });
         })
         .filter((city): city is NonNullable<typeof city> => city !== null);
       

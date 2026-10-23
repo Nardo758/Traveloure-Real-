@@ -48,7 +48,7 @@ const events = {
 const city = (cityName: string, country: string, trendingScore: number) => ({
   id: `h1-${cityName}`, cityName, country, countryCode: null, region: null, timezone: null,
   latitude: null, longitude: null, activeTravelers: 0, trendingScore, vibeTags: [],
-  currentHighlight: null, highlightEmoji: null, currentWeather: {}, weatherScore: null,
+  highlightEmoji: null, currentWeather: {}, weatherScore: null,
   avgHotelPrice: null, priceChange: null, priceTrend: null, dealAlert: null,
   totalTrendingSpots: 0, totalHiddenGems: 0, totalAlerts: 0, imageUrl: null,
 });

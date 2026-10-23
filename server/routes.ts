@@ -190,6 +190,7 @@ import bookingComponentsRoutes from "./routes/booking-components.routes";
 import { availableAtFor } from "./config/earnings-hold.config";
 import { aiOrchestrator } from "./services/ai-orchestrator";
 import { aiGenerationService } from "./services/ai-generation.service";
+import { draftCityPromptFields } from "./services/travelpulse-traveler-projection";
 import { draftServiceTranslation, isContentLocale, effectiveSourceLocale, CONTENT_LOCALES } from "./services/service-translation.service";
 import { resolveCoverageGaps, resolveDemandBuckets, MIN_DEMAND_SIGNAL } from "./services/market-insights.service";
 import { aiGeneratedItineraries, localExpertForms, expertAiTasks, aiInteractions, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, providerNeighborhoodCoverage } from "@shared/schema";
@@ -12211,13 +12212,7 @@ ${bannedCopyPromptLine()}`;
       if (cityIntelligence) {
         const city = cityIntelligence.city;
         travelPulseContext = {
-          trendingScore: city.trendingScore,
-          aiBudgetEstimate: city.aiBudgetEstimate,
-          aiTravelTips: city.aiTravelTips,
-          aiLocalInsights: city.aiLocalInsights,
-          aiMustSeeAttractions: city.aiMustSeeAttractions,
-          aiSeasonalHighlights: city.aiSeasonalHighlights,
-          aiUpcomingEvents: city.aiUpcomingEvents,
+          ...draftCityPromptFields(city),
           // FD-1 tier filter: quick-start is a FREE draft (FD-2 ruling 5), so it takes public gems only.
           // travel_pulse_hidden_gems has no `name` column — the field is placeName (fixed Aug 29 2026).
           // FD-4: the ONE free-draft gem projection, pinned by share-projection.test.ts.

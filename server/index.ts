@@ -35,6 +35,21 @@ import { seedTripOwnership } from "./seeds/trip-ownership.seed";
 import { seedE2EAccounts } from "./seeds/e2e-test-accounts.seed";
 import { seedLocationCache } from "./seeds/location-cache.seed";
 import { demoSeedsAllowed, demoSeedSkipMessage } from "./seeds/lib/demo-seed-gate";
+import {
+  bootSeedingLogMessage,
+  loadSeederInputHash,
+  runSeedPass,
+  type BootSeederName,
+  type StampedSeeder,
+} from "./seeds/lib/boot-seed-stamp";
+import { readBootSeedStamps, writeBootSeedStamp } from "./seeds/lib/boot-seed-stamp-store";
+import {
+  getSeedingStatus,
+  isSeedingComplete,
+  markBootSeedingComplete,
+  seedingBlocksReady,
+} from "./seeds/lib/boot-seeding-state";
+export { getSeedingStatus, isSeedingComplete };
 import { storage } from "./storage";
 import { setupWebSocket } from "./websocket";
 import { getSession } from "./replit_integrations/auth";
@@ -176,18 +191,6 @@ export function log(message: string, source = "express") {
 }
 
 // Readiness state for database seeding
-let seedingComplete = false;
-let seedingStartTime: number | null = null;
-let seedingDurationMs: number | null = null;
-
-export function isSeedingComplete(): boolean {
-  return seedingComplete;
-}
-
-export function getSeedingStatus(): { complete: boolean; durationMs: number | null } {
-  return { complete: seedingComplete, durationMs: seedingDurationMs };
-}
-
 // Readiness endpoint — seeding gate + service-key presence checks.
 // CI uses this to fast-fail with a clear diagnostic when a required secret
 // is absent, instead of burning 60 s inside the test suite.
@@ -195,7 +198,9 @@ export function getSeedingStatus(): { complete: boolean; durationMs: number | nu
 app.get("/api/ready", async (_req: Request, res: Response) => {
   const seeding = getSeedingStatus();
 
-  if (!seeding.complete) {
+  // False from process start until the locked seed pass finishes, including a stamp skip
+  // (ledger `2026-10-22-boot-seed-stamps`). GET /api/health is a different endpoint.
+  if (seedingBlocksReady(seeding)) {
     return res.status(503).json({
       ready: false,
       status: "fail",
@@ -293,22 +298,56 @@ app.get("/api/version", (_req: Request, res: Response) => {
   });
 });
 
+/**
+ * Per-seeder timing (ledger `2026-10-19-boot-seed-timing`): every boot seeder's seconds, logged once as one line
+ * after seeding — names and seconds only — so a slow boot names its seeder. A skip records 0.
+ */
+const seederSeconds: Record<string, number> = {};
+
 // Run database seeding in background (non-blocking).
 // Migrations are intentionally NOT called here — they run before listen() so
 // the server never accepts requests with a partially-migrated schema.
 async function runDatabaseSeeding() {
-  seedingStartTime = Date.now();
+  const seedingStartTime = Date.now();
   logger.info("Database seeding started");
-  // One instance at a time (ledger `2026-10-18-boot-reference-seeding`): a second instance waits here, then
-  // finds every insert-if-missing already done.
-  let lockWaitMs = 0;
-  await withAdvisoryXactLock(BOOT_SEED_LOCK, () => {
-    lockWaitMs = Date.now() - seedingStartTime!;
-    return seedAtBoot();
+  // One instance at a time (ledger `2026-10-18-boot-reference-seeding`). After the lock, the pass
+  // re-reads boot_seed_stamps and skips when the stored version matches (ledger `2026-10-22-boot-seed-stamps`).
+  for (const key of Object.keys(seederSeconds)) delete seederSeconds[key];
+  const seeders = collectBootSeeders();
+  const result = await runSeedPass({
+    lock: (fn) => withAdvisoryXactLock(BOOT_SEED_LOCK, async () => {
+      const out = await fn();
+      await verifyNeighborhoodOneWriterTrigger();
+      return out;
+    }),
+    readStamps: readBootSeedStamps,
+    writeStamp: writeBootSeedStamp,
+    seeders,
   });
-  seedingDurationMs = Date.now() - seedingStartTime;
-  seedingComplete = true;
-  logger.info({ durationMs: seedingDurationMs, lockWaitSeconds: Math.round(lockWaitMs / 100) / 10, seederSeconds }, "Database seeding complete");
+  for (const row of result.perSeeder) {
+    seederSeconds[row.name] = Math.round(row.durationMs / 100) / 10;
+    if (row.stampError !== undefined) {
+      logger.error({ err: row.stampError, seeder: row.name }, "Failed to record the seeder stamp");
+    }
+  }
+  const seedingDurationMs = Date.now() - seedingStartTime;
+  markBootSeedingComplete(seedingDurationMs);
+  const seedersLog = Object.fromEntries(
+    result.perSeeder.map((row) => [row.name, { action: row.action, durationMs: row.durationMs }]),
+  );
+  if (result.overallError !== undefined) {
+    logger.error({ err: result.overallError }, "Failed to record the boot seed stamp");
+  }
+  logger.info({ outcome: result.outcome, seeders: seedersLog }, bootSeedingLogMessage(result.outcome));
+  logger.info(
+    {
+      durationMs: seedingDurationMs,
+      lockWaitSeconds: Math.round(result.lockWaitMs / 100) / 10,
+      seederSeconds,
+      seedOutcome: result.outcome,
+    },
+    "Database seeding complete",
+  );
 }
 
 /**
@@ -316,22 +355,23 @@ async function runDatabaseSeeding() {
  * (ledger `2026-10-18-boot-reference-seeding`). Content, demo data and backfills run here only in dev/CI
  * (`demoSeedsAllowed()`); in production they are `npx tsx scripts/seed-boot-content.ts`, run on purpose.
  */
-/**
- * Per-seeder timing (ledger `2026-10-19-boot-seed-timing`): every boot seeder's seconds, logged once as one line
- * after seeding — names and seconds only — so a slow boot names its seeder.
- */
-const seederSeconds: Record<string, number> = {};
-async function timedSeeder<T>(name: string, fn: () => Promise<T>): Promise<T> {
-  const t = Date.now();
+function bootSeeder(name: BootSeederName, run: () => Promise<void>, onError: (err: unknown) => void): StampedSeeder {
+  return { name, inputHash: loadSeederInputHash(name), run, onError };
+}
+
+async function verifyNeighborhoodOneWriterTrigger(): Promise<void> {
+  // expert_neighborhoods one-writer guard (migration 272; ruling 2026-08-29-neighborhood-claims). Read-only.
+  // Not a seeder: a stamp skip still checks it.
   try {
-    return await fn();
-  } finally {
-    seederSeconds[name] = Math.round((Date.now() - t) / 100) / 10;
+    if (!(await isRatifyOnlyTriggerPresent())) {
+      logger.error("expert_neighborhoods_ratify_only_trg is MISSING — expert_neighborhoods has lost its one-writer guard (migration 272)");
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to verify the expert_neighborhoods one-writer trigger");
   }
 }
 
-async function seedAtBoot() {
-
+function collectBootSeeders(): StampedSeeder[] {
   // DISABLED: ESO backfill (see architectural decision in CLAUDE.md).
   //
   // Canonical service source: provider_services (not expert_service_offerings).
@@ -352,88 +392,61 @@ async function seedAtBoot() {
   //
   // Previous: await runEsoBackfill();  // REMOVED — contradicted provider_services canonicality
 
-  try {
-    const result = await timedSeeder("seedCategories", () => seedCategories());
-    if (result.created > 0) {
-      logger.info({ count: result.created }, "Seeded new service categories");
-    }
-  } catch (err) {
-    logger.error({ err }, "Failed to seed categories");
-  }
-
-  try {
-    const expResult = await timedSeeder("seedExperienceTypes", () => seedExperienceTypes());
-    if (expResult.created > 0) {
-      logger.info({ count: expResult.created }, "Seeded new experience types");
-    }
-  } catch (err) {
-    logger.error({ err }, "Failed to seed experience types");
-  }
-
-  try {
-    await timedSeeder("seedExperienceTemplateTabs", () => seedExperienceTemplateTabs());
-  } catch (err) {
-    logger.error({ err }, "Failed to seed experience template tabs");
-  }
-
-  try {
-    await timedSeeder("seedExpertServices", () => seedExpertServices());
-  } catch (err) {
-    logger.error({ err }, "Failed to seed expert services");
-  }
-
-  try {
-    const n = await timedSeeder("seedRoleScopedTemplates", () => seedRoleScopedTemplates());
-    if (n.inserted > 0) logger.info({ count: n.inserted }, "Seeded role-scoped expert service templates");
-  } catch (err) {
-    logger.error({ err }, "Failed to seed role-scoped templates");
-  }
-
-  try {
-    const templates = await timedSeeder("seedCanonicalServiceTemplates", () => seedCanonicalServiceTemplates());
-    if (templates > 0) logger.info({ count: templates }, "Seeded canonical service templates");
-    const offerings = await timedSeeder("seedCanonicalExpertOfferings", () => seedCanonicalExpertOfferings());
-    if (offerings > 0) logger.info({ count: offerings }, "Seeded canonical expert service offerings");
-  } catch (err) {
-    logger.error({ err }, "Failed to seed canonical service templates");
-  }
-
-  try {
-    await timedSeeder("ensureDefaultBookingFeeConfig", () => ensureDefaultBookingFeeConfig());
-  } catch (err) {
-    logger.error({ err }, "Failed to bootstrap booking_fee_configs");
-  }
-
-  try {
-    // Mirror the in-code DMO source registry into dmo_sources (insert-if-missing).
-    const dmoResult = await timedSeeder("seedDmoSources", () => seedDmoSources());
-    if (dmoResult.upserted > 0) logger.info({ count: dmoResult.upserted }, "Seeded DMO sources registry");
-    const dmoHeritageResult = await timedSeeder("seedDmoKyotoHeritage", () => seedDmoKyotoHeritage());
-    if (dmoHeritageResult.upserted > 0) logger.info({ count: dmoHeritageResult.upserted }, "Seeded DMO Kyoto heritage stubs");
-  } catch (err) {
-    logger.error({ err }, "Failed to seed DMO sources");
-  }
-
-  try {
-    const locationResult = await timedSeeder("seedLocationCache", () => seedLocationCache({ refresh: false }));
-    if (locationResult.upserted > 0) logger.info({ count: locationResult.upserted }, "Seeded IATA airport/city location cache");
-  } catch (err) {
-    logger.error({ err }, "Failed to seed location cache");
-  }
-
-  // expert_neighborhoods one-writer guard (migration 272; ruling 2026-08-29-neighborhood-claims). Read-only.
-  try {
-    if (!(await isRatifyOnlyTriggerPresent())) {
-      logger.error("expert_neighborhoods_ratify_only_trg is MISSING — expert_neighborhoods has lost its one-writer guard (migration 272)");
-    }
-  } catch (err) {
-    logger.error({ err }, "Failed to verify the expert_neighborhoods one-writer trigger");
-  }
+  const seeders: StampedSeeder[] = [
+    bootSeeder("seedCategories", async () => {
+      const result = await seedCategories();
+      if (result.created > 0) {
+        logger.info({ count: result.created }, "Seeded new service categories");
+      }
+    }, (err) => logger.error({ err }, "Failed to seed categories")),
+    bootSeeder("seedExperienceTypes", async () => {
+      const expResult = await seedExperienceTypes();
+      if (expResult.created > 0) {
+        logger.info({ count: expResult.created }, "Seeded new experience types");
+      }
+    }, (err) => logger.error({ err }, "Failed to seed experience types")),
+    bootSeeder("seedExperienceTemplateTabs", async () => {
+      await seedExperienceTemplateTabs();
+    }, (err) => logger.error({ err }, "Failed to seed experience template tabs")),
+    bootSeeder("seedExpertServices", async () => {
+      await seedExpertServices();
+    }, (err) => logger.error({ err }, "Failed to seed expert services")),
+    bootSeeder("seedRoleScopedTemplates", async () => {
+      const n = await seedRoleScopedTemplates();
+      if (n.inserted > 0) logger.info({ count: n.inserted }, "Seeded role-scoped expert service templates");
+    }, (err) => logger.error({ err }, "Failed to seed role-scoped templates")),
+    bootSeeder("seedCanonicalServiceTemplates", async () => {
+      const templates = await seedCanonicalServiceTemplates();
+      if (templates > 0) logger.info({ count: templates }, "Seeded canonical service templates");
+    }, (err) => logger.error({ err }, "Failed to seed canonical service templates")),
+    bootSeeder("seedCanonicalExpertOfferings", async () => {
+      const offerings = await seedCanonicalExpertOfferings();
+      if (offerings > 0) logger.info({ count: offerings }, "Seeded canonical expert service offerings");
+    }, (err) => logger.error({ err }, "Failed to seed canonical service templates")),
+    // ensureDefaultBookingFeeConfig inserts the default row with ON CONFLICT DO NOTHING.
+    // A matching stamp does not call it. A rerun does not update an admin-edited row.
+    bootSeeder("ensureDefaultBookingFeeConfig", async () => {
+      await ensureDefaultBookingFeeConfig();
+    }, (err) => logger.error({ err }, "Failed to bootstrap booking_fee_configs")),
+    bootSeeder("seedDmoSources", async () => {
+      // Mirror the in-code DMO source registry into dmo_sources (insert-if-missing).
+      const dmoResult = await seedDmoSources();
+      if (dmoResult.upserted > 0) logger.info({ count: dmoResult.upserted }, "Seeded DMO sources registry");
+    }, (err) => logger.error({ err }, "Failed to seed DMO sources")),
+    bootSeeder("seedDmoKyotoHeritage", async () => {
+      const dmoHeritageResult = await seedDmoKyotoHeritage();
+      if (dmoHeritageResult.upserted > 0) logger.info({ count: dmoHeritageResult.upserted }, "Seeded DMO Kyoto heritage stubs");
+    }, (err) => logger.error({ err }, "Failed to seed DMO sources")),
+    bootSeeder("seedLocationCache", async () => {
+      const locationResult = await seedLocationCache({ refresh: false });
+      if (locationResult.upserted > 0) logger.info({ count: locationResult.upserted }, "Seeded IATA airport/city location cache");
+    }, (err) => logger.error({ err }, "Failed to seed location cache")),
+  ];
 
   // ── Everything below is content, demo data or a backfill: dev/CI only. ──────────────────────
   if (!demoSeedsAllowed()) {
     logger.info("Boot seeding: reference data only (production). Content and backfills: npx tsx scripts/seed-boot-content.ts");
-    return;
+    return seeders;
   }
 
   // DEMO/FICTIONAL seeders below this line are gated by the ONE shared
@@ -441,11 +454,9 @@ async function seedAtBoot() {
   // per-call-site NODE_ENV check. See CLAUDE.md §13 and ledger row
   // `2026-09-19-demo-seeders-gated`.
   if (demoSeedsAllowed()) {
-    try {
+    seeders.push(bootSeeder("seedMockExperts", async () => {
       await seedMockExperts();
-    } catch (err) {
-      logger.error({ err }, "Failed to seed mock experts");
-    }
+    }, (err) => logger.error({ err }, "Failed to seed mock experts")));
   } else {
     logger.info(demoSeedSkipMessage("seedMockExperts"));
   }
@@ -460,7 +471,7 @@ async function seedAtBoot() {
   // restricting effect (the seeder's own check still applies) but was found, while
   // building this lane, to invite exactly this confusion — so the call is left in
   // its original, unconditional shape and the seeder's own gate is the only one.
-  try {
+  seeders.push(bootSeeder("seedLandingMomentDemo", async () => {
     const momentDemoResult = await seedLandingMomentDemo();
     if (momentDemoResult.upserted > 0) {
       logger.info(
@@ -470,48 +481,38 @@ async function seedAtBoot() {
     } else if (!momentDemoResult.expertFound) {
       logger.warn("Skipped Landing Moment demo gems because the test expert was not found");
     }
-  } catch (err) {
-    logger.error({ err }, "Failed to seed Landing Moment demo gems");
-  }
+  }, (err) => logger.error({ err }, "Failed to seed Landing Moment demo gems")));
 
   if (demoSeedsAllowed()) {
-    try {
+    seeders.push(bootSeeder("seedProviderServices", async () => {
       await seedProviderServices();
-    } catch (err) {
-      logger.error({ err }, "Failed to seed provider services");
-    }
+    }, (err) => logger.error({ err }, "Failed to seed provider services")));
   } else {
     logger.info(demoSeedSkipMessage("seedProviderServices"));
   }
 
-  try {
+  seeders.push(bootSeeder("seedDestinationCalendar", async () => {
     await seedDestinationCalendar();
-  } catch (err) {
-    logger.error({ err }, "Failed to seed destination calendar");
-  }
+  }, (err) => logger.error({ err }, "Failed to seed destination calendar")));
 
-  try {
+  seeders.push(bootSeeder("seedTravelPulseData", async () => {
     const travelPulseResult = await seedTravelPulseData();
     if (travelPulseResult.created > 0) {
       logger.info({ count: travelPulseResult.created }, "Seeded TravelPulse XAI data");
     }
-  } catch (err) {
-    logger.error({ err }, "Failed to seed TravelPulse data");
-  }
+  }, (err) => logger.error({ err }, "Failed to seed TravelPulse data")));
 
-  try {
+  seeders.push(bootSeeder("seedCityNeighborhoods", async () => {
     const neighborhoodResult = await seedCityNeighborhoods();
     if (neighborhoodResult.inserted > 0) {
       logger.info({ count: neighborhoodResult.inserted }, "Seeded city neighborhoods");
     }
-  } catch (err) {
-    logger.error({ err }, "Failed to seed city neighborhoods");
-  }
+  }, (err) => logger.error({ err }, "Failed to seed city neighborhoods")));
 
   // City events (ledger 2026-09-28-city-events): insert-only, keyed on (source, source_id); a
   // no-op while the hand-kept list is empty. Runs after neighbourhoods so the derived
   // neighbourhood can resolve.
-  try {
+  seeders.push(bootSeeder("seedManualCityEvents", async () => {
     const { seedManualCityEvents } = await import("./seeds/city-events.manual");
     // Boot removals (ledger `2026-10-18-boot-removals`): no Nominatim lookup at boot. A new row with no
     // hand-typed point lands unlocated and flagged; `npx tsx server/seeds/city-events.manual.ts` runs the
@@ -521,15 +522,13 @@ async function seedAtBoot() {
     if (eventsResult.inserted > 0 || eventsResult.filled > 0 || eventsResult.renamed > 0 || eventsResult.refused.length > 0 || eventsResult.deferred.length > 0) {
       logger.info({ inserted: eventsResult.inserted, filled: eventsResult.filled, renamed: eventsResult.renamed, refused: eventsResult.refused, located: eventsResult.located, unlocated: eventsResult.unlocated, deferred: eventsResult.deferred }, "Seeded city events");
     }
-  } catch (err) {
-    logger.error({ err }, "Failed to seed city events");
-  }
+  }, (err) => logger.error({ err }, "Failed to seed city events")));
 
   // seedLandingHeroDemo is intentionally NOT wrapped in `if (demoSeedsAllowed())`
   // — same reasoning as seedLandingMomentDemo above (ledger
   // `2026-09-19-demo-seeders-gated` EXEMPTION): it keeps its own, narrower,
   // pre-existing env gate, checked internally by the seeder itself.
-  try {
+  seeders.push(bootSeeder("seedLandingHeroDemo", async () => {
     const heroDemoResult = await seedLandingHeroDemo();
     if (heroDemoResult.markets > 0) {
       logger.info(
@@ -543,11 +542,9 @@ async function seedAtBoot() {
         "Skipped landing hero fixtures because city neighborhoods are missing",
       );
     }
-  } catch (err) {
-    logger.error({ err }, "Failed to seed landing hero fixtures");
-  }
+  }, (err) => logger.error({ err }, "Failed to seed landing hero fixtures")));
 
-  try {
+  seeders.push(bootSeeder("seedPopularCitiesContent", async () => {
     const popularCitiesResult = await seedPopularCitiesContent();
     if (popularCitiesResult.gems > 0) {
       logger.info(
@@ -555,11 +552,9 @@ async function seedAtBoot() {
         "Seeded popular cities content (hidden gems)",
       );
     }
-  } catch (err) {
-    logger.error({ err }, "Failed to seed popular cities content");
-  }
+  }, (err) => logger.error({ err }, "Failed to seed popular cities content")));
 
-  try {
+  seeders.push(bootSeeder("seedMajorCitiesBackfill", async () => {
     const backfillResult = await seedMajorCitiesBackfill();
     if (backfillResult.neighborhoodsPatched > 0 || backfillResult.gemsInserted > 0 || backfillResult.travelerCountsFixed > 0) {
       logger.info(
@@ -571,12 +566,10 @@ async function seedAtBoot() {
         "Seeded major cities backfill (neighborhood slugs + new gems + traveler counts)",
       );
     }
-  } catch (err) {
-    logger.error({ err }, "Failed to seed major cities backfill");
-  }
+  }, (err) => logger.error({ err }, "Failed to seed major cities backfill")));
 
   if (demoSeedsAllowed()) {
-    try {
+    seeders.push(bootSeeder("seedPhaseDKyotoVendors", async () => {
       const phaseDResult = await seedPhaseDKyotoVendors();
       if (phaseDResult.vendorsInserted > 0 || phaseDResult.servicesInserted > 0) {
         logger.info(
@@ -584,21 +577,17 @@ async function seedAtBoot() {
           "Seeded Phase D Kyoto wedding & corporate vendors",
         );
       }
-    } catch (err) {
-      logger.error({ err }, "Failed to seed Phase D Kyoto vendors");
-    }
+    }, (err) => logger.error({ err }, "Failed to seed Phase D Kyoto vendors")));
   } else {
     logger.info(demoSeedSkipMessage("seedPhaseDKyotoVendors"));
   }
 
-  try {
+  seeders.push(bootSeeder("seedTripOwnership", async () => {
     const ownershipResult = await seedTripOwnership();
     if (ownershipResult.inserted > 0) {
       logger.info({ count: ownershipResult.inserted }, "Seeded trip owner collaborator rows");
     }
-  } catch (err) {
-    logger.error({ err }, "Failed to seed trip ownership collaborators");
-  }
+  }, (err) => logger.error({ err }, "Failed to seed trip ownership collaborators")));
 
   // E2E test accounts — FAIL-SAFE gate (dispatch P0 fix, Jul 28 2026).
   // The old gate keyed on ENVIRONMENT === "PROD", an env var the deployed app
@@ -612,27 +601,24 @@ async function seedAtBoot() {
     (process.env.NODE_ENV !== "production" || process.env.ALLOW_TEST_ACCOUNTS === "1") &&
     process.env.ENVIRONMENT !== "PROD";
   if (allowTestAccounts) {
-    try {
+    seeders.push(bootSeeder("seedE2EAccounts", async () => {
       await seedE2EAccounts();
       logger.info("E2E test accounts ready (dev/CI)");
-    } catch (err) {
-      logger.error({ err }, "Failed to seed E2E test accounts");
-    }
+    }, (err) => logger.error({ err }, "Failed to seed E2E test accounts")));
   }
   // Boot removals (ledger `2026-10-18-boot-removals`): production no longer purges test accounts at boot —
   // it rewrote every @traveloure.test password and retried blocked deletes on every start. Production still
   // never SEEDS them (the gate above). The purge runs on purpose:
   //   npx tsx server/seeds/e2e-test-accounts.seed.ts --purge
 
-  try {
+  seeders.push(bootSeeder("backfillAffiliateProviderMetadata", async () => {
     const backfillResult = await storage.backfillAffiliateProviderMetadata();
     if (backfillResult.updated > 0) {
       logger.info({ updated: backfillResult.updated }, "Backfilled missing affiliate provider metadata in content_registry");
     }
-  } catch (err) {
-    logger.error({ err }, "Failed to backfill affiliate provider metadata");
-  }
+  }, (err) => logger.error({ err }, "Failed to backfill affiliate provider metadata")));
 
+  return seeders;
 }
 
 // ── Production: bind port immediately so the Cloud Run startup health probe
