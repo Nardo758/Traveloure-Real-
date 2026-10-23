@@ -2138,4 +2138,8 @@ export const MIGRATION_FILES = [
   // country, and only while the old text is present. No ALTER. HELD for "Migration 405 SQL approved — Leon".
   // Wording held for "Wording approved — Leon". Ledger 2026-10-23-season-bands-admin-windows.
   "405_season_band_copy.sql",
+  // 406 — boot_seed_stamps. Additive table, PK only, no DEFAULT, no CHECK, no extra index.
+  // HELD for "Migration 406 SQL approved — Leon". Ledger 2026-10-22-boot-seed-stamps.
+  // Declared in shared/schema.ts.
+  "406_boot_seed_stamps.sql",
 ] as const;

@@ -4467,6 +4467,17 @@ export const feverAddressGeocodes = pgTable("fever_address_geocodes", {
   lookedUpAt: timestamp("looked_up_at"),
 });
 
+/**
+ * Boot seed stamps (ledger `2026-10-22-boot-seed-stamps`, migration 406). One row per key:
+ * `boot` is the overall seed version; every other key is a seeder name. Written only after that
+ * seeder (or the whole pass) succeeds. No DEFAULT, no CHECK. Server-written only; no insert schema.
+ */
+export const bootSeedStamps = pgTable("boot_seed_stamps", {
+  stampKey: text("stamp_key").primaryKey(),
+  inputHash: text("input_hash").notNull(),
+  appliedAt: timestamp("applied_at").notNull(),
+});
+
 // ============ USER FILTER PREFERENCES TABLE ============
 // Stores user's persistent filter and sorting preferences per item type
 
