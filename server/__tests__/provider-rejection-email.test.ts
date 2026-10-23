@@ -244,6 +244,8 @@ describe('PATCH /api/admin/provider-applications/:id/status — rejection email'
       toEmail: 'provider@example.com',
       firstName: 'Alice',
       rejectionMessage: null,
+      applicationId: 'application-1',
+      priorStatus: null,
     });
   });
 

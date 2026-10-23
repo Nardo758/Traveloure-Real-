@@ -44,10 +44,13 @@ import { logger } from "../infrastructure/logger";
 import { runBackgroundJob } from "./background-job-runner";
 import { jitteredStartupDelay } from "./startup-delay";
 import { isItineraryFollowup } from "./itinerary-followup-email";
+import { canQueueGenerationNotice } from "./itinerary-outcome-email";
+import { FLAG_EMAIL_NOTIFICATIONS_ENABLED, getPlatformFlag } from "./platform-flags";
 import { LegacyBookingEmailPersistenceError } from "./legacy-booking-email-persistence-error";
 import {
   buildBookingAlertEmailPayload,
   buildBookingConfirmationEmailPayload,
+  emailSendsEnabled,
   type BookingAlertParams,
   type BookingConfirmationParams,
   type SendEmailParams,
@@ -80,6 +83,76 @@ export function _nextRetryAfter(failedAttemptCount: number): Date {
 
 /** The 10-minute lease window used by both enqueue and drain claim steps. */
 const LEASE_MS = 10 * 60 * 1000;
+
+const AUTH_EMAIL_TYPES = new Set(["password_reset", "email_verification"]);
+
+function readMetadata(value: unknown): Record<string, unknown> {
+  if (!value) return {};
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {};
+    } catch {
+      return {};
+    }
+  }
+  if (typeof value === "object") return value as Record<string, unknown>;
+  return {};
+}
+
+function isAuthCritical(emailType: string | undefined, metadata: Record<string, unknown>): boolean {
+  return metadata.authCritical === true || (emailType != null && AUTH_EMAIL_TYPES.has(emailType));
+}
+
+/** An issued auth link is past its original expiry. A retry must not resend it. */
+function authLinkExpired(metadata: Record<string, unknown>, now = Date.now()): boolean {
+  const raw = metadata.linkExpiresAt;
+  if (typeof raw !== "string") return false;
+  const at = Date.parse(raw);
+  return !Number.isNaN(at) && at <= now;
+}
+
+function dedupeKeyOf(params: EnqueueEmailParams): string | null {
+  const key = params.metadata?.dedupeKey;
+  return typeof key === "string" && key.trim() !== "" ? key : null;
+}
+
+/**
+ * canQueueGenerationNotice is the no-send gate. The drain calls it here, before
+ * sendEmail, so a retry that would reach the provider is a send and is refused
+ * unless the gate allows that recipient. The test seam may rewrite the
+ * recipient and then call sendEmail, which applies the same gate to the
+ * address it actually sends.
+ */
+async function sendThroughNoSendGate(params: SendEmailParams): Promise<SendEmailResult> {
+  if (_outboxTestHooks.sendEmailFn) {
+    return _outboxTestHooks.sendEmailFn(params);
+  }
+  const recipients = Array.isArray(params.to) ? params.to : params.to.split(",").map((email) => email.trim()).filter(Boolean);
+  if (!recipients.every((email) => canQueueGenerationNotice(email))) {
+    return { ok: false, error: "No approved development inbox", suppressed: "development_gate" };
+  }
+  const { sendEmail } = await import("./email.service");
+  return sendEmail(params);
+}
+
+async function settleWithoutAttempt(
+  outboxId: number | null,
+  status: "cancelled" | "pending" | "held",
+  lastError: string,
+  retryAfter: Date | null,
+): Promise<void> {
+  if (outboxId === null) return;
+  await db.execute(sql`
+    UPDATE email_outbox
+    SET    status      = ${status},
+           last_error  = ${lastError},
+           retry_after = ${retryAfter},
+           updated_at  = NOW()
+    WHERE  id     = ${outboxId}
+      AND  status = 'processing'
+  `);
+}
 
 // ── Test seam ─────────────────────────────────────────────────────────────────
 
@@ -117,42 +190,77 @@ export interface EnqueueEmailParams extends SendEmailParams {
  * Returns the outbox row id so callers can correlate logs.
  * Never throws — all errors are caught and recorded on the outbox row.
  */
+function outboxInsertValues(params: EnqueueEmailParams, lease: Date): InsertEmailOutbox {
+  const toEmailStr = Array.isArray(params.to) ? params.to.join(", ") : params.to;
+  const metadata: Record<string, unknown> = { ...(params.metadata ?? {}) };
+  if (params.authCritical) metadata.authCritical = true;
+  return {
+    emailType:    params.emailType ?? "generic",
+    toEmail:      toEmailStr,
+    subject:      params.subject,
+    html:         params.html,
+    textBody:     params.text,
+    replyTo:      params.replyTo,
+    // Born as 'processing' with a lease so the drain cannot concurrently
+    // claim and send this row before immediate delivery completes.
+    status:       "processing",
+    retryAfter:   lease,
+    attemptCount: 0,
+    maxAttempts:  6,
+    metadata,
+  };
+}
+
 async function enqueueEmailImpl(params: EnqueueEmailParams): Promise<number | null> {
   const toEmailStr = Array.isArray(params.to) ? params.to.join(", ") : params.to;
   const lease      = new Date(Date.now() + LEASE_MS);
+  const values     = outboxInsertValues(params, lease);
+  const dedupeKey  = dedupeKeyOf(params);
 
   let outboxId: number | null = null;
+  let deliver = true;
 
   try {
-    const [row] = await db
-      .insert(emailOutbox)
-      .values({
-        emailType:    params.emailType ?? "generic",
-        toEmail:      toEmailStr,
-        subject:      params.subject,
-        html:         params.html,
-        textBody:     params.text,
-        replyTo:      params.replyTo,
-        // Born as 'processing' with a lease so the drain cannot concurrently
-        // claim and send this row before immediate delivery completes.
-        status:       "processing",
-        retryAfter:   lease,
-        attemptCount: 0,
-        maxAttempts:  6,
-        metadata:     params.metadata ?? {},
-      } satisfies InsertEmailOutbox)
-      .returning({ id: emailOutbox.id });
-
-    outboxId = row?.id ?? null;
+    if (dedupeKey) {
+      const placed = await db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`email-outbox:${dedupeKey}`}, 0))`);
+        const [existing] = await tx
+          .select({ id: emailOutbox.id })
+          .from(emailOutbox)
+          .where(sql`${emailOutbox.metadata}->>'dedupeKey' = ${dedupeKey}`)
+          .limit(1);
+        if (existing) return { id: existing.id, deliver: false };
+        const [row] = await tx.insert(emailOutbox).values(values).returning({ id: emailOutbox.id });
+        return { id: row?.id ?? null, deliver: true };
+      });
+      outboxId = placed.id;
+      deliver = placed.deliver;
+    } else {
+      const [row] = await db
+        .insert(emailOutbox)
+        .values(values)
+        .returning({ id: emailOutbox.id });
+      outboxId = row?.id ?? null;
+    }
   } catch (insertErr: unknown) {
     logger.error(
       { err: insertErr, subject: params.subject, to: toEmailStr },
       "[email-outbox] failed to insert outbox row — email will NOT be retried"
     );
-    // Fall through: still attempt delivery so at least this attempt has a chance.
+    // A deduped send that failed to record must not fire a second provider call.
+    // An ordinary enqueue still attempts once, matching the previous contract.
+    if (dedupeKey) return null;
   }
 
-  await attemptDelivery(outboxId, params, { attemptCount: 0, maxAttempts: 6 });
+  if (deliver) {
+    const metadata = readMetadata(values.metadata);
+    await attemptDelivery(outboxId, { ...params, authCritical: params.authCritical || metadata.authCritical === true }, {
+      attemptCount: 0,
+      maxAttempts: 6,
+      emailType: values.emailType,
+      metadata,
+    });
+  }
 
   return outboxId;
 }
@@ -199,6 +307,14 @@ export interface DrainOutboxResult {
 }
 
 async function drainOutboxImpl(): Promise<DrainOutboxResult> {
+  if (!emailSendsEnabled()) {
+    logger.warn(
+      { reason: "EMAIL_SENDS_ENABLED" },
+      "[email-outbox] drain refused; EMAIL_SENDS_ENABLED is not true",
+    );
+    return { drained: 0 };
+  }
+
   type ClaimedRow = {
     id:            number;
     to_email:      string;
@@ -210,6 +326,7 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
     attempt_count: number;
     max_attempts:  number;
     email_type:    string;
+    metadata:      unknown;
   };
 
   let claimed: ClaimedRow[];
@@ -222,7 +339,7 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
       WITH candidates AS (
         SELECT id FROM email_outbox
         WHERE (
-          status IN ('pending', 'failed')
+          status IN ('pending', 'failed', 'held')
           AND (retry_after IS NULL OR retry_after <= NOW())
         )
         OR (
@@ -240,7 +357,8 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
       FROM   candidates c
       WHERE  o.id = c.id
       RETURNING o.id, o.to_email, o.subject, o.html, o.text_body,
-                o.from_address, o.reply_to, o.attempt_count, o.max_attempts, o.email_type
+                o.from_address, o.reply_to, o.attempt_count, o.max_attempts, o.email_type,
+                o.metadata
     `);
     claimed = (result.rows ?? []) as ClaimedRow[];
   } catch (err: unknown) {
@@ -252,6 +370,7 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
   logger.info({ count: claimed.length }, "[email-outbox] drainOutbox: processing claimed rows");
 
   for (const row of claimed) {
+    const metadata = readMetadata(row.metadata);
     const params: SendEmailParams = {
       to:      row.to_email,
       subject: row.subject,
@@ -259,11 +378,13 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
       ...(row.text_body ? { text: row.text_body } : {}),
       ...(row.reply_to  ? { replyTo: row.reply_to } : {}),
       generationNotice: row.email_type === "itinerary_ready" || row.email_type === "itinerary_failed",
+      authCritical: isAuthCritical(row.email_type, metadata),
     };
     await attemptDelivery(row.id, params, {
       attemptCount: row.attempt_count,
       maxAttempts:  row.max_attempts,
       emailType: row.email_type,
+      metadata,
     });
   }
 
@@ -276,21 +397,24 @@ export async function deliverQueuedEmail(outboxId: number): Promise<void> {
     const result = await db.execute(sql`
       UPDATE email_outbox SET status = 'processing',
         retry_after = NOW() + INTERVAL '10 minutes', updated_at = NOW()
-      WHERE id = ${outboxId} AND status IN ('pending', 'failed')
+      WHERE id = ${outboxId} AND status IN ('pending', 'failed', 'held')
         AND (retry_after IS NULL OR retry_after <= NOW())
-      RETURNING to_email, subject, html, text_body, reply_to, attempt_count, max_attempts, email_type
+      RETURNING to_email, subject, html, text_body, reply_to, attempt_count, max_attempts, email_type, metadata
     `);
     const row = result.rows?.[0] as {
       to_email: string; subject: string; html: string; text_body: string | null;
       reply_to: string | null; attempt_count: number; max_attempts: number; email_type: string;
+      metadata: unknown;
     } | undefined;
     if (!row) return;
+    const metadata = readMetadata(row.metadata);
     await attemptDelivery(outboxId, {
       to: row.to_email, subject: row.subject, html: row.html,
       generationNotice: row.email_type === "itinerary_ready" || row.email_type === "itinerary_failed",
+      authCritical: isAuthCritical(row.email_type, metadata),
       ...(row.text_body ? { text: row.text_body } : {}),
       ...(row.reply_to ? { replyTo: row.reply_to } : {}),
-    }, { attemptCount: row.attempt_count, maxAttempts: row.max_attempts, emailType: row.email_type });
+    }, { attemptCount: row.attempt_count, maxAttempts: row.max_attempts, emailType: row.email_type, metadata });
   } catch (err) {
     logger.error({ err, outboxId }, "[email-outbox] immediate generation delivery failed; retry worker retains ownership");
   }
@@ -336,32 +460,67 @@ export async function drainOutboxForAdminRetry(outboxId: number): Promise<DrainO
 async function attemptDelivery(
   outboxId: number | null,
   params: SendEmailParams,
-  current: { attemptCount: number; maxAttempts: number; emailType?: string }
+  current: { attemptCount: number; maxAttempts: number; emailType?: string; metadata?: Record<string, unknown> }
 ): Promise<void> {
   const attemptCount = current.attemptCount + 1; // 1-based count after this attempt
   const maxAttempts  = current.maxAttempts;
   const toStr        = Array.isArray(params.to) ? params.to.join(", ") : params.to;
+  const metadata     = current.metadata ?? {};
+  const authCritical = params.authCritical === true || isAuthCritical(current.emailType, metadata);
+
+  if (authLinkExpired(metadata)) {
+    await settleWithoutAttempt(
+      outboxId,
+      "cancelled",
+      "Auth link expired before delivery; the issued link was not resent",
+      null,
+    );
+    logger.info({ outboxId, emailType: current.emailType }, "[email-outbox] auth link expired; not resent");
+    return;
+  }
+
+  // EMAIL_SENDS_ENABLED refuses every row, including password reset and
+  // verification. The row stays held with its attempt count unchanged and is
+  // not scheduled for another try until a drain runs with sends allowed.
+  if (!emailSendsEnabled()) {
+    await settleWithoutAttempt(outboxId, "held", "EMAIL_SENDS_ENABLED is not true", null);
+    logger.warn(
+      { outboxId, emailType: current.emailType, reason: "EMAIL_SENDS_ENABLED", authCritical },
+      "[email-outbox] send refused; EMAIL_SENDS_ENABLED is not true",
+    );
+    return;
+  }
+
+  // A paused outbox still delivers resets and verification. Every other kind is
+  // held with its attempt count unchanged, so the pause cannot exhaust the row.
+  if (!authCritical) {
+    const notificationsEnabled = await getPlatformFlag(FLAG_EMAIL_NOTIFICATIONS_ENABLED, true);
+    if (!notificationsEnabled) {
+      await settleWithoutAttempt(
+        outboxId,
+        "pending",
+        "Email notifications are disabled by platform settings",
+        _nextRetryAfter(1),
+      );
+      logger.info({ outboxId, emailType: current.emailType }, "[email-outbox] held; email notifications are disabled");
+      return;
+    }
+  }
 
   // Use the test seam if provided; otherwise import sendEmail dynamically so
-  // there is no circular import at module-load time.
+  // there is no circular import at module-load time. The real provider path
+  // goes through sendThroughNoSendGate, which calls canQueueGenerationNotice
+  // before sendEmail.
   let result: SendEmailResult;
   try {
     if (outboxId !== null && current.emailType === "signup_welcome") {
       const { deliverSignupWelcome } = await import("./signup-welcome-outbox.service");
-      await deliverSignupWelcome(outboxId, async (payload) => {
-        if (_outboxTestHooks.sendEmailFn) return _outboxTestHooks.sendEmailFn(payload);
-        const { sendEmail } = await import("./email.service");
-        return sendEmail(payload);
-      }, _nextRetryAfter);
+      await deliverSignupWelcome(outboxId, (payload) => sendThroughNoSendGate(payload), _nextRetryAfter);
       return;
     }
     if (outboxId !== null && current.emailType && isItineraryFollowup(current.emailType)) {
       const { deliverItineraryFollowup } = await import("./itinerary-followup.service");
-      await deliverItineraryFollowup(outboxId, async (payload) => {
-        if (_outboxTestHooks.sendEmailFn) return _outboxTestHooks.sendEmailFn(payload);
-        const { sendEmail } = await import("./email.service");
-        return sendEmail(payload);
-      });
+      await deliverItineraryFollowup(outboxId, (payload) => sendThroughNoSendGate(payload));
       return;
     }
     // Generation notices opt in to eligibility checks and stable provider retry keys.
@@ -392,12 +551,7 @@ async function attemptDelivery(
         params = { ...params, idempotencyKey: `itinerary-outbox-${outboxId}` };
       }
     }
-    if (_outboxTestHooks.sendEmailFn) {
-      result = await _outboxTestHooks.sendEmailFn(params);
-    } else {
-      const { sendEmail } = await import("./email.service");
-      result = await sendEmail(params);
-    }
+    result = await sendThroughNoSendGate(params);
   } catch (err: unknown) {
     // sendEmail is documented to never throw, but be defensive.
     const message = err instanceof Error ? err.message : String(err);
@@ -405,6 +559,29 @@ async function attemptDelivery(
   }
 
   if (outboxId === null) return; // no row to update
+
+  if (result.suppressed === "sends_disabled") {
+    await settleWithoutAttempt(outboxId, "held", result.error ?? "EMAIL_SENDS_ENABLED is not true", null);
+    logger.warn(
+      { outboxId, emailType: current.emailType, reason: "EMAIL_SENDS_ENABLED" },
+      "[email-outbox] send refused; EMAIL_SENDS_ENABLED is not true",
+    );
+    return;
+  }
+  if (result.suppressed === "development_gate") {
+    await settleWithoutAttempt(outboxId, "cancelled", result.error ?? "No approved development inbox", null);
+    logger.info({ outboxId, emailType: current.emailType }, "[email-outbox] refused by canQueueGenerationNotice");
+    return;
+  }
+  if (result.suppressed === "kill_switch") {
+    await settleWithoutAttempt(
+      outboxId,
+      "pending",
+      result.error ?? "Email notifications are disabled by platform settings",
+      _nextRetryAfter(1),
+    );
+    return;
+  }
 
   try {
     if (result.ok) {

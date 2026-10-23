@@ -11,6 +11,8 @@ vi.mock("../email.service", async (importOriginal) => ({
   getAppBaseUrl: () => "https://app.example.test",
 }));
 
+process.env.EMAIL_SENDS_ENABLED = "true";
+
 if (process.env.RUN_GENERATION_OUTCOME_DB_TESTS !== "1") {
   throw new Error("Rollback-only development DB tests require RUN_GENERATION_OUTCOME_DB_TESTS=1");
 }
@@ -28,6 +30,7 @@ async function rollbackOnly(run: (tx: Tx, userId: string) => Promise<void>) {
     await db.transaction(async (tx) => {
       const userId = randomUUID();
       await tx.insert(users).values({ id: userId, email: `${userId}@example.test`, firstName: "<Test>" });
+      process.env.EMAIL_SENDS_ENABLED = "true";
       vi.stubEnv("ITINERARY_OUTCOME_TEST_EMAIL", `${userId}@example.test`);
       try {
         await run(tx, userId);

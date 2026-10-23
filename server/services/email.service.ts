@@ -11,6 +11,10 @@
  *                         without verification but messages silently bounce.)
  *   EMAIL_REPLY_TO       Human reply-to address, e.g. "admin@traveloure.com"
  *
+ * EMAIL_SENDS_ENABLED is the production send gate. Mail leaves this process
+ * only when that variable is exactly true. It is checked before every other
+ * gate, including for password reset and verification.
+ *
  * Legacy alias: EMAIL_FROM is still read as a fallback for EMAIL_FROM_NOREPLY
  * so existing deployments that predate the rename continue to work.
  *
@@ -18,6 +22,7 @@
  * APP_BASE_URL env var if running outside Replit.
  */
 
+import crypto from "node:crypto";
 import { Resend } from "resend";
 import { dispatchMessagingEvent } from "../automations/messaging/runtime";
 import { dispatchMessagingProducer, wrapEmailProviderTransport } from "../automations/messaging/producer-index";
@@ -28,10 +33,17 @@ import { planDeliveredEmailAutomation } from "../automations/messaging/plan-deli
 import { planApprovedEmailAutomation } from "../automations/messaging/plan-approved-email";
 import { planChangesRequestedEmailAutomation } from "../automations/messaging/plan-changes-requested-email";
 import { planSuggestionEmailAutomation } from "../automations/messaging/plan-suggestion-email";
+import { logger } from "../infrastructure/logger";
 import { getPlatformFlag, FLAG_EMAIL_NOTIFICATIONS_ENABLED } from "./platform-flags";
+import { canQueueGenerationNotice } from "./itinerary-outcome-email";
 import { escHtml, stripCrLf } from "../utils/email-escape";
 import { reconciliationKindLabel } from "@shared/reconciliation-kinds";
 import { shapeAdminDigestLists } from "./admin-digest-shape";
+
+/** Production send gate. Only the exact string true allows a provider call. */
+export function emailSendsEnabled(value: string | undefined = process.env.EMAIL_SENDS_ENABLED): boolean {
+  return value === "true";
+}
 
 let cachedClient: Resend | null = null;
 function createClient(key: string): Resend {
@@ -90,6 +102,12 @@ export interface SendEmailParams {
   idempotencyKey?: string;
   /** Internal outbox opt-in; never forwarded to the email provider. */
   generationNotice?: boolean;
+  /**
+   * Password reset and email verification only. Skips the notifications kill
+   * switch. Never forwarded to the provider. EMAIL_SENDS_ENABLED and the
+   * development no-send gate still apply.
+   */
+  authCritical?: boolean;
   /** Optional files, including vendor coordination calendar invitations. */
   attachments?: Array<{ filename: string; content: Buffer | string; contentType?: string }>;
 }
@@ -98,6 +116,12 @@ export interface SendEmailResult {
   ok: boolean;
   id?: string;
   error?: string;
+  /**
+   * The provider was not called. `sends_disabled` is EMAIL_SENDS_ENABLED.
+   * `development_gate` is canQueueGenerationNotice.
+   * `kill_switch` is email_notifications_enabled. None of these is a failed attempt.
+   */
+  suppressed?: "sends_disabled" | "development_gate" | "kill_switch";
 }
 
 /**
@@ -108,16 +132,46 @@ export interface SendEmailResult {
  * it never throws into the caller.
  */
 export async function sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
-  // Admin-controlled kill switch (/admin/system → "Email Notifications").
-  // Gates all system notification emails sent through this generic sender.
-  // Auth-critical emails (password reset, email verification) call Resend
-  // directly and are intentionally NOT gated by this flag.
-  const notificationsEnabled = await getPlatformFlag(FLAG_EMAIL_NOTIFICATIONS_ENABLED, true);
-  if (!notificationsEnabled) {
-    console.log(
-      `[email] sendEmail skipped — email_notifications_enabled=false (subject="${params.subject}")`
+  // EMAIL_SENDS_ENABLED is in front of canQueueGenerationNotice and the admin
+  // kill switch. Auth-critical mail does not skip it. Nothing about the
+  // recipient is logged.
+  if (!emailSendsEnabled()) {
+    logger.warn(
+      { reason: "EMAIL_SENDS_ENABLED", authCritical: params.authCritical === true },
+      "[email] send refused; EMAIL_SENDS_ENABLED is not true",
     );
-    return { ok: false, error: "Email notifications are disabled by platform settings" };
+    return {
+      ok: false,
+      error: "EMAIL_SENDS_ENABLED is not true",
+      suppressed: "sends_disabled",
+    };
+  }
+
+  // canQueueGenerationNotice (server/services/itinerary-outcome-email.ts) is the
+  // development no-send gate. It runs on the address this call would actually
+  // hand the provider, before the kill switch and before Resend. A development
+  // signup QA redirect therefore cannot skip it, and neither can an outbox retry.
+  const recipients = Array.isArray(params.to) ? params.to : [params.to];
+  if (!recipients.every((email) => canQueueGenerationNotice(email))) {
+    return { ok: false, error: "No approved development inbox", suppressed: "development_gate" };
+  }
+
+  // Admin-controlled kill switch (/admin/system → "Email Notifications").
+  // Auth-critical outbox rows (password reset, email verification) set
+  // authCritical and are the only sends that skip this flag. They still
+  // passed the development gate above.
+  if (!params.authCritical) {
+    const notificationsEnabled = await getPlatformFlag(FLAG_EMAIL_NOTIFICATIONS_ENABLED, true);
+    if (!notificationsEnabled) {
+      console.log(
+        `[email] sendEmail skipped — email_notifications_enabled=false (subject="${params.subject}")`
+      );
+      return {
+        ok: false,
+        error: "Email notifications are disabled by platform settings",
+        suppressed: "kill_switch",
+      };
+    }
   }
 
   const apiKey = process.env.RESEND_API_KEY;
@@ -624,6 +678,49 @@ interface PasswordResetParams {
   firstName?: string | null;
   resetUrl: string;
   expiresInMinutes: number;
+  /** Expiry minted with the token. Retries keep this instant and the same link. */
+  linkExpiresAt?: Date;
+  /** sha256 of the raw token. Metadata stores this, never the raw token. */
+  tokenHash?: string;
+}
+
+function applicationNoteKey(message: string | null | undefined): string {
+  return crypto.createHash("sha256").update(message ?? "").digest("hex").slice(0, 16);
+}
+
+/** One outbox row per logical send. A missing id still enqueues; it just cannot dedupe. */
+function criticalDedupeKey(parts: Array<string | null | undefined>): string | undefined {
+  if (parts.some((part) => part == null)) return undefined;
+  return parts.join(":");
+}
+
+/**
+ * Durable enqueue. Never throws. Delivery, retry, the kill switch and the
+ * development no-send gate belong to the outbox drain.
+ */
+async function enqueueTransactionalEmail(input: {
+  emailType: string;
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+  authCritical?: boolean;
+  metadata?: Record<string, unknown>;
+}): Promise<void> {
+  try {
+    const { enqueueEmail } = await import("./email-outbox.service");
+    await enqueueEmail({
+      emailType: input.emailType,
+      to: input.to,
+      subject: input.subject,
+      html: input.html,
+      text: input.text,
+      authCritical: input.authCritical,
+      metadata: input.metadata,
+    });
+  } catch (err) {
+    console.error(`[email] ${input.emailType} outbox enqueue failed (non-fatal):`, err);
+  }
 }
 
 export async function sendPasswordResetEmail(params: PasswordResetParams): Promise<void> {
@@ -638,18 +735,6 @@ export async function sendPasswordResetEmail(params: PasswordResetParams): Promi
 }
 
 async function sendPasswordResetEmailAction(params: PasswordResetParams): Promise<void> {
-  const client = getClient();
-  if (!client) {
-    // Logged for ops visibility — the LB-P1 forgot-password handler is intentionally
-    // silent on delivery state to avoid account enumeration, so this log is the only
-    // signal that delivery was skipped.
-    console.warn(
-      "[email] RESEND_API_KEY not set — password reset email NOT sent to",
-      params.toEmail
-    );
-    return;
-  }
-
   const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
@@ -689,15 +774,19 @@ async function sendPasswordResetEmailAction(params: PasswordResetParams): Promis
     `If you didn't request a password reset, you can safely ignore this email.`,
   ].join("\n");
 
-  await client.emails.send({
-    from: getFromAddress(),
+  await enqueueTransactionalEmail({
+    emailType: "password_reset",
     to: params.toEmail,
     subject: "Reset your Traveloure password",
     text,
     html,
+    authCritical: true,
+    metadata: {
+      ...(params.tokenHash ? { dedupeKey: `password_reset:${params.tokenHash}` } : {}),
+      ...(params.linkExpiresAt ? { linkExpiresAt: params.linkExpiresAt.toISOString() } : {}),
+      authCritical: true,
+    },
   });
-
-  console.log(`[email] Password reset link sent to ${params.toEmail}`);
 }
 
 interface EmailVerificationParams {
@@ -705,6 +794,10 @@ interface EmailVerificationParams {
   firstName?: string | null;
   verifyUrl: string;
   expiresInHours: number;
+  /** Expiry minted with the token (24h from issue). Retries do not extend it. */
+  linkExpiresAt?: Date;
+  /** sha256 of the raw token. Metadata stores this, never the raw token. */
+  tokenHash?: string;
 }
 
 export async function sendEmailVerificationEmail(params: EmailVerificationParams): Promise<void> {
@@ -719,12 +812,6 @@ export async function sendEmailVerificationEmail(params: EmailVerificationParams
 }
 
 async function sendEmailVerificationEmailAction(params: EmailVerificationParams): Promise<void> {
-  const client = getClient();
-  if (!client) {
-    console.warn("[email] RESEND_API_KEY not set — verification email NOT sent to", params.toEmail);
-    return;
-  }
-
   const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
@@ -763,15 +850,19 @@ async function sendEmailVerificationEmailAction(params: EmailVerificationParams)
     `If you didn't sign up for Traveloure, you can safely ignore this email.`,
   ].join("\n");
 
-  await client.emails.send({
-    from: getFromAddress(),
+  await enqueueTransactionalEmail({
+    emailType: "email_verification",
     to: params.toEmail,
     subject: "Confirm your Traveloure email",
     text,
     html,
+    authCritical: true,
+    metadata: {
+      ...(params.tokenHash ? { dedupeKey: `email_verification:${params.tokenHash}` } : {}),
+      ...(params.linkExpiresAt ? { linkExpiresAt: params.linkExpiresAt.toISOString() } : {}),
+      authCritical: true,
+    },
   });
-
-  console.log(`[email] Verification link sent to ${params.toEmail}`);
 }
 
 // ─── Booking Decline ────────────────────────────────────────────────────────
@@ -897,6 +988,8 @@ export interface BookingCancellationWithRefundEmailParams {
   refundAmount: number;
   /** Cancellation reason provided by the provider, or null if none given. */
   cancellationReason?: string | null;
+  /** One outbox row per booking. The email body does not include this id. */
+  bookingId?: string;
 }
 
 /**
@@ -904,7 +997,7 @@ export interface BookingCancellationWithRefundEmailParams {
  * provider cancels an already-paid booking. Unlike the decline email, this
  * explicitly states that a full refund has been issued and names the amount.
  *
- * Uses `sendEmail` so it respects the platform email-notifications kill switch.
+ * Enqueued through the outbox, so the drain's kill switch and retry apply.
  */
 export async function sendBookingCancellationWithRefundEmail(
   params: BookingCancellationWithRefundEmailParams
@@ -993,19 +1086,16 @@ export async function sendBookingCancellationWithRefundEmail(
     ? `Your booking for ${stripCrLf(params.serviceName)} was cancelled — full refund issued`
     : "Your booking was cancelled — full refund issued";
 
-  const result = await sendEmail({
+  await enqueueTransactionalEmail({
+    emailType: "cancellation_refund",
     to: params.toEmail,
     subject,
     html,
     text,
+    metadata: {
+      ...(params.bookingId ? { bookingId: params.bookingId, dedupeKey: `cancellation_refund:${params.bookingId}` } : {}),
+    },
   });
-
-  if (!result.ok) {
-    console.warn(
-      `[email] sendBookingCancellationWithRefundEmail failed for ${params.toEmail}:`,
-      result.error
-    );
-  }
 }
 
 // ─── Late payment refunded (R162, ledger `2026-09-27-failed-is-final`) ─────
@@ -1525,6 +1615,8 @@ interface PaymentFailedParams {
   toEmail: string;
   userName?: string | null;
   bookingTitle?: string | null;
+  /** One outbox row per booking this flip moved. Not rendered in the email. */
+  bookingId?: string;
 }
 
 /**
@@ -1534,12 +1626,6 @@ interface PaymentFailedParams {
  * Never throws — all errors caught internally.
  */
 export async function sendPaymentFailedEmail(params: PaymentFailedParams): Promise<void> {
-  const client = getClient();
-  if (!client) {
-    console.log("[email] RESEND_API_KEY not set — skipping payment-failed email for", params.toEmail);
-    return;
-  }
-
   const greeting = params.userName ? `Hi ${escHtml(params.userName)},` : "Hi,";
   const bookingsUrl = `${getAppBaseUrl()}/my-bookings`;
   const titleLine = params.bookingTitle
@@ -1580,20 +1666,19 @@ export async function sendPaymentFailedEmail(params: PaymentFailedParams): Promi
     bookingsUrl,
   ].join("\n");
 
-  try {
-    await client.emails.send({
-      from: getFromAddress(),
-      to: params.toEmail,
-      subject: params.bookingTitle
-        ? `Payment failed — ${stripCrLf(params.bookingTitle)}`
-        : `Your Traveloure payment didn't go through`,
-      html,
-      text,
-    });
-    console.log(`[email] Payment-failed email sent to ${params.toEmail}`);
-  } catch (err) {
-    console.error("[email] Payment-failed email failed (non-fatal):", err);
-  }
+  const subject = params.bookingTitle
+    ? `Payment failed — ${stripCrLf(params.bookingTitle)}`
+    : `Your Traveloure payment didn't go through`;
+  await enqueueTransactionalEmail({
+    emailType: "payment_failed",
+    to: params.toEmail,
+    subject,
+    html,
+    text,
+    metadata: {
+      ...(params.bookingId ? { bookingId: params.bookingId, dedupeKey: `payment_failed:${params.bookingId}` } : {}),
+    },
+  });
 }
 
 // ─── Provider verification decision email ─────────────────────────────────────
@@ -1681,6 +1766,9 @@ export async function sendVerificationDecisionEmail(params: VerificationDecision
 interface ExpertApplicationApprovalParams {
   toEmail: string;
   firstName?: string | null;
+  applicationId?: string;
+  /** Prior status from the locked write. A later re-entry is a different send. */
+  priorStatus?: string | null;
 }
 
 /**
@@ -1691,12 +1779,6 @@ interface ExpertApplicationApprovalParams {
 export async function sendExpertApplicationApprovalEmail(
   params: ExpertApplicationApprovalParams
 ): Promise<void> {
-  const client = getClient();
-  if (!client) {
-    console.log("[email] RESEND_API_KEY not set — skipping expert approval email for", params.toEmail);
-    return;
-  }
-
   const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
   const earningsUrl = `${getAppBaseUrl()}/expert/money`; // C8: Earnings → Money; old route redirects
 
@@ -1740,18 +1822,24 @@ export async function sendExpertApplicationApprovalEmail(
     `Set up payouts: ${earningsUrl}`,
   ].join("\n");
 
-  try {
-    await client.emails.send({
-      from: getFromAddress(),
-      to: params.toEmail,
-      subject: "Your Traveloure expert application has been approved!",
-      html,
-      text,
-    });
-    console.log(`[email] Expert application approval email sent to ${params.toEmail}`);
-  } catch (err) {
-    console.error("[email] Expert application approval email failed (non-fatal):", err);
-  }
+  await enqueueTransactionalEmail({
+    emailType: "expert_application_approved",
+    to: params.toEmail,
+    subject: "Your Traveloure expert application has been approved!",
+    html,
+    text,
+    metadata: {
+      ...(params.applicationId ? { applicationId: params.applicationId } : {}),
+      ...(criticalDedupeKey([
+        "expert_application",
+        "approved",
+        params.applicationId,
+        params.priorStatus ?? "",
+      ])
+        ? { dedupeKey: criticalDedupeKey(["expert_application", "approved", params.applicationId, params.priorStatus ?? ""]) }
+        : {}),
+    },
+  });
 }
 
 interface ExpertApplicationRejectionParams {
@@ -1759,6 +1847,8 @@ interface ExpertApplicationRejectionParams {
   firstName?: string | null;
   /** Optional rejection reason provided by the admin. */
   rejectionMessage?: string | null;
+  applicationId?: string;
+  priorStatus?: string | null;
 }
 
 /**
@@ -1769,12 +1859,6 @@ interface ExpertApplicationRejectionParams {
 export async function sendExpertApplicationRejectionEmail(
   params: ExpertApplicationRejectionParams
 ): Promise<void> {
-  const client = getClient();
-  if (!client) {
-    console.log("[email] RESEND_API_KEY not set — skipping expert rejection email for", params.toEmail);
-    return;
-  }
-
   const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
   const applyUrl = `${getAppBaseUrl()}/expert/apply`;
   const reasonBlock =
@@ -1820,18 +1904,33 @@ export async function sendExpertApplicationRejectionEmail(
     `Reapply at: ${applyUrl}`,
   ].filter((l) => l !== "").join("\n");
 
-  try {
-    await client.emails.send({
-      from: getFromAddress(),
-      to: params.toEmail,
-      subject: "Your Traveloure expert application",
-      html,
-      text,
-    });
-    console.log(`[email] Expert application rejection email sent to ${params.toEmail}`);
-  } catch (err) {
-    console.error("[email] Expert application rejection email failed (non-fatal):", err);
-  }
+  await enqueueTransactionalEmail({
+    emailType: "expert_application_rejected",
+    to: params.toEmail,
+    subject: "Your Traveloure expert application",
+    html,
+    text,
+    metadata: {
+      ...(params.applicationId ? { applicationId: params.applicationId } : {}),
+      ...(criticalDedupeKey([
+        "expert_application",
+        "rejected",
+        params.applicationId,
+        params.priorStatus ?? "",
+        applicationNoteKey(params.rejectionMessage),
+      ])
+        ? {
+            dedupeKey: criticalDedupeKey([
+              "expert_application",
+              "rejected",
+              params.applicationId,
+              params.priorStatus ?? "",
+              applicationNoteKey(params.rejectionMessage),
+            ]),
+          }
+        : {}),
+    },
+  });
 }
 
 // ─── Provider application rejection email ─────────────────────────────────────
@@ -1840,6 +1939,8 @@ interface ProviderApplicationRejectionParams {
   toEmail: string;
   firstName?: string | null;
   rejectionMessage?: string | null;
+  applicationId?: string;
+  priorStatus?: string | null;
 }
 
 /**
@@ -1866,12 +1967,6 @@ export async function sendProviderApplicationRejectionEmail(
   if (_emailTestHooks.sendProviderApplicationRejectionEmail) {
     return _emailTestHooks.sendProviderApplicationRejectionEmail(params);
   }
-  const client = getClient();
-  if (!client) {
-    console.log("[email] RESEND_API_KEY not set — skipping provider rejection email for", params.toEmail);
-    return;
-  }
-
   const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
   const applyUrl = `${getAppBaseUrl()}/provider/apply`;
   const reasonBlock =
@@ -1917,18 +2012,33 @@ export async function sendProviderApplicationRejectionEmail(
     `Reapply at: ${applyUrl}`,
   ].filter((l) => l !== "").join("\n");
 
-  try {
-    await client.emails.send({
-      from: getFromAddress(),
-      to: params.toEmail,
-      subject: "Your Traveloure provider application",
-      html,
-      text,
-    });
-    console.log(`[email] Provider application rejection email sent to ${params.toEmail}`);
-  } catch (err) {
-    console.error("[email] Provider application rejection email failed (non-fatal):", err);
-  }
+  await enqueueTransactionalEmail({
+    emailType: "provider_application_rejected",
+    to: params.toEmail,
+    subject: "Your Traveloure provider application",
+    html,
+    text,
+    metadata: {
+      ...(params.applicationId ? { applicationId: params.applicationId } : {}),
+      ...(criticalDedupeKey([
+        "provider_application",
+        "rejected",
+        params.applicationId,
+        params.priorStatus ?? "",
+        applicationNoteKey(params.rejectionMessage),
+      ])
+        ? {
+            dedupeKey: criticalDedupeKey([
+              "provider_application",
+              "rejected",
+              params.applicationId,
+              params.priorStatus ?? "",
+              applicationNoteKey(params.rejectionMessage),
+            ]),
+          }
+        : {}),
+    },
+  });
 }
 
 // ─── Provider application approval email ──────────────────────────────────────
@@ -1936,6 +2046,8 @@ export async function sendProviderApplicationRejectionEmail(
 interface ProviderApplicationApprovalParams {
   toEmail: string;
   firstName?: string | null;
+  applicationId?: string;
+  priorStatus?: string | null;
 }
 
 /**
@@ -1950,12 +2062,6 @@ export async function sendProviderApplicationApprovalEmail(
   if (_emailTestHooks.sendProviderApplicationApprovalEmail) {
     return _emailTestHooks.sendProviderApplicationApprovalEmail(params);
   }
-  const client = getClient();
-  if (!client) {
-    console.log("[email] RESEND_API_KEY not set — skipping provider approval email for", params.toEmail);
-    return;
-  }
-
   const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
   const earningsUrl = `${getAppBaseUrl()}/provider/money`;
 
@@ -1999,18 +2105,24 @@ export async function sendProviderApplicationApprovalEmail(
     `Set up payouts: ${earningsUrl}`,
   ].join("\n");
 
-  try {
-    await client.emails.send({
-      from: getFromAddress(),
-      to: params.toEmail,
-      subject: "Your Traveloure provider application has been approved!",
-      html,
-      text,
-    });
-    console.log(`[email] Provider application approval email sent to ${params.toEmail}`);
-  } catch (err) {
-    console.error("[email] Provider application approval email failed (non-fatal):", err);
-  }
+  await enqueueTransactionalEmail({
+    emailType: "provider_application_approved",
+    to: params.toEmail,
+    subject: "Your Traveloure provider application has been approved!",
+    html,
+    text,
+    metadata: {
+      ...(params.applicationId ? { applicationId: params.applicationId } : {}),
+      ...(criticalDedupeKey([
+        "provider_application",
+        "approved",
+        params.applicationId,
+        params.priorStatus ?? "",
+      ])
+        ? { dedupeKey: criticalDedupeKey(["provider_application", "approved", params.applicationId, params.priorStatus ?? ""]) }
+        : {}),
+    },
+  });
 }
 
 // ─── Trip lifecycle emails (QA_PUNCH_LIST item 14 / Build map W3-B) ──────────────────────────

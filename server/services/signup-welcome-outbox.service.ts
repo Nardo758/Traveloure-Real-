@@ -142,6 +142,21 @@ export async function deliverSignupWelcome(
       // Never persist transport exception strings containing keys/recipient addresses.
       result = { ok: false, error: "Welcome provider transport failed" };
     }
+    if (result.suppressed === "development_gate" || result.suppressed === "kill_switch") {
+      const now = new Date();
+      await tx.update(emailOutbox).set(result.suppressed === "development_gate" ? {
+        status: "cancelled",
+        lastError: result.error ?? "No approved development inbox",
+        retryAfter: null,
+        updatedAt: now,
+      } : {
+        status: "pending",
+        lastError: result.error ?? "Email notifications are disabled by platform settings",
+        retryAfter: nextRetryAfter(1),
+        updatedAt: now,
+      }).where(and(eq(emailOutbox.id, outboxId), eq(emailOutbox.status, "processing")));
+      return;
+    }
     const attempt = row.attemptCount + 1;
     const now = new Date();
     const dead = attempt >= row.maxAttempts;

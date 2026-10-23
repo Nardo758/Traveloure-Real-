@@ -12298,7 +12298,9 @@ export const emailOutbox = pgTable("email_outbox", {
   textBody:     text("text_body"),
   fromAddress:  text("from_address"),
   replyTo:      text("reply_to"),
-  // pending | processing | sent | failed | dead | cancelled
+  // pending | processing | sent | failed | dead | cancelled | held
+  // `held` is app-only: EMAIL_SENDS_ENABLED refused the send. No DB CHECK, so
+  // the vocabulary extends without a migration (240_email_outbox.sql).
   status:       varchar("status", { length: 16 }).notNull().default("pending"),
   attemptCount: integer("attempt_count").notNull().default(0),
   maxAttempts:  integer("max_attempts").notNull().default(5),

@@ -7833,6 +7833,7 @@ ${bannedCopyPromptLine()}`;
                     serviceName: (booking as any).serviceName ?? null,
                     refundAmount: amountPaid,
                     cancellationReason: reason ?? null,
+                    bookingId: req.params.id,
                   });
                 }
               } catch (emailErr) {

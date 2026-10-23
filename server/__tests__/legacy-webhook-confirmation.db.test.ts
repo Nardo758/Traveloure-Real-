@@ -41,6 +41,7 @@ const { bookingService } = await import("../services/booking.service");
 const { _outboxTestHooks, drainOutbox } = await import("../services/email-outbox.service");
 const { isLegacyBookingEmailPersistenceError } = await import("../services/legacy-booking-email-persistence-error");
 
+process.env.EMAIL_SENDS_ENABLED = "true";
 const sends: Array<{ to: string | string[]; text?: string }> = [];
 _outboxTestHooks.sendEmailFn = async (params) => {
   sends.push({ to: params.to, text: params.text });
