@@ -2138,4 +2138,9 @@ export const MIGRATION_FILES = [
   // country, and only while the old text is present. No ALTER. HELD for "Migration 405 SQL approved — Leon".
   // Wording held for "Wording approved — Leon". Ledger 2026-10-23-season-bands-admin-windows.
   "405_season_band_copy.sql",
+  // 407 — DATA ONLY. Japan country-level Koyo tips cleared. Exact title + country, country-level
+  // rows only, and only while the old tips text is present. No other column changes. No ALTER.
+  // 406 is held on PR #1652. HELD for "Migration 407 SQL approved — Leon".
+  // Ledger 2026-10-23-koyo-drop-tips.
+  "407_koyo_country_tips.sql",
 ] as const;

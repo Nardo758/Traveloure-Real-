@@ -135,7 +135,9 @@ const NEW_HANAMI = "Cherry blossom season (Hanami)";
 const OLD_HANAMI_TIPS = "Book hotels 3-6 months in advance. Ueno Park and Shinjuku Gyoen are popular spots.";
 const KOYO = "Autumn Foliage Season (Koyo)";
 const OLD_KOYO_TIPS = "Kyoto's temples and Tokyo's gardens are spectacular during this time.";
+const KOYO_DESCRIPTION = "Brilliant red and orange autumn colors across Japan.";
 const MIGRATION_SQL = fs.readFileSync(path.resolve(import.meta.dirname, "../migrations/405_season_band_copy.sql"), "utf8");
+const KOYO_TIPS_SQL = fs.readFileSync(path.resolve(import.meta.dirname, "../migrations/407_koyo_country_tips.sql"), "utf8");
 
 test("seed output: Hanami and Koyo are season bands with no city tips and no window dates", () => {
   const japan = destinationCalendarSeed.find((d) => d.country === "Japan");
@@ -284,6 +286,137 @@ test("migration 405 rewrites only the old country text, and a second run is a no
       (await client.query(`SELECT id, country, city, title, event_type, tips FROM destination_events ORDER BY id`)).rows;
     const afterFirst = await snapshot();
     await client.query(MIGRATION_SQL);
+    assert.deepEqual(await snapshot(), afterFirst, "a second run changes nothing");
+  } finally {
+    await client.query("ROLLBACK");
+    client.release();
+  }
+});
+
+test("migration 407 clears Koyo country tips only, a rerun is a no-op, and other bands are untouched", async () => {
+  const client = await pool.connect();
+  const id = (s: string) => `407-${RUN}-${s}`;
+  const insert = async (key: string, v: {
+    title: string;
+    tips: string | null;
+    eventType: string;
+    city?: string | null;
+    country?: string;
+    description?: string;
+    startMonth?: number;
+    endMonth?: number;
+  }) => {
+    await client.query(
+      `INSERT INTO destination_events (id, country, city, title, event_type, tips, description, status, start_month, end_month)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'approved', $8, $9)`,
+      [
+        id(key),
+        v.country ?? "Japan",
+        v.city ?? null,
+        v.title,
+        v.eventType,
+        v.tips,
+        v.description ?? KOYO_DESCRIPTION,
+        v.startMonth ?? 10,
+        v.endMonth ?? 11,
+      ],
+    );
+  };
+  type Row = {
+    title: string;
+    event_type: string;
+    tips: string | null;
+    description: string | null;
+    city: string | null;
+    country: string;
+    start_month: number;
+    end_month: number;
+  };
+  const one = async (key: string) => {
+    const r = await client.query(
+      `SELECT title, event_type, tips, description, city, country, start_month, end_month
+       FROM destination_events WHERE id = $1`,
+      [id(key)],
+    );
+    return r.rows[0] as Row;
+  };
+  try {
+    await client.query("BEGIN");
+    await insert("koyo", { title: KOYO, tips: OLD_KOYO_TIPS, eventType: "season" });
+    await insert("koyo-blank-city", { title: KOYO, tips: OLD_KOYO_TIPS, eventType: "festival", city: "  " });
+    await insert("koyo-city", { title: KOYO, tips: OLD_KOYO_TIPS, eventType: "season", city: "Kyoto" });
+    await insert("koyo-edited", { title: KOYO, tips: "Edited by an admin", eventType: "cultural" });
+    await insert("koyo-already-clear", { title: KOYO, tips: null, eventType: "season" });
+    await insert("koyo-other-title", { title: "Autumn foliage in Kyoto", tips: OLD_KOYO_TIPS, eventType: "season" });
+    await insert("koyo-france", { title: KOYO, tips: OLD_KOYO_TIPS, eventType: "season", country: "France" });
+    await insert("hanami", { title: NEW_HANAMI, tips: null, eventType: "season", description: "Cherry blossoms.", startMonth: 3, endMonth: 4 });
+    await insert("golden", {
+      title: "Golden Week",
+      tips: "Avoid traveling during this period as prices spike and attractions are crowded.",
+      eventType: "holiday",
+      description: "Week-long national holiday when many Japanese travel domestically.",
+      startMonth: 5,
+      endMonth: 5,
+    });
+    await insert("gion", {
+      title: "Gion Matsuri",
+      tips: "The main procession on July 17th draws massive crowds. Stay near Shijo Street.",
+      eventType: "festival",
+      description: "Kyoto's famous month-long festival with spectacular float processions.",
+      startMonth: 7,
+      endMonth: 7,
+    });
+
+    const before = {
+      city: await one("koyo-city"),
+      edited: await one("koyo-edited"),
+      clear: await one("koyo-already-clear"),
+      otherTitle: await one("koyo-other-title"),
+      france: await one("koyo-france"),
+      hanami: await one("hanami"),
+      golden: await one("golden"),
+      gion: await one("gion"),
+    };
+
+    await client.query(KOYO_TIPS_SQL);
+
+    assert.deepEqual(await one("koyo"), {
+      title: KOYO,
+      event_type: "season",
+      tips: null,
+      description: KOYO_DESCRIPTION,
+      city: null,
+      country: "Japan",
+      start_month: 10,
+      end_month: 11,
+    });
+    assert.deepEqual(await one("koyo-blank-city"), {
+      title: KOYO,
+      event_type: "festival",
+      tips: null,
+      description: KOYO_DESCRIPTION,
+      city: "  ",
+      country: "Japan",
+      start_month: 10,
+      end_month: 11,
+    });
+    assert.deepEqual(await one("koyo-city"), before.city);
+    assert.deepEqual(await one("koyo-edited"), before.edited);
+    assert.deepEqual(await one("koyo-already-clear"), before.clear);
+    assert.deepEqual(await one("koyo-other-title"), before.otherTitle);
+    assert.deepEqual(await one("koyo-france"), before.france);
+    assert.deepEqual(await one("hanami"), before.hanami);
+    assert.deepEqual(await one("golden"), before.golden);
+    assert.deepEqual(await one("gion"), before.gion);
+
+    const snapshot = async () =>
+      (await client.query(
+        `SELECT id, country, city, title, event_type, tips, description, start_month, end_month
+         FROM destination_events WHERE id LIKE $1 ORDER BY id`,
+        [`407-${RUN}-%`],
+      )).rows;
+    const afterFirst = await snapshot();
+    await client.query(KOYO_TIPS_SQL);
     assert.deepEqual(await snapshot(), afterFirst, "a second run changes nothing");
   } finally {
     await client.query("ROLLBACK");
