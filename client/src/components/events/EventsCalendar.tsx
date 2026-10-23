@@ -10,6 +10,7 @@
  * be visible at every width — including 375px: the calendar is on the page on phones (the old one
  * was hidden below 1024px).
  */
+import { bandInSeason } from "@/lib/season-band";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CITY_EVENT_VERTICALS } from "@shared/city-events";
@@ -264,7 +265,9 @@ export function EventsCalendar() {
                 {months.map((m, i) => {
                   const n = countIn(m);
                   const on = i === monthIdx;
-                  const hasBand = !!bandLabel(m);
+                  // "season" on the pill is an in-season label: only a band with an admin window earns it. A windowless
+                  // band still shows below as "All month · …" (ruling, Oct 22: never hidden, no badge).
+                  const hasBand = bandsInPeriod(bands, monthFirst(m), monthLast(m)).some(bandInSeason);
                   return (
                     <button
                       key={m}
