@@ -22,6 +22,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatDistanceToNow } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { ShieldAlert, CheckCircle, XCircle, Eye, User } from "lucide-react";
+import { Link } from "wouter";
+import { REPORT_CONTEXT_COPY, reportContextPagePath } from "@/lib/report-context-copy";
 
 interface ModerationReport {
   id: string;
@@ -227,6 +229,15 @@ export default function AdminMessageModeration() {
                       <p className="text-sm text-foreground break-words">{report.messageText}</p>
                     </div>
                   )}
+
+                  {/* Ops gap 10: the thread behind the report (its own grant; every open is audited). */}
+                  <Link
+                    href={reportContextPagePath(report.id)}
+                    className="text-sm text-blue-600 underline"
+                    data-testid={`link-report-context-${report.id}`}
+                  >
+                    {REPORT_CONTEXT_COPY.openLink}
+                  </Link>
 
                   {/* Reporter's additional details */}
                   {report.details && (

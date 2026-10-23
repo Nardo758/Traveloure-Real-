@@ -36,6 +36,7 @@ export const CLIENT_ROUTES: readonly string[] = [
   "/admin/gem-photo-backfill",
   "/admin/markets",
   "/admin/message-moderation",
+  "/admin/message-moderation/:id/context",
   "/admin/neighborhood-backfill",
   "/admin/neighborhood-claims",
   "/admin/neighborhood-claims/:id",

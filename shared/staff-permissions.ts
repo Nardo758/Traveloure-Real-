@@ -71,6 +71,7 @@ export const STAFF_ROUTE_RULES: readonly StaffRouteRule[] = [
   { method: "GET", pattern: /^\/api\/admin\/message-reports$/, permission: "message_reports" },
   { method: "PATCH", pattern: /^\/api\/admin\/message-reports\/[^/]+$/, permission: "message_reports" },
   { method: "GET", pattern: /^\/api\/admin\/conversations$/, permission: "report_context" },
+  { method: "GET", pattern: /^\/api\/admin\/message-reports\/[^/]+\/context$/, permission: "report_context" },
   { method: "PATCH", pattern: /^\/api\/admin\/services\/[^/]+\/status$/, permission: "listing_status" },
 ];
 
