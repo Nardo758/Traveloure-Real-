@@ -231,19 +231,46 @@ export async function stripeConnectReminderCandidates(): Promise<StripeConnectRe
   return candidates;
 }
 
+/**
+ * The ONE notification predicate the 72h cooldown reads: a Stripe Connect reminder row for these users inside
+ * the window. `reminderCooldownActive` (the 429) and `reminderCooldownEndsAt` (the admin screens) both use it.
+ */
+function reminderCooldownWhere(userIds: readonly string[], now: number) {
+  return and(
+    inArray(notifications.userId, [...userIds]),
+    eq(notifications.type, STRIPE_CONNECT_REMINDER_TYPE),
+    gte(notifications.createdAt, reminderCooldownCutoff(now)),
+  );
+}
+
 export async function reminderCooldownActive(userId: string, now = Date.now()): Promise<boolean> {
   const [row] = await db
     .select({ id: notifications.id })
     .from(notifications)
-    .where(
-      and(
-        eq(notifications.userId, userId),
-        eq(notifications.type, STRIPE_CONNECT_REMINDER_TYPE),
-        gte(notifications.createdAt, reminderCooldownCutoff(now)),
-      ),
-    )
+    .where(reminderCooldownWhere([userId], now))
     .limit(1);
   return !!row;
+}
+
+/**
+ * Gap 9 screens: when each account's reminder cooldown ends (ISO), from its latest reminder inside the window
+ * plus the one shared cooldown constant. An account with no reminder in the window is absent from the map: its
+ * Remind button is enabled. A remind pressed before this instant is the 429.
+ */
+export async function reminderCooldownEndsAt(userIds: readonly string[], now = Date.now()): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (userIds.length === 0) return out;
+  const rows = await db
+    .select({ userId: notifications.userId, latest: sql<Date | string>`max(${notifications.createdAt})` })
+    .from(notifications)
+    .where(reminderCooldownWhere(userIds, now))
+    .groupBy(notifications.userId);
+  for (const r of rows) {
+    if (!r.userId || !r.latest) continue;
+    const latest = new Date(r.latest as any).getTime();
+    if (Number.isFinite(latest)) out.set(r.userId, new Date(latest + STRIPE_CONNECT_REMINDER_COOLDOWN_MS).toISOString());
+  }
+  return out;
 }
 
 export type AdminRemindResult =

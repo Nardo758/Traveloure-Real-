@@ -241,7 +241,7 @@ import {
   CONTACT_SUBMISSION_RESOURCE,
 } from "../services/admin-decision-audit";
 import { listNotRoutableExperts } from "../services/expert-routability";
-import { adminRemindStripeConnect } from "../services/stripe-connect-reminder.service";
+import { adminRemindStripeConnect, reminderCooldownEndsAt } from "../services/stripe-connect-reminder.service";
 import { listOwedEarners, markPaidBodySchema, markPayoutPaidExternally } from "../services/payout-admin.service";
 import { SUPPORT_STATUSES, isSupportStatus, supportPatchBodySchema, SUPPORT_FIRST_RESPONSE_HOURS_SETTING, isValidSupportFirstResponseHoursSetting } from "@shared/support-intake";
 import { applySupportPatch, isSupportAssignee, listSupportAssignees, listSupportSubmissions } from "../services/support-inbox.service";
@@ -3049,7 +3049,10 @@ router.get("/api/admin/experts/not-routable", isAuthenticated, async (req, res) 
       return res.status(403).json({ message: "Admin access required" });
     }
     try {
-      const experts = await listNotRoutableExperts();
+      const rows = await listNotRoutableExperts();
+      // Gap 9 screens: when each Remind button's 72h cooldown ends (null = can remind now).
+      const cooldown = await reminderCooldownEndsAt(rows.map((r) => r.userId));
+      const experts = rows.map((r) => ({ ...r, reminderCooldownEndsAt: cooldown.get(r.userId) ?? null }));
       res.json({ count: experts.length, experts });
     } catch (err) {
       console.error("Admin not-routable experts error:", err);
@@ -3552,7 +3555,9 @@ router.get("/api/admin/platform-service-providers", isAuthenticated, async (req,
       };
     }));
 
-    res.json(enriched);
+    // Gap 9 screens: the provider row's Remind button reads the same 72h cooldown as the experts list.
+    const cooldown = await reminderCooldownEndsAt(enriched.map((p: any) => p.userId).filter(Boolean));
+    res.json(enriched.map((p: any) => ({ ...p, reminderCooldownEndsAt: cooldown.get(p.userId) ?? null })));
   });
 
   // Admin: Get count of providers missing Stripe Connect setup

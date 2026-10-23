@@ -7,10 +7,10 @@
  * payout_method on the payout row. It does not send email.
  */
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
-import { expertEarnings, expertPayouts, providerEarnings, providerPayouts } from "@shared/schema";
+import { expertEarnings, expertPayouts, providerEarnings, providerPayouts, users } from "@shared/schema";
 import {
   EXTERNAL_MARK_PAID_FROM,
   externalPayoutMethod,
@@ -59,22 +59,70 @@ export async function amountOwed(earnerType: EarnerType, earnerId: string): Prom
   };
 }
 
-export async function listOwedEarners(): Promise<OwedEarner[]> {
+/**
+ * A row on the admin Owed view (gap 9 screens). Reads only.
+ * - `displayName`: first and last name, or null. Never an email.
+ * - `canReceiveTransfer`: the payout-request gate's own test (`payments.routes.ts`): a Stripe account id and
+ *   `canReceivePayments`, read through the same `storage.getUserStripeAccount`.
+ * - `pendingPayoutCount` / `pendingPayoutTotal`: this earner's payout rows still `pending` or `approved`.
+ */
+export type OwedEarnerRow = OwedEarner & {
+  displayName: string | null;
+  canReceiveTransfer: boolean;
+  pendingPayoutCount: number;
+  pendingPayoutTotal: number;
+};
+
+export function canReceiveTransfer(account: { stripeAccountId: string | null; canReceivePayments: boolean | null }): boolean {
+  return !!account.stripeAccountId && !!account.canReceivePayments;
+}
+
+async function pendingPayoutsFor(earnerType: EarnerType, earnerId: string): Promise<{ count: number; total: number }> {
+  const table = earnerType === "expert" ? expertPayouts : providerPayouts;
+  const owner = earnerType === "expert" ? expertPayouts.expertId : providerPayouts.providerId;
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int`, total: sql<string>`coalesce(sum(${table.amount}), 0)` })
+    .from(table)
+    .where(and(eq(owner, earnerId), inArray(table.status, [...EXTERNAL_MARK_PAID_FROM])));
+  return { count: Number(row?.n ?? 0), total: round2(parseFloat(String(row?.total ?? "0")) || 0) };
+}
+
+export async function listOwedEarners(): Promise<OwedEarnerRow[]> {
   const [experts, providers] = await Promise.all([
     db.selectDistinct({ id: expertEarnings.expertId }).from(expertEarnings),
     db.selectDistinct({ id: providerEarnings.providerId }).from(providerEarnings),
   ]);
-  const rows: OwedEarner[] = [];
+  const owedRows: OwedEarner[] = [];
   for (const expert of experts) {
     const owed = await amountOwed("expert", expert.id);
-    if (owed.owed > 0 || owed.pending > 0) rows.push(owed);
+    if (owed.owed > 0 || owed.pending > 0) owedRows.push(owed);
   }
   for (const provider of providers) {
     const owed = await amountOwed("provider", provider.id);
-    if (owed.owed > 0 || owed.pending > 0) rows.push(owed);
+    if (owed.owed > 0 || owed.pending > 0) owedRows.push(owed);
   }
-  rows.sort((a, b) => a.earnerType.localeCompare(b.earnerType) || a.earnerId.localeCompare(b.earnerId));
-  return rows;
+  owedRows.sort((a, b) => a.earnerType.localeCompare(b.earnerType) || a.earnerId.localeCompare(b.earnerId));
+  const ids = Array.from(new Set(owedRows.map((r) => r.earnerId)));
+  const names = new Map<string, string | null>();
+  if (ids.length) {
+    const rows = await db.select({ id: users.id, firstName: users.firstName, lastName: users.lastName }).from(users).where(inArray(users.id, ids));
+    for (const r of rows) names.set(r.id, [r.firstName, r.lastName].filter(Boolean).join(" ") || null);
+  }
+  const out: OwedEarnerRow[] = [];
+  for (const row of owedRows) {
+    const [account, pendingPayouts] = await Promise.all([
+      storage.getUserStripeAccount(row.earnerId),
+      pendingPayoutsFor(row.earnerType, row.earnerId),
+    ]);
+    out.push({
+      ...row,
+      displayName: names.get(row.earnerId) ?? null,
+      canReceiveTransfer: canReceiveTransfer(account),
+      pendingPayoutCount: pendingPayouts.count,
+      pendingPayoutTotal: pendingPayouts.total,
+    });
+  }
+  return out;
 }
 
 export type MarkPaidResult =

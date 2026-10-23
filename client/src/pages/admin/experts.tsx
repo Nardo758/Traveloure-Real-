@@ -1,4 +1,5 @@
 import { AdminLayout } from "@/components/admin-layout";
+import { NotRoutableExpertsCard } from "@/components/admin/payout-ops/NotRoutableExpertsCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -365,6 +366,8 @@ export default function AdminExperts() {
   return (
     <AdminLayout title="Expert Management">
       <div className="p-6 space-y-6">
+        {/* Gap 9: experts the routing predicate refuses, with a Remind button. */}
+        <NotRoutableExpertsCard />
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card data-testid="card-stat-total">

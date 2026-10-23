@@ -206,7 +206,6 @@ export function publicExpertSql(applicationStatusExpr: SQL, emailExpr: SQL, isTe
 export type NotRoutableExpertRow = {
   userId: string;
   role: string | null;
-  email: string | null;
   firstName: string | null;
   lastName: string | null;
   applicationStatus: string | null;
@@ -217,7 +216,7 @@ export type NotRoutableExpertRow = {
 /**
  * Experts the routing predicate refuses. The predicate is `routableExpertFilterSql`
  * (the SQL form of `isRoutableExpert`, including the pool and editorial exclusions).
- * This list does not restate that rule.
+ * This list does not restate that rule. It carries no email (gap 9 screens): the admin list shows names only.
  */
 export async function listNotRoutableExperts(): Promise<NotRoutableExpertRow[]> {
   const { db } = await import("../db");
@@ -228,7 +227,6 @@ export async function listNotRoutableExperts(): Promise<NotRoutableExpertRow[]> 
     SELECT DISTINCT ON (u.id)
       u.id AS user_id,
       u.role,
-      u.email,
       u.first_name,
       u.last_name,
       lef.status AS application_status,
@@ -243,7 +241,6 @@ export async function listNotRoutableExperts(): Promise<NotRoutableExpertRow[]> 
   return (r.rows ?? []).map((row: any) => ({
     userId: String(row.user_id),
     role: row.role ?? null,
-    email: row.email ?? null,
     firstName: row.first_name ?? null,
     lastName: row.last_name ?? null,
     applicationStatus: row.application_status ?? null,

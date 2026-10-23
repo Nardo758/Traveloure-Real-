@@ -13,10 +13,11 @@ import {
   Loader2, Calendar, Star, ShoppingBag, TrendingUp, Users,
   Camera, ChefHat, Car, Sparkles, Music, Waves, Dumbbell,
   MoreHorizontal, ExternalLink, Package, DollarSign, AlertCircle, PenLine,
-  CreditCard, Bell, Filter,
+  CreditCard, Filter,
 } from "lucide-react";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { RemindStripeButton } from "@/components/admin/payout-ops/RemindStripeButton";
 import { apiRequest } from "@/lib/queryClient";
 import { parseApiErrorMessage } from "@/lib/api-error";
 import { useToast } from "@/hooks/use-toast";
@@ -83,6 +84,8 @@ interface PlatformProvider {
   stripeAccountId: string | null;
   stripeAccountStatus: string | null;
   canReceivePayments: boolean;
+  /** Gap 9: when this row's Stripe reminder cooldown ends (null = can remind now). */
+  reminderCooldownEndsAt?: string | null;
 }
 
 function stripeStatus(provider: PlatformProvider) {
@@ -294,18 +297,6 @@ export default function AdminProviders() {
     },
     onError: (error: any) => {
       toast({ variant: "destructive", title: "Failed to update verification", description: error?.message ?? "Try again." });
-    },
-  });
-
-  const remindStripeMutation = useMutation({
-    mutationFn: async (userId: string) => {
-      return apiRequest("POST", `/api/admin/providers/${userId}/remind-stripe`, {});
-    },
-    onSuccess: () => {
-      toast({ title: "Reminder Sent", description: "The provider has been notified to complete their Stripe Connect setup." });
-    },
-    onError: (error: any) => {
-      toast({ variant: "destructive", title: "Failed to send reminder", description: error?.message ?? "Try again." });
     },
   });
 
@@ -597,19 +588,15 @@ export default function AdminProviders() {
                         {/* Actions */}
                         <div className="flex items-center gap-2 flex-shrink-0">
                           {/* Remind stripe if incomplete */}
+                          {/* Gap 9: the shared Remind button (server cooldown; 409/429 said plainly). */}
                           {ss !== "complete" && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => remindStripeMutation.mutate(provider.userId)}
-                              disabled={remindStripeMutation.isPending}
-                              className="border-red-300 text-red-700 hover:bg-red-50"
-                              data-testid={`button-remind-stripe-${provider.id}`}
-                              title="Send an in-app notification reminding this provider to complete Stripe Connect"
-                            >
-                              <Bell className="w-3.5 h-3.5 mr-1" />
-                              Remind
-                            </Button>
+                            <RemindStripeButton
+                              kind="provider"
+                              userId={provider.userId}
+                              cooldownEndsAt={provider.reminderCooldownEndsAt}
+                              listQueryKey={["/api/admin/platform-service-providers"]}
+                              testId={`button-remind-stripe-${provider.id}`}
+                            />
                           )}
                           {/* Earnings page link */}
                           <Button
