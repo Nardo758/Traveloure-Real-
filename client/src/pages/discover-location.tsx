@@ -1,7 +1,7 @@
 import { heroEyebrowFragments } from "@/lib/hero-eyebrow";
 import { isKyotoCity, KYOTO_CITY_DESCRIPTION } from "@/lib/g02-g06-copy";
 import { SEOHead } from "@/components/seo-head";
-import { SEASONAL_WRITER_LIVE, buildSeasonLine } from "@/lib/season-line";
+import { SEASONAL_WRITER_LIVE } from "@/lib/season-line";
 import { PRICE_OPTIONS, extractTilePrice, priceMatches } from "@/lib/tile-price";
 import { useRef, useEffect, useState } from "react";
 import { resolveCoverPhoto, type CoverPhotoCredit } from "@/lib/cover-photo";
@@ -156,34 +156,27 @@ function HeroBand({
   onDismissDate,
 }: {
   city: string;
-  heroData: any;
+  /** Kept so the call site can still pass the hero envelope. The seasonal city fields are not read. */
+  heroData?: unknown;
   country: string | null;
   scheduledDate: string | null;
   onDismissDate: () => void;
 }) {
+  void heroData;
   const displayCity = toTitleCase(city);
-  const cityIntel = heroData?.city;
   // SH-1 item 2: the eyebrow carries no TREND score (and no CROWD fragment until one is computed).
   const crowdLevel: string | null = null;
-  const highlight = cityIntel?.currentHighlight;
-  const highlightEmoji = cityIntel?.highlightEmoji ?? "✨";
 
   const parsedDate = scheduledDate ? new Date(scheduledDate + "T12:00:00") : null;
   const monthIndex = parsedDate ? parsedDate.getMonth() : null;
   const monthName = monthIndex !== null ? MONTH_NAMES[monthIndex] : null;
   const dayOfMonth = parsedDate ? parsedDate.getDate() : null;
 
-  const seasonalEntry = monthIndex !== null && cityIntel?.aiSeasonalHighlights
-    ? (cityIntel.aiSeasonalHighlights as Array<{ month: number; rating: string; highlight: string }>)
-        .find((s) => s.month === monthIndex + 1) ?? null
-    : null;
-
-  // SH-1 item 8: the header is the city name only. The authored line and the fixed "Local experts, bookable
-  // services…" line are gone; the season line returns only once a refresh writer exists (`SEASONAL_WRITER_LIVE`),
-  // and a word rating never renders as "{word}/10" (`buildSeasonLine`).
+  // SH-1 item 8: the header is the city name only. The season line stays behind SEASONAL_WRITER_LIVE,
+  // which stays off (R-07): traveler payloads no longer carry a seasonal city line to print.
   const seasonLine = !SEASONAL_WRITER_LIVE
     ? null
-    : buildSeasonLine(seasonalEntry, monthName) ?? (highlight ? `${highlightEmoji} ${highlight}` : null);
+    : null;
   // G-06: Kyoto's own description. Other cities keep the season line (null until a writer exists).
   const subLine: string | null = isKyotoCity(city) ? KYOTO_CITY_DESCRIPTION : seasonLine;
 
@@ -1308,151 +1301,30 @@ function isExpertDirectoryHref(href: string | null | undefined): boolean {
 
 function DateHighlightStrip({
   scheduledDate,
-  city,
-  cityIntel,
-  onAdd,
+  city: _city,
+  onAdd: _onAdd,
 }: {
   scheduledDate: string;
-  /** The page's city — scopes the expert-availability answer for the "Festival guide" companion. */
+  /** The page's city — kept for the mount. No seasonal city field is read. */
   city: string;
-  cityIntel: any;
   onAdd?: (item: any) => void;
 }) {
-  // SH-1 item 11: the "Festival guide" companion books a local expert, so it draws only when this
-  // city has an expert to ask.
-  const expertAvailable = useExpertAvailability({ city });
+  void _city;
+  void _onAdd;
   const parsedDate = new Date(scheduledDate + "T12:00:00");
   const monthIndex = parsedDate.getMonth();
   const monthName = MONTH_NAMES[monthIndex];
   const dayOfMonth = parsedDate.getDate();
   const label = `On ${monthName} ${dayOfMonth} — pulled to the top`;
 
-  const seasonalEntry = cityIntel?.aiSeasonalHighlights
-    ? (cityIntel.aiSeasonalHighlights as Array<{ month: number; rating: string; highlight: string }>)
-        .find((s) => s.month === monthIndex + 1) ?? null
-    : null;
-
-  const highlight: string = (cityIntel?.currentHighlight ?? "").toLowerCase();
-  const eventTitle = seasonalEntry?.highlight ?? cityIntel?.currentHighlight ?? "Seasonal highlight";
-
-  // SH-1 item 8: no hard-coded prices (they were yen literals no listing stood behind).
-  type ServiceAddon = { icon: string; label: string; href: string };
-  // D2 honest links: the old `/experiences/photo` and `/experiences/gear` hrefs
-  // resolved to the /experiences/:slug route but matched NO real experience
-  // template — dead-ish destinations. The companion object carries no service
-  // id, so each "Book" now goes to `/services` — the live Browse
-  // Services tab (in discover.tsx's VISIBLE_TABS), where these service types
-  // are actually searchable. `/local-experts` (festival guide) was already a
-  // real routed page and stays.
-  const companionServiceCandidate: ServiceAddon | null = (() => {
-    if (highlight.includes("blossom") || highlight.includes("sakura") || highlight.includes("cherry"))
-      return { icon: "📷", label: "Blossom photo shoot", href: "/services" };
-    if (highlight.includes("snow") || highlight.includes("winter") || highlight.includes("ski"))
-      return { icon: "🎿", label: "Winter gear rental", href: "/services" };
-    if (highlight.includes("festival") || highlight.includes("matsuri"))
-      return { icon: "🎋", label: "Festival guide", href: "/local-experts" };
-    if (highlight.includes("autumn") || highlight.includes("fall") || highlight.includes("foliage"))
-      return { icon: "🍂", label: "Foliage photo tour", href: "/services" };
-    return null;
-  })();
-  const companionService: ServiceAddon | null =
-    companionServiceCandidate && isExpertDirectoryHref(companionServiceCandidate.href) && !expertAvailable
-      ? null
-      : companionServiceCandidate;
-
+  // R-07: the traveler payload has no seasonal title, so this strip does not invent one.
+  // It stays mounted only behind SEASONAL_WRITER_LIVE.
   return (
     <div data-testid="date-highlight-strip">
       <div className="text-[11px] text-muted-foreground mb-2 px-0.5">{label}</div>
-      <div className="flex gap-2.5 flex-wrap">
-        {/* Seasonal event card */}
-        <div
-          className="flex-[2_1_240px] flex rounded-xl overflow-hidden border"
-          style={{ borderColor: "#9FE1CB", background: "var(--card)" }}
-          data-testid="date-seasonal-event-card"
-        >
-          <div
-            className="w-[68px] flex-shrink-0 flex items-center justify-center text-[26px]"
-            style={{ background: "#FBEAF0" }}
-          >
-            🌸
-          </div>
-          <div className="p-3 flex-1 min-w-0">
-            <span
-              className="inline-block text-[11px] font-semibold px-2 py-0.5 rounded-md mb-1.5"
-              style={{ background: "#E1F5EE", color: "#085041" }}
-            >
-              📌 Why you're here
-            </span>
-            <div className="text-[14px] font-medium mb-2 leading-snug">{eventTitle}</div>
-            <div className="flex gap-2 flex-wrap">
-              <Button
-                size="sm"
-                className="h-7 text-[12px] px-3"
-                style={{ background: "#185FA5", color: "#fff", border: "none" }}
-                data-testid="button-date-event-tickets"
-                asChild
-              >
-                {/* D2 honest link: was /experiences/events — a slug that resolved to
-                    the /experiences/:slug route but matched no real experience
-                    template. Now points at /events, the live By-Date
-                    calendar tab (in discover.tsx's VISIBLE_TABS), where dated
-                    events are actually browsable. */}
-                <a href="/events">Tickets</a>
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-[12px] px-3"
-                onClick={() =>
-                  onAdd?.({
-                    title: eventTitle,
-                    description: cityIntel?.currentHighlight ?? null,
-                    type: "event",
-                    scheduledDate,
-                  })
-                }
-                data-testid="button-date-event-add"
-              >
-                Add to {monthName} {dayOfMonth}
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {/* Companion platform service card */}
-        {companionService && (
-          <div
-            className="flex-[1_1_140px] rounded-xl border p-3"
-            style={{ background: "var(--card)" }}
-            data-testid="date-companion-service-card"
-          >
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[18px]">{companionService.icon}</span>
-              <span
-                className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide"
-                style={{ background: "#f0fdf4", color: "#166534" }}
-              >
-                PLATFORM
-              </span>
-            </div>
-            <div className="text-[13px] font-medium mb-0.5">{companionService.label}</div>
-            <div className="text-[11px] text-muted-foreground mb-2">seasonal</div>
-            <Button
-              size="sm"
-              className="h-7 text-[12px] px-3"
-              style={{ background: "#0F6E56", color: "#fff", border: "none" }}
-              data-testid="button-date-companion-book"
-              asChild
-            >
-              <a href={companionService.href}>Book</a>
-            </Button>
-          </div>
-        )}
-      </div>
     </div>
   );
 }
-
 
 // ─── Trip-level complements strip ─────────────────────────────────────────────
 
@@ -2075,8 +1947,6 @@ export default function DiscoverLocationPage() {
       })
     : filteredItems;
 
-  const currentHighlight = data?.hero?.data?.city?.currentHighlight ?? null;
-
   // ── Cover photo: highest-scored gem imageUrl → curated map → null (board #437) ──
   const coverPhoto = resolveCoverPhoto(allGems, city);
   const coverPhotoUrl = coverPhoto.url;
@@ -2156,7 +2026,6 @@ export default function DiscoverLocationPage() {
               <DateHighlightStrip
                 scheduledDate={scheduledDate}
                 city={city}
-                cityIntel={data.hero?.data?.city}
                 onAdd={handleAdd}
               />
             )}
@@ -2259,7 +2128,7 @@ export default function DiscoverLocationPage() {
               }}
             />
             {activeFilter === "all" && !neighbourhoodFilter && (
-              <TripComplementsStrip city={city} highlight={SEASONAL_WRITER_LIVE ? currentHighlight : null} />
+              <TripComplementsStrip city={city} highlight={null} />
             )}
 
           </div>

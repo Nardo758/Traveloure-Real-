@@ -72,7 +72,6 @@ interface PlanActivityResponse {
 
 interface TravelPulseCityRow {
   cityName: string;
-  currentHighlight?: string | null;
   dealAlert?: string | null;
 }
 
@@ -236,7 +235,7 @@ export function WhileYouWereAway({ userId, notifications, activePlans }: WhileYo
     : 0;
 
   // ── destination trending: only when a real active-trip destination appears in the real
-  // travelpulse response with real highlight/deal text. ──────────────────────────────────
+  // travelpulse response with a deal alert. ─────────────────────────────────────────────
   let trendingLine: string | null = null;
   for (const trip of activePlans) {
     const destShort = trip.destination?.split(",")[0]?.trim().toLowerCase();
@@ -246,7 +245,7 @@ export function WhileYouWereAway({ userId, notifications, activePlans }: WhileYo
       return !!cityLower && (cityLower === destShort || cityLower.includes(destShort) || destShort.includes(cityLower));
     });
     if (match) {
-      const text = match.currentHighlight || match.dealAlert;
+      const text = match.dealAlert;
       if (text) {
         trendingLine = `${match.cityName}: ${text}`;
         break;
