@@ -1,4 +1,5 @@
 import { PhoneNotificationsCard } from "@/components/settings/phone-notifications-card";
+import { PayoutDetailsCard } from "@/components/payout/PayoutDetailsCard";
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { NOTIFICATION_PREFERENCE_DEFAULTS, NOTIFICATION_PREFERENCE_KEYS } from "@shared/notification-preferences";
 import { Link, useSearch } from "wouter";
@@ -361,6 +362,9 @@ export default function ExpertSettings() {
           <h1 className="text-3xl font-bold text-console-darkest">Settings</h1>
           <p className="text-console-mid mt-1">Manage your preferences and account settings</p>
         </div>
+
+        {/* Row 115: payout details lead an earner's settings; never a gate. */}
+        <PayoutDetailsCard />
 
         <HandleClaimCard />
 
