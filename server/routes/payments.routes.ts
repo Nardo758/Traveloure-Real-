@@ -120,6 +120,7 @@ import { isCanonicalBookingEmailPersistenceError } from "../services/canonical-b
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { requireVerifiedEmail } from "../services/verified-email-action-gate";
 import { isExpertRole, isProviderRole, isEarnerRole } from "@shared/roles";
 import { decidePayoutRequest, validatePayoutSetupWrite } from "../services/payout-setup";
 import { lockPayoutRequestDecision, readOwnPayoutSetup, readPayoutFacts, saveOwnPayoutSetup } from "../services/payout-setup.service";
@@ -1138,7 +1139,7 @@ function claimChargeDisclosure(rows: Array<{
   };
 }
 
-router.post("/api/checkout", isAuthenticated, async (req, res) => {
+router.post("/api/checkout", isAuthenticated, requireVerifiedEmail("checkout"), async (req, res) => {
     try {
       const userId = getUserId(req)!;
 
@@ -2409,7 +2410,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
   // Resume a card form on a booking that is still `payment_pending` with a live PaymentIntent.
   // One 404 for absent and not-yours (LD 40). A `failed` attempt is closed (R162) and is not
   // reopened here — the traveler starts checkout again from the cart.
-  router.post("/api/bookings/:id/resume-payment", isAuthenticated, async (req, res) => {
+  router.post("/api/bookings/:id/resume-payment", isAuthenticated, requireVerifiedEmail("checkout"), async (req, res) => {
     try {
       const userId = getUserId(req);
       if (!userId) return res.status(401).json({ success: false, error: "unauthenticated" });
@@ -2474,7 +2475,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
     }
   });
 
-  router.post("/api/bookings/:id/pay-balance", isAuthenticated, async (req, res) => {
+  router.post("/api/bookings/:id/pay-balance", isAuthenticated, requireVerifiedEmail("checkout"), async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const bookingId = req.params.id;
@@ -3528,7 +3529,7 @@ const MEMBERSHIP_CHECKOUT_STATUS: Record<string, number> = {
   stripe_error: 502,
 };
 
-router.post("/api/memberships/checkout", isAuthenticated, async (req, res) => {
+router.post("/api/memberships/checkout", isAuthenticated, requireVerifiedEmail("checkout"), async (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ message: "Authentication required" });
 

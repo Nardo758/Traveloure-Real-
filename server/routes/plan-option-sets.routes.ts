@@ -31,6 +31,7 @@ import { recordSlipEvent } from "../services/slip-events.service";
 import { Router } from "express";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { requireVerifiedEmail } from "../services/verified-email-action-gate";
 import { HELP_LEVELS } from "@shared/expert-door";
 import { ExpertDoorError, recordExpertDoorEvent } from "../services/expert-door.service";
 import { getUserId } from "../utils/auth";
@@ -418,7 +419,7 @@ router.get("/api/trips/:tripId/items/:itemId/stay-booking", isAuthenticated, asy
     res.status(500).json({ code: "internal", message: "Could not read the booking" });
   }
 });
-router.post("/api/trips/:tripId/items/:itemId/stay-booking/prebook", isAuthenticated, async (req: any, res) => {
+router.post("/api/trips/:tripId/items/:itemId/stay-booking/prebook", isAuthenticated, requireVerifiedEmail("booking"), async (req: any, res) => {
   if (!stayBookingBody.safeParse(req.body ?? {}).success) return badBody(res);
   try {
     const { prebookStay } = await import("../services/liteapi-booking.service");
@@ -428,7 +429,7 @@ router.post("/api/trips/:tripId/items/:itemId/stay-booking/prebook", isAuthentic
     res.status(500).json({ code: "internal", message: "Could not prepare the booking" });
   }
 });
-router.post("/api/trips/:tripId/items/:itemId/stay-booking/book", isAuthenticated, async (req: any, res) => {
+router.post("/api/trips/:tripId/items/:itemId/stay-booking/book", isAuthenticated, requireVerifiedEmail("booking"), async (req: any, res) => {
   if (!stayBookingBody.safeParse(req.body ?? {}).success) return badBody(res);
   try {
     const { bookStay } = await import("../services/liteapi-booking.service");

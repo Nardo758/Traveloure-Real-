@@ -80,6 +80,7 @@ import { healthFlags, healthEgressFlags, healthMapsCaps, healthKeyPresence } fro
 import { readHotelSupply } from "../services/hotel-supply.service";
 import { enrichPlanItems } from "../services/content-facts/place-facts.service";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { requireVerifiedEmail } from "../services/verified-email-action-gate";
 import { aiRateLimiter, strictRateLimiter } from "../infrastructure/rate-limiter";
 import { geocodeAddress } from "../utils/geocode";
 import { EgressBlockedError } from "../utils/egress-guard";
@@ -7304,7 +7305,7 @@ router.patch("/api/participants/:id/rsvp", isAuthenticated, async (req, res) => 
   });
 
 
-router.post("/api/participants/:id/payment", isAuthenticated, async (req, res) => {
+router.post("/api/participants/:id/payment", isAuthenticated, requireVerifiedEmail("checkout"), async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const existing = await coordinationService.getParticipant(req.params.id);
@@ -7598,7 +7599,7 @@ router.post("/api/spontaneous/preferences", isAuthenticated, async (req, res) =>
 
   // POST /api/spontaneous/:id/book - Book a spontaneous opportunity
 
-router.post("/api/spontaneous/:id/book", isAuthenticated, async (req, res) => {
+router.post("/api/spontaneous/:id/book", isAuthenticated, requireVerifiedEmail("booking"), async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const opportunityId = req.params.id;

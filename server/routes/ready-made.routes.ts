@@ -17,6 +17,7 @@
  */
 import { Router } from "express";
 import { getUserId } from "../utils/auth";
+import { requireVerifiedEmail } from "../services/verified-email-action-gate";
 import { z } from "zod";
 import { db } from "../db";
 import { storage } from "../storage";
@@ -1382,7 +1383,7 @@ router.get("/api/ready-made/:id/teaser-map.svg", async (req, res) => {
 // state by design (migration 133): the row is created only AFTER Stripe verifies `succeeded`,
 // so an abandoned checkout leaves nothing behind.
 
-router.post("/api/ready-made/:id/purchase", isAuthenticated, async (req, res) => {
+router.post("/api/ready-made/:id/purchase", isAuthenticated, requireVerifiedEmail("checkout"), async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
