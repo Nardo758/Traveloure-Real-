@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { needHelpBody } from "@/lib/discover-need-help";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { createComparison as createComparisonRequest } from "@/lib/create-comparison";
@@ -2241,9 +2242,9 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
             <SectionTitle className="mb-4">
               Need Help Deciding?
             </SectionTitle>
-            <p className="text-lg text-muted-foreground mb-8">
-              Talk to one of our local experts or trip planners. They'll help you find the perfect
-              trip based on your preferences, budget, and travel style.
+            {/* Row 45: the body names experts only when the "Talk to an Expert" button below is shown. */}
+            <p className="text-lg text-muted-foreground mb-8" data-testid="text-need-help-body">
+              {needHelpBody(anyExpertAvailable)}
             </p>
             <div className="flex flex-wrap justify-center gap-4">
               {anyExpertAvailable && (
