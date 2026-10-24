@@ -1,6 +1,7 @@
 /**
- * H-10 — one Experiences button; ?group= and the city the traveler already chose
- * carry into the Start a plan pop-up through props / React state only.
+ * H-10 — ?group= and the city the traveler already chose carry into the Start a
+ * plan pop-up through props / React state only. The Experiences nav stays the
+ * five group links (ledger 2026-10-07-nav-experience-groups).
  *
  * Q15.2 (already on main): opening the pop-up writes nothing to localStorage,
  * sessionStorage, cookies, or the server. P8 pins the event door; this file does
@@ -14,7 +15,6 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import * as planEntry from "../plan-entry";
-import { navGroupsConfig } from "../nav-config";
 
 const read = (rel: string) => readFileSync(path.join(process.cwd(), rel), "utf8");
 
@@ -109,13 +109,7 @@ test("H-10: the pop-up source carries the group and city and never the pen slug"
   assert.equal(clickedWins.group, "celebrations");
 });
 
-test("H-10: Experiences is one nav button, and Start a plan reads the carry", () => {
-  const group = navGroupsConfig.find((g) => g.name === "Experiences");
-  assert.ok(group);
-  assert.equal(group!.href, "/experiences");
-  assert.equal(group!.sections, undefined);
-  assert.equal(group!.footer, undefined);
-
+test("H-10: Start a plan reads the carry and open() writes nothing", () => {
   const layout = read("client/src/components/layout.tsx");
   assert.equal((layout.match(/openPlanning\(\{ newPlan: true \}\)/g) ?? []).length, 0);
   assert.match(layout, /experiencesPopupSource\(search, experiencesPick\)/);

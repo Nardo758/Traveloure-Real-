@@ -376,11 +376,15 @@ test.describe("Mobile nav at 390px", () => {
     await page.setViewportSize({ width: 390, height: 844 });
   });
 
-  test("Experiences from the open menu lands on /experiences with the menu closed", async ({ page }) => {
+  test("a group link from the open menu lands with the menu closed — a new path, then a query-only change", async ({ page }) => {
     await page.goto(`${BASE_URL}/about`, { waitUntil: "domcontentloaded" });
     await openMenu(page);
-    await page.getByTestId("link-mobile-experiences").click();
-    await expect(page).toHaveURL(/\/experiences$/);
+    await page.getByTestId("link-mobile-a-moment").click();
+    await expect(page).toHaveURL(/\/experiences\?group=moments$/);
+    await expectClosed(page);
+    await openMenu(page);
+    await page.getByTestId("link-mobile-a-trip").click();
+    await expect(page).toHaveURL(/\/experiences\?group=trips$/);
     await expectClosed(page);
   });
 

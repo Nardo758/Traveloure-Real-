@@ -188,7 +188,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
   const [error, setError] = useState<string | null>(null);
   const [adults, setAdults] = useState("");
   const [kids, setKids] = useState("");
-  /** A group chip was pressed. The untouched default ("A trip") is not a choice. */
+  /** A group chip was pressed. The untouched default group is not a choice. */
   const [groupChosen, setGroupChosen] = useState(!!source?.group);
   /** Did the door hand us the occasion (funnel `occasionSource`)? */
   const doorOccasion = useRef<boolean>(!!seed.state.occasionSlug);
