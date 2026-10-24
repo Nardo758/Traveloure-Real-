@@ -15,6 +15,11 @@
  * only when that variable is exactly true. It is checked before every other
  * gate, including for password reset and verification.
  *
+ * EMAIL_TEMPLATE_ALLOWLIST is the next gate for outbox delivery. It is a
+ * comma-separated list of email_type names. Unset, empty, or blank allows
+ * nothing. It is checked only after EMAIL_SENDS_ENABLED passes. Direct
+ * sendEmail callers are not named by it.
+ *
  * Legacy alias: EMAIL_FROM is still read as a fallback for EMAIL_FROM_NOREPLY
  * so existing deployments that predate the rename continue to work.
  *
@@ -43,6 +48,30 @@ import { shapeAdminDigestLists } from "./admin-digest-shape";
 /** Production send gate. Only the exact string true allows a provider call. */
 export function emailSendsEnabled(value: string | undefined = process.env.EMAIL_SENDS_ENABLED): boolean {
   return value === "true";
+}
+
+/**
+ * email_type names that may leave after EMAIL_SENDS_ENABLED. Unset, empty, or
+ * only blanks allows nothing. There is no wildcard and no "all". Comparison is
+ * exact and case-sensitive; spaces around items are ignored.
+ */
+export function emailTemplateAllowlist(value: string | undefined = process.env.EMAIL_TEMPLATE_ALLOWLIST): readonly string[] {
+  if (typeof value !== "string" || value.length === 0) return [];
+  const names: string[] = [];
+  for (const part of value.split(",")) {
+    const trimmed = part.trim();
+    if (trimmed.length > 0) names.push(trimmed);
+  }
+  return names;
+}
+
+/** True only when emailType is one of the allowlist names, exactly. */
+export function emailTemplateAllowed(
+  emailType: string | null | undefined,
+  allowlist: readonly string[] = emailTemplateAllowlist(),
+): boolean {
+  if (typeof emailType !== "string" || emailType.length === 0) return false;
+  return allowlist.includes(emailType);
 }
 
 let cachedClient: Resend | null = null;

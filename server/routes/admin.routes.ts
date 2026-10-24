@@ -122,7 +122,7 @@ import { clampReportContextCount } from "@shared/report-context";
 import { loadReportContext } from "../services/report-context.service";
 import { countItemKindsForTrip } from "../services/item-kind-counts.service";
 import { emailOutbox } from "@shared/schema";
-import { drainOutboxForAdminRetry } from "../services/email-outbox.service";
+import { adminOutboxRetryRefusal, drainOutboxForAdminRetry } from "../services/email-outbox.service";
 import { isExpertRole, isProviderRole, EXPERT_ROLES, PROVIDER_ROLES } from "@shared/roles";
 import { isReadyMadeBadge, READY_MADE_BADGE_VALUES } from "@shared/ready-made-badges";
 import { coordinationService } from "../services/coordination.service";
@@ -10266,6 +10266,18 @@ router.post("/api/admin/email-outbox/:id/retry", isAuthenticated, async (req, re
     }
     const id = parseInt(req.params.id, 10);
     if (!id || isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+
+    const current = await db.execute(sql`
+      SELECT email_type, status FROM email_outbox WHERE id = ${id}
+    `);
+    const existing = current.rows[0] as { email_type?: string; status?: string } | undefined;
+    if (!existing || (existing.status !== "failed" && existing.status !== "dead")) {
+      return res.status(404).json({ message: "Row not found or not in a retryable status" });
+    }
+    const refusal = adminOutboxRetryRefusal(existing.email_type, id);
+    if (refusal) {
+      return res.status(409).json({ ok: false, reason: refusal });
+    }
 
     // Ops gap 8: the row is locked and its prior status read in the same statement as the reset, so
     // the audit row's before status is the one this retry replaced.

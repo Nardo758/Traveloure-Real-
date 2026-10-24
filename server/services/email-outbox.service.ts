@@ -51,6 +51,8 @@ import {
   buildBookingAlertEmailPayload,
   buildBookingConfirmationEmailPayload,
   emailSendsEnabled,
+  emailTemplateAllowed,
+  emailTemplateAllowlist,
   type BookingAlertParams,
   type BookingConfirmationParams,
   type SendEmailParams,
@@ -134,6 +136,17 @@ async function sendThroughNoSendGate(params: SendEmailParams): Promise<SendEmail
   }
   const { sendEmail } = await import("./email.service");
   return sendEmail(params);
+}
+
+/**
+ * Outbox claim predicate. Empty allowlist is FALSE so a drain does not claim
+ * and release the same unlisted rows. Applied only after EMAIL_SENDS_ENABLED.
+ */
+function emailTypeAllowlistSql() {
+  const names = emailTemplateAllowlist();
+  if (names.length === 0) return sql`FALSE`;
+  const list = sql.join(names.map((name) => sql`${name}`), sql`, `);
+  return sql`email_type = ANY(ARRAY[${list}]::text[])`;
 }
 
 async function settleWithoutAttempt(
@@ -315,6 +328,13 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
     return { drained: 0 };
   }
 
+  if (emailTemplateAllowlist().length === 0) {
+    logger.warn(
+      { reason: "EMAIL_TEMPLATE_ALLOWLIST" },
+      "[email-outbox] drain refused; EMAIL_TEMPLATE_ALLOWLIST allows nothing",
+    );
+  }
+
   type ClaimedRow = {
     id:            number;
     to_email:      string;
@@ -339,13 +359,16 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
       WITH candidates AS (
         SELECT id FROM email_outbox
         WHERE (
-          status IN ('pending', 'failed', 'held')
-          AND (retry_after IS NULL OR retry_after <= NOW())
+          (
+            status IN ('pending', 'failed', 'held')
+            AND (retry_after IS NULL OR retry_after <= NOW())
+          )
+          OR (
+            status = 'processing'
+            AND retry_after < NOW() - INTERVAL '1 minute'
+          )
         )
-        OR (
-          status = 'processing'
-          AND retry_after < NOW() - INTERVAL '1 minute'
-        )
+        AND ${emailTypeAllowlistSql()}
         ORDER BY created_at ASC
         LIMIT 50
         FOR UPDATE SKIP LOCKED
@@ -394,11 +417,29 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
 /** Claim one committed, due notice; competing drains share the same lease guard. */
 export async function deliverQueuedEmail(outboxId: number): Promise<void> {
   try {
+    if (emailSendsEnabled()) {
+      const peek = await db.execute(sql`
+        SELECT email_type FROM email_outbox
+        WHERE id = ${outboxId}
+          AND status IN ('pending', 'failed', 'held')
+          AND (retry_after IS NULL OR retry_after <= NOW())
+      `);
+      const peeked = peek.rows?.[0] as { email_type?: string } | undefined;
+      if (peeked && !emailTemplateAllowed(peeked.email_type)) {
+        logger.warn(
+          { outboxId, emailType: peeked.email_type ?? null, reason: "EMAIL_TEMPLATE_ALLOWLIST" },
+          "[email-outbox] send refused; EMAIL_TEMPLATE_ALLOWLIST",
+        );
+        return;
+      }
+    }
+    const allowlistGate = emailSendsEnabled() ? emailTypeAllowlistSql() : sql`TRUE`;
     const result = await db.execute(sql`
       UPDATE email_outbox SET status = 'processing',
         retry_after = NOW() + INTERVAL '10 minutes', updated_at = NOW()
       WHERE id = ${outboxId} AND status IN ('pending', 'failed', 'held')
         AND (retry_after IS NULL OR retry_after <= NOW())
+        AND ${allowlistGate}
       RETURNING to_email, subject, html, text_body, reply_to, attempt_count, max_attempts, email_type, metadata
     `);
     const row = result.rows?.[0] as {
@@ -435,6 +476,24 @@ export async function drainOutbox(): Promise<DrainOutboxResult> {
   }
 }
 
+/**
+ * Admin retry may reset a failed or dead row only when its email_type may leave.
+ * Checked only after EMAIL_SENDS_ENABLED. Returns the refusal reason, or null
+ * when the reset may proceed. Does not write the row.
+ */
+export function adminOutboxRetryRefusal(
+  emailType: string | null | undefined,
+  outboxId: number,
+): "EMAIL_TEMPLATE_ALLOWLIST" | null {
+  if (!emailSendsEnabled()) return null;
+  if (emailTemplateAllowed(emailType)) return null;
+  logger.warn(
+    { outboxId, emailType: emailType ?? null, reason: "EMAIL_TEMPLATE_ALLOWLIST" },
+    "[email-outbox] admin retry refused; EMAIL_TEMPLATE_ALLOWLIST",
+  );
+  return "EMAIL_TEMPLATE_ALLOWLIST";
+}
+
 /** Admin retry dispatch uses its own event node and the same original drain action. */
 export async function drainOutboxForAdminRetry(outboxId: number): Promise<DrainOutboxResult> {
   const { dispatchMessagingEvent } = await import("../automations/messaging/runtime");
@@ -468,6 +527,31 @@ async function attemptDelivery(
   const metadata     = current.metadata ?? {};
   const authCritical = params.authCritical === true || isAuthCritical(current.emailType, metadata);
 
+  // EMAIL_SENDS_ENABLED refuses every row, including password reset and
+  // verification. The row stays held with its attempt count unchanged and is
+  // not scheduled for another try until a drain runs with sends allowed.
+  // This stays ahead of the allowlist so an unset send gate still records
+  // EMAIL_SENDS_ENABLED rather than the template reason.
+  if (!emailSendsEnabled()) {
+    await settleWithoutAttempt(outboxId, "held", "EMAIL_SENDS_ENABLED is not true", null);
+    logger.warn(
+      { outboxId, emailType: current.emailType, reason: "EMAIL_SENDS_ENABLED", authCritical },
+      "[email-outbox] send refused; EMAIL_SENDS_ENABLED is not true",
+    );
+    return;
+  }
+
+  // Unlisted types, including password reset and verification, stay held.
+  // Checked before auth-link expiry so an unlisted row is never cancelled.
+  if (!emailTemplateAllowed(current.emailType)) {
+    await settleWithoutAttempt(outboxId, "held", "EMAIL_TEMPLATE_ALLOWLIST", null);
+    logger.warn(
+      { outboxId, emailType: current.emailType ?? null, reason: "EMAIL_TEMPLATE_ALLOWLIST", authCritical },
+      "[email-outbox] send refused; EMAIL_TEMPLATE_ALLOWLIST",
+    );
+    return;
+  }
+
   if (authLinkExpired(metadata)) {
     await settleWithoutAttempt(
       outboxId,
@@ -476,18 +560,6 @@ async function attemptDelivery(
       null,
     );
     logger.info({ outboxId, emailType: current.emailType }, "[email-outbox] auth link expired; not resent");
-    return;
-  }
-
-  // EMAIL_SENDS_ENABLED refuses every row, including password reset and
-  // verification. The row stays held with its attempt count unchanged and is
-  // not scheduled for another try until a drain runs with sends allowed.
-  if (!emailSendsEnabled()) {
-    await settleWithoutAttempt(outboxId, "held", "EMAIL_SENDS_ENABLED is not true", null);
-    logger.warn(
-      { outboxId, emailType: current.emailType, reason: "EMAIL_SENDS_ENABLED", authCritical },
-      "[email-outbox] send refused; EMAIL_SENDS_ENABLED is not true",
-    );
     return;
   }
 
