@@ -39,6 +39,7 @@ import { hasPaymentOnRecord, NO_PAYMENT_ON_RECORD } from "@shared/payment-on-rec
 import { isProviderRole } from "@shared/roles";
 import { externalPayoutMethod, type PayoutStatusUpdateOptions } from "./config/payout.config";
 import { lockStripeTransferDecision } from "./services/payout-setup.service";
+import { payoutEmailVerificationDenial } from "./services/verified-email-action-gate";
 import { isPriceBasis } from "@shared/price-basis";
 import type { TripListItem } from "@shared/routes";
 import { omitFields } from "./utils/data-sanitizer";
@@ -190,7 +191,7 @@ function completedPayoutGuard(statusColumn: any, options?: PayoutStatusUpdateOpt
 
 type PayoutClaimResult<T> = {
   payout?: T;
-  reason?: 'insufficient_releasable_earnings' | 'already_processing' | 'terminal' | 'payout_setup_blocked';
+  reason?: 'insufficient_releasable_earnings' | 'already_processing' | 'terminal' | 'payout_setup_blocked' | 'email_verification_required';
   error?: 'payout_setup_incomplete' | 'payout_not_stripe_transfer';
   message?: string;
 };
@@ -202,7 +203,8 @@ type PayoutClaimResult<T> = {
 type StripeTransferSendGate =
   | { proceed: true }
   | { proceed: false; error: 'payout_setup_incomplete' | 'payout_not_stripe_transfer'; message: string }
-  | { proceed: false; reason: 'not_processing' };
+  | { proceed: false; reason: 'not_processing' }
+  | { proceed: false; code: 'email_verification_required' };
 import type {
   NeighborhoodRow as MarketNeighborhoodRow,
   CoverageTargetRow as MarketCoverageTargetRow,
@@ -6855,6 +6857,9 @@ export class DatabaseStorage implements IStorage {
         if (decision.action === 'block') {
           return { reason: 'payout_setup_blocked' as const, error: decision.error, message: decision.message };
         }
+        if (await payoutEmailVerificationDenial(tx, gate.recipientId)) {
+          return { reason: 'email_verification_required' as const };
+        }
       }
       const [row] = await tx.update(payoutTable)
         .set({ status: 'processing', processedAt: new Date() })
@@ -6950,15 +6955,22 @@ export class DatabaseStorage implements IStorage {
       if (!locked || locked.status !== 'processing' || locked.ownerId !== recipientId || locked.transferRef) {
         return { proceed: false, reason: 'not_processing' as const };
       }
+      const releaseUnsentClaim = async () => {
+        await tx.update(payoutTable)
+          .set({ status: 'pending', processedAt: null })
+          .where(and(eq(payoutTable.id, id), eq(payoutTable.status, 'processing')));
+        const earningsTable = earnerType === 'expert' ? expertEarnings : providerEarnings;
+        await tx.update(earningsTable)
+          .set({ payoutId: null })
+          .where(and(eq(earningsTable.payoutId, id), eq(earningsTable.status, 'releasable')));
+      };
       const decision = await lockStripeTransferDecision(tx, recipientId, earnerType);
-      if (decision.action === 'transfer') return { proceed: true as const };
-      await tx.update(payoutTable)
-        .set({ status: 'pending', processedAt: null })
-        .where(and(eq(payoutTable.id, id), eq(payoutTable.status, 'processing')));
-      const earningsTable = earnerType === 'expert' ? expertEarnings : providerEarnings;
-      await tx.update(earningsTable)
-        .set({ payoutId: null })
-        .where(and(eq(earningsTable.payoutId, id), eq(earningsTable.status, 'releasable')));
+      if (decision.action === 'transfer') {
+        if (!(await payoutEmailVerificationDenial(tx, recipientId))) return { proceed: true as const };
+        await releaseUnsentClaim();
+        return { proceed: false, code: 'email_verification_required' as const };
+      }
+      await releaseUnsentClaim();
       return { proceed: false, error: decision.error, message: decision.message };
     });
   }
