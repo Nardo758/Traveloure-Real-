@@ -17,11 +17,14 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
 import { OCCASION_GROUP_DEFAULT_SLUG, experienceGroupFor, type ExperienceGroupRow } from "@shared/experience-group";
 import {
   asksWhichNight,
   canStartPlan,
+  browseDatesFromPen,
+  choosePlanEntryGroup,
   chosenOccasionSlug,
   emptyPlanEntry,
   eventNightDates,
@@ -174,6 +177,74 @@ test("E9: the night picker and the mint dates read the market's today", () => {
   assert.deepEqual(planEntryMintDates({ startDate: "2027-03-08", endDate: "2027-03-20", market: null }, now), { startDate: "2027-03-10", endDate: "2027-03-20" });
   assert.deepEqual(planEntryMintDates({ startDate: "2027-04-01", endDate: "2027-04-02", market: run.market }, now), { startDate: "2027-04-01", endDate: "2027-04-02" });
   assert.equal(planEntryMintDates({ startDate: null, endDate: null, market: null }, now), null);
+});
+
+test("H-08: choosing the event's own group keeps the door occasion; a one-day date stays", () => {
+  const now = new Date("2026-10-20T12:00:00Z");
+  const one = withEvent(
+    emptyPlanEntry(),
+    { title: "Noh", city: "Kyoto", country: "Japan", venue: "Hall", firstDate: "2026-10-25", lastDate: "2026-10-25", startTime: null },
+    EVENT_OCCASION_SLUG,
+    now,
+  );
+  assert.equal(one.startDate, "2026-10-25", "a one-day event date already carries over");
+  assert.equal(one.endDate, "2026-10-25");
+  assert.equal(one.group, "moments");
+  const kept = { ...one, ...choosePlanEntryGroup(one, "moments") };
+  assert.equal(chosenOccasionSlug(kept), "show", "A moment keeps the door's show, not Date Night");
+  const other = { ...one, ...choosePlanEntryGroup(one, "trips") };
+  assert.equal(other.occasionSlug, null);
+  assert.equal(chosenOccasionSlug(other), "travel", "a different group uses that group's default");
+  const plain = { ...emptyPlanEntry(), group: "moments" as const };
+  assert.equal(chosenOccasionSlug({ ...plain, ...choosePlanEntryGroup(plain, "moments") }), "date-night");
+  const panel = readFileSync("client/src/components/plan/PlanEntry.tsx", "utf8");
+  const occasion = panel.slice(panel.indexOf('aria-label="Occasion"'));
+  assert.match(occasion, /choosePlanEntryGroup\(s, key\)/);
+});
+
+test("P-02: a city page takes dates only from a started plan, and never a past night", () => {
+  const pen = { startDate: "2026-10-14", endDate: "2026-11-05" };
+  assert.equal(browseDatesFromPen(pen, "2026-10-24"), null, "opening Plan around it is not a plan");
+  assert.deepEqual(browseDatesFromPen({ ...pen, tripId: "trip-1" }, "2026-10-24"), {
+    startDate: "2026-10-24",
+    endDate: "2026-11-05",
+  });
+  assert.equal(
+    browseDatesFromPen({ tripId: "trip-1", startDate: "2026-10-01", endDate: "2026-10-10" }, "2026-10-24"),
+    null,
+    "a plan that already ended contributes no dates",
+  );
+  assert.deepEqual(
+    browseDatesFromPen({ tripId: "trip-1", startDate: "2026-11-02", endDate: "2026-11-05" }, "2026-10-24"),
+    { startDate: "2026-11-02", endDate: "2026-11-05" },
+  );
+  const page = readFileSync("client/src/pages/discover-location.tsx", "utf8");
+  assert.match(page, /browseDatesFromPen\(tripCtx, marketToday\(/);
+});
+
+test("R-10: the clicked show is the plan's date, not the series' first show and not an open trip's dates", () => {
+  // 2026-10-20 12:00 UTC is still 2026-10-20 in Kyoto, before both shows.
+  const now = new Date("2026-10-20T12:00:00Z");
+  const shows = ["2026-10-24", "2026-10-25"];
+  const openTrip = { ...emptyPlanEntry(), startDate: "2026-06-14", endDate: "2026-06-21" };
+  const oct25 = {
+    title: "YOASOBI Chowakusei dome tour",
+    city: "Kyoto",
+    country: "Japan",
+    venue: "Kyocera Dome Osaka",
+    firstDate: "2026-10-25",
+    lastDate: "2026-10-25",
+    startTime: "18:00",
+    showDates: shows,
+  };
+  const s = withEvent(openTrip, oct25, EVENT_OCCASION_SLUG, now);
+  assert.equal(s.startDate, "2026-10-25", "the clicked show, not the open trip's June window and not Oct 24");
+  assert.equal(s.endDate, "2026-10-25");
+  assert.equal(s.night, "2026-10-25");
+  assert.equal(planEntryEventRow(s)?.eventDate, "2026-10-25");
+  const one = withEvent(emptyPlanEntry(), { ...oct25, showDates: undefined }, EVENT_OCCASION_SLUG, now);
+  assert.equal(one.startDate, "2026-10-25", "a one-day event with no series list keeps its own date");
+  assert.equal(one.endDate, "2026-10-25");
 });
 
 test("E10: a series' show dates come from its sibling rows on one series_key", () => {

@@ -34,10 +34,12 @@ import {
 } from "@shared/experience-group";
 import { countdownLabel, type CityEventCard, type CityEventsPayload } from "@shared/city-events";
 import { EventRow } from "@/components/events/EventRow";
+import { planAroundEventTitle } from "@/components/landing/events-strip";
 import type { ExperienceType } from "@shared/schema";
 import {
   EVENT_OCCASION_SLUG,
   canStartPlan,
+  choosePlanEntryGroup,
   chosenOccasionSlug,
   eventsByMonth,
   eventsOverlapping,
@@ -307,7 +309,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
             withEvent(
               s,
               {
-                title: e.series ?? e.title,
+                title: planAroundEventTitle(e),
                 city: e.city,
                 country: OPERATING_MARKETS.find((m) => m.marketKey === e.marketKey)?.country ?? null,
                 venue: e.venue,
@@ -466,7 +468,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
                   <Chip
                     key={key}
                     active={state.group === key && !(moreSpecific && state.occasionSlug)}
-                    onClick={() => setState((s) => ({ ...s, group: key, occasionSlug: null }))}
+                    onClick={() => setState((s) => ({ ...s, ...choosePlanEntryGroup(s, key) }))}
                     testId={`plan-entry-group-${key}`}
                   >
                     {OCCASION_GROUP_LABELS[key]}
