@@ -8,6 +8,8 @@
  *   S22g  A provider in a city that is not live gets no invite. A traveler in a live city gets none.
  *         An existing row that signs up again gets none. With the footer unset, a new live-city
  *         provider gets none.
+ *   S22h  EMAIL_SENDS_ENABLED unset or "false": the invite row is held, the provider is not called,
+ *         and the attempt count stays 0 (R631). The variable is restored before the test returns.
  *
  * Footer values are fixture tokens, not a postal address. Rows and the settings are restored.
  * Run: npx tsx --test server/__tests__/s22-waitlist-apply.db.test.ts
@@ -83,6 +85,7 @@ async function signUp(email: string, market: string, role: "provider" | "travele
   return { ...written, outcome };
 }
 
+const priorSends = process.env.EMAIL_SENDS_ENABLED;
 process.env.EMAIL_SENDS_ENABLED = "true";
 
 before(async () => {
@@ -102,6 +105,8 @@ after(async () => {
     for (const [key, value] of prior) await setSetting(key, value);
   } finally {
     delete _outboxTestHooks.sendEmailFn;
+    if (priorSends === undefined) delete process.env.EMAIL_SENDS_ENABLED;
+    else process.env.EMAIL_SENDS_ENABLED = priorSends;
     await pool.end();
   }
 });
@@ -196,4 +201,44 @@ test("S22g — a non-live city, a traveler, an existing row and a missing footer
   assert.equal(template.includes("S22-FOOTER-FIXTURE"), false);
   assert.doesNotMatch(template, /\b\d{3}[-.)]\s*\d{3}[-.\s]\d{4}\b/);
   assert.equal(template.includes("tel:"), false);
+});
+
+test("S22h — EMAIL_SENDS_ENABLED off holds the apply invite and does not send", async () => {
+  const prior = process.env.EMAIL_SENDS_ENABLED;
+  const priorHook = _outboxTestHooks.sendEmailFn;
+  let providerCalls = 0;
+  _outboxTestHooks.sendEmailFn = async () => {
+    providerCalls += 1;
+    return { ok: true, id: "s22-should-not-send" };
+  };
+  try {
+    await setSetting("marketing_email_postal_address", FOOTER);
+    for (const value of [undefined, "false"] as const) {
+      if (value === undefined) delete process.env.EMAIL_SENDS_ENABLED;
+      else process.env.EMAIL_SENDS_ENABLED = value;
+      const email = emailFor(value === undefined ? "gate-unset" : "gate-false");
+      const join = await signUp(email, "kyoto", "provider");
+      assert.equal(join.inserted, true);
+      const r = await pool.query(
+        `SELECT status, attempt_count, last_error, retry_after, sent_at, resend_id, text_body
+         FROM email_outbox WHERE lower(to_email) = $1 AND email_type = $2`,
+        [email.toLowerCase(), WAITLIST_APPLY_INVITE_EMAIL_TYPE],
+      );
+      const label = value === undefined ? "unset" : value;
+      assert.equal(r.rows.length, 1, `one held invite when EMAIL_SENDS_ENABLED is ${label}`);
+      const row = r.rows[0];
+      assert.equal(row.status, "held");
+      assert.equal(Number(row.attempt_count), 0);
+      assert.equal(row.sent_at, null);
+      assert.equal(row.resend_id, null);
+      assert.equal(row.retry_after, null);
+      assert.match(String(row.last_error), /EMAIL_SENDS_ENABLED is not true/);
+      assert.match(String(row.text_body), /Apply as a Kyoto provider/);
+    }
+    assert.equal(providerCalls, 0);
+  } finally {
+    _outboxTestHooks.sendEmailFn = priorHook;
+    if (prior === undefined) delete process.env.EMAIL_SENDS_ENABLED;
+    else process.env.EMAIL_SENDS_ENABLED = prior;
+  }
 });

@@ -6,7 +6,8 @@
 //                                      UNKNOWN_MARKET. Always answers `{ ok: true }` — whether the address was
 //                                      already on the list is never revealed. A provider row born for a live city
 //                                      may send one apply invite (S-22); a repeat, a traveler, a city that is not
-//                                      live, or a missing marketing footer sends nothing. The join still stands.
+//                                      live, or a missing marketing footer enqueues nothing. EMAIL_SENDS_ENABLED
+//                                      holds a queued invite instead of sending it. The join still stands.
 //   GET  /api/admin/waitlist         — counts for one market (`?market=<key>|all`, default the launch market):
 //                                      travelers (by trip type and source) and providers (by service type) apart,
 //                                      never mixed; LW-2 `byMarket` gives every market's two totals. Admin only.

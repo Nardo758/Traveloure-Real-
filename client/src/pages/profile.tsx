@@ -1,4 +1,5 @@
 import { useAuth } from "@/hooks/use-auth";
+import { PayoutDetailsCard } from "@/components/payout/PayoutDetailsCard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -559,6 +560,10 @@ export default function Profile() {
             </CardContent>
           </Card>
         )}
+
+        {/* Row 115: for an earner, payout details lead and the saved-card card stays below it (never a gate;
+            earners never need a saved card). A traveler sees PaymentMethodsCard alone, unchanged. */}
+        {isEarner ? <PayoutDetailsCard /> : null}
 
         {/* Payment Methods (FP-2) */}
         <PaymentMethodsCard />

@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { PayoutDetailsCard } from "@/components/payout/PayoutDetailsCard";
 import { LanguagePreferenceCard } from "@/components/settings/language-preference-card";
 import { EarnerEmailNotificationsCard } from "@/components/settings/earner-email-notifications-card";
 import { PhoneNotificationsCard } from "@/components/settings/phone-notifications-card";
@@ -474,6 +475,9 @@ export default function ProviderSettings() {
           `max-w-4xl` carried no `mx-auto`, so this form-heavy page hugged the left edge
           with a lopsided gutter on any wide screen; the shared container centers it. */}
       <div className="p-6 space-y-6">
+        {/* Row 115: payout details lead an earner's settings; never a gate. */}
+        <PayoutDetailsCard />
+
         <HandleClaimCard />
 
         <Tabs defaultValue={tabParam} className="w-full">

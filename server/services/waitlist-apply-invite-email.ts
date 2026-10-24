@@ -65,7 +65,9 @@ ${input.footerHtml}
 
 /**
  * Sends the apply invite when this sign-up born a provider row in a live city and the marketing
- * footer is set. Never throws: a failure is logged without the address and the join still stands.
+ * footer is set. Delivery goes through the outbox, so EMAIL_SENDS_ENABLED holds the row and the
+ * provider is not called when that gate is off (R631). Never throws: a failure is logged without
+ * the address and the join still stands.
  */
 export async function notifyWaitlistProviderApply(input: {
   inserted: boolean;
