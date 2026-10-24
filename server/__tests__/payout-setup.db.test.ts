@@ -30,7 +30,9 @@ const P = `p8${RUN}`;
 const id = (suffix: string) => `${P}-${suffix}`;
 const MIGRATION = fs.readFileSync(path.resolve("server/migrations/408_payout_setup.sql"), "utf8");
 const ROUTING = "021000021";
-const HANDLE = `ps${RUN}@example.test`;
+// The run id is hex; an all-digit id would be an 8-digit run, which the bank-number rule rightly refuses.
+// Digits are mapped to letters so the test's own PayPal handle is never bank-like by chance.
+const HANDLE = `ps${RUN.replace(/\d/g, (d) => "abcdefghij"[Number(d)])}@example.test`;
 
 const adminId = id("admin");
 const bareId = id("bare");
