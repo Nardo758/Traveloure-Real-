@@ -1,4 +1,5 @@
 import type { GoogleCoordSource } from "@shared/item-coord-source";
+import { isSuggestedWrite } from "@/lib/expert-write-outcome";
 import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import { MapControlCenter } from "@/components/plancard/MapControlCenter";
 import { ExpertRateLine } from "@/components/expert/expert-rate-line";
@@ -541,7 +542,7 @@ async function geocodeLocationText(
  * says which happened — never "saved" for a change the traveler has not accepted (§13).
  */
 function suggestionFiled(res: unknown, toast: (t: { title: string; description?: string }) => void, tripId: string): boolean {
-  if (!res || typeof res !== "object" || (res as any).suggested !== true) return false;
+  if (!isSuggestedWrite(res)) return false;
   queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/expert-suggestions`] });
   toast({ title: "Sent as a suggestion", description: "The traveler accepts or declines it on their plan." });
   return true;
@@ -2507,11 +2508,13 @@ export default function ExpertWorkspace() {
       const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, body);
       return res.json();
     },
-    onSuccess: (_, vars) => {
+    onSuccess: (res, vars) => {
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
       // Day rows read the plancard, and a successful read stays fresh until invalidated.
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/commission`] });
+      // Row 155: on a traveler's plan the server filed a suggestion (202) — never say "Added".
+      if (suggestionFiled(res, toast, tripId)) { setSelectedPin(null); return; }
       triggerEnergyRecalc();
       toast({ title: "Added to itinerary", description: `${vars.result.name} → Day ${vars.day}` });
       setSelectedPin(null);
@@ -3564,7 +3567,8 @@ export default function ExpertWorkspace() {
                   if (!result) return;
                   const placeKey = result.placeId ?? result.id;
                   addFromSearchMutation.mutate({ result, day: focusDay }, {
-                    onSuccess: () => setGoogleAddedDays(prev => ({ ...prev, [placeKey]: focusDay })),
+                    // Row 155: the green "added" chip only when the item landed, never for a filed suggestion.
+                    onSuccess: (res) => { if (!isSuggestedWrite(res)) setGoogleAddedDays(prev => ({ ...prev, [placeKey]: focusDay })); },
                   });
                 }}
               />
@@ -3675,7 +3679,8 @@ export default function ExpertWorkspace() {
                                       if (tripId) writeExtraMaxDay(tripId, day);
                                     }
                                     addFromSearchMutation.mutate({ result, day }, {
-                                      onSuccess: () => setGoogleAddedDays(prev => ({ ...prev, [placeKey]: day })),
+                                      // Row 155: the green "added" chip only when the item landed.
+                                      onSuccess: (res) => { if (!isSuggestedWrite(res)) setGoogleAddedDays(prev => ({ ...prev, [placeKey]: day })); },
                                     });
                                   }}
                                 />
