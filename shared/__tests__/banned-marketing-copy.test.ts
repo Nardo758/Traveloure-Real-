@@ -122,11 +122,11 @@ test("the named swaps are the words Marketing asked for", () => {
   assert.doesNotMatch(checklist, /Hidden Gems of Tokyo|Discover secret spots/);
 });
 
-test("a bare discoveryStatus token is not copy and stays the stored stage", () => {
+test("a bare discoveryStatus token is not copy", () => {
   assert.equal(scanCode("x.ts", 'const row = { discoveryStatus: "trending" };').length, 0);
   const seed = read("server/seeds/popular-cities-content.seed.ts");
   const tokens = seed.match(/discoveryStatus: "trending"/g) ?? [];
-  assert.equal(tokens.length, 4);
+  assert.equal(tokens.length, 0);
 });
 
 test("Sakura Light-Up is omitted from the seeds because the row has no calendar date", () => {

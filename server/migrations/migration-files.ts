@@ -2155,4 +2155,9 @@ export const MIGRATION_FILES = [
   // HELD for "Migration 409 SQL approved — Leon". Ledger 2026-10-23-experience-themes.
   // Declared in shared/schema.ts.
   "409_experience_themes.sql",
+  // 410 — DATA ONLY. Four popular-cities gems: discovery_status trending → emerging,
+  // matched by (city, place_name), and only while the status is still trending.
+  // No ALTER. The gem table has no slug column. HELD for Leon's comment.
+  // Ledger 2026-10-24-discovery-status-emerging.
+  "410_discovery_status_emerging.sql",
 ] as const;
