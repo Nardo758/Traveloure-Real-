@@ -246,6 +246,7 @@ import { adminRemindStripeConnect, reminderCooldownEndsAt } from "../services/st
 import { listOwedEarners, markPaidBodySchema, markPayoutPaidExternally } from "../services/payout-admin.service";
 import { ADMIN_PAYOUT_NOT_CREATED_MESSAGE, buildPayoutSetup } from "../services/payout-setup";
 import { lockAdminCreateAllowed, lockStripeTransferDecision, readPayoutFacts } from "../services/payout-setup.service";
+import { PAYOUT_EMAIL_VERIFICATION_BODY, payoutEmailVerificationDenial } from "../services/verified-email-action-gate";
 import { SUPPORT_STATUSES, isSupportStatus, supportPatchBodySchema, SUPPORT_FIRST_RESPONSE_HOURS_SETTING, isValidSupportFirstResponseHoursSetting } from "@shared/support-intake";
 import { applySupportPatch, isSupportAssignee, listSupportAssignees, listSupportSubmissions } from "../services/support-inbox.service";
 import { bandLockedByCohort } from "../services/expert-rate-cohort.service";
@@ -6078,6 +6079,10 @@ router.post("/api/admin/payouts", isAuthenticated, async (req, res) => {
         return res.status(400).json({ error: "requesterType must be 'expert' or 'provider'" });
       }
       const earnerType = requesterType as "expert" | "provider";
+      // The earner is the named requester, read from the users row. A body flag is not consulted.
+      if (await payoutEmailVerificationDenial(db, requesterId)) {
+        return res.status(403).json(PAYOUT_EMAIL_VERIFICATION_BODY);
+      }
       // Earnings can exist before setup. A payout row cannot. Re-checked under a row lock at insert.
       const earlyFacts = await readPayoutFacts(requesterId);
       const earlySetup = earlyFacts ? buildPayoutSetup(earlyFacts, earnerType) : null;
@@ -6123,6 +6128,9 @@ router.post("/api/admin/payouts", isAuthenticated, async (req, res) => {
               clientMessage: allowed.message,
             });
           }
+          if (await payoutEmailVerificationDenial(tx, requesterId)) {
+            throw Object.assign(new Error("email_verification_required"), { code: "email_verification_required" });
+          }
           if (earnerType === "expert") {
             // expert_payouts has no notes column. The admin note lives in metadata.
             const [inserted] = await tx.insert(expertPayouts).values({
@@ -6144,6 +6152,9 @@ router.post("/api/admin/payouts", isAuthenticated, async (req, res) => {
           return inserted;
         });
       } catch (createErr: any) {
+        if (createErr?.code === "email_verification_required") {
+          return res.status(403).json(PAYOUT_EMAIL_VERIFICATION_BODY);
+        }
         if (createErr?.code === "payout_setup_incomplete") {
           return res.status(400).json({ error: createErr.code, message: createErr.clientMessage });
         }
@@ -6187,9 +6198,17 @@ router.patch("/api/admin/payouts/:id", isAuthenticated, async (req, res) => {
         // here, so it does not authorize the transfer. The claim re-reads setup
         // under the payout row lock and the users row lock, and both locks are
         // released before createTransfer. mark-paid is unchanged.
-        const transferDecision = await db.transaction(async (tx) =>
-          lockStripeTransferDecision(tx, recipientId, requesterType as "expert" | "provider"),
-        );
+        const transferDecision = await db.transaction(async (tx) => {
+          const decision = await lockStripeTransferDecision(tx, recipientId, requesterType as "expert" | "provider");
+          if (decision.action === "block") return decision;
+          if (await payoutEmailVerificationDenial(tx, recipientId)) {
+            return { action: "email_verification_required" as const };
+          }
+          return decision;
+        });
+        if (transferDecision.action === "email_verification_required") {
+          return res.status(403).json(PAYOUT_EMAIL_VERIFICATION_BODY);
+        }
         if (transferDecision.action === "block") {
           return res.status(400).json({ error: transferDecision.error, message: transferDecision.message });
         }
@@ -6234,6 +6253,9 @@ router.patch("/api/admin/payouts/:id", isAuthenticated, async (req, res) => {
             ? await storage.claimExpertPayoutForStripeTransfer(id, recipientId)
             : await storage.claimProviderPayoutForStripeTransfer(id, recipientId);
           if (!claimResult.payout) {
+            if (claimResult.reason === 'email_verification_required') {
+              return res.status(403).json(PAYOUT_EMAIL_VERIFICATION_BODY);
+            }
             if (claimResult.reason === 'payout_setup_blocked') {
               return res.status(400).json({ error: claimResult.error, message: claimResult.message });
             }
@@ -6260,6 +6282,9 @@ router.patch("/api/admin/payouts/:id", isAuthenticated, async (req, res) => {
             recipientId,
           );
           if (!sendGate.proceed) {
+            if ('code' in sendGate) {
+              return res.status(403).json(PAYOUT_EMAIL_VERIFICATION_BODY);
+            }
             if ('reason' in sendGate) {
               return res.status(409).json({
                 error: "Payout is no longer claimed for a Stripe transfer.",

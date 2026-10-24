@@ -28,6 +28,21 @@ export function hashAuthToken(raw: string): string {
   return crypto.createHash("sha256").update(raw).digest("hex");
 }
 
+/**
+ * The account a reset link names. Read-only: no lock, no `used_at` write, no expiry check.
+ * An unknown raw token returns null. Callers that must not consume an unverified account's
+ * link (row 101, while email sends are on) ask this before `consumePasswordResetToken`.
+ */
+export async function peekPasswordResetTokenUser(rawToken: string): Promise<string | null> {
+  const tokenHash = hashAuthToken(rawToken);
+  const [row] = await db
+    .select({ userId: passwordResetTokens.userId })
+    .from(passwordResetTokens)
+    .where(eq(passwordResetTokens.tokenHash, tokenHash))
+    .limit(1);
+  return row?.userId ?? null;
+}
+
 /** Test seams only: force a failure part-way through a transaction to prove it rolls back whole. */
 export const _resetTokenTestHooks: {
   afterRevoke?: (tx: Tx, userId: string) => Promise<void>;

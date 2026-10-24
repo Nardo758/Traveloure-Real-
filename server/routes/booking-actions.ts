@@ -8,7 +8,7 @@ import crypto from 'crypto';
 import { z } from 'zod';
 import { stripePaymentService } from '../services/stripe-payment.service';
 import { isAuthenticated } from '../replit_integrations/auth';
-import { requireVerifiedEmail } from '../services/verified-email-action-gate';
+import { refuseUnverifiedTravelerSender, requireVerifiedEmail } from '../services/verified-email-action-gate';
 import { trackFunnelEvent } from '../utils/funnelTracker';
 import { bookingService } from '../services/booking.service';
 import { verifyTripOwnership } from '../utils/trip-ownership';
@@ -224,6 +224,7 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
     if (!resolvedUserId) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
+    if (authUserId && await refuseUnverifiedTravelerSender(res, authUserId)) return;
 
     // F3 (revenue-model review): when the request follows the paid PI path, verify the intent
     // server-side and derive the fee from Stripe — never trust the client-sent expertFee for a
@@ -730,6 +731,7 @@ router.post('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
   try {
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+    if (await refuseUnverifiedTravelerSender(res, userId)) return;
 
     const { id } = req.params;
     const { expertUserId, message } = req.body;
@@ -802,6 +804,7 @@ router.post('/trips/:tripId/advisors', isAuthenticated, async (req, res) => {
   try {
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+    if (await refuseUnverifiedTravelerSender(res, userId)) return;
 
     const parsed = tripAdvisorHireSchema.safeParse(req.body);
     if (!parsed.success) {

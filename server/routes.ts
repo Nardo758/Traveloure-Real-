@@ -100,7 +100,7 @@ import { isActionableBooking, isProvisionalBooking } from "@shared/booking-visib
 import { IDENTITY_EDIT_FIELDS } from "@shared/edit-split";
 import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated, setupFacebookAuth, setupEmailAuth } from "./replit_integrations/auth";
-import { requireVerifiedEmail } from "./services/verified-email-action-gate";
+import { refuseUnverifiedTravelerContact, refuseUnverifiedTravelerSender, requireVerifiedEmail } from "./services/verified-email-action-gate";
 import { emailVerificationGate } from "./middleware/email-verification-gate";
 import { isExpert, isProvider, isEarner, isEarnerOrPendingDraft } from "./middleware/role-rbac";
 import { formatVendorAuditCsv } from "./utils/vendor-export";
@@ -2046,6 +2046,7 @@ ${bannedCopyPromptLine()}`;
   app.post("/api/expert-booking-requests", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!; // §14: acting user is the session, never req.body
+      if (userId && await refuseUnverifiedTravelerSender(res, userId)) return;
 
       // A tripId that isn't even a non-empty string never resolves to a trip; the lookup is
       // skipped in that case and the guard's own schema check reports the honest 400.
@@ -2454,6 +2455,7 @@ ${bannedCopyPromptLine()}`;
           senderId: sessionUserId,
           receiverId: resolved.otherUserId,
         });
+        if (await refuseUnverifiedTravelerContact(res, sessionUserId, resolved.otherUserId)) return;
         const isNewConversation = !(await messagingService.hasExistingConversation(sessionUserId, resolved.otherUserId));
         const rate = checkMessageRateLimit({ senderId: sessionUserId, recipientId: resolved.otherUserId, isNewConversation, peerIp: req.ip });
         if (!rate.allowed) {
@@ -2484,6 +2486,7 @@ ${bannedCopyPromptLine()}`;
       const input = api.chats.create.input.parse(req.body);
       const recipientId = (input as any).receiverId as string | undefined;
       if (recipientId) {
+        if (await refuseUnverifiedTravelerContact(res, sessionUserId, recipientId)) return;
         warnDeprecatedReceiverIdOnce();
         const isNewConversation = !(await messagingService.hasExistingConversation(sessionUserId, recipientId));
         const rate = checkMessageRateLimit({ senderId: sessionUserId, recipientId, isNewConversation, peerIp: req.ip });
