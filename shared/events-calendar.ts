@@ -110,7 +110,7 @@ export const MONTH_NAMES = [
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const DOW_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-/** A run longer than this many days is drawn as an underline, not counted (board legend). */
+/** A run of this many days or more is a long run: drawn with an underline, and still counted on every day it covers (row 67). */
 export const LONG_RUN_MIN_DAYS = 11;
 
 const pad = (n: number) => (n < 10 ? `0${n}` : `${n}`);
@@ -198,9 +198,9 @@ export function eventsInPeriod(events: readonly CalendarEvent[], from: string, t
 
 export interface DayMark {
   date: string;
-  /** Events covering this day that are not long runs. */
+  /** Events covering this day, long runs included (row 67: a long run counts on every day it covers). */
   count: number;
-  /** A long run covers this day (drawn as an underline, not counted). */
+  /** A long run covers this day (drawn as an underline as well as counted). */
   longRun: boolean;
 }
 
@@ -214,8 +214,8 @@ export function dayMarks(events: readonly CalendarEvent[], ym: string): DayMark[
     let longRun = false;
     for (const e of inMonth) {
       if (!overlaps(e, date, date)) continue;
+      count++;
       if (isLongRun(e)) longRun = true;
-      else count++;
     }
     out.push({ date, count, longRun });
   }
@@ -465,9 +465,15 @@ export function eventTag(e: Pick<CalendarEvent, "vertical" | "nights">): string 
   return e.vertical ? `${VERTICAL_LABELS[e.vertical]} · ${length}` : length;
 }
 
-/** Local dates, and the start time only when the organizer published one. */
+/**
+ * Local dates, and the start time only when the organizer published one — on a multi-day event it follows the first
+ * date ("Tue 3 Nov · 19:00 – Thu 5 Nov", row 67). No time is ever invented.
+ */
 export function eventWhen(e: Pick<CalendarEvent, "firstDate" | "lastDate" | "startTime">): string {
-  if (e.lastDate !== e.firstDate) return `${formatDayShort(e.firstDate)} – ${formatDayShort(e.lastDate)}`;
+  if (e.lastDate !== e.firstDate) {
+    const first = e.startTime ? `${formatDayShort(e.firstDate)} · ${e.startTime}` : formatDayShort(e.firstDate);
+    return `${first} – ${formatDayShort(e.lastDate)}`;
+  }
   return e.startTime ? `${formatDayShort(e.firstDate)} · ${e.startTime}` : formatDayShort(e.firstDate);
 }
 
