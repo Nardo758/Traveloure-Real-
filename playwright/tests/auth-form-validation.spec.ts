@@ -441,16 +441,17 @@ test.describe("Signup page — form structure and validation (UI)", () => {
     await page.locator('[data-testid="button-create-account"]').click();
     expect((await registered).status()).toBe(202);
 
-    // The same neutral state a new and an existing address both get: no dashboard, no "account created".
-    await expect(page.locator('[data-testid="signup-neutral-result"]')).toBeVisible({ timeout: 10_000 });
-    await expect(page.locator('[data-testid="link-neutral-sign-in"]')).toBeVisible();
+    // The 202 still signs nobody in. The check-email screen is gone; /login is next.
+    await expect(page).toHaveURL(/\/login\/?$/, { timeout: 10_000 });
+    await expect(page.getByText("Check your email")).toHaveCount(0);
+    await expect(page.locator('[data-testid="signup-neutral-result"]')).toHaveCount(0);
     expect(page.url()).not.toContain("/dashboard");
     await expect(page.getByText(/account created/i)).toHaveCount(0);
 
     // No session was created by registering.
     const me = await page.request.get(`${BASE_URL}/api/auth/user`);
     expect(me.status()).toBe(401);
-    console.log("[signup-UI] PASS — valid signup shows the neutral result, no session");
+    console.log("[signup-UI] PASS — valid signup goes to sign-in, no session");
   });
 });
 

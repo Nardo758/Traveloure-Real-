@@ -10,6 +10,7 @@ import { authStorage } from "../replit_integrations/auth/storage";
 import {
   emailVerificationDeniedBody,
   isEmailVerificationAllowlisted,
+  EMAIL_VERIFICATION_HOLD_ENFORCED,
 } from "@shared/email-verification-gate";
 import {
   resolveEmailVerificationAccess,
@@ -17,6 +18,7 @@ import {
 } from "../services/email-verification.service";
 
 export const emailVerificationGate: RequestHandler = async (req, res, next) => {
+  if (!EMAIL_VERIFICATION_HOLD_ENFORCED) return next();
   if (!req.isAuthenticated || !req.isAuthenticated()) return next();
 
   // The SPA document is not an API. A held session must still receive the

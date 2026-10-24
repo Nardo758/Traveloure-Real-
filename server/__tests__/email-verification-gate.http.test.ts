@@ -1,10 +1,10 @@
 /**
  * S-09 email verification gate (ledger `2026-10-21-email-verification-gate`).
  *
- * A correct password still signs in. An unverified account with no activity can
- * read itself and nothing else. An account with a trip keeps the product, and
- * email_verified stays null. Wrong passwords keep the shared 401. Resend answers
- * one sentence and the 6th call in the window is 429.
+ * A correct password still signs in. While the hold is not enforced
+ * (ledger `2026-10-23-drop-check-email`), that session can open the product
+ * and email_verified stays null. Wrong passwords keep the shared 401. Resend
+ * answers one sentence and the 6th call in the window is 429.
  *
  *   NODE_ENV=test SESSION_COOKIE_INSECURE=1 \
  *   npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/email-verification-gate.http.test.ts
@@ -42,8 +42,6 @@ const {
   VERIFICATION_EMAIL_CHANGE_MESSAGE,
   VERIFY_EMAIL_SUCCESS_MESSAGE,
   VERIFY_EMAIL_INVALID_MESSAGE,
-  EMAIL_VERIFICATION_REQUIRED_CODE,
-  EMAIL_VERIFICATION_HOLD_MESSAGE,
 } = await import("../../shared/email-verification-gate");
 
 const DISPOSABLE = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0", ""]);
@@ -178,7 +176,7 @@ describe("held sign-in", () => {
   let userId = "";
   let cookie = "";
 
-  it("a supply sign-up can sign in and cannot open the product", async () => {
+  it("a supply sign-up can sign in and open the product", async () => {
     const reg = await request(server, "POST", "/api/auth/register", {
       body: { email, password, firstName: "Supply", lastName: "Scout", intent: "supply" },
     });
@@ -198,21 +196,19 @@ describe("held sign-in", () => {
     const login = await request(server, "POST", "/api/auth/login", { body: { email, password } });
     assert.equal(login.status, 200);
     assert.equal(login.data.message, "Logged in successfully");
-    assert.equal(login.data.emailVerificationRequired, true);
-    assert.equal(login.data.nextStep, "verify_email");
+    assert.equal(login.data.emailVerificationRequired, false);
+    assert.equal(login.data.nextStep, null);
     cookie = login.setCookie ?? "";
     assert.ok(cookie);
 
     const me = await request(server, "GET", "/api/auth/user", { cookie });
     assert.equal(me.status, 200);
-    assert.equal(me.data.emailVerificationRequired, true);
-    assert.equal(me.data.nextStep, "verify_email");
+    assert.equal(me.data.emailVerificationRequired, false);
+    assert.equal(me.data.nextStep, null);
 
     const probe = await request(server, "GET", "/api/probe", { cookie });
-    assert.equal(probe.status, 403);
-    assert.equal(probe.data.code, EMAIL_VERIFICATION_REQUIRED_CODE);
-    assert.equal(probe.data.message, EMAIL_VERIFICATION_HOLD_MESSAGE);
-    assert.equal(probe.data.nextStep, "verify_email");
+    assert.equal(probe.status, 200);
+    assert.equal(probe.data.ok, true);
 
     const page = await request(server, "GET", "/verify-email", { cookie });
     assert.equal(page.status, 200);
@@ -446,7 +442,7 @@ describe("traveler sign-up", () => {
     invalidatePlatformFlagCache(TRAVELER_SIGNUP_MODE_SETTING);
   });
 
-  it("waitlist refuses a traveler before an account exists, and open mode holds the new account", async () => {
+  it("waitlist refuses a traveler before an account exists, and open mode lets the new account sign in", async () => {
     const tag = crypto.randomBytes(4).toString("hex");
     await db.execute(sql`
       INSERT INTO platform_settings (setting_key, setting_value, description)
@@ -479,9 +475,9 @@ describe("traveler sign-up", () => {
     assert.equal(row.emailVerified, null);
     const login = await request(server, "POST", "/api/auth/login", { body: { email: openEmail, password } });
     assert.equal(login.status, 200);
-    assert.equal(login.data.emailVerificationRequired, true);
+    assert.equal(login.data.emailVerificationRequired, false);
     const probe = await request(server, "GET", "/api/probe", { cookie: login.setCookie });
-    assert.equal(probe.status, 403);
-    assert.equal(probe.data.code, EMAIL_VERIFICATION_REQUIRED_CODE);
+    assert.equal(probe.status, 200);
+    assert.equal(probe.data.ok, true);
   });
 });
