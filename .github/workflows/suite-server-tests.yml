@@ -164,7 +164,9 @@ jobs:
           RATE_LIMIT_LOOPBACK_SKIP=1 \
           NODE_ENV=production \
           node dist/index.cjs &
-          echo $! > /tmp/verified-email-gate.pid
+          SERVER_PID=$!
+          echo "$SERVER_PID" > /tmp/verified-email-gate.pid
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
           for i in $(seq 1 60); do
             result=$(curl -s http://127.0.0.1:5001/api/ready || true)
             if echo "$result" | grep -q '"ready":true'; then echo "Gate server ready"; break; fi
@@ -172,7 +174,6 @@ jobs:
             echo "attempt $i/60: waiting... ($result)"; sleep 5
           done
           JOURNEY_BASE_URL=http://127.0.0.1:5001 npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/verified-email-checkout-gate.http.test.ts
-          kill "$(cat /tmp/verified-email-gate.pid)" || true
       # The vitest files in the same directory. `tsx --test` cannot load them at
       # all and vitest cannot run a node:test file, so a directory is only ONE
       # runner when it happens to be — the §18d one-runner rule.
