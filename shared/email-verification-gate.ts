@@ -14,6 +14,13 @@ import { SIGNUP_STEP_VERIFY_EMAIL } from "./signup-steps";
 export const EMAIL_VERIFICATION_REQUIRED_CODE = "email_verification_required";
 export const EMAIL_VERIFICATION_HOLD_PATH = "/verify-email";
 
+/**
+ * Ledger `2026-10-23-drop-check-email`. The hold predicate stays. Callers do not
+ * apply it: production sends no mail while EMAIL_SENDS_ENABLED is off, and
+ * enforcing the hold is a later ruling after that gate is lifted.
+ */
+export const EMAIL_VERIFICATION_HOLD_ENFORCED = false;
+
 /** What a blocked API call says. The verify screen has its own longer copy. */
 export const EMAIL_VERIFICATION_HOLD_MESSAGE = "Verify your email to continue.";
 

@@ -6,11 +6,13 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { nextSignupStep, SIGNUP_STEP_PAYMENT_METHOD, SIGNUP_STEP_VERIFY_EMAIL } from "../signup-steps";
 import {
   emailVerificationAccess,
   emailVerificationDeniedBody,
   isEmailVerificationAllowlisted,
+  EMAIL_VERIFICATION_HOLD_ENFORCED,
   EMAIL_VERIFICATION_HOLD_MESSAGE,
   EMAIL_VERIFICATION_REQUIRED_CODE,
 } from "../email-verification-gate";
@@ -35,6 +37,41 @@ describe("next signup step", () => {
 });
 
 describe("verification access", () => {
+  it("does not enforce the hold while mail is not sent", () => {
+    // Ledger `2026-10-23-drop-check-email`. The predicate below still describes
+    // a hold. Sign-in and the product do not apply it. Changing the address on
+    // an unverified account still asks that predicate.
+    assert.equal(EMAIL_VERIFICATION_HOLD_ENFORCED, false);
+    const service = readFileSync(
+      new URL("../../server/services/email-verification.service.ts", import.meta.url),
+      "utf8",
+    );
+    const resolve = service.slice(
+      service.indexOf("export async function resolveEmailVerificationAccess"),
+      service.indexOf("export async function readEmailVerificationGate"),
+    );
+    assert.equal(resolve.includes("EMAIL_VERIFICATION_HOLD_ENFORCED"), false);
+    const read = service.slice(
+      service.indexOf("export async function readEmailVerificationGate"),
+      service.indexOf("export function stampGrandfatherOnSession"),
+    );
+    assert.match(read, /if \(!EMAIL_VERIFICATION_HOLD_ENFORCED\)/);
+    assert.match(read, /emailVerificationRequired: false/);
+    const stamp = service.slice(
+      service.indexOf("export function stampGrandfatherOnSession"),
+      service.indexOf("export async function pathAfterAuth"),
+    );
+    assert.match(stamp, /if \(!EMAIL_VERIFICATION_HOLD_ENFORCED\) return/);
+    const after = service.slice(service.indexOf("export async function pathAfterAuth"));
+    assert.match(after, /if \(!EMAIL_VERIFICATION_HOLD_ENFORCED\) return fallback/);
+    assert.match(service, /if \(access !== "hold"\) return/);
+    const middleware = readFileSync(
+      new URL("../../server/middleware/email-verification-gate.ts", import.meta.url),
+      "utf8",
+    );
+    assert.match(middleware, /if \(!EMAIL_VERIFICATION_HOLD_ENFORCED\) return next\(\)/);
+  });
+
   it("opens for a verified address and for a grandfathered account, and holds otherwise", () => {
     assert.equal(emailVerificationAccess({ emailVerified: new Date(), grandfathered: false }), "open");
     assert.equal(emailVerificationAccess({ emailVerified: null, grandfathered: true }), "open");

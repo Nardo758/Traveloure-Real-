@@ -20,7 +20,6 @@ import { getRoleHomePath } from "@/lib/role-utils";
 import { sanitizeReturnTo } from "@/lib/safe-return-to";
 import { TRAVELER_WAITLIST, type SignupIntent } from "@shared/launch-signup";
 import { socialSignInHref, supplySourceTag } from "@/lib/social-sign-in";
-import { resendVerificationEmail } from "@/lib/email-verification-hold";
 
 interface SignInModalProps {
   open: boolean;
@@ -58,8 +57,6 @@ export function SignInModal({
   const [resetSent, setResetSent] = useState(false);
   // AUTH-1 fix 3b: a sign-up gets the server's neutral answer — no session, so no guest claim, no navigation and
   // no "Account created". Guest state and the return destination wait for an actual sign-in.
-  const [signupSubmitted, setSignupSubmitted] = useState(false);
-  const [resendState, setResendState] = useState<"idle" | "sending" | "sent" | "wait" | "error">("idle");
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [acceptPrivacy, setAcceptPrivacy] = useState(false);
   // TEST 10 — aria-live error: screen readers need an in-DOM alert, not just a toast
@@ -75,8 +72,6 @@ export function SignInModal({
 
   // Clear inline error whenever the user switches sign-in mode
   useEffect(() => { setAuthError(null); }, [mode]);
-  // A reopened window starts on its form again, not on a previous sign-up's neutral result.
-  useEffect(() => { if (!open) setSignupSubmitted(false); }, [open]);
 
   const migrateGuestCart = async () => {
     try {
@@ -157,8 +152,10 @@ export function SignInModal({
       const read = await readAuthResponse(response);
       const genericError = t("signupPage.genericError");
 
+      // Ledger `2026-10-23-drop-check-email`: the 202 still signs nobody in.
+      // The check-email screen is not shown. The same window goes to sign-in.
       if (mode === "signup" && read.kind === "json" && isRegistrationNeutral(response.status, read.data)) {
-        setSignupSubmitted(true);
+        setMode("signin");
         return;
       }
 
@@ -273,56 +270,7 @@ export function SignInModal({
           </p>
         </DialogHeader>
 
-        {mode === "signup" && signupSubmitted ? (
-          <div className="py-6 text-center space-y-3" data-testid="signup-neutral-result">
-            <div className="mx-auto h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
-              <Mail className="h-6 w-6 text-green-600" />
-            </div>
-            <p className="font-medium text-gray-900">{t("registered.title")}</p>
-            <p className="text-sm text-muted-foreground" data-testid="text-signup-neutral">{t("registered.body")}</p>
-            <button
-              type="button"
-              className="text-sm text-primary hover:underline disabled:opacity-60"
-              disabled={resendState === "sending"}
-              data-testid="button-resend-verification"
-              onClick={async () => {
-                setResendState("sending");
-                const outcome = await resendVerificationEmail(formData.email);
-                setResendState(outcome === "sent" ? "sent" : outcome === "rate_limited" ? "wait" : "error");
-              }}
-            >
-              {resendState === "sending" ? t("registered.resending") : t("registered.resend")}
-            </button>
-            {resendState === "sent" && (
-              <p className="text-sm text-muted-foreground" data-testid="text-resend-result">{t("registered.resendResult")}</p>
-            )}
-            {resendState === "wait" && (
-              <p className="text-sm text-muted-foreground" data-testid="text-resend-result">{t("registered.resendWait")}</p>
-            )}
-            {resendState === "error" && (
-              <p className="text-sm text-muted-foreground" data-testid="text-resend-result">{t("signupPage.genericError")}</p>
-            )}
-            <p className="text-sm text-muted-foreground" data-testid="text-signup-payment-step">{t("registered.paymentStep")}</p>
-            <div className="flex justify-center gap-4">
-              <button
-                type="button"
-                className="text-sm text-primary hover:underline"
-                onClick={() => { setSignupSubmitted(false); setResendState("idle"); setMode("signin"); }}
-                data-testid="link-neutral-sign-in"
-              >
-                {t("registered.signIn")}
-              </button>
-              <button
-                type="button"
-                className="text-sm text-primary hover:underline"
-                onClick={() => { setSignupSubmitted(false); setMode("reset"); }}
-                data-testid="link-neutral-reset"
-              >
-                {t("registered.resetPassword")}
-              </button>
-            </div>
-          </div>
-        ) : mode === "reset" && resetSent ? (
+        {mode === "reset" && resetSent ? (
           <div className="py-6 text-center space-y-3">
             <div className="mx-auto h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
               <Mail className="h-6 w-6 text-green-600" />
@@ -436,6 +384,10 @@ export function SignInModal({
                   </button>
                 )}
               </div>
+            )}
+
+            {mode === "signup" && (
+              <p className="text-sm text-muted-foreground" data-testid="text-signup-payment-step">{t("registered.paymentStep")}</p>
             )}
 
             {mode === "signup" && (
