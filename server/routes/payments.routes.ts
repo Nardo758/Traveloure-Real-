@@ -120,7 +120,7 @@ import { isCanonicalBookingEmailPersistenceError } from "../services/canonical-b
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
-import { requireVerifiedEmail } from "../services/verified-email-action-gate";
+import { PAYOUT_EMAIL_VERIFICATION_BODY, payoutEmailVerificationDenial, requireVerifiedEmail } from "../services/verified-email-action-gate";
 import { isExpertRole, isProviderRole, isEarnerRole } from "@shared/roles";
 import { decidePayoutRequest, validatePayoutSetupWrite } from "../services/payout-setup";
 import { lockPayoutRequestDecision, readOwnPayoutSetup, readPayoutFacts, saveOwnPayoutSetup } from "../services/payout-setup.service";
@@ -3235,6 +3235,11 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
         return res.status(403).json({ error: "Only providers and experts can request payouts" });
       }
 
+      // Session user only. Earnings and payout setup stay writable; the request does not.
+      if (await payoutEmailVerificationDenial(db, userId)) {
+        return res.status(403).json(PAYOUT_EMAIL_VERIFICATION_BODY);
+      }
+
       // §13: the admin processing step (PATCH /api/admin/payouts/:id) already refuses to
       // transfer to a recipient without an active Stripe Connect account — but only AFTER
       // the earner has already been told "Payout requested" and the request sits in the
@@ -3353,6 +3358,9 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
             if (held.action === "block") {
               throw Object.assign(new Error("payout_request_blocked"), { code: held.error, clientMessage: held.message });
             }
+            if (await payoutEmailVerificationDenial(tx, userId)) {
+              throw Object.assign(new Error("email_verification_required"), { code: "email_verification_required" });
+            }
             for (const stale of stalePending) {
               const cancelled = isProvider
                 ? await tx
@@ -3399,6 +3407,9 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
               message: "Your payout was just picked up for processing. Please try again in a moment.",
             });
           }
+          if (txErr.code === "email_verification_required") {
+            return res.status(403).json(PAYOUT_EMAIL_VERIFICATION_BODY);
+          }
           if (txErr.code === "stripe_not_connected" || txErr.code === "payout_setup_incomplete") {
             return res.status(400).json({ error: txErr.code, message: txErr.clientMessage });
           }
@@ -3412,6 +3423,9 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
             const held = await lockPayoutRequestDecision(tx, userId);
             if (held.action === "block") {
               throw Object.assign(new Error("payout_request_blocked"), { code: held.error, clientMessage: held.message });
+            }
+            if (await payoutEmailVerificationDenial(tx, userId)) {
+              throw Object.assign(new Error("email_verification_required"), { code: "email_verification_required" });
             }
             if (isProvider) {
               const [inserted] = await tx
@@ -3427,6 +3441,9 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
             return inserted;
           });
         } catch (txErr: any) {
+          if (txErr.code === "email_verification_required") {
+            return res.status(403).json(PAYOUT_EMAIL_VERIFICATION_BODY);
+          }
           if (txErr.code === "stripe_not_connected" || txErr.code === "payout_setup_incomplete") {
             return res.status(400).json({ error: txErr.code, message: txErr.clientMessage });
           }
