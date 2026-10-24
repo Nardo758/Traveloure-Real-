@@ -16,6 +16,7 @@ import { useCreateTrip } from "@/hooks/use-trips";
 import { updateTripContextIdentitySafe } from "@/lib/trip-context";
 import { trackEvent } from "@/lib/analytics";
 import { parsePartyCountInput, travelersForSave } from "@/lib/plan-vocabulary";
+import { formatTripDates } from "@/lib/trip-dates";
 import { eventTypeForSlug } from "@shared/occasions";
 import type { ExperienceType, InsertTrip } from "@shared/schema";
 
@@ -42,18 +43,6 @@ import type { ExperienceType, InsertTrip } from "@shared/schema";
  * three real featured slugs + the "Plan it with AI" card fill the 2×2 grid exactly.
  */
 const FEATURED_SLUGS = ["anniversary-trip", "travel", "wedding"];
-
-/** "Oct 12 – 17, 2026" / "Oct 12 – Nov 2, 2026" — recap pill from the exact step-1 values. */
-function formatDateRange(start: string, end: string): string {
-  const s = new Date(`${start}T00:00:00`);
-  const e = new Date(`${end}T00:00:00`);
-  if (isNaN(s.getTime()) || isNaN(e.getTime())) return `${start} – ${end}`;
-  const month = (d: Date) => d.toLocaleDateString("en-US", { month: "short" });
-  const sameMonth = s.getFullYear() === e.getFullYear() && s.getMonth() === e.getMonth();
-  const left = `${month(s)} ${s.getDate()}`;
-  const right = sameMonth ? `${e.getDate()}` : `${month(e)} ${e.getDate()}`;
-  return `${left} – ${right}, ${e.getFullYear()}`;
-}
 
 const STEP_LABELS = ["Where & when", "What kind of trip", "Your slip"] as const;
 
@@ -131,6 +120,12 @@ export function IntakePanel({
   const [destination, setDestination] = useState(doorDestination);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  // Recap pill: the shared trip-date range plus the end year — "Oct 12–17, 2026", "Oct 26, 2026".
+  const recapRange = formatTripDates(startDate, endDate);
+  const recapEndYear = new Date(`${endDate}T12:00:00`).getFullYear();
+  const recapDates = recapRange
+    ? isNaN(recapEndYear) ? recapRange : `${recapRange}, ${recapEndYear}`
+    : `${startDate} – ${endDate}`;
   // RC-12 (ledger `2026-09-25-rc12-party-size`): the field starts EMPTY. It used to start at 2, and
   // that 2 was sent as the plan's party whether or not anyone typed it (§13). Held as the typed
   // string through the same parser step 4 uses; `partyStated` is the only number that leaves.
@@ -329,7 +324,7 @@ export function IntakePanel({
                 className="rounded-full border border-border bg-muted/50 px-2.5 py-1 text-xs text-foreground"
                 data-testid="pill-recap-dates"
               >
-                {formatDateRange(startDate, endDate)}
+                {recapDates}
               </span>
               <span
                 className="rounded-full border border-border bg-muted/50 px-2.5 py-1 text-xs text-foreground"

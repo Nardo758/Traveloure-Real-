@@ -7,6 +7,7 @@ import { MapPin, Calendar, Users, Sparkles, Loader2 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { updateTripContextIdentitySafe, useTripContext, type TripContext } from "@/lib/trip-context";
 import { SELECTED_PLAN_KEEPS_ITS_BASICS_NOTE } from "@/lib/plan-city";
+import { formatTripDates } from "@/lib/trip-dates";
 import { planningRouteForTrip, usePlanning } from "@/contexts/PlanningContext";
 
 /**
@@ -119,17 +120,6 @@ export function AiPlannerDraftPanel({
       ? `The planner will ask for ${missing.join(" and ")}.`
       : null;
 
-  function formatDateRange(start: string | null, end: string | null): string {
-    if (!start || !end) return "";
-    try {
-      const fmt = (d: string) =>
-        new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-      return `${fmt(start)} – ${fmt(end)}`;
-    } catch {
-      return `${start} – ${end}`;
-    }
-  }
-
   function handleContinue() {
     // A conversation bound to a plan opens that plan's slip (past end date → the Trip Card,
     // via the one route helper), never a second copy of it through the modal.
@@ -170,7 +160,7 @@ export function AiPlannerDraftPanel({
         <DraftField
           icon={<Calendar className="w-4 h-4" />}
           label="Dates"
-          value={startDate && endDate ? formatDateRange(startDate, endDate) : null}
+          value={startDate && endDate ? formatTripDates(startDate, endDate) : null}
           testId="draft-field-dates"
         />
         <DraftField
