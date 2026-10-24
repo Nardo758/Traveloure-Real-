@@ -45,6 +45,7 @@ import {
   toPublicConversationId,
 } from "../services/messages.service";
 import { checkMessageRateLimit } from "../infrastructure/message-rate-limiter";
+import { refuseUnverifiedTravelerContact } from "../services/verified-email-action-gate";
 import { broadcastToUser } from "../websocket";
 import { dispatchMessagingEvent } from "../automations/messaging/runtime";
 
@@ -86,6 +87,10 @@ router.post("/api/conversations/start", isAuthenticated, async (req, res) => {
       return res.status(404).json({ message: "Not found" });
     }
     const { recipientId, context } = resolution.target;
+
+    // Row 101: after the target resolves (an unknown address stays 404) and before the
+    // rate-limit increment, the context row, the message, and the fan-out.
+    if (await refuseUnverifiedTravelerContact(res, sessionUserId, recipientId)) return;
 
     // Block enforcement BEFORE any write or notification, matching every other message write path.
     if (await isBlockedBetween(sessionUserId, recipientId)) {

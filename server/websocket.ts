@@ -4,7 +4,8 @@ import type { RequestHandler } from "express";
 import { storage } from "./storage";
 import { logger } from "./infrastructure/logger";
 import { getUserId } from "./utils/auth";
-import { hasExistingConversation } from "./services/messages.service";
+import { hasExistingConversation, hasIncomingMessage } from "./services/messages.service";
+import { assertTravelerMayContact, travelerContactSocketError } from "./services/verified-email-action-gate";
 import { checkMessageRateLimit } from "./infrastructure/message-rate-limiter";
 import { dispatchMessagingEvent } from "./automations/messaging/runtime";
 
@@ -208,6 +209,18 @@ function handleAuthenticatedConnection(ws: WebSocket, userId: string, peerIp: st
           }
 
           try {
+            // First message from an unverified non-earner to an earner. A thread the
+            // earner has already answered stays open. The error frame does not close
+            // the socket, and the check is before the rate-limit increment.
+            const contact = await assertTravelerMayContact({
+              senderId: userId,
+              recipientId: message.recipientId,
+            });
+            if (contact === "deny" && !(await hasIncomingMessage(message.recipientId, userId))) {
+              ws.send(JSON.stringify(travelerContactSocketError()));
+              break;
+            }
+
             // Messaging rate limit (same limits as the HTTP send paths). On breach we
             // send an error frame instead of persisting, so socket sends can't bypass it.
             const isNewConversation = !(await hasExistingConversation(userId, message.recipientId));
