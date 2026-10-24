@@ -12,7 +12,6 @@
  */
 
 import type { PlanningSource } from "@/contexts/PlanningContext";
-import { OCCASION_GROUP_LABELS, OCCASION_GROUP_ORDER } from "@shared/experience-group";
 import type { TravelerDoors } from "@shared/traveler-doors";
 
 /**
@@ -164,33 +163,12 @@ export const navGroupsConfig: NavGroupConfig[] = [
     ],
   },
   {
+    // H-10 (ledger `2026-10-24-h10-experiences-popup`): one Experiences button. The five groups
+    // stay on the start page's own picker (`?group=` still pre-picks one). The menu no longer
+    // lists them, and it no longer has a second door to `/experiences/travel`.
     name: "Experiences",
     i18nKey: "groups.experiences",
-    sections: [
-      // ── THE FIVE GROUPS, FROM THE ONE SOURCE (ledger `2026-10-07-nav-experience-groups`) ──
-      // The menu lists the occasion GROUPS the start page's picker shows, in its order and with its
-      // labels (`OCCASION_GROUP_ORDER` / `OCCASION_GROUP_LABELS`, `shared/experience-group.ts`) —
-      // never a copy here. Each opens `/experiences?group=<key>`, which pre-picks that group's tab
-      // (exact key only). The key is an address and is never rendered (R127); the label is.
-      // This replaces the curated per-occasion lists (and the Wedding row's featured planning door),
-      // which the start page's picker now carries.
-      {
-        title: "WHAT ARE YOU PLANNING?",
-        items: OCCASION_GROUP_ORDER.map((key) => ({
-          name: OCCASION_GROUP_LABELS[key],
-          href: `/experiences?group=${key}`,
-        })),
-      },
-    ],
-    // The artboard's dropdown footer. The groups above open the start page on a group's tab; this
-    // is the way straight to every occasion. The target is `/experiences/travel`, the SAME href the landing
-    // Moments section's "All occasions →" already uses (`moments-section.tsx`), so the two doors
-    // to "everything" cannot drift apart (§18 rule 1).
-    footer: {
-      name: "Browse all occasions",
-      i18nKey: "links.browseAllOccasions",
-      href: "/experiences/travel",
-    },
+    href: "/experiences",
   },
   {
     name: "Planning Tools",

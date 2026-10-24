@@ -7,6 +7,7 @@ import { LanguageMenu } from "@/components/language-menu";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { usePlanning } from "@/contexts/PlanningContext";
+import { experiencesPopupSource } from "@/lib/plan-entry";
 import { START_PLAN_LABEL } from "@/lib/plan-vocabulary";
 import { Button } from "@/components/ui/button";
 import { TraveloureLogo } from "@/components/ui/traveloure-logo";
@@ -585,7 +586,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { user, isLoading: isAuthLoading, logout } = useAuth();
   const { openSignInModal } = useSignInModal();
   // The nav's, the phone menu's and the footer's "Start a plan" all start a NEW plan in PlanEntry (E2).
-  const { open: openPlanning } = usePlanning();
+  // On /experiences the city and the experience already chosen ride in as props (H-10). open()
+  // stores that object in React state and does not write it — Q15.2. Off this page, nothing is carried.
+  const { open: openPlanning, experiencesPick } = usePlanning();
   // ED-1 footer count: the server answers a bare boolean; until it answers `true` the Blog link stays hidden.
   const { data: blogFooter } = useQuery<boolean>({
     queryKey: ["/api/blog/footer-visible"],
@@ -594,6 +597,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
   });
   const [location] = useLocation();
   const search = useSearch();
+  const openNewPlan = () => {
+    const path = location.split("?")[0].replace(/\/+$/, "") || "/";
+    const onExperiences = path === "/experiences" || path.startsWith("/experiences/");
+    openPlanning({
+      newPlan: true,
+      ...(onExperiences ? experiencesPopupSource(search, experiencesPick) : {}),
+    });
+  };
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   // QA F6 — see DesktopDropdown: the navbar, not each trigger, knows which menu is open.
   const [openMenu, setOpenMenu] = useState<string | null>(null);
@@ -862,7 +873,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <Button
                 size="sm"
                 className="hidden xl:inline-flex text-sm text-white bg-[color:var(--coral-fill)] hover:bg-[color:var(--coral-fill)]/90"
-                onClick={() => openPlanning({ newPlan: true })}
+                onClick={openNewPlan}
                 data-testid="button-nav-start-plan"
               >
                 {START_PLAN_LABEL}
@@ -920,7 +931,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   className="w-full text-white bg-[color:var(--coral-fill)] hover:bg-[color:var(--coral-fill)]/90"
                   onClick={() => {
                     setIsMobileMenuOpen(false);
-                    openPlanning({ newPlan: true });
+                    openNewPlan();
                   }}
                   data-testid="button-mobile-start-plan"
                 >
@@ -1154,7 +1165,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                         {/* E2: "Start a plan" starts a NEW plan in PlanEntry, never the bound plan's edit window. */}
                         <button
                           type="button"
-                          onClick={() => openPlanning({ newPlan: true })}
+                          onClick={openNewPlan}
                           className={cn("text-left transition-colors hover:text-[color:var(--earn-teal-ink)] hover:underline underline-offset-2", FOCUS_RING)}
                           data-testid="button-footer-start-plan"
                         >

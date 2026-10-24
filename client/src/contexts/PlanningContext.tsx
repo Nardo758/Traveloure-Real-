@@ -37,7 +37,9 @@ import { getTripContext, releasePendingEventsPen, switchTripContext, updateTripC
 import { mintTripSlip } from "@/lib/trip-slip";
 import { finishForBranch, isPlanDoor, type PlanDoor } from "@shared/slip-funnel-events";
 import { eventTypeForSlug } from "@shared/occasions";
-import { OCCASION_GROUP_DEFAULT_SLUG } from "@shared/experience-group";
+import { OCCASION_GROUP_DEFAULT_SLUG, type OccasionPickerGroup } from "@shared/experience-group";
+import { travelersForSave } from "@shared/plan-vocabulary";
+import type { ExperiencesPick } from "@/lib/plan-entry";
 // The ONE resolver of an earner's public path (LD 40) — read by D15's return-to below.
 import { earnerProfilePath } from "@/lib/earner-address";
 import { withPlanTripId } from "@/lib/experts-browse";
@@ -120,6 +122,15 @@ export interface PlanningSource {
    *  door with no occasion (or a Moment with no seeded row) passes nothing and NOTHING is
    *  seeded, never a guessed slug (§13). */
   experienceSlug?: string;
+  /**
+   * H-10: the experiences page's choice, carried into the pop-up as props. `open` does not read
+   * these and must not write them — a storage write on open is Q15.2, and `experienceSlug` is
+   * the only pen write that function still performs (C6). A catalog slug rides as
+   * `carriedOccasionSlug` so this door does not take that write.
+   */
+  group?: OccasionPickerGroup;
+  carriedOccasionSlug?: string;
+  askDatesAndParty?: boolean;
   /**
    * THE EVENT A PLAN IS BUILT AROUND (landing reorder, ledger `2026-09-28-city-events`): passed by
    * "Plan around it" on the city-events strip and the /events "Coming up" block. PlanEntry carries it
@@ -221,6 +232,9 @@ interface PlanningApi {
    * Start a plan runs — guest record, mint, occasion, event, landing — never a second create path.
    */
   start: (start: PlanEntryStart, source?: PlanningSource) => Promise<PlanEntryStartOutcome>;
+  /** The inline /experiences panel's city and experience. React state; the pop-up reads it as props. */
+  experiencesPick: ExperiencesPick | null;
+  reportExperiencesPick: (pick: ExperiencesPick | null) => void;
 }
 
 interface PendingGemRecovery {
@@ -315,6 +329,10 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
   /** PlanEntry — the one way a NEW plan starts (E2). */
   const [entryOpen, setEntryOpen] = useState(false);
   const [source, setSource] = useState<PlanningSource | null>(null);
+  const [experiencesPick, setExperiencesPick] = useState<ExperiencesPick | null>(null);
+  const reportExperiencesPick = useCallback((pick: ExperiencesPick | null) => {
+    setExperiencesPick(pick);
+  }, []);
   const [pendingGemRecovery, setPendingGemRecovery] = useState<PendingGemRecovery | null>(
     readPendingGemRecovery,
   );
@@ -492,9 +510,13 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
       if (!outcome.ok) return { ok: false, message: outcome.message };
       const tripId = outcome.tripId;
 
+      const party: { adults?: number; kids?: number } = {};
+      if (start.adults !== undefined) party.adults = start.adults;
+      if (start.kids !== undefined) party.kids = start.kids;
       await apiRequest("PATCH", `/api/trips/${tripId}/occasion`, {
         experienceSlug: start.occasionSlug,
         eventType: eventTypeForSlug(start.occasionSlug),
+        ...party,
       }).catch((err) => {
         // eslint-disable-next-line no-console
         console.warn("[plan-entry] occasion not saved on the new plan:", err?.message);
@@ -621,7 +643,10 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
     (entry: PlanEntryStart, from?: PlanningSource) => startFromEntry(entry, from ?? null),
     [startFromEntry],
   );
-  const api = useMemo(() => ({ open, close, start }), [open, close, start]);
+  const api = useMemo(
+    () => ({ open, close, start, experiencesPick, reportExperiencesPick }),
+    [open, close, start, experiencesPick, reportExperiencesPick],
+  );
 
   return (
     <PlanningContext.Provider value={api}>
@@ -656,8 +681,8 @@ function entryAnswers(start: PlanEntryStart): DraftAnswers {
     stops: [start.destination],
     startDate: start.startDate ?? "",
     endDate: start.endDate ?? "",
-    adults: "",
-    kids: "",
+    adults: start.adults != null ? String(start.adults) : "",
+    kids: start.kids != null ? String(start.kids) : "",
     budgetApproverName: "",
     budgetApproverEmail: "",
     accessibilityNote: "",
@@ -678,11 +703,15 @@ function entryStartFromRecord(record: PendingPlanRecord): PlanEntryStart | null 
   const ev = a.events?.[0];
   // The record carries no catalog row to group by; a replayed start lands where the guest already was — the map.
   const view = "map" as const;
+  const adults = travelersForSave(a.adults);
+  const kids = travelersForSave(a.kids);
   return {
     destination,
     city: record.source.city ?? cityPart.trim(),
     country: record.source.country ?? rest.join(",").trim(),
     ...(a.startDate && a.endDate ? { startDate: a.startDate, endDate: a.endDate } : {}),
+    ...(adults !== undefined ? { adults } : {}),
+    ...(kids !== undefined ? { kids } : {}),
     occasionSlug,
     ...(ev ? { event: { title: ev.title, eventDate: ev.eventDate ?? a.startDate, startTime: ev.startTime ?? null, location: ev.location ?? "" } } : {}),
     ...(record.source.eventSourceId ? { eventSourceId: record.source.eventSourceId } : {}),

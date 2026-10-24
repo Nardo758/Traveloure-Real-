@@ -1,10 +1,9 @@
 /**
  * THE NAV'S EXPERIENCES MENU IS THE FIVE GROUPS (ledger `2026-10-07-nav-experience-groups`).
  *
- *   G1  the Experiences entry holds exactly five leaves, built from `OCCASION_GROUP_ORDER` /
- *       `OCCASION_GROUP_LABELS` (one source): the labels in order, each linking to
- *       `/experiences?group=<key>`; no leaf renders a raw key (R127). The mobile nav reads the same
- *       config, so it carries the same five.
+ *   G1  Experiences is one button to `/experiences` (H-10). The five groups are no longer nav
+ *       leaves; the start page's picker still owns them, and `?group=` still pre-picks one. No
+ *       group label is copied into the config.
  *   G2  `?group=` pre-picks only an EXACT key: `moments` → A moment; `xyz`, `Moments`, empty → none.
  *   G3  the picker opens on that group's tab; with no group, no tab is pressed.
  *   G4  the start page reads `?group=` through the one helper and hands it to the picker.
@@ -35,23 +34,15 @@ const CATALOG = [
 ];
 
 describe("the nav's Experiences menu", () => {
-  it("G1 five leaves from the one manifest, labels shown, keys only in the href", () => {
+  it("G1 Experiences is one button to /experiences; group labels stay on the page", () => {
     const group = navGroupsConfig.find((g) => g.name === "Experiences");
     assert.ok(group, "the Experiences entry exists");
-    const leaves = (group!.sections ?? []).flatMap((s) => s.items);
-    assert.equal(leaves.length, 5);
-    assert.deepEqual(
-      leaves.map((l) => l.name),
-      OCCASION_GROUP_ORDER.map((k) => OCCASION_GROUP_LABELS[k]),
-    );
-    assert.deepEqual(
-      leaves.map((l) => l.href),
-      OCCASION_GROUP_ORDER.map((k) => `/experiences?group=${k}`),
-    );
-    for (const l of leaves) assert.ok(!(OCCASION_GROUP_ORDER as readonly string[]).includes(l.name), `${l.name} is a label, not a key`);
-    // One source: the labels are not restated in the config file.
+    assert.equal(group!.href, "/experiences");
+    assert.equal(group!.sections, undefined);
+    assert.equal(group!.footer, undefined);
     const src = read("client/src/lib/nav-config.ts");
     for (const label of Object.values(OCCASION_GROUP_LABELS)) assert.ok(!src.includes(`"${label}"`), `"${label}" is not copied into nav-config`);
+    assert.ok(OCCASION_GROUP_ORDER.length === 5, "the five groups still exist for the page picker");
   });
 
   it("G2 ?group= pre-picks an exact key only", () => {
