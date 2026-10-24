@@ -203,7 +203,7 @@ router.get('/expert-requests', isAuthenticated, async (req, res) => {
  * POST /api/expert-requests
  * Create expert review request
  */
-router.post('/expert-requests', isAuthenticated, async (req, res) => {
+router.post('/expert-requests', isAuthenticated, requireVerifiedEmail("expert_contact"), async (req, res) => {
   try {
     const authUserId = getUserId(req)!;
     const {
@@ -726,7 +726,7 @@ router.get('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
  * Assign an expert to a trip — creates trip_expert_advisors record (status: pending).
  * Idempotent: if an active advisor exists, returns existing record.
  */
-router.post('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
+router.post('/trips/:id/expert-advisor', isAuthenticated, requireVerifiedEmail("expert_contact"), async (req, res) => {
   try {
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
@@ -798,7 +798,7 @@ router.post('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
  * The event id is VERIFIED and then used only to NAME the event in the note. There is no
  * advisor->event column and this lane did not add one — see `hire-advisor.service.ts`.
  */
-router.post('/trips/:tripId/advisors', isAuthenticated, async (req, res) => {
+router.post('/trips/:tripId/advisors', isAuthenticated, requireVerifiedEmail("expert_contact"), async (req, res) => {
   try {
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });

@@ -27,6 +27,7 @@ import {
   BlockedUserError,
 } from "../services/messages.service";
 import { checkMessageRateLimit } from "../infrastructure/message-rate-limiter";
+import { refuseUnverifiedTravelerContact } from "../services/verified-email-action-gate";
 import { broadcastToUser } from "../websocket";
 import { dispatchMessagingEvent } from "../automations/messaging/runtime";
 
@@ -208,6 +209,9 @@ router.post("/", isAuthenticated, async (req, res) => {
 
     const exists = await assertRecipientExists(targetRecipientId);
     if (!exists) return res.status(404).json({ message: "Recipient not found" });
+
+    // Row 101: before the rate-limit increment, the message write, and the fan-out.
+    if (await refuseUnverifiedTravelerContact(res, userId, targetRecipientId)) return;
 
     const isNewConversation = !(await hasExistingConversation(userId, targetRecipientId));
     const rate = checkMessageRateLimit({ senderId: userId, recipientId: targetRecipientId, isNewConversation, peerIp: req.ip });
