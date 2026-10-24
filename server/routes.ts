@@ -2043,7 +2043,7 @@ ${bannedCopyPromptLine()}`;
   // returns via the existing `?tripId=` handoff before ever calling this endpoint. Validation +
   // ownership authorization lives in expert-booking-request-guard.service.ts (a pure function,
   // no DB) so it can be unit-tested directly; this handler is a thin caller.
-  app.post("/api/expert-booking-requests", isAuthenticated, requireVerifiedEmail("expert_contact"), async (req, res) => {
+  app.post("/api/expert-booking-requests", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!; // §14: acting user is the session, never req.body
 

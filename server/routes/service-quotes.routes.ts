@@ -24,7 +24,6 @@ import { Router } from "express";
 import { z } from "zod";
 
 import { isAuthenticated } from "../replit_integrations/auth";
-import { requireVerifiedEmail } from "../services/verified-email-action-gate";
 import { getUserId } from "../utils/auth";
 import { quoteIssueBodySchema, quoteRequestBodySchema } from "@shared/service-quotes";
 import {
@@ -80,7 +79,7 @@ function zodMessage(err: unknown): string | null {
   return err instanceof z.ZodError ? err.errors[0]?.message ?? "Invalid body" : null;
 }
 
-router.post("/api/services/:id/quote-requests", isAuthenticated, requireVerifiedEmail("expert_contact"), async (req, res) => {
+router.post("/api/services/:id/quote-requests", isAuthenticated, async (req, res) => {
   try {
     const travelerId = getUserId(req)!;
     const body = quoteRequestBodySchema.parse(req.body ?? {});

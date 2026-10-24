@@ -11,17 +11,15 @@
  * are not consulted, and grandfathering is not honored: a null column is unverified
  * even when the account already has platform activity.
  *
- * Contact (row 101, the same switch): an unverified account may not start or send
- * contact to an earner. assertTravelerMayContact refuses only that case. An earner
- * replying is allowed. Request rails mount requireVerifiedEmail("expert_contact").
+ * Contact (row 101, the same switch): an unverified non-earner may not start contact
+ * with an earner on the traveler-initiated HTTP rails. assertTravelerMayContact
+ * refuses only that case. An earner sender is allowed, so a reply is never blocked.
+ * Expert accept, decline, and quote/handoff answers do not mount this gate, and
+ * neither does the websocket chat path.
  */
 import type { RequestHandler } from "express";
 import { inArray } from "drizzle-orm";
-import {
-  EMAIL_VERIFICATION_HOLD_MESSAGE,
-  EMAIL_VERIFICATION_REQUIRED_CODE,
-  emailVerificationDeniedBody,
-} from "@shared/email-verification-gate";
+import { emailVerificationDeniedBody } from "@shared/email-verification-gate";
 import { users } from "@shared/models/auth";
 import { isEarnerRole } from "@shared/roles";
 import { authStorage } from "../replit_integrations/auth/storage";
@@ -158,17 +156,4 @@ export async function refuseUnverifiedTravelerContact(
   if ((await assertTravelerMayContact({ senderId, recipientId })) !== "deny") return false;
   res.status(403).json(emailVerificationDeniedBody());
   return true;
-}
-
-/** Socket frame for the same refusal. The connection stays open. */
-export function travelerContactSocketError(): {
-  type: "error";
-  errorCode: typeof EMAIL_VERIFICATION_REQUIRED_CODE;
-  error: typeof EMAIL_VERIFICATION_HOLD_MESSAGE;
-} {
-  return {
-    type: "error",
-    errorCode: EMAIL_VERIFICATION_REQUIRED_CODE,
-    error: EMAIL_VERIFICATION_HOLD_MESSAGE,
-  };
 }

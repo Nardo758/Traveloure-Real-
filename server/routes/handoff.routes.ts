@@ -25,7 +25,6 @@ import { Router } from "express";
 import { storage } from "../storage";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
-import { requireVerifiedEmail } from "../services/verified-email-action-gate";
 import { getUserId } from "../utils/auth";
 import { verifyTripOwnership } from "../utils/trip-ownership";
 import { isTripAdvisor } from "../utils/trip-advisor";
@@ -160,7 +159,7 @@ router.get("/api/trips/:tripId/handoff", isAuthenticated, async (req: any, res) 
   });
 });
 
-router.post("/api/trips/:tripId/handoff/quote", isAuthenticated, requireVerifiedEmail("expert_contact"), async (req: any, res) => {
+router.post("/api/trips/:tripId/handoff/quote", isAuthenticated, async (req: any, res) => {
   const userId = await ownerOr404(req, res);
   if (!userId) return;
   const parsed = quoteBody.safeParse(req.body ?? {});
@@ -174,7 +173,7 @@ router.post("/api/trips/:tripId/handoff/quote", isAuthenticated, requireVerified
   res.json(visible);
 });
 
-router.post("/api/trips/:tripId/handoff", isAuthenticated, requireVerifiedEmail("expert_contact"), async (req: any, res) => {
+router.post("/api/trips/:tripId/handoff", isAuthenticated, async (req: any, res) => {
   const userId = await ownerOr404(req, res);
   if (!userId) return;
   const parsed = askBody.safeParse(req.body ?? {});

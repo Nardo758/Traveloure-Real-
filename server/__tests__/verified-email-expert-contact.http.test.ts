@@ -3,9 +3,11 @@
  *
  * The test process sets EMAIL_SENDS_ENABLED itself. No CI workflow step is added
  * to boot a flag-on server. While the flag is off, assertTravelerMayContact allows
- * without a user lookup. While it is on, an unverified non-earner is refused
- * before a message row, a conversation context row, a notification, or a socket
- * fan-out, and the refusal does not consume a rate-limit bucket.
+ * without a user lookup. While it is on, an unverified traveler is refused on the
+ * traveler-initiated HTTP contact rails before a message row, a conversation
+ * context row, or a notification, and the refusal does not consume a rate-limit
+ * bucket. An unverified earner is not refused on reply, accept, or decline, and
+ * the websocket chat path does not apply this refusal.
  *
  *   npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/verified-email-expert-contact.http.test.ts
  */
@@ -32,6 +34,10 @@ const { setupAuth } = await import("../replit_integrations/auth/replitAuth");
 const { getSession } = await import("../replit_integrations/auth");
 const messagesRouter = (await import("../routes/messages")).default;
 const conversationsRoutes = (await import("../routes/conversations.routes")).default;
+const handoffRoutes = (await import("../routes/handoff.routes")).default;
+const serviceQuotesRoutes = (await import("../routes/service-quotes.routes")).default;
+const bookingActionsRoutes = (await import("../routes/booking-actions")).default;
+const expertInboxRoutes = (await import("../routes/expert-inbox-questions.routes")).default;
 const { setupWebSocket } = await import("../websocket");
 const { assertTravelerMayContact } = await import("../services/verified-email-action-gate");
 const { COLD_CONTACT_MAX, __resetMessageRateLimiter } = await import("../infrastructure/message-rate-limiter");
@@ -244,6 +250,10 @@ before(async () => {
   await setupAuth(app);
   app.use("/api/messages", messagesRouter);
   app.use(conversationsRoutes);
+  app.use(handoffRoutes);
+  app.use(serviceQuotesRoutes);
+  app.use("/api", bookingActionsRoutes);
+  app.use(expertInboxRoutes);
 
   server = http.createServer(app);
   wss = setupWebSocket(server, getSession());
@@ -407,48 +417,35 @@ test("flag off: the same unverified traveler to expert is allowed", async () => 
   setSends("true");
 });
 
-test("websocket refusal is an error frame and the socket stays open", async () => {
+test("an unverified earner is not refused on accept, decline, or an inbox reply", async () => {
   setSends("true");
-  await db.execute(sql`UPDATE users SET email_verified = NULL WHERE id = ${ids.traveler}`);
-  const before = await pairState(ids.traveler, ids.expert);
+  const missing = crypto.randomUUID();
+  const calls: Array<[string, Record<string, unknown>]> = [
+    [`/api/handoffs/${missing}/accept`, {}],
+    [`/api/handoffs/${missing}/decline`, {}],
+    [`/api/expert/assignments/${missing}/accept`, {}],
+    [`/api/quotes/${missing}/decline`, {}],
+    [`/api/provider/quotes/${missing}/issue`, { amountCents: 1000 }],
+    [`/api/provider/quotes/${missing}/withdraw`, {}],
+    [`/api/expert/inbox/questions/${missing}/answer`, { answer: "Here is the reply." }],
+  ];
+  for (const [path, body] of calls) {
+    const res = await post(path, cookies.expert, body);
+    assert.notEqual(res.status, 403, `${path} ${JSON.stringify(res.data)}`);
+    assert.notEqual(res.data?.code, DENIED.code, path);
+    assert.notDeepEqual(res.data, DENIED, path);
+  }
+});
 
-  const ws = await openSocket(cookies.traveler);
-  const frames: any[] = [];
-  let closed = false;
-  ws.on("message", (data) => frames.push(JSON.parse(data.toString())));
-  ws.on("close", () => {
-    closed = true;
-  });
-
-  ws.send(JSON.stringify({
-    type: "chat",
-    recipientId: ids.expert,
-    content: "socket should be refused",
-  }));
-  await new Promise((resolve) => setTimeout(resolve, 300));
-
-  assert.equal(closed, false);
-  assert.equal(ws.readyState, WebSocket.OPEN);
-  assert.equal(frames.length, 1);
-  assert.deepEqual(frames[0], {
-    type: "error",
-    errorCode: "email_verification_required",
-    error: "Verify your email to continue.",
-  });
-  assert.deepEqual(await pairState(ids.traveler, ids.expert), before);
-
-  ws.send(JSON.stringify({
-    type: "chat",
-    recipientId: ids.expert,
-    content: "second refusal still open",
-  }));
-  await new Promise((resolve) => setTimeout(resolve, 200));
-  assert.equal(ws.readyState, WebSocket.OPEN);
-  assert.equal(frames.length, 2);
-  assert.equal(frames[1].errorCode, "email_verification_required");
-  ws.close();
+test("websocket chat does not refuse an unverified earner or close the socket", async () => {
+  setSends("true");
+  await db.execute(sql`UPDATE users SET email_verified = NULL WHERE id = ${ids.expert}`);
 
   const expertWs = await openSocket(cookies.expert);
+  let closed = false;
+  expertWs.on("close", () => {
+    closed = true;
+  });
   const echo = await new Promise<any>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("expert echo timed out")), 5000);
     expertWs.on("message", (data) => {
@@ -464,8 +461,11 @@ test("websocket refusal is an error frame and the socket stays open", async () =
       content: "expert reply over the socket",
     }));
   });
+  assert.equal(closed, false);
+  assert.equal(expertWs.readyState, WebSocket.OPEN);
   expertWs.close();
   assert.equal(echo.type, "chat");
+  assert.notEqual(echo.errorCode, "email_verification_required");
   assert.equal(echo.senderId, ids.expert);
   assert.equal(echo.recipientId, ids.other);
 });

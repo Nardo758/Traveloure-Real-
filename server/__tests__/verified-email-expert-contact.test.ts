@@ -17,7 +17,6 @@ import { emailVerificationDeniedBody } from "../../shared/email-verification-gat
 import {
   decideTravelerMayContact,
   refuseUnverifiedTravelerContact,
-  travelerContactSocketError,
   verifiedEmailActionsEnforced,
 } from "../services/verified-email-action-gate";
 
@@ -131,15 +130,12 @@ test("an unenforced contact refusal writes no response", async () => {
   }
 });
 
-test("the socket refusal frame matches the shared 403 copy", () => {
-  const body = emailVerificationDeniedBody();
-  assert.deepEqual(travelerContactSocketError(), {
-    type: "error",
-    errorCode: body.code,
-    error: body.message,
+test("the contact refusal body is the shared verification body", () => {
+  assert.deepEqual(emailVerificationDeniedBody(), {
+    code: "email_verification_required",
+    message: "Verify your email to continue.",
+    nextStep: "verify_email",
   });
-  assert.equal(body.code, "email_verification_required");
-  assert.equal(body.message, "Verify your email to continue.");
 });
 
 test("enforcement is read before the contact query", () => {
@@ -190,9 +186,11 @@ test("message transports consult the gate before the rate-limit increment", () =
   assert.ok(shadowed.indexOf("refuseUnverifiedTravelerContact") < shadowed.indexOf("storage.createChat"));
 
   const socket = sliceBetween(read("server", "websocket.ts"), 'case "chat":', 'case "typing":');
-  assert.ok(socket.indexOf("assertTravelerMayContact") < socket.indexOf("checkMessageRateLimit"));
-  assert.ok(socket.indexOf("travelerContactSocketError") < socket.indexOf("checkMessageRateLimit"));
-  assert.match(socket, /break;/);
+  assert.ok(!socket.includes("assertTravelerMayContact"));
+  assert.ok(!socket.includes("refuseUnverifiedTravelerContact"));
+  assert.ok(!socket.includes("requireVerifiedEmail"));
+  assert.ok(!socket.includes("email_verification_required"));
+  assert.ok(socket.includes("checkMessageRateLimit"));
 
   const legacy = sliceBetween(
     read("server", "routes", "content.routes.ts"),
@@ -204,19 +202,34 @@ test("message transports consult the gate before the rate-limit increment", () =
   assert.ok(legacy.indexOf("refuseUnverifiedTravelerContact") < legacy.indexOf("insertExpertChat"));
 });
 
-test("request rails to an expert mount requireVerifiedEmail(expert_contact) once", () => {
-  const rails: Array<[string, string]> = [
-    ["server/routes.ts", 'app.post("/api/expert-booking-requests", isAuthenticated, requireVerifiedEmail("expert_contact")'],
-    ["server/routes/booking-actions.ts", "router.post('/expert-requests', isAuthenticated, requireVerifiedEmail(\"expert_contact\")"],
-    ["server/routes/booking-actions.ts", "router.post('/trips/:id/expert-advisor', isAuthenticated, requireVerifiedEmail(\"expert_contact\")"],
-    ["server/routes/booking-actions.ts", "router.post('/trips/:tripId/advisors', isAuthenticated, requireVerifiedEmail(\"expert_contact\")"],
-    ["server/routes/handoff.routes.ts", 'router.post("/api/trips/:tripId/handoff/quote", isAuthenticated, requireVerifiedEmail("expert_contact")'],
-    ["server/routes/handoff.routes.ts", 'router.post("/api/trips/:tripId/handoff", isAuthenticated, requireVerifiedEmail("expert_contact")'],
-    ["server/routes/service-quotes.routes.ts", 'router.post("/api/services/:id/quote-requests", isAuthenticated, requireVerifiedEmail("expert_contact")'],
+test("expert accept, reply, and decline routes do not mount the contact gate", () => {
+  const open: Array<[string, string]> = [
+    ["server/routes/handoff.routes.ts", 'router.post("/api/handoffs/:id/accept", isAuthenticated, async'],
+    ["server/routes/handoff.routes.ts", 'router.post("/api/handoffs/:id/decline", isAuthenticated, async'],
+    ["server/routes/booking-actions.ts", 'router.post("/expert/assignments/:assignmentId/accept", isAuthenticated, async'],
+    ["server/routes/service-quotes.routes.ts", 'router.post("/api/quotes/:quoteId/accept", isAuthenticated, async'],
+    ["server/routes/service-quotes.routes.ts", 'router.post("/api/quotes/:quoteId/decline", isAuthenticated, async'],
+    ["server/routes/service-quotes.routes.ts", 'router.post("/api/provider/quotes/:quoteId/issue", isAuthenticated, async'],
+    ["server/routes/service-quotes.routes.ts", 'router.post("/api/provider/quotes/:quoteId/withdraw", isAuthenticated, async'],
+    ["server/routes/expert-inbox-questions.routes.ts", 'router.post("/api/expert/inbox/questions/:id/answer", isAuthenticated, async'],
+    ["server/routes.ts", 'app.post("/api/expert-booking-requests", isAuthenticated, async'],
+    ["server/routes/booking-actions.ts", "router.post('/expert-requests', isAuthenticated, async"],
+    ["server/routes/booking-actions.ts", "router.post('/trips/:id/expert-advisor', isAuthenticated, async"],
+    ["server/routes/booking-actions.ts", "router.post('/trips/:tripId/advisors', isAuthenticated, async"],
+    ["server/routes/handoff.routes.ts", 'router.post("/api/trips/:tripId/handoff/quote", isAuthenticated, async'],
+    ["server/routes/handoff.routes.ts", 'router.post("/api/trips/:tripId/handoff", isAuthenticated, async'],
+    ["server/routes/service-quotes.routes.ts", 'router.post("/api/services/:id/quote-requests", isAuthenticated, async'],
   ];
-  for (const [file, line] of rails) {
+  for (const [file, line] of open) {
     const src = read(...file.split("/"));
     assert.equal(src.split(line).length - 1, 1, `${file} missing ${line}`);
+    const at = src.indexOf(line);
+    const decl = src.slice(at, src.indexOf("{", at));
+    assert.ok(!decl.includes("requireVerifiedEmail"), `${line} must not mount requireVerifiedEmail`);
+    assert.ok(!decl.includes("refuseUnverifiedTravelerContact"), `${line} must not mount the contact refusal`);
+  }
+  for (const file of ["server/routes/handoff.routes.ts", "server/routes/service-quotes.routes.ts", "server/websocket.ts"]) {
+    assert.ok(!read(...file.split("/")).includes("expert_contact"), `${file} must not name expert_contact`);
   }
 });
 

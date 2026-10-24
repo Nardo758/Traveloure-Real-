@@ -6,7 +6,6 @@ import { logger } from "./infrastructure/logger";
 import { getUserId } from "./utils/auth";
 import { hasExistingConversation } from "./services/messages.service";
 import { checkMessageRateLimit } from "./infrastructure/message-rate-limiter";
-import { assertTravelerMayContact, travelerContactSocketError } from "./services/verified-email-action-gate";
 import { dispatchMessagingEvent } from "./automations/messaging/runtime";
 
 // `log` previously came from "./index" — the only file in server/ importing back into
@@ -209,17 +208,6 @@ function handleAuthenticatedConnection(ws: WebSocket, userId: string, peerIp: st
           }
 
           try {
-            // Row 101: before the rate-limit increment, the chat write, and the fan-out.
-            // An error frame leaves the socket open.
-            const contact = await assertTravelerMayContact({
-              senderId: userId,
-              recipientId: message.recipientId,
-            });
-            if (contact === "deny") {
-              ws.send(JSON.stringify(travelerContactSocketError()));
-              break;
-            }
-
             // Messaging rate limit (same limits as the HTTP send paths). On breach we
             // send an error frame instead of persisting, so socket sends can't bypass it.
             const isNewConversation = !(await hasExistingConversation(userId, message.recipientId));
