@@ -16,7 +16,8 @@
  *   `?destination=` / `?city=` pre-pick a city only on an EXACT match of the eight (ruling 4 of 8a);
  *   `/experiences/:slug` carries that occasion (a slug the catalog does not carry is asked, never trusted);
  *   `?group=` opens on that group (an exact key of the five).
- * A city and an occasion together land on Step 2 with Start a plan ready — one click.
+ * A city and a catalog occasion land on the occasion step. A city and a group, with no slug, land
+ * on dates and party. The panel reports that pick upward so the nav pop-up can open on it.
  * `?destinations=&multiCity=true` (TripQueueIndicator) is ignored; recorded in FOLLOWUPS.md.
  */
 import { useMemo } from "react";
@@ -149,6 +150,7 @@ export default function Experiences({ occasionSlug: routeSlug = null }: { occasi
             container="page"
             source={source}
             onStart={(start) => planning.start(start, { door: "experiences", newPlan: true })}
+            onHeldChange={planning.reportExperiencesPick}
             placePicker={(picked, pick) => <PlacePicker picked={picked} pick={pick} />}
           />
         </section>

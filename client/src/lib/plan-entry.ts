@@ -9,6 +9,10 @@
  * No When, no Who, no plan name, no build chooser and no Clear/Save before the plan exists: those are
  * chips on the plan itself (E1). Editing a plan that already exists is the edit-only `PlanModal`.
  *
+ * H-10 (ledger `2026-10-24-h10-experiences-popup`): when the experiences door already holds an
+ * experience (a group, or a catalog slug) AND a city, the next step asks dates and party. That
+ * carry is props only — never `experienceSlug`, which open() still writes to the pen (C6 / Q15.2).
+ *
  * Everything here is PURE so the decisions are pinned without a browser (`plan-entry.test.ts`). The
  * component (`components/plan/PlanEntry.tsx`) only draws these answers; the provider
  * (`contexts/PlanningContext.tsx`) mints them.
@@ -24,10 +28,10 @@ import {
 import { cityEventPlanShape } from "@shared/city-events";
 import { isShowSeries, seriesShowDates, upcomingShowDates } from "@shared/event-page";
 import { clampToMarketToday, marketToday } from "@shared/market-today";
-import { exactOperatingMarket } from "./experiences-entry";
+import { exactOperatingMarket, preselectedGroup, preselectedMarket } from "./experiences-entry";
 
 export type PlanAround = "place" | "date" | "event";
-export type PlanEntryStep = "around" | "occasion";
+export type PlanEntryStep = "around" | "occasion" | "details";
 
 /** The event a plan is built around — the event row's own facts, nothing invented. */
 export interface PlanEntryEvent {
@@ -79,6 +83,16 @@ export interface PlanEntrySource {
   experienceSlug?: string;
   /** A starting group (the nav's `?group=`, already an exact key) — E3 ruling 3. */
   group?: OccasionPickerGroup;
+  /**
+   * A catalog slug carried from the inline panel in React state (H-10). Not `experienceSlug`:
+   * that field is written to the pen when the pop-up opens (C6). This one is never stored.
+   */
+  carriedOccasionSlug?: string;
+  /**
+   * The experiences door already holds an experience and a city, so the next step is dates and
+   * party. An event anchor ignores it. Set only by `experiencesPopupSource`.
+   */
+  askDatesAndParty?: boolean;
   anchor?: { title: string; firstDate: string; lastDate: string; startTime: string | null; venue: string };
   /** SH-1 Launch Q14.3: the anchor's `city_events.source_id` (beside the anchor, which stays the event's own facts). */
   eventSourceId?: string;
@@ -217,6 +231,43 @@ export function withNight(state: PlanEntryState, night: string | null): PlanEntr
     : { ...state, night: null, ...wholeRun(state.event) };
 }
 
+/** What the inline /experiences panel reports upward. React state only — never storage. */
+export interface ExperiencesPick {
+  city: string | null;
+  country: string | null;
+  /** A group the URL or a chip chose. Null while the panel is still on the untouched default. */
+  group: OccasionPickerGroup | null;
+  /** "More specific" or a route slug. Never the group's default slug. */
+  occasionSlug: string | null;
+}
+
+/**
+ * The Start a plan pop-up's source while the traveler is on /experiences (H-10).
+ * Pure. The city and the experience ride as props into `open()`; `experienceSlug` is
+ * omitted so that open writes nothing (Q15.2 — C6 is the only pen write on open).
+ */
+export function experiencesPopupSource(
+  search: string,
+  pick: ExperiencesPick | null | undefined,
+): Pick<PlanEntrySource, "city" | "country" | "group" | "carriedOccasionSlug" | "askDatesAndParty"> {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const urlGroup = preselectedGroup(params);
+  const urlMarket = preselectedMarket(params);
+  const pickedCity = pick?.city?.trim() || null;
+  const city = pickedCity ?? urlMarket?.cityName;
+  const country = pickedCity ? pick?.country?.trim() || undefined : urlMarket?.country;
+  const group = pick?.group ?? urlGroup ?? undefined;
+  const carried = pick?.occasionSlug?.trim() || undefined;
+  const ask = !!(city && (group || carried));
+  return {
+    ...(city ? { city } : {}),
+    ...(country ? { country } : {}),
+    ...(group ? { group } : {}),
+    ...(carried ? { carriedOccasionSlug: carried } : {}),
+    ...(ask ? { askDatesAndParty: true } : {}),
+  };
+}
+
 /** Where a door lands PlanEntry, and with what already answered. */
 export function initialPlanEntry(source: PlanEntrySource | null | undefined): { state: PlanEntryState; step: PlanEntryStep } {
   const state = emptyPlanEntry();
@@ -244,9 +295,16 @@ export function initialPlanEntry(source: PlanEntrySource | null | undefined): { 
   const named = source.city
     ? exactOperatingMarket(source.country ? `${source.city}, ${source.country}` : source.city) ?? exactOperatingMarket(source.city)
     : exactOperatingMarket(source.destination);
-  const occasionSlug = source.experienceSlug?.trim() || null;
-  const group = source.group && (OCCASION_GROUP_ORDER as readonly string[]).includes(source.group) ? source.group : state.group;
+  const occasionSlug = (source.experienceSlug ?? source.carriedOccasionSlug)?.trim() || null;
+  const explicitGroup = source.group && (OCCASION_GROUP_ORDER as readonly string[]).includes(source.group) ? source.group : null;
+  const group = explicitGroup ?? state.group;
   const withAnswers: PlanEntryState = { ...state, market: named, around: named ? "place" : null, occasionSlug, group };
+  // H-10: an experience and a city are already chosen, so the next step is dates and party.
+  // A catalog slug on the page (`/experiences/:slug`) stays on the occasion step — "More specific"
+  // is how that door is answered. An event anchor returned above and is never sent here.
+  const groupAndCity = !!named && !!explicitGroup && !source.experienceSlug && !source.carriedOccasionSlug;
+  const carriedAndCity = !!named && !!source.askDatesAndParty && (!!explicitGroup || !!occasionSlug);
+  if (groupAndCity || carriedAndCity) return { state: withAnswers, step: "details" };
   return { state: withAnswers, step: named ? "occasion" : "around" };
 }
 

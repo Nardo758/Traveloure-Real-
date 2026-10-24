@@ -5,8 +5,9 @@
  * file draws them and hands the answers to the provider, which mints.
  *
  * Step 1 "Plan around…" (a place · a date · an event) → Step 2 "What's the occasion?" → Start a plan.
- * No When, no Who, no plan name, no build chooser, no Clear/Save — zero typed fields on any path (the
- * city typeahead is optional; the eight markets are chips).
+ * No When, no Who, no plan name, no build chooser, no Clear/Save on that path (the city typeahead is
+ * optional; the eight markets are chips). H-10: when an experience and a city are already chosen, the
+ * next step asks dates and party (`plan-entry-step-details`) and nothing else.
  *
  * TWO CONTAINERS, ONE PANEL (E3, ledger `2026-10-09-e3-experiences-inline`): `PlanEntry` is the pop-up
  * (a Dialog); `PlanEntryPanel` is the same steps and the same Start a plan, mounted INLINE on
@@ -18,6 +19,7 @@
  * `plan-entry-city-<marketKey>`, `plan-entry-city-input`, `plan-entry-not-yet`,
  * `plan-entry-date-weekend|next-month|pick`, `plan-entry-date-start|end`, `plan-entry-event-<id>`,
  * `plan-entry-group-<key>`, `plan-entry-more-specific`, `plan-entry-night-<date>|all`,
+ * `plan-entry-step-details`, `plan-entry-carried-group`, `plan-entry-party-adults|kids`,
  * `button-plan-entry-start`, `button-plan-entry-back`, `plan-entry-error`.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -36,6 +38,9 @@ import { countdownLabel, type CityEventCard, type CityEventsPayload } from "@sha
 import { EventRow } from "@/components/events/EventRow";
 import { planAroundEventTitle } from "@/components/landing/events-strip";
 import type { ExperienceType } from "@shared/schema";
+import { PLAN_DATES_SET_CTA, PLAN_PARTY_ASK } from "@shared/plan-dates";
+import { partyFields } from "@/lib/plan-steps";
+import { travelersForSave } from "@/lib/plan-vocabulary";
 import {
   EVENT_OCCASION_SLUG,
   canStartPlan,
@@ -56,6 +61,7 @@ import {
   typedCity,
   withEvent,
   withNight,
+  type ExperiencesPick,
   type PlanAround,
   type PlanEntrySource,
   type PlanEntryState,
@@ -81,6 +87,9 @@ export interface PlanEntryStart {
   view: "map" | "list";
   /** Funnel fact: was the occasion answered here, or carried by the door. */
   occasionAsked: boolean;
+  /** Party the traveler typed on the details step. Absent = not answered, never 0. */
+  adults?: number;
+  kids?: number;
 }
 
 export type PlanEntryStartOutcome = { ok: true } | { ok: false; message?: string };
@@ -101,6 +110,11 @@ interface PanelProps {
   container: "dialog" | "page";
   /** The page's Place picker (the world map + the eight cards); absent ⇒ the eight city chips. */
   placePicker?: (picked: string | null, pick: (marketKey: string) => void) => ReactNode;
+  /**
+   * Inline only. The city and experience the panel is holding, so the nav pop-up can open on
+   * them. The dialog does not report — a second panel must not clobber the page's pick.
+   */
+  onHeldChange?: (pick: ExperiencesPick | null) => void;
 }
 
 const AROUND: Array<{ key: PlanAround; label: string }> = [
@@ -159,7 +173,7 @@ export function PlanEntry({ open, onOpenChange, source, onStart }: Props) {
 }
 
 /** The steps and Start a plan, in either container. */
-export function PlanEntryPanel({ active, source, onStart, container, placePicker }: PanelProps) {
+export function PlanEntryPanel({ active, source, onStart, container, placePicker, onHeldChange }: PanelProps) {
   const open = active;
   const inline = container === "page";
   const seed = useMemo(() => {
@@ -174,6 +188,10 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
   const [pickDates, setPickDates] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [adults, setAdults] = useState("");
+  const [kids, setKids] = useState("");
+  /** A group chip was pressed. The untouched default group is not a choice. */
+  const [groupChosen, setGroupChosen] = useState(!!source?.group);
   /** Did the door hand us the occasion (funnel `occasionSource`)? */
   const doorOccasion = useRef<boolean>(!!seed.state.occasionSlug);
   const autoStarted = useRef(false);
@@ -188,6 +206,9 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
     setPickDates(false);
     setError(null);
     setStarting(false);
+    setAdults("");
+    setKids("");
+    setGroupChosen(!!source?.group);
     doorOccasion.current = !!seed.state.occasionSlug;
     autoStarted.current = false;
   }, [open, seed]);
@@ -236,6 +257,12 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
     setStarting(true);
     setError(null);
     const m = state.market;
+    const fields = partyFields(pickedRow);
+    const party: { adults?: number; kids?: number } = {};
+    for (const field of fields) {
+      const n = travelersForSave(field.key === "adults" ? adults : kids);
+      if (n !== undefined) party[field.key] = n;
+    }
     const out = await onStart({
       destination: planEntryDestination(m),
       city: m.cityName,
@@ -248,6 +275,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
       ...(planEntryEventRow(state) ? { event: planEntryEventRow(state)! } : {}),
       view: planEntryView(state, pickedRow),
       occasionAsked: !doorOccasion.current || !!state.event,
+      ...party,
     });
     if (!out.ok) {
       setStarting(false);
@@ -259,6 +287,9 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
   // Never inline (E3 ruling 3): a visit to /experiences writes nothing; its deep link lands on Step 2.
   useEffect(() => {
     if (inline || !open || autoStarted.current || occasionsLoading || occasionRows.length === 0) return;
+    // H-10: a carried experience stops on dates and party. Auto-start would skip that question,
+    // and it would also mint a carried slug the moment the catalog loads.
+    if (source?.askDatesAndParty) return;
     if (startsStraightAway(state, occasionRows.map((o) => o.slug))) {
       autoStarted.current = true;
       void start();
@@ -266,10 +297,35 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, occasionsLoading, occasionRows.length]);
 
+  // Inline only: the pick the nav pop-up reads. The dialog has no callback, so it cannot clobber this.
+  useEffect(() => {
+    if (!inline || !onHeldChange) return;
+    const chosenGroup = source?.group || groupChosen ? state.group : null;
+    onHeldChange({
+      city: state.market?.cityName ?? null,
+      country: state.market?.country ?? null,
+      group: chosenGroup,
+      occasionSlug: state.occasionSlug,
+    });
+  }, [inline, onHeldChange, source?.group, groupChosen, state.market, state.group, state.occasionSlug]);
+  useEffect(() => {
+    if (!inline || !onHeldChange) return;
+    return () => onHeldChange(null);
+  }, [inline, onHeldChange]);
+
   const pickMarket = (key: string) => {
     const m = OPERATING_MARKETS.find((x) => x.marketKey === key) ?? null;
     setState((s) => ({ ...s, market: m, event: s.around === "date" ? null : s.event, night: null }));
-    if (m && state.around !== "date") setStep("occasion");
+    if (!m || state.around === "date") return;
+    if (state.event) {
+      setStep("occasion");
+      return;
+    }
+    const specificSlug = !!(source?.experienceSlug || source?.carriedOccasionSlug || state.occasionSlug);
+    const chosenGroup = !!(source?.group || groupChosen);
+    // A route slug stays on the occasion step. A chosen group (and the pop-up's carry) asks dates and party.
+    if (source?.askDatesAndParty || (chosenGroup && !specificSlug)) setStep("details");
+    else setStep("occasion");
   };
 
   const typedResult = typedCity(typed);
@@ -279,7 +335,12 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
     setPickDates(false);
   };
 
-  const title = step === "around" ? "Plan around…" : "What's the occasion?";
+  const title = step === "around" ? "Plan around…" : step === "details" ? PLAN_DATES_SET_CTA : "What's the occasion?";
+  const experienceLabel = state.occasionSlug
+    ? (pickedRow?.name ?? null)
+    : source?.group || groupChosen || source?.askDatesAndParty
+      ? OCCASION_GROUP_LABELS[state.group]
+      : null;
   const straight = starting && step !== "occasion";
 
   const cityChips = (only?: readonly string[]) =>
@@ -353,12 +414,19 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
               <DialogTitle className="text-[22px] font-semibold" style={{ fontFamily: SERIF, color: "var(--earn-navy, #1A1A18)" }}>
                 {heading}
               </DialogTitle>
-              <DialogDescription className="sr-only">Choose what to plan around, then the occasion.</DialogDescription>
+              <DialogDescription className="sr-only">
+                {step === "details" ? `${PLAN_DATES_SET_CTA}. ${PLAN_PARTY_ASK}` : "Choose what to plan around, then the occasion."}
+              </DialogDescription>
             </DialogHeader>
           )}
 
           {straight ? null : step === "around" ? (
             <div className="space-y-4" data-testid="plan-entry-step-around">
+              {experienceLabel && (source?.group || groupChosen || state.occasionSlug) && (
+                <p className="text-[14px] font-medium" style={{ color: "var(--earn-navy, #1A1A18)" }} data-testid="plan-entry-carried-group">
+                  {experienceLabel}
+                </p>
+              )}
               <div className="flex flex-wrap gap-2" role="group" aria-label="Plan around">
                 {AROUND.map((a) => (
                   <Chip key={a.key} active={state.around === a.key} onClick={() => goAround(a.key)} testId={`plan-entry-around-${a.key}`}>
@@ -441,6 +509,46 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
                 </div>
               )}
             </div>
+          ) : step === "details" ? (
+            <div className="space-y-4" data-testid="plan-entry-step-details">
+              <p className="text-[14px]" style={{ color: "#7A7A72" }} data-testid="plan-entry-summary">
+                {experienceLabel && <span data-testid="plan-entry-carried-group">{experienceLabel}</span>}
+                {experienceLabel && state.market?.cityName ? " · " : null}
+                {state.market?.cityName}
+              </p>
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  <Chip active={false} onClick={() => setState((s) => ({ ...s, ...thisWeekend(new Date()) }))} testId="plan-entry-date-weekend">This weekend</Chip>
+                  <Chip active={false} onClick={() => setState((s) => ({ ...s, ...nextMonth(new Date()) }))} testId="plan-entry-date-next-month">Next month</Chip>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input type="date" aria-label="Start date" value={state.startDate ?? ""} onChange={(e) => setState((s) => ({ ...s, startDate: e.target.value || null, endDate: s.endDate && e.target.value && s.endDate < e.target.value ? e.target.value : s.endDate }))} className="rounded-md border px-2 py-1.5 text-[14px]" data-testid="plan-entry-date-start" />
+                  <span aria-hidden>–</span>
+                  <input type="date" aria-label="End date" min={state.startDate ?? undefined} value={state.endDate ?? ""} onChange={(e) => setState((s) => ({ ...s, endDate: e.target.value || null }))} className="rounded-md border px-2 py-1.5 text-[14px]" data-testid="plan-entry-date-end" />
+                </div>
+              </div>
+              <div className="space-y-2" data-testid="plan-entry-party">
+                <p className="text-[13px] font-semibold" style={{ color: "var(--earn-navy, #1A1A18)" }}>{PLAN_PARTY_ASK}</p>
+                <div className="flex flex-wrap gap-3">
+                  {partyFields(pickedRow).map((field) => (
+                    <label key={field.key} className="flex flex-col gap-1 text-[14px]" style={{ color: "var(--earn-navy, #1A1A18)" }}>
+                      {field.label}
+                      <input
+                        type="number"
+                        min={0}
+                        inputMode="numeric"
+                        value={field.key === "adults" ? adults : kids}
+                        onChange={(e) => (field.key === "adults" ? setAdults : setKids)(e.target.value)}
+                        className="w-24 rounded-md border px-2 py-1.5 text-[14px]"
+                        style={{ borderColor: "var(--earn-line, #E8E8E2)" }}
+                        data-testid={`plan-entry-party-${field.key}`}
+                        aria-label={field.label}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
           ) : (
             <div className="space-y-4" data-testid="plan-entry-step-occasion">
               <p className="text-[14px]" style={{ color: "#7A7A72" }} data-testid="plan-entry-summary">
@@ -468,7 +576,10 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
                   <Chip
                     key={key}
                     active={state.group === key && !(moreSpecific && state.occasionSlug)}
-                    onClick={() => setState((s) => ({ ...s, ...choosePlanEntryGroup(s, key) }))}
+                    onClick={() => {
+                      setGroupChosen(true);
+                      setState((s) => ({ ...s, ...choosePlanEntryGroup(s, key) }));
+                    }}
                     testId={`plan-entry-group-${key}`}
                   >
                     {OCCASION_GROUP_LABELS[key]}
@@ -486,6 +597,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
                   value={state.occasionSlug ?? ""}
                   initialGroup={state.group}
                   onPick={(slug) => {
+                    setGroupChosen(true);
                     const row = occasionRows.find((o) => o.slug === slug);
                     const g = row ? occasionPickerGroupFor(row) : null;
                     setState((s) => ({ ...s, occasionSlug: slug, ...(g ? { group: g } : {}) }));
@@ -510,14 +622,14 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
             style={{ borderColor: "var(--earn-line, #E8E8E2)" }}
             data-testid="plan-entry-footer"
           >
-            {step === "occasion" ? (
+            {step === "occasion" || step === "details" ? (
               <button type="button" onClick={() => setStep("around")} className="text-[14px] font-medium" style={{ color: "#7A7A72" }} data-testid="button-plan-entry-back">
                 Back
               </button>
             ) : (
               <span />
             )}
-            {(inline || step === "occasion" || (state.market && state.occasionSlug)) && (
+            {(inline || step === "occasion" || step === "details" || (state.market && state.occasionSlug)) && (
               <button
                 type="button"
                 onClick={() => void start()}
