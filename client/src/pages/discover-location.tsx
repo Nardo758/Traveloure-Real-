@@ -1,4 +1,5 @@
 import { heroEyebrowFragments } from "@/lib/hero-eyebrow";
+import { formatTripDates } from "@/lib/trip-dates";
 import { isKyotoCity, KYOTO_CITY_DESCRIPTION } from "@/lib/g02-g06-copy";
 import { SEOHead } from "@/components/seo-head";
 import { SEASONAL_WRITER_LIVE } from "@/lib/season-line";
@@ -112,22 +113,6 @@ const MARKETPLACE_RAIL: { key: string; label: string; url: string }[] = [
   { key: "events", label: "Events", url: "/events" },
   { key: "services", label: "Services", url: "/services" },
 ];
-
-/** Compact trip-date range for the read-only "where" field, e.g. "May 3–7". */
-function formatTripDates(start?: string, end?: string): string | null {
-  if (!start) return null;
-  const s = new Date(start + "T12:00:00");
-  if (isNaN(s.getTime())) return null;
-  const sMonth = MONTH_NAMES[s.getMonth()].slice(0, 3);
-  const sDay = s.getDate();
-  if (!end) return `${sMonth} ${sDay}`;
-  const e = new Date(end + "T12:00:00");
-  if (isNaN(e.getTime())) return `${sMonth} ${sDay}`;
-  const eMonth = MONTH_NAMES[e.getMonth()].slice(0, 3);
-  const eDay = e.getDate();
-  if (s.getMonth() === e.getMonth()) return `${sMonth} ${sDay}–${eDay}`;
-  return `${sMonth} ${sDay} – ${eMonth} ${eDay}`;
-}
 
 function toTitleCase(str: string): string {
   return str
