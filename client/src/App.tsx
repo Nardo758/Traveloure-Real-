@@ -1,4 +1,5 @@
 import { Switch, Route, Redirect, useLocation, useSearch } from "wouter";
+import { VerifyEmailReminderBanner } from "@/components/auth/VerifyEmailReminderBanner";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -1570,6 +1571,8 @@ function App() {
                   <GuestCartMigrator />
                   <AuthReturnToRestorer />
                   <EmailVerificationHoldRedirect />
+                  {/* Row 149: the one site-wide reminder for an unverified email. */}
+                  <VerifyEmailReminderBanner />
                   <PaymentMethodSetupGate />
                   <MaintenanceGate>
                     <Router />

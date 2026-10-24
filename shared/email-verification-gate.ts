@@ -29,7 +29,7 @@ export const EMAIL_VERIFICATION_HOLD_MESSAGE = "Verify your email to continue.";
  * say whether an account exists or whether a letter was sent.
  */
 export const VERIFICATION_RESEND_MESSAGE =
-  "If an account exists for that email and still needs verification, we've sent a link.";
+  "If an account exists for that email and still needs verification, we'll send a link.";
 
 /** Changing the address on the verify screen. Same answer when the address is free or taken. */
 export const VERIFICATION_EMAIL_CHANGE_MESSAGE =
