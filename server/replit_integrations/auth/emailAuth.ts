@@ -17,7 +17,9 @@ import { CURRENT_TERMS_VERSION, CURRENT_PRIVACY_VERSION } from "@shared/legal-ve
 import { REGISTRATION_NEUTRAL_STATUS, registrationNeutralBody } from "@shared/registration-neutral";
 import {
   RESET_TOKEN_TTL_MIN, issuePasswordResetToken, consumePasswordResetToken, hashAuthToken,
+  peekPasswordResetTokenUser,
 } from "../../services/password-reset-tokens.service";
+import { isEmailVerifiedForUser, verifiedEmailActionsEnforced } from "../../services/verified-email-action-gate";
 import { verifyLoginCredential } from "../../services/login-credentials.service";
 import { verificationEmailRateLimiter } from "../../infrastructure/rate-limiter";
 import {
@@ -353,22 +355,37 @@ export function setupEmailAuth(app: Express): void {
       if (user && user.password) {
         // Skip OAuth-only accounts (no password set) — generating a reset for
         // them would be a no-op + signal that the email exists in another way.
-        const issued = await issuePasswordResetToken(user.id);
+        // Row 101: while sends are on, an unverified address (users.email_verified
+        // only — grandfathering is not honored) gets a verification letter instead
+        // of a reset link. The HTTP answer stays the neutral 200 either way.
+        // The flag is read first so an off switch adds no extra query.
+        const holdForVerification =
+          verifiedEmailActionsEnforced() && !(await isEmailVerifiedForUser(user.id));
+        if (holdForVerification) {
+          const address = user.email;
+          if (address) {
+            issueEmailVerification(user.id, address, user.firstName ?? null).catch(() => {
+              console.error("[auth/forgot-password] verification email issue failed for user", user.id);
+            });
+          }
+        } else {
+          const issued = await issuePasswordResetToken(user.id);
 
-        const resetUrl = `${getAppBaseUrl()}/reset-password?token=${encodeURIComponent(issued.raw)}`;
-        try {
-          await sendPasswordResetEmail({
-            toEmail: user.email!,
-            firstName: user.firstName ?? null,
-            resetUrl,
-            expiresInMinutes: RESET_TOKEN_TTL_MIN,
-            linkExpiresAt: issued.expiresAt,
-            tokenHash: hashAuthToken(issued.raw),
-          });
-        } catch (emailErr) {
-          // Don't surface delivery state to the client. Log for ops; the token
-          // row remains in the DB so retries are possible.
-          console.error("[auth/forgot-password] email delivery failed:", emailErr);
+          const resetUrl = `${getAppBaseUrl()}/reset-password?token=${encodeURIComponent(issued.raw)}`;
+          try {
+            await sendPasswordResetEmail({
+              toEmail: user.email!,
+              firstName: user.firstName ?? null,
+              resetUrl,
+              expiresInMinutes: RESET_TOKEN_TTL_MIN,
+              linkExpiresAt: issued.expiresAt,
+              tokenHash: hashAuthToken(issued.raw),
+            });
+          } catch (emailErr) {
+            // Don't surface delivery state to the client. Log for ops; the token
+            // row remains in the DB so retries are possible.
+            console.error("[auth/forgot-password] email delivery failed:", emailErr);
+          }
         }
       }
 
@@ -404,6 +421,17 @@ export function setupEmailAuth(app: Express): void {
 
       const { token, newPassword } = validation.data;
       const hashedPassword = await hashPassword(newPassword);
+      // Row 101: while sends are on, a link whose account is unverified is the same
+      // invalid-link answer, and the token stays unused. Verified accounts fall
+      // through to consume. The flag is read first so an off switch does not peek.
+      if (verifiedEmailActionsEnforced()) {
+        const ownerId = await peekPasswordResetTokenUser(token);
+        if (ownerId && !(await isEmailVerifiedForUser(ownerId))) {
+          return res.status(400).json({
+            message: "This reset link is invalid or has expired. Please request a new one.",
+          });
+        }
+      }
       const resetApplied = await consumePasswordResetToken(token, hashedPassword);
       if (!resetApplied) {
         return res.status(400).json({

@@ -24,6 +24,7 @@ import { Router } from "express";
 import { z } from "zod";
 
 import { isAuthenticated } from "../replit_integrations/auth";
+import { refuseUnverifiedTravelerSender } from "../services/verified-email-action-gate";
 import { getUserId } from "../utils/auth";
 import { quoteIssueBodySchema, quoteRequestBodySchema } from "@shared/service-quotes";
 import {
@@ -82,6 +83,7 @@ function zodMessage(err: unknown): string | null {
 router.post("/api/services/:id/quote-requests", isAuthenticated, async (req, res) => {
   try {
     const travelerId = getUserId(req)!;
+    if (travelerId && await refuseUnverifiedTravelerSender(res, travelerId)) return;
     const body = quoteRequestBodySchema.parse(req.body ?? {});
     const r = await requestQuote({
       serviceId: String(req.params.id),

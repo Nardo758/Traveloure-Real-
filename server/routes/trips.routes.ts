@@ -18,6 +18,7 @@ import { mergeExpertTimeEdit } from '@shared/expert-time-edit';
 import { recomputeLegForMode } from "../services/trip-transport-legs.service";
 import { zodErrorBody } from "../utils/zod-error-body";
 import { getUserId } from "../utils/auth";
+import { refuseUnverifiedTravelerContact } from "../services/verified-email-action-gate";
 import { authorizeTripLogistics, authorizeTripOwnerTier } from '../utils/trip-logistics-auth';
 import { createRateLimiter } from "../infrastructure/rate-limiter";
 import { withQueryTimer } from '../utils/queryTimer';
@@ -738,6 +739,11 @@ router.get(api.chats.list.path, isAuthenticated, async (req, res) => {
 router.post(api.chats.create.path, isAuthenticated, async (req, res) => {
      try {
       const input = api.chats.create.input.parse(req.body);
+      const senderId = getUserId(req) || input.senderId;
+      const recipientId = input.receiverId;
+      if (senderId && recipientId) {
+        if (await refuseUnverifiedTravelerContact(res, senderId, recipientId)) return;
+      }
       // For MVP, just create it directly
       const chat = await storage.createChat(input);
       res.status(201).json(chat);
