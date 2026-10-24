@@ -49,7 +49,8 @@ export function MonthGrid({
         ))}
         {marks.map((mk) => {
           const isToday = mk.date === today;
-          const total = mk.count + (mk.longRun ? 1 : 0);
+          // Row 67: a long run is counted on every day it covers, so the day's total is its count.
+          const total = mk.count;
           const picked = mode === "day" && selectedDay === mk.date;
           const inWeek = mode === "week" && selectedWeek !== null && weekEnd !== null && mk.date >= selectedWeek && mk.date <= weekEnd;
           const shadows: string[] = [];
