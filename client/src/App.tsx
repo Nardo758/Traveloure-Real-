@@ -99,6 +99,7 @@ const AdminPlans = lazy(() => import("@/pages/admin/plans"));
 const AdminRevenue = lazy(() => import("@/pages/admin/revenue"));
 const AdminAnalytics = lazy(() => import("@/pages/admin/analytics"));
 const AdminCategories = lazy(() => import("@/pages/admin/categories"));
+const AdminExperienceThemes = lazy(() => import("@/pages/admin/experience-themes"));
 const AdminExpertTemplates = lazy(() => import("@/pages/admin/expert-templates"));
 const AdminTemplateApprovals = lazy(() => import("@/pages/admin/template-approvals"));
 const AdminSearch = lazy(() => import("@/pages/admin/search"));
@@ -1284,6 +1285,9 @@ function Router() {
       </Route>
       <Route path="/admin/categories">
         {() => <ProtectedRoute component={AdminCategories} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/experience-themes">
+        {() => <ProtectedRoute component={AdminExperienceThemes} requiredRole="admin" />}
       </Route>
       <Route path="/admin/expert-templates">
         {() => <ProtectedRoute component={AdminExpertTemplates} requiredRole="admin" />}

@@ -1,3 +1,5 @@
+import { DISCOVER_THEME_PARAM as SERVICES_BROWSE_THEME_PARAM } from "@shared/experience-themes";
+
 /**
  * services-browse — THE URL CONTRACT OF THE MARKETPLACE SERVICES BROWSE, STATED ONCE.
  *
@@ -57,6 +59,13 @@ export const SERVICES_BROWSE_TRIP_PARAM = "tripId" as const;
  */
 export const SERVICES_BROWSE_LOCATION_PARAM = "location" as const;
 
+/**
+ * Theme slugs on the services browse and the city Discover page.
+ * The same name `GET /api/discover` reads. Empty means no theme filter,
+ * so listings with no theme stay in the result.
+ */
+export { SERVICES_BROWSE_THEME_PARAM };
+
 // RETIRED (§18c, ledger `2026-09-08-recorded-cleanups`): `SERVICES_BROWSE_UPSELL_SOURCE_PARAM`
 // / `upsellSource` was write-only ATTRIBUTION — two doors set it, the builder emitted it, and
 // NOTHING in `client/` or `server/` ever read it. The door lane that found it preserved it verbatim
@@ -78,6 +87,8 @@ export interface ServicesBrowseTarget {
   tripId?: string | null;
   /** The city to pre-fill the "where" filter with — the PLAN's own, never a placeholder. */
   location?: string | null;
+  /** Theme slugs. Omitted when empty so an unfiltered browse is unchanged. */
+  themes?: string[] | null;
 }
 
 /**
@@ -100,6 +111,8 @@ export function buildServicesBrowseHref(target: ServicesBrowseTarget): string {
     const value = trimmed(raw);
     if (value) params.set(name, value);
   }
+  const themes = (target.themes ?? []).map((slug) => trimmed(slug)).filter(Boolean);
+  if (themes.length > 0) params.set(SERVICES_BROWSE_THEME_PARAM, themes.join(","));
   const query = params.toString();
   return query ? `${SERVICES_BROWSE_PATH}?${query}` : SERVICES_BROWSE_PATH;
 }

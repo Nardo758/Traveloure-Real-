@@ -36,6 +36,7 @@ import {
 } from "@shared/experience-group";
 import { countdownLabel, type CityEventCard, type CityEventsPayload } from "@shared/city-events";
 import { EventRow } from "@/components/events/EventRow";
+import { planAroundEventTitle } from "@/components/landing/events-strip";
 import type { ExperienceType } from "@shared/schema";
 import { PLAN_DATES_SET_CTA, PLAN_PARTY_ASK } from "@shared/plan-dates";
 import { partyFields } from "@/lib/plan-steps";
@@ -43,6 +44,7 @@ import { travelersForSave } from "@/lib/plan-vocabulary";
 import {
   EVENT_OCCASION_SLUG,
   canStartPlan,
+  choosePlanEntryGroup,
   chosenOccasionSlug,
   eventsByMonth,
   eventsOverlapping,
@@ -368,7 +370,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
             withEvent(
               s,
               {
-                title: e.series ?? e.title,
+                title: planAroundEventTitle(e),
                 city: e.city,
                 country: OPERATING_MARKETS.find((m) => m.marketKey === e.marketKey)?.country ?? null,
                 venue: e.venue,
@@ -576,7 +578,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
                     active={state.group === key && !(moreSpecific && state.occasionSlug)}
                     onClick={() => {
                       setGroupChosen(true);
-                      setState((s) => ({ ...s, group: key, occasionSlug: null }));
+                      setState((s) => ({ ...s, ...choosePlanEntryGroup(s, key) }));
                     }}
                     testId={`plan-entry-group-${key}`}
                   >

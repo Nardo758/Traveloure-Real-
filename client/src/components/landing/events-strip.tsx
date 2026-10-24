@@ -59,9 +59,31 @@ export function formatEventDates(firstDate: string, lastDate: string, nights: nu
  */
 export type CityEventDoor = Extract<PlanDoor, "event_strip" | "events_page" | "blog_post" | "event_detail">;
 
+type PlanAroundEvent = Pick<CityEventCard, "series" | "title" | "city" | "marketKey" | "firstDate" | "lastDate" | "startTime" | "venue"> & {
+  sourceId?: string;
+  seriesKey?: string | null;
+  nights?: number;
+  venueLocality?: string | null;
+  venueCity?: string | null;
+};
+
+/**
+ * The name the plan keeps for this event. A single show that shares a tour name includes its date
+ * and its city (the venue's city when that is outside the market city), so two dates of one tour
+ * do not share a name. A multi-day run, and a show with no series, keep the name the card already uses.
+ */
+export function planAroundEventTitle(event: PlanAroundEvent): string {
+  const series = event.series?.trim() || null;
+  if (!series || event.firstDate !== event.lastDate) return series ?? event.title;
+  const date = formatEventDates(event.firstDate, event.lastDate, event.nights ?? 1);
+  const named = (event.venueCity ?? event.venueLocality ?? "").trim();
+  const place = named && named.toLowerCase() !== event.city.trim().toLowerCase() ? named : event.city;
+  return `${series} · ${date} · ${place}`;
+}
+
 /** The PlanningSource "Plan around it" opens — the event row's own facts only, plus the door. */
 export function planAroundSource(
-  event: Pick<CityEventCard, "series" | "title" | "city" | "marketKey" | "firstDate" | "lastDate" | "startTime" | "venue"> & { sourceId?: string; seriesKey?: string | null },
+  event: PlanAroundEvent,
   door: CityEventDoor,
   // SH-1 Launch Q14.1: the series' show dates when the door holds them (two or more sibling rows); absent otherwise.
   showDates?: readonly string[],
@@ -77,7 +99,7 @@ export function planAroundSource(
     ...(event.seriesKey ? { seriesKey: event.seriesKey } : {}),
     ...(showDates && isShowSeries(showDates) ? { showDates } : {}),
     anchor: {
-      title: event.series ?? event.title,
+      title: planAroundEventTitle(event),
       firstDate: event.firstDate,
       lastDate: event.lastDate,
       startTime: event.startTime,

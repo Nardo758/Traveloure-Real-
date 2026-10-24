@@ -1222,6 +1222,20 @@ export function isBookingModeChosen(
   return provenance !== "platform_default";
 }
 
+// Experience themes (migration 409, ledger `2026-10-23-experience-themes`).
+// Admin-edited catalog. A listing's theme_id points here. NULL on the listing
+// means untagged — no backfill. active NULL or true is listed; false is hidden.
+// No DEFAULT, no CHECK. The unique slug index is declared so publish does not drop it.
+export const experienceThemes = pgTable("experience_themes", {
+  id: varchar("id").primaryKey(),
+  slug: varchar("slug", { length: 80 }).notNull(),
+  label: varchar("label", { length: 120 }).notNull(),
+  sortOrder: integer("sort_order"),
+  active: boolean("active"),
+}, (table) => ({
+  slugKey: uniqueIndex("experience_themes_slug_key").on(table.slug),
+}));
+
 export const providerServices = pgTable("provider_services", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -1620,6 +1634,12 @@ export const providerServices = pgTable("provider_services", {
   createdVia: varchar("created_via", { length: 24 }),
   sourceRef: varchar("source_ref", { length: 128 }),
 
+  // Migration 409 (ledger `2026-10-23-experience-themes`). One catalog theme.
+  // NULL = untagged (existing rows stay NULL; no backfill). ON DELETE SET NULL.
+  // Omitted from insertProviderServiceSchema and re-admitted by admitListingTheme
+  // (§19). An approved listing stages a change here (IDENTITY_EDIT_FIELDS).
+  themeId: varchar("theme_id").references(() => experienceThemes.id, { onDelete: "set null" }),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
@@ -1636,7 +1656,22 @@ export const providerServices = pgTable("provider_services", {
     "gin",
     sql`service_name gin_trgm_ops`,
   ),
+  psThemeIdIdx: index("idx_provider_services_theme_id").on(table.themeId),
 }));
+
+// Suggestions from "Other / suggest a theme" (migration 409). A row here is not a
+// published theme. Accept may insert experience_themes; it does not set theme_id.
+// status NULL = pending. No CHECK, no DEFAULT.
+export const experienceThemeSuggestions = pgTable("experience_theme_suggestions", {
+  id: varchar("id").primaryKey(),
+  label: varchar("label", { length: 120 }).notNull(),
+  serviceId: varchar("service_id").references(() => providerServices.id, { onDelete: "set null" }),
+  suggestedBy: varchar("suggested_by").references(() => users.id, { onDelete: "set null" }),
+  status: varchar("status", { length: 20 }),
+  createdAt: timestamp("created_at"),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedBy: varchar("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+});
 
 // === Bundle components (Product Builder §17, migration 151 — ratified join-table decision) ===
 // A bundle IS a provider_services row (product_shape='bundle') so the F2 approval queue,
@@ -3180,7 +3215,7 @@ export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcateg
 // clamped, so this was a false-audit-trail write, not an approval bypass; the real admin
 // approve/reject writers below unconditionally overwrite all four the moment a real review
 // happens). Found by `scripts/check-privileged-field-completeness.cjs` (§19 "close the class").
-export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true, declaredArtifactDeliverable: true, pendingChanges: true, editReviewStatus: true, createdVia: true, sourceRef: true, approvalStatus: true, submittedAt: true, reviewedAt: true, reviewedBy: true, rejectionReason: true, expertOfferingTypeKey: true, priceBasis: true }).extend({
+export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true, declaredArtifactDeliverable: true, pendingChanges: true, editReviewStatus: true, createdVia: true, sourceRef: true, approvalStatus: true, submittedAt: true, reviewedAt: true, reviewedBy: true, rejectionReason: true, expertOfferingTypeKey: true, priceBasis: true, themeId: true }).extend({
   // X1: app-enforced vocabulary (migration 144 has no DB CHECK) — reject anything outside the set here.
   cancellationPolicyType: z.enum(cancellationPolicyTypeEnum).nullable().optional(),
   // deliveryMethod vocabulary — UNLIKE the publish-trap fields below, a DB CHECK exists here

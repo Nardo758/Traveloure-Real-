@@ -161,6 +161,7 @@ import {
   expertUpdatedItineraries,
   tripAnalyticsEnhanced,
   bundleComponents,
+  experienceThemes,
   vendorContracts,
   // D-18 (migration 297): the announcement marker's one stamp site lives here.
   readyMadePurchases,
@@ -596,8 +597,9 @@ export interface IStorage {
     sortBy?: "rating" | "price_low" | "price_high" | "reviews";
     limit?: number;
     offset?: number;
+    themeIds?: string[];
 
-  }): Promise<{ services: (ProviderService & { providerFirstName?: string | null; providerLastName?: string | null; providerImageUrl?: string | null; providerRating?: string | null; providerBusinessName?: string | null; providerHandle?: string | null })[]; total: number; suggestion: string | null }>;
+  }): Promise<{ services: (ProviderService & { providerFirstName?: string | null; providerLastName?: string | null; providerImageUrl?: string | null; providerRating?: string | null; providerBusinessName?: string | null; providerHandle?: string | null; themeSlug: string | null; themeLabel: string | null })[]; total: number; suggestion: string | null }>;
 
   // Cart
 
@@ -4146,7 +4148,8 @@ export class DatabaseStorage implements IStorage {
     sortBy?: "rating" | "price_low" | "price_high" | "reviews";
     limit?: number;
     offset?: number;
-  }): Promise<{ services: ProviderService[]; total: number; suggestion: string | null }> {
+    themeIds?: string[];
+  }): Promise<{ services: (ProviderService & { themeSlug: string | null; themeLabel: string | null })[]; total: number; suggestion: string | null }> {
     // F2 public read-gate: unified search is a public surface — approved listings only.
     // Search-quality task: ILIKE '%q%' replaced with Postgres full-text search (tsvector,
     // name setweight 'A' > description 'B') plus a pg_trgm trigram fallback that fires when
@@ -4174,6 +4177,10 @@ export class DatabaseStorage implements IStorage {
     }
     if (filters.minRating) {
       baseConditions.push(sqlOp`COALESCE(${providerServices.averageRating}, 0) >= ${filters.minRating}`);
+    }
+    // An empty theme list is "no theme filter": untagged listings stay in the result.
+    if (filters.themeIds && filters.themeIds.length > 0) {
+      baseConditions.push(inArray(providerServices.themeId, filters.themeIds));
     }
 
     // Clamp to 200 so no single request can dump the entire table.
@@ -4331,6 +4338,22 @@ export class DatabaseStorage implements IStorage {
       });
     }
 
+    const themeIdsOnPage: string[] = [];
+    const seenThemeIds = new Set<string>();
+    for (const service of enrichedServices) {
+      if (service.themeId && !seenThemeIds.has(service.themeId)) {
+        seenThemeIds.add(service.themeId);
+        themeIdsOnPage.push(service.themeId);
+      }
+    }
+    const themeRows = themeIdsOnPage.length
+      ? await db
+          .select({ id: experienceThemes.id, slug: experienceThemes.slug, label: experienceThemes.label })
+          .from(experienceThemes)
+          .where(inArray(experienceThemes.id, themeIdsOnPage))
+      : [];
+    const themeById = new Map(themeRows.map((row) => [row.id, row]));
+
     return {
       // D3 leak-prevention: this function's one caller is GET /api/discover (unauthenticated
       // public search) — serviceFile is the pdf-delivery product itself and must never
@@ -4342,18 +4365,25 @@ export class DatabaseStorage implements IStorage {
       // on the detail and browse reads. Found by S9's strip audit, closed at integration (the
       // T-REP precedent: verified and fixed in the same landing). Redacted-to-null so the return
       // type is unchanged, exactly like getAllActiveServices.
-      services: enrichedServices.map((s) => ({
-        ...s,
-        serviceFile: null,
-        joinLink: null,
-        revenueShareRate: null,
-        reviewedBy: null,
-        rejectionReason: null,
-        formStatus: null,
-        submittedAt: null,
-        reviewedAt: null,
-        totalRevenue: null,
-      })),
+      // themeSlug/themeLabel are null when the listing has no theme. The public payload never
+      // says "Untagged" (that word is admin-only).
+      services: enrichedServices.map((s) => {
+        const theme = s.themeId ? themeById.get(s.themeId) : undefined;
+        return {
+          ...s,
+          themeSlug: theme?.slug ?? null,
+          themeLabel: theme?.label ?? null,
+          serviceFile: null,
+          joinLink: null,
+          revenueShareRate: null,
+          reviewedBy: null,
+          rejectionReason: null,
+          formStatus: null,
+          submittedAt: null,
+          reviewedAt: null,
+          totalRevenue: null,
+        };
+      }),
       total,
       suggestion,
     };

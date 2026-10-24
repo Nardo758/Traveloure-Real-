@@ -35,6 +35,8 @@ import {
   loadEarnerDiscoverImpressions,
   resolveClickAttribution,
 } from "../services/discover-impressions.service";
+import { UNKNOWN_THEME_MESSAGE, parseDiscoverThemeParam } from "@shared/experience-themes";
+import { resolveThemeIdsBySlug } from "../services/experience-themes.service";
 import { db } from "../db";
 import { storage } from "../storage";
 import { reFinalizeIfCurrentlyFinal } from "../services/trip-finalize.service";
@@ -2970,6 +2972,14 @@ router.get("/api/services", async (req, res) => {
 
 router.get("/api/discover", async (req, res) => {
     const { limit, offset } = parsePagination(req.query, { defaultLimit: 20 });
+    const parsedThemes = parseDiscoverThemeParam(req.query.theme);
+    if (!parsedThemes.ok) {
+      return res.status(400).json({ message: parsedThemes.message || UNKNOWN_THEME_MESSAGE });
+    }
+    const resolvedThemes = await resolveThemeIdsBySlug(parsedThemes.slugs);
+    if (!resolvedThemes.ok) {
+      return res.status(400).json({ message: UNKNOWN_THEME_MESSAGE });
+    }
     const filters = {
       query: req.query.q as string | undefined,
       categoryId: req.query.categoryId as string | undefined,
@@ -2980,6 +2990,7 @@ router.get("/api/discover", async (req, res) => {
       sortBy: req.query.sortBy as "rating" | "price_low" | "price_high" | "reviews" | undefined,
       limit,
       offset,
+      themeIds: resolvedThemes.ids.length > 0 ? resolvedThemes.ids : undefined,
     };
     const result = await storage.unifiedSearch(filters);
 

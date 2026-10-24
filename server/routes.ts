@@ -276,6 +276,7 @@ import handoffRoutes from "./routes/handoff.routes";
 import versionsRoutes from "./routes/versions.routes";
 import adminMarketsRoutes from "./routes/admin-markets.routes";
 import adminPlaceCoordsRoutes from "./routes/admin-place-coords.routes";
+import experienceThemesRoutes from "./routes/experience-themes.routes";
 import { dedupedRequest, callWithCircuitBreaker } from "./utils/requestDeduplication";
 import { aiFailureResponse, isNonRetryableAiError, reportAiUpstreamError } from "./services/ai-upstream-errors";
 import adminRoutes from "./routes/admin.routes";
@@ -392,6 +393,7 @@ import { readSupplyAccount, refuseUnapprovedListingWrite } from "./services/pend
 // `provider_services.expert_offering_type_key` off a request body (§19 allowlist), shared by the
 // two `/api/provider/services` write rails below — never a second copy (§18 rule 1).
 import { admitExpertOfferingTypeKey } from "./services/expert-offering-key.service";
+import { admitListingTheme, recordThemeSuggestion } from "./services/experience-themes.service";
 import { admitDeclaredArtifactDeliverable } from "./services/declared-artifact.service";
 import { admitPriceBasis } from "./services/price-basis.service";
 // The ONE booking-concierge predicate (ledger `2026-09-12-offering-key-is-canonical`) — see the
@@ -399,6 +401,7 @@ import { admitPriceBasis } from "./services/price-basis.service";
 import { resolveBookingConciergeItems } from "./services/booking-concierge.service";
 // SS-5c protected-title soft warning (ruling 69 disposition 5) — advisory only, never a block.
 import { detectProtectedTitleClaims } from "@shared/service-attestations";
+import { listingBannedWording } from "./services/listing-banned-wording";
 import { calculateCommission, BookingType } from "./utils/commissionCalculator";
 // Ready-made authoring mode (brief §2): explicit present-value author check. Never getTripRole.
 import { isTripAuthor } from "./utils/trip-authorship";
@@ -1151,6 +1154,7 @@ export async function registerRoutes(
   app.use(adminMarketsRoutes);
   // LG-1: admin-entered routing coordinates (§2 blanket guard on /api/admin).
   app.use(adminPlaceCoordsRoutes);
+  app.use(experienceThemesRoutes);
 
   // Optimization routes - heuristic preview + payment-gated AI optimization
   app.use(optimizationRoutes);
@@ -4109,6 +4113,14 @@ ${bannedCopyPromptLine()}`;
         ? { expertOfferingTypeKey: expertOfferingAdmission.key }
         : {};
 
+      // Migration 409: themeId is omitted from the insert schema (§19) and re-admitted here.
+      // A body that never names a theme leaves the column untouched. "Other" does not set themeId.
+      const themeAdmission = await admitListingTheme(bodyWithoutLocation);
+      if (!themeAdmission.ok) {
+        return res.status(themeAdmission.status).json(themeAdmission.body);
+      }
+      const themePatch = themeAdmission.themePatch;
+
       // D-40 (migration 303, ledger `2026-09-15-d24-d26-acceptance-columns`): a `hybrid` listing may
       // DECLARE ONE artifact deliverable that takes D-6 acceptance on its own while the booking
       // keeps D-7 completion. §19 — the generic body schema `.omit()`s the column, so this pick-based
@@ -4336,9 +4348,17 @@ ${bannedCopyPromptLine()}`;
         ...expertOfferingPatch,
         ...declaredArtifactPatch,
         ...priceBasisPatch,
+        ...themePatch,
         userId,
         ...(saveIntent.draft ? { approvalStatus: "draft" as const } : {}),
       });
+      if (themeAdmission.suggestion) {
+        await recordThemeSuggestion({
+          label: themeAdmission.suggestion,
+          serviceId: service.id,
+          suggestedBy: userId,
+        });
+      }
 
       // The affirmations validated above, now that the child row has a parent. Append-only and
       // idempotent (UNIQUE + ON CONFLICT DO NOTHING); `affirmedBy` is stamped from the session.
@@ -4372,6 +4392,10 @@ ${bannedCopyPromptLine()}`;
       res.status(201).json({
         ...omitFields(service, ["revenueShareRate"] as const),
         ...(titleWarning ? { warnings: { protectedTitleClaim: titleWarning } } : {}),
+        bannedWording: listingBannedWording({
+          serviceName: service.serviceName,
+          description: service.description,
+        }),
       });
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -4531,6 +4555,14 @@ ${bannedCopyPromptLine()}`;
       const expertOfferingPatch = expertOfferingAdmission.present
         ? { expertOfferingTypeKey: expertOfferingAdmission.key }
         : {};
+
+      // Migration 409: themeId is omitted from the insert schema (§19) and re-admitted here.
+      // A body that never names a theme leaves the column untouched. "Other" does not set themeId.
+      const themeAdmission = await admitListingTheme(bodyWithoutLocation);
+      if (!themeAdmission.ok) {
+        return res.status(themeAdmission.status).json(themeAdmission.body);
+      }
+      const themePatch = themeAdmission.themePatch;
 
       // D-40 (migration 303, ledger `2026-09-15-d24-d26-acceptance-columns`): a `hybrid` listing may
       // DECLARE ONE artifact deliverable that takes D-6 acceptance on its own while the booking
@@ -4778,7 +4810,7 @@ ${bannedCopyPromptLine()}`;
       // Migration 292: the offering key joins the patch here, BEFORE the §23 edit split below —
       // it is an IDENTITY field (`IDENTITY_EDIT_FIELDS`, "Category and offering"), so on an
       // APPROVED listing it is staged for review rather than applied to the live row.
-      let safeInput = { ...safeInputWithoutLocation, ...locationPatch, ...cityPatchUpd, ...expertOfferingPatch, ...declaredArtifactPatch, ...priceBasisPatch };
+      let safeInput = { ...safeInputWithoutLocation, ...locationPatch, ...cityPatchUpd, ...expertOfferingPatch, ...declaredArtifactPatch, ...priceBasisPatch, ...themePatch };
 
       // ── Ruling 112 Q8 (CLAUDE.md §23) — the EDIT SPLIT, decided ONLY here ─────────────────
       // An APPROVED listing is never taken down for an edit. Identity-changing fields are
@@ -4874,9 +4906,19 @@ ${bannedCopyPromptLine()}`;
       // SS-5c SOFT WARNING (ruling 69 disposition 5) — same posture as CREATE. Scanned against
       // the text this write actually produces: the field from the body when it was edited, else
       // the stored value, so an untouched offending description keeps warning on every save.
+      if (themeAdmission.suggestion) {
+        await recordThemeSuggestion({
+          label: themeAdmission.suggestion,
+          serviceId: req.params.id,
+          suggestedBy: userId,
+        });
+      }
+
+      const scannedName = (input as any).serviceName ?? finalRow?.serviceName ?? ownedService.serviceName;
+      const scannedDescription = (input as any).description ?? finalRow?.description ?? ownedService.description;
       const titleWarningUpd = detectProtectedTitleClaims({
-        serviceName: (input as any).serviceName ?? finalRow?.serviceName ?? ownedService.serviceName,
-        description: (input as any).description ?? finalRow?.description ?? ownedService.description,
+        serviceName: scannedName,
+        description: scannedDescription,
       });
       res.json(
         finalRow
@@ -4888,6 +4930,10 @@ ${bannedCopyPromptLine()}`;
               ...(stagedEditKeys.length > 0
                 ? { editReview: { status: "pending", stagedKeys: stagedEditKeys } }
                 : {}),
+              bannedWording: listingBannedWording({
+                serviceName: scannedName,
+                description: scannedDescription,
+              }),
             }
           : finalRow,
       );
@@ -4932,7 +4978,17 @@ ${bannedCopyPromptLine()}`;
         return res.status(submitWriteRefusal.status).json(submitWriteRefusal.body);
       }
       const submitted = await storage.submitProviderServiceListing(req.params.id);
-      res.json(submitted ? omitFields(submitted as any, ["revenueShareRate"] as const) : submitted);
+      res.json(
+        submitted
+          ? {
+              ...omitFields(submitted as any, ["revenueShareRate"] as const),
+              bannedWording: listingBannedWording({
+                serviceName: submitted.title,
+                description: submitted.description,
+              }),
+            }
+          : submitted,
+      );
     } catch (err) {
       console.error("Error submitting provider service:", err);
       res.status(500).json({ message: "Failed to submit service for review" });
@@ -6000,7 +6056,13 @@ ${bannedCopyPromptLine()}`;
         experienceTypes,
         isActive: isActive !== false,
       });
-      res.status(201).json(service);
+      res.status(201).json({
+        ...service,
+        bannedWording: listingBannedWording({
+          serviceName: service.title,
+          description: service.description,
+        }),
+      });
     } catch (err) {
       console.error("Error creating custom service:", err);
       res.status(500).json({ message: "Failed to create custom service" });
@@ -6024,7 +6086,17 @@ ${bannedCopyPromptLine()}`;
       }
 
       const updated = await storage.updateProviderServiceListing(req.params.id, req.body);
-      res.json(updated);
+      res.json(
+        updated
+          ? {
+              ...updated,
+              bannedWording: listingBannedWording({
+                serviceName: updated.title,
+                description: updated.description,
+              }),
+            }
+          : updated,
+      );
     } catch (err) {
       console.error("Error updating custom service:", err);
       res.status(500).json({ message: "Failed to update custom service" });
@@ -6056,7 +6128,17 @@ ${bannedCopyPromptLine()}`;
       }
 
       const submitted = await storage.submitProviderServiceListing(req.params.id);
-      res.json(submitted);
+      res.json(
+        submitted
+          ? {
+              ...submitted,
+              bannedWording: listingBannedWording({
+                serviceName: submitted.title,
+                description: submitted.description,
+              }),
+            }
+          : submitted,
+      );
     } catch (err) {
       console.error("Error submitting custom service:", err);
       res.status(500).json({ message: "Failed to submit custom service" });

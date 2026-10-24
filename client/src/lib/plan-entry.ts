@@ -206,15 +206,18 @@ export function withEvent(state: PlanEntryState, e: PlanEntryEvent, occasionSlug
   const group = groupForEvent(e);
   const run = wholeRun(e);
   const options = nightPickerOptions({ event: e, market }, now);
+  // A one-night show in a series is one night (the brief). That night is the show the traveler
+  // opened when it is still to come; otherwise the first show still to come. The trips group keeps the whole run.
+  const pickedNight =
+    options && group === "moments" ? (options.includes(e.firstDate) ? e.firstDate : options[0]) : null;
   return {
     ...state,
     around: state.around ?? "event",
     market,
     event: e,
     ...run,
-    // A Moment around a long run defaults to ONE night (the brief); a trip keeps the whole run.
-    night: options && group === "moments" ? options[0] : null,
-    ...(options && group === "moments" ? { startDate: options[0], endDate: options[0] } : {}),
+    night: pickedNight,
+    ...(pickedNight ? { startDate: pickedNight, endDate: pickedNight } : {}),
     group,
     occasionSlug: occasionSlug?.trim() || null,
   };
@@ -317,6 +320,36 @@ export function startsStraightAway(state: PlanEntryState, catalogSlugs: readonly
 /** The occasion the plan is minted with: "More specific" if chosen, else the group's default. */
 export function chosenOccasionSlug(state: PlanEntryState): string {
   return state.occasionSlug || OCCASION_GROUP_DEFAULT_SLUG[state.group];
+}
+
+/**
+ * The group chip. An event door arrives with occasion `show` already in the moments group when the
+ * event is one night. Choosing that same group keeps `show`. Choosing a different group clears it,
+ * so that group's own default applies. "More specific" is a separate write.
+ */
+export function choosePlanEntryGroup(
+  state: Pick<PlanEntryState, "event" | "occasionSlug" | "group">,
+  group: OccasionPickerGroup,
+): { group: OccasionPickerGroup; occasionSlug: string | null } {
+  const keepDoorOccasion = !!state.event && state.occasionSlug === EVENT_OCCASION_SLUG && group === state.group;
+  return { group, occasionSlug: keepDoorOccasion ? state.occasionSlug : null };
+}
+
+/**
+ * Dates a city browse page may show from the pen. No plan (no `tripId`) contributes none. A started
+ * plan whose last day is already over contributes none. A started plan that began before `today`
+ * shows from `today` on. `today` is the market's calendar day (`marketToday`).
+ */
+export function browseDatesFromPen(
+  pen: { tripId?: string | null; startDate?: string | null; endDate?: string | null },
+  today: string,
+): { startDate: string; endDate: string | null } | null {
+  if (!pen.tripId || !pen.startDate) return null;
+  const end = pen.endDate ?? pen.startDate;
+  if (end < today) return null;
+  const startDate = pen.startDate < today ? today : pen.startDate;
+  const endDate = pen.endDate ? (pen.endDate < startDate ? startDate : pen.endDate) : null;
+  return { startDate, endDate };
 }
 
 /** Start a plan needs a city; nothing else (dates are optional — E1 placeholder window). */

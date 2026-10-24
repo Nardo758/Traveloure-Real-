@@ -30,6 +30,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { ListingThemePicker, type ListingThemeOption } from "@/components/listing-theme-picker";
+import { suggestThemeSlug, THEME_REQUIRED_MESSAGE } from "@shared/experience-themes";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -180,6 +182,10 @@ interface ProviderOfferingType {
 
 interface ServiceFormData {
   name: string;
+  themeChoice: "" | "catalog" | "other";
+  themeId: string;
+  themeSuggestion: string;
+  themeSuggested: boolean;
   categoryId: string;
   subcategoryId: string;
   description: string;
@@ -382,6 +388,10 @@ const intOrNull = (v: string): number | null => {
 function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
   return {
     name: "",
+    themeChoice: "",
+    themeId: "",
+    themeSuggestion: "",
+    themeSuggested: false,
     categoryId: "",
     subcategoryId: "",
     description: "",
@@ -465,6 +475,10 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
   }
   return {
     name: s.serviceName || "",
+    themeChoice: s.themeId ? "catalog" : "",
+    themeId: s.themeId || "",
+    themeSuggestion: "",
+    themeSuggested: false,
     categoryId: s.categoryId || "",
     subcategoryId: s.subcategoryId || "",
     description: s.description || "",
@@ -698,6 +712,8 @@ function PricingFeesHomeLink({ id }: { id?: string }) {
   );
 }
 
+const EMPTY_EXPERIENCE_THEMES: ListingThemeOption[] = [];
+
 export function ServiceForm({ role, id, onSuccess, draftOnly = false }: ServiceFormProps) {
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -757,6 +773,12 @@ export function ServiceForm({ role, id, onSuccess, draftOnly = false }: ServiceF
   const { data: categories = [] } = useQuery<ServiceCategory[]>({
     queryKey: ["/api/service-categories"],
   });
+  const { data: experienceThemeCatalog } = useQuery<{ themes: ListingThemeOption[] }>({
+    queryKey: ["/api/experience-themes"],
+    staleTime: 5 * 60_000,
+  });
+  const experienceThemes = experienceThemeCatalog?.themes ?? EMPTY_EXPERIENCE_THEMES;
+  const themeTouched = useRef(false);
 
   // Expert 5-tier offering types catalog. Fetched for BOTH roles since migration 292 (ledger
   // `2026-09-12-listing-names-its-expert-offering`): a listing names its own expert offering and
@@ -1151,9 +1173,26 @@ export function ServiceForm({ role, id, onSuccess, draftOnly = false }: ServiceF
 
   useEffect(() => {
     if (existingService) {
+      if (existingService.themeId) themeTouched.current = true;
       setFormData(mapServiceToForm(existingService, role));
     }
   }, [existingService, role]);
+
+  useEffect(() => {
+    if (isEditMode || themeTouched.current || experienceThemes.length === 0) return;
+    const slug = suggestThemeSlug(formData.name, experienceThemes);
+    setFormData((prev) => {
+      if (themeTouched.current) return prev;
+      if (!slug) {
+        if (!prev.themeSuggested) return prev;
+        return { ...prev, themeChoice: "", themeId: "", themeSuggestion: "", themeSuggested: false };
+      }
+      const match = experienceThemes.find((theme) => theme.slug === slug);
+      if (!match) return prev;
+      if (prev.themeChoice === "catalog" && prev.themeId === match.id && prev.themeSuggested) return prev;
+      return { ...prev, themeChoice: "catalog", themeId: match.id, themeSuggestion: "", themeSuggested: true };
+    });
+  }, [formData.name, experienceThemes, isEditMode]);
 
   // ── A1: `?step=<key>` deep link ────────────────────────────────────────────────────────────
   // The checklist rows, Catalog's map preview and the pin-health rail all need to re-enter the
@@ -1636,6 +1675,14 @@ export function ServiceForm({ role, id, onSuccess, draftOnly = false }: ServiceF
       // into disagreement.
       payload.expertOfferingTypeKey = formData.expertOfferingTypeKey || null;
 
+      if (formData.themeChoice === "catalog" && formData.themeId) {
+        payload.themeChoice = "catalog";
+        payload.themeId = formData.themeId;
+      } else if (formData.themeChoice === "other") {
+        payload.themeChoice = "other";
+        payload.themeSuggestion = formData.themeSuggestion.trim();
+      }
+
       // Role-specific fields
       if (role === "provider") {
         payload.includesExpertNotes = formData.includesExpertNotes;
@@ -1668,6 +1715,13 @@ export function ServiceForm({ role, id, onSuccess, draftOnly = false }: ServiceF
       if (submitAction !== "draft") {
         if (!formData.categoryId) {
           throw new Error("Pick a category before submitting for review. Save as draft to finish later.");
+        }
+        const themeRequired = !isEditMode || formData.approvalStatus === "draft";
+        const catalogPick = formData.themeChoice === "catalog" && !!formData.themeId;
+        const suggestionText = formData.themeSuggestion.trim();
+        const otherPick = formData.themeChoice === "other" && suggestionText.length >= 3 && suggestionText.length <= 80;
+        if (themeRequired && !catalogPick && !otherPick) {
+          throw new Error(THEME_REQUIRED_MESSAGE);
         }
         const quotePriced = formData.priceType === "Custom quote";
         const priceNum = Number(priceScalar);
@@ -3174,6 +3228,37 @@ export function ServiceForm({ role, id, onSuccess, draftOnly = false }: ServiceF
               <p className="text-xs text-muted-foreground mt-1">Travelers see this first.</p>
             </div>
           </div>
+
+          <ListingThemePicker
+            themes={experienceThemes}
+            choice={formData.themeChoice}
+            themeId={formData.themeId}
+            suggestion={formData.themeSuggestion}
+            suggested={formData.themeSuggested}
+            onSelectCatalog={(theme) => {
+              themeTouched.current = true;
+              setFormData((prev) => ({
+                ...prev,
+                themeChoice: "catalog",
+                themeId: theme.id,
+                themeSuggestion: "",
+                themeSuggested: false,
+              }));
+            }}
+            onSelectOther={() => {
+              themeTouched.current = true;
+              setFormData((prev) => ({
+                ...prev,
+                themeChoice: "other",
+                themeId: "",
+                themeSuggested: false,
+              }));
+            }}
+            onSuggestionChange={(value) => {
+              themeTouched.current = true;
+              set("themeSuggestion", value);
+            }}
+          />
 
           {/* Ruling 115: the DECLARED source language of the listing's own content — asked,
               never guessed from the text (§13). Drives which locales are translation targets
