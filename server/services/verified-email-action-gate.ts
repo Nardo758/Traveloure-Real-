@@ -12,9 +12,20 @@
  * even when the account already has platform activity.
  */
 import type { RequestHandler } from "express";
+import { eq } from "drizzle-orm";
 import { emailVerificationDeniedBody } from "@shared/email-verification-gate";
+import { users } from "@shared/models/auth";
 import { authStorage } from "../replit_integrations/auth/storage";
 import { emailSendsEnabled } from "./email.service";
+
+/**
+ * db or a transaction that already holds the users row lock.
+ * The chain is drizzle's select/from/where/limit. `any` keeps that builder
+ * assignable from both the pool and a transaction without importing db here.
+ */
+type EmailVerifiedConn = {
+  select: (shape: { emailVerified: typeof users.emailVerified }) => any;
+};
 
 export type VerifiedEmailAction =
   | "checkout"
@@ -83,4 +94,38 @@ export function requireVerifiedEmail(action: VerifiedEmailAction): RequestHandle
       return res.status(503).json({ message: "Authentication service temporarily unavailable" });
     }
   };
+}
+
+/**
+ * Payout refusal while sends are on (row 101). The body is the shared
+ * verification refusal. Grandfathering is not an input: only users.email_verified
+ * counts, and a null column is unverified.
+ */
+export const PAYOUT_EMAIL_VERIFICATION_BODY = emailVerificationDeniedBody();
+
+/** Real column value on the caller's connection, so a held users-row lock covers the read. */
+export async function earnerEmailVerifiedForPayout(
+  conn: EmailVerifiedConn,
+  earnerId: string,
+): Promise<boolean> {
+  const [row] = await conn
+    .select({ emailVerified: users.emailVerified })
+    .from(users)
+    .where(eq(users.id, earnerId))
+    .limit(1);
+  return row?.emailVerified != null;
+}
+
+/**
+ * The payout refusal, or null when the payout may proceed.
+ * Enforcement off returns null without reading the column.
+ */
+export async function payoutEmailVerificationDenial(
+  conn: EmailVerifiedConn,
+  earnerId: string,
+): Promise<typeof PAYOUT_EMAIL_VERIFICATION_BODY | null> {
+  if (!verifiedEmailActionsEnforced()) return null;
+  const emailVerified = await earnerEmailVerifiedForPayout(conn, earnerId);
+  if (decideVerifiedEmailAction({ enforced: true, emailVerified }) === "allow") return null;
+  return PAYOUT_EMAIL_VERIFICATION_BODY;
 }
