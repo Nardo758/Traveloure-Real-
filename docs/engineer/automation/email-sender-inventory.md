@@ -94,6 +94,8 @@ Two functions have no production caller: `enqueueBookingConfirmationEmail` and t
 
 This inventory was not run against production. There is no production count here.
 
+Leon sets the allowlist to real `email_type` values. Example: `EMAIL_TEMPLATE_ALLOWLIST=email_verification,itinerary_ready`
+
 When `EMAIL_SENDS_ENABLED` becomes `true`, two things happen:
 
 1. Every `email_outbox` row that is already due (`pending`, `failed`, `held`, or an expired `processing` lease) and whose `email_type` is on `EMAIL_TEMPLATE_ALLOWLIST` is eligible for the next drain. Unlisted types stay as they are.

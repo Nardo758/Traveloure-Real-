@@ -56,6 +56,7 @@ before(() => {
 
 beforeEach(() => {
   process.env.EMAIL_SENDS_ENABLED = "true";
+  process.env.EMAIL_TEMPLATE_ALLOWLIST = "password_reset,email_verification,payment_failed";
 });
 
 after(() => {

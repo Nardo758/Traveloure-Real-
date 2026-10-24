@@ -50,6 +50,7 @@ beforeEach(() => {
   inserts = 0;
   sends = 0;
   process.env.EMAIL_SENDS_ENABLED = "true";
+  process.env.EMAIL_TEMPLATE_ALLOWLIST = "password_reset,email_verification,payment_failed,cancellation_refund,expert_application_approved,expert_application_rejected,provider_application_approved,provider_application_rejected";
   invalidatePlatformFlagCache();
   origTransaction = db.transaction.bind(db);
   origExecute = db.execute.bind(db);

@@ -23,6 +23,7 @@ import {
 } from "../../shared/welcome-verification";
 
 process.env.EMAIL_SENDS_ENABLED = "true";
+process.env.EMAIL_TEMPLATE_ALLOWLIST = "signup_welcome";
 const enabled = process.env.NODE_ENV === "test" && process.env.RUN_SIGNUP_WELCOME_DB_TESTS === "1";
 const fixtureIds: string[] = [];
 const originalTransport = _outboxTestHooks.sendEmailFn;
