@@ -12,14 +12,21 @@
  * even when the account already has platform activity.
  *
  * Contact (row 101, the same switch): an unverified non-earner may not start contact
- * with an earner on the traveler-initiated HTTP rails. assertTravelerMayContact
- * refuses only that case. An earner sender is allowed, so a reply is never blocked.
- * Expert accept, decline, and quote/handoff answers do not mount this gate, and
- * neither does the websocket chat path.
+ * with an earner. assertTravelerMayContact refuses that case on the message rails.
+ * A traveler request route has no recipient id yet; refuseUnverifiedTravelerSender
+ * applies the same decision with the route standing in as the earner address.
+ * An earner sender is allowed. Expert accept, decline, and inbox answers do not
+ * mount this gate. The websocket refuses only the unverified traveler's first
+ * message to an earner, and leaves the socket open; a thread the earner has
+ * already answered stays open.
  */
 import type { RequestHandler } from "express";
-import { inArray } from "drizzle-orm";
-import { emailVerificationDeniedBody } from "@shared/email-verification-gate";
+import { eq, inArray } from "drizzle-orm";
+import {
+  EMAIL_VERIFICATION_HOLD_MESSAGE,
+  EMAIL_VERIFICATION_REQUIRED_CODE,
+  emailVerificationDeniedBody,
+} from "@shared/email-verification-gate";
 import { users } from "@shared/models/auth";
 import { isEarnerRole } from "@shared/roles";
 import { authStorage } from "../replit_integrations/auth/storage";
@@ -156,4 +163,48 @@ export async function refuseUnverifiedTravelerContact(
   if ((await assertTravelerMayContact({ senderId, recipientId })) !== "deny") return false;
   res.status(403).json(emailVerificationDeniedBody());
   return true;
+}
+
+/**
+ * Sender half of the contact decision for a route that is itself a request to an
+ * earner. While enforcement is off this does not touch the database. An earner
+ * sender is allowed. An unverified non-earner is refused.
+ */
+export async function assertTravelerMayRequestExpert(senderId: string): Promise<VerifiedEmailActionDecision> {
+  if (!verifiedEmailActionsEnforced()) return "allow";
+  if (!senderId) return "allow";
+  const [sender] = await db
+    .select({ role: users.role, emailVerified: users.emailVerified })
+    .from(users)
+    .where(eq(users.id, senderId))
+    .limit(1);
+  return decideTravelerMayContact({
+    enforced: true,
+    senderRole: sender?.role,
+    recipientRole: "travel_expert",
+    senderEmailVerified: sender?.emailVerified,
+  });
+}
+
+/** Writes the shared 403 and returns true when this sender may not open an expert request. */
+export async function refuseUnverifiedTravelerSender(
+  res: { status(code: number): { json(body: unknown): unknown } },
+  senderId: string,
+): Promise<boolean> {
+  if ((await assertTravelerMayRequestExpert(senderId)) !== "deny") return false;
+  res.status(403).json(emailVerificationDeniedBody());
+  return true;
+}
+
+/** Socket frame for the same refusal. The connection stays open. */
+export function travelerContactSocketError(): {
+  type: "error";
+  errorCode: typeof EMAIL_VERIFICATION_REQUIRED_CODE;
+  error: typeof EMAIL_VERIFICATION_HOLD_MESSAGE;
+} {
+  return {
+    type: "error",
+    errorCode: EMAIL_VERIFICATION_REQUIRED_CODE,
+    error: EMAIL_VERIFICATION_HOLD_MESSAGE,
+  };
 }

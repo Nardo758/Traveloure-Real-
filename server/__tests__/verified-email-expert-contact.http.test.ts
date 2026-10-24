@@ -6,8 +6,11 @@
  * without a user lookup. While it is on, an unverified traveler is refused on the
  * traveler-initiated HTTP contact rails before a message row, a conversation
  * context row, or a notification, and the refusal does not consume a rate-limit
- * bucket. An unverified earner is not refused on reply, accept, or decline, and
- * the websocket chat path does not apply this refusal.
+ * bucket. An unverified non-earner is refused on the traveler request routes.
+ * An unverified earner is not refused on those routes, on accept, reply, or
+ * decline, or on the socket. The socket refuses an unverified traveler's first
+ * message to an earner and leaves the socket open; a thread that earner has
+ * already answered stays open.
  *
  *   npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/verified-email-expert-contact.http.test.ts
  */
@@ -417,6 +420,28 @@ test("flag off: the same unverified traveler to expert is allowed", async () => 
   setSends("true");
 });
 
+test("an unverified traveler is refused on the traveler request routes, and an unverified earner is not", async () => {
+  setSends("true");
+  const tripId = crypto.randomUUID();
+  const serviceId = crypto.randomUUID();
+  const routes = [
+    "/api/expert-requests",
+    `/api/trips/${tripId}/expert-advisor`,
+    `/api/trips/${tripId}/advisors`,
+    `/api/trips/${tripId}/handoff/quote`,
+    `/api/trips/${tripId}/handoff`,
+    `/api/services/${serviceId}/quote-requests`,
+  ];
+  for (const path of routes) {
+    const refused = await post(path, cookies.traveler, {});
+    assert.equal(refused.status, 403, `${path} ${JSON.stringify(refused.data)}`);
+    assert.deepEqual(refused.data, DENIED, path);
+    const earner = await post(path, cookies.expert, {});
+    assert.notEqual(earner.data?.code, DENIED.code, `${path} earner ${JSON.stringify(earner.data)}`);
+    assert.notDeepEqual(earner.data, DENIED, path);
+  }
+});
+
 test("an unverified earner is not refused on accept, decline, or an inbox reply", async () => {
   setSends("true");
   const missing = crypto.randomUUID();
@@ -437,9 +462,68 @@ test("an unverified earner is not refused on accept, decline, or an inbox reply"
   }
 });
 
-test("websocket chat does not refuse an unverified earner or close the socket", async () => {
+test("websocket refuses an unverified traveler's first message and allows the thread after the earner replies", async () => {
   setSends("true");
-  await db.execute(sql`UPDATE users SET email_verified = NULL WHERE id = ${ids.expert}`);
+  await db.execute(sql`UPDATE users SET email_verified = NULL WHERE id = ${ids.traveler}`);
+  await db.execute(sql`UPDATE users SET email_verified = NULL WHERE id = ${ids.provider}`);
+  const before = await pairState(ids.traveler, ids.provider);
+
+  const travelerWs = await openSocket(cookies.traveler);
+  let travelerClosed = false;
+  travelerWs.on("close", () => {
+    travelerClosed = true;
+  });
+  const first = await new Promise<any>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("first socket frame timed out")), 5000);
+    travelerWs.on("message", (data) => {
+      const msg = JSON.parse(data.toString());
+      if (msg.type === "chat" || msg.type === "error") {
+        clearTimeout(timer);
+        resolve(msg);
+      }
+    });
+    travelerWs.send(JSON.stringify({
+      type: "chat",
+      recipientId: ids.provider,
+      content: "first message should be refused",
+    }));
+  });
+  assert.equal(travelerClosed, false);
+  assert.equal(travelerWs.readyState, WebSocket.OPEN);
+  assert.deepEqual(first, {
+    type: "error",
+    errorCode: "email_verification_required",
+    error: "Verify your email to continue.",
+  });
+  assert.deepEqual(await pairState(ids.traveler, ids.provider), before);
+
+  await db.execute(sql`
+    INSERT INTO user_and_expert_chats (id, sender_id, receiver_id, message)
+    VALUES (${crypto.randomUUID()}, ${ids.provider}, ${ids.traveler}, 'the provider replied')
+  `);
+  const continued = await new Promise<any>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("continued socket frame timed out")), 5000);
+    const onMessage = (data: Buffer) => {
+      const msg = JSON.parse(data.toString());
+      if (msg.type === "chat" || msg.type === "error") {
+        travelerWs.off("message", onMessage);
+        clearTimeout(timer);
+        resolve(msg);
+      }
+    };
+    travelerWs.on("message", onMessage);
+    travelerWs.send(JSON.stringify({
+      type: "chat",
+      recipientId: ids.provider,
+      content: "the thread is already open",
+    }));
+  });
+  assert.equal(travelerWs.readyState, WebSocket.OPEN);
+  travelerWs.close();
+  assert.equal(continued.type, "chat");
+  assert.notEqual(continued.errorCode, "email_verification_required");
+  assert.equal(continued.senderId, ids.traveler);
+  assert.equal(continued.recipientId, ids.provider);
 
   const expertWs = await openSocket(cookies.expert);
   let closed = false;

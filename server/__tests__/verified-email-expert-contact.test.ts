@@ -17,6 +17,7 @@ import { emailVerificationDeniedBody } from "../../shared/email-verification-gat
 import {
   decideTravelerMayContact,
   refuseUnverifiedTravelerContact,
+  travelerContactSocketError,
   verifiedEmailActionsEnforced,
 } from "../services/verified-email-action-gate";
 
@@ -131,10 +132,16 @@ test("an unenforced contact refusal writes no response", async () => {
 });
 
 test("the contact refusal body is the shared verification body", () => {
-  assert.deepEqual(emailVerificationDeniedBody(), {
+  const body = emailVerificationDeniedBody();
+  assert.deepEqual(body, {
     code: "email_verification_required",
     message: "Verify your email to continue.",
     nextStep: "verify_email",
+  });
+  assert.deepEqual(travelerContactSocketError(), {
+    type: "error",
+    errorCode: body.code,
+    error: body.message,
   });
 });
 
@@ -186,11 +193,12 @@ test("message transports consult the gate before the rate-limit increment", () =
   assert.ok(shadowed.indexOf("refuseUnverifiedTravelerContact") < shadowed.indexOf("storage.createChat"));
 
   const socket = sliceBetween(read("server", "websocket.ts"), 'case "chat":', 'case "typing":');
-  assert.ok(!socket.includes("assertTravelerMayContact"));
-  assert.ok(!socket.includes("refuseUnverifiedTravelerContact"));
+  const socketGateAt = socket.indexOf("assertTravelerMayContact");
+  const repliedAt = socket.indexOf("hasIncomingMessage");
+  const rateAt = socket.indexOf("checkMessageRateLimit");
+  assert.ok(socketGateAt >= 0 && repliedAt > socketGateAt && rateAt > repliedAt);
+  assert.ok(socket.indexOf("travelerContactSocketError") < rateAt);
   assert.ok(!socket.includes("requireVerifiedEmail"));
-  assert.ok(!socket.includes("email_verification_required"));
-  assert.ok(socket.includes("checkMessageRateLimit"));
 
   const legacy = sliceBetween(
     read("server", "routes", "content.routes.ts"),
@@ -202,31 +210,48 @@ test("message transports consult the gate before the rate-limit increment", () =
   assert.ok(legacy.indexOf("refuseUnverifiedTravelerContact") < legacy.indexOf("insertExpertChat"));
 });
 
-test("expert accept, reply, and decline routes do not mount the contact gate", () => {
-  const open: Array<[string, string]> = [
-    ["server/routes/handoff.routes.ts", 'router.post("/api/handoffs/:id/accept", isAuthenticated, async'],
-    ["server/routes/handoff.routes.ts", 'router.post("/api/handoffs/:id/decline", isAuthenticated, async'],
-    ["server/routes/booking-actions.ts", 'router.post("/expert/assignments/:assignmentId/accept", isAuthenticated, async'],
-    ["server/routes/service-quotes.routes.ts", 'router.post("/api/quotes/:quoteId/accept", isAuthenticated, async'],
-    ["server/routes/service-quotes.routes.ts", 'router.post("/api/quotes/:quoteId/decline", isAuthenticated, async'],
-    ["server/routes/service-quotes.routes.ts", 'router.post("/api/provider/quotes/:quoteId/issue", isAuthenticated, async'],
-    ["server/routes/service-quotes.routes.ts", 'router.post("/api/provider/quotes/:quoteId/withdraw", isAuthenticated, async'],
-    ["server/routes/expert-inbox-questions.routes.ts", 'router.post("/api/expert/inbox/questions/:id/answer", isAuthenticated, async'],
-    ["server/routes.ts", 'app.post("/api/expert-booking-requests", isAuthenticated, async'],
-    ["server/routes/booking-actions.ts", "router.post('/expert-requests', isAuthenticated, async"],
-    ["server/routes/booking-actions.ts", "router.post('/trips/:id/expert-advisor', isAuthenticated, async"],
-    ["server/routes/booking-actions.ts", "router.post('/trips/:tripId/advisors', isAuthenticated, async"],
-    ["server/routes/handoff.routes.ts", 'router.post("/api/trips/:tripId/handoff/quote", isAuthenticated, async'],
-    ["server/routes/handoff.routes.ts", 'router.post("/api/trips/:tripId/handoff", isAuthenticated, async'],
-    ["server/routes/service-quotes.routes.ts", 'router.post("/api/services/:id/quote-requests", isAuthenticated, async'],
+test("traveler request routes use the sender check and do not mount requireVerifiedEmail", () => {
+  const rails: Array<[string, string, string]> = [
+    ["server/routes.ts", 'app.post("/api/expert-booking-requests"', "authorizeExpertBookingRequest"],
+    ["server/routes/booking-actions.ts", "router.post('/expert-requests'", "Missing required fields"],
+    ["server/routes/booking-actions.ts", "router.post('/trips/:id/expert-advisor'", "expertUserId is required"],
+    ["server/routes/booking-actions.ts", "router.post('/trips/:tripId/advisors'", "tripAdvisorHireSchema.safeParse"],
+    ["server/routes/handoff.routes.ts", 'router.post("/api/trips/:tripId/handoff/quote"', "ownerOr404"],
+    ["server/routes/handoff.routes.ts", 'router.post("/api/trips/:tripId/handoff", isAuthenticated', "ownerOr404"],
+    ["server/routes/service-quotes.routes.ts", 'router.post("/api/services/:id/quote-requests"', "quoteRequestBodySchema.parse"],
   ];
-  for (const [file, line] of open) {
+  for (const [file, start, before] of rails) {
     const src = read(...file.split("/"));
-    assert.equal(src.split(line).length - 1, 1, `${file} missing ${line}`);
-    const at = src.indexOf(line);
-    const decl = src.slice(at, src.indexOf("{", at));
-    assert.ok(!decl.includes("requireVerifiedEmail"), `${line} must not mount requireVerifiedEmail`);
-    assert.ok(!decl.includes("refuseUnverifiedTravelerContact"), `${line} must not mount the contact refusal`);
+    const at = src.indexOf(start);
+    assert.ok(at >= 0, `missing ${start}`);
+    const gateAt = src.indexOf("refuseUnverifiedTravelerSender", at);
+    const beforeAt = src.indexOf(before, at);
+    assert.ok(gateAt > at && beforeAt > gateAt, `${start} must refuse before ${before}`);
+    assert.ok(!src.slice(at, beforeAt).includes('requireVerifiedEmail("expert_contact")'), start);
+  }
+  const sender = read("server", "services", "verified-email-action-gate.ts");
+  const fn = sender.slice(sender.indexOf("export async function assertTravelerMayRequestExpert"));
+  const guard = fn.indexOf('if (!verifiedEmailActionsEnforced()) return "allow"');
+  const query = fn.indexOf(".from(users)");
+  assert.ok(guard >= 0 && query > guard);
+});
+
+test("expert accept, reply, and decline routes do not mount the contact gate", () => {
+  const open: Array<[string, string, string]> = [
+    ["server/routes/handoff.routes.ts", 'router.post("/api/handoffs/:id/accept"', 'router.post("/api/handoffs/:id/decline"'],
+    ["server/routes/handoff.routes.ts", 'router.post("/api/handoffs/:id/decline"', 'router.post("/api/handoffs/:id/deliver"'],
+    ["server/routes/booking-actions.ts", 'router.post("/expert/assignments/:assignmentId/accept"', "router.patch(\"/expert/assignments/:assignmentId/workspace-status\""],
+    ["server/routes/service-quotes.routes.ts", 'router.post("/api/quotes/:quoteId/accept"', 'router.post("/api/quotes/:quoteId/decline"'],
+    ["server/routes/service-quotes.routes.ts", 'router.post("/api/quotes/:quoteId/decline"', 'router.get("/api/provider/quotes"'],
+    ["server/routes/service-quotes.routes.ts", 'router.post("/api/provider/quotes/:quoteId/issue"', 'router.post("/api/provider/quotes/:quoteId/withdraw"'],
+    ["server/routes/service-quotes.routes.ts", 'router.post("/api/provider/quotes/:quoteId/withdraw"', "export default router"],
+    ["server/routes/expert-inbox-questions.routes.ts", 'router.post("/api/expert/inbox/questions/:id/answer"', "export default router"],
+  ];
+  for (const [file, start, end] of open) {
+    const body = sliceBetween(read(...file.split("/")), start, end);
+    assert.ok(!body.includes("requireVerifiedEmail"), start);
+    assert.ok(!body.includes("refuseUnverifiedTravelerSender"), start);
+    assert.ok(!body.includes("refuseUnverifiedTravelerContact"), start);
   }
   for (const file of ["server/routes/handoff.routes.ts", "server/routes/service-quotes.routes.ts", "server/websocket.ts"]) {
     assert.ok(!read(...file.split("/")).includes("expert_contact"), `${file} must not name expert_contact`);

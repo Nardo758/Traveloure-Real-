@@ -356,6 +356,16 @@ export async function hasExistingConversation(userA: string, userB: string): Pro
   return !!row;
 }
 
+/** True when `fromUserId` has already sent a message to `toUserId`. */
+export async function hasIncomingMessage(fromUserId: string, toUserId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: userAndExpertChats.id })
+    .from(userAndExpertChats)
+    .where(and(eq(userAndExpertChats.senderId, fromUserId), eq(userAndExpertChats.receiverId, toUserId)))
+    .limit(1);
+  return !!row;
+}
+
 /**
  * Every INTERNAL conversation id the user is a party to.
  *
