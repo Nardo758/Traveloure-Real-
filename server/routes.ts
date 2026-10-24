@@ -100,6 +100,7 @@ import { isActionableBooking, isProvisionalBooking } from "@shared/booking-visib
 import { IDENTITY_EDIT_FIELDS } from "@shared/edit-split";
 import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated, setupFacebookAuth, setupEmailAuth } from "./replit_integrations/auth";
+import { requireVerifiedEmail } from "./services/verified-email-action-gate";
 import { emailVerificationGate } from "./middleware/email-verification-gate";
 import { isExpert, isProvider, isEarner, isEarnerOrPendingDraft } from "./middleware/role-rbac";
 import { formatVendorAuditCsv } from "./utils/vendor-export";
@@ -7588,7 +7589,7 @@ ${bannedCopyPromptLine()}`;
   });
 
   // Create a booking. Body allowlist: `createBookingRequestSchema` (module scope, PS15/ruling 46).
-  app.post("/api/bookings", isAuthenticated, async (req, res) => {
+  app.post("/api/bookings", isAuthenticated, requireVerifiedEmail("booking"), async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const input = createBookingRequestSchema.parse(req.body);
@@ -11493,7 +11494,7 @@ ${bannedCopyPromptLine()}`;
   //   POST /api/coordination-states/:id/pay/confirm   → verify intent, mark paid, record platform_revenue
   // §14: amount derived server-side from the state's own experienceType + budget (never req.body).
   // §15: atomic conditional UPDATE + deterministic Stripe idempotencyKey, both directions.
-  app.post("/api/coordination-states/:id/pay", isAuthenticated, async (req, res) => {
+  app.post("/api/coordination-states/:id/pay", isAuthenticated, requireVerifiedEmail("checkout"), async (req, res) => {
     const coordinationId = req.params.id;
     const userId = getUserId(req)!;
     let claimedCreditCents = 0;
@@ -13068,7 +13069,7 @@ ${bannedCopyPromptLine()}`;
     }
   });
 
-  app.post("/api/contracts/:id/payment", isAuthenticated, async (req, res) => {
+  app.post("/api/contracts/:id/payment", isAuthenticated, requireVerifiedEmail("checkout"), async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const existing = await vendorManagementService.getContract(req.params.id);

@@ -8,6 +8,7 @@ import crypto from 'crypto';
 import { z } from 'zod';
 import { stripePaymentService } from '../services/stripe-payment.service';
 import { isAuthenticated } from '../replit_integrations/auth';
+import { requireVerifiedEmail } from '../services/verified-email-action-gate';
 import { trackFunnelEvent } from '../utils/funnelTracker';
 import { bookingService } from '../services/booking.service';
 import { verifyTripOwnership } from '../utils/trip-ownership';
@@ -114,7 +115,7 @@ async function isTripOwnerCanonical(tripId: string, userId: string): Promise<boo
  * POST /api/expert-requests/payment-intent
  * Create Stripe payment intent for expert review service (embedded checkout)
  */
-router.post('/expert-requests/payment-intent', isAuthenticated, async (req, res) => {
+router.post('/expert-requests/payment-intent', isAuthenticated, requireVerifiedEmail("checkout"), async (req, res) => {
   try {
     // Acting user = session, NEVER the body. (Was: userId from req.body — an identity-spoof hole.)
     const sessionUserId = getUserId(req)!;

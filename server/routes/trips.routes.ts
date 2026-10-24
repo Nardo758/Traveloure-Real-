@@ -107,6 +107,7 @@ import { partyTotal } from "@shared/plan-vocabulary";
 import { z } from "zod";
 import { createInsertSchema } from "drizzle-zod";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { requireVerifiedEmail } from "../services/verified-email-action-gate";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { 
@@ -3981,7 +3982,7 @@ router.post("/api/trips/:tripId/proposals/:id/discard", isAuthenticated, async (
 // conditional, so two concurrent pays produce exactly one claim and the loser makes no Stripe call
 // at all. A Trip Pass on the plan takes NO claim and creates NO PaymentIntent (LD 41 (a): coverage
 // is unlimited, so there is no counter to race on and nothing to suppress a charge against).
-router.post("/api/trips/:tripId/proposals/:id/pay", isAuthenticated, async (req, res) => {
+router.post("/api/trips/:tripId/proposals/:id/pay", isAuthenticated, requireVerifiedEmail("checkout"), async (req, res) => {
   try {
     const userId = getUserId(req)!;
     const { tripId, id } = req.params;

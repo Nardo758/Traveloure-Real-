@@ -26,6 +26,7 @@ import { itineraryComparisons, users, trips, userExperiences, experienceTypes, p
 import { OPTIMIZER_RUN_REFUND_REASON } from "@shared/optimizer-run-refund";
 import { eq, and, sql } from "drizzle-orm";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { requireVerifiedEmail } from "../services/verified-email-action-gate";
 import { complexityTier } from "../services/smart-sequencing.service";
 import {
   computeOptimizationPreviewHeuristic,
@@ -379,7 +380,7 @@ async function respondIfCartAwaitsConversion(userId: string, res: any): Promise<
   return true;
 }
 
-router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
+router.post("/api/optimization-payments", isAuthenticated, requireVerifiedEmail("checkout"), async (req, res) => {
   try {
     const userId = getUserId(req)!;
     const { tripId, userExperienceId, comparisonContext } = req.body;

@@ -20,6 +20,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { trips } from "@shared/schema";
 import { getUserId } from "../utils/auth";
+import { requireVerifiedEmail } from "../services/verified-email-action-gate";
 import { getStripeSecretKey } from "../utils/stripe-key";
 import { stripePaymentService } from "../services/stripe-payment.service";
 import { createPaymentIntentPreservingKey } from "../services/stripe-intent-key";
@@ -71,7 +72,7 @@ router.get("/api/trips/:tripId/trip-pass", isAuthenticated, async (req, res) => 
   }
 });
 
-router.post("/api/trips/:tripId/trip-pass/purchase", isAuthenticated, async (req, res) => {
+router.post("/api/trips/:tripId/trip-pass/purchase", isAuthenticated, requireVerifiedEmail("checkout"), async (req, res) => {
   try {
     const userId = getUserId(req)!;
     const { trip, error } = await ownedTrip(req.params.tripId, userId);

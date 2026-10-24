@@ -9,6 +9,7 @@ import { stripePaymentService } from '../services/stripe-payment.service';
 import { availabilityService } from '../services/availability.service';
 import { pricingService } from '../services/pricing.service';
 import { isAuthenticated } from '../replit_integrations/auth';
+import { requireVerifiedEmail } from '../services/verified-email-action-gate';
 import { storage } from '../storage';
 import { db } from '../db';
 import { serviceBookings } from '@shared/schema';
@@ -158,7 +159,7 @@ router.get('/:id', isAuthenticated, async (req, res) => {
  * `bulk-status`, `POST /api/bookings/refund`, the legacy confirm/cancel paths and §17's
  * `scanLegacyRail` all keep working on the rows that exist (CLAUDE.md §15c, §17).
  */
-router.post('/process-cart', isAuthenticated, async (req, res) => {
+router.post('/process-cart', isAuthenticated, requireVerifiedEmail("booking"), async (req, res) => {
   try {
     // D-12's switch, FIRST — before the session read, the body parse and every DB statement.
     if (legacyBookingsClosedToNewWrites()) {
