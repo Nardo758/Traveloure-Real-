@@ -2509,6 +2509,8 @@ export default function ExpertWorkspace() {
     },
     onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
+      // Day rows read the plancard, and a successful read stays fresh until invalidated.
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/commission`] });
       triggerEnergyRecalc();
       toast({ title: "Added to itinerary", description: `${vars.result.name} → Day ${vars.day}` });

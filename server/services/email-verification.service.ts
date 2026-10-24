@@ -22,6 +22,7 @@ import { isEmailUniqueViolation } from "../replit_integrations/auth/email-unique
 import {
   emailVerificationAccess,
   type EmailVerificationAccess,
+  EMAIL_VERIFICATION_HOLD_ENFORCED,
   EMAIL_VERIFICATION_HOLD_PATH,
 } from "@shared/email-verification-gate";
 import { nextSignupStep, type SignupStep } from "@shared/signup-steps";
@@ -121,6 +122,9 @@ export async function readEmailVerificationGate(
   user: { id: string; emailVerified: Date | string | null | undefined },
   session?: EmailVerificationSession,
 ): Promise<EmailVerificationGateState> {
+  if (!EMAIL_VERIFICATION_HOLD_ENFORCED) {
+    return { access: "open", emailVerificationRequired: false, nextStep: null };
+  }
   const access = await resolveEmailVerificationAccess(user, session);
   const emailVerificationRequired = access === "hold";
   return {
@@ -136,6 +140,7 @@ export function stampGrandfatherOnSession(
   access: EmailVerificationAccess,
   emailVerified: Date | string | null | undefined,
 ): void {
+  if (!EMAIL_VERIFICATION_HOLD_ENFORCED) return;
   if (session && access === "open" && !emailVerified) {
     session.emailVerificationGrandfathered = true;
   }
@@ -147,6 +152,7 @@ export async function pathAfterAuth(
   userId: string | null | undefined,
   fallback: string,
 ): Promise<string> {
+  if (!EMAIL_VERIFICATION_HOLD_ENFORCED) return fallback;
   if (!userId) return EMAIL_VERIFICATION_HOLD_PATH;
   try {
     const user = await loadGateUser(userId);

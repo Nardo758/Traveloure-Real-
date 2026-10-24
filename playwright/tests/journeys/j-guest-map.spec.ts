@@ -100,23 +100,18 @@ test("8d — signed out: browse with no plan, add, sign up → exactly one plan,
   await testid(page, "checkbox-signup-privacy").click();
   await testid(page, "button-auth-submit").click();
 
-  // AUTH-1 fix 3b (ledger `2026-10-16-auth1-3b-neutral-registration`; sanctioned rewrite — the proposal's proof 4):
-  // signing up shows the neutral result and signs nobody in, so nothing is created yet and the guest's record and
-  // return path are KEPT for the actual sign-in.
-  await expect(testid(page, "signup-neutral-result")).toBeVisible({ timeout: 10_000 });
+  // AUTH-1 fix 3b (ledger `2026-10-16-auth1-3b-neutral-registration`): signing up
+  // signs nobody in. Ledger `2026-10-23-drop-check-email` drops the check-email
+  // screen, so the same window is already the sign-in form. The guest's record
+  // and return path stay for that sign-in. The address is left unverified.
+  await expect(testid(page, "link-switch-signup")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("Check your email")).toHaveCount(0);
   await expect(page).toHaveURL(/\/plans\/new\?view=map$/);
   expect(await page.evaluate(() => sessionStorage.getItem("traveloure_pending_plan")), "the record is kept").not.toBeNull();
   const [pre] = await rows<{ n: number }>(`SELECT COUNT(*)::int AS n FROM trips t JOIN users u ON u.id = t.user_id WHERE u.email = $1`, [email]);
   expect(pre.n, "signing up creates no plan").toBe(0);
-  // The modal created the account through the UI. Record email_verified on that
-  // disposable row so sign-in is not held on /verify-email. The server gate is unchanged.
-  await rows(
-    `UPDATE users SET email_verified = NOW() WHERE lower(email) = lower($1) AND email_verified IS NULL`,
-    [email],
-  );
 
   // Then sign in, in the same window.
-  await testid(page, "link-neutral-sign-in").click();
   await testid(page, "input-email").fill(email);
   await testid(page, "input-password").fill("Journey!Pass123");
   await testid(page, "button-auth-submit").click();

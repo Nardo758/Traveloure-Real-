@@ -23,6 +23,9 @@ import { AlertCircle, ChevronRight, Globe, Palmtree, Search, MapPin, SlidersHori
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useTripContext } from "@/lib/trip-context";
+import { browseDatesFromPen } from "@/lib/plan-entry";
+import { exactOperatingMarket } from "@/lib/experiences-entry";
+import { marketToday } from "@shared/market-today";
 import { cn } from "@/lib/utils";
 import { CityFeedCardGem, CityFeedCardEvent, CityFeedCardSupply, CityFeedCardVendorService } from "@/components/city-feed-card";
 import { CityFeedCardExternalStub } from "@/components/city-feed-card-external-stub";
@@ -1928,8 +1931,11 @@ export default function DiscoverLocationPage() {
   })();
 
   // ── Header: read-only "where" value (city + trip dates) ─────────────────
+  // A pen with no plan contributes no dates. A started plan shows from the market's today on.
   const whereValue = (() => {
-    const range = formatTripDates(tripCtx.startDate, tripCtx.endDate);
+    const market = exactOperatingMarket(displayCity);
+    const dates = browseDatesFromPen(tripCtx, marketToday(market?.marketKey ?? null));
+    const range = dates ? formatTripDates(dates.startDate, dates.endDate ?? undefined) : null;
     return range ? `${displayCity} · ${range}` : displayCity;
   })();
 

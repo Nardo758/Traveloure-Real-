@@ -4,7 +4,6 @@ import { isRegistrationNeutral } from "@shared/registration-neutral";
 import { supplySignupContinuation } from "@shared/supply-entry";
 import { sanitizeReturnTo } from "@/lib/safe-return-to";
 import { authFailureMessage, readAuthResponse } from "@/lib/auth-response";
-import { resendVerificationEmail } from "@/lib/email-verification-hold";
 import { useTranslation } from "react-i18next";
 
 export function SignupPage() {
@@ -44,10 +43,6 @@ export function SignupPage() {
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  // AUTH-1 fix 3b: the server answers a new and an existing address the same way and signs nobody in, so a
-  // completed sign-up shows one neutral state — never the dashboard, never "account created".
-  const [submitted, setSubmitted] = useState(false);
-  const [resendState, setResendState] = useState<"idle" | "sending" | "sent" | "wait" | "error">("idle");
 
   if (supplyContinuation.kind !== "account") return null;
 
@@ -79,8 +74,10 @@ export function SignupPage() {
         }),
       });
       const read = await readAuthResponse(res);
+      // Ledger `2026-10-23-drop-check-email`: the 202 still signs nobody in. The
+      // check-email screen is not shown. Sign-in is the next step.
       if (read.kind === "json" && isRegistrationNeutral(res.status, read.data)) {
-        setSubmitted(true);
+        window.location.assign("/login");
         return;
       }
       if (read.kind === "json" && res.status === 403 && read.data.code === TRAVELER_WAITLIST) {
@@ -100,46 +97,6 @@ export function SignupPage() {
       setLoading(false);
     }
   };
-
-  if (submitted) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-        <div className="bg-white rounded-2xl border border-gray-200 p-8 w-full max-w-md" data-testid="signup-neutral-result">
-          <h1 className="text-xl font-semibold text-gray-900 mb-3">{t("registered.title")}</h1>
-          <p className="text-sm text-gray-600 mb-3" data-testid="text-signup-neutral">{t("registered.body")}</p>
-          <p className="text-sm text-gray-600 mb-6" data-testid="text-signup-payment-step">{t("registered.paymentStep")}</p>
-          {/* The sign-in window also holds "Forgot password?", so one link serves both paths. */}
-          <div className="flex flex-col gap-2 text-sm">
-            <button
-              type="button"
-              className="text-gray-900 underline text-left disabled:opacity-60"
-              disabled={resendState === "sending"}
-              data-testid="button-resend-verification"
-              onClick={async () => {
-                setResendState("sending");
-                const outcome = await resendVerificationEmail(form.email);
-                setResendState(outcome === "sent" ? "sent" : outcome === "rate_limited" ? "wait" : "error");
-              }}
-            >
-              {resendState === "sending" ? t("registered.resending") : t("registered.resend")}
-            </button>
-            {resendState === "sent" && (
-              <p className="text-gray-600" data-testid="text-resend-result">{t("registered.resendResult")}</p>
-            )}
-            {resendState === "wait" && (
-              <p className="text-gray-600" data-testid="text-resend-result">{t("registered.resendWait")}</p>
-            )}
-            {resendState === "error" && (
-              <p className="text-gray-600" data-testid="text-resend-result">{t("signupPage.genericError")}</p>
-            )}
-            <a href="/login" className="text-gray-900 underline" data-testid="link-neutral-sign-in">
-              {t("registered.signIn")}
-            </a>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
@@ -213,6 +170,8 @@ export function SignupPage() {
               />
             </div>
           )}
+
+          <p className="text-sm text-gray-600" data-testid="text-signup-payment-step">{t("registered.paymentStep")}</p>
 
           <button
             data-testid="button-create-account"
