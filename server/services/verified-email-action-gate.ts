@@ -10,10 +10,22 @@
  * Verified means users.email_verified is non-null in the database. Session claims
  * are not consulted, and grandfathering is not honored: a null column is unverified
  * even when the account already has platform activity.
+ *
+ * Contact (row 101, the same switch): an unverified account may not start or send
+ * contact to an earner. assertTravelerMayContact refuses only that case. An earner
+ * replying is allowed. Request rails mount requireVerifiedEmail("expert_contact").
  */
 import type { RequestHandler } from "express";
-import { emailVerificationDeniedBody } from "@shared/email-verification-gate";
+import { inArray } from "drizzle-orm";
+import {
+  EMAIL_VERIFICATION_HOLD_MESSAGE,
+  EMAIL_VERIFICATION_REQUIRED_CODE,
+  emailVerificationDeniedBody,
+} from "@shared/email-verification-gate";
+import { users } from "@shared/models/auth";
+import { isEarnerRole } from "@shared/roles";
 import { authStorage } from "../replit_integrations/auth/storage";
+import { db } from "../db";
 import { emailSendsEnabled } from "./email.service";
 
 export type VerifiedEmailAction =
@@ -82,5 +94,81 @@ export function requireVerifiedEmail(action: VerifiedEmailAction): RequestHandle
       console.error("[verified-email-action] account read failed for user", userId);
       return res.status(503).json({ message: "Authentication service temporarily unavailable" });
     }
+  };
+}
+
+/**
+ * Pure contact decision. Deny only while enforcement is on, the sender is not an
+ * earner, the recipient is an earner, and the sender's email_verified is null.
+ * A missing role is not an earner. A missing verification timestamp is unverified.
+ */
+export function decideTravelerMayContact(input: {
+  enforced: boolean;
+  senderRole: string | null | undefined;
+  recipientRole: string | null | undefined;
+  senderEmailVerified: Date | string | null | undefined;
+}): VerifiedEmailActionDecision {
+  if (!input.enforced) return "allow";
+  if (isEarnerRole(input.senderRole)) return "allow";
+  if (!isEarnerRole(input.recipientRole)) return "allow";
+  if (input.senderEmailVerified != null) return "allow";
+  return "deny";
+}
+
+/**
+ * One query for both accounts. While enforcement is off this does not touch the
+ * database, so a refused-when-on path stays byte-identical to an ungated handler.
+ */
+export async function assertTravelerMayContact(input: {
+  senderId: string;
+  recipientId: string;
+}): Promise<VerifiedEmailActionDecision> {
+  if (!verifiedEmailActionsEnforced()) return "allow";
+  if (!input.senderId || !input.recipientId) return "allow";
+
+  const ids =
+    input.senderId === input.recipientId
+      ? [input.senderId]
+      : [input.senderId, input.recipientId];
+  const rows = await db
+    .select({
+      id: users.id,
+      role: users.role,
+      emailVerified: users.emailVerified,
+    })
+    .from(users)
+    .where(inArray(users.id, ids));
+
+  const sender = rows.find((row) => row.id === input.senderId);
+  const recipient = rows.find((row) => row.id === input.recipientId);
+  return decideTravelerMayContact({
+    enforced: true,
+    senderRole: sender?.role,
+    recipientRole: recipient?.role,
+    senderEmailVerified: sender?.emailVerified,
+  });
+}
+
+/** Writes the shared 403 and returns true when the sender may not contact this recipient. */
+export async function refuseUnverifiedTravelerContact(
+  res: { status(code: number): { json(body: unknown): unknown } },
+  senderId: string,
+  recipientId: string,
+): Promise<boolean> {
+  if ((await assertTravelerMayContact({ senderId, recipientId })) !== "deny") return false;
+  res.status(403).json(emailVerificationDeniedBody());
+  return true;
+}
+
+/** Socket frame for the same refusal. The connection stays open. */
+export function travelerContactSocketError(): {
+  type: "error";
+  errorCode: typeof EMAIL_VERIFICATION_REQUIRED_CODE;
+  error: typeof EMAIL_VERIFICATION_HOLD_MESSAGE;
+} {
+  return {
+    type: "error",
+    errorCode: EMAIL_VERIFICATION_REQUIRED_CODE,
+    error: EMAIL_VERIFICATION_HOLD_MESSAGE,
   };
 }

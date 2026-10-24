@@ -160,6 +160,7 @@ import {
 } from "../services/ai-draft-eligibility";
 import { hasExistingConversation, isBlockedBetween } from "../services/messages.service";
 import { checkMessageRateLimit } from "../infrastructure/message-rate-limiter";
+import { refuseUnverifiedTravelerContact } from "../services/verified-email-action-gate";
 import { broadcastToUser } from "../websocket";
 import { dispatchMessagingEvent } from "../automations/messaging/runtime";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc, gte, lte } from "drizzle-orm";
@@ -584,6 +585,10 @@ router.post("/api/chat/start", isAuthenticated, async (req, res) => {
       if (!expert) {
         return res.status(404).json({ message: "Expert not found" });
       }
+
+      // Row 101: unknown expert stays 404. Refusal is before the rate-limit increment,
+      // the chat insert, the notification, and the fan-out. An earner sender is allowed.
+      if (await refuseUnverifiedTravelerContact(res, userId, expertId)) return;
 
       // Messaging rate limit — this endpoint opens NEW conversations, so cold-contact
       // throttling is the relevant guard here.
