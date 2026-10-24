@@ -109,6 +109,27 @@ describe("city events strip", () => {
     });
   });
 
+  it("R-10 two shows of one tour are named with their own date and city", () => {
+    const yoasobi = (day: string) =>
+      card(1, {
+        series: "YOASOBI Chowakusei dome tour",
+        title: `YOASOBI — Chowakusei dome tour (${day.slice(5)})`,
+        firstDate: day,
+        lastDate: day,
+        nights: 1,
+        venueLocality: "Osaka",
+        venueCity: "Osaka",
+        outsideCity: true,
+      });
+    const oct24 = planAroundSource(yoasobi("2026-10-24"), "events_page");
+    const oct25 = planAroundSource(yoasobi("2026-10-25"), "events_page");
+    assert.equal(oct24.anchor?.title, "YOASOBI Chowakusei dome tour · Oct 24 · Osaka");
+    assert.equal(oct25.anchor?.title, "YOASOBI Chowakusei dome tour · Oct 25 · Osaka");
+    assert.notEqual(oct24.anchor?.title, oct25.anchor?.title);
+    assert.equal(oct24.anchor?.firstDate, "2026-10-24");
+    assert.equal(oct25.anchor?.firstDate, "2026-10-25");
+  });
+
   it("S6 each surface sends its own door", () => {
     const src = fs.readFileSync("client/src/components/landing/events-strip.tsx", "utf8");
     assert.match(src, /<CityEventCards events=\{cards\} door="event_strip"/, "the landing strip is event_strip");
