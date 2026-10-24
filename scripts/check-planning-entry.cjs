@@ -500,7 +500,9 @@ const PLAN_ENTRY_FORBIDDEN = [
   "button-etp-save",
 ];
 const EDIT_WINDOW_FORBIDDEN = ["plan-step-occasion", "planning-option-", "button-etp-clear", "input-etp-title"];
-const PLAN_ENTRY_STEPS = { around: /export type PlanAround = "place" \| "date" \| "event";/, steps: /export type PlanEntryStep = "around" \| "occasion";/ };
+// H-10 adds `details` (dates and party) after the occasion, only when an experience and a city
+// are already chosen. The union stays exact: a fourth step, or dropping `details`, fails.
+const PLAN_ENTRY_STEPS = { around: /export type PlanAround = "place" \| "date" \| "event";/, steps: /export type PlanEntryStep = "around" \| "occasion" \| "details";/ };
 
 function checkPlanEntryShape(files) {
   const errors = [];
@@ -518,7 +520,7 @@ function checkPlanEntryShape(files) {
   }
   if (lib !== undefined) {
     if (!PLAN_ENTRY_STEPS.around.test(lib)) errors.push(`${PLAN_ENTRY_LIB}: Step 1 must be exactly place · date · event (\`PlanAround\`).`);
-    if (!PLAN_ENTRY_STEPS.steps.test(lib)) errors.push(`${PLAN_ENTRY_LIB}: PlanEntry's steps must be exactly around → occasion (\`PlanEntryStep\`).`);
+    if (!PLAN_ENTRY_STEPS.steps.test(lib)) errors.push(`${PLAN_ENTRY_LIB}: PlanEntry's steps must be exactly around → occasion → details (\`PlanEntryStep\`).`);
   }
   if (edit !== undefined) {
     const code = stripComments(edit);
@@ -712,7 +714,7 @@ function selfTest() {
     ["D13 · a comment does not MASK a real hand-assembled URL below it", () => checkServicesBrowseDoors(sbd('/* was `/services?categoryKey=x` */\nnavigate(buildServicesBrowseHref({}));\nnavigate("/services?categoryKey=" + k);')).some((e) => e.includes("hand-assembles"))],
     // E2 · PlanEntry / edit window (ledger `2026-10-09-e2-plan-entry`).
     ...(() => {
-      const lib = 'export type PlanAround = "place" | "date" | "event";\nexport type PlanEntryStep = "around" | "occasion";';
+      const lib = 'export type PlanAround = "place" | "date" | "event";\nexport type PlanEntryStep = "around" | "occasion" | "details";';
       const entry = '<Chip testId="plan-entry-around-place" />\n<button data-testid="button-plan-entry-start">Start a plan</button>';
       const edit = '<button data-testid="plan-step-where" />\n<Button data-testid="button-etp-save">Save</Button>';
       const pe = (e, l, m) => ({ [PLAN_ENTRY_FILE]: e, [PLAN_ENTRY_LIB]: l, [EDIT_WINDOW_FILE]: m });
@@ -724,7 +726,8 @@ function selfTest() {
         ["E2 · PlanEntry with Save FAILS", () => checkPlanEntryShape(pe(entry + '\n<Button data-testid="button-etp-save" />', lib, edit)).some((x) => x.includes("button-etp-save"))],
         ["E2 · a COMMENT naming a retired id does not fail PlanEntry", () => checkPlanEntryShape(pe('// no plan-step-when here\n' + entry, lib, edit)).length === 0],
         ["E2 · Step 1 not exactly place/date/event FAILS", () => checkPlanEntryShape(pe(entry, lib.replace('"event"', '"when"'), edit)).some((x) => x.includes("PlanAround"))],
-        ["E2 · steps not exactly around → occasion FAILS", () => checkPlanEntryShape(pe(entry, lib.replace('"occasion"', '"who"'), edit)).some((x) => x.includes("PlanEntryStep"))],
+        ["E2 · steps not exactly around → occasion → details FAILS", () => checkPlanEntryShape(pe(entry, lib.replace('"occasion"', '"who"'), edit)).some((x) => x.includes("PlanEntryStep"))],
+        ["H-10 · dropping the details step FAILS", () => checkPlanEntryShape(pe(entry, lib.replace(' | "details"', ""), edit)).some((x) => x.includes("PlanEntryStep"))],
         ["E2 · the edit window with an Occasion step FAILS", () => checkPlanEntryShape(pe(entry, lib, edit + '\n<div data-testid="plan-step-occasion-body" />')).some((x) => x.includes("plan-step-occasion"))],
         ["E2 · the edit window with Clear plan FAILS", () => checkPlanEntryShape(pe(entry, lib, edit + '\n<Button data-testid="button-etp-clear" />')).some((x) => x.includes("button-etp-clear"))],
         ["E2 · a missing PlanEntry file fails loudly", () => checkPlanEntryShape({ [PLAN_ENTRY_LIB]: lib, [EDIT_WINDOW_FILE]: edit }).some((x) => x.includes("does not exist"))],
