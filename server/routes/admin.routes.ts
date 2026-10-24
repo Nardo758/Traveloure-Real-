@@ -17,6 +17,7 @@ import { assertReadyMadeComplete } from "./ready-made.routes";
 import { resolveConciergeTierView } from "../utils/concierge-tier-filter";
 import { pgTextArray } from "../services/upsell-query.service";
 import { sanitizeText, sanitizeStringFields } from "../utils/text-sanitizer";
+import { listingBannedWording } from "../services/listing-banned-wording";
 import { withQueryTimer } from '../utils/queryTimer';
 import { DISPUTE_REJECT_FROM_STATUSES } from '../utils/booking-from-states';
 import { parsePagination } from '../utils/pagination';
@@ -4332,7 +4333,25 @@ router.get("/api/admin/provider-services/pending", isAuthenticated, async (req, 
     // the card carries `editReview: true` + the staged patch so the admin sees exactly what
     // would change.
     const editReviews = await storage.getEditReviewServiceListings();
-    res.json([...editReviews, ...services]);
+    // Flag only (Architect, Oct 23, 2026). Hits are computed on this read and not stored.
+    // A staged name is included so an edit review shows the wording that would go live.
+    res.json([
+      ...editReviews.map((item) => ({
+        ...item,
+        bannedWording: listingBannedWording({
+          serviceName: item.title,
+          description: item.description,
+          pendingChanges: item.pendingChanges,
+        }),
+      })),
+      ...services.map((item) => ({
+        ...item,
+        bannedWording: listingBannedWording({
+          serviceName: item.title,
+          description: item.description,
+        }),
+      })),
+    ]);
   });
 
   // Admin: Approve custom service
