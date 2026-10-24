@@ -84,6 +84,8 @@ interface PendingService {
   duration: string | null;
   submittedAt: string | null;
   expertId: string | null;
+  /** Shared-list hits computed on the pending read. Empty when the listing carries none. */
+  bannedWording?: string[];
 }
 
 // Admin approval queue for provider/expert SERVICE listings (provider_services born-submitted,
@@ -195,6 +197,15 @@ export default function ServiceApprovals() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
+                {s.bannedWording && s.bannedWording.length > 0 && (
+                  <Badge
+                    variant="outline"
+                    className="w-fit max-w-full whitespace-normal border-amber-300 bg-amber-50 text-amber-950"
+                    data-testid={`badge-banned-wording-${s.id}`}
+                  >
+                    Flagged wording: {s.bannedWording.join(", ")}
+                  </Badge>
+                )}
                 {s.description && <p className="text-sm whitespace-pre-wrap">{s.description}</p>}
                 {/* Ruling 112 Q8: an edit review shows EXACTLY what would change — approve
                     applies it to the live row; reject discards it and the approved version

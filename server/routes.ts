@@ -401,6 +401,7 @@ import { admitPriceBasis } from "./services/price-basis.service";
 import { resolveBookingConciergeItems } from "./services/booking-concierge.service";
 // SS-5c protected-title soft warning (ruling 69 disposition 5) — advisory only, never a block.
 import { detectProtectedTitleClaims } from "@shared/service-attestations";
+import { listingBannedWording } from "./services/listing-banned-wording";
 import { calculateCommission, BookingType } from "./utils/commissionCalculator";
 // Ready-made authoring mode (brief §2): explicit present-value author check. Never getTripRole.
 import { isTripAuthor } from "./utils/trip-authorship";
@@ -4391,6 +4392,10 @@ ${bannedCopyPromptLine()}`;
       res.status(201).json({
         ...omitFields(service, ["revenueShareRate"] as const),
         ...(titleWarning ? { warnings: { protectedTitleClaim: titleWarning } } : {}),
+        bannedWording: listingBannedWording({
+          serviceName: service.serviceName,
+          description: service.description,
+        }),
       });
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -4909,9 +4914,11 @@ ${bannedCopyPromptLine()}`;
         });
       }
 
+      const scannedName = (input as any).serviceName ?? finalRow?.serviceName ?? ownedService.serviceName;
+      const scannedDescription = (input as any).description ?? finalRow?.description ?? ownedService.description;
       const titleWarningUpd = detectProtectedTitleClaims({
-        serviceName: (input as any).serviceName ?? finalRow?.serviceName ?? ownedService.serviceName,
-        description: (input as any).description ?? finalRow?.description ?? ownedService.description,
+        serviceName: scannedName,
+        description: scannedDescription,
       });
       res.json(
         finalRow
@@ -4923,6 +4930,10 @@ ${bannedCopyPromptLine()}`;
               ...(stagedEditKeys.length > 0
                 ? { editReview: { status: "pending", stagedKeys: stagedEditKeys } }
                 : {}),
+              bannedWording: listingBannedWording({
+                serviceName: scannedName,
+                description: scannedDescription,
+              }),
             }
           : finalRow,
       );
@@ -4967,7 +4978,17 @@ ${bannedCopyPromptLine()}`;
         return res.status(submitWriteRefusal.status).json(submitWriteRefusal.body);
       }
       const submitted = await storage.submitProviderServiceListing(req.params.id);
-      res.json(submitted ? omitFields(submitted as any, ["revenueShareRate"] as const) : submitted);
+      res.json(
+        submitted
+          ? {
+              ...omitFields(submitted as any, ["revenueShareRate"] as const),
+              bannedWording: listingBannedWording({
+                serviceName: submitted.title,
+                description: submitted.description,
+              }),
+            }
+          : submitted,
+      );
     } catch (err) {
       console.error("Error submitting provider service:", err);
       res.status(500).json({ message: "Failed to submit service for review" });
@@ -6035,7 +6056,13 @@ ${bannedCopyPromptLine()}`;
         experienceTypes,
         isActive: isActive !== false,
       });
-      res.status(201).json(service);
+      res.status(201).json({
+        ...service,
+        bannedWording: listingBannedWording({
+          serviceName: service.title,
+          description: service.description,
+        }),
+      });
     } catch (err) {
       console.error("Error creating custom service:", err);
       res.status(500).json({ message: "Failed to create custom service" });
@@ -6059,7 +6086,17 @@ ${bannedCopyPromptLine()}`;
       }
 
       const updated = await storage.updateProviderServiceListing(req.params.id, req.body);
-      res.json(updated);
+      res.json(
+        updated
+          ? {
+              ...updated,
+              bannedWording: listingBannedWording({
+                serviceName: updated.title,
+                description: updated.description,
+              }),
+            }
+          : updated,
+      );
     } catch (err) {
       console.error("Error updating custom service:", err);
       res.status(500).json({ message: "Failed to update custom service" });
@@ -6091,7 +6128,17 @@ ${bannedCopyPromptLine()}`;
       }
 
       const submitted = await storage.submitProviderServiceListing(req.params.id);
-      res.json(submitted);
+      res.json(
+        submitted
+          ? {
+              ...submitted,
+              bannedWording: listingBannedWording({
+                serviceName: submitted.title,
+                description: submitted.description,
+              }),
+            }
+          : submitted,
+      );
     } catch (err) {
       console.error("Error submitting custom service:", err);
       res.status(500).json({ message: "Failed to submit custom service" });
