@@ -617,11 +617,46 @@ export async function claimHandle(page: Page, consoleHome: '/provider/dashboard'
   return ok2xx(status);
 }
 
+/**
+ * A new listing and a draft leaving review must name one catalog theme before submit
+ * (ledger `2026-10-23-experience-themes`). The picker mounts only on Basics. Callers such
+ * as D6b reach Review in their own loop and only then call this walk, so the picker is
+ * gone and the submit click throws before any request. Open Basics when that happens.
+ * An already-pressed catalog chip is left alone. "Other" is not chosen.
+ */
+async function pickListingTheme(page: Page): Promise<boolean> {
+  const picker = testid(page, 'listing-theme-picker');
+  if (!(await appears(picker, 1500))) {
+    const basics = page.locator('[data-step-key="basics"]');
+    if (!(await appears(basics, 2000))) return false;
+    await basics.click({ timeout: 3000 }).catch(() => {});
+    if (!(await appears(picker, 5000))) return false;
+  }
+  const catalog = picker.locator('[data-testid^="theme-option-"]:not([data-testid="theme-option-other"])');
+  const already = catalog.locator('[aria-pressed="true"]');
+  if ((await already.count()) > 0) return true; // count-ok: the picker has rendered (awaited above)
+  const preferred = testid(page, 'theme-option-city_itinerary');
+  const chip = (await appears(preferred, 8000)) ? preferred : catalog.first();
+  if (!(await appears(chip, 8000))) return false;
+  await chip.click({ timeout: 3000 }).catch(() => {});
+  const handle = await chip.elementHandle();
+  if (!handle) return false;
+  const pressed = await page
+    .waitForFunction((el) => el?.getAttribute('aria-pressed') === 'true', handle, { timeout: 3000 })
+    .then(() => true)
+    .catch(() => false);
+  return pressed;
+}
+
 export async function walkServiceFormToReview(
   page: Page,
   maxSteps = 8,
   opts: { neighborhoodSlug?: string } = {},
 ): Promise<number> {
+  // Basics may already be behind us. pickListingTheme opens that step, then the
+  // loop below walks forward again. Form state (the theme, and a join link already
+  // typed) is kept across the step change.
+  await pickListingTheme(page);
   // The listing-home checklist's "Describe it in 140+ characters" row lands here — top it up
   // if it's short, regardless of how this function was reached (create or edit-mode entry).
   const descField = testid(page, 'service-description');

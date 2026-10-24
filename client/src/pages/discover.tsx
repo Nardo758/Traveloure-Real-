@@ -85,7 +85,9 @@ import { useAddPlanResolution } from "@/hooks/use-open-plans";
 // The browse's OWN url contract, stated once and shared with every surface that links in (the
 // slip's D6 role chips are the first — ledger `2026-09-06-role-chips-filter`, §18 rule 1). This
 // page is the READER; a bare literal here is how a link and the page it points at drift apart.
-import { SERVICES_BROWSE_CATEGORY_PARAM } from "@/lib/services-browse";
+import { SERVICES_BROWSE_CATEGORY_PARAM, SERVICES_BROWSE_THEME_PARAM } from "@/lib/services-browse";
+import { DiscoverThemeFilter } from "@/components/discover-theme-filter";
+import { parseDiscoverThemeParam } from "@shared/experience-themes";
 // L11 (ledger `2026-09-07-discover-in-shell`): the plan chip + "For your plan" role chips. Both
 // derivations already exist and are CALLED here, never re-implemented (§18 rule 1) —
 // `planRoleChips` is `slipEventRoleChips` asked for a whole plan, and `roleLabel` is the ONE
@@ -359,6 +361,8 @@ type Service = {
   location: string;
   averageRating: string;
   reviewCount: number;
+  themeSlug?: string | null;
+  themeLabel?: string | null;
   status: string;
   deliveryMethod: string;
   deliveryTimeframe: string;
@@ -537,6 +541,11 @@ function ServiceCard({
           >
             {service.serviceName}
           </h4>
+          {service.themeLabel ? (
+            <p className="text-[12px] text-[color:var(--earn-muted)] mt-0.5" data-testid={`text-service-theme-${service.id}`}>
+              {service.themeLabel}
+            </p>
+          ) : null}
           <div className="flex items-center gap-1.5 text-[12px] text-[color:var(--earn-muted)] mt-1 flex-wrap">
             {service.deliveryTimeframe && (
               <>
@@ -1043,7 +1052,11 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
   const [maxPrice, setMaxPrice] = useState(readNumberParam("maxPrice"));
   const [minRating, setMinRating] = useState(readNumberParam("minRating"));
   const [page, setPage] = useState(initialPage);
+  const initialThemes = parseDiscoverThemeParam(urlParams.get(SERVICES_BROWSE_THEME_PARAM) ?? undefined);
+  const [selectedThemes, setSelectedThemes] = useState<string[]>(initialThemes.ok ? initialThemes.slugs : []);
+  const [themeParamError, setThemeParamError] = useState(!initialThemes.ok);
   const hasMountedSearch = useRef(false);
+  const hasMountedThemes = useRef(false);
   const limit = 12;
 
   // Trip packages state
@@ -1087,12 +1100,21 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
     setOrDelete("minRating", String(minRating), minRating <= 0);
     setOrDelete("sortBy", sortBy, sortBy === "rating");
     setOrDelete("page", String(page + 1), page === 0);
+    setOrDelete(SERVICES_BROWSE_THEME_PARAM, selectedThemes.join(","));
     const query = params.toString();
     const nextUrl = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
     if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== nextUrl) {
       window.history.replaceState(window.history.state, "", nextUrl);
     }
-  }, [debouncedQuery, locationFilter, selectedCategory, minPrice, maxPrice, minRating, sortBy, page]);
+  }, [debouncedQuery, locationFilter, selectedCategory, minPrice, maxPrice, minRating, sortBy, page, selectedThemes]);
+
+  useEffect(() => {
+    if (!hasMountedThemes.current) {
+      hasMountedThemes.current = true;
+      return;
+    }
+    setPage(0);
+  }, [selectedThemes]);
 
   // Preserve the project's existing tourism-analytics pipeline. Replit-hosted
   // custom events are additive and use trackEvent at confirmed outcome points.
@@ -1153,7 +1175,12 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
       : shortlist;
   }, [categories, selectedCategory]);
 
-  const { data: result, isLoading: servicesLoading } = useQuery<DiscoverResult>({
+  const { data: experienceThemeCatalog } = useQuery<{ themes: { id: string; slug: string; label: string }[] }>({
+    queryKey: ["/api/experience-themes"],
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: result, isLoading: servicesLoading, isError: servicesError, error: servicesQueryError } = useQuery<DiscoverResult>({
     queryKey: [
       "/api/discover",
       debouncedQuery,
@@ -1164,6 +1191,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
       minRating,
       sortBy,
       page,
+      selectedThemes.join(","),
     ],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -1174,11 +1202,15 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
       if (maxPrice > 0) params.set("maxPrice", String(maxPrice));
       if (minRating > 0) params.set("minRating", String(minRating));
       if (sortBy) params.set("sortBy", sortBy);
+      if (selectedThemes.length > 0) params.set(SERVICES_BROWSE_THEME_PARAM, selectedThemes.join(","));
       params.set("limit", String(limit));
       params.set("offset", String(page * limit));
       
       const res = await fetch(`/api/discover?${params.toString()}`);
-      if (!res.ok) throw new Error("Failed to fetch");
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.message || "Failed to fetch");
+      }
       return res.json();
     },
   });
@@ -1809,6 +1841,20 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
 
               {/* Browse Services Tab */}
               <TabsContent value="services">
+
+                <DiscoverThemeFilter
+                  themes={experienceThemeCatalog?.themes ?? []}
+                  selected={selectedThemes}
+                  onChange={(next) => {
+                    setThemeParamError(false);
+                    setSelectedThemes(next);
+                  }}
+                />
+                {(themeParamError || (servicesError && selectedThemes.length > 0)) && (
+                  <p className="text-sm text-destructive mb-3" data-testid="text-theme-filter-error">
+                    {servicesQueryError instanceof Error ? servicesQueryError.message : "Unknown theme."}
+                  </p>
+                )}
 
                 {/* Category chips — earn grammar (2026-08-25-card-family), active = teal fill.
                     §13: real per-category live-stock counts need a server count endpoint (filed

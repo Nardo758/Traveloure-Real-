@@ -47,6 +47,7 @@ import {
   CalendarDays,
   Inbox,
   Sparkles,
+  Tags,
   Wrench,
   RefreshCw,
   Newspaper,
@@ -87,6 +88,7 @@ const menuGroups = [
     items: [
       { title: "Services", href: "/admin/services", icon: Package },
       { title: "Categories", href: "/admin/categories", icon: FolderKanban },
+      { title: "Themes", href: "/admin/experience-themes", icon: Tags },
       { title: "Offering Types", href: "/admin/offering-types", icon: Layers },
       // Ready Made Trips: catalog + approvals are tabs on this page.
       { title: "Ready Made Trips", href: "/admin/expert-templates", icon: LayoutTemplate },

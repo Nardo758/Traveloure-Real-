@@ -2150,4 +2150,9 @@ export const MIGRATION_FILES = [
   // HELD for "Migration 408 SQL approved — Leon". Ledger 2026-10-23-payout-setup-server.
   // Declared in shared/models/auth.ts.
   "408_payout_setup.sql",
+  // 409 — experience_themes, experience_theme_suggestions, provider_services.theme_id.
+  // Additive nullable, no DEFAULT on the theme column, no CHECK, no backfill.
+  // HELD for "Migration 409 SQL approved — Leon". Ledger 2026-10-23-experience-themes.
+  // Declared in shared/schema.ts.
+  "409_experience_themes.sql",
 ] as const;

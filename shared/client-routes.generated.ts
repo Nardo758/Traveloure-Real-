@@ -27,6 +27,7 @@ export const CLIENT_ROUTES: readonly string[] = [
   "/admin/data",
   "/admin/destination-events",
   "/admin/event-packages",
+  "/admin/experience-themes",
   "/admin/expert-templates",
   "/admin/experts",
   "/admin/fee-bands",
