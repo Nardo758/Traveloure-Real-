@@ -191,7 +191,7 @@ test("H-08: choosing the event's own group keeps the door occasion; a one-day da
   assert.equal(one.endDate, "2026-10-25");
   assert.equal(one.group, "moments");
   const kept = { ...one, ...choosePlanEntryGroup(one, "moments") };
-  assert.equal(chosenOccasionSlug(kept), "show", "A moment keeps the door's show, not Date Night");
+  assert.equal(chosenOccasionSlug(kept), "show", "the moments group keeps the door's show, not Date Night");
   const other = { ...one, ...choosePlanEntryGroup(one, "trips") };
   assert.equal(other.occasionSlug, null);
   assert.equal(chosenOccasionSlug(other), "travel", "a different group uses that group's default");

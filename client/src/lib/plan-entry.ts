@@ -193,7 +193,7 @@ export function withEvent(state: PlanEntryState, e: PlanEntryEvent, occasionSlug
   const run = wholeRun(e);
   const options = nightPickerOptions({ event: e, market }, now);
   // A one-night show in a series is one night (the brief). That night is the show the traveler
-  // opened when it is still to come; otherwise the first show still to come. A trip keeps the whole run.
+  // opened when it is still to come; otherwise the first show still to come. The trips group keeps the whole run.
   const pickedNight =
     options && group === "moments" ? (options.includes(e.firstDate) ? e.firstDate : options[0]) : null;
   return {
@@ -265,9 +265,9 @@ export function chosenOccasionSlug(state: PlanEntryState): string {
 }
 
 /**
- * The group chip. An event door arrives with occasion `show` already in the group its nights chose
- * ("A moment" for one night). Choosing that same group keeps `show`. Choosing a different group
- * clears it, so that group's own default applies. "More specific" is a separate write.
+ * The group chip. An event door arrives with occasion `show` already in the moments group when the
+ * event is one night. Choosing that same group keeps `show`. Choosing a different group clears it,
+ * so that group's own default applies. "More specific" is a separate write.
  */
 export function choosePlanEntryGroup(
   state: Pick<PlanEntryState, "event" | "occasionSlug" | "group">,
