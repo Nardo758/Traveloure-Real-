@@ -94,7 +94,7 @@ Two functions have no production caller: `enqueueBookingConfirmationEmail` and t
 
 This inventory was not run against production. There is no production count here.
 
-Leon sets the allowlist to real `email_type` values. Example: `EMAIL_TEMPLATE_ALLOWLIST=email_verification,itinerary_ready`
+Leon sets the allowlist to real `email_type` values. Candidate list: `EMAIL_TEMPLATE_ALLOWLIST=email_verification,itinerary_ready,booking_confirmation`
 
 When `EMAIL_SENDS_ENABLED` becomes `true`, two things happen:
 

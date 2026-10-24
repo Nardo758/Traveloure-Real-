@@ -97,6 +97,7 @@ function makeClaimedRow(overrides: Partial<{
     reply_to:      null,
     attempt_count: 0,
     max_attempts:  6,
+    email_type:    "password_reset",
     ...overrides,
   };
 }
