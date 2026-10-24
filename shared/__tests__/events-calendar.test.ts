@@ -136,11 +136,11 @@ describe("events calendar rules", () => {
     assert.equal(eventPlace(ev("s", "2026-10-24", "2026-10-24", { venue: "Hall", venueLocality: "kyoto" })), "Hall · Kyoto", "same city: no claim");
   });
 
-  it("K7 a long run is an underline, not a count", () => {
+  it("K7 a long run is an underline and is counted on every day it covers", () => {
     const run = ev("r", "2026-10-14", "2026-11-05");
     const short = ev("s", "2026-10-20", "2026-10-20");
     const m = dayMarks([run, short], "2026-10").find((x) => x.date === "2026-10-20")!;
-    assert.equal(m.count, 1);
+    assert.equal(m.count, 2);
     assert.equal(m.longRun, true);
     const ten = ev("t", "2026-10-01", "2026-10-10");
     assert.equal(dayMarks([ten], "2026-10")[0].longRun, false, "ten days is not a long run");
