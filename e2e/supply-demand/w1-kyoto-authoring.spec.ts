@@ -64,10 +64,43 @@ test('W1: an expert builds a 3-day Kyoto trip on the Workstation and submits it'
   const ids = await candidates.evaluateAll((els) => els.slice(0, 3).map((e) => e.getAttribute('data-testid')!));
 
   // A Kyoto build opens on the format registry's Structure view; the day rows are its "Day list".
+  //
+  // The day list is not "shown" when the toggle is on screen. `workstation-days` is painted from
+  // `plan?.days ?? []` as soon as the view mounts, before the plancard read fills it (the query
+  // client uses staleTime Infinity, so mounting does not refetch). A trace of a passing run showed
+  // the old helper return on a single `isVisible()` snapshot: the first call clicked the toggle and
+  // the row-count assertion started 4ms later; the next two calls saw the shell already mounted and
+  // returned immediately, and `toHaveCount` then polled ~100ms until the new stop appeared. On a
+  // slower runner that click is dropped — the toggle is replaced while the add's queries settle,
+  // `isVisible()` does not wait, and one missed snapshot skips the click entirely — so the count
+  // runs against a view that never mounted. Both call sites (the map adds, and the leg rows) go
+  // through this helper.
   const showDayList = async () => {
     const toggle = page.getByTestId('toggle-format-day-list');
-    await expect(page.getByTestId('workstation-days').or(toggle).first()).toBeVisible({ timeout: 20_000 });
-    if (!(await page.getByTestId('workstation-days').isVisible()) && (await toggle.isVisible())) await toggle.click();
+    const days = page.getByTestId('workstation-days');
+    await expect(days.or(toggle).first()).toBeVisible({ timeout: 20_000 });
+
+    // Re-check after every click. One click is not a mount: if it is lost, formatView stays on
+    // Structure and the next pass clicks again instead of asserting against the missing list.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (await days.isVisible().catch(() => false)) break;
+      const toggleReady = await toggle.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true).catch(() => false);
+      if (await days.isVisible().catch(() => false)) break;
+      if (!toggleReady) continue;
+      await toggle.click().catch(() => {});
+      const mounted = await days.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true).catch(() => false);
+      if (mounted) break;
+    }
+    await expect(days).toBeVisible({ timeout: 20_000 });
+
+    // The shell can be visible with zero rows while the plancard refetch (triggered after the
+    // item-list invalidation, not by this toggle) is still in flight. The painted stop count has
+    // to match the itinerary the server already committed before either caller asserts.
+    const items = await page.request.get(`/api/trips/${tripId}/itinerary-items`);
+    expect(items.ok(), `GET itinerary-items answered ${items.status()}`).toBeTruthy();
+    const serverCount = (await items.json()).total;
+    expect(typeof serverCount, 'itinerary total').toBe('number');
+    await expect(days.locator('[data-item-mode]')).toHaveCount(serverCount, { timeout: 20_000 });
   };
   const addFromMap = async (candidateTestId: string, day: number, expectRows: number) => {
     // The map's own day pill: it draws every day of the build and sets the day "Add to day N" adds to.
