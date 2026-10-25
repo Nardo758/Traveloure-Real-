@@ -9,7 +9,10 @@
  *
  * Success (payments JSON, present only when a custom pin was placed this call):
  * resolvedPinnedAnchor: { type, name, lat, lng, formattedAddress }
+ * placement: { lat, lng, source, at, sig }
  * formattedAddress is the provider's formatted address when this call geocoded, otherwise null.
+ * `at` is an ISO-8601 UTC timestamp (`Date.toISOString()`). `source` is `google_geocode`.
+ * `sig` is an HMAC the server checks; this module does not verify it.
  */
 
 export const CUSTOM_LOCATION_UNPLACEABLE = "custom_location_unplaceable" as const;
@@ -26,14 +29,46 @@ export const CUSTOM_LOCATION_REFUSAL_REASONS = [
 
 export type CustomLocationRefusalReason = (typeof CUSTOM_LOCATION_REFUSAL_REASONS)[number];
 
-/** The only location_type values precise enough to place a custom pin. Checked with includes. */
+/** The only location_type values precise enough on their own. Checked with includes. */
 export const PRECISE_GEOCODE_LOCATION_TYPES = ["ROOFTOP", "GEOMETRIC_CENTER"] as const;
+
+/**
+ * An APPROXIMATE hit is placeable only when its types include one of these and
+ * partial_match is false. RANGE_INTERPOLATED is not in this list and is not precise.
+ */
+export const APPROXIMATE_AREA_TYPES = ["neighborhood", "sublocality", "locality"] as const;
+
+export const CUSTOM_PIN_PLACEMENT_SOURCE = "google_geocode" as const;
+
+/** How long a signed placement may be echoed. */
+export const CUSTOM_PIN_PLACEMENT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 export function isPreciseGeocodeLocationType(locationType: string | null | undefined): boolean {
   return (
     locationType != null &&
     (PRECISE_GEOCODE_LOCATION_TYPES as readonly string[]).includes(locationType)
   );
+}
+
+/** True when this one Google hit may be placed. RANGE_INTERPOLATED is refused. */
+export function isPlaceableGeocodeHit(hit: {
+  locationType: string | null;
+  types: readonly string[];
+  partialMatch: boolean;
+}): boolean {
+  if (isPreciseGeocodeLocationType(hit.locationType)) return true;
+  if (hit.locationType !== "APPROXIMATE" || hit.partialMatch) return false;
+  return hit.types.some((type) => (APPROXIMATE_AREA_TYPES as readonly string[]).includes(type));
+}
+
+export interface CustomPinPlacement {
+  lat: number;
+  lng: number;
+  source: typeof CUSTOM_PIN_PLACEMENT_SOURCE;
+  /** ISO-8601 UTC (`Date.toISOString()`). */
+  at: string;
+  /** Hex HMAC-SHA256. Opaque to the client. */
+  sig: string;
 }
 
 export function isCustomLocationRefusalReason(value: unknown): value is CustomLocationRefusalReason {
@@ -90,5 +125,24 @@ export function readResolvedPinnedAnchor(raw: unknown): ResolvedCustomPin | null
     lat,
     lng,
     formattedAddress,
+  };
+}
+
+/** Structural read of an echoed placement. Does not check the signature. */
+export function readCustomPinPlacement(raw: unknown): CustomPinPlacement | null {
+  if (!raw || typeof raw !== "object") return null;
+  const record = raw as Record<string, unknown>;
+  if (record.source !== CUSTOM_PIN_PLACEMENT_SOURCE) return null;
+  if (typeof record.at !== "string" || record.at.trim() === "") return null;
+  if (typeof record.sig !== "string" || record.sig.trim() === "") return null;
+  if (typeof record.lat !== "number" || typeof record.lng !== "number") return null;
+  if (!Number.isFinite(record.lat) || !Number.isFinite(record.lng)) return null;
+  if (record.lat < -90 || record.lat > 90 || record.lng < -180 || record.lng > 180) return null;
+  return {
+    lat: record.lat,
+    lng: record.lng,
+    source: CUSTOM_PIN_PLACEMENT_SOURCE,
+    at: record.at,
+    sig: record.sig,
   };
 }

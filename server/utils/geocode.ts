@@ -9,7 +9,7 @@
 
 import { mapsCallerDailyCap } from "../config/maps-billing.config";
 import {
-  isPreciseGeocodeLocationType,
+  isPlaceableGeocodeHit,
   type CustomLocationRefusalReason,
 } from "@shared/custom-location-pin";
 
@@ -27,6 +27,8 @@ export interface GeocodeHit {
   formattedAddress: string;
   locationType: string | null;
   types: string[];
+  /** Google `partial_match`. Absent on the payload is false. */
+  partialMatch: boolean;
 }
 
 export type GeocodeDetailed =
@@ -38,6 +40,7 @@ interface GoogleGeocodePayload {
   results?: Array<{
     formatted_address?: unknown;
     types?: unknown;
+    partial_match?: unknown;
     geometry?: {
       location?: { lat?: unknown; lng?: unknown };
       location_type?: unknown;
@@ -109,7 +112,8 @@ function hitsFromPayload(payload: GoogleGeocodePayload): GeocodeHit[] {
     const locationType = typeof row.geometry?.location_type === "string" ? row.geometry.location_type : null;
     const formattedAddress = typeof row.formatted_address === "string" ? row.formatted_address : "";
     const types = Array.isArray(row.types) ? row.types.filter((t): t is string => typeof t === "string") : [];
-    hits.push({ lat, lng, formattedAddress, locationType, types });
+    const partialMatch = row.partial_match === true;
+    hits.push({ lat, lng, formattedAddress, locationType, types, partialMatch });
   }
   return hits;
 }
@@ -172,9 +176,9 @@ async function notifyCap(deps: GeocodeDetailedDeps, info: { used: number | null;
 }
 
 /**
- * Every finite Google result, plus one typed reason. A single precise hit is the only success.
- * More than one hit is ambiguous even when one of them is precise. The precision set lives in
- * `PRECISE_GEOCODE_LOCATION_TYPES` — this function does not restate it.
+ * Every finite Google result, plus one typed reason. A single placeable hit is the only success.
+ * More than one hit is ambiguous even when one of them is placeable. Placeability lives in
+ * `isPlaceableGeocodeHit` — this function does not restate the location types.
  */
 export async function geocodeAddressDetailed(
   address: string,
@@ -209,7 +213,7 @@ export async function geocodeAddressDetailed(
     return { ok: false, reason: "ambiguous", results: hits };
   }
   const only = hits[0];
-  if (!isPreciseGeocodeLocationType(only.locationType)) {
+  if (!isPlaceableGeocodeHit(only)) {
     return { ok: false, reason: "imprecise", results: hits };
   }
   return { ok: true, results: hits, chosen: only };

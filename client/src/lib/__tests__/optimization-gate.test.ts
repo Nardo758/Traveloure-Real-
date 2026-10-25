@@ -252,6 +252,21 @@ describe("custom location pin", () => {
       },
     });
   });
+
+  it("forwards an echoed placement opaque and attaches one from the success body", async () => {
+    const placement = {
+      lat: 35.0037,
+      lng: 135.7788,
+      source: "google_geocode" as const,
+      at: "2026-10-25T12:00:00.000Z",
+      sig: "abc",
+    };
+    const sent = mockFetch(200, { coveredByTripPass: true, placement });
+    const pin = { type: "neighborhood" as const, name: "Gion", placement };
+    const outcome = await requestOptimizationGate({ tripId: "t", pinnedAnchor: pin, fetchImpl: sent.fetchImpl });
+    assert.deepStrictEqual(sent.calls[0].body.pinnedAnchor, pin);
+    assert.deepStrictEqual(outcome, { kind: "covered_by_pass", placement });
+  });
 });
 
 describe("isTripEmptyRefusal", () => {

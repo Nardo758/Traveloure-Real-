@@ -10410,9 +10410,9 @@ ${bannedCopyPromptLine()}`;
         return;
       }
 
-      // Custom pin: geocode (or reuse this process's handoff) and refuse before the pay
-      // gate, the comparison insert, and the toll. Coords are written onto rawPinnedAnchor
-      // so the resolver call below stays the existing one and does not geocode again.
+      // Custom pin: accept a signed placement or geocode, and refuse before the pay
+      // gate, the comparison insert, and the toll. Server coords are written onto
+      // rawPinnedAnchor so the resolver call below stays the existing one.
       const placedPinForCreate = await placeCustomPinBeforeCharge({
         rawPin: rawPinnedAnchor,
         userId,
@@ -10563,7 +10563,11 @@ ${bannedCopyPromptLine()}`;
       // `runBasis` rides on the response so the surface can say WHY the run was free (LD 41):
       // "Included in your Trip Pass" and "free re-run" are different facts (§13). It is additive —
       // `CreateComparisonResult` carries an index signature and no client requires it.
-      res.status(201).json({ ...comparison, runBasis });
+      res.status(201).json({
+        ...comparison,
+        runBasis,
+        ...(placedPinForCreate.placement ? { placement: placedPinForCreate.placement } : {}),
+      });
     } catch (error) {
       console.error("Error creating comparison:", error);
       res.status(500).json({ message: "Failed to create comparison" });
@@ -10827,9 +10831,9 @@ ${bannedCopyPromptLine()}`;
         });
       }
 
-      // Same custom-pin gate as create: refuse before the pay gate, the PaymentIntent claim,
-      // and the toll. A name-only pin already placed on the payments call is reused from the
-      // process handoff instead of geocoded again.
+      // Same custom-pin gate as create: a signed placement is accepted, anything else is
+      // re-geocoded, and a refusal returns before the pay gate, the PaymentIntent claim,
+      // and the toll.
       const placedPinForGenerate = await placeCustomPinBeforeCharge({
         rawPin: rawPinnedAnchor,
         userId,
@@ -10913,7 +10917,7 @@ ${bannedCopyPromptLine()}`;
 
       // LD 41: the basis rides on the response for the same reason it does on create — the
       // surface must be able to say "included in your Trip Pass" rather than guess (§13).
-      res.json({ message: "Optimization started", status: "generating", runBasis: runAuth.basis });
+      res.json({ message: "Optimization started", status: "generating", runBasis: runAuth.basis, ...(placedPinForGenerate.placement ? { placement: placedPinForGenerate.placement } : {}) });
 
       // Build trip preferences for the adaptive variant strategy. Dislike
       // feedback applies even without a trip row (it's an explicit instruction,

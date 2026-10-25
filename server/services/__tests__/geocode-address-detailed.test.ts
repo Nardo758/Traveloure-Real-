@@ -16,10 +16,18 @@ function googleBody(status: string, results: Array<Record<string, unknown>>) {
   return { status, results };
 }
 
-function resultRow(h: { lat: number; lng: number; locationType?: string | null; formattedAddress?: string }) {
+function resultRow(h: {
+  lat: number;
+  lng: number;
+  locationType?: string | null;
+  formattedAddress?: string;
+  types?: string[];
+  partialMatch?: boolean;
+}) {
   return {
     formatted_address: h.formattedAddress ?? "Somewhere",
-    types: ["street_address"],
+    types: h.types ?? ["street_address"],
+    ...(h.partialMatch ? { partial_match: true } : {}),
     geometry: {
       location: { lat: h.lat, lng: h.lng },
       ...(h.locationType === undefined ? {} : { location_type: h.locationType }),
@@ -123,8 +131,8 @@ describe("geocodeAddressDetailed", () => {
     }
   });
 
-  it("returns imprecise when the only hit is not rooftop or geometric center", async () => {
-    for (const locationType of ["RANGE_INTERPOLATED", "APPROXIMATE", null] as const) {
+  it("returns imprecise when the only hit is RANGE_INTERPOLATED, null, or APPROXIMATE without an area type", async () => {
+    for (const locationType of ["RANGE_INTERPOLATED", null] as const) {
       const harness = deps({
         payload: googleBody("OK", [resultRow({ lat: 1, lng: 2, locationType })]),
       });
@@ -134,7 +142,46 @@ describe("geocodeAddressDetailed", () => {
         assert.equal(out.reason, "imprecise");
         assert.equal(out.results.length, 1);
         assert.equal(out.results[0].locationType, locationType);
+        assert.equal(out.results[0].partialMatch, false);
       }
+    }
+  });
+
+  it("accepts APPROXIMATE only for neighborhood, sublocality, or locality without partial_match", async () => {
+    for (const area of ["neighborhood", "sublocality", "locality"] as const) {
+      const harness = deps({
+        payload: googleBody("OK", [resultRow({ lat: 35, lng: 135.7, locationType: "APPROXIMATE", types: [area, "political"] })]),
+      });
+      const out = await geocodeAddressDetailed(area, harness.deps);
+      assert.equal(out.ok, true, area);
+      if (out.ok) {
+        assert.equal(out.chosen.locationType, "APPROXIMATE");
+        assert.equal(out.chosen.partialMatch, false);
+        assert.ok(out.chosen.types.includes(area));
+      }
+    }
+    for (const types of [["route"], ["administrative_area_level_1"], ["street_address"]] as const) {
+      const harness = deps({
+        payload: googleBody("OK", [resultRow({ lat: 1, lng: 2, locationType: "APPROXIMATE", types: [...types] })]),
+      });
+      const out = await geocodeAddressDetailed(types[0], harness.deps);
+      assert.equal(out.ok, false, types.join(","));
+      if (!out.ok) assert.equal(out.reason, "imprecise");
+    }
+    const partial = deps({
+      payload: googleBody("OK", [resultRow({
+        lat: 35,
+        lng: 135.7,
+        locationType: "APPROXIMATE",
+        types: ["neighborhood"],
+        partialMatch: true,
+      })]),
+    });
+    const partialOut = await geocodeAddressDetailed("Gion", partial.deps);
+    assert.equal(partialOut.ok, false);
+    if (!partialOut.ok) {
+      assert.equal(partialOut.reason, "imprecise");
+      assert.equal(partialOut.results[0].partialMatch, true);
     }
   });
 
@@ -243,6 +290,8 @@ describe("geocodeAddressDetailed", () => {
     const detailed = geocodeSrc.slice(detailedStart);
     assert.doesNotMatch(detailed, /"ROOFTOP"/);
     assert.doesNotMatch(detailed, /"GEOMETRIC_CENTER"/);
-    assert.match(detailed, /isPreciseGeocodeLocationType/);
+    assert.doesNotMatch(detailed, /"APPROXIMATE"/);
+    assert.doesNotMatch(detailed, /"RANGE_INTERPOLATED"/);
+    assert.match(detailed, /isPlaceableGeocodeHit/);
   });
 });

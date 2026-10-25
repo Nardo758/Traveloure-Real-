@@ -18,8 +18,10 @@
 
 import {
   isCustomLocationRefusal,
+  readCustomPinPlacement,
   readResolvedPinnedAnchor,
   type CustomLocationRefusalReason,
+  type CustomPinPlacement,
   type ResolvedCustomPin,
 } from "@shared/custom-location-pin";
 
@@ -33,14 +35,14 @@ export interface OptimizationPaymentSheet {
 
 export type OptimizationGateOutcome =
   /** Server says the 24h free re-run window is active — run the comparison, nothing to charge. */
-  | { kind: "free_rerun"; resolvedPinnedAnchor?: ResolvedCustomPin }
+  | { kind: "free_rerun"; resolvedPinnedAnchor?: ResolvedCustomPin; placement?: CustomPinPlacement }
   /** Ruling 2026-08-29-trip-pass: the trip's active Trip Pass covers this run — no charge.
    *  Server-decided (the client never asserts coverage); flow-wise identical to free_rerun. */
-  | { kind: "covered_by_pass"; resolvedPinnedAnchor?: ResolvedCustomPin }
+  | { kind: "covered_by_pass"; resolvedPinnedAnchor?: ResolvedCustomPin; placement?: CustomPinPlacement }
   /** FP-2 one-click: the saved default card was charged off-session and succeeded. */
-  | { kind: "paid"; paymentIntentId: string; resolvedPinnedAnchor?: ResolvedCustomPin }
+  | { kind: "paid"; paymentIntentId: string; resolvedPinnedAnchor?: ResolvedCustomPin; placement?: CustomPinPlacement }
   /** A PaymentIntent needing the interactive sheet (fresh card, or 3DS `requiresAction` fallback). */
-  | { kind: "payment_sheet"; payment: OptimizationPaymentSheet; resolvedPinnedAnchor?: ResolvedCustomPin }
+  | { kind: "payment_sheet"; payment: OptimizationPaymentSheet; resolvedPinnedAnchor?: ResolvedCustomPin; placement?: CustomPinPlacement }
   /**
    * Saved-card charge was requested but no usable method existed after all — the caller
    * should fall back to the sheet path (re-request without `useSavedCard`), matching
@@ -86,6 +88,8 @@ export interface OptimizationGateRequest {
     name?: string;
     lat?: number;
     lng?: number;
+    /** Echo of the payments/create `placement` object. Forwarded opaque; the server checks `sig`. */
+    placement?: CustomPinPlacement;
   };
   /** Rides along as comparisonContext.destination (display context only — never a money input).
    *  `null` is accepted and forwarded as-is — cart.tsx's experienceTitle is `string | null`,
@@ -117,17 +121,22 @@ function withResolved(
   outcome: OptimizationGateOutcome,
   data: Record<string, unknown>,
 ): OptimizationGateOutcome {
-  const resolved = readResolvedPinnedAnchor(data.resolvedPinnedAnchor);
-  if (!resolved) return outcome;
   if (
-    outcome.kind === "free_rerun" ||
-    outcome.kind === "covered_by_pass" ||
-    outcome.kind === "paid" ||
-    outcome.kind === "payment_sheet"
+    outcome.kind !== "free_rerun" &&
+    outcome.kind !== "covered_by_pass" &&
+    outcome.kind !== "paid" &&
+    outcome.kind !== "payment_sheet"
   ) {
-    return { ...outcome, resolvedPinnedAnchor: resolved };
+    return outcome;
   }
-  return outcome;
+  const resolved = readResolvedPinnedAnchor(data.resolvedPinnedAnchor);
+  const placement = readCustomPinPlacement(data.placement);
+  if (!resolved && !placement) return outcome;
+  return {
+    ...outcome,
+    ...(resolved ? { resolvedPinnedAnchor: resolved } : {}),
+    ...(placement ? { placement } : {}),
+  };
 }
 
 export async function requestOptimizationGate(
