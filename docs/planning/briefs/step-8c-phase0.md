@@ -130,6 +130,7 @@ The server route `server/routes.ts:9692` (and `/api/cart/items`, `:7295`) accept
 - **No guard enumerates cart writers today.** The closest is `rc2-add-to-plan.test.ts` S1/S4/S5 (`:89–120`), which are
   per-file negatives. `artifacts/traveloure/**` is a stale mirror with its own copies, so any guard must be scoped to
   `client/src`.
+  <!-- superseded@SHA — owner ruling 2026-10-25 deleted `artifacts/traveloure/` (ledger `2026-10-25-delete-artifacts-traveloure`). The guard scope to `client/src` stands. Annotation, not a rewrite. -->
 - **The 8c fixture "the trip-less callers are exactly the four … a fixed list that can only shrink":** a source scan over
   `client/src/**/*.{ts,tsx}` (excluding `__tests__`) for POSTs to `/api/cart` and `/api/cart/items`, keyed by **file +
   enclosing mutation/function name** (never line numbers), against a frozen allowlist where a file's count may fall but

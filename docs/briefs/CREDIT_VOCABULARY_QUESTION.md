@@ -47,6 +47,7 @@ reaches code through a ticket title.
   `artifacts/traveloure/src/pages/terms.tsx:516`; that tree is referenced by neither `vite.config.ts`
   nor `script/build.ts` nor `tsconfig.json`, so it is an inert snapshot, not a live claim. Noted so
   nobody re-files it as a defect.)*
+  <!-- superseded@SHA — owner ruling 2026-10-25 deleted `artifacts/traveloure/` (ledger `2026-10-25-delete-artifacts-traveloure`). The stale Terms copy went with that tree. The live `client/src/pages/terms.tsx` claim was already absent. Annotation, not a rewrite. -->
 - **(2)** `admin/concierge-requests.tsx:123` — *"The coordination fee has been reversed and the credit
   restored."* **This is the live surface using the retired product's noun for an obligation.**
 - **(3)** nothing — no surface calls an allowance a credit.

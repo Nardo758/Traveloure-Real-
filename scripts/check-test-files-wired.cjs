@@ -62,10 +62,10 @@
  *   repository, which removes prose nouns (`against`, `local`, `dev`) but NOT
  *   a real root name such as `server`. It is a second filter, not the fix:
  *   the invocation-position rule above is what removes `server`.
- * - `TEST_ROOTS` IS `server`, `shared`, `client`, `playwright`, `scripts`. TWO
- *   ROOTS WITH TEST FILES ARE DELIBERATELY OUT, AND BOTH ARE NAMED HERE RATHER
- *   THAN LEFT SILENT — an unscanned root is invisible in BOTH directions, so a
- *   suite under it can be added, wired or orphaned without this guard noticing.
+ * - `TEST_ROOTS` IS `server`, `shared`, `client`, `playwright`, `scripts`.
+ *   `e2e/` AND `artifacts/` STAY OUT, AND BOTH ARE NAMED HERE RATHER THAN LEFT
+ *   SILENT — an unscanned root is invisible in BOTH directions, so a suite under
+ *   it can be added, wired or orphaned without this guard noticing.
  *
  *   `scripts/` WAS SILENTLY OUT UNTIL 2026-09-23 and is now IN. It holds two
  *   suites (`scripts/mutation-auth/extractor.test.ts`, `coverage.test.ts`) that
@@ -85,17 +85,14 @@
  *   widening the inventory is a decision about what it MEASURES, and the ratchet
  *   does not make it.
  *
- *   `artifacts/` STAYS OUT, on a DIFFERENT ground, and this is the bigger of the
- *   two omissions: `artifacts/traveloure` is a separate private workspace
- *   (`@workspace/traveloure`, `private: true`) carrying **29** test files — more
- *   than `shared/` — and it is a design REFERENCE, not shipped code. Its own
- *   `package.json` declares `dev`/`build`/`serve`/`typecheck` and NO `test`
- *   script, no workflow names it, and the main app cites it only in comments.
- *   Adding the root would declare 29 orphans in a prototype, and because the
- *   ratchet refuses to baseline a new orphan, that would force wiring or
- *   deleting 29 sandbox suites to get green. Bringing it in is a decision about
- *   what this inventory is FOR, on the `e2e/` precedent — not a blind spot to be
- *   closed by widening a constant.
+ *   `artifacts/` STAYS OUT. `artifacts/traveloure` (`@workspace/traveloure`, 29
+ *   test files, design reference) was deleted 2026-10-25 (ledger
+ *   `2026-10-25-delete-artifacts-traveloure`). The root still holds design
+ *   sandboxes (`mockup-sandbox`, `billboard-preview`, `traveloure-marketplace`)
+ *   that are not the production client. Scanning `artifacts/` would turn a
+ *   sandbox suite into either an invisible orphan or a ratchet failure. Bringing
+ *   the root in is a decision about what this inventory measures, on the `e2e/`
+ *   precedent — not a blind spot closed by widening `TEST_ROOTS`.
  * - THE RATCHET DOES NOT MAKE A BASELINE ROW ACCEPTABLE. It catches exactly two
  *   things — a NEW unreachable test file, and a baseline row that has gone stale
  *   (wired, or deleted). It says nothing about the 233 rows it carries: each is

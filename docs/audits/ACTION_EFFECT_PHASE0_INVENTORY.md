@@ -65,6 +65,7 @@ All routes live in one `<Switch>` in `Router()` at `App.tsx:352`. Global provide
 
 No other module in `client/src` imports any of these (grep checked). Only `my-itinerary` is imported, and only by the unused lazy import in `App.tsx`.
 **Out of scope:** `artifacts/traveloure/` is a reference app that is not shipped (its README says so). Expert,
+<!-- superseded@SHA — owner ruling 2026-10-25 deleted `artifacts/traveloure/` (ledger `2026-10-25-delete-artifacts-traveloure`). Annotation, not a rewrite. -->
 provider, EA and admin routes are also out of scope and are logged for pass two.
 
 ---
