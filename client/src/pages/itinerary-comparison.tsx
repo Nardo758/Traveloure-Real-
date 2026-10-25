@@ -80,6 +80,8 @@ import type { ProposalAnchorItem, ProposalLegsSummary } from "@/components/planc
 import type { SlipData } from "@/components/plancard/SlipView";
 import { VersionsBoard } from "@/components/plancard/VersionsBoard";
 import { OPTIMIZE_RERUN_RULE } from "@/lib/optimization-preview";
+import { busyAroundDatesLine } from "@/lib/comparison-context";
+import { planBudgetLine } from "@/lib/plan-budget";
 import {
   sumLegMinutes,
   parseTotal,
@@ -947,45 +949,10 @@ export default function ItineraryComparisonPage() {
 
   const destination = data?.comparison?.destination;
   const isMultiCity = destination?.includes(";") || destination?.includes(",") && destination?.split(",").length > 2;
-  
-  // For multi-city trips, extract just the first city for TravelPulse lookup
-  const primaryCity = isMultiCity 
-    ? destination?.split(";")[0]?.trim()?.split(",")[0]?.trim() 
+  // The heading names the first city of a multi-city trip.
+  const primaryCity = isMultiCity
+    ? destination?.split(";")[0]?.trim()?.split(",")[0]?.trim()
     : destination?.split(",")[0]?.trim();
-  
-  const { data: travelPulseData, isLoading: travelPulseLoading, isError: travelPulseError } = useQuery<{
-    city?: {
-      name: string;
-      country: string;
-      pulseScore?: number;
-      trendingScore?: number;
-      crowdLevel?: string;
-      weatherScore?: number;
-      aiUpcomingEvents?: string;
-      aiTravelTips?: string;
-      aiLocalInsights?: string;
-      aiBudgetEstimate?: string;
-      aiMustSeeAttractions?: string;
-    };
-  }>({
-    queryKey: ["/api/travelpulse/cities", primaryCity],
-    enabled: !!primaryCity,
-  });
-
-  const { data: trendingData, isLoading: trendingLoading } = useQuery<{
-    experiences?: Array<{
-      id: string;
-      name: string;
-      type: string;
-      trendingScore: number;
-      reason?: string;
-    }>;
-  }>({
-    queryKey: ["/api/travelpulse/trending", primaryCity],
-    enabled: !!primaryCity,
-  });
-
-  const travelPulseIntelligenceLoading = travelPulseLoading || trendingLoading;
 
   // Review-first preview (ledger 2026-08-22-slip-optimize-review-first): the current plan's own
   // transport legs, so each proposal column can show an honest drive-time DELTA against it. Keyed
@@ -1616,77 +1583,6 @@ export default function ItineraryComparisonPage() {
 
         {hasVariants && (
           <>
-            {destination && !slipTripId && (
-              <Card className="mb-4 border-purple-200/50 bg-gradient-to-r from-purple-50/80 to-indigo-50/80 dark:from-purple-950/10 dark:to-indigo-950/10 dark:border-purple-800/50">
-                <CardContent className="py-3 px-4">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-full bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center shrink-0">
-                      {travelPulseIntelligenceLoading ? (
-                        <Loader2 className="h-3 w-3 text-purple-600 dark:text-purple-400 animate-spin" />
-                      ) : (
-                        <Sparkles className="h-3 w-3 text-purple-600 dark:text-purple-400" />
-                      )}
-                    </div>
-                    <span className="text-sm font-medium text-purple-800 dark:text-purple-200">
-                      Destination Intelligence
-                    </span>
-                    <span className="text-xs text-purple-600/70 dark:text-purple-400/70">
-                      {isMultiCity ? `${primaryCity} + more` : destination}
-                    </span>
-                    {isMultiCity && (
-                      <Badge variant="outline" className="text-[10px] h-4 ml-1 border-purple-200 text-purple-600 dark:border-purple-700 dark:text-purple-400">
-                        Multi-city
-                      </Badge>
-                    )}
-                    {travelPulseError && !travelPulseLoading && !travelPulseData?.city && (
-                      <span className="text-xs text-muted-foreground ml-auto">
-                        {isMultiCity ? "Per-city data varies" : "Intel pending"}
-                      </span>
-                    )}
-                  </div>
-                  {travelPulseIntelligenceLoading && (
-                    <div className="flex gap-3 mt-2 overflow-x-auto">
-                      {[1, 2, 3, 4].map((i) => (
-                        <div key={i} className="bg-white/60 dark:bg-gray-900/40 rounded px-2 py-1 animate-pulse shrink-0">
-                          <div className="h-3 w-12 bg-purple-200/50 dark:bg-purple-800/30 rounded" />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {travelPulseData?.city && (
-                    <div className="mt-3 pt-3 border-t border-purple-200/50 dark:border-purple-800/50">
-                      <div className="flex flex-wrap gap-3 text-xs">
-                        {travelPulseData.city.pulseScore && (
-                          <div className="flex items-center gap-1">
-                            <Zap className="h-3 w-3 text-amber-500" />
-                            <span className="text-muted-foreground">Pulse:</span>
-                            <span className="font-medium text-purple-700 dark:text-purple-300">{travelPulseData.city.pulseScore}/100</span>
-                          </div>
-                        )}
-                        {travelPulseData.city.crowdLevel && (
-                          <div className="flex items-center gap-1">
-                            <Users className="h-3 w-3 text-blue-500" />
-                            <span className="text-muted-foreground">Crowds:</span>
-                            <span className="font-medium capitalize text-blue-600 dark:text-blue-400">{travelPulseData.city.crowdLevel}</span>
-                          </div>
-                        )}
-                        {travelPulseData.city.aiBudgetEstimate && (
-                          <div className="flex items-center gap-1">
-                            <DollarSign className="h-3 w-3 text-emerald-500" />
-                            <span className="font-medium text-emerald-600 dark:text-emerald-400 truncate max-w-32">
-                              {typeof travelPulseData.city.aiBudgetEstimate === 'string' 
-                                ? travelPulseData.city.aiBudgetEstimate 
-                                : (travelPulseData.city.aiBudgetEstimate as any)?.midRange || 'Budget varies'}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-
             {data?.comparison?.segmentationProposal && (
               <SegmentationRecommendationBanner proposal={data.comparison.segmentationProposal} />
             )}
@@ -1725,43 +1621,25 @@ export default function ItineraryComparisonPage() {
                   )}
                 </div>
 
-                {/* Review-first context (ledger 2026-08-22-slip-optimize-review-first): what's
-                    trending now and what's popular around the trip's dates — the real TravelPulse
-                    signal the page already fetched. Each half is OMITTED when absent (§13), and the
-                    whole block disappears when neither exists. Context only — never a per-proposal
-                    delta claim, and no distance figure (§21 L3). */}
+                {/* Row 193 (CB-2026-10-25-A): the review-first context reads only what the plan
+                    knows — the busy-day flags on its own days (row 58) and the traveler's own
+                    stated event budgets. Each line is OMITTED when absent, and the whole block
+                    disappears when neither exists (§13). */}
                 {(() => {
-                  const trending = (trendingData?.experiences ?? [])
-                    .filter((e) => e?.name)
-                    .slice(0, 3);
-                  if (trending.length === 0) return null;
+                  const busyLine = busyAroundDatesLine(slipPlancard?.days);
+                  const budgetLine = planBudgetLine(slipPlancard?.events);
+                  if (!busyLine && !budgetLine) return null;
                   return (
                     <div
                       className="review-panel mb-4 space-y-2 rounded-xl border p-3"
                       data-testid="slip-optimize-preview-context"
                     >
-                      {trending.length > 0 && (
-                        <div className="flex items-start gap-2 text-sm" data-testid="preview-trending-now">
-                          <TrendingUp className="w-4 h-4 mt-0.5 shrink-0" style={{ color: "var(--earn-green-ink)" }} />
-                          <p>
-                            <span className="font-medium">
-                              Now{primaryCity ? ` in ${primaryCity}` : ""}:{" "}
-                            </span>
-                            {trending.map((e) => e.name).join(" · ")}
-                          </p>
-                        </div>
+                      {busyLine && (
+                        <p className="text-sm" data-testid="preview-busy-dates">{busyLine}</p>
                       )}
-                      {/* Provenance qualifier (ledger 2026-08-22-first-run-prefs, §13): these
-                          signals are AI destination intelligence, not measured bookings — say
-                          so rather than implying a measured figure. Swappable to measured
-                          sources later without touching this block's shape. */}
-                      <p
-                        className="text-[11px] text-muted-foreground/80 pl-6"
-                        title="These highlights come from live AI destination intelligence, not measured bookings."
-                        data-testid="preview-provenance"
-                      >
-                        From AI destination intel
-                      </p>
+                      {budgetLine && (
+                        <p className="text-sm" data-testid="preview-plan-budget">{budgetLine}</p>
+                      )}
                     </div>
                   );
                 })()}
