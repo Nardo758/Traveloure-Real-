@@ -82,6 +82,15 @@ import { VersionsBoard } from "@/components/plancard/VersionsBoard";
 import { OPTIMIZE_RERUN_RULE } from "@/lib/optimization-preview";
 import { busyAroundDatesLine } from "@/lib/comparison-context";
 import { planBudgetLine } from "@/lib/plan-budget";
+import { ToastAction } from "@/components/ui/toast";
+import {
+  ADD_UNDO_STRINGS,
+  undoOutcomeFromError,
+  undoOutcomeFromStatus,
+  undoOutcomeTitle,
+  undoTargetForAdopt,
+  type AdoptStopResponse,
+} from "@/lib/comparison-add-undo";
 import {
   sumLegMinutes,
   parseTotal,
@@ -932,19 +941,49 @@ export default function ItineraryComparisonPage() {
   const adoptStopMutation = useMutation({
     mutationFn: async (variantItemId: string) => {
       const res = await apiRequest("POST", `/api/itinerary-comparisons/${id}/adopt-stop`, { variantItemId });
-      return (await res.json()) as { adopted: boolean; reason?: string };
+      return (await res.json()) as AdoptStopResponse;
     },
     onSuccess: (r) => {
       const tripId = data?.comparison?.tripId;
       if (tripId) queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
-      toast(
-        r.adopted
-          ? { title: "Added to your plan", description: "That stop is now in your plan. Your original is preserved; nothing is purchased." }
-          : { title: "Already in your plan", description: "That stop is already on your plan." },
-      );
+      if (!r.adopted) {
+        toast({ title: "Already in your plan", description: "That stop is already on your plan." });
+        return;
+      }
+      // Row 195 (R3): the add is instant; an undo rides the toast only for the one added item, only
+      // while the plan is not finalized and the row carries no money (`undoTargetForAdopt`).
+      const undoItemId = tripId ? undoTargetForAdopt(r, slipPlancard?.trip) : null;
+      toast({
+        title: "Added to your plan",
+        description: "That stop is now in your plan. Your original is preserved; nothing is purchased.",
+        action:
+          tripId && undoItemId ? (
+            <ToastAction
+              altText={ADD_UNDO_STRINGS.undoLabel}
+              data-testid="toast-action-undo-add"
+              onClick={() => undoAddMutation.mutate({ tripId, itemId: undoItemId })}
+            >
+              {ADD_UNDO_STRINGS.undoLabel}
+            </ToastAction>
+          ) : undefined,
+      });
     },
     onError: () => toast({ variant: "destructive", title: "Couldn't add that stop", description: "Please try again" }),
     onSettled: () => setAdoptingStopId(null),
+  });
+
+  // Row 195 (R3): undo removes EXACTLY the added item through the EXISTING delete rail and its money
+  // guard (409 `item_booked` ⇒ the item stays; 202 ⇒ nothing was removed). The plan refreshes either way.
+  const undoAddMutation = useMutation({
+    mutationFn: async ({ tripId, itemId }: { tripId: string; itemId: string }) => {
+      const res = await apiRequest("DELETE", `/api/trips/${tripId}/itinerary-items/${itemId}`);
+      return undoOutcomeFromStatus(res.status);
+    },
+    onSuccess: (outcome) => toast({ title: undoOutcomeTitle(outcome) }),
+    onError: (err) => toast({ title: undoOutcomeTitle(undoOutcomeFromError(err)) }),
+    onSettled: (_r, _e, vars) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${vars.tripId}/plancard`] });
+    },
   });
 
   const destination = data?.comparison?.destination;
