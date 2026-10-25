@@ -1027,6 +1027,9 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       // null the reader has to interpret (§13). Additive: every existing consumer ignores it.
       ...planComparisonRef({ id: plan.plancard.lastComparisonId ?? null }),
       ...(plan.plancard.finalCard ? { finalCard: plan.plancard.finalCard } : {}),
+      // Row 185 J6. Owner + final-render gating stays in the assembler. This whitelist
+      // forwards the field only when that read attached it.
+      ...(plan.plancard.finalAirportLeg ? { finalAirportLeg: plan.plancard.finalAirportLeg } : {}),
       stats: plan.plancard.stats,
       // ADDITIVE TripPlan v1 envelope (docs/EXECUTION_MAP.md §3). New consumers read these;
       // existing consumers ignore them.
