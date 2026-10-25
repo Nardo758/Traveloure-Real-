@@ -17,6 +17,7 @@
  * A fresh traveler (`e2e-<run>-tlife`) and a fresh Kyoto plan are used, so this journey never
  * touches D3's plan. Expert E (S2) is the advisor — he is the expert S2 made visible in Kyoto.
  */
+import { execFileSync } from 'child_process';
 import { test, expect, type Page } from '@playwright/test';
 import { E2E_PASSWORD, RUN_ID, e2eEmail } from './lib/run-id';
 import { loginViaUi, signupViaUi } from './lib/accounts';
@@ -102,6 +103,23 @@ test('L1: expert lifecycle — hire → accept → suggest ×2 → reject/approv
   // server/__tests__/handoff-lifecycle.db.test.ts). This lifecycle keeps the advisor-row hire it
   // has always exercised, through the same owner-gated rail the storefront uses.
   const d1 = await dbStep(J, '01', 'hire: trip_expert_advisors row', advisorSql, [tripId, expertId]);
+  // Row 223 (sanctioned pin edit): the hire door draws only while the plan's city has an expert to
+  // hand to — `expert_hook_cities` on AND the chooser has someone. Seed one byline-gated Kyoto fixture
+  // expert, switch Kyoto on and wait for the availability answer to say yes (15s server cache).
+  execFileSync('npx', ['tsx', 'scripts/seed-fixture-kyoto-expert.ts', 'p3hire'], {
+    env: { ...process.env, ALLOW_TEST_ACCOUNTS: '1' },
+    encoding: 'utf8',
+    timeout: 120_000,
+  });
+  await q(
+    `INSERT INTO platform_settings (setting_key, setting_value) VALUES ('expert_hook_cities', '["kyoto"]')
+     ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = NOW()`,
+  );
+  await expect
+    .poll(async () => (await (await page.request.get(`/api/expert-availability?city=${encodeURIComponent('Kyoto, Japan')}`)).json()).available, {
+      timeout: 45_000,
+    })
+    .toBe(true);
   await page.goto(`/plans/${tripId}`);
   await settle(page);
   await expect(testid(page, 'slip-action-hire-expert'), 'the slip offers the one handoff door').toBeVisible({ timeout: 15_000 });

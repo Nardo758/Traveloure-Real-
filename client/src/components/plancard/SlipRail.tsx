@@ -152,6 +152,7 @@ import { FinalizeBookingModal } from "./FinalizeBookingModal";
 import { PhoneDeliveryDialog } from "./PhoneDeliveryDialog";
 import { useReopenMutation } from "./use-reopen-mutation";
 import { openHandoffChooser } from "@/lib/handoff-client";
+import { useExpertAvailability } from "@/lib/expert-availability";
 import { SlipOrganizeEventsRow } from "./SlipLogisticsSection";
 import { TripPassCard } from "./TripPassCard";
 
@@ -602,6 +603,10 @@ function BuildCard({
 
   // The board's "Local expert" beside Optimize: the SAME handoff chooser the hire row opens.
   const openLocalExpert = () => openHandoffChooser({});
+  // Row 223: the door draws only while the plan's city has an expert to hand to — the Finalize
+  // chooser's own rule (`chooserHasExperts` behind the city's `expert_hook_cities` switch, read once
+  // through `useExpertAvailability`). Loading, an error or a "no" hide it; nothing takes its place.
+  const expertsAvailable = useExpertAvailability({ city: trip.destination });
   const optimizerBlock = (
         <>
           {/* Surface step 4 (spec §8): the ONE optimizer card — findings, the realised delta after a
@@ -634,7 +639,7 @@ function BuildCard({
             title={leadCopy?.title ?? null}
             intro={leadCopy?.intro ?? null}
             noStay={leadCopy?.noStay === true}
-            onLocalExpert={expertState.kind === "hire" ? openLocalExpert : null}
+            onLocalExpert={expertState.kind === "hire" && expertsAvailable ? openLocalExpert : null}
             localExpertTestId="slip-action-hire-expert"
           />
           )}
