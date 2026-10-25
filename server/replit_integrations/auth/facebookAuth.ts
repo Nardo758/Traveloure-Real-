@@ -148,6 +148,7 @@ export async function facebookVerify(
         if (!decision.allowed) return done(null, false, { code: TRAVELER_WAITLIST } as any);
       }
 
+      // Row 156: a blank profile address is not written over a stored one; a different address is stored unverified. authStorage.upsertUser applies that, and this call passes no verified flag.
       user = await authStorage.upsertUser({
         id: fbUserId,
         email: email || null,

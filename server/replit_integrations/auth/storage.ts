@@ -1,13 +1,13 @@
 import { users, type User, type UpsertUser } from "@shared/models/auth";
 import { db } from "../../db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 // Interface for auth storage operations
 // (IMPORTANT) These user operations are mandatory for Replit Auth.
 export interface IAuthStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
-  upsertUser(user: UpsertUser): Promise<User>;
+  upsertUser(user: UpsertUser, opts?: { providerEmailVerified?: boolean }): Promise<User>;
   updateUser(id: string, data: Partial<UpsertUser>): Promise<User | undefined>;
   acceptTerms(userId: string, termsVersion: string, privacyVersion: string): Promise<User | undefined>;
 }
@@ -36,15 +36,45 @@ class AuthStorage implements IAuthStorage {
     return user;
   }
 
-  async upsertUser(input: UpsertUser): Promise<User> {
+  async upsertUser(input: UpsertUser, opts?: { providerEmailVerified?: boolean }): Promise<User> {
     const userData = withoutServerOwnedUserFields(input) as UpsertUser;
+    // Row 156. The insert of a brand-new id is unchanged (a new Facebook account may
+    // still be born with a null email). On conflict, one statement decides the address:
+    // a missing or blank incoming email writes nothing and leaves email_verified as stored;
+    // the same address, compared case-insensitively after trim, keeps the stored value and
+    // its stamp; a different address is written, and email_verified becomes now() only when
+    // the provider asserted this address, otherwise null. A caller that already put
+    // emailVerified on the input (the new-account OIDC spread) keeps that value when the
+    // address changes. Never clears a stored email.
+    const rest: UpsertUser = { ...userData };
+    delete rest.email;
+    delete rest.emailVerified;
+    const callerStatedVerified =
+      Object.prototype.hasOwnProperty.call(input, "emailVerified") && input.emailVerified !== undefined;
+    const statedVerified = callerStatedVerified ? (input.emailVerified ?? null) : null;
+    const providerVerified = opts?.providerEmailVerified === true;
+    const verifiedAt = new Date();
+    const keepEmail = sql`CASE
+      WHEN excluded.email IS NULL OR btrim(excluded.email) = '' THEN ${users.email}
+      WHEN lower(btrim(${users.email})) IS NOT DISTINCT FROM lower(btrim(excluded.email)) THEN ${users.email}
+      ELSE excluded.email
+    END`;
+    const keepVerified = sql`excluded.email IS NULL OR btrim(excluded.email) = ''
+      OR lower(btrim(${users.email})) IS NOT DISTINCT FROM lower(btrim(excluded.email))`;
+    const emailVerified = callerStatedVerified
+      ? sql`CASE WHEN ${keepVerified} THEN ${users.emailVerified} ELSE ${statedVerified}::timestamp END`
+      : providerVerified
+        ? sql`CASE WHEN ${keepVerified} THEN ${users.emailVerified} ELSE ${verifiedAt}::timestamp END`
+        : sql`CASE WHEN ${keepVerified} THEN ${users.emailVerified} ELSE NULL END`;
     const [user] = await db
       .insert(users)
       .values(userData)
       .onConflictDoUpdate({
         target: users.id,
         set: {
-          ...userData,
+          ...rest,
+          email: keepEmail,
+          emailVerified,
           updatedAt: new Date(),
         },
       })
