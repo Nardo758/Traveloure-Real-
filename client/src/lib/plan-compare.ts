@@ -6,8 +6,21 @@
  * only choose the words around it — one home for each sentence, so the page and its test read the
  * same text (§18 rule 1). §13 on every cell: a figure the server did not give is a dash and a reason,
  * never a zero and never a guess.
+ *
+ * B8 (fix-queue row 182, architect 2026-10-25): a day's minutes are shown only when that day is
+ * checked (`fit.checkedByDay`). A straight-line estimate is not shown. Travel / day uses the same
+ * rule and does not total a mix of checked and unchecked days.
  */
-import type { PlanFit } from "@shared/plan-fit";
+import { planFitLine, type PlanFit } from "@shared/plan-fit";
+
+/**
+ * Traveler-facing sentences for travel minutes on the compare page.
+ * Wording is held for owner approval.
+ */
+export const PLAN_COMPARE_MINUTE_COPY = {
+  notCheckedYet: "Not checked yet",
+  someDaysNotChecked: "Some days are not checked yet",
+} as const;
 
 export interface DatedPriceView {
   amount: string;
@@ -25,10 +38,57 @@ export function optionLetter(position: number): string {
   return String.fromCharCode(64 + Math.max(1, Math.min(26, position)));
 }
 
-/** Travel / day: minutes when scored; "est." whenever any leg was a straight-line estimate. */
+type ScoredFit = Extract<PlanFit, { scored: true }>;
+
+/** Days the strip draws, in day order. A non-day or a non-number is dropped, never shown as zero. */
+function shownDayNumbers(fit: ScoredFit): number[] {
+  if (!fit.minutesByDay) return [];
+  return Object.entries(fit.minutesByDay)
+    .map(([d, m]) => [Number(d), Number(m)] as const)
+    .filter(([d, m]) => Number.isInteger(d) && d > 0 && Number.isFinite(m) && m >= 0)
+    .map(([d]) => d)
+    .sort((a, b) => a - b);
+}
+
+/**
+ * A day is checked when every leg summed into it is a routed duration.
+ * `checkedByDay` is that answer, one boolean per day. When the payload has no such map, an
+ * all-matrix figure is checked and a straight-line figure is not — a straight-line minute is
+ * never shown on the strength of the aggregate alone.
+ */
+export function dayChecked(fit: ScoredFit, day: number): boolean {
+  const map = fit.checkedByDay;
+  if (map && (Object.prototype.hasOwnProperty.call(map, day) || Object.prototype.hasOwnProperty.call(map, String(day)))) {
+    return map[day] === true;
+  }
+  if (map) return false;
+  return fit.basis === "matrix";
+}
+
+/** True when every day the strip would draw is checked, and the aggregate is not a straight-line figure. */
+export function allShownDaysChecked(fit: PlanFit): boolean {
+  if (!fit.scored || fit.basis === "est") return false;
+  const days = shownDayNumbers(fit);
+  if (days.length === 0) return fit.basis === "matrix";
+  return days.every((d) => dayChecked(fit, d));
+}
+
+/**
+ * Travel / day. Minutes only when every shown day is checked. If some days are unchecked, say so —
+ * do not total the checked days, and do not count the others as zero.
+ */
 export function travelCell(fit: PlanFit): Cell {
   if (!fit.scored) return { value: "—", note: fit.reason === "option_unlocated" ? "no pin yet" : "not enough stops yet" };
-  return { value: `${fit.minutesPerDay} min`, note: fit.basis === "est" ? "est." : "per day" };
+  const days = shownDayNumbers(fit);
+  if (days.length === 0) {
+    return fit.basis === "matrix"
+      ? { value: `${fit.minutesPerDay} min`, note: "per day" }
+      : { value: PLAN_COMPARE_MINUTE_COPY.notCheckedYet, note: "" };
+  }
+  const checked = days.filter((d) => dayChecked(fit, d)).length;
+  if (checked === 0) return { value: PLAN_COMPARE_MINUTE_COPY.notCheckedYet, note: "" };
+  if (checked < days.length || fit.basis === "est") return { value: "—", note: PLAN_COMPARE_MINUTE_COPY.someDaysNotChecked };
+  return { value: `${fit.minutesPerDay} min`, note: "per day" };
 }
 
 /** Walkable: the plan's areas within walking distance. Always a straight-line test, so always "est.". */
@@ -93,18 +153,38 @@ export function compareTitle(_count: number): string {
 
 /**
  * THE COMPARE BOARD'S DAY STRIP (slip conformance, boards rev 15; ledger `2026-10-08-slip-compare-board`):
- * one cell per day, the SERVER's own minutes for that day (`fit.minutesByDay`, A8 R228), in day order.
- * Nothing is judged "close" or "far" — no threshold for that has been ruled, so the strip states the
- * minutes and lets the cards be compared (§13). Unscored ⇒ no strip.
+ * one cell per day, in day order. A checked day states the SERVER's own minutes (`fit.minutesByDay`).
+ * A day that is not checked states `PLAN_COMPARE_MINUTE_COPY.notCheckedYet` — never a straight-line
+ * minute and never a tilde. Nothing is judged "close" or "far". Unscored ⇒ no strip.
  */
 export function dayStripCells(fit: PlanFit): { day: number; label: string; minutes: string }[] {
   if (!fit.scored || !fit.minutesByDay) return [];
-  const est = fit.basis === "est";
   return Object.entries(fit.minutesByDay)
     .map(([d, m]) => [Number(d), Number(m)] as const)
     .filter(([d, m]) => Number.isInteger(d) && d > 0 && Number.isFinite(m) && m >= 0)
     .sort((a, b) => a[0] - b[0])
-    .map(([d, m]) => ({ day: d, label: `Day ${d}`, minutes: `${est ? "~" : ""}${Math.round(m)} min` }));
+    .map(([d, m]) => ({
+      day: d,
+      label: `Day ${d}`,
+      minutes: dayChecked(fit, d) ? `${Math.round(m)} min` : PLAN_COMPARE_MINUTE_COPY.notCheckedYet,
+    }));
+}
+
+/**
+ * The fit sentence on this page. Minutes only when the whole figure is checked. Otherwise the
+ * located count, with no minute number.
+ */
+export function compareBurdenLine(fit: PlanFit): string {
+  if (!fit.scored || !allShownDaysChecked(fit)) {
+    if (!fit.scored) return planFitLine(fit);
+    return `based on ${fit.located} of ${fit.total} located stops`;
+  }
+  return planFitLine(fit);
+}
+
+/** The savings sentence carries minutes. It is drawn only when those minutes are checked. */
+export function compareSavingsShown(fit: PlanFit): boolean {
+  return allShownDaysChecked(fit);
 }
 
 /** The board's eyebrow: what the set compares and how many places are in it. */

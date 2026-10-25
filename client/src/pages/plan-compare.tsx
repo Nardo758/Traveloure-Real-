@@ -6,10 +6,13 @@
  * Built ahead of the Part 6 sessions under R211 — NOT RATIFIED until they run; their findings are an
  * A4 follow-up, not a rewrite.
  *
- * Every figure is the SERVER's: minutes per day, walkable areas, "N of M located", "est.", the rank,
+ * Every figure is the SERVER's: minutes per day, walkable areas, "N of M located", the rank,
  * the "Easiest days" badge, the neighbourhood, a price for the plan's own dates and M9's "less travel
  * than your choice" all arrive on `GET /api/trips/:tripId/option-sets` (§E4 — the view computes
- * nothing). Every sentence is `@/lib/plan-compare` or `planFitLine` (§18 rule 1).
+ * nothing). Every sentence is `@/lib/plan-compare` (§18 rule 1).
+ *
+ * B8: a day's minutes are shown only when `fit.checkedByDay` says that day is checked. Otherwise
+ * the cell reads "Not checked yet". A straight-line minute is not shown on this page.
  *
  * Controls mirror the rails and never widen them: Choose / Compare again for the owner or delegate
  * (R129), from the server's own `viewer` answer. A render rule grants nothing.
@@ -20,8 +23,7 @@
  * THE COMPARE BOARD (slip conformance, boards rev 15; ledger `2026-10-08-slip-compare-board`): the
  * slip's tokens and ONE centered column at every width (ruling 7, as on the slip); the easiest place
  * leads its card with the teal "Easiest days" band and its area; each card states the server's
- * minutes per day as a strip; "Stay here" is the coral primary (ruling 2). Every pinned sentence and
- * figure is unchanged.
+ * minutes per day as a strip, and only for a checked day; "Stay here" is the coral primary (ruling 2).
  */
 import "@/styles/slip-tokens.css";
 import { useRef, useState } from "react";
@@ -31,7 +33,7 @@ import { ArrowLeft, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { compareIntroLine, planFitLine } from "@shared/plan-fit";
+import { compareIntroLine } from "@shared/plan-fit";
 import {
   invalidatePlan,
   serverMessage,
@@ -43,8 +45,10 @@ import {
 } from "@/components/plancard/SlipOptionSets";
 import {
   areasCell,
+  compareBurdenLine,
   compareFootLine,
   compareEyebrow,
+  compareSavingsShown,
   compareTitle,
   dayStripCells,
   easierLine,
@@ -59,7 +63,7 @@ function Metric({ label, cell, testId }: { label: string; cell: Cell; testId: st
   return (
     <div className="flex min-w-0 flex-col gap-0.5" data-testid={testId}>
       <span className="text-[11px] font-semibold text-[color:var(--slip-muted)]">{label}</span>
-      <span className="text-[17px] font-semibold text-[color:var(--slip-ink)]" data-testid={`${testId}-value`}>
+      <span className="text-[17px] font-semibold text-[color:var(--slip-ink)] break-words" data-testid={`${testId}-value`}>
         {cell.value}
       </span>
       <span className="text-[11px] text-[color:var(--slip-muted)] break-words" data-testid={`${testId}-note`}>
@@ -137,16 +141,16 @@ function CompareCard({
               {strip.map((c) => (
                 <div key={c.day} className="flex min-w-0 flex-col items-center gap-0.5 rounded-lg bg-[color:var(--slip-wash)] px-1 py-1.5" data-testid={`compare-day-${option.id}-${c.day}`}>
                   <span className="text-[11px] text-[color:var(--slip-muted)]">{c.label}</span>
-                  <span className="text-[11px] font-semibold tabular-nums text-[color:var(--slip-navy)]">{c.minutes}</span>
+                  <span className="text-center text-[11px] font-semibold leading-tight text-[color:var(--slip-navy)] break-words">{c.minutes}</span>
                 </div>
               ))}
             </div>
           </div>
         ) : null}
         <p className="text-xs text-[color:var(--slip-muted)]" data-testid={`compare-fit-${option.id}`}>
-          {planFitLine(option.fit)}
+          {compareBurdenLine(option.fit)}
         </p>
-        {reveal && option.easierByMinutes != null ? (
+        {reveal && option.easierByMinutes != null && compareSavingsShown(option.fit) ? (
           <p className="text-[13px] text-[color:var(--slip-teal-ink)]" data-testid={`compare-saves-${option.id}`}>
             {savesLine(option.easierByMinutes, option.fit)}
           </p>
