@@ -1,9 +1,10 @@
 /**
  * FB-1 step 0 (decision-maker, Oct 17, 2026 — ledger `2026-10-17-fb1-optimized-itineraries-off`):
- * `POST /api/ai/generate-optimized-itineraries` is switched OFF. No deployed client calls it — its only
- * caller is `artifacts/traveloure` (a reference workspace the root build does not include) — so it
- * answers 410 before reading the body, writing a row or calling a model. The handler is kept, not
- * deleted; `AI_GENERATE_OPTIMIZED_ITINERARIES_ENABLED=1` turns it back on.
+ * `POST /api/ai/generate-optimized-itineraries` returns 410 `{ code: "endpoint_retired" }` unless
+ * `AI_GENERATE_OPTIMIZED_ITINERARIES_ENABLED=1`. Nothing under `client/src` calls it. The former
+ * caller lived in `artifacts/traveloure`, deleted 2026-10-25 (ledger
+ * `2026-10-25-delete-artifacts-traveloure`). The handler stays and answers 410 before reading the
+ * body, writing a row, or calling a model.
  */
 export const OPTIMIZED_ITINERARIES_ENABLED_ENV = "AI_GENERATE_OPTIMIZED_ITINERARIES_ENABLED";
 

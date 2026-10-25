@@ -23,12 +23,17 @@ Stated bounds (§18d): this is a lane-runtime guard, not a CI gate. It protects 
 briefs that carry the SHA and order the check first; the integrator's brief template is
 the enforcement point.
 
-## 2. Tree canonicality (ledger `2026-08-24-client-tree-canonical`)
+## 2. Tree canonicality (ledger `2026-08-24-client-tree-canonical`, superseded for this tree by `2026-10-25-delete-artifacts-traveloure`)
 
-`client/src` is the **sole production client**. `artifacts/traveloure` is a **design
-reference only** — never a lane write target, never a deploy target, and `client/src`
-never imports from `artifacts/`. Transcribe designs inward; do not edit the reference
-tree to match `client/src`.
+`client/src` is the **sole production client**. On 2026-10-25 the owner deleted
+`artifacts/traveloure/`, a frontend-only design-reference copy (package
+`@workspace/traveloure`). That deletion supersedes the design-reference-only rule
+for this tree. A lane writes the production client under `client/src`, and
+`client/src` imports nothing from `artifacts/`. Leave the directory deleted.
+
+`artifacts/mockup-sandbox`, `artifacts/billboard-preview`, and
+`artifacts/traveloure-marketplace` were outside that deletion. They are not the
+production client.
 
 ## 3. Existing standing clauses (recap — briefs must still carry them)
 

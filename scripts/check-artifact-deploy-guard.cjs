@@ -45,20 +45,20 @@ function runGuard() {
 function selfTest() {
   const clean = findArtifactOverridePaths([
     ".github/workflows/build.yml",
-    "artifacts/traveloure/src/pages/experts.tsx",
+    "artifacts/traveloure-marketplace/src/pages/experts.tsx",
     "scripts/check-artifact-deploy-guard.cjs",
     "docs/.replit-artifact-not-a-directory",
   ]);
   assert.deepEqual(clean, []);
 
   const violations = findArtifactOverridePaths([
-    "artifacts/traveloure/.replit-artifact/artifact.toml",
+    "artifacts/traveloure-marketplace/.replit-artifact/artifact.toml",
     "artifacts/mockup-sandbox/.replit-artifact/artifact.toml",
     ".replit-artifact/artifact.toml",
     "artifacts/.replit-artifact-backup/artifact.toml",
   ]);
   assert.deepEqual(violations, [
-    "artifacts/traveloure/.replit-artifact/artifact.toml",
+    "artifacts/traveloure-marketplace/.replit-artifact/artifact.toml",
     "artifacts/mockup-sandbox/.replit-artifact/artifact.toml",
     ".replit-artifact/artifact.toml",
   ]);
