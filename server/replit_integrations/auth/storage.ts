@@ -1,13 +1,13 @@
 import { users, type User, type UpsertUser } from "@shared/models/auth";
 import { db } from "../../db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 // Interface for auth storage operations
 // (IMPORTANT) These user operations are mandatory for Replit Auth.
 export interface IAuthStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
-  upsertUser(user: UpsertUser): Promise<User>;
+  upsertUser(user: UpsertUser, opts?: { providerEmailVerified?: boolean }): Promise<User>;
   updateUser(id: string, data: Partial<UpsertUser>): Promise<User | undefined>;
   acceptTerms(userId: string, termsVersion: string, privacyVersion: string): Promise<User | undefined>;
 }
@@ -36,15 +36,78 @@ class AuthStorage implements IAuthStorage {
     return user;
   }
 
-  async upsertUser(input: UpsertUser): Promise<User> {
+  async upsertUser(input: UpsertUser, opts?: { providerEmailVerified?: boolean }): Promise<User> {
+    // Server-owned columns are dropped here, once, before the insert and before the
+    // conflict set is built. The CASE expressions below only assign email and
+    // emailVerified; they do not put isTest, payoutMethodType, or payoutHandle back.
     const userData = withoutServerOwnedUserFields(input) as UpsertUser;
+    // Row 156, amended Oct 24 2026 23:20 ET. The insert of a brand-new id is unchanged
+    // (a new Facebook account may still be born with a null email). On conflict, one
+    // statement decides the address. A local-password row is users.password set
+    // (non-null and not empty) — the column emailAuth.ts reads for login and for
+    // "skip OAuth-only" password reset. auth_provider is not that marker (it defaults
+    // to "email"). Such a row keeps both email and email_verified unless
+    // providerEmailVerified is boolean true AND the incoming address differs, in
+    // which case the new address is written and email_verified is stamped now.
+    // The same address is never re-stamped. Every other row: a missing or blank
+    // incoming email writes nothing and leaves email_verified as stored; the same
+    // address, compared case-insensitively after trim, keeps the stored value and
+    // its stamp; a different address is written, and email_verified becomes the
+    // caller-stated value when the input already carries one, else now() when the
+    // provider asserted this address, else null. Never clears a stored email.
+    const rest: UpsertUser = { ...userData };
+    delete rest.email;
+    delete rest.emailVerified;
+    const callerStatedVerified =
+      Object.prototype.hasOwnProperty.call(input, "emailVerified") && input.emailVerified !== undefined;
+    const statedVerified = callerStatedVerified ? (input.emailVerified ?? null) : null;
+    const providerVerified = opts?.providerEmailVerified === true;
+    // email_verified is timestamp without time zone. A raw Date is sent with a
+    // local offset, and ::timestamp drops that offset, so the stored clock would
+    // follow the process zone. An ISO string keeps the UTC digits.
+    const verifiedAtIso = new Date().toISOString();
+    const boundTimestamp = (value: Date | null) =>
+      value instanceof Date ? sql`${value.toISOString()}::timestamp` : sql`NULL`;
+    const boundNow = () => sql`${verifiedAtIso}::timestamp`;
+    // A fresh fragment per interpolation. Drizzle SQL objects are single-use.
+    const localPassword = () => sql`${users.password} IS NOT NULL AND ${users.password} <> ''`;
+    const incomingDifferent = () => sql`excluded.email IS NOT NULL AND btrim(excluded.email) <> ''
+      AND lower(btrim(${users.email})) IS DISTINCT FROM lower(btrim(excluded.email))`;
+    const localLocked = providerVerified
+      ? sql`${localPassword()} AND NOT (${incomingDifferent()})`
+      : localPassword();
+    const keepEmail = sql`CASE
+      WHEN ${localLocked} THEN ${users.email}
+      WHEN excluded.email IS NULL OR btrim(excluded.email) = '' THEN ${users.email}
+      WHEN lower(btrim(${users.email})) IS NOT DISTINCT FROM lower(btrim(excluded.email)) THEN ${users.email}
+      ELSE excluded.email
+    END`;
+    const keepVerified = () => sql`excluded.email IS NULL OR btrim(excluded.email) = ''
+      OR lower(btrim(${users.email})) IS NOT DISTINCT FROM lower(btrim(excluded.email))`;
+    const changedStamp = () => callerStatedVerified
+      ? boundTimestamp(statedVerified instanceof Date ? statedVerified : null)
+      : providerVerified
+        ? boundNow()
+        : sql`NULL`;
+    const emailVerified = providerVerified
+      ? sql`CASE
+          WHEN ${localPassword()} AND (${incomingDifferent()}) THEN ${boundNow()}
+          WHEN ${localPassword()} THEN ${users.emailVerified}
+          ELSE CASE WHEN ${keepVerified()} THEN ${users.emailVerified} ELSE ${changedStamp()} END
+        END`
+      : sql`CASE
+          WHEN ${localPassword()} THEN ${users.emailVerified}
+          ELSE CASE WHEN ${keepVerified()} THEN ${users.emailVerified} ELSE ${changedStamp()} END
+        END`;
     const [user] = await db
       .insert(users)
       .values(userData)
       .onConflictDoUpdate({
         target: users.id,
         set: {
-          ...userData,
+          ...rest,
+          email: keepEmail,
+          emailVerified,
           updatedAt: new Date(),
         },
       })

@@ -152,7 +152,7 @@ export async function upsertUser(claims: any, opts: { intent?: SignupIntent; sou
     // verified — the same signal the email-merge trusts (oidcEmailVerified, email-merge.ts), one rule.
     // An existing account is never re-stamped here, and anything but a literal `true` stamps nothing.
     ...(!existing && email && oidcEmailVerified(claims) ? { emailVerified: new Date() } : {}),
-  });
+  }, { providerEmailVerified: oidcEmailVerified(claims) });
 
   if (user.isSuspended) throw new Error("ACCOUNT_SUSPENDED");
 
