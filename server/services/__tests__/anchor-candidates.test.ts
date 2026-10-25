@@ -135,6 +135,27 @@ describe("anchor-candidates — buildPinnedCandidateFromCoords (Phase 1c, pure p
       buildPinnedCandidateFromCoords({ type: "hotel", lat: 999, lng: 999 }, STOPS),
     ).toBeNull();
   });
+
+  it("does not fall back to client lat/lng after a non-custom id misses", () => {
+    expect(
+      buildPinnedCandidateFromCoords({ type: "hotel", id: "h-unknown", lat: 35.01, lng: 135.77 }, STOPS),
+    ).toBeNull();
+    expect(
+      buildPinnedCandidateFromCoords(
+        { type: "neighborhood", id: "n-unknown", lat: 35.01, lng: 135.77 },
+        STOPS,
+      ),
+    ).toBeNull();
+    expect(
+      buildPinnedCandidateFromCoords({ type: "activity", id: "missing", lat: 0, lng: 0 }, STOPS),
+    ).toBeNull();
+    const custom = buildPinnedCandidateFromCoords(
+      { type: "neighborhood", id: "custom:My spot", name: "My spot", lat: 35.01, lng: 135.77 },
+      STOPS,
+    );
+    expect(custom).toMatchObject({ id: "custom:My spot", type: "neighborhood" });
+    expect(custom!.lat).toBeCloseTo(35.01, 4);
+  });
 });
 
 describe("anchor-candidates — parsePinnedAnchorInput (Phase 1c, §19 allowlist)", () => {

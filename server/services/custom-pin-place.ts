@@ -2,8 +2,11 @@
  * Place a custom "build around a location" pin before any Optimize charge
  * (ledger 2026-10-25-custom-location-geocode).
  *
- * A custom pin is a hotel|neighborhood|activity choice with a name and no catalog id.
- * Selected candidates (a non-empty id) are not geocoded; the existing resolver keeps them.
+ * A custom pin is a hotel|neighborhood|activity choice with a name and no catalog id,
+ * or an id that starts with `custom:`. A non-custom id is a catalog key: the gate
+ * looks it up and returns 400 `pinned_anchor_not_found` when it does not resolve
+ * to a located row or stop. Client lat/lng is not a fallback. That 400 is not the
+ * 409 placement refusal.
  *
  * Coordinates are trusted only when `pinnedAnchor.placement` verifies (HMAC, not in the
  * future, at most 24h old). The signature covers the anchor name, so it cannot be reused
@@ -18,13 +21,21 @@
 
 import {
   CUSTOM_LOCATION_UNPLACEABLE_STATUS,
+  PINNED_ANCHOR_NOT_FOUND,
+  PINNED_ANCHOR_NOT_FOUND_STATUS,
   customLocationRefusalBody,
   type CustomLocationRefusalBody,
   type CustomLocationRefusalReason,
   type CustomPinPlacement,
+  type PinnedAnchorNotFoundBody,
   type ResolvedCustomPin,
 } from "@shared/custom-location-pin";
-import { parsePinnedAnchorInput } from "./anchor-candidates-map";
+import {
+  nonCustomCatalogId,
+  parsePinnedAnchorInput,
+  type NamedStop,
+  type PinnedAnchorInput,
+} from "./anchor-candidates-map";
 import { signCustomPinPlacement, verifyCustomPinPlacement } from "./custom-pin-placement";
 import { geocodeAddressDetailed, type GeocodeDetailed } from "../utils/geocode";
 
@@ -36,14 +47,31 @@ export interface PlaceCustomPinInput {
   geocode?: (address: string) => Promise<GeocodeDetailed>;
   /** Test seam. Production reads SESSION_SECRET. */
   secret?: string;
+  /**
+   * The same stops `resolveOptimizerPinnedAnchor` will score. Activity ids are
+   * matched against this list. Hotel and neighborhood ids use the catalog.
+   */
+  activityStops?: NamedStop[];
+  /** Test seam. Production calls `locateCatalogPinnedAnchor`. */
+  catalogPinExists?: (pin: PinnedAnchorInput, stops: NamedStop[]) => Promise<boolean>;
 }
 
 export type PlaceCustomPinResult =
   | { ok: true; resolved: ResolvedCustomPin | null; placement: CustomPinPlacement | null }
-  | { ok: false; status: typeof CUSTOM_LOCATION_UNPLACEABLE_STATUS; body: CustomLocationRefusalBody };
+  | { ok: false; status: typeof CUSTOM_LOCATION_UNPLACEABLE_STATUS; body: CustomLocationRefusalBody }
+  | { ok: false; status: typeof PINNED_ANCHOR_NOT_FOUND_STATUS; body: PinnedAnchorNotFoundBody };
 
 function refusal(reason: CustomLocationRefusalReason): PlaceCustomPinResult {
   return { ok: false, status: CUSTOM_LOCATION_UNPLACEABLE_STATUS, body: customLocationRefusalBody(reason) };
+}
+
+function notFound(): PlaceCustomPinResult {
+  return { ok: false, status: PINNED_ANCHOR_NOT_FOUND_STATUS, body: { error: PINNED_ANCHOR_NOT_FOUND } };
+}
+
+async function defaultCatalogPinExists(pin: PinnedAnchorInput, stops: NamedStop[]): Promise<boolean> {
+  const { locateCatalogPinnedAnchor } = await import("./anchor-candidates");
+  return (await locateCatalogPinnedAnchor(pin, stops)) != null;
 }
 
 function writeCoords(raw: unknown, lat: number, lng: number): void {
@@ -78,8 +106,11 @@ function rawPlacement(raw: unknown): unknown {
 async function placeCustomPin(input: PlaceCustomPinInput): Promise<PlaceCustomPinResult> {
   const parsed = parsePinnedAnchorInput(input.rawPin);
   if (!parsed) return { ok: true, resolved: null, placement: null };
-  if (typeof parsed.id === "string" && parsed.id.trim() !== "") {
-    return { ok: true, resolved: null, placement: null };
+  // A non-custom id never reaches geocode. The wrapper already 400s a miss;
+  // this backstop refuses rather than trusting lat/lng if that check is skipped.
+  if (nonCustomCatalogId(parsed)) {
+    clearCoords(input.rawPin);
+    return notFound();
   }
   const name = typeof parsed.name === "string" ? parsed.name.trim() : "";
   if (!name) {
@@ -130,6 +161,16 @@ async function placeCustomPin(input: PlaceCustomPinInput): Promise<PlaceCustomPi
 }
 
 export async function placeCustomPinBeforeCharge(input: PlaceCustomPinInput): Promise<PlaceCustomPinResult> {
+  const parsed = parsePinnedAnchorInput(input.rawPin);
+  if (parsed && nonCustomCatalogId(parsed)) {
+    const stops = input.activityStops ?? [];
+    const found = input.catalogPinExists
+      ? await input.catalogPinExists(parsed, stops)
+      : await defaultCatalogPinExists(parsed, stops);
+    clearCoords(input.rawPin);
+    if (!found) return notFound();
+    return { ok: true, resolved: null, placement: null };
+  }
   try {
     return await placeCustomPin(input);
   } catch {
