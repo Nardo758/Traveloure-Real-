@@ -280,11 +280,11 @@ jobs:
       - name: Tavily spend breaker pin
         run: npx tsx --test server/__tests__/spend-guard.test.ts
 
-      # 2026-10-25 custom-location geocode (R4): detailed geocode refusals, the daily-cap
-      # alert, and the pin-before-charge gate. Injected deps — no database.
+      # 2026-10-25 custom-location geocode (R4/R5): detailed geocode refusals, the daily-cap
+      # alert, the pin-before-charge gate, and baseline anchor fields. Injected deps — no database.
       # spend-guard has no warning fraction, so the cap alert fires only when the cap is reached.
-      - name: Custom location geocode before optimize charge
-        run: npx tsx --test --test-force-exit server/services/__tests__/geocode-address-detailed.test.ts server/services/__tests__/geocode-cap-alert.test.ts server/services/__tests__/custom-pin-before-charge.test.ts
+      - name: Custom location geocode and baseline anchor
+        run: npx tsx --test --test-force-exit server/services/__tests__/geocode-address-detailed.test.ts server/services/__tests__/geocode-cap-alert.test.ts server/services/__tests__/custom-pin-before-charge.test.ts server/services/__tests__/baseline-variant-anchor.test.ts
 
 
       # ── tsc baseline ratchet ──────────────────────────────────────────────────
