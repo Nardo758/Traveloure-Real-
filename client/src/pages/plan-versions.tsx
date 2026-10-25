@@ -132,7 +132,18 @@ export default function PlanVersionsPage() {
           // the run allowance the entitlement enforces (R-ac), never "unlimited".
           plan.data.tripRole === "owner" ? (
             <div data-testid="versions-trip-pass-offer">
-              <TripPassCard tripId={tripId} planName={plan.data.trip?.title || plan.data.trip?.destination} />
+              <TripPassCard
+                tripId={tripId}
+                // Row 188: the plan's own dates go to the card's DatesGate, as on the slip, so a plan
+                // with no confirmed dates is asked for them before any purchase request.
+                trip={{
+                  id: tripId,
+                  startDate: plan.data.trip?.startDate ?? null,
+                  endDate: plan.data.trip?.endDate ?? null,
+                  datesConfirmed: plan.data.trip?.datesConfirmed,
+                }}
+                planName={plan.data.trip?.title || plan.data.trip?.destination}
+              />
             </div>
           ) : null
         }
