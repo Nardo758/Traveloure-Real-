@@ -175,6 +175,7 @@ import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant,
 import { loadTripOptimizerInputs, loadOptimizerCatalog } from "./services/optimizer-baseline.service";
 // Phase 1c: the traveler's "build around THIS" pin is resolved here on the LIVE generate handler.
 import { resolveOptimizerPinnedAnchor } from "./services/anchor-candidates";
+import { placeCustomPinBeforeCharge } from "./services/custom-pin-place";
 import { groundAiItems } from "./services/slip-grounding.service";
 import messagesRouter from "./routes/messages";
 import conversationsRoutes from "./routes/conversations.routes";
@@ -10409,6 +10410,18 @@ ${bannedCopyPromptLine()}`;
         return;
       }
 
+      // Custom pin: geocode (or reuse this process's handoff) and refuse before the pay
+      // gate, the comparison insert, and the toll. Coords are written onto rawPinnedAnchor
+      // so the resolver call below stays the existing one and does not geocode again.
+      const placedPinForCreate = await placeCustomPinBeforeCharge({
+        rawPin: rawPinnedAnchor,
+        userId,
+        tripId: tripId ? String(tripId) : null,
+      });
+      if (!placedPinForCreate.ok) {
+        return res.status(placedPinForCreate.status).json(placedPinForCreate.body);
+      }
+
       // ── Optimization authorization gate (Lane 5a Defect 1, harvested from the §9 dead twin) ──
       // The comparison record is ALWAYS created (never blocked) — only the paid LLM run is gated.
       // authorized=false → born "pending_payment", no AI call; true → "generating" + optimizer.
@@ -10814,6 +10827,18 @@ ${bannedCopyPromptLine()}`;
         });
       }
 
+      // Same custom-pin gate as create: refuse before the pay gate, the PaymentIntent claim,
+      // and the toll. A name-only pin already placed on the payments call is reused from the
+      // process handoff instead of geocoded again.
+      const placedPinForGenerate = await placeCustomPinBeforeCharge({
+        rawPin: rawPinnedAnchor,
+        userId,
+        tripId: comparison.tripId ? String(comparison.tripId) : null,
+      });
+      if (!placedPinForGenerate.ok) {
+        return res.status(placedPinForGenerate.status).json(placedPinForGenerate.body);
+      }
+
       // ── Optimization authorization gate on REGENERATE (Lane 5a Defect 1) ────────────────────
       // Same defect as create: this handler fired the paid LLM run with zero payment verification.
       // The rule is now the SHARED predicate `resolveOptimizerRunAuthorization` (CLAUDE.md Locked
@@ -10908,9 +10933,9 @@ ${bannedCopyPromptLine()}`;
         }
       }
 
-      // 1c: resolve the traveler's "build around THIS" pin (if any) against the SAME baseline the
-      // optimizer will use. Unresolvable ⇒ undefined ⇒ auto anchors (§13, never fabricated).
-      // Runs after the pay gate; the response was already sent.
+      // Selected-candidate pins (a catalog id) keep this resolver. A custom name-only pin was
+      // placed onto rawPinnedAnchor (lat/lng) or refused with 409 before the pay gate, so an
+      // unplaceable custom pin never falls through to auto anchors.
       const resolvedPinnedAnchor = await resolveOptimizerPinnedAnchor(
         rawPinnedAnchor,
         baselineItems,
