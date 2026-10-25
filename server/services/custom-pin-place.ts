@@ -8,6 +8,11 @@
  * to a located row or stop. Client lat/lng is not a fallback. That 400 is not the
  * 409 placement refusal.
  *
+ * A pin that names only the anchor type — no free-text place and no catalog id —
+ * returns 400 `pinned_anchor_invalid` here, before geocode and before the caller
+ * reaches the pay gate. It is not treated as "no pin" (that would auto-anchor a
+ * place the traveler never picked). Omitting the pin entirely is still "no pin".
+ *
  * Coordinates are trusted only when `pinnedAnchor.placement` verifies (HMAC, not in the
  * future, at most 24h old). The signature covers the anchor name, so it cannot be reused
  * for another place. A bare lat/lng, a missing signature, a tampered field, or a stale
@@ -21,12 +26,15 @@
 
 import {
   CUSTOM_LOCATION_UNPLACEABLE_STATUS,
+  PINNED_ANCHOR_INVALID,
+  PINNED_ANCHOR_INVALID_STATUS,
   PINNED_ANCHOR_NOT_FOUND,
   PINNED_ANCHOR_NOT_FOUND_STATUS,
   customLocationRefusalBody,
   type CustomLocationRefusalBody,
   type CustomLocationRefusalReason,
   type CustomPinPlacement,
+  type PinnedAnchorInvalidBody,
   type PinnedAnchorNotFoundBody,
   type ResolvedCustomPin,
 } from "@shared/custom-location-pin";
@@ -59,7 +67,8 @@ export interface PlaceCustomPinInput {
 export type PlaceCustomPinResult =
   | { ok: true; resolved: ResolvedCustomPin | null; placement: CustomPinPlacement | null }
   | { ok: false; status: typeof CUSTOM_LOCATION_UNPLACEABLE_STATUS; body: CustomLocationRefusalBody }
-  | { ok: false; status: typeof PINNED_ANCHOR_NOT_FOUND_STATUS; body: PinnedAnchorNotFoundBody };
+  | { ok: false; status: typeof PINNED_ANCHOR_NOT_FOUND_STATUS; body: PinnedAnchorNotFoundBody }
+  | { ok: false; status: typeof PINNED_ANCHOR_INVALID_STATUS; body: PinnedAnchorInvalidBody };
 
 function refusal(reason: CustomLocationRefusalReason): PlaceCustomPinResult {
   return { ok: false, status: CUSTOM_LOCATION_UNPLACEABLE_STATUS, body: customLocationRefusalBody(reason) };
@@ -67,6 +76,10 @@ function refusal(reason: CustomLocationRefusalReason): PlaceCustomPinResult {
 
 function notFound(): PlaceCustomPinResult {
   return { ok: false, status: PINNED_ANCHOR_NOT_FOUND_STATUS, body: { error: PINNED_ANCHOR_NOT_FOUND } };
+}
+
+function invalid(): PlaceCustomPinResult {
+  return { ok: false, status: PINNED_ANCHOR_INVALID_STATUS, body: { error: PINNED_ANCHOR_INVALID } };
 }
 
 async function defaultCatalogPinExists(pin: PinnedAnchorInput, stops: NamedStop[]): Promise<boolean> {
@@ -113,9 +126,11 @@ async function placeCustomPin(input: PlaceCustomPinInput): Promise<PlaceCustomPi
     return notFound();
   }
   const name = typeof parsed.name === "string" ? parsed.name.trim() : "";
+  // Type only: an anchor kind with no place and no catalog id. Returning ok/null
+  // here is what let the optimizer auto-anchor a place the traveler never picked.
   if (!name) {
     clearCoords(input.rawPin);
-    return { ok: true, resolved: null, placement: null };
+    return invalid();
   }
 
   const now = input.now ?? Date.now;
