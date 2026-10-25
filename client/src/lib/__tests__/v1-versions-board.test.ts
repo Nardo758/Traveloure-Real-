@@ -12,9 +12,13 @@ import { retimeLine } from "@shared/version-board";
 import {
   retimeGate,
   runChargeLine,
+  isBaselineVersion,
   versionAnchorIsStay,
+  versionAroundLabel,
   versionFlagLines,
+  versionMapAnchor,
   versionMapAnchorKind,
+  versionsBuiltAroundOneStay,
   windowEndLabel,
   type VersionsBoardView,
 } from "../versions-board";
@@ -70,4 +74,45 @@ test("W4 only a hotel anchor is a stay", () => {
   assert.equal(versionMapAnchorKind(a("activity")), "venue");
   assert.equal(versionAnchorIsStay(a(null)), false, "an older payload with no type makes no stay claim");
   assert.equal(versionAnchorIsStay(null), false);
+});
+
+test("W5 the baseline row never produces an around label, even with anchor columns set", () => {
+  const anchor = { name: "Gion", type: "hotel" as const, lat: 35, lng: 135.7 };
+  const baseline = {
+    variantId: "base",
+    label: "Your plan",
+    name: "Your Plan",
+    source: "user" as const,
+    badge: null,
+    anchor,
+    stops: [],
+    days: [],
+  };
+  assert.equal(isBaselineVersion(baseline), true);
+  assert.equal(versionAroundLabel(baseline), "");
+  assert.equal(versionMapAnchorKind(anchor, baseline), null);
+  assert.equal(versionMapAnchor(baseline), null);
+  assert.equal(versionsBuiltAroundOneStay([baseline]), false);
+  assert.equal(versionAroundLabel({ name: "Your Plan", anchor: { name: "Gion", type: "neighborhood" } }), "");
+
+  const fixed = { name: "Your plan, fixed", anchor: { name: "Gion", type: "hotel" } };
+  assert.equal(isBaselineVersion(fixed), false);
+  assert.equal(versionAroundLabel(fixed), " · around Gion");
+  assert.equal(versionMapAnchorKind(fixed.anchor, fixed), "stay");
+  const neighborhood = {
+    ...baseline,
+    name: "Neighbourhood days",
+    source: undefined,
+    anchor: { name: "Gion", type: "neighborhood" as const, lat: 35, lng: 135.7 },
+  };
+  assert.equal(versionAroundLabel(neighborhood), " · around Gion");
+  assert.equal(versionMapAnchorKind(neighborhood.anchor, neighborhood), "venue");
+  assert.equal(versionsBuiltAroundOneStay([baseline, { ...neighborhood, name: "Quiet" } as any]), false);
+  assert.equal(
+    versionsBuiltAroundOneStay([
+      baseline,
+      { ...baseline, name: "Quiet", source: undefined, variantId: "a" } as any,
+    ]),
+    true,
+  );
 });

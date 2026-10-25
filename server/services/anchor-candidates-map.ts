@@ -47,6 +47,45 @@ export interface PinnedAnchorInput {
  * missing/malformed pin so the caller falls back to auto anchors. Pure + shared so every route that
  * accepts a pin parses it ONE way (the two-authors-two-ways drift §18 warns about).
  */
+/**
+ * A non-empty id that is not a `custom:` placement. Those ids are catalog keys
+ * (hotel_cache, city_neighborhoods, or a trip stop). `custom:` stays on the
+ * geocode path. Whitespace is trimmed; the five-field parser return is unchanged.
+ */
+export function nonCustomCatalogId(input: { id?: string | null }): string | null {
+  if (typeof input.id !== "string") return null;
+  const id = input.id.trim();
+  if (!id || id.startsWith("custom:")) return null;
+  return id;
+}
+
+/** The stop list `resolveOptimizerPinnedAnchor` scores a pin against. */
+export function baselineItemsToAnchorStops(
+  baselineItems: Array<{
+    id?: unknown;
+    name?: unknown;
+    title?: unknown;
+    latitude?: unknown;
+    longitude?: unknown;
+  }>,
+): NamedStop[] {
+  return baselineItems.map((item) => {
+    const latitude = item.latitude != null ? Number(item.latitude) : NaN;
+    const longitude = item.longitude != null ? Number(item.longitude) : NaN;
+    return {
+      id: String(item.id),
+      name:
+        typeof item.name === "string"
+          ? item.name
+          : typeof item.title === "string"
+            ? item.title
+            : "Stop",
+      lat: Number.isFinite(latitude) ? latitude : null,
+      lng: Number.isFinite(longitude) ? longitude : null,
+    };
+  });
+}
+
 const PIN_ANCHOR_TYPES = new Set<AnchorType>(["hotel", "neighborhood", "activity"]);
 export function parsePinnedAnchorInput(raw: any): PinnedAnchorInput | undefined {
   if (!raw || typeof raw !== "object" || !PIN_ANCHOR_TYPES.has(raw.type)) return undefined;
@@ -63,8 +102,8 @@ export function parsePinnedAnchorInput(raw: any): PinnedAnchorInput | undefined 
 
 /**
  * PURE half of pinned-anchor resolution — the two paths that need no DB: matching an `activity` pin
- * to one of the trip's own located stops, and accepting an explicitly-placed custom location. Hotel
- * and neighborhood ids are resolved by the DB loader (`anchor-candidates.ts`), which falls back here.
+ * to one of the trip's own located stops, and accepting an explicitly-placed custom location.
+ * A non-custom id that did not match is null here. Client lat/lng is not a substitute.
  * Returns null when nothing real can be built (§13 — an unresolvable pin becomes NO anchor, never a
  * fabricated one).
  */
@@ -80,6 +119,9 @@ export function buildPinnedCandidateFromCoords(
       return { id: stop.id, type: "activity", name: stop.name, lat: stop.lat, lng: stop.lng };
     }
   }
+  // A catalog id that did not match is not a custom placement. Client lat/lng
+  // must not fill that miss (architect 2026-10-25 10:25 ET).
+  if (nonCustomCatalogId(input)) return null;
   // A custom location the traveler placed/typed: their coordinates ARE the source of truth (§22).
   const lat = num(input.lat);
   const lng = num(input.lng);

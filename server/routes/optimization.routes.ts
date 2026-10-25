@@ -38,6 +38,10 @@ import { getFee, isEventOptimizer } from "../services/optimization-fee.service";
 import { revenueTrackingService } from "../services/revenue-tracking.service";
 import { stripePaymentService } from "../services/stripe-payment.service";
 import { loadTripOptimizerInputs } from "../services/optimizer-baseline.service";
+import { baselineItemsToAnchorStops } from "../services/anchor-candidates";
+import { placeCustomPinBeforeCharge } from "../services/custom-pin-place";
+import type { NamedStop } from "../services/anchor-candidates-map";
+import type { CustomPinPlacement, ResolvedCustomPin } from "@shared/custom-location-pin";
 import { loadLegCoverage, loadOptimizerFindings } from "../services/optimizer-lead.service";
 import Stripe from "stripe";
 import { getStripeSecretKey } from "../utils/stripe-key";
@@ -380,6 +384,19 @@ async function respondIfCartAwaitsConversion(userId: string, res: any): Promise<
   return true;
 }
 
+function withResolvedPin<T extends Record<string, unknown>>(
+  body: T,
+  resolved: ResolvedCustomPin | null,
+  placement: CustomPinPlacement | null,
+): T & { resolvedPinnedAnchor?: ResolvedCustomPin; placement?: CustomPinPlacement } {
+  if (!resolved && !placement) return body;
+  return {
+    ...body,
+    ...(resolved ? { resolvedPinnedAnchor: resolved } : {}),
+    ...(placement ? { placement } : {}),
+  };
+}
+
 router.post("/api/optimization-payments", isAuthenticated, requireVerifiedEmail("checkout"), async (req, res) => {
   try {
     const userId = getUserId(req)!;
@@ -406,8 +423,10 @@ router.post("/api/optimization-payments", isAuthenticated, requireVerifiedEmail(
     // a trip target with nothing optimizable and a non-empty cart means the traveler needs
     // to convert their cart first, not pay to run an optimizer with no baseline. Scoped to the
     // `tripId` path only (free-rerun / no-tripId / userExperienceId-only paths unchanged).
+    let activityStops: NamedStop[] = [];
     if (tripId) {
       const tripInputs = await loadTripOptimizerInputs(tripId);
+      activityStops = baselineItemsToAnchorStops(tripInputs.baselineItems);
       if (tripInputs.baselineItems.length === 0 && (await respondIfCartAwaitsConversion(userId, res))) {
         return;
       }
@@ -423,6 +442,21 @@ router.post("/api/optimization-payments", isAuthenticated, requireVerifiedEmail(
       });
     }
 
+    // Custom pin: accept a signed placement, otherwise geocode, and refuse before
+    // any charge, Trip Pass short-circuit, or free re-run. A non-custom catalog
+    // id that does not resolve is 400 pinned_anchor_not_found here, before the
+    // charge. A bare lat/lng is not trusted.
+    const rawPinnedAnchor = req.body?.pinnedAnchor;
+    const placedPin = await placeCustomPinBeforeCharge({
+      rawPin: rawPinnedAnchor,
+      userId,
+      tripId: tripId ? String(tripId) : null,
+      activityStops,
+    });
+    if (!placedPin.ok) {
+      return res.status(placedPin.status).json(placedPin.body);
+    }
+
     // Trip Pass (ruling 2026-08-29-trip-pass): a covered trip's optimizer runs are
     // INCLUDED — no PaymentIntent is ever created. Entitlement checked server-side here
     // (the client never asserts coverage). The durable record is the active
@@ -432,7 +466,7 @@ router.post("/api/optimization-payments", isAuthenticated, requireVerifiedEmail(
     // ruling `2026-09-25-planning-tolls`) as a fee + `fee_waiver` pair — never a $0 row.
     if (tripId && (await coversAction(String(tripId), "optimizer_run"))) {
       console.info(`[trip-pass] optimizer charge suppressed (covered_by:trip_pass) trip=${tripId}`);
-      return res.json({ coveredByTripPass: true, feeCents: 0, currency, complexityTier: tier });
+      return res.json(withResolvedPin({ coveredByTripPass: true, feeCents: 0, currency, complexityTier: tier }, placedPin.resolved, placedPin.placement));
     }
 
     // (The 24-hour free re-run is retired — R-ac, step 6. A run past a Trip Pass's cap, or with no
@@ -465,7 +499,7 @@ router.post("/api/optimization-payments", isAuthenticated, requireVerifiedEmail(
         idempotencyKey: buildOptimizationFeeIdempotencyKey(userId, tripId ?? userExperienceId),
       });
       if (oneClick.status === "succeeded") {
-        return res.json({
+        return res.json(withResolvedPin({
           freeRerun: false,
           oneClick: true,
           status: "succeeded",
@@ -474,10 +508,10 @@ router.post("/api/optimization-payments", isAuthenticated, requireVerifiedEmail(
           currency,
           complexityTier: tier,
           creditTowardCoordination,
-        });
+        }, placedPin.resolved, placedPin.placement));
       }
       if (oneClick.status === "requires_action") {
-        return res.json({
+        return res.json(withResolvedPin({
           freeRerun: false,
           oneClick: false,
           requiresAction: true,
@@ -487,7 +521,7 @@ router.post("/api/optimization-payments", isAuthenticated, requireVerifiedEmail(
           currency,
           complexityTier: tier,
           creditTowardCoordination,
-        });
+        }, placedPin.resolved, placedPin.placement));
       }
       // no_saved_method → fall through to the normal sheet flow below.
     }
@@ -545,7 +579,7 @@ router.post("/api/optimization-payments", isAuthenticated, requireVerifiedEmail(
     }
     // Paid and not yet run on (a press after a payment whose run never started): run on THIS payment.
     if (paymentIntent.status === "succeeded") {
-      return res.json({
+      return res.json(withResolvedPin({
         freeRerun: false,
         reusedPaid: true,
         status: "succeeded",
@@ -554,10 +588,10 @@ router.post("/api/optimization-payments", isAuthenticated, requireVerifiedEmail(
         currency,
         complexityTier: tier,
         creditTowardCoordination,
-      });
+      }, placedPin.resolved, placedPin.placement));
     }
 
-    return res.json({
+    return res.json(withResolvedPin({
       freeRerun: false,
       clientSecret: paymentIntent.client_secret,
       paymentIntentId: paymentIntent.id,
@@ -565,7 +599,7 @@ router.post("/api/optimization-payments", isAuthenticated, requireVerifiedEmail(
       currency,
       complexityTier: tier,
       creditTowardCoordination, // Phase 2: Event branch optimizers credit toward coordination fee
-    });
+    }, placedPin.resolved, placedPin.placement));
   } catch (err: any) {
     console.error("[optimization-payments] error:", err);
     return res.status(500).json({ error: err.message });

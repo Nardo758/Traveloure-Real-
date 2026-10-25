@@ -108,7 +108,7 @@ import { ASK_LOCAL_WORDS, anchorFromTool, anyLocalLive, findHostCategory, findHo
 import { ItemAskLocalPanel } from "@/components/plan/ItemAskLocalPanel";
 import { isLocated } from "@/components/plancard/MapControlCenter";
 import { areaShading, planMapAnchor, type MapAnchor, type MapArea, type MapVersion } from "@/lib/map-scene";
-import { versionMapAnchorKind, type VersionsBoardView } from "@/lib/versions-board";
+import { versionMapAnchor, type VersionsBoardView } from "@/lib/versions-board";
 import { showsHoursNotChecked } from "@/lib/plancard-refetch";
 import type { FactView } from "@shared/content-facts";
 import { useOccasionSwitches } from "@/hooks/use-occasion-switches";
@@ -1909,7 +1909,7 @@ export function useSlipViewModel({
     label: v.label,
     stops: v.stops,
     days: v.days,
-    anchor: v.anchor ? { kind: versionMapAnchorKind(v.anchor), name: v.anchor.name, lat: v.anchor.lat, lng: v.anchor.lng } : null,
+    anchor: versionMapAnchor(v),
   }));
   const { data: tripAnchors } = useQuery<Array<{ id: string; anchorType: string; anchorDatetime: string; location?: string | null; description?: string | null; bufferBefore?: number | null; bufferAfter?: number | null }>>({
     queryKey: [`/api/trips/${tripId}/anchors`],

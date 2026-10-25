@@ -16,6 +16,15 @@
  * is created) stays caller-side — see cart.tsx and SlipView.tsx.
  */
 
+import {
+  isCustomLocationRefusal,
+  readCustomPinPlacement,
+  readResolvedPinnedAnchor,
+  type CustomLocationRefusalReason,
+  type CustomPinPlacement,
+  type ResolvedCustomPin,
+} from "@shared/custom-location-pin";
+
 /** The state the Stripe payment sheet (StripeCheckout) needs — cart.tsx's OptimizationPaymentState. */
 export interface OptimizationPaymentSheet {
   clientSecret: string;
@@ -26,14 +35,14 @@ export interface OptimizationPaymentSheet {
 
 export type OptimizationGateOutcome =
   /** Server says the 24h free re-run window is active — run the comparison, nothing to charge. */
-  | { kind: "free_rerun" }
+  | { kind: "free_rerun"; resolvedPinnedAnchor?: ResolvedCustomPin; placement?: CustomPinPlacement }
   /** Ruling 2026-08-29-trip-pass: the trip's active Trip Pass covers this run — no charge.
    *  Server-decided (the client never asserts coverage); flow-wise identical to free_rerun. */
-  | { kind: "covered_by_pass" }
+  | { kind: "covered_by_pass"; resolvedPinnedAnchor?: ResolvedCustomPin; placement?: CustomPinPlacement }
   /** FP-2 one-click: the saved default card was charged off-session and succeeded. */
-  | { kind: "paid"; paymentIntentId: string }
+  | { kind: "paid"; paymentIntentId: string; resolvedPinnedAnchor?: ResolvedCustomPin; placement?: CustomPinPlacement }
   /** A PaymentIntent needing the interactive sheet (fresh card, or 3DS `requiresAction` fallback). */
-  | { kind: "payment_sheet"; payment: OptimizationPaymentSheet }
+  | { kind: "payment_sheet"; payment: OptimizationPaymentSheet; resolvedPinnedAnchor?: ResolvedCustomPin; placement?: CustomPinPlacement }
   /**
    * Saved-card charge was requested but no usable method existed after all — the caller
    * should fall back to the sheet path (re-request without `useSavedCard`), matching
@@ -51,11 +60,37 @@ export type OptimizationGateOutcome =
    * endpoint answers `ai_concierge_disabled`. Callers show that Optimize is unavailable and
    * do not open a pay sheet.
    */
-  | { kind: "unavailable" };
+  | { kind: "unavailable" }
+  /**
+   * A custom location could not be placed. HTTP 409, body
+   * `{ error: "custom_location_unplaceable", reason }`. No traveler message — the dialog
+   * lane branches on `reason` and owns the copy. Current slip and cart callers do not send
+   * `pinnedAnchor`, so they do not receive this kind until that lane does, and they must
+   * branch on it in the same change that starts sending the pin.
+   */
+  | {
+      kind: "custom_location_unplaceable";
+      status: number;
+      reason: CustomLocationRefusalReason;
+      body: Record<string, unknown>;
+    };
 
 export interface OptimizationGateRequest {
   tripId?: string;
   userExperienceId?: string;
+  /**
+   * Optional "build around this" pin. Forwarded only when the caller provides it.
+   * A custom location is `{ type, name }` with no id and no coordinates.
+   */
+  pinnedAnchor?: {
+    type: "hotel" | "neighborhood" | "activity";
+    id?: string;
+    name?: string;
+    lat?: number;
+    lng?: number;
+    /** Echo of the payments/create `placement` object. Forwarded opaque; the server checks `sig`. */
+    placement?: CustomPinPlacement;
+  };
   /** Rides along as comparisonContext.destination (display context only — never a money input).
    *  `null` is accepted and forwarded as-is — cart.tsx's experienceTitle is `string | null`,
    *  and the pre-extraction requests sent it verbatim. */
@@ -82,10 +117,32 @@ export function isTripEmptyRefusal(status: number, body: unknown): boolean {
  * the branches cart.tsx handled inline. Throws on any non-refusal error response (same
  * message fallbacks as the cart originals).
  */
+function withResolved(
+  outcome: OptimizationGateOutcome,
+  data: Record<string, unknown>,
+): OptimizationGateOutcome {
+  if (
+    outcome.kind !== "free_rerun" &&
+    outcome.kind !== "covered_by_pass" &&
+    outcome.kind !== "paid" &&
+    outcome.kind !== "payment_sheet"
+  ) {
+    return outcome;
+  }
+  const resolved = readResolvedPinnedAnchor(data.resolvedPinnedAnchor);
+  const placement = readCustomPinPlacement(data.placement);
+  if (!resolved && !placement) return outcome;
+  return {
+    ...outcome,
+    ...(resolved ? { resolvedPinnedAnchor: resolved } : {}),
+    ...(placement ? { placement } : {}),
+  };
+}
+
 export async function requestOptimizationGate(
   opts: OptimizationGateRequest,
 ): Promise<OptimizationGateOutcome> {
-  const { tripId, userExperienceId, destination, useSavedCard, fetchImpl } = opts;
+  const { tripId, userExperienceId, destination, useSavedCard, pinnedAnchor, fetchImpl } = opts;
   const doFetch = fetchImpl ?? fetch;
 
   const res = await doFetch("/api/optimization-payments", {
@@ -97,6 +154,7 @@ export async function requestOptimizationGate(
       userExperienceId,
       comparisonContext: { destination },
       ...(useSavedCard ? { useSavedCard: true } : {}),
+      ...(pinnedAnchor !== undefined ? { pinnedAnchor } : {}),
     }),
   });
 
@@ -110,34 +168,37 @@ export async function requestOptimizationGate(
     if (isTripEmptyRefusal(res.status, data)) {
       return { kind: "refused", status: res.status, body: data };
     }
+    if (isCustomLocationRefusal(res.status, data)) {
+      return { kind: "custom_location_unplaceable", status: res.status, reason: data.reason, body: data };
+    }
     throw new Error(
       (typeof data?.message === "string" && data.message) ||
         (useSavedCard ? "Could not start payment" : "Could not create payment"),
     );
   }
 
-  if (data.coveredByTripPass) return { kind: "covered_by_pass" };
-  if (data.freeRerun) return { kind: "free_rerun" };
+  if (data.coveredByTripPass) return withResolved({ kind: "covered_by_pass" }, data);
+  if (data.freeRerun) return withResolved({ kind: "free_rerun" }, data);
   // Ledger `2026-10-08-optimize-pay-flow`: the plan's open intent was already PAID and no run used it
   // (a press after a payment whose run never started) — the run goes ahead on that payment, no second charge.
   if (data.reusedPaid && data.status === "succeeded" && data.paymentIntentId) {
-    return { kind: "paid", paymentIntentId: String(data.paymentIntentId) };
+    return withResolved({ kind: "paid", paymentIntentId: String(data.paymentIntentId) }, data);
   }
 
   if (useSavedCard) {
     if (data.oneClick && data.status === "succeeded") {
-      return { kind: "paid", paymentIntentId: String(data.paymentIntentId) };
+      return withResolved({ kind: "paid", paymentIntentId: String(data.paymentIntentId) }, data);
     }
     if (data.requiresAction) {
       // Bank demands 3DS — fall back to the interactive sheet for this one charge.
-      return { kind: "payment_sheet", payment: toSheetState(data) };
+      return withResolved({ kind: "payment_sheet", payment: toSheetState(data) }, data);
     }
     // No saved method after all (shouldn't happen if hasDefault was true) — caller falls
     // back to the sheet path.
     return { kind: "no_saved_card" };
   }
 
-  return { kind: "payment_sheet", payment: toSheetState(data) };
+  return withResolved({ kind: "payment_sheet", payment: toSheetState(data) }, data);
 }
 
 function toSheetState(data: Record<string, unknown>): OptimizationPaymentSheet {

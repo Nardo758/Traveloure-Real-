@@ -199,6 +199,76 @@ describe("scope proof — the module talks ONLY to the optimization-payment endp
   });
 });
 
+describe("custom location pin", () => {
+  it("forwards pinnedAnchor only when the caller provides one", async () => {
+    const without = mockFetch(200, { freeRerun: true });
+    await requestOptimizationGate({ tripId: "t", fetchImpl: without.fetchImpl });
+    assert.ok(!("pinnedAnchor" in without.calls[0].body));
+
+    const pin = { type: "neighborhood" as const, name: "Gion" };
+    const withPin = mockFetch(200, { freeRerun: true });
+    const outcome = await requestOptimizationGate({ tripId: "t", pinnedAnchor: pin, fetchImpl: withPin.fetchImpl });
+    assert.deepStrictEqual(withPin.calls[0].body.pinnedAnchor, pin);
+    assert.deepStrictEqual(outcome, { kind: "free_rerun" });
+  });
+
+  it("returns custom_location_unplaceable for a typed 409 and throws on an unknown reason", async () => {
+    const { fetchImpl } = mockFetch(409, { error: "custom_location_unplaceable", reason: "ambiguous" });
+    const outcome = await requestOptimizationGate({ tripId: "t", fetchImpl });
+    assert.strictEqual(outcome.kind, "custom_location_unplaceable");
+    if (outcome.kind === "custom_location_unplaceable") {
+      assert.strictEqual(outcome.status, 409);
+      assert.strictEqual(outcome.reason, "ambiguous");
+      assert.strictEqual(outcome.body.error, "custom_location_unplaceable");
+    }
+    const bad = mockFetch(409, { error: "custom_location_unplaceable", reason: "nope" });
+    await assert.rejects(requestOptimizationGate({ tripId: "t", fetchImpl: bad.fetchImpl }), /Could not create payment/);
+  });
+
+  it("attaches resolvedPinnedAnchor only when the success body carries a valid pin", async () => {
+    const bare = mockFetch(200, { coveredByTripPass: true });
+    const bareOutcome = await requestOptimizationGate({ tripId: "t", fetchImpl: bare.fetchImpl });
+    assert.deepStrictEqual(bareOutcome, { kind: "covered_by_pass" });
+
+    const placed = mockFetch(200, {
+      coveredByTripPass: true,
+      resolvedPinnedAnchor: {
+        type: "neighborhood",
+        name: "Gion",
+        lat: 35.0037,
+        lng: 135.7788,
+        formattedAddress: "Gion, Kyoto",
+      },
+    });
+    const placedOutcome = await requestOptimizationGate({ tripId: "t", fetchImpl: placed.fetchImpl });
+    assert.deepStrictEqual(placedOutcome, {
+      kind: "covered_by_pass",
+      resolvedPinnedAnchor: {
+        type: "neighborhood",
+        name: "Gion",
+        lat: 35.0037,
+        lng: 135.7788,
+        formattedAddress: "Gion, Kyoto",
+      },
+    });
+  });
+
+  it("forwards an echoed placement opaque and attaches one from the success body", async () => {
+    const placement = {
+      lat: 35.0037,
+      lng: 135.7788,
+      source: "google_geocode" as const,
+      at: "2026-10-25T12:00:00.000Z",
+      sig: "abc",
+    };
+    const sent = mockFetch(200, { coveredByTripPass: true, placement });
+    const pin = { type: "neighborhood" as const, name: "Gion", placement };
+    const outcome = await requestOptimizationGate({ tripId: "t", pinnedAnchor: pin, fetchImpl: sent.fetchImpl });
+    assert.deepStrictEqual(sent.calls[0].body.pinnedAnchor, pin);
+    assert.deepStrictEqual(outcome, { kind: "covered_by_pass", placement });
+  });
+});
+
 describe("isTripEmptyRefusal", () => {
   it("matches only the 409 + error:trip_empty_convert_cart pair", () => {
     assert.strictEqual(isTripEmptyRefusal(409, { error: "trip_empty_convert_cart" }), true);
