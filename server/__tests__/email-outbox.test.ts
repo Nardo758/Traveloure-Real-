@@ -56,6 +56,7 @@ before(() => {
 
 beforeEach(() => {
   process.env.EMAIL_SENDS_ENABLED = "true";
+  process.env.EMAIL_TEMPLATE_ALLOWLIST = "password_reset,email_verification,payment_failed";
 });
 
 after(() => {
@@ -96,6 +97,7 @@ function makeClaimedRow(overrides: Partial<{
     reply_to:      null,
     attempt_count: 0,
     max_attempts:  6,
+    email_type:    "password_reset",
     ...overrides,
   };
 }
