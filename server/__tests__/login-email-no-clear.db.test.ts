@@ -24,7 +24,10 @@
  */
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { db, pool } from "../db";
 import { eq, inArray, sql } from "drizzle-orm";
 import { users, emailVerificationTokens } from "../../shared/models/auth";
@@ -95,6 +98,16 @@ function stamp(value: Date | string | null | undefined): number | null {
   const time = new Date(value).getTime();
   if (Number.isNaN(time)) throw new Error(`unreadable emailVerified stamp: ${String(value)}`);
   return time;
+}
+
+/** Digits in timestamp-without-time-zone, read as UTC. Independent of process TZ. */
+async function storedUtcMillis(id: string): Promise<number | null> {
+  const r = await db.execute(sql`SELECT email_verified::text AS raw FROM users WHERE id = ${id}`);
+  const raw = (r.rows[0] as { raw?: string | null } | undefined)?.raw;
+  if (raw == null) return null;
+  const ms = Date.parse(`${raw.trim().replace(" ", "T")}Z`);
+  if (Number.isNaN(ms)) throw new Error(`unreadable email_verified text: ${raw}`);
+  return ms;
 }
 
 async function load(id: string) {
@@ -274,7 +287,7 @@ describe("row 156 — login never clears users.email", () => {
     assert.equal(await upsertUser({ sub: id, email: next, email_verified: true, first_name: "Kept" }), id);
     const afterRow = await load(id);
     assert.equal(afterRow.email, next);
-    const verifiedAt = stamp(afterRow.emailVerified);
+    const verifiedAt = await storedUtcMillis(id);
     assert.ok(verifiedAt !== null && verifiedAt >= started - 2000, "boolean true stamps emailVerified");
     assert.notEqual(verifiedAt, PRIOR_VERIFIED.getTime());
   });
@@ -448,7 +461,7 @@ describe("row 156 — login never clears users.email", () => {
     );
     let row = await load(changed);
     assert.equal(row.email, next);
-    assert.equal(stamp(row.emailVerified), STATED_VERIFIED.getTime());
+    assert.equal(await storedUtcMillis(changed), STATED_VERIFIED.getTime());
 
     const same = track(`r156-stated-same-${crypto.randomUUID()}`);
     const sameEmail = freshEmail("statedsame");
@@ -492,7 +505,7 @@ describe("row 156 — login never clears users.email", () => {
     assert.equal(await upsertUser({ sub: id, email: next, email_verified: true, first_name: "Kept" }), id);
     const afterRow = await load(id);
     assert.equal(afterRow.email, next);
-    const verifiedAt = stamp(afterRow.emailVerified);
+    const verifiedAt = await storedUtcMillis(id);
     assert.ok(verifiedAt !== null && verifiedAt >= started - 2000, "boolean true stamps emailVerified now");
     assert.notEqual(verifiedAt, PRIOR_VERIFIED.getTime());
     assert.equal(afterRow.password, DUMMY_PASSWORD_HASH);
@@ -526,5 +539,48 @@ describe("row 156 — login never clears users.email", () => {
     assert.equal(afterRow.email, email);
     assert.equal(stamp(afterRow.emailVerified), PRIOR_VERIFIED.getTime());
     assert.equal(afterRow.password, DUMMY_PASSWORD_HASH);
+  });
+
+  it("TZ child: a conflict stamp stores UTC digits, not the process-zone clock", async () => {
+    const id = track(`r156-tz-${crypto.randomUUID()}`);
+    const email = freshEmail("tz");
+    await seed({ id, email, authProvider: "replit" });
+    const next = freshEmail("tznext");
+    const started = Date.now();
+    await authStorage.upsertUser(
+      { id, email: next, firstName: "Kept" },
+      { providerEmailVerified: true },
+    );
+    const stored = await storedUtcMillis(id);
+    assert.ok(stored !== null && stored >= started - 2000 && stored <= Date.now() + 2000, `UTC digits ${stored}`);
+
+    const fixedId = track(`r156-tzfix-${crypto.randomUUID()}`);
+    const fixedEmail = freshEmail("tzfix");
+    await seed({ id: fixedId, email: fixedEmail });
+    const changed = freshEmail("tzfixnext");
+    await authStorage.upsertUser({
+      id: fixedId,
+      email: changed,
+      emailVerified: STATED_VERIFIED,
+      firstName: "Kept",
+    });
+    assert.equal(await storedUtcMillis(fixedId), STATED_VERIFIED.getTime());
+  });
+
+  it("a conflict stamp stays the UTC instant when the process zone is not UTC", { skip: process.env.ROW156_TZ_CHILD === "1" }, () => {
+    const file = fileURLToPath(import.meta.url);
+    const child = spawnSync(process.execPath, [
+      "--import", "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-force-exit",
+      "--test-name-pattern", "TZ child:",
+      file,
+    ], {
+      cwd: path.resolve(path.dirname(file), "../.."),
+      env: { ...process.env, TZ: "Pacific/Kiritimati", ROW156_TZ_CHILD: "1" },
+      encoding: "utf8",
+    });
+    assert.equal(child.status, 0, `${child.stdout ?? ""}\n${child.stderr ?? ""}`);
   });
 });

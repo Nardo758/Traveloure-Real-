@@ -62,7 +62,13 @@ class AuthStorage implements IAuthStorage {
       Object.prototype.hasOwnProperty.call(input, "emailVerified") && input.emailVerified !== undefined;
     const statedVerified = callerStatedVerified ? (input.emailVerified ?? null) : null;
     const providerVerified = opts?.providerEmailVerified === true;
-    const verifiedAt = new Date();
+    // email_verified is timestamp without time zone. A raw Date is sent with a
+    // local offset, and ::timestamp drops that offset, so the stored clock would
+    // follow the process zone. An ISO string keeps the UTC digits.
+    const verifiedAtIso = new Date().toISOString();
+    const boundTimestamp = (value: Date | null) =>
+      value instanceof Date ? sql`${value.toISOString()}::timestamp` : sql`NULL`;
+    const boundNow = () => sql`${verifiedAtIso}::timestamp`;
     // A fresh fragment per interpolation. Drizzle SQL objects are single-use.
     const localPassword = () => sql`${users.password} IS NOT NULL AND ${users.password} <> ''`;
     const incomingDifferent = () => sql`excluded.email IS NOT NULL AND btrim(excluded.email) <> ''
@@ -79,13 +85,13 @@ class AuthStorage implements IAuthStorage {
     const keepVerified = () => sql`excluded.email IS NULL OR btrim(excluded.email) = ''
       OR lower(btrim(${users.email})) IS NOT DISTINCT FROM lower(btrim(excluded.email))`;
     const changedStamp = () => callerStatedVerified
-      ? sql`${statedVerified}::timestamp`
+      ? boundTimestamp(statedVerified instanceof Date ? statedVerified : null)
       : providerVerified
-        ? sql`${verifiedAt}::timestamp`
+        ? boundNow()
         : sql`NULL`;
     const emailVerified = providerVerified
       ? sql`CASE
-          WHEN ${localPassword()} AND (${incomingDifferent()}) THEN ${verifiedAt}::timestamp
+          WHEN ${localPassword()} AND (${incomingDifferent()}) THEN ${boundNow()}
           WHEN ${localPassword()} THEN ${users.emailVerified}
           ELSE CASE WHEN ${keepVerified()} THEN ${users.emailVerified} ELSE ${changedStamp()} END
         END`
