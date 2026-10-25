@@ -862,7 +862,8 @@ export function CoordinationCard({ tripId, isOwner }: { tripId: string; isOwner:
  * Guests & invites, traveling party, main moment & schedule check and organize-into-events are
  * `SlipLogisticsSection`'s, unchanged and re-mounted here; the contract board is one more mount of
  * the EXISTING `VendorContractBoard`; the budget total is the EXISTING derived line, passed in
- * rather than recomputed (§18 rule 1 — `planBudgetLine` has one caller and it stays SlipView's).
+ * rather than recomputed (§18 rule 1 — `planBudgetLine` has two callers, SlipView.tsx and
+ * itinerary-comparison.tsx, and the rail reads SlipView's line rather than becoming a third).
  *
  * STOPS & TIMEZONE ARE HERE NOW (ledger `2026-09-06-slip-conformance`). This card's own comment
  * used to say they were a later lane and that a placeholder row would be a promise (§13) — the
