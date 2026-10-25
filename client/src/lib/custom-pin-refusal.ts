@@ -39,7 +39,7 @@ export function isStalePinnedAnchor(status: number, body: unknown): boolean {
 
 /**
  * Every string for the refusal state, in ONE object. Wording approved by Leon, Oct 25, 2026 (relayed
- * on #1690). `optionCPaidNote` is still held: its text has not landed.
+ * on #1690).
  */
 export const CUSTOM_PIN_REFUSAL_STRINGS = {
   /** The error for a stale list-pick id. Reachable only on the slip, before any payment. */
@@ -56,7 +56,7 @@ export const CUSTOM_PIN_REFUSAL_STRINGS = {
     pickFromList: "Pick from the list",
     continueWithoutPin: "Continue without a pin",
     /** One line under option (c), shown only when the run is priced (not covered, not free). */
-    optionCPaidNote: "TODO(Leon): option c price note",
+    optionCPaidNote: "You'll see the price before anything is charged.",
   },
 } as const;
 

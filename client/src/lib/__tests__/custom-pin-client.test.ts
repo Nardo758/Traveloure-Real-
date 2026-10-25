@@ -94,7 +94,7 @@ describe("the pin reaches the pay gate", () => {
 });
 
 describe("the refusal state", () => {
-  it("CP3: every string is Leon's approved text in ONE object, with no banned word or price; only the option (c) note is held", () => {
+  it("CP3: every string is Leon's approved text in ONE object, with no TODO, banned word or price", () => {
     assert.deepEqual(Object.keys(CUSTOM_PIN_REFUSAL_STRINGS.reasons).sort(), [...CUSTOM_LOCATION_REFUSAL_REASONS].sort());
     assert.deepEqual(CUSTOM_PIN_REFUSAL_STRINGS.reasons, {
       zero_results: "We couldn't find a place called that.",
@@ -107,7 +107,7 @@ describe("the refusal state", () => {
       tryDifferentName: "Try a different name",
       pickFromList: "Pick from the list",
       continueWithoutPin: "Continue without a pin",
-      optionCPaidNote: "TODO(Leon): option c price note",
+      optionCPaidNote: "You'll see the price before anything is charged.",
     });
     assert.equal(
       CUSTOM_PIN_REFUSAL_STRINGS.stalePin,
@@ -118,8 +118,8 @@ describe("the refusal state", () => {
       ...Object.values(CUSTOM_PIN_REFUSAL_STRINGS.reasons),
       ...Object.values(CUSTOM_PIN_REFUSAL_STRINGS.options),
     ];
-    // Exactly one held placeholder is left: the option (c) note.
-    assert.deepEqual(all.filter((v) => v.startsWith("TODO(Leon)")), ["TODO(Leon): option c price note"]);
+    // No held placeholder is left.
+    assert.deepEqual(all.filter((v) => v.includes("TODO")), []);
     for (const v of all) assert.doesNotMatch(v, /trending|pulse|crowd|destination intelligence|\bAI\b|\$\d|5\.99|599/i);
     // P7's rule holds on the dialog source with the refusal state in it.
     assert.doesNotMatch(DIALOG, /\$\d|5\.99|599/);
