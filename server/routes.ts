@@ -174,7 +174,7 @@ import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant,
 // Lane 5b: the Trip is the optimizer's baseline. Single expression of the ratified read-set.
 import { loadTripOptimizerInputs, loadOptimizerCatalog } from "./services/optimizer-baseline.service";
 // Phase 1c: the traveler's "build around THIS" pin is resolved here on the LIVE generate handler.
-import { resolveOptimizerPinnedAnchor } from "./services/anchor-candidates";
+import { baselineItemsToAnchorStops, resolveOptimizerPinnedAnchor } from "./services/anchor-candidates";
 import { placeCustomPinBeforeCharge } from "./services/custom-pin-place";
 import { groundAiItems } from "./services/slip-grounding.service";
 import messagesRouter from "./routes/messages";
@@ -10417,6 +10417,7 @@ ${bannedCopyPromptLine()}`;
         rawPin: rawPinnedAnchor,
         userId,
         tripId: tripId ? String(tripId) : null,
+        activityStops: baselineItemsToAnchorStops(baselineItems),
       });
       if (!placedPinForCreate.ok) {
         return res.status(placedPinForCreate.status).json(placedPinForCreate.body);
@@ -10838,6 +10839,7 @@ ${bannedCopyPromptLine()}`;
         rawPin: rawPinnedAnchor,
         userId,
         tripId: comparison.tripId ? String(comparison.tripId) : null,
+        activityStops: baselineItemsToAnchorStops(baselineItems),
       });
       if (!placedPinForGenerate.ok) {
         return res.status(placedPinForGenerate.status).json(placedPinForGenerate.body);
@@ -10937,9 +10939,9 @@ ${bannedCopyPromptLine()}`;
         }
       }
 
-      // Selected-candidate pins (a catalog id) keep this resolver. A custom name-only pin was
-      // placed onto rawPinnedAnchor (lat/lng) or refused with 409 before the pay gate, so an
-      // unplaceable custom pin never falls through to auto anchors.
+      // A found catalog id keeps this resolver. A miss already returned 400. A custom
+      // name-only pin was placed onto rawPinnedAnchor (lat/lng) or refused with 409
+      // before the pay gate, so an unplaceable custom pin never falls through to auto anchors.
       const resolvedPinnedAnchor = await resolveOptimizerPinnedAnchor(
         rawPinnedAnchor,
         baselineItems,

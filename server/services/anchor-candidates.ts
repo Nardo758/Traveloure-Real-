@@ -15,6 +15,8 @@ import {
   rankActivityAnchors,
   buildPinnedCandidateFromCoords,
   parsePinnedAnchorInput,
+  nonCustomCatalogId,
+  baselineItemsToAnchorStops,
   type NamedStop,
   type PinnedAnchorInput,
 } from "./anchor-candidates-map";
@@ -27,6 +29,8 @@ export {
   rankActivityAnchors,
   buildPinnedCandidateFromCoords,
   parsePinnedAnchorInput,
+  nonCustomCatalogId,
+  baselineItemsToAnchorStops,
 } from "./anchor-candidates-map";
 
 export interface RankedAnchors {
@@ -71,28 +75,46 @@ export async function loadRankedAnchors(
  * when the pin cannot be resolved to a real location — the optimizer then falls back to auto anchors
  * rather than inventing one (§13).
  */
+/**
+ * The located catalog candidate for a non-custom id, or null when that id is
+ * missing or has no coordinates. Does not read client lat/lng. Activity ids
+ * match a located trip stop; hotel and neighborhood ids match the catalog row.
+ */
+export async function locateCatalogPinnedAnchor(
+  input: PinnedAnchorInput,
+  stops: NamedStop[],
+): Promise<AnchorCandidate | null> {
+  const catalogId = nonCustomCatalogId(input);
+  if (!catalogId) return null;
+  if (input.type === "hotel") {
+    const [row] = await db.select().from(hotelCache).where(eq(hotelCache.id, catalogId)).limit(1);
+    if (!row) return null;
+    return hotelRowsToCandidates([row as any])[0] ?? null;
+  }
+  if (input.type === "neighborhood") {
+    const [row] = await db
+      .select()
+      .from(cityNeighborhoods)
+      .where(eq(cityNeighborhoods.id, catalogId))
+      .limit(1);
+    if (!row) return null;
+    return neighborhoodRowsToCandidates([row as any])[0] ?? null;
+  }
+  return buildPinnedCandidateFromCoords(input, stops);
+}
+
 export async function resolvePinnedAnchor(
   input: PinnedAnchorInput,
   stops: NamedStop[],
 ): Promise<AnchorScore | null> {
-  let candidate: AnchorCandidate | null = null;
-
-  if (input.type === "hotel" && input.id) {
-    const [row] = await db.select().from(hotelCache).where(eq(hotelCache.id, String(input.id))).limit(1);
-    if (row) candidate = hotelRowsToCandidates([row as any])[0] ?? null;
-  } else if (input.type === "neighborhood" && input.id) {
-    const [row] = await db
-      .select()
-      .from(cityNeighborhoods)
-      .where(eq(cityNeighborhoods.id, String(input.id)))
-      .limit(1);
-    if (row) candidate = neighborhoodRowsToCandidates([row as any])[0] ?? null;
+  // A catalog id is server-derived or it is nothing. Client lat/lng is not a fallback.
+  if (nonCustomCatalogId(input)) {
+    const candidate = await locateCatalogPinnedAnchor(input, stops);
+    if (!candidate) return null;
+    return scoreAnchor(candidate, stops);
   }
 
-  // Activity pin or custom placement (and the fallback when a catalog id didn't resolve): the pure
-  // half handles both without touching the DB.
-  if (!candidate) candidate = buildPinnedCandidateFromCoords(input, stops);
-
+  const candidate = buildPinnedCandidateFromCoords(input, stops);
   if (!candidate) return null; // §13 — unresolvable pin ⇒ no anchor, never fabricated
   return scoreAnchor(candidate, stops);
 }
@@ -121,21 +143,7 @@ export async function resolveOptimizerPinnedAnchor(
   const pinnedAnchorInput = parsePinnedAnchorInput(rawPinnedAnchor);
   if (!pinnedAnchorInput) return undefined;
 
-  const anchorStops: NamedStop[] = baselineItems.map((item) => {
-    const latitude = item.latitude != null ? Number(item.latitude) : NaN;
-    const longitude = item.longitude != null ? Number(item.longitude) : NaN;
-    return {
-      id: String(item.id),
-      name:
-        typeof item.name === "string"
-          ? item.name
-          : typeof item.title === "string"
-            ? item.title
-            : "Stop",
-      lat: Number.isFinite(latitude) ? latitude : null,
-      lng: Number.isFinite(longitude) ? longitude : null,
-    };
-  });
+  const anchorStops = baselineItemsToAnchorStops(baselineItems);
 
   return (await resolver(pinnedAnchorInput, anchorStops)) ?? undefined;
 }

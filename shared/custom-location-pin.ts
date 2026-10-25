@@ -7,6 +7,10 @@
  * HTTP 409
  * { "error": "custom_location_unplaceable", "reason": <CustomLocationRefusalReason> }
  *
+ * A catalog id that does not resolve is a DIFFERENT response, HTTP 400
+ * { "error": "pinned_anchor_not_found" }
+ * with no reason field. It is not a placement refusal.
+ *
  * Success (payments JSON, present only when a custom pin was placed this call):
  * resolvedPinnedAnchor: { type, name, lat, lng, formattedAddress }
  * placement: { lat, lng, source, at, sig }
@@ -18,6 +22,15 @@
 export const CUSTOM_LOCATION_UNPLACEABLE = "custom_location_unplaceable" as const;
 
 export const CUSTOM_LOCATION_UNPLACEABLE_STATUS = 409 as const;
+
+/** Catalog id miss. Not one of CUSTOM_LOCATION_REFUSAL_REASONS. */
+export const PINNED_ANCHOR_NOT_FOUND = "pinned_anchor_not_found" as const;
+
+export const PINNED_ANCHOR_NOT_FOUND_STATUS = 400 as const;
+
+export interface PinnedAnchorNotFoundBody {
+  error: typeof PINNED_ANCHOR_NOT_FOUND;
+}
 
 export const CUSTOM_LOCATION_REFUSAL_REASONS = [
   "zero_results",

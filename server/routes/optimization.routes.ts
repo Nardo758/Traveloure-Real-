@@ -38,7 +38,9 @@ import { getFee, isEventOptimizer } from "../services/optimization-fee.service";
 import { revenueTrackingService } from "../services/revenue-tracking.service";
 import { stripePaymentService } from "../services/stripe-payment.service";
 import { loadTripOptimizerInputs } from "../services/optimizer-baseline.service";
+import { baselineItemsToAnchorStops } from "../services/anchor-candidates";
 import { placeCustomPinBeforeCharge } from "../services/custom-pin-place";
+import type { NamedStop } from "../services/anchor-candidates-map";
 import type { CustomPinPlacement, ResolvedCustomPin } from "@shared/custom-location-pin";
 import { loadLegCoverage, loadOptimizerFindings } from "../services/optimizer-lead.service";
 import Stripe from "stripe";
@@ -421,8 +423,10 @@ router.post("/api/optimization-payments", isAuthenticated, requireVerifiedEmail(
     // a trip target with nothing optimizable and a non-empty cart means the traveler needs
     // to convert their cart first, not pay to run an optimizer with no baseline. Scoped to the
     // `tripId` path only (free-rerun / no-tripId / userExperienceId-only paths unchanged).
+    let activityStops: NamedStop[] = [];
     if (tripId) {
       const tripInputs = await loadTripOptimizerInputs(tripId);
+      activityStops = baselineItemsToAnchorStops(tripInputs.baselineItems);
       if (tripInputs.baselineItems.length === 0 && (await respondIfCartAwaitsConversion(userId, res))) {
         return;
       }
@@ -438,14 +442,16 @@ router.post("/api/optimization-payments", isAuthenticated, requireVerifiedEmail(
       });
     }
 
-    // Custom "build around a location" pin: accept a signed placement, otherwise geocode,
-    // and refuse before any charge, Trip Pass short-circuit, or free re-run.
-    // Selected catalog pins are not geocoded. A bare lat/lng is not trusted.
+    // Custom pin: accept a signed placement, otherwise geocode, and refuse before
+    // any charge, Trip Pass short-circuit, or free re-run. A non-custom catalog
+    // id that does not resolve is 400 pinned_anchor_not_found here, before the
+    // charge. A bare lat/lng is not trusted.
     const rawPinnedAnchor = req.body?.pinnedAnchor;
     const placedPin = await placeCustomPinBeforeCharge({
       rawPin: rawPinnedAnchor,
       userId,
       tripId: tripId ? String(tripId) : null,
+      activityStops,
     });
     if (!placedPin.ok) {
       return res.status(placedPin.status).json(placedPin.body);

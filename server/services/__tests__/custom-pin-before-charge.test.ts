@@ -70,6 +70,7 @@ describe("placeCustomPinBeforeCharge", () => {
       for (const marker of writes) {
         assert.equal(before.includes(marker), false, `${returnText} precedes ${marker}`);
       }
+      assert.match(handler, /activityStops/, `${returnText} looks up catalog ids on the same early gate`);
     }
   });
 
@@ -86,19 +87,24 @@ describe("placeCustomPinBeforeCharge", () => {
     }
 
     let calls = 0;
-    const selected = { type: "hotel" as const, id: "hotel-1", name: "Catalog hotel" };
+    const selected = { type: "hotel" as const, id: "hotel-1", name: "Catalog hotel", lat: 1, lng: 2 };
     const selectedOut = await placeCustomPinBeforeCharge({
       rawPin: selected,
       userId: "user-1",
       tripId: "trip-1",
+      catalogPinExists: async () => true,
       geocode: async () => {
         calls += 1;
         return placed;
       },
     });
     assert.equal(calls, 0);
-    assert.equal(selectedOut.ok && selectedOut.resolved, null);
-    assert.equal("lat" in selected, false);
+    assert.equal(selectedOut.ok, true);
+    if (selectedOut.ok) {
+      assert.equal(selectedOut.resolved, null);
+      assert.equal(selectedOut.placement, null);
+    }
+    assert.equal("lat" in selected, false, "a found catalog id does not keep the client's lat/lng");
 
     const bare = { type: "activity" as const, name: "Pinned", lat: 35, lng: 135.7 };
     const bareOut = await placeCustomPinBeforeCharge({
@@ -252,6 +258,94 @@ describe("placeCustomPinBeforeCharge", () => {
     if (!thrown.ok) assert.equal(thrown.body.reason, "provider_error");
   });
 
+  it("returns 400 pinned_anchor_not_found for a catalog id miss and does not geocode or keep lat/lng", async () => {
+    let calls = 0;
+    const geocode = async () => {
+      calls += 1;
+      return placed;
+    };
+    const placement = signCustomPinPlacement({
+      name: "Gion",
+      lat: 35.0037,
+      lng: 135.7788,
+      now: Date.parse("2026-10-25T12:00:00.000Z"),
+      secret: SECRET,
+    });
+    const cases: Array<{ type: "hotel" | "neighborhood" | "activity"; id: string }> = [
+      { type: "hotel", id: "missing-hotel" },
+      { type: "neighborhood", id: "missing-hood" },
+      { type: "activity", id: "missing-stop" },
+    ];
+    for (const pin of cases) {
+      const raw: { type: typeof pin.type; id: string; name: string; lat?: number; lng?: number; placement: typeof placement } = {
+        ...pin,
+        name: "Gion",
+        lat: 35,
+        lng: 135,
+        placement,
+      };
+      const out = await placeCustomPinBeforeCharge({
+        rawPin: raw,
+        userId: "user-1",
+        tripId: "trip-1",
+        secret: SECRET,
+        activityStops: [{ id: "other-stop", name: "Other", lat: 35, lng: 135 }],
+        catalogPinExists: async () => false,
+        geocode,
+      });
+      assert.equal(out.ok, false);
+      if (!out.ok) {
+        assert.equal(out.status, 400);
+        assert.deepEqual(out.body, { error: "pinned_anchor_not_found" });
+      }
+      assert.equal("lat" in raw, false);
+      assert.equal("lng" in raw, false);
+    }
+    assert.equal(calls, 0);
+
+    let lookedUp = false;
+    const customRaw: { type: "neighborhood"; id: string; name: string; lat?: number; lng?: number } = {
+      type: "neighborhood",
+      id: "custom:Gion",
+      name: "Gion",
+      lat: 1,
+      lng: 2,
+    };
+    const customOut = await placeCustomPinBeforeCharge({
+      rawPin: customRaw,
+      userId: "user-1",
+      tripId: "trip-1",
+      secret: SECRET,
+      catalogPinExists: async () => {
+        lookedUp = true;
+        return false;
+      },
+      geocode,
+    });
+    assert.equal(lookedUp, false, "a custom: id stays on the geocode path");
+    assert.equal(calls, 1);
+    assert.equal(customOut.ok, true);
+    if (customOut.ok && customOut.resolved) assert.equal(customOut.resolved.lat, placed.chosen.lat);
+
+    const foundStops = [{ id: "s1", name: "Gion tea", lat: 35.0037, lng: 135.7788 }];
+    let sawStop = false;
+    const found = await placeCustomPinBeforeCharge({
+      rawPin: { type: "activity", id: "s1", name: "Client label", lat: 9, lng: 9 },
+      userId: "user-1",
+      tripId: "trip-1",
+      activityStops: foundStops,
+      catalogPinExists: async (_pin, stops) => {
+        sawStop = stops.some((stop) => stop.id === "s1" && stop.lat === 35.0037);
+        return sawStop;
+      },
+      geocode,
+    });
+    assert.equal(sawStop, true);
+    assert.equal(found.ok, true);
+    if (found.ok) assert.equal(found.resolved, null);
+    assert.equal(calls, 1, "a found catalog id does not geocode");
+  });
+
   it("does not treat a type-only or half coordinate pin as a selected candidate", async () => {
     let calls = 0;
     const geocode = async () => {
@@ -291,6 +385,10 @@ describe("pay-gate source order", () => {
     }
     const resolvedReturns = handler.split("return res.json(withResolvedPin(").length - 1;
     assert.equal(resolvedReturns, 5);
+    assert.match(handler, /activityStops/);
+    const placeSrc = fs.readFileSync(path.resolve(process.cwd(), "server/services/custom-pin-place.ts"), "utf8");
+    assert.match(placeSrc, /PINNED_ANCHOR_NOT_FOUND/);
+    assert.doesNotMatch(placeSrc, /from ["']\.\.\/db["']/);
     assert.doesNotMatch(handler, /createHold/);
     assert.doesNotMatch(handler, /await recordOptimizerRunToll/);
     const pinLine = handler
