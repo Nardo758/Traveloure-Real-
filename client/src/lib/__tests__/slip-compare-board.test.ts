@@ -1,6 +1,7 @@
 /**
  * THE COMPARE BOARD (slip conformance, boards rev 15; ledger `2026-10-08-slip-compare-board`). The day
- * strip states the SERVER's minutes per day and judges nothing; every pinned sentence stays verbatim.
+ * strip states the SERVER's minutes for a checked day and "Not checked yet" otherwise; every pinned
+ * sentence stays verbatim.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -10,13 +11,17 @@ import { compareEyebrow, dayStripCells } from "../plan-compare";
 const scored = (minutesByDay: Record<number, number>, basis: "matrix" | "est" = "matrix") =>
   ({ scored: true, minutesPerDay: 30, minutesByDay, basis, coverage: null, areasNear: 0, areasTotal: 0, located: 3, total: 3 }) as const;
 
-test("C1: one cell per day in day order, the server's minutes, '~' on an estimate", () => {
+test("C1: one cell per day in day order; minutes only when the day is checked", () => {
   assert.deepEqual(dayStripCells(scored({ 3: 69.4, 1: 42, 2: 74 })), [
     { day: 1, label: "Day 1", minutes: "42 min" },
     { day: 2, label: "Day 2", minutes: "74 min" },
     { day: 3, label: "Day 3", minutes: "69 min" },
   ]);
-  assert.equal(dayStripCells(scored({ 1: 10 }, "est"))[0].minutes, "~10 min");
+  assert.equal(dayStripCells(scored({ 1: 10 }, "est"))[0].minutes, "Not checked yet");
+  assert.equal(
+    dayStripCells({ ...scored({ 1: 10, 2: 4 }, "est"), checkedByDay: { 1: true, 2: false } })[0].minutes,
+    "10 min",
+  );
 });
 
 test("C2: an unscored place has no strip, and a malformed day is dropped — never a zero", () => {
