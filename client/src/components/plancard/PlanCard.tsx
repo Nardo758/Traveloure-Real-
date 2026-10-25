@@ -971,6 +971,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
                   finalizedAt={(plancardData?.trip as any)?.finalizedAt ?? null}
                   finalVersion={finalVersion}
                   finalCard={plancardData?.finalCard ?? null}
+                  finalAirportLeg={plancardData?.finalAirportLeg ?? null}
                   optimized={!!lastOptimizedAt}
                   showTravelMinutes={(plancardData as any)?.travelTimesShown === true}
                   advisorName={advisorName}
