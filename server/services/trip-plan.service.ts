@@ -42,7 +42,7 @@ import type { BookingPath } from "@shared/booking-path";
 import { routedFactsOf, selectPlanLegs } from "./routing/plan-legs";
 import { legOptionsChecked, routedLegOptions } from "@shared/leg-options";
 import { tripGetsRoutedLegs } from "./routing/plan-routed-legs.service";
-import { readFinalCardMeta } from "@shared/trip-card-final";
+import { readFinalAirportLeg, readFinalCardMeta } from "@shared/trip-card-final";
 import { coordinatesStillPending, geocodeQuery, hasItemLocation, isAreaLevelGeocode } from "./coordinate-backfill.pure";
 import { isAreaOnlyLocation, rowCoordinatesTrusted } from "@shared/ai-place-text";
 import { isSupplySlot } from "@shared/ai-place-text";
@@ -1228,6 +1228,15 @@ export async function assembleTripPlan(
     role: c.role,
   }));
 
+  // The same fact `plancard.tripRole` already publishes. The plancard route passes `getTripRole`
+  // (an "owner" collaborator row) or, when that is null, this falls back to the trip's own user.
+  // Flight data is the owner's only (`@shared/airport-leg`) — omitted for every other viewer.
+  const tripRole = options.tripRole ?? (trip.userId === options.viewerId ? "owner" : "expert");
+  const viewerIsOwner = tripRole === "owner";
+  // Read off the final already loaded. No new query, no recompute. Null omits the key.
+  const finalAirportLeg =
+    renderingSnapshot && viewerIsOwner && latestFinal ? readFinalAirportLeg(latestFinal.snapshot) : null;
+
   // Transport totals count every leg really on the plan — its own trip-scoped legs (P0-b item 3).
   const activeLegs = [...tripLegs];
   const budget = await resolveBudget(tripId, trip.budget);
@@ -1257,7 +1266,7 @@ export async function assembleTripPlan(
     // with items it never tried, so a re-read will pin more of them. Absent ⇒ nothing is pending.
     ...(coordinatesPending ? { coordinatesPending: true as const } : {}),
     plancard: {
-      tripRole: options.tripRole ?? (trip.userId === options.viewerId ? "owner" : "expert"),
+      tripRole,
       trip: {
         id: trip.id,
         title: trip.title ?? null,
@@ -1346,6 +1355,7 @@ export async function assembleTripPlan(
       // stored photos) — the Trip Card read only; omitted on the live render and for a pre-step-6
       // snapshot (§13).
       ...(renderingSnapshot && readFinalCardMeta(latestFinal!.snapshot) ? { finalCard: readFinalCardMeta(latestFinal!.snapshot)! } : {}),
+      ...(finalAirportLeg ? { finalAirportLeg } : {}),
       stats: {
         totalDays: fallbackDays || days.length,
         totalActivities: fallbackActivityCount,
