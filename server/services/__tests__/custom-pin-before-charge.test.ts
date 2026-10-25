@@ -49,25 +49,28 @@ const placed: GeocodeDetailed = {
 describe("placeCustomPinBeforeCharge", () => {
   beforeEach(() => resetCustomPinHandoffForTests());
 
-  it("refuses before payment, hold, or ledger effects for paid, trip pass, and free re-run", async () => {
-    for (const basis of ["paid", "trip_pass", "free_rerun"] as const) {
-      const effects: string[] = [];
-      const placedPin = await placeCustomPinBeforeCharge({
-        rawPin: { type: "neighborhood", name: "Nowhere Real" },
-        userId: "user-1",
-        tripId: "trip-1",
-        geocode: async () => ({ ok: false, reason: "zero_results", results: [] }),
-      });
-      if (placedPin.ok) {
-        if (basis === "paid") effects.push("payment_intent", "hold", "ledger");
-        else effects.push("ledger");
-      }
-      assert.deepEqual(effects, [], basis);
-      assert.equal(placedPin.ok, false);
-      if (!placedPin.ok) {
-        assert.equal(placedPin.status, 409);
-        assert.deepEqual(placedPin.body, { error: "custom_location_unplaceable", reason: "zero_results" });
-        assert.equal("message" in placedPin.body, false);
+  it("a refusal returns before any PaymentIntent, hold, ledger row, or itinerary insert", () => {
+    const writes = [
+      "paymentIntents.create",
+      "chargeSavedMethod(",
+      "reuseOrCreateOptimizationIntent(",
+      "recordOptimizerRunTollFor(",
+      ".insert(itineraryComparisons)",
+      ".insert(itineraryVariants)",
+      "createHold",
+    ];
+    const handlers: Array<[string, string, string, string]> = [
+      [paymentsSrc, 'router.post("/api/optimization-payments"', 'router.post("/api/optimization-payments/cancel"', "if (!placedPin.ok)"],
+      [routesSrc, 'app.post("/api/itinerary-comparisons", isAuthenticated', 'app.get("/api/dashboard/trip-scores"', "if (!placedPinForCreate.ok)"],
+      [routesSrc, 'app.post("/api/itinerary-comparisons/:id/generate"', 'app.post("/api/itinerary-comparisons/:id/select"', "if (!placedPinForGenerate.ok)"],
+    ];
+    for (const [source, startText, endText, returnText] of handlers) {
+      const handler = sliceBetween(source, startText, endText);
+      const ret = handler.indexOf(returnText);
+      assert.ok(ret > 0, returnText);
+      const before = handler.slice(0, ret);
+      for (const marker of writes) {
+        assert.equal(before.includes(marker), false, `${returnText} precedes ${marker}`);
       }
     }
   });

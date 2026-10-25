@@ -52,6 +52,8 @@ test("O5: every choose-mode testid stays; 'around <place>' is said only from the
   for (const id of ["versions-card-${c.label}", "versions-card-day-${c.label}-${d.dayNumber}", "versions-adopt-all-${c.label}", "versions-by-day-${c.label}", "versions-badge-${c.label}", "versions-run-date"]) {
     assert.ok(src.includes(id), id);
   }
-  assert.match(src, /v\?\.anchor\?\.name \? ` · around \$\{v\.anchor\.name\}` : ""/);
+  assert.match(src, /versionAroundLabel\(v\)/);
+  assert.doesNotMatch(src, /` · around \$\{/);
   assert.match(src, /allAnchored \? "Each version is built around one place to stay\. " : ""/);
+  assert.match(src, /versionsBuiltAroundOneStay\(view\.versions\)/);
 });

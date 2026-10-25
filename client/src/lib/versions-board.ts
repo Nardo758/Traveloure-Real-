@@ -370,12 +370,58 @@ export function versionFlagLines(flags: readonly VersionFlag[] | undefined): str
   });
 }
 
+/**
+ * The stored baseline row ("Your Plan", source `user`). It holds the traveler's pin for
+ * distance math only. "Your plan, fixed" is an AI version and is not this row.
+ */
+export function isBaselineVersion(
+  version: { name?: string | null; source?: string | null } | null | undefined,
+): boolean {
+  if (!version) return false;
+  if (version.source === "user") return true;
+  return version.name === "Your Plan";
+}
+
 /** V-1: only a hotel anchor is a place to stay; a neighbourhood or an activity is a venue. */
 export function versionAnchorIsStay(anchor: BoardVersion["anchor"] | null | undefined): boolean {
   return !!anchor && anchor.type === "hotel";
 }
 
-/** V-1: the map's anchor kind from the stored type — hotel → stay, anything else → venue. */
-export function versionMapAnchorKind(anchor: BoardVersion["anchor"] | null | undefined): "stay" | "venue" {
+/**
+ * V-1: the map's anchor kind from the stored type — hotel → stay, anything else → venue.
+ * The baseline row is excluded: its anchor is not a place the version was built around.
+ */
+export function versionMapAnchorKind(
+  anchor: BoardVersion["anchor"] | null | undefined,
+  version?: { name?: string | null; source?: string | null } | null,
+): "stay" | "venue" | null {
+  if (isBaselineVersion(version)) return null;
   return versionAnchorIsStay(anchor) ? "stay" : "venue";
+}
+
+/** Map anchor for one version. Null for the baseline row, and when the version has no anchor. */
+export function versionMapAnchor(
+  version: BoardVersion,
+): { kind: "stay" | "venue"; name: string; lat: number | null; lng: number | null } | null {
+  const kind = versionMapAnchorKind(version.anchor, version);
+  if (!version.anchor || !kind) return null;
+  return { kind, name: version.anchor.name, lat: version.anchor.lat, lng: version.anchor.lng };
+}
+
+/** " · around <name>" for a version built around a place. The baseline row never gets one. */
+export function versionAroundLabel(
+  version: { name?: string | null; source?: string | null; anchor?: { name?: string | null } | null } | null | undefined,
+): string {
+  if (!version || isBaselineVersion(version)) return "";
+  const name = version.anchor?.name;
+  return name ? ` · around ${name}` : "";
+}
+
+/**
+ * "built around one place to stay" is true only when every non-baseline version's anchor
+ * is a hotel. The baseline row is left out even when its anchor columns are set.
+ */
+export function versionsBuiltAroundOneStay(versions: readonly BoardVersion[]): boolean {
+  const labeled = versions.filter((v) => !isBaselineVersion(v));
+  return labeled.length > 0 && labeled.every((v) => !!v.anchor?.name && versionAnchorIsStay(v.anchor));
 }

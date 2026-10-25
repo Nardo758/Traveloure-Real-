@@ -7,6 +7,10 @@
  *
  * Median metres uses the same Math.round as the AI insert, and only when at least two
  * stops were located. Fewer than that, or a non-finite median, stays null.
+ *
+ * anchor_type mirrors the pin the traveler chose. A catalog pin keeps its kind
+ * (hotel, neighborhood, activity). Only a geocoded free-text pin — the scorer's
+ * `custom:` anchor id — is stored as custom.
  */
 
 import type { AnchorScore } from "./anchor-scoring";
@@ -39,7 +43,7 @@ export function baselineVariantAnchorFields(
       ? Math.round(pinnedAnchor.medianMeters)
       : null;
   return {
-    anchorType: "custom",
+    anchorType: pinnedAnchor.anchorId.startsWith("custom:") ? "custom" : pinnedAnchor.type,
     anchorName: pinnedAnchor.name.slice(0, 200),
     anchorLat: pinnedAnchor.lat.toString(),
     anchorLng: pinnedAnchor.lng.toString(),

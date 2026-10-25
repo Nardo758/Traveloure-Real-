@@ -56,9 +56,12 @@ import {
   versionTotals,
   VERSION_RECOMMENDED_LABEL,
   runChargeLine,
+  isBaselineVersion,
   versionAnchorIsStay,
+  versionAroundLabel,
   versionFlagLines,
-  versionMapAnchorKind,
+  versionMapAnchor,
+  versionsBuiltAroundOneStay,
   type BoardDrag,
   type DayPicks,
   type VersionsBoardView,
@@ -221,7 +224,8 @@ export function VersionsBoard({
     stops: v.stops,
     days: v.days,
     // V-1: the stored anchor kind — only a hotel is a stay; a neighbourhood or activity is a venue.
-    anchor: v.anchor ? { kind: versionMapAnchorKind(v.anchor), name: v.anchor.name, lat: v.anchor.lat, lng: v.anchor.lng } : null,
+    // The baseline "Your Plan" row is excluded: its pin is for distance math, not a built-around place.
+    anchor: versionMapAnchor(v),
   }));
   const cards = chooseCards(view);
   const strip = pickStrip(view, picks);
@@ -257,9 +261,9 @@ export function VersionsBoard({
   const dateOf = new Map(sortedDays.map((d) => [d.dayNum, d.dateIso ?? null] as const));
   // FD-3 (ledger `2026-10-10-fd3-feasibility`): the same per-day line the slip's DayBlock draws, on Your plan.
   const feasibilityOf = new Map(sortedDays.map((d) => [d.dayNum, feasibilityLine(d.feasibility)] as const));
-  // V-1: "built around one place to stay" only when every version's anchor is a hotel.
-  const allAnchored = view.versions.length > 0 && view.versions.every((v) => !!v.anchor?.name && versionAnchorIsStay(v.anchor));
-  const stayAnchor = stay && versionAnchorIsStay(stay.anchor) ? stay.anchor : null;
+  // V-1: "built around one place to stay" only when every non-baseline version's anchor is a hotel.
+  const allAnchored = versionsBuiltAroundOneStay(view.versions);
+  const stayAnchor = stay && !isBaselineVersion(stay) && versionAnchorIsStay(stay.anchor) ? stay.anchor : null;
   // ONE mount for the map in both modes: choose mode moves it below the cards with CSS `order`, never by
   // re-parenting it — a remount re-sizes the map mid-drag on the By day board (kyoto-slice §6 step 5).
   const map = (
@@ -354,7 +358,7 @@ export function VersionsBoard({
                 <div className="min-w-0">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--slip-muted)]">
                     Version {c.label}
-                    {v?.anchor?.name ? ` · around ${v.anchor.name}` : ""}
+                    {versionAroundLabel(v)}
                   </p>
                   <p className="slip-display text-xl font-semibold leading-tight text-[color:var(--slip-ink)]">{c.name}</p>
                 </div>
@@ -461,7 +465,7 @@ export function VersionsBoard({
                 <div className="min-w-0">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--slip-muted)]">
                     {v.label}
-                    {v.anchor?.name ? ` · around ${v.anchor.name}` : ""}
+                    {versionAroundLabel(v)}
                   </p>
                   <p className="slip-display text-lg font-semibold leading-tight text-[color:var(--slip-ink)]">{v.name}</p>
                 </div>
@@ -632,7 +636,7 @@ export function VersionsBoard({
                     <div className="min-w-0">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--slip-muted)]">
                         {c.label}
-                        {v?.anchor?.name ? ` · ${v.anchor.name}` : ""}
+                        {v && !isBaselineVersion(v) && v.anchor?.name ? ` · ${v.anchor.name}` : ""}
                       </p>
                       <p className="slip-display text-lg font-semibold leading-tight text-[color:var(--slip-ink)]">{v?.name ?? `Version ${c.label}`}</p>
                     </div>

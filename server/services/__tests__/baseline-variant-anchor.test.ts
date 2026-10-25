@@ -29,16 +29,29 @@ function pin(overrides: Partial<AnchorScore> = {}): AnchorScore {
 }
 
 describe("baselineVariantAnchorFields", () => {
-  it("writes custom plus the pin, and rounds median only when at least two stops are located", () => {
-    const fields = baselineVariantAnchorFields(pin());
-    assert.deepEqual(fields, {
-      anchorType: "custom",
+  it("writes the traveler's kind for a catalog pin and custom only for a geocoded free-text pin", () => {
+    const coords = {
       anchorName: "Gion",
       anchorLat: "35.0037",
       anchorLng: "135.7788",
       anchorMedianMeters: 1501,
+    };
+    assert.deepEqual(baselineVariantAnchorFields(pin({ anchorId: "hotel-1", type: "hotel" })), {
+      anchorType: "hotel",
+      ...coords,
     });
-    assert.equal(baselineVariantAnchorFields(pin({ type: "neighborhood" })).anchorType, "custom");
+    assert.deepEqual(baselineVariantAnchorFields(pin({ anchorId: "hood-gion", type: "neighborhood", name: "Gion" })), {
+      anchorType: "neighborhood",
+      ...coords,
+    });
+    assert.deepEqual(baselineVariantAnchorFields(pin({ anchorId: "stop-1", type: "activity", name: "Gion" })), {
+      anchorType: "activity",
+      ...coords,
+    });
+    assert.deepEqual(baselineVariantAnchorFields(pin({ anchorId: "custom:gion", type: "neighborhood" })), {
+      anchorType: "custom",
+      ...coords,
+    });
     assert.equal(baselineVariantAnchorFields(pin({ locatedStops: 1, medianMeters: 40 })).anchorMedianMeters, null);
     assert.equal(baselineVariantAnchorFields(pin({ locatedStops: 0, medianMeters: null })).anchorMedianMeters, null);
     assert.equal(baselineVariantAnchorFields(pin({ locatedStops: 2, medianMeters: 0 })).anchorMedianMeters, 0);
