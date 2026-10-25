@@ -2847,7 +2847,11 @@ export default function ItineraryComparisonPage() {
             onOpenChange={(next) => {
               if (!next) setGeneratePinRefusal(null);
             }}
-            onConfirm={(pin) => retryMutation.mutate({ pin })}
+            onConfirm={(pin) => {
+              // Clear first, so a second refusal (even with the same reason) mounts the dialog afresh.
+              setGeneratePinRefusal(null);
+              retryMutation.mutate({ pin });
+            }}
           />
         ) : null}
     </div>

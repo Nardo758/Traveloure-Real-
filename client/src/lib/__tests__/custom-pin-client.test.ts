@@ -94,21 +94,40 @@ describe("the pin reaches the pay gate", () => {
 });
 
 describe("the refusal state", () => {
-  it("CP3: every string is a held placeholder in ONE object, keyed by reason, with no banned word or price", () => {
+  it("CP3: every string is Leon's approved text in ONE object, with no banned word or price; only the option (c) note is held", () => {
     assert.deepEqual(Object.keys(CUSTOM_PIN_REFUSAL_STRINGS.reasons).sort(), [...CUSTOM_LOCATION_REFUSAL_REASONS].sort());
+    assert.deepEqual(CUSTOM_PIN_REFUSAL_STRINGS.reasons, {
+      zero_results: "We couldn't find a place called that.",
+      ambiguous: "More than one place matches that name.",
+      imprecise: "That's too broad to pin on a map.",
+      cap_reached: "Place lookups are paused for now. Try again later, or continue without a pin.",
+      provider_error: "The place lookup didn't respond. Try again in a bit, or continue without a pin.",
+    });
+    assert.deepEqual(CUSTOM_PIN_REFUSAL_STRINGS.options, {
+      tryDifferentName: "Try a different name",
+      pickFromList: "Pick from the list",
+      continueWithoutPin: "Continue without a pin",
+      optionCPaidNote: "TODO(Leon): option c price note",
+    });
+    assert.equal(
+      CUSTOM_PIN_REFUSAL_STRINGS.stalePin,
+      "That place is no longer on the list. We've refreshed it and you haven't been charged. Please pick again.",
+    );
     const all = [
       CUSTOM_PIN_REFUSAL_STRINGS.stalePin,
       ...Object.values(CUSTOM_PIN_REFUSAL_STRINGS.reasons),
       ...Object.values(CUSTOM_PIN_REFUSAL_STRINGS.options),
     ];
-    for (const v of all) {
-      assert.match(v, /^TODO\(Leon\): /);
-      assert.doesNotMatch(v, /trending|pulse|crowd|destination intelligence|\bAI\b|\$\d|5\.99|599/i);
-    }
+    // Exactly one held placeholder is left: the option (c) note.
+    assert.deepEqual(all.filter((v) => v.startsWith("TODO(Leon)")), ["TODO(Leon): option c price note"]);
+    for (const v of all) assert.doesNotMatch(v, /trending|pulse|crowd|destination intelligence|\bAI\b|\$\d|5\.99|599/i);
     // P7's rule holds on the dialog source with the refusal state in it.
     assert.doesNotMatch(DIALOG, /\$\d|5\.99|599/);
     assert.match(DIALOG, /\{refusalMessage\(refusalShown\)\}/);
     assert.equal(refusalMessage("ambiguous"), CUSTOM_PIN_REFUSAL_STRINGS.reasons.ambiguous);
+    // The option (c) note shows only on a priced run (not covered, not free) — never on the comparison page (fee null).
+    assert.match(DIALOG, /\{optimizeRunPriced\(fee\) \? \(\s*<p[^>]*data-testid="build-around-refusal-no-pin-note">\s*\{CUSTOM_PIN_REFUSAL_STRINGS\.options\.optionCPaidNote\}/);
+    assert.match(PAGE, /fee=\{null\}/);
   });
 
   it("CP4: option (a) is absent for cap_reached and provider_error and present otherwise; (c) is always offered", () => {
@@ -178,7 +197,8 @@ describe("a 409 at create or generate shows the state and starts no payment", ()
     // generate (comparison page): the refusal opens the dialog, and every choice re-runs /generate on the
     // comparison's recorded payment — the page never calls the payments endpoint.
     assert.match(PAGE, /setGeneratePinRefusal\(\{ reason, pin: generatePinFor\(override\) \}\);/);
-    assert.match(PAGE, /onConfirm=\{\(pin\) => retryMutation\.mutate\(\{ pin \}\)\}/);
+    // A repeat refusal (same reason) still shows: the state is cleared before each re-run.
+    assert.match(PAGE, /onConfirm=\{\(pin\) => \{[\s\S]{0,160}setGeneratePinRefusal\(null\);\s*retryMutation\.mutate\(\{ pin \}\);/);
     assert.doesNotMatch(PAGE, /optimization-payments|requestOptimizationGate/);
     // The page grep for the four removed terms stays empty.
     assert.doesNotMatch(PAGE, /travelpulse|pulse|crowd|destination intel/i);

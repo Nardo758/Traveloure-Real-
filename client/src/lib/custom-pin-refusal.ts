@@ -37,21 +37,26 @@ export function isStalePinnedAnchor(status: number, body: unknown): boolean {
   return typeof error === "string" && (STALE_PIN_ERRORS as readonly string[]).includes(error);
 }
 
-/** Every new string for the refusal state, in ONE object. Held for Leon — placeholders only. */
+/**
+ * Every string for the refusal state, in ONE object. Wording approved by Leon, Oct 25, 2026 (relayed
+ * on #1690). `optionCPaidNote` is still held: its text has not landed.
+ */
 export const CUSTOM_PIN_REFUSAL_STRINGS = {
-  /** The generic error for a stale list-pick id. */
-  stalePin: "TODO(Leon): that place is no longer in the list",
+  /** The error for a stale list-pick id. Reachable only on the slip, before any payment. */
+  stalePin: "That place is no longer on the list. We've refreshed it and you haven't been charged. Please pick again.",
   reasons: {
-    zero_results: "TODO(Leon): no place was found for that name",
-    ambiguous: "TODO(Leon): more than one place matches that name",
-    imprecise: "TODO(Leon): that name is too broad to place",
-    cap_reached: "TODO(Leon): place lookups are paused for now",
-    provider_error: "TODO(Leon): the place lookup did not answer",
+    zero_results: "We couldn't find a place called that.",
+    ambiguous: "More than one place matches that name.",
+    imprecise: "That's too broad to pin on a map.",
+    cap_reached: "Place lookups are paused for now. Try again later, or continue without a pin.",
+    provider_error: "The place lookup didn't respond. Try again in a bit, or continue without a pin.",
   } satisfies Record<CustomLocationRefusalReason, string>,
   options: {
-    tryDifferentName: "TODO(Leon): option (a) try a different place name",
-    pickFromList: "TODO(Leon): option (b) pick from the list",
-    continueWithoutPin: "TODO(Leon): option (c) continue without a pin",
+    tryDifferentName: "Try a different name",
+    pickFromList: "Pick from the list",
+    continueWithoutPin: "Continue without a pin",
+    /** One line under option (c), shown only when the run is priced (not covered, not free). */
+    optionCPaidNote: "TODO(Leon): option c price note",
   },
 } as const;
 

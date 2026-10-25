@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { apiRequest } from "@/lib/queryClient";
-import { OPTIMIZE_UNAVAILABLE, optimizeContinueLabel, optimizePayLine, optimizeUnavailable } from "@/lib/optimize-pay-copy";
+import { OPTIMIZE_UNAVAILABLE, optimizeContinueLabel, optimizePayLine, optimizeRunPriced, optimizeUnavailable } from "@/lib/optimize-pay-copy";
 import type { OptimizationFeeQuote } from "@/lib/optimization-preview";
 import type {
   ComparisonPinnedAnchor,
@@ -431,6 +431,11 @@ export function BuildAroundDialog({
                 >
                   {CUSTOM_PIN_REFUSAL_STRINGS.options.continueWithoutPin}
                 </Button>
+                {optimizeRunPriced(fee) ? (
+                  <p className="text-xs text-[color:var(--earn-muted)]" data-testid="build-around-refusal-no-pin-note">
+                    {CUSTOM_PIN_REFUSAL_STRINGS.options.optionCPaidNote}
+                  </p>
+                ) : null}
               </div>
             </div>
           ) : null}
