@@ -81,6 +81,14 @@ import { OPTIMIZE_UNAVAILABLE } from "@/lib/optimize-pay-copy";
 import StripeCheckout from "@/components/booking/StripeCheckout";
 import { createComparison, type ComparisonPinnedAnchor } from "@/lib/create-comparison";
 import {
+  comparisonPinStorageKey,
+  holdAfterResponse,
+  pinForRequest,
+  refusalFromError,
+  type HeldCustomPin,
+  type PinRefusal,
+} from "@/lib/custom-pin-refusal";
+import {
   cancelOptimizationPayment,
   confirmOptimizationPayment,
   requestOptimizationGate,
@@ -414,6 +422,13 @@ function BuildCard({
   });
   const hasRun = !!runPlan?.lastOptimizedAt;
   const confirmedPinnedAnchor = useRef<ComparisonPinnedAnchor | undefined>(undefined);
+  // Rows 196/197: the custom pin last sent, with the signed placement the server returned for it
+  // (echoed opaque — `pinForRequest`), and the refusal the dialog shows when it could not be placed.
+  const heldCustomPin = useRef<HeldCustomPin | null>(null);
+  const [pinRefusal, setPinRefusal] = useState<{
+    reason: PinRefusal;
+    pin?: ComparisonPinnedAnchor;
+  } | null>(null);
   // Lane E1: the window the Optimize gate handed over — the plan's own, or the one just set inline
   // (the plancard refetch may not have landed when the run starts).
   const gatedWindow = useRef<PlanWindow | null>(null);
@@ -443,16 +458,37 @@ function BuildCard({
   ) {
     setCreatingComparison(true);
     try {
-      const comparison = await createComparison({
-        title: trip.title || undefined,
-        destination: trip.destination!,
-        startDate: gatedWindow.current?.startDate ?? String(trip.startDate).slice(0, 10),
-        endDate: gatedWindow.current?.endDate ?? String(trip.endDate).slice(0, 10),
-        ...(trip.travelers ? { travelers: trip.travelers } : {}),
-        tripId: trip.id,
-        ...(optimizationPaymentId ? { optimizationPaymentId } : {}),
-        ...(pinnedAnchor ? { pinnedAnchor } : {}),
-      });
+      pinnedAnchor = pinForRequest(pinnedAnchor, heldCustomPin.current);
+      let comparison: Awaited<ReturnType<typeof createComparison>>;
+      try {
+        comparison = await createComparison({
+          title: trip.title || undefined,
+          destination: trip.destination!,
+          startDate: gatedWindow.current?.startDate ?? String(trip.startDate).slice(0, 10),
+          endDate: gatedWindow.current?.endDate ?? String(trip.endDate).slice(0, 10),
+          ...(trip.travelers ? { travelers: trip.travelers } : {}),
+          tripId: trip.id,
+          ...(optimizationPaymentId ? { optimizationPaymentId } : {}),
+          ...(pinnedAnchor ? { pinnedAnchor } : {}),
+        });
+      } catch (err) {
+        // A 409 custom_location_unplaceable at create: the comparison was not made and the payment
+        // is untouched — the dialog shows the refusal; nothing else runs.
+        const reason = refusalFromError(err);
+        if (!reason) throw err;
+        setPinRefusal({ reason, pin: pinnedAnchor });
+        setBuildAroundOpen(true);
+        return;
+      }
+      // Replace what we hold with the placement create returned; the comparison's /generate reads it.
+      heldCustomPin.current = holdAfterResponse(pinnedAnchor, comparison.placement, heldCustomPin.current);
+      try {
+        const key = comparisonPinStorageKey(comparison.id);
+        if (heldCustomPin.current) sessionStorage.setItem(key, JSON.stringify(heldCustomPin.current));
+        else sessionStorage.removeItem(key);
+      } catch {
+        /* no storage — the comparison page's re-run goes without the pin */
+      }
       // REVIEW-FIRST (ledger 2026-08-22-slip-optimize-review-first): a slip-originated
       // optimization lands as a PROPOSAL the traveler reviews, so `?autoApply=1` is omitted.
       setLocation(`/itinerary-comparison/${comparison.id}`);
@@ -464,11 +500,40 @@ function BuildCard({
   async function startOptimization(pinnedAnchor?: ComparisonPinnedAnchor) {
     if (optimizing || creatingComparison || optimizeDisabledReason || leadData.fee?.aiDisabled) return;
     setOptimizing(true);
+    setPinRefusal(null);
     try {
+      // Rows 196/197: the pin reaches the pay gate before any charge — a custom pin name only on the
+      // first press, with the held signed placement only when the type and trimmed name still match.
+      const pin = pinForRequest(pinnedAnchor, heldCustomPin.current);
       const outcome = await requestOptimizationGate({
         tripId: trip.id,
         destination: trip.destination || undefined,
+        ...(pin ? { pinnedAnchor: pin } : {}),
       });
+      if (outcome.kind === "custom_location_unplaceable") {
+        // No pay sheet, no charge, no run: the dialog reopens on the refused pin and shows the refusal.
+        confirmedPinnedAnchor.current = undefined;
+        setPinRefusal({ reason: outcome.reason, pin: pinnedAnchor });
+        setBuildAroundOpen(true);
+        return;
+      }
+      if (outcome.kind === "pinned_anchor_stale") {
+        // A stale list-pick id: no payment; the dialog reopens with a generic error and a refreshed list.
+        confirmedPinnedAnchor.current = undefined;
+        setPinRefusal({ reason: "stale_pin", pin: pinnedAnchor });
+        setBuildAroundOpen(true);
+        return;
+      }
+      if (
+        outcome.kind === "free_rerun" ||
+        outcome.kind === "covered_by_pass" ||
+        outcome.kind === "paid" ||
+        outcome.kind === "payment_sheet"
+      ) {
+        heldCustomPin.current = holdAfterResponse(pin, outcome.placement, heldCustomPin.current);
+        pinnedAnchor = pinForRequest(pin, heldCustomPin.current);
+        confirmedPinnedAnchor.current = pinnedAnchor;
+      }
       if (outcome.kind === "unavailable") {
         confirmedPinnedAnchor.current = undefined;
         toast({ title: OPTIMIZE_UNAVAILABLE });
@@ -603,7 +668,12 @@ function BuildCard({
         planName={trip.title || trip.destination}
         fee={leadData.fee}
         busy={optimizing || creatingComparison}
-        onOpenChange={setBuildAroundOpen}
+        refusal={pinRefusal?.reason ?? null}
+        initialPin={pinRefusal?.pin}
+        onOpenChange={(next) => {
+          setBuildAroundOpen(next);
+          if (!next) setPinRefusal(null);
+        }}
         onConfirm={(pinnedAnchor) => {
           confirmedPinnedAnchor.current = pinnedAnchor;
           setBuildAroundOpen(false);

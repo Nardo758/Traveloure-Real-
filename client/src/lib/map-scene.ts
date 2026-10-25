@@ -16,6 +16,7 @@
  *     Hosts have no coordinates and are never pinned.
  */
 import type { BoardStop, DayDiff } from "@shared/version-board";
+import { isNonGoogleCoordSource } from "@shared/item-coord-source";
 
 export type PinState = "plan" | "moved" | "added" | "ghost";
 
@@ -24,6 +25,14 @@ export interface MapAnchor {
   name: string;
   lat: number | null;
   lng: number | null;
+  /** GC-1: where the anchor's point came from — an item's `coord_source`. Absent/NULL = Google. */
+  coordSource?: string | null;
+  /**
+   * GC-1 (rows 196/197/218): the point is Google-derived — a version's stored anchor (its payload names
+   * no source) or a custom pin placed by the Google Geocoding API. Set where the board and the slip
+   * build their version anchors (`markGoogleDerivedAnchors`).
+   */
+  googleDerived?: boolean;
 }
 
 export interface MapArea {
@@ -224,6 +233,8 @@ export interface AnchorCandidate {
   type?: string | null;
   lat?: number | null;
   lng?: number | null;
+  /** GC-1: the item's `coord_source` (absent/NULL = Google). */
+  coordSource?: string | null;
 }
 
 function anchorLocated(a: AnchorCandidate): boolean {
@@ -232,8 +243,70 @@ function anchorLocated(a: AnchorCandidate): boolean {
 
 export function planMapAnchor(activities: readonly AnchorCandidate[], anchorItemId?: string | null): MapAnchor | null {
   const stay = activities.find((a) => a.type === "accommodation" && anchorLocated(a));
-  if (stay) return { kind: "stay", name: stay.name, lat: stay.lat!, lng: stay.lng! };
+  if (stay) return { kind: "stay", name: stay.name, lat: stay.lat!, lng: stay.lng!, ...(stay.coordSource ? { coordSource: stay.coordSource } : {}) };
   const built = anchorItemId ? activities.find((a) => a.id === anchorItemId && anchorLocated(a)) : undefined;
-  if (built) return { kind: built.type === "dining" ? "reservation" : "venue", name: built.name, lat: built.lat!, lng: built.lng! };
+  if (built) return { kind: built.type === "dining" ? "reservation" : "venue", name: built.name, lat: built.lat!, lng: built.lng!, ...(built.coordSource ? { coordSource: built.coordSource } : {}) };
   return null;
+}
+
+// ── GC-1 for the anchor (rows 196/197/218) ─────────────────────────────────────────────────────────
+
+/** True when the anchor's point is Google — flagged so, or its source is unknown or Google. */
+export function anchorIsGoogleDerived(anchor: MapAnchor | null | undefined): boolean {
+  if (!anchor) return false;
+  return anchor.googleDerived === true || !isNonGoogleCoordSource(anchor.coordSource);
+}
+
+/** The board's and the slip's version anchors: a version payload names no anchor source, so each is Google. */
+export function markGoogleDerivedAnchors<V extends { anchor?: MapAnchor | null }>(versions: V[]): V[] {
+  return versions.map((v) => (v.anchor ? { ...v, anchor: { ...v.anchor, googleDerived: true } } : v));
+}
+
+/**
+ * The points the Leaflet mount decision reads for one day: every stop, plus a located anchor — a
+ * Google-derived (or unknown-source) anchor as Google. Passed to `everyLocatedPointNonGoogle`, so the
+ * Leaflet map mounts only when the anchor is non-Google too; otherwise the day shows as a list.
+ */
+export function leafletMountPoints(
+  stops: ReadonlyArray<{ located: boolean; coordSource: string | null | undefined }>,
+  anchor: MapAnchor | null | undefined,
+): Array<{ located: boolean; coordSource: string | null | undefined }> {
+  const anchorHere = !!anchor && typeof anchor.lat === "number" && typeof anchor.lng === "number";
+  return [
+    ...stops,
+    ...(anchorHere ? [{ located: true, coordSource: anchorIsGoogleDerived(anchor) ? null : anchor!.coordSource }] : []),
+  ];
+}
+
+/**
+ * What the Leaflet renderer draws and frames. A Google-derived anchor draws NO marker, is left out of
+ * the framing points, and is named in the legend only (`legendAnchorName`). Any other anchor is drawn
+ * and framed as before.
+ */
+export function leafletSceneInputs(
+  scene: MapScene,
+  shared: MarkerDescriptor[] = sceneMarkers(scene),
+): {
+  markers: MarkerDescriptor[];
+  framePoints: Array<{ lat: number; lng: number }>;
+  legendAnchorName: string | null;
+} {
+  const hide = anchorIsGoogleDerived(scene.anchor);
+  const markers = shared.filter((m) => !(hide && m.kind === "anchor"));
+  const framePoints = [
+    ...scene.pins.map((p) => ({ lat: p.lat, lng: p.lng })),
+    ...(scene.anchor && !hide ? [{ lat: scene.anchor.lat, lng: scene.anchor.lng }] : []),
+  ];
+  return { markers, framePoints, legendAnchorName: scene.anchor && hide ? scene.anchor.name : null };
+}
+
+/**
+ * The map's first point (its initial center): the first pin, else the anchor — but on Leaflet never a
+ * Google-derived anchor.
+ */
+export function sceneFirstPoint(scene: MapScene, renderer: string): { lat: number; lng: number } | null {
+  if (scene.pins[0]) return scene.pins[0];
+  if (!scene.anchor) return null;
+  if (renderer === "leaflet" && anchorIsGoogleDerived(scene.anchor)) return null;
+  return { lat: scene.anchor.lat, lng: scene.anchor.lng };
 }

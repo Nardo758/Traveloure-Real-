@@ -107,7 +107,7 @@ import { dayBlockHeading, dayBlockStats } from "@/lib/plan-day";
 import { ASK_LOCAL_WORDS, anchorFromTool, anyLocalLive, findHostCategory, findHostHref } from "@/lib/item-row-menu";
 import { ItemAskLocalPanel } from "@/components/plan/ItemAskLocalPanel";
 import { isLocated } from "@/components/plancard/MapControlCenter";
-import { areaShading, planMapAnchor, type MapAnchor, type MapArea, type MapVersion } from "@/lib/map-scene";
+import { areaShading, markGoogleDerivedAnchors, planMapAnchor, type MapAnchor, type MapArea, type MapVersion } from "@/lib/map-scene";
 import { versionMapAnchor, type VersionsBoardView } from "@/lib/versions-board";
 import { showsHoursNotChecked } from "@/lib/plancard-refetch";
 import type { FactView } from "@shared/content-facts";
@@ -1904,13 +1904,14 @@ export function useSlipViewModel({
     retry: false,
     staleTime: 30_000,
   });
-  const mapVersions: MapVersion[] = (versionsView?.versions ?? []).map((v) => ({
+  // GC-1 (rows 196/197/218): a version anchor names no source, so it is Google-derived.
+  const mapVersions: MapVersion[] = markGoogleDerivedAnchors((versionsView?.versions ?? []).map((v) => ({
     key: v.variantId,
     label: v.label,
     stops: v.stops,
     days: v.days,
     anchor: versionMapAnchor(v),
-  }));
+  })));
   const { data: tripAnchors } = useQuery<Array<{ id: string; anchorType: string; anchorDatetime: string; location?: string | null; description?: string | null; bufferBefore?: number | null; bufferAfter?: number | null }>>({
     queryKey: [`/api/trips/${tripId}/anchors`],
     enabled: !!tripId && showTravelAnchors,

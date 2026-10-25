@@ -78,6 +78,16 @@ import { Anchor } from "lucide-react";
 import { PlanCard } from "@/components/plancard/PlanCard";
 import type { ProposalAnchorItem, ProposalLegsSummary } from "@/components/plancard/plancard-types";
 import type { SlipData } from "@/components/plancard/SlipView";
+import { BuildAroundDialog } from "@/components/plancard/BuildAroundDialog";
+import type { ComparisonPinnedAnchor } from "@/lib/create-comparison";
+import {
+  comparisonPinStorageKey,
+  holdAfterResponse,
+  pinForRequest,
+  readStoredPin,
+  refusalFromError,
+  type PinRefusal,
+} from "@/lib/custom-pin-refusal";
 import { VersionsBoard } from "@/components/plancard/VersionsBoard";
 import { OPTIMIZE_RERUN_RULE } from "@/lib/optimization-preview";
 import { busyAroundDatesLine } from "@/lib/comparison-context";
@@ -1012,10 +1022,32 @@ export default function ItineraryComparisonPage() {
     staleTime: 120_000,
   });
 
+  // Rows 196/197: the custom pin this comparison was created with (`comparison_pin_<id>`, written by the
+  // slip). Every /generate echoes it with its signed placement; a refusal reopens the build-around
+  // dialog on it. A re-run uses this comparison's recorded payment — never a new one.
+  const [generatePinRefusal, setGeneratePinRefusal] = useState<{
+    reason: PinRefusal;
+    pin?: ComparisonPinnedAnchor;
+  } | null>(null);
+  const readHeldPin = () => {
+    try {
+      return readStoredPin(sessionStorage.getItem(comparisonPinStorageKey(id)));
+    } catch {
+      return null;
+    }
+  };
+  const generatePinFor = (override?: { pin: ComparisonPinnedAnchor | undefined } | void) => {
+    const held = readHeldPin();
+    if (override) return pinForRequest(override.pin, held);
+    return held ? pinForRequest({ type: held.type, name: held.name }, held) : undefined;
+  };
+
   const retryMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (override: { pin: ComparisonPinnedAnchor | undefined } | void) => {
       const stored = sessionStorage.getItem(`comparison_baseline_${id}`);
       const baselineItems = stored ? JSON.parse(stored) : [];
+      const held = readHeldPin();
+      const pin = generatePinFor(override);
       // Sprint-1 dislike loop: the selected chips steer the re-run — the server
       // maps them onto the variant-strategy matrix with top priority.
       // Ground-truth note (E2/R-B): this regenerates variants for the EXISTING comparison via
@@ -1023,12 +1055,24 @@ export default function ItineraryComparisonPage() {
       // POST /api/itinerary-comparisons CREATE call the client/src/lib/create-comparison.ts
       // helper centralizes. Not one of the four create-comparison call sites despite an earlier
       // audit grouping it with them; left as-is.
-      return apiRequest("POST", `/api/itinerary-comparisons/${id}/generate`, {
+      const res = await apiRequest("POST", `/api/itinerary-comparisons/${id}/generate`, {
         baselineItems,
         ...(feedbackChips.length > 0 ? { feedback: feedbackChips } : {}),
+        ...(pin ? { pinnedAnchor: pin } : {}),
       });
+      // Replace what we hold with the placement generate returned.
+      const body = await res.clone().json().catch(() => ({}));
+      const next = holdAfterResponse(pin, (body as { placement?: unknown }).placement, held);
+      try {
+        if (next) sessionStorage.setItem(comparisonPinStorageKey(id), JSON.stringify(next));
+        else sessionStorage.removeItem(comparisonPinStorageKey(id));
+      } catch {
+        /* no storage */
+      }
+      return res;
     },
     onSuccess: () => {
+      setGeneratePinRefusal(null);
       toast({
         title: "Regenerating alternatives",
         description: feedbackChips.length > 0
@@ -1037,7 +1081,12 @@ export default function ItineraryComparisonPage() {
       });
       refetch();
     },
-    onError: () => {
+    onError: (err, override) => {
+      const reason = refusalFromError(err);
+      if (reason) {
+        setGeneratePinRefusal({ reason, pin: generatePinFor(override) });
+        return;
+      }
       toast({ variant: "destructive", title: "Failed to regenerate", description: "Please try again" });
     },
   });
@@ -2822,6 +2871,28 @@ export default function ItineraryComparisonPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        {/* Rows 196/197: a 409 custom_location_unplaceable at /generate — the same refusal state as the
+            slip's dialog. Every choice re-runs /generate on this comparison's recorded payment. */}
+        {generatePinRefusal && data?.comparison?.tripId ? (
+          <BuildAroundDialog
+            open
+            tripId={data.comparison.tripId}
+            planName={data.comparison.title ?? null}
+            fee={null}
+            hidePayLine
+            busy={retryMutation.isPending}
+            refusal={generatePinRefusal.reason}
+            initialPin={generatePinRefusal.pin}
+            onOpenChange={(next) => {
+              if (!next) setGeneratePinRefusal(null);
+            }}
+            onConfirm={(pin) => {
+              // Clear first, so a second refusal (even with the same reason) mounts the dialog afresh.
+              setGeneratePinRefusal(null);
+              retryMutation.mutate({ pin });
+            }}
+          />
+        ) : null}
     </div>
   );
 }

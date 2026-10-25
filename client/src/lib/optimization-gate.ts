@@ -24,6 +24,7 @@ import {
   type CustomPinPlacement,
   type ResolvedCustomPin,
 } from "@shared/custom-location-pin";
+import { isStalePinnedAnchor } from "./custom-pin-refusal";
 
 /** The state the Stripe payment sheet (StripeCheckout) needs — cart.tsx's OptimizationPaymentState. */
 export interface OptimizationPaymentSheet {
@@ -73,7 +74,12 @@ export type OptimizationGateOutcome =
       status: number;
       reason: CustomLocationRefusalReason;
       body: Record<string, unknown>;
-    };
+    }
+  /**
+   * A list pick's catalog id no longer resolves: HTTP 400 `pinned_anchor_not_found` (or
+   * `pinned_anchor_invalid`). Returned before any charge. A stale id, not a placement refusal.
+   */
+  | { kind: "pinned_anchor_stale"; status: number; body: Record<string, unknown> };
 
 export interface OptimizationGateRequest {
   tripId?: string;
@@ -170,6 +176,9 @@ export async function requestOptimizationGate(
     }
     if (isCustomLocationRefusal(res.status, data)) {
       return { kind: "custom_location_unplaceable", status: res.status, reason: data.reason, body: data };
+    }
+    if (isStalePinnedAnchor(res.status, data)) {
+      return { kind: "pinned_anchor_stale", status: res.status, body: data };
     }
     throw new Error(
       (typeof data?.message === "string" && data.message) ||
