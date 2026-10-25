@@ -243,9 +243,9 @@ function anchorLocated(a: AnchorCandidate): boolean {
 
 export function planMapAnchor(activities: readonly AnchorCandidate[], anchorItemId?: string | null): MapAnchor | null {
   const stay = activities.find((a) => a.type === "accommodation" && anchorLocated(a));
-  if (stay) return { kind: "stay", name: stay.name, lat: stay.lat!, lng: stay.lng!, coordSource: stay.coordSource ?? null };
+  if (stay) return { kind: "stay", name: stay.name, lat: stay.lat!, lng: stay.lng!, ...(stay.coordSource ? { coordSource: stay.coordSource } : {}) };
   const built = anchorItemId ? activities.find((a) => a.id === anchorItemId && anchorLocated(a)) : undefined;
-  if (built) return { kind: built.type === "dining" ? "reservation" : "venue", name: built.name, lat: built.lat!, lng: built.lng!, coordSource: built.coordSource ?? null };
+  if (built) return { kind: built.type === "dining" ? "reservation" : "venue", name: built.name, lat: built.lat!, lng: built.lng!, ...(built.coordSource ? { coordSource: built.coordSource } : {}) };
   return null;
 }
 
