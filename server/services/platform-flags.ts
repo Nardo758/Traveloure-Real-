@@ -14,8 +14,10 @@
 //                                     behind canQueueGenerationNotice.
 //                                     EMAIL_SENDS_ENABLED is a separate gate in
 //                                     front of this flag and is not skipped.
-//                                     EMAIL_TEMPLATE_ALLOWLIST is checked after
-//                                     that gate on outbox delivery only.
+//                                     EMAIL_TEMPLATE_ALLOWLIST is the next
+//                                     production gate inside sendEmail, after
+//                                     EMAIL_SENDS_ENABLED and the development
+//                                     no-send gate. There is no code default.
 //
 // Reads are cached for a short TTL so hot request paths (the maintenance
 // middleware runs on every /api request) don't hit the DB each time. The admin

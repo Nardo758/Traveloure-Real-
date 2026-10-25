@@ -1,6 +1,6 @@
 # Email sender inventory
 
-Read-only inventory of every path under `server/` and `shared/` that can enqueue into `email_outbox` or call `sendEmail` / `client.emails.send`. Searched with:
+Read-only inventory of every path under `server/` and `shared/` that can enqueue into `email_outbox` or call `sendEmail`. The provider call is the one send inside `sendEmail`. Searched with:
 
 ```
 rg -n "enqueueEmail|sendEmail\(|email_outbox|emailOutbox" server shared
@@ -8,7 +8,7 @@ rg -n "enqueueEmail|sendEmail\(|email_outbox|emailOutbox" server shared
 
 Line numbers are from this branch. `shared/` has the `email_outbox` table (`shared/schema.ts`) and the `waitlist_apply_invite` type constant. It has no sender.
 
-`EMAIL_TEMPLATE_ALLOWLIST` applies only to outbox delivery. Rows in the first table stay held until their `email_type` is listed and `EMAIL_SENDS_ENABLED=true`. The two bypass tables are not gated by the allowlist.
+`EMAIL_TEMPLATE_ALLOWLIST` applies to every `sendEmail` call, after `EMAIL_SENDS_ENABLED`. Unset, empty, or blank allows nothing. There is no code default. Rows in the first table stay held until their `email_type` is listed and `EMAIL_SENDS_ENABLED=true`. Direct callers in the second table use the same two gates.
 
 `authCritical` is yes when the type is in `AUTH_EMAIL_TYPES` (`password_reset`, `email_verification` in `server/services/email-outbox.service.ts`) or `metadata.authCritical` is true. Those two writers set that flag. Auth-critical rows are not exempt from either gate.
 
@@ -52,41 +52,35 @@ The drain (`drainOutbox`, every 5 minutes, and `POST /internal/jobs/email-outbox
 | `activity_booking_cancelled` | same sender | Traveler cancels; the seller is notified (`server/routes.ts:8727`). Once per cancellation notification. | expert or provider | no | yes | no dedicated test found for this kind |
 | `activity_review_received` | same sender | Traveler submits a service review (`server/routes/content.routes.ts:3437`). Once per review notification. | expert or provider | no | yes | `server/__tests__/suggestion-listing-activity-email.db.test.ts` |
 
-`sendThroughNoSendGate` (`server/services/email-outbox.service.ts:138`) is the outbox calling `sendEmail`. It is not a separate sender. `getClient` wrapping `client.emails.send` (`server/services/email.service.ts:80`) is the provider inside `sendEmail`.
+`sendThroughNoSendGate` (`server/services/email-outbox.service.ts`) is the outbox calling `sendEmail` with the row's `email_type`. It is not a separate sender. The provider call inside `sendEmail` is the only send.
 
-## Bypasses the outbox — `sendEmail` (7)
+## Direct `sendEmail`, with a required email_type
 
-These call `sendEmail` and never insert `email_outbox`. `sendEmail` still refuses unless `EMAIL_SENDS_ENABLED=true`. The allowlist does not name them. Do not invent a type for them.
-
-| email_type | function | trigger and how often | recipient | authCritical | drain | test |
-| --- | --- | --- | --- | --- | --- | --- |
-| none, direct `sendEmail` | `sendBookingDeclineEmail` `server/services/email.service.ts:994` | Provider or expert declines a request (`server/routes.ts:8010`). Once per decline. | user | no | no | `server/__tests__/booking-decline-reason.test.ts` covers the decline. This inventory did not re-prove the mail call. |
-| none, direct `sendEmail` | `sendLateSuccessRefundEmail` `server/services/email.service.ts:1187` | Late-success refund (`server/services/checkout-claim.service.ts:2131` and `:2159`). Once per that refund. | user | no | no | no dedicated mail test found |
-| none, direct `sendEmail` | `sendExpiredClaimEmail` `server/services/email.service.ts:1247` | Stamped claim released or swept (`server/services/checkout-claim.service.ts`). Once per expired claim. | user | no | no | `server/__tests__/stale-authorized-sweep.db.test.ts`, `server/__tests__/dispute-hardening.db.test.ts` inject a send seam |
-| none, direct `sendEmail` | `sendWaitlistOpenEmail` `server/services/waitlist-open-email.ts:66` | Nothing schedules this. The only caller found is `server/services/__tests__/marketing-email-footer.test.ts`. The constant `waitlist_open` is not written to the outbox. | user | no | no | `server/services/__tests__/marketing-email-footer.test.ts` |
-| none, direct `sendEmail` | `sendBulkVendorEmail` `server/services/vendor-management.service.ts:283` | `POST /api/trips/:tripId/vendors/bulk-email` (`server/routes/trips.routes.ts`). Authorized trip logistics. Rate limit 5 per 10 minutes per user. One message per vendor address on the request. | vendor address on the contract | no | no | no dedicated mail test found |
-| none, direct `sendEmail` | `runDailyAdminDigest` `server/jobs/dailyAdminDigest.ts:190` | Admin action (`server/routes/admin.routes.ts:9936` and `:9948`). Not the 24-hour scheduler. One message to `ADMIN_EMAIL` per run. | admin | no | no | no dedicated mail test found |
-| none, direct `sendEmail` | `runNightlyQA` `server/jobs/nightlyQA.ts:259` | About 02:00 UTC from `server/index.ts:984`, and `POST /api/admin/qa/run-nightly` (`server/routes/admin.routes.ts:10105`). One message per admin user email, plus `ADMIN_EMAIL` if set. | admin | no | no | no dedicated mail test found |
-
-## Bypasses the outbox — `client.emails.send` (7)
-
-These do not call `sendEmail` and do not insert `email_outbox`. They also skip `EMAIL_SENDS_ENABLED`. The allowlist does not name them.
+These call `sendEmail` and do not insert `email_outbox`. They leave only when `EMAIL_SENDS_ENABLED=true` and the `email_type` is listed. Line numbers move; the type is the stable name.
 
 | email_type | function | trigger and how often | recipient | authCritical | drain | test |
 | --- | --- | --- | --- | --- | --- | --- |
-| none, direct `sendEmail` | `sendBookingConfirmationEmail` `server/services/email.service.ts:609` | Deprecated. No caller under `server/` except the definition. If invoked, it calls Resend directly. | user | no | no | none found |
-| none, direct `sendEmail` | `sendAdminDigestEmail` `server/services/email.service.ts:1506` | Scheduler every 24 hours (`server/services/admin-digest-scheduler.service.ts:232`). Once per UTC date, only when there is something to report and `RESEND_API_KEY` is set. Recipient `ADMIN_EMAIL`. | admin | no | no | no dedicated delivery test found |
-| none, direct `sendEmail` | `sendVerificationDecisionEmail` `server/services/email.service.ts:1780` | Admin verification decision (`server/routes/admin.routes.ts:3420`). Once per decision. | provider | no | no | `server/automations/provider/__tests__/admin-follow-ons.test.ts` pins the call site |
-| none, direct `sendEmail` | `sendPlanDeliveredEmailAction` `server/services/email.service.ts:2241` | Workspace status becomes delivered (`server/routes/booking-actions.ts:1452`). Once per that transition. | user | no | no | no dedicated delivery test found |
-| none, direct `sendEmail` | `sendPlanApprovedEmailAction` `server/services/email.service.ts:2313` | Plan approved (`server/routes/booking-actions.ts:1621`). Once per that transition. | expert | no | no | no dedicated delivery test found |
-| none, direct `sendEmail` | `sendPlanChangesRequestedEmailAction` `server/services/email.service.ts:2391` | Plan changes requested (`server/routes/booking-actions.ts:1627`). Once per that transition. | expert | no | no | no dedicated delivery test found |
-| none, direct `sendEmail` | `sendNewSuggestionEmailAction` `server/services/email.service.ts:2466` | Post-approval suggestion (`server/routes/booking-actions.ts:1161`). The caller sends only when the plan is already approved. | user | no | no | no dedicated delivery test found |
+| `booking_decline` | `sendBookingDeclineEmail` | Provider or expert declines a request (`server/routes.ts`). Once per decline. | user | no | yes | `server/__tests__/booking-decline-reason.test.ts` covers the decline. `server/__tests__/email-single-exit.test.ts` checks the held row and the drain. |
+| `late_success_refund` | `sendLateSuccessRefundEmail` | Late-success refund (`server/services/checkout-claim.service.ts`). Once per that refund. | user | no | no | `server/__tests__/email-single-exit.test.ts` |
+| `expired_claim` | `sendExpiredClaimEmail` | Stamped claim released or swept (`server/services/checkout-claim.service.ts`). Once per expired claim. | user | no | no | `server/__tests__/stale-authorized-sweep.db.test.ts`, `server/__tests__/dispute-hardening.db.test.ts` inject a send seam |
+| `waitlist_open` | `sendWaitlistOpenEmail` | Nothing schedules this. The constant `waitlist_open` is not written to the outbox. | user | no | no | `server/services/__tests__/marketing-email-footer.test.ts` |
+| `vendor_bulk_email` | `sendBulkVendorEmail` | `POST /api/trips/:tripId/vendors/bulk-email` (`server/routes/trips.routes.ts`). Authorized trip logistics. Rate limit 5 per 10 minutes per user. One message per vendor address on the request. | vendor address on the contract | no | no | `server/__tests__/email-single-exit.test.ts` |
+| `admin_daily_digest` | `runDailyAdminDigest` | Admin action (`server/routes/admin.routes.ts`). Not the 24-hour scheduler. One message to `ADMIN_EMAIL` per run. | admin | no | no | `server/__tests__/email-single-exit.test.ts` |
+| `nightly_qa` | `deliverNightlyQaEmails`, called by `runNightlyQA` | About 02:00 UTC from `server/index.ts`, and `POST /api/admin/qa/run-nightly`. One message per admin user email, plus `ADMIN_EMAIL` if set. | admin | no | no | `server/__tests__/email-single-exit.test.ts` |
+| `admin_digest_24h` | `sendAdminDigestEmail` | Scheduler every 24 hours (`server/services/admin-digest-scheduler.service.ts`). Once per UTC date, only when there is something to report and `RESEND_API_KEY` is set. Recipient `ADMIN_EMAIL`. | admin | no | no | `server/__tests__/email-single-exit.test.ts` |
+| `verification_decision` | `sendVerificationDecisionEmail` | Admin verification decision (`server/routes/admin.routes.ts`). Once per decision change. | provider | no | yes | `server/automations/provider/__tests__/admin-follow-ons.test.ts` pins the call site. `server/__tests__/email-single-exit.test.ts` checks the held row and the drain. |
+| `plan_delivered` | `sendPlanDeliveredEmailAction` | Workspace status becomes delivered (`server/routes/booking-actions.ts`). Once per that transition. A later delivery is a new row. | user | no | yes | `server/__tests__/email-single-exit.test.ts` |
+| `plan_approved` | `sendPlanApprovedEmailAction` | Plan approved (`server/routes/booking-actions.ts`). Once per that transition. A later approval is a new row. | expert | no | yes | `server/__tests__/email-single-exit.test.ts` |
+| `plan_changes_requested` | `sendPlanChangesRequestedEmailAction` | Plan changes requested (`server/routes/booking-actions.ts`). Once per that transition. A later request is a new row. | expert | no | yes | `server/__tests__/email-single-exit.test.ts` |
+| `new_suggestion` | `sendNewSuggestionEmailAction` | Post-approval suggestion (`server/routes/booking-actions.ts`). The caller sends only when the plan is already approved. One row per suggestion id. | user | no | yes | `server/__tests__/email-single-exit.test.ts` |
+| `admin_test_email` | `POST /api/admin/system/test-email` | Admin presses the test-email control. One message per press. | admin address on the request | no | no | `server/routes/__tests__/admin-test-email.test.ts` uses the route's test hook. `server/__tests__/email-single-exit.test.ts` checks the production path's type. |
+| `manual_send_test` | `scripts/send-test-email.ts` | A person runs the script. One message per run. Outside `server/`. | `TEST_EMAIL` | no | no | none |
 
 ## Needs a human
 
 None. Every `enqueueEmail`, `sendEmail(`, and `email_outbox` / `emailOutbox` hit under `server/` and `shared/` is in the tables above, or it is the outbox implementation, a test fixture, the schema, or an admin/list query that does not send.
 
-Two functions have no production caller: `enqueueBookingConfirmationEmail` and the deprecated `sendBookingConfirmationEmail`. That is what the search showed. Deleting them is a separate change.
+The deprecated direct booking-confirmation sender had no caller and is deleted. Confirmation mail is the outbox type `booking_confirmation`. `enqueueBookingConfirmationEmail` still has no production caller.
 
 `server/services/stripe-connect-reminder.service.ts` does not enqueue or call `sendEmail`.
 
@@ -94,14 +88,14 @@ Two functions have no production caller: `enqueueBookingConfirmationEmail` and t
 
 This inventory was not run against production. There is no production count here.
 
-Leon sets the allowlist to real `email_type` values. Candidate list: `EMAIL_TEMPLATE_ALLOWLIST=email_verification,itinerary_ready,booking_confirmation`
+Leon sets the allowlist as a deployment setting. This file does not set it and there is no code default.
 
 When `EMAIL_SENDS_ENABLED` becomes `true`, two things happen:
 
 1. Every `email_outbox` row that is already due (`pending`, `failed`, `held`, or an expired `processing` lease) and whose `email_type` is on `EMAIL_TEMPLATE_ALLOWLIST` is eligible for the next drain. Unlisted types stay as they are.
 2. New enqueues of a listed type start sending. Unlisted enqueues are stored and held.
 
-Direct `sendEmail` callers start sending when `EMAIL_SENDS_ENABLED=true` even if the allowlist is empty. The seven `client.emails.send` callers already send without that variable.
+Nothing leaves from any path while the allowlist is unset, including when `EMAIL_SENDS_ENABLED=true`. A listed direct type sends on the next call. A listed outbox type becomes eligible on the next drain.
 
 Leon can read the queued mix in Replit. This is read-only. Do not run it from this repo against production:
 
