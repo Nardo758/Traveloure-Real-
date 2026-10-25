@@ -6,8 +6,16 @@
  * only choose the words around it — one home for each sentence, so the page and its test read the
  * same text (§18 rule 1). §13 on every cell: a figure the server did not give is a dash and a reason,
  * never a zero and never a guess.
+ *
+ * MINUTES (fix queue 182, Architect 2026-10-25): a minute is shown only for a day that has a checked
+ * (routed) leg. The check is the slip's own rule — `slipLegBetween` in `client/src/lib/slip-legs.ts`
+ * returns `kind: "routed"` only when the transport carries the engine's `routed` facts. Getting around
+ * (`client/src/lib/getting-around.ts`) calls that same function. A straight-line stand-in is
+ * `kind: "unrouted"` and does not count. The option-set payload this page reads has no transports and
+ * no per-day routed flag, so the page passes no checked days and prints no minute.
  */
-import type { PlanFit } from "@shared/plan-fit";
+import { planFitLine, type PlanFit } from "@shared/plan-fit";
+import { slipLegBetween } from "./slip-legs";
 
 export interface DatedPriceView {
   amount: string;
@@ -20,15 +28,61 @@ export interface Cell {
   note: string;
 }
 
+/** The one new traveler-facing sentence on this board. Owner approval held. */
+export const PLAN_COMPARE_COPY = {
+  notCheckedYet: "Not checked yet",
+} as const;
+
+/**
+ * Day numbers that have a checked (routed) leg, using the slip and Getting-around rule
+ * (`slipLegBetween` → `kind: "routed"`). A day with only an unrouted, estimated, or not-checked
+ * pair is absent.
+ */
+export function daysWithCheckedLeg(days: Parameters<typeof slipLegBetween>[0]): ReadonlySet<number> {
+  const checked = new Set<number>();
+  for (const day of days ?? []) {
+    const dayNumber = Number(day.dayNumber ?? day.dayNum);
+    if (!Number.isInteger(dayNumber) || dayNumber <= 0) continue;
+    const stops = (day.activities ?? []).filter((stop) => stop.id);
+    for (let i = 0; i < stops.length - 1; i++) {
+      const leg = slipLegBetween([day], stops[i].id, stops[i + 1].id);
+      if (leg?.kind === "routed") {
+        checked.add(dayNumber);
+        break;
+      }
+    }
+  }
+  return checked;
+}
+
+function scoredDayEntries(fit: Extract<PlanFit, { scored: true }>): Array<[number, number]> {
+  if (!fit.minutesByDay) return [];
+  return Object.entries(fit.minutesByDay)
+    .map(([day, minutes]) => [Number(day), Number(minutes)] as [number, number])
+    .filter(([day, minutes]) => Number.isInteger(day) && day > 0 && Number.isFinite(minutes) && minutes >= 0)
+    .sort((a, b) => a[0] - b[0]);
+}
+
+/** True when every scored day has a checked leg. An empty day list is not "all checked". */
+function everyScoredDayChecked(fit: Extract<PlanFit, { scored: true }>, checkedDays: ReadonlySet<number> | undefined): boolean {
+  const days = scoredDayEntries(fit);
+  return days.length > 0 && days.every(([day]) => checkedDays?.has(day) === true);
+}
+
 /** A, B, C — by the option's position in its set. */
 export function optionLetter(position: number): string {
   return String.fromCharCode(64 + Math.max(1, Math.min(26, position)));
 }
 
-/** Travel / day: minutes when scored; "est." whenever any leg was a straight-line estimate. */
-export function travelCell(fit: PlanFit): Cell {
+/**
+ * Travel / day. Minutes only when every scored day has a checked leg — the figure is one mean, so
+ * one unchecked day makes the whole number unusable. Otherwise the approved line. Never "est.".
+ * Unscored stays a dash and the reason the server gave.
+ */
+export function travelCell(fit: PlanFit, checkedDays?: ReadonlySet<number>): Cell {
   if (!fit.scored) return { value: "—", note: fit.reason === "option_unlocated" ? "no pin yet" : "not enough stops yet" };
-  return { value: `${fit.minutesPerDay} min`, note: fit.basis === "est" ? "est." : "per day" };
+  if (!everyScoredDayChecked(fit, checkedDays)) return { value: PLAN_COMPARE_COPY.notCheckedYet, note: "" };
+  return { value: `${fit.minutesPerDay} min`, note: "per day" };
 }
 
 /** Walkable: the plan's areas within walking distance. Always a straight-line test, so always "est.". */
@@ -64,10 +118,25 @@ export function priceCell(o: { datedPrice?: DatedPriceView | null; priceSnapshot
   return { value: "—", note: "price from the hotel" };
 }
 
-/** M9, revealed on a chosen set: how much easier this place would make the days. */
-export function savesLine(minutes: number, fit: PlanFit): string {
-  const est = fit.scored && fit.basis === "est" ? " · est." : "";
-  return `${minutes} min less travel per day than your choice${est}`;
+/**
+ * M9, revealed on a chosen set: how much easier this place would make the days.
+ * The minute sentence follows Travel / day. An unchecked day, or a fit with no scored days,
+ * reads the approved line instead of a straight-line difference. No "est." suffix.
+ */
+export function savesLine(minutes: number, fit: PlanFit, checkedDays?: ReadonlySet<number>): string {
+  if (!fit.scored || !everyScoredDayChecked(fit, checkedDays)) return PLAN_COMPARE_COPY.notCheckedYet;
+  return `${minutes} min less travel per day than your choice`;
+}
+
+/**
+ * The fit sentence under the metrics. Unscored keeps `planFitLine` (it states what is missing and
+ * names no minute). A scored fit names minutes only when every scored day is checked, and never
+ * with the straight-line "est." label. Otherwise the approved line.
+ */
+export function compareFitLine(fit: PlanFit, checkedDays?: ReadonlySet<number>): string {
+  if (!fit.scored) return planFitLine(fit);
+  if (!everyScoredDayChecked(fit, checkedDays)) return PLAN_COMPARE_COPY.notCheckedYet;
+  return planFitLine(fit).replace(/^est\. /, "");
 }
 
 export function easierLine(count: number): string {
@@ -92,19 +161,18 @@ export function compareTitle(_count: number): string {
 }
 
 /**
- * THE COMPARE BOARD'S DAY STRIP (slip conformance, boards rev 15; ledger `2026-10-08-slip-compare-board`):
- * one cell per day, the SERVER's own minutes for that day (`fit.minutesByDay`, A8 R228), in day order.
- * Nothing is judged "close" or "far" — no threshold for that has been ruled, so the strip states the
- * minutes and lets the cards be compared (§13). Unscored ⇒ no strip.
+ * THE COMPARE BOARD'S DAY STRIP (slip conformance, boards rev 15; ledger `2026-10-08-slip-compare-board`;
+ * fix queue 182): one cell per day, in day order. A day shows the server's minutes only when
+ * `checkedDays` contains it (a checked routed leg). Every other day reads the approved line. No "~",
+ * no straight-line minute. Nothing is judged "close" or "far". Unscored ⇒ no strip.
  */
-export function dayStripCells(fit: PlanFit): { day: number; label: string; minutes: string }[] {
-  if (!fit.scored || !fit.minutesByDay) return [];
-  const est = fit.basis === "est";
-  return Object.entries(fit.minutesByDay)
-    .map(([d, m]) => [Number(d), Number(m)] as const)
-    .filter(([d, m]) => Number.isInteger(d) && d > 0 && Number.isFinite(m) && m >= 0)
-    .sort((a, b) => a[0] - b[0])
-    .map(([d, m]) => ({ day: d, label: `Day ${d}`, minutes: `${est ? "~" : ""}${Math.round(m)} min` }));
+export function dayStripCells(fit: PlanFit, checkedDays?: ReadonlySet<number>): { day: number; label: string; minutes: string }[] {
+  if (!fit.scored) return [];
+  return scoredDayEntries(fit).map(([day, minutes]) => ({
+    day,
+    label: `Day ${day}`,
+    minutes: checkedDays?.has(day) ? `${Math.round(minutes)} min` : PLAN_COMPARE_COPY.notCheckedYet,
+  }));
 }
 
 /** The board's eyebrow: what the set compares and how many places are in it. */

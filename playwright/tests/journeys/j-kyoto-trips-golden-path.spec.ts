@@ -58,6 +58,8 @@ import {
  *     proven by the DB suite (O14). The "no est. on a located pair once the Kyoto matrix is refreshed"
  *     case is DELETED (9b-b, Leon's ruling Oct 17, 2026): the matrix is retired as a source, so every
  *     plan-fit figure is a straight-line "est." until an OSRM-backed cost is ruled.
+ *   · §3 A4 minutes (fix queue 182): the option-set payload has no routed-leg flag, so Travel / day,
+ *     the day strip, the fit line and the savings line read "Not checked yet" and print no minute.
  *
  * Run solo: npx playwright test playwright/tests/journeys/j-kyoto-trips-golden-path.spec.ts --project=chromium
  * Needs: DATABASE_URL (read-only asserts), the app on BASE_URL (default http://127.0.0.1:5000).
@@ -712,11 +714,16 @@ test.describe("3 · the compare view (A4)", () => {
     for (const o of set.options) {
       expect(o.fit.scored).toBe(true);
       expect(["matrix", "est"]).toContain(o.fit.basis);
-      // The minutes are the SERVER's figure, printed as-is, with "est." beside it exactly when it is
-      // a straight-line estimate (§E4, §13).
-      await expect(testid(page, `compare-travel-${o.id}-value`)).toHaveText(`${o.fit.minutesPerDay} min`);
-      await expect(testid(page, `compare-travel-${o.id}-note`)).toHaveText(estOn(o.fit) ? "est." : "per day");
-      await expect(testid(page, `compare-fit-${o.id}`)).toContainText("based on 3 of 4 located stops");
+      // The option-set payload has no routed-leg flag, so this view prints no straight-line minute.
+      await expect(testid(page, `compare-travel-${o.id}-value`)).toHaveText("Not checked yet");
+      await expect(testid(page, `compare-travel-${o.id}-note`)).toHaveText("");
+      await expect(testid(page, `compare-fit-${o.id}`)).toHaveText("Not checked yet");
+      const dayCells = page.locator(`[data-testid^="compare-day-${o.id}-"]`);
+      expect(await dayCells.count()).toBeGreaterThan(0);
+      for (const cell of await dayCells.allTextContents()) {
+        expect(cell).toContain("Not checked yet");
+        expect(cell).not.toMatch(/\d+\s*min/);
+      }
       // Coverage: the server's two counts, or — with no known area — a dash and a reason, never 0.
       const areas = o.fit.coverage === null ? "—" : `${o.fit.areasNear} of ${o.fit.areasTotal}`;
       await expect(testid(page, `compare-areas-${o.id}-value`)).toHaveText(areas);
@@ -812,7 +819,7 @@ test.describe("3 · the compare view (A4)", () => {
     await expect(easier).toHaveText(after.easierCount === 1 ? "1 place would make your days easier" : `${after.easierCount} places would make your days easier`);
     await easier.click();
     for (const o of after.options.filter((x: any) => x.easierByMinutes != null)) {
-      await expect(testid(page, `compare-saves-${o.id}`)).toHaveText(`${o.easierByMinutes} min less travel per day than your choice${estOn(o.fit) ? " · est." : ""}`);
+      await expect(testid(page, `compare-saves-${o.id}`)).toHaveText("Not checked yet");
     }
     await expect(testid(page, "compare-foot")).toHaveText(`You chose ${worst.title}. You can change your mind until you book.`);
   });
