@@ -104,7 +104,17 @@ test('L1: expert lifecycle — hire → accept → suggest ×2 → reject/approv
   const d1 = await dbStep(J, '01', 'hire: trip_expert_advisors row', advisorSql, [tripId, expertId]);
   await page.goto(`/plans/${tripId}`);
   await settle(page);
-  await expect(testid(page, 'slip-action-hire-expert'), 'the slip offers the one handoff door').toBeVisible({ timeout: 15_000 });
+  // Row 223 (sanctioned pin edit, architect Oct 25, 2026): the hire door draws only while Kyoto has an
+  // expert to hand to (`expert_hook_cities` on AND the chooser has someone). This job cannot seed
+  // `expert_hook_cities` (the fixture seeder refuses NODE_ENV=production), so the door is asserted
+  // against the server's own answer: visible iff `available` is true. The hire below goes through the API.
+  const kyotoAvailable =
+    (await (await page.request.get(`/api/expert-availability?city=${encodeURIComponent('Kyoto')}`)).json())?.available === true;
+  if (kyotoAvailable) {
+    await expect(testid(page, 'slip-action-hire-expert'), 'the slip offers the one handoff door').toBeVisible({ timeout: 15_000 });
+  } else {
+    await expect(testid(page, 'slip-action-hire-expert'), 'no handoff door while Kyoto has no expert to hand to').toHaveCount(0);
+  }
   const hireRes = await page.request.post(`/api/trips/${tripId}/advisors`, { data: { handle: expertE.handle } });
   expect(hireRes.status(), await hireRes.text()).toBeLessThan(300);
   await settle(page, 1000);

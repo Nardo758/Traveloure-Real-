@@ -5,7 +5,41 @@
 // Timeouts: Replit Vite dev server needs up to ~50 s cold-start. All link-logo
 // and page-element waits use 90 s. Data-dependent flows use conditional skip.
 
+import { execFileSync } from 'child_process';
+import type { Page } from '@playwright/test';
 import { test, expect, authFile } from '../fixtures/roles';
+
+// Row 223: the e2e-journey-2 job sets DATABASE_URL on its server steps but not on the Playwright step,
+// so this falls back to that same local CI database (no secret; a local Postgres URL).
+const E2E_DB = process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@localhost:5432/traveloure';
+const psql = (query: string) => execFileSync('psql', [E2E_DB, '-t', '-A', '-c', query], { encoding: 'utf8' }).trim();
+
+/**
+ * Row 223: switch Kyoto's expert door on — one byline-gated fixture expert (the golden path's seeder,
+ * `scripts/seed-fixture-kyoto-expert.ts`) and `expert_hook_cities = ["kyoto"]` — then wait until the
+ * availability answer says yes (the setting is cached server-side for 15s). Returns the restore.
+ */
+async function switchKyotoExpertsOn(page: Page): Promise<() => void> {
+  execFileSync('npx', ['tsx', 'scripts/seed-fixture-kyoto-expert.ts', 'journey2'], {
+    env: { ...process.env, DATABASE_URL: E2E_DB, ALLOW_TEST_ACCOUNTS: '1' },
+    encoding: 'utf8',
+    timeout: 120_000,
+  });
+  const prior = psql(`SELECT setting_value FROM platform_settings WHERE setting_key = 'expert_hook_cities'`);
+  psql(
+    `INSERT INTO platform_settings (setting_key, setting_value) VALUES ('expert_hook_cities', '["kyoto"]')
+     ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = NOW()`,
+  );
+  await expect
+    .poll(async () => (await (await page.request.get(`/api/expert-availability?city=${encodeURIComponent('Kyoto, Japan')}`)).json()).available, {
+      timeout: 45_000,
+    })
+    .toBe(true);
+  return () => {
+    if (prior) psql(`UPDATE platform_settings SET setting_value = '${prior.replace(/'/g, "''")}' WHERE setting_key = 'expert_hook_cities'`);
+    else psql(`DELETE FROM platform_settings WHERE setting_key = 'expert_hook_cities'`);
+  };
+}
 
 const SELECTORS = {
   navLogo: '[data-testid="link-logo"]',
@@ -95,6 +129,11 @@ test.describe('Journey 2D — Expert advisor request from the slip', () => {
     const tripId = (firstCardTestId ?? '').replace('trip-card-', '');
     expect(tripId, 'derived a trip id from the first card').toBeTruthy();
 
+    // Row 223 (sanctioned pin edit): the hire door draws only while the plan's city has an expert to
+    // hand to. Switch Kyoto on with one byline-gated fixture expert before the visit; the assertion
+    // below is unchanged. The switch is restored when the test ends.
+    const restoreExperts = await switchKyotoExpertsOn(page);
+    try {
     await page.goto(`/plans/${tripId}`, { waitUntil: 'domcontentloaded' });
     const slip = page.locator(`[data-testid="slip-view-${tripId}"]`);
     await slip.waitFor({ state: 'visible', timeout: 25_000 });
@@ -127,5 +166,8 @@ test.describe('Journey 2D — Expert advisor request from the slip', () => {
       hasHire || hasMessage || hasNoHandleNote,
       'the Build card renders one of the three advisor states',
     ).toBe(true);
+    } finally {
+      restoreExperts();
+    }
   });
 });
