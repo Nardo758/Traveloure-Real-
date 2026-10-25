@@ -15,6 +15,7 @@ import {
   pinForRequest,
   readStoredPin,
   refusalFromError,
+  refusalMessage,
   refusalOptions,
 } from "../custom-pin-refusal";
 import {
@@ -95,14 +96,19 @@ describe("the pin reaches the pay gate", () => {
 describe("the refusal state", () => {
   it("CP3: every string is a held placeholder in ONE object, keyed by reason, with no banned word or price", () => {
     assert.deepEqual(Object.keys(CUSTOM_PIN_REFUSAL_STRINGS.reasons).sort(), [...CUSTOM_LOCATION_REFUSAL_REASONS].sort());
-    const all = [...Object.values(CUSTOM_PIN_REFUSAL_STRINGS.reasons), ...Object.values(CUSTOM_PIN_REFUSAL_STRINGS.options)];
+    const all = [
+      CUSTOM_PIN_REFUSAL_STRINGS.stalePin,
+      ...Object.values(CUSTOM_PIN_REFUSAL_STRINGS.reasons),
+      ...Object.values(CUSTOM_PIN_REFUSAL_STRINGS.options),
+    ];
     for (const v of all) {
       assert.match(v, /^TODO\(Leon\): /);
       assert.doesNotMatch(v, /trending|pulse|crowd|destination intelligence|\bAI\b|\$\d|5\.99|599/i);
     }
     // P7's rule holds on the dialog source with the refusal state in it.
     assert.doesNotMatch(DIALOG, /\$\d|5\.99|599/);
-    assert.match(DIALOG, /CUSTOM_PIN_REFUSAL_STRINGS\.reasons\[refusalShown\]/);
+    assert.match(DIALOG, /\{refusalMessage\(refusalShown\)\}/);
+    assert.equal(refusalMessage("ambiguous"), CUSTOM_PIN_REFUSAL_STRINGS.reasons.ambiguous);
   });
 
   it("CP4: option (a) is absent for cap_reached and provider_error and present otherwise; (c) is always offered", () => {
@@ -215,5 +221,41 @@ describe("GC-1 on Leaflet for the anchor", () => {
     assert.match(MCC, /renderer === "leaflet" && anchorIsGoogleDerived\(scene\.anchor\)/);
     assert.match(read("client/src/components/plancard/VersionsBoard.tsx"), /markGoogleDerivedAnchors\(view\.versions\.map/);
     assert.match(read("client/src/components/plancard/SlipView.tsx"), /markGoogleDerivedAnchors\(\(versionsView\?\.versions \?\? \[\]\)\.map/);
+  });
+});
+
+describe("a stale list-pick id is a stale-id error, not a placement refusal", () => {
+  /** Shared: the stale state starts no payment, keeps every option and refreshes the list. */
+  function assertStaleHandled() {
+    assert.equal(refusalMessage("stale_pin"), CUSTOM_PIN_REFUSAL_STRINGS.stalePin, "a generic error");
+    const o = refusalOptions("stale_pin", true);
+    assert.equal(o.tryDifferentName, true, "option (a) is not hidden");
+    assert.equal(o.continueWithoutPin, true);
+    const b = branch(RAIL, 'if (outcome.kind === "pinned_anchor_stale") {');
+    assert.match(b, /setPinRefusal\(\{ reason: "stale_pin", pin: pinnedAnchor \}\);/);
+    assert.match(b, /setBuildAroundOpen\(true\);/);
+    assert.doesNotMatch(b, /setPaySheet|runComparison|handleSheetSuccess|confirmOptimizationPayment/);
+    // The dialog drops the stale pick and reloads the list from the server.
+    assert.match(DIALOG, /if \(refusal === "stale_pin" && initialPin\) \{\s*setSelectedCandidate\(null\);\s*requestedRef\.current = false;\s*void loadCandidatesOnce\(\);/);
+  }
+
+  it("CP9: 400 pinned_anchor_not_found on payments, create and generate", async () => {
+    const { fetchImpl } = mockFetch(400, { error: "pinned_anchor_not_found" });
+    const outcome = await requestOptimizationGate({ tripId: "t1", pinnedAnchor: { type: "hotel", id: "gone", name: "Inn" }, fetchImpl });
+    assert.equal(outcome.kind, "pinned_anchor_stale");
+    assert.equal(refusalFromError(new Error('400: {"error":"pinned_anchor_not_found"}')), "stale_pin", "create / generate");
+    assert.equal(refusalFromError(new Error('409: {"error":"pinned_anchor_not_found"}')), null, "only the 400 is a stale id");
+    assertStaleHandled();
+  });
+
+  it("CP10: 400 pinned_anchor_invalid is handled the same way", async () => {
+    const { fetchImpl } = mockFetch(400, { error: "pinned_anchor_invalid" });
+    const outcome = await requestOptimizationGate({ tripId: "t1", pinnedAnchor: { type: "activity", id: "bad", name: "Shrine" }, fetchImpl });
+    assert.equal(outcome.kind, "pinned_anchor_stale");
+    assert.equal(refusalFromError(new Error('400: {"error":"pinned_anchor_invalid"}')), "stale_pin", "create / generate");
+    // An unrelated 400 still throws from the gate as before.
+    const other = mockFetch(400, { error: "something_else" });
+    await assert.rejects(requestOptimizationGate({ tripId: "t1", fetchImpl: other.fetchImpl }));
+    assertStaleHandled();
   });
 });

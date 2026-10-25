@@ -86,8 +86,8 @@ import {
   pinForRequest,
   readStoredPin,
   refusalFromError,
+  type PinRefusal,
 } from "@/lib/custom-pin-refusal";
-import type { CustomLocationRefusalReason } from "@shared/custom-location-pin";
 import { VersionsBoard } from "@/components/plancard/VersionsBoard";
 import { OPTIMIZE_RERUN_RULE } from "@/lib/optimization-preview";
 import { busyAroundDatesLine } from "@/lib/comparison-context";
@@ -987,7 +987,7 @@ export default function ItineraryComparisonPage() {
   // slip). Every /generate echoes it with its signed placement; a refusal reopens the build-around
   // dialog on it. A re-run uses this comparison's recorded payment — never a new one.
   const [generatePinRefusal, setGeneratePinRefusal] = useState<{
-    reason: CustomLocationRefusalReason;
+    reason: PinRefusal;
     pin?: ComparisonPinnedAnchor;
   } | null>(null);
   const readHeldPin = () => {

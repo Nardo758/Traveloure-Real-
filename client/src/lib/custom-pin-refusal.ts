@@ -13,6 +13,7 @@
  */
 import {
   isCustomLocationRefusal,
+  PINNED_ANCHOR_NOT_FOUND,
   readCustomPinPlacement,
   type CustomLocationRefusalReason,
   type CustomPinPlacement,
@@ -20,8 +21,26 @@ import {
 import { parseApiRefusal } from "./api-refusal";
 import type { ComparisonPinnedAnchor, ComparisonPinnedAnchorType } from "./create-comparison";
 
+/**
+ * A list pick whose catalog id no longer resolves (#1688): HTTP 400 `pinned_anchor_not_found`, and
+ * `pinned_anchor_invalid` if the server adds it. A STALE ID, not a placement refusal — the dialog
+ * shows a generic error, refreshes its candidate list and keeps every option, (a) included.
+ */
+export const STALE_PIN_ERRORS = [PINNED_ANCHOR_NOT_FOUND, "pinned_anchor_invalid"] as const;
+
+/** The dialog's refusal states: the five placement reasons, plus a stale list-pick id. */
+export type PinRefusal = CustomLocationRefusalReason | "stale_pin";
+
+export function isStalePinnedAnchor(status: number, body: unknown): boolean {
+  if (status !== 400 || !body || typeof body !== "object") return false;
+  const error = (body as Record<string, unknown>).error;
+  return typeof error === "string" && (STALE_PIN_ERRORS as readonly string[]).includes(error);
+}
+
 /** Every new string for the refusal state, in ONE object. Held for Leon — placeholders only. */
 export const CUSTOM_PIN_REFUSAL_STRINGS = {
+  /** The generic error for a stale list-pick id. */
+  stalePin: "TODO(Leon): that place is no longer in the list",
   reasons: {
     zero_results: "TODO(Leon): no place was found for that name",
     ambiguous: "TODO(Leon): more than one place matches that name",
@@ -45,7 +64,7 @@ export interface RefusalOptions {
   continueWithoutPin: true;
 }
 
-export function refusalOptions(reason: CustomLocationRefusalReason, hasCandidates: boolean): RefusalOptions {
+export function refusalOptions(reason: PinRefusal, hasCandidates: boolean): RefusalOptions {
   return {
     tryDifferentName: reason !== "cap_reached" && reason !== "provider_error",
     pickFromList: hasCandidates,
@@ -53,12 +72,21 @@ export function refusalOptions(reason: CustomLocationRefusalReason, hasCandidate
   };
 }
 
-/** A thrown `apiRequest` error (create, generate) that is the custom-location refusal, or null. */
-export function refusalFromError(err: unknown): CustomLocationRefusalReason | null {
+/**
+ * A thrown `apiRequest` error (create, generate) that is the custom-location refusal or a stale
+ * list-pick id, or null for any other error.
+ */
+export function refusalFromError(err: unknown): PinRefusal | null {
   const raw = err instanceof Error ? err.message : "";
   const status = Number(raw.match(/^\s*(\d{3}):/)?.[1]);
   const body = parseApiRefusal(err);
-  return isCustomLocationRefusal(status, body) ? body.reason : null;
+  if (isCustomLocationRefusal(status, body)) return body.reason;
+  return isStalePinnedAnchor(status, body) ? "stale_pin" : null;
+}
+
+/** The dialog's message for a refusal state. */
+export function refusalMessage(refusal: PinRefusal): string {
+  return refusal === "stale_pin" ? CUSTOM_PIN_REFUSAL_STRINGS.stalePin : CUSTOM_PIN_REFUSAL_STRINGS.reasons[refusal];
 }
 
 /** The custom pin the client last sent, with the placement the server last returned for it. */

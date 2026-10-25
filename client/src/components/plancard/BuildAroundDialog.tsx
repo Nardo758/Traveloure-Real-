@@ -24,8 +24,7 @@ import type {
   ComparisonPinnedAnchor,
   ComparisonPinnedAnchorType,
 } from "@/lib/create-comparison";
-import type { CustomLocationRefusalReason } from "@shared/custom-location-pin";
-import { CUSTOM_PIN_REFUSAL_STRINGS, refusalOptions } from "@/lib/custom-pin-refusal";
+import { CUSTOM_PIN_REFUSAL_STRINGS, refusalMessage, refusalOptions, type PinRefusal } from "@/lib/custom-pin-refusal";
 
 interface AnchorCandidate {
   anchorId: string;
@@ -91,7 +90,7 @@ export function BuildAroundDialog({
   fee?: OptimizationFeeQuote | null;
   busy?: boolean;
   /** Rows 196/197: the server could not place the custom pin — show the refusal state. */
-  refusal?: CustomLocationRefusalReason | null;
+  refusal?: PinRefusal | null;
   /** The pin the dialog opens on (the refused one), so its type and list come back. */
   initialPin?: ComparisonPinnedAnchor;
   /** A re-run on a comparison's recorded payment charges nothing — no pay line. */
@@ -106,7 +105,7 @@ export function BuildAroundDialog({
   const [selectedCandidate, setSelectedCandidate] = useState<AnchorCandidate | null>(null);
   const [customName, setCustomName] = useState("");
   // The refusal the dialog is showing; (a) and (b) set it aside so the field or the list can be used.
-  const [refusalShown, setRefusalShown] = useState<CustomLocationRefusalReason | null>(null);
+  const [refusalShown, setRefusalShown] = useState<PinRefusal | null>(null);
   const requestedRef = useRef(false);
   const requestEpochRef = useRef(0);
 
@@ -120,12 +119,20 @@ export function BuildAroundDialog({
     setLoadError(null);
     setSelectedCandidate(null);
     setCustomName(initialPin && !initialPin.id ? initialPin.name ?? "" : "");
-    if (initialPin) void loadCandidatesOnce();
+    // A stale id reloads the list in the refusal effect below; anything else loads it once here.
+    if (initialPin && refusal !== "stale_pin") void loadCandidatesOnce();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useEffect(() => {
     setRefusalShown(refusal ?? null);
+    // A stale list-pick id: drop the pick and refresh the candidate list from the server.
+    if (refusal === "stale_pin" && initialPin) {
+      setSelectedCandidate(null);
+      requestedRef.current = false;
+      void loadCandidatesOnce();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refusal]);
 
   async function loadCandidatesOnce() {
@@ -383,7 +390,7 @@ export function BuildAroundDialog({
           {refusalShown && refusalChoices ? (
             <div className="space-y-3" role="alert" data-testid="build-around-refusal" data-reason={refusalShown}>
               <p className="text-sm text-[color:var(--earn-ink)]" data-testid="build-around-refusal-reason">
-                {CUSTOM_PIN_REFUSAL_STRINGS.reasons[refusalShown]}
+                {refusalMessage(refusalShown)}
               </p>
               <div className="flex flex-col gap-2">
                 {refusalChoices.tryDifferentName ? (

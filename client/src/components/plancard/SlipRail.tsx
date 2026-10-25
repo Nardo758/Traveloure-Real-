@@ -86,8 +86,8 @@ import {
   pinForRequest,
   refusalFromError,
   type HeldCustomPin,
+  type PinRefusal,
 } from "@/lib/custom-pin-refusal";
-import type { CustomLocationRefusalReason } from "@shared/custom-location-pin";
 import {
   cancelOptimizationPayment,
   confirmOptimizationPayment,
@@ -426,7 +426,7 @@ function BuildCard({
   // (echoed opaque — `pinForRequest`), and the refusal the dialog shows when it could not be placed.
   const heldCustomPin = useRef<HeldCustomPin | null>(null);
   const [pinRefusal, setPinRefusal] = useState<{
-    reason: CustomLocationRefusalReason;
+    reason: PinRefusal;
     pin?: ComparisonPinnedAnchor;
   } | null>(null);
   // Lane E1: the window the Optimize gate handed over — the plan's own, or the one just set inline
@@ -514,6 +514,13 @@ function BuildCard({
         // No pay sheet, no charge, no run: the dialog reopens on the refused pin and shows the refusal.
         confirmedPinnedAnchor.current = undefined;
         setPinRefusal({ reason: outcome.reason, pin: pinnedAnchor });
+        setBuildAroundOpen(true);
+        return;
+      }
+      if (outcome.kind === "pinned_anchor_stale") {
+        // A stale list-pick id: no payment; the dialog reopens with a generic error and a refreshed list.
+        confirmedPinnedAnchor.current = undefined;
+        setPinRefusal({ reason: "stale_pin", pin: pinnedAnchor });
         setBuildAroundOpen(true);
         return;
       }
