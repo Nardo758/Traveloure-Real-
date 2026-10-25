@@ -1,6 +1,6 @@
 # Dispatch — run and repair the `artifacts/traveloure` reference suites
 
-<!-- superseded@SHA — CLOSED. Owner ruling 2026-10-25 deleted `artifacts/traveloure/` (ledger `2026-10-25-delete-artifacts-traveloure`). The commands below have no tree to run against. `client/src` is the sole production client. Annotation, not a rewrite. -->
+<!-- superseded@d225896 — CLOSED. Owner ruling 2026-10-25 deleted `artifacts/traveloure/` (ledger `2026-10-25-delete-artifacts-traveloure`). The commands below have no tree to run against. `client/src` is the sole production client. Annotation, not a rewrite. -->
 
 **For the Replit workspace. Written 2026-09-23 against `main` @ `5967595`.**
 Small, self-contained, and **touches no product code** — nothing under `server/`, `client/` or
