@@ -3,6 +3,12 @@
  * email sets emailVerified null unless the provider asserts email_verified
  * boolean true for that email. Facebook has no verified flag.
  *
+ * Amended Oct 24 2026 23:20 ET: a stored row with users.password set (the
+ * local-password marker emailAuth.ts uses) keeps both email and emailVerified
+ * unless that flag is boolean true AND the incoming address differs. The same
+ * address is never re-stamped. L9–L12 cover that. L1–L8 stay on rows with no
+ * password.
+ *
  * The conflict rule lives in authStorage.upsertUser (one statement). These
  * cases drive that method, replitAuth.upsertUser(claims), and facebookVerify.
  *
@@ -28,6 +34,7 @@ import { upsertUser } from "../replit_integrations/auth/replitAuth";
 import { facebookVerify } from "../replit_integrations/auth/facebookAuth";
 import { EMAIL_SIGN_IN_REQUIRED } from "../replit_integrations/auth/email-merge";
 import { invalidatePlatformFlagCache } from "../services/platform-flags";
+import { DUMMY_PASSWORD_HASH } from "../services/login-credentials.service";
 
 const DISPOSABLE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0", ""]);
 const PRIOR_VERIFIED = new Date("2020-01-15T12:00:00.000Z");
@@ -96,6 +103,7 @@ async function load(id: string) {
     email: users.email,
     emailVerified: users.emailVerified,
     role: users.role,
+    password: users.password,
   }).from(users).where(eq(users.id, id));
   assert.ok(row, `missing user ${id}`);
   return row;
@@ -107,6 +115,7 @@ async function seed(opts: {
   verified?: Date | null;
   role?: string;
   authProvider?: string;
+  password?: string | null;
 }) {
   track(opts.id);
   if (opts.email) emails.push(opts.email);
@@ -118,6 +127,7 @@ async function seed(opts: {
     role: opts.role ?? "user",
     authProvider: opts.authProvider ?? "email",
     emailVerified: opts.verified === undefined ? PRIOR_VERIFIED : opts.verified,
+    password: opts.password === undefined ? null : opts.password,
   });
   return load(opts.id);
 }
@@ -452,5 +462,69 @@ describe("row 156 — login never clears users.email", () => {
     row = await load(same);
     assert.equal(row.email, sameEmail);
     assert.equal(stamp(row.emailVerified), PRIOR_VERIFIED.getTime());
+  });
+
+  it("L9 a local-password account keeps its email and stamp when Facebook brings a different email", async () => {
+    const profileId = crypto.randomUUID();
+    const id = `fb_${profileId}`;
+    const email = freshEmail("l9");
+    const beforeRow = await seed({
+      id,
+      email,
+      authProvider: "email",
+      password: DUMMY_PASSWORD_HASH,
+    });
+    const next = freshEmail("l9next");
+    const result = await facebookLogin(profileId, next);
+    assert.equal(result.err, null, errorText(result.err));
+    const afterRow = await load(id);
+    assert.equal(afterRow.email, beforeRow.email);
+    assert.equal(stamp(afterRow.emailVerified), stamp(beforeRow.emailVerified));
+    assert.equal(afterRow.password, DUMMY_PASSWORD_HASH);
+  });
+
+  it("L10 a local-password account takes a different Replit email only when the claim is boolean true, and stamps now", async () => {
+    const id = track(`r156-l10-${crypto.randomUUID()}`);
+    const email = freshEmail("l10");
+    await seed({ id, email, authProvider: "email", password: DUMMY_PASSWORD_HASH });
+    const next = freshEmail("l10next");
+    const started = Date.now();
+    assert.equal(await upsertUser({ sub: id, email: next, email_verified: true, first_name: "Kept" }), id);
+    const afterRow = await load(id);
+    assert.equal(afterRow.email, next);
+    const verifiedAt = stamp(afterRow.emailVerified);
+    assert.ok(verifiedAt !== null && verifiedAt >= started - 2000, "boolean true stamps emailVerified now");
+    assert.notEqual(verifiedAt, PRIOR_VERIFIED.getTime());
+    assert.equal(afterRow.password, DUMMY_PASSWORD_HASH);
+  });
+
+  it("L11 a local-password account ignores a different Replit email when the claim is false, missing, or the string true", async () => {
+    for (const claim of [undefined, false, "true"] as const) {
+      const id = track(`r156-l11-${crypto.randomUUID()}`);
+      const email = freshEmail("l11");
+      await seed({ id, email, authProvider: "email", password: DUMMY_PASSWORD_HASH });
+      const next = freshEmail("l11next");
+      const claims: Record<string, unknown> = { sub: id, email: next, first_name: "Kept" };
+      if (claim !== undefined) claims.email_verified = claim;
+      assert.equal(await upsertUser(claims), id);
+      const afterRow = await load(id);
+      assert.equal(afterRow.email, email, `claim ${String(claim)}`);
+      assert.equal(stamp(afterRow.emailVerified), PRIOR_VERIFIED.getTime(), `claim ${String(claim)}`);
+      assert.equal(afterRow.password, DUMMY_PASSWORD_HASH);
+    }
+  });
+
+  it("L12 a local-password account with the same email is not re-stamped when the Replit claim is boolean true", async () => {
+    const id = track(`r156-l12-${crypto.randomUUID()}`);
+    const email = freshEmail("l12");
+    await seed({ id, email, authProvider: "email", password: DUMMY_PASSWORD_HASH });
+    assert.equal(
+      await upsertUser({ sub: id, email: `  ${email.toUpperCase()}  `, email_verified: true, first_name: "Kept" }),
+      id,
+    );
+    const afterRow = await load(id);
+    assert.equal(afterRow.email, email);
+    assert.equal(stamp(afterRow.emailVerified), PRIOR_VERIFIED.getTime());
+    assert.equal(afterRow.password, DUMMY_PASSWORD_HASH);
   });
 });

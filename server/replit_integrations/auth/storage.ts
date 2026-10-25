@@ -37,15 +37,24 @@ class AuthStorage implements IAuthStorage {
   }
 
   async upsertUser(input: UpsertUser, opts?: { providerEmailVerified?: boolean }): Promise<User> {
+    // Server-owned columns are dropped here, once, before the insert and before the
+    // conflict set is built. The CASE expressions below only assign email and
+    // emailVerified; they do not put isTest, payoutMethodType, or payoutHandle back.
     const userData = withoutServerOwnedUserFields(input) as UpsertUser;
-    // Row 156. The insert of a brand-new id is unchanged (a new Facebook account may
-    // still be born with a null email). On conflict, one statement decides the address:
-    // a missing or blank incoming email writes nothing and leaves email_verified as stored;
-    // the same address, compared case-insensitively after trim, keeps the stored value and
-    // its stamp; a different address is written, and email_verified becomes now() only when
-    // the provider asserted this address, otherwise null. A caller that already put
-    // emailVerified on the input (the new-account OIDC spread) keeps that value when the
-    // address changes. Never clears a stored email.
+    // Row 156, amended Oct 24 2026 23:20 ET. The insert of a brand-new id is unchanged
+    // (a new Facebook account may still be born with a null email). On conflict, one
+    // statement decides the address. A local-password row is users.password set
+    // (non-null and not empty) — the column emailAuth.ts reads for login and for
+    // "skip OAuth-only" password reset. auth_provider is not that marker (it defaults
+    // to "email"). Such a row keeps both email and email_verified unless
+    // providerEmailVerified is boolean true AND the incoming address differs, in
+    // which case the new address is written and email_verified is stamped now.
+    // The same address is never re-stamped. Every other row: a missing or blank
+    // incoming email writes nothing and leaves email_verified as stored; the same
+    // address, compared case-insensitively after trim, keeps the stored value and
+    // its stamp; a different address is written, and email_verified becomes the
+    // caller-stated value when the input already carries one, else now() when the
+    // provider asserted this address, else null. Never clears a stored email.
     const rest: UpsertUser = { ...userData };
     delete rest.email;
     delete rest.emailVerified;
@@ -54,18 +63,36 @@ class AuthStorage implements IAuthStorage {
     const statedVerified = callerStatedVerified ? (input.emailVerified ?? null) : null;
     const providerVerified = opts?.providerEmailVerified === true;
     const verifiedAt = new Date();
+    // A fresh fragment per interpolation. Drizzle SQL objects are single-use.
+    const localPassword = () => sql`${users.password} IS NOT NULL AND ${users.password} <> ''`;
+    const incomingDifferent = () => sql`excluded.email IS NOT NULL AND btrim(excluded.email) <> ''
+      AND lower(btrim(${users.email})) IS DISTINCT FROM lower(btrim(excluded.email))`;
+    const localLocked = providerVerified
+      ? sql`${localPassword()} AND NOT (${incomingDifferent()})`
+      : localPassword();
     const keepEmail = sql`CASE
+      WHEN ${localLocked} THEN ${users.email}
       WHEN excluded.email IS NULL OR btrim(excluded.email) = '' THEN ${users.email}
       WHEN lower(btrim(${users.email})) IS NOT DISTINCT FROM lower(btrim(excluded.email)) THEN ${users.email}
       ELSE excluded.email
     END`;
-    const keepVerified = sql`excluded.email IS NULL OR btrim(excluded.email) = ''
+    const keepVerified = () => sql`excluded.email IS NULL OR btrim(excluded.email) = ''
       OR lower(btrim(${users.email})) IS NOT DISTINCT FROM lower(btrim(excluded.email))`;
-    const emailVerified = callerStatedVerified
-      ? sql`CASE WHEN ${keepVerified} THEN ${users.emailVerified} ELSE ${statedVerified}::timestamp END`
+    const changedStamp = () => callerStatedVerified
+      ? sql`${statedVerified}::timestamp`
       : providerVerified
-        ? sql`CASE WHEN ${keepVerified} THEN ${users.emailVerified} ELSE ${verifiedAt}::timestamp END`
-        : sql`CASE WHEN ${keepVerified} THEN ${users.emailVerified} ELSE NULL END`;
+        ? sql`${verifiedAt}::timestamp`
+        : sql`NULL`;
+    const emailVerified = providerVerified
+      ? sql`CASE
+          WHEN ${localPassword()} AND (${incomingDifferent()}) THEN ${verifiedAt}::timestamp
+          WHEN ${localPassword()} THEN ${users.emailVerified}
+          ELSE CASE WHEN ${keepVerified()} THEN ${users.emailVerified} ELSE ${changedStamp()} END
+        END`
+      : sql`CASE
+          WHEN ${localPassword()} THEN ${users.emailVerified}
+          ELSE CASE WHEN ${keepVerified()} THEN ${users.emailVerified} ELSE ${changedStamp()} END
+        END`;
     const [user] = await db
       .insert(users)
       .values(userData)
