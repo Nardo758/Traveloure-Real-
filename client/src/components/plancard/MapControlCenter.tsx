@@ -31,7 +31,10 @@ import { type PlanCardActivity, type PlanCardDay } from "./plancard-types";
 import { getModeColor } from "@/lib/transport-modes";
 import { openDayInMaps, addDayToCalendar } from "./day-map-actions";
 import {
+  anchorIsGoogleDerived,
   buildMapScene,
+  leafletMountPoints,
+  sceneFirstPoint,
   type BrowsePlace,
   type MapAnchor,
   type MapArea,
@@ -351,13 +354,19 @@ export function MapControlCenter({
   // GC-1 (ledger `2026-10-17-gc1-google-coords`; R-d as amended): the Leaflet fallback is not a Google map, so
   // it draws a day only when every located stop's point is non-Google. NULL is Google, and no writer stamps a
   // non-Google point yet, so today the fallback shows the day as a list.
+  // Rows 196/197/218: the anchor counts too — a located anchor whose point is Google (or unknown) keeps the
+  // Leaflet day a list, just like a Google stop.
   const leafletMapAllowed = everyLocatedPointNonGoogle(
-    (day?.activities ?? []).map((a) => ({ located: isLocated(a), coordSource: a.coordSource })),
+    leafletMountPoints(
+      (day?.activities ?? []).map((a) => ({ located: isLocated(a), coordSource: a.coordSource })),
+      scene.anchor,
+    ),
   );
 
   // The initial center: the first pin, else the anchor, else the server-geocoded destination. No
   // honest center ⇒ no canvas (never Null Island, §13).
-  const firstPoint = scene.pins[0] ?? (scene.anchor ? { lat: scene.anchor.lat, lng: scene.anchor.lng } : null);
+  // On Leaflet a Google-derived anchor is never the center (`sceneFirstPoint`).
+  const firstPoint = sceneFirstPoint(scene, renderer);
   const { data: geocoded, isLoading: geocoding } = useQuery<{ lat?: number; lng?: number }>({
     queryKey: ["/api/geocode", tripDestination],
     queryFn: () => fetch(`/api/geocode?address=${encodeURIComponent(tripDestination)}`).then((r) => r.json()),
@@ -548,7 +557,12 @@ export function MapControlCenter({
               moved in this version
             </span>
           ) : null}
-          {scene.anchor ? (
+          {scene.anchor && renderer === "leaflet" && anchorIsGoogleDerived(scene.anchor) ? (
+            // GC-1: Leaflet draws no Google-derived anchor — it is named here only, with no mark.
+            <span className="inline-flex items-center gap-1.5" data-testid="map-legend-anchor-name">
+              {scene.anchor.name}
+            </span>
+          ) : scene.anchor ? (
             <span className="inline-flex items-center gap-1.5">
               <span className="h-3 w-3 rounded-sm bg-[color:var(--slip-teal)]" />
               where you stay

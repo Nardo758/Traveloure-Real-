@@ -1,4 +1,5 @@
 import { apiRequest } from "@/lib/queryClient";
+import type { CustomPinPlacement } from "@shared/custom-location-pin";
 
 // R-B: the one create-comparison rail. Four near-duplicate `POST /api/itinerary-comparisons`
 // callers (experience-template.tsx, cart.tsx, discover.tsx, + the itinerary-comparison.tsx retry
@@ -22,6 +23,8 @@ export interface ComparisonPinnedAnchor {
   type: ComparisonPinnedAnchorType;
   id?: string;
   name?: string;
+  /** A custom pin's signed placement, echoed opaque as the server returned it (never built here). */
+  placement?: CustomPinPlacement;
 }
 
 export interface CreateComparisonOptions {

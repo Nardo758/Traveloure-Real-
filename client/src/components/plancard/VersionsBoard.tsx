@@ -23,7 +23,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { MapControlCenter } from "@/components/plancard/MapControlCenter";
 import type { PlanCardDay } from "@/components/plancard/plancard-types";
-import type { MapVersion } from "@/lib/map-scene";
+import { markGoogleDerivedAnchors, type MapVersion } from "@/lib/map-scene";
 import { formatMoneyCents } from "@/lib/optimization-preview";
 import { OPTIMIZE_UNAVAILABLE } from "@/lib/optimize-pay-copy";
 import { retimeLine } from "@shared/version-board";
@@ -218,7 +218,8 @@ export function VersionsBoard({
     );
   }
 
-  const mapVersions: MapVersion[] = view.versions.map((v) => ({
+  // GC-1 (rows 196/197/218): a version anchor names no source, so it is Google-derived.
+  const mapVersions: MapVersion[] = markGoogleDerivedAnchors(view.versions.map((v) => ({
     key: v.variantId,
     label: v.label,
     stops: v.stops,
@@ -226,7 +227,7 @@ export function VersionsBoard({
     // V-1: the stored anchor kind — only a hotel is a stay; a neighbourhood or activity is a venue.
     // The baseline "Your Plan" row is excluded: its pin is for distance math, not a built-around place.
     anchor: versionMapAnchor(v),
-  }));
+  })));
   const cards = chooseCards(view);
   const strip = pickStrip(view, picks);
   const stay = stayVersion(view, picks);

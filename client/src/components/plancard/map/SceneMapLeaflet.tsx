@@ -5,8 +5,9 @@
  * either. Tiles come from deployment config (`GET /api/maps/tiles`); ODbL attribution is always drawn.
  *
  * GC-1 (ledger `2026-10-17-gc1-google-coords`): it draws NO leg lines and no minutes — a leg is a Google route,
- * and this is not a Google map. It is mounted only for a day whose every located stop has a non-Google point
- * (`everyLocatedPointNonGoogle`); otherwise the map shows the day as a list.
+ * and this is not a Google map. It is mounted only for a day whose every located stop AND located anchor has a
+ * non-Google point (`leafletMountPoints`); otherwise the map shows the day as a list. A Google-derived anchor
+ * draws no marker and frames nothing here (`leafletSceneInputs`).
  */
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -14,7 +15,7 @@ import { Circle, MapContainer, Marker, Polyline, TileLayer, useMap } from "react
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { MAP_DISTRICT_ZOOM, clampFramingZoom, mapFraming } from "@/lib/map-framing";
-import { ANCHOR_COLOR, BROWSE_TEAL, PIN_STYLE, sceneMarkers, type MapScene, type MarkerDescriptor } from "@/lib/map-scene";
+import { ANCHOR_COLOR, BROWSE_TEAL, PIN_STYLE, leafletSceneInputs, sceneMarkers, type MapScene, type MarkerDescriptor } from "@/lib/map-scene";
 import type { SceneMapProps } from "./SceneMapGoogle";
 
 function iconFor(m: MarkerDescriptor, selected: boolean): L.DivIcon {
@@ -45,9 +46,10 @@ function iconFor(m: MarkerDescriptor, selected: boolean): L.DivIcon {
 
 function Framing({ scene }: { scene: MapScene }) {
   const map = useMap();
-  const key = [...scene.pins.map((p) => `${p.id}:${p.lat}:${p.lng}`), scene.anchor ? `a:${scene.anchor.lat}:${scene.anchor.lng}` : ""].join("|");
+  // GC-1 (rows 196/197/218): a Google-derived anchor is not a framing point here (`leafletSceneInputs`).
+  const pts = leafletSceneInputs(scene).framePoints;
+  const key = pts.map((p) => `${p.lat}:${p.lng}`).join("|");
   useEffect(() => {
-    const pts = [...scene.pins.map((p) => ({ lat: p.lat, lng: p.lng })), ...(scene.anchor ? [{ lat: scene.anchor.lat, lng: scene.anchor.lng }] : [])];
     const framing = mapFraming(pts);
     if (framing.kind === "center") map.setView([framing.center.lat, framing.center.lng], framing.zoom);
     else if (framing.kind === "bounds") {
@@ -62,7 +64,8 @@ function Framing({ scene }: { scene: MapScene }) {
 
 export function SceneMapLeaflet({ scene, center, selectedId, onSelect, onSelectBrowse }: Omit<SceneMapProps, "legs">) {
   const { data: tiles } = useQuery<{ url: string; attribution: string }>({ queryKey: ["/api/maps/tiles"], staleTime: Infinity });
-  const markers = sceneMarkers(scene);
+  // GC-1: the SAME marker list, minus a Google-derived anchor (named in the legend only).
+  const { markers } = leafletSceneInputs(scene, sceneMarkers(scene));
   return (
     <MapContainer center={[center.lat, center.lng]} zoom={MAP_DISTRICT_ZOOM - 1} style={{ width: "100%", height: "100%" }} scrollWheelZoom={false}>
       <TileLayer

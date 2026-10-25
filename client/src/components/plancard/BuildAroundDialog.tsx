@@ -24,6 +24,8 @@ import type {
   ComparisonPinnedAnchor,
   ComparisonPinnedAnchorType,
 } from "@/lib/create-comparison";
+import type { CustomLocationRefusalReason } from "@shared/custom-location-pin";
+import { CUSTOM_PIN_REFUSAL_STRINGS, refusalOptions } from "@/lib/custom-pin-refusal";
 
 interface AnchorCandidate {
   anchorId: string;
@@ -75,6 +77,9 @@ export function BuildAroundDialog({
   planName,
   fee,
   busy = false,
+  refusal = null,
+  initialPin,
+  hidePayLine = false,
   onOpenChange,
   onConfirm,
 }: {
@@ -85,6 +90,12 @@ export function BuildAroundDialog({
   /** The server's band-resolved quote — the price on the confirm button. Never a literal (§8). */
   fee?: OptimizationFeeQuote | null;
   busy?: boolean;
+  /** Rows 196/197: the server could not place the custom pin — show the refusal state. */
+  refusal?: CustomLocationRefusalReason | null;
+  /** The pin the dialog opens on (the refused one), so its type and list come back. */
+  initialPin?: ComparisonPinnedAnchor;
+  /** A re-run on a comparison's recorded payment charges nothing — no pay line. */
+  hidePayLine?: boolean;
   onOpenChange: (open: boolean) => void;
   onConfirm: (pinnedAnchor?: ComparisonPinnedAnchor) => void;
 }) {
@@ -94,6 +105,8 @@ export function BuildAroundDialog({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedCandidate, setSelectedCandidate] = useState<AnchorCandidate | null>(null);
   const [customName, setCustomName] = useState("");
+  // The refusal the dialog is showing; (a) and (b) set it aside so the field or the list can be used.
+  const [refusalShown, setRefusalShown] = useState<CustomLocationRefusalReason | null>(null);
   const requestedRef = useRef(false);
   const requestEpochRef = useRef(0);
 
@@ -101,13 +114,19 @@ export function BuildAroundDialog({
     requestEpochRef.current += 1;
     if (!open) return;
     requestedRef.current = false;
-    setMode("auto");
+    setMode(initialPin?.type ?? "auto");
     setRanked(EMPTY_RANKED);
     setLoading(false);
     setLoadError(null);
     setSelectedCandidate(null);
-    setCustomName("");
+    setCustomName(initialPin && !initialPin.id ? initialPin.name ?? "" : "");
+    if (initialPin) void loadCandidatesOnce();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  useEffect(() => {
+    setRefusalShown(refusal ?? null);
+  }, [refusal]);
 
   async function loadCandidatesOnce() {
     if (requestedRef.current) return;
@@ -167,6 +186,7 @@ export function BuildAroundDialog({
   }
 
   const visibleCandidates = mode === "auto" ? [] : ranked[mode];
+  const refusalChoices = refusalShown ? refusalOptions(refusalShown, visibleCandidates.length > 0) : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -360,7 +380,54 @@ export function BuildAroundDialog({
         </div>
 
         <div className="border-t border-[color:var(--earn-border)] px-5 pb-5 pt-4 sm:px-6 sm:pb-6">
-          {optimizeUnavailable(fee) ? (
+          {refusalShown && refusalChoices ? (
+            <div className="space-y-3" role="alert" data-testid="build-around-refusal" data-reason={refusalShown}>
+              <p className="text-sm text-[color:var(--earn-ink)]" data-testid="build-around-refusal-reason">
+                {CUSTOM_PIN_REFUSAL_STRINGS.reasons[refusalShown]}
+              </p>
+              <div className="flex flex-col gap-2">
+                {refusalChoices.tryDifferentName ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => {
+                      setRefusalShown(null);
+                      setSelectedCandidate(null);
+                      setCustomName("");
+                    }}
+                    data-testid="build-around-refusal-try-name"
+                  >
+                    {CUSTOM_PIN_REFUSAL_STRINGS.options.tryDifferentName}
+                  </Button>
+                ) : null}
+                {refusalChoices.pickFromList ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => {
+                      setRefusalShown(null);
+                      setCustomName("");
+                    }}
+                    data-testid="build-around-refusal-pick-list"
+                  >
+                    {CUSTOM_PIN_REFUSAL_STRINGS.options.pickFromList}
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => onConfirm()}
+                  data-testid="build-around-refusal-no-pin"
+                >
+                  {CUSTOM_PIN_REFUSAL_STRINGS.options.continueWithoutPin}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+          {refusalShown ? null : optimizeUnavailable(fee) ? (
             <p className="mb-4 text-sm text-[color:var(--earn-ink)]" data-testid="optimize-unavailable">
               {OPTIMIZE_UNAVAILABLE}
             </p>
@@ -371,9 +438,11 @@ export function BuildAroundDialog({
               Three versions built around {selectedName}.
             </p>
           ) : null}
+          {hidePayLine ? null : (
           <p className="mb-4 font-mono text-[11px] leading-5 text-[color:var(--earn-muted)]" data-testid="build-around-pay-line">
             {optimizePayLine(fee)}
           </p>
+          )}
             </>
           )}
           <DialogFooter className="gap-2 sm:space-x-0">
@@ -386,7 +455,7 @@ export function BuildAroundDialog({
             >
               Cancel
             </Button>
-            {optimizeUnavailable(fee) ? null : (
+            {refusalShown || optimizeUnavailable(fee) ? null : (
             <Button
               type="button"
               onClick={confirm}
