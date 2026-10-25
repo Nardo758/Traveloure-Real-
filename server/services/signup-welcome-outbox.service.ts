@@ -136,11 +136,21 @@ export async function deliverSignupWelcome(
         ...(row.textBody ? { text: row.textBody } : {}),
         ...(row.replyTo ? { replyTo: row.replyTo } : {}),
         idempotencyKey: `signup-welcome-${accountId}`,
+        emailType: row.emailType,
       });
       if (result.ok && !result.id) result = { ok: false, error: "Provider returned no message id" };
     } catch {
       // Never persist transport exception strings containing keys/recipient addresses.
       result = { ok: false, error: "Welcome provider transport failed" };
+    }
+    if (result.suppressed === "template_not_allowed") {
+      await tx.update(emailOutbox).set({
+        status: "held",
+        lastError: "EMAIL_TEMPLATE_ALLOWLIST",
+        retryAfter: null,
+        updatedAt: new Date(),
+      }).where(and(eq(emailOutbox.id, outboxId), eq(emailOutbox.status, "processing")));
+      return;
     }
     if (result.suppressed === "development_gate" || result.suppressed === "kill_switch") {
       const now = new Date();

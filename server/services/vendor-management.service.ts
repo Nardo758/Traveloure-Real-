@@ -265,6 +265,8 @@ export class VendorManagementService {
           subject,
           text: body,
           html: `<div style="white-space:pre-wrap">${escapedBody}</div>`,
+          emailType: "vendor_bulk_email",
+          replyTo: null,
         };
 
         // Add calendar invite if requested
@@ -281,6 +283,10 @@ export class VendorManagementService {
         // The exported sender returns failures instead of throwing. Count only
         // accepted sends; never record a sent communication on a failed send.
         const delivery = await sendEmail(emailPayload);
+        if (delivery.suppressed) {
+          console.warn(`[vendor-email] not sent (${delivery.suppressed})`);
+          continue;
+        }
         if (!delivery.ok) throw new Error(delivery.error || "Email delivery was not accepted");
 
         // Log communication

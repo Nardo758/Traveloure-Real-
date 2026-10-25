@@ -15,10 +15,10 @@
  * only when that variable is exactly true. It is checked before every other
  * gate, including for password reset and verification.
  *
- * EMAIL_TEMPLATE_ALLOWLIST is the next gate for outbox delivery. It is a
- * comma-separated list of email_type names. Unset, empty, or blank allows
- * nothing. It is checked only after EMAIL_SENDS_ENABLED passes. Direct
- * sendEmail callers are not named by it.
+ * EMAIL_TEMPLATE_ALLOWLIST is the next production gate after
+ * EMAIL_SENDS_ENABLED, for every sendEmail call. It is a comma-separated
+ * list of email_type names. Unset, empty, or blank allows nothing. There is
+ * no code default. The development no-send gate stays ahead of it.
  *
  * Legacy alias: EMAIL_FROM is still read as a fallback for EMAIL_FROM_NOREPLY
  * so existing deployments that predate the rename continue to work.
@@ -74,7 +74,6 @@ export function emailTemplateAllowed(
   return allowlist.includes(emailType);
 }
 
-let cachedClient: Resend | null = null;
 function createClient(key: string): Resend {
   const client = new Resend(key);
   const originalSend = client.emails.send.bind(client.emails);
@@ -83,19 +82,6 @@ function createClient(key: string): Resend {
     dispatchMessagingEvent,
   ) as typeof client.emails.send;
   return client;
-}
-
-function getClient(): Resend | null {
-  const key = process.env.RESEND_API_KEY;
-  if (!key) return null;
-  if (cachedClient) return cachedClient;
-  cachedClient = createClient(key);
-  return cachedClient;
-}
-
-/** Reads EMAIL_FROM_NOREPLY (preferred) or EMAIL_FROM (legacy alias). */
-function getFromAddress(): string {
-  return process.env.EMAIL_FROM_NOREPLY ?? process.env.EMAIL_FROM ?? "";
 }
 
 /** Reads EMAIL_REPLY_TO — the human-facing reply address. */
@@ -125,8 +111,6 @@ export interface SendEmailParams {
   subject: string;
   html: string;
   text?: string;
-  /** Override per-call; falls back to EMAIL_REPLY_TO env var. */
-  replyTo?: string;
   /** Opt-in provider retry deduplication; existing callers retain their send behavior. */
   idempotencyKey?: string;
   /** Internal outbox opt-in; never forwarded to the email provider. */
@@ -139,6 +123,16 @@ export interface SendEmailParams {
   authCritical?: boolean;
   /** Optional files, including vendor coordination calendar invitations. */
   attachments?: Array<{ filename: string; content: Buffer | string; contentType?: string }>;
+  /**
+   * Same shape as email_outbox.email_type. Required. A missing or empty value
+   * is refused and never sent. Not forwarded to the provider.
+   */
+  emailType: string;
+  /**
+   * Null means this send has no reply-to (callers that never set one).
+   * Omitted uses EMAIL_REPLY_TO and refuses when that is unset.
+   */
+  replyTo?: string | null;
 }
 
 export interface SendEmailResult {
@@ -148,10 +142,32 @@ export interface SendEmailResult {
   /**
    * The provider was not called. `sends_disabled` is EMAIL_SENDS_ENABLED.
    * `development_gate` is canQueueGenerationNotice.
-   * `kill_switch` is email_notifications_enabled. None of these is a failed attempt.
+   * `kill_switch` is email_notifications_enabled.
+   * `template_not_allowed` is a missing or unlisted emailType.
+   * None of these is a failed attempt.
    */
-  suppressed?: "sends_disabled" | "development_gate" | "kill_switch";
+  suppressed?: "sends_disabled" | "development_gate" | "kill_switch" | "template_not_allowed";
 }
+
+/**
+ * Test seam for the one provider call. Production leaves it unset.
+ * emailType is the required category; it is not part of the provider payload.
+ */
+export const _emailProviderTestHooks: {
+  send?: (
+    payload: {
+      from: string;
+      to: string | string[];
+      subject: string;
+      html: string;
+      text?: string;
+      replyTo?: string;
+      attachments?: SendEmailParams["attachments"];
+    },
+    options: { idempotencyKey: string } | undefined,
+    emailType: string,
+  ) => Promise<{ data: { id?: string } | null; error: { message?: string } | null }>;
+} = {};
 
 /**
  * Low-level email sender. Validates all three required env vars and wraps
@@ -185,6 +201,19 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
     return { ok: false, error: "No approved development inbox", suppressed: "development_gate" };
   }
 
+  // Next production gate. Missing and unlisted types, including password reset
+  // and verification, never reach the provider. The log names the type and
+  // the reason, and not the recipient.
+  const emailType = typeof params.emailType === "string" ? params.emailType : "";
+  if (emailType.length === 0 || !emailTemplateAllowed(emailType)) {
+    const reason = emailType.length === 0 ? "email_type_required" : "EMAIL_TEMPLATE_ALLOWLIST";
+    logger.warn(
+      { reason, emailType: emailType.length === 0 ? null : emailType },
+      "[email] send refused; EMAIL_TEMPLATE_ALLOWLIST",
+    );
+    return { ok: false, error: reason, suppressed: "template_not_allowed" };
+  }
+
   // Admin-controlled kill switch (/admin/system → "Email Notifications").
   // Auth-critical outbox rows (password reset, email verification) set
   // authCritical and are the only sends that skip this flag. They still
@@ -206,7 +235,8 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.EMAIL_FROM_NOREPLY ?? process.env.EMAIL_FROM;
   const defaultReplyTo = process.env.EMAIL_REPLY_TO;
-  const replyTo = params.replyTo ?? defaultReplyTo;
+  const omitReplyTo = params.replyTo === null;
+  const replyTo = omitReplyTo ? undefined : (params.replyTo ?? defaultReplyTo);
 
   if (!apiKey) {
     console.error("[email] sendEmail: RESEND_API_KEY is not set");
@@ -216,25 +246,25 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
     console.error("[email] sendEmail: EMAIL_FROM_NOREPLY is not set");
     return { ok: false, error: "EMAIL_FROM_NOREPLY is not set" };
   }
-  if (!replyTo) {
+  if (!omitReplyTo && !replyTo) {
     console.error("[email] sendEmail: EMAIL_REPLY_TO is not set and no replyTo provided");
     return { ok: false, error: "EMAIL_REPLY_TO is not set and no replyTo provided" };
   }
 
   try {
-    const client = createClient(apiKey);
     const payload = {
       from,
       to: params.to,
       subject: params.subject,
       html: params.html,
       ...(params.text ? { text: params.text } : {}),
-      replyTo: replyTo,
+      ...(replyTo ? { replyTo } : {}),
       ...(params.attachments?.length ? { attachments: params.attachments } : {}),
     };
-    const { data, error } = params.idempotencyKey
-      ? await client.emails.send(payload, { idempotencyKey: params.idempotencyKey })
-      : await client.emails.send(payload);
+    const options = params.idempotencyKey ? { idempotencyKey: params.idempotencyKey } : undefined;
+    const { data, error } = _emailProviderTestHooks.send
+      ? await _emailProviderTestHooks.send(payload, options, emailType)
+      : await createClient(apiKey).emails.send(payload, options);
 
     if (error) {
       console.error("[email] sendEmail Resend error:", {
@@ -585,45 +615,6 @@ export function buildReadyMadeRevisionRequestedEmailPayload(
     html,
     text,
   };
-}
-
-/**
- * @deprecated Callers should use enqueueBookingConfirmationEmail from
- * email-outbox.service.ts so failed sends are retried automatically.
- * This function is retained for backward compatibility and direct use in
- * contexts where the outbox is not appropriate (e.g. tests).
- */
-export async function sendBookingConfirmationEmail(params: BookingConfirmationParams): Promise<void> {
-  const client = getClient();
-  if (!client) {
-    console.log(
-      "[email] RESEND_API_KEY not set — skipping booking confirmation email for booking",
-      params.bookingId
-    );
-    return;
-  }
-
-  const { subject, html, text } = buildBookingConfirmationEmailPayload(params);
-
-  try {
-    await client.emails.send({
-      from: getFromAddress(),
-      to: params.toEmail,
-      subject,
-      text,
-      html,
-    });
-    console.log(
-      `[email] Booking confirmation sent to ${params.toEmail} for booking ${params.bookingId} (code: ${params.confirmationCode})`
-    );
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("[email] sendBookingConfirmationEmail threw:", {
-      to: params.toEmail,
-      bookingId: params.bookingId,
-      error: message,
-    });
-  }
 }
 
 export interface BookingAlertParams {
@@ -996,9 +987,13 @@ export async function sendBookingDeclineEmail(
     subject,
     html,
     text,
+    emailType: "booking_decline",
+    replyTo: null,
   });
 
-  if (!result.ok) {
+  if (result.suppressed) {
+    console.warn(`[email] sendBookingDeclineEmail not sent (${result.suppressed})`);
+  } else if (!result.ok) {
     console.warn(
       `[email] sendBookingDeclineEmail failed for ${params.toEmail}:`,
       result.error
@@ -1189,8 +1184,12 @@ export async function sendLateSuccessRefundEmail(params: LateSuccessRefundEmailP
     subject: "Your payment was refunded — nothing was booked",
     html,
     text,
+    emailType: "late_success_refund",
+    replyTo: null,
   });
-  if (!result.ok) {
+  if (result.suppressed) {
+    console.warn(`[email] sendLateSuccessRefundEmail not sent (${result.suppressed})`);
+  } else if (!result.ok) {
     console.warn(`[email] sendLateSuccessRefundEmail failed for ${params.toEmail}:`, result.error);
   } else {
     console.log(`[email] late-success refund email sent to ${params.toEmail}`);
@@ -1244,8 +1243,17 @@ export async function sendExpiredClaimEmail(params: ExpiredClaimEmailParams): Pr
     ``,
     url,
   ].join("\n");
-  const result = await sendEmail({ to: params.toEmail, subject: "Your booking wasn't completed", html, text });
-  if (!result.ok) {
+  const result = await sendEmail({
+    to: params.toEmail,
+    subject: "Your booking wasn't completed",
+    html,
+    text,
+    emailType: "expired_claim",
+    replyTo: null,
+  });
+  if (result.suppressed) {
+    console.warn(`[email] sendExpiredClaimEmail not sent (${result.suppressed})`);
+  } else if (!result.ok) {
     console.warn(`[email] sendExpiredClaimEmail failed for ${params.toEmail}:`, result.error);
   } else {
     console.log(`[email] expired-claim email sent to ${params.toEmail}`);
@@ -1347,11 +1355,10 @@ export function buildDeadEmailDigestSection(dead: DigestDeadEmails | undefined):
   ${more}`;
 }
 
-export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<void> {
-  const client = getClient();
-  if (!client) {
+export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<"sent" | "not_sent"> {
+  if (!process.env.RESEND_API_KEY) {
     console.log("[email] RESEND_API_KEY not set — skipping admin digest email");
-    return;
+    return "not_sent";
   }
 
   const baseUrl = getAppBaseUrl();
@@ -1503,14 +1510,22 @@ export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<v
   const missedCount = (params.missedWebhooks ?? []).length;
   const reconCount = reconciliationMismatches.length;
   const deadCount = params.deadEmails?.total ?? 0;
-  await client.emails.send({
-    from: getFromAddress(),
+  const subject = `[Traveloure Admin] Daily Digest — ${unresolvedNotifications.length} alerts, ${params.expertsWithoutPayout.length} payout gaps${missedCount > 0 ? `, ${missedCount} missed webhooks` : ""}${reconCount > 0 ? `, ${reconCount} recon mismatches` : ""}${deadCount > 0 ? `, ${deadCount} undelivered emails` : ""}`;
+  const result = await sendEmail({
     to: params.toEmail,
-    subject: `[Traveloure Admin] Daily Digest — ${unresolvedNotifications.length} alerts, ${params.expertsWithoutPayout.length} payout gaps${missedCount > 0 ? `, ${missedCount} missed webhooks` : ""}${reconCount > 0 ? `, ${reconCount} recon mismatches` : ""}${deadCount > 0 ? `, ${deadCount} undelivered emails` : ""}`,
+    subject,
     html,
+    emailType: "admin_digest_24h",
+    replyTo: null,
   });
+  if (result.suppressed) {
+    console.warn(`[email] admin digest not sent (${result.suppressed})`);
+    return "not_sent";
+  }
+  if (!result.ok) throw new Error(result.error ?? "Admin digest was not accepted");
 
   console.log(`[email] Admin digest sent to ${params.toEmail}`);
+  return "sent";
 }
 
 // ─── Welcome email ───────────────────────────────────────────────────────────
@@ -1635,6 +1650,7 @@ export function buildWelcomeEmailPayload(params: WelcomeEmailParams): SendEmailP
     subject: `Welcome to Traveloure — let's plan your next adventure`,
     html,
     text,
+    emailType: "signup_welcome",
   };
 }
 
@@ -1725,8 +1741,7 @@ interface VerificationDecisionParams {
  * background/category verification review (verified or rejected). Never throws.
  */
 export async function sendVerificationDecisionEmail(params: VerificationDecisionParams): Promise<void> {
-  const client = getClient();
-  if (!client) {
+  if (!process.env.RESEND_API_KEY) {
     console.log("[email] RESEND_API_KEY not set — skipping verification-decision email for", params.toEmail);
     return;
   }
@@ -1776,18 +1791,23 @@ export async function sendVerificationDecisionEmail(params: VerificationDecision
     `Open provider settings: ${settingsUrl}`,
   ].filter((l) => l !== "").join("\n");
 
-  try {
-    await client.emails.send({
-      from: getFromAddress(),
-      to: params.toEmail,
-      subject: approved ? "Your Traveloure verification is approved" : "Your Traveloure verification review",
-      html,
-      text,
-    });
-    console.log(`[email] Verification-decision (${params.decision}) email sent to ${params.toEmail}`);
-  } catch (err) {
-    console.error("[email] Verification-decision email failed (non-fatal):", err);
+  const result = await sendEmail({
+    to: params.toEmail,
+    subject: approved ? "Your Traveloure verification is approved" : "Your Traveloure verification review",
+    html,
+    text,
+    emailType: "verification_decision",
+    replyTo: null,
+  });
+  if (result.suppressed) {
+    console.warn(`[email] verification-decision email not sent (${result.suppressed})`);
+    return;
   }
+  if (!result.ok) {
+    console.error("[email] Verification-decision email failed (non-fatal):", result.error);
+    return;
+  }
+  console.log(`[email] Verification-decision (${params.decision}) email sent to ${params.toEmail}`);
 }
 
 // ─── Expert application rejection email ───────────────────────────────────────
@@ -2201,8 +2221,7 @@ async function sendPlanDeliveredEmailAction(params: PlanDeliveredEmailParams): P
 
   console.log(`[email] sendPlanDeliveredEmail reached — tripId=${params.tripId} subject="${subject}" link=${tripUrl}`);
 
-  const client = getClient();
-  if (!client) {
+  if (!process.env.RESEND_API_KEY) {
     console.log("[email] RESEND_API_KEY not set — skipping plan-delivered email for", params.toEmail);
     return;
   }
@@ -2237,12 +2256,18 @@ async function sendPlanDeliveredEmailAction(params: PlanDeliveredEmailParams): P
     `View your itinerary: ${tripUrl}`,
   ].join("\n");
 
-  try {
-    await client.emails.send({ from: getFromAddress(), to: params.toEmail, subject, html, text });
-    console.log(`[email] Plan-delivered email sent to ${params.toEmail} for trip ${params.tripId}`);
-  } catch (err) {
-    console.error("[email] Plan-delivered email failed (non-fatal):", err);
+  const result = await sendEmail({
+    to: params.toEmail, subject, html, text, emailType: "plan_delivered", replyTo: null,
+  });
+  if (result.suppressed) {
+    console.warn(`[email] plan-delivered email not sent (${result.suppressed})`);
+    return;
   }
+  if (!result.ok) {
+    console.error("[email] Plan-delivered email failed (non-fatal):", result.error);
+    return;
+  }
+  console.log(`[email] Plan-delivered email sent to ${params.toEmail} for trip ${params.tripId}`);
 }
 
 interface PlanApprovedEmailParams {
@@ -2273,8 +2298,7 @@ async function sendPlanApprovedEmailAction(params: PlanApprovedEmailParams): Pro
 
   console.log(`[email] sendPlanApprovedEmail reached — tripId=${params.tripId} subject="${subject}" link=${workspaceUrl}`);
 
-  const client = getClient();
-  if (!client) {
+  if (!process.env.RESEND_API_KEY) {
     console.log("[email] RESEND_API_KEY not set — skipping plan-approved email for", params.toEmail);
     return;
   }
@@ -2309,12 +2333,18 @@ async function sendPlanApprovedEmailAction(params: PlanApprovedEmailParams): Pro
     `Open workspace: ${workspaceUrl}`,
   ].join("\n");
 
-  try {
-    await client.emails.send({ from: getFromAddress(), to: params.toEmail, subject, html, text });
-    console.log(`[email] Plan-approved email sent to ${params.toEmail} for trip ${params.tripId}`);
-  } catch (err) {
-    console.error("[email] Plan-approved email failed (non-fatal):", err);
+  const result = await sendEmail({
+    to: params.toEmail, subject, html, text, emailType: "plan_approved", replyTo: null,
+  });
+  if (result.suppressed) {
+    console.warn(`[email] plan-approved email not sent (${result.suppressed})`);
+    return;
   }
+  if (!result.ok) {
+    console.error("[email] Plan-approved email failed (non-fatal):", result.error);
+    return;
+  }
+  console.log(`[email] Plan-approved email sent to ${params.toEmail} for trip ${params.tripId}`);
 }
 
 interface PlanChangesRequestedEmailParams {
@@ -2346,8 +2376,7 @@ async function sendPlanChangesRequestedEmailAction(params: PlanChangesRequestedE
 
   console.log(`[email] sendPlanChangesRequestedEmail reached — tripId=${params.tripId} subject="${subject}" link=${workspaceUrl}`);
 
-  const client = getClient();
-  if (!client) {
+  if (!process.env.RESEND_API_KEY) {
     console.log("[email] RESEND_API_KEY not set — skipping plan-changes-requested email for", params.toEmail);
     return;
   }
@@ -2387,12 +2416,18 @@ async function sendPlanChangesRequestedEmailAction(params: PlanChangesRequestedE
     `Open workspace: ${workspaceUrl}`,
   ].filter((l) => l !== "").join("\n");
 
-  try {
-    await client.emails.send({ from: getFromAddress(), to: params.toEmail, subject, html, text });
-    console.log(`[email] Plan-changes-requested email sent to ${params.toEmail} for trip ${params.tripId}`);
-  } catch (err) {
-    console.error("[email] Plan-changes-requested email failed (non-fatal):", err);
+  const result = await sendEmail({
+    to: params.toEmail, subject, html, text, emailType: "plan_changes_requested", replyTo: null,
+  });
+  if (result.suppressed) {
+    console.warn(`[email] plan-changes-requested email not sent (${result.suppressed})`);
+    return;
   }
+  if (!result.ok) {
+    console.error("[email] Plan-changes-requested email failed (non-fatal):", result.error);
+    return;
+  }
+  console.log(`[email] Plan-changes-requested email sent to ${params.toEmail} for trip ${params.tripId}`);
 }
 
 interface NewSuggestionEmailParams {
@@ -2426,8 +2461,7 @@ async function sendNewSuggestionEmailAction(params: NewSuggestionEmailParams): P
 
   console.log(`[email] sendNewSuggestionEmail reached — tripId=${params.tripId} subject="${subject}" link=${tripUrl}`);
 
-  const client = getClient();
-  if (!client) {
+  if (!process.env.RESEND_API_KEY) {
     console.log("[email] RESEND_API_KEY not set — skipping new-suggestion email for", params.toEmail);
     return;
   }
@@ -2462,10 +2496,16 @@ async function sendNewSuggestionEmailAction(params: NewSuggestionEmailParams): P
     `View it: ${tripUrl}`,
   ].join("\n");
 
-  try {
-    await client.emails.send({ from: getFromAddress(), to: params.toEmail, subject, html, text });
-    console.log(`[email] New-suggestion email sent to ${params.toEmail} for trip ${params.tripId}`);
-  } catch (err) {
-    console.error("[email] New-suggestion email failed (non-fatal):", err);
+  const result = await sendEmail({
+    to: params.toEmail, subject, html, text, emailType: "new_suggestion", replyTo: null,
+  });
+  if (result.suppressed) {
+    console.warn(`[email] new-suggestion email not sent (${result.suppressed})`);
+    return;
   }
+  if (!result.ok) {
+    console.error("[email] New-suggestion email failed (non-fatal):", result.error);
+    return;
+  }
+  console.log(`[email] New-suggestion email sent to ${params.toEmail} for trip ${params.tripId}`);
 }

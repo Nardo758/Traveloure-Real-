@@ -184,7 +184,7 @@ export const _outboxTestHooks: {
 
 // ── Public API ─────────────────────────────────────────────────────────────────
 
-export interface EnqueueEmailParams extends SendEmailParams {
+export interface EnqueueEmailParams extends Omit<SendEmailParams, "emailType"> {
   /** Caller-supplied category for admin visibility (e.g. 'booking_confirmation'). */
   emailType?: string;
   /** Arbitrary key→value context stored on the row (e.g. { bookingId }). */
@@ -267,10 +267,15 @@ async function enqueueEmailImpl(params: EnqueueEmailParams): Promise<number | nu
 
   if (deliver) {
     const metadata = readMetadata(values.metadata);
-    await attemptDelivery(outboxId, { ...params, authCritical: params.authCritical || metadata.authCritical === true }, {
+    const emailType = values.emailType ?? "generic";
+    await attemptDelivery(outboxId, {
+      ...params,
+      emailType,
+      authCritical: params.authCritical || metadata.authCritical === true,
+    }, {
       attemptCount: 0,
       maxAttempts: 6,
-      emailType: values.emailType,
+      emailType,
       metadata,
     });
   }
@@ -402,6 +407,7 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
       ...(row.reply_to  ? { replyTo: row.reply_to } : {}),
       generationNotice: row.email_type === "itinerary_ready" || row.email_type === "itinerary_failed",
       authCritical: isAuthCritical(row.email_type, metadata),
+      emailType: row.email_type,
     };
     await attemptDelivery(row.id, params, {
       attemptCount: row.attempt_count,
@@ -453,6 +459,7 @@ export async function deliverQueuedEmail(outboxId: number): Promise<void> {
       to: row.to_email, subject: row.subject, html: row.html,
       generationNotice: row.email_type === "itinerary_ready" || row.email_type === "itinerary_failed",
       authCritical: isAuthCritical(row.email_type, metadata),
+      emailType: row.email_type,
       ...(row.text_body ? { text: row.text_body } : {}),
       ...(row.reply_to ? { replyTo: row.reply_to } : {}),
     }, { attemptCount: row.attempt_count, maxAttempts: row.max_attempts, emailType: row.email_type, metadata });
@@ -623,6 +630,7 @@ async function attemptDelivery(
         params = { ...params, idempotencyKey: `itinerary-outbox-${outboxId}` };
       }
     }
+    params = { ...params, emailType: current.emailType ?? params.emailType ?? "" };
     result = await sendThroughNoSendGate(params);
   } catch (err: unknown) {
     // sendEmail is documented to never throw, but be defensive.
@@ -632,6 +640,14 @@ async function attemptDelivery(
 
   if (outboxId === null) return; // no row to update
 
+  if (result.suppressed === "template_not_allowed") {
+    await settleWithoutAttempt(outboxId, "held", "EMAIL_TEMPLATE_ALLOWLIST", null);
+    logger.warn(
+      { outboxId, emailType: current.emailType ?? null, reason: "EMAIL_TEMPLATE_ALLOWLIST" },
+      "[email-outbox] send refused; EMAIL_TEMPLATE_ALLOWLIST",
+    );
+    return;
+  }
   if (result.suppressed === "sends_disabled") {
     await settleWithoutAttempt(outboxId, "held", result.error ?? "EMAIL_SENDS_ENABLED is not true", null);
     logger.warn(

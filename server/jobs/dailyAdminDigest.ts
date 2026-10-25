@@ -192,9 +192,13 @@ export async function runDailyAdminDigest() {
       subject: `Traveloure Daily Digest — ${restrictedExperts.length > 0 ? `🚨 ${restrictedExperts.length} restricted, ` : ""}${payoutGap.length} payout gap, ${unreadNotifs.length} unread leads`,
       html: htmlBody,
       text: textBody,
+      emailType: "admin_daily_digest",
+      replyTo: null,
     });
 
-    if (!result.ok) {
+    if (result.suppressed) {
+      console.warn(`[DIGEST] not sent (${result.suppressed})`);
+    } else if (!result.ok) {
       console.error("[DIGEST] Send failed:", result.error);
     } else {
       console.log(

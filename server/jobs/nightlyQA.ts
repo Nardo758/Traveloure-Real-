@@ -15,7 +15,7 @@
 import { db } from "../db";
 import { qaRunSnapshots, users } from "@shared/schema";
 import { eq, desc, ne } from "drizzle-orm";
-import { sendEmail } from "../services/email.service";
+import { sendEmail, type SendEmailResult } from "../services/email.service";
 import { runQAVerify, type QAResults } from "../services/qa-verify.service";
 
 export interface NightlyQAResult {
@@ -177,6 +177,48 @@ function buildEmailHtml(params: {
   return { html, text };
 }
 
+/** The nightly report's only send. Suppressed results are not failures and are not retried here. */
+export async function deliverNightlyQaEmails(input: {
+  recipients: string[];
+  subject: string;
+  html: string;
+  text: string;
+}): Promise<PromiseSettledResult<SendEmailResult>[]> {
+  const sendResults = await Promise.allSettled(
+    input.recipients.map((to) => sendEmail({
+      to,
+      subject: input.subject,
+      html: input.html,
+      text: input.text,
+      emailType: "nightly_qa",
+      replyTo: null,
+    })),
+  );
+  let sent = 0;
+  let failed = 0;
+  let suppressed = 0;
+  for (const result of sendResults) {
+    if (result.status === "rejected") {
+      failed += 1;
+      continue;
+    }
+    if (result.value.suppressed) {
+      suppressed += 1;
+      continue;
+    }
+    if (result.value.ok) sent += 1;
+    else failed += 1;
+  }
+  console.log(`[NightlyQA] Email sent to ${sent}/${input.recipients.length} admin(s)${failed > 0 ? ` (${failed} failed)` : ""}`);
+  if (suppressed > 0) console.warn(`[NightlyQA] ${suppressed} email(s) not sent (suppressed)`);
+  sendResults.forEach((result, i) => {
+    if (result.status === "rejected") console.error(`[NightlyQA] Email to ${input.recipients[i]} rejected:`, result.reason);
+    else if (result.value.suppressed) console.warn(`[NightlyQA] email not sent (${result.value.suppressed})`);
+    else if (!result.value.ok) console.error(`[NightlyQA] Email to ${input.recipients[i]} failed:`, result.value.error);
+  });
+  return sendResults;
+}
+
 export async function runNightlyQA(triggeredBy: "scheduled" | "manual" = "scheduled"): Promise<NightlyQAResult> {
   const ranAt = new Date().toISOString();
   console.log(`[NightlyQA] Starting run (triggered_by=${triggeredBy})`);
@@ -255,17 +297,7 @@ export async function runNightlyQA(triggeredBy: "scheduled" | "manual" = "schedu
       const subject = `Traveloure QA — ${statusLabel} (${summary.passCount}/${summary.totalCount})${diffLabel}`;
 
       // Send to each recipient (Resend supports array but keep per-recipient for audit clarity)
-      const sendResults = await Promise.allSettled(
-        recipients.map(to => sendEmail({ to, subject, html, text }))
-      );
-
-      const sent = sendResults.filter(r => r.status === "fulfilled" && (r as any).value?.ok).length;
-      const failed = sendResults.length - sent;
-      console.log(`[NightlyQA] Email sent to ${sent}/${recipients.length} admin(s)${failed > 0 ? ` (${failed} failed)` : ""}`);
-      sendResults.forEach((r, i) => {
-        if (r.status === "rejected") console.error(`[NightlyQA] Email to ${recipients[i]} rejected:`, r.reason);
-        else if (!(r as any).value?.ok) console.error(`[NightlyQA] Email to ${recipients[i]} failed:`, (r as any).value?.error);
-      });
+      await deliverNightlyQaEmails({ recipients, subject, html, text });
     }
 
     return {

@@ -229,7 +229,7 @@ class AdminDigestSchedulerService {
       }
 
       try {
-        await sendAdminDigestEmail({
+        const delivery = await sendAdminDigestEmail({
           toEmail: adminEmail,
           unresolvedNotifications,
           expertsWithoutPayout,
@@ -237,6 +237,10 @@ class AdminDigestSchedulerService {
           reconciliationMismatches,
           deadEmails,
         });
+        if (delivery !== "sent") {
+          console.warn("[AdminDigest] digest not sent");
+          return;
+        }
       } catch (sendErr) {
         await releaseAdminDigestClaim(dateKey).catch((releaseErr) =>
           console.error("[AdminDigest] Failed to release digest claim:", releaseErr),
