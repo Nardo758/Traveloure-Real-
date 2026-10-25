@@ -9,12 +9,22 @@
 import { itineraryItemIsMoneyCommitted, ITEM_BOOKED_DELETE_ERROR } from "@shared/itinerary-item-money";
 import { parseApiRefusal } from "./api-refusal";
 
-/** Every new string for the undo, in ONE place. Held for Leon's wording — placeholders only. */
+/** Every string for the undo, in ONE place. Wording approved by Leon, Oct 25, 2026 (relayed on #1689). */
 export const ADD_UNDO_STRINGS = {
-  undoLabel: "TODO(Leon): undo label",
-  undone: "TODO(Leon): undo confirmation",
-  undoFailed: "TODO(Leon): undo failure",
-  itemStays: "TODO(Leon): item stays (booked)",
+  /** The toast button and its altText. */
+  undoLabel: "Undo",
+  undone: {
+    title: "Removed from your plan",
+    description: "That stop is out again. Your plan is back to how it was.",
+  },
+  undoFailed: {
+    title: "We couldn't remove that stop",
+    description: "It's still in your plan. We've refreshed your plan so you can see where things stand.",
+  },
+  itemStays: {
+    title: "That stop is already booked",
+    description: "It can't be removed here, so it stays in your plan.",
+  },
 } as const;
 
 /** `POST /api/itinerary-comparisons/:id/adopt-stop` (server/routes/plancard.routes.ts). */
@@ -54,8 +64,8 @@ export function undoOutcomeFromError(err: unknown): UndoOutcome {
   return parseApiRefusal(err).code === ITEM_BOOKED_DELETE_ERROR.code ? "item_stays" : "failed";
 }
 
-/** The toast title each outcome reads. */
-export function undoOutcomeTitle(outcome: UndoOutcome): string {
+/** The toast (title and description) each outcome reads. */
+export function undoOutcomeToast(outcome: UndoOutcome): { title: string; description: string } {
   if (outcome === "undone") return ADD_UNDO_STRINGS.undone;
   if (outcome === "item_stays") return ADD_UNDO_STRINGS.itemStays;
   return ADD_UNDO_STRINGS.undoFailed;

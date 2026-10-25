@@ -87,7 +87,7 @@ import {
   ADD_UNDO_STRINGS,
   undoOutcomeFromError,
   undoOutcomeFromStatus,
-  undoOutcomeTitle,
+  undoOutcomeToast,
   undoTargetForAdopt,
   type AdoptStopResponse,
 } from "@/lib/comparison-add-undo";
@@ -979,8 +979,8 @@ export default function ItineraryComparisonPage() {
       const res = await apiRequest("DELETE", `/api/trips/${tripId}/itinerary-items/${itemId}`);
       return undoOutcomeFromStatus(res.status);
     },
-    onSuccess: (outcome) => toast({ title: undoOutcomeTitle(outcome) }),
-    onError: (err) => toast({ title: undoOutcomeTitle(undoOutcomeFromError(err)) }),
+    onSuccess: (outcome) => toast({ ...undoOutcomeToast(outcome) }),
+    onError: (err) => toast({ ...undoOutcomeToast(undoOutcomeFromError(err)) }),
     onSettled: (_r, _e, vars) => {
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${vars.tripId}/plancard`] });
     },

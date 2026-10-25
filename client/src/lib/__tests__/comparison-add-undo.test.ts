@@ -8,7 +8,7 @@ import {
   ADD_UNDO_STRINGS,
   undoOutcomeFromError,
   undoOutcomeFromStatus,
-  undoOutcomeTitle,
+  undoOutcomeToast,
   undoTargetForAdopt,
   type AdoptStopResponse,
 } from "../comparison-add-undo";
@@ -57,14 +57,14 @@ describe("row 195: single add with undo", () => {
   it("AU4: a 409 item_booked keeps the item; a 202 or any other error removes nothing and says so neutrally", () => {
     const booked = new Error(`409: ${JSON.stringify({ code: "item_booked", message: "anything" })}`);
     assert.equal(undoOutcomeFromError(booked), "item_stays");
-    assert.equal(undoOutcomeTitle("item_stays"), ADD_UNDO_STRINGS.itemStays);
+    assert.deepEqual(undoOutcomeToast("item_stays"), ADD_UNDO_STRINGS.itemStays);
     // Matched on the code, never the prose.
     assert.equal(undoOutcomeFromError(new Error(`409: ${JSON.stringify({ message: "This item is booked." })}`)), "failed");
     assert.equal(undoOutcomeFromError(new Error("500: Internal Server Error")), "failed");
     assert.equal(undoOutcomeFromStatus(202), "failed");
     assert.equal(undoOutcomeFromStatus(200), "undone");
-    assert.equal(undoOutcomeTitle("failed"), ADD_UNDO_STRINGS.undoFailed);
-    assert.equal(undoOutcomeTitle("undone"), ADD_UNDO_STRINGS.undone);
+    assert.deepEqual(undoOutcomeToast("failed"), ADD_UNDO_STRINGS.undoFailed);
+    assert.deepEqual(undoOutcomeToast("undone"), ADD_UNDO_STRINGS.undone);
   });
 
   it("AU5: no undo is wired to apply-version, version picks or any batch add", () => {
@@ -76,11 +76,27 @@ describe("row 195: single add with undo", () => {
     assert.doesNotMatch(PAGE, /adopt-stops/);
   });
 
-  it("AU6: every new string is a held placeholder in ONE constant, with no banned words", () => {
-    for (const v of Object.values(ADD_UNDO_STRINGS)) {
-      assert.match(v, /^TODO\(Leon\): /);
+  it("AU6: every string is Leon's approved text in ONE constant, with no banned words", () => {
+    assert.deepEqual(ADD_UNDO_STRINGS, {
+      undoLabel: "Undo",
+      undone: { title: "Removed from your plan", description: "That stop is out again. Your plan is back to how it was." },
+      undoFailed: {
+        title: "We couldn't remove that stop",
+        description: "It's still in your plan. We've refreshed your plan so you can see where things stand.",
+      },
+      itemStays: { title: "That stop is already booked", description: "It can't be removed here, so it stays in your plan." },
+    });
+    const all = [
+      ADD_UNDO_STRINGS.undoLabel,
+      ...[ADD_UNDO_STRINGS.undone, ADD_UNDO_STRINGS.undoFailed, ADD_UNDO_STRINGS.itemStays].flatMap((t) => [t.title, t.description]),
+    ];
+    for (const v of all) {
+      assert.doesNotMatch(v, /TODO\(Leon\)/);
       assert.doesNotMatch(v, /trending|pulse|crowd|destination intelligence/i);
     }
+    // The page reads the toasts from the constant; the existing add toasts are unchanged.
+    assert.match(PAGE, /onSuccess: \(outcome\) => toast\(\{ \.\.\.undoOutcomeToast\(outcome\) \}\)/);
+    assert.match(PAGE, /title: "Already in your plan", description: "That stop is already on your plan\."/);
     assert.doesNotMatch(PAGE, /travelpulse|pulse|crowd|destination intel/i);
   });
 });
