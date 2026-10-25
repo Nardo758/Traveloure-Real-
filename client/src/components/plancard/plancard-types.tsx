@@ -581,6 +581,8 @@ export interface PlanCardData {
   lastComparisonId?: string;
   /** Step 6: the frozen final's card meta — per-day source run/version, "built from", stored photos. */
   finalCard?: import("@shared/trip-card-final").FinalCardMeta;
+  /** Row 185 J6 (#1701): the frozen airport leg, owner-only on the final card read; absent otherwise. */
+  finalAirportLeg?: import("@shared/trip-card-final").FinalAirportLeg;
   /**
    * Trip-Canon Lane 1 W4/H2 — EVERY real booking on this trip, including ones no plan item points at
    * (see `TripPlanBooking` / the plancard route's `bookings` key). Used by W7's "Purchases" section to
