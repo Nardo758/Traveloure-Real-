@@ -266,7 +266,6 @@ export class VendorManagementService {
           text: body,
           html: `<div style="white-space:pre-wrap">${escapedBody}</div>`,
           emailType: "vendor_bulk_email",
-          replyTo: null,
         };
 
         // Add calendar invite if requested

@@ -3423,6 +3423,8 @@ router.patch("/api/admin/users/:id/verification", isAuthenticated, async (req, r
               firstName: target.firstName ?? null,
               decision,
               reason: reason ?? null,
+              userId: req.params.id,
+              priorStatus: target.priorStatus ?? null,
             }).catch((e: any) => console.error("[email] verification-decision send error:", e?.message));
           } catch (mailErr: any) {
             console.error("[admin verification] email send error (non-fatal):", mailErr.message);
@@ -7304,6 +7306,22 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
 
   // === Admin Test Email ===
 
+  function adminTestEmailRefusal(suppressed: string): { reason: string; error: string } {
+    if (suppressed === "sends_disabled") {
+      return { reason: "sends_flag", error: "Refused by the sends flag (EMAIL_SENDS_ENABLED is not true)" };
+    }
+    if (suppressed === "template_not_allowed") {
+      return { reason: "allowlist", error: "Refused by the template allowlist (EMAIL_TEMPLATE_ALLOWLIST)" };
+    }
+    if (suppressed === "kill_switch") {
+      return { reason: "kill_switch", error: "Refused by the notification kill switch (email_notifications_enabled is off)" };
+    }
+    if (suppressed === "development_gate") {
+      return { reason: "development_gate", error: "Refused by the development no-send gate" };
+    }
+    return { reason: suppressed, error: `Refused before send (${suppressed})` };
+  }
+
   router.post("/api/admin/system/test-email", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req);
@@ -7393,7 +7411,7 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
               subject: String(payload.subject ?? ""),
               html: String(payload.html ?? ""),
               text: typeof payload.text === "string" ? payload.text : undefined,
-              replyTo: typeof payload.replyTo === "string" ? payload.replyTo : null,
+              replyTo: typeof payload.replyTo === "string" && payload.replyTo.length > 0 ? payload.replyTo : undefined,
               emailType: "admin_test_email",
             });
             if (result.suppressed) return { data: null, error: null, suppressed: result.suppressed };
@@ -7430,8 +7448,9 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
       const { data: emailData, error: emailError, suppressed } = sendResult;
 
       if (suppressed) {
-        console.warn(`[admin/test-email] not sent (${suppressed})`);
-        return res.json({ ok: false, suppressed, to: toEmail });
+        const refusal = adminTestEmailRefusal(suppressed);
+        console.warn(`[admin/test-email] not sent (${suppressed}) email_type=admin_test_email`);
+        return res.json({ ok: false, suppressed, reason: refusal.reason, error: refusal.error, to: toEmail });
       }
 
       if (emailError) {

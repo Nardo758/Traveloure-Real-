@@ -193,7 +193,6 @@ export async function runDailyAdminDigest() {
       html: htmlBody,
       text: textBody,
       emailType: "admin_daily_digest",
-      replyTo: null,
     });
 
     if (result.suppressed) {

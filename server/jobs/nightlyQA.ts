@@ -191,7 +191,6 @@ export async function deliverNightlyQaEmails(input: {
       html: input.html,
       text: input.text,
       emailType: "nightly_qa",
-      replyTo: null,
     })),
   );
   let sent = 0;

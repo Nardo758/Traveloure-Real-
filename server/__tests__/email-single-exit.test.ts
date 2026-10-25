@@ -38,6 +38,8 @@ const {
 const emailTypes = await import("../services/email.service.js");
 type SendEmailParams = emailTypes.SendEmailParams;
 const { _outboxTestHooks, deliverQueuedEmail, drainOutbox } = await import("../services/email-outbox.service.js");
+const { settleAdminDigestDelivery } = await import("../services/admin-digest-scheduler.service.js");
+const { claimAdminDigestSend, releaseAdminDigestClaim } = await import("../services/admin-digest-claim.js");
 const { sendWaitlistOpenEmail } = await import("../services/waitlist-open-email.js");
 const { VendorManagementService } = await import("../services/vendor-management.service.js");
 const { runDailyAdminDigest } = await import("../jobs/dailyAdminDigest.js");
@@ -77,8 +79,29 @@ const ENV_KEYS = [
 
 type ProviderCall = { payload: Record<string, unknown>; emailType: string };
 
+const OUTBOX_TYPES = [
+  "booking_decline",
+  "verification_decision",
+  "plan_delivered",
+  "plan_approved",
+  "plan_changes_requested",
+  "new_suggestion",
+] as const;
+
+const DIRECT_TYPES = [
+  "late_success_refund",
+  "expired_claim",
+  "waitlist_open",
+  "vendor_bulk_email",
+  "admin_daily_digest",
+  "nightly_qa",
+  "admin_digest_24h",
+] as const;
+
 let origExecute: typeof db.execute;
 let origSelect: typeof db.select;
+let origInsert: typeof db.insert;
+let origTransaction: typeof db.transaction;
 let savedEnv: Record<string, string | undefined>;
 
 function snapshotEnv(): Record<string, string | undefined> {
@@ -173,8 +196,24 @@ function baseMessage(): SendEmailParams {
     subject: "A subject",
     html: "<p>hello</p>",
     emailType: "booking_decline",
-    replyTo: null,
   };
+}
+
+function stubOutboxInsert(): Array<Record<string, unknown>> {
+  const rows: Array<Record<string, unknown>> = [];
+  const insert = () => ({
+    values(value: Record<string, unknown>) {
+      rows.push(value);
+      return { returning: () => Promise.resolve([{ id: rows.length }]) };
+    },
+  });
+  (db as { insert: () => unknown }).insert = insert as unknown as typeof db.insert;
+  (db as { transaction: (fn: (tx: unknown) => Promise<unknown>) => Promise<unknown> }).transaction = async (fn) => fn({
+    execute: (query: unknown) => (db as { execute: (query: unknown) => Promise<unknown> }).execute(query),
+    select: () => makeChain([]),
+    insert,
+  });
+  return rows;
 }
 
 function captureLoggerWarn() {
@@ -311,6 +350,8 @@ function usesRealSendEmail(file: string, source: string): boolean {
 before(() => {
   origExecute = db.execute.bind(db);
   origSelect = db.select.bind(db);
+  origInsert = db.insert.bind(db);
+  origTransaction = db.transaction.bind(db);
   savedEnv = snapshotEnv();
 });
 
@@ -323,6 +364,8 @@ beforeEach(() => {
 afterEach(() => {
   (db as { execute: typeof origExecute }).execute = origExecute;
   (db as { select: typeof origSelect }).select = origSelect;
+  (db as { insert: typeof origInsert }).insert = origInsert;
+  (db as { transaction: typeof origTransaction }).transaction = origTransaction;
   delete _emailProviderTestHooks.send;
   delete _outboxTestHooks.sendEmailFn;
   restoreEnv(savedEnv);
@@ -407,8 +450,26 @@ describe("sendEmail allowlist gate", () => {
     assert.equal(calls.length, 1);
     assert.equal(calls[0].emailType, "booking_decline");
     assert.equal("emailType" in calls[0].payload, false);
-    assert.equal(calls[0].payload.replyTo, undefined);
+    assert.equal(calls[0].payload.replyTo, "reply@example.com");
     assert.equal(calls[0].payload.to, TO);
+  });
+
+  it("uses EMAIL_REPLY_TO when replyTo is omitted and an explicit replyTo wins", async () => {
+    const calls = installProvider();
+    stubExecute();
+    const omitted = await sendEmail({ to: TO, subject: "s", html: "<p>x</p>", emailType: "booking_decline" });
+    const explicit = await sendEmail({
+      to: TO, subject: "s", html: "<p>x</p>", emailType: "booking_decline", replyTo: "desk@example.com",
+    });
+    const blank = await sendEmail({
+      to: TO, subject: "s", html: "<p>x</p>", emailType: "booking_decline", replyTo: "  ",
+    });
+    assert.equal(omitted.ok, true);
+    assert.equal(explicit.ok, true);
+    assert.equal(blank.ok, true);
+    assert.equal(calls[0].payload.replyTo, "reply@example.com");
+    assert.equal(calls[1].payload.replyTo, "desk@example.com");
+    assert.equal(calls[2].payload.replyTo, "reply@example.com");
   });
 
   it("refuses an unlisted type and is case-sensitive", async () => {
@@ -444,7 +505,6 @@ describe("migrated callers pass their email_type", () => {
     }]);
     process.env.ADMIN_EMAIL = "admin-digest@example.com";
 
-    await sendBookingDeclineEmail({ toEmail: TO, serviceName: "Tea" });
     await sendLateSuccessRefundEmail({ toEmail: TO, refundAmount: 12 });
     await sendExpiredClaimEmail({ toEmail: TO, serviceName: "Tea" });
     const waitlist = await sendWaitlistOpenEmail({
@@ -468,19 +528,15 @@ describe("migrated callers pass their email_type", () => {
       unresolvedNotifications: [],
       expertsWithoutPayout: [],
     });
-    assert.equal(digest, "sent");
-    await sendVerificationDecisionEmail({ toEmail: TO, decision: "verified" });
-    await sendPlanDeliveredEmail({ toEmail: TO, tripId: "trip-1" });
-    await sendPlanApprovedEmail({ toEmail: TO, tripId: "trip-1" });
-    await sendPlanChangesRequestedEmail({ toEmail: TO, tripId: "trip-1" });
-    await sendNewSuggestionEmail({ toEmail: TO, tripId: "trip-1", suggestionTitle: "A walk" });
+    assert.equal(digest.outcome, "sent");
 
     const seen = calls.map((call) => call.emailType);
-    for (const type of MIGRATED) {
-      if (type === "admin_test_email") continue;
+    for (const type of DIRECT_TYPES) {
       assert.equal(seen.filter((name) => name === type).length, 1, type);
     }
     assert.equal(calls.every((call) => !("emailType" in call.payload)), true);
+    assert.equal(calls.find((call) => call.emailType === "vendor_bulk_email")?.payload.replyTo, "reply@example.com");
+    assert.equal(calls.find((call) => call.emailType === "admin_digest_24h")?.payload.replyTo, "reply@example.com");
   });
 
   it("the admin test-email route sends admin_test_email through sendEmail", async () => {
@@ -513,12 +569,76 @@ describe("migrated callers pass their email_type", () => {
     assert.equal(calls.length, 1);
     assert.equal(calls[0].emailType, "admin_test_email");
     assert.equal("emailType" in calls[0].payload, false);
+    assert.equal(calls[0].payload.replyTo, "reply@example.com");
+  });
+
+  async function postTestEmail(env: { sends?: boolean; allowlist?: string; killSwitch?: boolean }) {
+    const { default: adminRouter } = await import("../routes/admin.routes.js");
+    const layer = (adminRouter as unknown as { stack: Array<{ route?: { path?: string; methods?: { post?: boolean }; stack: Array<{ handle: Function }> } }> }).stack.find(
+      (entry) => entry.route?.path === "/api/admin/system/test-email" && entry.route?.methods?.post,
+    );
+    const handle = layer!.route!.stack[layer!.route!.stack.length - 1].handle;
+    if (env.sends === false) delete process.env.EMAIL_SENDS_ENABLED;
+    else process.env.EMAIL_SENDS_ENABLED = "true";
+    if (env.allowlist === undefined) delete process.env.EMAIL_TEMPLATE_ALLOWLIST;
+    else process.env.EMAIL_TEMPLATE_ALLOWLIST = env.allowlist;
+    invalidatePlatformFlagCache();
+    (db as { select: () => unknown }).select = () => makeChain([{
+      id: "admin-1", role: "admin", email: "admin-digest@example.com", firstName: "Admin", lastName: "User",
+    }]);
+    stubExecute(() => (env.killSwitch ? [{ setting_value: "false" }] : []));
+    const calls = installProvider();
+    const captured = { status: 200, body: null as { ok?: boolean; error?: string; reason?: string; suppressed?: string; to?: string } | null };
+    const res = {
+      status(code: number) {
+        captured.status = code;
+        return { json(data: unknown) { captured.body = data as typeof captured.body; } };
+      },
+      json(data: unknown) { captured.body = data as typeof captured.body; },
+    };
+    const logs = spyConsole();
+    try {
+      await handle({ user: { id: "admin-1" }, isAuthenticated: () => true, body: { to: "admin-digest@example.com" }, params: {} }, res, () => {});
+    } finally {
+      logs.restore();
+    }
+    return { captured, calls, logs };
+  }
+
+  it("returns the sends-flag refusal on the test-email response", async () => {
+    const { captured, calls } = await postTestEmail({ sends: false, allowlist: "admin_test_email" });
+    assert.equal(captured.status, 200);
+    assert.equal(captured.body?.ok, false);
+    assert.equal(captured.body?.reason, "sends_flag");
+    assert.match(captured.body?.error ?? "", /sends flag/);
+    assert.equal(calls.length, 0);
+    assert.equal((captured.body?.error ?? "").includes("admin-digest@example.com"), false);
+  });
+
+  it("returns the allowlist refusal on the test-email response", async () => {
+    const { captured, calls } = await postTestEmail({ allowlist: "password_reset" });
+    assert.equal(captured.status, 200);
+    assert.equal(captured.body?.ok, false);
+    assert.equal(captured.body?.suppressed, "template_not_allowed");
+    assert.equal(captured.body?.reason, "allowlist");
+    assert.match(captured.body?.error ?? "", /template allowlist/);
+    assert.equal(calls.length, 0);
+  });
+
+  it("returns the kill-switch refusal on the test-email response", async () => {
+    const { captured, calls } = await postTestEmail({ allowlist: "admin_test_email", killSwitch: true });
+    assert.equal(captured.status, 200);
+    assert.equal(captured.body?.ok, false);
+    assert.equal(captured.body?.reason, "kill_switch");
+    assert.match(captured.body?.error ?? "", /kill switch/);
+    assert.equal(calls.length, 0);
   });
 });
 
 describe("a suppressed result is not a failure", () => {
   it("does not throw and does not log a failure for each caller class", async () => {
     armMail(undefined);
+    stubOutboxInsert();
     stubExecute((text) => (text.includes("marketing_email_sender_name") ? footerRows() : []));
     (db as { select: () => unknown }).select = () => makeChain([{
       firstName: "Ada",
@@ -546,7 +666,8 @@ describe("a suppressed result is not a failure", () => {
         unresolvedNotifications: [],
         expertsWithoutPayout: [],
       });
-      assert.equal(digest, "not_sent");
+      assert.equal(digest.outcome, "not_sent");
+      assert.equal(digest.reason, "template_not_allowed");
       await runDailyAdminDigest();
       await deliverNightlyQaEmails({
         recipients: ["admin-digest@example.com"],
@@ -570,6 +691,96 @@ describe("a suppressed result is not a failure", () => {
       assertNoRecipient(logs.warns.filter((line) => /not sent/.test(line)).join("\n"));
     } finally {
       logs.restore();
+    }
+  });
+});
+
+describe("outbox senders hold an unlisted type and the drain sends a listed one", () => {
+  it("stores each sender's payload, holds it unlisted, and sends that payload once listed", async () => {
+    armMail("password_reset");
+    const calls = installProvider();
+    const inserted = stubOutboxInsert();
+    const captured = stubExecute();
+    await sendBookingDeclineEmail({ toEmail: TO, serviceName: "Tea", bookingId: "book-1" });
+    await sendVerificationDecisionEmail({
+      toEmail: TO, decision: "verified", userId: "provider-1", priorStatus: "pending",
+    });
+    await sendPlanDeliveredEmail({ toEmail: TO, tripId: "trip-1" });
+    await sendPlanApprovedEmail({ toEmail: TO, tripId: "trip-1" });
+    await sendPlanChangesRequestedEmail({ toEmail: TO, tripId: "trip-1", note: "Shorter" });
+    await sendNewSuggestionEmail({ toEmail: TO, tripId: "trip-1", suggestionTitle: "A walk", suggestionId: "sug-1" });
+    assert.equal(calls.length, 0);
+    assert.deepEqual(inserted.map((row) => row.emailType), [...OUTBOX_TYPES]);
+    for (const row of inserted) {
+      assert.equal(typeof row.subject, "string");
+      assert.equal(typeof row.html, "string");
+      assert.ok(String(row.html).length > 0);
+      assert.equal(row.replyTo, undefined);
+    }
+    assert.equal((inserted[0].metadata as { dedupeKey?: string }).dedupeKey, "booking_decline:book-1");
+    assert.match(String((inserted[1].metadata as { dedupeKey?: string }).dedupeKey), /^verification_decision:provider-1:pending:verified:/);
+    assert.equal((inserted[2].metadata as { tripId?: string; dedupeKey?: string }).tripId, "trip-1");
+    assert.equal((inserted[2].metadata as { dedupeKey?: string }).dedupeKey, undefined);
+    assert.equal((inserted[5].metadata as { dedupeKey?: string }).dedupeKey, "new_suggestion:sug-1");
+    assert.equal(captured.filter((text) => text.includes("held")).length >= OUTBOX_TYPES.length, true);
+    assert.equal(captured.some((text) => /attempt_count\s*=/.test(text)), false);
+
+    for (const row of inserted) {
+      const emailType = String(row.emailType);
+      armMail(emailType);
+      const sent = installProvider();
+      stubExecute((text) => {
+        if (text.includes("FOR UPDATE SKIP LOCKED") && text.includes(emailType)) {
+          return [{
+            id: 40,
+            to_email: TO,
+            subject: row.subject,
+            html: row.html,
+            text_body: row.textBody ?? null,
+            from_address: null,
+            reply_to: null,
+            attempt_count: 0,
+            max_attempts: 6,
+            email_type: emailType,
+            metadata: row.metadata ?? {},
+          }];
+        }
+        return [];
+      });
+      const drain = await drainOutbox();
+      assert.equal(drain.drained, 1, emailType);
+      assert.equal(sent.length, 1, emailType);
+      assert.equal(sent[0].emailType, emailType);
+      assert.equal(sent[0].payload.html, row.html);
+      assert.equal(sent[0].payload.subject, row.subject);
+      assert.equal(sent[0].payload.replyTo, "reply@example.com");
+      assert.equal("emailType" in sent[0].payload, false);
+    }
+  });
+});
+
+describe("admin digest claim", () => {
+  it("releases the UTC-day claim when the send is suppressed and logs the reason and type", async () => {
+    const dateKey = "2098-07-04";
+    await releaseAdminDigestClaim(dateKey);
+    assert.equal(await claimAdminDigestSend(dateKey), true);
+    const logs = spyConsole();
+    try {
+      await settleAdminDigestDelivery(dateKey, {
+        outcome: "not_sent",
+        reason: "template_not_allowed",
+        emailType: "admin_digest_24h",
+      });
+      const warned = logs.warns.join("\n");
+      assert.match(warned, /template_not_allowed/);
+      assert.match(warned, /email_type=admin_digest_24h/);
+      assert.equal(warned.includes("@"), false);
+      assert.equal(await claimAdminDigestSend(dateKey), true);
+      const source = readFileSync(path.join(ROOT, "server/services/admin-digest-scheduler.service.ts"), "utf8");
+      assert.match(source, /delivery\.outcome !== "sent"[\s\S]*settleAdminDigestDelivery\(dateKey, delivery\)/);
+    } finally {
+      logs.restore();
+      await releaseAdminDigestClaim(dateKey);
     }
   });
 });
@@ -674,5 +885,13 @@ describe("one provider call", () => {
       for (const line of missingEmailTypeLines(source)) missing.push(`${path.relative(ROOT, file)}:${line}`);
     }
     assert.deepEqual(missing, []);
+
+    const replyNull = "replyTo" + ": null";
+    const replyHits = serverFiles.filter((file) => {
+      if (!file.endsWith(".ts") && !file.endsWith(".tsx")) return false;
+      if (file.includes(`${path.sep}__tests__${path.sep}`) || file.endsWith(".test.ts")) return false;
+      return readFileSync(file, "utf8").includes(replyNull);
+    });
+    assert.deepEqual(replyHits.map((file) => path.relative(ROOT, file)), []);
   });
 });

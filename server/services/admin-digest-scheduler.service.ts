@@ -41,6 +41,18 @@ import {
 
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // every 24 hours
 
+/**
+ * A suppressed 24-hour digest releases the UTC-day claim so listing the type
+ * later the same day can send. The log is the reason and the email type.
+ */
+export async function settleAdminDigestDelivery(
+  dateKey: string,
+  delivery: { outcome: "not_sent"; reason: string; emailType: "admin_digest_24h" },
+): Promise<void> {
+  console.warn(`[AdminDigest] digest not sent (${delivery.reason}) email_type=${delivery.emailType}`);
+  await releaseAdminDigestClaim(dateKey);
+}
+
 class AdminDigestSchedulerService {
   private timer: NodeJS.Timeout | null = null;
 
@@ -237,8 +249,8 @@ class AdminDigestSchedulerService {
           reconciliationMismatches,
           deadEmails,
         });
-        if (delivery !== "sent") {
-          console.warn("[AdminDigest] digest not sent");
+        if (delivery.outcome !== "sent") {
+          await settleAdminDigestDelivery(dateKey, delivery);
           return;
         }
       } catch (sendErr) {

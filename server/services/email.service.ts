@@ -129,8 +129,8 @@ export interface SendEmailParams {
    */
   emailType: string;
   /**
-   * Null means this send has no reply-to (callers that never set one).
-   * Omitted uses EMAIL_REPLY_TO and refuses when that is unset.
+   * An explicit address wins. Omitted, null, or blank uses EMAIL_REPLY_TO.
+   * The send is refused when neither is set.
    */
   replyTo?: string | null;
 }
@@ -234,9 +234,8 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
 
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.EMAIL_FROM_NOREPLY ?? process.env.EMAIL_FROM;
-  const defaultReplyTo = process.env.EMAIL_REPLY_TO;
-  const omitReplyTo = params.replyTo === null;
-  const replyTo = omitReplyTo ? undefined : (params.replyTo ?? defaultReplyTo);
+  const explicitReplyTo = typeof params.replyTo === "string" ? params.replyTo.trim() : "";
+  const replyTo = explicitReplyTo || process.env.EMAIL_REPLY_TO || "";
 
   if (!apiKey) {
     console.error("[email] sendEmail: RESEND_API_KEY is not set");
@@ -246,7 +245,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
     console.error("[email] sendEmail: EMAIL_FROM_NOREPLY is not set");
     return { ok: false, error: "EMAIL_FROM_NOREPLY is not set" };
   }
-  if (!omitReplyTo && !replyTo) {
+  if (!replyTo) {
     console.error("[email] sendEmail: EMAIL_REPLY_TO is not set and no replyTo provided");
     return { ok: false, error: "EMAIL_REPLY_TO is not set and no replyTo provided" };
   }
@@ -258,7 +257,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
       subject: params.subject,
       html: params.html,
       ...(params.text ? { text: params.text } : {}),
-      ...(replyTo ? { replyTo } : {}),
+      replyTo,
       ...(params.attachments?.length ? { attachments: params.attachments } : {}),
     };
     const options = params.idempotencyKey ? { idempotencyKey: params.idempotencyKey } : undefined;
@@ -891,6 +890,8 @@ export interface BookingDeclineEmailParams {
   toEmail: string;
   travelerName?: string | null;
   bookingTrackingNumber?: string | null;
+  /** Booking id. Present callers dedupe one decline notice per booking. */
+  bookingId?: string | null;
   /** Human-readable service/product title for the declined booking. */
   serviceName?: string | null;
   /** Decline reason provided by the expert/provider, or null if none given. */
@@ -902,7 +903,7 @@ export interface BookingDeclineEmailParams {
  * rejects their booking request. The email surfaces the decline reason so the
  * traveler does not have to check the in-app notification.
  *
- * Uses `sendEmail` so it respects the platform email-notifications kill switch.
+ * Enqueued. An unlisted type stays a held outbox row. The drain sends the stored body.
  */
 export async function sendBookingDeclineEmail(
   params: BookingDeclineEmailParams
@@ -982,23 +983,19 @@ export async function sendBookingDeclineEmail(
     ? `Your booking request for ${stripCrLf(params.serviceName)} was declined`
     : "Your booking request was declined";
 
-  const result = await sendEmail({
+  await enqueueTransactionalEmail({
+    emailType: "booking_decline",
     to: params.toEmail,
     subject,
     html,
     text,
-    emailType: "booking_decline",
-    replyTo: null,
+    metadata: {
+      ...(params.bookingId
+        ? { bookingId: params.bookingId, dedupeKey: `booking_decline:${params.bookingId}` }
+        : {}),
+      ...(params.bookingTrackingNumber ? { bookingTrackingNumber: params.bookingTrackingNumber } : {}),
+    },
   });
-
-  if (result.suppressed) {
-    console.warn(`[email] sendBookingDeclineEmail not sent (${result.suppressed})`);
-  } else if (!result.ok) {
-    console.warn(
-      `[email] sendBookingDeclineEmail failed for ${params.toEmail}:`,
-      result.error
-    );
-  }
 }
 
 // ─── Booking Cancellation with Refund ─────────────────────────────────────
@@ -1185,7 +1182,6 @@ export async function sendLateSuccessRefundEmail(params: LateSuccessRefundEmailP
     html,
     text,
     emailType: "late_success_refund",
-    replyTo: null,
   });
   if (result.suppressed) {
     console.warn(`[email] sendLateSuccessRefundEmail not sent (${result.suppressed})`);
@@ -1249,7 +1245,6 @@ export async function sendExpiredClaimEmail(params: ExpiredClaimEmailParams): Pr
     html,
     text,
     emailType: "expired_claim",
-    replyTo: null,
   });
   if (result.suppressed) {
     console.warn(`[email] sendExpiredClaimEmail not sent (${result.suppressed})`);
@@ -1355,10 +1350,14 @@ export function buildDeadEmailDigestSection(dead: DigestDeadEmails | undefined):
   ${more}`;
 }
 
-export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<"sent" | "not_sent"> {
+export type AdminDigestSendResult =
+  | { outcome: "sent" }
+  | { outcome: "not_sent"; reason: string; emailType: "admin_digest_24h" };
+
+export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<AdminDigestSendResult> {
   if (!process.env.RESEND_API_KEY) {
     console.log("[email] RESEND_API_KEY not set — skipping admin digest email");
-    return "not_sent";
+    return { outcome: "not_sent", reason: "RESEND_API_KEY", emailType: "admin_digest_24h" };
   }
 
   const baseUrl = getAppBaseUrl();
@@ -1516,16 +1515,15 @@ export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<"
     subject,
     html,
     emailType: "admin_digest_24h",
-    replyTo: null,
   });
   if (result.suppressed) {
-    console.warn(`[email] admin digest not sent (${result.suppressed})`);
-    return "not_sent";
+    console.warn(`[email] admin digest not sent (${result.suppressed}) email_type=admin_digest_24h`);
+    return { outcome: "not_sent", reason: result.suppressed, emailType: "admin_digest_24h" };
   }
   if (!result.ok) throw new Error(result.error ?? "Admin digest was not accepted");
 
   console.log(`[email] Admin digest sent to ${params.toEmail}`);
-  return "sent";
+  return { outcome: "sent" };
 }
 
 // ─── Welcome email ───────────────────────────────────────────────────────────
@@ -1734,6 +1732,9 @@ interface VerificationDecisionParams {
   decision: "verified" | "rejected";
   /** Optional admin note shown to the provider on a rejection. */
   reason?: string | null;
+  /** Provider user id. With priorStatus, one outbox row per decision change. */
+  userId?: string | null;
+  priorStatus?: string | null;
 }
 
 /**
@@ -1741,11 +1742,6 @@ interface VerificationDecisionParams {
  * background/category verification review (verified or rejected). Never throws.
  */
 export async function sendVerificationDecisionEmail(params: VerificationDecisionParams): Promise<void> {
-  if (!process.env.RESEND_API_KEY) {
-    console.log("[email] RESEND_API_KEY not set — skipping verification-decision email for", params.toEmail);
-    return;
-  }
-
   const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
   const settingsUrl = `${getAppBaseUrl()}/provider/settings`;
   const approved = params.decision === "verified";
@@ -1791,23 +1787,22 @@ export async function sendVerificationDecisionEmail(params: VerificationDecision
     `Open provider settings: ${settingsUrl}`,
   ].filter((l) => l !== "").join("\n");
 
-  const result = await sendEmail({
+  const subject = approved ? "Your Traveloure verification is approved" : "Your Traveloure verification review";
+  const dedupeKey = params.userId
+    ? `verification_decision:${params.userId}:${params.priorStatus ?? ""}:${params.decision}:${applicationNoteKey(params.reason)}`
+    : undefined;
+  await enqueueTransactionalEmail({
+    emailType: "verification_decision",
     to: params.toEmail,
-    subject: approved ? "Your Traveloure verification is approved" : "Your Traveloure verification review",
+    subject,
     html,
     text,
-    emailType: "verification_decision",
-    replyTo: null,
+    metadata: {
+      decision: params.decision,
+      ...(params.userId ? { userId: params.userId } : {}),
+      ...(dedupeKey ? { dedupeKey } : {}),
+    },
   });
-  if (result.suppressed) {
-    console.warn(`[email] verification-decision email not sent (${result.suppressed})`);
-    return;
-  }
-  if (!result.ok) {
-    console.error("[email] Verification-decision email failed (non-fatal):", result.error);
-    return;
-  }
-  console.log(`[email] Verification-decision (${params.decision}) email sent to ${params.toEmail}`);
 }
 
 // ─── Expert application rejection email ───────────────────────────────────────
@@ -2188,10 +2183,8 @@ export async function sendProviderApplicationApprovalEmail(
 // CC-11 fix: PlanApprovalBanner now renders on both surfaces (PlanCard.tsx and SlipView.tsx), so
 // the delivery handshake (Approve / Request changes) is reachable from either deep link.
 //
-// Subject/body/deep-link are computed BEFORE the RESEND_API_KEY check (unlike the earlier
-// functions in this file, which build content only once a client exists) so that the no-key skip
-// log line still carries the rendered subject and link — this is what makes the deep-link content
-// provable in an environment with no key configured (see docs/planning/QA_PUNCH_LIST.md item 14).
+// Subject/body/deep-link are rendered before enqueue and stored on the outbox row. A later
+// drain sends that stored payload. The reached log still names the subject and link.
 
 interface PlanDeliveredEmailParams {
   toEmail: string;
@@ -2220,11 +2213,6 @@ async function sendPlanDeliveredEmailAction(params: PlanDeliveredEmailParams): P
   const subject = "Your itinerary has been delivered";
 
   console.log(`[email] sendPlanDeliveredEmail reached — tripId=${params.tripId} subject="${subject}" link=${tripUrl}`);
-
-  if (!process.env.RESEND_API_KEY) {
-    console.log("[email] RESEND_API_KEY not set — skipping plan-delivered email for", params.toEmail);
-    return;
-  }
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
@@ -2256,18 +2244,14 @@ async function sendPlanDeliveredEmailAction(params: PlanDeliveredEmailParams): P
     `View your itinerary: ${tripUrl}`,
   ].join("\n");
 
-  const result = await sendEmail({
-    to: params.toEmail, subject, html, text, emailType: "plan_delivered", replyTo: null,
+  await enqueueTransactionalEmail({
+    emailType: "plan_delivered",
+    to: params.toEmail,
+    subject,
+    html,
+    text,
+    metadata: { tripId: params.tripId },
   });
-  if (result.suppressed) {
-    console.warn(`[email] plan-delivered email not sent (${result.suppressed})`);
-    return;
-  }
-  if (!result.ok) {
-    console.error("[email] Plan-delivered email failed (non-fatal):", result.error);
-    return;
-  }
-  console.log(`[email] Plan-delivered email sent to ${params.toEmail} for trip ${params.tripId}`);
 }
 
 interface PlanApprovedEmailParams {
@@ -2297,11 +2281,6 @@ async function sendPlanApprovedEmailAction(params: PlanApprovedEmailParams): Pro
   const subject = "Your delivered plan was approved";
 
   console.log(`[email] sendPlanApprovedEmail reached — tripId=${params.tripId} subject="${subject}" link=${workspaceUrl}`);
-
-  if (!process.env.RESEND_API_KEY) {
-    console.log("[email] RESEND_API_KEY not set — skipping plan-approved email for", params.toEmail);
-    return;
-  }
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
@@ -2333,18 +2312,14 @@ async function sendPlanApprovedEmailAction(params: PlanApprovedEmailParams): Pro
     `Open workspace: ${workspaceUrl}`,
   ].join("\n");
 
-  const result = await sendEmail({
-    to: params.toEmail, subject, html, text, emailType: "plan_approved", replyTo: null,
+  await enqueueTransactionalEmail({
+    emailType: "plan_approved",
+    to: params.toEmail,
+    subject,
+    html,
+    text,
+    metadata: { tripId: params.tripId },
   });
-  if (result.suppressed) {
-    console.warn(`[email] plan-approved email not sent (${result.suppressed})`);
-    return;
-  }
-  if (!result.ok) {
-    console.error("[email] Plan-approved email failed (non-fatal):", result.error);
-    return;
-  }
-  console.log(`[email] Plan-approved email sent to ${params.toEmail} for trip ${params.tripId}`);
 }
 
 interface PlanChangesRequestedEmailParams {
@@ -2375,11 +2350,6 @@ async function sendPlanChangesRequestedEmailAction(params: PlanChangesRequestedE
   const note = params.note?.trim() || null;
 
   console.log(`[email] sendPlanChangesRequestedEmail reached — tripId=${params.tripId} subject="${subject}" link=${workspaceUrl}`);
-
-  if (!process.env.RESEND_API_KEY) {
-    console.log("[email] RESEND_API_KEY not set — skipping plan-changes-requested email for", params.toEmail);
-    return;
-  }
 
   const noteBlock = note
     ? `<p style="color:#374151;"><strong>Client note:</strong> ${escHtml(note)}</p>`
@@ -2416,18 +2386,14 @@ async function sendPlanChangesRequestedEmailAction(params: PlanChangesRequestedE
     `Open workspace: ${workspaceUrl}`,
   ].filter((l) => l !== "").join("\n");
 
-  const result = await sendEmail({
-    to: params.toEmail, subject, html, text, emailType: "plan_changes_requested", replyTo: null,
+  await enqueueTransactionalEmail({
+    emailType: "plan_changes_requested",
+    to: params.toEmail,
+    subject,
+    html,
+    text,
+    metadata: { tripId: params.tripId },
   });
-  if (result.suppressed) {
-    console.warn(`[email] plan-changes-requested email not sent (${result.suppressed})`);
-    return;
-  }
-  if (!result.ok) {
-    console.error("[email] Plan-changes-requested email failed (non-fatal):", result.error);
-    return;
-  }
-  console.log(`[email] Plan-changes-requested email sent to ${params.toEmail} for trip ${params.tripId}`);
 }
 
 interface NewSuggestionEmailParams {
@@ -2435,6 +2401,8 @@ interface NewSuggestionEmailParams {
   firstName?: string | null;
   tripId: string;
   suggestionTitle: string;
+  /** Suggestion row id. Present callers dedupe one notice per suggestion. */
+  suggestionId?: string | null;
 }
 
 /**
@@ -2460,11 +2428,6 @@ async function sendNewSuggestionEmailAction(params: NewSuggestionEmailParams): P
   const subject = "New suggestion from your expert";
 
   console.log(`[email] sendNewSuggestionEmail reached — tripId=${params.tripId} subject="${subject}" link=${tripUrl}`);
-
-  if (!process.env.RESEND_API_KEY) {
-    console.log("[email] RESEND_API_KEY not set — skipping new-suggestion email for", params.toEmail);
-    return;
-  }
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
@@ -2496,16 +2459,17 @@ async function sendNewSuggestionEmailAction(params: NewSuggestionEmailParams): P
     `View it: ${tripUrl}`,
   ].join("\n");
 
-  const result = await sendEmail({
-    to: params.toEmail, subject, html, text, emailType: "new_suggestion", replyTo: null,
+  await enqueueTransactionalEmail({
+    emailType: "new_suggestion",
+    to: params.toEmail,
+    subject,
+    html,
+    text,
+    metadata: {
+      tripId: params.tripId,
+      ...(params.suggestionId
+        ? { suggestionId: params.suggestionId, dedupeKey: `new_suggestion:${params.suggestionId}` }
+        : {}),
+    },
   });
-  if (result.suppressed) {
-    console.warn(`[email] new-suggestion email not sent (${result.suppressed})`);
-    return;
-  }
-  if (!result.ok) {
-    console.error("[email] New-suggestion email failed (non-fatal):", result.error);
-    return;
-  }
-  console.log(`[email] New-suggestion email sent to ${params.toEmail} for trip ${params.tripId}`);
 }

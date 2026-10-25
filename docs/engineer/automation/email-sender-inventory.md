@@ -60,7 +60,7 @@ These call `sendEmail` and do not insert `email_outbox`. They leave only when `E
 
 | email_type | function | trigger and how often | recipient | authCritical | drain | test |
 | --- | --- | --- | --- | --- | --- | --- |
-| `booking_decline` | `sendBookingDeclineEmail` | Provider or expert declines a request (`server/routes.ts`). Once per decline. | user | no | no | `server/__tests__/booking-decline-reason.test.ts` covers the decline. `server/__tests__/email-single-exit.test.ts` checks the type. |
+| `booking_decline` | `sendBookingDeclineEmail` | Provider or expert declines a request (`server/routes.ts`). Once per decline. | user | no | yes | `server/__tests__/booking-decline-reason.test.ts` covers the decline. `server/__tests__/email-single-exit.test.ts` checks the held row and the drain. |
 | `late_success_refund` | `sendLateSuccessRefundEmail` | Late-success refund (`server/services/checkout-claim.service.ts`). Once per that refund. | user | no | no | `server/__tests__/email-single-exit.test.ts` |
 | `expired_claim` | `sendExpiredClaimEmail` | Stamped claim released or swept (`server/services/checkout-claim.service.ts`). Once per expired claim. | user | no | no | `server/__tests__/stale-authorized-sweep.db.test.ts`, `server/__tests__/dispute-hardening.db.test.ts` inject a send seam |
 | `waitlist_open` | `sendWaitlistOpenEmail` | Nothing schedules this. The constant `waitlist_open` is not written to the outbox. | user | no | no | `server/services/__tests__/marketing-email-footer.test.ts` |
@@ -68,11 +68,11 @@ These call `sendEmail` and do not insert `email_outbox`. They leave only when `E
 | `admin_daily_digest` | `runDailyAdminDigest` | Admin action (`server/routes/admin.routes.ts`). Not the 24-hour scheduler. One message to `ADMIN_EMAIL` per run. | admin | no | no | `server/__tests__/email-single-exit.test.ts` |
 | `nightly_qa` | `deliverNightlyQaEmails`, called by `runNightlyQA` | About 02:00 UTC from `server/index.ts`, and `POST /api/admin/qa/run-nightly`. One message per admin user email, plus `ADMIN_EMAIL` if set. | admin | no | no | `server/__tests__/email-single-exit.test.ts` |
 | `admin_digest_24h` | `sendAdminDigestEmail` | Scheduler every 24 hours (`server/services/admin-digest-scheduler.service.ts`). Once per UTC date, only when there is something to report and `RESEND_API_KEY` is set. Recipient `ADMIN_EMAIL`. | admin | no | no | `server/__tests__/email-single-exit.test.ts` |
-| `verification_decision` | `sendVerificationDecisionEmail` | Admin verification decision (`server/routes/admin.routes.ts`). Once per decision. | provider | no | no | `server/automations/provider/__tests__/admin-follow-ons.test.ts` pins the call site |
-| `plan_delivered` | `sendPlanDeliveredEmailAction` | Workspace status becomes delivered (`server/routes/booking-actions.ts`). Once per that transition. | user | no | no | `server/__tests__/email-single-exit.test.ts` |
-| `plan_approved` | `sendPlanApprovedEmailAction` | Plan approved (`server/routes/booking-actions.ts`). Once per that transition. | expert | no | no | `server/__tests__/email-single-exit.test.ts` |
-| `plan_changes_requested` | `sendPlanChangesRequestedEmailAction` | Plan changes requested (`server/routes/booking-actions.ts`). Once per that transition. | expert | no | no | `server/__tests__/email-single-exit.test.ts` |
-| `new_suggestion` | `sendNewSuggestionEmailAction` | Post-approval suggestion (`server/routes/booking-actions.ts`). The caller sends only when the plan is already approved. | user | no | no | `server/__tests__/email-single-exit.test.ts` |
+| `verification_decision` | `sendVerificationDecisionEmail` | Admin verification decision (`server/routes/admin.routes.ts`). Once per decision change. | provider | no | yes | `server/automations/provider/__tests__/admin-follow-ons.test.ts` pins the call site. `server/__tests__/email-single-exit.test.ts` checks the held row and the drain. |
+| `plan_delivered` | `sendPlanDeliveredEmailAction` | Workspace status becomes delivered (`server/routes/booking-actions.ts`). Once per that transition. A later delivery is a new row. | user | no | yes | `server/__tests__/email-single-exit.test.ts` |
+| `plan_approved` | `sendPlanApprovedEmailAction` | Plan approved (`server/routes/booking-actions.ts`). Once per that transition. A later approval is a new row. | expert | no | yes | `server/__tests__/email-single-exit.test.ts` |
+| `plan_changes_requested` | `sendPlanChangesRequestedEmailAction` | Plan changes requested (`server/routes/booking-actions.ts`). Once per that transition. A later request is a new row. | expert | no | yes | `server/__tests__/email-single-exit.test.ts` |
+| `new_suggestion` | `sendNewSuggestionEmailAction` | Post-approval suggestion (`server/routes/booking-actions.ts`). The caller sends only when the plan is already approved. One row per suggestion id. | user | no | yes | `server/__tests__/email-single-exit.test.ts` |
 | `admin_test_email` | `POST /api/admin/system/test-email` | Admin presses the test-email control. One message per press. | admin address on the request | no | no | `server/routes/__tests__/admin-test-email.test.ts` uses the route's test hook. `server/__tests__/email-single-exit.test.ts` checks the production path's type. |
 | `manual_send_test` | `scripts/send-test-email.ts` | A person runs the script. One message per run. Outside `server/`. | `TEST_EMAIL` | no | no | none |
 
@@ -88,7 +88,7 @@ The deprecated direct booking-confirmation sender had no caller and is deleted. 
 
 This inventory was not run against production. There is no production count here.
 
-Leon sets the allowlist to real `email_type` values. Candidate list: `EMAIL_TEMPLATE_ALLOWLIST=email_verification,itinerary_ready,booking_confirmation`
+Leon sets the allowlist as a deployment setting. This file does not set it and there is no code default.
 
 When `EMAIL_SENDS_ENABLED` becomes `true`, two things happen:
 

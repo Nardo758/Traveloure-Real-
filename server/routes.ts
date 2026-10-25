@@ -8011,6 +8011,7 @@ ${bannedCopyPromptLine()}`;
               toEmail: traveler.email,
               travelerName: traveler.firstName ?? null,
               bookingTrackingNumber: booking.trackingNumber ?? null,
+              bookingId: req.params.id,
               serviceName: (booking as any).serviceName ?? null,
               declineReason: reason ?? null,
             });
