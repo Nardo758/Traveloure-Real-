@@ -71,6 +71,8 @@ export async function scheduleItineraryFollowups(tx: Tx, input: {
     await dispatchMessagingEvent("messaging.email-outbox-enqueue", "email.enqueue",
       { emailType: entry.kind }, {}, async () => {
         await tx.insert(emailOutbox).values({
+          // expires_at stays unset. The 5-day step is due after the 3-day default,
+          // and Z-03's next-step rule is not a per-type number.
           emailType: entry.kind, toEmail: input.email,
           // Copy is constructed from live state at delivery, never at scheduling.
           subject: "Itinerary follow-up", html: "", status: superseded ? "cancelled" : "pending", maxAttempts: 6,

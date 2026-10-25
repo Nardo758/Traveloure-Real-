@@ -7,6 +7,7 @@ import {
   canQueueGenerationNotice,
   type GenerationOutcome, GENERATION_TIMEOUT_MS,
 } from "./itinerary-outcome-email";
+import { outboxExpiresAt } from "./email-outbox-expiry";
 import { deliverQueuedEmail } from "./email-outbox.service";
 import { scheduleItineraryFollowups } from "./itinerary-followup.service";
 
@@ -74,6 +75,7 @@ export async function persistGenerationOutcome(tx: Transaction, input: Generatio
         emailType: `itinerary_${resolved.outcome}`, toEmail: user.email!,
         subject: message.subject, html: message.html, textBody: message.text,
         status: "pending", maxAttempts: 6,
+        expiresAt: outboxExpiresAt(`itinerary_${resolved.outcome}`, now),
         metadata: {
           generationNoticeKey: key, comparisonId: comparison.id,
           generationAttemptStartedAt: input.startedAt.toISOString(),

@@ -2160,4 +2160,8 @@ export const MIGRATION_FILES = [
   // No ALTER. The gem table has no slug column. HELD for Leon's comment.
   // Ledger 2026-10-24-discovery-status-emerging.
   "410_discovery_status_emerging.sql",
+  // 411 — email_outbox.expires_at. Additive nullable timestamptz, no DEFAULT, no CHECK,
+  // no index, no backfill. NULL keeps the previous send rules. HELD for Leon's comment.
+  // Ledger 2026-10-25-outbox-expiry. Declared in shared/schema.ts.
+  "411_email_outbox_expires_at.sql",
 ] as const;

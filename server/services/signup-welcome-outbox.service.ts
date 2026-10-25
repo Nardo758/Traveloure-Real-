@@ -10,6 +10,7 @@ import {
 import { getWelcomeVerificationWindowDays } from "./platform-flags";
 import { welcomeVerificationRetryMinutes } from "../config/signup-welcome.config";
 import { WELCOME_AWAITING_VERIFICATION, WELCOME_NEVER_VERIFIED } from "@shared/welcome-verification";
+import { outboxExpiresAt } from "./email-outbox-expiry";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export const SIGNUP_WELCOME_EMAIL_TYPE = "signup_welcome";
@@ -57,6 +58,7 @@ export async function enqueueSignupWelcome(tx: Tx, accountId: string): Promise<n
           status: "pending",
           maxAttempts: 6,
           metadata: { signupAccountId: accountId, signupWelcomeVersion: 1 },
+          expiresAt: outboxExpiresAt(SIGNUP_WELCOME_EMAIL_TYPE, new Date()),
         }).returning({ id: emailOutbox.id });
         if (!row) throw new Error("Welcome outbox insertion failed");
         return row.id;

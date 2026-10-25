@@ -30,6 +30,7 @@ import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { db } from "../db";
 import { emailOutbox, hotelCache, itineraryItems, liteapiBookings, planOptionSets, planOptions, trips, users } from "@shared/schema";
 import { LITEAPI_PROVIDER } from "@shared/liteapi";
+import { outboxExpiresAt } from "./email-outbox-expiry";
 import { planDatesAreConfirmed } from "@shared/plan-dates";
 import {
   LITEAPI_ITEM_HOLDING_STATUSES,
@@ -353,6 +354,7 @@ function voucherRow(input: { toEmail: string | null; bookingId: string; hotelNam
     maxAttempts: 6,
     lastError: input.toEmail ? null : "Traveler email missing at booking; voucher was not deliverable.",
     metadata: { source: "liteapi_booking", bookingId: input.bookingId, eventKey: `liteapi_voucher:${input.bookingId}` },
+    expiresAt: outboxExpiresAt("liteapi_stay_voucher", new Date()),
   };
 }
 

@@ -12352,8 +12352,8 @@ export const emailOutbox = pgTable("email_outbox", {
   fromAddress:  text("from_address"),
   replyTo:      text("reply_to"),
   // pending | processing | sent | failed | dead | cancelled | held
-  // `held` is app-only: EMAIL_SENDS_ENABLED refused the send. No DB CHECK, so
-  // the vocabulary extends without a migration (240_email_outbox.sql).
+  // `held` records a refusal: sends disabled, template not allowlisted, or past
+  // expires_at (last_error 'expired'). No DB CHECK (240_email_outbox.sql).
   status:       varchar("status", { length: 16 }).notNull().default("pending"),
   attemptCount: integer("attempt_count").notNull().default(0),
   maxAttempts:  integer("max_attempts").notNull().default(5),
@@ -12361,6 +12361,8 @@ export const emailOutbox = pgTable("email_outbox", {
   resendId:     text("resend_id"),
   retryAfter:   timestamp("retry_after", { withTimezone: true }),
   sentAt:       timestamp("sent_at", { withTimezone: true }),
+  // Migration 411. NULL = no expiry was stored. Those rows keep the previous send rules.
+  expiresAt:    timestamp("expires_at", { withTimezone: true }),
   metadata:     jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
   createdAt:    timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt:    timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),

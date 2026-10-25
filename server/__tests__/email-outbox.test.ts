@@ -14,7 +14,7 @@
  *     FOR UPDATE SKIP LOCKED so concurrent processes cannot claim the same row.
  * (E) Retry schedule alignment: five consecutive failures produce the delays
  *     [5, 15, 45, 120, 360] min before the sixth (terminal) attempt.
- * (F) drainOutbox() is a no-op when no rows are claimed (empty claim result).
+ * (F) drainOutbox() claims, then marks expired rows, and sends nothing when the claim is empty.
  * (G) enqueueEmail() never throws even when both the DB insert and the send fail.
  * (H) Enqueue-vs-drain race: enqueueEmail() inserts the row as status='processing'
  *     so a concurrent drain's FOR UPDATE SKIP LOCKED cannot claim it while
@@ -284,7 +284,7 @@ describe("drainOutbox — concurrent drain safety", () => {
 // ─── (F) No-op when claim returns no rows ────────────────────────────────────
 
 describe("drainOutbox — no-op on empty claim", () => {
-  it("(F) emits only the claim SQL and no update SQL when no rows are claimed", async () => {
+  it("(F) claims, then marks expired rows, and does not send when the claim is empty", async () => {
     const { captured } = patchExecute([]); // empty claim
 
     _outboxTestHooks.sendEmailFn = async () => {
@@ -295,9 +295,13 @@ describe("drainOutbox — no-op on empty claim", () => {
 
     assert.strictEqual(
       captured.length,
-      1,
-      "must emit exactly one SQL call (the claim CTE) when no rows are due"
+      2,
+      "must emit the claim CTE, then the expiry mark, and no delivery update",
     );
+    assert.match(captured[0] ?? "", /FOR UPDATE SKIP LOCKED/);
+    assert.match(captured[1] ?? "", /expires_at/);
+    assert.match(captured[1] ?? "", /expired/);
+    assert.equal(/attempt_count\s*=/.test(captured[1] ?? ""), false);
   });
 });
 

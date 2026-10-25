@@ -328,7 +328,15 @@ describe("EMAIL_TEMPLATE_ALLOWLIST delivery", () => {
       logs.restore();
     }
     assert.equal(providerCalls, 0);
-    assert.equal(captured.some((sql) => sql.includes("UPDATE")), false);
+    assert.equal(
+      captured.some((sql) => /SET\s+status\s*=\s*'processing'/.test(sql)),
+      false,
+      "an unlisted row is not claimed",
+    );
+    assert.ok(
+      captured.some((sql) => sql.includes("UPDATE") && sql.includes("expired")),
+      "rows past expires_at are marked before the allowlist peek",
+    );
     assert.equal(captured.some((sql) => /attempt_count\s*=/.test(sql)), false);
     const refusal = logs.lines.find((line) => line.msg?.includes("EMAIL_TEMPLATE_ALLOWLIST"));
     assert.ok(refusal);

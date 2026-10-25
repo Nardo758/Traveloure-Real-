@@ -38,7 +38,7 @@
  */
 
 import { db } from "../db";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, sql, type SQL } from "drizzle-orm";
 import { emailOutbox, itineraryComparisons, users, type InsertEmailOutbox } from "../../shared/schema";
 import { logger } from "../infrastructure/logger";
 import { runBackgroundJob } from "./background-job-runner";
@@ -62,6 +62,11 @@ import {
   buildGuestInviteEmailPayload,
   type GuestInviteEmailParams,
 } from "./guest-invite-email";
+import {
+  OUTBOX_EXPIRY_REASON,
+  outboxExpiresAt,
+  outboxRowIsExpired,
+} from "./email-outbox-expiry";
 
 // ── Backoff schedule ──────────────────────────────────────────────────────────
 
@@ -149,6 +154,32 @@ function emailTypeAllowlistSql() {
   return sql`email_type = ANY(ARRAY[${list}]::text[])`;
 }
 
+/** One assignment for a row that is past expires_at: held, with the expiry reason. */
+function expiredHoldSql(where: SQL) {
+  return sql`
+    UPDATE email_outbox
+    SET status = 'held',
+        last_error = ${OUTBOX_EXPIRY_REASON},
+        retry_after = NULL,
+        metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('expiryReason', CAST(${OUTBOX_EXPIRY_REASON} AS text)),
+        updated_at = NOW()
+    WHERE ${where}
+  `;
+}
+
+/** Due rows whose expires_at has passed. A live processing lease is left to its sender. */
+export async function markExpiredOutboxRows(): Promise<void> {
+  await db.execute(expiredHoldSql(sql`
+    expires_at IS NOT NULL
+    AND expires_at <= NOW()
+    AND last_error IS DISTINCT FROM ${OUTBOX_EXPIRY_REASON}
+    AND (
+      status IN ('pending', 'failed', 'held')
+      OR (status = 'processing' AND retry_after < NOW() - INTERVAL '1 minute')
+    )
+  `));
+}
+
 async function settleWithoutAttempt(
   outboxId: number | null,
   status: "cancelled" | "pending" | "held",
@@ -221,6 +252,7 @@ function outboxInsertValues(params: EnqueueEmailParams, lease: Date): InsertEmai
     attemptCount: 0,
     maxAttempts:  6,
     metadata,
+    expiresAt: outboxExpiresAt(params.emailType ?? "generic", new Date()),
   };
 }
 
@@ -277,6 +309,7 @@ async function enqueueEmailImpl(params: EnqueueEmailParams): Promise<number | nu
       maxAttempts: 6,
       emailType,
       metadata,
+      expiresAt: values.expiresAt,
     });
   }
 
@@ -352,6 +385,7 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
     max_attempts:  number;
     email_type:    string;
     metadata:      unknown;
+    expires_at:    unknown;
   };
 
   let claimed: ClaimedRow[];
@@ -373,6 +407,7 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
             AND retry_after < NOW() - INTERVAL '1 minute'
           )
         )
+        AND (expires_at IS NULL OR expires_at > NOW())
         AND ${emailTypeAllowlistSql()}
         ORDER BY created_at ASC
         LIMIT 50
@@ -386,12 +421,20 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
       WHERE  o.id = c.id
       RETURNING o.id, o.to_email, o.subject, o.html, o.text_body,
                 o.from_address, o.reply_to, o.attempt_count, o.max_attempts, o.email_type,
-                o.metadata
+                o.metadata, o.expires_at
     `);
     claimed = (result.rows ?? []) as ClaimedRow[];
   } catch (err: unknown) {
     logger.error({ err }, "[email-outbox] drainOutbox: failed to claim rows");
     return { drained: 0, error: "failed to claim rows" };
+  }
+
+  // After the claim. A past row was not selected above; this holds it. A mark
+  // failure must not drop rows already claimed.
+  try {
+    await markExpiredOutboxRows();
+  } catch (err: unknown) {
+    logger.error({ err }, "[email-outbox] drainOutbox: failed to mark expired rows");
   }
 
   if (claimed.length === 0) return { drained: 0 };
@@ -414,6 +457,7 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
       maxAttempts:  row.max_attempts,
       emailType: row.email_type,
       metadata,
+      expiresAt: row.expires_at,
     });
   }
 
@@ -424,11 +468,17 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
 export async function deliverQueuedEmail(outboxId: number): Promise<void> {
   try {
     if (emailSendsEnabled()) {
+      try {
+        await markExpiredOutboxRows();
+      } catch (err: unknown) {
+        logger.error({ err, outboxId }, "[email-outbox] failed to mark expired rows");
+      }
       const peek = await db.execute(sql`
         SELECT email_type FROM email_outbox
         WHERE id = ${outboxId}
           AND status IN ('pending', 'failed', 'held')
           AND (retry_after IS NULL OR retry_after <= NOW())
+          AND (expires_at IS NULL OR expires_at > NOW())
       `);
       const peeked = peek.rows?.[0] as { email_type?: string } | undefined;
       if (peeked && !emailTemplateAllowed(peeked.email_type)) {
@@ -445,13 +495,14 @@ export async function deliverQueuedEmail(outboxId: number): Promise<void> {
         retry_after = NOW() + INTERVAL '10 minutes', updated_at = NOW()
       WHERE id = ${outboxId} AND status IN ('pending', 'failed', 'held')
         AND (retry_after IS NULL OR retry_after <= NOW())
+        AND (expires_at IS NULL OR expires_at > NOW())
         AND ${allowlistGate}
-      RETURNING to_email, subject, html, text_body, reply_to, attempt_count, max_attempts, email_type, metadata
+      RETURNING to_email, subject, html, text_body, reply_to, attempt_count, max_attempts, email_type, metadata, expires_at
     `);
     const row = result.rows?.[0] as {
       to_email: string; subject: string; html: string; text_body: string | null;
       reply_to: string | null; attempt_count: number; max_attempts: number; email_type: string;
-      metadata: unknown;
+      metadata: unknown; expires_at: unknown;
     } | undefined;
     if (!row) return;
     const metadata = readMetadata(row.metadata);
@@ -462,7 +513,13 @@ export async function deliverQueuedEmail(outboxId: number): Promise<void> {
       emailType: row.email_type,
       ...(row.text_body ? { text: row.text_body } : {}),
       ...(row.reply_to ? { replyTo: row.reply_to } : {}),
-    }, { attemptCount: row.attempt_count, maxAttempts: row.max_attempts, emailType: row.email_type, metadata });
+    }, {
+      attemptCount: row.attempt_count,
+      maxAttempts: row.max_attempts,
+      emailType: row.email_type,
+      metadata,
+      expiresAt: row.expires_at,
+    });
   } catch (err) {
     logger.error({ err, outboxId }, "[email-outbox] immediate generation delivery failed; retry worker retains ownership");
   }
@@ -526,8 +583,30 @@ export async function drainOutboxForAdminRetry(outboxId: number): Promise<DrainO
 async function attemptDelivery(
   outboxId: number | null,
   params: SendEmailParams,
-  current: { attemptCount: number; maxAttempts: number; emailType?: string; metadata?: Record<string, unknown> }
+  current: {
+    attemptCount: number;
+    maxAttempts: number;
+    emailType?: string;
+    metadata?: Record<string, unknown>;
+    expiresAt?: unknown;
+  }
 ): Promise<void> {
+  // Ahead of the send gate and the allowlist. NULL is not expired.
+  if (outboxRowIsExpired(current.expiresAt)) {
+    if (outboxId !== null) {
+      try {
+        await db.execute(expiredHoldSql(sql`id = ${outboxId} AND status = 'processing'`));
+      } catch (err: unknown) {
+        logger.error({ err, outboxId }, "[email-outbox] failed to hold an expired row");
+      }
+    }
+    logger.info(
+      { outboxId, emailType: current.emailType, reason: OUTBOX_EXPIRY_REASON },
+      "[email-outbox] row expired; not sent",
+    );
+    return;
+  }
+
   const attemptCount = current.attemptCount + 1; // 1-based count after this attempt
   const maxAttempts  = current.maxAttempts;
   const toStr        = Array.isArray(params.to) ? params.to.join(", ") : params.to;
@@ -786,6 +865,7 @@ export async function persistLegacyBookingConfirmationEmail(
         source: "legacy_booking_payment",
         ...(missingRecipient ? { deliveryBlocked: true, deliveryError: "traveler_email_missing" } : {}),
       },
+      expiresAt: outboxExpiresAt("booking_confirmation", new Date()),
     }).returning({ id: emailOutbox.id });
     return inserted.id;
   } catch (error) {
@@ -964,9 +1044,29 @@ export async function drainOutboxAndSweepPush(): Promise<DrainOutboxResult> {
 
 let _drainInterval: ReturnType<typeof setInterval> | null = null;
 
+/** Pending rows already past expires_at. A missing column is logged and does not stop boot. */
+export async function logPendingRowsPastExpiry(): Promise<void> {
+  try {
+    const result = await db.execute(sql`
+      SELECT count(*)::int AS n
+      FROM email_outbox
+      WHERE status = 'pending'
+        AND expires_at IS NOT NULL
+        AND expires_at <= NOW()
+    `);
+    const raw = (result.rows?.[0] as { n?: unknown } | undefined)?.n;
+    const parsed = Number(raw ?? 0);
+    const pendingPastExpiry = Number.isFinite(parsed) ? parsed : 0;
+    logger.info({ pendingPastExpiry }, "[email-outbox] pending rows past expiry");
+  } catch (err: unknown) {
+    logger.warn({ err }, "[email-outbox] could not count pending rows past expiry");
+  }
+}
+
 export const emailOutboxScheduler = {
   start(intervalMs = 5 * 60 * 1000): void {
     if (_drainInterval) return; // already running
+    void logPendingRowsPastExpiry();
     // First pass after startup (boot-herd floor + jitter, #1712 — lifts the old 30s delay clear of
     // the boot window). The drain cadence itself is unchanged.
     setTimeout(() => {

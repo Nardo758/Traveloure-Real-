@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { emailOutbox } from "../../shared/schema";
 import type { PaidCharge } from "@shared/payment-on-record";
 import { buildCanonicalBookingEmailPayload, type CanonicalBookingPaymentLeg } from "./canonical-booking-email";
+import { outboxExpiresAt } from "./email-outbox-expiry";
 import { getAppBaseUrl } from "./email.service";
 
 const EMAIL_TYPE = "canonical_booking_confirmation";
@@ -145,6 +146,7 @@ export async function persistCanonicalBookingConfirmation(
         paidCharge,
         ...(missingRecipient ? { deliveryBlocked: true, deliveryError: "traveler_email_missing" } : {}),
       },
+      expiresAt: outboxExpiresAt(EMAIL_TYPE, new Date()),
     });
   } catch (error) {
     if (isCanonicalBookingEmailPersistenceError(error)) throw error;
