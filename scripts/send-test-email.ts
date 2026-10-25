@@ -21,6 +21,7 @@ async function main() {
 
   const result = await sendEmail({
     to,
+    emailType: "manual_send_test",
     subject: "Traveloure — transactional email test",
     html: `
       <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">

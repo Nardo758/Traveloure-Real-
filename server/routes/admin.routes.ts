@@ -3423,6 +3423,8 @@ router.patch("/api/admin/users/:id/verification", isAuthenticated, async (req, r
               firstName: target.firstName ?? null,
               decision,
               reason: reason ?? null,
+              userId: req.params.id,
+              priorStatus: target.priorStatus ?? null,
             }).catch((e: any) => console.error("[email] verification-decision send error:", e?.message));
           } catch (mailErr: any) {
             console.error("[admin verification] email send error (non-fatal):", mailErr.message);
@@ -7304,6 +7306,22 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
 
   // === Admin Test Email ===
 
+  function adminTestEmailRefusal(suppressed: string): { reason: string; error: string } {
+    if (suppressed === "sends_disabled") {
+      return { reason: "sends_flag", error: "Refused by the sends flag (EMAIL_SENDS_ENABLED is not true)" };
+    }
+    if (suppressed === "template_not_allowed") {
+      return { reason: "allowlist", error: "Refused by the template allowlist (EMAIL_TEMPLATE_ALLOWLIST)" };
+    }
+    if (suppressed === "kill_switch") {
+      return { reason: "kill_switch", error: "Refused by the notification kill switch (email_notifications_enabled is off)" };
+    }
+    if (suppressed === "development_gate") {
+      return { reason: "development_gate", error: "Refused by the development no-send gate" };
+    }
+    return { reason: suppressed, error: `Refused before send (${suppressed})` };
+  }
+
   router.post("/api/admin/system/test-email", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req);
@@ -7324,12 +7342,10 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
         return res.status(400).json({ ok: false, error: "Admin account has no email address on file" });
       }
 
-      // Call Resend directly — same pattern as auth-critical emails — so the test
-      // works even when email_notifications_enabled is turned off in platform settings.
-      // This is intentional: admins must be able to verify delivery credentials
-      // regardless of the notification kill-switch state.
-      const { getAppBaseUrl } = await import("../services/email.service");
-      const { Resend } = await import("resend");
+      // Production sends through sendEmail, so EMAIL_SENDS_ENABLED, the template
+      // allowlist, and the notification switch all apply. The unit-test hook
+      // still replaces that call.
+      const { getAppBaseUrl, sendEmail } = await import("../services/email.service");
       const appUrl = getAppBaseUrl();
 
       const apiKey = process.env.RESEND_API_KEY;
@@ -7338,7 +7354,6 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
       if (!apiKey) return res.status(502).json({ ok: false, error: "RESEND_API_KEY is not configured" });
       if (!from) return res.status(502).json({ ok: false, error: "EMAIL_FROM is not configured" });
 
-      const resendClient = new Resend(apiKey);
       const emailPayload: Record<string, unknown> = {
         from,
         to: toEmail,
@@ -7387,14 +7402,26 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
         ].join("\n"),
       };
 
-      // Use test hook when set (unit tests only); real Resend client in production.
+      // Use test hook when set (unit tests only). Production goes through sendEmail.
       const sender = _adminTestEmailHooks.resendSend
         ? _adminTestEmailHooks.resendSend
-        : (payload: Record<string, unknown>) => resendClient.emails.send(payload as any);
+        : async (payload: Record<string, unknown>) => {
+            const result = await sendEmail({
+              to: String(payload.to ?? ""),
+              subject: String(payload.subject ?? ""),
+              html: String(payload.html ?? ""),
+              text: typeof payload.text === "string" ? payload.text : undefined,
+              replyTo: typeof payload.replyTo === "string" && payload.replyTo.length > 0 ? payload.replyTo : undefined,
+              emailType: "admin_test_email",
+            });
+            if (result.suppressed) return { data: null, error: null, suppressed: result.suppressed };
+            if (!result.ok) return { data: null, error: { message: result.error ?? "Email was not sent" } };
+            return { data: result.id ? { id: result.id } : null, error: null };
+          };
 
       const timeoutMs = _adminTestEmailHooks.resendTimeoutMs ?? 12_000;
 
-      let sendResult: { data: { id?: string } | null; error: { message?: string } | null };
+      let sendResult: { data: { id?: string } | null; error: { message?: string } | null; suppressed?: string };
       try {
         sendResult = await Promise.race([
           sender(emailPayload),
@@ -7418,7 +7445,13 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
         return res.status(502).json({ ok: false, error: errMsg });
       }
 
-      const { data: emailData, error: emailError } = sendResult;
+      const { data: emailData, error: emailError, suppressed } = sendResult;
+
+      if (suppressed) {
+        const refusal = adminTestEmailRefusal(suppressed);
+        console.warn(`[admin/test-email] not sent (${suppressed}) email_type=admin_test_email`);
+        return res.json({ ok: false, suppressed, reason: refusal.reason, error: refusal.error, to: toEmail });
+      }
 
       if (emailError) {
         const msg = String((emailError as { message?: string }).message ?? emailError);

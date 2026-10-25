@@ -1163,6 +1163,7 @@ router.post('/trips/:id/suggestions', isAuthenticated, async (req, res) => {
               firstName: customer.firstName ?? null,
               tripId: id,
               suggestionTitle: title,
+              suggestionId,
             });
           }
         }

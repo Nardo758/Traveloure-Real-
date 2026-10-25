@@ -215,9 +215,18 @@ export async function deliverItineraryFollowup(outboxId: number, sender: (params
     // Reserve the calendar day even for ambiguous failures; retry only this same row/key.
     const result = await dispatchMessagingEvent(definition.automationId, "itinerary.followup_due",
       { itineraryId: meta.itineraryId }, { eligible: true }, async () => {
-        try { return await sender({ to: row.toEmail, subject: footered.subject, html: footered.html, text: footered.text, idempotencyKey: `itinerary-followup-${outboxId}` }); }
+        try { return await sender({ to: row.toEmail, subject: footered.subject, html: footered.html, text: footered.text, idempotencyKey: `itinerary-followup-${outboxId}`, emailType: row.emailType }); }
         catch { return { ok: false, error: "Provider attempt failed" } as SendEmailResult; }
       });
+    if (result.suppressed === "template_not_allowed") {
+      await tx.update(emailOutbox).set({
+        status: "held",
+        lastError: "EMAIL_TEMPLATE_ALLOWLIST",
+        retryAfter: null,
+        updatedAt: new Date(),
+      }).where(eq(emailOutbox.id, outboxId));
+      return "held" as const;
+    }
     if (result.suppressed === "development_gate" || result.suppressed === "kill_switch") {
       await tx.update(emailOutbox).set({
         status: result.suppressed === "development_gate" ? "cancelled" : "pending",

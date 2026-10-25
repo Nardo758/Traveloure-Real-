@@ -642,7 +642,7 @@ source of its exact original locations. No sender was changed.
 | 8 Plan approved / changes requested | `server/services/email.service.ts`:2128–2183,2200–2261; `server/routes/booking-actions.ts`:1613,1619 | Multiple decisions/retries can duplicate; no universal durable retry guarantee. |
 | 9 Plan suggestions | `server/services/email.service.ts`:2281–2336; `server/routes/booking-actions.ts`:1153 | Repeated suggestion actions/uncertain acceptance; not fully outbox-converted. |
 | 10 Admin digests | `server/services/email.service.ts`:1251–1398; `server/services/admin-digest-scheduler.service.ts`:189; `server/jobs/dailyAdminDigest.ts`:190 | Generic and SDK alternatives; production-only scheduling and uncertain-attempt wording/visibility require proof. |
-| Unused confirmation helper | `server/services/email.service.ts`:534–547, `sendBookingConfirmationEmail` | Latent direct path; do not call or remove it merely because it is currently unused. |
+| Unused confirmation helper | removed | The deprecated direct confirmation sender had no caller and was deleted. Confirmation mail is the outbox type `booking_confirmation`. |
 
 Additional separately inventoried source categories outside those ten:
 nightly QA notifications, admin manual test sender, CLI test sender,

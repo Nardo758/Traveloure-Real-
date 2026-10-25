@@ -65,7 +65,17 @@ export async function sendWaitlistOpenEmail(input: {
     const { sendEmail } = await import("./email.service");
     return sendEmail(params);
   });
-  const result = await send({ to: input.to, subject: message.subject, html: message.html, text: message.text });
+  const result = await send({
+    to: input.to,
+    subject: message.subject,
+    html: message.html,
+    text: message.text,
+    emailType: WAITLIST_OPEN_EMAIL_TYPE,
+  });
+  if (result.suppressed) {
+    console.warn(`[email] waitlist_open not sent (${result.suppressed})`);
+    return { sent: false, reason: result.error ?? result.suppressed };
+  }
   if (!result.ok) return { sent: false, reason: result.error ?? "Provider attempt failed" };
   return { sent: true, id: result.id };
 }
