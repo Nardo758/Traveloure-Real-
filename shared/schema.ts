@@ -12361,6 +12361,9 @@ export const emailOutbox = pgTable("email_outbox", {
   resendId:     text("resend_id"),
   retryAfter:   timestamp("retry_after", { withTimezone: true }),
   sentAt:       timestamp("sent_at", { withTimezone: true }),
+  // Z-03. Set at enqueue. NULL = no stated window, including every row that
+  // existed before migration 411. No default and no backfill (411_email_outbox_expires_at.sql).
+  expiresAt:    timestamp("expires_at", { withTimezone: true }),
   metadata:     jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
   createdAt:    timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt:    timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),

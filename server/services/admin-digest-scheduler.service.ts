@@ -9,6 +9,7 @@
  *      (gap detection: compares Stripe's last-100 events against webhook_events table)
  *   d) Reconciliation mismatches recorded in the last 24 hours
  *   e) Emails that exhausted every retry and were never delivered (board #1566)
+ *   f) Outbox rows cancelled as expired, and held rows grouped by reason (counts only)
  *
  * Recipients: ADMIN_EMAIL env var (falls back to no-op if unset).
  * Email: sent via Resend through email.service.ts.
@@ -20,7 +21,8 @@
  * can still send once.
  */
 
-import { loadDeadEmailSummary, type DeadEmailSummary } from "./email-outbox.service";
+import { loadDeadEmailSummary, loadOutboxHoldSummary, type DeadEmailSummary } from "./email-outbox.service";
+import type { OutboxHoldSummary } from "./email-outbox-expiry";
 import Stripe from "stripe";
 import { db } from "../db";
 import { adminNotifications, users, webhookEvents } from "@shared/schema";
@@ -215,13 +217,23 @@ class AdminDigestSchedulerService {
         console.error("[AdminDigest] Failed to load dead outbox emails:", err);
       }
 
+      let outboxHolds: OutboxHoldSummary | undefined;
+      try {
+        outboxHolds = await loadOutboxHoldSummary();
+      } catch (err) {
+        console.error("[AdminDigest] Failed to load outbox expiry and hold counts:", err);
+      }
+      const heldCount = outboxHolds?.held.reduce((sum, row) => sum + row.count, 0) ?? 0;
+
       // ── Send digest if anything needs attention ─────────────────────────────
       if (
         unresolvedNotifications.length === 0 &&
         expertsWithoutPayout.length === 0 &&
         missedWebhooks.length === 0 &&
         reconciliationMismatches.length === 0 &&
-        (deadEmails?.total ?? 0) === 0
+        (deadEmails?.total ?? 0) === 0 &&
+        (outboxHolds?.expired ?? 0) === 0 &&
+        heldCount === 0
       ) {
         console.log("[AdminDigest] Nothing to report — skipping email");
         return;
@@ -248,6 +260,7 @@ class AdminDigestSchedulerService {
           missedWebhooks,
           reconciliationMismatches,
           deadEmails,
+          outboxHolds,
         });
         if (delivery.outcome !== "sent") {
           await settleAdminDigestDelivery(dateKey, delivery);
@@ -261,7 +274,7 @@ class AdminDigestSchedulerService {
       }
 
       console.log(
-        `[AdminDigest] Digest sent — ${unresolvedNotifications.length} unresolved alerts, ${expertsWithoutPayout.length} experts without payout, ${missedWebhooks.length} missed webhooks, ${reconciliationMismatches.length} reconciliation mismatch(es), ${deadEmails?.total ?? 0} undelivered email(s)`
+        `[AdminDigest] Digest sent — ${unresolvedNotifications.length} unresolved alerts, ${expertsWithoutPayout.length} experts without payout, ${missedWebhooks.length} missed webhooks, ${reconciliationMismatches.length} reconciliation mismatch(es), ${deadEmails?.total ?? 0} undelivered email(s), ${outboxHolds?.expired ?? 0} expired, ${heldCount} held`
       );
     } catch (err) {
       console.error("[AdminDigest] Failed to run digest:", err);

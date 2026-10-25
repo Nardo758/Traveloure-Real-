@@ -42,6 +42,7 @@ import { logger } from "../infrastructure/logger";
 import { getPlatformFlag, FLAG_EMAIL_NOTIFICATIONS_ENABLED } from "./platform-flags";
 import { canQueueGenerationNotice } from "./itinerary-outcome-email";
 import { escHtml, stripCrLf } from "../utils/email-escape";
+import type { OutboxHoldSummary } from "./email-outbox-expiry";
 import { reconciliationKindLabel } from "@shared/reconciliation-kinds";
 import { shapeAdminDigestLists } from "./admin-digest-shape";
 
@@ -1304,6 +1305,8 @@ interface AdminDigestParams {
   reconciliationMismatches?: ReconciliationMismatch[];
   /** Emails that exhausted their retries (board #1566). Absent or total 0 ⇒ the section is omitted. */
   deadEmails?: DigestDeadEmails;
+  /** Expired (cancelled, reason expired) and current held rows. Counts and reasons only. */
+  outboxHolds?: OutboxHoldSummary;
 }
 
 export interface DigestDeadEmails {
@@ -1348,6 +1351,39 @@ export function buildDeadEmailDigestSection(dead: DigestDeadEmails | undefined):
     <tbody>${rows}</tbody>
   </table>
   ${more}`;
+}
+
+/**
+ * Counts only. Omitted when nothing is expired and nothing is held. Reasons are
+ * the text already stored on the row. No addresses.
+ */
+export function buildOutboxHoldDigestSection(holds: OutboxHoldSummary | undefined): string {
+  if (!holds) return "";
+  const heldTotal = holds.held.reduce((sum, row) => sum + row.count, 0);
+  if (holds.expired === 0 && heldTotal === 0) return "";
+  const heldRows = holds.held
+    .map(
+      (row) => `<tr>
+          <td style="padding:8px 12px;color:#111827;font-size:13px">${escHtml(row.reason)}</td>
+          <td style="padding:8px 12px;color:#111827;font-size:13px">${row.count}</td>
+        </tr>`,
+    )
+    .join("");
+  const heldTable = heldTotal === 0 ? "" : `
+  <p style="color:#6B7280;font-size:13px">Held (${heldTotal}), grouped by the reason already on the row. A held row is retried only when a later drain is allowed to send it.</p>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+    <thead>
+      <tr style="background:#FEF3C7">
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#92400E">Reason</th>
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#92400E">Count</th>
+      </tr>
+    </thead>
+    <tbody>${heldRows}</tbody>
+  </table>`;
+  return `
+  <h3 style="color:#92400E;margin-top:24px">✉ Outbox expiry and holds (${holds.expired} expired, ${heldTotal} held)</h3>
+  <p style="color:#6B7280;font-size:13px">${holds.expired} cancelled with reason expired. Those rows are not sent and are not retried.</p>
+  ${heldTable}`;
 }
 
 export type AdminDigestSendResult =
@@ -1500,6 +1536,7 @@ export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<A
   ` : ""}
 
   ${buildDeadEmailDigestSection(params.deadEmails)}
+  ${buildOutboxHoldDigestSection(params.outboxHolds)}
 
   <p style="color:#9CA3AF;font-size:11px;margin-top:40px;border-top:1px solid #F3F4F6;padding-top:16px">
     Traveloure Admin Digest · Auto-generated daily · <a href="${baseUrl}/admin/dashboard" style="color:#FF385C">Open Dashboard</a>
@@ -1509,7 +1546,9 @@ export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<A
   const missedCount = (params.missedWebhooks ?? []).length;
   const reconCount = reconciliationMismatches.length;
   const deadCount = params.deadEmails?.total ?? 0;
-  const subject = `[Traveloure Admin] Daily Digest — ${unresolvedNotifications.length} alerts, ${params.expertsWithoutPayout.length} payout gaps${missedCount > 0 ? `, ${missedCount} missed webhooks` : ""}${reconCount > 0 ? `, ${reconCount} recon mismatches` : ""}${deadCount > 0 ? `, ${deadCount} undelivered emails` : ""}`;
+  const expiredCount = params.outboxHolds?.expired ?? 0;
+  const heldCount = params.outboxHolds?.held.reduce((sum, row) => sum + row.count, 0) ?? 0;
+  const subject = `[Traveloure Admin] Daily Digest — ${unresolvedNotifications.length} alerts, ${params.expertsWithoutPayout.length} payout gaps${missedCount > 0 ? `, ${missedCount} missed webhooks` : ""}${reconCount > 0 ? `, ${reconCount} recon mismatches` : ""}${deadCount > 0 ? `, ${deadCount} undelivered emails` : ""}${expiredCount > 0 ? `, ${expiredCount} expired` : ""}${heldCount > 0 ? `, ${heldCount} held` : ""}`;
   const result = await sendEmail({
     to: params.toEmail,
     subject,

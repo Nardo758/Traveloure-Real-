@@ -13,6 +13,7 @@ import { marketingUnsubscribeSkipReason } from "@shared/marketing-email-footer";
 import {
   MARKETING_FOOTER_RETRY_MS, applyMarketingEmailFooter, logMarketingEmailSkip, readMarketingEmailFooter,
 } from "./marketing-email-footer";
+import { computeOutboxExpiresAt } from "./email-outbox-expiry";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export interface FollowupMetadata {
@@ -68,6 +69,7 @@ export async function scheduleItineraryFollowups(tx: Tx, input: {
       travelerFollowupVersion: 1, marketing: true, travelerId: input.travelerId,
       itineraryId: input.itineraryId, readyAt: input.readyAt.toISOString(), unsubscribeToken: randomUUID(),
     };
+    const enqueuedAt = new Date();
     await dispatchMessagingEvent("messaging.email-outbox-enqueue", "email.enqueue",
       { emailType: entry.kind }, {}, async () => {
         await tx.insert(emailOutbox).values({
@@ -75,7 +77,9 @@ export async function scheduleItineraryFollowups(tx: Tx, input: {
           // Copy is constructed from live state at delivery, never at scheduling.
           subject: "Itinerary follow-up", html: "", status: superseded ? "cancelled" : "pending", maxAttempts: 6,
           lastError: superseded ? "Cancelled by a newer ready itinerary" : null,
-          retryAfter: superseded ? null : new Date(input.readyAt.getTime() + entry.hours * 3_600_000), metadata,
+          retryAfter: superseded ? null : new Date(input.readyAt.getTime() + entry.hours * 3_600_000),
+          expiresAt: computeOutboxExpiresAt(entry.kind, metadata, enqueuedAt),
+          metadata,
         });
       });
   }

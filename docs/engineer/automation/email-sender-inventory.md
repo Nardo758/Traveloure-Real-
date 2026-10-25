@@ -16,7 +16,7 @@ Line numbers are from this branch. `shared/` has the `email_outbox` table (`shar
 
 ## Through the outbox (31 rows)
 
-The drain (`drainOutbox`, every 5 minutes, and `POST /internal/jobs/email-outbox`) claims due `pending` / `failed` / `held` rows and expired `processing` leases whose `email_type` is on the allowlist. `enqueueEmail` also attempts delivery immediately after insert. A kick (`deliverQueuedEmail` / `kickLegacyConfirmationDelivery`) is the same delivery path.
+The drain (`drainOutbox`, every 5 minutes, and `POST /internal/jobs/email-outbox`) claims due `pending` / `failed` / `held` rows and expired `processing` leases whose `email_type` is on the allowlist. A due allowlisted row whose `expires_at` is at or before now is cancelled in that same claim with reason `expired` and is not sent. `expires_at` null is unchanged. `enqueueEmail` also attempts delivery immediately after insert. A kick (`deliverQueuedEmail` / `kickLegacyConfirmationDelivery`) is the same delivery path.
 
 | email_type | template / function | trigger and how often | recipient | authCritical | drain | test |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -92,7 +92,7 @@ Leon sets the allowlist as a deployment setting. This file does not set it and t
 
 When `EMAIL_SENDS_ENABLED` becomes `true`, two things happen:
 
-1. Every `email_outbox` row that is already due (`pending`, `failed`, `held`, or an expired `processing` lease) and whose `email_type` is on `EMAIL_TEMPLATE_ALLOWLIST` is eligible for the next drain. Unlisted types stay as they are.
+1. Every `email_outbox` row that is already due (`pending`, `failed`, `held`, or an expired `processing` lease), whose `email_type` is on `EMAIL_TEMPLATE_ALLOWLIST`, and whose `expires_at` is null or still in the future is eligible for the next drain. A due allowlisted row past `expires_at` is cancelled with reason `expired` and is not sent or retried. Unlisted types stay as they are, including when `expires_at` is already past.
 2. New enqueues of a listed type start sending. Unlisted enqueues are stored and held.
 
 Nothing leaves from any path while the allowlist is unset, including when `EMAIL_SENDS_ENABLED=true`. A listed direct type sends on the next call. A listed outbox type becomes eligible on the next drain.

@@ -62,6 +62,13 @@ import {
   buildGuestInviteEmailPayload,
   type GuestInviteEmailParams,
 } from "./guest-invite-email";
+import {
+  EMAIL_OUTBOX_EXPIRY_BOOT_MESSAGE,
+  OUTBOX_EXPIRED_REASON,
+  computeOutboxExpiresAt,
+  outboxRowExpired,
+  type OutboxHoldSummary,
+} from "./email-outbox-expiry";
 
 // ── Backoff schedule ──────────────────────────────────────────────────────────
 
@@ -221,6 +228,9 @@ function outboxInsertValues(params: EnqueueEmailParams, lease: Date): InsertEmai
     attemptCount: 0,
     maxAttempts:  6,
     metadata,
+    // Stored once, here. A later drain does not recompute it and does not
+    // fill a null on a row that already exists.
+    expiresAt:    computeOutboxExpiresAt(params.emailType ?? "generic", metadata, new Date()),
   };
 }
 
@@ -277,6 +287,7 @@ async function enqueueEmailImpl(params: EnqueueEmailParams): Promise<number | nu
       maxAttempts: 6,
       emailType,
       metadata,
+      expiresAt: values.expiresAt ?? null,
     });
   }
 
@@ -352,6 +363,7 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
     max_attempts:  number;
     email_type:    string;
     metadata:      unknown;
+    expires_at:    Date | string | null;
   };
 
   let claimed: ClaimedRow[];
@@ -361,8 +373,8 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
     // concurrent drains or live enqueue deliveries) and move them to
     // 'processing' with a fresh 10-minute lease.
     const result = await db.execute(sql`
-      WITH candidates AS (
-        SELECT id FROM email_outbox
+      WITH due AS (
+        SELECT id, expires_at FROM email_outbox
         WHERE (
           (
             status IN ('pending', 'failed', 'held')
@@ -377,6 +389,23 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
         ORDER BY created_at ASC
         LIMIT 50
         FOR UPDATE SKIP LOCKED
+      ),
+      expired AS (
+        UPDATE email_outbox AS e
+        SET    status      = 'cancelled',
+               last_error  = ${OUTBOX_EXPIRED_REASON},
+               retry_after = NULL,
+               updated_at  = NOW()
+        FROM   due d
+        WHERE  e.id = d.id
+          AND  d.expires_at IS NOT NULL
+          AND  d.expires_at <= NOW()
+        RETURNING e.id
+      ),
+      candidates AS (
+        SELECT d.id FROM due d
+        WHERE (d.expires_at IS NULL OR d.expires_at > NOW())
+          AND NOT EXISTS (SELECT 1 FROM expired x WHERE x.id = d.id)
       )
       UPDATE email_outbox AS o
       SET    status      = 'processing',
@@ -386,7 +415,7 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
       WHERE  o.id = c.id
       RETURNING o.id, o.to_email, o.subject, o.html, o.text_body,
                 o.from_address, o.reply_to, o.attempt_count, o.max_attempts, o.email_type,
-                o.metadata
+                o.metadata, o.expires_at
     `);
     claimed = (result.rows ?? []) as ClaimedRow[];
   } catch (err: unknown) {
@@ -414,6 +443,7 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
       maxAttempts:  row.max_attempts,
       emailType: row.email_type,
       metadata,
+      expiresAt: row.expires_at ?? null,
     });
   }
 
@@ -446,12 +476,12 @@ export async function deliverQueuedEmail(outboxId: number): Promise<void> {
       WHERE id = ${outboxId} AND status IN ('pending', 'failed', 'held')
         AND (retry_after IS NULL OR retry_after <= NOW())
         AND ${allowlistGate}
-      RETURNING to_email, subject, html, text_body, reply_to, attempt_count, max_attempts, email_type, metadata
+      RETURNING to_email, subject, html, text_body, reply_to, attempt_count, max_attempts, email_type, metadata, expires_at
     `);
     const row = result.rows?.[0] as {
       to_email: string; subject: string; html: string; text_body: string | null;
       reply_to: string | null; attempt_count: number; max_attempts: number; email_type: string;
-      metadata: unknown;
+      metadata: unknown; expires_at: Date | string | null;
     } | undefined;
     if (!row) return;
     const metadata = readMetadata(row.metadata);
@@ -462,7 +492,7 @@ export async function deliverQueuedEmail(outboxId: number): Promise<void> {
       emailType: row.email_type,
       ...(row.text_body ? { text: row.text_body } : {}),
       ...(row.reply_to ? { replyTo: row.reply_to } : {}),
-    }, { attemptCount: row.attempt_count, maxAttempts: row.max_attempts, emailType: row.email_type, metadata });
+    }, { attemptCount: row.attempt_count, maxAttempts: row.max_attempts, emailType: row.email_type, metadata, expiresAt: row.expires_at ?? null });
   } catch (err) {
     logger.error({ err, outboxId }, "[email-outbox] immediate generation delivery failed; retry worker retains ownership");
   }
@@ -526,7 +556,13 @@ export async function drainOutboxForAdminRetry(outboxId: number): Promise<DrainO
 async function attemptDelivery(
   outboxId: number | null,
   params: SendEmailParams,
-  current: { attemptCount: number; maxAttempts: number; emailType?: string; metadata?: Record<string, unknown> }
+  current: {
+    attemptCount: number;
+    maxAttempts: number;
+    emailType?: string;
+    metadata?: Record<string, unknown>;
+    expiresAt?: Date | string | null;
+  }
 ): Promise<void> {
   const attemptCount = current.attemptCount + 1; // 1-based count after this attempt
   const maxAttempts  = current.maxAttempts;
@@ -555,6 +591,18 @@ async function attemptDelivery(
     logger.warn(
       { outboxId, emailType: current.emailType ?? null, reason: "EMAIL_TEMPLATE_ALLOWLIST", authCritical },
       "[email-outbox] send refused; EMAIL_TEMPLATE_ALLOWLIST",
+    );
+    return;
+  }
+
+  // After the two holds, so an unlisted or sends-disabled row stays held.
+  // A past expires_at is terminal: cancelled, reason expired, attempt count
+  // unchanged, and the claim predicate does not select cancelled.
+  if (outboxRowExpired(current.expiresAt)) {
+    await settleWithoutAttempt(outboxId, "cancelled", OUTBOX_EXPIRED_REASON, null);
+    logger.info(
+      { outboxId, emailType: current.emailType ?? null, reason: OUTBOX_EXPIRED_REASON },
+      "[email-outbox] expired; not sent",
     );
     return;
   }
@@ -859,6 +907,36 @@ export interface DeadEmailSummary {
  * each digest until someone retries it, and a restart that shifts the digest's clock can never
  * make one slip through unreported.
  */
+/**
+ * Counts for the daily admin digest. Expired rows are the cancelled ones
+ * whose reason is `expired`. Held rows are grouped by the reason already
+ * on the row. No addresses.
+ */
+export async function loadOutboxHoldSummary(): Promise<OutboxHoldSummary> {
+  const expired = await db.execute(sql`
+    SELECT count(*)::int AS n
+      FROM email_outbox
+     WHERE status = 'cancelled'
+       AND last_error = ${OUTBOX_EXPIRED_REASON}
+  `);
+  const held = await db.execute(sql`
+    SELECT coalesce(nullif(btrim(last_error), ''), 'no reason recorded') AS reason,
+           count(*)::int AS n
+      FROM email_outbox
+     WHERE status = 'held'
+     GROUP BY 1
+     ORDER BY 2 DESC, 1 ASC
+  `);
+  const expiredCount = Number((expired.rows[0] as { n?: number } | undefined)?.n ?? 0);
+  return {
+    expired: expiredCount,
+    held: (held.rows as { reason?: string; n?: number }[]).map((row) => ({
+      reason: String(row.reason ?? "no reason recorded"),
+      count: Number(row.n ?? 0),
+    })),
+  };
+}
+
 export async function loadDeadEmailSummary(limit = 25): Promise<DeadEmailSummary> {
   const counts = await db.execute(sql`
     SELECT count(*)::int AS total,
@@ -964,9 +1042,21 @@ export async function drainOutboxAndSweepPush(): Promise<DrainOutboxResult> {
 
 let _drainInterval: ReturnType<typeof setInterval> | null = null;
 
+/** Boot record of the expiry rule and the send-flag state. No allowlist names, no addresses. */
+export function logEmailOutboxExpiry(): void {
+  logger.info(
+    {
+      sendsEnabled: emailSendsEnabled(),
+      allowlistCount: emailTemplateAllowlist().length,
+    },
+    EMAIL_OUTBOX_EXPIRY_BOOT_MESSAGE,
+  );
+}
+
 export const emailOutboxScheduler = {
   start(intervalMs = 5 * 60 * 1000): void {
     if (_drainInterval) return; // already running
+    logEmailOutboxExpiry();
     // First pass after startup (boot-herd floor + jitter, #1712 — lifts the old 30s delay clear of
     // the boot window). The drain cadence itself is unchanged.
     setTimeout(() => {
