@@ -49,6 +49,7 @@ vi.mock("../email.service", async (original) => ({
   ...await original<typeof import("../email.service")>(), getAppBaseUrl: () => "https://app.example.test",
 }));
 process.env.EMAIL_SENDS_ENABLED = "true";
+process.env.EMAIL_TEMPLATE_ALLOWLIST = "itinerary_nudge_2h";
 if (process.env.RUN_ITINERARY_FOLLOWUP_DB_TESTS !== "1" || process.env.NODE_ENV === "production") {
   throw new Error("Requires explicitly authorized development-only follow-up fixtures");
 }

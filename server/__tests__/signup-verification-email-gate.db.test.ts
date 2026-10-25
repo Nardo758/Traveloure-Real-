@@ -198,6 +198,7 @@ describe("signup verification email follows EMAIL_SENDS_ENABLED", () => {
 
   it("sends auth.verification_email when EMAIL_SENDS_ENABLED is exactly true", async () => {
     process.env.EMAIL_SENDS_ENABLED = "true";
+    process.env.EMAIL_TEMPLATE_ALLOWLIST = "email_verification";
     installTransport();
     const email = fixtureEmail();
     emails.push(email);

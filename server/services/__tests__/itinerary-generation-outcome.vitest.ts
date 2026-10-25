@@ -12,6 +12,7 @@ vi.mock("../email.service", async (importOriginal) => ({
 }));
 
 process.env.EMAIL_SENDS_ENABLED = "true";
+process.env.EMAIL_TEMPLATE_ALLOWLIST = "itinerary_ready,itinerary_failed";
 
 if (process.env.RUN_GENERATION_OUTCOME_DB_TESTS !== "1") {
   throw new Error("Rollback-only development DB tests require RUN_GENERATION_OUTCOME_DB_TESTS=1");
