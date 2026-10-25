@@ -60,6 +60,7 @@ import { loadRankedAnchors } from "./services/anchor-candidates";
 import { sanityMetricRows, versionSanityFlags } from "./services/version-sanity";
 import { optimizerDinnerFromMinutes, optimizerLatestStopStartMinutes } from "./config/optimizer-sanity.config";
 import { pickAutoAnchors } from "./services/anchor-candidates-map";
+import { baselineVariantAnchorFields } from "./services/baseline-variant-anchor";
 import type { AnchorScore } from "./services/anchor-scoring";
 import {
   createOptimizerGeocodeBudget,
@@ -1104,6 +1105,7 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
         source: "user",
         status: "generated",
         sortOrder: 0,
+        ...baselineVariantAnchorFields(pinnedAnchor),
       })
       .returning();
 

@@ -2408,7 +2408,10 @@ export const itineraryVariants = pgTable("itinerary_variants", {
   sortOrder: integer("sort_order").default(0),
   // Anchor this variant was built around ("build around a location", ledger
   // 2026-08-23-optimizer-anchors; migration 257). Additive-nullable, no CHECK (publish-trap rule):
-  // NULL on legacy/Auto-unlabelled variants. anchorType ∈ {hotel,neighborhood,activity} app-enforced.
+  // NULL on legacy rows and on a baseline with no traveler pin. AI-variant anchorType ∈
+  // {hotel,neighborhood,activity} app-enforced. The baseline "Your Plan" row writes
+  // anchorType 'custom' when the traveler chose a pin (ledger 2026-10-25-baseline-variant-anchor)
+  // and leaves all five null when they did not — never the optimizer's auto anchor. No CHECK.
   // anchorMedianMeters is the phase-0 fit score (median metres to the trip's located stops) — a
   // real figure or NULL, never a fabricated 0 (§13).
   anchorType: varchar("anchor_type", { length: 20 }),
