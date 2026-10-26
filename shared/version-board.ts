@@ -376,46 +376,61 @@ export const DAY_RESTORE_RETENTION_MS = DAY_RESTORE_RETENTION_DAYS * 24 * 60 * 6
 /** What GET /versions/restorable says about the newest live snapshot of a day. */
 export type DayRestoreState = "restorable" | "changed_since" | "expired" | "finalized";
 
-export interface DaySignatureRow {
-  id: string;
-  dayNumber: number | string | null;
-  startTime: string | null;
-  endTime: string | null;
-  sortOrder: number | string | null;
-  title: string | null;
-  updatedAt: Date | string | null;
+/**
+ * Columns left out of the replaced-day signature (Architect, 2026-10-25 21:15 ET).
+ *
+ * `updated_at` only. It is bookkeeping: restore writes it, and several item writers bump it
+ * without changing what the traveler sees. A price, note, booking, location, or any other
+ * column change is still a different hash when this timestamp is left untouched.
+ *
+ * Nothing else is excluded. Apply stamps `source_run_id`, `source_variant_id`, `day_number`,
+ * the times, and `sort_order`, and the signature is read AFTER those writes, so those values
+ * are part of the stored hash. Restore writes them back. A later change to any of them, or to
+ * price (`estimated_cost` / `actual_cost`), `notes`, location, booking fields, `locked_at`,
+ * or `origin`, is a day change.
+ */
+export const DAY_SIGNATURE_EXCLUDED_COLUMNS = ["updated_at"] as const;
+
+function signatureSortKey(row: Record<string, unknown>): string {
+  const id = row.id;
+  return id == null ? "" : String(id);
 }
 
-function signatureInstant(value: Date | string | null | undefined): string {
-  if (value == null || value === "") return "";
-  const d = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(d.getTime()) ? String(value) : d.toISOString();
-}
-
-function signatureField(value: number | string | null | undefined): string {
-  return value == null ? "" : String(value);
+function canonicalSignatureValue(value: unknown): unknown {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  if (Array.isArray(value)) return value.map(canonicalSignatureValue);
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+      out[key] = canonicalSignatureValue((value as Record<string, unknown>)[key]);
+    }
+    return out;
+  }
+  return value ?? null;
 }
 
 /**
- * PURE. sha256 over the day's rows sorted by id:
- * `id|day_number|start_time|end_time|sort_order|title|updated_at`.
- * Restore is allowed only while the live day still hashes to the value stored at apply.
- * UTF-8, no Node import — this module is also bundled for the versions board.
+ * PURE. sha256 of the day's rows sorted by id. Each row is canonical JSON of every key except
+ * `DAY_SIGNATURE_EXCLUDED_COLUMNS`, keys sorted. Restore is allowed only while the live day
+ * still hashes to the value stored at apply. UTF-8, no Node import — this module is also
+ * bundled for the versions board.
  */
-export function dayAfterSignature(rows: readonly DaySignatureRow[]): string {
+export function dayAfterSignature(rows: readonly Record<string, unknown>[]): string {
+  const excluded = new Set<string>(DAY_SIGNATURE_EXCLUDED_COLUMNS);
   const lines = [...rows]
-    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
-    .map((r) =>
-      [
-        r.id,
-        signatureField(r.dayNumber),
-        signatureField(r.startTime),
-        signatureField(r.endTime),
-        signatureField(r.sortOrder),
-        signatureField(r.title),
-        signatureInstant(r.updatedAt),
-      ].join("|"),
-    );
+    .sort((a, b) => {
+      const ak = signatureSortKey(a);
+      const bk = signatureSortKey(b);
+      return ak < bk ? -1 : ak > bk ? 1 : 0;
+    })
+    .map((row) => {
+      const kept: Record<string, unknown> = {};
+      for (const key of Object.keys(row).sort()) {
+        if (excluded.has(key) || row[key] === undefined) continue;
+        kept[key] = row[key];
+      }
+      return JSON.stringify(canonicalSignatureValue(kept));
+    });
   return sha256Hex(lines.join("\n"));
 }
 

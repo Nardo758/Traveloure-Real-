@@ -1,6 +1,6 @@
 /**
  * THE REPLACED DAY — save it inside apply-days, and put it back (ledger
- * `2026-10-25-d3-restore-day`; migration 411, HELD).
+ * `2026-10-25-d3-restore-day`; migration 412, HELD — 411 is PR #1696).
  *
  * apply-days calls `readDayBefore` before it deletes or moves, then
  * `writeAppliedDaySnapshot` in the SAME transaction after the day's writes (and after
@@ -21,7 +21,6 @@ import {
   dayRestoreState,
   daySnapshotExpired,
   type DayRestoreState,
-  type DaySignatureRow,
 } from "@shared/version-board";
 import { itineraryItems } from "@shared/schema";
 import { db } from "../db";
@@ -59,19 +58,14 @@ function idList(ids: string[]) {
   return sql.join(ids.map((id) => sql`${id}`), sql`, `);
 }
 
-export async function readDaySignatureRows(exec: { execute: typeof db.execute }, tripId: string, day: number): Promise<DaySignatureRow[]> {
+/** Full `to_jsonb` rows. `dayAfterSignature` drops the excluded columns; this reader does not pick a column list. */
+export async function readDaySignatureRows(exec: { execute: typeof db.execute }, tripId: string, day: number): Promise<Record<string, unknown>[]> {
   const res = await exec.execute(sql`
-    SELECT id,
-           day_number AS "dayNumber",
-           start_time AS "startTime",
-           end_time AS "endTime",
-           sort_order AS "sortOrder",
-           title,
-           updated_at AS "updatedAt"
-    FROM itinerary_items
-    WHERE trip_id = ${tripId} AND day_number = ${day}
+    SELECT to_jsonb(i) AS row
+    FROM itinerary_items i
+    WHERE i.trip_id = ${tripId} AND i.day_number = ${day}
   `);
-  return (res.rows ?? []) as unknown as DaySignatureRow[];
+  return ((res.rows ?? []) as Array<{ row: unknown }>).map((r) => asJson<Record<string, unknown>>(r.row, {}));
 }
 
 /** Full rows apply is about to delete or move, plus the comments of the rows it will delete. */

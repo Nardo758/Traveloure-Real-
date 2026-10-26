@@ -12724,13 +12724,14 @@ export const planDayRetimes = pgTable("plan_day_retimes", {
 });
 export type PlanDayRetime = typeof planDayRetimes.$inferSelect;
 
-// D3 (migration 411, HELD; ledger `2026-10-25-d3-restore-day`): one row per day an apply-days
+// D3 (migration 412, HELD; ledger `2026-10-25-d3-restore-day`): one row per day an apply-days
 // call replaces, written in that same transaction. A dry run writes nothing. Retention: expires_at
 // is applied_at plus 14 days; only the newest snapshot per day is live (a newer apply sets
 // superseded_at on the older); expired rows are purged lazily at the next apply on that trip.
 // No new job. No CHECK. The index is DESC NULLS FIRST — PostgreSQL's default for DESC, and what
-// migration 411 creates — so a publish push does not drop and recreate it. Declared here so the
-// publish push keeps the table and the index (deploy-push durability).
+// migration 412 creates — so a publish push does not drop and recreate it. Declared here so the
+// publish push keeps the table and the index (deploy-push durability). 411 is PR #1696
+// (email_outbox expires_at); this table is 412.
 export const planDayRestoreSnapshots = pgTable("plan_day_restore_snapshots", {
   id: varchar("id").primaryKey(),
   tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),

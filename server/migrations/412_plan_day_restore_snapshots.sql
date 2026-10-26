@@ -1,6 +1,7 @@
--- 411 — plan_day_restore_snapshots (ledger `2026-10-25-d3-restore-day`).
+-- 412 — plan_day_restore_snapshots (ledger `2026-10-25-d3-restore-day`).
 --
--- HELD for "Migration 411 SQL approved — Leon". Do not merge until approved.
+-- Renumbered from 411 on 2026-10-25: 411 stays with PR #1696 (email_outbox expires_at).
+-- HELD for "Migration 412 SQL approved — Leon". Do not merge until approved.
 --
 -- One row per day an apply-days call replaces. Written in that same transaction.
 -- A dry run writes nothing. The row never alters itinerary_items columns.

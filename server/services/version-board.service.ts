@@ -14,7 +14,7 @@
  *     locked, held by an open set) are never moved or removed. Adopted rows carry `source_run_id` /
  *     `source_variant_id` (migration 343). The run and the stored draft are never touched; days not
  *     named are untouched. Where you stay follows the version most adopted days come from.
- *     The same transaction saves the replaced day (`plan_day_restore_snapshots`, migration 411).
+ *     The same transaction saves the replaced day (`plan_day_restore_snapshots`, migration 412).
  *     A dry run writes no snapshot. A finalized plan is refused before any write.
  *   · RE-TIME: one day, in the traveler's order, through the ONE spacing rule (`retimeDayInOrder`,
  *     no model call). Free `OPTIMIZER_FREE_RETIMES` times per version within 24 h of the run, counted

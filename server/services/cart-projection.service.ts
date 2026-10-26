@@ -49,6 +49,7 @@
 import { stampItemSourceClass } from "@shared/content-tiers";
 import { and, eq, isNotNull, isNull, or } from "drizzle-orm";
 import { db } from "../db";
+import { lockTripRow } from "./trip-row-lock";
 import { cartItems, customVenues, itineraryItems, providerServices, trips } from "@shared/schema";
 import { storage } from "../storage";
 import { logger } from "../infrastructure/logger";
@@ -907,6 +908,7 @@ export async function materializeCartLinesAsItems(
 
     try {
       const itemId = await db.transaction(async (tx) => {
+        await lockTripRow(tx, tripId);
         const [created] = await tx
           .insert(itineraryItems)
           .values({
@@ -1029,6 +1031,7 @@ export async function convertCartLinesToItems(
 
     try {
       const itemId = await db.transaction(async (tx) => {
+        await lockTripRow(tx, tripId);
         const [created] = await tx
           .insert(itineraryItems)
           .values(

@@ -1,6 +1,6 @@
 /**
  * D3 server — apply-days leaves the replaced day restorable (ledger
- * `2026-10-25-d3-restore-day`; migration 411, HELD). Section 5 checks 1–10, plus the
+ * `2026-10-25-d3-restore-day`; migration 412, HELD — 411 is PR #1696). Section 5 checks 1–10, plus the
  * finalized-apply refusal. The table is created here from the migration file and is NOT
  * stamped into schema_migrations. DISPOSABLE DB ONLY.
  */
@@ -13,15 +13,16 @@ import { fileURLToPath } from "node:url";
 import { sql, getTableName } from "drizzle-orm";
 import { db } from "../db";
 import { planDayRestoreSnapshots } from "@shared/schema";
-import { DAY_RESTORE_RETENTION_MS, dayAfterSignature } from "@shared/version-board";
+import { DAY_RESTORE_RETENTION_MS, DAY_SIGNATURE_EXCLUDED_COLUMNS, dayAfterSignature } from "@shared/version-board";
 import { MIGRATION_FILES } from "../migrations/migration-files";
 import { VersionBoardError, applyDays } from "../services/version-board.service";
 import { applyDaysUnchangedSinceRun } from "../services/fixed-plan.service";
 import { DayRestoreError, listRestorableDays, readDaySignatureRows, restoreDay } from "../services/version-day-restore.service";
+import { storage } from "../storage";
 import versionsRoutes from "../routes/versions.routes";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const MIGRATION = readFileSync(path.join(repo, "server/migrations/411_plan_day_restore_snapshots.sql"), "utf8");
+const MIGRATION = readFileSync(path.join(repo, "server/migrations/412_plan_day_restore_snapshots.sql"), "utf8");
 const RUN = crypto.randomUUID().slice(0, 8);
 const P = `d3${RUN}`;
 
@@ -230,11 +231,12 @@ async function adopt(tag: string) {
   return { fx, out, snap: out.days[0].snapshotId as string };
 }
 
-test("migration 411 is registered, declared, and additive", () => {
+test("migration 412 is registered, declared, and additive", () => {
   assert.equal(getTableName(planDayRestoreSnapshots), "plan_day_restore_snapshots");
-  assert.ok(MIGRATION_FILES.includes("411_plan_day_restore_snapshots.sql" as any));
-  assert.ok(MIGRATION_FILES.indexOf("410_discovery_status_emerging.sql" as any) < MIGRATION_FILES.indexOf("411_plan_day_restore_snapshots.sql" as any));
-  assert.equal(MIGRATION_FILES.some((f) => f.startsWith("412_")), false);
+  assert.ok(MIGRATION_FILES.includes("412_plan_day_restore_snapshots.sql" as any));
+  assert.equal(MIGRATION_FILES.some((f) => f.startsWith("411_")), false);
+  assert.ok(MIGRATION_FILES.indexOf("410_discovery_status_emerging.sql" as any) < MIGRATION_FILES.indexOf("412_plan_day_restore_snapshots.sql" as any));
+  assert.deepEqual([...DAY_SIGNATURE_EXCLUDED_COLUMNS], ["updated_at"]);
   const schema = readFileSync(path.join(repo, "shared/schema.ts"), "utf8");
   assert.match(schema, /plan_day_restore_snapshots_trip_day_idx/);
   assert.match(schema, /appliedAt\.desc\(\)\.nullsFirst\(\)/);
@@ -246,9 +248,12 @@ test("migration 411 is registered, declared, and additive", () => {
   assert.doesNotMatch(body, /\bCHECK\b/);
   const empty = dayAfterSignature([]);
   assert.equal(empty, crypto.createHash("sha256").update("").digest("hex"));
-  const titled = dayAfterSignature([{ id: "a|b", dayNumber: 2, startTime: null, endTime: "", sortOrder: 0, title: "西 • pipe", updatedAt: new Date("2026-10-25T12:00:00.000Z") }]);
-  const line = ["a|b", "2", "", "", "0", "西 • pipe", "2026-10-25T12:00:00.000Z"].join("|");
+  const row = { id: "a|b", title: "西 • pipe", estimated_cost: "12.00", updated_at: "2026-10-25T12:00:00.000Z" };
+  const titled = dayAfterSignature([row]);
+  const line = JSON.stringify({ estimated_cost: "12.00", id: "a|b", title: "西 • pipe" });
   assert.equal(titled, crypto.createHash("sha256").update(line).digest("hex"));
+  assert.equal(titled, dayAfterSignature([{ ...row, updated_at: "1999-01-01T00:00:00.000Z" }]));
+  assert.notEqual(titled, dayAfterSignature([{ ...row, notes: "bring cash" }]));
   const board = readFileSync(path.join(repo, "server/services/version-board.service.ts"), "utf8");
   const tx = board.slice(board.indexOf("return db.transaction(async (tx) => {"), board.indexOf("// ── re-time"));
   assert.match(tx, /SELECT finalized_at FROM trips/);
@@ -552,4 +557,85 @@ test("9: restore writes no toll, retime, or payment row, with or without a Trip 
   assert.deepEqual(await rows(poisoned.fx.trip), items);
   assert.equal((await snapOf(poisoned.snap)).restored_at, null);
   assert.equal((await snapOf(poisoned.snap)).restored_by, saved.restored_by ?? null);
+});
+
+test("a price or notes edit with updated_at left unchanged returns 409 day_changed_since_apply", async () => {
+  for (const kind of ["price", "notes"] as const) {
+    const { fx, snap } = await adopt(`quiet-${kind}`);
+    const before = (await db.execute(sql`SELECT updated_at, estimated_cost, notes FROM itinerary_items WHERE id = ${fx.keep}`)).rows[0] as { updated_at: Date | string; estimated_cost: string | null; notes: string | null };
+    if (kind === "price") await db.execute(sql`UPDATE itinerary_items SET estimated_cost = 77.00, updated_at = updated_at WHERE id = ${fx.keep}`);
+    else await db.execute(sql`UPDATE itinerary_items SET notes = 'bring cash', updated_at = updated_at WHERE id = ${fx.keep}`);
+    const after = (await db.execute(sql`SELECT updated_at, estimated_cost, notes FROM itinerary_items WHERE id = ${fx.keep}`)).rows[0] as { updated_at: Date | string; estimated_cost: string | null; notes: string | null };
+    assert.equal(new Date(after.updated_at).getTime(), new Date(before.updated_at).getTime());
+    if (kind === "price") assert.equal(Number(after.estimated_cost), 77);
+    else assert.equal(after.notes, "bring cash");
+    const items = await rows(fx.trip);
+    const saved = await snapOf(snap);
+    await assert.rejects(
+      restoreDay({ tripId: fx.trip, userId: fx.owner, day: 2, snapshotId: snap }),
+      (e: unknown) => e instanceof DayRestoreError && e.status === 409 && e.code === "day_changed_since_apply",
+    );
+    assert.deepEqual(await rows(fx.trip), items);
+    assert.deepEqual(await snapOf(snap), saved);
+  }
+});
+
+test("a concurrent edit that commits before restore locks the plan returns 409 day_changed_since_apply", async () => {
+  const { fx, snap } = await adopt("race-before");
+  const { Pool } = await import("pg");
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const holder = await pool.connect();
+  let settled = false;
+  try {
+    await holder.query("BEGIN");
+    await holder.query(`SELECT id FROM trips WHERE id = $1 FOR UPDATE`, [fx.trip]);
+    await holder.query(`UPDATE itinerary_items SET title = 'Edited while locked' WHERE id = $1`, [fx.keep]);
+    const restore = restoreDay({ tripId: fx.trip, userId: fx.owner, day: 2, snapshotId: snap }).finally(() => { settled = true; });
+    await new Promise((r) => setTimeout(r, 400));
+    assert.equal(settled, false, "restore waits on the plan row the edit already holds");
+    await holder.query("COMMIT");
+    await assert.rejects(
+      restore,
+      (e: unknown) => e instanceof DayRestoreError && e.status === 409 && e.code === "day_changed_since_apply",
+    );
+    assert.equal((await snapOf(snap)).restored_at, null);
+    const title = (await db.execute(sql`SELECT title FROM itinerary_items WHERE id = ${fx.keep}`)).rows[0] as { title: string };
+    assert.equal(title.title, "Edited while locked");
+  } finally {
+    await holder.query("ROLLBACK").catch(() => {});
+    holder.release();
+    await pool.end();
+  }
+});
+
+test("an edit queued behind restore waits until restore finishes, and restore returns the saved day", async () => {
+  const { fx, snap } = await adopt("race-after");
+  const { Pool } = await import("pg");
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const holder = await pool.connect();
+  let restoreSettled = false;
+  let editSettled = false;
+  try {
+    await holder.query("BEGIN");
+    await holder.query(`SELECT id FROM trips WHERE id = $1 FOR UPDATE`, [fx.trip]);
+    const restore = restoreDay({ tripId: fx.trip, userId: fx.owner, day: 2, snapshotId: snap }).finally(() => { restoreSettled = true; });
+    await new Promise((r) => setTimeout(r, 200));
+    assert.equal(restoreSettled, false, "restore waits while the plan row is held");
+    const edit = storage.updateItineraryItem(fx.keep, { title: "After restore" } as any).finally(() => { editSettled = true; });
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal(restoreSettled, false);
+    assert.equal(editSettled, false, "the item edit waits on the same plan lock restore is queued for");
+    await holder.query("ROLLBACK");
+    const out = await restore;
+    assert.deepEqual(out, { restored: true, alreadyRestored: false, day: 2, snapshotId: snap });
+    await edit;
+    const back = await rows(fx.trip);
+    assert.equal(byId(back, fx.keep).title, "After restore");
+    assert.equal(back.some((r) => r.id === fx.dropA), true);
+    assert.ok((await snapOf(snap)).restored_at);
+  } finally {
+    await holder.query("ROLLBACK").catch(() => {});
+    holder.release();
+    await pool.end();
+  }
 });
