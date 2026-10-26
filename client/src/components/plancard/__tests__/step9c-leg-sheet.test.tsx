@@ -7,7 +7,7 @@
  *   C3 a delegate picks but never books; a reader sees the options and neither
  *   C4 a confirmed host pickup renders the host line and NO Book (D8 fixture — no column exists yet)
  *   C5 a routed leg opens its sheet only for someone who may change the plan's items
- *   C6 a shown leg with no routed facts draws minutes-only between its stops (D5) — no cost, no source
+ *   C6 a shown leg with no routed facts draws mode-only between its stops (D5, audit B8) — no cost, no source
  *   C7 no prices in rows (R-h): neither leg row ever carries a dollar figure
  *
  * Run: npx tsx --test client/src/components/plancard/__tests__/step9c-leg-sheet.test.tsx

@@ -1,10 +1,11 @@
 /**
- * Audit B8 remainder (architect dispatch CB-N, as ruled 2026-10-26 09:05 ET; ledger
- * `2026-10-26-b8-my-itinerary-day-transport`) — the live sites only. A leg prints minutes only when it is
+ * Audit B8 remainder (architect dispatch CB-N, as ruled 2026-10-26 09:05 ET with the 09:55 ET addendum; ledger
+ * `2026-10-26-b8-live-site-unchecked-minutes`) — the live sites only. A leg prints minutes only when it is
  * checked (`isCheckedTransport`, the Trip Card's `LegLine` rule); the dead pages go to row 54 untouched.
  *
  *   TN10 X-1 the comparison page's TransportLeg: an unchecked leg prints its label and cost, no minutes;
- *        a checked leg prints its minutes; the mode menu's alternatives never print minutes
+ *        a checked leg prints its minutes unless a previewed alternative is showing; the mode menu's
+ *        alternatives never print minutes
  *   TN14 X-6 the optimizer metrics carry no travel badge and no travelDistance prop
  *   TN15 X-7 the slip's unrouted row and Getting around read "{mode} · Not checked yet"; the estimate row is
  *        still empty; unroutedLegLine itself is unchanged
@@ -12,7 +13,7 @@
  *        no workspace.tsx, no workflows
  *   TN16 my-itinerary.tsx (and the other dead pages) are not in the diff
  *
- * Run: npx tsx --test client/src/components/plancard/__tests__/b8-my-itinerary-day-transport.test.tsx
+ * Run: npx tsx --test client/src/components/plancard/__tests__/b8-live-site-unchecked-minutes.test.tsx
  */
 import "./node-navigator-stub";
 import { describe, it } from "node:test";
@@ -63,7 +64,12 @@ describe("audit B8 remainder — live sites", () => {
     // The mode menu is closed under server rendering, so its lines are read from source.
     const src = read("client/src/components/itinerary/TransportLeg.tsx");
     assert.match(src, /const checked = isCheckedTransport\(leg as any\);/);
-    assert.match(src, /\{checked && \(\s*<>\s*<span className="text-muted-foreground">·<\/span>\s*<span className="text-sm text-muted-foreground" data-testid=\{`leg-duration-\$\{leg\.legOrder\}`\}>/);
+    // The pill: a checked leg's own minutes only — a previewed alternative (isCustomized) shows none.
+    const customized = renderLeg(leg({ fromActivityId: "a", toActivityId: "b", routed: ROUTED, userSelectedMode: "walk" }));
+    assert.ok(!customized.includes('data-testid="leg-duration-1"'));
+    assert.doesNotMatch(text(customized), MINUTES);
+    assert.match(src, /const showPillMinutes = checked && !isCustomized;/);
+    assert.match(src, /\{showPillMinutes && \(\s*<>\s*<span className="text-muted-foreground">·<\/span>\s*<span className="text-sm text-muted-foreground" data-testid=\{`leg-duration-\$\{leg\.legOrder\}`\}>/);
     assert.match(src, /\{checked\s*\? `\$\{leg\.estimatedDurationMinutes\} min /);
     assert.match(src, /: leg\.estimatedCostUsd \? `\$\$\{leg\.estimatedCostUsd\.toFixed\(0\)\}` : "Free"\}/);
     assert.match(src, /\{alt\.costUsd \? `\$\$\{alt\.costUsd\.toFixed\(0\)\}` : "Free"\}/);
@@ -120,7 +126,7 @@ describe("audit B8 remainder — live sites", () => {
       "client/src/components/plancard/__tests__/b8-no-straight-line-minutes.test.tsx",
       "client/src/components/plancard/__tests__/step9c-leg-sheet.test.tsx",
       "client/src/components/plancard/__tests__/getting-around-every-gap.test.tsx",
-      "client/src/components/plancard/__tests__/b8-my-itinerary-day-transport.test.tsx",
+      "client/src/components/plancard/__tests__/b8-live-site-unchecked-minutes.test.tsx",
     ]);
     assert.deepEqual(files.filter((f) => /__tests__|\.test\.|\.spec\.|^playwright\/|^e2e\//.test(f) && !allowedTests.has(f)), []);
     // StopLegRow (LegRow.tsx) still prints its own minutes — the expert surface's own row.

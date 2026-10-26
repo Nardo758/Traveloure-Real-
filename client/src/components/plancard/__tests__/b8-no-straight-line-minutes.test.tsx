@@ -9,7 +9,7 @@
  *   B8e S5 the Trip Card's non-routed leg prints its mode only; the routed line is unchanged
  *   B8f the airport row still prints its routed minutes
  *   B8g plan-compare.ts is the rule's one home (unchanged)
- *   B8h S6 Getting around: the estimate gap reads "{mode} · Not checked yet"; other gaps unchanged
+ *   B8h S6 Getting around: an unrouted gap reads "{mode} · Not checked yet"; the routed gap is unchanged
  *
  * Run: npx tsx --test client/src/components/plancard/__tests__/b8-no-straight-line-minutes.test.tsx
  */

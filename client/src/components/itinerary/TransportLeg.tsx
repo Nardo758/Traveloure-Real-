@@ -174,6 +174,8 @@ export function TransportLeg({
   const alternatives = leg.alternativeModes || [];
   // Audit B8: minutes only for a checked (routed) leg; otherwise the mode label and cost.
   const checked = isCheckedTransport(leg as any);
+  // After a mode preview the shown minutes are an alternative's, which no route checked.
+  const showPillMinutes = checked && !isCustomized;
 
   return (
     <div className={cn("flex gap-3 py-2 px-3", className)} data-testid={`transport-leg-${leg.legOrder}`}>
@@ -184,7 +186,7 @@ export function TransportLeg({
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-base leading-none">{modeIcon}</span>
           <span className="text-sm font-medium">{modeLabel}</span>
-          {checked && (
+          {showPillMinutes && (
             <>
               <span className="text-muted-foreground">·</span>
               <span className="text-sm text-muted-foreground" data-testid={`leg-duration-${leg.legOrder}`}>
