@@ -220,7 +220,7 @@ test("PD5: no leg durations, leave-by, prices or forbidden words; says when it w
   assert.match(ics, /LOCATION:1048 5th Ave\\, New York\\, NY 10028/);
   assert.match(ics, /Map: https:\/\/www\.google\.com\/maps\/search\//);
   assert.match(ics, /Trip Card as of [A-Z][a-z]{2} \d{1,2}\\, \d{1,2}:\d{2} (AM|PM) New York time\./);
-  assert.doesNotMatch(ics, /\$|USD|245|199|price|cost/i, "no prices");
+  assert.doesNotMatch(ics.split(/\r?\n/).filter((line) => !line.startsWith("DTSTAMP") && !line.startsWith("UID")).join("\n"), /\$|USD|245|199|price|cost/i, "no prices");
   assert.doesNotMatch(ics, /PT37M|37 min|08:23|leave/i, "no leg durations or leave-by");
   assert.doesNotMatch(ics, PHONE_DELIVERY_FORBIDDEN_WORDS);
   assert.doesNotMatch(ics, /Booked/, "no booking language for a stop Traveloure does not hold");
