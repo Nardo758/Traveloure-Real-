@@ -743,6 +743,13 @@ export interface TripPlanPlancardExtras {
   lastComparisonId?: string;
   /** Step 6: the frozen final's card meta (`@shared/trip-card-final`) — the card render only. */
   finalCard?: import("./trip-card-final").FinalCardMeta;
+  /**
+   * Row 185 J6: the frozen flight anchors and airport-leg fact (`readFinalAirportLeg`).
+   * The Trip Card's final render, and only for the trip owner. Omitted on the live render,
+   * for a final that predates the keys, when the read is absent, and for every other viewer.
+   * Flight data — never on a public page (`@shared/airport-leg`).
+   */
+  finalAirportLeg?: import("./trip-card-final").FinalAirportLeg;
   stats: TripPlanStats;
 }
 

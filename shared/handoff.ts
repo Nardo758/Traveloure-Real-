@@ -44,7 +44,8 @@ export const HANDOFF_STATUSES = [
   "delivered", // the expert marked it ready; waiting for the traveler
   "approved", // the traveler approved (or the window did); the expert is paid; the pen returned
   "withdrawn", // the traveler withdrew
-  "released", // nobody accepted in time; the hold was released
+  "released", // nobody accepted in time; Stripe confirmed the hold was canceled
+  "release_pending", // the release window passed, but Stripe has not confirmed the cancel
 ] as const;
 export type HandoffStatus = (typeof HANDOFF_STATUSES)[number];
 
@@ -72,7 +73,29 @@ export function withdrawalStage(status: string | null | undefined): WithdrawalSt
   if (status === "authorizing" || status === "proposed" || status === "unmatched") return "before_accept";
   if (status === "accepted") return "after_accept";
   if (status === "delivered") return "after_delivery";
-  return null; // approved / withdrawn / released — nothing left to withdraw from
+  return null; // approved / withdrawn / released / release_pending — nothing left to withdraw from
+}
+
+/**
+ * Traveler-facing lines about an uncaptured handoff hold. Wording is owned by Marketing and
+ * held for the owner's approval. `nothingCharged` is said only after Stripe confirms the cancel.
+ */
+export const HANDOFF_HOLD_TRAVELER_COPY = {
+  checkingOnHold: "We're checking on your card hold",
+  nothingCharged: "We released the hold on your card. Nothing was charged.",
+} as const;
+
+/** How many Stripe cancel attempts the handoff timer makes before it stops and alerts staff. */
+export const HANDOFF_HOLD_RELEASE_MAX_ATTEMPTS = 5;
+
+/**
+ * Wait after a failed cancel attempt (1-based) before the timer tries again.
+ * 1h, 2h, 4h, 8h, then 16h, never more than 24h.
+ */
+export function handoffHoldReleaseBackoffMs(attempt: number): number {
+  const n = Math.max(1, Math.floor(attempt));
+  const hours = Math.min(24, 2 ** (n - 1));
+  return hours * 3_600_000;
 }
 
 /**
@@ -109,6 +132,7 @@ export type HandoffBannerState =
   | { kind: "finding"; city: string | null }
   | { kind: "fallback_offered" }
   | { kind: "released" }
+  | { kind: "release_pending" }
   | { kind: "accepted" }
   | { kind: "delivered" }
   /** Smoke 13 #5: the traveler withdrew. `holdReleased` ⇔ nothing was ever captured. */
@@ -121,6 +145,7 @@ export function handoffBannerState(row: {
   city?: string | null;
   capturedAt?: string | Date | null;
 }): HandoffBannerState {
+  if (row.status === "release_pending") return { kind: "release_pending" };
   if (row.status === "released") return { kind: "released" };
   if (row.status === "withdrawn") return { kind: "withdrawn", holdReleased: !row.capturedAt };
   if (row.status === "authorizing") return { kind: "authorizing" };

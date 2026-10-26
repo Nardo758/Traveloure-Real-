@@ -209,7 +209,7 @@ jobs:
       # board read, per-day apply with provenance (moved in place, locked kept, draft and run untouched),
       # and R-ac's free re-times — the fourth refused with nothing written. B1–B4.
       - name: Versions board — per-day apply and the free re-time limit
-        run: npx tsx --test --test-force-exit server/__tests__/version-board.db.test.ts
+        run: npx tsx --test --test-force-exit server/__tests__/version-board.db.test.ts server/__tests__/version-day-restore.db.test.ts
       # V-1 (ledger `2026-10-11-v1-version-sanity`): version stops locate like the slip (trusted
       # row → listing → Google fact, the fact in memory only — LD 57), the board locates at read time,
       # and a version's sanity flags (untimed, two dinners, late start) are flagged, never acted on. L1–L5.

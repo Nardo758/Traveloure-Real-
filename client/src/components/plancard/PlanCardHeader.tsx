@@ -16,7 +16,8 @@ export interface PlanCardHeaderMetrics {
   days: React.ReactNode;
   activities: React.ReactNode;
   legs: React.ReactNode;
-  transitTime: React.ReactNode;
+  /** Audit B8: null ⇒ no checked travel time, and the cell is omitted ("-" still renders). */
+  transitTime: React.ReactNode | null;
 }
 
 interface PlanCardHeaderProps {
@@ -71,7 +72,7 @@ export function PlanCardHeader({
     { label: "Days", value: metrics.days },
     { label: "Activities", value: metrics.activities },
     { label: "Travel legs", value: metrics.legs },
-    { label: "Travel time", value: metrics.transitTime },
+    ...(metrics.transitTime === null ? [] : [{ label: "Travel time", value: metrics.transitTime }]),
   ];
 
   return (

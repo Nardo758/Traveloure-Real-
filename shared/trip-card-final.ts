@@ -67,3 +67,72 @@ export function readFinalCardMeta(snapshot: unknown): FinalCardMeta | null {
     photos: card.photos && typeof card.photos === "object" ? card.photos : {},
   };
 }
+
+/**
+ * A flight anchor frozen into `trip_finals.snapshot.anchors` at Make final (row 185 J6).
+ * `time` is the wall-clock "HH:MM" (`anchorWallTime`). `airportLegMinutes` is a positive
+ * integer only when the plan already had a shown routed leg touching this anchor; otherwise null.
+ */
+export interface FrozenFlight {
+  time: string | null;
+  airport: string | null;
+  description: string | null;
+  airportLegMinutes: number | null;
+}
+
+/** `trip_finals.snapshot.airportLeg` — the one fact the airport ↔ lodging row cannot derive itself. */
+export interface FrozenAirportLeg {
+  platformCarFits: boolean;
+}
+
+/**
+ * What the Trip Card read forwards for the owner's final. Absent `platformCarFits` on the
+ * snapshot reads as false. This is the ONE reader: the server forwards it and the client imports it.
+ */
+export interface FinalAirportLeg {
+  flightArrival: FrozenFlight | null;
+  flightDeparture: FrozenFlight | null;
+  platformCarFits: boolean;
+}
+
+function positiveInt(value: unknown): number | null {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
+}
+
+/** A flight object, or null when the direction was absent or not an object. Bad field types become null. */
+function readFrozenFlight(value: unknown): FrozenFlight | null {
+  if (value == null || typeof value !== "object" || Array.isArray(value)) return null;
+  const v = value as Record<string, unknown>;
+  return {
+    time: typeof v.time === "string" ? v.time : null,
+    airport: typeof v.airport === "string" ? v.airport : null,
+    description: typeof v.description === "string" ? v.description : null,
+    airportLegMinutes: positiveInt(v.airportLegMinutes),
+  };
+}
+
+/**
+ * Pure. The frozen airport leg, or null when the snapshot carries no `anchors` or both
+ * directions are null (a final written before these keys, or a plan with no flight).
+ * Wrong types become null for that field. Never throws. `platformCarFits` is true only
+ * for boolean true.
+ */
+export function readFinalAirportLeg(snapshot: unknown): FinalAirportLeg | null {
+  try {
+    if (snapshot == null || typeof snapshot !== "object" || Array.isArray(snapshot)) return null;
+    const anchors = (snapshot as Record<string, unknown>).anchors;
+    if (anchors == null || typeof anchors !== "object" || Array.isArray(anchors)) return null;
+    const bag = anchors as Record<string, unknown>;
+    const flightArrival = readFrozenFlight(bag.flightArrival);
+    const flightDeparture = readFrozenFlight(bag.flightDeparture);
+    if (flightArrival == null && flightDeparture == null) return null;
+    const airportLeg = (snapshot as Record<string, unknown>).airportLeg;
+    const platformCarFits =
+      airportLeg != null && typeof airportLeg === "object" && !Array.isArray(airportLeg)
+        ? (airportLeg as Record<string, unknown>).platformCarFits === true
+        : false;
+    return { flightArrival, flightDeparture, platformCarFits };
+  } catch {
+    return null;
+  }
+}

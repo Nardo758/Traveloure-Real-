@@ -2,13 +2,14 @@
  * /ready-made/:id — the buyer-facing Ready Made Trips detail page (Phase 4).
  *
  * Continuity rebuild (marketplace-details lane, third and final surface — service-detail.tsx and
- * storefront.tsx are its style siblings). Structure, section copy and layout are transcribed from
- * the live-wired reference at artifacts/traveloure/src/pages/ready-made-detail.tsx (+ its
- * ready-made-detail.css), which the decision-maker has seen rendering live data; the token
- * grammar (navy #193752 / coral #f34d6e / teal #247d78 / gold #a67015 on a #f8faf9 ground,
- * Fraunces headings + DM Sans body) follows the canonical continuity vocabulary service-detail.tsx
- * already uses — the artifacts reference's own literal hex values (#142b45/#fb3b63/#287a79/
- * #b57d13) are the same family, standardized here to match the sibling rebuild. This is a
+ * storefront.tsx are its style siblings). Structure, section copy and layout were transcribed from
+ * artifacts/traveloure/src/pages/ready-made-detail.tsx (+ its ready-made-detail.css). That
+ * frontend-only copy was deleted 2026-10-25 (ledger `2026-10-25-delete-artifacts-traveloure`);
+ * this file in client/src is the production page. The token grammar (navy #193752 / coral
+ * #f34d6e / teal #247d78 / gold #a67015 on a #f8faf9 ground, Fraunces headings + DM Sans body)
+ * follows the canonical continuity vocabulary service-detail.tsx already uses — the former
+ * reference's own literal hex values (#142b45/#fb3b63/#287a79/#b57d13) are the same family,
+ * standardized here to match the sibling rebuild. This is a
  * presentation-only rebuild: every data fetch, mutation, testid and piece of purchase logic below
  * is unchanged from the pre-rebuild page. The branded header (logo + language selector) is kept —
  * this route is NOT wrapped in the shared app `<Layout>` (see client/src/App.tsx), so it is this
@@ -739,10 +740,10 @@ export default function ReadyMadeDetailPage() {
   );
 }
 
-// ── Page-local presentation helpers (continuity design, transcribed from
-// artifacts/traveloure/src/pages/ready-made-detail.tsx + .css as page-scoped Tailwind arbitrary
-// values — the same pattern service-detail.tsx uses). Not extracted to a shared file: each
-// marketplace-details lane is pure-client and page-scoped, rebuilt concurrently by sibling lanes.
+// ── Page-local presentation helpers (continuity design). Transcribed from the former
+// artifacts/traveloure ready-made-detail page, deleted 2026-10-25, as page-scoped Tailwind
+// arbitrary values — the same pattern service-detail.tsx uses. Not extracted to a shared file:
+// each marketplace-details lane is pure-client and page-scoped, rebuilt concurrently by sibling lanes.
 function RmCard({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
     <section className={`border border-[#dfe7e4] rounded-[12px] bg-white p-[22px] mb-[15px] ${className}`}>

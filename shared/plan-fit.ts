@@ -35,6 +35,13 @@ export type PlanFit =
       minutesPerDay: number;
       /** A8 (R228): each day's own summed burden — the per-day number the Finalize legs are checked against. */
       minutesByDay: Record<number, number>;
+      /**
+       * B8 (fix-queue row 182, architect 2026-10-25): for each day in `minutesByDay`, true only when
+       * every travel time summed into that day has `basis: "matrix"` — a routed duration. A straight-line
+       * estimate (`basis: "est"`) makes the day false. The minute totals above are not changed. The
+       * compare page reads this field and does not show a day's minutes when it is false.
+       */
+      checkedByDay?: Record<number, boolean>;
       basis: "matrix" | "est";
       coverage: number | null; // 0..1; null when the plan's located items sit in no known neighbourhood
       /** The two counts `coverage` is the share of (A4 renders "2 of 3 areas"); 0/0 when coverage is null. */
@@ -83,6 +90,9 @@ export function planFitFor(input: {
 
   const byDay = new Map<number, number>(); // day → summed minutes
   const countByDay = new Map<number, number>();
+  // A day is checked only when none of its legs is a straight-line estimate. The sums stay the
+  // full sums either way — this map only says whether those minutes are a routed duration.
+  const straightLineOnDay = new Map<number, boolean>();
   let allMatrix = true;
   for (const it of located) {
     const to = { lat: it.lat as number, lng: it.lng as number };
@@ -92,6 +102,7 @@ export function planFitFor(input: {
     const day = it.dayNumber ?? 0;
     byDay.set(day, (byDay.get(day) ?? 0) + t.minutes);
     countByDay.set(day, (countByDay.get(day) ?? 0) + 1);
+    if (t.basis !== "matrix") straightLineOnDay.set(day, true);
   }
   let weighted = 0;
   let weights = 0;
@@ -112,6 +123,7 @@ export function planFitFor(input: {
     scored: true,
     minutesPerDay: Math.round(weighted / weights),
     minutesByDay: Object.fromEntries(byDay),
+    checkedByDay: Object.fromEntries(Array.from(byDay.keys()).map((day) => [day, straightLineOnDay.get(day) !== true])),
     basis: allMatrix ? "matrix" : "est",
     coverage: hoods.size ? reachable / hoods.size : null,
     areasNear: reachable,

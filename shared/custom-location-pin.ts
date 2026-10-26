@@ -11,6 +11,10 @@
  * { "error": "pinned_anchor_not_found" }
  * with no reason field. It is not a placement refusal.
  *
+ * A pin that names only an anchor type — no free-text place and no catalog id —
+ * is HTTP 400 { "error": "pinned_anchor_invalid" }, also with no reason field.
+ * It is not auto-anchored and it is not a placement refusal.
+ *
  * Success (payments JSON, present only when a custom pin was placed this call):
  * resolvedPinnedAnchor: { type, name, lat, lng, formattedAddress }
  * placement: { lat, lng, source, at, sig }
@@ -30,6 +34,18 @@ export const PINNED_ANCHOR_NOT_FOUND_STATUS = 400 as const;
 
 export interface PinnedAnchorNotFoundBody {
   error: typeof PINNED_ANCHOR_NOT_FOUND;
+}
+
+/**
+ * Type-only pin: hotel|neighborhood|activity with no free-text place and no catalog id.
+ * Not one of CUSTOM_LOCATION_REFUSAL_REASONS, and not a catalog miss.
+ */
+export const PINNED_ANCHOR_INVALID = "pinned_anchor_invalid" as const;
+
+export const PINNED_ANCHOR_INVALID_STATUS = 400 as const;
+
+export interface PinnedAnchorInvalidBody {
+  error: typeof PINNED_ANCHOR_INVALID;
 }
 
 export const CUSTOM_LOCATION_REFUSAL_REASONS = [

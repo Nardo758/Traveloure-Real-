@@ -3,7 +3,7 @@
  *
  *   CT1 a leg carrying the server's `liveDirections` draws its link (the server's URL, never one built here) and
  *       the last departure near the stop it leaves; a leg without them draws no tier at all
- *   CT2 an unrouted leg's minutes read "est."; a routed leg keeps the slip's line with its "checked" provenance
+ *   CT2 an unrouted leg prints its mode and no minutes (audit B8); a routed leg keeps the slip's line with its "checked" provenance
  *   CT3 "A better way there" is drawn read-only (no swap control) only when the card passes the owner's suggestion
  *
  * Run: npx tsx --test client/src/components/plancard/__tests__/trip-card-live-tier.test.tsx
@@ -49,8 +49,10 @@ describe("TC-4 card leg live tier", () => {
     assert.ok(!bare.includes("card-leg-live-"), "no tier without the server's facts");
   });
 
-  it("CT2 unrouted minutes say est.; a routed leg keeps its checked provenance", () => {
-    assert.match(text(renderToString(<LegLine leg={PLAIN as any} showMinutes={true} />)), /12 min est\./);
+  it("CT2 an unrouted leg prints its mode, no minutes; a routed leg keeps its checked provenance", () => {
+    const plain = text(renderToString(<LegLine leg={PLAIN as any} showMinutes={true} />));
+    assert.match(plain, /Walk/);
+    assert.doesNotMatch(plain, /\d+ min/);
     const routed = text(renderToString(<LegLine leg={ROUTED as any} showMinutes={true} timeZone="Asia/Tokyo" />));
     assert.match(routed, /checked/);
     assert.ok(!/est\./.test(routed.split("Train & bus")[0]), "the routed line is not relabelled");

@@ -445,7 +445,8 @@ router.post("/api/optimization-payments", isAuthenticated, requireVerifiedEmail(
     // Custom pin: accept a signed placement, otherwise geocode, and refuse before
     // any charge, Trip Pass short-circuit, or free re-run. A non-custom catalog
     // id that does not resolve is 400 pinned_anchor_not_found here, before the
-    // charge. A bare lat/lng is not trusted.
+    // charge. A type with no free-text place and no catalog id is 400
+    // pinned_anchor_invalid, also before the charge. A bare lat/lng is not trusted.
     const rawPinnedAnchor = req.body?.pinnedAnchor;
     const placedPin = await placeCustomPinBeforeCharge({
       rawPin: rawPinnedAnchor,

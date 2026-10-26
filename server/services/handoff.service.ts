@@ -17,7 +17,8 @@
  *               advisor row back to read-only `pending`).
  *   Withdraw  → by stage (R-t): before accept the hold is released and nothing is kept; after, the
  *               fee is refunded less the band-named share, the traveler fee in the same proportion.
- *   Timers    → 24 h fallback offered, 48 h hold released (R-q), 7 d auto-approve (R-s).
+ *   Timers    → 24 h fallback offered, 48 h hold released (R-q). A Stripe cancel that fails stays
+ *               `release_pending` and is retried here; 7 d auto-approve (R-s).
  *
  * Every transition is ONE atomic conditional on the from-status (§15/§18b). Money amounts are
  * derived from the row and the bands, never a body (§14); no rate literal lives here (§8).
@@ -28,8 +29,11 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { expertRequests, itineraryItems } from "@shared/schema";
 import {
   HANDOFF_FEE_TIER,
+  HANDOFF_HOLD_RELEASE_MAX_ATTEMPTS,
+  HANDOFF_HOLD_TRAVELER_COPY,
   HANDOFF_KINDS,
   HANDOFF_LIVE_STATUSES,
+  handoffHoldReleaseBackoffMs,
   WITHDRAWAL_FEE_BAND,
   ON_TRIP_SUPPORT_BAND,
   HANDOFF_EVENTS,
@@ -251,12 +255,20 @@ export async function askHandoff(input: {
     WHERE NOT EXISTS (
       SELECT 1 FROM expert_requests
       WHERE trip_id = ${input.tripId} AND handoff_kind IS NOT NULL
-        AND status IN ('authorizing', ${sql.join(HANDOFF_LIVE_STATUSES.map((s) => sql`${s}`), sql`, `)})
+        AND status IN ('authorizing', 'release_pending', ${sql.join(HANDOFF_LIVE_STATUSES.map((s) => sql`${s}`), sql`, `)})
     )
     RETURNING id
   `);
   const id = (inserted.rows?.[0] as any)?.id as string | undefined;
   if (!id) {
+    const pendingRelease = await db.execute(sql`
+      SELECT id FROM expert_requests
+      WHERE trip_id = ${input.tripId} AND handoff_kind IS NOT NULL AND status = 'release_pending'
+      LIMIT 1
+    `);
+    if (pendingRelease.rows?.length) {
+      return { ok: false, status: 409, code: "hold_release_pending", message: HANDOFF_HOLD_TRAVELER_COPY.checkingOnHold };
+    }
     return { ok: false, status: 409, code: "handoff_in_progress", message: "This plan already has a local working on it, or an ask in progress." };
   }
   void track(input.userId, input.tripId, HANDOFF_EVENTS.requested, { kind: quote.kind, scope: quote.scopeItemIds.length, feeCents: quote.feeCents, prepaid: !!input.prepaid });
@@ -654,6 +666,8 @@ export async function withdrawHandoff(requestId: string, userId: string): Promis
       WHERE id = ${requestId} AND status IN ('authorizing', 'proposed', 'unmatched') RETURNING id
     `);
     if (!r.rows?.length) return { ok: false, status: 409, code: "wrong_status", message: "This handoff changed — refresh." };
+    // Failure stays on this withdrawn row. `release_pending` is the timer's state — moving a
+    // withdrawal there would drop the withdrawal. This lane does not change that.
     await releaseHold(row, `handoff-withdraw-${requestId}`, "requested_by_customer");
     if (row.tripId && row.assignedExpertId) {
       await db.execute(sql`UPDATE trip_expert_advisors SET status = 'rejected' WHERE trip_id = ${row.tripId} AND local_expert_id = ${row.assignedExpertId} AND status = 'pending'`);
@@ -717,12 +731,47 @@ async function driveWithdrawalRefund(row: HandoffRow): Promise<{ ok: true; keptC
  */
 export type HoldReleaseReason = "abandoned" | "requested_by_customer";
 
-async function releaseHold(row: HandoffRow, key: string, reason: HoldReleaseReason): Promise<void> {
-  if (!row.paymentIntentId || row.capturedAt) return;
+export type HoldReleaseOutcome = "confirmed" | "failed" | "skipped";
+
+function isCanceledStatus(status: unknown): boolean {
+  return status === "canceled" || status === "cancelled";
+}
+
+/** The Stripe error already carries a PaymentIntent that is canceled or expired. A succeeded intent is not. */
+function errorShowsHoldGone(err: unknown): boolean {
+  const e = err as {
+    payment_intent?: { status?: string; cancellation_reason?: string };
+    raw?: { payment_intent?: { status?: string; cancellation_reason?: string } };
+  };
+  const pi = e?.payment_intent ?? e?.raw?.payment_intent;
+  if (!pi) return false;
+  if (isCanceledStatus(pi.status)) return true;
+  if (pi.status) return false;
+  return pi.cancellation_reason === "expired" || pi.cancellation_reason === "automatic";
+}
+
+/**
+ * Cancel an uncaptured hold. Confirmed only when Stripe's cancel succeeds with a canceled
+ * status, or Stripe reports the PaymentIntent already canceled or expired. A thrown cancel
+ * that does not say that is a failure — the caller must not tell the traveler the hold is gone.
+ * Withdrawal ignores a failure (the row is already `withdrawn`); the timer records `release_pending`.
+ */
+async function releaseHold(row: HandoffRow, key: string, reason: HoldReleaseReason): Promise<HoldReleaseOutcome> {
+  if (!row.paymentIntentId || row.capturedAt) return "skipped";
+  const pay = await payments();
   try {
-    await (await payments()).cancel(row.paymentIntentId, key, reason);
+    const result = await pay.cancel(row.paymentIntentId, key, reason);
+    return isCanceledStatus(result.status) ? "confirmed" : "failed";
   } catch (err) {
-    console.error(`[handoff] release of hold ${row.paymentIntentId} failed — Stripe expires an uncaptured hold on its own:`, err);
+    if (errorShowsHoldGone(err)) return "confirmed";
+    try {
+      const pi = await pay.retrieve(row.paymentIntentId);
+      if (isCanceledStatus(pi.status)) return "confirmed";
+    } catch {
+      /* the cancel failure stands */
+    }
+    console.error(`[handoff] Stripe cancel of hold ${row.paymentIntentId} failed:`, err);
+    return "failed";
   }
 }
 
@@ -805,6 +854,121 @@ export interface HandoffTimerResult {
   stragglersAuthorized: number;
 }
 
+type HoldReleaseMeta = { attempts: number; nextAttemptAt: string | null; alertedAt: string | null };
+
+function readHoldRelease(ctx: unknown): HoldReleaseMeta {
+  const h = (ctx as { holdRelease?: { attempts?: unknown; nextAttemptAt?: unknown; alertedAt?: unknown } } | null)?.holdRelease;
+  const attempts = typeof h?.attempts === "number" ? h.attempts : Number(h?.attempts);
+  return {
+    attempts: Number.isFinite(attempts) && attempts > 0 ? Math.floor(attempts) : 0,
+    nextAttemptAt: typeof h?.nextAttemptAt === "string" && h.nextAttemptAt ? h.nextAttemptAt : null,
+    alertedAt: typeof h?.alertedAt === "string" && h.alertedAt ? h.alertedAt : null,
+  };
+}
+
+async function rejectPendingAdvisor(row: { tripId: string | null; assignedExpertId: string | null }): Promise<void> {
+  if (!row.tripId || !row.assignedExpertId) return;
+  await db.execute(sql`
+    UPDATE trip_expert_advisors SET status = 'rejected'
+    WHERE trip_id = ${row.tripId} AND local_expert_id = ${row.assignedExpertId} AND status = 'pending'
+  `);
+}
+
+/** One staff alert when the cancel cap is reached. The conditional stamp is the claim, so a second run does not alert again. */
+async function alertHoldReleaseCapped(row: HandoffRow, attempts: number): Promise<void> {
+  const stamped = await db.execute(sql`
+    UPDATE expert_requests
+    SET optimization_context = COALESCE(optimization_context, '{}'::jsonb) || jsonb_build_object(
+      'holdRelease', COALESCE(optimization_context->'holdRelease', '{}'::jsonb) || jsonb_build_object('alertedAt', ${new Date().toISOString()}::text)
+    )
+    WHERE id = ${row.id} AND status = 'release_pending'
+      AND (optimization_context #>> '{holdRelease,alertedAt}') IS NULL
+    RETURNING id
+  `);
+  if (!stamped.rows?.length) return;
+  const { raiseOpsAlert } = await import("./ops-alert.service");
+  await raiseOpsAlert({
+    type: "handoff_hold_release_failed",
+    reason: "release_attempt_cap",
+    message: `Handoff ${row.id} still has an uncaptured card hold after ${attempts} failed cancel attempts. It stays release_pending. Cancel PaymentIntent ${row.paymentIntentId ?? "(none)"} in Stripe if it is still open.`,
+    metadata: { requestId: row.id, paymentIntentId: row.paymentIntentId, tripId: row.tripId, attempts },
+  });
+}
+
+/**
+ * One cancel attempt for a `release_pending` row. The attempt count is claimed BEFORE the Stripe
+ * call (§15). Confirmed (canceled, or already canceled/expired) flips the row to `released` and
+ * sends the nothing-charged line. A failure stays `release_pending`, tells the traveler once, and
+ * alerts staff when the cap is reached.
+ */
+async function attemptHoldRelease(id: string, now: Date, out: HandoffTimerResult): Promise<void> {
+  const row = await getHandoff(id);
+  if (!row || row.status !== "release_pending" || row.capturedAt) return;
+  const meta = readHoldRelease(row.optimizationContext);
+  if (meta.attempts >= HANDOFF_HOLD_RELEASE_MAX_ATTEMPTS) {
+    if (!meta.alertedAt) await alertHoldReleaseCapped(row, meta.attempts);
+    return;
+  }
+  if (meta.nextAttemptAt && Date.parse(meta.nextAttemptAt) > now.getTime()) return;
+
+  const nextAttempts = meta.attempts + 1;
+  const nextAt =
+    nextAttempts >= HANDOFF_HOLD_RELEASE_MAX_ATTEMPTS
+      ? null
+      : new Date(now.getTime() + handoffHoldReleaseBackoffMs(nextAttempts)).toISOString();
+  const claimed = await db.execute(sql`
+    UPDATE expert_requests
+    SET optimization_context = COALESCE(optimization_context, '{}'::jsonb) || jsonb_build_object(
+      'holdRelease', jsonb_build_object(
+        'attempts', ${nextAttempts}::int,
+        'nextAttemptAt', ${nextAt}::text,
+        'alertedAt', ${meta.alertedAt}::text
+      )
+    )
+    WHERE id = ${row.id} AND status = 'release_pending' AND captured_at IS NULL
+      AND COALESCE((optimization_context #>> '{holdRelease,attempts}')::int, 0) = ${meta.attempts}
+      AND (
+        (optimization_context #>> '{holdRelease,nextAttemptAt}') IS NULL
+        OR (optimization_context #>> '{holdRelease,nextAttemptAt}')::timestamptz <= ${now.toISOString()}::timestamptz
+      )
+    RETURNING id
+  `);
+  if (!claimed.rows?.length) return;
+
+  await rejectPendingAdvisor(row);
+  const outcome = await releaseHold(row, `handoff-release-${row.id}`, "abandoned");
+  const confirmed = outcome === "confirmed" || (outcome === "skipped" && !row.paymentIntentId);
+  if (confirmed) {
+    const flipped = await db.execute(sql`
+      UPDATE expert_requests SET status = 'released', released_at = NOW()
+      WHERE id = ${row.id} AND status = 'release_pending' AND captured_at IS NULL
+      RETURNING id
+    `);
+    if (!flipped.rows?.length) return;
+    out.released += 1;
+    await notify(
+      row.userId,
+      row.tripId ?? "",
+      "handoff_released",
+      "No local was free",
+      HANDOFF_HOLD_TRAVELER_COPY.nothingCharged,
+      { requestId: row.id },
+    );
+    return;
+  }
+  if (nextAttempts === 1) {
+    await notify(
+      row.userId,
+      row.tripId ?? "",
+      "handoff_release_pending",
+      "No local was free",
+      HANDOFF_HOLD_TRAVELER_COPY.checkingOnHold,
+      { requestId: row.id },
+    );
+  }
+  if (nextAttempts >= HANDOFF_HOLD_RELEASE_MAX_ATTEMPTS) await alertHoldReleaseCapped(row, nextAttempts);
+}
+
 export async function runHandoffTimers(now: Date = new Date()): Promise<HandoffTimerResult> {
   const out: HandoffTimerResult = { fallbackOffered: 0, released: 0, autoApproved: 0, stragglersAuthorized: 0 };
   const fallbackCut = new Date(now.getTime() - handoffFallbackHours() * 3600_000);
@@ -821,17 +985,12 @@ export async function runHandoffTimers(now: Date = new Date()): Promise<HandoffT
     const r = await confirmHandoffAuthorization(s.id, s.user_id).catch(() => null);
     if (r && r.ok && r.request.status !== "authorizing") out.stragglersAuthorized += 1;
     else {
-      const rel = await db.execute(sql`
-        UPDATE expert_requests SET status = 'released', released_at = NOW()
-        WHERE id = ${s.id} AND status = 'authorizing' AND created_at < ${releaseCut} RETURNING id
+      // Past the release window: claim release_pending (not released) so a failed cancel is retried
+      // below. The same key cancels it once Stripe confirms.
+      await db.execute(sql`
+        UPDATE expert_requests SET status = 'release_pending'
+        WHERE id = ${s.id} AND status = 'authorizing' AND created_at < ${releaseCut} AND captured_at IS NULL
       `);
-      if (rel.rows?.length) {
-        out.released += 1;
-        // Smoke 13 #9: a straggler released by the clock had its PaymentIntent left open; cancel
-        // it too (the conditional above is the claim, so a second run releases nothing twice).
-        const released = await getHandoff(s.id);
-        if (released) await releaseHold(released, `handoff-release-${released.id}`, "abandoned");
-      }
     }
   }
 
@@ -846,21 +1005,33 @@ export async function runHandoffTimers(now: Date = new Date()): Promise<HandoffT
     await notify(r.user_id, r.trip_id, "handoff_fallback", "Still finding your local", "Our concierge can take this on now if you'd like.", { requestId: r.id });
   }
 
-  const rel = await db.execute(sql`
-    UPDATE expert_requests SET status = 'released', released_at = NOW()
-    WHERE handoff_kind IS NOT NULL AND status IN ('proposed', 'unmatched') AND authorized_at < ${releaseCut}
-    RETURNING id
+  // Claim the release BEFORE the Stripe call so accept (status = proposed) cannot capture it.
+  await db.execute(sql`
+    UPDATE expert_requests SET status = 'release_pending'
+    WHERE handoff_kind IS NOT NULL AND status IN ('proposed', 'unmatched')
+      AND authorized_at < ${releaseCut} AND captured_at IS NULL
   `);
-  for (const r of (rel.rows ?? []) as any[]) {
-    out.released += 1;
-    const row = await getHandoff(r.id);
-    if (row) {
-      await releaseHold(row, `handoff-release-${row.id}`, "abandoned");
-      if (row.tripId && row.assignedExpertId) {
-        await db.execute(sql`UPDATE trip_expert_advisors SET status = 'rejected' WHERE trip_id = ${row.tripId} AND local_expert_id = ${row.assignedExpertId} AND status = 'pending'`);
-      }
-      await notify(row.userId, row.tripId ?? "", "handoff_released", "No local was free", "We released the hold on your card. Nothing was charged.", { requestId: row.id });
-    }
+
+  const pending = await db.execute(sql`
+    SELECT id FROM expert_requests
+    WHERE handoff_kind IS NOT NULL AND status = 'release_pending' AND captured_at IS NULL
+      AND (
+        (
+          COALESCE((optimization_context #>> '{holdRelease,attempts}')::int, 0) < ${HANDOFF_HOLD_RELEASE_MAX_ATTEMPTS}
+          AND (
+            (optimization_context #>> '{holdRelease,nextAttemptAt}') IS NULL
+            OR (optimization_context #>> '{holdRelease,nextAttemptAt}')::timestamptz <= ${now.toISOString()}::timestamptz
+          )
+        )
+        OR (
+          COALESCE((optimization_context #>> '{holdRelease,attempts}')::int, 0) >= ${HANDOFF_HOLD_RELEASE_MAX_ATTEMPTS}
+          AND (optimization_context #>> '{holdRelease,alertedAt}') IS NULL
+        )
+      )
+    LIMIT 200
+  `);
+  for (const r of (pending.rows ?? []) as any[]) {
+    await attemptHoldRelease(r.id, now, out);
   }
 
   const due = await db.execute(sql`

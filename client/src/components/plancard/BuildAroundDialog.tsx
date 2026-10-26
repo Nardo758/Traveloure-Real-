@@ -64,10 +64,21 @@ const EMPTY_COPY: Record<ComparisonPinnedAnchorType, string> = {
   activity: "No activities scored near your stops yet",
 };
 
+/**
+ * Audit B8: a candidate shows a labelled straight-line DISTANCE, never a travel time.
+ * Wording approved by Leon (founder comment: #1703 2026-10-26T01:02:00Z).
+ */
+export const ANCHOR_CANDIDATE_DISTANCE_COPY = {
+  distance: (km: string) => `about ${km} km · straight line`,
+  none: "—",
+  tooltip: "Straight-line distance from this place to your located stops (median). Not a travel time.",
+} as const;
+
 export function formatAnchorCandidateMedian(candidate: AnchorCandidate): string {
-  return candidate.estMedianWalkMinutes == null
-    ? "— min"
-    : `${Math.round(candidate.estMedianWalkMinutes)} min median`;
+  const m = candidate.medianMeters;
+  if (m == null || !Number.isFinite(m) || m < 0) return ANCHOR_CANDIDATE_DISTANCE_COPY.none;
+  const km = Math.max(0.1, Math.round(m / 100) / 10);
+  return ANCHOR_CANDIDATE_DISTANCE_COPY.distance(km.toFixed(1));
 }
 
 export function BuildAroundDialog({
@@ -357,7 +368,7 @@ export function BuildAroundDialog({
                         </span>
                         <span
                           className="shrink-0 font-mono text-xs text-[color:var(--earn-muted)]"
-                          title="Estimated walking time from straight-line distance at 80 m/min"
+                          title={ANCHOR_CANDIDATE_DISTANCE_COPY.tooltip}
                         >
                           {formatAnchorCandidateMedian(candidate)}
                         </span>

@@ -3,7 +3,7 @@
  * between consecutive stops and never drops a day. The smoke-12 shape: days of 4 / 6 / 5 stops ⇒
  * 3 / 5 / 4 gaps.
  *   G1 every consecutive gap is listed, in stop order, on every day
- *   G2 a routed leg reads the slip's line; an unrouted leg with minutes reads "15 min · walk"; no leg, or
+ *   G2 a routed leg reads the slip's line; an unrouted leg reads "walk · Not checked yet" (audit B8); no leg, or
  *      a leg with no minutes, reads "not worked out yet"
  *   G3 days never vanish — a one-stop day and an empty day are still listed, with no gaps
  *   G4 a plan that doesn't earn routed legs gets the header "Travel times come with Optimize"; one that
@@ -62,12 +62,12 @@ describe("Getting around lists every gap", () => {
     assert.equal(days[0].gaps[0].title, "Stop 1.1 → Stop 1.2");
   });
 
-  it("G2 routed line, minutes-only line, or 'not worked out yet'", () => {
+  it("G2 routed line, mode-only line, or 'not worked out yet'", () => {
     const [d1, d2, d3] = gettingAroundDays(DAYS, "Asia/Tokyo");
     assert.equal(d1.gaps[0].kind, "routed");
     assert.equal(d1.gaps[0].line, "24 min · Keihan Main Line · ¥220 · Google · checked 4 Oct");
     assert.equal(d1.gaps[1].kind, "unrouted");
-    assert.equal(d1.gaps[1].line, "15 min · walk");
+    assert.equal(d1.gaps[1].line, "walk · Not checked yet");
     assert.deepEqual([d1.gaps[2].kind, d1.gaps[2].line], ["pending", GETTING_AROUND_PENDING]);
     assert.equal(d2.gaps[2].kind, "pending", "a leg with no minutes is not worked out yet");
     assert.ok(d2.gaps.every((g) => g.kind === "pending"));

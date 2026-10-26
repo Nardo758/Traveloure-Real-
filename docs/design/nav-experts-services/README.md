@@ -6,8 +6,7 @@
 "Experts & Services" dropdown (Service Providers, Local Experts, Trip Planners,
 Event Planners) as rendered by `client/src/lib/nav-config.ts` at that commit.
 
-They were NOT captured from the parallel `artifacts/traveloure` app, whose own
-`nav-config.ts` is stale (3 items, no Service Providers / Event Planners) — that tree
-is a design reference only, never a deploy target (ledger
-`2026-08-24-client-tree-canonical`). If a screenshot of the site shows the 3-item
-dropdown, check which frontend served it before reporting a regression.
+They were captured from `client/src`, which is the sole production client. The parallel
+`artifacts/traveloure` app (whose `nav-config.ts` was a stale 3-item menu) was deleted
+on 2026-10-25 (ledger `2026-10-25-delete-artifacts-traveloure`). That deletion supersedes
+the design-reference-only rule in `2026-08-24-client-tree-canonical` for this tree.

@@ -29,6 +29,7 @@ import { Link } from "wouter";
 import { AlertTriangle, Navigation } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DayBlock } from "@/components/plan/DayBlock";
+import { LegRow } from "@/components/plan/LegRow";
 import { ItemRow } from "@/components/plan/ItemRow";
 import { ItemSheet } from "@/components/plan/ItemSheet";
 import { ItemAskLocalPanel } from "@/components/plan/ItemAskLocalPanel";
@@ -36,7 +37,7 @@ import { PlacePhoto, usePlacePhotos } from "@/components/plan/PlacePhoto";
 import { FeedbackTap } from "@/components/plan/FeedbackTap";
 import { cardPanelDayLabel, dayBlockHeading, dayBlockStats } from "@/lib/plan-day";
 import { factCheckedLabel, itemFactsLine } from "@/lib/place-facts";
-import { CARD_ADD_TRAVEL_TIMES_LINE, cardDayOrder, cardProvenanceLine, legsCheckedLine, readyMadeSourceLine, dayNavigateHref, isCardToday, navigateHref, stayingAtLine, estimatedMinutesSuffix, lastServiceLine, liveDirectionsLabel } from "@/lib/trip-card";
+import { CARD_ADD_TRAVEL_TIMES_LINE, cardAirportLegs, cardDayOrder, cardProvenanceLine, legsCheckedLine, readyMadeSourceLine, dayNavigateHref, isCardToday, navigateHref, stayingAtLine, lastServiceLine, liveDirectionsLabel } from "@/lib/trip-card";
 import { rideSuggestionFor, rideSwapSummary, type RideSuggestionView } from "@/lib/ride-suggestions";
 import type { LegLastService, LegLiveDirections } from "@shared/live-directions";
 import { TRANSPORT_MODE_LABELS } from "@/lib/maps-platform";
@@ -47,7 +48,7 @@ import { legRecheckLine, type LegRecheckFinding } from "@shared/leg-recheck";
 import { freeFindingsPromptLine, type Finding } from "@shared/optimizer-lead";
 import { calendarDayOf } from "@shared/plan-timing";
 import type { FactView } from "@shared/content-facts";
-import type { FinalCardMeta } from "@shared/trip-card-final";
+import type { FinalAirportLeg, FinalCardMeta } from "@shared/trip-card-final";
 import type { PlanCardActivity, PlanCardDay } from "./plancard-types";
 import { slipItemBookingLine } from "@/lib/item-booking-state";
 import { getUpNextInfo, isStayActivity, nowHHMM, useLiveNow, useVisitedActivities } from "./plancard-temporal";
@@ -65,6 +66,8 @@ export interface TripCardDaysProps {
   finalizedAt?: string | null;
   finalVersion?: number | null;
   finalCard?: FinalCardMeta | null;
+  /** Row 185 J6 (#1701): the frozen airport leg — present only on the owner's final card read. */
+  finalAirportLeg?: FinalAirportLeg | null;
   /** The plan was optimized (a run exists) — otherwise the free plan's lines apply (R-e / R-ay). */
   optimized: boolean;
   /** Minutes on legs only when the travel-time service is on (R-h, the slip's own rule). */
@@ -222,7 +225,6 @@ export function LeaveByLine({ row, rows, nowMinute, stopName, stopId }: { row: L
 export function LegLine({ leg, showMinutes, timeZone, ride }: { leg: DayTransport; showMinutes: boolean; timeZone?: string | null; ride?: RideSuggestionView | null }) {
   const mode = String((leg as any).userSelectedMode ?? (leg as any).recommendedMode ?? (leg as any).mode ?? "");
   const label = (TRANSPORT_MODE_LABELS as Record<string, string>)[mode] ?? mode;
-  const minutes = Number((leg as any).estimatedDurationMinutes ?? (leg as any).duration);
   // Step 9a (ledger `2026-10-07-step9a-routing-engine`): a routed leg reads the slip's own line, from
   // the one helper — duration · line · fare · provenance. The server sends `routed` only on a routed plan.
   const fromId = (leg as any).fromActivityId ?? (leg as any).from;
@@ -243,7 +245,7 @@ export function LegLine({ leg, showMinutes, timeZone, ride }: { leg: DayTranspor
     <>
       <p className={`ml-6 ${legRuleClass(false)} pl-3 py-1 text-xs text-muted-foreground`} data-testid={`card-leg-${(leg as any).id}`}>
         {label}
-        {showMinutes && Number.isFinite(minutes) && minutes > 0 ? estimatedMinutesSuffix(minutes) : ""}
+        {/* Audit B8: a non-routed leg prints its mode only — an unchecked travel time is not shown. */}
       </p>
       <LegLiveTier leg={leg} ride={ride} />
     </>
@@ -300,6 +302,11 @@ export function TripCardDays(props: TripCardDaysProps) {
   // indices are the rendered rows' and Up next is the next timed stop.
   const upNext = today ? getUpNextInfo({ ...today, activities: (today.activities ?? []).filter((a) => !isStayActivity(a)) }, todayLegs, now, visited, timeZone, props.placeFacts ?? null) : null;
   const stored = props.finalCard?.photos ?? {};
+  // Row 185 J6: the airport ↔ stay rows from the trip_finals snapshot only (no live read, no Book on the
+  // card). Arrival opens the plan's first day; departure closes its last day.
+  const airportLegs = cardAirportLegs(days, props.finalAirportLeg, { isOwner: props.isOwner });
+  const firstDayNum = days.length ? Math.min(...days.map((d) => d.dayNum)) : null;
+  const lastDayNum = days.length ? Math.max(...days.map((d) => d.dayNum)) : null;
   const photoOf = (id: string) => livePhotos[id] ?? stored[id] ?? null;
 
   // T-3 banner (R-ad): the job's recorded finding, read.
@@ -502,6 +509,16 @@ export function TripCardDays(props: TripCardDaysProps) {
               ) : null
             }
           >
+            {d.dayNum === firstDayNum && airportLegs.arrival ? (
+              <LegRow
+                direction="arrival"
+                stayName={airportLegs.arrival.stayName}
+                airport={airportLegs.arrival.airport}
+                modes={airportLegs.arrival.modes}
+                routedMinutes={airportLegs.arrival.routedMinutes}
+                canBook={false}
+              />
+            ) : null}
             {acts.map((a, idx) => (
               <Fragment key={a.id}>
                 {isToday && upNext?.nowLineIndex === idx ? <NowLine now={now} /> : null}
@@ -542,6 +559,16 @@ export function TripCardDays(props: TripCardDaysProps) {
                 ) : null}
               </Fragment>
             ))}
+            {d.dayNum === lastDayNum && airportLegs.departure ? (
+              <LegRow
+                direction="departure"
+                stayName={airportLegs.departure.stayName}
+                airport={airportLegs.departure.airport}
+                modes={airportLegs.departure.modes}
+                routedMinutes={airportLegs.departure.routedMinutes}
+                canBook={false}
+              />
+            ) : null}
             {isToday && acts.length > 0 && upNext?.nowLineIndex === acts.length ? <NowLine now={now} /> : null}
             {/* 9b-c LB8 (ledger `2026-10-18-lb8-lb9-card-wiring`): today's flight departure, measured against its R-i
                 buffered time — the travel row's own title, then its leave-by line from the ONE core. */}

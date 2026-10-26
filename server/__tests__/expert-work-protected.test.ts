@@ -234,9 +234,10 @@ describe("E7 — ONE class, no third expression (D3, §18 rule 1)", () => {
   it("the SQL clause is referenced only by the guard and the apply-to-trip write sites", () => {
     // R-ah: the expert-work clause is now composed ONCE, inside `itineraryItemNotMachineProtected`
     // (the guard); the two apply-to-trip deletes reach it through that composition, and so does
-    // surface step 5's adopt-by-day / re-time writer (ledger `2026-10-04-surface-step5-map-versions`),
-    // which composes the SAME guard rather than a third expression — and so does smoke 10 S10-6's
-    // stay replacement (`where-to-stay.service.ts`), whose one delete never takes expert work.
+    // smoke 10 S10-6's stay replacement (`where-to-stay.service.ts`), whose one delete never takes
+    // expert work. The adopt-by-day / re-time guard composition is `dayRewriteWhere` in
+    // `version-day-restore.service.ts` (ledger `2026-10-25-d3-restore-day`), which apply-days and
+    // retime call.
     const users = serverFiles(SERVER).filter((f) =>
       readFileSync(f, "utf8").includes("itineraryItemNotExpertWork"),
     );
@@ -249,7 +250,7 @@ describe("E7 — ONE class, no third expression (D3, §18 rule 1)", () => {
     );
     assert.deepEqual(
       composed.map((f) => f.replace(/\\/g, "/").replace(/^.*\//, "")).sort(),
-      ["itinerary-rebuild-guard.ts", "plancard.routes.ts", "storage.ts", "version-board.service.ts", "where-to-stay.service.ts"],
+      ["itinerary-rebuild-guard.ts", "plancard.routes.ts", "storage.ts", "version-day-restore.service.ts", "where-to-stay.service.ts"],
     );
   });
   it("the two forms read the SAME two columns (expertNote, origin) and no third", () => {

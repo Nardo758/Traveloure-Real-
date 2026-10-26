@@ -10,6 +10,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { MODE_COLORS, STATUS_STYLES, ModeIcon, type PlanCardDay, type PlanCardTransport } from "./plancard-types";
 import { AGENT_REQUEST_SENT_TITLE, AGENT_REQUEST_SENT_DESCRIPTION } from "@shared/booking-agent-vocabulary";
+import { TRANSPORT_SECTION_COPY, transportMinutesView } from "@/lib/transport-section-minutes";
 
 interface TransportSectionProps {
   tripId: string;
@@ -465,10 +466,12 @@ export function TransportSection({ tripId, tripDestination, day, allowActions = 
               // everywhere else a leg list with no cost data has no estimate to state — `$0` would be
               // the card asserting a price nobody gave it (§13). Tiles are coloured by LABEL, not by
               // index, so dropping one cannot recolour the others.
+              // Audit B8: Total Time only when every leg is checked; otherwise the tile is omitted.
               const legCost = day.transports.reduce((s: number, t) => s + (t.cost || 0), 0);
+              const total = transportMinutesView(day.transports).totalMinutes;
               return [
                 { l: "Legs", v: day.transports.length },
-                { l: "Total Time", v: `${day.transports.reduce((s: number, t) => s + (t.duration || 0), 0)}m` },
+                ...(total != null ? [{ l: "Total Time", v: `${total}m` }] : []),
                 ...(legCost > 0 ? [{ l: "Est. Cost", v: `$${legCost.toLocaleString()}` }] : []),
               ];
             })().map((s) => (
@@ -479,8 +482,8 @@ export function TransportSection({ tripId, tripDestination, day, allowActions = 
             ))}
           </div>
           <div className="flex gap-2 flex-wrap">
-            {Array.from(new Set(day.transports.map((t) => t.mode))).map((mode) => {
-              const mins = day.transports.filter((t) => t.mode === mode).reduce((s: number, t) => s + (t.duration || 0), 0);
+            {/* Audit B8: a mode prints minutes only when every leg of that mode is checked; else its label. */}
+            {transportMinutesView(day.transports).modes.map(({ mode, label, minutes: mins }) => {
               return (
                 <span
                   key={mode}
@@ -488,7 +491,7 @@ export function TransportSection({ tripId, tripDestination, day, allowActions = 
                   style={{ backgroundColor: `${MODE_COLORS[mode] || "#94a3b8"}15`, color: MODE_COLORS[mode] || "#94a3b8" }}
                   data-testid={`badge-mode-summary-${mode}-${tripId}`}
                 >
-                  <ModeIcon mode={mode} className="w-3.5 h-3.5" /> {mins}m
+                  <ModeIcon mode={mode} className="w-3.5 h-3.5" /> {mins != null ? `${mins}m` : label}
                 </span>
               );
             })}
@@ -497,6 +500,8 @@ export function TransportSection({ tripId, tripDestination, day, allowActions = 
       )}
 
       {(day.transports || []).map((tr, i) => {
+        // Audit B8: minutes only for a checked (routed) leg; any other leg prints its mode label.
+        const legMinutes = transportMinutesView([tr]).legs[0];
         const ss = STATUS_STYLES[tr.status] || STATUS_STYLES.pending;
         const modeColor = MODE_COLORS[tr.mode] || "#94a3b8";
 
@@ -521,7 +526,13 @@ export function TransportSection({ tripId, tripDestination, day, allowActions = 
               <div className="flex flex-wrap gap-2.5 mt-1.5 items-center">
                 <TransportModeSelector tripId={tripId} transport={tr} allowActions={allowActions} />
                 <span className="text-[12px] text-muted-foreground flex items-center gap-1" data-testid={`text-transport-duration-${tr.id}`}>
-                  <Clock className="w-3 h-3" /> {tr.duration} min
+                  {legMinutes.checked ? (
+                    <>
+                      <Clock className="w-3 h-3" /> {tr.duration} min
+                    </>
+                  ) : (
+                    legMinutes.label
+                  )}
                 </span>
                 {tr.cost > 0 && (
                   <span className="text-[12px] text-green-600 dark:text-green-400 font-semibold" data-testid={`text-transport-cost-${tr.id}`}>${tr.cost}</span>
@@ -534,7 +545,7 @@ export function TransportSection({ tripId, tripDestination, day, allowActions = 
                 <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${ss.bg} ${ss.fg}`} data-testid={`badge-transport-status-${tr.id}`}>{ss.label}</span>
                 {tr.suggestedBy && (
                   <span className={`text-[11px] flex items-center gap-1 ${tr.suggestedBy === "ai" ? "text-green-600 dark:text-green-400" : "text-purple-600 dark:text-purple-400"}`} data-testid={`text-transport-suggested-${tr.id}`}>
-                    {tr.suggestedBy === "ai" ? "AI suggested" : "Expert suggested"}
+                    {tr.suggestedBy === "ai" ? TRANSPORT_SECTION_COPY.suggested : "Expert suggested"}
                   </span>
                 )}
                 <BookingSourceBadge transport={tr} />
