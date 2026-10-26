@@ -66,7 +66,7 @@ const EMPTY_COPY: Record<ComparisonPinnedAnchorType, string> = {
 
 /**
  * Audit B8: a candidate shows a labelled straight-line DISTANCE, never a travel time.
- * Wording held for owner approval.
+ * Wording approved by Leon, Oct 26, 2026 (relayed on #1703).
  */
 export const ANCHOR_CANDIDATE_DISTANCE_COPY = {
   distance: (km: string) => `about ${km} km · straight line`,
