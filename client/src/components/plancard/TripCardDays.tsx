@@ -37,7 +37,7 @@ import { PlacePhoto, usePlacePhotos } from "@/components/plan/PlacePhoto";
 import { FeedbackTap } from "@/components/plan/FeedbackTap";
 import { cardPanelDayLabel, dayBlockHeading, dayBlockStats } from "@/lib/plan-day";
 import { factCheckedLabel, itemFactsLine } from "@/lib/place-facts";
-import { CARD_ADD_TRAVEL_TIMES_LINE, cardAirportLegs, cardDayOrder, cardProvenanceLine, legsCheckedLine, readyMadeSourceLine, dayNavigateHref, isCardToday, navigateHref, stayingAtLine, estimatedMinutesSuffix, lastServiceLine, liveDirectionsLabel } from "@/lib/trip-card";
+import { CARD_ADD_TRAVEL_TIMES_LINE, cardAirportLegs, cardDayOrder, cardProvenanceLine, legsCheckedLine, readyMadeSourceLine, dayNavigateHref, isCardToday, navigateHref, stayingAtLine, lastServiceLine, liveDirectionsLabel } from "@/lib/trip-card";
 import { rideSuggestionFor, rideSwapSummary, type RideSuggestionView } from "@/lib/ride-suggestions";
 import type { LegLastService, LegLiveDirections } from "@shared/live-directions";
 import { TRANSPORT_MODE_LABELS } from "@/lib/maps-platform";
@@ -225,7 +225,6 @@ export function LeaveByLine({ row, rows, nowMinute, stopName, stopId }: { row: L
 export function LegLine({ leg, showMinutes, timeZone, ride }: { leg: DayTransport; showMinutes: boolean; timeZone?: string | null; ride?: RideSuggestionView | null }) {
   const mode = String((leg as any).userSelectedMode ?? (leg as any).recommendedMode ?? (leg as any).mode ?? "");
   const label = (TRANSPORT_MODE_LABELS as Record<string, string>)[mode] ?? mode;
-  const minutes = Number((leg as any).estimatedDurationMinutes ?? (leg as any).duration);
   // Step 9a (ledger `2026-10-07-step9a-routing-engine`): a routed leg reads the slip's own line, from
   // the one helper — duration · line · fare · provenance. The server sends `routed` only on a routed plan.
   const fromId = (leg as any).fromActivityId ?? (leg as any).from;
@@ -246,7 +245,7 @@ export function LegLine({ leg, showMinutes, timeZone, ride }: { leg: DayTranspor
     <>
       <p className={`ml-6 ${legRuleClass(false)} pl-3 py-1 text-xs text-muted-foreground`} data-testid={`card-leg-${(leg as any).id}`}>
         {label}
-        {showMinutes && Number.isFinite(minutes) && minutes > 0 ? estimatedMinutesSuffix(minutes) : ""}
+        {/* Audit B8: a non-routed leg prints its mode only — an unchecked travel time is not shown. */}
       </p>
       <LegLiveTier leg={leg} ride={ride} />
     </>

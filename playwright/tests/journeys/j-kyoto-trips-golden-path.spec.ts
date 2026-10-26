@@ -647,8 +647,9 @@ test.describe("3 · plan-fit per hotel", () => {
     await expect(page.locator(`[data-testid="slip-option-set-${setId}"] [data-testid^="slip-option-fit-"]`)).toHaveCount(3);
     for (const o of set.options) {
       const line = (await testid(page, `slip-option-fit-${o.id}`).textContent()) ?? "";
-      if (estOn(o.fit)) expect(line).toContain("est.");
-      else expect(line).not.toContain("est.");
+      // B8: the slip's fit line reads `compareBurdenLine` — no "est." and, on a straight-line basis, no minutes.
+      expect(line).not.toContain("est.");
+      if (estOn(o.fit)) expect(line).not.toMatch(/\d+ min/);
       expect(line).toContain("of 4 located");
       expect(line).toContain("3 of 4");
     }

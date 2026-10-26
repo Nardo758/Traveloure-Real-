@@ -161,11 +161,6 @@ export function lastServiceLine(ls: { operator: string; line: string | null; sta
   return `Last departure nearby: ${[ls.operator, where].filter(Boolean).join(" ")} ${ls.lastDeparture}`;
 }
 
-/** A non-routed leg's minutes are an estimate and say so (LD 69 — a stored estimate is never presented as exact). */
-export function estimatedMinutesSuffix(minutes: number): string {
-  return ` · ${Math.round(minutes)} min est.`;
-}
-
 /** Row 185 J6: one airport ↔ stay row on the Trip Card, drawn from the trip_finals snapshot only. */
 export interface CardAirportLeg {
   stayName: string;
