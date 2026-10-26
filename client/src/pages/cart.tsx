@@ -98,6 +98,8 @@ import { isContentCartLine } from "@shared/cart-content-line";
 // restated. A second copy of "does a stay have a quantity?" is the drift class §18 rule 1 names.
 import { archetypeAsks, cartCountLabel, cartLineUnitCount, cartUnitLabel } from "@shared/cart-quantity";
 import { useExpertAvailability } from "@/lib/expert-availability";
+import { DatesGate, type PlanWindow } from "@/components/plan/SlipAnchorPanels";
+import { cartOptimizeDatesConfirmed } from "@/lib/cart-dates-gate";
 import {
   REQUEST_ONLY_LINE_SENTENCE,
   isRequestOnlyReason,
@@ -699,7 +701,7 @@ export default function CartPage() {
 
   // G6: Trip auto-creation state
   const [resolvingTrip, setResolvingTrip] = useState(false);
-  const [resolvedTrip, setResolvedTrip] = useState<{ id: string; title: string; destination: string; startDate: string; endDate: string; numberOfTravelers: number } | null>(null);
+  const [resolvedTrip, setResolvedTrip] = useState<{ id: string; title: string; destination: string; startDate: string; endDate: string; numberOfTravelers: number; datesConfirmedAt?: string | null } | null>(null);
   const [tripTitle, setTripTitle] = useState("");
   const [tripDestination, setTripDestination] = useState("");
   // SH-1 item 11: the "Work with a Trip Planner" card draws only when the server says there is an
@@ -1719,6 +1721,21 @@ export default function CartPage() {
     } finally {
       setOneClickLoading(false);
     }
+  };
+
+  // Audit A3 (ledger `2026-10-25-cart-dates-gate`): a paid Optimize tap does not start while the plan's dates
+  // are unconfirmed. With no resolved trip (the ?step= landing) the tap re-runs the entry, which resolves the
+  // trip; no payment request is made. After the dates are saved, the cart's own copies agree, then the tap runs.
+  const guardedPay = (guard: (run: (dates: PlanWindow) => void) => void, run: () => void) => {
+    if (!resolvedTrip?.id) {
+      void handleOptimizeClick();
+      return;
+    }
+    guard((dates) => {
+      updateTripContext({ startDate: dates.startDate, endDate: dates.endDate });
+      setResolvedTrip((t) => (t ? { ...t, startDate: dates.startDate, endDate: dates.endDate, datesConfirmedAt: new Date().toISOString() } : t));
+      run();
+    });
   };
 
   // Called after optimization payment succeeds
@@ -2753,13 +2770,25 @@ export default function CartPage() {
                       )}
 
                       {/* FP-2: one-click when a default saved card exists and this isn't the
-                          free re-run (nothing to charge there). */}
+                          free re-run (nothing to charge there). Audit A3: every pay control is behind the dates gate. */}
+                      <DatesGate
+                        trip={{
+                          id: resolvedTrip?.id ?? "",
+                          startDate: effectiveTripStartDate,
+                          endDate: effectiveTripEndDate,
+                          datesConfirmed: cartOptimizeDatesConfirmed(resolvedTrip, getTripContext().tripId),
+                        }}
+                        action="Optimize"
+                        testId="cart-optimize-dates-gate"
+                      >
+                      {(guard) => (
+                      <>
                       {optimizeUnavailable(optimizationPreview) ? null : !optimizationPayment && !optimizationPreview.freeRerun && savedPayment.hasDefault && savedMethodConfirmsOnClick(savedPayment.defaultCard) ? (
                         <div className="space-y-2">
                           <Button
                             className="w-full bg-primary hover:bg-primary/90"
                             size="lg"
-                            onClick={payWithSavedCard}
+                            onClick={() => guardedPay(guard, () => void payWithSavedCard())}
                             disabled={oneClickLoading || paymentLoading || creatingComparison}
                             data-testid="button-pay-saved-card-optimization"
                           >
@@ -2777,7 +2806,7 @@ export default function CartPage() {
                           <button
                             type="button"
                             className="w-full text-center text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
-                            onClick={requestOptimizationPayment}
+                            onClick={() => guardedPay(guard, () => void requestOptimizationPayment())}
                             disabled={oneClickLoading || paymentLoading || creatingComparison}
                             data-testid="button-use-different-card-optimization"
                           >
@@ -2793,7 +2822,7 @@ export default function CartPage() {
                         <Button
                           className="w-full bg-primary hover:bg-primary/90"
                           size="lg"
-                          onClick={requestOptimizationPayment}
+                          onClick={() => guardedPay(guard, () => void requestOptimizationPayment())}
                           disabled={paymentLoading || creatingComparison}
                           data-testid="button-unlock-optimization"
                         >
@@ -2809,6 +2838,9 @@ export default function CartPage() {
                         </Button>
                         </>
                       )}
+                      </>
+                      )}
+                      </DatesGate>
                     </CardContent>
                   </Card>
 
