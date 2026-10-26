@@ -2536,7 +2536,6 @@ export function SlipView({
             anchor={mapAnchor}
             areas={mapAreas}
             showAreas={shading.show}
-            emphasizeAreas={shading.emphasize}
             versions={mapVersions}
             compareHref={data.lastComparisonId ? `/itinerary-comparison/${data.lastComparisonId}` : null}
             browse={mapBrowse}

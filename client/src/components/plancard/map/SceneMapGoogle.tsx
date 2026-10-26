@@ -1,14 +1,15 @@
 /**
  * The Google renderer of a `MapScene` (step 5; R-d; ruling 9). It draws the scene and nothing else —
- * every pin, connector, ghost, anchor, area and Browse marker comes from `sceneMarkers(scene)` and
- * the scene's geometry, the same list the Leaflet renderer draws, so the two never disagree.
+ * every pin, connector, ghost, anchor and Browse marker comes from `sceneMarkers(scene)` and the
+ * scene's geometry, the same list the Leaflet renderer draws, so the two never disagree. A neighbourhood
+ * is a labelled pin from `scene.areas` (`areaPinLabel`), never a shape (audit E4).
  */
 import { useEffect } from "react";
 import { APIProvider, Map, useMap } from "@vis.gl/react-google-maps";
 import { MapMarker, GOOGLE_MAPS_MAP_ID } from "@/components/ui/map-marker";
 import { Polyline } from "@/components/ui/map-polyline";
 import { clampFramingZoom, mapFraming } from "@/lib/map-framing";
-import { ANCHOR_COLOR, BROWSE_TEAL, PIN_STYLE, sceneMarkers, type MapScene } from "@/lib/map-scene";
+import { ANCHOR_COLOR, AREA_PIN_STYLE, BROWSE_TEAL, PIN_STYLE, areaPinLabel, sceneMarkers, type MapScene } from "@/lib/map-scene";
 import type { SceneLeg } from "./scene-legs";
 
 export interface SceneMapProps {
@@ -44,28 +45,28 @@ function Framing({ scene }: { scene: MapScene }) {
   return null;
 }
 
-/** Neighbourhood shading — a soft disc at each centroid (stronger while the AnchorPanel is open). */
-function Areas({ scene }: { scene: MapScene }) {
-  const map = useMap();
-  useEffect(() => {
-    if (!map || typeof google === "undefined" || !scene.areas.length) return;
-    const circles = scene.areas.map(
-      (a) =>
-        new google.maps.Circle({
-          map,
-          center: { lat: a.lat, lng: a.lng },
-          radius: 700,
-          strokeColor: ANCHOR_COLOR,
-          strokeOpacity: scene.areaStyle.strokeOpacity,
-          strokeWeight: 1,
-          fillColor: ANCHOR_COLOR,
-          fillOpacity: scene.areaStyle.fillOpacity,
-          clickable: false,
-        }),
-    );
-    return () => circles.forEach((c) => c.setMap(null));
-  }, [map, scene.areas, scene.areaStyle]);
-  return null;
+/** Audit E4: a neighbourhood is a dot and its name — no shape, nothing to click. */
+function AreaPins({ scene }: { scene: MapScene }) {
+  return (
+    <>
+      {scene.areas.map((a) => {
+        const l = areaPinLabel(a);
+        return (
+          <MapMarker
+            key={l.testId}
+            position={{ lat: a.lat, lng: a.lng }}
+            title={l.title}
+            label={GOOGLE_MAPS_MAP_ID ? undefined : { text: l.text, fontSize: `${AREA_PIN_STYLE.fontSize}px`, fontWeight: String(AREA_PIN_STYLE.fontWeight), color: AREA_PIN_STYLE.text }}
+          >
+            <div data-testid={l.testId} style={{ display: "flex", alignItems: "center", gap: 4, pointerEvents: "none" }}>
+              <span style={{ width: AREA_PIN_STYLE.dotSize, height: AREA_PIN_STYLE.dotSize, borderRadius: "50%", background: AREA_PIN_STYLE.dot }} />
+              <span style={{ color: AREA_PIN_STYLE.text, fontSize: AREA_PIN_STYLE.fontSize, fontWeight: AREA_PIN_STYLE.fontWeight, textShadow: AREA_PIN_STYLE.halo, whiteSpace: "nowrap" }}>{l.text}</span>
+            </div>
+          </MapMarker>
+        );
+      })}
+    </>
+  );
 }
 
 function Scene({ scene, selectedId, onSelect, onSelectBrowse, legs }: Omit<SceneMapProps, "center">) {
@@ -73,7 +74,7 @@ function Scene({ scene, selectedId, onSelect, onSelectBrowse, legs }: Omit<Scene
   return (
     <>
       <Framing scene={scene} />
-      <Areas scene={scene} />
+      <AreaPins scene={scene} />
       {scene.connector.length > 1 ? (
         <Polyline path={scene.connector} strokeColor="#64748B" strokeOpacity={0.6} strokeWeight={2} />
       ) : null}

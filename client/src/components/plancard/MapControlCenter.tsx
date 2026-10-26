@@ -6,7 +6,7 @@
  *   · PLAN LAYER: the selected day's stops numbered in day order (located stops only — an area stop
  *     is listed under "Not on the map yet", never guessed onto the map), straight connectors in day
  *     order (routed legs with their minutes only when the travel-time service is on), the anchor
- *     marker always visible, neighbourhood shading while the AnchorPanel is open. Day chips above; a
+ *     marker always visible, neighbourhoods named as labelled pins while the AnchorPanel is open. Day chips above; a
  *     bottom sheet of the day's stops below, selection synced both ways.
  *   · BROWSE LAYER (toggle): listings and partner places around the plan with their own coordinates,
  *     as hollow teal markers; a card with "Add" writes `itinerary_items` (LD 39). Hosts have no
@@ -125,11 +125,10 @@ export interface MapControlCenterProps {
   readOnly?: boolean;
   /** The plan's anchor (stay / reservation / venue) — always drawn when located. */
   anchor?: MapAnchor | null;
-  /** Neighbourhood centroids; shaded while `showAreas` (the stay is located, or the AnchorPanel is
-   *  open), emphasised while `emphasizeAreas` (the AnchorPanel is open). */
+  /** Neighbourhood centroids; named as labelled pins (never a shape) while `showAreas` (the stay is
+   *  located, or the AnchorPanel is open). */
   areas?: MapArea[] | null;
   showAreas?: boolean;
-  emphasizeAreas?: boolean;
   /** A run's versions: the Draft / A / B / C toggle. */
   versions?: MapVersion[] | null;
   /** Controlled Browse layer (e.g. "Find a host" opens it filtered to a category). */
@@ -180,7 +179,6 @@ export function MapControlCenter({
   anchor = null,
   areas = null,
   showAreas = false,
-  emphasizeAreas = false,
   versions = null,
   browse: browseControlled = null,
   onBrowseChange,
@@ -323,7 +321,6 @@ export function MapControlCenter({
     planAnchor: anchor,
     areas,
     showAreas,
-    emphasizeAreas,
     browse: browsePlaces,
     layers: { plan: planLayer, browse: browseOn || candidatesOn },
   });
