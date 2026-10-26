@@ -7,9 +7,13 @@
  * sender inventory. A type that is not clearly must-have, security, or
  * old-address-by-design is cancelled.
  *
- * NOT_ACCOUNT_BOUND is a Cursor-side safety choice, not the Architect's.
- * Those notices go to an admin inbox, an ops inbox, or a vendor contract
- * address. A match on a user's previous address would be a coincidence.
+ * NOT_ACCOUNT_BOUND is the exempt seven. Architect, Oct 26 2026, 6:50 PM ET:
+ * those types are correct as they stand. They go to an admin inbox, an ops
+ * inbox, or a vendor contract address. A match on a user's previous address
+ * would be a coincidence.
+ *
+ * Must-have is 22 types. Cancelled-by-default is 15. earner_no_response stays
+ * cancelled. The must-have list is the one table in this module.
  *
  * email_changed_old is named ahead of its sender. Row 172 slice d creates
  * that sender. This module keeps the helper from touching it.
@@ -24,6 +28,7 @@ import { sql, type SQL } from "drizzle-orm";
 
 export const SECURITY_EMAIL_TYPES = ["password_reset", "email_verification"] as const;
 
+/** Must-have. 22 types. One table. */
 export const MUST_HAVE_EMAIL_TYPES = [
   "booking_confirmation",
   "canonical_booking_confirmation",
@@ -43,6 +48,10 @@ export const MUST_HAVE_EMAIL_TYPES = [
   "provider_application_approved",
   "provider_application_rejected",
   "verification_decision",
+  "activity_booking_cancelled",
+  "plan_approved",
+  "plan_changes_requested",
+  "activity_quote_request",
 ] as const;
 
 /** Named ahead of its sender. Row 172 slice d creates the sender. */
@@ -63,10 +72,8 @@ export const NOT_ACCOUNT_BOUND_EMAIL_TYPES = [
 ] as const;
 
 /**
- * Cancelled under the ruling. Some of these are operational notices a reader
- * may call must-have (activity_booking_cancelled, activity_quote_request,
- * plan_approved, plan_changes_requested, earner_no_response). Moving one is
- * a one-line change in this module.
+ * Cancelled under the ruling. 15 types. earner_no_response stays cancelled
+ * (Architect, Oct 26 2026, 6:50 PM ET).
  */
 export const CANCELLED_BY_DEFAULT_EMAIL_TYPES = [
   "itinerary_nudge_2h",
@@ -75,8 +82,6 @@ export const CANCELLED_BY_DEFAULT_EMAIL_TYPES = [
   "signup_welcome",
   "occasion_reminder",
   "new_suggestion",
-  "plan_approved",
-  "plan_changes_requested",
   "ready_made_revision_requested",
   "earner_no_response",
   "guest_invite",
@@ -84,9 +89,7 @@ export const CANCELLED_BY_DEFAULT_EMAIL_TYPES = [
   "waitlist_open",
   "generic",
   "activity_advisor_invite",
-  "activity_booking_cancelled",
   "activity_new_message",
-  "activity_quote_request",
   "activity_review_received",
 ] as const;
 

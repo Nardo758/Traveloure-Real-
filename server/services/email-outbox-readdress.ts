@@ -5,7 +5,9 @@
  * from the change path.
  *
  * Three UPDATEs, one transaction. A row in flight (status processing with a
- * live lease) is never touched. Nothing is inserted. users is never written.
+ * live lease, including a null retry_after) is never touched. When that skip
+ * happens, one info line is written after the transaction commits. The line
+ * carries a count and no address. Nothing is inserted. users is never written.
  * A failure logs no address and returns zeros.
  */
 import { sql, type SQL } from "drizzle-orm";
@@ -79,7 +81,7 @@ export async function readdressOutboxOnEmailChange(input: {
         ? input.now.toISOString()
         : new Date().toISOString();
 
-    return await db.transaction(async (tx) => {
+    const outcome = await db.transaction(async (tx) => {
       const open = outboxReaddressClassSql();
       const readdressed = await tx.execute(sql`
         UPDATE email_outbox
@@ -123,11 +125,31 @@ export async function readdressOutboxOnEmailChange(input: {
         RETURNING id
       `);
 
+      // A live lease is the complement of the claimable processing arm,
+      // including a null retry_after (that comparison is unknown, so the
+      // claim predicate does not take the row). Count only. No update.
+      const skipped = await tx.execute(sql`
+        SELECT id
+        FROM email_outbox
+        WHERE lower(btrim(to_email)) = lower(btrim(${oldEmail}))
+          AND position(',' in to_email) = 0
+          AND status = 'processing'
+          AND (retry_after IS NULL OR retry_after >= NOW() - INTERVAL '1 minute')
+      `);
+
       return {
         readdressed: rowCount(readdressed),
         cancelled: rowCount(expired) + rowCount(cancelled),
+        skippedLiveLease: rowCount(skipped),
       };
     });
+    if (outcome.skippedLiveLease > 0) {
+      logger.info(
+        { skippedLiveLease: outcome.skippedLiveLease },
+        "[email-outbox] readdress skipped a live-lease row",
+      );
+    }
+    return { readdressed: outcome.readdressed, cancelled: outcome.cancelled };
   } catch (err: unknown) {
     logFailure(err);
     return zeros;

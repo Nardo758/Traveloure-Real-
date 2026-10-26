@@ -506,7 +506,7 @@ describe("readdressOutboxOnEmailChange", () => {
         NOT_ACCOUNT_BOUND_EMAIL_TYPES.length,
         CANCELLED_BY_DEFAULT_EMAIL_TYPES.length,
       ],
-      [2, 18, 1, 7, 19],
+      [2, 22, 1, 7, 15],
     );
 
     const known = new Set<string>([
@@ -586,7 +586,87 @@ describe("readdressOutboxOnEmailChange", () => {
     assert.equal((await load(changed.id)).to_email, old);
     assert.equal(metaOf(await load(changed.id)).authCritical, true);
   });
+
+  it("RA14: re-addresses the four moved types, cancels earner_no_response, and logs one live-lease skip", async () => {
+    const moved = [
+      "activity_booking_cancelled",
+      "plan_approved",
+      "plan_changes_requested",
+      "activity_quote_request",
+    ] as const;
+    for (const emailType of moved) {
+      assert.equal(classifyOutboxEmail(emailType, {}), "must_have");
+    }
+    assert.equal(classifyOutboxEmail("earner_no_response", {}), "cancelled_by_default");
+
+    const old = oldAddress("ra14");
+    const next = newAddress("ra14");
+    const ids = new Map<string, number>();
+    for (const emailType of moved) {
+      ids.set(emailType, await insertRow({ emailType, toAddress: old }));
+    }
+    const silent = await insertRow({ emailType: "earner_no_response", toAddress: old });
+
+    const seen: unknown[][] = [];
+    const origInfo = logger.info.bind(logger);
+    (logger as { info: typeof logger.info }).info = ((...args: unknown[]) => {
+      seen.push(args);
+    }) as typeof logger.info;
+    try {
+      const result = await readdressOutboxOnEmailChange({ oldEmail: old, newEmail: next });
+      assert.equal(result.readdressed, moved.length);
+      assert.equal(result.cancelled, 1);
+      assert.equal(skipLines(seen).length, 0);
+
+      for (const emailType of moved) {
+        const row = await load(ids.get(emailType)!);
+        assert.equal(row.to_email, next, emailType);
+        assert.equal(row.status, "pending", emailType);
+        assert.equal(row.retry_after, null, emailType);
+        assert.equal(metaOf(row).readdressReason, "readdressed", emailType);
+      }
+      const stayed = await load(silent);
+      assert.equal(stayed.to_email, old);
+      assert.equal(stayed.status, "cancelled");
+      assert.equal(stayed.retry_after, null);
+      assert.equal(stayed.last_error, ADDRESS_CHANGED);
+
+      const leaseOld = oldAddress("ra14-lease");
+      const leaseNext = newAddress("ra14-lease");
+      const live = await insertRow({
+        emailType: "booking_confirmation",
+        toAddress: leaseOld,
+        status: "processing",
+        lease: "live",
+      });
+      const nullLease = await insertRow({
+        emailType: "plan_delivered",
+        toAddress: leaseOld,
+        status: "processing",
+      });
+      const liveBefore = await snap(live);
+      const nullBefore = await snap(nullLease);
+      seen.length = 0;
+
+      const skipped = await readdressOutboxOnEmailChange({ oldEmail: leaseOld, newEmail: leaseNext });
+      assert.deepEqual(skipped, { readdressed: 0, cancelled: 0 });
+      assert.deepEqual(await snap(live), liveBefore);
+      assert.deepEqual(await snap(nullLease), nullBefore);
+      const lines = skipLines(seen);
+      assert.equal(lines.length, 1);
+      assert.equal(JSON.stringify(lines[0]).includes("@"), false);
+      assert.equal(JSON.stringify(lines[0]).includes(leaseOld), false);
+      assert.equal(lines[0][1], "[email-outbox] readdress skipped a live-lease row");
+      assert.deepEqual(lines[0][0], { skippedLiveLease: 2 });
+    } finally {
+      (logger as { info: typeof logger.info }).info = origInfo;
+    }
+  });
 });
+
+function skipLines(seen: unknown[][]): unknown[][] {
+  return seen.filter((args) => args.includes("[email-outbox] readdress skipped a live-lease row"));
+}
 
 async function addressCount(addresses: string[]): Promise<number> {
   const found = await pool.query(
