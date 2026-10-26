@@ -144,6 +144,7 @@ describe("audit B8 remainder — live sites", () => {
       "client/src/components/plancard/__tests__/b8-live-site-unchecked-minutes.test.tsx",
       "client/src/components/plancard/__tests__/plan-cost-strip.test.tsx",
       "client/src/lib/__tests__/e4-neighbourhood-pin-icon.test.ts",
+      "client/src/components/plancard/__tests__/versions-restore.test.tsx",
     ]);
     assert.deepEqual(files.filter((f) => /__tests__|\.test\.|\.spec\.|^playwright\/|^e2e\//.test(f) && !allowedTests.has(f)), []);
     // StopLegRow (LegRow.tsx) still prints its own minutes — the expert surface's own row.
