@@ -91,10 +91,8 @@ export interface MapScene {
   pins: ScenePin[];
   connector: Array<{ lat: number; lng: number }>;
   anchor: (MapAnchor & { lat: number; lng: number }) | null;
+  /** Neighbourhoods to name on the map: a point and a name, never a shape (audit E4). */
   areas: MapArea[];
-  /** How strongly the areas are drawn: soft whenever the stay is located, stronger while the
-   *  AnchorPanel is open (spec §2.3, step 6). */
-  areaStyle: { strokeOpacity: number; fillOpacity: number };
   browse: Array<BrowsePlace & { lat: number; lng: number }>;
   /** The day's stops in order, numbered — the bottom sheet's list (located or not). */
   list: Array<{ id: string; n: number; name: string; time: string | null; located: boolean; state: PinState }>;
@@ -102,16 +100,13 @@ export interface MapScene {
   notOnMap: Array<{ id: string; name: string }>;
 }
 
-export const AREA_STYLE_SOFT = { strokeOpacity: 0.2, fillOpacity: 0.04 } as const;
-export const AREA_STYLE_EMPHASIS = { strokeOpacity: 0.45, fillOpacity: 0.12 } as const;
-
 /**
- * Pure. When the slip map shades neighbourhoods (spec v1.3.4 §2.3, step 6): whenever the plan's STAY
- * has coordinates, and also while the AnchorPanel is open (deciding where to stay); emphasised while
- * the panel is open. A reservation or venue anchor is not a stay and shades nothing on its own.
+ * Pure. When the slip map names neighbourhoods as labelled pins (spec v1.3.4 §2.3, step 6; audit E4: a
+ * pin and a name, never a shape): whenever the plan's STAY has coordinates, and also while the AnchorPanel
+ * is open (deciding where to stay). A reservation or venue anchor is not a stay and names nothing on its own.
  */
-export function areaShading(input: { stayLocated: boolean; panelOpen: boolean }): { show: boolean; emphasize: boolean } {
-  return { show: input.stayLocated || input.panelOpen, emphasize: input.panelOpen };
+export function areaShading(input: { stayLocated: boolean; panelOpen: boolean }): { show: boolean } {
+  return { show: input.stayLocated || input.panelOpen };
 }
 
 const located = (lat: unknown, lng: unknown): boolean =>
@@ -124,8 +119,6 @@ export function buildMapScene(input: {
   planAnchor?: MapAnchor | null;
   areas?: readonly MapArea[] | null;
   showAreas?: boolean;
-  /** The AnchorPanel is open — the shading is emphasised. */
-  emphasizeAreas?: boolean;
   browse?: readonly BrowsePlace[] | null;
   layers: { plan: boolean; browse: boolean };
 }): MapScene {
@@ -171,7 +164,6 @@ export function buildMapScene(input: {
     connector: connector.length > 1 ? connector : [],
     anchor,
     areas: input.showAreas ? [...(input.areas ?? [])] : [],
-    areaStyle: input.emphasizeAreas ? AREA_STYLE_EMPHASIS : AREA_STYLE_SOFT,
     browse: input.layers.browse
       ? (input.browse ?? []).filter((b) => located(b.lat, b.lng)).map((b) => ({ ...b, lat: b.lat as number, lng: b.lng as number }))
       : [],
@@ -221,6 +213,22 @@ export const PIN_STYLE: Readonly<Record<PinState, { fill: string; ring: string; 
 };
 export const BROWSE_TEAL = "#14B8A6";
 export const ANCHOR_COLOR = "#7C3AED";
+
+/**
+ * Audit E4 (ledger `2026-10-25-e4-area-pins`): a neighbourhood is a small dot and its name, one look for
+ * both renderers. No box, no border, no fill and no opacity: nothing implies the neighbourhood has a boundary.
+ */
+export const AREA_PIN_STYLE = { dot: ANCHOR_COLOR, text: "#4C1D95", dotSize: 10, fontSize: 11, fontWeight: 600, halo: "0 0 2px #fff, 0 0 2px #fff, 0 0 3px #fff" } as const;
+
+/** Pure. A neighbourhood pin's test id, hover title and label text: the data's own name, untouched. */
+export function areaPinLabel(area: MapArea): { testId: string; title: string; text: string } {
+  return { testId: `map-neighbourhood-${area.slug}`, title: area.name, text: area.name };
+}
+
+/** Pure. Escape a string for an HTML marker (the Leaflet renderer builds its icons as HTML). */
+export function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
 
 /**
  * THE PLAN'S MAP ANCHOR (R321, S11-6) — ONE derivation for the slip's map and the Trip Card's map

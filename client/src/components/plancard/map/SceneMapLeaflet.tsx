@@ -11,11 +11,11 @@
  */
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Circle, MapContainer, Marker, Polyline, TileLayer, useMap } from "react-leaflet";
+import { MapContainer, Marker, Polyline, TileLayer, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { MAP_DISTRICT_ZOOM, clampFramingZoom, mapFraming } from "@/lib/map-framing";
-import { ANCHOR_COLOR, BROWSE_TEAL, PIN_STYLE, leafletSceneInputs, sceneMarkers, type MapScene, type MarkerDescriptor } from "@/lib/map-scene";
+import { ANCHOR_COLOR, AREA_PIN_STYLE, BROWSE_TEAL, PIN_STYLE, areaPinLabel, escapeHtml, leafletSceneInputs, sceneMarkers, type MapArea, type MapScene, type MarkerDescriptor } from "@/lib/map-scene";
 import type { SceneMapProps } from "./SceneMapGoogle";
 
 function iconFor(m: MarkerDescriptor, selected: boolean): L.DivIcon {
@@ -41,6 +41,18 @@ function iconFor(m: MarkerDescriptor, selected: boolean): L.DivIcon {
     html: `<div data-testid="${m.testId}" style="width:18px;height:18px;border-radius:50%;background:transparent;border:3px solid ${BROWSE_TEAL};"></div>`,
     iconSize: [18, 18],
     iconAnchor: [9, 9],
+  });
+}
+
+/** Audit E4: a neighbourhood is a dot and its (escaped) name — no shape, nothing to click. */
+function areaIcon(a: MapArea): L.DivIcon {
+  const l = areaPinLabel(a);
+  const st = AREA_PIN_STYLE;
+  return L.divIcon({
+    className: "",
+    html: `<div data-testid="${l.testId}" style="display:flex;align-items:center;gap:4px;white-space:nowrap;pointer-events:none;"><span style="width:${st.dotSize}px;height:${st.dotSize}px;border-radius:50%;background:${st.dot};"></span><span style="color:${st.text};font-size:${st.fontSize}px;font-weight:${st.fontWeight};text-shadow:${st.halo};font-family:Inter,sans-serif;">${escapeHtml(l.text)}</span></div>`,
+    iconSize: [0, 0],
+    iconAnchor: [st.dotSize / 2, st.dotSize / 2],
   });
 }
 
@@ -74,7 +86,7 @@ export function SceneMapLeaflet({ scene, center, selectedId, onSelect, onSelectB
       />
       <Framing scene={scene} />
       {scene.areas.map((a) => (
-        <Circle key={a.slug} center={[a.lat, a.lng]} radius={700} pathOptions={{ color: ANCHOR_COLOR, weight: 1, opacity: scene.areaStyle.strokeOpacity, fillOpacity: scene.areaStyle.fillOpacity }} />
+        <Marker key={a.slug} position={[a.lat, a.lng]} icon={areaIcon(a)} title={a.name} interactive={false} keyboard={false} zIndexOffset={-1000} />
       ))}
       {scene.connector.length > 1 ? (
         <Polyline positions={scene.connector.map((p) => [p.lat, p.lng] as [number, number])} pathOptions={{ color: "#64748B", weight: 2, opacity: 0.6 }} />
