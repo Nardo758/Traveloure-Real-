@@ -12724,6 +12724,35 @@ export const planDayRetimes = pgTable("plan_day_retimes", {
 });
 export type PlanDayRetime = typeof planDayRetimes.$inferSelect;
 
+// D3 (migration 411, HELD; ledger `2026-10-25-d3-restore-day`): one row per day an apply-days
+// call replaces, written in that same transaction. A dry run writes nothing. Retention: expires_at
+// is applied_at plus 14 days; only the newest snapshot per day is live (a newer apply sets
+// superseded_at on the older); expired rows are purged lazily at the next apply on that trip.
+// No new job. No CHECK. The index is DESC NULLS FIRST — PostgreSQL's default for DESC, and what
+// migration 411 creates — so a publish push does not drop and recreate it. Declared here so the
+// publish push keeps the table and the index (deploy-push durability).
+export const planDayRestoreSnapshots = pgTable("plan_day_restore_snapshots", {
+  id: varchar("id").primaryKey(),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  applyId: varchar("apply_id").notNull(),
+  dayNumber: integer("day_number").notNull(),
+  runId: varchar("run_id"),
+  variantId: varchar("variant_id"),
+  appliedBy: varchar("applied_by").notNull(),
+  appliedAt: timestamp("applied_at").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  beforeItems: jsonb("before_items").notNull(),
+  beforeComments: jsonb("before_comments").notNull().default(sql`'[]'::jsonb`),
+  insertedItemIds: jsonb("inserted_item_ids").notNull().default(sql`'[]'::jsonb`),
+  afterSignature: text("after_signature").notNull(),
+  restoredAt: timestamp("restored_at"),
+  restoredBy: varchar("restored_by"),
+  supersededAt: timestamp("superseded_at"),
+}, (table) => ({
+  tripDayIdx: index("plan_day_restore_snapshots_trip_day_idx").on(table.tripId, table.dayNumber, table.appliedAt.desc().nullsFirst()),
+}));
+export type PlanDayRestoreSnapshot = typeof planDayRestoreSnapshots.$inferSelect;
+
 // FD-1 (migration 363; ledger `2026-10-09-fd1-free-draft-cap`): one row per counted FREE draft. Born empty;
 // NO FK to trips (deleting a plan never refunds a draft). `rail` / `status` are app-enforced in
 // shared/free-draft-cap.ts (no CHECK). ONE writer: server/services/free-draft-cap.service.ts. No insert

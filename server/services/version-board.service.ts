@@ -14,6 +14,8 @@
  *     locked, held by an open set) are never moved or removed. Adopted rows carry `source_run_id` /
  *     `source_variant_id` (migration 343). The run and the stored draft are never touched; days not
  *     named are untouched. Where you stay follows the version most adopted days come from.
+ *     The same transaction saves the replaced day (`plan_day_restore_snapshots`, migration 411).
+ *     A dry run writes no snapshot. A finalized plan is refused before any write.
  *   · RE-TIME: one day, in the traveler's order, through the ONE spacing rule (`retimeDayInOrder`,
  *     no model call). Free `OPTIMIZER_FREE_RETIMES` times per version within 24 h of the run, counted
  *     in `plan_day_retimes` (migration 344) under the plan row's lock; past that it is REFUSED with
@@ -45,8 +47,8 @@ import { itineraryItemIsMachineProtected } from "@shared/itinerary-item-lock";
 import { optionPickOf } from "@shared/version-options";
 import { CHECK_METRIC_PREFIX, HELD_VARIANT_STATUS, isShownVariantStatus, isVersionStayPick } from "@shared/version-check";
 import { checkPlan, isFlagOnlyIssue, type PlanIssue } from "@shared/plan-check";
-import { itineraryItemNotMachineProtected } from "./itinerary-rebuild-guard";
 import { choosePickInTx, openSetHeldItemIds } from "./version-adopt.service";
+import { dayRewriteWhere, purgeExpiredDaySnapshots, readDayBefore, writeAppliedDaySnapshot, type AppliedDaySnapshotInput } from "./version-day-restore.service";
 import { planRole } from "./plan-option-sets.service";
 import { recordRunOutcome } from "./optimizer-runs.service";
 import { optimizerFreeRetimes } from "../config/optimizer-retimes.config";
@@ -404,12 +406,20 @@ async function retimeCounts(tripId: string, since: Date, exec: any = db): Promis
 
 // ── apply-days ──────────────────────────────────────────────────────────────────────────────────
 
-const updatableWhere = (tripId: string, id: string) =>
-  and(eq(itineraryItems.id, id), eq(itineraryItems.tripId, tripId), eq(itineraryItems.routingStatus, "in_planning"), sql`${itineraryItems.bookingId} IS NULL`, itineraryItemNotMachineProtected());
+/** One adopted day. `snapshotId` is null on a dry run, which writes no snapshot row. */
+type AppliedDayCounts = {
+  day: number;
+  variantId: string;
+  moved: number;
+  added: number;
+  removed: number;
+  kept: number;
+  snapshotId: string | null;
+};
 
 /** FB-1 step 4: a dry run's way out of `applyDays`' transaction — the counts leave, every write rolls back. */
 class ApplyDaysDryRun extends Error {
-  constructor(readonly result: { days: Array<{ day: number; variantId: string; moved: number; added: number; removed: number; kept: number }>; stay: unknown }) {
+  constructor(readonly result: { days: AppliedDayCounts[]; stay: unknown }) {
     super("apply-days dry run");
   }
 }
@@ -423,7 +433,9 @@ export async function applyDays(input: {
    * the counts the write would make, and nothing is written.
    */
   dryRun?: boolean;
-}): Promise<{ days: Array<{ day: number; variantId: string; moved: number; added: number; removed: number; kept: number }>; stay: unknown }> {
+}): Promise<{ days: AppliedDayCounts[]; stay: unknown }> {
+  const [gate] = await db.select({ finalizedAt: trips.finalizedAt }).from(trips).where(eq(trips.id, input.tripId)).limit(1);
+  if (gate?.finalizedAt) throw new VersionBoardError(409, "plan_finalized", "Reopen the plan first");
   try {
     return await applyDaysTx(input);
   } catch (err) {
@@ -437,7 +449,7 @@ async function applyDaysTx(input: {
   userId: string;
   days: Array<{ day: number; variantId: string }>;
   dryRun?: boolean;
-}): Promise<{ days: Array<{ day: number; variantId: string; moved: number; added: number; removed: number; kept: number }>; stay: unknown }> {
+}): Promise<{ days: AppliedDayCounts[]; stay: unknown }> {
   const run = await latestRun(input.tripId);
   if (!run) throw new VersionBoardError(409, "no_run", "This plan has no optimized versions to adopt from");
   const byId = new Map(run.variants.map((v) => [v.id, v]));
@@ -449,16 +461,32 @@ async function applyDaysTx(input: {
   }
   const role = await planRole(input.tripId, input.userId, "choose");
   return db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT id FROM trips WHERE id = ${input.tripId} FOR UPDATE`);
+    const locked = await tx.execute(sql`SELECT finalized_at FROM trips WHERE id = ${input.tripId} FOR UPDATE`);
+    if ((locked.rows?.[0] as { finalized_at?: Date | null } | undefined)?.finalized_at) {
+      throw new VersionBoardError(409, "plan_finalized", "Reopen the plan first");
+    }
+    const appliedAt = new Date();
+    const applyId = crypto.randomUUID();
+    // Expired snapshots for this plan are purged only on a real apply, inside this transaction.
+    if (!input.dryRun) await purgeExpiredDaySnapshots(tx, input.tripId, appliedAt);
     const held = new Set(await openSetHeldItemIds(tx, input.tripId));
     const items = await versionStops(input.days.map((d) => d.variantId), tx);
-    const results: Array<{ day: number; variantId: string; moved: number; added: number; removed: number; kept: number }> = [];
+    const results: AppliedDayCounts[] = [];
+    const pending: Array<{ result: AppliedDayCounts; snap: AppliedDaySnapshotInput }> = [];
     for (const { day, variantId } of input.days) {
       const plan = await planStops(input.tripId, tx);
       const planIds = new Set(plan.map((p) => p.id));
       const vDay = items.filter((r) => r.variantId === variantId && r.dayNumber === day && !isStayPick(r as any));
       const keeps = new Set(vDay.map((r) => r.sourceItemId).filter((x): x is string => !!x && planIds.has(x)));
       const v = byId.get(variantId)!;
+      const movable = new Set(plan.filter((p) => !p.fixed).map((p) => p.id));
+      const deleteIds = plan
+        .filter((p) => p.dayNumber === day && !keeps.has(p.id) && !held.has(p.id) && movable.has(p.id))
+        .map((p) => p.id);
+      const moveIds = vDay.map((r) => r.sourceItemId).filter((x): x is string => !!x && keeps.has(x) && movable.has(x));
+      // Taken before step 1. A dry run never reads or writes a snapshot.
+      const before = input.dryRun ? { beforeItems: [] as unknown[], beforeComments: [] as unknown[] } : await readDayBefore(tx, input.tripId, deleteIds, moveIds);
+      const insertedIds: string[] = [];
       let moved = 0;
       let added = 0;
       let removed = 0;
@@ -466,7 +494,7 @@ async function applyDaysTx(input: {
       // 1. The day's plan items the version does not keep are removed — unless protected or held.
       // item-removed:replace — adopting a version's day replaces that day's in_planning set.
       for (const p of plan.filter((x) => x.dayNumber === day && !keeps.has(x.id) && !held.has(x.id))) {
-        const del = await tx.delete(itineraryItems).where(updatableWhere(input.tripId, p.id)).returning({ id: itineraryItems.id });
+        const del = await tx.delete(itineraryItems).where(dayRewriteWhere(input.tripId, p.id)).returning({ id: itineraryItems.id });
         removed += del.length;
       }
       // 2. Each version stop: move the plan row it keeps, else insert it (deduped against survivors).
@@ -481,7 +509,7 @@ async function applyDaysTx(input: {
           const upd = await tx
             .update(itineraryItems)
             .set({ dayNumber: day, startTime: r.startTime || "", endTime: r.endTime || null, sortOrder, ...provenance, updatedAt: new Date() } as any)
-            .where(updatableWhere(input.tripId, r.sourceItemId))
+            .where(dayRewriteWhere(input.tripId, r.sourceItemId))
             .returning({ id: itineraryItems.id });
           if (upd.length) {
             if (prior.dayNumber === day && (prior.startTime || null) === (r.startTime || null)) kept++;
@@ -492,7 +520,7 @@ async function applyDaysTx(input: {
         if (r.providerServiceId && survivorServiceIds.has(r.providerServiceId)) continue;
         if (survivorTitles.has(r.name.trim().toLowerCase())) continue;
         // FD-2 ruling 9: stamped from the row's origin.
-        await tx.insert(itineraryItems).values(stampItemSourceClass({
+        const [inserted] = await tx.insert(itineraryItems).values(stampItemSourceClass({
           tripId: input.tripId,
           providerServiceId: r.providerServiceId ?? null,
           title: r.name,
@@ -512,11 +540,31 @@ async function applyDaysTx(input: {
           latitude: r.latitude ? String(r.latitude) : null,
           longitude: r.longitude ? String(r.longitude) : null,
           ...provenance,
-        }) as any);
+        }) as any).returning({ id: itineraryItems.id });
+        if (!inserted) throw new VersionBoardError(500, "apply_insert", "Couldn't add that stop");
+        insertedIds.push(inserted.id);
         added++;
       }
       await recordRunOutcome(tx, { variantId, kind: "adopted_part", actorId: input.userId, variantItemIds: vDay.map((r) => r.id) });
-      results.push({ day, variantId, moved, added, removed, kept });
+      const dayResult: AppliedDayCounts = { day, variantId, moved, added, removed, kept, snapshotId: null };
+      results.push(dayResult);
+      if (!input.dryRun) {
+        pending.push({
+          result: dayResult,
+          snap: {
+            tripId: input.tripId,
+            applyId,
+            day,
+            runId: v.runId ?? null,
+            variantId,
+            appliedBy: input.userId,
+            appliedAt,
+            beforeItems: before.beforeItems,
+            beforeComments: before.beforeComments,
+            insertedItemIds: insertedIds,
+          },
+        });
+      }
     }
     // 3. Where you stay follows the version most adopted days come from (ties → the earliest label).
     const tally = new Map<string, number>();
@@ -527,6 +575,10 @@ async function applyDaysTx(input: {
       const pickRow = items.find((r) => r.variantId === lead.id && optionPickOf(r.metadata));
       const pick = pickRow ? optionPickOf(pickRow.metadata) : null;
       if (pick) stay = await choosePickInTx(tx, { tripId: input.tripId, userId: input.userId, role, pick, via: "version_whole" });
+    }
+    // After step 3, still inside this transaction, so a dry-run rollback cannot leave a snapshot.
+    if (!input.dryRun) {
+      for (const p of pending) p.result.snapshotId = await writeAppliedDaySnapshot(tx, p.snap);
     }
     if (input.dryRun) throw new ApplyDaysDryRun({ days: results, stay: null });
     return { days: results, stay };
@@ -571,7 +623,7 @@ export async function retimeDay(input: {
       const v = run.variants.find((x) => x.id === vs.variantId)!;
       const allPlan = await planStops(input.tripId, tx);
       if (vs.sourceItemId && allPlan.some((p) => p.id === vs.sourceItemId)) {
-        await tx.update(itineraryItems).set({ dayNumber: input.day, sourceRunId: v.runId ?? null, sourceVariantId: v.id, updatedAt: new Date() } as any).where(updatableWhere(input.tripId, vs.sourceItemId));
+        await tx.update(itineraryItems).set({ dayNumber: input.day, sourceRunId: v.runId ?? null, sourceVariantId: v.id, updatedAt: new Date() } as any).where(dayRewriteWhere(input.tripId, vs.sourceItemId));
         if (!order.includes(vs.sourceItemId)) order.push(vs.sourceItemId);
       } else {
         const [row] = await tx
@@ -615,7 +667,7 @@ export async function retimeDay(input: {
       const upd = await tx
         .update(itineraryItems)
         .set({ sortOrder, startTime: t.startTime!, endTime: t.endTime!, updatedAt: new Date() } as any)
-        .where(updatableWhere(input.tripId, t.id!))
+        .where(dayRewriteWhere(input.tripId, t.id!))
         .returning({ id: itineraryItems.id });
       if (upd.length) out.push({ id: t.id!, startTime: t.startTime!, endTime: t.endTime! });
     }

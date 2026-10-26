@@ -2160,4 +2160,9 @@ export const MIGRATION_FILES = [
   // No ALTER. The gem table has no slug column. HELD for Leon's comment.
   // Ledger 2026-10-24-discovery-status-emerging.
   "410_discovery_status_emerging.sql",
+  // 411 — plan_day_restore_snapshots. One row per replaced day, written in the apply-days
+  // transaction. Additive table, no CHECK, no backfill. Index DESC NULLS FIRST.
+  // HELD for "Migration 411 SQL approved — Leon". Ledger 2026-10-25-d3-restore-day.
+  // Declared in shared/schema.ts. Retention: 14 days, newest per day, purged at the next apply.
+  "411_plan_day_restore_snapshots.sql",
 ] as const;
