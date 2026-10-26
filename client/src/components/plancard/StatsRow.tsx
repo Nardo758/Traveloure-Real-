@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import { Star, TrendingDown, Heart, Route, CheckCircle2, DollarSign, Gauge } from "lucide-react";
+import { Star, TrendingDown, Heart, CheckCircle2, DollarSign, Gauge } from "lucide-react";
 import { STATS_ICONS, computeDayCount, type TemplateConfig, type PlanCardTrip, type PlanCardDay } from "./plancard-types";
 
 export interface ExtraStat {
@@ -61,14 +61,14 @@ interface OptimizerMetricsProps {
   savings: string | null | undefined;
   savingsPercent: string | null | undefined;
   wellnessTime: number | null | undefined;
-  travelDistance: number | null | undefined;
   starDelta: number | null | undefined;
   totalCost: string | null | undefined;
   perPerson: string | null;
 }
 
-export function OptimizerMetrics({ tripId, traveloureScore, savings, savingsPercent, wellnessTime, travelDistance, starDelta, totalCost, perPerson }: OptimizerMetricsProps) {
-  const hasMetrics = traveloureScore != null || savings || wellnessTime || travelDistance || starDelta || totalCost;
+export function OptimizerMetrics({ tripId, traveloureScore, savings, savingsPercent, wellnessTime, starDelta, totalCost, perPerson }: OptimizerMetricsProps) {
+  // Audit B8: no travel badge — `travelDistanceMinutes` is an unchecked sum of leg minutes.
+  const hasMetrics = traveloureScore != null || savings || wellnessTime || starDelta || totalCost;
   if (!hasMetrics) return null;
 
   return (
@@ -91,11 +91,6 @@ export function OptimizerMetrics({ tripId, traveloureScore, savings, savingsPerc
       {wellnessTime && (
         <Badge variant="secondary" className="text-[11px] gap-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 border-0" data-testid={`badge-wellness-${tripId}`}>
           <Heart className="w-3 h-3" /> {wellnessTime}m wellness
-        </Badge>
-      )}
-      {travelDistance && (
-        <Badge variant="secondary" className="text-[11px] gap-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border-0" data-testid={`badge-travel-distance-${tripId}`}>
-          <Route className="w-3 h-3" /> {travelDistance}m travel
         </Badge>
       )}
       {starDelta && (

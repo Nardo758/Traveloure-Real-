@@ -9,7 +9,7 @@
  *   B8e S5 the Trip Card's non-routed leg prints its mode only; the routed line is unchanged
  *   B8f the airport row still prints its routed minutes
  *   B8g plan-compare.ts is the rule's one home (unchanged)
- *   B8h S6 Getting around: the estimate gap reads "{mode} · Not checked yet"; other gaps unchanged
+ *   B8h S6 Getting around: an unrouted gap reads "{mode} · Not checked yet"; the routed gap is unchanged
  *
  * Run: npx tsx --test client/src/components/plancard/__tests__/b8-no-straight-line-minutes.test.tsx
  */
@@ -85,7 +85,9 @@ describe("audit B8 — no straight-line minutes", () => {
 
   it("B8d S4 the slip's leg rows", () => {
     assert.equal(renderToString(<LegRow kind="unrouted" legId="u1" mode="drive" minutes={18} estimate={true} />), "");
-    assert.match(text(renderToString(<LegRow kind="unrouted" legId="u2" mode="walk" minutes={15} />)), /15 min · walk/);
+    const unrouted = text(renderToString(<LegRow kind="unrouted" legId="u2" mode="walk" minutes={15} />));
+    assert.equal(unrouted, "walk · Not checked yet");
+    assert.doesNotMatch(unrouted, /\d/);
     assert.match(text(renderToString(<LegRow kind="routed" legId="r1" mode="transit" route={ROUTE} timeZone="Asia/Tokyo" />)), /24 min/);
   });
 
@@ -132,7 +134,8 @@ describe("audit B8 — no straight-line minutes", () => {
     assert.equal(d.gaps[0].kind, "unrouted");
     assert.equal(d.gaps[0].title, "Kinkaku-ji → Ryoan-ji");
     assert.doesNotMatch(d.gaps[0].line, MINUTES);
-    assert.equal(d.gaps[1].line, "15 min · walk");
+    assert.equal(d.gaps[1].line, "walk · Not checked yet");
+    assert.doesNotMatch(d.gaps[1].line, MINUTES);
     assert.equal(d.gaps[2].kind, "routed");
     assert.match(d.gaps[2].line, /24 min/);
     const html = text(renderToString(<GettingAroundBody data={{ days: [{ ...day, transports: [day.transports[0]] }], trip: { timezone: "Asia/Tokyo" } } as any} />));

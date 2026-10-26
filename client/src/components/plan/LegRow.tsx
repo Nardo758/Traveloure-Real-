@@ -25,7 +25,8 @@ import { AIRPORT_LEG_MODE_LABEL, airportLegLine, type AirportLegMode } from "@sh
 import { AUTHOR_TIP_MAX_CHARS, isChauffeuredMode, legModeOptions } from "@shared/trip-plan";
 import { planLegDomId, planLegPairDomId } from "@shared/plan-jump-targets";
 import { TRANSPORT_MODE_LABELS } from "@/lib/maps-platform";
-import { TRAVEL_TIME_NOT_CHECKED_LINE, unroutedLegLine } from "@/lib/slip-legs";
+import { TRAVEL_TIME_NOT_CHECKED_LINE } from "@/lib/slip-legs";
+import { PLAN_COMPARE_MINUTE_COPY } from "@/lib/plan-compare";
 import { legRuleClass, storedLegIsRouted } from "@/lib/leg-rule";
 
 /** The leg between two stops, as `GET /api/trips/:tripId/transport-legs` returns it (no user id). */
@@ -416,14 +417,15 @@ function RoutedLegRow({ legId, mode, route, timeZone, onOpen, transitUnavailable
   );
 }
 
-function UnroutedLegRow({ legId, mode, minutes, estimate = false }: UnroutedLegRowProps) {
-  // Audit B8: the engine's straight-line stand-in is not a checked travel time, so it draws no row.
+function UnroutedLegRow({ legId, mode, estimate = false }: UnroutedLegRowProps) {
+  // Audit B8: the engine's straight-line stand-in is not a checked travel time, so it draws no row;
+  // any other unrouted leg prints its mode and "Not checked yet", never minutes.
   if (estimate) return null;
   const Icon = (mode && ROUTED_MODE_ICON[mode]) || Car;
   return (
     <p className={`ml-4 ${legRuleClass(false)} px-3 py-1.5 text-xs text-muted-foreground flex items-center gap-1.5`} data-testid={`slip-leg-unrouted-${legId}`}>
       <Icon className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-      <span>{unroutedLegLine(mode, minutes, estimate)}</span>
+      <span>{[mode, PLAN_COMPARE_MINUTE_COPY.notCheckedYet].filter(Boolean).join(" · ")}</span>
     </p>
   );
 }

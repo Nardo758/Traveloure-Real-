@@ -705,7 +705,6 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
   const savingsNum = metrics.savings;
   const savingsPercentNum = metrics.savingsPercent;
   const wellnessTime = metrics.wellnessMinutes;
-  const travelDistance = metrics.travelDistanceMinutes;
   const starDelta = metrics.starRatingDelta;
 
   const totalCostDisplay = totalCostNum != null ? `$${Number(totalCostNum).toLocaleString()}` : null;
@@ -996,7 +995,6 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
                 savings={savingsDisplay}
                 savingsPercent={savingsPercentDisplay}
                 wellnessTime={wellnessTime}
-                travelDistance={travelDistance}
                 starDelta={starDelta}
                 totalCost={totalCostDisplay}
                 perPerson={perPersonDisplay}
