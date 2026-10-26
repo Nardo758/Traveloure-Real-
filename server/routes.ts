@@ -10411,7 +10411,8 @@ ${bannedCopyPromptLine()}`;
       }
 
       // Custom pin: accept a signed placement or geocode, and refuse before the pay
-      // gate, the comparison insert, and the toll. Server coords are written onto
+      // gate, the comparison insert, and the toll. A type-only pin is 400
+      // pinned_anchor_invalid on this same return. Server coords are written onto
       // rawPinnedAnchor so the resolver call below stays the existing one.
       const placedPinForCreate = await placeCustomPinBeforeCharge({
         rawPin: rawPinnedAnchor,
@@ -10833,8 +10834,8 @@ ${bannedCopyPromptLine()}`;
       }
 
       // Same custom-pin gate as create: a signed placement is accepted, anything else is
-      // re-geocoded, and a refusal returns before the pay gate, the PaymentIntent claim,
-      // and the toll.
+      // re-geocoded, a type-only pin is 400 pinned_anchor_invalid, and a refusal returns
+      // before the pay gate, the PaymentIntent claim, and the toll.
       const placedPinForGenerate = await placeCustomPinBeforeCharge({
         rawPin: rawPinnedAnchor,
         userId,
