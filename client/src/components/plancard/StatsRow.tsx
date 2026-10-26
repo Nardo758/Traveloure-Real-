@@ -13,7 +13,8 @@ interface StatsRowProps {
   days: PlanCardDay[];
   totalActivities: number;
   totalLegs: number;
-  totalMinutes: number;
+  /** Audit B8: null ⇒ not every leg is checked, and the travel-time item is left out. */
+  totalMinutes: number | null;
   templateConfig: TemplateConfig;
   extraStats?: ExtraStat[];
 }
@@ -23,7 +24,7 @@ export function StatsRow({ trip, days, totalActivities, totalLegs, totalMinutes,
     { label: templateConfig.statsLabels[0], value: computeDayCount(days, trip.startDate, trip.endDate), icon: STATS_ICONS[0] },
     { label: templateConfig.statsLabels[1], value: totalActivities, icon: STATS_ICONS[1] },
     { label: templateConfig.statsLabels[2], value: totalLegs, icon: STATS_ICONS[2] },
-    { label: templateConfig.statsLabels[3], value: totalMinutes > 0 ? `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m` : "-", icon: STATS_ICONS[3] },
+    ...(totalMinutes == null ? [] : [{ label: templateConfig.statsLabels[3], value: totalMinutes > 0 ? `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m` : "-", icon: STATS_ICONS[3] }]),
   ];
 
   const extraItems = (extraStats || []).map(s => ({

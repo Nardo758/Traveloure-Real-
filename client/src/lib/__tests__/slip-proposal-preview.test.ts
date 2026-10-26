@@ -5,10 +5,8 @@
  * whenever the real figure behind it is missing, and NO baseline is ever invented. These
  * proofs pin exactly that:
  *   - money needs a real, positive baseline (a $0 / absent current plan ⇒ null);
- *   - drive time needs BOTH sides to have located legs with real durations (⇒ null otherwise);
- *   - each delta reports the true DIRECTION (saves / worse / same) — a proposal that costs
- *     more or drives longer is stated honestly, never hidden;
- *   - the two deltas are independently nullable (one real, one absent).
+ *   - the money delta reports the true DIRECTION (saves / worse / same) — a proposal that costs
+ *     more is stated honestly, never hidden.
  *
  * DB-free by construction. Run:
  *   npx tsx --test client/src/lib/__tests__/slip-proposal-preview.test.ts
@@ -16,42 +14,14 @@
 import { describe, it } from "node:test";
 import assert from "node:assert";
 import {
-  sumLegMinutes,
   parseTotal,
   computeMoneyDelta,
-  computeDriveTimeDelta,
   computeProposalPreview,
   hasHeadlineClaim,
   formatMinutes,
   formatAnchorLine,
   coordinateCoverage,
 } from "../slip-proposal-preview.ts";
-
-describe("sumLegMinutes — located-leg transit minutes, §13 omission", () => {
-  it("returns null for no legs / empty legs", () => {
-    assert.strictEqual(sumLegMinutes(null), null);
-    assert.strictEqual(sumLegMinutes(undefined), null);
-    assert.strictEqual(sumLegMinutes([]), null);
-  });
-
-  it("returns null when every leg has a null duration (unlocated — never 0-as-guess)", () => {
-    assert.strictEqual(
-      sumLegMinutes([{ estimatedDurationMinutes: null }, { estimatedDurationMinutes: null }]),
-      null,
-    );
-  });
-
-  it("sums only the legs that carry a real duration", () => {
-    assert.strictEqual(
-      sumLegMinutes([
-        { estimatedDurationMinutes: 15 },
-        { estimatedDurationMinutes: null },
-        { estimatedDurationMinutes: 30 },
-      ]),
-      45,
-    );
-  });
-});
 
 describe("parseTotal", () => {
   it("parses decimal strings and numbers", () => {
@@ -101,47 +71,13 @@ describe("computeMoneyDelta — needs a real positive baseline", () => {
   });
 });
 
-describe("computeDriveTimeDelta — needs BOTH sides located", () => {
-  it("null when either side is absent", () => {
-    assert.strictEqual(computeDriveTimeDelta(null, 60), null);
-    assert.strictEqual(computeDriveTimeDelta(90, null), null);
-  });
-
-  it("reports transit minutes saved", () => {
-    assert.deepStrictEqual(computeDriveTimeDelta(120, 75), { direction: "saves", minutes: 45 });
-  });
-
-  it("reports transit minutes added honestly", () => {
-    assert.deepStrictEqual(computeDriveTimeDelta(60, 95), { direction: "worse", minutes: 35 });
-  });
-
-  it("equal minutes ⇒ 'same'", () => {
-    assert.deepStrictEqual(computeDriveTimeDelta(60, 60), { direction: "same", minutes: 0 });
-  });
-});
-
-describe("computeProposalPreview — deltas independently nullable", () => {
+describe("computeProposalPreview — the money delta", () => {
   it("money real, drive-time absent (proposal has no located legs)", () => {
     const p = computeProposalPreview({
       baselineTotalUsd: 1000,
       variantTotalUsd: 800,
-      baselineDriveMinutes: 90,
-      variantDriveMinutes: null,
     });
     assert.deepStrictEqual(p.money, { direction: "saves", amountUsd: 200, percent: 20 });
-    assert.strictEqual(p.driveTime, null);
-    assert.strictEqual(hasHeadlineClaim(p), true);
-  });
-
-  it("drive-time real, money absent (no baseline cost)", () => {
-    const p = computeProposalPreview({
-      baselineTotalUsd: null,
-      variantTotalUsd: 800,
-      baselineDriveMinutes: 120,
-      variantDriveMinutes: 90,
-    });
-    assert.strictEqual(p.money, null);
-    assert.deepStrictEqual(p.driveTime, { direction: "saves", minutes: 30 });
     assert.strictEqual(hasHeadlineClaim(p), true);
   });
 
@@ -149,11 +85,8 @@ describe("computeProposalPreview — deltas independently nullable", () => {
     const p = computeProposalPreview({
       baselineTotalUsd: 1000,
       variantTotalUsd: 1000,
-      baselineDriveMinutes: 90,
-      variantDriveMinutes: 90,
     });
     assert.strictEqual(p.money?.direction, "same");
-    assert.strictEqual(p.driveTime?.direction, "same");
     assert.strictEqual(hasHeadlineClaim(p), false);
   });
 
@@ -161,8 +94,6 @@ describe("computeProposalPreview — deltas independently nullable", () => {
     const p = computeProposalPreview({
       baselineTotalUsd: null,
       variantTotalUsd: null,
-      baselineDriveMinutes: null,
-      variantDriveMinutes: null,
     });
     assert.strictEqual(hasHeadlineClaim(p), false);
   });

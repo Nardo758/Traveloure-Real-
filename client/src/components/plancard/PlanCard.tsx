@@ -46,6 +46,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { apiRequest } from "@/lib/queryClient";
+import { heroTravelMinutes } from "@/lib/transport-section-minutes";
 
 // ── Summary-stage helpers ──────────────────────────────────────────────────
 
@@ -186,6 +187,8 @@ function PlanCardSummary({
   const totalActivities = stats.totalActivities ?? days.reduce((s, d) => s + (d.activities?.length ?? 0), 0);
   const totalLegs = stats.totalLegs ?? days.reduce((s, d) => s + (d.transports?.length ?? 0), 0);
   const totalMinutes = stats.totalTransitMinutes ?? days.reduce((s, d) => s + (d.transports ?? []).reduce((t, tr) => t + (tr.duration ?? 0), 0), 0);
+  // Audit B8: the hero shows Travel time only when every leg is checked; the sum itself is unchanged.
+  const heroMinutes = heroTravelMinutes(days, totalMinutes);
 
   const optimizationDeltaFromData = plancardData?.optimizationDelta ?? null;
   const lastOptimizedAt = plancardData?.lastOptimizedAt ?? null;
@@ -307,7 +310,7 @@ function PlanCardSummary({
           destination={trip.destination}
           dateRange={formatShortTripRange(trip.startDate, trip.endDate)}
           statusLabel={statusLabel}
-          metrics={{ days: numDays, activities: totalActivities, legs: totalLegs, transitTime: formatMinutes(totalMinutes) }}
+          metrics={{ days: numDays, activities: totalActivities, legs: totalLegs, transitTime: heroMinutes == null ? null : formatMinutes(heroMinutes) }}
           testId={`plancard-header-${trip.id}`}
           eyebrow={tripCardEyebrow(plancardData?.trip?.finalVersion, !!plancardData?.trip?.finalizedAt)}
           badges={pendingExpertRequest ? (
@@ -685,6 +688,8 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
   const confirmedActivities = stats.confirmedActivities ?? days.reduce((s: number, d) => s + (d.activities?.filter((a) => a.status === "confirmed").length || 0), 0);
   const totalLegs = stats.totalLegs || days.reduce((s: number, d) => s + (d.transports?.length || 0), 0);
   const totalMinutes = stats.totalTransitMinutes || days.reduce((s: number, d) => s + (d.transports || []).reduce((t: number, tr) => t + (tr.duration || 0), 0), 0);
+  // Audit B8: the hero shows Travel time only when every leg is checked; the sum itself is unchanged.
+  const heroMinutes = heroTravelMinutes(days, totalMinutes);
   const expertChanges = stats.pendingExpertChanges || changeLog.filter((c) => c.role === "expert" && c.type === "suggest").length;
 
   const transportLocked = day?.activities?.some((a) => a.status === "pending") ?? false;
@@ -833,7 +838,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
           // P0-d item 3 (ledger `2026-10-12-p0d-coverage-bridges`): on the Trip Card the hero counts the legs the
           // day panel draws — stop-to-stop legs and bridges, stay legs in neither (`cardLegCount`).
           totalLegs={cardSurface ? cardLegCount(days) : totalLegs}
-          totalMinutes={totalMinutes}
+          totalMinutes={heroMinutes}
           statsLabels={templateConfig.statsLabels}
           finalDress={finalDress}
           finalVersion={finalVersion}

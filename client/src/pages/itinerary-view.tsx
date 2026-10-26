@@ -31,6 +31,7 @@ import { StatsRow, CostIcon, type ExtraStat } from "@/components/plancard/StatsR
 import { DaySelector } from "@/components/plancard/DaySelector";
 import { SectionTabs } from "@/components/plancard/SectionTabs";
 import { TransportSection, LegBookingPanel } from "@/components/plancard/TransportSection";
+import { heroTravelMinutes, transportMinutesView } from "@/lib/transport-section-minutes";
 import { MapControlCenter } from "@/components/plancard/MapControlCenter";
 import { useAuth } from "@/hooks/use-auth";
 import { MAPS_BROWSER_KEY } from "@/lib/maps-browser-key";
@@ -400,6 +401,8 @@ export default function ItineraryViewPage() {
   const totalBooked = 0;
   const totalLegs = data.variant.transportSummary?.totalLegs || planCardDays.reduce((s, d) => s + (d.transports?.length || 0), 0);
   const totalMinutes = data.variant.transportSummary?.totalMinutes || planCardDays.reduce((s, d) => s + (d.transports || []).reduce((t, tr) => t + (tr.duration || 0), 0), 0);
+  // Audit B8: Travel Time only when every leg is checked; the sum itself is unchanged.
+  const heroMinutes = heroTravelMinutes(planCardDays, totalMinutes);
   const totalCostNum = data.variant.totalCost ? parseFloat(String(data.variant.totalCost)) : allActivities.reduce((s, a) => s + a.cost, 0);
   const transportCost = data.variant.transportSummary?.totalCostUsd || planCardDays.reduce((s, d) => s + (d.transports || []).reduce((t, tr) => t + (tr.cost || 0), 0), 0);
   const grandTotal = totalCostNum + transportCost;
@@ -656,7 +659,7 @@ export default function ItineraryViewPage() {
                 days={planCardDays}
                 totalActivities={totalActivities}
                 totalLegs={totalLegs}
-                totalMinutes={totalMinutes}
+                totalMinutes={heroMinutes}
                 templateConfig={templateConfig}
                 extraStats={extraStats}
               />
@@ -1201,10 +1204,12 @@ function ExpertTransportSection({
               // the server strips money for non-owners (ledger 2026-09-03-share-link-price-redaction)
               // and `$0` would be this page asserting a price it was never given (§13). Tiles are
               // coloured by LABEL, not by index, so dropping one cannot recolour the others.
+              // Audit B8: Total Time only when every leg is checked (the Transport section's rule).
               const legCost = day.transports.reduce((s: number, t) => s + (t.cost || 0), 0);
+              const total = transportMinutesView(day.transports).totalMinutes;
               return [
                 { l: "Legs", v: day.transports.length },
-                { l: "Total Time", v: `${day.transports.reduce((s: number, t) => s + (t.duration || 0), 0)}m` },
+                ...(total != null ? [{ l: "Total Time", v: `${total}m` }] : []),
                 ...(legCost > 0 ? [{ l: "Est. Cost", v: `$${legCost.toLocaleString()}` }] : []),
               ];
             })().map((s) => (
@@ -1221,6 +1226,8 @@ function ExpertTransportSection({
         const rawLeg = rawTransportLegs.find(l => l.id === tr.id);
         const originalMode = rawLeg?.userSelectedMode || rawLeg?.recommendedMode || "transit";
         const hasDiff = !!transportDiffs[tr.id];
+        // Audit B8: minutes only for a checked (routed) leg; any other leg prints its mode label.
+        const legMinutes = transportMinutesView([tr]).legs[0];
         const modeColor = MODE_COLORS[tr.mode] || "#94a3b8";
 
         return (
@@ -1252,7 +1259,13 @@ function ExpertTransportSection({
               </div>
               <div className="flex flex-wrap gap-2.5 mt-1.5 items-center">
                 <span className="text-[12px] text-muted-foreground flex items-center gap-1">
-                  <Clock className="w-3 h-3" /> {tr.duration} min
+                  {legMinutes.checked ? (
+                    <>
+                      <Clock className="w-3 h-3" /> {tr.duration} min
+                    </>
+                  ) : (
+                    legMinutes.label
+                  )}
                 </span>
                 {tr.cost > 0 && (
                   <span className="text-[12px] text-green-600 dark:text-green-400 font-semibold">${tr.cost}</span>
