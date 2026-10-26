@@ -22,7 +22,8 @@ interface HeroSectionProps {
   days: PlanCardDay[];
   totalActivities: number;
   totalLegs: number;
-  totalMinutes: number;
+  /** Audit B8: null ⇒ not every leg is checked, and the Travel time cell is omitted. */
+  totalMinutes: number | null;
   /** template-aware labels (mirrors StatsRow) */
   statsLabels: string[];
   /**
@@ -268,7 +269,7 @@ export function HeroSection({
         days: daysCount,
         activities: totalActivities,
         legs: totalLegs,
-        transitTime: totalMinutes > 0 ? `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m` : "-",
+        transitTime: totalMinutes == null ? null : totalMinutes > 0 ? `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m` : "-",
       }}
       testId={`plancard-hero-${trip.id}`}
       eyebrow={tripCardEyebrow(finalVersion, !revising)}

@@ -102,11 +102,9 @@ import {
   type AdoptStopResponse,
 } from "@/lib/comparison-add-undo";
 import {
-  sumLegMinutes,
   parseTotal,
   computeProposalPreview,
   hasHeadlineClaim,
-  formatMinutes,
   formatAnchorLine,
   coordinateCoverage,
   type ProposalPreview,
@@ -515,7 +513,6 @@ function ProposalColumnContainer({
   onAdoptStop,
   adoptingStopId,
   baselineTotalUsd,
-  baselineDriveMinutes,
   isBaselineColumn,
   boardId,
 }: {
@@ -531,8 +528,6 @@ function ProposalColumnContainer({
   adoptingStopId?: string | null;
   /** The current plan's server-derived total, for the review-first money delta (null ⇒ omit). */
   baselineTotalUsd: number | null;
-  /** The current plan's summed located-leg minutes, for the drive-time delta (null ⇒ omit). */
-  baselineDriveMinutes: number | null;
   /** This column IS the user's current plan — it has no delta against itself, so no strip. */
   isBaselineColumn: boolean;
   boardId: string;
@@ -564,14 +559,12 @@ function ProposalColumnContainer({
   }
 
   // Review-first preview (ledger 2026-08-22-slip-optimize-review-first): what THIS proposal
-  // found vs the current plan — money saved + shorter drive time. Every figure is server-
-  // derived (the optimizer's totals, the routing provider's leg minutes) and honestly omitted
-  // when its baseline is missing (§13). The baseline column has no claim against itself.
+  // found vs the current plan — money saved. The figure is server-derived (the optimizer's
+  // totals) and honestly omitted when its baseline is missing (§13). The baseline column has no
+  // claim against itself. Audit B8: no travel-time delta — a trip-less comparison has no checked leg.
   const preview: ProposalPreview = computeProposalPreview({
     baselineTotalUsd,
     variantTotalUsd: parseTotal(variant.totalCost),
-    baselineDriveMinutes,
-    variantDriveMinutes: coordinateCoverage(variant.items).complete ? sumLegMinutes(legs) : null,
   });
   const showPreview = !isBaselineColumn && hasHeadlineClaim(preview);
 
@@ -643,12 +636,11 @@ function ProposalColumnContainer({
 }
 
 /**
- * Review-first preview strip (ledger 2026-08-22-slip-optimize-review-first). One or two honest
- * chips summarising what a proposal FOUND vs the current plan — money saved (green) or cost
- * increase (amber), and shorter (green) or longer (amber) drive time. Rendered ONLY when a
- * real, non-"same" claim exists (`hasHeadlineClaim`); a "same" or absent delta shows nothing,
- * never a "$0 saved" / "0 min" filler (§13). Distance is deliberately never shown here — §21
- * L3 bars distance as a headline delta claim to travelers; only transit TIME is claimed.
+ * Review-first preview strip (ledger 2026-08-22-slip-optimize-review-first). One honest chip
+ * summarising what a proposal FOUND vs the current plan — money saved (green) or cost increase
+ * (amber). Rendered ONLY when a real, non-"same" claim exists (`hasHeadlineClaim`); a "same" or
+ * absent delta shows nothing, never a "$0 saved" filler (§13). Audit B8: no travel-time chip —
+ * a trip-less comparison has no checked leg, and distance is never a headline delta (§21 L3).
  */
 function ProposalPreviewStrip({
   preview,
@@ -657,7 +649,7 @@ function ProposalPreviewStrip({
   preview: ProposalPreview;
   variantId: string;
 }) {
-  const { money, driveTime } = preview;
+  const { money } = preview;
   return (
     <div
       className="flex min-h-6 flex-wrap items-center gap-2 text-xs"
@@ -676,24 +668,6 @@ function ProposalPreviewStrip({
             {money.direction === "saves"
               ? ` Saves $${money.amountUsd.toLocaleString()} (${money.percent}% less)`
               : ` Costs $${money.amountUsd.toLocaleString()} more`}
-          </span>
-        </span>
-      )}
-      {driveTime && driveTime.direction !== "same" && (
-        <span
-          className={cn(
-            "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-medium",
-            driveTime.direction === "saves"
-              ? "review-chip--save"
-              : "review-chip--caution",
-          )}
-          data-testid="proposal-preview-drivetime"
-        >
-          <span data-testid={`proposal-preview-drivetime-${variantId}`}>
-            <Clock className="inline h-3 w-3" />
-            {driveTime.direction === "saves"
-              ? ` ${formatMinutes(driveTime.minutes)} less travel`
-              : ` ${formatMinutes(driveTime.minutes)} more travel`}
           </span>
         </span>
       )}
@@ -1003,25 +977,6 @@ export default function ItineraryComparisonPage() {
     ? destination?.split(";")[0]?.trim()?.split(",")[0]?.trim()
     : destination?.split(",")[0]?.trim();
 
-  // Review-first preview (ledger 2026-08-22-slip-optimize-review-first): the current plan's own
-  // transport legs, so each proposal column can show an honest drive-time DELTA against it. Keyed
-  // identically to each column's leg fetch, so React Query dedupes — no extra network. `null`
-  // summed minutes (an unlocated current plan) makes every drive-time delta omit (§13).
-  const baselineVariantId = data?.variants?.find((v) => v.source === "user")?.id ?? null;
-  const { data: baselineLegs } = useQuery<TransportLegApiResponse[]>({
-    queryKey: ["/api/itinerary-variants", baselineVariantId, "transport-legs"],
-    queryFn: async () => {
-      const res = await fetch(`/api/itinerary-variants/${baselineVariantId}/transport-legs`, {
-        credentials: "include",
-      });
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: !!baselineVariantId && !!user,
-    retry: false,
-    staleTime: 120_000,
-  });
-
   // Rows 196/197: the custom pin this comparison was created with (`comparison_pin_<id>`, written by the
   // slip). Every /generate echoes it with its signed placement; a refusal reopens the build-around
   // dialog on it. A re-run uses this comparison's recorded payment — never a new one.
@@ -1312,11 +1267,8 @@ export default function ItineraryComparisonPage() {
     data?.variants != null &&
     aiVariants.length === 0;
 
-  // Review-first preview baselines (both server-derived; null ⇒ the matching delta is omitted, §13).
+  // Review-first preview baseline (server-derived; null ⇒ the money delta is omitted, §13).
   const baselineTotalUsd = parseTotal(userVariant?.totalCost ?? null);
-  const baselineDriveMinutes = coordinateCoverage(userVariant?.items).complete
-    ? sumLegMinutes(baselineLegs)
-    : null;
 
   // Spec C column set + the "Recommended" chip: exactly one or zero — derived from optimizer
   // output (the strictly-highest optimizationScore among AI variants; a tie marks none).
@@ -1781,7 +1733,6 @@ export default function ItineraryComparisonPage() {
                       recommended={variant.id === recommendedVariantId}
                       applying={applyingVariantId === variant.id}
                       baselineTotalUsd={baselineTotalUsd}
-                      baselineDriveMinutes={baselineDriveMinutes}
                       isBaselineColumn={variant.source === "user"}
                       boardId={variant.source === "user" ? "baseline" : `v${aiVariants.findIndex((v) => v.id === variant.id) + 1}`}
                       onApply={() => {
