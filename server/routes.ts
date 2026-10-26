@@ -3,6 +3,7 @@ import { admitViatorAdd } from "./services/viator-item-admission";
 import { viatorDirectEnabled } from "./config/viator.config";
 import { tripGetsRoutedLegs } from "./services/routing/plan-routed-legs.service";
 import { enqueuePlanLegRecompute } from "./services/routing/plan-legs-queue";
+import { lockTripRow } from "./services/trip-row-lock";
 import { decorateComparison, openSetSlotsForRun } from "./services/version-options.service";
 import { type RunRecordContext } from "./services/optimizer-runs.service";
 import { optimizerRunRecordsEnabled } from "./config/optimizer-runs.config";
@@ -1962,7 +1963,9 @@ ${bannedCopyPromptLine()}`;
       // item-removed:replace — AI itinerary regeneration (delete the prior AI/traveler set,
       // insert the freshly-generated one below). A plan rebuild, not a removal: no `item_removed`
       // signal (§13, R15) — the traveler removed nothing, the generator replaced the set.
-      await db.delete(itineraryItems).where(
+      await db.transaction(async (tx) => {
+        await lockTripRow(tx, trip.id);
+      await tx.delete(itineraryItems).where(
         and(
           eq(itineraryItems.tripId, trip.id),
           or(
@@ -1977,6 +1980,7 @@ ${bannedCopyPromptLine()}`;
           itineraryItemNotPlanAnchor(),
         ),
       );
+      });
 
       // Item 2 Phase 1 (ledger 2026-08-23-item2-grounding): build the item set, then run ONE
       // fail-closed grounding pass before writing — a confident match links the item to a bookable
@@ -2007,10 +2011,13 @@ ${bannedCopyPromptLine()}`;
         })),
       );
       const { items: groundedItems } = await groundAiItems(builtItems, trip.destination);
-      for (const item of groundedItems) {
-        // FD-2 ruling 9: stamped from the row's own origin ('ai' over public inputs ⇒ public).
-        await db.insert(itineraryItems).values(stampItemSourceClass(item as Record<string, unknown>) as any);
-      }
+      await db.transaction(async (tx) => {
+        await lockTripRow(tx, trip.id);
+        for (const item of groundedItems) {
+          // FD-2 ruling 9: stamped from the row's own origin ('ai' over public inputs ⇒ public).
+          await tx.insert(itineraryItems).values(stampItemSourceClass(item as Record<string, unknown>) as any);
+        }
+      });
       enqueuePlanLegRecompute(trip.id); // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)
       if (freeDraftRunId) {
         await promoteFreeDraft(freeDraftRunId, trip.id)
@@ -12411,12 +12418,13 @@ ${bannedCopyPromptLine()}`;
       const qsInsertedItems: any[] = [];
       const qsUsedLocalGems = (travelPulseContext?.hiddenGems?.length ?? 0) > 0;
       // FD-1: quick-start's plan now exists — the draft counts against it (promoted once items are written below).
+      await db.transaction(async (tx) => {
       for (const day of qsDailyItinerary) {
         const activities = Array.isArray(day?.activities) ? day.activities : [];
         const dayNumber = normalizeGeneratedDayNumber(day?.day);
         for (const activity of activities) {
           const durationMinutes = normalizeGeneratedActivityDurationMinutes(activity.duration);
-          const [inserted] = await db.insert(itineraryItems).values(stampItemSourceClass({
+          const [inserted] = await tx.insert(itineraryItems).values(stampItemSourceClass({
             tripId: quickTrip.id,
             title: activity.name || activity.title || "Activity",
             description: activity.description || "",
@@ -12435,6 +12443,7 @@ ${bannedCopyPromptLine()}`;
           qsInsertedItems.push({ ...activity, id: inserted.id, dayNumber, durationMinutes });
         }
       }
+      });
 
       if (freeDraftRunId) await promoteFreeDraft(freeDraftRunId, quickTrip.id).catch((e) => console.error("[free-draft] promote failed:", e));
       res.json({

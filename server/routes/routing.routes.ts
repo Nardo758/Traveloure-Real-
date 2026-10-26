@@ -79,6 +79,7 @@ import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import { and, count, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
+import { lockTripRow } from "../services/trip-row-lock";
 import { itineraryItems, notifications, serviceBookings, tripCollaborators, trips, ROUTING_STATUSES, type RoutingStatus } from "@shared/schema";
 import { ITEM_BOOKING_STATUS_VOCABULARY, itemBookingStatusEntry } from "@shared/booking-visibility";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -367,6 +368,7 @@ router.post("/api/trips/:tripId/items/:itemId/route", isAuthenticated, async (re
     // traveler/expert edge a diary failure MAY fail the request (500, transition rolled back) —
     // the money-path swallow contract applies only to checkout/refund, not here.
     const updated = await db.transaction(async (tx) => {
+      await lockTripRow(tx, tripId);
       const rows = await tx
         .update(itineraryItems)
         .set({ routingStatus: to, updatedAt: new Date() })
