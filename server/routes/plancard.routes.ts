@@ -29,6 +29,7 @@ import {
   trips,
 } from "@shared/schema";
 import { db } from "../db";
+import { lockTripRow } from "../services/trip-row-lock";
 import { and, count, desc, eq, inArray, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
 import { legRecheckDedupePrefix } from "@shared/leg-recheck";
 import { runRoutingRecheckOnOpen } from "../jobs/routingRecheck";
@@ -208,6 +209,7 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
     // whole flow). Now the delete, the batch insert, the changelog entry, the comparison stamp,
     // and the R3 variant discard commit together or not at all.
     const applied = await db.transaction(async (tx) => {
+      await lockTripRow(tx, tripId);
       // Replace itinerary items for this trip — ROUTING-STATUS-AWARE (Lane 5a Defect 2).
       // Only `in_planning` items are the optimizer's to replace; `with_expert` /
       // `ready_for_checkout` / `purchased` rows survive untouched (a `purchased` row carries
@@ -453,9 +455,10 @@ router.post("/api/itinerary-comparisons/:id/adopt-stop", isAuthenticated, async 
     // of appending — through the same helper adopt-stops uses. Flag off: the append below, unchanged.
     const perOption = versionPerOptionEnabled();
     const chooseRole = perOption ? await planRole(tripId, userId, "choose") : null;
-    const outcome = await db.transaction((tx) =>
-      adoptVariantItemsInTx(tx, { tripId, userId, role: chooseRole, perOption, items: [variantItem] }),
-    );
+    const outcome = await db.transaction(async (tx) => {
+      await lockTripRow(tx, tripId);
+      return adoptVariantItemsInTx(tx, { tripId, userId, role: chooseRole, perOption, items: [variantItem] });
+    });
     const pickOutcome = outcome.sets[0];
     const result = pickOutcome
       ? pickOutcome.decided
@@ -597,7 +600,10 @@ router.post("/api/itinerary-comparisons/:id/adopt-stops", isAuthenticated, async
 
     const tripId = comparison.tripId;
     const chooseRole = await planRole(tripId, userId, "choose");
-    const outcome = await db.transaction((tx) => adoptVariantItemsInTx(tx, { tripId, userId, role: chooseRole, perOption: true, items }));
+    const outcome = await db.transaction(async (tx) => {
+      await lockTripRow(tx, tripId);
+      return adoptVariantItemsInTx(tx, { tripId, userId, role: chooseRole, perOption: true, items });
+    });
     const setsDecided = outcome.sets.filter((o) => o.decided).length;
     if (outcome.added.length > 0 || setsDecided > 0) {
       try {

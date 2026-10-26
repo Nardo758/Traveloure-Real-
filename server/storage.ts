@@ -8282,7 +8282,11 @@ export class DatabaseStorage implements IStorage {
       (safeItem as any).contentType = VIATOR_ITEM_CONTENT_TYPE;
       (safeItem as any).contentId = opts.viatorProductCode;
     }
-    const [created] = await db.insert(itineraryItems).values(safeItem as any).returning();
+    const created = await db.transaction(async (tx) => {
+      await lockTripRow(tx, item.tripId);
+      const [row] = await tx.insert(itineraryItems).values(safeItem as any).returning();
+      return row;
+    });
     enqueuePlanLegRecompute(created?.tripId); // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)
     return created;
   }
@@ -8297,6 +8301,8 @@ export class DatabaseStorage implements IStorage {
       notes: marker,
     } as Record<string, unknown>), { fromLocalInput: true });
     return db.transaction(async (tx) => {
+      // The plan row first, then the gem advisory lock (same order as restore).
+      await lockTripRow(tx, item.tripId);
       // Serialize retries for this exact trip/source pair. This avoids the GET-then-POST race
       // without changing the itinerary schema or affecting unrelated item writes.
       await tx.execute(
@@ -9261,12 +9267,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteItineraryItemsByTrip(tripId: string): Promise<void> {
-    // item-removed:dead — no live caller (grep-verified Aug 17 2026); kept for its total-wipe
-    // semantics should a future caller need it. If it is ever wired to a live removal path, it
-    // must move to the `deleteItineraryItem` transactional+`item_removed` shape (R15).
-    // rebuild-guard-exempt: dead — no live caller; a future caller wiring this to a rebuild path must
-    // re-classify (AND itineraryItemRebuildDeletable() or a fresh exemption), not inherit this one.
-    await db.delete(itineraryItems).where(eq(itineraryItems.tripId, tripId));
+    // Kept for its total-wipe semantics should a future caller need it. If it is ever wired to a
+    // live removal path, it must move to the `deleteItineraryItem` transactional+`item_removed`
+    // shape (R15). The item-removed annotation stays on the delete line: the checker only looks
+    // six lines above `.delete(itineraryItems)`.
+    await db.transaction(async (tx) => {
+      await lockTripRow(tx, tripId);
+      // item-removed:dead — no live caller (grep-verified Aug 17 2026).
+      // rebuild-guard-exempt: dead — no live caller; a future caller wiring this to a rebuild path must
+      // re-classify (AND itineraryItemRebuildDeletable() or a fresh exemption), not inherit this one.
+      await tx.delete(itineraryItems).where(eq(itineraryItems.tripId, tripId));
+    });
   }
 
   // Lane 5a Defect 2: the routing-status-aware sibling of the method above. `apply-to-trip`
@@ -9285,14 +9296,17 @@ export class DatabaseStorage implements IStorage {
     // `item_removed` (§13, R15). D3 (LD 42): the D3 expert-work clause is ANDed into the WHERE.
     // rebuild-guard-exempt: in_planning-only AND not-expert-work — routed/booked rows preserved by construction (D-1), expert work by the D3 clause.
     // item-removed:replace — in_planning non-expert rows replaced by the incoming variant set.
-    const deleted = await db
-      .delete(itineraryItems)
-      .where(and(
-        eq(itineraryItems.tripId, tripId),
-        eq(itineraryItems.routingStatus, "in_planning"),
-        itineraryItemNotMachineProtected(),
-      ))
-      .returning({ id: itineraryItems.id });
+    const deleted = await db.transaction(async (tx) => {
+      await lockTripRow(tx, tripId);
+      return tx
+        .delete(itineraryItems)
+        .where(and(
+          eq(itineraryItems.tripId, tripId),
+          eq(itineraryItems.routingStatus, "in_planning"),
+          itineraryItemNotMachineProtected(),
+        ))
+        .returning({ id: itineraryItems.id });
+    });
     // Everything still on the trip after the delete is, by construction, a routed row we preserved.
     const [remaining] = await db
       .select({ n: count() })
@@ -9336,9 +9350,14 @@ export class DatabaseStorage implements IStorage {
 
   async updateItineraryItemCoordinates(id: string, lat: string, lng: string): Promise<void> {
     // GC-1: this is the Google Geocoding backfill's one writer (`resolveMissingItemCoordinates`).
-    await db.update(itineraryItems)
-      .set({ latitude: lat, longitude: lng, coordSource: "geocode_google" })
-      .where(eq(itineraryItems.id, id));
+    // The column set is unchanged — no `updated_at` bump — and the plan row is locked first.
+    await db.transaction(async (tx) => {
+      const [existing] = await tx.select({ tripId: itineraryItems.tripId }).from(itineraryItems).where(eq(itineraryItems.id, id));
+      if (existing?.tripId) await lockTripRow(tx, existing.tripId);
+      await tx.update(itineraryItems)
+        .set({ latitude: lat, longitude: lng, coordSource: "geocode_google" })
+        .where(eq(itineraryItems.id, id));
+    });
   }
 
   async updateTransportLegUserSelectedMode(legId: string, mode: string): Promise<void> {
