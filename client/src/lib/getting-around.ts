@@ -3,8 +3,8 @@
  * `2026-10-08-getting-around-every-gap`) — the plan's days, each listing EVERY gap between consecutive
  * stops, in slip order. A gap reads:
  *   · a routed leg → the same line the slip and the Trip Card draw (`routedLegLine`)
- *   · a shown leg with minutes but no routed facts → minutes only ("15 min · walk", D5)
- *   · the engine's straight-line stand-in (`estimate`) → "{mode} · Not checked yet" — no minutes (audit B8)
+ *   · a shown leg with no routed facts (a person's minutes, or the engine's straight-line stand-in) →
+ *     "{mode} · Not checked yet" — no minutes (audit B8)
  *   · a leg the server names as having no time (a stop with no open point, LG-2 Ask 6) → "Travel time not checked yet"
  *   · no leg, or a leg with no minutes → "not worked out yet" — never dropped, never guessed (§13)
  * Days never vanish: a day with one stop (or none) is still listed, with no gaps. On a plan that does
@@ -12,7 +12,7 @@
  * from. Pure; no calls.
  */
 import { routedLegLine } from "@shared/routing-engine";
-import { TRAVEL_TIME_NOT_CHECKED_LINE, slipLegBetween, unroutedLegLine } from "./slip-legs";
+import { TRAVEL_TIME_NOT_CHECKED_LINE, slipLegBetween } from "./slip-legs";
 import { TRAVEL_TIMES_COME_WITH_OPTIMIZE } from "@shared/optimizer-lead";
 import { PLAN_COMPARE_MINUTE_COPY } from "./plan-compare";
 
@@ -65,11 +65,8 @@ export function gettingAroundDays(days: readonly any[] | null | undefined, timeZ
       const key = `${from.id}>${to.id}`;
       if (leg?.kind === "routed") gaps.push({ key, title, kind: "routed", line: routedLegLine({ mode: leg.mode, route: leg.route }, timeZone) });
       else if (leg?.kind === "unrouted") {
-        // Audit B8: a straight-line estimate is not a checked travel time, so it prints no minutes.
-        const line = leg.estimate === true
-          ? [leg.mode, PLAN_COMPARE_MINUTE_COPY.notCheckedYet].filter(Boolean).join(" · ")
-          : unroutedLegLine(leg.mode, leg.minutes);
-        gaps.push({ key, title, kind: "unrouted", line });
+        // Audit B8: an unrouted leg is not a checked travel time, so it prints no minutes.
+        gaps.push({ key, title, kind: "unrouted", line: [leg.mode, PLAN_COMPARE_MINUTE_COPY.notCheckedYet].filter(Boolean).join(" · ") });
       }
       else if (leg?.kind === "not_checked") gaps.push({ key, title, kind: "not_checked", line: TRAVEL_TIME_NOT_CHECKED_LINE });
       else {

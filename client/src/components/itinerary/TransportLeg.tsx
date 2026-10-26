@@ -16,6 +16,7 @@ import {
   TRANSPORT_MODE_LABELS,
 } from "@/lib/maps-platform";
 import { openInMaps } from "@/lib/navigate";
+import { isCheckedTransport } from "@/lib/transport-section-minutes";
 import { cn } from "@/lib/utils";
 
 export interface TransportAlternative {
@@ -171,6 +172,8 @@ export function TransportLeg({
   const modeIcon = TRANSPORT_MODE_ICONS[currentMode] || "🚌";
   const modeLabel = TRANSPORT_MODE_LABELS[currentMode] || currentMode;
   const alternatives = leg.alternativeModes || [];
+  // Audit B8: minutes only for a checked (routed) leg; otherwise the mode label and cost.
+  const checked = isCheckedTransport(leg as any);
 
   return (
     <div className={cn("flex gap-3 py-2 px-3", className)} data-testid={`transport-leg-${leg.legOrder}`}>
@@ -181,10 +184,14 @@ export function TransportLeg({
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-base leading-none">{modeIcon}</span>
           <span className="text-sm font-medium">{modeLabel}</span>
-          <span className="text-muted-foreground">·</span>
-          <span className="text-sm text-muted-foreground" data-testid={`leg-duration-${leg.legOrder}`}>
-            {displayDuration} min
-          </span>
+          {checked && (
+            <>
+              <span className="text-muted-foreground">·</span>
+              <span className="text-sm text-muted-foreground" data-testid={`leg-duration-${leg.legOrder}`}>
+                {displayDuration} min
+              </span>
+            </>
+          )}
           {displayCost !== null && displayCost !== undefined && displayCost > 0 && (
             <>
               <span className="text-muted-foreground">·</span>
@@ -244,7 +251,9 @@ export function TransportLeg({
                           {TRANSPORT_MODE_LABELS[leg.recommendedMode] || leg.recommendedMode}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {leg.estimatedDurationMinutes} min {leg.estimatedCostUsd ? `· $${leg.estimatedCostUsd.toFixed(0)}` : "· Free"}
+                          {checked
+                            ? `${leg.estimatedDurationMinutes} min ${leg.estimatedCostUsd ? `· $${leg.estimatedCostUsd.toFixed(0)}` : "· Free"}`
+                            : leg.estimatedCostUsd ? `$${leg.estimatedCostUsd.toFixed(0)}` : "Free"}
                         </div>
                       </div>
                     </div>
@@ -273,7 +282,7 @@ export function TransportLeg({
                             {TRANSPORT_MODE_LABELS[alt.mode] || alt.mode}
                           </div>
                           <div className="text-xs text-muted-foreground">
-                            {alt.durationMinutes} min {alt.costUsd ? `· $${alt.costUsd.toFixed(0)}` : "· Free"}
+                            {alt.costUsd ? `$${alt.costUsd.toFixed(0)}` : "Free"}
                           </div>
                           {alt.reason && (
                             <div className="text-xs text-muted-foreground italic mt-0.5">

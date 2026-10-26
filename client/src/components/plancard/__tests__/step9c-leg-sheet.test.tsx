@@ -107,13 +107,13 @@ describe("step 9c leg sheet", () => {
     assert.equal((v as any).optionsChecked, true);
   });
 
-  it("C6 + C7 a leg with no routed facts draws minutes-only; no row carries a price", () => {
+  it("C6 + C7 a leg with no routed facts draws mode-only; no row carries a price", () => {
     const days = [{ dayNumber: 1, transports: [{ id: "bc", fromActivityId: "b", toActivityId: "c", recommendedMode: "walking", estimatedDurationMinutes: 15, estimatedCostUsd: 12, cost: 12, proposalStatus: "confirmed" }] }];
     const v = slipLegBetween(days, "b", "c");
     assert.deepEqual(v, { kind: "unrouted", legId: "bc", mode: "walk", minutes: 15 });
     const html = renderToString(<LegRow kind="unrouted" legId="bc" mode="walk" minutes={15} />);
-    assert.equal(text(html), "15 min · walk");
-    assert.ok(!html.includes("$") && !html.includes("checked"));
+    assert.equal(text(html), "walk · Not checked yet");
+    assert.ok(!html.includes("$"));
     const routed = renderToString(<LegRow kind="routed" legId="x" mode="drive" route={OPTIONS[1].route} timeZone="Asia/Tokyo" />);
     assert.ok(!routed.includes("$"), "a routed row shows only the source's own fare, never a dollar estimate");
     assert.equal(slipLegBetween(days, "b", "x"), null);
