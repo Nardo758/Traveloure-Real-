@@ -338,7 +338,7 @@ export interface RoutedLegRowProps {
 
 /**
  * Step 9c D5 (ledger `2026-10-07-step9c-leg-options`): a shown leg with NO routed facts — an expert's
- * confirmed leg on a free plan — as one minutes-only line between its stops ("18 min · walk"). No source,
+ * confirmed leg on a free plan — as one mode-only line between its stops ("walk · Not checked yet"). No source,
  * no fare, no tap.
  */
 export interface UnroutedLegRowProps {
