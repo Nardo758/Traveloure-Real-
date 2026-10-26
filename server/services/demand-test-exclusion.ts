@@ -21,12 +21,19 @@ import { sql, type SQL, type AnyColumn } from "drizzle-orm";
 
 /** SQL LIKE patterns identifying seeded test accounts. The sole entry Q6d proved necessary. */
 export const TEST_ACCOUNT_EMAIL_PATTERNS = ["%@traveloure.test"] as const;
+/** Row 176, row 165: QA domain literal, equal to WAITLIST_QA_EMAIL_DOMAIN. */
+export const QA_TEST_ACCOUNT_EMAIL_DOMAIN = "traveloure-qa.test" as const;
+/** Row 176, row 165: SQL LIKE pattern for the QA domain, kept beside the older seed pattern. */
+export const QA_TEST_ACCOUNT_EMAIL_PATTERNS = ["%@traveloure-qa.test"] as const;
+/** Row 176, row 165: seed domain plus QA domain; every SQL fragment maps this whole list. */
+export const ALL_TEST_ACCOUNT_EMAIL_PATTERNS = [...TEST_ACCOUNT_EMAIL_PATTERNS, ...QA_TEST_ACCOUNT_EMAIL_PATTERNS] as const;
 export const SYNTHETIC_COHORT_MIN_SIZE = 10;
 
 /** JS-side predicate (assertions, in-memory filtering). True ⇒ the email is a seeded test account. */
 export function isTestAccountEmail(email: string | null | undefined): boolean {
   if (!email) return false;
-  return email.trim().toLowerCase().endsWith("@traveloure.test");
+  const normalized = email.trim().toLowerCase();
+  return normalized.endsWith("@traveloure.test") || normalized.endsWith("@" + QA_TEST_ACCOUNT_EMAIL_DOMAIN);
 }
 
 /**
@@ -35,7 +42,7 @@ export function isTestAccountEmail(email: string | null | undefined): boolean {
  * matches NONE of the test patterns; a NULL email is real (§13). Case-insensitive (ILIKE).
  */
 export function isRealAccountSql(emailCol: SQL | AnyColumn): SQL {
-  const notLike = TEST_ACCOUNT_EMAIL_PATTERNS.map((p) => sql`${emailCol} NOT ILIKE ${p}`);
+  const notLike = ALL_TEST_ACCOUNT_EMAIL_PATTERNS.map((p) => sql`${emailCol} NOT ILIKE ${p}`);
   return sql`(${emailCol} IS NULL OR (${sql.join(notLike, sql` AND `)}))`;
 }
 
@@ -109,7 +116,10 @@ export function isRealTripSql(
         LEFT JOIN users AS cohort_users ON cohort_users.id = cohort_trips.user_id
         WHERE cohort_trips.author_id IS NULL
           AND cohort_trips.user_id IS NULL
-          AND (cohort_users.email IS NULL OR cohort_users.email NOT ILIKE ${TEST_ACCOUNT_EMAIL_PATTERNS[0]})
+          AND (cohort_users.email IS NULL OR (${sql.join(
+            ALL_TEST_ACCOUNT_EMAIL_PATTERNS.map((p) => sql`cohort_users.email NOT ILIKE ${p}`),
+            sql` AND `,
+          )}))
           AND lower(cohort_trips.destination) = lower(${cohort.destination})
           AND cohort_trips.start_date = ${cohort.startDate}
           AND cohort_trips.end_date = ${cohort.endDate}

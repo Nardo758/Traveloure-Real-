@@ -9,8 +9,9 @@
  * provider directory), and the account is never routed, listed or shown as an expert. Owner and by-id reads
  * are deliberately NOT gated: the owner still sees their own listings. `SHOW_DEMO_EXPERTS` never relaxes this.
  *
- * Negative space: the demand rollups keep their own `%@traveloure.test` pattern (`demand-test-exclusion.ts`);
- * moving them onto this predicate is a logged follow-up, not part of this lane.
+ * Negative space: the demand rollups keep their own patterns in `demand-test-exclusion.ts`
+ * (`%@traveloure.test`, and row 176 the QA domain `traveloure-qa.test`); moving them onto this
+ * predicate is a logged follow-up, not part of this lane.
  */
 import { sql, type SQL } from "drizzle-orm";
 import { isQaDomainAccount } from "./qa-trip-pass.service";
