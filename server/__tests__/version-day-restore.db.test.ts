@@ -234,7 +234,11 @@ async function adopt(tag: string) {
 test("migration 412 is registered, declared, and additive", () => {
   assert.equal(getTableName(planDayRestoreSnapshots), "plan_day_restore_snapshots");
   assert.ok(MIGRATION_FILES.includes("412_plan_day_restore_snapshots.sql" as any));
-  assert.equal(MIGRATION_FILES.some((f) => f.startsWith("411_")), false);
+  assert.ok(MIGRATION_FILES.includes("411_email_outbox_expires_at.sql" as any));
+  assert.equal(
+    MIGRATION_FILES.indexOf("411_email_outbox_expires_at.sql" as any) + 1,
+    MIGRATION_FILES.indexOf("412_plan_day_restore_snapshots.sql" as any),
+  );
   assert.ok(MIGRATION_FILES.indexOf("410_discovery_status_emerging.sql" as any) < MIGRATION_FILES.indexOf("412_plan_day_restore_snapshots.sql" as any));
   assert.deepEqual([...DAY_SIGNATURE_EXCLUDED_COLUMNS], ["updated_at"]);
   const schema = readFileSync(path.join(repo, "shared/schema.ts"), "utf8");

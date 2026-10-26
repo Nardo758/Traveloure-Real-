@@ -2160,6 +2160,11 @@ export const MIGRATION_FILES = [
   // No ALTER. The gem table has no slug column. HELD for Leon's comment.
   // Ledger 2026-10-24-discovery-status-emerging.
   "410_discovery_status_emerging.sql",
+  // 411 — email_outbox.expires_at. Additive nullable timestamptz, no DEFAULT,
+  // no CHECK, no index, no backfill. NULL stays NULL. HELD for
+  // "Migration 411 SQL approved — Leon". Ledger 2026-10-25-email-outbox-expires-at.
+  // Declared in shared/schema.ts.
+  "411_email_outbox_expires_at.sql",
   // 412 — plan_day_restore_snapshots. One row per replaced day, written in the apply-days
   // transaction. Additive table, no CHECK, no backfill. Index DESC NULLS FIRST.
   // 411 is PR #1696 (email_outbox expires_at), so this file is 412.
