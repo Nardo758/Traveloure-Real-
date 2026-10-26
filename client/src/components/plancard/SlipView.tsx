@@ -98,6 +98,7 @@ import {
 } from "@/components/plan/AnchorRow";
 import { absorbedTravelItemId, flightTimeConflictLine } from "@shared/getting-there";
 import { ToolsTray } from "@/components/plan/ToolsTray";
+import { PlanCostStrip } from "@/components/plan/PlanCostStrip";
 import { SlipEmptyStart } from "@/components/plan/SlipEmptyStart";
 import { MomentAnchorCard } from "@/components/plan/MomentAnchorCard";
 import { momentEveningHeading, momentTimeSpan, momentLeadIntro, momentLeadTitle, momentSketchLine, momentSpanWord } from "@/lib/slip-moment";
@@ -2354,6 +2355,7 @@ export function SlipView({
               <SlipEmptyStart tripId={tripId} trip={data.trip as any} onBrowse={() => setSlipView("map")} />
             </div>
           ) : null}
+          <PlanCostStrip activities={allActivities} travelers={data.trip?.travelers ?? null} planEvents={planEvents} isOwner={isOwner} />
           {/* ── SURFACE STEP 2 · THE TOOLS TRAY (ledger `2026-10-03-surface-step2-tools-tray`) ─────────
               The group manifest's tools for THIS plan, each opening the EXISTING component in a sheet;
               the logistics pieces the rail used to mount live here now. Owner only, as they were. */}
