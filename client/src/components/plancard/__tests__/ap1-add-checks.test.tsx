@@ -2,7 +2,7 @@
  * AP-1 (ledger `2026-10-13-ap1-save-then-warn`) — the confirmation the three slip add surfaces draw.
  *
  *   AN1 the lines: the findings' own hours lines, "Hours not checked for this stop", Getting around's gap line,
- *       the free plan's straight line with its footer, "no route found" only as the server said it
+ *       no line and no footer for a straight-line or estimated reach (audit B8), "no route found" only as the server said it
  *   AN2 polling: asks again every interval while pending, at most 5 times, then settles ONCE with the honest form
  *   AN3 polling stops as soon as nothing is pending; a failed read keeps the last answer
  *   AN4 the notice renders the POST's first answer (server render)
@@ -16,7 +16,6 @@ import { renderToString } from "react-dom/server";
 import { AddChecksNotice } from "../AddChecksNotice";
 import { addChecksLines, pollAddChecks, settleAddChecks, HOURS_CHECKING_LINE } from "@/lib/add-checks";
 import { ADD_CHECKS_POLL_MAX, HOURS_NOT_CHECKED_LINE, type StopChecks } from "@shared/add-checks";
-import { FREE_PLAN_COVERAGE_FOOTER } from "@shared/optimizer-lead";
 
 (globalThis as any).React = React;
 
@@ -29,7 +28,9 @@ describe("AP-1 confirmation", () => {
     assert.deepEqual(hit, { lines: ["Ginkaku-ji Temple · Day 2 · 17:10 starts after closing (5:00 PM)", "not worked out yet — Soba isn't on the map"], footer: null });
     assert.deepEqual(addChecksLines(base).lines, [HOURS_NOT_CHECKED_LINE]);
     const free = addChecksLines({ ...base, routedPlan: false, reach: { kind: "straight", from: "Kinkaku-ji", minutes: 40, mode: "transit" } });
-    assert.deepEqual(free, { lines: [HOURS_NOT_CHECKED_LINE, "From Kinkaku-ji: about 40 min by transit (est.)"], footer: FREE_PLAN_COVERAGE_FOOTER });
+    assert.deepEqual(free, { lines: [HOURS_NOT_CHECKED_LINE], footer: null });
+    const est = addChecksLines({ ...base, reach: { kind: "est", from: "Kinkaku-ji", minutes: 18, mode: "drive" } });
+    assert.deepEqual(est, { lines: [HOURS_NOT_CHECKED_LINE], footer: null });
     assert.deepEqual(addChecksLines({ ...base, reach: { kind: "no_route", from: "Kinkaku-ji" } }).lines[1], "From Kinkaku-ji: no route found");
     assert.deepEqual(addChecksLines({ ...base, reach: { kind: "routed", from: "Kinkaku-ji", line: "22 min · Drive" } }).lines[1], "From Kinkaku-ji: 22 min · Drive");
     assert.deepEqual(addChecksLines(pendingChecks).lines, [HOURS_CHECKING_LINE, "From Kinkaku-ji: working out travel time…"]);

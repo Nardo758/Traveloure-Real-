@@ -4,7 +4,8 @@
  *
  * Every figure here is the SERVER's (`GET /api/trips/:tripId/option-sets` carries each option's
  * plan-fit, derived by `shared/plan-fit.ts` through A2's travel-time reader); the slip computes
- * nothing (§E4). Every sentence an option's fit renders is `planFitLine` — one home (§18 rule 1).
+ * nothing (§E4). Every sentence an option's fit renders is `compareBurdenLine` (`@/lib/plan-compare`) — one home
+ * (§18 rule 1); its minutes print only when every shown day is checked (audit B8).
  *
  * Who sees what mirrors the rails and never widens them: add / remove / close for anyone who may
  * write items on this plan; CHOOSE and "compare again" for the owner or delegate only (R129 — an
@@ -12,7 +13,7 @@
  *
  * §13 on this surface: a place with no stated price shows NO price (never "$0"); a place with no pin
  * says so and is never placed on a map; with no located stops the fit line says what is missing
- * instead of a number; "est." is printed on every straight-line figure.
+ * instead of a number; a straight-line figure prints no minutes (audit B8).
  */
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { Link } from "wouter";
@@ -22,8 +23,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { planFitLine, type PlanFit } from "@shared/plan-fit";
-import type { DatedPriceView } from "@/lib/plan-compare";
+import type { PlanFit } from "@shared/plan-fit";
+import { compareBurdenLine, type DatedPriceView } from "@/lib/plan-compare";
 import { OPTION_SET_CAP } from "@shared/plan-options";
 
 export interface SlipOption {
@@ -260,7 +261,7 @@ function OptionCard({
       </div>
       {option.locationName ? <p className="text-xs text-muted-foreground break-words">{option.locationName}</p> : null}
       <p ref={fitRef} className="text-xs text-foreground" data-testid={`slip-option-fit-${option.id}`}>
-        {planFitLine(option.fit)}
+        {compareBurdenLine(option.fit)}
       </p>
       {option.sourceKind === "incumbent" ? <p className="text-xs text-muted-foreground">Already on your plan</p> : null}
       {option.sourceKind === "engine" ? <p className="text-xs text-muted-foreground">Suggested for these days</p> : null}

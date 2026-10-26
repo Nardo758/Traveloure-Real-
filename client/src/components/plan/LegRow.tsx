@@ -345,7 +345,7 @@ export interface UnroutedLegRowProps {
   legId: string;
   mode: RoutingMode | null;
   minutes: number;
-  /** 9b-d: the engine's straight-line stand-in for a no-route pair — the line says "est.". */
+  /** 9b-d: the engine's straight-line stand-in for a no-route pair — since audit B8 the row is not drawn. */
   estimate?: boolean;
 }
 
@@ -417,6 +417,8 @@ function RoutedLegRow({ legId, mode, route, timeZone, onOpen, transitUnavailable
 }
 
 function UnroutedLegRow({ legId, mode, minutes, estimate = false }: UnroutedLegRowProps) {
+  // Audit B8: the engine's straight-line stand-in is not a checked travel time, so it draws no row.
+  if (estimate) return null;
   const Icon = (mode && ROUTED_MODE_ICON[mode]) || Car;
   return (
     <p className={`ml-4 ${legRuleClass(false)} px-3 py-1.5 text-xs text-muted-foreground flex items-center gap-1.5`} data-testid={`slip-leg-unrouted-${legId}`}>
