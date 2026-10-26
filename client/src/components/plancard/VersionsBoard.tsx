@@ -2,8 +2,9 @@
  * THE VERSIONS BOARD (surface step 5; spec v1.2 §2.4; boards 4a/4b/4c; R-d, R-ac; ledger
  * `2026-10-04-surface-step5-map-versions`). It reads ONE thing — `GET /api/trips/:tripId/versions`
  * (the latest run's three versions, labelled with the run date, each with its day diff and its one
- * badge) — and writes through two rails: `apply-days` (adopted days only; the draft is never deleted
- * and the run is never touched) and the one-day re-time. Every rule it shows lives in
+ * badge) — and writes through two rails: `apply-days` (adopted days only; each adopted day replaces that
+ * day of the live plan, and no restore exists until D3 restore ships; the run is never touched) and the
+ * one-day re-time. Every rule it shows lives in
  * `@/lib/versions-board` / `@shared/version-board` (§18 rule 1).
  *
  *   · 4a CHOOSE — three cards, a badge only where a metric wins, a per-day change line, Adopt all / By day.
@@ -65,6 +66,7 @@ import {
   type BoardDrag,
   type DayPicks,
   type VersionsBoardView,
+  VERSIONS_RESTORE_COPY,
 } from "@/lib/versions-board";
 
 const DESKTOP_QUERY = "(min-width: 1024px)";
@@ -149,7 +151,7 @@ export function VersionsBoard({
     mutationFn: async (p: DayPicks) => (await apiRequest("POST", `/api/trips/${tripId}/versions/apply-days`, applyBody(p))).json(),
     onSuccess: (_r, p) => {
       const n = Object.keys(p).length;
-      toast({ title: n === 1 ? "1 day adopted" : `${n} days adopted`, description: "Your draft and the run's versions are kept." });
+      toast({ title: n === 1 ? "1 day adopted" : `${n} days adopted`, description: VERSIONS_RESTORE_COPY.adoptToastDescription });
       setPicks({});
       refresh();
     },
@@ -335,7 +337,7 @@ export function VersionsBoard({
             ? isDesktop
               ? "Drag a whole day into Your plan. Reorder stops inside a day and it re-times itself."
               : "Swipe across the versions. Days that match your draft say so. Take a single day from any column."
-            : `${allAnchored ? "Each version is built around one place to stay. " : ""}Adopt a whole version, or take single days from different ones. Your draft is kept.`}
+            : `${allAnchored ? "Each version is built around one place to stay. " : ""}Adopt a whole version, or take single days from different ones. ${VERSIONS_RESTORE_COPY.chooseNoteTail}`}
         </p>
       </div>
       {headerOffer}
@@ -450,7 +452,7 @@ export function VersionsBoard({
           })}
         </div>
         <p className="order-3 text-xs leading-snug text-[color:var(--slip-muted)]" data-testid="versions-keep-note">
-          Versions are kept with the run. Adopting never deletes your draft.
+          {VERSIONS_RESTORE_COPY.keepNote}
         </p>
         </>
       ) : isDesktop ? (
