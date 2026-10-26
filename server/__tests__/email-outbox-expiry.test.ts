@@ -9,8 +9,8 @@
  *   npx tsx --test server/__tests__/email-outbox-expiry.test.ts
  */
 import assert from "node:assert/strict";
-import { execSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import path from "node:path";
 import { after, afterEach, before, beforeEach, describe, it } from "node:test";
 import { db } from "../db.js";
 import { logger } from "../infrastructure/logger.js";
@@ -342,6 +342,39 @@ describe("drain and send honour expires_at", () => {
   });
 });
 
+const SCAN_SKIP_DIRS = new Set(["node_modules", "__tests__", "dist", "coverage"]);
+
+/** Files under the given roots whose text contains needle. Skips test directories. No shell binary. */
+function filesMentioning(needle: string, roots: string[]): string[] {
+  const found: string[] = [];
+  const walk = (dir: string) => {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (SCAN_SKIP_DIRS.has(entry.name)) continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      let text: string;
+      try {
+        text = readFileSync(full, "utf8");
+      } catch {
+        continue;
+      }
+      if (text.includes(needle)) found.push(full);
+    }
+  };
+  for (const root of roots) walk(root);
+  return found;
+}
+
 describe("expiry is recorded, not backfilled", () => {
   it("migration 411 only adds a nullable timestamptz column", () => {
     const raw = readFileSync("server/migrations/411_email_outbox_expires_at.sql", "utf8");
@@ -357,10 +390,7 @@ describe("expiry is recorded, not backfilled", () => {
   });
 
   it("does not assign expires_at on any existing row", () => {
-    const files = execSync("rg -l email_outbox server shared --glob '!**/__tests__/**'", { encoding: "utf8" })
-      .trim()
-      .split("\n")
-      .filter(Boolean);
+    const files = filesMentioning("email_outbox", ["server", "shared"]);
     const assignments = files.filter((file) => /expires_at\s*=/.test(readFileSync(file, "utf8")));
     assert.deepEqual(assignments, []);
     const welcome = readFileSync("server/services/signup-welcome-outbox.service.ts", "utf8");
