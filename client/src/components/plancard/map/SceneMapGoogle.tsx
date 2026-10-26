@@ -6,7 +6,7 @@
  */
 import { useEffect } from "react";
 import { APIProvider, Map, useMap } from "@vis.gl/react-google-maps";
-import { MapMarker, GOOGLE_MAPS_MAP_ID } from "@/components/ui/map-marker";
+import { MapMarker, GOOGLE_MAPS_MAP_ID, HIDDEN_PIN_ICON } from "@/components/ui/map-marker";
 import { Polyline } from "@/components/ui/map-polyline";
 import { clampFramingZoom, mapFraming } from "@/lib/map-framing";
 import { ANCHOR_COLOR, AREA_PIN_STYLE, BROWSE_TEAL, PIN_STYLE, areaPinLabel, sceneMarkers, type MapScene } from "@/lib/map-scene";
@@ -57,6 +57,7 @@ function AreaPins({ scene }: { scene: MapScene }) {
             position={{ lat: a.lat, lng: a.lng }}
             title={l.title}
             label={GOOGLE_MAPS_MAP_ID ? undefined : { text: l.text, fontSize: `${AREA_PIN_STYLE.fontSize}px`, fontWeight: String(AREA_PIN_STYLE.fontWeight), color: AREA_PIN_STYLE.text }}
+            icon={HIDDEN_PIN_ICON}
           >
             <div data-testid={l.testId} style={{ display: "flex", alignItems: "center", gap: 4, pointerEvents: "none" }}>
               <span style={{ width: AREA_PIN_STYLE.dotSize, height: AREA_PIN_STYLE.dotSize, borderRadius: "50%", background: AREA_PIN_STYLE.dot }} />
