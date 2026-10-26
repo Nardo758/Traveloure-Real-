@@ -4,7 +4,10 @@
  *
  *   GET  /api/trips/:tripId/versions             the board: latest run's A/B/C, per-day diffs,
  *                                                badges, anchors, re-time allowance (read gate)
- *   POST /api/trips/:tripId/versions/apply-days  { days: [{ day, variantId }] } — write gate
+ *   POST /api/trips/:tripId/versions/apply-days  { days: [{ day, variantId }] } — write gate.
+ *                                                Each adopted day comes back with snapshotId.
+ *   GET  /api/trips/:tripId/versions/restorable  newest saved day per day (read gate)
+ *   POST /api/trips/:tripId/versions/days/:day/restore  { snapshotId } — write gate; puts that day back
  *   GET  /api/trips/:tripId/versions/fixed       FB-1 step 4: the flagged days "Your plan, fixed" can fix, each
  *                                                fixable or changed since the run (read gate)
  *                                                The tap sends apply-days with `unchangedSinceRun: true`: a day changed
@@ -27,6 +30,7 @@ import { isAuthenticated } from "../replit_integrations/auth";
 import { getUserId } from "../utils/auth";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
 import { VersionBoardError, applyDays, loadVersionsBoard, retimeDay } from "../services/version-board.service";
+import { DayRestoreError, listRestorableDays, restoreDay } from "../services/version-day-restore.service";
 import { applyDaysUnchangedSinceRun, loadFixedPlan } from "../services/fixed-plan.service";
 import { FreeRetimeError, applyFreeRetimeFix, loadFreeRetimeFixes } from "../services/free-retime.service";
 
@@ -47,7 +51,7 @@ async function gate(req: any, res: any, write: boolean): Promise<string | null> 
 }
 
 function fail(res: any, err: unknown, what: string) {
-  if (err instanceof VersionBoardError) return res.status(err.status).json({ code: err.code, message: err.message, ...err.extra });
+  if (err instanceof VersionBoardError || err instanceof DayRestoreError) return res.status(err.status).json({ code: err.code, message: err.message, ...err.extra });
   console.error(`[versions] ${what} failed:`, err);
   return res.status(500).json({ message: `Couldn't ${what}` });
 }
@@ -88,6 +92,34 @@ router.post("/api/trips/:tripId/versions/apply-days", isAuthenticated, async (re
     res.json(out);
   } catch (err) {
     fail(res, err, "apply those days");
+  }
+});
+
+router.get("/api/trips/:tripId/versions/restorable", isAuthenticated, async (req: any, res) => {
+  if (!(await gate(req, res, false))) return;
+  try {
+    res.json(await listRestorableDays(req.params.tripId));
+  } catch (err) {
+    fail(res, err, "read the saved days");
+  }
+});
+
+const restoreBody = z.object({ snapshotId: z.string().min(1).max(64) }).strict();
+
+router.post("/api/trips/:tripId/versions/days/:day/restore", isAuthenticated, async (req: any, res) => {
+  const userId = await gate(req, res, true);
+  if (!userId) return;
+  const day = Number(req.params.day);
+  if (!Number.isInteger(day) || day < 1 || day > 60) return res.status(400).json({ message: "No such day" });
+  const parsed = restoreBody.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ message: "Send the saved day" });
+  try {
+    const out = await restoreDay({ tripId: req.params.tripId, userId, day, snapshotId: parsed.data.snapshotId });
+    // A second restore writes nothing, so it refreshes nothing. Same best-effort as apply-days.
+    if (out.restored) void runNow(req.params.tripId);
+    res.json(out);
+  } catch (err) {
+    fail(res, err, "restore that day");
   }
 });
 
