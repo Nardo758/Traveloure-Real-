@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { test, expect, type Page } from "@playwright/test";
 import { perDayAgreement } from "../../../shared/leg-resolution";
+import { compareSavingsShown, dayStripCells, savesLine, travelCell } from "../../../client/src/lib/plan-compare";
 import { actAndAwait, ok2xx, appears, testid } from "../../../e2e/supply-demand/lib/ui";
 import { fillPlanEntryToStart, clickPlanStart } from "../../../e2e/supply-demand/lib/flows";
 import {
@@ -50,14 +51,16 @@ import {
  *   · §2/§3 (A3, ledger `2026-09-29-a3b-option-sets-slip`) add places BY NAME AND PIN through the
  *     slip's own control, fixture-free: the CI database seeds no `hotel_cache` rows (R211 — the census
  *     gate governs release, not the build), so the list source and M9's ranking are proven by the DB
- *     suite (`plan-option-sets.db.test.ts` O11/O12). §3's "est." assertions follow the SERVER's basis
- *     (`fit.basis`): "est." is shown exactly when the figure is a straight-line estimate, never
+ *     suite (`plan-option-sets.db.test.ts` O11/O12). §3's slip "est." assertions follow the SERVER's basis
+ *     (`fit.basis`): "est." is shown on the slip exactly when the figure is a straight-line estimate, never
  *     assumed — ledger `2026-09-29-matrix-daily`.
  *   · §3 A4 (ledger `2026-09-29-a4-plan-fit-compare`): the compare view is proven on the same
  *     fixture-free places, so every price cell reads "price from the hotel"; the dated-offer price is
  *     proven by the DB suite (O14). The "no est. on a located pair once the Kyoto matrix is refreshed"
  *     case is DELETED (9b-b, Leon's ruling Oct 17, 2026): the matrix is retired as a source, so every
- *     plan-fit figure is a straight-line "est." until an OSRM-backed cost is ruled.
+ *     plan-fit figure is a straight-line estimate. B8 (architect, Oct 25, 2026): the compare view does
+ *     not print those minutes. Travel / day and the day strip follow `travelCell` / `dayStripCells`
+ *     (`checkedByDay`); a straight-line day reads "Not checked yet".
  *
  * Run solo: npx playwright test playwright/tests/journeys/j-kyoto-trips-golden-path.spec.ts --project=chromium
  * Needs: DATABASE_URL (read-only asserts), the app on BASE_URL (default http://127.0.0.1:5000).
@@ -644,8 +647,9 @@ test.describe("3 · plan-fit per hotel", () => {
     await expect(page.locator(`[data-testid="slip-option-set-${setId}"] [data-testid^="slip-option-fit-"]`)).toHaveCount(3);
     for (const o of set.options) {
       const line = (await testid(page, `slip-option-fit-${o.id}`).textContent()) ?? "";
-      if (estOn(o.fit)) expect(line).toContain("est.");
-      else expect(line).not.toContain("est.");
+      // B8: the slip's fit line reads `compareBurdenLine` — no "est." and, on a straight-line basis, no minutes.
+      expect(line).not.toContain("est.");
+      if (estOn(o.fit)) expect(line).not.toMatch(/\d+ min/);
       expect(line).toContain("of 4 located");
       expect(line).toContain("3 of 4");
     }
@@ -712,10 +716,17 @@ test.describe("3 · the compare view (A4)", () => {
     for (const o of set.options) {
       expect(o.fit.scored).toBe(true);
       expect(["matrix", "est"]).toContain(o.fit.basis);
-      // The minutes are the SERVER's figure, printed as-is, with "est." beside it exactly when it is
-      // a straight-line estimate (§E4, §13).
-      await expect(testid(page, `compare-travel-${o.id}-value`)).toHaveText(`${o.fit.minutesPerDay} min`);
-      await expect(testid(page, `compare-travel-${o.id}-note`)).toHaveText(estOn(o.fit) ? "est." : "per day");
+      // B8: minutes only for a checked day. The words are the same functions the page renders.
+      const cell = travelCell(o.fit);
+      await expect(testid(page, `compare-travel-${o.id}-value`)).toHaveText(cell.value);
+      await expect(testid(page, `compare-travel-${o.id}-note`)).toHaveText(cell.note);
+      if (estOn(o.fit)) {
+        await expect(testid(page, `compare-travel-${o.id}-value`)).not.toContainText("min");
+        await expect(testid(page, `compare-fit-${o.id}`)).not.toContainText("min");
+      }
+      for (const c of dayStripCells(o.fit)) {
+        await expect(testid(page, `compare-day-${o.id}-${c.day}`)).toContainText(c.minutes);
+      }
       await expect(testid(page, `compare-fit-${o.id}`)).toContainText("based on 3 of 4 located stops");
       // Coverage: the server's two counts, or — with no known area — a dash and a reason, never 0.
       const areas = o.fit.coverage === null ? "—" : `${o.fit.areasNear} of ${o.fit.areasTotal}`;
@@ -812,7 +823,9 @@ test.describe("3 · the compare view (A4)", () => {
     await expect(easier).toHaveText(after.easierCount === 1 ? "1 place would make your days easier" : `${after.easierCount} places would make your days easier`);
     await easier.click();
     for (const o of after.options.filter((x: any) => x.easierByMinutes != null)) {
-      await expect(testid(page, `compare-saves-${o.id}`)).toHaveText(`${o.easierByMinutes} min less travel per day than your choice${estOn(o.fit) ? " · est." : ""}`);
+      const line = testid(page, `compare-saves-${o.id}`);
+      if (compareSavingsShown(o.fit)) await expect(line).toHaveText(savesLine(o.easierByMinutes, o.fit));
+      else await expect(line).toHaveCount(0);
     }
     await expect(testid(page, "compare-foot")).toHaveText(`You chose ${worst.title}. You can change your mind until you book.`);
   });

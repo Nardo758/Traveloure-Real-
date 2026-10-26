@@ -2165,4 +2165,10 @@ export const MIGRATION_FILES = [
   // "Migration 411 SQL approved — Leon". Ledger 2026-10-25-email-outbox-expires-at.
   // Declared in shared/schema.ts.
   "411_email_outbox_expires_at.sql",
+  // 412 — plan_day_restore_snapshots. One row per replaced day, written in the apply-days
+  // transaction. Additive table, no CHECK, no backfill. Index DESC NULLS FIRST.
+  // 411 is PR #1696 (email_outbox expires_at), so this file is 412.
+  // HELD for "Migration 412 SQL approved — Leon". Ledger 2026-10-25-d3-restore-day.
+  // Declared in shared/schema.ts. Retention: 14 days, newest per day, purged at the next apply.
+  "412_plan_day_restore_snapshots.sql",
 ] as const;

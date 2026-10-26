@@ -25,6 +25,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useHealthFlags } from "@/lib/health-flags";
 import { anyLocalLive } from "@/lib/item-row-menu";
 import { openHandoffChooser } from "@/lib/handoff-client";
+import { useExpertAvailability } from "@/lib/expert-availability";
 import { useSlipFreeDraft, type FreeDraftTripInput } from "./useSlipFreeDraft";
 
 /** "Kyoto, Japan" → "Kyoto" — the same first-segment reading the map's Browse layer uses. */
@@ -67,6 +68,9 @@ export function SlipEmptyStart({
     retry: false,
   });
   const localLive = anyLocalLive(help);
+  // Row 223: the handoff door draws only while this city has an expert to hand to (the Finalize
+  // chooser's rule, `useExpertAvailability`). Hidden, it leaves the one Browse door; nothing replaces it.
+  const expertsAvailable = useExpertAvailability({ city: trip.destination });
 
   return (
     <div className="space-y-3.5" data-testid="slip-empty-start">
@@ -112,20 +116,22 @@ export function SlipEmptyStart({
             <span className="text-[13px] text-[color:var(--slip-muted)]">{EMPTY_BROWSE_DETAIL}</span>
           </span>
         </button>
-        <button
-          type="button"
-          className="flex min-h-[60px] w-full items-center gap-3.5 rounded-[14px] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] px-4 py-2 text-left hover:bg-[color:var(--slip-ground)]"
-          onClick={() => openHandoffChooser({})}
-          data-testid="slip-empty-handoff"
-        >
-          <UserRound className="h-[22px] w-[22px] flex-shrink-0 text-[color:var(--slip-teal)]" aria-hidden="true" />
-          <span className="flex min-w-0 flex-col gap-0.5">
-            <span className="text-[15px] font-semibold text-[color:var(--slip-ink)]">
-              {localLive && city ? `Hand it to a ${city} local` : "Hand it to a local expert"}
+        {expertsAvailable ? (
+          <button
+            type="button"
+            className="flex min-h-[60px] w-full items-center gap-3.5 rounded-[14px] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] px-4 py-2 text-left hover:bg-[color:var(--slip-ground)]"
+            onClick={() => openHandoffChooser({})}
+            data-testid="slip-empty-handoff"
+          >
+            <UserRound className="h-[22px] w-[22px] flex-shrink-0 text-[color:var(--slip-teal)]" aria-hidden="true" />
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span className="text-[15px] font-semibold text-[color:var(--slip-ink)]">
+                {localLive && city ? `Hand it to a ${city} local` : "Hand it to a local expert"}
+              </span>
+              <span className="text-[13px] text-[color:var(--slip-muted)]">{EMPTY_HANDOFF_DETAIL}</span>
             </span>
-            <span className="text-[13px] text-[color:var(--slip-muted)]">{EMPTY_HANDOFF_DETAIL}</span>
-          </span>
-        </button>
+          </button>
+        ) : null}
       </div>
 
       <p className="px-1 text-xs leading-normal text-[color:var(--slip-muted)]" data-testid="slip-empty-footnote">

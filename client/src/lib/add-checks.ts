@@ -3,26 +3,23 @@
  *
  * Every sentence that already has a home is read from it (§18 rule 1): the hours lines are the findings' own
  * (`findingStopLines`, built server-side), the gap line is Getting around's (`gettingAroundUnlocatedLine`), the
- * leg line is the slip's (`routedLegLine` server-side, `unroutedLegLine` here), the two engine headers are
- * Getting around's, and the free-plan footer is the Optimize card's.
+ * leg line is the slip's (`routedLegLine` server-side), and the two engine headers are Getting around's.
+ *
+ * Audit B8: minutes print only from a checked (routed) leg. A straight-line or estimated reach prints no
+ * line and no footer — the hours line still shows.
  */
 import {
   ADD_CHECKS_POLL_MAX,
   HOURS_NOT_CHECKED_LINE,
   type StopChecks,
 } from "@shared/add-checks";
-import { FREE_PLAN_COVERAGE_FOOTER } from "@shared/optimizer-lead";
-import type { LegMode } from "@shared/travel-speeds";
 import { GETTING_AROUND_DATES_HEADER, GETTING_AROUND_ENGINE_OFF_HEADER, GETTING_AROUND_PENDING, gettingAroundUnlocatedLine } from "./getting-around";
-import { unroutedLegLine } from "./slip-legs";
 
 export const HOURS_CHECKED_CLEAR_LINE = "Hours checked — open at your time";
 export const HOURS_NEED_A_TIME_LINE = "Add a time to check hours";
 export const HOURS_CHECKING_LINE = "Checking hours…";
 
-const MODE_WORDS: Record<LegMode, string> = { walk: "walk", cycle: "by bike", transit: "by transit", drive: "by car" };
-
-/** Pure. The confirmation's lines, in order, and the footer a free plan's straight line carries. */
+/** Pure. The confirmation's lines, in order. The footer is always null since audit B8 (no straight-line minutes). */
 export function addChecksLines(c: StopChecks): { lines: string[]; footer: string | null } {
   const lines: string[] = [];
   const h = c.hours;
@@ -33,7 +30,7 @@ export function addChecksLines(c: StopChecks): { lines: string[]; footer: string
   else if (h.status === "no_time") lines.push(HOURS_NEED_A_TIME_LINE);
   else lines.push(HOURS_CHECKING_LINE);
 
-  let footer: string | null = null;
+  const footer: string | null = null;
   const r = c.reach;
   if (r) {
     switch (r.kind) {
@@ -41,11 +38,8 @@ export function addChecksLines(c: StopChecks): { lines: string[]; footer: string
         lines.push(`From ${r.from}: ${r.line}`);
         break;
       case "est":
-        lines.push(`From ${r.from}: ${unroutedLegLine(r.mode as any, r.minutes)} (est.)`);
-        break;
       case "straight":
-        lines.push(`From ${r.from}: about ${r.minutes} min ${MODE_WORDS[r.mode]} (est.)`);
-        footer = FREE_PLAN_COVERAGE_FOOTER;
+        // Audit B8: an unchecked travel time is not shown.
         break;
       case "unlocated":
         lines.push(gettingAroundUnlocatedLine(r.stop));

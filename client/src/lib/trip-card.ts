@@ -1,5 +1,8 @@
 import { buildGoogleMapsDeepLink, type Place } from "@/lib/maps";
 import { LEAVE_BY_COPY } from "@shared/leave-by";
+import { airportLegModes, showsAirportLeg, type AirportLegMode } from "@shared/airport-leg";
+import type { FinalAirportLeg, FrozenFlight } from "@shared/trip-card-final";
+import { isStayActivity } from "@/components/plancard/plancard-temporal";
 
 /**
  * The Trip Card's pure rules (surface spec v1.3.4 §2.5, R-ay; step 6 — ledger
@@ -158,7 +161,40 @@ export function lastServiceLine(ls: { operator: string; line: string | null; sta
   return `Last departure nearby: ${[ls.operator, where].filter(Boolean).join(" ")} ${ls.lastDeparture}`;
 }
 
-/** A non-routed leg's minutes are an estimate and say so (LD 69 — a stored estimate is never presented as exact). */
-export function estimatedMinutesSuffix(minutes: number): string {
-  return ` · ${Math.round(minutes)} min est.`;
+/** Row 185 J6: one airport ↔ stay row on the Trip Card, drawn from the trip_finals snapshot only. */
+export interface CardAirportLeg {
+  stayName: string;
+  airport: string | null;
+  modes: AirportLegMode[];
+  /** The frozen routed minutes; null when the final recorded none. */
+  routedMinutes: number | null;
+}
+
+/**
+ * Pure. The Trip Card's airport rows from FROZEN data only (`plancard.finalAirportLeg`, #1701): no live
+ * anchors read and no recompute. A direction draws only when its frozen flight exists, the card's days
+ * carry a stay (the first accommodation, `isStayActivity`), and the viewer is the owner. Absent
+ * `finalAirportLeg` (a live render, a non-owner view, a final written before the snapshot carried
+ * anchors) ⇒ no rows.
+ */
+export function cardAirportLegs(
+  days: ReadonlyArray<{ activities?: ReadonlyArray<{ type?: string | null; name: string }> | null }>,
+  finalAirportLeg: FinalAirportLeg | null | undefined,
+  opts: { isOwner: boolean },
+): { arrival: CardAirportLeg | null; departure: CardAirportLeg | null } {
+  if (!finalAirportLeg || !opts.isOwner) return { arrival: null, departure: null };
+  let stayName: string | null = null;
+  for (const d of days) {
+    const stay = (d.activities ?? []).find((a) => isStayActivity(a as { type: string }));
+    if (stay) {
+      stayName = stay.name;
+      break;
+    }
+  }
+  const modes = airportLegModes({ platformCarFits: finalAirportLeg.platformCarFits });
+  const one = (flight: FrozenFlight | null): CardAirportLeg | null =>
+    showsAirportLeg({ hasFlight: flight != null, stayName }) && stayName
+      ? { stayName, airport: flight!.airport, modes, routedMinutes: flight!.airportLegMinutes }
+      : null;
+  return { arrival: one(finalAirportLeg.flightArrival), departure: one(finalAirportLeg.flightDeparture) };
 }

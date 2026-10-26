@@ -4,6 +4,7 @@ import { VIATOR_ITEM_CONTENT_TYPE } from "@shared/viator-item";
 import { db } from "./db";
 import { scrubStoredTransportOption } from "./services/transport-option-client";
 import { enqueuePlanLegRecompute } from "./services/routing/plan-legs-queue";
+import { lockTripRow } from "./services/trip-row-lock";
 import { flightAnchorPoint, isFlightAnchorType } from "./services/airport-coords";
 import { dispatchModerationEvent } from "./automations/moderation/runtime";
 import { dispatchBookingEvent } from "./automations/bookings/runtime";
@@ -8324,10 +8325,15 @@ export class DatabaseStorage implements IStorage {
     opts: { coordSource?: GoogleCoordSource } = {},
   ): Promise<ItineraryItem | undefined> {
     const safeUpdates = withItemCoordSource(stripItineraryItemRoutingFields(updates as Record<string, unknown>), opts.coordSource);
-    const [updated] = await db.update(itineraryItems)
-      .set({ ...safeUpdates, updatedAt: new Date() })
-      .where(eq(itineraryItems.id, id))
-      .returning();
+    const updated = await db.transaction(async (tx) => {
+      const [existing] = await tx.select({ tripId: itineraryItems.tripId }).from(itineraryItems).where(eq(itineraryItems.id, id));
+      if (existing?.tripId) await lockTripRow(tx, existing.tripId);
+      const [row] = await tx.update(itineraryItems)
+        .set({ ...safeUpdates, updatedAt: new Date() })
+        .where(eq(itineraryItems.id, id))
+        .returning();
+      return row;
+    });
     enqueuePlanLegRecompute(updated?.tripId); // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)
     return updated;
   }
@@ -8362,6 +8368,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(itineraryItems.id, id));
 
     await db.transaction(async (tx) => {
+      if (item?.tripId) await lockTripRow(tx, item.tripId);
       // item-removed:logged — the delete and its `item_removed` diary row commit as one (ruling 18).
       await tx.delete(itineraryItems).where(eq(itineraryItems.id, id));
 

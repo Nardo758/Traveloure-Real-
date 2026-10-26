@@ -362,3 +362,152 @@ export function runChargeFromLedger(rows: readonly RunTollRow[], runAt: Date | s
   }
   return fee.stripePaymentRef ? { basis: "paid", amountCents, currency, at } : null;
 }
+
+// ── replaced-day restore (ledger 2026-10-25-d3-restore-day) ─────────────────────────────────────
+//
+// Retention, Architect 2026-10-25 20:35 ET: a snapshot lives 14 days; only the newest snapshot per
+// day is live (a newer apply supersedes the older); expired rows are purged lazily at the next
+// apply on that trip. No new job.
+
+/** How long a replaced day stays restorable. */
+export const DAY_RESTORE_RETENTION_DAYS = 14;
+export const DAY_RESTORE_RETENTION_MS = DAY_RESTORE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+
+/** What GET /versions/restorable says about the newest live snapshot of a day. */
+export type DayRestoreState = "restorable" | "changed_since" | "expired" | "finalized";
+
+/**
+ * Columns left out of the replaced-day signature (Architect, 2026-10-25 21:15 ET).
+ *
+ * `updated_at` only. It is bookkeeping: restore writes it, and several item writers bump it
+ * without changing what the traveler sees. A price, note, booking, location, or any other
+ * column change is still a different hash when this timestamp is left untouched.
+ *
+ * Nothing else is excluded. Apply stamps `source_run_id`, `source_variant_id`, `day_number`,
+ * the times, and `sort_order`, and the signature is read AFTER those writes, so those values
+ * are part of the stored hash. Restore writes them back. A later change to any of them, or to
+ * price (`estimated_cost` / `actual_cost`), `notes`, location, booking fields, `locked_at`,
+ * or `origin`, is a day change.
+ */
+export const DAY_SIGNATURE_EXCLUDED_COLUMNS = ["updated_at"] as const;
+
+function signatureSortKey(row: Record<string, unknown>): string {
+  const id = row.id;
+  return id == null ? "" : String(id);
+}
+
+function canonicalSignatureValue(value: unknown): unknown {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  if (Array.isArray(value)) return value.map(canonicalSignatureValue);
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+      out[key] = canonicalSignatureValue((value as Record<string, unknown>)[key]);
+    }
+    return out;
+  }
+  return value ?? null;
+}
+
+/**
+ * PURE. sha256 of the day's rows sorted by id. Each row is canonical JSON of every key except
+ * `DAY_SIGNATURE_EXCLUDED_COLUMNS`, keys sorted. Restore is allowed only while the live day
+ * still hashes to the value stored at apply. UTF-8, no Node import — this module is also
+ * bundled for the versions board.
+ */
+export function dayAfterSignature(rows: readonly Record<string, unknown>[]): string {
+  const excluded = new Set<string>(DAY_SIGNATURE_EXCLUDED_COLUMNS);
+  const lines = [...rows]
+    .sort((a, b) => {
+      const ak = signatureSortKey(a);
+      const bk = signatureSortKey(b);
+      return ak < bk ? -1 : ak > bk ? 1 : 0;
+    })
+    .map((row) => {
+      const kept: Record<string, unknown> = {};
+      for (const key of Object.keys(row).sort()) {
+        if (excluded.has(key) || row[key] === undefined) continue;
+        kept[key] = row[key];
+      }
+      return JSON.stringify(canonicalSignatureValue(kept));
+    });
+  return sha256Hex(lines.join("\n"));
+}
+
+/** True when `expires_at` has passed. A superseded snapshot is a separate fact. */
+export function daySnapshotExpired(expiresAt: Date | string | null | undefined, now: Date): boolean {
+  if (expiresAt == null) return true;
+  const t = new Date(expiresAt).getTime();
+  return !Number.isFinite(t) || t <= now.getTime();
+}
+
+/**
+ * PURE. The state's order is the restore route's order: a finalized plan, then expiry,
+ * then a day that no longer matches the signature stored at apply, then restorable.
+ */
+export function dayRestoreState(input: {
+  finalized: boolean;
+  expiresAt: Date | string | null;
+  now: Date;
+  afterSignature: string;
+  currentSignature: string;
+}): DayRestoreState {
+  if (input.finalized) return "finalized";
+  if (daySnapshotExpired(input.expiresAt, input.now)) return "expired";
+  if (input.currentSignature !== input.afterSignature) return "changed_since";
+  return "restorable";
+}
+
+const SHA256_K = new Uint32Array([
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+]);
+
+function rotr(x: number, n: number): number {
+  return ((x >>> n) | (x << (32 - n))) >>> 0;
+}
+
+/** sha256 hex of a UTF-8 string. Pure so the client bundle of this module does not import Node. */
+function sha256Hex(message: string): string {
+  const bytes = new TextEncoder().encode(message);
+  const bitLen = bytes.length * 8;
+  const zeroCount = (56 - ((bytes.length + 1) % 64) + 64) % 64;
+  const total = bytes.length + 1 + zeroCount + 8;
+  const buf = new Uint8Array(total);
+  buf.set(bytes);
+  buf[bytes.length] = 0x80;
+  const view = new DataView(buf.buffer);
+  view.setUint32(total - 8, Math.floor(bitLen / 2 ** 32));
+  view.setUint32(total - 4, bitLen >>> 0);
+
+  let h0 = 0x6a09e667, h1 = 0xbb67ae85, h2 = 0x3c6ef372, h3 = 0xa54ff53a;
+  let h4 = 0x510e527f, h5 = 0x9b05688c, h6 = 0x1f83d9ab, h7 = 0x5be0cd19;
+  const w = new Uint32Array(64);
+  for (let i = 0; i < buf.length; i += 64) {
+    for (let j = 0; j < 16; j++) w[j] = view.getUint32(i + j * 4);
+    for (let j = 16; j < 64; j++) {
+      const s0 = rotr(w[j - 15], 7) ^ rotr(w[j - 15], 18) ^ (w[j - 15] >>> 3);
+      const s1 = rotr(w[j - 2], 17) ^ rotr(w[j - 2], 19) ^ (w[j - 2] >>> 10);
+      w[j] = (w[j - 16] + s0 + w[j - 7] + s1) >>> 0;
+    }
+    let a = h0, b = h1, c = h2, d = h3, e = h4, f = h5, g = h6, h = h7;
+    for (let j = 0; j < 64; j++) {
+      const s1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+      const ch = ((e & f) ^ (~e & g)) >>> 0;
+      const temp1 = (h + s1 + ch + SHA256_K[j] + w[j]) >>> 0;
+      const s0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+      const maj = ((a & b) ^ (a & c) ^ (b & c)) >>> 0;
+      const temp2 = (s0 + maj) >>> 0;
+      h = g; g = f; f = e; e = (d + temp1) >>> 0; d = c; c = b; b = a; a = (temp1 + temp2) >>> 0;
+    }
+    h0 = (h0 + a) >>> 0; h1 = (h1 + b) >>> 0; h2 = (h2 + c) >>> 0; h3 = (h3 + d) >>> 0;
+    h4 = (h4 + e) >>> 0; h5 = (h5 + f) >>> 0; h6 = (h6 + g) >>> 0; h7 = (h7 + h) >>> 0;
+  }
+  return [h0, h1, h2, h3, h4, h5, h6, h7].map((x) => x.toString(16).padStart(8, "0")).join("");
+}

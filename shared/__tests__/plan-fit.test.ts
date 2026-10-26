@@ -57,13 +57,20 @@ test("P1: day-weighted mean of the per-day sums", () => {
   });
   assert.equal(fit.scored, true);
   assert.equal((fit as any).minutesPerDay, 33);
+  assert.deepEqual((fit as any).checkedByDay, { 1: false, 2: false }, "a straight-line day is not checked");
 });
 
 test("P2: one straight-line leg makes the whole figure est.; all matrix is matrix", () => {
   const mixed = planFitFor({ option: O, items, travel: reader({ "35.0010": mat(10), "35.0020": est(20), "35.0030": mat(40) }), centroids: [], walkThresholdMeters: WALK });
   assert.equal((mixed as any).basis, "est");
+  // Same minutes as P1 (10, 20, 40). The checked flag does not change the total.
+  assert.equal((mixed as any).minutesPerDay, 33);
+  assert.deepEqual((mixed as any).minutesByDay, { 1: 30, 2: 40 });
+  assert.deepEqual((mixed as any).checkedByDay, { 1: false, 2: true }, "day 1 mixed a straight line in; day 2 did not");
   const all = planFitFor({ option: O, items, travel: reader({ "35.0010": mat(10), "35.0020": mat(20), "35.0030": mat(40) }), centroids: [], walkThresholdMeters: WALK });
   assert.equal((all as any).basis, "matrix");
+  assert.equal((all as any).minutesPerDay, 33);
+  assert.deepEqual((all as any).checkedByDay, { 1: true, 2: true });
 });
 
 test("P3: unlocated excluded and counted; too few located or no pin ⇒ no figure", () => {

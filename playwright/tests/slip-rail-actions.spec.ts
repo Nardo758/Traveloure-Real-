@@ -30,7 +30,7 @@
  * Run: npx playwright test slip-rail-actions --project=chromium
  */
 import { test, expect, type Page } from "@playwright/test";
-import { execSync } from "child_process";
+import { execFileSync, execSync } from "child_process";
 import { registerAndSignIn } from "../utils/auth";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:5000";
@@ -178,18 +178,52 @@ test("A3: Browse services carries this plan's id AND this plan's own destination
   await expect(page.getByTestId("input-location")).toHaveValue("Kyoto, Japan", { timeout: 15_000 });
 });
 
+/**
+ * Row 223 (sanctioned pin edit): the hire door draws only while the plan's city has an expert to hand
+ * to — `expert_hook_cities` on AND the chooser has someone (`chooserHasExperts`). Seeds ONE byline-gated
+ * Kyoto fixture expert (`scripts/seed-fixture-kyoto-expert.ts`, the golden path's seeder), switches
+ * Kyoto on, waits for the availability answer to say yes (the setting is cached server-side for 15s),
+ * and returns the restore for the switch. The fixture expert is left, as the golden path leaves its own.
+ */
+async function switchKyotoExpertsOn(page: Page): Promise<() => void> {
+  execFileSync("npx", ["tsx", "scripts/seed-fixture-kyoto-expert.ts", "railhire"], {
+    env: { ...process.env, ALLOW_TEST_ACCOUNTS: "1" },
+    encoding: "utf8",
+    timeout: 120_000,
+  });
+  const prior = psql(`SELECT setting_value FROM platform_settings WHERE setting_key = 'expert_hook_cities'`);
+  psql(
+    `INSERT INTO platform_settings (setting_key, setting_value) VALUES ('expert_hook_cities', '["kyoto"]')
+     ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = NOW()`,
+  );
+  await expect
+    .poll(async () => (await (await page.request.get(`${BASE_URL}/api/expert-availability?city=${encodeURIComponent("Kyoto, Japan")}`)).json()).available, {
+      timeout: 45_000,
+    })
+    .toBe(true);
+  return () => {
+    if (prior) psql(`UPDATE platform_settings SET setting_value = '${prior.replace(/'/g, "''")}' WHERE setting_key = 'expert_hook_cities'`);
+    else psql(`DELETE FROM platform_settings WHERE setting_key = 'expert_hook_cities'`);
+  };
+}
+
 test("A4: Hand off to a local expert opens the ONE handoff chooser (R324)", async ({ page }) => {
   const tripId = await registerAndCreateTrip(page, "hire");
-  await openSlip(page, tripId);
-  // No advisor on a fresh plan ⇒ the hire row, and NO Expert card and NO Message row (§13: the
-  // rail says nothing about a person who is not there).
-  await expect(page.getByTestId("slip-rail-expert")).toHaveCount(0);
-  await expect(page.getByTestId("slip-action-message-expert")).toHaveCount(0);
-  await page.getByTestId("slip-action-hire-expert").click();
-  // R324 (step 7b): the door is the handoff chooser — three answers; nothing is sent by opening it.
-  await expect(page.getByTestId("handoff-chooser")).toBeVisible({ timeout: 10_000 });
-  for (const k of ["polish", "book", "plan_all"]) await expect(page.getByTestId(`handoff-kind-${k}`)).toBeVisible();
-  await expect(page.getByTestId("handoff-confirm")).toBeDisabled();
+  const restore = await switchKyotoExpertsOn(page);
+  try {
+    await openSlip(page, tripId);
+    // No advisor on a fresh plan ⇒ the hire row, and NO Expert card and NO Message row (§13: the
+    // rail says nothing about a person who is not there).
+    await expect(page.getByTestId("slip-rail-expert")).toHaveCount(0);
+    await expect(page.getByTestId("slip-action-message-expert")).toHaveCount(0);
+    await page.getByTestId("slip-action-hire-expert").click();
+    // R324 (step 7b): the door is the handoff chooser — three answers; nothing is sent by opening it.
+    await expect(page.getByTestId("handoff-chooser")).toBeVisible({ timeout: 10_000 });
+    for (const k of ["polish", "book", "plan_all"]) await expect(page.getByTestId(`handoff-kind-${k}`)).toBeVisible();
+    await expect(page.getByTestId("handoff-confirm")).toBeDisabled();
+  } finally {
+    restore();
+  }
 });
 
 test("A5: the ONE AI action follows the item count, and stops before the external call", async ({

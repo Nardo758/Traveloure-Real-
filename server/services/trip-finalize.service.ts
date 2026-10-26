@@ -25,10 +25,13 @@
  */
 import { resolvePlanBookingPaths } from "./booking-path.service";
 import crypto from "crypto";
-import { and, asc, desc, eq, isNotNull, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
 import { trips, itineraryItems, itineraryVariants, itineraryComparisons, tripFinals, type TripFinal } from "@shared/schema";
-import { dominantVariant, finalCardDays, type FinalCardMeta } from "@shared/trip-card-final";
+import { dominantVariant, finalCardDays, type FinalCardMeta, type FrozenFlight } from "@shared/trip-card-final";
+import { anchorWallTime } from "@shared/getting-there";
+import { platformCarFits as readPlatformCarFits } from "./airport-leg.service";
+import { tripLegsShown } from "./routing/plan-routed-legs.service";
 import { versionLabel } from "@shared/version-board";
 import type { PhotoView } from "@shared/place-photos";
 import { logItemTransition } from "./item-transition-log.service";
@@ -146,6 +149,144 @@ export async function reFinalizeIfCurrentlyFinal(tripId: string, actorId: string
   return result.finalCreated ? result.version : null;
 }
 
+/** What `freezeAirportFacts` writes. `anchors` is always set on success; `airportLeg` only when a flight froze and its read succeeded. */
+export interface FrozenAirportFacts {
+  anchors: { flightArrival: FrozenFlight | null; flightDeparture: FrozenFlight | null };
+  airportLeg?: { platformCarFits: boolean };
+}
+
+/**
+ * The three reads the freeze makes. Tests replace a method to inject a failure (the booking-path
+ * deps seam). A thrown read is caught by `freezeAirportFacts` and never escapes.
+ */
+export const airportFactsReads = {
+  /** Flight anchors only, inside the caller's savepoint so a SQL error cannot poison finalize. */
+  readFlightAnchors: async (tripId: string, tx: any): Promise<any[]> => {
+    const result = await tx.execute(sql`
+      SELECT id,
+             anchor_type AS "anchorType",
+             to_char(anchor_datetime, 'YYYY-MM-DD"T"HH24:MI:SS') AS "anchorDatetime",
+             location,
+             description,
+             latitude,
+             longitude
+        FROM temporal_anchors
+       WHERE trip_id = ${tripId}
+         AND anchor_type IN ('flight_arrival', 'flight_departure')
+       ORDER BY anchor_datetime ASC, id ASC
+    `);
+    return (result.rows ?? []) as any[];
+  },
+  /** Existing SHOWN legs. A read of `tripLegsShown` — it does not run the routing engine or write a leg. */
+  shownLegs: (tripId: string): Promise<any[]> => tripLegsShown(tripId),
+  platformCarFits: (tripId: string): Promise<boolean> => readPlatformCarFits(tripId),
+};
+
+/** "HH:MM" via the one wall-clock reader. `to_char` already supplied the T-form stored clock. */
+function frozenWallTime(value: unknown): string | null {
+  if (value instanceof Date) return anchorWallTime(value);
+  if (typeof value !== "string" || value.length === 0) return null;
+  return anchorWallTime(value.includes("T") ? value : value.replace(" ", "T"));
+}
+
+function blankToNull(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/** The live GET treats `latitude != null` as "this anchor has a point". */
+function anchorHasPoint(row: any): boolean {
+  return row?.latitude != null && row.latitude !== "";
+}
+
+/**
+ * Positive minutes from a SHOWN routed leg touching `anchor:<id>`, the same attachment as
+ * `GET /api/trips/:id/anchors` (`tripLegsShown`, then `fromActivityId` / `toActivityId`).
+ * Null when this flight has no point, or no shown leg, or the minutes are not a positive number.
+ * Never computed here — only read off a leg that already exists.
+ */
+function airportLegMinutesFor(row: any, shown: readonly any[]): number | null {
+  if (!anchorHasPoint(row)) return null;
+  const end = `anchor:${row.id}`;
+  const leg = shown.find((l) => l?.fromActivityId === end || l?.toActivityId === end);
+  const minutes = Number(leg?.estimatedDurationMinutes);
+  if (!leg || !Number.isFinite(minutes) || minutes <= 0) return null;
+  const rounded = Math.round(minutes);
+  return rounded > 0 ? rounded : null;
+}
+
+function toFrozenFlight(row: any, shown: readonly any[]): FrozenFlight {
+  return {
+    time: frozenWallTime(row.anchorDatetime),
+    airport: blankToNull(row.location),
+    description: blankToNull(row.description),
+    airportLegMinutes: airportLegMinutesFor(row, shown),
+  };
+}
+
+/**
+ * Freeze the plan's flight anchors and, when one exists, whether a platform car fits.
+ * Returns null when the anchors read failed — the caller then writes neither key (§15b).
+ * Never throws. The anchors SELECT runs in a savepoint of `tx`: a SQL error rolls back
+ * only that savepoint, so the finalize transaction is not aborted.
+ *
+ * The live anchors GET is unordered (`getTemporalAnchors` has no ORDER BY). This picks the
+ * FIRST of each flight type by `anchor_datetime`, then `id`.
+ *
+ * Outside `planContentHash` and `SNAPSHOT_TRIP_FIELDS`. Pre-existing finals carry neither
+ * key and are never rewritten; a flight added after finalize is not in that version until
+ * the plan's content changes and a new version is written.
+ */
+export async function freezeAirportFacts(tripId: string, tx: any): Promise<FrozenAirportFacts | null> {
+  let rows: any[];
+  try {
+    rows = await tx.transaction(async (sp: any) => airportFactsReads.readFlightAnchors(tripId, sp));
+  } catch (err) {
+    console.error(
+      `[trip-finalize] flight anchors unreadable for ${tripId}; freezing neither key:`,
+      (err as Error)?.message ?? err,
+    );
+    return null;
+  }
+  // The live GET is unordered, so the order it returns is not a choice. Sort here too, in case
+  // a caller hands back rows the SELECT did not order.
+  const ordered = [...rows].sort(
+    (a, b) => String(a.anchorDatetime ?? "").localeCompare(String(b.anchorDatetime ?? "")) || String(a.id).localeCompare(String(b.id)),
+  );
+  const arrival = ordered.find((r) => r.anchorType === "flight_arrival") ?? null;
+  const departure = ordered.find((r) => r.anchorType === "flight_departure") ?? null;
+  let shown: any[] = [];
+  if (anchorHasPoint(arrival) || anchorHasPoint(departure)) {
+    try {
+      shown = await airportFactsReads.shownLegs(tripId);
+    } catch (err) {
+      // The anchors themselves were read. Minutes stay null rather than dropping the freeze.
+      console.error(
+        `[trip-finalize] shown airport legs unreadable for ${tripId}; minutes stay null:`,
+        (err as Error)?.message ?? err,
+      );
+      shown = [];
+    }
+  }
+  const anchors = {
+    flightArrival: arrival ? toFrozenFlight(arrival, shown) : null,
+    flightDeparture: departure ? toFrozenFlight(departure, shown) : null,
+  };
+  if (anchors.flightArrival == null && anchors.flightDeparture == null) return { anchors };
+  try {
+    const fits = await airportFactsReads.platformCarFits(tripId);
+    if (typeof fits !== "boolean") return { anchors };
+    return { anchors, airportLeg: { platformCarFits: fits } };
+  } catch (err) {
+    console.error(
+      `[trip-finalize] airport-leg read failed for ${tripId}; omitting airportLeg:`,
+      (err as Error)?.message ?? err,
+    );
+    return { anchors };
+  }
+}
+
 /**
  * Finalize `tripId` on behalf of `actorId` (the session user; ownership is enforced by the caller).
  * Idempotent by plan fingerprint. Throws {@link TripNotFoundError} if the trip does not exist.
@@ -183,11 +324,29 @@ export async function finalizeTrip(tripId: string, actorId: string): Promise<Fin
       (m) => Object.fromEntries(m),
       () => null,
     );
-    const snapshot = { trip: snapshotTrip, items: snapshotItems, card, ...(bookingPaths ? { bookingPaths } : {}) };
+    // Flight anchors and the airport leg, frozen with the plan like bookingPaths and outside the
+    // fingerprint below. A failed anchors read freezes neither key; finalize still succeeds.
+    // Pre-existing finals carry neither key and are never rewritten. A flight added after finalize
+    // is not in that version until the plan's content changes and a new version is written.
+    const airportFacts = await freezeAirportFacts(tripId, tx);
+    const snapshot = {
+      trip: snapshotTrip,
+      items: snapshotItems,
+      card,
+      ...(bookingPaths ? { bookingPaths } : {}),
+      ...(airportFacts
+        ? {
+            anchors: airportFacts.anchors,
+            ...(airportFacts.airportLeg ? { airportLeg: airportFacts.airportLeg } : {}),
+          }
+        : {}),
+    };
 
     const contentHash = planContentHash(trip as any, ordered as any[]);
 
-    // 3. Idempotent re-final rule: unchanged plan writes no new version.
+    // 3. Idempotent re-final rule: unchanged plan writes no new version. Anchors sit outside
+    //    this hash, so adding a flight does not fork a version and does not rewrite the one
+    //    already stored.
     const [latest] = await tx
       .select()
       .from(tripFinals)
@@ -350,6 +509,8 @@ export async function refreshTripFinalLiveDays(tripId: string, now: Date = new D
     const liveDays = Array.from(new Set(live.map((it) => it.dayNumber).filter((d): d is number => typeof d === "number"))).sort((a, b) => a - b);
     if (stableStringify(items) === stableStringify(snap.items ?? [])) return { refreshed: false, liveDays };
     const card: FinalCardMeta = { ...(snap.card ?? { builtFrom: null, photos: {} }), days: finalCardDays(items) } as FinalCardMeta;
+    // `{ ...snap, items, card }` keeps every other snapshot key (bookingPaths, anchors, airportLeg).
+    // A final that predates those keys stays without them; this rewrite does not add them.
     await tx
       .update(tripFinals)
       .set({ snapshot: { ...snap, items, card } })

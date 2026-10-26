@@ -157,3 +157,4 @@ Fraunces hero on `--earn-ground`; `TrendingCities` inherits lane 3; entry strip 
 - Audit `TrendingCities` / `TravelPulsePanel` after lane 3.
 - Test accounts: ≥3 provider storefronts per launch market.
 - `artifacts/traveloure/` removal after lanes 1–4.
+  <!-- superseded@d225896 — owner ruling 2026-10-25 deleted the tree (ledger `2026-10-25-delete-artifacts-traveloure`). Annotation, not a rewrite. -->

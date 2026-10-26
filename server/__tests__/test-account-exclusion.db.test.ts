@@ -307,7 +307,7 @@ test("QV1 qa-verify T1–T4 read role + active over the test accounts, with no f
   const deletedTraveler = qaTestAccountReport(all.map((r) => (r.role === "user" ? { ...r, is_deleted: true } : r)));
   assert.equal(deletedTraveler.T4.pass, false, "a deleted traveler is not active");
 
-  for (const f of ["server/services/qa-verify.service.ts", "client/src/pages/admin/qa-checklist.tsx", "artifacts/traveloure/src/pages/admin/qa-checklist.tsx"]) {
+  for (const f of ["server/services/qa-verify.service.ts", "client/src/pages/admin/qa-checklist.tsx"]) {
     const src = fs.readFileSync(path.join(process.cwd(), f), "utf8");
     assert.equal(src.includes("traveloure-test.com"), false, `${f} names no second domain`);
   }

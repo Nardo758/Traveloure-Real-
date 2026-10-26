@@ -152,6 +152,7 @@ import { FinalizeBookingModal } from "./FinalizeBookingModal";
 import { PhoneDeliveryDialog } from "./PhoneDeliveryDialog";
 import { useReopenMutation } from "./use-reopen-mutation";
 import { openHandoffChooser } from "@/lib/handoff-client";
+import { useExpertAvailability } from "@/lib/expert-availability";
 import { SlipOrganizeEventsRow } from "./SlipLogisticsSection";
 import { TripPassCard } from "./TripPassCard";
 
@@ -403,6 +404,9 @@ function BuildCard({
   const [buildAroundOpen, setBuildAroundOpen] = useState(false);
   // Smoke 10 S10-2: the versions board's Optimize card lands here with `?optimize=1` — the SAME
   // flow the rail's own Optimize opens (what the run is built around, then the fee), never a second.
+  // Row 188: the landing goes through the Optimize dates gate first (`RunWhen` inside its DatesGate),
+  // so a plan with no confirmed dates asks for them before the build-around step or any gate request.
+  const [optimizeLanding, setOptimizeLanding] = useState(false);
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -410,7 +414,7 @@ function BuildCard({
       params.delete("optimize");
       const rest = params.toString();
       window.history.replaceState(null, "", `${window.location.pathname}${rest ? `?${rest}` : ""}`);
-      setBuildAroundOpen(true);
+      setOptimizeLanding(true);
     } catch {
       /* no URL to read */
     }
@@ -602,6 +606,10 @@ function BuildCard({
 
   // The board's "Local expert" beside Optimize: the SAME handoff chooser the hire row opens.
   const openLocalExpert = () => openHandoffChooser({});
+  // Row 223: the door draws only while the plan's city has an expert to hand to — the Finalize
+  // chooser's own rule (`chooserHasExperts` behind the city's `expert_hook_cities` switch, read once
+  // through `useExpertAvailability`). Loading, an error or a "no" hide it; nothing takes its place.
+  const expertsAvailable = useExpertAvailability({ city: trip.destination });
   const optimizerBlock = (
         <>
           {/* Surface step 4 (spec §8): the ONE optimizer card — findings, the realised delta after a
@@ -611,6 +619,19 @@ function BuildCard({
               build-around step continues with the saved window. */}
           <DatesGate trip={trip} action="Optimize" testId="slip-optimize-dates-gate">
           {(guard) => (
+          <>
+          {/* Row 188: `?optimize=1` runs the SAME guarded open as the Optimize click below. */}
+          <RunWhen
+            when={optimizeLanding}
+            run={() => {
+              setOptimizeLanding(false);
+              if (optimizing || creatingComparison || optimizeDisabledReason) return;
+              guard((dates) => {
+                gatedWindow.current = dates;
+                setBuildAroundOpen(true);
+              });
+            }}
+          />
           <OptimizerLead
             drafted={aiAction === "optimize"}
             findings={leadData.findings}
@@ -634,9 +655,10 @@ function BuildCard({
             title={leadCopy?.title ?? null}
             intro={leadCopy?.intro ?? null}
             noStay={leadCopy?.noStay === true}
-            onLocalExpert={expertState.kind === "hire" ? openLocalExpert : null}
+            onLocalExpert={expertState.kind === "hire" && expertsAvailable ? openLocalExpert : null}
             localExpertTestId="slip-action-hire-expert"
           />
+          </>
           )}
           </DatesGate>
           </span>
@@ -1674,4 +1696,13 @@ function useFixedBarBox() {
     };
   }, []);
   return { spacerRef, barRef, rect, height };
+}
+
+/** Row 188: runs `run` once each time `when` turns true (the `?optimize=1` landing through the dates gate). */
+function RunWhen({ when, run }: { when: boolean; run: () => void }) {
+  useEffect(() => {
+    if (when) run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [when]);
+  return null;
 }
