@@ -56,12 +56,11 @@ for (const eventType of ["payment_intent.payment_failed", "payment_intent.cancel
         WHERE stripe_event_id = ${eventId}
       `);
       assert.equal(stored.rows.length, 1);
-      // `processed`/`error` belong to processStripeWebhookEvent (the Connect rail), which is the
-      // ONE author of this row's lifecycle. This rail RECORDS the delivery and writes no state,
-      // so the row it lands is `processed = FALSE, error = NULL`.
+      // After the handler this rail marks the row processed. A handled terminal event
+      // lands `processed = TRUE, error = NULL`.
       assert.deepEqual(stored.rows[0], {
         event_type: eventType,
-        processed: false,
+        processed: true,
         error: null,
       });
     });

@@ -43,7 +43,7 @@ import { getStripeSecretKey } from '../utils/stripe-key';
 import { upsertStripeMembership } from "./plan-membership-writer.service";
 import { isCanonicalBookingEmailPersistenceError } from "./canonical-booking-email.service";
 import { dispatchPaymentTrigger } from "../automations/payments/runtime";
-import { runUnderWebhookClaim } from "./webhook-claim.service";
+import { runUnderWebhookClaim, WebhookClaimInFlightError } from "./webhook-claim.service";
 import { customerCreateIdempotencyKey, customerIdAfterCreate } from "./stripe-customer-create";
 import { vaultRecordLogLine, vaultWebhookDisposition } from "./vault-webhook";
 import { checkoutSessionFulfillment, checkoutSessionWithholdLogLine } from "./checkout-session-fulfillment";
@@ -830,7 +830,7 @@ class StripePaymentService {
     // `stripe_event_id` is UNIQUE, so a redelivery or a concurrent delivery converges on
     // one row. This is a RECORD, not a claim — see below.
     //
-    // THIS RAIL DOES NOT OWN THE ROW'S STATE, AND MUST NOT START TO (§18 rule 1).
+    // THIS RAIL DOES NOT SKIP ON `processed` (§18 rule 1).
     // `webhook_events` is shared by TWO signature-verified endpoints with two different secrets:
     //
     //   server/routes/bookings.ts (`handleWebhook`, here)            STRIPE_WEBHOOK_SECRET          — the platform ACCOUNT endpoint
@@ -849,19 +849,15 @@ class StripePaymentService {
     // the platform rail's own promotion (`promotePaidCheckout`) and the completion mint are what
     // do that work. Do not build on an overlap that does not exist.
     //
-    // The no-claim rule below still stands, for a different reason: `processStripeWebhookEvent`
-    // reads `processed` and is the single author of that row's lifecycle, and if a future
-    // configuration ever DID subscribe both endpoints to one event type, a claim written here would
-    // make the second endpoint skip its entire switch.
+    // The skip lives on `platform_webhook_consumers` (PAY-1 §3, consumer 'platform'), not on this
+    // row. Connect's `processStripeWebhookEvent` used to read `processed` and skip; it no longer
+    // does, so marking the row here cannot make the other endpoint skip its switch. A row another
+    // rail already marked processed is still handled here.
     //
-    // Nothing is lost by recording rather than claiming. The retry storm this lane exists to
-    // stop is fixed at its root by the `!bookingIds` guards in handlePaymentFailed /
-    // handlePaymentCanceled below, and the handlers a claim would have guarded are already
-    // individually idempotent — `promotePaidCheckout` is a §15c atomic conditional and
-    // `recordRevenueEvent` is behind the migration-244 unique index.
-    //
-    // A per-rail claim needs a (stripe_event_id, consumer) key. `platform_webhook_consumers` already
-    // has one, so PAY-1 §3 claims there (consumer 'platform') and leaves this row as a record only.
+    // After this handler finishes, the row is marked the same way Connect marks it: `processed=true`
+    // on success, or `error` set when the handler throws. That write is not a claim. Success still
+    // returns `{ received: true }`. A throw still rejects, so the route still answers 500 and Stripe
+    // still retries. An in-flight claim still rejects before any `error` write.
     if (event.id) {
       await db.execute(sql`
         INSERT INTO webhook_events (stripe_event_id, event_type, processed, raw_payload)
@@ -969,14 +965,34 @@ class StripePaymentService {
       if (claimOutcome === "already_completed") {
         console.info(`[stripe-webhook] ${event.id} (${event.type}) already completed by consumer=platform — skipped`);
       }
-
-      // Still no `webhook_events.processed`/`error` write here: that row is the Connect rail's record,
-      // and this rail's lifecycle now lives on its own platform_webhook_consumers row.
-      return { received: true };
     } catch (error: any) {
       console.error('Webhook handling error:', error);
+      // Connect records `error` when the handler throws, then rethrows so the route still
+      // answers 500. An in-flight claim throws before that write on the Connect rail.
+      if (!(error instanceof WebhookClaimInFlightError)) {
+        const processingError = error?.message ?? String(error);
+        if (event.id) {
+          await db.execute(sql`
+            UPDATE webhook_events
+            SET error = ${processingError}
+            WHERE stripe_event_id = ${event.id}
+          `);
+        }
+      }
       throw error;
     }
+
+    // Same mark Connect writes after its handler finishes. A failure here rejects the
+    // delivery, so Stripe retries, matching that handler. It does not re-run the switch.
+    if (event.id) {
+      await db.execute(sql`
+        UPDATE webhook_events
+        SET processed    = TRUE,
+            processed_at = NOW()
+        WHERE stripe_event_id = ${event.id}
+      `);
+    }
+    return { received: true };
   }
 
   /**
