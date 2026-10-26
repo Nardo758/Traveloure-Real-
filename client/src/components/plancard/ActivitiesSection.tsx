@@ -32,6 +32,7 @@ import { ItemComments } from "./ItemComments";
 import { AffiliateBookButton } from "./AffiliateBookButton";
 import { TRANSPORT_MODE_ICONS, TRANSPORT_MODE_LABELS } from "@/lib/maps-platform";
 import { openInMaps, type TraveloureMode } from "@/lib/navigate";
+import { isCheckedTransport } from "@/lib/transport-section-minutes";
 import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 import {
   type TemporalState, canonicalMode, hasValidCoords, nowHHMM,
@@ -550,9 +551,11 @@ interface ConnectorProps {
   leg: InlineTransportLegData;
   modeOverride?: string;
   onModeChange: (mode: string) => void;
+  /** Audit B8: the raw leg is checked (`isCheckedTransport`); minutes print only then. */
+  checked: boolean;
 }
 
-function TransportConnector({ tripId, leg, modeOverride, onModeChange }: ConnectorProps) {
+export function TransportConnector({ tripId, leg, modeOverride, onModeChange, checked }: ConnectorProps) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const activeMode = canonicalMode(modeOverride || leg.userSelectedMode || leg.recommendedMode || "walk");
@@ -602,6 +605,8 @@ function TransportConnector({ tripId, leg, modeOverride, onModeChange }: Connect
     { mode: activeMode, durationMinutes: leg.estimatedDurationMinutes, costUsd: leg.estimatedCostUsd };
   const displayDuration = selectedEntry.durationMinutes;
   const displayCost = selectedEntry.costUsd;
+  // Audit B8: a previewed or selected alternative is never a checked leg.
+  const showMinutes = checked && selectedEntry.mode === recommendedEntry.mode;
 
   const canNavigate =
     hasValidCoords(leg.fromLat ?? undefined, leg.fromLng ?? undefined) &&
@@ -637,7 +642,7 @@ function TransportConnector({ tripId, leg, modeOverride, onModeChange }: Connect
           >
             <span className="text-sm leading-none flex-shrink-0">{modeIcon}</span>
             <span className="font-medium">{modeLabel}</span>
-            {displayDuration > 0 && (
+            {showMinutes && displayDuration > 0 && (
               <span className="text-muted-foreground/60">{displayDuration}m</span>
             )}
             {displayCost != null && displayCost > 0 && (
@@ -687,7 +692,7 @@ function TransportConnector({ tripId, leg, modeOverride, onModeChange }: Connect
                 >
                   <span>{icon}</span>
                   <span>{label}</span>
-                  {m.durationMinutes > 0 && (
+                  {checked && m.mode === recommendedEntry.mode && m.durationMinutes > 0 && (
                     <span className="opacity-70">{m.durationMinutes}m</span>
                   )}
                 </button>
@@ -767,6 +772,9 @@ export function ActivitiesSection({
         const isUpcoming = state === "upcoming";
         const isVisited = visited.has(a.id);
         const legAfter = i < activities.length - 1 ? legs[i] : undefined;
+        // Audit B8: the connector's leg carries no stop ids or `routed`, so the check reads the raw entry.
+        const legAfterRaw = legAfter ? day.transports?.find((t) => t.id === legAfter.id) : undefined;
+        const legAfterChecked = legAfterRaw ? isCheckedTransport(legAfterRaw) : false;
         // Mobile-lens audit #4: same guard/helper as the up-next FAB, attached per-row
         // instead of only the single live-day FAB target.
         const canNavigateRow = hasValidCoords(a.lat, a.lng) || !!a.mapsUrl;
@@ -1061,6 +1069,7 @@ export function ActivitiesSection({
                 onModeChange={(mode) =>
                   setLegModes((prev) => ({ ...prev, [legAfter.id]: mode }))
                 }
+                checked={legAfterChecked}
               />
             )}
           </div>

@@ -92,6 +92,7 @@ import { VersionsBoard } from "@/components/plancard/VersionsBoard";
 import { OPTIMIZE_RERUN_RULE } from "@/lib/optimization-preview";
 import { busyAroundDatesLine } from "@/lib/comparison-context";
 import { planBudgetLine } from "@/lib/plan-budget";
+import { withoutUncheckedTravelMetrics } from "@/lib/variant-metrics";
 import { ToastAction } from "@/components/ui/toast";
 import {
   ADD_UNDO_STRINGS,
@@ -2163,7 +2164,7 @@ export default function ItineraryComparisonPage() {
                                 )}
                               </div>
                               <div className="grid grid-cols-2 gap-2">
-                                {sortedMetrics.slice(0, 4).map((metric) => {
+                                {withoutUncheckedTravelMetrics(sortedMetrics.slice(0, 4)).map((metric) => {
                                   const Icon = getMetricIcon(metric.metricKey);
                                   return (
                                     <div key={metric.id} className="flex items-center gap-2" data-testid={`card-metric-${metric.metricKey}`}>
@@ -2530,13 +2531,15 @@ export default function ItineraryComparisonPage() {
               <div className="py-4 space-y-6">
                 {/* Why it's better - Metrics */}
                 {modalVariant?.metrics && modalVariant.metrics.length > 0 && (() => {
+                  // Audit B8: the travel_time metric is an unchecked total, so it is dropped before the split.
+                  const modalMetrics = withoutUncheckedTravelMetrics(modalVariant.metrics);
                   // Separate core metrics from smart sequencing metrics
                   const coreMetricKeys = ["total_cost", "average_rating", "travel_time", "free_time"];
                   const sequencingMetricKeys = ["balance_score", "wellness_score", "pace_score", "diversity_score", "sequencing_score", "relaxation_minutes", "methodology_summary"];
                   
-                  const coreMetrics = modalVariant.metrics.filter(m => coreMetricKeys.includes(m.metricKey));
-                  const sequencingMetrics = modalVariant.metrics.filter(m => sequencingMetricKeys.includes(m.metricKey));
-                  const otherMetrics = modalVariant.metrics.filter(m => !coreMetricKeys.includes(m.metricKey) && !sequencingMetricKeys.includes(m.metricKey));
+                  const coreMetrics = modalMetrics.filter(m => coreMetricKeys.includes(m.metricKey));
+                  const sequencingMetrics = modalMetrics.filter(m => sequencingMetricKeys.includes(m.metricKey));
+                  const otherMetrics = modalMetrics.filter(m => !coreMetricKeys.includes(m.metricKey) && !sequencingMetricKeys.includes(m.metricKey));
                   
                   return (
                     <div className="space-y-4">
