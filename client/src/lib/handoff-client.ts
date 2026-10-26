@@ -4,7 +4,7 @@
  * through `openHandoffChooser`; one host on the slip listens and opens it. Pure helpers here are
  * the words the banner and the rows say, stated once (§18 rule 1).
  */
-import { HANDOFF_KIND_LABEL, findingLine, type HandoffBannerState, type HandoffKind } from "@shared/handoff";
+import { HANDOFF_HOLD_TRAVELER_COPY, HANDOFF_KIND_LABEL, findingLine, type HandoffBannerState, type HandoffKind } from "@shared/handoff";
 
 export const HANDOFF_CHOOSER_EVENT = "traveloure:handoff-chooser";
 
@@ -83,6 +83,8 @@ export function handoffBannerLine(read: Pick<HandoffRead, "banner" | "city" | "t
       return "No local has accepted yet. Our concierge can take this on now, or keep waiting.";
     case "released":
       return "No local was free in time — we released the hold on your card. Nothing was charged.";
+    case "release_pending":
+      return HANDOFF_HOLD_TRAVELER_COPY.checkingOnHold;
     case "accepted":
       return `${who} is working on your plan. Their changes arrive as suggestions you accept or decline.`;
     case "delivered":
