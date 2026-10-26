@@ -437,14 +437,14 @@ export function setupEmailAuth(app: Express): void {
 
       const { token, newPassword } = validation.data;
       const hashedPassword = await hashPassword(newPassword);
-      // Peek once before consume. Consume spends the token, and the owner can
-      // no longer be read from it. The verified-email refusal reuses this read.
-      const ownerId = await peekPasswordResetTokenUser(token);
+      // Peek once before consume. Consume spends the token, and the account
+      // can no longer be read from it. The verified-email refusal reuses this read.
+      const accountId = await peekPasswordResetTokenUser(token);
       // Row 101: while sends are on, a link whose account is unverified is the same
       // invalid-link answer, and the token stays unused. Verified accounts fall
       // through to consume.
       if (verifiedEmailActionsEnforced()) {
-        if (ownerId && !(await isEmailVerifiedForUser(ownerId))) {
+        if (accountId && !(await isEmailVerifiedForUser(accountId))) {
           return res.status(400).json({
             message: "This reset link is invalid or has expired. Please request a new one.",
           });
@@ -458,7 +458,7 @@ export function setupEmailAuth(app: Express): void {
       }
 
       try {
-        await notifyPasswordChanged(ownerId, token);
+        await notifyPasswordChanged(accountId, token);
       } catch (err) {
         console.error("[auth/reset-password] password_changed notice failed:", err);
       }
