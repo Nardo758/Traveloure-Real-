@@ -15,7 +15,6 @@ import { canonicalAreaLine } from "@shared/place-address";
 import crypto from "node:crypto";
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "../../db";
-import { lockTripRow } from "../trip-row-lock";
 import { contentSources, itineraryItems, placeFacts, trips } from "@shared/schema";
 import {
   asFactOrigin,
@@ -404,14 +403,11 @@ async function renameToDisplayName(tripId: string, item: EnrichItem, name: strin
   if (name === item.title) return false;
   if (titleNamesAnArea(item.title)) return false; // smoke 7: an area-named item is never renamed
   try {
-    const r = await db.transaction(async (tx) => {
-      await lockTripRow(tx, tripId);
-      return tx
-        .update(itineraryItems)
-        .set({ title: name })
-        .where(and(eq(itineraryItems.id, item.id), eq(itineraryItems.tripId, tripId), eq(itineraryItems.title, item.title), eq(itineraryItems.origin, "ai")))
-        .returning({ id: itineraryItems.id });
-    });
+    const r = await db
+      .update(itineraryItems)
+      .set({ title: name })
+      .where(and(eq(itineraryItems.id, item.id), eq(itineraryItems.tripId, tripId), eq(itineraryItems.title, item.title), eq(itineraryItems.origin, "ai")))
+      .returning({ id: itineraryItems.id });
     return r.length > 0;
   } catch (err) {
     console.error(`[place-facts] rename failed plan_id=${tripId} item_id=${item.id}:`, (err as Error)?.message ?? err);
@@ -439,12 +435,10 @@ async function adoptGoogleArea(tripId: string, item: EnrichItem, area: string): 
   const drafted = item.locationName ?? null;
   if ((drafted ?? "").trim() === area) return false;
   try {
-    const r = await db.transaction(async (tx) => {
-      await lockTripRow(tx, tripId);
-      return tx
-        .update(itineraryItems)
-        .set({ locationName: area })
-        .where(
+    const r = await db
+      .update(itineraryItems)
+      .set({ locationName: area })
+      .where(
         and(
           eq(itineraryItems.id, item.id),
           eq(itineraryItems.tripId, tripId),
@@ -453,7 +447,6 @@ async function adoptGoogleArea(tripId: string, item: EnrichItem, area: string): 
         ),
       )
       .returning({ id: itineraryItems.id });
-    });
     return r.length > 0;
   } catch (err) {
     console.error(`[place-facts] area adopt failed plan_id=${tripId} item_id=${item.id}:`, (err as Error)?.message ?? err);
@@ -651,13 +644,10 @@ export async function enrichPlanItems(input: {
  * Never overwrites an id the row already has.
  */
 async function keepPlaceIdOnItem(tripId: string, itemId: string, placeId: string): Promise<void> {
-  await db.transaction(async (tx) => {
-    await lockTripRow(tx, tripId);
-    await tx
-      .update(itineraryItems)
-      .set({ googlePlaceId: placeId } as any)
-      .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId), isNull(itineraryItems.googlePlaceId)));
-  });
+  await db
+    .update(itineraryItems)
+    .set({ googlePlaceId: placeId } as any)
+    .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId), isNull(itineraryItems.googlePlaceId)));
 }
 
 /** AP-1: is an official, tagged hours fact stored for this place? (The same rows the feasibility reader attaches.) */

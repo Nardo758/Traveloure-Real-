@@ -27,7 +27,6 @@ import crypto from "node:crypto";
 import { rowCoordinatesTrusted } from "@shared/ai-place-text";
 import { and, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { db } from "../db";
-import { lockTripRow } from "./trip-row-lock";
 import { storage, stripItineraryItemRoutingFields } from "../storage";
 import {
   cityNeighborhoods,
@@ -379,7 +378,6 @@ export async function chooseOptionTx(
   input: { tripId: string; setId: string; optionId: string; userId: string; via: (typeof CHOSEN_VIA)[number] },
   role: string,
 ): Promise<{ set: PlanOptionSet; itemId: string }> {
-  await lockTripRow(tx, input.tripId);
   {
     const [opt] = await tx.select().from(planOptions).where(and(eq(planOptions.id, input.optionId), eq(planOptions.setId, input.setId))).limit(1);
     if (!opt) throw notFound();

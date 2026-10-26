@@ -61,7 +61,6 @@ import { stampItemSourceClass } from "@shared/content-tiers";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import Stripe from "stripe";
 import { db } from "../db";
-import { lockTripRow } from "./trip-row-lock";
 import {
   itineraryItems,
   planProposals,
@@ -480,7 +479,6 @@ export async function applyPlanProposal(params: {
   beforeStatusRead?: () => Promise<void>;
 } = {}): Promise<AppliedProposalResult> {
   const result = await db.transaction(async (tx) => {
-    await lockTripRow(tx, params.tripId);
     if (deps.beforeStatusRead) await deps.beforeStatusRead();
     const [row] = await tx
       .select()

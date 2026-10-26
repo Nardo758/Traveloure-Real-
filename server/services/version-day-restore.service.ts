@@ -207,7 +207,7 @@ export async function restoreDay(input: {
 }): Promise<RestoreDayResult> {
   const now = input.now ?? new Date();
   return db.transaction(async (tx) => {
-    const locked = await tx.execute(sql`SELECT finalized_at FROM trips WHERE id = ${input.tripId} FOR UPDATE`);
+    const locked = await tx.execute(sql`SELECT finalized_at FROM trips WHERE id = ${input.tripId} FOR NO KEY UPDATE`);
     if ((locked.rows?.[0] as { finalized_at?: Date | null } | undefined)?.finalized_at) {
       throw new DayRestoreError(409, "plan_finalized", "Reopen the plan first");
     }

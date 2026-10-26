@@ -13,7 +13,6 @@
 import { stampItemSourceClass } from "@shared/content-tiers";
 import { enqueuePlanLegRecompute } from "./routing/plan-legs-queue";
 import { db } from "../db";
-import { lockTripRow } from "./trip-row-lock";
 import { dispatchPaymentTrigger } from "../automations/payments/runtime";
 import { storage } from "../storage";
 import crypto from "node:crypto";
@@ -310,9 +309,7 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
     // routed between OPEN coordinates (the engine's one resolver, `openPointsForItems`).
     const openItemIds = new Set((await openPointsForItems(listing.sourceTripId, sourceItems)).keys());
     const previous = previousItemIds(sourceItems);
-    await db.transaction(async (tx) => {
-      await lockTripRow(tx, cloneTrip.id);
-      await tx.insert(itineraryItems).values(
+    await db.insert(itineraryItems).values(
       sourceItems.map((item) => {
         const id = crypto.randomUUID();
         itemIdMap.set(item.id, id);
@@ -320,8 +317,7 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
         // FD-2 ruling 9: a Ready Made copy is an expert's authored product ⇒ local.
         return { ...stampItemSourceClass(buildClonedItineraryItem(item, cloneTrip.id, { travelOpen }) as Record<string, unknown>, { fromLocalInput: true }), id } as any;
       }),
-      );
-    });
+    );
   }
 
   // ── L1-3 (R-ba / R-bg): the author's confirmed legs and the build's anchors ride with the copy,

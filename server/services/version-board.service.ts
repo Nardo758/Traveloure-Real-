@@ -461,7 +461,7 @@ async function applyDaysTx(input: {
   }
   const role = await planRole(input.tripId, input.userId, "choose");
   return db.transaction(async (tx) => {
-    const locked = await tx.execute(sql`SELECT finalized_at FROM trips WHERE id = ${input.tripId} FOR UPDATE`);
+    const locked = await tx.execute(sql`SELECT finalized_at FROM trips WHERE id = ${input.tripId} FOR NO KEY UPDATE`);
     if ((locked.rows?.[0] as { finalized_at?: Date | null } | undefined)?.finalized_at) {
       throw new VersionBoardError(409, "plan_finalized", "Reopen the plan first");
     }
@@ -600,7 +600,7 @@ export async function retimeDay(input: {
   if (!run) throw new VersionBoardError(409, "no_run", "Re-timing a day works on an optimized plan");
   const limit = optimizerFreeRetimes();
   return db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT id FROM trips WHERE id = ${input.tripId} FOR UPDATE`);
+    await tx.execute(sql`SELECT id FROM trips WHERE id = ${input.tripId} FOR NO KEY UPDATE`);
     const plan = (await planStops(input.tripId, tx)).filter((p) => p.dayNumber === input.day);
     // "Same version": the version this day was adopted from (its rows' provenance); a day never
     // adopted counts under no version.

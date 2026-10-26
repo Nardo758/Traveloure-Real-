@@ -11,7 +11,6 @@
  */
 import { and, eq } from "drizzle-orm";
 import { db } from "../db";
-import { lockTripRow } from "./trip-row-lock";
 import { itineraryItems } from "@shared/schema";
 import { checkPlan, isFlagOnlyIssue, type PlanCheckInput } from "@shared/plan-check";
 import { retimeWindowsByItem } from "@shared/version-check";
@@ -123,7 +122,6 @@ export async function applyFreeRetimeFix(input: { tripId: string; userId: string
   if (!fix) throw new FreeRetimeError(409, "no_fix", "This stop has no fix to apply now");
   if (input.preview) return fix;
   await db.transaction(async (tx) => {
-    await lockTripRow(tx, input.tripId);
     for (const m of fix.moves) {
       const row = byId.get(m.itemId)!;
       const set: Record<string, unknown> = { startTime: formatItemTime(m.toMin), updatedAt: new Date() };

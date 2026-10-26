@@ -28,7 +28,6 @@
 import crypto from "node:crypto";
 import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { db } from "../db";
-import { lockTripRow } from "./trip-row-lock";
 import { emailOutbox, hotelCache, itineraryItems, liteapiBookings, planOptionSets, planOptions, trips, users } from "@shared/schema";
 import { LITEAPI_PROVIDER } from "@shared/liteapi";
 import { planDatesAreConfirmed } from "@shared/plan-dates";
@@ -427,7 +426,6 @@ export async function bookStay(input: { tripId: string; itemId: string; userId: 
   }
 
   await db.transaction(async (tx) => {
-    await lockTripRow(tx, input.tripId);
     const [done] = await tx
       .update(liteapiBookings)
       .set({
@@ -463,10 +461,9 @@ export async function bookStay(input: { tripId: string; itemId: string; userId: 
  * one release rail: `cancelStay` and the admin Resolve (PAY-1) both call it.
  */
 export async function releaseLiteapiStayItem(
-  tx: Pick<typeof db, "update" | "execute">,
+  tx: Pick<typeof db, "update">,
   input: { tripId: string; itemId: string; hotelConfirmationCode: string | null },
 ): Promise<void> {
-  await lockTripRow(tx, input.tripId);
   await tx
     .update(itineraryItems)
     .set({ routingStatus: "in_planning", updatedAt: new Date() } as any)
@@ -542,7 +539,6 @@ export async function cancelStay(
   const unverified = refundUnverifiedReason(amounts, row.currency);
   let cancelled = false;
   await db.transaction(async (tx) => {
-    await lockTripRow(tx, input.tripId);
     const [done] = await tx
       .update(liteapiBookings)
       .set({ status: "cancelled", cancelledAt: new Date(), lastSyncStatus: status, cancelAmounts: amounts as any, updatedAt: new Date() })

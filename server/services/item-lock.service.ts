@@ -11,7 +11,6 @@
  */
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db";
-import { lockTripRow } from "./trip-row-lock";
 import { itineraryItems } from "@shared/schema";
 import { experienceGroupFor } from "@shared/experience-group";
 import { storage } from "../storage";
@@ -19,17 +18,14 @@ import { readPlanPenOccasionSlug } from "./plan-pen-occasion.service";
 import { trips } from "@shared/schema";
 
 export async function setItemLock(input: { tripId: string; itemId: string; locked: boolean }): Promise<{ locked: boolean } | null> {
-  const [row] = await db.transaction(async (tx) => {
-    await lockTripRow(tx, input.tripId);
-    return tx
-      .update(itineraryItems)
-      .set({
-        lockedAt: input.locked ? sql`COALESCE(${itineraryItems.lockedAt}, NOW())` : null,
-        updatedAt: new Date(),
-      } as any)
-      .where(and(eq(itineraryItems.id, input.itemId), eq(itineraryItems.tripId, input.tripId)))
-      .returning({ lockedAt: itineraryItems.lockedAt });
-  });
+  const [row] = await db
+    .update(itineraryItems)
+    .set({
+      lockedAt: input.locked ? sql`COALESCE(${itineraryItems.lockedAt}, NOW())` : null,
+      updatedAt: new Date(),
+    } as any)
+    .where(and(eq(itineraryItems.id, input.itemId), eq(itineraryItems.tripId, input.tripId)))
+    .returning({ lockedAt: itineraryItems.lockedAt });
   if (!row) return null;
   return { locked: row.lockedAt != null };
 }
@@ -44,8 +40,6 @@ export async function planIsMoment(tripId: string): Promise<boolean> {
 
 /** Lock the item a Moment plan is built around, inside the caller's transaction. */
 export async function stampMomentLock(tx: any, itemId: string): Promise<void> {
-  const [row] = await tx.select({ tripId: itineraryItems.tripId }).from(itineraryItems).where(eq(itineraryItems.id, itemId)).limit(1);
-  if (row?.tripId) await lockTripRow(tx, row.tripId);
   await tx
     .update(itineraryItems)
     .set({ lockedAt: sql`COALESCE(${itineraryItems.lockedAt}, NOW())` } as any)

@@ -339,11 +339,6 @@ export async function resolveNeedsReviewBooking(
     // the SAME transaction, so the plan item goes back to the traveler exactly when the row ends. No
     // money moves: a LiteAPI refund is Nuitée's.
     const released = await db.transaction(async (tx) => {
-      const peek = rowsOf(await tx.execute(sql`SELECT trip_id FROM liteapi_bookings WHERE id = ${id}`))[0];
-      if (peek?.trip_id) {
-        const { lockTripRow } = await import("./trip-row-lock");
-        await lockTripRow(tx, peek.trip_id);
-      }
       const ended = rowsOf(await tx.execute(sql`
         UPDATE liteapi_bookings SET status = 'cancelled', cancelled_at = COALESCE(cancelled_at, NOW()), updated_at = NOW()
         WHERE id = ${id} AND status = 'needs_review'

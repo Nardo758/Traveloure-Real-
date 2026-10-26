@@ -24,7 +24,6 @@
  */
 import { enqueuePlanLegRecompute } from "./routing/plan-legs-queue";
 import { db } from "../db";
-import { lockTripRow } from "./trip-row-lock";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { expertRequests, itineraryItems } from "@shared/schema";
 import {
@@ -427,7 +426,6 @@ async function flipScope(tripId: string, ids: string[], from: string, to: string
   const { logItemTransition } = await import("./item-transition-log.service");
   for (const itemId of ids.slice(0, 200)) {
     await db.transaction(async (tx) => {
-      await lockTripRow(tx, tripId);
       const rows = await tx
         .update(itineraryItems)
         .set({ routingStatus: to, updatedAt: new Date() } as any)

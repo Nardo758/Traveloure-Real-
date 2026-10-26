@@ -27,7 +27,6 @@
 
 import { and, asc, eq, inArray, isNotNull } from "drizzle-orm";
 import { db } from "../db";
-import { lockTripRow } from "./trip-row-lock";
 import { itineraryItems, transportLegs } from "@shared/schema";
 import { storage } from "../storage";
 import { CHAUFFEURED_MODES, legModeOptions } from "@shared/trip-plan";
@@ -511,39 +510,38 @@ export async function generateTripTransportLegs(
       .filter((leg): leg is NonNullable<typeof leg> => leg !== null)
       .map((leg) => [leg.toActivityId, leg]),
   );
-  const scheduleWrites = updates.flatMap((update) => {
-    const item = itemById.get(update.id);
-    // Paid and in-checkout commitments are fixed points. Recalculation may route around them,
-    // but it never rewrites their stored schedule.
-    if (!item || item.routingStatus === "purchased" || item.routingStatus === "ready_for_checkout") return [];
-    const routed = routeByTarget.get(update.id);
-    // FB-1 step 4 (ledger `2026-10-19-fb1-fixed-by-tap`): a machine re-time is not an edit, so it leaves
-    // `updated_at` alone — "Use the fixed day" refuses only days the TRAVELER changed since the run. (This writer
-    // never runs on a routed plan, the only kind with versions; the rule holds wherever it does run.)
-    const scheduleValues: Partial<typeof itineraryItems.$inferInsert> = {
-      startTime: update.startTime,
-      endTime: update.endTime,
-    };
-    if (routed) {
-      scheduleValues.travelFromPrevious = {
-        mode: "driving",
-        durationMinutes: routed.estimatedDurationMinutes,
-        distanceMeters: routed.distanceMeters,
-        provider: routed.routeProvider,
-        retrievedAt: routed.routeRetrievedAt,
-        status: "available",
-      };
-    }
-    return [{ id: update.id, values: scheduleValues }];
-  });
-  if (scheduleWrites.length) {
-    await db.transaction(async (tx) => {
-      await lockTripRow(tx, tripId);
-      for (const row of scheduleWrites) {
-        await tx.update(itineraryItems).set(row.values).where(eq(itineraryItems.id, row.id));
+  await Promise.all(
+    updates.map((update) => {
+      const item = itemById.get(update.id);
+      // Paid and in-checkout commitments are fixed points. Recalculation may route around them,
+      // but it never rewrites their stored schedule.
+      if (!item || item.routingStatus === "purchased" || item.routingStatus === "ready_for_checkout") {
+        return Promise.resolve();
       }
-    });
-  }
+      const routed = routeByTarget.get(update.id);
+      // FB-1 step 4 (ledger `2026-10-19-fb1-fixed-by-tap`): a machine re-time is not an edit, so it leaves
+      // `updated_at` alone — "Use the fixed day" refuses only days the TRAVELER changed since the run. (This writer
+      // never runs on a routed plan, the only kind with versions; the rule holds wherever it does run.)
+      const scheduleValues: Partial<typeof itineraryItems.$inferInsert> = {
+        startTime: update.startTime,
+        endTime: update.endTime,
+      };
+      if (routed) {
+        scheduleValues.travelFromPrevious = {
+          mode: "driving",
+          durationMinutes: routed.estimatedDurationMinutes,
+          distanceMeters: routed.distanceMeters,
+          provider: routed.routeProvider,
+          retrievedAt: routed.routeRetrievedAt,
+          status: "available",
+        };
+      }
+      return db
+        .update(itineraryItems)
+        .set(scheduleValues)
+        .where(eq(itineraryItems.id, update.id));
+    }),
+  );
 
   return {
     created: rows.length,

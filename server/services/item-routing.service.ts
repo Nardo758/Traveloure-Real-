@@ -32,7 +32,6 @@
  */
 import { and, eq, exists, inArray } from "drizzle-orm";
 import { db } from "../db";
-import { lockTripRow } from "./trip-row-lock";
 import { itineraryItems, serviceBookings } from "@shared/schema";
 import { logger } from "../infrastructure/logger";
 import { logItemTransition, type TransitionActorType } from "./item-transition-log.service";
@@ -58,8 +57,6 @@ export async function markItemPurchased(
     // retained: the pair may fail TOGETHER without ever failing the checkout (the booking is the
     // money truth). NO transaction spans the booking insert itself.
     const updated = await db.transaction(async (tx) => {
-      const [existing] = await tx.select({ tripId: itineraryItems.tripId }).from(itineraryItems).where(eq(itineraryItems.id, itemId));
-      if (existing?.tripId) await lockTripRow(tx, existing.tripId);
       const rows = await tx
         .update(itineraryItems)
         .set({ routingStatus: "purchased", bookingId, updatedAt: new Date() })
@@ -153,13 +150,6 @@ export async function revertPurchasedItemsForBooking(
     // posture as the forward edge above — outer swallow retained, no transaction spanning the
     // refund itself.
     const updated = await db.transaction(async (tx) => {
-      const owners = await tx
-        .select({ tripId: itineraryItems.tripId })
-        .from(itineraryItems)
-        .where(and(eq(itineraryItems.bookingId, bookingId), eq(itineraryItems.routingStatus, "purchased")));
-      for (const tripId of Array.from(new Set(owners.map((o) => o.tripId).filter((id): id is string => !!id))).sort()) {
-        await lockTripRow(tx, tripId);
-      }
       const rows = await tx
         .update(itineraryItems)
         .set({ routingStatus: "in_planning", updatedAt: new Date() })

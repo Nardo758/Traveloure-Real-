@@ -25,7 +25,6 @@
  */
 import { and, asc, eq, ilike, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db } from "../db";
-import { lockTripRow } from "./trip-row-lock";
 import {
   affiliateProducts,
   aiGeneratedItineraries,
@@ -619,13 +618,10 @@ async function setItemAsStay(
     if (!incumbent) throw new OptionSetError(409, "item_not_in_planning", "The place on your plan is already being booked");
     await chooseOption({ tripId, setId: created.id, optionId: incumbent.id, userId });
     if (item.itemType !== "accommodation") {
-      await db.transaction(async (tx) => {
-        await lockTripRow(tx, tripId);
-        await tx
-          .update(itineraryItems)
-          .set({ itemType: "accommodation", updatedAt: new Date() })
-          .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId), sql`routing_status = 'in_planning'`, sql`booking_id IS NULL`));
-      });
+      await db
+        .update(itineraryItems)
+        .set({ itemType: "accommodation", updatedAt: new Date() })
+        .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId), sql`routing_status = 'in_planning'`, sql`booking_id IS NULL`));
     }
     return { setId: created.id, itemId, replaced: null };
   }
@@ -652,15 +648,12 @@ async function setItemAsStay(
   });
   const chosen = await chooseOption({ tripId, setId, optionId: option.id, userId });
   // The replacing item's place now lives on the stay row; the hand-added row it came from goes.
-  await db.transaction(async (tx) => {
-    await lockTripRow(tx, tripId);
-    // rebuild-guard-exempt: in_planning-only AND unbooked AND not machine-protected (expert work, locked) —
-    // one traveler-chosen row moved into the stay, never a rebuild.
-    // item-removed:replace — the place MOVES into the plan's stay row (one operation); it is not removed.
-    await tx
-      .delete(itineraryItems)
-      .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId), sql`routing_status = 'in_planning'`, sql`booking_id IS NULL`, itineraryItemNotMachineProtected()));
-  });
+  // rebuild-guard-exempt: in_planning-only AND unbooked AND not machine-protected (expert work, locked) —
+  // one traveler-chosen row moved into the stay, never a rebuild.
+  // item-removed:replace — the place MOVES into the plan's stay row (one operation); it is not removed.
+  await db
+    .delete(itineraryItems)
+    .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId), sql`routing_status = 'in_planning'`, sql`booking_id IS NULL`, itineraryItemNotMachineProtected()));
   return { setId, itemId: chosen.itemId, replaced: stay.title };
 }
 

@@ -1,5 +1,4 @@
 import { db } from "../db";
-import { lockTripRow } from "./trip-row-lock";
 import { stampItemSourceClass } from "@shared/content-tiers";
 import { enqueuePlanLegRecompute } from "./routing/plan-legs-queue";
 import {
@@ -118,23 +117,16 @@ export class ItineraryIntelligenceService {
 
   async createItem(data: InsertItineraryItem): Promise<ItineraryItem> {
     // FD-2 ruling 9: any incoming source_class is dropped and the server's stamp written instead.
-    const results = await db.transaction(async (tx) => {
-      if (data.tripId) await lockTripRow(tx, data.tripId);
-      return tx.insert(itineraryItems).values(stampItemSourceClass(data as Record<string, unknown>) as any).returning();
-    });
+    const results = await db.insert(itineraryItems).values(stampItemSourceClass(data as Record<string, unknown>) as any).returning();
     enqueuePlanLegRecompute(results[0]?.tripId); // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)
     return results[0];
   }
 
   async updateItem(id: string, updates: Partial<InsertItineraryItem>): Promise<ItineraryItem | undefined> {
-    const results = await db.transaction(async (tx) => {
-      const [existing] = await tx.select({ tripId: itineraryItems.tripId }).from(itineraryItems).where(eq(itineraryItems.id, id));
-      if (existing?.tripId) await lockTripRow(tx, existing.tripId);
-      return tx.update(itineraryItems)
-        .set({ ...updates, updatedAt: new Date() })
-        .where(eq(itineraryItems.id, id))
-        .returning();
-    });
+    const results = await db.update(itineraryItems)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(itineraryItems.id, id))
+      .returning();
     enqueuePlanLegRecompute(results[0]?.tripId); // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)
     return results[0];
   }
@@ -144,12 +136,7 @@ export class ItineraryIntelligenceService {
     // (V4 rail-unification, Aug 7 2026; see routes.ts retirement note). No live caller. If ever
     // re-wired to a removal path it must adopt the transactional+`item_removed` shape R15 requires
     // (use storage.deleteItineraryItem, the canonical cascade-safe rail).
-    await db.transaction(async (tx) => {
-      const [existing] = await tx.select({ tripId: itineraryItems.tripId }).from(itineraryItems).where(eq(itineraryItems.id, id));
-      if (existing?.tripId) await lockTripRow(tx, existing.tripId);
-      // item-removed:dead — retired route; see the comment above.
-      await tx.delete(itineraryItems).where(eq(itineraryItems.id, id));
-    });
+    await db.delete(itineraryItems).where(eq(itineraryItems.id, id));
   }
 
   async getDaySchedules(tripId: string): Promise<DaySchedule[]> {

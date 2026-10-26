@@ -41,22 +41,12 @@
  */
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db";
-import { lockTripRow } from "./trip-row-lock";
 import { itineraryItems } from "@shared/schema";
 import { logger } from "../infrastructure/logger";
 import { storage } from "../storage";
 
 /** The executor shape both `db` and a drizzle `tx` satisfy. */
-type Executor = Pick<typeof db, "update" | "execute">;
-
-async function withPlanLock<T>(tx: Executor, tripId: string | null | undefined, run: (exec: Executor) => Promise<T>): Promise<T> {
-  const go = async (exec: Executor) => {
-    if (tripId) await lockTripRow(exec, tripId);
-    return run(exec);
-  };
-  if (tx === db) return db.transaction(async (inner) => go(inner));
-  return go(tx);
-}
+type Executor = Pick<typeof db, "update">;
 
 export type PartnerItemWriteOutcome =
   | { updated: true }
@@ -85,11 +75,7 @@ export async function markLinkedItemBooked(
   }
 
   const ref = opts.confirmationRef ?? null;
-  // Captured before the callback: a property narrowed by the early return above is `string | null`
-  // again inside a closure, and `eq` refuses null.
-  const itemId = request.itineraryItemId;
-  const tripId = request.tripId ?? "";
-  const rows = await withPlanLock(tx, request.tripId, (exec) => exec
+  const rows = await tx
     .update(itineraryItems)
     .set({
       status: "booked",
@@ -98,8 +84,8 @@ export async function markLinkedItemBooked(
       confirmationNumber: sql`COALESCE(${ref}::varchar, ${itineraryItems.confirmationNumber})`,
       updatedAt: new Date(),
     })
-    .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, tripId)))
-    .returning({ id: itineraryItems.id }));
+    .where(and(eq(itineraryItems.id, request.itineraryItemId), eq(itineraryItems.tripId, request.tripId ?? "")))
+    .returning({ id: itineraryItems.id });
 
   if (rows.length === 0) {
     // 0 rows: the item is gone, or it no longer belongs to this request's own trip (§14 pairing
@@ -128,12 +114,11 @@ export async function markLinkedItemConfirmed(
     return { updated: false, reason: "no_linked_item" };
   }
 
-  const itemId = request.itineraryItemId;
-  const rows = await withPlanLock(tx, request.tripId, (exec) => exec
+  const rows = await tx
     .update(itineraryItems)
     .set({ bookingStatus: "confirmed", updatedAt: new Date() })
-    .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.status, "booked")))
-    .returning({ id: itineraryItems.id }));
+    .where(and(eq(itineraryItems.id, request.itineraryItemId), eq(itineraryItems.status, "booked")))
+    .returning({ id: itineraryItems.id });
 
   if (rows.length === 0) {
     logger.warn(

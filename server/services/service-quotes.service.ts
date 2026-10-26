@@ -66,7 +66,6 @@ import {
 } from "@shared/service-quotes";
 
 import { db } from "../db";
-import { lockTripRow } from "./trip-row-lock";
 import { storage } from "../storage";
 import { quoteExpiresAt, resolveQuoteValidityDays } from "../config/quote-validity.config";
 import { buildListingBuyAction, listingBuyFacts } from "./buy-action-payload";
@@ -929,7 +928,6 @@ export async function acceptQuote(input: {
       // the traveler's purchase intent for this item. LD 39: the routing state is the source of
       // truth here, not `cart_items` — `syncItemProjection` (called after commit, below) is the
       // derived VIEW, and its own failure must never undo this flip or fail the accept.
-      await lockTripRow(tx, quote.tripId);
       const flipped = await tx.execute(sql`
         UPDATE itinerary_items
            SET routing_status = 'ready_for_checkout', updated_at = NOW()
