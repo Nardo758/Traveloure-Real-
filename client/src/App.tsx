@@ -222,7 +222,6 @@ const BlogPostPage = lazy(() => import("@/pages/blog-post"));
 const PressPage = lazy(() => import("@/pages/press"));
 const HelpPage = lazy(() => import("@/pages/help"));
 const HelpArticlePage = lazy(() => import("@/pages/help").then((m) => ({ default: m.HelpArticlePage })));
-const MyItineraryPage = lazy(() => import("@/pages/my-itinerary"));
 const ItineraryViewPage = lazy(() => import("@/pages/itinerary-view"));
 const SharedTripPage = lazy(() => import("@/pages/shared-trip"));
 const SharedSavedPlacesPage = lazy(() => import("@/pages/shared-saved-places"));

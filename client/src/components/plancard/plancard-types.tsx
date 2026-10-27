@@ -4,7 +4,6 @@ import {
 } from "lucide-react";
 import { differenceInDays, isValid } from "date-fns";
 import { MODE_COLORS, MODE_ICON_MAP, getModeIcon } from "@/lib/transport-modes";
-import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 import { eventTypeEnum, type RoutingStatus } from "@shared/schema";
 import { classifyOccasion, normalizeOccasionKey } from "@shared/occasions";
 import type { TripPlanBooking, TripPlanPlanApproval } from "@shared/trip-plan";
@@ -434,6 +433,32 @@ export interface PlanCardTransport {
    * server-side. KNOWN GAP: not populated today (see pickupPoint above).
    */
   bookingToken?: string | null;
+}
+
+export interface TransportAlternative {
+  mode: string;
+  durationMinutes: number;
+  costUsd: number | null;
+  energyCost: number;
+  reason: string;
+}
+
+export interface InlineTransportLegData {
+  id: string;
+  legOrder: number;
+  fromName: string;
+  toName: string;
+  recommendedMode: string;
+  userSelectedMode: string | null;
+  distanceDisplay: string;
+  estimatedDurationMinutes: number;
+  estimatedCostUsd: number | null;
+  alternativeModes?: TransportAlternative[];
+  fromLat?: number | null;
+  fromLng?: number | null;
+  toLat?: number | null;
+  toLng?: number | null;
+  mapsUrl?: string | null;
 }
 
 /**

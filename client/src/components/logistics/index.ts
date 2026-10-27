@@ -4,9 +4,6 @@ export type { Attendee, GroupMessage } from "./multi-person-coordination";
 export { VendorManagement } from "./vendor-management";
 export type { Vendor, PaymentMilestone, VendorCommunication } from "./vendor-management";
 
-export { ItineraryOptimization } from "./itinerary-optimization";
-export type { ItineraryItem, DayItinerary, OptimizationIssue, WeatherForecast } from "./itinerary-optimization";
-
 export { BudgetIntelligence } from "./budget-intelligence";
 export type { BudgetCategory, BudgetItem, PersonSplit, CurrencyRate } from "./budget-intelligence";
 

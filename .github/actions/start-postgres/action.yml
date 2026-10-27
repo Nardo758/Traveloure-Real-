@@ -15,7 +15,9 @@ description: >
 # THE VERSION IS ASSERTED, NEVER ASSUMED. The runner image decides which major
 # version is installed. If an image update changes it, this step fails loudly
 # naming both versions, instead of every suite silently running on a server
-# nobody chose. Raise `expected-major` deliberately when that happens.
+# nobody chose. Widen `expected-major` deliberately when that happens. 16 and 18 are both accepted
+# (ledger 2026-10-27-ci-postgres-18-runner): GitHub's ubuntu-24.04 image moved from 16 to 18 on
+# Oct 27, 2026. This is the CI runner only; production's PostgreSQL version is unchanged.
 #
 # USAGE: put it immediately after actions/checkout, before anything that touches
 # the database. DB setup (migrations, sessions table, CI users) stays in
@@ -23,9 +25,9 @@ description: >
 
 inputs:
   expected-major:
-    description: PostgreSQL major version the runner must provide (fails otherwise).
+    description: Space-separated PostgreSQL major versions the runner may provide (fails on any other).
     required: false
-    default: '16'
+    default: '16 18'
 
 runs:
   using: composite
@@ -69,10 +71,11 @@ runs:
         done
 
         ACTUAL_MAJOR=$(( $(sudo -u postgres psql -tAc "SHOW server_version_num") / 10000 ))
-        if [ "$ACTUAL_MAJOR" != "$EXPECTED_MAJOR" ]; then
-          echo "::error::The runner provides PostgreSQL ${ACTUAL_MAJOR}, but CI expects ${EXPECTED_MAJOR}. The runner image changed; raise expected-major in .github/actions/start-postgres/action.yml deliberately after checking the migrations pass on ${ACTUAL_MAJOR}."
+        if [[ " ${EXPECTED_MAJOR} " != *" ${ACTUAL_MAJOR} "* ]]; then
+          echo "::error::The runner provides PostgreSQL ${ACTUAL_MAJOR}, but CI accepts only PostgreSQL ${EXPECTED_MAJOR// / or }. The runner image changed; widen expected-major in .github/actions/start-postgres/action.yml deliberately after checking the migrations pass on ${ACTUAL_MAJOR}."
           exit 1
         fi
+        echo "PostgreSQL ${ACTUAL_MAJOR} accepted (CI accepts ${EXPECTED_MAJOR// / or })."
 
         sudo -u postgres psql -v ON_ERROR_STOP=1 -qc "ALTER ROLE ${PG_USER} WITH PASSWORD '${PG_PASSWORD}';"
 

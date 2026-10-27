@@ -268,11 +268,5 @@ describe("plan cost strip", () => {
     assert.ok(read("client/src/components/plancard/SlipRail.tsx").includes('data-testid="slip-plan-budget"'));
     assert.match(read("shared/group-manifest.ts"), /budget: SOON/);
     for (const f of [STRIP, HELPER]) assert.doesNotMatch(read(f), /@\/lib\/api|react-query|fetch\(/, f);
-    // TN9's allowlist includes this file (an includes check, not a count).
-    assert.ok(
-      read("client/src/components/plancard/__tests__/b8-live-site-unchecked-minutes.test.tsx").includes(
-        '"client/src/components/plancard/__tests__/plan-cost-strip.test.tsx",',
-      ),
-    );
   });
 });

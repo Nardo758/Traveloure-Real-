@@ -48,7 +48,7 @@ jobs:
   footer-links-smoke:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: footer-links-smoke (Playwright DOM gate)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5.1.0
@@ -156,7 +156,7 @@ jobs:
 
   report:
     name: report (PR comment)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
     needs: [footer-links-smoke]
     if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (always() && github.event_name == 'pull_request') }}
     steps:

@@ -17,7 +17,9 @@ import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
 import { users, emailVerificationTokens } from "@shared/models/auth";
 import { hashAuthToken } from "./password-reset-tokens.service";
-import { getAppBaseUrl, sendEmailVerificationEmail } from "./email.service";
+import { getAppBaseUrl, sendEmailVerificationEmail, sendEmailChangedOldAddressEmail } from "./email.service";
+import type { EmailChangedOldNoticeParams } from "./email.service";
+import { readdressOutboxOnEmailChange } from "./email-outbox-readdress";
 import { isEmailUniqueViolation } from "../replit_integrations/auth/email-unique-violation";
 import {
   emailVerificationAccess,
@@ -288,9 +290,24 @@ export async function consumeEmailVerificationToken(rawToken: string): Promise<C
 }
 
 /**
+ * Test seams for the address-change notice. Unset in production.
+ * beforeUpdate runs after the taken check and before the update, so a test
+ * can hold two changes on the unique index. readdress and sendNotice replace
+ * those two calls when set.
+ */
+export const _changeUnverifiedEmailTestHooks: {
+  beforeUpdate?: () => Promise<void>;
+  readdress?: typeof readdressOutboxOnEmailChange;
+  sendNotice?: (params: EmailChangedOldNoticeParams) => Promise<void>;
+} = {};
+
+/**
  * Change the address on a held account. A free address is saved and a new link is
  * minted. A taken address, a verified account, and a grandfathered account are
  * left as they are. Callers answer one sentence either way.
+ * After a saved change, claimable outbox rows are re-addressed, then one
+ * email_changed_old notice is queued to the previous address. Neither step
+ * changes this function's return.
  */
 export async function changeUnverifiedEmail(
   userId: string,
@@ -299,16 +316,20 @@ export async function changeUnverifiedEmail(
 ): Promise<void> {
   const user = await loadGateUser(userId);
   if (!user?.email || user.isDeleted || user.isSuspended) return;
+  const previous = user.email;
   const access = await resolveEmailVerificationAccess(user, session ?? undefined);
   if (access !== "hold") return;
   const next = nextEmail.toLowerCase();
-  if (next === user.email.toLowerCase()) {
+  if (next === previous.toLowerCase()) {
     const issued = await mintEmailVerificationToken(user.id);
-    dispatchVerificationEmail(user.id, user.email, user.firstName, issued.raw, issued.expiresAt);
+    dispatchVerificationEmail(user.id, previous, user.firstName, issued.raw, issued.expiresAt);
     return;
   }
   const [taken] = await db.select({ id: users.id }).from(users).where(eq(users.email, next)).limit(1);
   if (taken) return;
+  if (_changeUnverifiedEmailTestHooks.beforeUpdate) {
+    await _changeUnverifiedEmailTestHooks.beforeUpdate();
+  }
   let updated = false;
   try {
     updated = await db.transaction(async (tx) => {
@@ -327,4 +348,26 @@ export async function changeUnverifiedEmail(
   if (!updated) return;
   const issued = await mintEmailVerificationToken(userId);
   dispatchVerificationEmail(userId, next, user.firstName, issued.raw, issued.expiresAt);
+  // Helper first, notice second. email_changed_old is old-address-by-design.
+  // Queuing the notice after the helper keeps that row off the rewrite even
+  // if the exemption were later removed. The verification mail is already
+  // dispatched. A failure here does not change the return.
+  const changedAt = new Date().toISOString();
+  try {
+    const readdress = _changeUnverifiedEmailTestHooks.readdress ?? readdressOutboxOnEmailChange;
+    await readdress({ oldEmail: previous, newEmail: next });
+  } catch {
+    console.error("[email-verification] outbox readdress failed for user", userId);
+  }
+  try {
+    const sendNotice = _changeUnverifiedEmailTestHooks.sendNotice ?? sendEmailChangedOldAddressEmail;
+    await sendNotice({
+      toEmail: previous,
+      userId,
+      newEmail: next,
+      changedAt,
+    });
+  } catch {
+    console.error("[email-verification] email_changed_old notice failed for user", userId);
+  }
 }
