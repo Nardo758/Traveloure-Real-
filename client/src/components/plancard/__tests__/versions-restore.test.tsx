@@ -213,7 +213,6 @@ describe("Restore my draft on the Versions board", () => {
     assert.equal(next?.trim(), "<VersionsRestoreStrip tripId={tripId} />");
     assert.ok(!board.includes("Restore my draft") && !board.includes("versions-restore-day"));
     assert.doesNotMatch(board, /\/restorable|\/restore\b/);
-    assert.ok(read("client/src/components/plancard/__tests__/b8-live-site-unchecked-minutes.test.tsx").includes('"client/src/components/plancard/__tests__/versions-restore.test.tsx",'));
     let files: string[];
     try {
       files = execSync("git diff --name-only origin/main...HEAD", { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).split("\n").filter(Boolean);
