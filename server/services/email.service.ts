@@ -48,6 +48,7 @@ import type { OutboxHoldSummary } from "./email-outbox-expiry";
 import { reconciliationKindLabel } from "@shared/reconciliation-kinds";
 import { shapeAdminDigestLists } from "./admin-digest-shape";
 import type { AdminAuditDigest } from "./admin-audit-digest";
+import { EMAIL_DELIVERY_TARGETS, type DeliveryTargetMisses } from "./email-delivery-targets";
 
 /** Production send gate. Only the exact string true allows a provider call. */
 export function emailSendsEnabled(value: string | undefined = process.env.EMAIL_SENDS_ENABLED): boolean {
@@ -1439,6 +1440,31 @@ interface AdminDigestParams {
   outboxHolds?: OutboxHoldSummary;
   /** Counts of audited admin actions in the trailing 24 hours. Absent or total 0 ⇒ the section is omitted. */
   adminActions?: AdminAuditDigest;
+  /** Delivery-target miss counts. Absent (the load failed) ⇒ the line is omitted. Zero still prints. */
+  deliveryTargets?: DeliveryTargetMisses;
+}
+
+/** Admin digest line for row 170. The minute count is EMAIL_DELIVERY_TARGETS. */
+export const DELIVERY_TARGET_DIGEST_COPY = {
+  before: "Delivery target: ",
+  middle: " must-have or security emails missed the ",
+  afterMinutes: "-minute first-attempt target in the last 24 hours (",
+  late: " late, ",
+  end: " not yet attempted).",
+} as const;
+
+/**
+ * One paragraph, or "" when the measure did not load. Prints at zero too.
+ * Counts only. No address.
+ */
+export function buildDeliveryTargetDigestLine(misses: DeliveryTargetMisses | undefined): string {
+  if (misses === undefined) return "";
+  const minutes = EMAIL_DELIVERY_TARGETS.mustHaveAndSecurityMs / (60 * 1000);
+  const text =
+    `${DELIVERY_TARGET_DIGEST_COPY.before}${misses.misses}${DELIVERY_TARGET_DIGEST_COPY.middle}` +
+    `${minutes}${DELIVERY_TARGET_DIGEST_COPY.afterMinutes}${misses.lateFirstAttempts}` +
+    `${DELIVERY_TARGET_DIGEST_COPY.late}${misses.notYetAttempted}${DELIVERY_TARGET_DIGEST_COPY.end}`;
+  return `<p>${text}</p>`;
 }
 
 export interface DigestDeadEmails {
@@ -1728,6 +1754,7 @@ export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<A
   ${buildDeadEmailDigestSection(params.deadEmails)}
   ${buildOutboxHoldDigestSection(params.outboxHolds)}
   ${buildAdminAuditDigestSection(params.adminActions)}
+  ${buildDeliveryTargetDigestLine(params.deliveryTargets)}
 
   <p style="color:#9CA3AF;font-size:11px;margin-top:40px;border-top:1px solid #F3F4F6;padding-top:16px">
     Traveloure Admin Digest · Auto-generated daily · <a href="${baseUrl}/admin/dashboard" style="color:#FF385C">Open Dashboard</a>

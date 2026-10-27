@@ -30,6 +30,7 @@ import { adminNotifications, users, webhookEvents } from "@shared/schema";
 import { eq, and, sql, gte, inArray, desc } from "drizzle-orm";
 import { sendAdminDigestEmail } from "./email.service";
 import { loadAdminAuditDigest, type AdminAuditDigest } from "./admin-audit-digest";
+import { loadDeliveryTargetMisses, type DeliveryTargetMisses } from "./email-delivery-targets";
 import { getStripeSecretKey } from "../utils/stripe-key";
 import { runBackgroundJob } from "./background-job-runner";
 import { jitteredStartupDelay } from "./startup-delay";
@@ -234,6 +235,14 @@ class AdminDigestSchedulerService {
         console.error("[AdminDigest] Failed to load audited admin actions:", err);
       }
 
+      // Counts only. A miss never decides whether this digest is sent.
+      let deliveryTargets: DeliveryTargetMisses | undefined;
+      try {
+        deliveryTargets = await loadDeliveryTargetMisses();
+      } catch (err) {
+        console.error("[AdminDigest] Failed to load delivery target misses:", err);
+      }
+
       // ── Send digest if anything needs attention ─────────────────────────────
       if (
         unresolvedNotifications.length === 0 &&
@@ -272,6 +281,7 @@ class AdminDigestSchedulerService {
           deadEmails,
           outboxHolds,
           adminActions,
+          deliveryTargets,
         });
         if (delivery.outcome !== "sent") {
           await settleAdminDigestDelivery(dateKey, delivery);
