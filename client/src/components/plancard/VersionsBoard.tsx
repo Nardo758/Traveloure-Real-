@@ -23,6 +23,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { MapControlCenter } from "@/components/plancard/MapControlCenter";
+import { VersionsRestoreStrip } from "./VersionsRestoreStrip";
 import type { PlanCardDay } from "@/components/plancard/plancard-types";
 import { markGoogleDerivedAnchors, type MapVersion } from "@/lib/map-scene";
 import { formatMoneyCents } from "@/lib/optimization-preview";
@@ -341,6 +342,7 @@ export function VersionsBoard({
         </p>
       </div>
       {headerOffer}
+      <VersionsRestoreStrip tripId={tripId} />
 
       {mode === "choose" ? (
         <>
