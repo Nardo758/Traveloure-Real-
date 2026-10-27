@@ -442,7 +442,8 @@ export interface PlanCardTransport {
  * TransportConnector already reads. Structurally assignable wherever InlineTransportLegData
  * is expected (it's a strict superset) — PlanCard's `dayLegs` mapping is typed as this so
  * the pickup/booking data survives the day.transports → dayLegs conversion instead of being
- * silently dropped.
+ * silently dropped. The routed fact and the two stop ids are carried too, so the leave-by core
+ * can find a leg by its pair and read whether it is routed (row 248).
  */
 export interface PlanCardLegData extends InlineTransportLegData {
   /** Raw server-computed mode (PlanCardTransport.mode) — last-resort fallback. */
@@ -452,6 +453,11 @@ export interface PlanCardLegData extends InlineTransportLegData {
   driverPhone?: string | null;
   rideDetails?: string | null;
   bookingToken?: string | null;
+  /** The leg's two stops, as the server sends them (PlanCardTransport.fromActivityId / toActivityId). */
+  fromActivityId?: string | null;
+  toActivityId?: string | null;
+  /** Present only on a routing-engine leg: carried untouched from PlanCardTransport.routed. Absent ⇒ unrouted. */
+  routed?: PlanCardTransport["routed"];
 }
 
 export interface PlanCardDay {

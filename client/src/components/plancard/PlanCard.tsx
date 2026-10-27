@@ -635,6 +635,8 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
   // primary action's forward-compat booking fields (§18 item 5) survive this mapping
   // instead of being silently dropped — presence-guarded, currently always undefined
   // (known gap, see plancard-mobile-lens-jul30.md §2 / primary-action.ts).
+  // It also carries the routed fact and the two stop ids, raw, so the leave-by core finds a leg
+  // by its pair and reads it as routed (row 248); shared/leave-by.ts stays the only minute gate.
   const dayLegs: PlanCardLegData[] = (day?.transports ?? [])
     .map((tr, i) => ({
       id: tr.id,
@@ -670,6 +672,9 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
       // §16 closure: never forward a raw URL from stored itineraryData — the CTA is gated
       // on a server-minted vault token only (not populated today; KNOWN GAP unchanged).
       bookingToken: (tr as any).bookingToken ?? null,
+      fromActivityId: tr.fromActivityId ?? null,
+      toActivityId: tr.toActivityId ?? null,
+      routed: tr.routed,
     }))
     .sort((a, b) => a.legOrder - b.legOrder);
 
