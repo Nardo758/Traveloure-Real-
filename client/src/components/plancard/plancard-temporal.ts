@@ -7,8 +7,7 @@
  * this is a pure refactor (dedupe), not a logic change.
  */
 import { useEffect, useState } from "react";
-import type { PlanCardActivity, PlanCardDay } from "./plancard-types";
-import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
+import type { PlanCardActivity, PlanCardDay, InlineTransportLegData } from "./plancard-types";
 import { wallClockMinutes } from "@shared/leg-reachability";
 import type { TraveloureMode } from "@/lib/navigate";
 // Ledger `2026-09-07-trip-card-one-page`, reconciled onto lane L10's `shared/plan-timing.ts`
