@@ -44,7 +44,7 @@ jobs:
   # list it cannot read, or this job failing outright leaves the suites running (fail open).
   changes:
     name: changes (skip suites on drafts and docs-only pushes)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 5
     permissions:
       contents: read
@@ -68,7 +68,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: lockfile-purity (no replit.local)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
     steps:
       - uses: actions/checkout@v5.1.0
       - name: Fail if package-lock.json points at the Replit firewall
@@ -83,7 +83,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: verify-selection-controls (logic gate)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
     steps:
       - uses: actions/checkout@v5.1.0
       - uses: actions/setup-node@v4
@@ -98,7 +98,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: e2e-selection-controls (DOM gate)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5.1.0
@@ -252,7 +252,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: e2e-journey-2 (Stage 3 exit gate)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5.1.0
@@ -342,7 +342,7 @@ jobs:
 
   report:
     name: report (PR completion comment)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
     needs: [changes, lockfile-purity, verify-selection-controls, e2e-selection-controls]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' && (always() && github.event_name == 'pull_request') }}
     steps:

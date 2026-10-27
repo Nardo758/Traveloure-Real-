@@ -37,7 +37,7 @@ jobs:
   affiliate-track-click:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: track-click takes no identity from the body and gates on approval
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 15
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure

@@ -63,7 +63,7 @@ jobs:
   config:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: staging config probe
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
     outputs:
       configured: ${{ steps.guard.outputs.run }}
     env:
@@ -98,7 +98,7 @@ jobs:
     name: auth smoke (staging; non-blocking)
     needs: config
     if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (needs.config.outputs.configured == 'true') }}
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 30
     env:
       E2E_STAGING_BASE_URL: ${{ secrets.E2E_STAGING_BASE_URL }}
@@ -189,7 +189,7 @@ jobs:
     name: ${{ needs.config.outputs.configured == 'true' && 'auth smoke verdict (staging)' || 'STAGING NOT CONFIGURED — auth smoke DID NOT RUN' }}
     needs: [config, auth-smoke]
     if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (always()) }}
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
     steps:
       - name: Summarize
         run: |

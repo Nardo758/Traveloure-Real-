@@ -88,7 +88,7 @@ jobs:
   # list it cannot read, or this job failing outright leaves the suites running (fail open).
   changes:
     name: changes (skip suites on drafts and docs-only pushes)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 5
     permissions:
       contents: read
@@ -112,7 +112,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: setup (build + browser cache warm-up)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5.1.0
@@ -164,7 +164,7 @@ jobs:
     # context "navbar-links-smoke" — a descriptive suffix here orphans the required
     # context and leaves it stuck "Expected — Waiting for status to be reported".
     name: navbar-links-smoke
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
     needs: [changes, setup]
     # 40, not 20: the three suites run serially and app-routes now visits ~176
     # routes (~10 min). At 20 the job was cancelled mid-app-routes. Kept at 1
@@ -319,7 +319,7 @@ jobs:
     # Must EXACTLY equal the branch-protection required context "hardcoded-links-check"
     # (see the navbar-links-smoke note above) — no descriptive suffix.
     name: hardcoded-links-check
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
     # No PostgreSQL service — pure file-system analysis, no DB or server needed.
     # 10, not 5: on 2026-09-03 a cold runner spent over five minutes inside `npm ci` and the job was
     # cancelled before a single check ran (run 33815797306), the same shape the cart-redirect static job
@@ -398,7 +398,7 @@ jobs:
 
   report:
     name: report (PR comment)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
     needs: [changes, navbar-links-smoke, hardcoded-links-check]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' && (always() && github.event_name == 'pull_request') }}
     steps:

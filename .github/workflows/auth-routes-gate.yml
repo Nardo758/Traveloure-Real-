@@ -69,7 +69,7 @@ jobs:
   # list it cannot read, or this job failing outright leaves the suites running (fail open).
   changes:
     name: changes (skip suites on drafts and docs-only pushes)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 5
     permissions:
       contents: read
@@ -93,7 +93,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: setup (build + browser cache warm-up)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5.1.0
@@ -143,7 +143,7 @@ jobs:
   auth-routes-smoke:
     name: auth-routes-smoke (Playwright DOM gate)
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' && needs.setup.result == 'success' }}
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
     needs: [changes, setup]
     timeout-minutes: 20
     steps:
@@ -269,7 +269,7 @@ jobs:
 
   report:
     name: report (PR comment)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
     needs: [changes, auth-routes-smoke]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' && (always() && github.event_name == 'pull_request') }}
     steps:

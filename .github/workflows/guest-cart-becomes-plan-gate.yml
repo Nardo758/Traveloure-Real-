@@ -44,7 +44,7 @@ jobs:
   guest-cart-becomes-plan:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: guest-cart-becomes-plan (D-15; ledger 2026-09-13-guest-cart-becomes-plan)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
     # A HANG MUST FAIL, NEVER STALL (the fee-preview-gate precedent): per-step ceilings name the
     # failing step in the log, and this is the job backstop.
     timeout-minutes: 30

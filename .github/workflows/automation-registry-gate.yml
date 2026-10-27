@@ -28,7 +28,7 @@ concurrency:
 jobs:
   registry:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 10
     env:
       NODE_ENV: test
