@@ -4,7 +4,7 @@ import crypto from "crypto";
 import { db } from "../../db";
 import { users } from "@shared/models/auth";
 import { eq } from "drizzle-orm";
-import { sendPasswordResetEmail, getAppBaseUrl } from "../../services/email.service";
+import { sendPasswordResetEmail, sendPasswordChangedEmail, getAppBaseUrl } from "../../services/email.service";
 import { enqueueSignupWelcome } from "../../services/signup-welcome-outbox.service";
 import { deliverQueuedEmail } from "../../services/email-outbox.service";
 import { trackFunnelEvent } from "../../utils/funnelTracker";
@@ -91,6 +91,22 @@ const loginSchema = z.object({
   // (b) locks out anyone whose real password has leading/trailing spaces. Compare exactly.
   password: z.string().min(1, "Password is required"),
 });
+
+/** After a successful reset only. A missing owner or email sends nothing. */
+async function notifyPasswordChanged(ownerId: string | null, token: string): Promise<void> {
+  if (!ownerId) return;
+  const [user] = await db
+    .select({ email: users.email, firstName: users.firstName })
+    .from(users)
+    .where(eq(users.id, ownerId))
+    .limit(1);
+  if (!user?.email) return;
+  await sendPasswordChangedEmail({
+    toEmail: user.email,
+    firstName: user.firstName,
+    tokenHash: hashAuthToken(token),
+  });
+}
 
 export function setupEmailAuth(app: Express): void {
   // Register new user with email/password
@@ -421,12 +437,14 @@ export function setupEmailAuth(app: Express): void {
 
       const { token, newPassword } = validation.data;
       const hashedPassword = await hashPassword(newPassword);
+      // Peek once before consume. Consume spends the token, and the account
+      // can no longer be read from it. The verified-email refusal reuses this read.
+      const accountId = await peekPasswordResetTokenUser(token);
       // Row 101: while sends are on, a link whose account is unverified is the same
       // invalid-link answer, and the token stays unused. Verified accounts fall
-      // through to consume. The flag is read first so an off switch does not peek.
+      // through to consume.
       if (verifiedEmailActionsEnforced()) {
-        const ownerId = await peekPasswordResetTokenUser(token);
-        if (ownerId && !(await isEmailVerifiedForUser(ownerId))) {
+        if (accountId && !(await isEmailVerifiedForUser(accountId))) {
           return res.status(400).json({
             message: "This reset link is invalid or has expired. Please request a new one.",
           });
@@ -437,6 +455,12 @@ export function setupEmailAuth(app: Express): void {
         return res.status(400).json({
           message: "This reset link is invalid or has expired. Please request a new one.",
         });
+      }
+
+      try {
+        await notifyPasswordChanged(accountId, token);
+      } catch (err) {
+        console.error("[auth/reset-password] password_changed notice failed:", err);
       }
 
       res.json({
