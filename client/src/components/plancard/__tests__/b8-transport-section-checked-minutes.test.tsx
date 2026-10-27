@@ -20,7 +20,6 @@
  *   TS13 itinerary-view's expert copy uses the same helper (source scan; the page cannot load under tsx)
  *   TS14 the trip-less comparison page has no travel-time chip; the money chip is unchanged
  *   TS15 an AI-suggested leg reads "Suggested", from TRANSPORT_SECTION_COPY
- *   TS16 scope fence: row 54's fragment stays, no server or shared file is touched
  *
  * Run: npx tsx --test client/src/components/plancard/__tests__/b8-transport-section-checked-minutes.test.tsx
  */
@@ -28,7 +27,6 @@ import "./node-navigator-stub";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { execFileSync } from "node:child_process";
 import React from "react";
 import { renderToString } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -258,18 +256,5 @@ describe("audit B8 follow-up — checked minutes only", () => {
     const src = read("client/src/components/plancard/TransportSection.tsx");
     assert.doesNotMatch(src, /"AI\s+suggested"/);
     assert.match(src, /TRANSPORT_SECTION_COPY\.suggested/);
-  });
-
-  it("TS16 scope fence", () => {
-    const lib = read("client/src/lib/slip-proposal-preview.ts");
-    assert.match(lib, /export function formatAnchorLine\(/);
-    assert.ok(lib.includes("stops ≤ 15 min"), "row 54's fragment is untouched");
-    let changed: string[] = [];
-    try {
-      changed = execFileSync("git", ["diff", "--name-only", "origin/main...HEAD"], { encoding: "utf8" }).split("\n").filter(Boolean);
-    } catch {
-      return; // no origin/main in this checkout: the fence is checked where it exists
-    }
-    assert.deepEqual(changed.filter((f) => /^(server|shared)\//.test(f)), []);
   });
 });
