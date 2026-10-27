@@ -145,6 +145,7 @@ describe("audit B8 remainder — live sites", () => {
       "client/src/components/plancard/__tests__/plan-cost-strip.test.tsx",
       "client/src/lib/__tests__/e4-neighbourhood-pin-icon.test.ts",
       "client/src/components/plancard/__tests__/versions-restore.test.tsx",
+      "client/src/components/plancard/__tests__/daylegs-routed-flag.test.tsx",
     ]);
     assert.deepEqual(files.filter((f) => /__tests__|\.test\.|\.spec\.|^playwright\/|^e2e\//.test(f) && !allowedTests.has(f)), []);
     // StopLegRow (LegRow.tsx) still prints its own minutes — the expert surface's own row.
@@ -272,7 +273,7 @@ describe("audit B8 remaining (CB-O)", () => {
     assert.equal((src.match(/\{displayDuration\}m|\{m\.durationMinutes\}m/g) ?? []).length, 2, "both minute fragments sit behind the guards");
     assert.doesNotMatch(src, /\{m\.costUsd/, "chips gain no cost fragment");
     for (const id of ["transport-connector-", "button-connector-toggle-", "button-connector-maps-", "mode-picker-", "mode-option-${leg.id}-${m.mode}"]) assert.ok(src.includes(id), id);
-    assert.doesNotMatch(read("client/src/components/plancard/PlanCard.tsx"), /\brouted\s*:/);
+    assert.doesNotMatch(read("client/src/components/plancard/PlanCard.tsx"), /isCheckedTransport|routedLegBetween/);
   });
 
   it("TN19 withoutUncheckedTravelMetrics drops only travel_time", () => {
