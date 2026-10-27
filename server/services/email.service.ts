@@ -43,6 +43,7 @@ import { getPlatformFlag, FLAG_EMAIL_NOTIFICATIONS_ENABLED } from "./platform-fl
 import { canQueueGenerationNotice } from "./itinerary-outcome-email";
 import { escHtml, stripCrLf } from "../utils/email-escape";
 import { PASSWORD_CHANGED_COPY } from "./password-changed-copy";
+import { EMAIL_CHANGED_OLD_COPY } from "./email-changed-copy";
 import type { OutboxHoldSummary } from "./email-outbox-expiry";
 import { reconciliationKindLabel } from "@shared/reconciliation-kinds";
 import { shapeAdminDigestLists } from "./admin-digest-shape";
@@ -946,6 +947,71 @@ export async function sendPasswordChangedEmail(params: {
     await enqueueTransactionalEmail(payload);
   } catch (err) {
     console.error("[email] password_changed outbox enqueue failed (non-fatal):", err);
+  }
+}
+
+export interface EmailChangedOldNoticeParams {
+  /** Previous address. The only recipient. */
+  toEmail: string;
+  userId: string;
+  /** Hashed into the dedupe key. Never written into the body or metadata. */
+  newEmail: string;
+  /** Change time for the dedupe key only. Not rendered. */
+  changedAt: string;
+}
+
+/**
+ * Test seam. Unset in production, so the sender calls enqueueTransactionalEmail.
+ * A test may set enqueueEmail to throw; this function still does not throw.
+ */
+export const _emailChangedNoticeTestHooks: {
+  enqueueEmail?: (input: {
+    emailType: string;
+    to: string;
+    subject: string;
+    html: string;
+    text: string;
+    authCritical?: boolean;
+    metadata?: Record<string, unknown>;
+  }) => Promise<unknown>;
+} = {};
+
+/**
+ * One notice to the previous address after an unverified account's email
+ * change. No address, link, token, or timestamp in the body. Never throws.
+ * Not a messaging producer.
+ */
+export async function sendEmailChangedOldAddressEmail(params: EmailChangedOldNoticeParams): Promise<void> {
+  try {
+    const heading = EMAIL_CHANGED_OLD_COPY.heading;
+    const paragraphs = EMAIL_CHANGED_OLD_COPY.body.map((line) => escHtml(line));
+    const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #FF385C; margin-bottom: 8px;">${escHtml(heading)}</h2>
+      ${paragraphs.map((line) => `<p style="color: #374151;">${line}</p>`).join("\n")}
+    </div>
+  `;
+    const text = [heading, ``, ...EMAIL_CHANGED_OLD_COPY.body].join("\n");
+    const newEmailHash = crypto.createHash("sha256").update(params.newEmail).digest("hex");
+    const payload = {
+      emailType: "email_changed_old",
+      to: params.toEmail,
+      subject: EMAIL_CHANGED_OLD_COPY.subject,
+      text,
+      html,
+      authCritical: true,
+      metadata: {
+        dedupeKey: `email_changed_old:${params.userId}:${newEmailHash}:${params.changedAt}`,
+        authCritical: true,
+      },
+    };
+    if (_emailChangedNoticeTestHooks.enqueueEmail) {
+      await _emailChangedNoticeTestHooks.enqueueEmail(payload);
+      return;
+    }
+    await enqueueTransactionalEmail(payload);
+  } catch (err) {
+    console.error("[email] email_changed_old outbox enqueue failed (non-fatal):", err);
   }
 }
 
