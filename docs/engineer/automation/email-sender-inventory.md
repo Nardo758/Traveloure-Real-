@@ -10,11 +10,11 @@ Line numbers are from this branch. `shared/` has the `email_outbox` table (`shar
 
 `EMAIL_TEMPLATE_ALLOWLIST` applies to every `sendEmail` call, after `EMAIL_SENDS_ENABLED`. Unset, empty, or blank allows nothing. There is no code default. Rows in the first table stay held until their `email_type` is listed and `EMAIL_SENDS_ENABLED=true`. Direct callers in the second table use the same two gates.
 
-`authCritical` is yes when the type is in `AUTH_EMAIL_TYPES` (`password_reset`, `email_verification` in `server/services/email-outbox.service.ts`) or `metadata.authCritical` is true. `password_reset`, `email_verification` and `password_changed` set that flag. Auth-critical rows are not exempt from either gate.
+`authCritical` is yes when the type is in `AUTH_EMAIL_TYPES` (`password_reset`, `email_verification` in `server/services/email-outbox.service.ts`) or `metadata.authCritical` is true. `password_reset`, `email_verification`, `password_changed` and `email_changed_old` set that flag. Auth-critical rows are not exempt from either gate.
 
 `enqueueEmail` defaults a missing `emailType` to `generic` (`outboxInsertValues`). No production caller omits `emailType`.
 
-## Through the outbox (32 rows)
+## Through the outbox (33 rows)
 
 The drain (`drainOutbox`, every 5 minutes, and `POST /internal/jobs/email-outbox`) claims due `pending` / `failed` / `held` rows and expired `processing` leases whose `email_type` is on the allowlist. A due allowlisted row whose `expires_at` is at or before now is cancelled in that same claim with reason `expired` and is not sent. `expires_at` null is unchanged. `enqueueEmail` also attempts delivery immediately after insert. A kick (`deliverQueuedEmail` / `kickLegacyConfirmationDelivery`) is the same delivery path.
 
@@ -22,7 +22,8 @@ The drain (`drainOutbox`, every 5 minutes, and `POST /internal/jobs/email-outbox
 | --- | --- | --- | --- | --- | --- | --- |
 | `password_reset` | `sendPasswordResetEmailAction` `server/services/email.service.ts:807` via `enqueueTransactionalEmail` | Traveler submits forgot-password (`server/replit_integrations/auth/emailAuth.ts:376`). Once per issued token; a repeat of the same token dedupes. | user | yes | yes | `server/__tests__/critical-email-outbox.test.ts`, `server/__tests__/email-outbox.test.ts`, `server/__tests__/verified-email-password-reset.db.test.ts` |
 | `email_verification` | `sendEmailVerificationEmailAction` `server/services/email.service.ts:883` | Account verification dispatch (`server/services/email-verification.service.ts:191` and `:210`). Once per issued link. | user | yes | yes | `server/__tests__/signup-verification-email-gate.db.test.ts`, `server/__tests__/critical-email-outbox.test.ts` |
-| `password_changed` | `sendPasswordChangedEmail` `server/services/email.service.ts:945` via `enqueueTransactionalEmail` | Successful reset-password (`server/replit_integrations/auth/emailAuth.ts:461`). Once per consumed reset token; a replay of the same token dedupes. | user | yes | yes | `server/__tests__/password-changed-notice.db.test.ts` |
+| `password_changed` | `sendPasswordChangedEmail` `server/services/email.service.ts:946` via `enqueueTransactionalEmail` | Successful reset-password (`server/replit_integrations/auth/emailAuth.ts:461`). Once per consumed reset token; a replay of the same token dedupes. | user | yes | yes | `server/__tests__/password-changed-notice.db.test.ts` |
+| `email_changed_old` | `sendEmailChangedOldAddressEmail` `server/services/email.service.ts:984` via `enqueueTransactionalEmail` | Successful `changeUnverifiedEmail` (`server/services/email-verification.service.ts:364`, after `readdressOutboxOnEmailChange`). Once per user, new address, and change time. The dedupe key hashes the new address. | previous address | yes | yes | `server/__tests__/email-changed-notices.db.test.ts` |
 | `cancellation_refund` | `sendBookingCancellationWithRefundEmail` `server/services/email.service.ts:1119` | Traveler cancellation that records a refund (`server/routes.ts:7916`). Once per booking cancellation. | user | no | yes | `server/__tests__/critical-email-outbox.test.ts` |
 | `payment_failed` | `sendPaymentFailedEmail` `server/services/email.service.ts:1702` | Checkout claim calls it (`server/services/checkout-claim.service.ts:1509`; the local name is `sendEmail`). Once per failed booking payment. | user | no | yes | `server/__tests__/critical-email-outbox.test.ts` |
 | `expert_application_approved` | `sendExpertApplicationApprovalEmail` `server/services/email.service.ts:1855` | Admin approves an expert application (`server/routes/admin.routes.ts:3249`). Once per approval. | expert | no | yes | `server/__tests__/critical-email-outbox.test.ts` |
