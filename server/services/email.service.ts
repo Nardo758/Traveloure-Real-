@@ -42,6 +42,7 @@ import { logger } from "../infrastructure/logger";
 import { getPlatformFlag, FLAG_EMAIL_NOTIFICATIONS_ENABLED } from "./platform-flags";
 import { canQueueGenerationNotice } from "./itinerary-outcome-email";
 import { escHtml, stripCrLf } from "../utils/email-escape";
+import { PASSWORD_CHANGED_COPY } from "./password-changed-copy";
 import type { OutboxHoldSummary } from "./email-outbox-expiry";
 import { reconciliationKindLabel } from "@shared/reconciliation-kinds";
 import { shapeAdminDigestLists } from "./admin-digest-shape";
@@ -884,6 +885,68 @@ async function sendEmailVerificationEmailAction(params: EmailVerificationParams)
       authCritical: true,
     },
   });
+}
+
+/**
+ * Test seam. Unset in production, so the sender calls enqueueTransactionalEmail.
+ * A test may set enqueueEmail to throw; this function still does not throw.
+ */
+export const _passwordChangedNoticeTestHooks: {
+  enqueueEmail?: (input: {
+    emailType: string;
+    to: string;
+    subject: string;
+    html: string;
+    text: string;
+    authCritical?: boolean;
+    metadata?: Record<string, unknown>;
+  }) => Promise<unknown>;
+} = {};
+
+/** One notice per reset token. No link, no token, no timestamp. Never throws. */
+export async function sendPasswordChangedEmail(params: {
+  toEmail: string;
+  firstName?: string | null;
+  tokenHash: string;
+}): Promise<void> {
+  try {
+    const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
+    const heading = PASSWORD_CHANGED_COPY.heading;
+    const paragraphs = PASSWORD_CHANGED_COPY.body.map((line) => escHtml(line));
+    const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #FF385C; margin-bottom: 8px;">${escHtml(heading)}</h2>
+      <p style="color: #374151;">${greeting}</p>
+      ${paragraphs.map((line) => `<p style="color: #374151;">${line}</p>`).join("\n")}
+    </div>
+  `;
+    const text = [
+      heading,
+      ``,
+      greeting,
+      ``,
+      ...PASSWORD_CHANGED_COPY.body,
+    ].join("\n");
+    const payload = {
+      emailType: "password_changed",
+      to: params.toEmail,
+      subject: PASSWORD_CHANGED_COPY.subject,
+      text,
+      html,
+      authCritical: true,
+      metadata: {
+        dedupeKey: `password_changed:${params.tokenHash}`,
+        authCritical: true,
+      },
+    };
+    if (_passwordChangedNoticeTestHooks.enqueueEmail) {
+      await _passwordChangedNoticeTestHooks.enqueueEmail(payload);
+      return;
+    }
+    await enqueueTransactionalEmail(payload);
+  } catch (err) {
+    console.error("[email] password_changed outbox enqueue failed (non-fatal):", err);
+  }
 }
 
 // ─── Booking Decline ────────────────────────────────────────────────────────
