@@ -26,14 +26,13 @@ import {
 } from "lucide-react";
 import {
   TYPE_COLORS, STATUS_STYLES,
-  type TemplateConfig, type PlanCardDay, type PlanCardActivity, type RoutingStatus,
+  type TemplateConfig, type PlanCardDay, type PlanCardActivity, type RoutingStatus, type InlineTransportLegData,
 } from "./plancard-types";
 import { ItemComments } from "./ItemComments";
 import { AffiliateBookButton } from "./AffiliateBookButton";
 import { TRANSPORT_MODE_ICONS, TRANSPORT_MODE_LABELS } from "@/lib/maps-platform";
 import { openInMaps, type TraveloureMode } from "@/lib/navigate";
 import { isCheckedTransport } from "@/lib/transport-section-minutes";
-import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 import {
   type TemporalState, canonicalMode, hasValidCoords, nowHHMM,
   useLiveNow, useVisitedActivities, getUpNextInfo,

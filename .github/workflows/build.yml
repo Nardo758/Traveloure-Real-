@@ -370,7 +370,9 @@ jobs:
           # Those two TS2339 errors were this baseline. Removing the reads removed the errors.
           # 111 measured 2026-10-23 (ledger 2026-10-23-payout-setup-server): tsc --noEmit on this
           # branch reports 111. The payout-setup files add no type errors. Locked in, same PR.
-          TSC_BASELINE: '111'
+          # 110 measured 2026-10-27 (ledger 2026-10-26-row54-dead-files-and-fences): tsc --noEmit reports 110.
+          # Deleting the nine dead itinerary files removed 1 error (my-itinerary.tsx). Locked in, same PR.
+          TSC_BASELINE: '110'
           TSC_TIMEOUT_S: '900'
           NODE_OPTIONS: '--max-old-space-size=5120'
         run: |

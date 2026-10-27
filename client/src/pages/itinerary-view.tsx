@@ -16,13 +16,12 @@ import {
   CheckCircle, XCircle, Eye, MapPin, Pencil, Check, X, Clock,
 } from "lucide-react";
 import type { ActivityDiff, TransportDiff } from "@/lib/itinerary-diff";
-import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
   getTemplateConfig,
   TYPE_COLORS, MODE_COLORS, ModeIcon,
-  type PlanCardDay, type PlanCardTrip,
+  type PlanCardDay, type PlanCardTrip, type InlineTransportLegData,
 } from "@/components/plancard/plancard-types";
 import { TRANSPORT_MODE_IDS } from "@/lib/transport-modes";
 import { PlanCard } from "@/components/plancard/PlanCard";

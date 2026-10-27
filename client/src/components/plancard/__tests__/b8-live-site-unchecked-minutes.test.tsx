@@ -9,9 +9,6 @@
  *   TN14 X-6 the optimizer metrics carry no travel badge and no travelDistance prop
  *   TN15 X-7 the slip's unrouted row and Getting around read "{mode} · Not checked yet"; the estimate row is
  *        still empty; unroutedLegLine itself is unchanged
- *   TN9  scope fence: no server/shared, no test edits beyond the three sanctioned files, no StopLegRow lines,
- *        no workspace.tsx, no workflows
- *   TN16 my-itinerary.tsx (and the other dead pages) are not in the diff
  *
  * CB-O (architect, as ruled 2026-10-26 10:30 ET; ledger `2026-10-26-b8-remaining-unchecked-minutes`) adds:
  *   TN3  estimate-shaped, zero-minute and stop-id-less legs print no minutes on the comparison leg row
@@ -30,7 +27,6 @@ import "./node-navigator-stub";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { execFileSync } from "node:child_process";
 import React from "react";
 import { renderToString } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -123,46 +119,6 @@ describe("audit B8 remainder — live sites", () => {
     assert.doesNotMatch(read("client/src/lib/getting-around.ts"), /unroutedLegLine/);
     assert.doesNotMatch(read("client/src/components/plan/LegRow.tsx"), /unroutedLegLine/);
   });
-
-  function diffFiles(): string[] | null {
-    try {
-      return execFileSync("git", ["diff", "--name-only", "origin/main...HEAD"], { encoding: "utf8" }).split("\n").filter(Boolean);
-    } catch {
-      return null; // no origin/main in this checkout: the fence is checked where it exists
-    }
-  }
-
-  it("TN9 scope fence", () => {
-    const files = diffFiles();
-    if (!files) return;
-    assert.deepEqual(files.filter((f) => /^(server|shared|\.github)\//.test(f)), []);
-    assert.ok(!files.includes("client/src/pages/expert/workspace.tsx"));
-    const allowedTests = new Set([
-      "client/src/components/plancard/__tests__/b8-no-straight-line-minutes.test.tsx",
-      "client/src/components/plancard/__tests__/step9c-leg-sheet.test.tsx",
-      "client/src/components/plancard/__tests__/getting-around-every-gap.test.tsx",
-      "client/src/components/plancard/__tests__/b8-live-site-unchecked-minutes.test.tsx",
-      "client/src/components/plancard/__tests__/plan-cost-strip.test.tsx",
-      "client/src/lib/__tests__/e4-neighbourhood-pin-icon.test.ts",
-      "client/src/components/plancard/__tests__/versions-restore.test.tsx",
-      "client/src/components/plancard/__tests__/daylegs-routed-flag.test.tsx",
-    ]);
-    assert.deepEqual(files.filter((f) => /__tests__|\.test\.|\.spec\.|^playwright\/|^e2e\//.test(f) && !allowedTests.has(f)), []);
-    // StopLegRow (LegRow.tsx) still prints its own minutes — the expert surface's own row.
-    assert.match(read("client/src/components/plan/LegRow.tsx"), /\{leg\.estimatedDurationMinutes\} min/);
-  });
-
-  it("TN16 the dead pages are untouched", () => {
-    const files = diffFiles();
-    if (!files) return;
-    for (const f of [
-      "client/src/pages/my-itinerary.tsx",
-      "client/src/components/itinerary/DayTransportPanel.tsx",
-      "client/src/components/itinerary/InlineTransportSelector.tsx",
-      "client/src/components/itinerary/TransportHub.tsx",
-      "client/src/components/itinerary/TransportBookingCard.tsx",
-    ]) assert.ok(!files.includes(f), f);
-  });
 });
 
 describe("audit B8 remaining (CB-O)", () => {
@@ -238,7 +194,7 @@ describe("audit B8 remaining (CB-O)", () => {
       assert.ok(m, path);
       assert.ok(!m![0].includes("?tab="), path);
     }
-    assert.equal((app.match(/\bMyItineraryPage\b/g) ?? []).length, 1, "the lazy import only, never rendered");
+    assert.equal((app.match(/\bMyItineraryPage\b/g) ?? []).length, 0, "the lazy import is gone with the dead page; never rendered");
   });
 
   it("TN17 the Trip Card connector prints minutes only for a checked leg on its recommended mode", () => {

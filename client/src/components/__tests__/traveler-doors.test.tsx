@@ -152,7 +152,6 @@ describe("copy", () => {
     assert.ok(read("client/src/pages/pricing.tsx").includes('"They review and re-route your plan with you."'));
     assert.ok(!read("client/src/pages/pricing.tsx").includes("book for you"));
     assert.ok(!read("client/src/components/TwelveGoTransport.tsx").includes("A Traveloure booking agent handles this for you"));
-    assert.ok(!read("client/src/pages/itinerary.tsx").includes("Our trip planners handle all bookings"));
     assert.ok(read("client/src/components/unified-result-card.tsx").includes("book this on your behalf"));
   });
 });

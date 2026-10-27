@@ -18,16 +18,16 @@
  *  · MONEY LEAKS INTO THE CARD. A refund is a policy answer the server composes from the
  *    booking's own cancellation policy and its time-to-start. A card that computed, guessed or
  *    even defaulted one would be stating a number nobody stands behind (§14/§13). C7 pins that
- *    this module contains no money term at all, and C8 pins the same over the card and its dialog.
+ *    this module contains no money term at all, and C8 pins the same over its dialog.
  *
  * §13 — ABSENCE IS AN ANSWER, AND THE TWO ABSENCES ARE DIFFERENT. `no-booking` (this viewer has
  * no transport booking of this option) and `not-cancellable` (there is one, and it has left the
  * cancellable states) are never collapsed: the first is the ordinary state of an unbought option
  * and of a hub read by an expert rather than its traveler, the second is a finished booking.
  *
- * NEGATIVE SPACE. This suite is PURE: it does not render, fetch or touch a DOM. It cannot see
- * whether `TransportBookingCard` actually mounts the control — C6/C8 are STATIC pins over the
- * file text (comments stripped) and see shape, not behaviour — and it asserts nothing about the
+ * NEGATIVE SPACE. This suite is PURE: it does not render, fetch or touch a DOM. The card this
+ * decision was written for was deleted with row 54 (the dead itinerary pages); C8 is a STATIC pin
+ * over the dialog's text (comments stripped) and sees shape, not behaviour — and it asserts nothing about the
  * server's own from-state guard, which `server/__tests__/transport-payment-intent.db.test.ts` T7
  * proves against a real database.
  *
@@ -44,7 +44,6 @@ import {
 } from "../../../../shared/booking-cancellation";
 
 const ROOT = process.cwd();
-const CARD = path.join(ROOT, "client/src/components/itinerary/TransportBookingCard.tsx");
 const DIALOG = path.join(ROOT, "client/src/components/booking/CancelBookingDialog.tsx");
 const MODULE = path.join(ROOT, "client/src/lib/transport-cancel.ts");
 const ROUTES = path.join(ROOT, "server/routes.ts");
@@ -149,23 +148,6 @@ describe("the from-state list has ONE author (§18 rule 1)", () => {
       "the re-typed copy must be gone, not merely shadowed",
     );
   });
-
-  it("C6 — the card reads the decision, and does not re-derive it from the OPTION's own status", () => {
-    const card = stripComments(read(CARD));
-    assert.match(card, /import \{ transportCancelControl \} from "@\/lib\/transport-cancel";/);
-    assert.match(card, /transportCancelControl\(\{/, "the card must call the one decision");
-    assert.ok(
-      !/isBookingCancellable|"pending"|"refunded"/.test(card),
-      "the card must not carry its own copy of the booking-status vocabulary",
-    );
-    // `option.bookingStatus` is the OPTION's vocabulary and is NOT flipped by a booking
-    // cancellation — it may still drive the BADGE, but never the cancel decision.
-    const decision = card.slice(card.indexOf("transportCancelControl({"), card.indexOf("const cancelControl"));
-    assert.ok(
-      !/option\.bookingStatus/.test(decision),
-      "the cancel decision must read the SERVER-resolved booking status, never the option's own",
-    );
-  });
 });
 
 describe("no money is decided on this surface (§14/§13)", () => {
@@ -177,23 +159,7 @@ describe("no money is decided on this surface (§14/§13)", () => {
     );
   });
 
-  it("C8 — the card and the dialog state the server's numbers and compute none", () => {
-    const card = stripComments(read(CARD));
-    // Every refund figure the card can show comes off the server's own cancel response.
-    assert.ok(
-      !/refundAmount\s*[*/+-]|\*\s*refundPercent|refundPercent\s*\/\s*100/.test(card),
-      "no arithmetic on a refund figure may appear on the card",
-    );
-    assert.match(
-      card,
-      /cancelResult\.refund\?\.issued/,
-      "§13: a refund is reported only when the SERVER's response says one was issued",
-    );
-    assert.ok(
-      !/totalAmount\s*[*]|0\.\d+\s*\*/.test(card),
-      "no policy rate literal may appear on the card",
-    );
-
+  it("C8 — the dialog states the server's numbers and computes none", () => {
     const dialog = stripComments(read(DIALOG));
     assert.match(
       dialog,
@@ -211,10 +177,9 @@ describe("no money is decided on this surface (§14/§13)", () => {
     );
   });
 
-  it("C9 — there is ONE cancel dialog, and both surfaces mount it", () => {
-    const card = stripComments(read(CARD));
+  it("C9 — there is ONE cancel dialog, and my-bookings mounts it", () => {
     const myBookings = stripComments(read(path.join(ROOT, "client/src/pages/my-bookings.tsx")));
-    for (const [name, src] of [["the transport card", card], ["my-bookings", myBookings]] as const) {
+    for (const [name, src] of [["my-bookings", myBookings]] as const) {
       assert.match(
         src,
         /import \{ CancelBookingDialog(?:, type CancelBookingResult)? \} from "@\/components\/booking\/CancelBookingDialog";/,
