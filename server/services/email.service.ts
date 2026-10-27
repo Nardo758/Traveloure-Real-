@@ -45,6 +45,7 @@ import { escHtml, stripCrLf } from "../utils/email-escape";
 import type { OutboxHoldSummary } from "./email-outbox-expiry";
 import { reconciliationKindLabel } from "@shared/reconciliation-kinds";
 import { shapeAdminDigestLists } from "./admin-digest-shape";
+import type { AdminAuditDigest } from "./admin-audit-digest";
 
 /** Production send gate. Only the exact string true allows a provider call. */
 export function emailSendsEnabled(value: string | undefined = process.env.EMAIL_SENDS_ENABLED): boolean {
@@ -1307,6 +1308,8 @@ interface AdminDigestParams {
   deadEmails?: DigestDeadEmails;
   /** Expired (cancelled, reason expired) and current held rows. Counts and reasons only. */
   outboxHolds?: OutboxHoldSummary;
+  /** Counts of audited admin actions in the trailing 24 hours. Absent or total 0 ⇒ the section is omitted. */
+  adminActions?: AdminAuditDigest;
 }
 
 export interface DigestDeadEmails {
@@ -1384,6 +1387,64 @@ export function buildOutboxHoldDigestSection(holds: OutboxHoldSummary | undefine
   <h3 style="color:#92400E;margin-top:24px">✉ Outbox expiry and holds (${holds.expired} expired, ${heldTotal} held)</h3>
   <p style="color:#6B7280;font-size:13px">${holds.expired} cancelled with reason expired. Those rows are not sent and are not retried.</p>
   ${heldTable}`;
+}
+
+/**
+ * Counts only. Omitted when there were no audited admin actions in the window.
+ * Printed values are escaped. No jsonb payload, ip address, user agent,
+ * resource id, or target user is on `digest`, so none of those can be printed.
+ */
+export function buildAdminAuditDigestSection(digest: AdminAuditDigest | undefined): string {
+  if (!digest || digest.total === 0) return "";
+  const actionRows = digest.byAction
+    .map(
+      (row) => `<tr>
+          <td style="padding:8px 12px;color:#111827;font-size:13px">${escHtml(row.action)}</td>
+          <td style="padding:8px 12px;color:#111827;font-size:13px">${row.count}</td>
+        </tr>`,
+    )
+    .join("");
+  const actorRows = digest.byActor
+    .map(
+      (row) => `<tr>
+          <td style="padding:8px 12px;color:#111827;font-size:13px">${escHtml(row.label)}</td>
+          <td style="padding:8px 12px;color:#111827;font-size:13px">${escHtml(row.role)}</td>
+          <td style="padding:8px 12px;color:#111827;font-size:13px">${row.count}</td>
+        </tr>`,
+    )
+    .join("");
+  const otherActions = digest.otherActions.kinds > 0
+    ? `<p style="color:#6B7280;font-size:12px">and ${digest.otherActions.kinds} other actions (${digest.otherActions.count} in total)</p>`
+    : "";
+  const otherActors = digest.otherActors.people > 0
+    ? `<p style="color:#6B7280;font-size:12px">and ${digest.otherActors.people} more people (${digest.otherActors.count} actions)</p>`
+    : "";
+  const logUrl = `${getAppBaseUrl()}/admin/audit-log`;
+  return `
+  <h3 style="color:#374151;margin-top:24px">Audited admin actions (${digest.total} in the last 24 hours, by ${digest.actorCount} people)</h3>
+  <p style="color:#6B7280;font-size:13px">${digest.total} actions by ${digest.actorCount} people.</p>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+    <thead>
+      <tr style="background:#E5E7EB">
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#374151">Action</th>
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#374151">Count</th>
+      </tr>
+    </thead>
+    <tbody>${actionRows}</tbody>
+  </table>
+  ${otherActions}
+  <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+    <thead>
+      <tr style="background:#E5E7EB">
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#374151">Actor</th>
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#374151">Role</th>
+        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#374151">Count</th>
+      </tr>
+    </thead>
+    <tbody>${actorRows}</tbody>
+  </table>
+  ${otherActors}
+  <p style="color:#6B7280;font-size:13px">Full log: <a href="${escHtml(logUrl)}">${escHtml(logUrl)}</a></p>`;
 }
 
 export type AdminDigestSendResult =
@@ -1537,6 +1598,7 @@ export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<A
 
   ${buildDeadEmailDigestSection(params.deadEmails)}
   ${buildOutboxHoldDigestSection(params.outboxHolds)}
+  ${buildAdminAuditDigestSection(params.adminActions)}
 
   <p style="color:#9CA3AF;font-size:11px;margin-top:40px;border-top:1px solid #F3F4F6;padding-top:16px">
     Traveloure Admin Digest · Auto-generated daily · <a href="${baseUrl}/admin/dashboard" style="color:#FF385C">Open Dashboard</a>
@@ -1548,7 +1610,8 @@ export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<A
   const deadCount = params.deadEmails?.total ?? 0;
   const expiredCount = params.outboxHolds?.expired ?? 0;
   const heldCount = params.outboxHolds?.held.reduce((sum, row) => sum + row.count, 0) ?? 0;
-  const subject = `[Traveloure Admin] Daily Digest — ${unresolvedNotifications.length} alerts, ${params.expertsWithoutPayout.length} payout gaps${missedCount > 0 ? `, ${missedCount} missed webhooks` : ""}${reconCount > 0 ? `, ${reconCount} recon mismatches` : ""}${deadCount > 0 ? `, ${deadCount} undelivered emails` : ""}${expiredCount > 0 ? `, ${expiredCount} expired` : ""}${heldCount > 0 ? `, ${heldCount} held` : ""}`;
+  const adminActionTotal = params.adminActions?.total ?? 0;
+  const subject = `[Traveloure Admin] Daily Digest — ${unresolvedNotifications.length} alerts, ${params.expertsWithoutPayout.length} payout gaps${missedCount > 0 ? `, ${missedCount} missed webhooks` : ""}${reconCount > 0 ? `, ${reconCount} recon mismatches` : ""}${deadCount > 0 ? `, ${deadCount} undelivered emails` : ""}${expiredCount > 0 ? `, ${expiredCount} expired` : ""}${heldCount > 0 ? `, ${heldCount} held` : ""}${adminActionTotal > 0 ? `, ${adminActionTotal} admin actions` : ""}`;
   const result = await sendEmail({
     to: params.toEmail,
     subject,
