@@ -94,7 +94,7 @@ const interfaceBody = (name: string) => {
   const end = TYPES.indexOf("\n}\n", start);
   return stripComments(TYPES.slice(start, end));
 };
-const keysOf = (body: string) => [...body.matchAll(/^\s{2}(\w+)\??:/gm)].map((m) => m[1]);
+const keysOf = (body: string) => Array.from(body.matchAll(/^\s{2}(\w+)\??:/gm)).map((m) => m[1]);
 
 describe("row 248: dayLegs carries the routed flag and the stop ids", () => {
   it("DL1 PlanCardLegData declares the three fields; PlanCardTransport and InlineTransportLegData are unchanged", () => {
@@ -113,7 +113,7 @@ describe("row 248: dayLegs carries the routed flag and the stop ids", () => {
       assert.equal(slice.split(line).length - 1, 1, line);
     }
     assert.doesNotMatch(slice, /!!|isCheckedTransport|routedLegBetween|liveTier|authorTip/);
-    const keys = [...slice.matchAll(/^ {6}(\w+):/gm)].map((m) => m[1]);
+    const keys = Array.from(slice.matchAll(/^ {6}(\w+):/gm)).map((m) => m[1]);
     assert.deepEqual(keys, [
       "id", "legOrder", "fromName", "toName", "recommendedMode", "userSelectedMode", "distanceDisplay", "estimatedDurationMinutes",
       "estimatedCostUsd", "alternativeModes", "fromLat", "fromLng", "toLat", "toLng", "mapsUrl", "mode", "pickupPoint", "pickupTime",
