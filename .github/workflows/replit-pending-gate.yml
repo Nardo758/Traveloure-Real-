@@ -53,7 +53,7 @@ jobs:
   replit-pending-gate:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: replit-pending-gate (label hold)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5.1.0

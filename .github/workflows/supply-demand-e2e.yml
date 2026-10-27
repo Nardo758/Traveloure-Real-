@@ -40,7 +40,7 @@ jobs:
   # list it cannot read, or this job failing outright leaves the suites running (fail open).
   changes:
     name: changes (skip suites on drafts and docs-only pushes)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 5
     permissions:
       contents: read
@@ -64,7 +64,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: supply-demand-e2e
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5.1.0
