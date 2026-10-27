@@ -69,6 +69,7 @@ import {
   outboxRowExpired,
   type OutboxHoldSummary,
 } from "./email-outbox-expiry";
+import { isDeliveryPriorityEmail, outboxDeliveryPrioritySql } from "./email-outbox-classes";
 
 // ── Backoff schedule ──────────────────────────────────────────────────────────
 
@@ -92,6 +93,23 @@ export function _nextRetryAfter(failedAttemptCount: number): Date {
 
 /** The 10-minute lease window used by both enqueue and drain claim steps. */
 const LEASE_MS = 10 * 60 * 1000;
+
+/**
+ * First-attempt lease for a delivery-priority row (row 170). The drain's
+ * 10-minute claim lease and its 1-minute reclaim grace stay as they are.
+ * 6 minutes plus that grace is reclaimable at 7 minutes, inside the
+ * 15-minute target. A provider send is bounded under this (undici's default
+ * header and body timeout is 300 seconds).
+ */
+const PRIORITY_FIRST_ATTEMPT_LEASE_MS = 6 * 60 * 1000;
+
+function enqueueLeaseMs(params: EnqueueEmailParams): number {
+  const metadata: Record<string, unknown> = { ...(params.metadata ?? {}) };
+  if (params.authCritical) metadata.authCritical = true;
+  return isDeliveryPriorityEmail(params.emailType ?? "generic", metadata)
+    ? PRIORITY_FIRST_ATTEMPT_LEASE_MS
+    : LEASE_MS;
+}
 
 const AUTH_EMAIL_TYPES = new Set(["password_reset", "email_verification"]);
 
@@ -163,12 +181,19 @@ async function settleWithoutAttempt(
   retryAfter: Date | null,
 ): Promise<void> {
   if (outboxId === null) return;
+  const gateHeldAt = new Date().toISOString();
   await db.execute(sql`
     UPDATE email_outbox
     SET    status      = ${status},
            last_error  = ${lastError},
            retry_after = ${retryAfter},
-           updated_at  = NOW()
+           updated_at  = NOW(),
+           metadata    = CASE
+             WHEN ${status} IN ('held', 'pending')
+              AND (metadata->>'gateHeldAt') IS NULL
+             THEN metadata || jsonb_build_object('gateHeldAt', ${gateHeldAt}::text)
+             ELSE metadata
+           END
     WHERE  id     = ${outboxId}
       AND  status = 'processing'
   `);
@@ -236,7 +261,7 @@ function outboxInsertValues(params: EnqueueEmailParams, lease: Date): InsertEmai
 
 async function enqueueEmailImpl(params: EnqueueEmailParams): Promise<number | null> {
   const toEmailStr = Array.isArray(params.to) ? params.to.join(", ") : params.to;
-  const lease      = new Date(Date.now() + LEASE_MS);
+  const lease      = new Date(Date.now() + enqueueLeaseMs(params));
   const values     = outboxInsertValues(params, lease);
   const dedupeKey  = dedupeKeyOf(params);
 
@@ -335,6 +360,23 @@ export interface DrainOutboxResult {
   error?: string;
 }
 
+function createdAtMillis(value: Date | string | null | undefined): number {
+  if (value == null) return 0;
+  const ms = value instanceof Date ? value.getTime() : Date.parse(String(value));
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+/** Priority rows first. created_at order inside each group. Stable on a tie. */
+function compareDeliveryOrder(
+  a: { email_type: string; metadata: unknown; created_at?: Date | string | null },
+  b: { email_type: string; metadata: unknown; created_at?: Date | string | null },
+): number {
+  const ar = isDeliveryPriorityEmail(a.email_type, readMetadata(a.metadata)) ? 0 : 1;
+  const br = isDeliveryPriorityEmail(b.email_type, readMetadata(b.metadata)) ? 0 : 1;
+  if (ar !== br) return ar - br;
+  return createdAtMillis(a.created_at) - createdAtMillis(b.created_at);
+}
+
 async function drainOutboxImpl(): Promise<DrainOutboxResult> {
   if (!emailSendsEnabled()) {
     logger.warn(
@@ -364,6 +406,7 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
     email_type:    string;
     metadata:      unknown;
     expires_at:    Date | string | null;
+    created_at:    Date | string | null;
   };
 
   let claimed: ClaimedRow[];
@@ -386,7 +429,7 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
           )
         )
         AND ${emailTypeAllowlistSql()}
-        ORDER BY created_at ASC
+        ORDER BY (CASE WHEN ${outboxDeliveryPrioritySql()} THEN 0 ELSE 1 END), created_at ASC
         LIMIT 50
         FOR UPDATE SKIP LOCKED
       ),
@@ -415,9 +458,9 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
       WHERE  o.id = c.id
       RETURNING o.id, o.to_email, o.subject, o.html, o.text_body,
                 o.from_address, o.reply_to, o.attempt_count, o.max_attempts, o.email_type,
-                o.metadata, o.expires_at
+                o.metadata, o.expires_at, o.created_at
     `);
-    claimed = (result.rows ?? []) as ClaimedRow[];
+    claimed = ((result.rows ?? []) as ClaimedRow[]).sort(compareDeliveryOrder);
   } catch (err: unknown) {
     logger.error({ err }, "[email-outbox] drainOutbox: failed to claim rows");
     return { drained: 0, error: "failed to claim rows" };
@@ -720,6 +763,12 @@ async function attemptDelivery(
   }
 
   try {
+    const attemptedAt = new Date().toISOString();
+    const metadataAfterAttempt = sql`CASE
+      WHEN ${attemptCount} = 1
+      THEN metadata || jsonb_build_object('firstAttemptAt', ${attemptedAt}::text)
+      ELSE metadata
+    END`;
     if (result.ok) {
       await db.execute(sql`
         UPDATE email_outbox
@@ -729,6 +778,7 @@ async function attemptDelivery(
                sent_at       = NOW(),
                last_error    = NULL,
                retry_after   = NULL,
+               metadata      = ${metadataAfterAttempt},
                updated_at    = NOW()
         WHERE  id     = ${outboxId}
           AND  status = 'processing'
@@ -748,6 +798,7 @@ async function attemptDelivery(
                attempt_count = ${attemptCount},
                last_error    = ${result.error ?? "unknown error"},
                retry_after   = ${retryAt},
+               metadata      = ${metadataAfterAttempt},
                updated_at    = NOW()
         WHERE  id     = ${outboxId}
           AND  status = 'processing'

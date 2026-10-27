@@ -164,3 +164,35 @@ export function outboxReaddressClassSql(): { readdressable: SQL; cancelRest: SQL
     )`,
   };
 }
+
+/**
+ * Delivery-priority predicate (row 170). Security, must-have, and
+ * old-address-by-design, plus metadata.authCritical on any type
+ * classifyOutboxEmail would call security. Not-account-bound stays out:
+ * classify returns that class before the authCritical arm, and
+ * isDeliveryPriorityEmail follows it.
+ *
+ * The type lists ride in one bound object. A claim-text stub stringifies
+ * query chunks, and a printed type name would look like an allowlist entry.
+ */
+export function outboxDeliveryPrioritySql(): SQL {
+  const payload = {
+    types: [
+      ...SECURITY_EMAIL_TYPES,
+      ...MUST_HAVE_EMAIL_TYPES,
+      ...OLD_ADDRESS_BY_DESIGN_EMAIL_TYPES,
+    ],
+    exempt: [...NOT_ACCOUNT_BOUND_EMAIL_TYPES],
+  };
+  return sql`(
+    email_type = ANY (
+      ARRAY(SELECT jsonb_array_elements_text((${payload}::jsonb) -> 'types'))
+    )
+    OR (
+      metadata->>'authCritical' = 'true'
+      AND email_type <> ALL (
+        ARRAY(SELECT jsonb_array_elements_text((${payload}::jsonb) -> 'exempt'))
+      )
+    )
+  )`;
+}
