@@ -45,7 +45,7 @@ permissions:
 jobs:
   ledger-stamp:
     name: ledger-stamp (post-merge R-number)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 10
     # The App's private key lives in this environment (branch-limited to main), not at repository level.
     environment: ledger-stamp

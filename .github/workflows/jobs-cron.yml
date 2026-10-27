@@ -81,7 +81,7 @@ env:
 jobs:
   post-due-buckets:
     name: Post every cadence bucket due this run (backup trigger — see header)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-latest' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5.1.0
