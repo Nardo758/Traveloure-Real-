@@ -63,7 +63,7 @@ type RefundMode = "succeeded" | "throw" | "pending" | "failed";
 let refundMode: RefundMode = "succeeded";
 type CancelMode = "ok" | "fail";
 let cancelMode: CancelMode = "ok";
-type CaptureMode = "ok" | "race";
+type CaptureMode = "ok" | "race" | "race-release" | "withdraw";
 let captureMode: CaptureMode = "ok";
 let retrieveMode: "stored" | "succeeded" | "pending" = "stored";
 const calls = {
@@ -93,13 +93,21 @@ handoff.__setHandoffPaymentsForTest({
   },
   async capture(id, key) {
     calls.capture.push(key);
-    if (captureMode === "race") {
+    if (captureMode === "race" || captureMode === "race-release") {
+      const nextStatus = captureMode === "race-release" ? "release_pending" : "booking_failed";
       await db.execute(sql`
         UPDATE expert_requests
-        SET status = 'booking_failed',
+        SET status = ${nextStatus},
             optimization_context = COALESCE(optimization_context, '{}'::jsonb) || jsonb_build_object(
               'bookingFailure', jsonb_build_object('at', ${new Date().toISOString()}::text, 'kind', 'expert_withdrew'::text, 'by', ${ids.expert}::text)
             )
+        WHERE payment_intent_id = ${id} AND status = 'accepted'
+      `);
+    }
+    if (captureMode === "withdraw") {
+      await db.execute(sql`
+        UPDATE expert_requests
+        SET status = 'withdrawn', withdrawn_at = NOW(), withdrawal_fee_cents = 0
         WHERE payment_intent_id = ${id} AND status = 'accepted'
       `);
     }
@@ -828,4 +836,131 @@ test("F15: a capture that lands after booking_failed refunds instead of finishin
   assert.equal((src.match(/FOR NO KEY UPDATE/g) ?? []).length >= 2, true);
   captureMode = "ok";
   void trip;
+});
+
+test("F15b: a capture that lands after the release_pending flip is refunded in full once", async () => {
+  refundMode = "succeeded";
+  captureMode = "race-release";
+  const { id } = await proposed("f15b");
+  const before = calls.refund.length;
+  const out = await handoff.acceptHandoff(id, ids.expert);
+  assert.equal(out.ok, true, JSON.stringify(out));
+  const row = (await handoff.getHandoff(id))!;
+  const amount = (row.feeCents ?? 0) + (row.travelerFeeCents ?? 0);
+  assert.ok(amount > 0);
+  assert.equal(row.status, "booking_failed");
+  assert.ok(row.capturedAt);
+  assert.equal(row.refundId, `re_handoff-failed-booking-refund-${id}`);
+  assert.equal(failureOf(row)?.refundStatus, "succeeded");
+  const mine = calls.refund.filter((r) => r.key === `handoff-failed-booking-refund-${id}`);
+  assert.equal(mine.length, 1);
+  assert.equal(mine[0].amount, amount);
+  assert.equal(calls.refund.length, before + 1);
+  captureMode = "ok";
+});
+
+test("F15c: a capture that lands after withdrawal still stamps captured_at and refunds once", async () => {
+  refundMode = "succeeded";
+  captureMode = "withdraw";
+  const { id } = await proposed("f15c");
+  const out = await handoff.acceptHandoff(id, ids.expert);
+  assert.equal(out.ok, true, JSON.stringify(out));
+  const row = (await handoff.getHandoff(id))!;
+  const amount = (row.feeCents ?? 0) + (row.travelerFeeCents ?? 0);
+  assert.equal(row.status, "withdrawn");
+  assert.ok(row.capturedAt, "the capture is not lost when the row is already withdrawn");
+  const mine = calls.refund.filter((r) => r.key === `handoff-withdraw-refund-${id}`);
+  assert.equal(mine.length, 1);
+  assert.equal(mine[0].amount, amount);
+  assert.equal(calls.refund.filter((r) => r.key === `handoff-failed-booking-refund-${id}`).length, 0);
+  captureMode = "ok";
+});
+
+async function alertRows(requestId: string, type: string): Promise<{ reason: string }[]> {
+  const r = await db.execute(sql`
+    SELECT reason FROM admin_notifications
+    WHERE type = ${type} AND metadata->>'requestId' = ${requestId}
+    ORDER BY id
+  `);
+  return (r.rows ?? []) as { reason: string }[];
+}
+
+test("F16: an ever-delivered cannot-book is manual, and a never-delivered one still refunds", async () => {
+  refundMode = "succeeded";
+  cancelMode = "ok";
+  const delivered = await acceptedCaptured("f16d");
+  const marked = await handoff.deliverHandoff(delivered.id, ids.expert);
+  assert.equal(marked.ok, true, JSON.stringify(marked));
+  const back = await handoff.requestHandoffChanges(delivered.id, ids.owner, null);
+  assert.equal(back.ok, true, JSON.stringify(back));
+  const refunds = calls.refund.length;
+  const cancels = calls.cancel.length;
+  const out = await handoff.failHandoffBooking(delivered.id, { kind: "expert_unbookable", expertId: ids.expert });
+  assert.equal(out.ok, true, JSON.stringify(out));
+  const row = (await handoff.getHandoff(delivered.id))!;
+  assert.equal(row.status, "booking_failed");
+  assert.equal(row.refundId, null);
+  assert.equal(calls.refund.length, refunds);
+  assert.equal(calls.cancel.length, cancels);
+  assert.equal(countMessage(await messages(delivered.id), REFUNDED), 0);
+  assert.equal(countMessage(await messages(delivered.id), HANDOFF_FAILED_BOOKING_TRAVELER_COPY.checkingPayment), 0);
+  assert.equal((await alertRows(delivered.id, "handoff_booking_manual_decision")).length, 1);
+  assert.equal((await alertRows(delivered.id, "handoff_booking_manual_decision"))[0].reason, "ever_delivered");
+  await handoff.failHandoffBooking(delivered.id, { kind: "expert_unbookable", expertId: ids.expert });
+  assert.equal((await alertRows(delivered.id, "handoff_booking_manual_decision")).length, 1);
+  assert.equal(calls.refund.length, refunds);
+  assert.equal(calls.cancel.length, cancels);
+  const listed = await call(ids.admin, "GET", "/api/admin/handoffs/failed-booking");
+  assert.equal(listed.status, 200);
+  const found = (listed.body.handoffs as { id: string; refund_id: string | null }[]).find((h) => h.id === delivered.id);
+  assert.ok(found);
+  assert.equal(found.refund_id, null);
+
+  const fresh = await acceptedCaptured("f16n");
+  const paid = await handoff.failHandoffBooking(fresh.id, { kind: "expert_withdrew", expertId: ids.expert });
+  assert.equal(paid.ok, true);
+  const paidRow = (await handoff.getHandoff(fresh.id))!;
+  const amount = (paidRow.feeCents ?? 0) + (paidRow.travelerFeeCents ?? 0);
+  const mine = calls.refund.filter((r) => r.key === `handoff-failed-booking-refund-${fresh.id}`);
+  assert.equal(mine.length, 1);
+  assert.equal(mine[0].amount, amount);
+  assert.equal((await alertRows(fresh.id, "handoff_booking_manual_decision")).length, 0);
+});
+
+test("F17: a failed refund alerts once, and the retry cap does not alert again", async () => {
+  refundMode = "failed";
+  const { id } = await acceptedCaptured("f17");
+  const out = await handoff.failHandoffBooking(id, { kind: "expert_withdrew", expertId: ids.expert });
+  assert.equal(out.ok, true);
+  let alerts = await alertRows(id, "handoff_booking_refund_failed");
+  assert.equal(alerts.length, 1);
+  assert.equal(alerts[0].reason, "refund_failed");
+  await handoff.failHandoffBooking(id, { kind: "expert_withdrew", expertId: ids.expert });
+  await handoff.runHandoffTimers(new Date(Date.now() + 72 * 3_600_000));
+  alerts = await alertRows(id, "handoff_booking_refund_failed");
+  assert.equal(alerts.length, 1);
+
+  const capped = await acceptedCaptured("f17cap");
+  await db.execute(sql`
+    UPDATE expert_requests
+    SET status = 'booking_failed', captured_at = NOW(),
+        optimization_context = COALESCE(optimization_context, '{}'::jsonb) || jsonb_build_object(
+          'bookingFailure', jsonb_build_object(
+            'at', ${new Date().toISOString()}::text,
+            'kind', 'expert_withdrew'::text,
+            'by', ${ids.expert}::text,
+            'refundAttempts', ${5}::int,
+            'refundStatus', 'failed'::text,
+            'nextRefundAt', ${new Date(Date.now() - 3_600_000).toISOString()}::text
+          )
+        )
+    WHERE id = ${capped.id}
+  `);
+  await handoff.runHandoffTimers(new Date());
+  const capAlerts = await alertRows(capped.id, "handoff_booking_refund_failed");
+  assert.equal(capAlerts.length, 1);
+  assert.equal(capAlerts[0].reason, "refund_attempt_cap");
+  await handoff.runHandoffTimers(new Date(Date.now() + 72 * 3_600_000));
+  assert.equal((await alertRows(capped.id, "handoff_booking_refund_failed")).length, 1);
+  refundMode = "succeeded";
 });

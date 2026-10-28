@@ -524,15 +524,28 @@ export async function acceptHandoff(requestId: string, expertId: string): Promis
       RETURNING id
     `);
     if (!stamped.rows?.length) {
+      // Capture already succeeded at Stripe. Stamp it even if the row left `accepted`
+      // during the call: a failed booking may be `booking_failed` or `release_pending`,
+      // and a withdrawal may already be `withdrawn`. Losing the stamp leaves the capture unrefunded.
+      const marked = await db.execute(sql`
+        UPDATE expert_requests SET captured_at = NOW()
+        WHERE id = ${requestId} AND captured_at IS NULL
+          AND status IN ('booking_failed', 'release_pending', 'withdrawn')
+        RETURNING status
+      `);
+      const markedStatus = (marked.rows?.[0] as { status?: string } | undefined)?.status;
       const after = await getHandoff(requestId);
-      if (after && (after.status === "booking_failed" || after.status === "release_pending")) {
-        await db.execute(sql`
-          UPDATE expert_requests SET captured_at = NOW()
-          WHERE id = ${requestId} AND captured_at IS NULL
-            AND status IN ('booking_failed', 'release_pending')
-        `);
+      if (after && (markedStatus === "booking_failed" || markedStatus === "release_pending")) {
+        const failedBooking = markedStatus === "booking_failed" || !!(after.optimizationContext as { bookingFailure?: unknown } | null)?.bookingFailure;
+        if (failedBooking) {
+          await recordCapturedRevenue(after);
+          await driveFailedBookingRefund(after, new Date(), { dueAndCap: false });
+          return { ok: true, request: (await getHandoff(requestId))! };
+        }
+      }
+      if (after && markedStatus === "withdrawn") {
         await recordCapturedRevenue(after);
-        await driveFailedBookingRefund((await getHandoff(requestId))!, new Date(), { dueAndCap: false });
+        await driveWithdrawalRefund(after);
         return { ok: true, request: (await getHandoff(requestId))! };
       }
     } else {
@@ -859,15 +872,24 @@ export async function promoteHandoffFailedBookingRefunds(input: {
     SELECT id FROM expert_requests
     WHERE payment_intent_id = ${input.paymentIntentId}
       AND handoff_kind IS NOT NULL
-      AND status = 'booking_failed'
+      AND (
+        status = 'booking_failed'
+        OR (status = 'release_pending' AND captured_at IS NOT NULL AND optimization_context ? 'bookingFailure')
+      )
+      AND (optimization_context->>'everDeliveredAt') IS NULL
+      AND delivered_at IS NULL
+      AND COALESCE(change_rounds, 0) = 0
       AND COALESCE(optimization_context #>> '{bookingFailure,refundStatus}', '') IS DISTINCT FROM 'succeeded'
     LIMIT 5
   `);
   for (const hit of (found.rows ?? []) as { id: string }[]) {
     const row = await getHandoff(hit.id);
     if (!row) continue;
-    const succeeded = input.refunds.find((r) => r.id && r.status === "succeeded");
-    const chosen = succeeded ?? input.refunds.filter((r) => r.id).slice(-1)[0];
+    const own = row.refundId
+      ? input.refunds.filter((r) => r.id === row.refundId)
+      : input.refunds.filter((r) => r.id);
+    const succeeded = own.find((r) => r.status === "succeeded");
+    const chosen = succeeded ?? own.slice(-1)[0];
     if (!chosen?.id) continue;
     await applyObservedRefund(row, chosen);
   }
@@ -936,6 +958,63 @@ async function alertBookingFailed(row: HandoffRow, triggerKind: string, state: F
   });
 }
 
+function rowWasEverDelivered(input: {
+  optimizationContext?: unknown;
+  deliveredAt?: Date | string | null;
+  changeRounds?: number | null;
+}): boolean {
+  const ctx = input.optimizationContext as { everDeliveredAt?: unknown } | null;
+  if (typeof ctx?.everDeliveredAt === "string" && ctx.everDeliveredAt) return true;
+  if (input.deliveredAt) return true;
+  return (input.changeRounds ?? 0) > 0;
+}
+
+/** One staff alert when a failed-booking refund fails or reaches its retry cap. The stamp is the claim. */
+async function alertRefundStuck(row: HandoffRow, attempts: number, reason: "refund_failed" | "refund_attempt_cap"): Promise<void> {
+  const iso = new Date().toISOString();
+  const stamped = await db.execute(sql`
+    UPDATE expert_requests
+    SET optimization_context = COALESCE(optimization_context, '{}'::jsonb) || jsonb_build_object(
+      'bookingFailure', COALESCE(optimization_context->'bookingFailure', '{}'::jsonb) || jsonb_build_object('refundAlertedAt', ${iso}::text)
+    )
+    WHERE id = ${row.id}
+      AND optimization_context ? 'bookingFailure'
+      AND (optimization_context #>> '{bookingFailure,refundAlertedAt}') IS NULL
+    RETURNING id
+  `);
+  if (!stamped.rows?.length) return;
+  const { raiseOpsAlert } = await import("./ops-alert.service");
+  await raiseOpsAlert({
+    type: "handoff_booking_refund_failed",
+    reason,
+    message: `Handoff ${row.id} refund did not succeed after ${attempts} attempt(s). It stays booking_failed. Refund PaymentIntent ${row.paymentIntentId ?? "(none)"} in Stripe if it is still captured.`,
+    metadata: { requestId: row.id, paymentIntentId: row.paymentIntentId, tripId: row.tripId, attempts },
+  });
+}
+
+/** One staff alert when an already-delivered handoff is marked booking_failed. No automatic money movement. */
+async function alertEverDeliveredManual(row: HandoffRow): Promise<void> {
+  const iso = new Date().toISOString();
+  const stamped = await db.execute(sql`
+    UPDATE expert_requests
+    SET optimization_context = COALESCE(optimization_context, '{}'::jsonb) || jsonb_build_object(
+      'bookingFailure', COALESCE(optimization_context->'bookingFailure', '{}'::jsonb) || jsonb_build_object('manualAlertedAt', ${iso}::text)
+    )
+    WHERE id = ${row.id}
+      AND optimization_context ? 'bookingFailure'
+      AND (optimization_context #>> '{bookingFailure,manualAlertedAt}') IS NULL
+    RETURNING id
+  `);
+  if (!stamped.rows?.length) return;
+  const { raiseOpsAlert } = await import("./ops-alert.service");
+  await raiseOpsAlert({
+    type: "handoff_booking_manual_decision",
+    reason: "ever_delivered",
+    message: `Handoff ${row.id} was already delivered and is now booking_failed. No automatic refund or hold release. Decide PaymentIntent ${row.paymentIntentId ?? "(none)"} by hand.`,
+    metadata: { requestId: row.id, paymentIntentId: row.paymentIntentId, tripId: row.tripId },
+  });
+}
+
 async function scheduleRefundPoll(id: string, now: Date, attempts: number): Promise<void> {
   const nextAt = new Date(now.getTime() + handoffHoldReleaseBackoffMs(Math.max(1, attempts))).toISOString();
   await db.execute(sql`
@@ -954,6 +1033,7 @@ async function scheduleRefundPoll(id: string, now: Date, attempts: number): Prom
  * `dueAndCap` is the timer's gate; an expert replay retries as soon as it is asked.
  */
 async function driveFailedBookingRefund(row: HandoffRow, now: Date, opts: { dueAndCap: boolean }): Promise<"issued" | "pending" | "failed" | "skipped"> {
+  if (rowWasEverDelivered(row)) return "skipped";
   if (!row.capturedAt || !row.paymentIntentId) return "skipped";
   const amount = (row.feeCents ?? 0) + (row.travelerFeeCents ?? 0);
   if (!(amount > 0)) return "skipped";
@@ -970,19 +1050,30 @@ async function driveFailedBookingRefund(row: HandoffRow, now: Date, opts: { dueA
     return outcome;
   }
 
-  if (opts.dueAndCap && meta.attempts >= HANDOFF_HOLD_RELEASE_MAX_ATTEMPTS) return "skipped";
+  if (opts.dueAndCap && meta.attempts >= HANDOFF_HOLD_RELEASE_MAX_ATTEMPTS) {
+    await alertRefundStuck(row, meta.attempts, "refund_attempt_cap");
+    return "skipped";
+  }
   const nextAttempts = meta.attempts + 1;
   const nextAt = new Date(now.getTime() + handoffHoldReleaseBackoffMs(nextAttempts)).toISOString();
   const claimed = await db.execute(sql`
     UPDATE expert_requests
-    SET optimization_context = COALESCE(optimization_context, '{}'::jsonb) || jsonb_build_object(
+    SET status = 'booking_failed',
+        optimization_context = COALESCE(optimization_context, '{}'::jsonb) || jsonb_build_object(
       'bookingFailure', COALESCE(optimization_context->'bookingFailure', '{}'::jsonb) || jsonb_build_object(
         'refundAttempts', ${nextAttempts}::int,
         'nextRefundAt', ${nextAt}::text
       )
     )
-    WHERE id = ${row.id} AND status = 'booking_failed' AND captured_at IS NOT NULL
+    WHERE id = ${row.id} AND captured_at IS NOT NULL
       AND payment_intent_id IS NOT NULL
+      AND (
+        status = 'booking_failed'
+        OR (status = 'release_pending' AND optimization_context ? 'bookingFailure')
+      )
+      AND (optimization_context->>'everDeliveredAt') IS NULL
+      AND delivered_at IS NULL
+      AND COALESCE(change_rounds, 0) = 0
       AND COALESCE(optimization_context #>> '{bookingFailure,refundStatus}', '') IS DISTINCT FROM 'succeeded'
       AND COALESCE((optimization_context #>> '{bookingFailure,refundAttempts}')::int, 0) = ${meta.attempts}
       AND (refund_id IS NULL OR COALESCE(optimization_context #>> '{bookingFailure,refundStatus}', '') = 'failed')
@@ -1009,9 +1100,14 @@ async function driveFailedBookingRefund(row: HandoffRow, now: Date, opts: { dueA
     });
   } catch {
     await notifyFailedBookingOnce(row, "fallback");
+    await alertRefundStuck(row, nextAttempts, nextAttempts >= HANDOFF_HOLD_RELEASE_MAX_ATTEMPTS ? "refund_attempt_cap" : "refund_failed");
     return "failed";
   }
-  return applyObservedRefund(row, refund);
+  const outcome = await applyObservedRefund(row, refund);
+  if (outcome === "failed") {
+    await alertRefundStuck(row, nextAttempts, nextAttempts >= HANDOFF_HOLD_RELEASE_MAX_ATTEMPTS ? "refund_attempt_cap" : "refund_failed");
+  }
+  return outcome;
 }
 
 /**
@@ -1032,6 +1128,10 @@ export async function failHandoffBooking(
   }
   if (row.sourcePurchaseId) return { ok: false, status: 409, code: "prepaid_not_supported", message: "This handoff is prepaid." };
   if (row.status === "booking_failed") {
+    if (rowWasEverDelivered(row)) {
+      await alertEverDeliveredManual(row);
+      return { ok: true, request: row };
+    }
     if (readBookingFailure(row.optimizationContext).refundStatus !== "succeeded") {
       await driveFailedBookingRefund(row, now, { dueAndCap: false });
     }
@@ -1044,7 +1144,8 @@ export async function failHandoffBooking(
   const decision = await db.transaction(async (tx) => {
     const locked = await tx.execute(sql`
       SELECT status, captured_at, payment_intent_id, fee_cents, traveler_fee_cents,
-             source_purchase_id, assigned_expert_id, handoff_kind
+             source_purchase_id, assigned_expert_id, handoff_kind, optimization_context,
+             delivered_at, change_rounds
       FROM expert_requests
       WHERE id = ${requestId}
       FOR NO KEY UPDATE
@@ -1058,11 +1159,19 @@ export async function failHandoffBooking(
       source_purchase_id?: string | null;
       assigned_expert_id?: string | null;
       handoff_kind?: string | null;
+      optimization_context?: unknown;
+      delivered_at?: Date | string | null;
+      change_rounds?: number | null;
     } | undefined;
     if (!lockedRow?.handoff_kind) return { kind: "missing" as const };
     if (trigger.kind !== "deadline_passed" && lockedRow.assigned_expert_id !== trigger.expertId) return { kind: "missing" as const };
     if (lockedRow.source_purchase_id) return { kind: "prepaid" as const };
-    if (lockedRow.status === "booking_failed") return { kind: "replay" as const };
+    const everDelivered = rowWasEverDelivered({
+      optimizationContext: lockedRow.optimization_context,
+      deliveredAt: lockedRow.delivered_at,
+      changeRounds: lockedRow.change_rounds,
+    });
+    if (lockedRow.status === "booking_failed") return { kind: "replay" as const, everDelivered };
     if (lockedRow.status !== "accepted") return { kind: "wrong" as const, status: String(lockedRow.status ?? "") };
     const updated = await tx.execute(sql`
       UPDATE expert_requests
@@ -1086,12 +1195,17 @@ export async function failHandoffBooking(
       captured: lockedRow.captured_at != null,
       paymentIntentId: lockedRow.payment_intent_id ?? null,
       total,
+      everDelivered,
     };
   });
   if (decision.kind === "missing") return { ok: false, status: 404, code: "not_found", message: "Not found" };
   if (decision.kind === "prepaid") return { ok: false, status: 409, code: "prepaid_not_supported", message: "This handoff is prepaid." };
   if (decision.kind === "replay") {
     const again = await getHandoff(requestId);
+    if (again && (decision.everDelivered || rowWasEverDelivered(again))) {
+      await alertEverDeliveredManual(again);
+      return { ok: true, request: again };
+    }
     if (again && readBookingFailure(again.optimizationContext).refundStatus !== "succeeded") {
       await driveFailedBookingRefund(again, now, { dueAndCap: false });
     }
@@ -1102,6 +1216,10 @@ export async function failHandoffBooking(
   }
 
   const failed = (await getHandoff(requestId))!;
+  if (decision.everDelivered || rowWasEverDelivered(failed)) {
+    await alertEverDeliveredManual(failed);
+    return { ok: true, request: (await getHandoff(requestId))! };
+  }
   let state: FailedBookingMoneyState;
   if (decision.captured && decision.paymentIntentId && decision.total > 0) {
     const outcome = await driveFailedBookingRefund(failed, now, { dueAndCap: false });
@@ -1475,8 +1593,9 @@ export async function runHandoffTimers(now: Date = new Date()): Promise<HandoffT
         timerRowHook?.(r.id);
         const failed = await failHandoffBooking(r.id, { kind: "deadline_passed" }, now, out);
         if (failed.ok) out.bookingFailed += 1;
-      } catch {
+      } catch (err) {
         rowErrors += 1;
+        logger.error({ job: "handoff-timers", requestId: r.id, err }, "[handoff-timers] failed-booking deadline row failed");
       }
     }
   }
@@ -1485,8 +1604,15 @@ export async function runHandoffTimers(now: Date = new Date()): Promise<HandoffT
   // Same batch limit as the selects above. Independent of the deadline switch.
   const refundDue = await db.execute(sql`
     SELECT id FROM expert_requests
-    WHERE handoff_kind IS NOT NULL AND status = 'booking_failed'
+    WHERE handoff_kind IS NOT NULL
       AND captured_at IS NOT NULL AND payment_intent_id IS NOT NULL
+      AND (
+        status = 'booking_failed'
+        OR (status = 'release_pending' AND optimization_context ? 'bookingFailure')
+      )
+      AND (optimization_context->>'everDeliveredAt') IS NULL
+      AND delivered_at IS NULL
+      AND COALESCE(change_rounds, 0) = 0
       AND COALESCE(optimization_context #>> '{bookingFailure,refundStatus}', '') IS DISTINCT FROM 'succeeded'
       AND (
         (optimization_context #>> '{bookingFailure,nextRefundAt}') IS NULL
@@ -1498,6 +1624,10 @@ export async function runHandoffTimers(now: Date = new Date()): Promise<HandoffT
           refund_id IS NOT NULL
           AND COALESCE(optimization_context #>> '{bookingFailure,refundStatus}', '') = 'pending'
         )
+        OR (
+          COALESCE((optimization_context #>> '{bookingFailure,refundAttempts}')::int, 0) >= ${HANDOFF_HOLD_RELEASE_MAX_ATTEMPTS}
+          AND (optimization_context #>> '{bookingFailure,refundAlertedAt}') IS NULL
+        )
       )
     LIMIT 200
   `);
@@ -1508,8 +1638,9 @@ export async function runHandoffTimers(now: Date = new Date()): Promise<HandoffT
       if (!row) continue;
       refundPolled += 1;
       await driveFailedBookingRefund(row, now, { dueAndCap: true });
-    } catch {
+    } catch (err) {
       rowErrors += 1;
+      logger.error({ job: "handoff-timers", requestId: r.id, err }, "[handoff-timers] failed-booking refund row failed");
     }
   }
   logger.info(

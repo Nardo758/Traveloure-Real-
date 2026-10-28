@@ -30,9 +30,9 @@ export function handoffAutoApproveDays(): number {
 }
 
 /**
- * Architect, Oct 28, 2026, 00:30 ET (via Leon): hours after `accepted_at` before an
- * accepted handoff that was never fulfilled fails. Read from `HANDOFF_FULFILMENT_HOURS`
- * at call time. No default; unset disables the deadline trigger.
+ * Hours after the latest transition into accepted before a never-delivered handoff fails.
+ * Read from `HANDOFF_FULFILMENT_HOURS` at call time. No default; unset disables the
+ * deadline trigger. The trigger also stays off unless `HANDOFF_FULFILMENT_SINCE` is valid.
  */
 export function handoffFulfilmentHours(): number | null {
   const raw = process.env.HANDOFF_FULFILMENT_HOURS;
