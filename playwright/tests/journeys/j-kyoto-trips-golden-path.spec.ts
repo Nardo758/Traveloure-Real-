@@ -4,6 +4,7 @@ import { perDayAgreement } from "../../../shared/leg-resolution";
 import { compareSavingsShown, dayStripCells, savesLine, travelCell } from "../../../client/src/lib/plan-compare";
 import { actAndAwait, ok2xx, appears, testid } from "../../../e2e/supply-demand/lib/ui";
 import { fillPlanEntryToStart, clickPlanStart } from "../../../e2e/supply-demand/lib/flows";
+import { PAYMENT_METHOD_PROMPT_DISMISS_KEY } from "../../../client/src/lib/payment-method-setup";
 import {
   BASE_URL,
   registerUser,
@@ -72,8 +73,23 @@ test.afterAll(async () => {
   await closePool();
 });
 
-/** A fresh traveler, signed in on `page` (page.request shares the browser's cookie jar). */
+/**
+ * A fresh traveler, signed in on `page` (page.request shares the browser's cookie jar).
+ *
+ * Row 285 (ledger `2026-10-28-journeys-dismiss-card-prompt`): before the app mounts, the page holds
+ * the state a traveler's "Not now" click on the add-a-card prompt leaves behind, so the prompt's
+ * bottom bar does not cover the controls these journeys click (Decision 43: the step is skippable).
+ * The key is the app's own constant; "1" is the value `writePaymentMethodPromptDismissed()` stores.
+ * The prompt itself is proven still there, and still skippable, by the "add-a-card prompt" test below.
+ */
 async function signedInTraveler(page: Page, label: string): Promise<{ id: string; email: string }> {
+  await page.addInitScript((key: string) => {
+    try {
+      window.sessionStorage.setItem(key, "1");
+    } catch {
+      // A page without sessionStorage shows the prompt; the journey's own click then says so.
+    }
+  }, PAYMENT_METHOD_PROMPT_DISMISS_KEY);
   return registerUser(page.request, `kyoto-${label}`, "Kyoto", label);
 }
 
@@ -1763,5 +1779,42 @@ test.describe("8 · a month later", () => {
   });
   test.fixme("§8 — per-plan run history", async () => {
     // Waits on optimizer run records (Part 2 N, P-2g).
+  });
+});
+
+// ── The add-a-card prompt stays, and "Not now" skips it (row 285) ───────────────────────────────
+/**
+ * Decision 43 (ledgers `2026-10-21-signup-payment-step`, `2026-10-22-card-gate-skippable`): every
+ * signed-in traveler is offered one dismissible prompt, and "Not now" hides it until the next sign-in.
+ * Every other test here starts from that dismissed state (`signedInTraveler`); this one signs in
+ * WITHOUT it and clicks "Not now" for real, so a change that removes the prompt fails here.
+ */
+test.describe("row 285 · the add-a-card prompt", () => {
+  test("a fresh traveler sees the prompt, clicks Not now, and the control under it can be clicked", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await registerUser(page.request, "kyoto-card-prompt", "Kyoto", "card-prompt");
+    const tripId = await createTrip(page.request, "Kyoto card prompt", KYOTO);
+    const occasion = await page.request.patch(`${BASE_URL}/api/trips/${tripId}/occasion`, { data: { experienceSlug: "travel" } });
+    expect(occasion.status(), `occasion write: ${await occasion.text()}`).toBe(200);
+    const created = await page.request.post(`${BASE_URL}/api/trips/${tripId}/option-sets`, {
+      data: { categoryKey: "accommodation", label: "Where you'll stay", anchor: true },
+    });
+    expect(created.status()).toBe(201);
+    const setId = (await created.json()).set.id as string;
+
+    await page.goto(`/plans/${tripId}`);
+    const prompt = testid(page, "payment-method-setup-prompt");
+    await expect(prompt, "the signed-in prompt is offered").toBeVisible({ timeout: 20_000 });
+    await testid(page, "button-dismiss-payment-method-setup").click();
+    await expect(prompt).toHaveCount(0);
+
+    const methodsRead = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/me/payment-methods", { timeout: 20_000 });
+    await page.goto(`/plans/${tripId}`);
+    await methodsRead;
+    await expect(testid(page, `slip-option-set-${setId}`)).toBeVisible({ timeout: 20_000 });
+    await expect(prompt, "Not now holds for the rest of the session").toHaveCount(0);
+
+    await testid(page, `slip-option-add-${setId}`).click();
+    await expect(testid(page, "slip-option-mode-name")).toBeVisible({ timeout: 10_000 });
   });
 });
