@@ -386,7 +386,7 @@ async function computePlanLegsCore(
   if (skipReason || !adapter || !trip) return { skipped: skipReason ?? "no_trip" };
   if (!trip.datesConfirmedAt) return { skipped: "dates_not_confirmed" };
 
-  const { desired, skipped, engineRows, existingRows, confirmedPairs, existing, picked, googleFetchedAt, departAt, transitApiUncovered } = await loadPlanLegContext(tripId, trip, {
+  const { desired, skipped, engineRows, existingRows, confirmedPairs, existing, picked, googleFetchedAt, departAt, transitApiUncovered, stops, stay } = await loadPlanLegContext(tripId, trip, {
     acceptsPoint: adapter.acceptsPoint ? (p) => adapter.acceptsPoint!(p) : () => true,
   });
   // P0 ruling 3: a day that is already over is never routed — its legs are frozen (not asked, not
@@ -558,6 +558,42 @@ async function computePlanLegsCore(
   }
   const rows: Array<typeof transportLegs.$inferInsert> = [];
   const replacedIds: string[] = [];
+  // Row 260 (pt780u): a pair dropped only because a stop was inserted between its ends is not deleted.
+  // The row stays on THIS plan (hidden while the pair is split) so the same pair can come back from
+  // the plan's own leg when the stop is removed. Not a persistent cache, not another plan's answer,
+  // and not a Google answer — only a source in CACHEABLE_ROUTE_SOURCES is held.
+  const stopIds = new Set<string>(stops.map((s) => s.id));
+  if (stay) stopIds.add(stay.id);
+  for (const d of desired) {
+    stopIds.add(d.from.id);
+    stopIds.add(d.to.id);
+  }
+  const liveDesiredPairs = new Set(desired.filter((d) => live(d.dayNumber)).map((d) => d.pairKey));
+  const rowById = new Map(engineRows.map((l) => [l.id, l]));
+  const holdable = (row: (typeof engineRows)[number] | undefined): row is (typeof engineRows)[number] => {
+    if (!row?.source || !CACHEABLE_ROUTE_SOURCES.has(row.source)) return false;
+    if (row.supersededByItemId) return false;
+    if (!row.fromActivityId || !row.toActivityId) return false;
+    if (!stopIds.has(row.fromActivityId) || !stopIds.has(row.toActivityId)) return false;
+    return !liveDesiredPairs.has(legPairKey(row.dayNumber, row.fromActivityId, row.toActivityId));
+  };
+  const holdIds: string[] = [];
+  const deleteIds: string[] = [];
+  for (const id of diff.remove) {
+    const row = rowById.get(id);
+    if (holdable(row)) {
+      if (row.proposalStatus != null) holdIds.push(id);
+      continue;
+    }
+    deleteIds.push(id);
+  }
+  const reviveIds: string[] = [];
+  const queueRevive = (id: string) => {
+    const row = rowById.get(id);
+    if (!row || row.proposalStatus != null || row.supersededByItemId || !row.source || !CACHEABLE_ROUTE_SOURCES.has(row.source)) return;
+    if (!reviveIds.includes(id)) reviveIds.push(id);
+  };
+  for (const k of diff.keep) queueRevive(k.id);
   for (const leg of diff.compute) {
     if (paused) break;
     const asked = await routeWithTransitFallback(memo, adapter, {
@@ -578,6 +614,9 @@ async function computePlanLegsCore(
     // never "no route").
     if (asked.outcome.kind === "no_route" && asked.outcome.unanswered) {
       unanswered++;
+      // The pair was asked because its key changed. No answer learned nothing — bring the held
+      // leg back rather than leave the pair with no time (the same "keeps its last leg" rule).
+      for (const id of diff.replaces.get(leg.pairKey) ?? []) queueRevive(id);
       continue;
     }
     replacedIds.push(...(diff.replaces.get(leg.pairKey) ?? []));
@@ -665,14 +704,30 @@ async function computePlanLegsCore(
     });
   }
 
-  const removeIds = Array.from(new Set([...diff.remove, ...replacedIds]));
+  const removeIds = Array.from(new Set([...deleteIds, ...replacedIds]));
   const reorders = diff.keep.filter((k) => k.legOrder != null) as Array<{ id: string; legOrder: number }>;
-  if (rows.length || removeIds.length || reorders.length) {
+  if (rows.length || removeIds.length || reorders.length || holdIds.length || reviveIds.length) {
     await db.transaction(async (tx) => {
       // Serialise writers for this plan across instances (the debounce is process-local).
       await tx.execute(sql`SELECT id FROM trips WHERE id = ${tripId} FOR UPDATE`);
       if (removeIds.length) {
         await tx.delete(transportLegs).where(and(eq(transportLegs.tripId, tripId), inArray(transportLegs.id, removeIds), sql`${transportLegs.source} IS NOT NULL`));
+      }
+      if (holdIds.length) {
+        // Hidden the same way a superseded leg is (proposal_status NULL — every trip reader skips it).
+        // superseded_by_item_id stays NULL, so removing the inserted stop does not restore this row
+        // as confirmed; the next compute of this plan un-hides it when the pair is wanted again.
+        await tx
+          .update(transportLegs)
+          .set({ proposalStatus: null, supersededAt: new Date(), updatedAt: new Date() })
+          .where(and(eq(transportLegs.tripId, tripId), inArray(transportLegs.id, holdIds), isNull(transportLegs.supersededByItemId), sql`${transportLegs.source} IS NOT NULL`));
+      }
+      const revive = reviveIds.filter((id) => !removeIds.includes(id));
+      if (revive.length) {
+        await tx
+          .update(transportLegs)
+          .set({ proposalStatus: "proposed", supersededAt: null, updatedAt: new Date() })
+          .where(and(eq(transportLegs.tripId, tripId), inArray(transportLegs.id, revive), isNull(transportLegs.supersededByItemId), sql`${transportLegs.source} IS NOT NULL`));
       }
       for (const r of reorders) {
         await tx.update(transportLegs).set({ legOrder: r.legOrder, updatedAt: new Date() }).where(and(eq(transportLegs.id, r.id), eq(transportLegs.tripId, tripId)));
