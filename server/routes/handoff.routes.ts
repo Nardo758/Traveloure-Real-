@@ -15,8 +15,10 @@
  *   Expert (the request's assigned expert — the session):
  *     GET  /api/expert/handoffs                           proposed + in-progress, for the inbox
  *     POST /api/handoffs/:id/accept | /decline | /deliver { offerOnTripSupport? }
+ *     POST /api/handoffs/:id/cannot-book                  { reason: "withdrew" | "unbookable" }
  *   Admin (§2 blanket guard):
  *     POST /api/admin/handoffs/:id/assign                 { expertId } — the override (R-n)
+ *     GET  /api/admin/handoffs/failed-booking             read-only list of failed bookings
  *
  * Bodies are `.strict()` picks (§19). Amounts are never read from a body (§14). A request or a
  * suggestion that does not exist or is not the caller's is one 404 (LD 40).
@@ -38,6 +40,7 @@ import {
   confirmOnTripSupport,
   declineHandoff,
   deliverHandoff,
+  failHandoffBooking,
   getHandoff,
   getTripHandoff,
   listProposedForExpert,
@@ -75,6 +78,7 @@ const askBody = z
 const quoteBody = z.object({ kind: kindSchema, itemIds: z.array(z.string().min(1).max(64)).max(200).optional() }).strict();
 const changesBody = z.object({ note: z.string().max(2000).optional().nullable() }).strict();
 const deliverBody = z.object({ offerOnTripSupport: z.boolean().optional() }).strict();
+const cannotBookBody = z.object({ reason: z.enum(["withdrew", "unbookable"]) }).strict();
 // B3 ruling 1: `overrideRoutability` is the ONE admin override of the routability check (logged).
 const assignBody = z.object({ expertId: z.string().min(1).max(64), overrideRoutability: z.literal(true).optional() }).strict();
 const emptyBody = z.object({}).strict();
@@ -402,6 +406,22 @@ router.post("/api/handoffs/:id/deliver", isAuthenticated, async (req: any, res) 
   res.json({ handoff: projectHandoff(out.request) });
 });
 
+router.post("/api/handoffs/:id/cannot-book", isAuthenticated, async (req: any, res) => {
+  const o = await expertHandoff(req, res);
+  if (!o) return;
+  const parsed = cannotBookBody.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ message: "Invalid body" });
+  const kind = parsed.data.reason === "withdrew" ? "expert_withdrew" : "expert_unbookable";
+  try {
+    const out = await failHandoffBooking(o.row.id, { kind, expertId: o.userId });
+    if (!out.ok) return refuse(res, out);
+    res.json({ handoff: projectHandoff(out.request) });
+  } catch (err) {
+    console.error("[handoff] cannot-book failed:", err);
+    res.status(500).json({ message: "Couldn't record that" });
+  }
+});
+
 // ─── Admin (under the §2 blanket guard) ────────────────────────────────────────────────────────
 
 router.post("/api/admin/handoffs/:id/assign", isAuthenticated, async (req: any, res) => {
@@ -415,6 +435,42 @@ router.post("/api/admin/handoffs/:id/assign", isAuthenticated, async (req: any, 
   });
   if (!out.ok) return refuse(res, out);
   res.json({ handoff: projectHandoff(await getHandoff(req.params.id)) });
+});
+
+router.get("/api/admin/handoffs/failed-booking", isAuthenticated, async (_req: any, res) => {
+  const r = await db.execute(sql`
+    SELECT id, trip_id, handoff_kind, status, fee_cents, traveler_fee_cents,
+           captured_at, accepted_at, refund_id, payment_intent_id, optimization_context
+    FROM expert_requests
+    WHERE handoff_kind IS NOT NULL
+      AND (
+        status = 'booking_failed'
+        OR (status = 'release_pending' AND optimization_context ? 'bookingFailure')
+      )
+    ORDER BY created_at DESC
+    LIMIT 200
+  `);
+  const handoffs = ((r.rows ?? []) as any[]).map((row) => {
+    const ctx = row.optimization_context && typeof row.optimization_context === "object"
+      ? row.optimization_context
+      : {};
+    const attempts = Number(ctx.holdRelease?.attempts);
+    return {
+      id: row.id,
+      trip: row.trip_id,
+      kind: row.handoff_kind,
+      status: row.status,
+      fee_cents: row.fee_cents,
+      traveler_fee_cents: row.traveler_fee_cents,
+      captured_at: row.captured_at,
+      accepted_at: row.accepted_at,
+      refund_id: row.refund_id,
+      payment_intent_id: row.payment_intent_id,
+      bookingFailure: ctx.bookingFailure ?? null,
+      holdReleaseAttempts: Number.isFinite(attempts) ? attempts : null,
+    };
+  });
+  res.json({ handoffs });
 });
 
 export default router;

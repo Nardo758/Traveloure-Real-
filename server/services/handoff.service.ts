@@ -18,7 +18,11 @@
  *   Withdraw  → by stage (R-t): before accept the hold is released and nothing is kept; after, the
  *               fee is refunded less the band-named share, the traveler fee in the same proportion.
  *   Timers    → 24 h fallback offered, 48 h hold released (R-q). A Stripe cancel that fails stays
- *               `release_pending` and is retried here; 7 d auto-approve (R-s).
+ *               `release_pending` and is retried here; 7 d auto-approve (R-s). The same job
+ *               fails an accepted handoff past HANDOFF_FULFILMENT_HOURS (unset disables that)
+ *               and re-drives a captured refund that has not been issued.
+ *   Fail      → an accepted request that ends without a fulfilled booking. A captured fee is
+ *               refunded in full; an uncaptured hold uses the existing release. One ops alert.
  *
  * Every transition is ONE atomic conditional on the from-status (§15/§18b). Money amounts are
  * derived from the row and the bands, never a body (§14); no rate literal lives here (§8).
@@ -28,6 +32,7 @@ import { db } from "../db";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { expertRequests, itineraryItems } from "@shared/schema";
 import {
+  HANDOFF_FAILED_BOOKING_TRAVELER_COPY,
   HANDOFF_FEE_TIER,
   HANDOFF_HOLD_RELEASE_MAX_ATTEMPTS,
   HANDOFF_HOLD_TRAVELER_COPY,
@@ -43,7 +48,7 @@ import {
   withdrawalStage,
   type HandoffKind,
 } from "@shared/handoff";
-import { handoffAutoApproveDays, handoffFallbackHours, handoffReleaseHours } from "../config/handoff.config";
+import { handoffAutoApproveDays, handoffFallbackHours, handoffFulfilmentHours, handoffReleaseHours } from "../config/handoff.config";
 import { countOpenSuggestions, supersedeOpenSuggestions } from "./expert-suggestions.service";
 
 // ─── The Stripe seam ───────────────────────────────────────────────────────────────────────────
@@ -725,6 +730,245 @@ async function driveWithdrawalRefund(row: HandoffRow): Promise<{ ok: true; keptC
   }
 }
 
+// ─── Failed booking (accepted, never fulfilled) ────────────────────────────────────────────────
+
+export type HandoffBookingFailureTrigger =
+  | { kind: "expert_withdrew"; expertId: string }
+  | { kind: "expert_unbookable"; expertId: string }
+  | { kind: "deadline_passed" };
+
+type FailedBookingMoneyState = "refunded" | "refund_failed" | "refund_pending" | "release_requested" | "no_money";
+
+const FAILED_BOOKING_REFUNDED_MESSAGE = `${HANDOFF_FAILED_BOOKING_TRAVELER_COPY.refunded} ${HANDOFF_FAILED_BOOKING_TRAVELER_COPY.chooseAnother}`;
+
+function readBookingFailure(ctx: unknown): { attempts: number; nextRefundAt: string | null } {
+  const b = (ctx as { bookingFailure?: { refundAttempts?: unknown; nextRefundAt?: unknown } } | null)?.bookingFailure;
+  const attempts = typeof b?.refundAttempts === "number" ? b.refundAttempts : Number(b?.refundAttempts);
+  return {
+    attempts: Number.isFinite(attempts) && attempts > 0 ? Math.floor(attempts) : 0,
+    nextRefundAt: typeof b?.nextRefundAt === "string" && b.nextRefundAt ? b.nextRefundAt : null,
+  };
+}
+
+function classifyFailedBookingRefund(refund: { id: string; status: string | null }): "issued" | "pending" | "failed" {
+  if (!refund.id) return "failed";
+  if (refund.status === "succeeded") return "issued";
+  if (refund.status === "failed" || refund.status === "canceled" || refund.status === "cancelled") return "failed";
+  return "pending";
+}
+
+async function claimBookingFailureKey(id: string, key: "alertedAt" | "refundedNotifiedAt" | "fallbackNotifiedAt", requireRefundId = false): Promise<boolean> {
+  const iso = new Date().toISOString();
+  const refundClause = requireRefundId ? sql`AND refund_id IS NOT NULL` : sql``;
+  const stamped = key === "alertedAt"
+    ? await db.execute(sql`
+        UPDATE expert_requests
+        SET optimization_context = COALESCE(optimization_context, '{}'::jsonb) || jsonb_build_object(
+          'bookingFailure', COALESCE(optimization_context->'bookingFailure', '{}'::jsonb) || jsonb_build_object('alertedAt', ${iso}::text)
+        )
+        WHERE id = ${id}
+          AND (optimization_context #>> '{bookingFailure,alertedAt}') IS NULL
+          ${refundClause}
+        RETURNING id
+      `)
+    : key === "refundedNotifiedAt"
+      ? await db.execute(sql`
+          UPDATE expert_requests
+          SET optimization_context = COALESCE(optimization_context, '{}'::jsonb) || jsonb_build_object(
+            'bookingFailure', COALESCE(optimization_context->'bookingFailure', '{}'::jsonb) || jsonb_build_object('refundedNotifiedAt', ${iso}::text)
+          )
+          WHERE id = ${id}
+            AND (optimization_context #>> '{bookingFailure,refundedNotifiedAt}') IS NULL
+            ${refundClause}
+          RETURNING id
+        `)
+      : await db.execute(sql`
+          UPDATE expert_requests
+          SET optimization_context = COALESCE(optimization_context, '{}'::jsonb) || jsonb_build_object(
+            'bookingFailure', COALESCE(optimization_context->'bookingFailure', '{}'::jsonb) || jsonb_build_object('fallbackNotifiedAt', ${iso}::text)
+          )
+          WHERE id = ${id}
+            AND (optimization_context #>> '{bookingFailure,fallbackNotifiedAt}') IS NULL
+            ${refundClause}
+          RETURNING id
+        `);
+  return !!stamped.rows?.length;
+}
+
+async function notifyFailedBookingOnce(row: HandoffRow, which: "refunded" | "fallback"): Promise<void> {
+  const key = which === "refunded" ? "refundedNotifiedAt" : "fallbackNotifiedAt";
+  if (!(await claimBookingFailureKey(row.id, key, which === "refunded"))) return;
+  const message = which === "refunded" ? FAILED_BOOKING_REFUNDED_MESSAGE : HANDOFF_FAILED_BOOKING_TRAVELER_COPY.checkingPayment;
+  await notify(row.userId, row.tripId ?? "", "handoff_booking_failed", HANDOFF_FAILED_BOOKING_TRAVELER_COPY.title, message, { requestId: row.id });
+}
+
+async function alertBookingFailed(row: HandoffRow, triggerKind: string, state: FailedBookingMoneyState): Promise<void> {
+  if (!(await claimBookingFailureKey(row.id, "alertedAt"))) return;
+  const { raiseOpsAlert } = await import("./ops-alert.service");
+  await raiseOpsAlert({
+    type: "handoff_booking_failed",
+    reason: triggerKind,
+    message: `Handoff ${row.id} failed (${triggerKind}). Money state: ${state}. PaymentIntent ${row.paymentIntentId ?? "(none)"}.`,
+    metadata: { requestId: row.id, paymentIntentId: row.paymentIntentId, tripId: row.tripId, state },
+  });
+}
+
+/**
+ * The captured-fee refund for a failed booking. Full amount, nothing kept, one key.
+ * The attempt count is claimed before the Stripe call. A later call under the same key
+ * is how a thrown refund is re-driven. `dueAndCap` is the timer's gate; an expert replay
+ * retries as soon as it is asked.
+ */
+async function driveFailedBookingRefund(row: HandoffRow, now: Date, opts: { dueAndCap: boolean }): Promise<"issued" | "pending" | "failed" | "skipped"> {
+  if (row.refundId || !row.capturedAt || !row.paymentIntentId) return "skipped";
+  const amount = (row.feeCents ?? 0) + (row.travelerFeeCents ?? 0);
+  if (!(amount > 0)) return "skipped";
+  const meta = readBookingFailure(row.optimizationContext);
+  if (opts.dueAndCap) {
+    if (meta.attempts >= HANDOFF_HOLD_RELEASE_MAX_ATTEMPTS) return "skipped";
+    if (meta.nextRefundAt && Date.parse(meta.nextRefundAt) > now.getTime()) return "skipped";
+  }
+  const nextAttempts = meta.attempts + 1;
+  const nextAt = new Date(now.getTime() + handoffHoldReleaseBackoffMs(nextAttempts)).toISOString();
+  const claimed = await db.execute(sql`
+    UPDATE expert_requests
+    SET optimization_context = COALESCE(optimization_context, '{}'::jsonb) || jsonb_build_object(
+      'bookingFailure', COALESCE(optimization_context->'bookingFailure', '{}'::jsonb) || jsonb_build_object(
+        'refundAttempts', ${nextAttempts}::int,
+        'nextRefundAt', ${nextAt}::text
+      )
+    )
+    WHERE id = ${row.id} AND status = 'booking_failed' AND captured_at IS NOT NULL
+      AND refund_id IS NULL AND payment_intent_id IS NOT NULL
+      AND COALESCE((optimization_context #>> '{bookingFailure,refundAttempts}')::int, 0) = ${meta.attempts}
+      ${opts.dueAndCap ? sql`
+        AND COALESCE((optimization_context #>> '{bookingFailure,refundAttempts}')::int, 0) < ${HANDOFF_HOLD_RELEASE_MAX_ATTEMPTS}
+        AND (
+          (optimization_context #>> '{bookingFailure,nextRefundAt}') IS NULL
+          OR (optimization_context #>> '{bookingFailure,nextRefundAt}')::timestamptz <= ${now.toISOString()}::timestamptz
+        )
+      ` : sql``}
+    RETURNING id
+  `);
+  if (!claimed.rows?.length) return "skipped";
+
+  let refund: { id: string; status: string | null };
+  try {
+    refund = await (await payments()).refund({
+      requestId: row.id,
+      tripId: row.tripId ?? "",
+      paymentIntentId: row.paymentIntentId,
+      amountCents: amount,
+      idempotencyKey: `handoff-failed-booking-refund-${row.id}`,
+      auditReason: `handoff_failed_booking_${row.handoffKind}`,
+    });
+  } catch {
+    await notifyFailedBookingOnce(row, "fallback");
+    return "failed";
+  }
+
+  const outcome = classifyFailedBookingRefund(refund);
+  if (outcome === "issued") {
+    await db.execute(sql`UPDATE expert_requests SET refund_id = ${refund.id} WHERE id = ${row.id} AND refund_id IS NULL`);
+    await db.execute(sql`
+      UPDATE platform_revenue SET gross_amount = ${"0.00"}::numeric,
+        platform_fee = ${"0.00"}::numeric,
+        net_amount = ${"0.00"}::numeric
+      WHERE source_id = ${row.paymentIntentId} AND source_type = 'expert_review_fee' AND expert_id IS NULL
+    `).catch((err) => console.error("[handoff] failed-booking revenue zero failed (non-fatal):", err));
+    await returnPen(row);
+    await rejectPendingAdvisor(row);
+    await notifyFailedBookingOnce(row, "refunded");
+    return "issued";
+  }
+  if (outcome === "pending") {
+    await db.execute(sql`UPDATE expert_requests SET refund_id = ${refund.id} WHERE id = ${row.id} AND refund_id IS NULL`);
+    await notifyFailedBookingOnce(row, "fallback");
+    return "pending";
+  }
+  await notifyFailedBookingOnce(row, "fallback");
+  return "failed";
+}
+
+/**
+ * An ACCEPTED handoff ended without a fulfilled booking. The status claim is taken before any
+ * Stripe call. Prepaid revisions are refused and left untouched. A row already `booking_failed`
+ * re-drives the refund when `refund_id` is still null, and otherwise returns with no side effect.
+ */
+export async function failHandoffBooking(
+  requestId: string,
+  trigger: HandoffBookingFailureTrigger,
+  now: Date = new Date(),
+  timerOut?: HandoffTimerResult,
+): Promise<{ ok: true; request: HandoffRow } | HandoffRefusal> {
+  const row = await getHandoff(requestId);
+  if (!row) return { ok: false, status: 404, code: "not_found", message: "Not found" };
+  if (trigger.kind !== "deadline_passed" && row.assignedExpertId !== trigger.expertId) {
+    return { ok: false, status: 404, code: "not_found", message: "Not found" };
+  }
+  if (row.sourcePurchaseId) return { ok: false, status: 409, code: "prepaid_not_supported", message: "This handoff is prepaid." };
+  if (row.status === "booking_failed") {
+    if (!row.refundId) await driveFailedBookingRefund(row, now, { dueAndCap: false });
+    return { ok: true, request: (await getHandoff(requestId))! };
+  }
+  if (row.status !== "accepted") return { ok: false, status: 409, code: "wrong_status", message: `This handoff is ${row.status}.` };
+
+  const by = trigger.kind === "deadline_passed" ? "timer" : trigger.expertId;
+  const expertClause = trigger.kind === "deadline_passed" ? sql`` : sql`AND assigned_expert_id = ${trigger.expertId}`;
+  const claimed = await db.execute(sql`
+    UPDATE expert_requests
+    SET status = 'booking_failed',
+        optimization_context = COALESCE(optimization_context, '{}'::jsonb) || jsonb_build_object(
+          'bookingFailure', jsonb_build_object(
+            'at', ${now.toISOString()}::text,
+            'kind', ${trigger.kind}::text,
+            'by', ${by}::text
+          )
+        )
+    WHERE id = ${requestId} AND status = 'accepted' AND handoff_kind IS NOT NULL
+      AND source_purchase_id IS NULL
+      ${expertClause}
+    RETURNING id
+  `);
+  if (!claimed.rows?.length) {
+    const again = await getHandoff(requestId);
+    if (!again || (trigger.kind !== "deadline_passed" && again.assignedExpertId !== trigger.expertId)) {
+      return { ok: false, status: 404, code: "not_found", message: "Not found" };
+    }
+    if (again.sourcePurchaseId) return { ok: false, status: 409, code: "prepaid_not_supported", message: "This handoff is prepaid." };
+    if (again.status === "booking_failed") {
+      if (!again.refundId) await driveFailedBookingRefund(again, now, { dueAndCap: false });
+      return { ok: true, request: (await getHandoff(requestId))! };
+    }
+    return { ok: false, status: 409, code: "wrong_status", message: `This handoff is ${again.status}.` };
+  }
+
+  const failed = (await getHandoff(requestId))!;
+  const total = (failed.feeCents ?? 0) + (failed.travelerFeeCents ?? 0);
+  let state: FailedBookingMoneyState;
+  if (failed.capturedAt && failed.paymentIntentId && total > 0) {
+    const outcome = await driveFailedBookingRefund(failed, now, { dueAndCap: false });
+    state = outcome === "issued" ? "refunded" : outcome === "pending" ? "refund_pending" : "refund_failed";
+  } else if (!failed.capturedAt && failed.paymentIntentId && total > 0) {
+    await returnPen(failed);
+    const flipped = await db.execute(sql`
+      UPDATE expert_requests SET status = 'release_pending'
+      WHERE id = ${failed.id} AND status = 'booking_failed' AND captured_at IS NULL
+      RETURNING id
+    `);
+    if (flipped.rows?.length) {
+      const scratch: HandoffTimerResult = { fallbackOffered: 0, released: 0, autoApproved: 0, stragglersAuthorized: 0, bookingFailed: 0 };
+      await attemptHoldRelease(failed.id, now, timerOut ?? scratch);
+    }
+    state = "release_requested";
+  } else {
+    await returnPen(failed);
+    state = "no_money";
+  }
+  await alertBookingFailed(failed, trigger.kind, state);
+  return { ok: true, request: (await getHandoff(requestId))! };
+}
+
 /**
  * Smoke 13 #5: the Stripe `cancellation_reason` a released hold carries — the traveler's own
  * withdrawal is `requested_by_customer`; ONLY the timer's release is `abandoned`.
@@ -852,6 +1096,8 @@ export interface HandoffTimerResult {
   released: number;
   autoApproved: number;
   stragglersAuthorized: number;
+  /** Accepted handoffs the fulfilment deadline moved to `booking_failed` on this pass. */
+  bookingFailed: number;
 }
 
 type HoldReleaseMeta = { attempts: number; nextAttemptAt: string | null; alertedAt: string | null };
@@ -970,7 +1216,7 @@ async function attemptHoldRelease(id: string, now: Date, out: HandoffTimerResult
 }
 
 export async function runHandoffTimers(now: Date = new Date()): Promise<HandoffTimerResult> {
-  const out: HandoffTimerResult = { fallbackOffered: 0, released: 0, autoApproved: 0, stragglersAuthorized: 0 };
+  const out: HandoffTimerResult = { fallbackOffered: 0, released: 0, autoApproved: 0, stragglersAuthorized: 0, bookingFailed: 0 };
   const fallbackCut = new Date(now.getTime() - handoffFallbackHours() * 3600_000);
   const releaseCut = new Date(now.getTime() - handoffReleaseHours() * 3600_000);
   const approveCut = new Date(now.getTime() - handoffAutoApproveDays() * 86_400_000);
@@ -1041,6 +1287,41 @@ export async function runHandoffTimers(now: Date = new Date()): Promise<HandoffT
   for (const r of (due.rows ?? []) as any[]) {
     const a = await approveHandoff(r.id, "auto");
     if (a.ok) out.autoApproved += 1;
+  }
+
+  // Fulfilment deadline. Anchor is accepted_at. Unset disables the trigger (no log).
+  // This job runs about hourly, so a failure can land up to about an hour after the deadline.
+  const fulfilmentHours = handoffFulfilmentHours();
+  if (fulfilmentHours != null) {
+    const cut = new Date(now.getTime() - fulfilmentHours * 3600_000);
+    const dueFail = await db.execute(sql`
+      SELECT id FROM expert_requests
+      WHERE handoff_kind IS NOT NULL AND status = 'accepted' AND source_purchase_id IS NULL
+        AND accepted_at < ${cut}
+      LIMIT 200
+    `);
+    for (const r of (dueFail.rows ?? []) as any[]) {
+      const failed = await failHandoffBooking(r.id, { kind: "deadline_passed" }, now, out);
+      if (failed.ok) out.bookingFailed += 1;
+    }
+  }
+
+  // Re-drive a captured failure whose refund has not been issued. Same key, same backoff and cap.
+  // Independent of the deadline switch: an expert failure still retries while the env var is unset.
+  const refundDue = await db.execute(sql`
+    SELECT id FROM expert_requests
+    WHERE handoff_kind IS NOT NULL AND status = 'booking_failed'
+      AND captured_at IS NOT NULL AND refund_id IS NULL AND payment_intent_id IS NOT NULL
+      AND COALESCE((optimization_context #>> '{bookingFailure,refundAttempts}')::int, 0) < ${HANDOFF_HOLD_RELEASE_MAX_ATTEMPTS}
+      AND (
+        (optimization_context #>> '{bookingFailure,nextRefundAt}') IS NULL
+        OR (optimization_context #>> '{bookingFailure,nextRefundAt}')::timestamptz <= ${now.toISOString()}::timestamptz
+      )
+    LIMIT 200
+  `);
+  for (const r of (refundDue.rows ?? []) as any[]) {
+    const row = await getHandoff(r.id);
+    if (row) await driveFailedBookingRefund(row, now, { dueAndCap: true });
   }
   return out;
 }

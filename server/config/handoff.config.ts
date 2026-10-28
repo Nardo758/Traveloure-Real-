@@ -28,3 +28,15 @@ export function handoffReleaseHours(): number {
 export function handoffAutoApproveDays(): number {
   return positiveNumberEnv("HANDOFF_AUTO_APPROVE_DAYS", 7);
 }
+
+/**
+ * Architect, Oct 28, 2026, 00:30 ET (via Leon): hours after `accepted_at` before an
+ * accepted handoff that was never fulfilled fails. Read from `HANDOFF_FULFILMENT_HOURS`
+ * at call time. No default; unset disables the deadline trigger.
+ */
+export function handoffFulfilmentHours(): number | null {
+  const raw = process.env.HANDOFF_FULFILMENT_HOURS;
+  if (raw == null || raw.trim() === "") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
