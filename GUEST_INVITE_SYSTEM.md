@@ -108,41 +108,6 @@ Current event planning platforms (The Knot, Zola, etc.) assume all guests travel
               │  - Guests: 2              │
               │  - Dietary: Vegan         │
               └───────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    SERP API INTEGRATION                          │
-│  (Future Phase - Not Yet Implemented)                            │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-              ┌───────────────────────────┐
-              │  Query SERP APIs          │
-              │  - Google Flights         │
-              │    Tampa → NYC 3/9-3/11   │
-              │  - Booking.com            │
-              │    Hotels near venue      │
-              │  - Uber API               │
-              │    TPA → Manhattan        │
-              │  - Viator API             │
-              │    NYC activities         │
-              └───────────────────────────┘
-                              │
-                              ▼
-              ┌───────────────────────────┐
-              │  Cache Results in DB      │
-              │  (guest_travel_plans)     │
-              └───────────────────────────┘
-                              │
-                              ▼
-              ┌───────────────────────────┐
-              │  Display Personalized     │
-              │  Recommendations          │
-              │  - Flights (5 options)    │
-              │  - Hotels (10 options)    │
-              │  - Transport ($45 Uber)   │
-              │  - Activities (12 ideas)  │
-              └───────────────────────────┘
 ```
 
 ---
