@@ -1,11 +1,11 @@
 # Mounted mutation authorization inventory
 
-Generated from `server/routes.ts`. **731** raw mounted mutation registrations and **723** unique METHOD+normalizedPath pairs were found.
+Generated from `server/routes.ts`. **730** raw mounted mutation registrations and **722** unique METHOD+normalizedPath pairs were found.
 
-The unique-pair count is **+177** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
+The unique-pair count is **+176** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
 
-Category totals: payments 31; admin 195; user-data 251; other 246.
-Boundary totals: admin-role 195; session-self 367; resource-owner 102; signature 6; public-or-system 53; unknown 0.
+Category totals: payments 31; admin 195; user-data 251; other 245.
+Boundary totals: admin-role 195; session-self 367; resource-owner 102; signature 6; public-or-system 52; unknown 0.
 
 | Method | Normalized path | Risk | Boundary | Ownership applicable | Expected ownership | Registrations | Fixture | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -315,8 +315,8 @@ Boundary totals: admin-role 195; session-self 367; resource-owner 102; signature
 | PATCH | `/api/ea/venues/:id` | admin | admin-role | no | unknown | `server/routes/ea.routes.ts:544` | unknown | unknown |
 | DELETE | `/api/emergency-contacts/:id` | other | session-self | no | unknown | `server/routes/content.routes.ts:7441` | unknown | unknown |
 | PATCH | `/api/emergency-contacts/:id` | other | session-self | no | unknown | `server/routes/content.routes.ts:7423` | unknown | unknown |
-| POST | `/api/events/:experienceId/invites` | other | session-self | no | unknown | `server/routes/guest-invites.ts:177` | unknown | unknown |
-| POST | `/api/events/:experienceId/invites/send` | other | session-self | no | unknown | `server/routes/guest-invites.ts:334` | unknown | unknown |
+| POST | `/api/events/:experienceId/invites` | other | session-self | no | unknown | `server/routes/guest-invites.ts:159` | unknown | unknown |
+| POST | `/api/events/:experienceId/invites/send` | other | session-self | no | unknown | `server/routes/guest-invites.ts:316` | unknown | unknown |
 | POST | `/api/expert-application` | other | session-self | no | unknown | `server/routes.ts:2697` | unknown | unknown |
 | POST | `/api/expert-booking-requests` | other | resource-owner | no | verified | `server/routes.ts:2047` | unknown | unknown |
 | POST | `/api/expert-forms` | other | session-self | no | unknown | `server/routes.ts:2791` | unknown | unknown |
@@ -409,12 +409,11 @@ Boundary totals: admin-role 195; session-self 367; resource-owner 102; signature
 | POST | `/api/instagram/deauthorize` | other | public-or-system | no | unknown | `server/routes/instagram.ts:598` (/deauthorize) | unknown | unknown |
 | POST | `/api/instagram/disconnect` | other | session-self | no | unknown | `server/routes/instagram.ts:533` (/disconnect) | unknown | unknown |
 | POST | `/api/instagram/publish` | other | session-self | no | unknown | `server/routes/instagram.ts:274` (/publish) | unknown | unknown |
-| POST | `/api/invite-templates` | other | session-self | no | unknown | `server/routes/guest-invites.ts:713` | unknown | unknown |
-| DELETE | `/api/invites/:inviteId` | other | session-self | no | unknown | `server/routes/guest-invites.ts:427` | unknown | unknown |
-| POST | `/api/invites/:token/origin` | other | public-or-system | no | unknown | `server/routes/guest-invites.ts:526` | unknown | unknown |
-| POST | `/api/invites/:token/rsvp` | other | public-or-system | no | unknown | `server/routes/guest-invites.ts:560` | unknown | unknown |
-| POST | `/api/invites/:token/travel-plans` | other | public-or-system | no | unknown | `server/routes/guest-invites.ts:658` | unknown | unknown |
-| POST | `/api/invites/:token/view` | other | public-or-system | no | unknown | `server/routes/guest-invites.ts:508` | unknown | unknown |
+| POST | `/api/invite-templates` | other | session-self | no | unknown | `server/routes/guest-invites.ts:591` | unknown | unknown |
+| DELETE | `/api/invites/:inviteId` | other | session-self | no | unknown | `server/routes/guest-invites.ts:409` | unknown | unknown |
+| POST | `/api/invites/:token/origin` | other | public-or-system | no | unknown | `server/routes/guest-invites.ts:508` | unknown | unknown |
+| POST | `/api/invites/:token/rsvp` | other | public-or-system | no | unknown | `server/routes/guest-invites.ts:542` | unknown | unknown |
+| POST | `/api/invites/:token/view` | other | public-or-system | no | unknown | `server/routes/guest-invites.ts:490` | unknown | unknown |
 | POST | `/api/itinerary-comparisons` | other | signature | no | verified | `server/routes.ts:10299` | unknown | unknown |
 | POST | `/api/itinerary-comparisons/:id/adopt-stop` | other | resource-owner | no | verified | `server/routes/plancard.routes.ts:411` | unknown | unknown |
 | POST | `/api/itinerary-comparisons/:id/adopt-stops` | other | resource-owner | no | verified | `server/routes/plancard.routes.ts:570` | unknown | unknown |
@@ -471,10 +470,10 @@ Boundary totals: admin-role 195; session-self 367; resource-owner 102; signature
 | POST | `/api/occasions` | other | session-self | no | unknown | `server/routes/occasions.routes.ts:85` | unknown | unknown |
 | DELETE | `/api/occasions/:id` | other | session-self | no | unknown | `server/routes/occasions.routes.ts:163` | unknown | unknown |
 | PATCH | `/api/occasions/:id` | other | session-self | no | unknown | `server/routes/occasions.routes.ts:123` | unknown | unknown |
-| POST | `/api/optimization-payments` | payments | resource-owner | yes | verified | `server/routes/optimization.routes.ts:400` | unknown | unknown |
-| POST | `/api/optimization-payments/cancel` | other | session-self | no | unknown | `server/routes/optimization.routes.ts:618` | unknown | unknown |
-| POST | `/api/optimization-payments/confirm` | payments | resource-owner | yes | verified | `server/routes/optimization.routes.ts:639` | unknown | unknown |
-| POST | `/api/optimization-preview` | other | session-self | no | unknown | `server/routes/optimization.routes.ts:75` | unknown | unknown |
+| POST | `/api/optimization-payments` | payments | resource-owner | yes | verified | `server/routes/optimization.routes.ts:402` | unknown | unknown |
+| POST | `/api/optimization-payments/cancel` | other | session-self | no | unknown | `server/routes/optimization.routes.ts:620` | unknown | unknown |
+| POST | `/api/optimization-payments/confirm` | payments | resource-owner | yes | verified | `server/routes/optimization.routes.ts:641` | unknown | unknown |
+| POST | `/api/optimization-preview` | other | session-self | no | unknown | `server/routes/optimization.routes.ts:76` | unknown | unknown |
 | DELETE | `/api/participants/:id` | user-data | session-self | yes | unknown | `server/routes/content.routes.ts:7342` | unknown | unknown |
 | PATCH | `/api/participants/:id` | user-data | resource-owner | yes | verified | `server/routes/content.routes.ts:7278` | unknown | unknown |
 | POST | `/api/participants/:id/payment` | payments | resource-owner | yes | verified | `server/routes/content.routes.ts:7323` | unknown | unknown |
