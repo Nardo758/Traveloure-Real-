@@ -25,7 +25,10 @@
  *       `2026-10-08-e1-zero-questions`)
  *   E16 a stop inserted between two routed stops, then removed: A-B and the other timed legs
  *       (B-C, D-E) come back with the same minutes and source (row 260, pt780u)
- *   E16b the same round trip when the restore ask gets no answer: the cached minutes survive
+ *   E16b the same round trip when the restore ask gets no answer: the cached minutes survive,
+ *       and the restored A-B leg is visible again (proposal_status set, superseded_at null)
+ *   E16c the leg key changes while the pair is split and the restore ask gets no answer: the
+ *       held leg is shown again, and the ask did run (the unanswered revive)
  *   E17 a rename of a stop makes no routing call and changes no leg
  *
  * NEGATIVE SPACE (§18d): the adapter is the CI stub (no Google call — the Google adapter's half is the
@@ -384,6 +387,13 @@ function sameRoutedLeg(before: any, after: any, pair: string): void {
   assert.equal(after.source, before.source, `${pair} source`);
 }
 
+/** A restored leg is on the slip only when it is not the hidden hold (proposal_status NULL). */
+function assertLegVisible(leg: any, pair: string): void {
+  assert.ok(leg, `${pair} is missing`);
+  assert.ok(leg.proposal_status != null, `${pair} is hidden — revive did not run`);
+  assert.equal(leg.superseded_at, null, `${pair} is still superseded — revive did not run`);
+}
+
 test("E16: inserting a stop and then removing it restores the cached routed legs", async () => {
   const trip = await threeLegPlan("e16");
   try {
@@ -403,6 +413,7 @@ test("E16: inserting a stop and then removing it restores the cached routed legs
     assert.equal(run.first, 3, `step 1 routing calls: ${run.first}`);
     assert.equal(run.inserted, 2, `step 2 routing calls: ${run.inserted}`);
     assert.equal(run.removed, 0, `step 3 routing calls: ${run.removed}`);
+    assertLegVisible(legByPair(run.after, "1:a>b"), "1:a>b");
     console.log(`[plan-legs E16] routing calls: step1=${run.first} insert=${run.inserted} remove=${run.removed}`);
   } finally {
     await db.execute(sql`DELETE FROM trips WHERE id = ${trip}`);
@@ -436,7 +447,41 @@ test("E16b: a cached routed leg survives when the restore ask gets no answer", a
     assert.equal(bc.id, legByPair(run.after, "1:b>c").id, "B-C was not the split pair");
     assert.equal(de.id, legByPair(run.after, "2:d>e").id, "D-E was not the split pair");
     assert.equal(run.removed, 0, `step 3 routing calls: ${run.removed} (the plan's own leg, not a new ask)`);
+    assertLegVisible(legByPair(run.after, "1:a>b"), "1:a>b");
     console.log(`[plan-legs E16b] routing calls: step1=${run.first} insert=${run.inserted} remove=${run.removed}`);
+  } finally {
+    await db.execute(sql`DELETE FROM trips WHERE id = ${trip}`);
+  }
+});
+
+test("E16c: a changed leg key with no router answer shows the held leg again", async () => {
+  const trip = await threeLegPlan("e16c");
+  try {
+    const first = new StubRoutingAdapter();
+    await computePlanLegs(trip, { adapter: first });
+    const ab = legByPair(await legs(trip), "1:a>b");
+    assert.ok(ab, "the first run routed A-B");
+    await item(trip, "x", 1, 1, P(0.015, 0.01), "10:15", "10:30");
+    await db.execute(sql`UPDATE itinerary_items SET sort_order = 2 WHERE id = ${`${trip}-b`}`);
+    await db.execute(sql`UPDATE itinerary_items SET sort_order = 3 WHERE id = ${`${trip}-c`}`);
+    await computePlanLegs(trip, { adapter: new StubRoutingAdapter() });
+    // The hour bucket is the departure hour. A's end moves 10:00 → 15:00 while A-B is split, so the
+    // pair's leg key no longer matches the held row when the stop is removed and the router is asked.
+    await db.execute(sql`UPDATE itinerary_items SET end_time = '15:00' WHERE id = ${`${trip}-a`}`);
+    await db.execute(sql`DELETE FROM itinerary_items WHERE id = ${`${trip}-x`}`);
+    const restore = new NoAnswerAdapter();
+    await computePlanLegs(trip, { adapter: restore as any });
+    const after = legByPair(await legs(trip), "1:a>b");
+    assert.ok(restore.calls > 0, `unanswered revive was not asked (calls: ${restore.calls})`);
+    assert.equal(after?.id, ab.id, "the held row is revived, not replaced");
+    assertLegVisible(after, "1:a>b");
+    assert.equal(Number(after.estimated_duration_minutes), Number(ab.estimated_duration_minutes), "1:a>b minutes");
+    assert.equal(after.source, ab.source, "1:a>b source");
+    const bc = legByPair(await legs(trip), "1:b>c");
+    const de = legByPair(await legs(trip), "2:d>e");
+    assertLegVisible(bc, "1:b>c");
+    assertLegVisible(de, "2:d>e");
+    console.log(`[plan-legs E16c] unanswered calls: ${restore.calls}`);
   } finally {
     await db.execute(sql`DELETE FROM trips WHERE id = ${trip}`);
   }
