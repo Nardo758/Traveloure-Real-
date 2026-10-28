@@ -8,6 +8,7 @@ import crypto from "crypto";
 import { buildInviteLink, sendExperienceInvites } from "../services/guest-invite-send.service";
 import { loadPlanGuestRoster } from "../services/plan-guest-roster.service";
 import { authorizeTripOwnerTier } from "../utils/trip-logistics-auth";
+import { buildGuestLanding, projectInviteForGuest } from "../services/guest-invite-landing";
 
 /**
  * GUEST INVITE SYSTEM — organizer invite management + public token-based guest RSVP.
@@ -27,8 +28,12 @@ import { authorizeTripOwnerTier } from "../utils/trip-logistics-auth";
  *   body names neither. `invite_sent_at` is stamped ONLY by the send rail's atomic claim, so it
  *   is a fact rather than an assumption, and a hidden occasion (migration 276
  *   `default_visibility`) is refused outright.
- * - The token GET returns a REDACTED view of the parent experience (title/destination/
- *   date only) — never the organizer's budget/preferences/stepData.
+ * - The token GET is a PURE READ (row 277, ledger `2026-10-28-guest-landing-fields`). It returns
+ *   the guest-safe invite (projectInviteForGuest: no guest email/phone, no organizer id), a
+ *   REDACTED view of the parent experience (never the organizer's budget/preferences/stepData),
+ *   and `landing`, data only (buildGuestLanding; the street address only at rsvpStatus
+ *   "accepted"). The view record moved to the POST …/view beacon. POST …/origin and …/rsvp
+ *   return the same guest-safe invite.
  */
 
 // ── Zod validation schemas (all fields capped — public/unauthenticated writers) ──
@@ -454,7 +459,9 @@ router.delete("/api/invites/:inviteId", isAuthenticated, async (req: Request, re
 
 /**
  * GET /api/invites/:token
- * Invite details for the guest (public). Experience is REDACTED to guest-safe fields.
+ * Invite details for the guest (public). A pure read: the guest-safe invite, the REDACTED
+ * experience and the `landing` data (row 277). The address is decided by the row the token
+ * resolved, never by the request.
  */
 router.get("/api/invites/:token", guestTokenLimiter, async (req: Request, res: Response) => {
   try {
@@ -465,14 +472,49 @@ router.get("/api/invites/:token", guestTokenLimiter, async (req: Request, res: R
       return res.status(404).json({ error: "Invite not found" });
     }
 
-    const { invite, experience } = row;
+    const invite = row.invite;
+    const { experience, landingSource } = row;
 
-    // Track view (first-view timestamp preserved; view counter incremented)
-    await storage.trackInviteView(token, invite.inviteViewedAt ?? null);
+    const landing = buildGuestLanding({
+      title: experience?.title,
+      eventDate: experience?.eventDate,
+      startTime: experience?.startTime,
+      location: experience?.location,
+      hostNote: experience?.hostNote,
+      rsvpBy: experience?.rsvpBy,
+      venueAddress: experience?.venueAddress,
+      hostFirstName: landingSource.hostFirstName,
+      marketSlug: landingSource.tripMarketSlug,
+      tripTimezone: landingSource.tripTimezone,
+      rsvpStatus: invite.rsvpStatus,
+    });
 
-    return res.json({ invite, experience: redactExperienceForGuest(experience) });
+    return res.json({
+      invite: projectInviteForGuest(invite),
+      experience: redactExperienceForGuest(experience),
+      landing,
+    });
   } catch (error: any) {
     console.error("Error fetching invite:", error);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/invites/:token/view
+ * The view record (row 277): the GET no longer writes, so link previews and prefetchers do not
+ * count as views. Reads only :token. First-view timestamp kept; view counter incremented.
+ */
+router.post("/api/invites/:token/view", guestTokenLimiter, async (req: Request, res: Response) => {
+  try {
+    const { token } = req.params;
+    const updated = await storage.trackInviteView(token);
+    if (!updated) {
+      return res.status(404).json({ error: "Invite not found" });
+    }
+    return res.status(204).end();
+  } catch (error: any) {
+    console.error("Error recording invite view:", error);
     return res.status(500).json({ error: error.message });
   }
 });
@@ -504,7 +546,7 @@ router.post("/api/invites/:token/origin", guestTokenLimiter, async (req: Request
       return res.status(404).json({ error: "Invite not found" });
     }
 
-    return res.json({ message: "Origin city saved successfully", invite: updated });
+    return res.json({ message: "Origin city saved successfully", invite: projectInviteForGuest(updated) });
   } catch (error: any) {
     console.error("Error saving origin:", error);
     return res.status(500).json({ error: error.message });
@@ -549,7 +591,7 @@ router.post("/api/invites/:token/rsvp", guestTokenLimiter, async (req: Request, 
       return res.status(404).json({ error: "Invite not found" });
     }
 
-    return res.json({ message: "RSVP submitted successfully", invite: updated });
+    return res.json({ message: "RSVP submitted successfully", invite: projectInviteForGuest(updated) });
   } catch (error: any) {
     console.error("Error submitting RSVP:", error);
     return res.status(500).json({ error: error.message });

@@ -2762,6 +2762,17 @@ export const userExperiences = pgTable("user_experiences", {
   // by the pick-based allowlist `userExperienceBodySchema` shares between POST and PATCH (§19).
   startTime: varchar("start_time", { length: 5 }),
   location: varchar("location", { length: 255 }),
+  // Row 277 (migration 413, ledger `2026-10-28-guest-landing-fields`): the guest invite landing's
+  // host-authored fields. All nullable, no DEFAULT, no CHECK. NULL = not set, and a guest-facing
+  // read OMITS the key; none is ever rendered as a default. Admitted only through the ONE
+  // pick-based allowlist the POST and PATCH share (§19); shapes below, stated once.
+  // The host's note to guests, shown before RSVP.
+  hostNote: text("host_note"),
+  // The street address. Released to a guest ONLY at rsvpStatus "accepted"
+  // (server/services/guest-invite-landing.ts); `location` stays the venue name as typed.
+  venueAddress: varchar("venue_address", { length: 255 }),
+  // The RSVP-by date, "YYYY-MM-DD" like event_date.
+  rsvpBy: date("rsvp_by"),
   // THE EVENT'S OWN BUDGET — the traveler's STATED PLANNING NUMBER, and nothing else
   // (ledger `2026-09-04-event-budget`; CLAUDE.md Locked Decision 29). The column is pre-existing;
   // that lane added no migration, only an admission shape and readers.
@@ -3851,6 +3862,22 @@ export const insertUserExperienceSchema = createInsertSchema(userExperiences).om
 export const userExperienceStartTimeSchema = z
   .string()
   .regex(/^\d{2}:\d{2}$/, 'startTime must be a wall-clock "HH:MM"')
+  .nullable()
+  .optional();
+
+/**
+ * Row 277 (migration 413, ledger `2026-10-28-guest-landing-fields`): THE SHAPE AUTHORITIES for the
+ * three guest-landing columns, stated once (§18 rule 1). The route's pick-based allowlist
+ * `.extend()`s exactly these. `.nullable()` clears a value; `.optional()` keeps an untouched field
+ * absent (the PATCH's "not mentioned"). The 1000-character note cap is this lane's default, not a
+ * ruling; the address cap is the column's own 255. rsvpBy is a shape check only ("YYYY-MM-DD"),
+ * like startTime.
+ */
+export const userExperienceHostNoteSchema = z.string().max(1000).nullable().optional();
+export const userExperienceVenueAddressSchema = z.string().max(255).nullable().optional();
+export const userExperienceRsvpBySchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'rsvpBy must be a date "YYYY-MM-DD"')
   .nullable()
   .optional();
 
