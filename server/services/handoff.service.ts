@@ -1418,13 +1418,16 @@ async function alertHoldReleaseCapped(row: HandoffRow, attempts: number): Promis
 
 /**
  * One cancel attempt for a `release_pending` row. The attempt count is claimed BEFORE the Stripe
- * call (§15). Confirmed (canceled, or already canceled/expired) flips the row to `released` and
- * sends the nothing-charged line. A failure stays `release_pending`, tells the traveler once, and
- * alerts staff when the cap is reached.
+ * call (§15). Confirmed (canceled, or already canceled/expired) flips the row to `released` and,
+ * when the row is not a failed booking, sends the nothing-charged line. A failure stays
+ * `release_pending`, tells the traveler once on that same condition, and alerts staff when the
+ * cap is reached. A failed booking (`optimization_context.bookingFailure`) sends neither line.
  */
 async function attemptHoldRelease(id: string, now: Date, out: HandoffTimerResult): Promise<void> {
   const row = await getHandoff(id);
   if (!row || row.status !== "release_pending" || row.capturedAt) return;
+  // Same read as the capture-race arm and the admin list: the key on the row already loaded.
+  const failedBooking = !!(row.optimizationContext as { bookingFailure?: unknown } | null)?.bookingFailure;
   const meta = readHoldRelease(row.optimizationContext);
   if (meta.attempts >= HANDOFF_HOLD_RELEASE_MAX_ATTEMPTS) {
     if (!meta.alertedAt) await alertHoldReleaseCapped(row, meta.attempts);
@@ -1467,25 +1470,29 @@ async function attemptHoldRelease(id: string, now: Date, out: HandoffTimerResult
     `);
     if (!flipped.rows?.length) return;
     out.released += 1;
-    await notify(
-      row.userId,
-      row.tripId ?? "",
-      "handoff_released",
-      "No local was free",
-      HANDOFF_HOLD_TRAVELER_COPY.nothingCharged,
-      { requestId: row.id },
-    );
+    if (!failedBooking) {
+      await notify(
+        row.userId,
+        row.tripId ?? "",
+        "handoff_released",
+        "No local was free",
+        HANDOFF_HOLD_TRAVELER_COPY.nothingCharged,
+        { requestId: row.id },
+      );
+    }
     return;
   }
   if (nextAttempts === 1) {
-    await notify(
-      row.userId,
-      row.tripId ?? "",
-      "handoff_release_pending",
-      "No local was free",
-      HANDOFF_HOLD_TRAVELER_COPY.checkingOnHold,
-      { requestId: row.id },
-    );
+    if (!failedBooking) {
+      await notify(
+        row.userId,
+        row.tripId ?? "",
+        "handoff_release_pending",
+        "No local was free",
+        HANDOFF_HOLD_TRAVELER_COPY.checkingOnHold,
+        { requestId: row.id },
+      );
+    }
   }
   if (nextAttempts >= HANDOFF_HOLD_RELEASE_MAX_ATTEMPTS) await alertHoldReleaseCapped(row, nextAttempts);
 }

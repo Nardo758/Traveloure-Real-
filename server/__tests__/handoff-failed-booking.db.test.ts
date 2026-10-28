@@ -18,10 +18,12 @@ import { sql } from "drizzle-orm";
 import { db } from "../db";
 import {
   HANDOFF_FAILED_BOOKING_TRAVELER_COPY,
+  HANDOFF_HOLD_RELEASE_MAX_ATTEMPTS,
   HANDOFF_HOLD_TRAVELER_COPY,
   HANDOFF_LIVE_STATUSES,
   HANDOFF_STATUSES,
   handoffBannerState,
+  handoffHoldReleaseBackoffMs,
   withdrawalStage,
 } from "@shared/handoff";
 import { handoffFulfilmentHours, handoffFulfilmentSince } from "../config/handoff.config";
@@ -139,6 +141,18 @@ handoff.__setHandoffPaymentsForTest({
 });
 
 const trips: string[] = [];
+
+async function noteTypes(requestId: string): Promise<string[]> {
+  const r = await db.execute(sql`
+    SELECT type FROM notifications
+    WHERE user_id = ${ids.owner} AND data->>'requestId' = ${requestId}
+  `);
+  return (r.rows ?? []).map((row) => String((row as { type: string }).type));
+}
+
+function holdReleaseOf(row: { optimizationContext: unknown } | null): { attempts?: number; nextAttemptAt?: string | null; alertedAt?: string | null } {
+  return ((row?.optimizationContext as { holdRelease?: { attempts?: number; nextAttemptAt?: string | null; alertedAt?: string | null } } | null)?.holdRelease) ?? {};
+}
 
 async function messages(requestId: string): Promise<string[]> {
   const r = await db.execute(sql`
@@ -442,9 +456,9 @@ test("F4: an uncaptured accept cancels the hold; a failed cancel retries on the 
   assert.equal(calls.cancel.filter((k) => k === `handoff-release-${ok.id}`).length, 1);
   assert.equal(calls.cancel.length, cancelsBefore + 1);
   const okNotes = await notes(ok.id);
-  assert.equal(countMessage(okNotes.map((n) => n.message), HANDOFF_HOLD_TRAVELER_COPY.nothingCharged), 1);
+  // B1: a failed-booking hold release sends neither hold line. F18 and F18b are the cases.
+  assert.equal(countMessage(okNotes.map((n) => n.message), HANDOFF_HOLD_TRAVELER_COPY.nothingCharged), 0);
   assert.equal(countMessage(okNotes.map((n) => n.message), HANDOFF_HOLD_TRAVELER_COPY.checkingOnHold), 0);
-  assert.equal(okNotes.find((n) => n.message === HANDOFF_HOLD_TRAVELER_COPY.nothingCharged)?.title, "No local was free");
   assert.equal(countMessage(okNotes.map((n) => n.message), REFUNDED), 0);
   assert.equal(await alertCount(ok.id), 1);
   assert.equal(await alertCount(ok.id, "handoff_hold_release_failed"), 0);
@@ -456,7 +470,7 @@ test("F4: an uncaptured accept cancels the hold; a failed cancel retries on the 
   assert.equal(first.ok, true);
   assert.equal((await handoff.getHandoff(stuck.id))!.status, "release_pending");
   assert.ok(failureOf(await handoff.getHandoff(stuck.id)));
-  assert.equal(countMessage(await messages(stuck.id), HANDOFF_HOLD_TRAVELER_COPY.checkingOnHold), 1);
+  assert.equal(countMessage(await messages(stuck.id), HANDOFF_HOLD_TRAVELER_COPY.checkingOnHold), 0);
   assert.equal(countMessage(await messages(stuck.id), HANDOFF_HOLD_TRAVELER_COPY.nothingCharged), 0);
   const failCancels = calls.cancel.filter((k) => k === `handoff-release-${stuck.id}`).length;
   const nextAt = ((await handoff.getHandoff(stuck.id))!.optimizationContext as { holdRelease?: { nextAttemptAt?: string } }).holdRelease?.nextAttemptAt;
@@ -466,8 +480,8 @@ test("F4: an uncaptured accept cancels the hold; a failed cancel retries on the 
   cancelMode = "ok";
   await handoff.runHandoffTimers(new Date(nextAt!));
   assert.equal((await handoff.getHandoff(stuck.id))!.status, "released");
-  assert.equal(countMessage(await messages(stuck.id), HANDOFF_HOLD_TRAVELER_COPY.checkingOnHold), 1);
-  assert.equal(countMessage(await messages(stuck.id), HANDOFF_HOLD_TRAVELER_COPY.nothingCharged), 1);
+  assert.equal(countMessage(await messages(stuck.id), HANDOFF_HOLD_TRAVELER_COPY.checkingOnHold), 0);
+  assert.equal(countMessage(await messages(stuck.id), HANDOFF_HOLD_TRAVELER_COPY.nothingCharged), 0);
   assert.equal(await alertCount(stuck.id), 1);
   assert.equal(await alertCount(stuck.id, "handoff_hold_release_failed"), 0);
   const capStillNamed = fs.readFileSync("server/services/handoff.service.ts", "utf8");
@@ -963,4 +977,97 @@ test("F17: a failed refund alerts once, and the retry cap does not alert again",
   await handoff.runHandoffTimers(new Date(Date.now() + 72 * 3_600_000));
   assert.equal((await alertRows(capped.id, "handoff_booking_refund_failed")).length, 1);
   refundMode = "succeeded";
+});
+
+test("F18: a confirmed hold cancel for a failed booking sends neither hold line", async () => {
+  refundMode = "succeeded";
+  cancelMode = "ok";
+  const { id } = await proposed("f18");
+  await db.execute(sql`UPDATE expert_requests SET status = 'accepted', accepted_at = NOW(), captured_at = NULL WHERE id = ${id}`);
+  const cancelsBefore = calls.cancel.length;
+  const out = await handoff.failHandoffBooking(id, { kind: "expert_withdrew", expertId: ids.expert });
+  assert.equal(out.ok, true, JSON.stringify(out));
+  const row = (await handoff.getHandoff(id))!;
+  assert.equal(row.status, "released");
+  assert.equal(row.capturedAt, null);
+  assert.equal(failureOf(row)?.kind, "expert_withdrew");
+  assert.equal(calls.cancel.filter((k) => k === `handoff-release-${id}`).length, 1);
+  assert.equal(calls.cancel.length, cancelsBefore + 1);
+  assert.equal(calls.refund.filter((r) => r.key === `handoff-failed-booking-refund-${id}`).length, 0);
+  const sent = await messages(id);
+  assert.equal(countMessage(sent, HANDOFF_HOLD_TRAVELER_COPY.nothingCharged), 0);
+  assert.equal(countMessage(sent, HANDOFF_HOLD_TRAVELER_COPY.checkingOnHold), 0);
+  const types = await noteTypes(id);
+  assert.equal(types.includes("handoff_released"), false);
+  assert.equal(types.includes("handoff_release_pending"), false);
+  assert.equal(await alertCount(id, "handoff_hold_release_failed"), 0);
+});
+
+test("F18b: a failed cancel still retries on the backoff, and the cap still alerts once, with no traveler hold line", async () => {
+  refundMode = "succeeded";
+  cancelMode = "fail";
+  const retry = await proposed("f18b");
+  await db.execute(sql`UPDATE expert_requests SET status = 'accepted', accepted_at = NOW(), captured_at = NULL WHERE id = ${retry.id}`);
+  const started = Date.now();
+  const first = await handoff.failHandoffBooking(retry.id, { kind: "expert_unbookable", expertId: ids.expert });
+  assert.equal(first.ok, true, JSON.stringify(first));
+  let row = (await handoff.getHandoff(retry.id))!;
+  assert.equal(row.status, "release_pending");
+  assert.equal(failureOf(row)?.kind, "expert_unbookable");
+  const meta = holdReleaseOf(row);
+  assert.equal(meta.attempts, 1);
+  assert.ok(meta.nextAttemptAt);
+  const wait = Date.parse(meta.nextAttemptAt!) - started;
+  const backoff = handoffHoldReleaseBackoffMs(1);
+  assert.ok(wait >= backoff - 5_000 && wait <= backoff + 5_000, `backoff ${wait} vs ${backoff}`);
+  assert.equal(calls.cancel.filter((k) => k === `handoff-release-${retry.id}`).length, 1);
+  assert.equal(countMessage(await messages(retry.id), HANDOFF_HOLD_TRAVELER_COPY.checkingOnHold), 0);
+  assert.equal(countMessage(await messages(retry.id), HANDOFF_HOLD_TRAVELER_COPY.nothingCharged), 0);
+
+  await handoff.runHandoffTimers(new Date(Date.parse(meta.nextAttemptAt!) - 60_000));
+  assert.equal(calls.cancel.filter((k) => k === `handoff-release-${retry.id}`).length, 1);
+  assert.equal((await handoff.getHandoff(retry.id))!.status, "release_pending");
+
+  cancelMode = "ok";
+  await handoff.runHandoffTimers(new Date(meta.nextAttemptAt!));
+  row = (await handoff.getHandoff(retry.id))!;
+  assert.equal(row.status, "released");
+  assert.equal(failureOf(row)?.kind, "expert_unbookable");
+  assert.equal(calls.cancel.filter((k) => k === `handoff-release-${retry.id}`).length, 2);
+  assert.equal(countMessage(await messages(retry.id), HANDOFF_HOLD_TRAVELER_COPY.checkingOnHold), 0);
+  assert.equal(countMessage(await messages(retry.id), HANDOFF_HOLD_TRAVELER_COPY.nothingCharged), 0);
+  assert.equal((await noteTypes(retry.id)).includes("handoff_released"), false);
+  assert.equal((await noteTypes(retry.id)).includes("handoff_release_pending"), false);
+  assert.equal(await alertCount(retry.id, "handoff_hold_release_failed"), 0);
+
+  cancelMode = "fail";
+  const capped = await proposed("f18bcap");
+  await db.execute(sql`UPDATE expert_requests SET status = 'accepted', accepted_at = NOW(), captured_at = NULL WHERE id = ${capped.id}`);
+  const cappedFirst = await handoff.failHandoffBooking(capped.id, { kind: "expert_withdrew", expertId: ids.expert });
+  assert.equal(cappedFirst.ok, true, JSON.stringify(cappedFirst));
+  for (let step = 0; step < HANDOFF_HOLD_RELEASE_MAX_ATTEMPTS; step++) {
+    const current = holdReleaseOf(await handoff.getHandoff(capped.id));
+    if (!current.nextAttemptAt) break;
+    await handoff.runHandoffTimers(new Date(current.nextAttemptAt));
+  }
+  const cappedRow = (await handoff.getHandoff(capped.id))!;
+  assert.equal(cappedRow.status, "release_pending");
+  assert.equal(failureOf(cappedRow)?.kind, "expert_withdrew");
+  const cappedMeta = holdReleaseOf(cappedRow);
+  assert.equal(cappedMeta.attempts, HANDOFF_HOLD_RELEASE_MAX_ATTEMPTS);
+  assert.equal(cappedMeta.nextAttemptAt ?? null, null);
+  assert.ok(cappedMeta.alertedAt);
+  assert.equal(calls.cancel.filter((k) => k === `handoff-release-${capped.id}`).length, HANDOFF_HOLD_RELEASE_MAX_ATTEMPTS);
+  const capAlerts = await alertRows(capped.id, "handoff_hold_release_failed");
+  assert.equal(capAlerts.length, 1);
+  assert.equal(capAlerts[0].reason, "release_attempt_cap");
+  assert.equal(countMessage(await messages(capped.id), HANDOFF_HOLD_TRAVELER_COPY.checkingOnHold), 0);
+  assert.equal(countMessage(await messages(capped.id), HANDOFF_HOLD_TRAVELER_COPY.nothingCharged), 0);
+  assert.equal((await noteTypes(capped.id)).includes("handoff_release_pending"), false);
+  const cancelsAtCap = calls.cancel.filter((k) => k === `handoff-release-${capped.id}`).length;
+  await handoff.runHandoffTimers(new Date(Date.now() + 48 * 3_600_000));
+  assert.equal(calls.cancel.filter((k) => k === `handoff-release-${capped.id}`).length, cancelsAtCap);
+  assert.equal((await alertRows(capped.id, "handoff_hold_release_failed")).length, 1);
+  assert.equal((await handoff.getHandoff(capped.id))!.status, "release_pending");
+  cancelMode = "ok";
 });
