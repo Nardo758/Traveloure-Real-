@@ -240,11 +240,9 @@ import { loadEarnerRatings } from "./services/earner-rating.service";
 import type { User } from "@shared/models/auth";
 import {
   eventInvites,
-  guestTravelPlans,
   inviteTemplates,
   inviteSendLog,
   type EventInvite,
-  type GuestTravelPlan,
   type InviteTemplate,
   type InviteSendLog,
 } from "../shared/guest-invites-schema";
@@ -9625,24 +9623,6 @@ export class DatabaseStorage implements IStorage {
   }): Promise<EventInvite | null> {
     const [row] = await db.update(eventInvites).set(values)
       .where(eq(eventInvites.uniqueToken, token)).returning();
-    return row ?? null;
-  }
-
-  async getTravelPlanByInviteId(inviteId: string): Promise<GuestTravelPlan | null> {
-    const [row] = await db.select().from(guestTravelPlans)
-      .where(eq(guestTravelPlans.inviteId, inviteId)).limit(1);
-    return row ?? null;
-  }
-
-  async createTravelPlan(inviteId: string, values?: Partial<GuestTravelPlan>): Promise<GuestTravelPlan> {
-    const [row] = await db.insert(guestTravelPlans)
-      .values({ inviteId, ...values } as any).returning();
-    return row;
-  }
-
-  async updateTravelPlan(travelPlanId: string, values: Partial<GuestTravelPlan>): Promise<GuestTravelPlan | null> {
-    const [row] = await db.update(guestTravelPlans).set(values as any)
-      .where(eq(guestTravelPlans.id, travelPlanId)).returning();
     return row ?? null;
   }
 

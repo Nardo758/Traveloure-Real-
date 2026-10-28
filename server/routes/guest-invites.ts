@@ -87,24 +87,6 @@ const inviteTemplateSchema = z.object({
   eventType: z.string().max(100).optional(),
 });
 
-// Travel-plan selections are guest-chosen option blobs (flight/hotel/transport JSON from
-// the recommendations surface). They are stored on the guest's OWN travel-plan row only;
-// cap sizes so an unauthenticated caller can't stuff unbounded jsonb.
-const optionBlob = z.record(z.any());
-const isoDate = z
-  .string()
-  .max(40)
-  .refine((s) => !Number.isNaN(new Date(s).getTime()), "Invalid date");
-
-const travelPlansSchema = z.object({
-  selectedFlight: optionBlob.optional(),
-  selectedTransport: optionBlob.optional(),
-  selectedAccommodation: optionBlob.optional(),
-  selectedActivities: z.array(optionBlob).max(50).optional(),
-  arrivalDate: isoDate.optional(),
-  departureDate: isoDate.optional(),
-});
-
 // ── Helpers ──
 
 /** Session user id — works for both Replit-OIDC (claims.sub) and email/password (id) sessions. */
@@ -594,110 +576,6 @@ router.post("/api/invites/:token/rsvp", guestTokenLimiter, async (req: Request, 
     return res.json({ message: "RSVP submitted successfully", invite: projectInviteForGuest(updated) });
   } catch (error: any) {
     console.error("Error submitting RSVP:", error);
-    return res.status(500).json({ error: error.message });
-  }
-});
-
-/**
- * GET /api/invites/:token/recommendations
- * Personalized travel recommendations for the guest. Honest placeholder until the
- * flight/hotel API integration lands (§13 — never fabricates options).
- */
-router.get("/api/invites/:token/recommendations", guestTokenLimiter, async (req: Request, res: Response) => {
-  try {
-    const { token } = req.params;
-
-    const row = await storage.getInviteByToken(token);
-    if (!row) {
-      return res.status(404).json({ error: "Invite not found" });
-    }
-
-    const { invite, experience } = row;
-
-    if (!invite.originCity) {
-      return res.status(400).json({
-        error: "Origin city not set. Please set your city of origin first.",
-        needsOrigin: true,
-      });
-    }
-
-    let travelPlan = await storage.getTravelPlanByInviteId(invite.id);
-    if (!travelPlan) {
-      travelPlan = await storage.createTravelPlan(invite.id);
-    }
-
-    const recommendations = {
-      origin: {
-        city: invite.originCity,
-        state: invite.originState,
-        country: invite.originCountry,
-      },
-      destination: {
-        city: experience?.location,
-        eventDate: experience?.eventDate,
-      },
-      flights: travelPlan.flightOptions || [],
-      groundTransport: travelPlan.transportOptions || [],
-      accommodations: travelPlan.accommodationOptions || [],
-      activities: travelPlan.activityRecommendations || [],
-      estimatedCost: travelPlan.estimatedTotalCost,
-      needsApiIntegration: true,
-    };
-
-    return res.json({ recommendations, travelPlan });
-  } catch (error: any) {
-    console.error("Error fetching recommendations:", error);
-    return res.status(500).json({ error: error.message });
-  }
-});
-
-/**
- * POST /api/invites/:token/travel-plans
- * Update the guest's travel selections (public — scoped to the token's own plan row).
- */
-router.post("/api/invites/:token/travel-plans", guestTokenLimiter, async (req: Request, res: Response) => {
-  try {
-    const { token } = req.params;
-
-    const validation = travelPlansSchema.safeParse(req.body);
-    if (!validation.success) {
-      return res.status(400).json({ error: "Validation failed", details: validation.error.errors });
-    }
-
-    const {
-      selectedFlight,
-      selectedTransport,
-      selectedAccommodation,
-      selectedActivities,
-      arrivalDate,
-      departureDate,
-    } = validation.data;
-
-    const row = await storage.getInviteByToken(token);
-    if (!row) {
-      return res.status(404).json({ error: "Invite not found" });
-    }
-
-    const planValues = {
-      selectedFlight,
-      selectedTransport,
-      selectedAccommodation,
-      selectedActivities,
-      arrivalDate: arrivalDate ? new Date(arrivalDate) : undefined,
-      departureDate: departureDate ? new Date(departureDate) : undefined,
-    } as any;
-
-    const existingPlan = await storage.getTravelPlanByInviteId(row.invite.id);
-
-    if (existingPlan) {
-      const updated = await storage.updateTravelPlan(existingPlan.id, planValues);
-      return res.json({ message: "Travel plans updated successfully", travelPlan: updated });
-    } else {
-      const created = await storage.createTravelPlan(row.invite.id, planValues);
-      return res.json({ message: "Travel plans created successfully", travelPlan: created });
-    }
-  } catch (error: any) {
-    console.error("Error updating travel plans:", error);
     return res.status(500).json({ error: error.message });
   }
 });

@@ -108,41 +108,6 @@ Current event planning platforms (The Knot, Zola, etc.) assume all guests travel
               │  - Guests: 2              │
               │  - Dietary: Vegan         │
               └───────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                    SERP API INTEGRATION                          │
-│  (Future Phase - Not Yet Implemented)                            │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-              ┌───────────────────────────┐
-              │  Query SERP APIs          │
-              │  - Google Flights         │
-              │    Tampa → NYC 3/9-3/11   │
-              │  - Booking.com            │
-              │    Hotels near venue      │
-              │  - Uber API               │
-              │    TPA → Manhattan        │
-              │  - Viator API             │
-              │    NYC activities         │
-              └───────────────────────────┘
-                              │
-                              ▼
-              ┌───────────────────────────┐
-              │  Cache Results in DB      │
-              │  (guest_travel_plans)     │
-              └───────────────────────────┘
-                              │
-                              ▼
-              ┌───────────────────────────┐
-              │  Display Personalized     │
-              │  Recommendations          │
-              │  - Flights (5 options)    │
-              │  - Hotels (10 options)    │
-              │  - Transport ($45 Uber)   │
-              │  - Activities (12 ideas)  │
-              └───────────────────────────┘
 ```
 
 ---
@@ -404,21 +369,44 @@ Current event planning platforms (The Knot, Zola, etc.) assume all guests travel
   "invite": {
     "id": "uuid-1",
     "guestName": "John Smith",
-    "guestEmail": "john@example.com",
     "originCity": null,
-    "rsvpStatus": "pending"
+    "originState": null,
+    "originCountry": null,
+    "rsvpStatus": "pending",
+    "numberOfGuests": 1
   },
   "experience": {
     "id": "exp-uuid",
     "title": "Sarah & Mike's Wedding",
+    "location": "New York City, NY",
     "destination": "New York City, NY",
+    "eventDate": "2025-03-10",
     "startDate": "2025-03-10",
-    "endDate": "2025-03-10"
+    "status": "planning",
+    "experienceType": "Wedding"
+  },
+  "landing": {
+    "hostFirstName": "Sarah",
+    "title": "Sarah & Mike's Wedding",
+    "eventDate": "2025-03-10"
   }
 }
 ```
 
-**Tracking:** This endpoint automatically increments `view_count` and sets `invite_viewed_at` on first view.
+`landing` is data only, and every key is optional: an absent key means not set or not released. Its keys are `hostFirstName`, `title`, `eventDate`, `startTime`, `timezone`, `venue`, `area`, `hostNote`, `rsvpBy` and `venueAddress`. `venueAddress` is present only when `rsvpStatus` is `"accepted"`. Source of truth: `shared/guest-invite-landing.ts` and `redactExperienceForGuest` in `server/routes/guest-invites.ts`.
+
+**Tracking:** none. This endpoint is a pure read and writes nothing; link previews and prefetchers do not count as views. Views are recorded by `POST /api/invites/:token/view`.
+
+---
+
+#### `POST /api/invites/:token/view`
+**Record a view (public beacon)**
+
+**Request Body:** none.
+
+**Responses:** `204` (recorded) or `404` (unknown token).
+
+Sets `invite_viewed_at` on the first view only, sets `last_viewed_at`, and increments `view_count`.
 
 ---
 
@@ -440,7 +428,15 @@ Current event planning platforms (The Knot, Zola, etc.) assume all guests travel
 ```json
 {
   "message": "Origin city saved successfully",
-  "invite": { ... }
+  "invite": {
+    "id": "uuid-1",
+    "guestName": "John Smith",
+    "originCity": "Tampa",
+    "originState": "FL",
+    "originCountry": "United States",
+    "rsvpStatus": "pending",
+    "numberOfGuests": 1
+  }
 }
 ```
 
@@ -466,102 +462,15 @@ Current event planning platforms (The Knot, Zola, etc.) assume all guests travel
 ```json
 {
   "message": "RSVP submitted successfully",
-  "invite": { ... }
-}
-```
-
----
-
-#### `GET /api/invites/:token/recommendations`
-**Get personalized travel recommendations**
-
-**Response (Current - Without SERP APIs):**
-```json
-{
-  "recommendations": {
-    "origin": {
-      "city": "Tampa",
-      "state": "FL",
-      "country": "United States"
-    },
-    "destination": {
-      "city": "New York City",
-      "eventDate": "2025-03-10"
-    },
-    "flights": [],
-    "groundTransport": [],
-    "accommodations": [],
-    "activities": [],
-    "needsApiIntegration": true
-  },
-  "travelPlan": { ... }
-}
-```
-
-**Response (Future - With SERP APIs):**
-```json
-{
-  "recommendations": {
-    "origin": { ... },
-    "destination": { ... },
-    "flights": [
-      {
-        "airline": "Delta",
-        "price": 245,
-        "departure": "2025-03-09T08:00:00Z",
-        "arrival": "2025-03-09T11:30:00Z",
-        ...
-      },
-      ...
-    ],
-    "groundTransport": [
-      {
-        "type": "uber",
-        "from": "TPA Airport",
-        "to": "Wedding Venue Manhattan",
-        "estimatedCost": 75,
-        "duration": "30 mins"
-      },
-      ...
-    ],
-    "accommodations": [
-      {
-        "name": "The Plaza Hotel",
-        "distanceFromVenue": "0.5 miles",
-        "pricePerNight": 350,
-        "rating": 4.5,
-        ...
-      },
-      ...
-    ],
-    "activities": [
-      {
-        "title": "Central Park Walking Tour",
-        "duration": "2 hours",
-        "price": 45,
-        ...
-      },
-      ...
-    ],
-    "estimatedCost": 1245
+  "invite": {
+    "id": "uuid-1",
+    "guestName": "John Smith",
+    "originCity": "Tampa",
+    "originState": "FL",
+    "originCountry": "United States",
+    "rsvpStatus": "accepted",
+    "numberOfGuests": 2
   }
-}
-```
-
----
-
-#### `POST /api/invites/:token/travel-plans`
-**Update guest's travel selections**
-
-**Request Body:**
-```json
-{
-  "selectedFlight": { ... },
-  "selectedAccommodation": { ... },
-  "selectedTransport": { ... },
-  "selectedActivities": [ ... ],
-  "arrivalDate": "2025-03-09T14:00:00Z",
-  "departureDate": "2025-03-11T10:00:00Z"
 }
 ```
 
@@ -612,7 +521,6 @@ Current event planning platforms (The Knot, Zola, etc.) assume all guests travel
 #### Step 1: Welcome
 - Personalized greeting: "You're Invited, John! 🎉"
 - Event details (name, location, date)
-- Explanation of personalized travel feature
 
 #### Step 2: Origin City Input
 - City, State, Country inputs
@@ -627,144 +535,6 @@ Current event planning platforms (The Knot, Zola, etc.) assume all guests travel
 - **Transportation Needed:** Checkbox
 - **Special Requests:** Textarea
 - **Message to Host:** Textarea
-
-#### Step 4: Recommendations
-- **Tabs:** Flights, Transport, Hotels, Activities
-- Personalized results based on origin city
-- Placeholder UI (until SERP APIs integrated)
-- Booking links for external sites
-
----
-
-## 🔮 SERP API Integration Strategy
-
-### Phase 1: Core APIs (MVP+)
-
-#### 1. **Google Flights API / Amadeus API**
-**Purpose:** Flight search from origin → destination
-
-**Query:**
-```
-origin: TPA (Tampa International)
-destination: NYC (All airports: JFK, LGA, EWR)
-dates: 3/9/2025 - 3/11/2025 (around event date)
-passengers: 2 (from RSVP)
-```
-
-**Data to Cache:**
-- Airline name
-- Flight numbers
-- Departure/arrival times
-- Duration
-- Stops
-- Price (USD)
-- Booking link
-
-**Caching Strategy:**
-- Cache for 24 hours per origin-destination pair
-- Refresh if guest changes arrival/departure dates
-- Store in `guest_travel_plans.flight_options` JSONB
-
----
-
-#### 2. **Booking.com Affiliate API**
-**Purpose:** Hotels near event venue
-
-**Query:**
-```
-location: Event venue address (geocoded)
-radius: 5 miles
-check_in: Event date - 1 day
-check_out: Event date + 1 day
-guests: 2 (from RSVP)
-```
-
-**Data to Cache:**
-- Hotel name
-- Address
-- Distance from venue
-- Price per night
-- Total price
-- Rating (stars + guest score)
-- Photos
-- Amenities
-- Booking link
-
----
-
-#### 3. **Uber API / Google Maps Distance Matrix**
-**Purpose:** Ground transport estimates
-
-**Calculations:**
-- **Origin Airport → Venue**
-  - Example: TPA → Manhattan wedding venue
-  - Uber estimate: $75, 30 mins
-- **Hotel → Venue**
-  - Example: The Plaza → Venue
-  - Walking: 0.5 miles, 10 mins
-  - Uber: $12, 5 mins
-
-**Data to Cache:**
-- Transport type (Uber, Lyft, taxi, rental car, public transit)
-- Estimated cost
-- Duration
-- Distance
-
----
-
-#### 4. **Viator API / TripAdvisor API**
-**Purpose:** Activities in destination city
-
-**Query:**
-```
-location: Event destination city
-categories: Tours, Attractions, Food & Drink
-duration: 2-4 hours (for day-before or day-after)
-price_range: $20-$100
-```
-
-**Data to Cache:**
-- Activity title
-- Description
-- Duration
-- Price
-- Rating
-- Photos
-- Booking link
-
----
-
-### Phase 2: Advanced APIs
-
-#### 5. **OpenWeather API**
-**Purpose:** Weather forecast for event date
-
-#### 6. **Rental Car APIs**
-**Purpose:** Car rental options at destination airport
-
-#### 7. **Restaurant APIs (OpenTable, Yelp)**
-**Purpose:** Dining recommendations near venue
-
----
-
-### Caching & Optimization
-
-**Why Cache?**
-- Reduce API costs (flights are expensive per query)
-- Faster page loads for guests
-- Multiple guests from same city can share results
-
-**Cache Strategy:**
-```
-Key: origin_city + destination_city + event_date
-TTL: 24 hours
-Storage: guest_travel_plans.flight_options (JSONB)
-```
-
-**Example:**
-- Guest A from Tampa queries flights → API call → Cache result
-- Guest B from Tampa queries 2 hours later → Serve from cache (no API call)
-- Guest C from Boston queries → Different cache key → New API call
 
 ---
 
@@ -804,16 +574,6 @@ Storage: guest_travel_plans.flight_options (JSONB)
 - [x] RSVP form with all fields
 - [x] Token generation & validation
 - [x] View tracking
-
-### 🔄 Phase 2: SERP API Integration (NEXT)
-
-- [ ] Google Flights API integration
-- [ ] Booking.com API integration
-- [ ] Uber API / Google Maps integration
-- [ ] Viator API integration
-- [ ] Result caching in `guest_travel_plans`
-- [ ] Recommendation display UI
-- [ ] Booking link tracking
 
 ### 📅 Phase 3: Polish & Optimization (FUTURE)
 
