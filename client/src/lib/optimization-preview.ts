@@ -84,6 +84,8 @@ export interface OptimizationFeeQuote {
   coveredByTripPass: boolean;
   /** R-ac (step 6): the Trip Pass's run allowance on this trip; absent ⇒ no active pass. */
   tripPassRuns?: { cap: number; used: number; left: number };
+  /** Server truth from `optimizerFreeRetimes()`; null or absent means not known, the client never reads the env or holds a literal. */
+  freeRetimesPerVersion?: number | null;
 }
 
 /**
