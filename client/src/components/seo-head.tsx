@@ -1,4 +1,6 @@
 import { useEffect } from "react";
+import { HOMEPAGE_META_DESCRIPTION } from "@/lib/g02-g06-copy";
+import { SITE_TITLE } from "@/lib/site-meta-copy";
 
 interface SEOHeadProps {
   title?: string;
@@ -20,8 +22,8 @@ interface SEOHeadProps {
   ogTitle?: string;
 }
 
-const DEFAULT_TITLE = "Traveloure - Your AI-Powered Travel Planning Platform";
-const DEFAULT_DESCRIPTION = "Plan unforgettable experiences with Traveloure. From romantic getaways to corporate events, our AI-powered platform connects you with expert travel planners and service providers.";
+const DEFAULT_TITLE = SITE_TITLE;
+const DEFAULT_DESCRIPTION = HOMEPAGE_META_DESCRIPTION;
 const DEFAULT_IMAGE = "/og-cover.png";
 const SITE_NAME = "Traveloure";
 const TWITTER_HANDLE = "@traveloure";
