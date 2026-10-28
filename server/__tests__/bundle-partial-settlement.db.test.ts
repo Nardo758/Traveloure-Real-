@@ -76,6 +76,9 @@ import {
 } from "../services/bundle-partial-settlement.service";
 import { BUNDLE_SETTLEMENT_REFUND_SOURCE, stripePaymentService } from "../services/stripe-payment.service";
 import { PARTIALLY_COMPLETED_STATUS } from "@shared/bundle-component-states";
+import { isScheduledAutomationSkip } from "../automations/scheduler-wrapper";
+import { paymentAutomationRegistry } from "../automations/payments";
+import { runPaymentSchedule } from "../automations/payments/runtime";
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const ids = {
@@ -1143,4 +1146,137 @@ test("S20 — CAPACITY: a failed or cancelled component releases NOTHING and say
   );
 
   await db.execute(sql`DELETE FROM vendor_availability_slots WHERE id = ${slotId}`).catch(() => {});
+});
+
+// ═══ Row 269 — the node `payments.bundle-partial-settlement` through runPaymentSchedule ══════════
+// The daily timer in server/index.ts is an inline lambda, so these cases replicate its call.
+// failCDeliverAB (S2) already runs the money leg, and S18 shows a promoted row is not a sweep
+// candidate (scanned === 0). The sweep's own candidate — the one that makes settled === 1 — is the
+// S4 shape: S2's components (C failed, A and B delivered) with the parent flipped and no settlement
+// row, the process having died between the flip and the claim. Stripe stays the file's double.
+
+/** S2's component shape, parent flipped, no settlement row and no Stripe call yet. */
+async function bornUnsettledPartial(): Promise<string> {
+  const id = await bornBundleBooking();
+  const f = await recordBundleComponentFailure({ bookingId: id, componentServiceId: ids.compC, actor, reason: "venue closed" });
+  assert.equal(f.recorded, true);
+  const a = await recordBundleComponentCompletion({ bookingId: id, componentServiceId: ids.compA, actor });
+  assert.equal(a.recorded, true);
+  await db.execute(sql`
+    UPDATE booking_component_states
+       SET status = 'completed', completed_at = NOW()
+     WHERE booking_id = ${id} AND component_service_id = ${ids.compB}
+  `);
+  const before = calls.length;
+  const flip = await settleBundlePartialCompletion({ bookingId: id, actor });
+  assert.equal(flip.settled, true, "the flip landed");
+  assert.equal(calls.length, before, "the flip does not refund; the node does");
+  assert.equal((await settlementRows(id)).length, 0);
+  assert.equal((await readBooking(id)).status, PARTIALLY_COMPLETED_STATUS);
+  return id;
+}
+
+async function runBundleSweep(onlyBookingIds: string[], context?: Record<string, unknown>) {
+  return runPaymentSchedule(
+    "payments.bundle-partial-settlement",
+    "bundle-partial-settlement-sweep",
+    () => sweepUnsettledBundlePartials({ onlyBookingIds }),
+    { runnerName: "bundle-partial-settlement-sweep", ...(context ? { context } : {}) },
+  );
+}
+
+test("S21 — through the node: one unsettled partial is refunded once, under bundle-settle-<id>", async () => {
+  stubSucceed();
+  const id = await bornUnsettledPartial();
+  const result = await runBundleSweep([id]);
+  assert.equal(isScheduledAutomationSkip(result), false, "the node ran");
+  assert.equal((result as { __skipped?: unknown }).__skipped, undefined, "the background-job runner did not skip");
+  const sweep = result as { settled: number; settledBookingIds: string[] };
+  assert.equal(sweep.settled, 1);
+  assert.deepEqual(sweep.settledBookingIds, [id]);
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].options.idempotencyKey, `bundle-settle-${id}`);
+  assert.equal(calls[0].params.metadata.bookingId, id);
+  assert.equal((await refundRows(id)).length, 1);
+  const s = await settlementRows(id);
+  assert.equal(s.length, 1);
+  assert.ok(s[0].settled_at, "the settlement row is promoted");
+});
+
+test("S22 — a second run scans nothing, and a settled or not-partial booking is never refunded", async () => {
+  stubSucceed();
+  const id = await bornUnsettledPartial();
+  const first = await runBundleSweep([id]);
+  assert.equal((first as { settled?: number }).settled, 1);
+  assert.equal(calls.length, 1);
+  assert.equal((await refundRows(id)).length, 1);
+
+  const again = await runBundleSweep([id]);
+  assert.equal(isScheduledAutomationSkip(again), false);
+  const second = again as { scanned: number; settled: number; alreadySettled: number };
+  assert.equal(second.scanned, 0, "a settled booking is not a candidate");
+  assert.equal(second.settled, 0);
+  assert.equal(second.alreadySettled, 0);
+  assert.equal(calls.length, 1, "no second Stripe call");
+  assert.equal((await refundRows(id)).length, 1, "no second refunds row");
+
+  const confirmed = await bornBundleBooking();
+  const confirmedSweep = await runBundleSweep([confirmed]);
+  const confirmedResult = confirmedSweep as { scanned: number; settled: number };
+  assert.equal(confirmedResult.scanned, 0);
+  assert.equal(confirmedResult.settled, 0);
+  assert.equal(calls.filter((c) => c.params?.metadata?.bookingId === confirmed).length, 0);
+  assert.equal((await refundRows(confirmed)).length, 0);
+
+  const settled = await bornBundleBooking();
+  await failCDeliverAB(settled);
+  const callsAfterRecorder = calls.length;
+  assert.equal(calls.filter((c) => c.params?.metadata?.bookingId === settled).length, 1, "the recorder settled it, not the sweep");
+  const settledSweep = await runBundleSweep([settled]);
+  const settledResult = settledSweep as { scanned: number; settled: number };
+  assert.equal(settledResult.scanned, 0, "a fully settled bundle is not a candidate");
+  assert.equal(settledResult.settled, 0);
+  assert.equal(calls.length, callsAfterRecorder, "the sweep made zero calls for the settled bundle");
+  assert.equal((await refundRows(settled)).length, 1);
+});
+
+test("S23 — a wrong trigger skips the node and calls neither the action nor Stripe", async () => {
+  stubSucceed();
+  let actionCalls = 0;
+  const result = await runPaymentSchedule(
+    "payments.bundle-partial-settlement",
+    "bundle-partial-settlement-sweep",
+    async () => {
+      actionCalls += 1;
+      return sweepUnsettledBundlePartials({ onlyBookingIds: [] });
+    },
+    { context: { triggeredBy: "not-the-sweep" } },
+  );
+  assert.equal(isScheduledAutomationSkip(result), true);
+  assert.equal((result as { reason?: string }).reason, "condition");
+  assert.equal(actionCalls, 0);
+  assert.equal(calls.length, 0);
+});
+
+test("S24 — the warm-instance timer calls this node, and the registry schedule id matches", () => {
+  const index = src("server/index.ts");
+  const idAt = index.indexOf('"payments.bundle-partial-settlement"');
+  assert.ok(idAt > 0, "server/index.ts names the node");
+  const callAt = index.lastIndexOf("runPaymentSchedule(", idAt);
+  const delayAt = index.indexOf("jitteredStartupDelay(90 * 60 * 1000)", idAt);
+  assert.ok(callAt >= 0 && delayAt > callAt, "the call sits before its 90-minute delay");
+  const slice = index.slice(callAt, delayAt);
+  assert.match(slice, /"payments\.bundle-partial-settlement"/);
+  assert.match(slice, /"bundle-partial-settlement-sweep"/);
+  assert.match(slice, /sweepUnsettledBundlePartials/);
+  assert.match(slice, /runnerName:\s*"bundle-partial-settlement-sweep"/);
+
+  const node = paymentAutomationRegistry.byId.get("payments.bundle-partial-settlement");
+  assert.ok(node, "the registry holds the node");
+  assert.equal(node.trigger.kind, "cron");
+  assert.equal(
+    node.trigger.kind === "cron" ? node.trigger.scheduleId : "",
+    "bundle-partial-settlement-sweep",
+  );
 });
