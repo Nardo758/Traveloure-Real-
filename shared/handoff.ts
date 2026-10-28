@@ -46,6 +46,7 @@ export const HANDOFF_STATUSES = [
   "withdrawn", // the traveler withdrew
   "released", // nobody accepted in time; Stripe confirmed the hold was canceled
   "release_pending", // the release window passed, but Stripe has not confirmed the cancel
+  "booking_failed", // an accepted request ended without a fulfilled booking
 ] as const;
 export type HandoffStatus = (typeof HANDOFF_STATUSES)[number];
 
@@ -73,7 +74,7 @@ export function withdrawalStage(status: string | null | undefined): WithdrawalSt
   if (status === "authorizing" || status === "proposed" || status === "unmatched") return "before_accept";
   if (status === "accepted") return "after_accept";
   if (status === "delivered") return "after_delivery";
-  return null; // approved / withdrawn / released / release_pending — nothing left to withdraw from
+  return null; // approved / withdrawn / released / release_pending / booking_failed — nothing left to withdraw from
 }
 
 /**
@@ -83,6 +84,20 @@ export function withdrawalStage(status: string | null | undefined): WithdrawalSt
 export const HANDOFF_HOLD_TRAVELER_COPY = {
   checkingOnHold: "We're checking on your card hold",
   nothingCharged: "We released the hold on your card. Nothing was charged.",
+} as const;
+
+/**
+ * Traveler lines for an accepted handoff that ended without a fulfilled booking.
+ * Sent from the server only. `refunded` + `chooseAnother` go out together, and only
+ * after a refund is issued. `checkingPayment` is the one fallback until then.
+ * `title` is the notification title (the column is NOT NULL). Banner copy is separate
+ * and is not read from here.
+ */
+export const HANDOFF_FAILED_BOOKING_TRAVELER_COPY = {
+  title: "Booking didn't go ahead",
+  refunded: "Your booking didn't go ahead, and we've refunded you in full.",
+  chooseAnother: "You can choose another expert whenever you're ready.",
+  checkingPayment: "We're checking on your payment. You'll hear from us by email.",
 } as const;
 
 /** How many Stripe cancel attempts the handoff timer makes before it stops and alerts staff. */

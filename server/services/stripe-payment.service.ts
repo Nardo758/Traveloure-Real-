@@ -1461,6 +1461,18 @@ class StripePaymentService {
         logger.error({ err, bookingId: md.bookingId, refundId: r.id }, '[WEBHOOK] bundle partial settlement promote failed');
       }
     }
+
+    // A failed-booking refund stays pending until Stripe says succeeded. Best-effort:
+    // a promoter failure must not fail the webhook delivery.
+    try {
+      const { promoteHandoffFailedBookingRefunds } = await import('./handoff.service');
+      await promoteHandoffFailedBookingRefunds({
+        paymentIntentId,
+        refunds: chargeRefunds.map((r) => ({ id: r.id, status: r.status ?? null })),
+      });
+    } catch (err) {
+      logger.error({ err, paymentIntentId }, '[WEBHOOK] failed-booking refund promote failed');
+    }
   }
 
   /**
@@ -2312,6 +2324,12 @@ class StripePaymentService {
       feeReversalActor: HANDOFF_REFUND_SOURCE,
       onceByStripeRefundId: true,
     });
+    return { id: refund.id, status: refund.status ?? null };
+  }
+
+  /** Stripe's status for a handoff refund. An id is not success until this says succeeded. */
+  async retrieveHandoffRefund(refundId: string): Promise<{ id: string; status: string | null }> {
+    const refund = await stripe.refunds.retrieve(refundId);
     return { id: refund.id, status: refund.status ?? null };
   }
 

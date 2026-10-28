@@ -331,9 +331,12 @@ test("resolves named re-exports used by authentication registration helpers", ()
  * POST /api/invites/:token/view, the view record moved off the GET. Public-by-token like its sibling
  * guest routes: other 245 → 246, public-or-system 52 → 53.
  *
- * 731 / 723 → 730 / 722 (row 263 server half, ledger `2026-10-28-row263-dead-recommendations-route`, Architect pt881u): POST
+ * 731 / 723 → 732 / 724 (row 268): POST /api/handoffs/:id/cannot-book. The text heuristic
+ * classes it other / session-self. other 246 → 247, session-self 367 → 368. user-data stays 251.
+ *
+ * 732 / 724 → 731 / 723 (row 263 server half, ledger `2026-10-28-row263-dead-recommendations-route`, Architect pt881u): POST
  * /api/invites/:token/travel-plans is deleted with its dead GET …/recommendations sibling (no client
- * caller after #1741; the GET is not a mutation). other 246 → 245, public-or-system 53 → 52.
+ * caller after #1741; the GET is not a mutation). other 247 → 246, public-or-system 53 → 52.
  *
  * THE COUNTS ARE THE POINT: they exist so a route appearing or vanishing from
  * the mounted graph fails here. Now that the file is wired into CI, changing a
@@ -344,9 +347,10 @@ test("current mounted graph parity includes auth helpers and shared api paths", 
   const result = extractMountedMutations(path.join(root, "server/routes.ts"), root);
   // 730 / 722: POST /api/trips/:tripId/versions/days/:day/restore (ledger `2026-10-25-d3-restore-day`).
   // 731 / 723: POST /api/invites/:token/view, the view record moved off the GET (row 277, Architect pt847u).
-  // 730 / 722: POST /api/invites/:token/travel-plans deleted (row 263, no caller after #1741).
-  assert.equal(result.mutations.length, 730);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 722);
+  // 732 / 724: POST /api/handoffs/:id/cannot-book (row 268).
+  // 731 / 723: POST /api/invites/:token/travel-plans deleted (row 263, no caller after #1741).
+  assert.equal(result.mutations.length, 731);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 723);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -356,7 +360,7 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "generated/security/mutation-auth-manifest.json"), "utf8"));
   const markdown = fs.readFileSync(path.join(root, "generated/security/mutation-auth-inventory.md"), "utf8");
   const endpointRows = markdown.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| ---")).slice(1);
-  assert.equal(endpointRows.length, 722);
+  assert.equal(endpointRows.length, 723);
   // 709 / 701 (ledger `2026-10-18-fd4-share-projection`): the shadowed quick-start twin is deleted; unique paths stay 701.
   // 710 / 702 (ledger `2026-10-19-fb1-free-retime`): + POST /api/trips/:tripId/retime-fixes/:itemId/apply.
   // 712 / 704 (ledger `2026-10-18-cs1-source-signoff`): the sign-off and photo-block POSTs.
@@ -371,9 +375,10 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // and POST /api/admin/experience-theme-suggestions/:id/dismiss.
   // 730 / 722: the new POST restore route (ledger `2026-10-25-d3-restore-day`).
   // 731 / 723: POST /api/invites/:token/view, the view record moved off the GET (row 277, Architect pt847u).
-  // 730 / 722: POST /api/invites/:token/travel-plans deleted (row 263, no caller after #1741).
-  assert.equal(manifest.rawRegistrationCount, 730);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 722);
+  // 732 / 724: POST /api/handoffs/:id/cannot-book (row 268).
+  // 731 / 723: POST /api/invites/:token/travel-plans deleted (row 263, no caller after #1741).
+  assert.equal(manifest.rawRegistrationCount, 731);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 723);
   // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R274): user-data,
   // session-self; the owner/delegate check runs in the service before any write.
   // + POST /api/admin/content-sources/:id/public-ok (ledger `2026-10-03-official-facts-public-ok`, R278):
@@ -423,8 +428,9 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // admin 191 → 195 (ledger `2026-10-23-experience-themes`): the theme catalog POST and PATCH, and the suggestion accept and dismiss POSTs.
   // user-data 250 → 251: POST /api/trips/:tripId/versions/days/:day/restore.
   // other 245 → 246 (row 277): POST /api/invites/:token/view.
-  // other 246 → 245 (row 263): POST /api/invites/:token/travel-plans deleted.
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 195, "user-data": 251, other: 245 });
+  // other 246 → 247: POST /api/handoffs/:id/cannot-book (row 268). user-data stays 251.
+  // other 247 → 246 (row 263): POST /api/invites/:token/travel-plans deleted.
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 195, "user-data": 251, other: 246 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
@@ -467,8 +473,9 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // admin-role 191 → 195 (ledger `2026-10-23-experience-themes`): the same four admin writes.
     // session-self 366 → 367: the same restore POST.
     // public-or-system 52 → 53 (row 277): POST /api/invites/:token/view.
+    // session-self 367 → 368: POST /api/handoffs/:id/cannot-book (row 268).
     // public-or-system 53 → 52 (row 263): POST /api/invites/:token/travel-plans deleted.
-    "admin-role": 195, "session-self": 367, "resource-owner": 102,
+    "admin-role": 195, "session-self": 368, "resource-owner": 102,
     signature: 6, "public-or-system": 52, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [

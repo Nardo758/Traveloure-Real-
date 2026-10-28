@@ -67,13 +67,13 @@ export function AddToExperienceDialog({
       const diffDays = Math.round((itemDate.getTime() - tripStart.getTime()) / (1000 * 60 * 60 * 24));
       dayNumber = Math.max(1, diffDays + 1);
     }
+    // Row 262: no provenance text in notes; the item's source is not written into it.
     return {
       title: item?.title,
       description: item?.description || "",
       itemType: item?.type || "experience",
       dayNumber,
       status: "planned",
-      notes: `Added from ${item?.city || "destination"}`,
       ...(item?.scheduledDate ? { scheduledDate: item.scheduledDate } : {}),
     };
   };

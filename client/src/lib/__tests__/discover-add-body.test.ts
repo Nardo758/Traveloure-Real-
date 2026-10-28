@@ -56,7 +56,7 @@ test("the rest of the body is unchanged by this lane", () => {
   assert.equal(body.status, "planned");
   assert.equal(body.estimatedCost, "45.00");
   assert.equal(body.currency, "USD");
-  assert.equal(body.notes, "Source: Viator");
+  assert.equal("notes" in body, false, "no source label is written into notes (row 262)");
 });
 
 test("a missing description falls back to an empty string, a missing price to null", () => {
