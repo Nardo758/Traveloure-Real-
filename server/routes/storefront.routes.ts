@@ -56,6 +56,7 @@ import { directoryCardListings, type DirectoryListingFacts } from "../services/p
 import { loadEarnerRatings, summarizeApprovedRatings } from "../services/earner-rating.service";
 import { updateUserPreferences } from "../services/user-preferences-writer";
 import { injectIntoHead } from "../utils/html-head";
+import { SITE_ORIGIN } from "@shared/site-origin";
 import { hideBlockedListingImages, visibleListingImage } from "../services/place-photo-blocks.service";
 
 const router = Router();
@@ -1313,12 +1314,12 @@ router.get("/s/:handle", async (req, res, next) => {
       ? `${data.earner.bio ? `${data.earner.bio} ` : ""}${providerServiceCount} bookable service${providerServiceCount === 1 ? "" : "s"} from ${displayName} on Traveloure. Secure checkout, traveler reviews.`
       : data.earner.bio ??
         `${count} bookable experience${count === 1 ? "" : "s"} from ${data.earner.name} on Traveloure. Secure checkout, traveler reviews.`;
-    const shareUrl = `https://traveloure.com/s/${data.earner.handle}`;
+    const shareUrl = `${SITE_ORIGIN}/s/${data.earner.handle}`;
     const ogImage =
       data.earner.coverImageUrl ??
       data.readyMade[0]?.heroImageUrl ??
       data.earner.profileImageUrl ??
-      `https://traveloure.com/og-cover.png`;
+      `${SITE_ORIGIN}/og-cover.png`;
 
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
     const ogTags = [
@@ -1424,7 +1425,7 @@ router.get("/services/:id", async (req, res, next) => {
     const description =
       service.description?.substring(0, 160) ??
       `Book ${service.serviceName} on Traveloure — secure checkout, traveler reviews.`;
-    const shareUrl = `https://traveloure.com/services/${service.id}`;
+    const shareUrl = `${SITE_ORIGIN}/services/${service.id}`;
     // Managed covers are stored as `covers:${key}` — resolve to the absolute proxy URL.
     // CS-1 item 1: a blocked place's cover is never the share image.
     if (visibleListingImage(service) === null) service.serviceImage = null;
@@ -1433,7 +1434,7 @@ router.get("/services/:id", async (req, res, next) => {
       : service.serviceImage;
     const ogImage =
       resolvedServiceImage ??
-      `https://traveloure.com/og-cover.png`;
+      `${SITE_ORIGIN}/og-cover.png`;
 
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
     const ogTags = [
@@ -1522,10 +1523,10 @@ router.get("/ready-made/:id", async (req, res, next) => {
       : (planTypeLabel(listing.planType) ?? "trip plan");
     const title = `${listing.title} | Traveloure`;
     const description = `A ${listing.durationDays}-day ${planLabel.toLowerCase()} for ${listing.market}, expert-built on Traveloure — buy it and it becomes your own editable trip.`;
-    const shareUrl = `https://traveloure.com/ready-made/${listing.id}`;
+    const shareUrl = `${SITE_ORIGIN}/ready-made/${listing.id}`;
     const ogImage =
       listing.heroImageUrl ??
-      `https://traveloure.com/og-cover.png`;
+      `${SITE_ORIGIN}/og-cover.png`;
 
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
     const ogTags = [
