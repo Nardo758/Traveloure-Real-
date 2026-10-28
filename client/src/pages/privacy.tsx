@@ -1,5 +1,7 @@
 import { useEffect } from "react";
 import { Link } from "wouter";
+import { SEOHead } from "@/components/seo-head";
+import { PRICING_AND_LEGAL_TITLE_COPY } from "@/lib/pricing-and-legal-title-copy";
 import { PageLayout, PAGE_ACTION, PAGE_H2_CLASS, HEADING_STYLE } from "@/components/company/company-page";
 import { COMPANY_CONTACT_EMAIL } from "@/lib/company-facts";
 
@@ -14,6 +16,12 @@ export default function PrivacyPolicyPage() {
   }, []);
 
   return (
+    <>
+    <SEOHead
+      title={PRICING_AND_LEGAL_TITLE_COPY.privacyPage.title}
+      description={PRICING_AND_LEGAL_TITLE_COPY.privacyPage.description}
+      url="/privacy"
+    />
     <PageLayout
       width="reading"
       title="Privacy Policy"
@@ -458,5 +466,6 @@ export default function PrivacyPolicyPage() {
           <Link href="/terms" className={PAGE_ACTION.secondary} data-testid="link-terms">Terms of Service</Link>
         </div>
     </PageLayout>
+    </>
   );
 }

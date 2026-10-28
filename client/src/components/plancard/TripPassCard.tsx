@@ -25,6 +25,7 @@ import { SavePaymentMethodPrompt } from "@/components/payment/SavePaymentMethodP
 // The run phrase lives in `@/lib/trip-pass-runs-copy` so /pricing reads the same words without
 // importing this card (ledger `2026-10-08-trip-pass-five-runs`); re-exported for existing importers.
 import { tripPassRunsPhrase } from "@/lib/trip-pass-runs-copy";
+import { PRICING_AND_LEGAL_TITLE_COPY } from "@/lib/pricing-and-legal-title-copy";
 export { tripPassRunsPhrase };
 
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
@@ -98,7 +99,7 @@ export function TripPassCard({
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.message || "Could not confirm the purchase");
-      toast({ title: "Trip Pass active", description: "Optimizer runs and AI tasks on this trip are now included." });
+      toast({ title: "Trip Pass active", description: PRICING_AND_LEGAL_TITLE_COPY.tripPassActivatedToast });
       void queryClient.invalidateQueries({ queryKey: statusKey });
     } catch (e: any) {
       toast({ title: "Trip Pass", description: e?.message ?? "Confirm failed — support can verify the payment", variant: "destructive" });
@@ -121,7 +122,7 @@ export function TripPassCard({
           <div className="min-w-0">
             <p className="text-sm font-semibold text-[color:var(--earn-ink)]">Trip Pass active</p>
             <p className="text-[11px]" style={{ fontFamily: EARN_MONO, color: "var(--earn-muted)" }}>
-              optimizer runs + AI tasks included · service fee waived on this trip
+              {PRICING_AND_LEGAL_TITLE_COPY.tripPassActiveLine}
             </p>
           </div>
         </section>
@@ -173,7 +174,7 @@ export function TripPassCard({
               promises it. trip-pass-copy.test.ts fails if this is re-added. */}
           {/* Ruling 3 (ledger `2026-10-08-slip-main-rail`): the run allowance is the server's number
               (R-ac). With no number the phrase names no count — never "unlimited", which it is not. */}
-          {" "}· {tripPassRunsPhrase(status.runsPerTrip)} + AI tasks · service fee waived
+          {" "}· {tripPassRunsPhrase(status.runsPerTrip)} + {PRICING_AND_LEGAL_TITLE_COPY.tripPassCardTail}
         </p>
         <DatesGate trip={trip ?? { id: tripId }} action="The Trip Pass" testId="trip-pass-dates-gate">
           {(guard) => (

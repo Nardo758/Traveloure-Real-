@@ -1,10 +1,18 @@
 import { Link } from "wouter";
+import { SEOHead } from "@/components/seo-head";
+import { PRICING_AND_LEGAL_TITLE_COPY } from "@/lib/pricing-and-legal-title-copy";
 import { PageLayout, PAGE_ACTION, PAGE_H2_CLASS, HEADING_STYLE } from "@/components/company/company-page";
 import { COMPANY_CONTACT_EMAIL } from "@/lib/company-facts";
 import { CURRENT_TERMS_VERSION } from "@shared/legal-versions";
 
 export default function TermsOfServicePage() {
   return (
+    <>
+    <SEOHead
+      title={PRICING_AND_LEGAL_TITLE_COPY.termsPage.title}
+      description={PRICING_AND_LEGAL_TITLE_COPY.termsPage.description}
+      url="/terms"
+    />
     <PageLayout
       width="reading"
       title="Terms and Conditions"
@@ -548,5 +556,6 @@ export default function TermsOfServicePage() {
           <Link href="/privacy" className={PAGE_ACTION.secondary} data-testid="link-privacy">Privacy Policy</Link>
         </div>
     </PageLayout>
+    </>
   );
 }

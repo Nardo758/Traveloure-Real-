@@ -49,6 +49,7 @@ import {
   startMembershipCheckout,
   type MembershipCheckoutNotice,
 } from "@/lib/membership-checkout";
+import { PRICING_AND_LEGAL_TITLE_COPY } from "@/lib/pricing-and-legal-title-copy";
 
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
@@ -100,8 +101,7 @@ function PricingBand() {
           <PageTitle testId="text-pricing-title">Plan it your way</PageTitle>
         </div>
         <p className="text-[15px] text-[color:var(--earn-muted)] mt-3 max-w-[62ch]">
-          Yourself, with AI, with a local, or done for you. Every AI action is pay-per-use —
-          no membership needed.
+          {PRICING_AND_LEGAL_TITLE_COPY.pricingPage.bandLead}
         </p>
       </div>
     </section>
@@ -281,8 +281,8 @@ export default function PricingPage() {
     },
     {
       key: "ai",
-      eyebrow: "WITH AI · PAY PER USE",
-      name: "Plan with AI",
+      eyebrow: PRICING_AND_LEGAL_TITLE_COPY.pricingOptimizeCard.eyebrow,
+      name: PRICING_AND_LEGAL_TITLE_COPY.pricingOptimizeCard.name,
       price: dollars(pricing.optimizerRunDisplay.priceCents),
       priceSuffix: "/ run",
       priceSub: `${dollars(pricing.aiTaskCents)} / task`,
@@ -368,8 +368,8 @@ export default function PricingPage() {
   return (
     <div className="min-h-screen bg-[var(--earn-ground)] text-[color:var(--earn-ink)]">
       <SEOHead
-        title="Pricing | Traveloure"
-        description={`Plan it yourself for free, pay per use with AI, get a Trip Pass for ${tripPassRunsPhrase(pricing.tripPass.runsPerTrip)} and unlimited AI tasks, or hand it to a local expert. Transparent pricing, no membership required.`}
+        title="Pricing"
+        description={PRICING_AND_LEGAL_TITLE_COPY.pricingPage.seoDescription(tripPassRunsPhrase(pricing.tripPass.runsPerTrip))}
       />
 
       {membershipReturn === "cancelled" && (

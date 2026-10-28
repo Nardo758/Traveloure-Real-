@@ -423,7 +423,6 @@ export default function LaunchWaitlistPage() {
           <Button asChild size="lg">
             <a href="#join" data-testid="button-waitlist-hero">Join the Kyoto list</a>
           </Button>
-          <p className="mt-2 text-sm text-muted-foreground">Join the Kyoto list.</p>
         </div>
         <p className="mt-6 text-sm">
           <a href="#providers" className="underline" data-testid="link-waitlist-providers">I'm a Kyoto guide or provider →</a>
