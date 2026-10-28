@@ -69,6 +69,19 @@ const ANCHOR_TYPE_LABELS: Record<string, string> = {
 };
 
 /**
+ * Row 198 (strings 18, 19, 20, 22; approved by Leon Oct 26, 2026): the plain words on the anchor
+ * line. The "stops ≤ 15 min" fragment (#21) is held and stays below as it was.
+ */
+export const ANCHOR_LINE_COPY = {
+  placed: (located: number, total: number): string => `${located} of ${total} stops placed on the map`,
+  typicalApart: (distance: string): string => `stops are typically ${distance} apart in a straight line`,
+  distanceOmitted: "Distance not shown. Some stops aren't placed yet.",
+  regional: "spread across the region",
+  neighborhood: "stay anywhere in this area",
+  activity: "the day is built around it",
+} as const;
+
+/**
  * Format the compact anchor readout shown on a proposal card.
  *
  * `anchorMedianMeters` is a straight-line median from the server's scoring rail. It is shown as
@@ -97,7 +110,7 @@ export function formatAnchorLine(input: AnchorLineInputs): string | null {
   const completeCoverage = hasCoverage && locatedStops === totalStops;
 
   if (hasCoverage) {
-    parts.push(`${locatedStops}/${totalStops} stops located`);
+    parts.push(ANCHOR_LINE_COPY.placed(locatedStops as number, totalStops as number));
   }
   if (
     completeCoverage &&
@@ -108,16 +121,16 @@ export function formatAnchorLine(input: AnchorLineInputs): string | null {
     const distance = medianMeters < 1000
       ? `${Math.round(medianMeters)} m`
       : `${(medianMeters / 1000).toFixed(1)} km`;
-    if (medianMeters > 25_000) parts.push("regional spread");
-    parts.push(`${distance} median direct distance`);
+    if (medianMeters > 25_000) parts.push(ANCHOR_LINE_COPY.regional);
+    parts.push(ANCHOR_LINE_COPY.typicalApart(distance));
   } else if (hasCoverage && !completeCoverage) {
-    parts.push("anchor distance omitted");
+    parts.push(ANCHOR_LINE_COPY.distanceOmitted);
   }
 
   if (input.anchorType?.trim().toLowerCase() === "neighborhood") {
-    parts.push("stay anywhere in-area");
+    parts.push(ANCHOR_LINE_COPY.neighborhood);
   } else if (input.anchorType?.trim().toLowerCase() === "activity") {
-    parts.push("the day pivots on it");
+    parts.push(ANCHOR_LINE_COPY.activity);
   }
 
   const within15MinCount = input.within15MinCount;
