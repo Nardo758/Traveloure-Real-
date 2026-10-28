@@ -9,7 +9,8 @@
  *       dismissal key, with the value `writePaymentMethodPromptDismissed()` stores
  *   D2  the gate still renders the prompt and its "Not now" button, and "Not now" still writes
  *       the dismissal (the prompt was not removed and stays skippable)
- *   D3  the spec forces no click and installs no locator handler
+ *   D3  the spec forces no click and installs no locator handler; the real "Not now" test skips
+ *       only when the saved-methods read answers `available: false` (no configured Stripe key)
  *
  * Static: files are read with node:fs; no git, no ref, no database, no network.
  * Run: node --import ./client/src/lib/__tests__/lc1-css-register.mjs --import tsx --test client/src/lib/__tests__/journey-dismisses-card-prompt.test.ts
@@ -87,4 +88,8 @@ test("D3: the spec forces no click and installs no locator handler", () => {
   assert.doesNotMatch(src, /force\s*:\s*true/);
   assert.doesNotMatch(src, /addLocatorHandler/);
   assert.match(src, /testid\(page, "button-dismiss-payment-method-setup"\)\.click\(\)/, "one journey clicks Not now for real");
+  const realClick = src.slice(src.indexOf('test.describe("row 285 · the add-a-card prompt"'));
+  const skips = realClick.match(/test\.skip\(/g) ?? [];
+  assert.equal(skips.length, 1, "the real-click test skips in exactly one place");
+  assert.match(realClick, /test\.skip\(available !== true,/, "and only when the server says no prompt can be offered");
 });

@@ -1787,7 +1787,8 @@ test.describe("8 · a month later", () => {
  * Decision 43 (ledgers `2026-10-21-signup-payment-step`, `2026-10-22-card-gate-skippable`): every
  * signed-in traveler is offered one dismissible prompt, and "Not now" hides it until the next sign-in.
  * Every other test here starts from that dismissed state (`signedInTraveler`); this one signs in
- * WITHOUT it and clicks "Not now" for real, so a change that removes the prompt fails here.
+ * WITHOUT it and clicks "Not now" for real, so a change that removes the prompt fails here. It needs
+ * a configured Stripe key (journey-suite has one); on a stub-key job it skips, naming why.
  */
 test.describe("row 285 · the add-a-card prompt", () => {
   test("a fresh traveler sees the prompt, clicks Not now, and the control under it can be clicked", async ({ page }) => {
@@ -1801,6 +1802,14 @@ test.describe("row 285 · the add-a-card prompt", () => {
     });
     expect(created.status()).toBe(201);
     const setId = (await created.json()).set.id as string;
+
+    // The prompt is offered only when the saved-methods read answers `available: true` (Decision 43;
+    // `available: false` renders nothing). A job running a stub Stripe key gets `false`, so this
+    // proof needs a configured key, as journey-suite has; elsewhere it skips with the server's answer.
+    const methods = await page.request.get(`${BASE_URL}/api/me/payment-methods`);
+    expect(methods.status(), "the saved-methods read answers").toBe(200);
+    const { available } = (await methods.json()) as { available?: boolean };
+    test.skip(available !== true, "saved-methods read answered available: false (no configured Stripe key), so no prompt is offered");
 
     await page.goto(`/plans/${tripId}`);
     const prompt = testid(page, "payment-method-setup-prompt");
