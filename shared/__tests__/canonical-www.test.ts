@@ -113,12 +113,29 @@ test("AW15: head tags name www, once", () => {
   assert.equal(sampleTags.includes("https://traveloure.com"), false);
 });
 
-test("AW16: robots.txt Sitemap line is www, and Disallow lines are unchanged", () => {
+test("AW16: robots.txt Sitemap line is www, and Disallow includes /invite/", () => {
   const robots = read("client/public/robots.txt");
   const sitemapLines = robots.split("\n").filter((line) => line.startsWith("Sitemap:"));
   assert.deepEqual(sitemapLines, ["Sitemap: https://www.traveloure.com/sitemap.xml"]);
   assert.equal(/https?:\/\/traveloure\.com/.test(robots), false);
-  assert.equal(robots.split("\n").filter((line) => line.startsWith("Disallow:")).length, 14);
+  const disallow = robots.split("\n").filter((line) => line.startsWith("Disallow:"));
+  assert.deepEqual(disallow, [
+    "Disallow: /admin",
+    "Disallow: /api/",
+    "Disallow: /checkout",
+    "Disallow: /bookings",
+    "Disallow: /dashboard",
+    "Disallow: /messages",
+    "Disallow: /settings",
+    "Disallow: /profile",
+    "Disallow: /onboarding",
+    "Disallow: /expert-workspace",
+    "Disallow: /provider",
+    "Disallow: /reset-password",
+    "Disallow: /verify-email",
+    "Disallow: /itinerary-view/",
+    "Disallow: /invite/",
+  ]);
 });
 
 test("AW17: the static shell canonical, og:url, og:image and twitter:image are www", () => {

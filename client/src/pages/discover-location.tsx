@@ -68,6 +68,7 @@ import {
   type WantedSlotData,
 } from "@/lib/feed-composition";
 import { useUpsellSlot } from "@/components/UpsellSlot";
+import { EMPTY_STATE_COPY } from "@/lib/empty-state-copy";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -1039,7 +1040,7 @@ function FeedRenderer({
   if (renderableItems.length === 0) {
     return (
       <p className="text-sm text-muted-foreground py-8 text-center" data-testid="feed-empty">
-        No items to show yet for {toTitleCase(city)}. Check back soon!
+        {EMPTY_STATE_COPY.feedEmpty(toTitleCase(city))}
       </p>
     );
   }

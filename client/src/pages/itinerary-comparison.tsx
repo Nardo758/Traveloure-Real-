@@ -43,7 +43,6 @@ import {
   ChevronUp,
   Calendar,
   Loader2,
-  Award,
   Target,
   RefreshCw,
   AlertCircle,
@@ -89,7 +88,7 @@ import {
   type PinRefusal,
 } from "@/lib/custom-pin-refusal";
 import { VersionsBoard } from "@/components/plancard/VersionsBoard";
-import { OPTIMIZE_RERUN_RULE } from "@/lib/optimization-preview";
+import { COMPARISON_PAGE_COPY, formatComparisonPerPerson, formatComparisonPrice } from "@/lib/comparison-page-copy";
 import { busyAroundDatesLine } from "@/lib/comparison-context";
 import { planBudgetLine } from "@/lib/plan-budget";
 import { withoutUncheckedTravelMetrics } from "@/lib/variant-metrics";
@@ -508,7 +507,6 @@ function ProposalColumnContainer({
   variant,
   comparison,
   anchoredItems,
-  recommended,
   applying,
   onApply,
   onAdoptStop,
@@ -520,7 +518,6 @@ function ProposalColumnContainer({
   variant: Variant;
   comparison: Comparison;
   anchoredItems: ProposalAnchorItem[];
-  recommended: boolean;
   applying: boolean;
   onApply: () => void;
   /** Pull a SINGLE stop from this variant into the plan (the mock's "+" ticks). */
@@ -602,7 +599,6 @@ function ProposalColumnContainer({
              totalStops: coordinateCoverage(variant.items).totalStops,
           }),
          isBaseline: isBaselineColumn,
-        recommended,
          totalCostUsd: parseTotal(variant.totalCost),
          perPersonTotal: parseTotal(variant.totalCost) != null && comparison.travelers > 1
            ? `$${Math.round(parseTotal(variant.totalCost)! / comparison.travelers).toLocaleString()}`
@@ -884,11 +880,6 @@ export default function ItineraryComparisonPage() {
     .filter(({ a }) => isBookedActivity(a))
     .map(({ a, dayNum }) => ({ id: a.id, dayNum, time: a.time || "", name: a.name }));
   const withExpertRows = canonicalRows.filter(({ a }) => a.routingStatus === "with_expert");
-  const remainingCount = canonicalRows.filter(
-    ({ a }) => a.routingStatus === "in_planning" || a.routingStatus === "ready_for_checkout",
-  ).length;
-  const slipTrackingNumber = slipPlancard?.trip?.trackingNumber ?? null;
-  const slipExpertFirstName = slipPlancard?.meta?.deliveredBy?.name?.split(" ")[0] ?? null;
 
   // Apply = the EXISTING endpoints: select the variant, then the atomic apply-to-trip, then
   // navigate to the slip (/plans/:tripId). Nothing is purchased by applying.
@@ -906,7 +897,7 @@ export default function ItineraryComparisonPage() {
     onSuccess: (r) => {
       setApplyError(null);
       setFailedApplyVariant(null);
-      toast({ title: "Proposal adopted", description: "Your slip has been updated in place. Nothing was purchased." });
+      toast({ title: "Proposal adopted", description: COMPARISON_PAGE_COPY.adoptedDescription });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${r.tripId}/plancard`] });
       queryClient.invalidateQueries({ queryKey: ["/api/itinerary-comparisons", id] });
       setLocation(`/plans/${r.tripId}`);
@@ -914,7 +905,7 @@ export default function ItineraryComparisonPage() {
     onError: (_error, variantId) => {
       setFailedApplyVariant(data?.variants.find((variant) => variant.id === variantId) || null);
       setApplyError("We couldn't apply this proposal. Your plan is unchanged. Try again.");
-      toast({ variant: "destructive", title: "Failed to apply variant", description: "Please try again" });
+      toast({ variant: "destructive", title: COMPARISON_PAGE_COPY.applyFailedTitle, description: COMPARISON_PAGE_COPY.applyFailedDescription });
     },
     onSettled: () => setApplyingVariantId(null),
   });
@@ -1043,7 +1034,7 @@ export default function ItineraryComparisonPage() {
         setGeneratePinRefusal({ reason, pin: generatePinFor(override) });
         return;
       }
-      toast({ variant: "destructive", title: "Failed to regenerate", description: "Please try again" });
+      toast({ variant: "destructive", title: COMPARISON_PAGE_COPY.actionFailedTitle, description: COMPARISON_PAGE_COPY.actionFailedDescription });
     },
   });
 
@@ -1056,7 +1047,7 @@ export default function ItineraryComparisonPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/itinerary-comparisons", id] });
     },
     onError: () => {
-      toast({ variant: "destructive", title: "Failed to select", description: "Please try again" });
+      toast({ variant: "destructive", title: COMPARISON_PAGE_COPY.actionFailedTitle, description: COMPARISON_PAGE_COPY.actionFailedDescription });
     },
   });
 
@@ -1271,16 +1262,9 @@ export default function ItineraryComparisonPage() {
   // Review-first preview baseline (server-derived; null ⇒ the money delta is omitted, §13).
   const baselineTotalUsd = parseTotal(userVariant?.totalCost ?? null);
 
-  // Spec C column set + the "Recommended" chip: exactly one or zero — derived from optimizer
-  // output (the strictly-highest optimizationScore among AI variants; a tie marks none).
+  // Spec C column set. Row 198 (#12): no column is badged — nothing on the page states the metric
+  // and reason such a badge would need.
   const specColumns: Variant[] = [userVariant, ...aiVariants].filter((v): v is Variant => !!v);
-  const recommendedVariantId = (() => {
-    const scored = aiVariants.filter((v) => v.optimizationScore != null);
-    if (scored.length === 0) return null;
-    const max = Math.max(...scored.map((v) => v.optimizationScore));
-    const top = scored.filter((v) => v.optimizationScore === max);
-    return top.length === 1 ? top[0].id : null;
-  })();
 
   const getMetricIcon = (key: string) => {
     switch (key) {
@@ -1394,22 +1378,14 @@ export default function ItineraryComparisonPage() {
               </CardFooter>
             </Card>
 
-            {/* AI Optimized skeleton cards */}
+            {/* Suggested-version skeleton cards */}
             {[1, 2].map((i) => (
               <Card key={i} className={cn("border-dashed relative", i === 1 && "border-green-500/30")}>
-                {i === 1 && (
-                  <div className="absolute -top-3 left-4">
-                    <Badge className="bg-green-600/50">
-                      <Award className="h-3 w-3 mr-1" />
-                      Recommended
-                    </Badge>
-                  </div>
-                )}
                 <CardHeader className="pt-6">
                   <div className="flex items-center justify-between">
                     <Badge variant="default" className="bg-primary/10 text-primary/50">
                       <Sparkles className="h-3 w-3 mr-1" />
-                      AI Optimized
+                      {COMPARISON_PAGE_COPY.suggestedVersion}
                     </Badge>
                   </div>
                   <Skeleton className="h-6 w-40 mt-2" />
@@ -1425,7 +1401,7 @@ export default function ItineraryComparisonPage() {
                     <div className="flex flex-col items-center justify-center gap-3 py-8">
                       <Loader2 className="h-6 w-6 animate-spin text-primary" />
                       <span className="text-sm text-muted-foreground">
-                        {i === 1 ? "Finding best alternatives..." : "Optimizing for savings..."}
+                        {COMPARISON_PAGE_COPY.lookingForAlternatives}
                       </span>
                     </div>
                     <div className="space-y-2">
@@ -1501,7 +1477,7 @@ export default function ItineraryComparisonPage() {
                 </p>
               ) : (
                 <p className="text-muted-foreground mb-6">
-                  The AI optimization completed but didn't produce any alternative itineraries — this can happen if the trip is already well-optimized or if the AI timed out. You can retry generation or browse your original plan below.
+                  {COMPARISON_PAGE_COPY.noResultBody}
                 </p>
               )}
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
@@ -1543,7 +1519,7 @@ export default function ItineraryComparisonPage() {
           <Card className="mb-6 border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20" data-testid="banner-no-proposals-review">
             <CardContent className="p-6 text-center">
               <AlertCircle className="h-10 w-10 mx-auto mb-3 text-amber-500" />
-              <h3 className="text-lg font-semibold mb-2">The optimizer didn't find any alternatives</h3>
+              <h3 className="text-lg font-semibold mb-2">{COMPARISON_PAGE_COPY.noAlternativesHeading}</h3>
               {data?.comparison?.optimizationFeeRefund ? (
                 <p className="text-muted-foreground mb-5 max-w-xl mx-auto" data-testid="optimize-failure-refund">
                   {data.comparison.optimizationFeeRefund === "refunded"
@@ -1552,9 +1528,7 @@ export default function ItineraryComparisonPage() {
                 </p>
               ) : (
                 <p className="text-muted-foreground mb-5 max-w-xl mx-auto">
-                  The run completed but produced no alternative plans — this can happen when the plan
-                  is already well-organized or the AI timed out. Your plan is untouched. You can re-run
-                  the optimizer{slipTripId ? "" : " or go back to your cart"}.
+                  {COMPARISON_PAGE_COPY.noAlternativesBody(!slipTripId)}
                 </p>
               )}
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
@@ -1636,26 +1610,19 @@ export default function ItineraryComparisonPage() {
               <>
                 <div className="review-panel flex flex-col md:flex-row md:items-start justify-between gap-3 mb-4 rounded-xl border p-4" data-testid="compare-header">
                   <p className="review-mono text-sm text-muted-foreground" data-testid="review-slip-line">
-                    {slipTrackingNumber ? `Slip ${slipTrackingNumber} · ` : ""}
-                    {aiVariants.length} proposal{aiVariants.length === 1 ? "" : "s"}
-                    {slipPlancard ? ` for your remaining ${remainingCount} item${remainingCount === 1 ? "" : "s"}` : ""}
+                    {COMPARISON_PAGE_COPY.versionsLine(aiVariants.length)}
                   </p>
                   {(anchoredItems.length > 0 || withExpertRows.length > 0) && (
                     <div className="text-sm text-muted-foreground md:text-right space-y-0.5" data-testid="compare-header-right">
                       {anchoredItems.length > 0 && (
                         <p className="flex items-center gap-1.5 md:justify-end">
                           <Anchor className="w-3.5 h-3.5" />
-                          {anchoredItems.length === 1
-                            ? "1 purchased item pinned in all"
-                            : `${anchoredItems.length} purchased items pinned in all`}
+                          {COMPARISON_PAGE_COPY.bookedKept(anchoredItems.length)}
                         </p>
                       )}
                       {withExpertRows.length > 0 && (
                         <p data-testid="compare-exclusion-note">
-                          {withExpertRows.length === 1
-                            ? "1 item excluded"
-                            : `${withExpertRows.length} items excluded`}{" "}
-                          ({slipExpertFirstName ? `with ${slipExpertFirstName}, your expert` : "with your expert"})
+                          {COMPARISON_PAGE_COPY.leftOut(withExpertRows.length)}
                         </p>
                       )}
                     </div>
@@ -1731,7 +1698,6 @@ export default function ItineraryComparisonPage() {
                       variant={variant}
                       comparison={data.comparison}
                       anchoredItems={anchoredItems}
-                      recommended={variant.id === recommendedVariantId}
                       applying={applyingVariantId === variant.id}
                       baselineTotalUsd={baselineTotalUsd}
                       isBaselineColumn={variant.source === "user"}
@@ -1814,8 +1780,7 @@ export default function ItineraryComparisonPage() {
                         <span className="font-medium text-foreground">
                           {pendingApplyVariant?.name}
                         </span>
-                        . Purchased, in-checkout, and with-expert items stay put; nothing is
-                        purchased here — and the other proposals stay available to revisit.
+                        . {COMPARISON_PAGE_COPY.applyConfirmKept} {COMPARISON_PAGE_COPY.applyConfirmRevisit}
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -1920,7 +1885,7 @@ export default function ItineraryComparisonPage() {
                         <div className="flex items-center justify-between">
                           <span className="text-sm text-muted-foreground">Total Cost</span>
                           <span className="text-xl font-bold">
-                            ${parseFloat(userVariant.totalCost || "0").toLocaleString()}
+                            {formatComparisonPrice(userVariant.totalCost)}
                           </span>
                         </div>
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -1928,9 +1893,11 @@ export default function ItineraryComparisonPage() {
                             <Users className="h-3 w-3" />
                             {data.comparison.travelers || 1} traveler{(data.comparison.travelers || 1) > 1 ? 's' : ''}
                           </span>
-                          <span>
-                            ${(parseFloat(userVariant.totalCost || "0") / (data.comparison.travelers || 1)).toLocaleString(undefined, { maximumFractionDigits: 0 })}/person
-                          </span>
+                          {formatComparisonPerPerson(userVariant.totalCost, data.comparison.travelers) != null && (
+                            <span>
+                              {formatComparisonPerPerson(userVariant.totalCost, data.comparison.travelers)}
+                            </span>
+                          )}
                         </div>
                       </div>
                       <Separator />
@@ -1978,7 +1945,7 @@ export default function ItineraryComparisonPage() {
                                         <Check className="h-2.5 w-2.5 mr-1" />In-App
                                       </Badge>
                                     )}
-                                    <span className="text-muted-foreground">${parseFloat(item.price || "0")}</span>
+                                    <span className="text-muted-foreground">{formatComparisonPrice(item.price)}</span>
                                   </div>
                                 </div>
                               </div>
@@ -2042,7 +2009,7 @@ export default function ItineraryComparisonPage() {
                           <div className="flex items-center justify-center gap-3 py-6">
                             <Loader2 className="h-5 w-5 animate-spin text-primary" />
                             <span className="text-sm text-muted-foreground">
-                              {idx === 0 ? "Finding best alternatives..." : "Optimizing for savings..."}
+                              {COMPARISON_PAGE_COPY.lookingForAlternatives}
                             </span>
                           </div>
                           <div className="space-y-2">
@@ -2072,19 +2039,11 @@ export default function ItineraryComparisonPage() {
                   onClick={() => setSelectedVariantId(variant.id)}
                   data-testid={`card-variant-${variant.id}`}
                 >
-                  {index === 0 && (
-                    <div className="absolute -top-3 left-4">
-                      <Badge className="bg-green-600">
-                        <Award className="h-3 w-3 mr-1" />
-                        Recommended
-                      </Badge>
-                    </div>
-                  )}
                   <CardHeader className="pt-6">
                     <div className="flex items-center justify-between">
                       <Badge variant="default" className="bg-primary/10 text-primary">
                         <Sparkles className="h-3 w-3 mr-1" />
-                        AI Optimized
+                        {COMPARISON_PAGE_COPY.suggestedVersion}
                       </Badge>
                       <div className="flex items-center gap-1">
                         {selectedVariantId === variant.id && (
@@ -2106,7 +2065,7 @@ export default function ItineraryComparisonPage() {
                         <div className="flex items-center justify-between">
                           <span className="text-sm text-muted-foreground">Total Cost</span>
                           <span className="text-xl font-bold text-green-600 dark:text-green-400">
-                            ${parseFloat(variant.totalCost || "0").toLocaleString()}
+                            {formatComparisonPrice(variant.totalCost)}
                           </span>
                         </div>
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -2114,16 +2073,17 @@ export default function ItineraryComparisonPage() {
                             <Users className="h-3 w-3" />
                             {data.comparison.travelers || 1} traveler{(data.comparison.travelers || 1) > 1 ? 's' : ''}
                           </span>
-                          <span>
-                            ${(parseFloat(variant.totalCost || "0") / (data.comparison.travelers || 1)).toLocaleString(undefined, { maximumFractionDigits: 0 })}/person
-                          </span>
+                          {formatComparisonPerPerson(variant.totalCost, data.comparison.travelers) != null && (
+                            <span>
+                              {formatComparisonPerPerson(variant.totalCost, data.comparison.travelers)}
+                            </span>
+                          )}
                         </div>
                       </div>
 
                       {variant.metrics && variant.metrics.length > 0 && (() => {
                         // Prioritize showing key comparison metrics
                         const priorityOrder = ["total_cost", "average_rating", "relaxation_minutes", "travel_time"];
-                        const sequencingScores = ["balance_score", "wellness_score", "pace_score", "sequencing_score"];
                         
                         // Get priority metrics first, then fill with others
                         const sortedMetrics = [...variant.metrics].sort((a, b) => {
@@ -2135,33 +2095,12 @@ export default function ItineraryComparisonPage() {
                           return 0;
                         });
                         
-                        // Get sequencing scores for the compact score display
-                        const scores = variant.metrics.filter(m => sequencingScores.includes(m.metricKey));
-                        const avgScore = scores.length > 0 
-                          ? Math.round(scores.reduce((sum, m) => sum + (parseFloat(m.value) || 0), 0) / scores.length)
-                          : null;
-                        
                         return (
                           <>
                             <Separator />
                             <div className="space-y-2">
                               <div className="flex items-center justify-between">
-                                <h4 className="text-sm font-medium">Why it's better</h4>
-                                {avgScore !== null && (
-                                  <Badge 
-                                    variant="outline" 
-                                    className={cn(
-                                      "text-xs",
-                                      avgScore >= 80 ? "border-green-500 text-green-600 dark:text-green-400" :
-                                      avgScore >= 60 ? "border-yellow-500 text-yellow-600 dark:text-yellow-400" :
-                                      "border-orange-500 text-orange-600 dark:text-orange-400"
-                                    )}
-                                    data-testid={`badge-traveloure-score-${variant.id}`}
-                                  >
-                                    <Sparkles className="h-3 w-3 mr-1" />
-                                    {avgScore} Traveloure Score
-                                  </Badge>
-                                )}
+                                <h4 className="text-sm font-medium">{COMPARISON_PAGE_COPY.whatsDifferent}</h4>
                               </div>
                               <div className="grid grid-cols-2 gap-2">
                                 {withoutUncheckedTravelMetrics(sortedMetrics.slice(0, 4)).map((metric) => {
@@ -2236,7 +2175,7 @@ export default function ItineraryComparisonPage() {
                                         <Check className="h-2.5 w-2.5 mr-1" />In-App
                                       </Badge>
                                     )}
-                                    <span className="text-muted-foreground">${parseFloat(item.price || "0")}</span>
+                                    <span className="text-muted-foreground">{formatComparisonPrice(item.price)}</span>
                                   </div>
                                 </div>
                               </div>
@@ -2287,7 +2226,7 @@ export default function ItineraryComparisonPage() {
                 </div>
 
                 <p className="text-sm text-muted-foreground text-center mb-4">
-                  Curated extras matched to your travel style
+                  {COMPARISON_PAGE_COPY.extrasThatFit}
                 </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -2337,12 +2276,6 @@ export default function ItineraryComparisonPage() {
                               <span className="flex items-center gap-0.5 font-medium text-foreground">
                                 <DollarSign className="h-3 w-3" />
                                 {parseFloat(suggestion.price).toLocaleString()}
-                              </span>
-                            )}
-                            {suggestion.rating && parseFloat(suggestion.rating) > 0 && (
-                              <span className="flex items-center gap-0.5">
-                                <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
-                                {parseFloat(suggestion.rating).toFixed(1)}
                               </span>
                             )}
                             {suggestion.location && (
@@ -2435,7 +2368,7 @@ export default function ItineraryComparisonPage() {
                     <h3 className="font-semibold text-sm">Not happy with these plans?</h3>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       Tell the optimizer what to fix and re-run it, or hand the plan to a human
-                      expert. <span data-testid="text-rerun-rule">{OPTIMIZE_RERUN_RULE}</span> Your
+                      expert. Your
                       original plan stays untouched unless you apply a variant.
                     </p>
                   </div>
@@ -2504,7 +2437,7 @@ export default function ItineraryComparisonPage() {
                     {modalVariant?.source === "ai" && (
                       <Badge variant="default" className="bg-primary/10 text-primary">
                         <Sparkles className="h-3 w-3 mr-1" />
-                        AI Optimized
+                        {COMPARISON_PAGE_COPY.suggestedVersion}
                       </Badge>
                     )}
                     {modalVariant?.name}
@@ -2515,11 +2448,13 @@ export default function ItineraryComparisonPage() {
                 </div>
                 <div className="text-right shrink-0 ml-4">
                   <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                    ${parseFloat(modalVariant?.totalCost || "0").toLocaleString()}
+                    {formatComparisonPrice(modalVariant?.totalCost)}
                   </p>
-                  <p className="text-xs text-muted-foreground">
-                    ${(parseFloat(modalVariant?.totalCost || "0") / (data?.comparison?.travelers || 1)).toLocaleString(undefined, { maximumFractionDigits: 0 })}/person
-                  </p>
+                  {formatComparisonPerPerson(modalVariant?.totalCost, data?.comparison?.travelers) != null && (
+                    <p className="text-xs text-muted-foreground">
+                      {formatComparisonPerPerson(modalVariant?.totalCost, data?.comparison?.travelers)}
+                    </p>
+                  )}
                   <p className="text-xs text-muted-foreground">
                     {modalVariant?.items?.length} activities
                   </p>
@@ -2529,7 +2464,7 @@ export default function ItineraryComparisonPage() {
             
             <ScrollArea className="flex-1 px-6">
               <div className="py-4 space-y-6">
-                {/* Why it's better - Metrics */}
+                {/* What's different - Metrics */}
                 {modalVariant?.metrics && modalVariant.metrics.length > 0 && (() => {
                   // Audit B8: the travel_time metric is an unchecked total, so it is dropped before the split.
                   const modalMetrics = withoutUncheckedTravelMetrics(modalVariant.metrics);
@@ -2548,7 +2483,7 @@ export default function ItineraryComparisonPage() {
                         <div className="bg-green-50 dark:bg-green-950/20 rounded-lg p-4 space-y-3">
                           <h4 className="font-medium text-green-800 dark:text-green-200 flex items-center gap-2">
                             <TrendingUp className="h-4 w-4" />
-                            Why it's better
+                            {COMPARISON_PAGE_COPY.whatsDifferent}
                           </h4>
                           <div className="grid grid-cols-2 gap-3">
                             {coreMetrics.map((metric) => {
@@ -2681,7 +2616,7 @@ export default function ItineraryComparisonPage() {
                                     )}
                                   </div>
                                   <div className="flex flex-col items-end gap-1 shrink-0">
-                                    <span className="font-semibold">${parseFloat(item.price || "0")}</span>
+                                    <span className="font-semibold">{formatComparisonPrice(item.price)}</span>
                                     {bookingType === "partner" ? (
                                       <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 text-xs">
                                         {item.serviceType?.toLowerCase().includes("transport") ? (

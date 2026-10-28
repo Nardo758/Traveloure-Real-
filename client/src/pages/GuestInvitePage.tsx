@@ -1,7 +1,7 @@
 /**
  * Guest Invite Page
  * Personalized landing page for wedding/event guests
- * Shows travel recommendations based on their origin city
+ * Guests share where they are traveling from and confirm their RSVP
  */
 
 import React, { useState, useEffect } from 'react';
@@ -10,7 +10,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -26,10 +25,6 @@ import {
   MapPin,
   Calendar,
   Users,
-  Plane,
-  Car,
-  Hotel,
-  Palmtree,
   Heart,
   CheckCircle2,
   AlertCircle,
@@ -95,7 +90,7 @@ export function GuestInvitePage() {
   const [invite, setInvite] = useState<Invite | null>(null);
   const [experience, setExperience] = useState<Experience | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [currentStep, setCurrentStep] = useState<'welcome' | 'origin' | 'rsvp' | 'recommendations'>('welcome');
+  const [currentStep, setCurrentStep] = useState<'welcome' | 'origin' | 'rsvp' | 'confirmed'>('welcome');
   const { toast } = useToast();
   
   // Form state
@@ -109,9 +104,6 @@ export function GuestInvitePage() {
   const [transportationNeeded, setTransportationNeeded] = useState(false);
   const [specialRequests, setSpecialRequests] = useState('');
   const [message, setMessage] = useState('');
-  
-  // Recommendations state
-  const [recommendations, setRecommendations] = useState<any>(null);
   
   useEffect(() => {
     fetchInvite();
@@ -137,8 +129,7 @@ export function GuestInvitePage() {
         if (data.invite.rsvpStatus !== 'pending') {
           setRsvpStatus(data.invite.rsvpStatus);
           setNumberOfGuests(data.invite.numberOfGuests || 1);
-          setCurrentStep('recommendations');
-          fetchRecommendations();
+          setCurrentStep('confirmed');
         } else if (data.invite.originCity) {
           setCurrentStep('rsvp');
         }
@@ -231,8 +222,7 @@ export function GuestInvitePage() {
         description: "Thank you for responding",
       });
       
-      setCurrentStep('recommendations');
-      fetchRecommendations();
+      setCurrentStep('confirmed');
       
     } catch (error: any) {
       toast({
@@ -240,19 +230,6 @@ export function GuestInvitePage() {
         description: error.message,
         variant: "destructive",
       });
-    }
-  }
-  
-  async function fetchRecommendations() {
-    try {
-      const response = await fetch(`/api/invites/${token}/recommendations`);
-      const data = await response.json();
-      
-      if (response.ok) {
-        setRecommendations(data.recommendations);
-      }
-    } catch (error) {
-      console.error('Error fetching recommendations:', error);
     }
   }
   
@@ -318,15 +295,6 @@ export function GuestInvitePage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="bg-purple-50 p-6 rounded-lg">
-                <h3 className="font-semibold mb-2">🌟 Personalized Travel Planning</h3>
-                <p className="text-sm text-muted-foreground">
-                  We'll help you plan your journey! Just tell us where you're traveling from, 
-                  and we'll show you flight options, ground transportation, accommodation near 
-                  the venue, and local activities during your stay.
-                </p>
-              </div>
-              
               <Button 
                 className="w-full" 
                 size="lg"
@@ -344,9 +312,6 @@ export function GuestInvitePage() {
           <Card className="max-w-2xl mx-auto">
             <CardHeader>
               <CardTitle>Where are you traveling from?</CardTitle>
-              <CardDescription>
-                We'll use this to show you personalized travel recommendations
-              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
@@ -535,8 +500,8 @@ export function GuestInvitePage() {
           </Card>
         )}
         
-        {/* Recommendations Step */}
-        {currentStep === 'recommendations' && (
+        {/* Confirmation Step */}
+        {currentStep === 'confirmed' && (
           <div className="space-y-6">
             <Card>
               <CardHeader>
@@ -544,91 +509,8 @@ export function GuestInvitePage() {
                   <CheckCircle2 className="h-6 w-6 text-green-500" />
                   RSVP Confirmed!
                 </CardTitle>
-                <CardDescription>
-                  Here are your personalized travel recommendations from {originCity} to {experience.destination}
-                </CardDescription>
               </CardHeader>
             </Card>
-            
-            {recommendations?.needsApiIntegration ? (
-              <Card className="bg-blue-50">
-                <CardContent className="pt-6">
-                  <div className="text-center">
-                    <Plane className="h-12 w-12 text-blue-600 mx-auto mb-4" />
-                    <h3 className="font-semibold mb-2">Travel recommendations aren't available yet</h3>
-                    <p className="text-sm text-muted-foreground">
-                      We're working on integrating flight search, hotel recommendations, and local activities.
-                      Check back soon for personalized travel options from {originCity} to {experience.destination}!
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <Tabs defaultValue="flights">
-                <TabsList className="grid w-full grid-cols-4">
-                  <TabsTrigger value="flights">
-                    <Plane className="mr-2 h-4 w-4" />
-                    Flights
-                  </TabsTrigger>
-                  <TabsTrigger value="transport">
-                    <Car className="mr-2 h-4 w-4" />
-                    Transport
-                  </TabsTrigger>
-                  <TabsTrigger value="hotels">
-                    <Hotel className="mr-2 h-4 w-4" />
-                    Hotels
-                  </TabsTrigger>
-                  <TabsTrigger value="activities">
-                    <Palmtree className="mr-2 h-4 w-4" />
-                    Activities
-                  </TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="flights">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Flights: {originCity} → {experience.destination}</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-muted-foreground">Flight options will appear here</p>
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-                
-                <TabsContent value="transport">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Ground Transportation</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-muted-foreground">Transport options will appear here</p>
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-                
-                <TabsContent value="hotels">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Hotels Near Venue</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-muted-foreground">Hotel recommendations will appear here</p>
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-                
-                <TabsContent value="activities">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Things to Do in {experience.destination}</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-muted-foreground">Activity recommendations will appear here</p>
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-              </Tabs>
-            )}
           </div>
         )}
       </div>

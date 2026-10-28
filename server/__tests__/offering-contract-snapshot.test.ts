@@ -268,6 +268,9 @@ test("K1 · the Stripe idempotency-key templates are exactly what they were — 
       // the withdrawal refund is keyed on the row so a retried withdrawal refunds once. The capture,
       // cancel and release keys are passed positionally and do not appear in this extraction.
       "handoff-auth-${id}",
+      // Row 268: a failed booking refunds the captured fee in full, once, under this key.
+      // A retry (timer or expert replay) sends the same key. Proven by handoff-failed-booking.db.test.ts.
+      "handoff-failed-booking-refund-${row.id}",
       "handoff-ots-auth-${requestId}",
       "handoff-withdraw-refund-${row.id}",
       // NOT a Stripe key (#1274): the Resend idempotency key for one itinerary follow-up send, keyed on

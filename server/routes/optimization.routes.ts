@@ -27,6 +27,7 @@ import { OPTIMIZER_RUN_REFUND_REASON } from "@shared/optimizer-run-refund";
 import { eq, and, sql } from "drizzle-orm";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { requireVerifiedEmail } from "../services/verified-email-action-gate";
+import { optimizerFreeRetimes } from "../config/optimizer-retimes.config";
 import { complexityTier } from "../services/smart-sequencing.service";
 import {
   computeOptimizationPreviewHeuristic,
@@ -320,6 +321,7 @@ router.get("/api/optimization-fee", isAuthenticated, async (req, res) => {
       creditTowardCoordination: fee.creditTowardCoordination,
       aiDisabled: fee.isDisabled,
       coveredByTripPass,
+      freeRetimesPerVersion: optimizerFreeRetimes(),
       ...(tripPassRuns ? { tripPassRuns } : {}),
     });
   } catch (err: any) {

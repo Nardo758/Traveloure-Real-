@@ -23,6 +23,13 @@
  *   E15 a qualifying plan whose dates nobody confirmed (`dates_confirmed_at` NULL): zero routing
  *       calls, zero legs, and the skip says why — `dates_not_confirmed` (E1 ruling 7, ledger
  *       `2026-10-08-e1-zero-questions`)
+ *   E16 a stop inserted between two routed stops, then removed: A-B and the other timed legs
+ *       (B-C, D-E) come back with the same minutes and source (row 260, pt780u)
+ *   E16b the same round trip when the restore ask gets no answer: the cached minutes survive,
+ *       and the restored A-B leg is visible again (proposal_status set, superseded_at null)
+ *   E16c the leg key changes while the pair is split and the restore ask gets no answer: the
+ *       held leg is shown again, and the ask did run (the unanswered revive)
+ *   E17 a rename of a stop makes no routing call and changes no leg
  *
  * NEGATIVE SPACE (§18d): the adapter is the CI stub (no Google call — the Google adapter's half is the
  * contract test's). Hours buckets are exercised through item end times only.
@@ -87,7 +94,8 @@ async function stops(trip: string) {
 async function legs(trip: string): Promise<any[]> {
   return (await db.execute(sql`SELECT * FROM transport_legs WHERE trip_id = ${trip} ORDER BY day_number, leg_order`)).rows as any[];
 }
-const pairs = (rows: any[]) => rows.map((l) => `${l.day_number}:${String(l.from_activity_id).split("-").pop()}>${String(l.to_activity_id).split("-").pop()}`);
+// Shown legs only. A split pair is held with proposal_status NULL (row 260) and is not a current pair.
+const pairs = (rows: any[]) => rows.filter((l) => l.proposal_status != null).map((l) => `${l.day_number}:${String(l.from_activity_id).split("-").pop()}>${String(l.to_activity_id).split("-").pop()}`);
 
 before(async () => {
   assertDisposableDb();
@@ -174,7 +182,8 @@ test("E6: a stop inserted between two others replaces one leg with two", async (
   const stub = new StubRoutingAdapter();
   const r: any = await computePlanLegs(PAID, { adapter: stub });
   assert.equal(stub.calls, 2);
-  assert.equal(r.removed, 1);
+  // Row 260: the split pair is held (hidden), not deleted, so the shown pairs are the two new legs.
+  assert.equal(r.removed, 0, "the split pair is held, not deleted");
   assert.deepEqual(pairs(await legs(PAID)), ["1:a>b", "1:b>c", "2:d>x", "2:x>e"]);
 });
 
@@ -319,6 +328,43 @@ test("E14: after an Optimize run, the plan's legs come from its own version legs
   for (const l of await legs(OPT)) assert.equal(l.estimated_duration_minutes, 17);
 });
 
+/** One qualifying plan: day 1 is A-B-C (the split is A-B), day 2 is D-E (untouched by the insert). */
+async function threeLegPlan(key: string): Promise<string> {
+  const trip = id(key);
+  await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, market_slug, timezone, start_date, end_date, status, dates_confirmed_at)
+    VALUES (${trip}, ${owner}, 'PLE', 'Edinburgh, UK', 'edinburgh', 'Asia/Tokyo', '2026-11-11', '2026-11-12', 'draft', now())`);
+  await item(trip, "a", 1, 0, P(0, 0), "09:00", "10:00");
+  await item(trip, "b", 1, 1, P(0.03, 0.02), "11:00", "12:00");
+  await item(trip, "c", 1, 2, P(0.032, 0.021), "13:00", "14:00");
+  await item(trip, "d", 2, 0, P(-0.02, 0.01), "09:00", "10:00");
+  await item(trip, "e", 2, 1, P(-0.05, 0.03), "11:00", "12:00");
+  await db.execute(sql`INSERT INTO trip_entitlements (id, trip_id, plan_key, status, source) VALUES (${`${trip}-pass`}, ${trip}, 'trip_pass', 'active', 'manual')`);
+  return trip;
+}
+
+function pairLabel(l: any): string {
+  return `${l.day_number}:${String(l.from_activity_id).split("-").pop()}>${String(l.to_activity_id).split("-").pop()}`;
+}
+
+function legByPair(rows: any[], pair: string): any | undefined {
+  return rows.find((l) => pairLabel(l) === pair);
+}
+
+/** Insert X between A and B, then delete X. Returns the routing-call count of each compute. */
+async function insertThenRemoveX(trip: string, restore: { calls: number }): Promise<{ first: number; inserted: number; removed: number; before: any[]; after: any[] }> {
+  const first = new StubRoutingAdapter();
+  await computePlanLegs(trip, { adapter: first });
+  const before = await legs(trip);
+  await item(trip, "x", 1, 1, P(0.015, 0.01), "10:15", "10:30");
+  await db.execute(sql`UPDATE itinerary_items SET sort_order = 2 WHERE id = ${`${trip}-b`}`);
+  await db.execute(sql`UPDATE itinerary_items SET sort_order = 3 WHERE id = ${`${trip}-c`}`);
+  const inserted = new StubRoutingAdapter();
+  await computePlanLegs(trip, { adapter: inserted });
+  await db.execute(sql`DELETE FROM itinerary_items WHERE id = ${`${trip}-x`}`);
+  await computePlanLegs(trip, { adapter: restore as any });
+  return { first: first.calls, inserted: inserted.calls, removed: restore.calls, before, after: await legs(trip) };
+}
+
 test("E15: a plan whose dates nobody confirmed builds no legs and says why (E1 ruling 7)", async () => {
   const UNDATED = id("undated");
   await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, market_slug, timezone, start_date, end_date, status)
@@ -332,5 +378,130 @@ test("E15: a plan whose dates nobody confirmed builds no legs and says why (E1 r
     assert.equal((await legs(UNDATED)).length, 0, "no leg is written");
   } finally {
     await db.execute(sql`DELETE FROM trips WHERE id = ${UNDATED}`);
+  }
+});
+
+function sameRoutedLeg(before: any, after: any, pair: string): void {
+  assert.ok(after, `${pair} is missing after the stop is removed`);
+  assert.equal(Number(after.estimated_duration_minutes), Number(before.estimated_duration_minutes), `${pair} minutes`);
+  assert.equal(after.source, before.source, `${pair} source`);
+}
+
+/** A restored leg is on the slip only when it is not the hidden hold (proposal_status NULL). */
+function assertLegVisible(leg: any, pair: string): void {
+  assert.ok(leg, `${pair} is missing`);
+  assert.ok(leg.proposal_status != null, `${pair} is hidden — revive did not run`);
+  assert.equal(leg.superseded_at, null, `${pair} is still superseded — revive did not run`);
+}
+
+test("E16: inserting a stop and then removing it restores the cached routed legs", async () => {
+  const trip = await threeLegPlan("e16");
+  try {
+    const restore = new StubRoutingAdapter();
+    const run = await insertThenRemoveX(trip, restore);
+    const ab = legByPair(run.before, "1:a>b");
+    const bc = legByPair(run.before, "1:b>c");
+    const de = legByPair(run.before, "2:d>e");
+    assert.ok(ab && bc && de, "the first run routed A-B, B-C and D-E");
+    sameRoutedLeg(ab, legByPair(run.after, "1:a>b"), "1:a>b");
+    sameRoutedLeg(bc, legByPair(run.after, "1:b>c"), "1:b>c");
+    sameRoutedLeg(de, legByPair(run.after, "2:d>e"), "2:d>e");
+    assert.equal(bc.id, legByPair(run.after, "1:b>c").id, "B-C is the same row");
+    assert.equal(de.id, legByPair(run.after, "2:d>e").id, "D-E is the same row");
+    assert.equal(legByPair(run.after, "1:a>x"), undefined, "a leg into the removed stop is not kept");
+    assert.equal(legByPair(run.after, "1:x>b"), undefined, "a leg out of the removed stop is not kept");
+    assert.equal(run.first, 3, `step 1 routing calls: ${run.first}`);
+    assert.equal(run.inserted, 2, `step 2 routing calls: ${run.inserted}`);
+    assert.equal(run.removed, 0, `step 3 routing calls: ${run.removed}`);
+    assertLegVisible(legByPair(run.after, "1:a>b"), "1:a>b");
+    console.log(`[plan-legs E16] routing calls: step1=${run.first} insert=${run.inserted} remove=${run.removed}`);
+  } finally {
+    await db.execute(sql`DELETE FROM trips WHERE id = ${trip}`);
+  }
+});
+
+/** The router's own failure: every ask is unanswered, so a deleted pair has nothing to come back from. */
+class NoAnswerAdapter {
+  readonly source = "stub";
+  calls = 0;
+  async route(): Promise<{ kind: "no_route"; unanswered: "failed" }> {
+    this.calls += 1;
+    return { kind: "no_route", unanswered: "failed" };
+  }
+}
+
+test("E16b: a cached routed leg survives when the restore ask gets no answer", async () => {
+  const trip = await threeLegPlan("e16b");
+  try {
+    const restore = new NoAnswerAdapter();
+    const run = await insertThenRemoveX(trip, restore);
+    const ab = legByPair(run.before, "1:a>b");
+    const bc = legByPair(run.before, "1:b>c");
+    const de = legByPair(run.before, "2:d>e");
+    assert.ok(ab && bc && de, "the first run routed A-B, B-C and D-E");
+    const missing = ["1:a>b", "1:b>c", "2:d>e"].filter((p) => !legByPair(run.after, p));
+    assert.deepEqual(missing, [], `missing after remove (step 3 routing calls: ${run.removed}): ${missing.join(", ") || "none"}`);
+    sameRoutedLeg(ab, legByPair(run.after, "1:a>b"), `1:a>b (step 3 routing calls: ${run.removed})`);
+    sameRoutedLeg(bc, legByPair(run.after, "1:b>c"), `1:b>c (step 3 routing calls: ${run.removed})`);
+    sameRoutedLeg(de, legByPair(run.after, "2:d>e"), `2:d>e (step 3 routing calls: ${run.removed})`);
+    assert.equal(bc.id, legByPair(run.after, "1:b>c").id, "B-C was not the split pair");
+    assert.equal(de.id, legByPair(run.after, "2:d>e").id, "D-E was not the split pair");
+    assert.equal(run.removed, 0, `step 3 routing calls: ${run.removed} (the plan's own leg, not a new ask)`);
+    assertLegVisible(legByPair(run.after, "1:a>b"), "1:a>b");
+    console.log(`[plan-legs E16b] routing calls: step1=${run.first} insert=${run.inserted} remove=${run.removed}`);
+  } finally {
+    await db.execute(sql`DELETE FROM trips WHERE id = ${trip}`);
+  }
+});
+
+test("E16c: a changed leg key with no router answer shows the held leg again", async () => {
+  const trip = await threeLegPlan("e16c");
+  try {
+    const first = new StubRoutingAdapter();
+    await computePlanLegs(trip, { adapter: first });
+    const ab = legByPair(await legs(trip), "1:a>b");
+    assert.ok(ab, "the first run routed A-B");
+    await item(trip, "x", 1, 1, P(0.015, 0.01), "10:15", "10:30");
+    await db.execute(sql`UPDATE itinerary_items SET sort_order = 2 WHERE id = ${`${trip}-b`}`);
+    await db.execute(sql`UPDATE itinerary_items SET sort_order = 3 WHERE id = ${`${trip}-c`}`);
+    await computePlanLegs(trip, { adapter: new StubRoutingAdapter() });
+    // The hour bucket is the departure hour. A's end moves 10:00 → 15:00 while A-B is split, so the
+    // pair's leg key no longer matches the held row when the stop is removed and the router is asked.
+    await db.execute(sql`UPDATE itinerary_items SET end_time = '15:00' WHERE id = ${`${trip}-a`}`);
+    await db.execute(sql`DELETE FROM itinerary_items WHERE id = ${`${trip}-x`}`);
+    const restore = new NoAnswerAdapter();
+    await computePlanLegs(trip, { adapter: restore as any });
+    const after = legByPair(await legs(trip), "1:a>b");
+    assert.ok(restore.calls > 0, `unanswered revive was not asked (calls: ${restore.calls})`);
+    assert.equal(after?.id, ab.id, "the held row is revived, not replaced");
+    assertLegVisible(after, "1:a>b");
+    assert.equal(Number(after.estimated_duration_minutes), Number(ab.estimated_duration_minutes), "1:a>b minutes");
+    assert.equal(after.source, ab.source, "1:a>b source");
+    const bc = legByPair(await legs(trip), "1:b>c");
+    const de = legByPair(await legs(trip), "2:d>e");
+    assertLegVisible(bc, "1:b>c");
+    assertLegVisible(de, "2:d>e");
+    console.log(`[plan-legs E16c] unanswered calls: ${restore.calls}`);
+  } finally {
+    await db.execute(sql`DELETE FROM trips WHERE id = ${trip}`);
+  }
+});
+
+test("E17: renaming a stop makes no routing call and changes no leg", async () => {
+  const trip = await threeLegPlan("e17");
+  try {
+    const first = new StubRoutingAdapter();
+    await computePlanLegs(trip, { adapter: first });
+    assert.equal(first.calls, 3, `step 1 routing calls: ${first.calls}`);
+    const before = await legs(trip);
+    await db.execute(sql`UPDATE itinerary_items SET title = 'A renamed' WHERE id = ${`${trip}-a`}`);
+    const again = new StubRoutingAdapter();
+    const r: any = await computePlanLegs(trip, { adapter: again });
+    assert.equal(again.calls, 0, `rename routing calls: ${again.calls}`);
+    assert.equal(r.written, 0);
+    const after = await legs(trip);
+    assert.deepEqual(after.map((l) => [l.id, l.estimated_duration_minutes, l.source]), before.map((l) => [l.id, l.estimated_duration_minutes, l.source]));
+  } finally {
+    await db.execute(sql`DELETE FROM trips WHERE id = ${trip}`);
   }
 });

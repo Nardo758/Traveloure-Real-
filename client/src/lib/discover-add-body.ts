@@ -41,7 +41,6 @@ export interface DiscoverAddBody {
   status: string;
   estimatedCost: string | null;
   currency: string;
-  notes: string;
   affiliateProductId?: string;
 }
 
@@ -60,8 +59,8 @@ export function buildDiscoverAddBody(
     // §16 (ledger 2026-08-22-ai-slip-defects): the affiliate URL is deliberately NOT persisted
     // onto the trip item — partner URLs stay server-side; booking rides the agent rail. (The old
     // code wrote it into `notes` and a `sourceUrl` field that no column backs — the URL then lived
-    // durably on the traveler's plan.)
-    notes: `Source: ${item.source}`,
+    // durably on the traveler's plan.) Row 262: `item.source` is deliberately not copied into the
+    // body either; no provenance text is written into `notes`.
   };
   if (typeof item.tracking?.productId === "string" && item.tracking.productId.length > 0) {
     body.affiliateProductId = item.tracking.productId;

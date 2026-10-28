@@ -73,9 +73,9 @@ describe("audit B8 — no straight-line minutes", () => {
 
   it("B8c S3 the anchor candidate's straight-line distance", () => {
     const c = (medianMeters: number | null) => ({ medianMeters, estMedianWalkMinutes: 15 }) as any;
-    assert.equal(formatAnchorCandidateMedian(c(1240)), "about 1.2 km · straight line");
-    assert.equal(formatAnchorCandidateMedian(c(1240)), ANCHOR_CANDIDATE_DISTANCE_COPY.distance("1.2"));
-    assert.equal(formatAnchorCandidateMedian(c(20)), "about 0.1 km · straight line", "never below 0.1");
+    assert.equal(formatAnchorCandidateMedian(c(1240)), "about 1,240 m apart in a straight line");
+    assert.equal(formatAnchorCandidateMedian(c(1240)), ANCHOR_CANDIDATE_DISTANCE_COPY.distance("1,240"));
+    assert.equal(formatAnchorCandidateMedian(c(20)), "about 20 m apart in a straight line", "never below 0.1");
     assert.equal(formatAnchorCandidateMedian(c(null)), "—");
     for (const m of [1240, 20, null]) assert.doesNotMatch(formatAnchorCandidateMedian(c(m)), /min/);
     const src = fs.readFileSync("client/src/components/plancard/BuildAroundDialog.tsx", "utf8");

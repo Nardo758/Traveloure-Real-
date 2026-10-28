@@ -54,6 +54,15 @@ export {
 };
 export type { PlanEventDefaults, PlanEventDraft, PlanEventRowValues };
 
+/**
+ * Row 277 (Architect, 2026-10-28 01:45 ET, pt847u): the host's event tables name the `location`
+ * input "Venue name". The street address is its own column (user_experiences.venue_address); this
+ * label changes no data.
+ */
+export const HOST_EVENT_FORM_LABELS = {
+  venueName: "Venue name",
+} as const;
+
 /** The pen as it sits in `trip_contexts.context` — BOTH spellings, for the one release. */
 export interface PendingEventPen {
   /** The shape written from this release on: title + the three optional answers. */

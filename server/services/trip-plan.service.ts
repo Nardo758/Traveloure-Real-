@@ -87,6 +87,7 @@ import { checkoutProjectionRefusals } from "./buy-action-payload";
 import { getRecentTripTransitions, getTripTransitionCount } from "./item-transition-log.service";
 import { getLatestTripFinal, planContentHash } from "./trip-finalize.service";
 import { isoTimestamp } from "@shared/iso-timestamp";
+import { deliveredExpertNote } from "@shared/delivered-expert-note";
 
 /**
  * Phase 2 snapshot-only render (ledger 2026-08-31-two-surfaces-one-handoff): overlay the LIVE
@@ -929,11 +930,8 @@ export async function assembleTripPlan(
       // never a placeholder string.
       confirmationNumber: item.confirmationNumber || item.bookingReference || null,
       vendorPhone: item.vendorContractId ? (vendorPhoneById[item.vendorContractId] ?? null) : null,
-      // Workstation audit C-1: the durable expertNote column (migration 152) is the primary source
-      // — an expert-authored tip written via the Workstation item editor. Falls back to the
-      // pre-existing ephemeral `notes` reading only when the column is NULL, so builds that predate
-      // the column (or only ever used the old path) keep rendering exactly as before.
-      expertNote: item.expertNote || item.notes || null,
+      // expertNote is the expert_note column only (migration 152); the app's own `notes` text is never delivered as an expert's voice (row 259, Architect ruling Oct 27, 2026)
+      expertNote: deliveredExpertNote(item),
       // No dedicated column: derived from the RAW row status (the display status is mapped below).
       visited: item.status === "completed",
       source: activitySource(item),

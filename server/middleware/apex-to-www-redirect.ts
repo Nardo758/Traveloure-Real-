@@ -3,6 +3,7 @@
  * https://www.traveloure.com at the server edge, one middleware, no cookie change.
  * Amended 8:35 PM ET: the canonical origin is www. Amended 9:10 PM ET: GET and
  * HEAD 301; every other method passes through; `/api/*` is exempt entirely.
+ * Bare `/api` is exempt as well as `/api/*`. `/apix` is not.
  *
  * Host is read from the headers, not from `req.hostname`. `app.set("trust proxy", 1)`
  * is set inside setupAuth (replitAuth.ts:177) during registerRoutes, after this
@@ -12,7 +13,7 @@
  *
  * Non-GET and non-HEAD methods pass through untouched: a 301 turns a POST into
  * a GET in browsers, and webhook senders do not follow redirects. The exempt
- * paths pass through for the same reason (every `/api/*` route, the health and
+ * paths pass through for the same reason (bare `/api` and every `/api/*` route, the health and
  * metrics probes, the Apple Pay domain file under `/.well-known/`, and
  * `/internal/` job runners).
  *
@@ -24,10 +25,10 @@ import { SITE_ORIGIN } from "@shared/site-origin";
 export const CANONICAL_WWW_ORIGIN = SITE_ORIGIN;
 export const APEX_HOST = "traveloure.com" as const;
 
-/** Prefix match includes the trailing slash, so `/api`, `/apix` and `/internal` are not exempt. */
+/** Prefix match includes the trailing slash, so `/apix` and `/internal` are not exempt. */
 export const EXEMPT_PREFIXES = ["/api/", "/.well-known/", "/internal/"] as const;
-/** Exact match, so `/healthy` and `/health/x` are not exempt. */
-export const EXEMPT_EXACT = ["/health", "/health/ready", "/health/live", "/metrics"] as const;
+/** Exact match. Bare `/api` is exempt; `/apix` is not. `/healthy` and `/health/x` are not exempt. */
+export const EXEMPT_EXACT = ["/api", "/health", "/health/ready", "/health/live", "/metrics"] as const;
 
 function firstCommaValue(value: string | string[] | undefined): string | undefined {
   if (value == null) return undefined;

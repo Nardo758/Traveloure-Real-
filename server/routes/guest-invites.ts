@@ -8,6 +8,7 @@ import crypto from "crypto";
 import { buildInviteLink, sendExperienceInvites } from "../services/guest-invite-send.service";
 import { loadPlanGuestRoster } from "../services/plan-guest-roster.service";
 import { authorizeTripOwnerTier } from "../utils/trip-logistics-auth";
+import { buildGuestLanding, projectInviteForGuest } from "../services/guest-invite-landing";
 
 /**
  * GUEST INVITE SYSTEM — organizer invite management + public token-based guest RSVP.
@@ -27,8 +28,12 @@ import { authorizeTripOwnerTier } from "../utils/trip-logistics-auth";
  *   body names neither. `invite_sent_at` is stamped ONLY by the send rail's atomic claim, so it
  *   is a fact rather than an assumption, and a hidden occasion (migration 276
  *   `default_visibility`) is refused outright.
- * - The token GET returns a REDACTED view of the parent experience (title/destination/
- *   date only) — never the organizer's budget/preferences/stepData.
+ * - The token GET is a PURE READ (row 277, ledger `2026-10-28-guest-landing-fields`). It returns
+ *   the guest-safe invite (projectInviteForGuest: no guest email/phone, no organizer id), a
+ *   REDACTED view of the parent experience (never the organizer's budget/preferences/stepData),
+ *   and `landing`, data only (buildGuestLanding; the street address only at rsvpStatus
+ *   "accepted"). The view record moved to the POST …/view beacon. POST …/origin and …/rsvp
+ *   return the same guest-safe invite.
  */
 
 // ── Zod validation schemas (all fields capped — public/unauthenticated writers) ──
@@ -80,24 +85,6 @@ const inviteTemplateSchema = z.object({
   subject: z.string().max(500).optional(),
   messageBody: z.string().min(1, "Message body is required").max(10000),
   eventType: z.string().max(100).optional(),
-});
-
-// Travel-plan selections are guest-chosen option blobs (flight/hotel/transport JSON from
-// the recommendations surface). They are stored on the guest's OWN travel-plan row only;
-// cap sizes so an unauthenticated caller can't stuff unbounded jsonb.
-const optionBlob = z.record(z.any());
-const isoDate = z
-  .string()
-  .max(40)
-  .refine((s) => !Number.isNaN(new Date(s).getTime()), "Invalid date");
-
-const travelPlansSchema = z.object({
-  selectedFlight: optionBlob.optional(),
-  selectedTransport: optionBlob.optional(),
-  selectedAccommodation: optionBlob.optional(),
-  selectedActivities: z.array(optionBlob).max(50).optional(),
-  arrivalDate: isoDate.optional(),
-  departureDate: isoDate.optional(),
 });
 
 // ── Helpers ──
@@ -454,7 +441,9 @@ router.delete("/api/invites/:inviteId", isAuthenticated, async (req: Request, re
 
 /**
  * GET /api/invites/:token
- * Invite details for the guest (public). Experience is REDACTED to guest-safe fields.
+ * Invite details for the guest (public). A pure read: the guest-safe invite, the REDACTED
+ * experience and the `landing` data (row 277). The address is decided by the row the token
+ * resolved, never by the request.
  */
 router.get("/api/invites/:token", guestTokenLimiter, async (req: Request, res: Response) => {
   try {
@@ -465,14 +454,49 @@ router.get("/api/invites/:token", guestTokenLimiter, async (req: Request, res: R
       return res.status(404).json({ error: "Invite not found" });
     }
 
-    const { invite, experience } = row;
+    const invite = row.invite;
+    const { experience, landingSource } = row;
 
-    // Track view (first-view timestamp preserved; view counter incremented)
-    await storage.trackInviteView(token, invite.inviteViewedAt ?? null);
+    const landing = buildGuestLanding({
+      title: experience?.title,
+      eventDate: experience?.eventDate,
+      startTime: experience?.startTime,
+      location: experience?.location,
+      hostNote: experience?.hostNote,
+      rsvpBy: experience?.rsvpBy,
+      venueAddress: experience?.venueAddress,
+      hostFirstName: landingSource.hostFirstName,
+      marketSlug: landingSource.tripMarketSlug,
+      tripTimezone: landingSource.tripTimezone,
+      rsvpStatus: invite.rsvpStatus,
+    });
 
-    return res.json({ invite, experience: redactExperienceForGuest(experience) });
+    return res.json({
+      invite: projectInviteForGuest(invite),
+      experience: redactExperienceForGuest(experience),
+      landing,
+    });
   } catch (error: any) {
     console.error("Error fetching invite:", error);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/invites/:token/view
+ * The view record (row 277): the GET no longer writes, so link previews and prefetchers do not
+ * count as views. Reads only :token. First-view timestamp kept; view counter incremented.
+ */
+router.post("/api/invites/:token/view", guestTokenLimiter, async (req: Request, res: Response) => {
+  try {
+    const { token } = req.params;
+    const updated = await storage.trackInviteView(token);
+    if (!updated) {
+      return res.status(404).json({ error: "Invite not found" });
+    }
+    return res.status(204).end();
+  } catch (error: any) {
+    console.error("Error recording invite view:", error);
     return res.status(500).json({ error: error.message });
   }
 });
@@ -504,7 +528,7 @@ router.post("/api/invites/:token/origin", guestTokenLimiter, async (req: Request
       return res.status(404).json({ error: "Invite not found" });
     }
 
-    return res.json({ message: "Origin city saved successfully", invite: updated });
+    return res.json({ message: "Origin city saved successfully", invite: projectInviteForGuest(updated) });
   } catch (error: any) {
     console.error("Error saving origin:", error);
     return res.status(500).json({ error: error.message });
@@ -549,113 +573,9 @@ router.post("/api/invites/:token/rsvp", guestTokenLimiter, async (req: Request, 
       return res.status(404).json({ error: "Invite not found" });
     }
 
-    return res.json({ message: "RSVP submitted successfully", invite: updated });
+    return res.json({ message: "RSVP submitted successfully", invite: projectInviteForGuest(updated) });
   } catch (error: any) {
     console.error("Error submitting RSVP:", error);
-    return res.status(500).json({ error: error.message });
-  }
-});
-
-/**
- * GET /api/invites/:token/recommendations
- * Personalized travel recommendations for the guest. Honest placeholder until the
- * flight/hotel API integration lands (§13 — never fabricates options).
- */
-router.get("/api/invites/:token/recommendations", guestTokenLimiter, async (req: Request, res: Response) => {
-  try {
-    const { token } = req.params;
-
-    const row = await storage.getInviteByToken(token);
-    if (!row) {
-      return res.status(404).json({ error: "Invite not found" });
-    }
-
-    const { invite, experience } = row;
-
-    if (!invite.originCity) {
-      return res.status(400).json({
-        error: "Origin city not set. Please set your city of origin first.",
-        needsOrigin: true,
-      });
-    }
-
-    let travelPlan = await storage.getTravelPlanByInviteId(invite.id);
-    if (!travelPlan) {
-      travelPlan = await storage.createTravelPlan(invite.id);
-    }
-
-    const recommendations = {
-      origin: {
-        city: invite.originCity,
-        state: invite.originState,
-        country: invite.originCountry,
-      },
-      destination: {
-        city: experience?.location,
-        eventDate: experience?.eventDate,
-      },
-      flights: travelPlan.flightOptions || [],
-      groundTransport: travelPlan.transportOptions || [],
-      accommodations: travelPlan.accommodationOptions || [],
-      activities: travelPlan.activityRecommendations || [],
-      estimatedCost: travelPlan.estimatedTotalCost,
-      needsApiIntegration: true,
-    };
-
-    return res.json({ recommendations, travelPlan });
-  } catch (error: any) {
-    console.error("Error fetching recommendations:", error);
-    return res.status(500).json({ error: error.message });
-  }
-});
-
-/**
- * POST /api/invites/:token/travel-plans
- * Update the guest's travel selections (public — scoped to the token's own plan row).
- */
-router.post("/api/invites/:token/travel-plans", guestTokenLimiter, async (req: Request, res: Response) => {
-  try {
-    const { token } = req.params;
-
-    const validation = travelPlansSchema.safeParse(req.body);
-    if (!validation.success) {
-      return res.status(400).json({ error: "Validation failed", details: validation.error.errors });
-    }
-
-    const {
-      selectedFlight,
-      selectedTransport,
-      selectedAccommodation,
-      selectedActivities,
-      arrivalDate,
-      departureDate,
-    } = validation.data;
-
-    const row = await storage.getInviteByToken(token);
-    if (!row) {
-      return res.status(404).json({ error: "Invite not found" });
-    }
-
-    const planValues = {
-      selectedFlight,
-      selectedTransport,
-      selectedAccommodation,
-      selectedActivities,
-      arrivalDate: arrivalDate ? new Date(arrivalDate) : undefined,
-      departureDate: departureDate ? new Date(departureDate) : undefined,
-    } as any;
-
-    const existingPlan = await storage.getTravelPlanByInviteId(row.invite.id);
-
-    if (existingPlan) {
-      const updated = await storage.updateTravelPlan(existingPlan.id, planValues);
-      return res.json({ message: "Travel plans updated successfully", travelPlan: updated });
-    } else {
-      const created = await storage.createTravelPlan(row.invite.id, planValues);
-      return res.json({ message: "Travel plans created successfully", travelPlan: created });
-    }
-  } catch (error: any) {
-    console.error("Error updating travel plans:", error);
     return res.status(500).json({ error: error.message });
   }
 });

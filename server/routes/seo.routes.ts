@@ -148,7 +148,7 @@ const ROUTE_META: Record<string, { title: string; description: string }> = {
   "/about": {
     title: "About Us | Traveloure",
     description:
-      "Traveloure pairs AI-powered trip planning with local experts to make every journey personal.",
+      "Traveloure builds your plan around a place, then hands the parts that matter to someone who lives there.",
   },
   "/contact": {
     title: "Contact | Traveloure",

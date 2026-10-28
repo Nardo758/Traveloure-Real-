@@ -240,11 +240,9 @@ import { loadEarnerRatings } from "./services/earner-rating.service";
 import type { User } from "@shared/models/auth";
 import {
   eventInvites,
-  guestTravelPlans,
   inviteTemplates,
   inviteSendLog,
   type EventInvite,
-  type GuestTravelPlan,
   type InviteTemplate,
   type InviteSendLog,
 } from "../shared/guest-invites-schema";
@@ -9349,19 +9347,31 @@ export class DatabaseStorage implements IStorage {
 
   // ─── Guest Invite System ──────────────────────────────────────────────────
 
-  async getInviteByToken(token: string): Promise<{ invite: EventInvite; experience: any } | null> {
+  async getInviteByToken(token: string): Promise<{
+    invite: EventInvite;
+    experience: any;
+    landingSource: { hostFirstName: string | null; tripMarketSlug: string | null; tripTimezone: string | null };
+  } | null> {
     // experienceTypeName join (Guest-invite A2): the parent experience's type name
     // (e.g. "Wedding") rides along so the guest surface can stamp TripContext's
     // Event-class vocabulary. Guest-safe — exposure is still gated by
     // redactExperienceForGuest in guest-invites.ts.
+    // Row 277 (ledger `2026-10-28-guest-landing-fields`): the organizer's FIRST NAME only, and the
+    // trip's market key and zone, for the guest landing (buildGuestLanding). Nothing else is
+    // selected from users or trips: no email, phone, last name, destination or budget.
     const [row] = await db.select({
       invite: eventInvites,
       experience: userExperiences,
       experienceTypeName: experienceTypes.name,
+      hostFirstName: users.firstName,
+      tripMarketSlug: trips.marketSlug,
+      tripTimezone: trips.timezone,
     })
       .from(eventInvites)
       .leftJoin(userExperiences, eq(eventInvites.experienceId, userExperiences.id))
       .leftJoin(experienceTypes, eq(userExperiences.experienceTypeId, experienceTypes.id))
+      .leftJoin(users, eq(eventInvites.organizerId, users.id))
+      .leftJoin(trips, eq(userExperiences.tripId, trips.id))
       .where(eq(eventInvites.uniqueToken, token))
       .limit(1);
     if (!row) return null;
@@ -9370,6 +9380,11 @@ export class DatabaseStorage implements IStorage {
       experience: row.experience
         ? { ...row.experience, experienceTypeName: row.experienceTypeName }
         : row.experience,
+      landingSource: {
+        hostFirstName: row.hostFirstName ?? null,
+        tripMarketSlug: row.tripMarketSlug ?? null,
+        tripTimezone: row.tripTimezone ?? null,
+      },
     };
   }
 
@@ -9570,14 +9585,18 @@ export class DatabaseStorage implements IStorage {
     return row ?? null;
   }
 
-  async trackInviteView(token: string, firstViewedAt: Date | null): Promise<void> {
-    await db.update(eventInvites)
+  // Row 277: called by the POST /api/invites/:token/view beacon (the GET no longer writes). The
+  // first-view timestamp is kept by COALESCE in the statement; returns whether a row was updated.
+  async trackInviteView(token: string): Promise<boolean> {
+    const rows = await db.update(eventInvites)
       .set({
-        inviteViewedAt: firstViewedAt ?? new Date(),
+        inviteViewedAt: sql`COALESCE(${eventInvites.inviteViewedAt}, now())`,
         lastViewedAt: new Date(),
         viewCount: sql`COALESCE(${eventInvites.viewCount}, 0) + 1`,
       })
-      .where(eq(eventInvites.uniqueToken, token));
+      .where(eq(eventInvites.uniqueToken, token))
+      .returning({ id: eventInvites.id });
+    return rows.length > 0;
   }
 
   async updateInviteOrigin(token: string, values: {
@@ -9604,24 +9623,6 @@ export class DatabaseStorage implements IStorage {
   }): Promise<EventInvite | null> {
     const [row] = await db.update(eventInvites).set(values)
       .where(eq(eventInvites.uniqueToken, token)).returning();
-    return row ?? null;
-  }
-
-  async getTravelPlanByInviteId(inviteId: string): Promise<GuestTravelPlan | null> {
-    const [row] = await db.select().from(guestTravelPlans)
-      .where(eq(guestTravelPlans.inviteId, inviteId)).limit(1);
-    return row ?? null;
-  }
-
-  async createTravelPlan(inviteId: string, values?: Partial<GuestTravelPlan>): Promise<GuestTravelPlan> {
-    const [row] = await db.insert(guestTravelPlans)
-      .values({ inviteId, ...values } as any).returning();
-    return row;
-  }
-
-  async updateTravelPlan(travelPlanId: string, values: Partial<GuestTravelPlan>): Promise<GuestTravelPlan | null> {
-    const [row] = await db.update(guestTravelPlans).set(values as any)
-      .where(eq(guestTravelPlans.id, travelPlanId)).returning();
     return row ?? null;
   }
 

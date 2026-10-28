@@ -148,9 +148,10 @@ test("AW5: non-GET methods on the apex pass through", async () => {
 
 test("AW6: exempt paths pass through for every method; look-alikes 301 on GET", async () => {
   assert.deepEqual([...EXEMPT_PREFIXES], ["/api/", "/.well-known/", "/internal/"]);
-  assert.deepEqual([...EXEMPT_EXACT], ["/health", "/health/ready", "/health/live", "/metrics"]);
+  assert.deepEqual([...EXEMPT_EXACT], ["/api", "/health", "/health/ready", "/health/live", "/metrics"]);
 
   const exempt = [
+    "/api",
     "/api/webhooks/stripe",
     "/api/bookings/webhooks/stripe",
     "/api/health",
@@ -187,7 +188,7 @@ test("AW6: exempt paths pass through for every method; look-alikes 301 on GET", 
     }
   }
 
-  for (const path of ["/api", "/apix", "/healthy", "/health/x", "/metricsx", "/internal", "/.well-known"]) {
+  for (const path of ["/apix", "/healthy", "/health/x", "/metricsx", "/internal", "/.well-known"]) {
     const res = await call("GET", path, { Host: "traveloure.com" });
     assert.equal(res.status, 301, path);
     assert.equal(res.location, `${WWW}${path}`, path);
