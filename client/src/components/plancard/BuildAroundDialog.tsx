@@ -58,27 +58,39 @@ const TYPE_OPTIONS: Array<{
   { type: "activity", label: "Activity", Icon: Activity },
 ];
 
+/** Row 198 (strings 24–27, 29, 30; approved by Leon Oct 26, 2026): the Build-around dialog's words. */
+export const BUILD_AROUND_COPY = {
+  description: "Choose what to build your three versions around.",
+  // #30: shown only for a priced run on a mount that shows the pay line.
+  paidStep: "This is a paid step. You'll see the price before you pay, and nothing runs until you do.",
+  autoBody: "We suggest a hotel, a neighborhood and an activity to build around, ranked by straight-line distance to your stops.",
+  chooseYourOwn: "Or choose your own",
+  loadError: "We couldn't load places to build around. Close and reopen to try again, or choose Auto.",
+  optionsLabel: (typeLabel: string): string => `${typeLabel} options`,
+} as const;
+
 const EMPTY_COPY: Record<ComparisonPinnedAnchorType, string> = {
-  hotel: "No hotels scored near your stops yet",
-  neighborhood: "No neighborhoods scored near your stops yet",
-  activity: "No activities scored near your stops yet",
+  hotel: "No hotel suggestions near your stops yet. You can type one below.",
+  neighborhood: "No neighborhood suggestions near your stops yet. You can type one below.",
+  activity: "No activity suggestions near your stops yet. You can type one below.",
 };
 
 /**
  * Audit B8: a candidate shows a labelled straight-line DISTANCE, never a travel time.
  * Wording approved by Leon (founder comment: #1703 2026-10-26T01:02:00Z).
+ * Row 198 (string 28; approved by Leon Oct 26, 2026): always metres, to the nearest 10 m.
  */
 export const ANCHOR_CANDIDATE_DISTANCE_COPY = {
-  distance: (km: string) => `about ${km} km · straight line`,
+  distance: (meters: string) => `about ${meters} m apart in a straight line`,
   none: "—",
-  tooltip: "Straight-line distance from this place to your located stops (median). Not a travel time.",
+  tooltip: "A straight-line distance, not a walking route.",
 } as const;
 
 export function formatAnchorCandidateMedian(candidate: AnchorCandidate): string {
   const m = candidate.medianMeters;
   if (m == null || !Number.isFinite(m) || m < 0) return ANCHOR_CANDIDATE_DISTANCE_COPY.none;
-  const km = Math.max(0.1, Math.round(m / 100) / 10);
-  return ANCHOR_CANDIDATE_DISTANCE_COPY.distance(km.toFixed(1));
+  const meters = Math.max(10, Math.round(m / 10) * 10);
+  return ANCHOR_CANDIDATE_DISTANCE_COPY.distance(meters.toLocaleString("en-US"));
 }
 
 export function BuildAroundDialog({
@@ -164,9 +176,9 @@ export function BuildAroundDialog({
         neighborhood: Array.isArray(data.neighborhood) ? data.neighborhood : [],
         activity: Array.isArray(data.activity) ? data.activity : [],
       });
-    } catch (error: any) {
+    } catch {
       if (epoch !== requestEpochRef.current) return;
-      setLoadError(error?.message || "Could not load anchor candidates");
+      setLoadError(BUILD_AROUND_COPY.loadError);
     } finally {
       if (epoch === requestEpochRef.current) setLoading(false);
     }
@@ -222,7 +234,8 @@ export function BuildAroundDialog({
                 Optimize <span className="font-semibold text-[color:var(--earn-ink)]" data-testid="build-around-plan">{planName.trim()}</span>:{" "}
               </>
             ) : null}
-            Choose how the optimizer should anchor the three versions of your plan.
+            {BUILD_AROUND_COPY.description}
+            {optimizeRunPriced(fee) && !hidePayLine ? <> {BUILD_AROUND_COPY.paidStep}</> : null}
           </DialogDescription>
         </DialogHeader>
 
@@ -244,12 +257,9 @@ export function BuildAroundDialog({
             <span className="min-w-0 flex-1">
               <span className="flex flex-wrap items-center gap-2 font-semibold text-[color:var(--earn-ink)]">
                 Auto
-                <span className="rounded-full bg-[color:var(--earn-teal-wash)] px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-[color:var(--earn-teal-ink)]">
-                  recommended
-                </span>
               </span>
               <span className="mt-1 block text-sm leading-5 text-[color:var(--earn-muted)]">
-                The AI scores hotels, neighborhoods &amp; activities against your stops and picks the 3 strongest anchors.
+                {BUILD_AROUND_COPY.autoBody}
               </span>
             </span>
             <span
@@ -266,7 +276,7 @@ export function BuildAroundDialog({
 
           <div>
             <p className="mb-3 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--earn-muted)]">
-              or pin your own anchor
+              {BUILD_AROUND_COPY.chooseYourOwn}
             </p>
             <div className="grid grid-cols-1 gap-2 min-[430px]:grid-cols-3">
               {TYPE_OPTIONS.map(({ type, label, Icon }) => {
@@ -305,7 +315,7 @@ export function BuildAroundDialog({
                   role="alert"
                   data-testid="build-around-load-error"
                 >
-                  {loadError}. Close and reopen to try again; Auto is still available.
+                  {BUILD_AROUND_COPY.loadError}
                 </div>
               ) : visibleCandidates.length === 0 ? (
                 <div
@@ -315,13 +325,10 @@ export function BuildAroundDialog({
                   {EMPTY_COPY[mode]}
                 </div>
               ) : (
-                <div className="space-y-2" role="radiogroup" aria-label={`${mode} anchors`}>
-                  {visibleCandidates.map((candidate, index) => {
+                <div className="space-y-2" role="radiogroup" aria-label={BUILD_AROUND_COPY.optionsLabel(TYPE_OPTIONS.find((o) => o.type === mode)?.label ?? "")}>
+                  {visibleCandidates.map((candidate) => {
                     const selected = selectedCandidate?.anchorId === candidate.anchorId;
-                    const details = [
-                      candidate.rating != null ? `${candidate.rating} rating` : null,
-                      candidate.area || null,
-                    ].filter(Boolean);
+                    const details = [candidate.area || null].filter(Boolean);
                     return (
                       <button
                         key={`${candidate.type}:${candidate.anchorId}`}
@@ -354,11 +361,6 @@ export function BuildAroundDialog({
                             <span className="font-semibold text-[color:var(--earn-ink)]">
                               {candidate.name}
                             </span>
-                            {index === 0 && (
-                              <span className="rounded-full bg-[color:var(--earn-teal-wash)] px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-[color:var(--earn-teal-ink)]">
-                                best fit
-                              </span>
-                            )}
                           </span>
                           {details.length > 0 && (
                             <span className="mt-0.5 block text-xs text-[color:var(--earn-muted)]">

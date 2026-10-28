@@ -122,18 +122,18 @@ describe("formatAnchorLine — honest anchor metadata", () => {
         locatedStops: 5,
         totalStops: 5,
       }),
-      "Hotel · Hotel Kanra Kyoto · 5/5 stops located · 2.2 km median direct distance · 3/5 stops ≤ 15 min",
+      "Hotel · Hotel Kanra Kyoto · 5 of 5 stops placed on the map · stops are typically 2.2 km apart in a straight line · 3/5 stops ≤ 15 min",
     );
   });
 
   it("uses the human label for neighborhood and activity anchors", () => {
     assert.strictEqual(
       formatAnchorLine({ anchorType: "neighborhood", anchorName: "Gion", anchorMedianMeters: "720", locatedStops: 4, totalStops: 4 }),
-      "Neighborhood · Gion · 4/4 stops located · 720 m median direct distance · stay anywhere in-area",
+      "Neighborhood · Gion · 4 of 4 stops placed on the map · stops are typically 720 m apart in a straight line · stay anywhere in this area",
     );
     assert.strictEqual(
       formatAnchorLine({ anchorType: "activity", anchorName: "Tea ceremony", anchorMedianMeters: 0, locatedStops: 2, totalStops: 2 }),
-      "Activity · Tea ceremony · 2/2 stops located · 0 m median direct distance · the day pivots on it",
+      "Activity · Tea ceremony · 2 of 2 stops placed on the map · stops are typically 0 m apart in a straight line · the day is built around it",
     );
   });
 
@@ -159,7 +159,7 @@ describe("formatAnchorLine — honest anchor metadata", () => {
         locatedStops: 2,
         totalStops: 10,
       }),
-      "Activity · Regional base · 2/10 stops located · anchor distance omitted · the day pivots on it",
+      "Activity · Regional base · 2 of 10 stops placed on the map · Distance not shown. Some stops aren't placed yet. · the day is built around it",
     );
     assert.strictEqual(
       formatAnchorLine({
@@ -169,7 +169,7 @@ describe("formatAnchorLine — honest anchor metadata", () => {
         locatedStops: 10,
         totalStops: 10,
       }),
-      "Hotel · Regional hotel · 10/10 stops located · regional spread · 220.0 km median direct distance",
+      "Hotel · Regional hotel · 10 of 10 stops placed on the map · spread across the region · stops are typically 220.0 km apart in a straight line",
     );
   });
 
