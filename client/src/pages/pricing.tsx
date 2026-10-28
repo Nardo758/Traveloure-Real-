@@ -101,8 +101,7 @@ function PricingBand() {
           <PageTitle testId="text-pricing-title">Plan it your way</PageTitle>
         </div>
         <p className="text-[15px] text-[color:var(--earn-muted)] mt-3 max-w-[62ch]">
-          {PRICING_AND_LEGAL_TITLE_COPY.pricingPage.bandLead}{" "}
-          {PRICING_AND_LEGAL_TITLE_COPY.pricingPage.bandLeadTail}
+          {PRICING_AND_LEGAL_TITLE_COPY.pricingPage.bandLead}
         </p>
       </div>
     </section>
@@ -369,8 +368,8 @@ export default function PricingPage() {
   return (
     <div className="min-h-screen bg-[var(--earn-ground)] text-[color:var(--earn-ink)]">
       <SEOHead
-        title={PRICING_AND_LEGAL_TITLE_COPY.pricingPage.title}
-        description={`${PRICING_AND_LEGAL_TITLE_COPY.pricingPage.descriptionBeforeRuns}${tripPassRunsPhrase(pricing.tripPass.runsPerTrip)}${PRICING_AND_LEGAL_TITLE_COPY.pricingPage.descriptionAfterRuns}`}
+        title="Pricing"
+        description={PRICING_AND_LEGAL_TITLE_COPY.pricingPage.seoDescription(tripPassRunsPhrase(pricing.tripPass.runsPerTrip))}
       />
 
       {membershipReturn === "cancelled" && (

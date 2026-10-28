@@ -15,8 +15,8 @@ export function tripPassRunsPhrase(runs: number | null | undefined): string {
     : "optimizer runs";
 }
 
-/** The /pricing checklist line: "5 optimizer runs + unlimited tasks on that trip" (tail held, row 257). */
+/** The /pricing checklist line: "5 optimizer runs + unlimited tasks on that trip" (K9 tail, held, row 257). */
 export function tripPassPricingLine(runs: number | null | undefined): string {
   const phrase = tripPassRunsPhrase(runs);
-  return `${phrase.charAt(0).toUpperCase()}${phrase.slice(1)}${PRICING_AND_LEGAL_TITLE_COPY.tripPass.pricingLineTail}`;
+  return `${phrase.charAt(0).toUpperCase()}${phrase.slice(1)} + ${PRICING_AND_LEGAL_TITLE_COPY.tripPassPricingLineTail}`;
 }

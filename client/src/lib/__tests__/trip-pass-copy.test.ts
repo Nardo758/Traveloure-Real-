@@ -99,7 +99,7 @@ test("T3: the three benefits that ARE enforced are still named on both surfaces"
   // Ruling 3 (decision-maker, Oct 8, 2026; ledger `2026-10-08-slip-main-rail`): the card states the
   // run allowance the entitlement enforces (R-ac) — "5 optimizer runs", from the server — and never
   // "unlimited". Sanctioned copy edit, listed in the PR.
-  assert.match(CARD, /tripPassRunsPhrase\(status\.runsPerTrip\)\} \+ AI tasks · service fee waived/);
+  assert.match(CARD, /tripPassRunsPhrase\(status\.runsPerTrip\)\} \+ \{PRICING_AND_LEGAL_TITLE_COPY\.tripPassCardTail\}/);
   assert.doesNotMatch(CARD, /unlimited optimizer runs/);
 });
 

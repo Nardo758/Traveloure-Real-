@@ -242,7 +242,7 @@ export default function VisaHelpPage() {
   return (
     <>
       <SEOHead
-        title="Visa Help - Requirements & Expert Assistance | Traveloure"
+        title="Visa Help - Requirements & Expert Assistance"
         description="Look up visa requirements for your destination instantly with AI, then book a visa expert to handle your application."
       />
 

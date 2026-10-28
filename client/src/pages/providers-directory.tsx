@@ -277,7 +277,7 @@ export default function ProvidersDirectoryPage() {
   return (
     <div className="min-h-screen bg-[var(--earn-ground)]" data-testid="page-providers-directory">
       <SEOHead
-        title="Service Providers | Traveloure"
+        title="Service Providers"
         description="Browse local service-provider businesses on Traveloure and book directly from their storefront."
         url="/providers"
       />
