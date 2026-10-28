@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Star, TrendingDown, Heart, CheckCircle2, DollarSign, Gauge } from "lucide-react";
+import { OPTIMIZER_BADGE_COPY } from "@/lib/optimizer-badge-copy";
 import { STATS_ICONS, computeDayCount, type TemplateConfig, type PlanCardTrip, type PlanCardDay } from "./plancard-types";
 
 export interface ExtraStat {
@@ -75,7 +76,7 @@ export function OptimizerMetrics({ tripId, traveloureScore, savings, savingsPerc
     <div className="flex flex-wrap gap-2 px-4 py-2.5 border-b border-border bg-muted/30" data-testid={`optimizer-metrics-${tripId}`}>
       {traveloureScore != null && (
         <Badge variant="secondary" className="text-[11px] gap-1 bg-primary/10 text-primary border-0" data-testid={`badge-traveloure-score-${tripId}`}>
-          <Star className="w-3 h-3" /> {traveloureScore} Score
+          <Star className="w-3 h-3" /> {OPTIMIZER_BADGE_COPY.planScore} {OPTIMIZER_BADGE_COPY.outOf100(traveloureScore)}
         </Badge>
       )}
       {totalCost && (
