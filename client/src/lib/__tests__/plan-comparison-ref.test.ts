@@ -67,7 +67,7 @@ describe("B7 — the link back reads the DTO, and no surface fetches comparisons
     );
   });
 
-  it("the AI Optimized pill points at the same board, and falls back when there is none", () => {
+  it("the Optimized pill points at the same board, and falls back when there is none", () => {
     const planCard = read(PLAN_CARD);
     assert.match(planCard, /lastComparisonId = plancardData\?\.lastComparisonId \?\? null/);
     assert.match(

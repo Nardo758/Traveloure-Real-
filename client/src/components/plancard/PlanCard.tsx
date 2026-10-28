@@ -47,6 +47,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { apiRequest } from "@/lib/queryClient";
 import { heroTravelMinutes } from "@/lib/transport-section-minutes";
+import { OPTIMIZER_BADGE_COPY } from "@/lib/optimizer-badge-copy";
 
 // ── Summary-stage helpers ──────────────────────────────────────────────────
 
@@ -420,7 +421,7 @@ function PlanCardSummary({
                       data-testid={`pill-ai-optimized-${trip.id}`}
                     >
                       <Sparkles className="w-[9px] h-[9px]" style={isStale ? { color: "#D97706" } : undefined} />
-                      {isStale ? "Re-optimize?" : "AI Optimized"}
+                      {isStale ? "Re-optimize?" : OPTIMIZER_BADGE_COPY.optimized}
                       {!isStale && optimizationDeltaFromData?.savings != null && (optimizationDeltaFromData.savings as number) > 0 && (
                         <span style={{ color: "#2C7A44", fontWeight: 600 }}>
                           · ${Math.round(optimizationDeltaFromData.savings as number)} saved
@@ -861,7 +862,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
           >
             <Sparkles className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#C05C00" }} />
             <span className="text-[11px] font-semibold" style={{ color: "#8B3A00" }}>
-              AI Optimized
+              {OPTIMIZER_BADGE_COPY.optimized}
             </span>
             {optimizationDelta?.savings != null && optimizationDelta.savings > 0 && (
               <span
