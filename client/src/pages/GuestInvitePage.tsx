@@ -295,15 +295,6 @@ export function GuestInvitePage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="bg-purple-50 p-6 rounded-lg">
-                <h3 className="font-semibold mb-2">🌟 Personalized Travel Planning</h3>
-                <p className="text-sm text-muted-foreground">
-                  We'll help you plan your journey! Just tell us where you're traveling from, 
-                  and we'll show you flight options, ground transportation, accommodation near 
-                  the venue, and local activities during your stay.
-                </p>
-              </div>
-              
               <Button 
                 className="w-full" 
                 size="lg"

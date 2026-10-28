@@ -56,12 +56,10 @@ const VISIBLE = [
   "This invite link is invalid or has been deleted.",
   "United Kingdom",
   "United States",
-  "We'll help you plan your journey! Just tell us where you're traveling from, and we'll show you flight options, ground transportation, accommodation near the venue, and local activities during your stay.",
   "We're excited to have you join us for this special occasion.",
   "Where are you traveling from?",
   "Will you be attending? *",
   "Yes, I'll be there! ✅",
-  "🌟 Personalized Travel Planning",
 ].sort();
 
 describe("row 263 guest invite drops recommendations", () => {
@@ -88,6 +86,9 @@ describe("row 263 guest invite drops recommendations", () => {
   it("GR3 the two sentences are removed and no new visible string was added", () => {
     assert.ok(!GUEST.includes("personalized travel recommendations"));
     assert.ok(!GUEST.includes("Here are your"));
+    // Ruling on #1741 (Oct 28, 2026): the welcome step's travel-planning promise is deleted, not replaced.
+    assert.ok(!GUEST.includes("Personalized Travel Planning"));
+    assert.ok(!GUEST.includes("accommodation near"));
     assert.deepEqual(visibleText(GUEST), VISIBLE);
   });
 
