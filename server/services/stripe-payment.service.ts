@@ -573,22 +573,35 @@ class StripePaymentService {
       // stale-id case already short-circuits to 'no_saved_method' above, since a recreated
       // customer starts with zero saved payment methods).
       const pi = await this.retryOnMissingCustomer(userId, customerId, (cid, attempt) => {
-        const onSession = {
+        // `chosen` is the narrowed method. paymentMethodId stays `string | null`.
+        // automatic_payment_methods with allow_redirects never sits beside confirm so Stripe
+        // does not demand a return_url. The legacy object is built on its own, in the previous
+        // field order, so an old idempotency key still replays the body it was created with.
+        const onSession: Stripe.PaymentIntentCreateParams = {
           amount: params.amountCents,
           currency: (params.currency ?? 'usd').toLowerCase(),
           customer: cid,
-          // `chosen` is the narrowed method. paymentMethodId stays `string | null`.
+          payment_method: chosen.id,
+          confirm: true,
+          automatic_payment_methods: { enabled: true, allow_redirects: 'never' as const },
+          metadata: params.metadata,
+          description: params.description,
+        };
+        // ld43-wallets-exempt: named saved card, confirmed on-session, allow_redirects never.
+        // The previous body also set off_session. A key already used with that body is replayed
+        // as-is so the retry returns the original PaymentIntent. New clicks omit off_session.
+        const legacyOffSession: Stripe.PaymentIntentCreateParams = {
+          amount: params.amountCents,
+          currency: (params.currency ?? 'usd').toLowerCase(),
+          customer: cid,
           payment_method: chosen.id,
           confirm: true,
           metadata: params.metadata,
           description: params.description,
+          off_session: true as const,
         };
-        // ld43-wallets-exempt: a named method is confirmed without automatic_payment_methods.
-        // The previous body also set off_session. A key already used with that body is replayed
-        // as-is so the retry returns the original PaymentIntent. New clicks omit off_session.
-        const legacyOffSession = { ...onSession, off_session: true as const };
         return createPaymentIntentPreservingKey(
-          (body) =>
+          (body: Stripe.PaymentIntentCreateParams) =>
             stripe.paymentIntents.create(body, {
               // The recover suffix stays on this property so the idempotency-key pin can see it.
               idempotencyKey: attempt === 1 ? params.idempotencyKey : `${params.idempotencyKey}-recover`,
@@ -703,13 +716,13 @@ class StripePaymentService {
         }
       }
 
-      const buildPaymentIntentParams = (customerId: string | null) => ({
+      // Shared fields of the previous PaymentIntent body. The named-method legacy replay
+      // builds from this and never from buildPaymentIntentParams, so it cannot gain
+      // automatic_payment_methods. setup_future_usage stays on the interactive branch only:
+      // Stripe rejects it together with off_session confirm, and a vaulted card has nothing to set up.
+      const paymentIntentShared = (customerId: string | null) => ({
         amount: stripeAmount,
         currency: effectiveCurrency,
-        // setup_future_usage (FP-1 vaulting) belongs to the INTERACTIVE branch only. Stripe
-        // rejects `off_session: true, confirm: true` combined with setup_future_usage — proven
-        // live by CI run #34's OC1/OC3 — and logically so: the one-click charge happens BECAUSE
-        // the card is already vaulted, so there is nothing to set up.
         ...(customerId
           ? {
               customer: customerId,
@@ -728,11 +741,13 @@ class StripePaymentService {
         },
         description: `Traveloure ${options?.isBalance ? 'Balance' : isDeposit ? 'Deposit' : 'Booking'} - ${bookings.length} item(s)`,
         receipt_email: userEmail,
-        // One-click needs a NAMED payment method plus confirm+off_session. `automatic_payment_methods`
-        // is mutually exclusive with that here: it exists to let Stripe pick a method interactively,
-        // which is exactly what we are bypassing. Off-session confirmation also requires a customer,
-        // so this branch can only be taken when `customerId` resolved.
-        // LD 43(c): the INTERACTIVE branch offers wallets (Apple Pay / Google Pay / Link) via
+      });
+      const buildPaymentIntentParams = (customerId: string | null) => ({
+        ...paymentIntentShared(customerId),
+        // A named saved card confirms here and also sets automatic_payment_methods with
+        // allow_redirects never, so Stripe does not demand a return_url. The named branch
+        // is taken only when customerId resolved.
+        // LD 43(c): the interactive branch offers wallets (Apple Pay / Google Pay / Link) via
         // automatic payment methods. `allow_redirects: 'never'` is deliberate and is what makes
         // that safe here: every sheet that confirms this PI (StripeCheckout) uses
         // `redirect: 'if_required'` with a SINGLE hard-coded return_url (/booking/confirmation),
@@ -740,13 +755,17 @@ class StripePaymentService {
         // redirect-based method enabled in the Stripe dashboard would strand the traveler on the
         // wrong page. Wallets are NOT redirect methods, so none of them is suppressed by this.
         ...(offSessionMethodId && customerId
-          ? { payment_method: offSessionMethodId, confirm: true }
+          ? { payment_method: offSessionMethodId, confirm: true, automatic_payment_methods: { enabled: true, allow_redirects: 'never' as const } }
           : { automatic_payment_methods: { enabled: true, allow_redirects: 'never' as const } }),
       });
       const legacyPaymentIntentParams = (customerId: string | null) => {
-        const next = buildPaymentIntentParams(customerId);
-        if (!(offSessionMethodId && customerId)) return next;
-        return { ...next, off_session: true as const };
+        if (!(offSessionMethodId && customerId)) return buildPaymentIntentParams(customerId);
+        return {
+          ...paymentIntentShared(customerId),
+          payment_method: offSessionMethodId,
+          confirm: true,
+          off_session: true as const,
+        };
       };
 
       // Stripe rejects reusing an idempotencyKey with different params (`customer` differs on
@@ -756,10 +775,10 @@ class StripePaymentService {
           ? stripeRequestOptions
           : { idempotencyKey: `${stripeRequestOptions.idempotencyKey}-recover` };
 
-      // ld43-wallets-ok: both calls below take `buildPaymentIntentParams`, which carries
+      // ld43-wallets-ok: both calls below take `buildPaymentIntentParams`, which sets
       // `automatic_payment_methods: { enabled: true, allow_redirects: 'never' }` on the
-      // interactive branch and the off-session named-method shape on the one-click branch (see
-      // the builder above). ONE author of these params, two callers (§18 rule 1).
+      // interactive branch and on the named saved-card branch. ONE author of these params,
+      // two callers (§18 rule 1).
       const paymentIntent = fpCustomerId
         ? await this.retryOnMissingCustomer(userId, fpCustomerId, (cid, attempt) =>
             createPaymentIntentPreservingKey(
