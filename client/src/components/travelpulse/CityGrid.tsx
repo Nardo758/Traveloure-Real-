@@ -426,7 +426,6 @@ export function CityGrid({ onCitySelect, selectedCityName, hideHeader = false }:
         <Card className="p-8 text-center">
           <Sparkles className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
           <p className="text-lg font-medium mb-2">No cities available yet</p>
-          <p className="text-muted-foreground">Check back soon for destinations!</p>
         </Card>
       ) : (
         <AnimatePresence mode="popLayout">

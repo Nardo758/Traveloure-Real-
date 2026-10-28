@@ -39,6 +39,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { parseTripDate } from '@/lib/calendar-date';
 import { getTripContext, updateTripContext } from '@/lib/trip-context';
+import { EMPTY_STATE_COPY } from '@/lib/empty-state-copy';
 
 interface Invite {
   id: string;
@@ -551,18 +552,9 @@ export function GuestInvitePage() {
             </Card>
             
             {recommendations?.needsApiIntegration ? (
-              <Card className="bg-blue-50">
-                <CardContent className="pt-6">
-                  <div className="text-center">
-                    <Plane className="h-12 w-12 text-blue-600 mx-auto mb-4" />
-                    <h3 className="font-semibold mb-2">Travel recommendations aren't available yet</h3>
-                    <p className="text-sm text-muted-foreground">
-                      We're working on integrating flight search, hotel recommendations, and local activities.
-                      Check back soon for personalized travel options from {originCity} to {experience.destination}!
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
+              <p className="text-sm text-muted-foreground text-center" data-testid="guest-no-suggestions">
+                {EMPTY_STATE_COPY.guestNoSuggestions}
+              </p>
             ) : (
               <Tabs defaultValue="flights">
                 <TabsList className="grid w-full grid-cols-4">
