@@ -179,6 +179,7 @@ import {
   userExperienceItems, userExperiences, providerServices, cartItems, trips,
   serviceBookings, serviceReviews, reviewModerationLogs, notifications, wallets, creditTransactions, serviceProviderForms, serviceOfferingTypes,
   insertCustomVenueSchema, insertGeneratedItinerarySchema, insertUserExperienceSchema, userExperienceStartTimeSchema, userExperienceBudgetSchema,
+  userExperienceHostNoteSchema, userExperienceVenueAddressSchema, userExperienceRsvpBySchema,
   insertUserExperienceItemSchema,
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
   temporalAnchors, itineraryItems, generatedItineraries,
@@ -1926,6 +1927,9 @@ export const userExperienceBodySchema = insertUserExperienceSchema.pick({
   stepData: true,
   currentStep: true,
   mapData: true,
+  hostNote: true,
+  venueAddress: true,
+  rsvpBy: true,
 }).extend({
   // Migration 282, ledger `2026-09-04-stops-and-event-time` (CLAUDE.md Locked Decision 35): the
   // EVENT'S OWN wall-clock start time. Admitted through THIS pick — the one allowlist the POST and
@@ -1950,6 +1954,12 @@ export const userExperienceBodySchema = insertUserExperienceSchema.pick({
   // client-supplied amount reaching a MONEY decision, which is exactly what this value must never
   // become).
   budget: userExperienceBudgetSchema,
+  // Row 277 (migration 413, ledger `2026-10-28-guest-landing-fields`): the guest-landing fields,
+  // admitted through THIS pick with the shared shape authorities (never a re-stated rule here).
+  // A guest-facing read returns them only through the invite `landing` key.
+  hostNote: userExperienceHostNoteSchema,
+  venueAddress: userExperienceVenueAddressSchema,
+  rsvpBy: userExperienceRsvpBySchema,
 });
 
 router.post("/api/user-experiences", isAuthenticated, async (req, res) => {

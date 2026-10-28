@@ -56,6 +56,7 @@ import {
   setEventDetail,
   toggleEventRow,
   type PlanEventDraft,
+  HOST_EVENT_FORM_LABELS,
 } from "@/lib/plan-events";
 import {
   PLAN_STEP_LABELS,
@@ -1978,7 +1979,7 @@ export function PlanModal({
                     <span>Event</span>
                     <span>Day</span>
                     <span>Time</span>
-                    <span>Place</span>
+                    <span>{HOST_EVENT_FORM_LABELS.venueName}</span>
                   </div>
                   {pickedEvents.map((row) => (
                     <div
@@ -2041,7 +2042,7 @@ export function PlanModal({
                             setEventDetail(prev, row.title, { location: e.target.value }),
                           )
                         }
-                        aria-label={`Place for ${row.title}`}
+                        aria-label={`${HOST_EVENT_FORM_LABELS.venueName} for ${row.title}`}
                         placeholder={destination.trim() || "Add a place"}
                         className="h-8 w-[9rem] text-[12px]"
                         data-testid={`input-etp-event-place-${row.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`}

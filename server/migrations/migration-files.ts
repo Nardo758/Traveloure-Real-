@@ -2171,4 +2171,8 @@ export const MIGRATION_FILES = [
   // HELD for "Migration 412 SQL approved — Leon". Ledger 2026-10-25-d3-restore-day.
   // Declared in shared/schema.ts. Retention: 14 days, newest per day, purged at the next apply.
   "412_plan_day_restore_snapshots.sql",
+  // 413 — user_experiences.host_note, venue_address, rsvp_by. Three additive nullable columns,
+  // no DEFAULT, no CHECK, no index, no backfill. HELD for "Migration 413 SQL approved — Leon".
+  // Ledger 2026-10-28-guest-landing-fields. Declared in shared/schema.ts.
+  "413_guest_landing_event_fields.sql",
 ] as const;

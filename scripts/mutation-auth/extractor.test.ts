@@ -327,6 +327,10 @@ test("resolves named re-exports used by authentication registration helpers", ()
  * The new restore route is why the raw count is 730 and the unique count is 722. user-data 250 → 251,
  * session-self 366 → 367.
  *
+ * 730 / 722 → 731 / 723 (row 277, ledger `2026-10-28-guest-landing-fields`, Architect pt847u):
+ * POST /api/invites/:token/view, the view record moved off the GET. Public-by-token like its sibling
+ * guest routes: other 245 → 246, public-or-system 52 → 53.
+ *
  * THE COUNTS ARE THE POINT: they exist so a route appearing or vanishing from
  * the mounted graph fails here. Now that the file is wired into CI, changing a
  * number is a decision that needs its reason stated, exactly as this one does.
@@ -335,8 +339,9 @@ test("current mounted graph parity includes auth helpers and shared api paths", 
   const root = process.cwd();
   const result = extractMountedMutations(path.join(root, "server/routes.ts"), root);
   // 730 / 722: POST /api/trips/:tripId/versions/days/:day/restore (ledger `2026-10-25-d3-restore-day`).
-  assert.equal(result.mutations.length, 730);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 722);
+  // 731 / 723: POST /api/invites/:token/view, the view record moved off the GET (row 277, Architect pt847u).
+  assert.equal(result.mutations.length, 731);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 723);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -346,7 +351,7 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "generated/security/mutation-auth-manifest.json"), "utf8"));
   const markdown = fs.readFileSync(path.join(root, "generated/security/mutation-auth-inventory.md"), "utf8");
   const endpointRows = markdown.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| ---")).slice(1);
-  assert.equal(endpointRows.length, 722);
+  assert.equal(endpointRows.length, 723);
   // 709 / 701 (ledger `2026-10-18-fd4-share-projection`): the shadowed quick-start twin is deleted; unique paths stay 701.
   // 710 / 702 (ledger `2026-10-19-fb1-free-retime`): + POST /api/trips/:tripId/retime-fixes/:itemId/apply.
   // 712 / 704 (ledger `2026-10-18-cs1-source-signoff`): the sign-off and photo-block POSTs.
@@ -360,8 +365,9 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // PATCH /api/admin/experience-themes/:id, POST /api/admin/experience-theme-suggestions/:id/accept
   // and POST /api/admin/experience-theme-suggestions/:id/dismiss.
   // 730 / 722: the new POST restore route (ledger `2026-10-25-d3-restore-day`).
-  assert.equal(manifest.rawRegistrationCount, 730);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 722);
+  // 731 / 723: POST /api/invites/:token/view, the view record moved off the GET (row 277, Architect pt847u).
+  assert.equal(manifest.rawRegistrationCount, 731);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 723);
   // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R274): user-data,
   // session-self; the owner/delegate check runs in the service before any write.
   // + POST /api/admin/content-sources/:id/public-ok (ledger `2026-10-03-official-facts-public-ok`, R278):
@@ -410,7 +416,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // user-data 249 → 250 (ledger 2026-10-23-payout-setup-server): PUT /api/me/payout-setup.
   // admin 191 → 195 (ledger `2026-10-23-experience-themes`): the theme catalog POST and PATCH, and the suggestion accept and dismiss POSTs.
   // user-data 250 → 251: POST /api/trips/:tripId/versions/days/:day/restore.
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 195, "user-data": 251, other: 245 });
+  // other 245 → 246 (row 277): POST /api/invites/:token/view.
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 195, "user-data": 251, other: 246 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
@@ -452,8 +459,9 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // session-self 365 → 366 (ledger 2026-10-23-payout-setup-server): PUT /api/me/payout-setup.
   // admin-role 191 → 195 (ledger `2026-10-23-experience-themes`): the same four admin writes.
     // session-self 366 → 367: the same restore POST.
+    // public-or-system 52 → 53 (row 277): POST /api/invites/:token/view.
     "admin-role": 195, "session-self": 367, "resource-owner": 102,
-    signature: 6, "public-or-system": 52, unknown: 0,
+    signature: 6, "public-or-system": 53, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
     `${mutation.method} ${mutation.effectivePath}`, mutation,

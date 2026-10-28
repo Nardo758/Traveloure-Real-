@@ -53,6 +53,7 @@ import {
   setEventDetail,
   toggleEventRow,
   type PlanEventDraft,
+  HOST_EVENT_FORM_LABELS,
 } from "@/lib/plan-events";
 import { eventsNotYetCreated } from "@/lib/organize-events";
 import type { ExperienceType } from "@shared/schema";
@@ -225,7 +226,7 @@ export function SlipOrganizeEvents({
               />
               <Input
                 value={row.location ?? ""}
-                placeholder={destination || "Place"}
+                placeholder={destination || HOST_EVENT_FORM_LABELS.venueName}
                 onChange={(e) => setRows((prev) => setEventDetail(prev, row.title, { location: e.target.value }))}
                 data-testid={`organize-place-${row.title}`}
               />
