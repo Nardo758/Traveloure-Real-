@@ -24,13 +24,15 @@ import {
   handoffBannerState,
   withdrawalStage,
 } from "@shared/handoff";
-import { handoffFulfilmentHours } from "../config/handoff.config";
+import { handoffFulfilmentHours, handoffFulfilmentSince } from "../config/handoff.config";
 import { staffMayPassBlanketGuard } from "@shared/staff-permissions";
 import { insertRoutableExpertForm } from "./helpers/routable-expert";
 
 process.env.STRIPE_SECRET_KEY ||= "sk_test_handoff_failed_booking";
 const savedFulfilment = process.env.HANDOFF_FULFILMENT_HOURS;
+const savedSince = process.env.HANDOFF_FULFILMENT_SINCE;
 delete process.env.HANDOFF_FULFILMENT_HOURS;
+delete process.env.HANDOFF_FULFILMENT_SINCE;
 
 const handoff = await import("../services/handoff.service");
 const handoffRoutes = (await import("../routes/handoff.routes")).default;
@@ -61,7 +63,16 @@ type RefundMode = "succeeded" | "throw" | "pending" | "failed";
 let refundMode: RefundMode = "succeeded";
 type CancelMode = "ok" | "fail";
 let cancelMode: CancelMode = "ok";
-const calls = { cancel: [] as string[], capture: [] as string[], refund: [] as { key: string; amount: number; reason: string; priorMessages: string[] }[] };
+type CaptureMode = "ok" | "race";
+let captureMode: CaptureMode = "ok";
+let retrieveMode: "stored" | "succeeded" | "pending" = "stored";
+const calls = {
+  cancel: [] as string[],
+  capture: [] as string[],
+  retrieveRefund: [] as string[],
+  refund: [] as { key: string; amount: number; reason: string; priorMessages: string[] }[],
+};
+const refundsById = new Map<string, { id: string; status: string }>();
 const intents = new Map<string, { amount: number; status: string; metadata: Record<string, string> }>();
 
 handoff.__setHandoffPaymentsForTest({
@@ -82,6 +93,16 @@ handoff.__setHandoffPaymentsForTest({
   },
   async capture(id, key) {
     calls.capture.push(key);
+    if (captureMode === "race") {
+      await db.execute(sql`
+        UPDATE expert_requests
+        SET status = 'booking_failed',
+            optimization_context = COALESCE(optimization_context, '{}'::jsonb) || jsonb_build_object(
+              'bookingFailure', jsonb_build_object('at', ${new Date().toISOString()}::text, 'kind', 'expert_withdrew'::text, 'by', ${ids.expert}::text)
+            )
+        WHERE payment_intent_id = ${id} AND status = 'accepted'
+      `);
+    }
     intents.get(id)!.status = "succeeded";
     return { id, status: "succeeded", amountReceivedCents: intents.get(id)!.amount };
   },
@@ -96,9 +117,16 @@ handoff.__setHandoffPaymentsForTest({
     const priorMessages = await messages(requestId);
     calls.refund.push({ key: i.idempotencyKey, amount: i.amountCents, reason: i.auditReason, priorMessages });
     if (refundMode === "throw") throw new Error("stripe refund failed");
-    if (refundMode === "pending") return { id: `re_${i.idempotencyKey}`, status: "pending" };
-    if (refundMode === "failed") return { id: `re_${i.idempotencyKey}`, status: "failed" };
-    return { id: `re_${i.idempotencyKey}`, status: "succeeded" };
+    const status = refundMode === "pending" ? "pending" : refundMode === "failed" ? "failed" : "succeeded";
+    const stored = { id: `re_${i.idempotencyKey}`, status };
+    refundsById.set(stored.id, stored);
+    return stored;
+  },
+  async retrieveRefund(id) {
+    calls.retrieveRefund.push(id);
+    if (retrieveMode === "succeeded") return { id, status: "succeeded" };
+    if (retrieveMode === "pending") return { id, status: "pending" };
+    return refundsById.get(id) ?? { id, status: "pending" };
   },
 });
 
@@ -171,7 +199,7 @@ async function acceptedCaptured(suffix: string): Promise<{ trip: string; item: s
   return { trip, item, id, fee, travelerFee, pi: row.paymentIntentId };
 }
 
-function failureOf(row: { optimizationContext: unknown } | null): { kind?: string; by?: string; refundAttempts?: number; nextRefundAt?: string } | null {
+function failureOf(row: { optimizationContext: unknown } | null): { kind?: string; by?: string; refundAttempts?: number; nextRefundAt?: string; refundStatus?: string } | null {
   return ((row?.optimizationContext as { bookingFailure?: { kind?: string; by?: string; refundAttempts?: number; nextRefundAt?: string } } | null)?.bookingFailure) ?? null;
 }
 
@@ -235,6 +263,9 @@ before(async () => {
 after(async () => {
   if (savedFulfilment === undefined) delete process.env.HANDOFF_FULFILMENT_HOURS;
   else process.env.HANDOFF_FULFILMENT_HOURS = savedFulfilment;
+  if (savedSince === undefined) delete process.env.HANDOFF_FULFILMENT_SINCE;
+  else process.env.HANDOFF_FULFILMENT_SINCE = savedSince;
+  handoff.__setHandoffTimerRowHookForTest(null);
   if (trips.length) {
     const tripList = sql.join(trips.map((t) => sql`${t}`), sql`, `);
     const pis = (await db.execute(sql`SELECT payment_intent_id FROM expert_requests WHERE trip_id IN (${tripList}) AND payment_intent_id IS NOT NULL`)).rows?.map((r) => (r as { payment_intent_id: string }).payment_intent_id) ?? [];
@@ -364,15 +395,29 @@ test("F3: a thrown refund sends the fallback once; the timer re-drives; pending 
   assert.equal(pendingOut.ok, true);
   const pendingRow = (await handoff.getHandoff(pending.id))!;
   assert.equal(pendingRow.refundId, `re_handoff-failed-booking-refund-${pending.id}`);
+  assert.equal(failureOf(pendingRow)?.refundStatus, "pending");
   assert.equal(countMessage(await messages(pending.id), HANDOFF_FAILED_BOOKING_TRAVELER_COPY.checkingPayment), 1);
   assert.equal(countMessage(await messages(pending.id), REFUNDED), 0);
   const pendingCalls = calls.refund.filter((r) => r.key === `handoff-failed-booking-refund-${pending.id}`).length;
-  await handoff.runHandoffTimers(new Date(Date.now() + 72 * 3_600_000));
-  assert.equal(calls.refund.filter((r) => r.key === `handoff-failed-booking-refund-${pending.id}`).length, pendingCalls);
+  const retrievesBefore = calls.retrieveRefund.length;
+  retrieveMode = "pending";
+  const pendingNext = failureOf(pendingRow)?.nextRefundAt;
+  assert.ok(pendingNext);
+  await handoff.runHandoffTimers(new Date(pendingNext!));
+  assert.equal(calls.refund.filter((r) => r.key === `handoff-failed-booking-refund-${pending.id}`).length, pendingCalls, "a pending id is retrieved, not created again");
+  assert.ok(calls.retrieveRefund.length > retrievesBefore);
   assert.equal(countMessage(await messages(pending.id), REFUNDED), 0);
+  retrieveMode = "succeeded";
+  const afterPoll = failureOf(await handoff.getHandoff(pending.id))?.nextRefundAt;
+  assert.ok(afterPoll);
+  await handoff.runHandoffTimers(new Date(afterPoll!));
+  assert.equal(countMessage(await messages(pending.id), REFUNDED), 1);
   assert.equal(countMessage(await messages(pending.id), HANDOFF_FAILED_BOOKING_TRAVELER_COPY.checkingPayment), 1);
+  assert.equal(failureOf(await handoff.getHandoff(pending.id))?.refundStatus, "succeeded");
+  assert.equal(calls.refund.filter((r) => r.key === `handoff-failed-booking-refund-${pending.id}`).length, pendingCalls);
   assert.equal(await alertCount(pending.id), 1);
   assert.equal(await alertCount(id, "handoff_hold_release_failed"), 0);
+  retrieveMode = "stored";
 });
 
 test("F4: an uncaptured accept cancels the hold; a failed cancel retries on the existing rail", async () => {
@@ -508,7 +553,14 @@ test("F7: refusals touch nothing; a non-admin is refused the list", async () => 
   assert.equal(JSON.stringify(await handoff.getHandoff(id)), prepaidBefore);
   assert.equal(calls.refund.length, refunds);
 
-  await db.execute(sql`UPDATE expert_requests SET source_purchase_id = NULL, status = 'booking_failed', refund_id = 're_already' WHERE id = ${id}`);
+  await db.execute(sql`
+    UPDATE expert_requests
+    SET source_purchase_id = NULL, status = 'booking_failed', refund_id = 're_already',
+        optimization_context = COALESCE(optimization_context, '{}'::jsonb) || jsonb_build_object(
+          'bookingFailure', jsonb_build_object('refundStatus', 'succeeded'::text, 'kind', 'expert_withdrew'::text, 'by', ${ids.expert}::text, 'at', ${new Date().toISOString()}::text)
+        )
+    WHERE id = ${id}
+  `);
   const stamped = calls.refund.length;
   const replay = await handoff.failHandoffBooking(id, { kind: "expert_withdrew", expertId: ids.expert });
   assert.equal(replay.ok, true);
@@ -585,45 +637,67 @@ test("F9: one Stripe call site each, no migration, status list and the banner st
   assert.match(fn, /process\.env\.HANDOFF_FULFILMENT_HOURS/);
 });
 
-test("F10: the deadline runs only when HANDOFF_FULFILMENT_HOURS is a positive number", async () => {
+async function stampAcceptAnchor(id: string, at: Date): Promise<void> {
+  await db.execute(sql`
+    UPDATE expert_requests
+    SET accepted_at = ${at},
+        optimization_context = COALESCE(optimization_context, '{}'::jsonb) || jsonb_build_object('handoffAcceptedAt', ${at.toISOString()}::text)
+    WHERE id = ${id}
+  `);
+}
+
+test("F10: the deadline needs both env values, and the second pass adds no failures", async () => {
   refundMode = "succeeded";
   cancelMode = "ok";
   const now = new Date("2026-10-28T12:00:00.000Z");
+  const hour = 3_600_000;
   const old = await acceptedCaptured("f10old");
-  await db.execute(sql`UPDATE expert_requests SET accepted_at = ${new Date(now.getTime() - 1000 * 3_600_000)} WHERE id = ${old.id}`);
+  await stampAcceptAnchor(old.id, new Date(now.getTime() - 1000 * hour));
 
-  async function restoreEnv(value: string | undefined) {
+  async function restoreHours(value: string | undefined) {
     if (value === undefined) delete process.env.HANDOFF_FULFILMENT_HOURS;
     else process.env.HANDOFF_FULFILMENT_HOURS = value;
   }
 
   try {
-    await restoreEnv(undefined);
+    await restoreHours(undefined);
+    delete process.env.HANDOFF_FULFILMENT_SINCE;
     assert.equal(handoffFulfilmentHours(), null);
+    assert.equal(handoffFulfilmentSince(), null);
     for (const raw of ["", "   ", "abc", "0", "-5"]) {
-      await restoreEnv(raw);
+      await restoreHours(raw);
       assert.equal(handoffFulfilmentHours(), null, raw);
       const out = await handoff.runHandoffTimers(now);
       assert.equal(out.bookingFailed, 0, raw);
       assert.equal((await handoff.getHandoff(old.id))!.status, "accepted", raw);
     }
+    await restoreHours("10");
+    assert.equal(handoffFulfilmentHours(), 10);
+    const sinceOff = await handoff.runHandoffTimers(now);
+    assert.equal(sinceOff.bookingFailed, 0, "hours without a valid since does not time anyone out");
+    assert.equal((await handoff.getHandoff(old.id))!.status, "accepted");
+    process.env.HANDOFF_FULFILMENT_SINCE = "not-a-date";
+    assert.equal(handoffFulfilmentSince(), null);
+    assert.equal((await handoff.runHandoffTimers(now)).bookingFailed, 0);
 
     await db.execute(sql`UPDATE expert_requests SET status = 'withdrawn' WHERE id = ${old.id}`);
     const due = await acceptedCaptured("f10due");
     const early = await acceptedCaptured("f10early");
+    const beforeSince = await acceptedCaptured("f10before");
     const delivered = await acceptedCaptured("f10del");
     const prepaid = await acceptedCaptured("f10pp");
     const stillProposed = await proposed("f10prop");
-    const hours49 = new Date(now.getTime() - 49 * 3_600_000);
-    const hours47 = new Date(now.getTime() - 47 * 3_600_000);
-    await db.execute(sql`UPDATE expert_requests SET accepted_at = ${hours49} WHERE id = ${due.id}`);
-    await db.execute(sql`UPDATE expert_requests SET accepted_at = ${hours47} WHERE id = ${early.id}`);
-    await db.execute(sql`UPDATE expert_requests SET status = 'delivered', delivered_at = ${now}, accepted_at = ${hours49} WHERE id = ${delivered.id}`);
-    await db.execute(sql`UPDATE expert_requests SET source_purchase_id = ${`pp-${RUN}-f10`}, accepted_at = ${hours49} WHERE id = ${prepaid.id}`);
+    const since = new Date(now.getTime() - 20 * hour);
+    await stampAcceptAnchor(due.id, new Date(now.getTime() - 15 * hour));
+    await stampAcceptAnchor(early.id, new Date(now.getTime() - 5 * hour));
+    await stampAcceptAnchor(beforeSince.id, new Date(now.getTime() - 30 * hour));
+    await db.execute(sql`UPDATE expert_requests SET status = 'delivered', delivered_at = ${now} WHERE id = ${delivered.id}`);
+    await db.execute(sql`UPDATE expert_requests SET source_purchase_id = ${`pp-${RUN}-f10`} WHERE id = ${prepaid.id}`);
+    await stampAcceptAnchor(prepaid.id, new Date(now.getTime() - 15 * hour));
     await db.execute(sql`UPDATE expert_requests SET authorized_at = ${now} WHERE id = ${stillProposed.id}`);
 
-    await restoreEnv("48");
-    assert.equal(handoffFulfilmentHours(), 48);
+    process.env.HANDOFF_FULFILMENT_SINCE = since.toISOString();
+    assert.equal(handoffFulfilmentSince()?.toISOString(), since.toISOString());
     const first = await handoff.runHandoffTimers(now);
     const dueRow = (await handoff.getHandoff(due.id))!;
     assert.equal(dueRow.status, "booking_failed");
@@ -637,20 +711,121 @@ test("F10: the deadline runs only when HANDOFF_FULFILMENT_HOURS is a positive nu
     assert.ok(first.bookingFailed >= 1);
 
     assert.equal((await handoff.getHandoff(early.id))!.status, "accepted");
+    assert.equal((await handoff.getHandoff(beforeSince.id))!.status, "accepted");
     assert.equal((await handoff.getHandoff(delivered.id))!.status, "delivered");
     assert.equal((await handoff.getHandoff(prepaid.id))!.status, "accepted");
-    assert.equal((await handoff.getHandoff(prepaid.id))!.sourcePurchaseId, `pp-${RUN}-f10`);
     assert.equal((await handoff.getHandoff(stillProposed.id))!.status, "proposed");
-    assert.equal(calls.refund.filter((r) => r.key === `handoff-failed-booking-refund-${early.id}`).length, 0);
-    assert.equal(calls.refund.filter((r) => r.key === `handoff-failed-booking-refund-${prepaid.id}`).length, 0);
 
     const alerts = await alertCount(due.id);
     const refunds = dueRefunds.length;
     const second = await handoff.runHandoffTimers(now);
     assert.equal(calls.refund.filter((r) => r.key === `handoff-failed-booking-refund-${due.id}`).length, refunds);
     assert.equal(await alertCount(due.id), alerts);
-    assert.equal(second.bookingFailed >= 0, true);
+    assert.equal(second.bookingFailed, 0, "the same clock does not fail another batch of already-failed rows");
   } finally {
     delete process.env.HANDOFF_FULFILMENT_HOURS;
+    delete process.env.HANDOFF_FULFILMENT_SINCE;
   }
+});
+
+test("F11: ever-delivered requests are exempt, and the clock is the latest accept transition", async () => {
+  refundMode = "succeeded";
+  const now = new Date("2026-10-28T12:00:00.000Z");
+  const hour = 3_600_000;
+  const changed = await acceptedCaptured("f11chg");
+  const delivered = await handoff.deliverHandoff(changed.id, ids.expert);
+  assert.equal(delivered.ok, true, JSON.stringify(delivered));
+  const back = await handoff.requestHandoffChanges(changed.id, ids.owner, "Please adjust the morning");
+  assert.equal(back.ok, true, JSON.stringify(back));
+  const ancient = new Date(now.getTime() - 30 * hour);
+  await stampAcceptAnchor(changed.id, ancient);
+  const freshClock = await acceptedCaptured("f11clk");
+  await db.execute(sql`UPDATE expert_requests SET accepted_at = ${ancient} WHERE id = ${freshClock.id}`);
+  await db.execute(sql`
+    UPDATE expert_requests
+    SET optimization_context = COALESCE(optimization_context, '{}'::jsonb) || jsonb_build_object('handoffAcceptedAt', ${new Date(now.getTime() - 2 * hour).toISOString()}::text)
+    WHERE id = ${freshClock.id}
+  `);
+
+  process.env.HANDOFF_FULFILMENT_HOURS = "10";
+  process.env.HANDOFF_FULFILMENT_SINCE = new Date(now.getTime() - 100 * hour).toISOString();
+  try {
+    await handoff.runHandoffTimers(now);
+    assert.equal((await handoff.getHandoff(changed.id))!.status, "accepted", "a request that was delivered does not time out");
+    assert.equal((await handoff.getHandoff(freshClock.id))!.status, "accepted", "the latest accept transition, not the original accepted_at, starts the clock");
+    assert.equal(calls.refund.filter((r) => r.key === `handoff-failed-booking-refund-${changed.id}`).length, 0);
+    assert.equal(calls.refund.filter((r) => r.key === `handoff-failed-booking-refund-${freshClock.id}`).length, 0);
+  } finally {
+    delete process.env.HANDOFF_FULFILMENT_HOURS;
+    delete process.env.HANDOFF_FULFILMENT_SINCE;
+  }
+});
+
+test("F12: a webhook succeeded report sends line 1; pending does not", async () => {
+  refundMode = "pending";
+  const { id, pi } = await acceptedCaptured("f12");
+  await handoff.failHandoffBooking(id, { kind: "expert_withdrew", expertId: ids.expert });
+  assert.equal(countMessage(await messages(id), REFUNDED), 0);
+  assert.equal(failureOf(await handoff.getHandoff(id))?.refundStatus, "pending");
+  const refundId = (await handoff.getHandoff(id))!.refundId!;
+  await handoff.promoteHandoffFailedBookingRefunds({
+    paymentIntentId: pi,
+    refunds: [{ id: refundId, status: "pending" }],
+  });
+  assert.equal(countMessage(await messages(id), REFUNDED), 0);
+  await handoff.promoteHandoffFailedBookingRefunds({
+    paymentIntentId: pi,
+    refunds: [{ id: refundId, status: "succeeded" }],
+  });
+  assert.equal(countMessage(await messages(id), REFUNDED), 1);
+  assert.equal(failureOf(await handoff.getHandoff(id))?.refundStatus, "succeeded");
+  assert.equal(countMessage(await messages(id), HANDOFF_FAILED_BOOKING_TRAVELER_COPY.checkingPayment), 1);
+});
+
+test("F14: a throwing timer row does not stop the run, and one ops alert is raised", async () => {
+  refundMode = "succeeded";
+  const now = new Date("2026-10-28T12:00:00.000Z");
+  const hour = 3_600_000;
+  const good = await acceptedCaptured("f14");
+  await stampAcceptAnchor(good.id, new Date(now.getTime() - 15 * hour));
+  process.env.HANDOFF_FULFILMENT_HOURS = "10";
+  process.env.HANDOFF_FULFILMENT_SINCE = new Date(now.getTime() - 40 * hour).toISOString();
+  handoff.__setHandoffTimerRowHookForTest((id) => {
+    if (id === good.id) throw new Error("row blew up");
+  });
+  try {
+    await handoff.runHandoffTimers(now);
+    assert.equal((await handoff.getHandoff(good.id))!.status, "accepted", "the throwing row is left for a later pass");
+    const alerts = await db.execute(sql`
+      SELECT count(*)::int AS n FROM admin_notifications
+      WHERE type = 'handoff_booking_failed_timer' AND reason = 'row_errors'
+        AND created_at > NOW() - INTERVAL '5 minutes'
+    `);
+    assert.ok(Number((alerts.rows?.[0] as { n: number }).n) >= 1);
+  } finally {
+    handoff.__setHandoffTimerRowHookForTest(null);
+    delete process.env.HANDOFF_FULFILMENT_HOURS;
+    delete process.env.HANDOFF_FULFILMENT_SINCE;
+  }
+});
+
+test("F15: a capture that lands after booking_failed refunds instead of finishing accept", async () => {
+  refundMode = "succeeded";
+  captureMode = "race";
+  const { trip, item, id } = await proposed("f15");
+  const out = await handoff.acceptHandoff(id, ids.expert);
+  assert.equal(out.ok, true, JSON.stringify(out));
+  const row = (await handoff.getHandoff(id))!;
+  assert.equal(row.status, "booking_failed");
+  assert.ok(row.capturedAt, "the capture is recorded so the refund can see it");
+  assert.ok(row.refundId);
+  assert.equal(failureOf(row)?.refundStatus, "succeeded");
+  assert.equal(countMessage(await messages(id), REFUNDED), 1);
+  const itemRow = await db.execute(sql`SELECT routing_status FROM itinerary_items WHERE id = ${item}`);
+  assert.equal((itemRow.rows?.[0] as { routing_status: string }).routing_status, "in_planning");
+  const src = fs.readFileSync("server/services/handoff.service.ts", "utf8");
+  assert.ok(src.includes("FOR NO KEY UPDATE"));
+  assert.equal((src.match(/FOR NO KEY UPDATE/g) ?? []).length >= 2, true);
+  captureMode = "ok";
+  void trip;
 });

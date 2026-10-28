@@ -40,3 +40,16 @@ export function handoffFulfilmentHours(): number | null {
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? n : null;
 }
+
+/**
+ * Architect, 2026-10-28 00:15 ET (via Leon): requests accepted before this instant are
+ * exempt from the fulfilment deadline. Read from `HANDOFF_FULFILMENT_SINCE` at call
+ * time (ISO timestamp). No default; unset or invalid disables the deadline trigger.
+ */
+export function handoffFulfilmentSince(): Date | null {
+  const raw = process.env.HANDOFF_FULFILMENT_SINCE;
+  if (raw == null || raw.trim() === "") return null;
+  const ms = Date.parse(raw.trim());
+  if (!Number.isFinite(ms)) return null;
+  return new Date(ms);
+}
