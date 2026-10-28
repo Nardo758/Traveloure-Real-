@@ -253,7 +253,7 @@ export interface TripPlanActivity {
   confirmationNumber: string | null;
   /** `vendor_contracts.vendor_phone` via `itinerary_items.vendorContractId`; null without a contract. */
   vendorPhone: string | null;
-  /** Expert's voice on the item (`expert_note`, migration 152; legacy fallback to `notes`). */
+  /** Expert's voice on the item: `expert_note`, migration 152, and nothing else. */
   expertNote: string | null;
 
   /** Derived from the RAW `itinerary_items.status === 'completed'` — no dedicated column exists. */

@@ -36,14 +36,16 @@ describe("row 211 empty states", () => {
     }
   });
 
-  it("CS3 the guest invite shows one muted line; the Tabs branch is untouched", () => {
+  it("CS3 the guest invite ends on the confirmation card; the recommendations Tabs branch is gone", () => {
     for (const gone of ["aren't available yet", "We're working on integrating", "Check back soon"]) {
       assert.ok(!GUEST.includes(gone), gone);
     }
-    assert.ok(GUEST.includes("EMPTY_STATE_COPY.guestNoSuggestions"));
-    assert.ok(GUEST.includes('data-testid="guest-no-suggestions"'));
-    assert.ok(GUEST.includes("recommendations?.needsApiIntegration"));
-    assert.ok(GUEST.includes('<Tabs defaultValue="flights">'));
+    assert.ok(!GUEST.includes("<Tabs"));
+    assert.ok(!GUEST.includes("needsApiIntegration"));
+    assert.ok(!GUEST.includes("/recommendations"));
+    assert.ok(!GUEST.includes("guest-no-suggestions"));
+    assert.ok(!GUEST.includes("EMPTY_STATE_COPY"));
+    assert.ok(GUEST.includes("RSVP Confirmed!"));
   });
 
   it("CS4 the discover feed reads #32 inside feed-empty; feed-empty-filtered is unchanged", () => {

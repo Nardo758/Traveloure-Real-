@@ -25,6 +25,7 @@ const { buildAttributionSubId, parseAttributionSubId, applyAttributionSubId } = 
   "../services/travelpayouts/travelpayouts-client"
 );
 const { affiliateReconciliationService } = await import("../services/affiliate-reconciliation.service");
+const { dispatchPaymentTrigger } = await import("../automations/payments/runtime");
 const { db, pool } = await import("../db");
 const { sql } = await import("drizzle-orm");
 
@@ -418,5 +419,101 @@ test("normal nonzero fuzzy (date+amount) matching is unaffected by the token-ado
     assert.equal(parseFloat(row.total_commission), 5.5);
   } finally {
     await cleanup({ affiliateEarnings: [affiliateEarningId], partners: [partnerId] });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Row 271 — the node gate, and one external row is never credited twice
+// ---------------------------------------------------------------------------
+
+test("A1 — the node gate: matchingRequested false does not run; true runs the action once", async () => {
+  let calls = 0;
+  const action = async () => {
+    calls += 1;
+    return "adopted";
+  };
+
+  await assert.rejects(
+    () =>
+      dispatchPaymentTrigger(
+        "payments.affiliate-exact-report-adoption",
+        "affiliate.report.exact_token_adoption.check",
+        { matchingRequested: false },
+        {},
+        action,
+      ),
+    /did not run/,
+  );
+  assert.equal(calls, 0, "a trigger without matchingRequested true does not adopt");
+
+  const result = await dispatchPaymentTrigger(
+    "payments.affiliate-exact-report-adoption",
+    "affiliate.report.exact_token_adoption.check",
+    { matchingRequested: true },
+    {},
+    action,
+  );
+  assert.equal(calls, 1);
+  assert.equal(result, "adopted");
+});
+
+test("A2 — one external row is credited to exactly one of two internal rows that share its token", async () => {
+  const expertId = await createTestUser();
+  const bookingRequestId = crypto.randomUUID();
+  const tokenData = { affiliateBookingRequestId: bookingRequestId };
+  const firstId = await createAffiliateEarning({
+    expertId,
+    totalCommission: "0.00",
+    externalReportData: tokenData,
+  });
+  const secondId = await createAffiliateEarning({
+    expertId,
+    totalCommission: "0.00",
+    externalReportData: tokenData,
+  });
+  const firstExpertId = await createLinkedExpertEarning(expertId, firstId);
+  const secondExpertId = await createLinkedExpertEarning(expertId, secondId);
+
+  try {
+    mockActionRows([
+      {
+        campaign_id: 150,
+        campaign_name_en: "WeGoTrip",
+        action_id: "150:4242",
+        created_at_day: todayIso(),
+        sub_id: buildAttributionSubId(bookingRequestId),
+        state: "processing",
+        type: "action",
+        paid_profit_usd: "8.00",
+        processing_profit_usd: "4.34",
+        price_usd: "100.00",
+      },
+    ]);
+
+    await affiliateReconciliationService.matchRecords("this_month", "travelpayouts");
+
+    const first = await getAffiliateEarning(firstId);
+    const second = await getAffiliateEarning(secondId);
+    const rows = [first, second];
+    const adopted = rows.filter((row) => row.reconciliation_status === "matched");
+    const untouched = rows.filter((row) => row.reconciliation_status !== "matched");
+    assert.equal(adopted.length, 1, "exactly one internal row adopts the partner amount");
+    assert.equal(untouched.length, 1, "the other internal row is left untouched");
+    assert.equal(parseFloat(adopted[0].total_commission), 12.34);
+    assert.equal(adopted[0].partner_reference_id, "150:4242");
+    assert.equal(untouched[0].reconciliation_status, "unmatched");
+    assert.equal(parseFloat(untouched[0].total_commission), 0);
+    assert.equal(untouched[0].partner_reference_id, null, "the fuzzy pass did not match the external row a second time");
+
+    const adoptedExpert = await getExpertEarning(adopted[0].id === firstId ? firstExpertId : secondExpertId);
+    const untouchedExpert = await getExpertEarning(adopted[0].id === firstId ? secondExpertId : firstExpertId);
+    assert.equal(parseFloat(adoptedExpert.amount), 3.7);
+    assert.equal(parseFloat(untouchedExpert.amount), 0, "the untouched row's linked expert earning is unchanged");
+  } finally {
+    await cleanup({
+      expertEarnings: [firstExpertId, secondExpertId],
+      affiliateEarnings: [firstId, secondId],
+      users: [expertId],
+    });
   }
 });
