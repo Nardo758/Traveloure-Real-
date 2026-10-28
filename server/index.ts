@@ -98,6 +98,7 @@ import { queryCounterMiddleware } from "./utils/queryCounter";
 import { internalJobsLimiter } from "./middleware/internal-jobs-limiter";
 import { botLimiter } from "./middleware/bot-limiter";
 import { createCorsMiddleware } from "./middleware/cors-origins";
+import { apexToWwwRedirect } from "./middleware/apex-to-www-redirect";
 import { runBackgroundJob } from "./services/background-job-runner";
 import { jitteredStartupDelay } from "./services/startup-delay";
 import { getBuildInfo, formatBuildBootLine } from "./services/build-info";
@@ -133,6 +134,7 @@ app.use(httpLogger as unknown as RequestHandler);
 
 app.use(createHealthRouter());
 app.use(createMetricsRouter());
+app.use(apexToWwwRedirect);
 
 app.use(
   express.json({

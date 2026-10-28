@@ -16,5 +16,6 @@ Disallow: /provider
 Disallow: /reset-password
 Disallow: /verify-email
 Disallow: /itinerary-view/
+Disallow: /invite/
 
-Sitemap: https://traveloure.com/sitemap.xml
+Sitemap: https://www.traveloure.com/sitemap.xml

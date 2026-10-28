@@ -12,7 +12,7 @@
  *                      the homepage, which told crawlers the whole site is one page.
  *
  * robots.txt is a static file in client/public/ (served by Vite in dev, dist/public in prod).
- * Canonical origin is https://traveloure.com (no www) to match the existing static head.
+ * Canonical origin is https://www.traveloure.com (www), matching the 301 from the apex.
  */
 import { Router } from "express";
 import fs from "fs";
@@ -25,10 +25,12 @@ import { injectIntoHead } from "../utils/html-head";
 import { PUBLISHED_HELP_ARTICLE_SLUGS, helpArticlePath } from "@shared/help-article-slugs";
 import { EXPERIENCES_PAGE_DESCRIPTION } from "@shared/operating-markets";
 import { blogIndexRobots, blogPostRobots, publishedBlogSitemapEntries } from "../services/blog-seo.service";
+import { SITE_ORIGIN, buildSitemapXml, routeHeadTags, sitemapUrlsFor } from "../utils/seo-output";
 
 const router = Router();
 
-const CANONICAL_ORIGIN = "https://traveloure.com";
+// Row 258: one canonical constant, shared with the pure helpers.
+void SITE_ORIGIN;
 
 // ─── Sitemap ────────────────────────────────────────────────────────────────
 // Cached for 15 minutes — crawlers don't need row-level freshness and the three
@@ -52,9 +54,6 @@ const STATIC_ROUTES = [
   "/help",
   ...PUBLISHED_HELP_ARTICLE_SLUGS.map(helpArticlePath),
 ];
-
-const escXml = (s: string) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 async function buildSitemap(): Promise<string> {
   const [services, readyMade, storefronts, blog] = await Promise.all([
@@ -94,29 +93,15 @@ async function buildSitemap(): Promise<string> {
     publishedBlogSitemapEntries(),
   ]);
 
-  const urls: { loc: string; lastmod?: string }[] = [
-    ...STATIC_ROUTES.map((r) => ({ loc: `${CANONICAL_ORIGIN}${r}` })),
-    ...services.map((s) => ({
-      loc: `${CANONICAL_ORIGIN}/services/${s.id}`,
-      lastmod: s.updatedAt?.toISOString().slice(0, 10),
-    })),
-    ...readyMade.map((r) => ({
-      loc: `${CANONICAL_ORIGIN}/ready-made/${r.id}`,
-      lastmod: r.updatedAt?.toISOString().slice(0, 10),
-    })),
-    ...storefronts
-      .filter((u) => !!u.handle)
-      .map((u) => ({ loc: `${CANONICAL_ORIGIN}/s/${u.handle}` })),
-    ...blog.map((b) => ({ loc: `${CANONICAL_ORIGIN}${b.path}`, lastmod: b.lastmod })),
-  ];
-
-  const body = urls
-    .map(
-      (u) =>
-        `  <url><loc>${escXml(u.loc)}</loc>${u.lastmod ? `<lastmod>${u.lastmod}</lastmod>` : ""}</url>`,
-    )
-    .join("\n");
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>\n`;
+  return buildSitemapXml(
+    sitemapUrlsFor({
+      staticRoutes: STATIC_ROUTES,
+      services,
+      readyMade,
+      storefronts,
+      blog,
+    }),
+  );
 }
 
 router.get("/sitemap.xml", async (_req, res) => {
@@ -183,9 +168,6 @@ function resolveTemplatePath(): string | null {
   return fs.existsSync(chosen) ? chosen : null;
 }
 
-const escHtml = (s: string) =>
-  s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
-
 async function serveWithHead(
   req: any,
   res: any,
@@ -196,22 +178,7 @@ async function serveWithHead(
   try {
     const templatePath = resolveTemplatePath();
     if (!templatePath) return next();
-    const canonical = `${CANONICAL_ORIGIN}${routePath}`;
-    const tags = [
-      `<title>${escHtml(meta.title)}</title>`,
-      `<meta name="description" content="${escHtml(meta.description)}" />`,
-      `<link rel="canonical" href="${escHtml(canonical)}" />`,
-      `<meta property="og:type" content="website" />`,
-      `<meta property="og:url" content="${escHtml(canonical)}" />`,
-      `<meta property="og:title" content="${escHtml(meta.title)}" />`,
-      `<meta property="og:description" content="${escHtml(meta.description)}" />`,
-      `<meta property="og:image" content="${CANONICAL_ORIGIN}/og-cover.png" />`,
-      `<meta property="og:site_name" content="Traveloure" />`,
-      `<meta name="twitter:card" content="summary_large_image" />`,
-      `<meta name="twitter:title" content="${escHtml(meta.title)}" />`,
-      `<meta name="twitter:description" content="${escHtml(meta.description)}" />`,
-      `<meta name="twitter:image" content="${CANONICAL_ORIGIN}/og-cover.png" />`,
-    ].join("\n    ");
+    const tags = routeHeadTags(meta, routePath);
 
     let template = fs.readFileSync(templatePath, "utf-8");
     // Strip the static homepage head we're replacing: title, description, canonical,

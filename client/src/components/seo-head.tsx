@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { HOMEPAGE_META_DESCRIPTION } from "@/lib/g02-g06-copy";
 import { SITE_TITLE } from "@/lib/site-meta-copy";
+import { SITE_ORIGIN } from "@shared/site-origin";
 
 interface SEOHeadProps {
   title?: string;
@@ -42,8 +43,8 @@ export function SEOHead({
   ogTitle,
 }: SEOHeadProps) {
   const fullTitle = title ? `${title} | ${SITE_NAME}` : DEFAULT_TITLE;
-  const fullUrl = url ? `https://traveloure.com${url}` : "https://traveloure.com";
-  const imageUrl = image.startsWith("http") ? image : `https://traveloure.com${image}`;
+  const fullUrl = url ? `${SITE_ORIGIN}${url}` : SITE_ORIGIN;
+  const imageUrl = image.startsWith("http") ? image : `${SITE_ORIGIN}${image}`;
 
   const defaultKeywords = [
     "travel planning",
