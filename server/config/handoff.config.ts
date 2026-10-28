@@ -28,3 +28,28 @@ export function handoffReleaseHours(): number {
 export function handoffAutoApproveDays(): number {
   return positiveNumberEnv("HANDOFF_AUTO_APPROVE_DAYS", 7);
 }
+
+/**
+ * Hours after the latest transition into accepted before a never-delivered handoff fails.
+ * Read from `HANDOFF_FULFILMENT_HOURS` at call time. No default; unset disables the
+ * deadline trigger. The trigger also stays off unless `HANDOFF_FULFILMENT_SINCE` is valid.
+ */
+export function handoffFulfilmentHours(): number | null {
+  const raw = process.env.HANDOFF_FULFILMENT_HOURS;
+  if (raw == null || raw.trim() === "") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * Architect, 2026-10-28 00:15 ET (via Leon): requests accepted before this instant are
+ * exempt from the fulfilment deadline. Read from `HANDOFF_FULFILMENT_SINCE` at call
+ * time (ISO timestamp). No default; unset or invalid disables the deadline trigger.
+ */
+export function handoffFulfilmentSince(): Date | null {
+  const raw = process.env.HANDOFF_FULFILMENT_SINCE;
+  if (raw == null || raw.trim() === "") return null;
+  const ms = Date.parse(raw.trim());
+  if (!Number.isFinite(ms)) return null;
+  return new Date(ms);
+}
