@@ -6,6 +6,8 @@
  * (§18 rule 1), so the card and /pricing cannot disagree the day the config moves.
  */
 
+import { PRICING_AND_LEGAL_TITLE_COPY } from "./pricing-and-legal-title-copy";
+
 /** "5 optimizer runs" from the server's count; "optimizer runs" when no count arrived (§13). */
 export function tripPassRunsPhrase(runs: number | null | undefined): string {
   return typeof runs === "number" && Number.isFinite(runs) && runs > 0
@@ -13,8 +15,8 @@ export function tripPassRunsPhrase(runs: number | null | undefined): string {
     : "optimizer runs";
 }
 
-/** The /pricing checklist line: "5 optimizer runs + unlimited AI tasks on that trip". */
+/** The /pricing checklist line: "5 optimizer runs + unlimited tasks on that trip" (tail held, row 257). */
 export function tripPassPricingLine(runs: number | null | undefined): string {
   const phrase = tripPassRunsPhrase(runs);
-  return `${phrase.charAt(0).toUpperCase()}${phrase.slice(1)} + unlimited AI tasks on that trip`;
+  return `${phrase.charAt(0).toUpperCase()}${phrase.slice(1)}${PRICING_AND_LEGAL_TITLE_COPY.tripPass.pricingLineTail}`;
 }

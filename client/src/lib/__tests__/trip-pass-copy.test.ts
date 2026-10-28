@@ -92,9 +92,9 @@ test("T3: the three benefits that ARE enforced are still named on both surfaces"
   // template renders the ruled copy with the value from that same source.
   assert.match(PRICING, /tripPassPricingLine\(pricing\.tripPass\.runsPerTrip\)/);
   assert.match(PRICING_ROUTE, /runsPerTrip: tripPassRunsPerTrip\(\)/);
-  assert.equal(tripPassPricingLine(tripPassRunsPerTrip()), `${tripPassRunsPerTrip()} optimizer runs + unlimited AI tasks on that trip`);
+  assert.equal(tripPassPricingLine(tripPassRunsPerTrip()), `${tripPassRunsPerTrip()} optimizer runs + unlimited tasks on that trip`);
   delete process.env.TRIP_PASS_RUNS_PER_TRIP;
-  assert.equal(tripPassPricingLine(tripPassRunsPerTrip()), "5 optimizer runs + unlimited AI tasks on that trip");
+  assert.equal(tripPassPricingLine(tripPassRunsPerTrip()), "5 optimizer runs + unlimited tasks on that trip");
   assert.match(PRICING, /No service fee on that trip's bookings/);
   // Ruling 3 (decision-maker, Oct 8, 2026; ledger `2026-10-08-slip-main-rail`): the card states the
   // run allowance the entitlement enforces (R-ac) — "5 optimizer runs", from the server — and never
