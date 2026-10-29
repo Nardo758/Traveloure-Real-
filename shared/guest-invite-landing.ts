@@ -23,6 +23,12 @@ export interface GuestLanding {
   hostNote?: string;
   /** "YYYY-MM-DD" as stored. */
   rsvpBy?: string;
+  /**
+   * True when a street address is stored (row 207). Present only then; an absent
+   * key means no address was stored. The address itself is `venueAddress`, and
+   * that key is present only when rsvpStatus is "accepted".
+   */
+  hasVenueAddress?: boolean;
   /** The street address; only when rsvpStatus is "accepted". */
   venueAddress?: string;
 }

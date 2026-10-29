@@ -80,8 +80,12 @@ export function buildGuestLanding(input: GuestLandingInput): GuestLanding {
   const rsvpBy = asStored(input.rsvpBy);
   if (rsvpBy) out.rsvpBy = rsvpBy;
 
+  // Row 207: the guest can be told an address exists before it is released.
+  // The key is present only when true. The street itself stays behind the RSVP gate.
+  const venueAddress = present(input.venueAddress);
+  if (venueAddress) out.hasVenueAddress = true;
+
   if (typeof input.rsvpStatus === "string" && ADDRESS_RELEASING_STATUSES.has(input.rsvpStatus)) {
-    const venueAddress = present(input.venueAddress);
     if (venueAddress) out.venueAddress = venueAddress;
   }
 

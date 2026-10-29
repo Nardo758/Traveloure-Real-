@@ -2175,4 +2175,9 @@ export const MIGRATION_FILES = [
   // no DEFAULT, no CHECK, no index, no backfill. HELD for "Migration 413 SQL approved — Leon".
   // Ledger 2026-10-28-guest-landing-fields. Declared in shared/schema.ts.
   "413_guest_landing_event_fields.sql",
+  // 414 — invite_send_log.outbox_id. One additive nullable bigint. No DEFAULT,
+  // no CHECK, no index, no FK, no backfill. HELD for "Migration 414 SQL approved — Leon".
+  // Ledger 2026-10-28-invite-send-state-server. Declared in shared/guest-invites-schema.ts.
+  // The organizer send state is derived; this column is the pointer, not a status.
+  "414_invite_send_log_outbox_id.sql",
 ] as const;

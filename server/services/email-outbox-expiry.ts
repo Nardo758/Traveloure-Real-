@@ -1,3 +1,5 @@
+import { addCalendarDays, calendarParts, isUsableTimeZone, zonedMidnight } from "@shared/plan-timing";
+
 /**
  * Outbox expiry (Z-03, ledger `2026-10-24-traveler-automation-rulings`).
  *
@@ -57,6 +59,11 @@ export const UNWINDOWED_EMAIL_TYPES = [
   "expert_application_rejected",
   "expired_claim",
   "generic",
+  // No Z-03 window of its own. Row 207 stores expires_at only when the enqueue
+  // passes rsvpBy or eventDate. Without those, computeOutboxExpiresAt still
+  // returns null, which is what the unwindowed proof checks. The drain still
+  // holds an unlisted row before it reads expires_at, so a past guest_invite
+  // stays held until the type is allowlisted.
   "guest_invite",
   "itinerary_failed",
   "itinerary_ready",
@@ -104,19 +111,76 @@ function instantOf(value: unknown): number | null {
   return null;
 }
 
+const CALENDAR_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * A DATE column as a UTC calendar day, or null when the value is not one.
+ * The same convention `formatEventDateForEmail` uses: a calendar date has no
+ * zone, and reading it in a local zone is how the day slides.
+ */
+export function asGuestInviteCalendarDay(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const day = value.trim().slice(0, 10);
+  if (!CALENDAR_DAY.test(day)) return null;
+  const [year, month, date] = day.split("-").map(Number);
+  const utc = new Date(Date.UTC(year, month - 1, date));
+  if (utc.getUTCFullYear() !== year || utc.getUTCMonth() !== month - 1 || utc.getUTCDate() !== date) {
+    return null;
+  }
+  return day;
+}
+
+/**
+ * When a guest_invite row expires. rsvp_by when that day is usable, otherwise
+ * the event date, otherwise null (no window — nothing is invented).
+ *
+ * Architect 2026-10-29 08:40 ET: the instant is the first moment of the
+ * following local calendar day in the event's `trips.timezone` (the end of
+ * that calendar day), stored as UTC. A DATE has no time of day.
+ */
+export function guestInviteExpiresAt(
+  rsvpBy: unknown,
+  eventDate: unknown,
+  timeZone?: unknown,
+): Date | null {
+  const day = asGuestInviteCalendarDay(rsvpBy) ?? asGuestInviteCalendarDay(eventDate);
+  if (!day) return null;
+  const next = addCalendarDays(day, 1);
+  const parts = calendarParts(next);
+  if (!parts) return null;
+  const [year, month, date] = parts;
+  const zone = typeof timeZone === "string" ? timeZone : null;
+  if (isUsableTimeZone(zone)) return zonedMidnight(year, month, date, zone);
+  // Architect 2026-10-29 08:40 ET: the next-UTC-day instant is the fallback
+  // ONLY when trips.timezone is absent or unusable. A usable zone never
+  // takes this path.
+  return new Date(Date.UTC(year, month - 1, date));
+}
+
 /**
  * The expires_at to store on a new outbox row. Null means this enqueue has
  * no stated window. Never reads the database and never changes a row that
- * already exists.
+ * already exists. guest_invite is the exception that reads rsvpBy / eventDate
+ * off the metadata the guest-invite enqueue itself supplied; without those
+ * the result is still null.
  */
 export function computeOutboxExpiresAt(
   emailType: string,
-  metadata: { linkExpiresAt?: unknown; readyAt?: unknown } | null | undefined,
+  metadata: {
+    linkExpiresAt?: unknown;
+    readyAt?: unknown;
+    rsvpBy?: unknown;
+    eventDate?: unknown;
+    tripTimezone?: unknown;
+  } | null | undefined,
   enqueuedAt: Date,
 ): Date | null {
   if (LINK_EXPIRY_TYPES.has(emailType)) {
     const at = instantOf(metadata?.linkExpiresAt);
     return at == null ? null : new Date(at);
+  }
+  if (emailType === "guest_invite") {
+    return guestInviteExpiresAt(metadata?.rsvpBy, metadata?.eventDate, metadata?.tripTimezone);
   }
   const nextOffset = MARKETING_NEXT_STEP_FROM_READY_MS[emailType];
   if (nextOffset == null) return null;

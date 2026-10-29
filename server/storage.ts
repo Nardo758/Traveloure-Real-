@@ -9444,6 +9444,8 @@ export class DatabaseStorage implements IStorage {
     title: string | null;
     location: string | null;
     eventDate: string | null;
+    rsvpBy: string | null;
+    tripTimezone: string | null;
     defaultVisibility: string | null;
   } | null> {
     const [row] = await db
@@ -9453,10 +9455,13 @@ export class DatabaseStorage implements IStorage {
         title: userExperiences.title,
         location: userExperiences.location,
         eventDate: userExperiences.eventDate,
+        rsvpBy: userExperiences.rsvpBy,
+        tripTimezone: trips.timezone,
         defaultVisibility: experienceTypes.defaultVisibility,
       })
       .from(userExperiences)
       .leftJoin(experienceTypes, eq(userExperiences.experienceTypeId, experienceTypes.id))
+      .leftJoin(trips, eq(userExperiences.tripId, trips.id))
       .where(eq(userExperiences.id, experienceId))
       .limit(1);
     return row ?? null;
@@ -9552,9 +9557,49 @@ export class DatabaseStorage implements IStorage {
     recipientAddress: string;
     status: string;
     errorMessage?: string | null;
+    outboxId?: number | null;
   }): Promise<InviteSendLog> {
-    const [row] = await db.insert(inviteSendLog).values(values).returning();
-    return row;
+    // One log row per invite. The first enqueue inserts; a re-click updates that
+    // row (recipient, attempt status, pointer) instead of appending another.
+    return await db.transaction(async (tx) => {
+      const found = await tx.execute(sql`
+        SELECT id
+        FROM invite_send_log
+        WHERE invite_id = ${values.inviteId}
+        ORDER BY sent_at DESC NULLS LAST, id DESC
+        LIMIT 1
+        FOR UPDATE
+      `);
+      const existingId = (found.rows?.[0] as { id?: string } | undefined)?.id;
+      if (!existingId) {
+        const [row] = await tx.insert(inviteSendLog).values({
+          inviteId: values.inviteId,
+          method: values.method,
+          recipientAddress: values.recipientAddress,
+          status: values.status,
+          errorMessage: values.errorMessage ?? null,
+          outboxId: values.outboxId ?? null,
+        }).returning();
+        return row;
+      }
+      const patch: {
+        method: string;
+        recipientAddress: string;
+        status: string;
+        errorMessage: string | null;
+        sentAt: Date;
+        outboxId?: number;
+      } = {
+        method: values.method,
+        recipientAddress: values.recipientAddress,
+        status: values.status,
+        errorMessage: values.errorMessage ?? null,
+        sentAt: new Date(),
+      };
+      if (values.outboxId != null) patch.outboxId = values.outboxId;
+      const [row] = await tx.update(inviteSendLog).set(patch).where(eq(inviteSendLog.id, existingId)).returning();
+      return row;
+    });
   }
 
   /** The send history for every invite on one event, newest first — the host-facing read. */
@@ -9570,6 +9615,7 @@ export class DatabaseStorage implements IStorage {
         sentAt: inviteSendLog.sentAt,
         openedAt: inviteSendLog.openedAt,
         clickedAt: inviteSendLog.clickedAt,
+        outboxId: inviteSendLog.outboxId,
       })
       .from(inviteSendLog)
       .innerJoin(eventInvites, eq(inviteSendLog.inviteId, eventInvites.id))
