@@ -93,6 +93,22 @@ export const CANCELLED_BY_DEFAULT_EMAIL_TYPES = [
   "activity_review_received",
 ] as const;
 
+/**
+ * Marketing sends the drain cancels when that address has revoked the waitlist
+ * notify consent or has unsubscribed. Architect F3, Oct 29, 2026: this list is
+ * `waitlist_open` only. Transactional types stay out of it.
+ * `waitlist_open` also stays in CANCELLED_BY_DEFAULT for the address-change
+ * reclass; this list does not move it.
+ */
+export const MARKETING_EMAIL_TYPES = ["waitlist_open"] as const;
+
+/** Settled on a marketing row that is not sent because consent was revoked or the address unsubscribed. */
+export const WAITLIST_MARKETING_REVOKED_REASON = "waitlist_consent_revoked";
+
+export function isMarketingEmailType(emailType: string | null | undefined): boolean {
+  return typeof emailType === "string" && (MARKETING_EMAIL_TYPES as readonly string[]).includes(emailType);
+}
+
 export type OutboxEmailClass =
   | "security"
   | "must_have"

@@ -40,7 +40,6 @@ type SendEmailParams = emailTypes.SendEmailParams;
 const { _outboxTestHooks, deliverQueuedEmail, drainOutbox } = await import("../services/email-outbox.service.js");
 const { settleAdminDigestDelivery } = await import("../services/admin-digest-scheduler.service.js");
 const { claimAdminDigestSend, releaseAdminDigestClaim } = await import("../services/admin-digest-claim.js");
-const { sendWaitlistOpenEmail } = await import("../services/waitlist-open-email.js");
 const { VendorManagementService } = await import("../services/vendor-management.service.js");
 const { runDailyAdminDigest } = await import("../jobs/dailyAdminDigest.js");
 const { deliverNightlyQaEmails } = await import("../jobs/nightlyQA.js");
@@ -91,7 +90,6 @@ const OUTBOX_TYPES = [
 const DIRECT_TYPES = [
   "late_success_refund",
   "expired_claim",
-  "waitlist_open",
   "vendor_bulk_email",
   "admin_daily_digest",
   "nightly_qa",
@@ -507,12 +505,6 @@ describe("migrated callers pass their email_type", () => {
 
     await sendLateSuccessRefundEmail({ toEmail: TO, refundAmount: 12 });
     await sendExpiredClaimEmail({ toEmail: TO, serviceName: "Tea" });
-    const waitlist = await sendWaitlistOpenEmail({
-      to: TO,
-      cityName: "Kyoto",
-      unsubscribeUrl: "https://example.com/unsub",
-    });
-    assert.equal(waitlist.sent, true);
     const vendor = await new ProbeVendor().sendBulkVendorEmail("trip-1", ["c1"], "Hello", "Body");
     assert.equal(vendor.sent, 1);
     assert.equal(vendor.failed, 0);
@@ -678,12 +670,6 @@ describe("a suppressed result is not a failure", () => {
       const vendor = await new ProbeVendor().sendBulkVendorEmail("trip-1", ["c1"], "Hello", "Body");
       assert.equal(vendor.sent, 0);
       assert.equal(vendor.failed, 0);
-      const waitlist = await sendWaitlistOpenEmail({
-        to: TO,
-        cityName: "Kyoto",
-        unsubscribeUrl: "https://example.com/unsub",
-      });
-      assert.equal(waitlist.sent, false);
       assert.equal(calls.length, 0);
       const errorText = logs.errors.join("\n");
       assert.equal(/failed/i.test(errorText), false, errorText);

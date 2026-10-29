@@ -21,7 +21,7 @@ import { buildBookingConfirmationEmailPayload } from "../email.service";
 import { buildItineraryFollowupEmail } from "../itinerary-followup-email";
 import { deliverItineraryFollowup } from "../itinerary-followup.service";
 import { applyMarketingEmailFooter, readMarketingEmailFooter } from "../marketing-email-footer";
-import { buildWaitlistOpenEmail, sendWaitlistOpenEmail } from "../waitlist-open-email";
+import { buildWaitlistOpenEmail, composeWaitlistOpenEmail } from "../waitlist-open-email";
 
 const FAKE: Record<MarketingEmailFooterKey, string> = {
   marketing_email_sender_name: "Example Sender LLC",
@@ -200,11 +200,11 @@ test("a marketing send is skipped until every setting is stored, then the stub r
     assert.equal((held.lastError ?? "").includes("@"), false);
     assert.ok(warnings.some((line) => line.includes(`[marketing-email] skipped itinerary_nudge_2h outbox=${outboxId}`)));
 
-    const openSkipped = await sendWaitlistOpenEmail({
-      to: email, cityName: "Exampleville", unsubscribeUrl: "https://app.example.test/unsub", send,
+    const openSkipped = await composeWaitlistOpenEmail({
+      cityName: "Exampleville", unsubscribeUrl: "https://app.example.test/unsub",
     });
-    assert.equal(openSkipped.sent, false);
-    if (!openSkipped.sent) assert.match(openSkipped.reason, /marketing_email_opt_out_address/);
+    assert.equal(openSkipped.ok, false);
+    if (!openSkipped.ok) assert.match(openSkipped.reason, /marketing_email_opt_out_address/);
 
     await writeFooter(FAKE);
     const loaded = await readMarketingEmailFooter();
@@ -218,15 +218,14 @@ test("a marketing send is skipped until every setting is stored, then the stub r
     assert.match(payloadHtml, /Sender: Example Sender LLC/);
     assert.match(payloadHtml, /opt-out@example\.test/);
     assert.match(payloadHtml, /Unsubscribe from itinerary follow-up emails/);
-    const open = await sendWaitlistOpenEmail({
-      to: email, cityName: "Exampleville", unsubscribeUrl: "https://app.example.test/unsub",
-      send: async (params) => {
-        assert.match(params.text ?? "", /Complaints: complaints@example\.test/);
-        assert.match(params.html, /CONFIGURED-POSTAL-LINE-1/);
-        return { ok: true, id: "stub-open" };
-      },
+    const open = await composeWaitlistOpenEmail({
+      cityName: "Exampleville", unsubscribeUrl: "https://app.example.test/unsub",
     });
-    assert.deepEqual(open, { sent: true, id: "stub-open" });
+    assert.equal(open.ok, true);
+    if (open.ok) {
+      assert.match(open.text, /Complaints: complaints@example\.test/);
+      assert.match(open.html, /CONFIGURED-POSTAL-LINE-1/);
+    }
   } finally {
     console.warn = originalWarn;
     if (previousInbox == null) delete process.env.ITINERARY_OUTCOME_TEST_EMAIL;

@@ -88,6 +88,9 @@ export const waitlistJoinBodySchema = z
     role: z.enum(WAITLIST_ROLES).optional(),
     email: z.string().trim().email().max(254),
     consent: z.boolean().optional(),
+    // 291a: the news/marketing box. Omitted means false. A row is written only when this is
+    // true AND a launch_marketing_news consent_texts version already exists (nothing is seeded).
+    marketingConsent: z.boolean().optional(),
     source: z.string().max(200).optional(),
     tripType: z.enum(TRIP_TYPE_KEYS).optional(),
     roughMonth: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional(),
@@ -118,8 +121,29 @@ export const waitlistJoinBodySchema = z
   });
 export type WaitlistJoinBody = z.infer<typeof waitlistJoinBodySchema>;
 
+/** Public unsubscribe confirm/revoke body. The token is the only field. */
+export const waitlistUnsubscribeBodySchema = z
+  .object({
+    token: z.string().trim().min(1).max(2000),
+  })
+  .strict();
+
+/** Admin "market opened" body. Market is an operating-market key; role is traveler or provider. */
+export const waitlistMarketOpenedBodySchema = z
+  .object({
+    market: z.string().trim().toLowerCase().min(1).max(64),
+    role: z.enum(WAITLIST_ROLES),
+  })
+  .strict();
+
 /** The consent wording's key and version. A wording change is a new version, never an edit (migration 381). */
 export const WAITLIST_CONSENT_KEY = "launch_waitlist_updates";
+/**
+ * News/marketing box (291a, Architect F2). Not renamed from the notify key above.
+ * No seeded wording: a consent_records row is written only when a consent_texts version
+ * for this key is already present.
+ */
+export const WAITLIST_MARKETING_CONSENT_KEY = "launch_marketing_news";
 export const WAITLIST_CONSENT_VERSION = "f1-2026-10-15";
 /** Kyoto's consent line (LC-1b). A wording change is a new version, never an edit of `f1-2026-10-15`. */
 export const WAITLIST_CONSENT_LINE = "Join the Kyoto list";

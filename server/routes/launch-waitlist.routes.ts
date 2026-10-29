@@ -19,6 +19,13 @@
 //                                      market, newest first, capped. Admin only.
 //   DELETE /api/admin/waitlist/:id   — LW-1e: hard-delete ONE row; its audit row (row id + sha256 of the email,
 //                                      never the address) is written in the same transaction. Admin only.
+//   GET  /api/waitlist/unsubscribe   — public, rate-limited. Verifies the signed token and returns the list
+//                                      and city. Does not revoke (link scanners prefetch GETs).
+//   POST /api/waitlist/unsubscribe   — public, rate-limited. Verifies the token, revokes every consent row
+//                                      for that waitlist id, and sets unsubscribed_at. Idempotent.
+//   POST /api/admin/waitlist/market-opened — admin. Enqueues waitlist_open for consented, not-revoked
+//                                      recipients. Audit row stores no address and a null IP. Sending stays
+//                                      with EMAIL_SENDS_ENABLED and EMAIL_TEMPLATE_ALLOWLIST.
 //
 // /api/admin/* is also behind the blanket requireAdmin guard (CLAUDE.md §2); the explicit DB-role checks here are
 // the second layer, as on the other admin routes.
@@ -29,11 +36,12 @@ import { strictRateLimiter } from "../infrastructure/rate-limiter";
 import { getAdminRole, recordAdminAudit } from "../services/admin-query.service";
 import { getLaunchMarketSlug } from "../services/platform-flags";
 import {
-  WAITLIST_CSV_COLUMNS, deleteWaitlistRow, joinWaitlist, searchWaitlistByEmail, waitlistCounts, waitlistExportRows,
+  WAITLIST_CSV_COLUMNS, confirmWaitlistUnsubscribe, deleteWaitlistRow, enqueueMarketOpened, joinWaitlist,
+  revokeWaitlistUnsubscribe, searchWaitlistByEmail, waitlistCounts, waitlistExportRows,
 } from "../services/launch-waitlist.service";
 import {
   WAITLIST_EMAIL_ERROR, WAITLIST_SEARCH_MIN_CHARS, WAITLIST_UNKNOWN_MARKET, resolveWaitlistMarket, waitlistCityName,
-  waitlistJoinBodySchema,
+  waitlistJoinBodySchema, waitlistMarketOpenedBodySchema, waitlistUnsubscribeBodySchema,
 } from "@shared/launch-waitlist";
 import { logger } from "../infrastructure/logger";
 import { csvCell } from "../utils/csv";
@@ -76,6 +84,33 @@ router.post("/api/waitlist", strictRateLimiter, async (req, res) => {
     // Never log the address (no email in logs).
     logger.error(`[waitlist] join failed: ${err?.code ?? err?.message ?? "unknown"}`);
     return res.status(500).json({ error: "Could not join the waitlist. Please try again." });
+  }
+});
+
+const UNSUBSCRIBE_ERROR = "Invalid unsubscribe link";
+
+router.get("/api/waitlist/unsubscribe", strictRateLimiter, async (req, res) => {
+  const token = typeof req.query.token === "string" ? req.query.token : "";
+  try {
+    const result = await confirmWaitlistUnsubscribe(token);
+    if (!result.ok) return res.status(400).json({ error: UNSUBSCRIBE_ERROR });
+    return res.json({ ok: true, list: result.list, market: result.market, city: result.city });
+  } catch (err: any) {
+    logger.error(`[waitlist] unsubscribe confirm failed: ${err?.code ?? "unknown"}`);
+    return res.status(500).json({ error: UNSUBSCRIBE_ERROR });
+  }
+});
+
+router.post("/api/waitlist/unsubscribe", strictRateLimiter, async (req, res) => {
+  const parsed = waitlistUnsubscribeBodySchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: UNSUBSCRIBE_ERROR });
+  try {
+    const result = await revokeWaitlistUnsubscribe(parsed.data.token);
+    if (!result.ok) return res.status(400).json({ error: UNSUBSCRIBE_ERROR });
+    return res.json({ ok: true });
+  } catch (err: any) {
+    logger.error(`[waitlist] unsubscribe revoke failed: ${err?.code ?? "unknown"}`);
+    return res.status(500).json({ error: UNSUBSCRIBE_ERROR });
   }
 });
 
@@ -169,6 +204,38 @@ router.delete("/api/admin/waitlist/:id", isAuthenticated, async (req, res) => {
     // The delete and its audit row are one transaction: a failure leaves the row in place. Never log the address.
     logger.error(`[waitlist] delete failed: ${err?.code ?? err?.message ?? "unknown"}`);
     return res.status(500).json({ error: "Could not delete the row." });
+  }
+});
+
+router.post("/api/admin/waitlist/market-opened", isAuthenticated, async (req, res) => {
+  const admin = await requireAdminUser(req, res);
+  if (!admin) return;
+  const parsed = waitlistMarketOpenedBodySchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: "Choose a city and a role." });
+  if (!waitlistCityName(parsed.data.market)) {
+    return res.status(400).json({ error: "Unknown market", code: WAITLIST_UNKNOWN_MARKET });
+  }
+  try {
+    const counts = await enqueueMarketOpened(parsed.data);
+    await recordAdminAudit({
+      actorId: admin.id,
+      actorRole: admin.role,
+      action: "waitlist_market_opened",
+      resourceType: "launch_waitlist",
+      resourceId: `${parsed.data.market}:${parsed.data.role}`,
+      metadata: {
+        market: parsed.data.market,
+        role: parsed.data.role,
+        enqueued: counts.enqueued,
+        skipped: counts.skipped,
+      },
+      ipAddress: null,
+      userAgent: null,
+    });
+    return res.json({ ok: true, enqueued: counts.enqueued, skipped: counts.skipped });
+  } catch (err: any) {
+    logger.error(`[waitlist] market opened failed: ${err?.code ?? "unknown"}`);
+    return res.status(500).json({ error: "Could not queue the launch email." });
   }
 });
 

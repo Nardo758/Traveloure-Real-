@@ -1,11 +1,11 @@
 # Mounted mutation authorization inventory
 
-Generated from `server/routes.ts`. **731** raw mounted mutation registrations and **723** unique METHOD+normalizedPath pairs were found.
+Generated from `server/routes.ts`. **733** raw mounted mutation registrations and **725** unique METHOD+normalizedPath pairs were found.
 
-The unique-pair count is **+177** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
+The unique-pair count is **+179** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
 
-Category totals: payments 31; admin 195; user-data 251; other 246.
-Boundary totals: admin-role 195; session-self 368; resource-owner 102; signature 6; public-or-system 52; unknown 0.
+Category totals: payments 31; admin 196; user-data 251; other 247.
+Boundary totals: admin-role 196; session-self 368; resource-owner 102; signature 6; public-or-system 53; unknown 0.
 
 | Method | Normalized path | Risk | Boundary | Ownership applicable | Expected ownership | Registrations | Fixture | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -174,7 +174,8 @@ Boundary totals: admin-role 195; session-self 368; resource-owner 102; signature
 | PATCH | `/api/admin/users/:id/test-flag` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:3490` | unknown | unknown |
 | PATCH | `/api/admin/users/:id/unsuspend` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:10173` | unknown | unknown |
 | PATCH | `/api/admin/users/:id/verification` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:3382` | unknown | unknown |
-| DELETE | `/api/admin/waitlist/:id` | admin | admin-role | no | unknown | `server/routes/launch-waitlist.routes.ts:154` | unknown | unknown |
+| DELETE | `/api/admin/waitlist/:id` | admin | admin-role | no | unknown | `server/routes/launch-waitlist.routes.ts:189` | unknown | unknown |
+| POST | `/api/admin/waitlist/market-opened` | admin | admin-role | no | unknown | `server/routes/launch-waitlist.routes.ts:210` | unknown | unknown |
 | POST | `/api/affiliate-booking-requests` | other | resource-owner | no | verified | `server/routes/content.routes.ts:7683` | unknown | unknown |
 | PATCH | `/api/affiliate-booking-requests/:id` | other | resource-owner | no | verified | `server/routes/content.routes.ts:8120` | unknown | unknown |
 | POST | `/api/affiliate-booking-requests/:id/claim` | other | session-self | no | unknown | `server/routes/content.routes.ts:8062` | unknown | unknown |
@@ -315,8 +316,8 @@ Boundary totals: admin-role 195; session-self 368; resource-owner 102; signature
 | PATCH | `/api/ea/venues/:id` | admin | admin-role | no | unknown | `server/routes/ea.routes.ts:544` | unknown | unknown |
 | DELETE | `/api/emergency-contacts/:id` | other | session-self | no | unknown | `server/routes/content.routes.ts:7441` | unknown | unknown |
 | PATCH | `/api/emergency-contacts/:id` | other | session-self | no | unknown | `server/routes/content.routes.ts:7423` | unknown | unknown |
-| POST | `/api/events/:experienceId/invites` | other | session-self | no | unknown | `server/routes/guest-invites.ts:159` | unknown | unknown |
-| POST | `/api/events/:experienceId/invites/send` | other | session-self | no | unknown | `server/routes/guest-invites.ts:316` | unknown | unknown |
+| POST | `/api/events/:experienceId/invites` | other | session-self | no | unknown | `server/routes/guest-invites.ts:160` | unknown | unknown |
+| POST | `/api/events/:experienceId/invites/send` | other | session-self | no | unknown | `server/routes/guest-invites.ts:319` | unknown | unknown |
 | POST | `/api/expert-application` | other | session-self | no | unknown | `server/routes.ts:2697` | unknown | unknown |
 | POST | `/api/expert-booking-requests` | other | resource-owner | no | verified | `server/routes.ts:2047` | unknown | unknown |
 | POST | `/api/expert-forms` | other | session-self | no | unknown | `server/routes.ts:2791` | unknown | unknown |
@@ -410,11 +411,11 @@ Boundary totals: admin-role 195; session-self 368; resource-owner 102; signature
 | POST | `/api/instagram/deauthorize` | other | public-or-system | no | unknown | `server/routes/instagram.ts:598` (/deauthorize) | unknown | unknown |
 | POST | `/api/instagram/disconnect` | other | session-self | no | unknown | `server/routes/instagram.ts:533` (/disconnect) | unknown | unknown |
 | POST | `/api/instagram/publish` | other | session-self | no | unknown | `server/routes/instagram.ts:274` (/publish) | unknown | unknown |
-| POST | `/api/invite-templates` | other | session-self | no | unknown | `server/routes/guest-invites.ts:591` | unknown | unknown |
-| DELETE | `/api/invites/:inviteId` | other | session-self | no | unknown | `server/routes/guest-invites.ts:409` | unknown | unknown |
-| POST | `/api/invites/:token/origin` | other | public-or-system | no | unknown | `server/routes/guest-invites.ts:508` | unknown | unknown |
-| POST | `/api/invites/:token/rsvp` | other | public-or-system | no | unknown | `server/routes/guest-invites.ts:542` | unknown | unknown |
-| POST | `/api/invites/:token/view` | other | public-or-system | no | unknown | `server/routes/guest-invites.ts:490` | unknown | unknown |
+| POST | `/api/invite-templates` | other | session-self | no | unknown | `server/routes/guest-invites.ts:596` | unknown | unknown |
+| DELETE | `/api/invites/:inviteId` | other | session-self | no | unknown | `server/routes/guest-invites.ts:414` | unknown | unknown |
+| POST | `/api/invites/:token/origin` | other | public-or-system | no | unknown | `server/routes/guest-invites.ts:513` | unknown | unknown |
+| POST | `/api/invites/:token/rsvp` | other | public-or-system | no | unknown | `server/routes/guest-invites.ts:547` | unknown | unknown |
+| POST | `/api/invites/:token/view` | other | public-or-system | no | unknown | `server/routes/guest-invites.ts:495` | unknown | unknown |
 | POST | `/api/itinerary-comparisons` | other | signature | no | verified | `server/routes.ts:10299` | unknown | unknown |
 | POST | `/api/itinerary-comparisons/:id/adopt-stop` | other | resource-owner | no | verified | `server/routes/plancard.routes.ts:411` | unknown | unknown |
 | POST | `/api/itinerary-comparisons/:id/adopt-stops` | other | resource-owner | no | verified | `server/routes/plancard.routes.ts:570` | unknown | unknown |
@@ -434,17 +435,17 @@ Boundary totals: admin-role 195; session-self 368; resource-owner 102; signature
 | POST | `/api/me/ea-invitations/:id/accept` | user-data | session-self | no | self | `server/routes/ea.routes.ts:789` | unknown | unknown |
 | POST | `/api/me/ea-invitations/:id/decline` | user-data | session-self | no | self | `server/routes/ea.routes.ts:802` | unknown | unknown |
 | DELETE | `/api/me/ea-links/:id` | user-data | session-self | no | self | `server/routes/ea.routes.ts:815` | unknown | unknown |
-| PATCH | `/api/me/handle` | user-data | resource-owner | no | verified | `server/routes/storefront.routes.ts:100` | unknown | unknown |
+| PATCH | `/api/me/handle` | user-data | resource-owner | no | verified | `server/routes/storefront.routes.ts:101` | unknown | unknown |
 | PATCH | `/api/me/home-city` | user-data | session-self | no | self | `server/routes/occasions.routes.ts:190` | unknown | unknown |
 | PATCH | `/api/me/itinerary-email-preferences` | user-data | session-self | no | self | `server/routes/itinerary-email-preferences.routes.ts:48` | unknown | unknown |
 | POST | `/api/me/listings/booking-mode/decide` | user-data | session-self | no | self | `server/routes/booking-mode-prompt.routes.ts:42` | unknown | unknown |
-| PATCH | `/api/me/notification-email` | user-data | session-self | no | self | `server/routes/storefront.routes.ts:1678` | unknown | unknown |
+| PATCH | `/api/me/notification-email` | user-data | session-self | no | self | `server/routes/storefront.routes.ts:1679` | unknown | unknown |
 | POST | `/api/me/offering-requests` | user-data | session-self | no | self | `server/routes/offering-requests.routes.ts:47` | unknown | unknown |
 | DELETE | `/api/me/payment-methods/:id` | payments | session-self | no | self | `server/routes/payment-methods.routes.ts:85` | unknown | unknown |
 | POST | `/api/me/payment-methods/default` | payments | session-self | no | self | `server/routes/payment-methods.routes.ts:66` | unknown | unknown |
 | POST | `/api/me/payment-methods/setup-intent` | payments | session-self | no | self | `server/routes/payment-methods.routes.ts:50` | unknown | unknown |
 | PUT | `/api/me/payout-setup` | user-data | session-self | no | self | `server/routes/payments.routes.ts:3198` | unknown | unknown |
-| PATCH | `/api/me/preferences` | user-data | session-self | no | self | `server/routes/storefront.routes.ts:275` | unknown | unknown |
+| PATCH | `/api/me/preferences` | user-data | session-self | no | self | `server/routes/storefront.routes.ts:276` | unknown | unknown |
 | DELETE | `/api/me/profile-photo` | user-data | session-self | no | self | `server/routes/profile-photo.routes.ts:114` | unknown | unknown |
 | POST | `/api/me/profile-photo` | user-data | session-self | no | self | `server/routes/profile-photo.routes.ts:51` | unknown | unknown |
 | POST | `/api/me/research-prefs` | user-data | session-self | no | self | `server/routes/demand.routes.ts:933` | unknown | unknown |
@@ -452,8 +453,8 @@ Boundary totals: admin-role 195; session-self 368; resource-owner 102; signature
 | POST | `/api/me/services/:serviceId/slots` | user-data | session-self | no | self | `server/routes/expert-console.routes.ts:255` | unknown | unknown |
 | POST | `/api/me/services/:serviceId/slots/range` | user-data | session-self | no | self | `server/routes/expert-console.routes.ts:346` | unknown | unknown |
 | DELETE | `/api/me/slots/:slotId` | user-data | resource-owner | no | verified | `server/routes/expert-console.routes.ts:289` | unknown | unknown |
-| PATCH | `/api/me/storefront` | user-data | session-self | no | self | `server/routes/storefront.routes.ts:344` | unknown | unknown |
-| PATCH | `/api/me/travel-preferences` | user-data | session-self | no | self | `server/routes/storefront.routes.ts:421` | unknown | unknown |
+| PATCH | `/api/me/storefront` | user-data | session-self | no | self | `server/routes/storefront.routes.ts:345` | unknown | unknown |
+| PATCH | `/api/me/travel-preferences` | user-data | session-self | no | self | `server/routes/storefront.routes.ts:422` | unknown | unknown |
 | PATCH | `/api/me/traveler-profile` | user-data | session-self | no | self | `server/routes/traveler-profile.routes.ts:68` | unknown | unknown |
 | PATCH | `/api/me/vacation` | user-data | session-self | no | self | `server/routes/vacation.routes.ts:74` | unknown | unknown |
 | POST | `/api/memberships/checkout` | other | session-self | no | unknown | `server/routes/payments.routes.ts:3549` | unknown | unknown |
@@ -703,7 +704,8 @@ Boundary totals: admin-role 195; session-self 368; resource-owner 102; signature
 | POST | `/api/viator/availability` | other | session-self | no | unknown | `server/routes/content.routes.ts:3642` | unknown | unknown |
 | POST | `/api/viator/live/click` | other | session-self | no | unknown | `server/routes/content.routes.ts:1619` | unknown | unknown |
 | POST | `/api/visa/requirements` | other | public-or-system | no | unknown | `server/routes/experts.routes.ts:670` | unknown | unknown |
-| POST | `/api/waitlist` | other | public-or-system | no | unknown | `server/routes/launch-waitlist.routes.ts:45` | unknown | unknown |
+| POST | `/api/waitlist` | other | public-or-system | no | unknown | `server/routes/launch-waitlist.routes.ts:53` | unknown | unknown |
+| POST | `/api/waitlist/unsubscribe` | other | public-or-system | no | unknown | `server/routes/launch-waitlist.routes.ts:104` | unknown | unknown |
 | POST | `/api/wallet/add-credits` | payments | session-self | no | self | `server/routes/payments.routes.ts:280` | unknown | unknown |
 | POST | `/api/webhooks/persona` | other | signature | no | unknown | `server/routes/webhooks.routes.ts:104` (/persona) | unknown | unknown |
 | POST | `/api/webhooks/stripe` | payments | signature | no | unknown | `server/routes/webhooks.routes.ts:535` (/stripe) | unknown | unknown |
