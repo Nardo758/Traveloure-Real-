@@ -246,6 +246,7 @@ export const CLIENT_ROUTES: readonly string[] = [
   "/travel-experts",
   "/trip/:id",
   "/trips/shared/:token",
+  "/unsubscribe",
   "/vendors",
   "/verify-email",
   "/visa-help",
