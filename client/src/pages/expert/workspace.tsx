@@ -26,6 +26,7 @@ import { MyServicesPickerCore } from "@/components/expert/my-services-picker";
 import ReadyMadeListingPanel, { type ReadyMadeListing } from "@/components/expert/ready-made-listing-panel";
 import { isReadinessQueryKey } from "@/lib/readiness-checklist";
 import { workstationCanEdit } from "@/lib/leg-review";
+import { LEG_ESTIMATE_MARK } from "@/lib/leg-rule";
 import { LegReviewDrawer } from "@/components/plan/LegReviewDrawer";
 import { resolveFormat } from "@/lib/build-formats/registry";
 import { ClientFormatView } from "@/components/build-formats/ClientFormatView";
@@ -4355,7 +4356,8 @@ export default function ExpertWorkspace() {
                                   </div>
                                 ))}
                                 <div style={{ fontSize: 10, color: MID, marginTop: 3 }}>
-                                  ~{pair.estimatedTravelMinutes} min by {pair.estimatedTravelMode} needed · {pair.availableGapMinutes} min available
+                                  {/* Row 247: these minutes are always the straight-line estimator's (transport-gap.service). */}
+                                  ~{pair.estimatedTravelMinutes} min {LEG_ESTIMATE_MARK} by {pair.estimatedTravelMode} needed · {pair.availableGapMinutes} min available
                                   {pair.assumedPrevDuration && (
                                     <span> (assumed "{pair.fromTitle}" lasts 60 min — no recorded duration)</span>
                                   )}
