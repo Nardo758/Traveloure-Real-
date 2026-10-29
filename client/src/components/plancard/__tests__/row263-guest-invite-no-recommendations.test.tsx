@@ -11,6 +11,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { siteNeverSayHits } from "@shared/banned-copy";
 import { GUEST_LANDING_COPY } from "../../../lib/guest-landing-copy";
+import { GUEST_CARD_COPY } from "../../../lib/guest-card-copy";
 
 const CLIENT = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../..");
 const GUEST = readFileSync(resolve(CLIENT, "pages/GuestInvitePage.tsx"), "utf8");
@@ -78,6 +79,17 @@ const LANDING_COPY = {
   addressAfterRsvp: "The address is shared after you RSVP.",
 };
 
+/**
+ * Order 279 (sanctioned GR3 addition, Architect, Oct 29, 2026): the post-RSVP card's words render
+ * from GUEST_CARD_COPY, not as JSX text, so they are pinned here. Leon's words; held for his approval.
+ */
+const CARD_COPY = {
+  lineWithCity: "See what there is to do around this event in Kyoto.",
+  lineWithoutCity: "See what there is to do around this event.",
+  button: "See how it works",
+  href: "/experiences",
+};
+
 describe("row 263 guest invite drops recommendations", () => {
   it("GR1 no recommendations fetch, state, branch or literal", () => {
     for (const gone of ["/recommendations", "needsApiIntegration", "<Tabs", "fetchRecommendations", "setRecommendations"]) {
@@ -121,6 +133,15 @@ describe("row 263 guest invite drops recommendations", () => {
       LANDING_COPY,
     );
     assert.ok(GUEST.includes("guestLandingRows("), "the page renders the landing through the one helper");
+    assert.deepEqual(
+      {
+        lineWithCity: GUEST_CARD_COPY.line("Kyoto"),
+        lineWithoutCity: GUEST_CARD_COPY.line(),
+        button: GUEST_CARD_COPY.button,
+        href: GUEST_CARD_COPY.href,
+      },
+      CARD_COPY,
+    );
   });
 
   it("GR4 never-say sweep over the remaining visible text", () => {
