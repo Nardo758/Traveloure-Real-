@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { siteNeverSayHits } from "@shared/banned-copy";
+import { GUEST_LANDING_COPY } from "../../../lib/guest-landing-copy";
 
 const CLIENT = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../..");
 const GUEST = readFileSync(resolve(CLIENT, "pages/GuestInvitePage.tsx"), "utf8");
@@ -62,6 +63,21 @@ const VISIBLE = [
   "Yes, I'll be there! ✅",
 ].sort();
 
+/**
+ * Row 278 (sanctioned GR3 addition, Architect, Oct 28, 2026, 20:50 ET): the landing's labels render
+ * from GUEST_LANDING_COPY, not as JSX text, so they are pinned here. Held for Leon.
+ */
+const LANDING_COPY = {
+  hostedBy: "Hosted by Maya",
+  date: "Date",
+  time: "Time",
+  venue: "Venue",
+  city: "City",
+  noteFrom: "Note from Maya",
+  rsvpBy: "RSVP by 3/1/2027",
+  addressAfterRsvp: "The address is shared after you RSVP.",
+};
+
 describe("row 263 guest invite drops recommendations", () => {
   it("GR1 no recommendations fetch, state, branch or literal", () => {
     for (const gone of ["/recommendations", "needsApiIntegration", "<Tabs", "fetchRecommendations", "setRecommendations"]) {
@@ -90,6 +106,21 @@ describe("row 263 guest invite drops recommendations", () => {
     assert.ok(!GUEST.includes("Personalized Travel Planning"));
     assert.ok(!GUEST.includes("accommodation near"));
     assert.deepEqual(visibleText(GUEST), VISIBLE);
+    const copy = GUEST_LANDING_COPY;
+    assert.deepEqual(
+      {
+        hostedBy: copy.hostedBy("Maya"),
+        date: copy.date,
+        time: copy.time,
+        venue: copy.venue,
+        city: copy.city,
+        noteFrom: copy.noteFrom("Maya"),
+        rsvpBy: copy.rsvpBy("3/1/2027"),
+        addressAfterRsvp: copy.addressAfterRsvp,
+      },
+      LANDING_COPY,
+    );
+    assert.ok(GUEST.includes("guestLandingRows("), "the page renders the landing through the one helper");
   });
 
   it("GR4 never-say sweep over the remaining visible text", () => {

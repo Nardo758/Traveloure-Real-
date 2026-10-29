@@ -2,9 +2,13 @@
  * Guest Invite Page
  * Personalized landing page for wedding/event guests
  * Guests share where they are traveling from and confirm their RSVP
+ *
+ * Row 278 (ledger `2026-10-28-guest-landing-render`): the event details come from the server's
+ * `landing` key only (`guestLandingRows`); the page is noindex; the view is recorded by one
+ * POST …/view per page load, because the GET no longer records it (row 277).
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,14 +36,17 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { parseTripDate } from '@/lib/calendar-date';
 import { getTripContext, updateTripContext } from '@/lib/trip-context';
+import { guestLandingRows, type GuestLandingPayload, type GuestLandingRow } from '@/lib/guest-landing';
+import { SEOHead } from '@/components/seo-head';
 
+/** The guest-safe invite (row 277's seven keys); nothing else is returned or read. */
 interface Invite {
   id: string;
   guestName: string;
-  guestEmail: string;
   originCity?: string;
+  originState?: string;
+  originCountry?: string;
   rsvpStatus: string;
   numberOfGuests: number;
 }
@@ -85,10 +92,22 @@ export function stampInviteTripContext(
   });
 }
 
+/** The icon beside each landing row; a row with no entry shows none. */
+const LANDING_ROW_ICON: Partial<Record<GuestLandingRow['key'], typeof Calendar>> = {
+  host: Users,
+  date: Calendar,
+  rsvpBy: Calendar,
+  venue: MapPin,
+  city: MapPin,
+  address: MapPin,
+};
+
 export function GuestInvitePage() {
   const { token } = useParams<{ token: string }>();
   const [invite, setInvite] = useState<Invite | null>(null);
   const [experience, setExperience] = useState<Experience | null>(null);
+  const [landing, setLanding] = useState<GuestLandingPayload | null>(null);
+  const viewRecordedFor = useRef<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [currentStep, setCurrentStep] = useState<'welcome' | 'origin' | 'rsvp' | 'confirmed'>('welcome');
   const { toast } = useToast();
@@ -108,6 +127,14 @@ export function GuestInvitePage() {
   useEffect(() => {
     fetchInvite();
   }, [token]);
+
+  // One view per page load (row 277 moved the view record off the GET). The ref keeps a re-render
+  // or a repeated effect from counting the same load twice; a failure is not shown to the guest.
+  useEffect(() => {
+    if (!token || viewRecordedFor.current === token) return;
+    viewRecordedFor.current = token;
+    fetch(`/api/invites/${token}/view`, { method: 'POST' }).catch(() => {});
+  }, [token]);
   
   async function fetchInvite() {
     try {
@@ -117,6 +144,7 @@ export function GuestInvitePage() {
       if (response.ok) {
         setInvite(data.invite);
         setExperience(data.experience);
+        setLanding(data.landing ?? null);
         stampInviteTripContext(data.experience);
 
         // Set initial form values if already filled
@@ -257,32 +285,30 @@ export function GuestInvitePage() {
     );
   }
   
-  const experienceDay = parseTripDate(experience.startDate);
+  const landingRows = guestLandingRows(landing, invite.rsvpStatus);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-purple-50 to-white py-12 px-4">
+      <SEOHead url={`/invite/${token}`} noindex />
       <div className="max-w-4xl mx-auto">
-        {/* Header */}
+        {/* Header: every detail comes from `landing`; an absent key shows nothing (row 278).
+            Dates are stored "YYYY-MM-DD" and read as a local calendar day (QA F3). */}
         <div className="text-center mb-12">
           <Heart className="h-16 w-16 text-purple-600 mx-auto mb-4" />
-          <h1 className="text-4xl font-bold mb-2">{experience.title}</h1>
-          <div className="flex items-center justify-center gap-4 text-muted-foreground">
-            <div className="flex items-center gap-1">
-              <MapPin className="h-4 w-4" />
-              <span>{experience.destination}</span>
-            </div>
-            {/* QA F3 — `startDate` is `user_experiences.event_date`, a Postgres DATE, so it
-                arrives as a bare "YYYY-MM-DD"; `new Date()` would read it as UTC midnight and
-                show every guest west of UTC the day BEFORE the one they were invited to.
-                §13 — the column is nullable, so an absent day omits the line rather than
-                rendering `new Date(null)`, which is the epoch. */}
-            {experienceDay && (
-              <div className="flex items-center gap-1">
-                <Calendar className="h-4 w-4" />
-                <span data-testid="text-invite-event-date">{experienceDay.toLocaleDateString()}</span>
-              </div>
-            )}
-          </div>
+          {landing?.title && <h1 className="text-4xl font-bold mb-2">{landing.title}</h1>}
+          {landingRows.length > 0 && (
+            <dl className="mx-auto mt-4 max-w-md space-y-2 text-left text-muted-foreground" data-testid="guest-landing">
+              {landingRows.map((row) => (
+                <div key={row.key} className="flex items-start gap-2" data-testid={`guest-landing-${row.key}`}>
+                  {LANDING_ROW_ICON[row.key] && React.createElement(LANDING_ROW_ICON[row.key]!, { className: 'h-4 w-4 shrink-0' })}
+                  <div className="min-w-0">
+                    {row.label && <dt className="text-xs font-medium uppercase tracking-wide">{row.label}</dt>}
+                    <dd className={row.key === 'note' ? 'whitespace-pre-line text-foreground' : 'text-foreground'}>{row.value}</dd>
+                  </div>
+                </div>
+              ))}
+            </dl>
+          )}
         </div>
         
         {/* Welcome Step */}
