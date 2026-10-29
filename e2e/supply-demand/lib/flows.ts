@@ -916,7 +916,7 @@ export async function submitListingForReview(page: Page): Promise<SubmitOutcome>
     const status = await actAndAwait(page, () => btn.click(), { method: ['POST', 'PATCH'], path: /^\/api\/provider\/services(\/[^/]+)?$/ });
     return ok2xx(status)
       ? { submitted: true, blockedByVerification: false }
-      : { submitted: false, blockedByVerification: false, reason: `submit answered ${status ?? 'nothing (no request sent)'}` };
+      : { submitted: false, blockedByVerification: false, reason: `submit answered ${status}` };
   }
   const publishBtn = testid(page, 'button-publish-service');
   if (await appears(publishBtn)) {
@@ -931,7 +931,7 @@ export async function submitListingForReview(page: Page): Promise<SubmitOutcome>
     const status = await actAndAwait(page, () => publishBtn.click(), { method: ['POST', 'PATCH'], path: /^\/api\/provider\/services(\/[^/]+)?$/ });
     return ok2xx(status)
       ? { submitted: true, blockedByVerification: false }
-      : { submitted: false, blockedByVerification: false, reason: `publish answered ${status ?? 'nothing (no request sent)'}` };
+      : { submitted: false, blockedByVerification: false, reason: `publish answered ${status}` };
   }
   return { submitted: false, blockedByVerification: false, reason: 'neither submit control found' };
 }
