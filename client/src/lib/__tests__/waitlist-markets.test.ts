@@ -8,7 +8,9 @@
  *       opens in <city>."; each market's version is `f1-2026-10-15:<market>`.
  *   M4  No city but Kyoto is promised "be first to book", a date, experts or providers — in the shared copy and in
  *       the page's non-Kyoto branches, which read that shared copy rather than restating it.
- *   M5  The picker is a single select: the page posts ONE `market` and has no multi-city consent box.
+ *   M5  The picker is a single select: the page posts ONE `market`; each form has exactly TWO consent boxes (291b), each
+ *       bound to its own key (`consent` → launch_waitlist_updates, `marketingConsent` → launch_marketing_news), the
+ *       news box never pre-ticked. Neither is a multi-city box.
  *
  * Run: npx tsx --test client/src/lib/__tests__/waitlist-markets.test.ts
  */
@@ -109,7 +111,15 @@ describe("M5 — the other city is an optional note, and the sign-up stays one m
     assert.doesNotMatch(PAGE, /<select[^>]*multiple/);
     assert.equal((PAGE.match(/\n      market,\n/g) ?? []).length, 2, "each form posts the launch market");
     assert.equal((PAGE.match(/otherCity: otherCity\.trim\(\)/g) ?? []).length, 2);
-    assert.equal((PAGE.match(/<ConsentTick /g) ?? []).length, 2, "one consent box per form");
+    // 291b (ruling 2): exactly two boxes per form, through ONE shared component carrying the role.
+    assert.equal((PAGE.match(/<ConsentBoxes\n/g) ?? []).length, 2, "each form draws the shared consent boxes once");
+    assert.ok(PAGE.includes('<ConsentBoxes\n        role="traveler"') && PAGE.includes('<ConsentBoxes\n        role="provider"'));
+    assert.equal((PAGE.match(/<ConsentTick /g) ?? []).length, 1, "box 1 inside the shared component");
+    assert.equal((PAGE.match(/<MarketingTick /g) ?? []).length, 1, "box 2 inside the shared component");
+    assert.ok(PAGE.includes("checked={consent} onChange={onConsent}"), "box 1 is bound to consent");
+    assert.ok(PAGE.includes("checked={marketingConsent} onChange={onMarketingConsent}"), "box 2 is bound to marketingConsent");
+    assert.equal((PAGE.match(/const \[marketingConsent, setMarketingConsent\] = useState\(false\);/g) ?? []).length, 2, "box 2 unticked by default");
+    assert.equal((PAGE.match(/\n      consent,\n      marketingConsent: marketingOpen && marketingConsent,\n/g) ?? []).length, 2, "each key posted on its own");
     const parsed = waitlistJoinBodySchema.safeParse({ email: "a@b.co", otherCity: "Lisbon" });
     assert.equal(parsed.success, true);
     const tooLong = waitlistJoinBodySchema.safeParse({ email: "a@b.co", otherCity: "x".repeat(121) });
