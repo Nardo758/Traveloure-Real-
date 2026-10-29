@@ -3,7 +3,7 @@
  * For event organizers to create and manage guest invites
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -44,6 +44,14 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { guestInviteMetaLine } from '@/lib/guest-invite-meta';
 import { PLAN_NOUN_LOWER } from '@/lib/plan-vocabulary';
+import type { InviteSendState } from '@shared/invite-send-state';
+import { INVITE_SEND_COPY, SEND_STATE_COPY } from '@/lib/invite-send-state-copy';
+import {
+  bulkSendButton,
+  displaySendState,
+  rowSendButtonDisabled,
+  sendResultToast,
+} from '@/lib/invite-send-state-screen';
 
 interface Guest {
   email: string;
@@ -52,12 +60,9 @@ interface Guest {
 }
 
 /**
- * The most recent `invite_send_log` row for this invite, as the server reports it.
- *
- * `status: 'sent'` means THE OUTBOX ACCEPTED THE MESSAGE — the platform will try, with retries.
- * It is NOT a delivery, open or read receipt, and nothing on this surface may say otherwise
- * (ledger `2026-09-04-invite-mailer`). `'failed'` means no durable outbox row was written, which
- * is why the invite is still shown as un-sent and can be sent again immediately.
+ * The most recent `invite_send_log` row for this invite, as the server reports it: an attempt
+ * record only. Display reads `sendState` (row 207), never this. Its `errorMessage` is shown as
+ * the hover title on a "Didn't send" cell and nowhere else.
  */
 interface InviteLastSend {
   status: string;
@@ -77,9 +82,35 @@ interface Invite {
   inviteViewedAt?: string;
   viewCount: number;
   createdAt: string;
-  /** Stamped server-side by the send rail's claim, and by nothing else. Null ⇒ never sent. */
+  /**
+   * Stamped server-side by the send rail's claim. It is the claim time, not a send state and not
+   * a delivery time, so nothing on this screen displays it or keys off it (row 207).
+   */
   inviteSentAt?: string | null;
   lastSend?: InviteLastSend | null;
+  /** The server's derived send state (row 207). Absent on an older response ⇒ shown as not sent. */
+  sendState?: InviteSendState;
+}
+
+/**
+ * The send state of one row: the server's derived `sendState`, in the four approved words, with
+ * no timestamp beside any of them (row 207). There is no "delivered" or "opened" state because
+ * the platform observes neither. Exported so the row 207 test renders the real cell.
+ */
+export function InviteSendStateCell({ invite }: { invite: Pick<Invite, 'sendState' | 'lastSend'> }) {
+  const state = displaySendState(invite);
+  if (state === 'failed') {
+    return (
+      <span
+        className="flex items-center gap-1 whitespace-nowrap text-sm text-red-600"
+        title={invite.lastSend?.errorMessage || undefined}
+      >
+        <AlertCircle className="h-3 w-3" />
+        {SEND_STATE_COPY.failed}
+      </span>
+    );
+  }
+  return <span className="whitespace-nowrap text-sm text-muted-foreground">{SEND_STATE_COPY[state]}</span>;
 }
 
 interface Props {
@@ -113,6 +144,9 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [sendingIds, setSendingIds] = useState<string[]>([]);
+  // A synchronous guard, so a double click on one row's button posts once even before the
+  // disabled state re-renders.
+  const inFlightIds = useRef<Set<string>>(new Set());
   const [isSendingAll, setIsSendingAll] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -229,7 +263,9 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
    * upgrades that to delivered, received or opened.
    */
   async function sendInvites(inviteIds?: string[]) {
+    if (inviteIds?.some((id) => inFlightIds.current.has(id))) return;
     const scope = inviteIds ?? [];
+    scope.forEach((id) => inFlightIds.current.add(id));
     if (inviteIds) setSendingIds((prev) => [...prev, ...scope]);
     else setIsSendingAll(true);
 
@@ -254,33 +290,9 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
         return;
       }
 
-      const enqueued = Number(data?.enqueued ?? 0);
-      const skipped = Number(data?.skipped ?? 0);
-      const failed = Number(data?.failed ?? 0);
-
-      if (enqueued === 0 && failed === 0) {
-        toast({
-          title: 'Nothing to send',
-          description:
-            skipped > 0
-              ? `${skipped} ${skipped === 1 ? 'invite was' : 'invites were'} emailed moments ago — try again in a few minutes.`
-              : 'No guests were selected.',
-        });
-      } else {
-        toast({
-          title: enqueued > 0 ? 'Queued for sending' : "Couldn't send",
-          description: [
-            enqueued > 0
-              ? `${enqueued} ${enqueued === 1 ? 'invite is' : 'invites are'} on the way.`
-              : null,
-            skipped > 0 ? `${skipped} skipped (sent moments ago).` : null,
-            failed > 0 ? `${failed} could not be queued.` : null,
-          ]
-            .filter(Boolean)
-            .join(' '),
-          variant: enqueued > 0 ? undefined : 'destructive',
-        });
-      }
+      // Row 207: the counts are the server's; an enqueued row may be held, so the toast never
+      // says an email went out. The refetch below moves each row's state cell.
+      toast(sendResultToast(data));
 
       fetchInvites();
       fetchStats();
@@ -291,6 +303,7 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
         variant: 'destructive',
       });
     } finally {
+      scope.forEach((id) => inFlightIds.current.delete(id));
       if (inviteIds) setSendingIds((prev) => prev.filter((id) => !scope.includes(id)));
       else setIsSendingAll(false);
     }
@@ -338,30 +351,7 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
     }
   }
   
-  /**
-   * The send state of one row, in the three honest states the data actually has. There is no
-   * fourth "delivered" state because the platform does not observe delivery.
-   */
-  function renderSendState(invite: Invite) {
-    if (invite.lastSend?.status === 'failed' && !invite.inviteSentAt) {
-      return (
-        <span className="flex items-center gap-1 text-sm text-red-600" title={invite.lastSend.errorMessage || undefined}>
-          <AlertCircle className="h-3 w-3" />
-          Send failed
-        </span>
-      );
-    }
-    if (invite.inviteSentAt) {
-      return (
-        <span className="text-sm text-muted-foreground">
-          Sent {new Date(invite.inviteSentAt).toLocaleString()}
-        </span>
-      );
-    }
-    return <span className="text-sm text-muted-foreground">Never sent</span>;
-  }
-
-  const unsentCount = invites.filter((i) => !i.inviteSentAt).length;
+  const bulkButton = bulkSendButton(invites, isSendingAll);
 
   /**
    * The event caption, composed by the ONE derivation that owns it (QA F3,
@@ -381,9 +371,12 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
   }
   
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-start">
+    // min-w-0 (row 207, T7): the mounting dialogs lay this out as a grid item, whose default
+    // min-width is its content's, so the guest table stretched the whole dialog past a phone's
+    // width instead of scrolling inside its own overflow wrapper.
+    <div className="min-w-0 space-y-6">
+      {/* Header (wraps at phone width, row 207 T7) */}
+      <div className="flex flex-wrap justify-between items-start gap-3">
         <div>
           <h2 className="text-2xl font-bold">Guest Invites</h2>
           <p className="text-muted-foreground" data-testid="invite-modal-event-meta">
@@ -401,24 +394,16 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
             <Button
               variant="outline"
               onClick={() => sendInvites()}
-              disabled={isSendingAll || unsentCount === 0}
+              disabled={bulkButton.disabled}
               data-testid="button-send-all-invites"
-              title={
-                unsentCount === 0
-                  ? 'Every guest has already been emailed their invitation'
-                  : undefined
-              }
+              title={bulkButton.title}
             >
               {isSendingAll ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
                 <Send className="mr-2 h-4 w-4" />
               )}
-              {isSendingAll
-                ? 'Sending…'
-                : unsentCount === 0
-                  ? 'All invites emailed'
-                  : `Email ${unsentCount} un-sent ${unsentCount === 1 ? 'invite' : 'invites'}`}
+              {bulkButton.label}
             </Button>
           )}
 
@@ -543,9 +528,7 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
         <CardHeader>
           <CardTitle>All Invites</CardTitle>
           <CardDescription>
-            Manage your guest invites and track RSVPs. &ldquo;Sent&rdquo; means we&rsquo;ve queued the email
-            and will keep trying — we can&rsquo;t tell you whether a guest opened it. You can still copy a
-            link and share it yourself.
+            Manage your guest invites and track RSVPs. {INVITE_SEND_COPY.stateExplainer}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -602,7 +585,7 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
                       </div>
                     </TableCell>
                     <TableCell data-testid={`invite-send-state-${invite.id}`}>
-                      {renderSendState(invite)}
+                      <InviteSendStateCell invite={invite} />
                     </TableCell>
                     <TableCell>
                       <Button
@@ -623,18 +606,16 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
                           variant="ghost"
                           size="sm"
                           onClick={() => sendInvites([invite.id])}
-                          disabled={sendingIds.includes(invite.id)}
+                          disabled={rowSendButtonDisabled(invite, sendingIds.includes(invite.id))}
                           data-testid={`button-send-invite-${invite.id}`}
-                          title={invite.inviteSentAt ? 'Email this invitation again' : 'Email this invitation'}
+                          title="Email this invitation"
                         >
                           {sendingIds.includes(invite.id) ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : (
                             <Send className="h-4 w-4" />
                           )}
-                          <span className="sr-only">
-                            {invite.inviteSentAt ? 'Email invite again' : 'Email invite'}
-                          </span>
+                          <span className="sr-only">Email invite</span>
                         </Button>
                         <Button
                           variant="ghost"
