@@ -44,6 +44,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { guestInviteMetaLine } from '@/lib/guest-invite-meta';
 import { PLAN_NOUN_LOWER } from '@/lib/plan-vocabulary';
+import { InviteHostDetails } from '@/components/InviteHostDetails';
 import type { InviteSendState } from '@shared/invite-send-state';
 import { INVITE_SEND_COPY, SEND_STATE_COPY } from '@/lib/invite-send-state-copy';
 import {
@@ -479,7 +480,11 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
         </Dialog>
         </div>
       </div>
-      
+
+      {/* Order 290 (ledger `2026-10-29-invite-host-details`): the host's note, street address and
+          RSVP-by for this event's guests, on the existing owner-scoped PATCH. */}
+      <InviteHostDetails experienceId={experienceId} />
+
       {/* Stats Cards */}
       {stats && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
