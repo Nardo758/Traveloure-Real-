@@ -4,10 +4,10 @@
  * any other range names both months ("Dec 30 – Jan 2"). Dates are read as local calendar days.
  *
  * Row 159 (ledger `2026-10-29-trip-dates-locale`): an optional `locale` renders the range in that
- * language, through `Intl.DateTimeFormat#formatRange`, so the locale decides the order, the month
- * names, how a same-month range collapses and whether a year-crossing range names its years. With
- * no locale the output is exactly the English rule above, so every existing caller is unchanged.
- * A locale the runtime refuses falls back to that English rule.
+ * language. Any English locale (`en`, `en-*`), no locale, and a locale the runtime refuses all use the
+ * English rule above, byte for byte (Architect option 2, Oct 29, 2026). Any other locale renders
+ * through `Intl.DateTimeFormat#formatRange`, so it decides the order, the month names and how a
+ * same-month range collapses; a range across a year is its two dates with no year, as in English.
  */
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -15,7 +15,7 @@ export function formatTripDates(start?: string, end?: string, locale?: string | 
   if (!start) return null;
   const s = new Date(start + "T12:00:00");
   if (isNaN(s.getTime())) return null;
-  if (locale !== undefined) {
+  if (locale !== undefined && !isEnglishLocale(locale)) {
     const localized = formatInLocale(s, end, locale);
     if (localized !== null) return localized;
   }
@@ -43,5 +43,14 @@ function formatInLocale(s: Date, end: string | undefined, locale: string | strin
   }
   const e = end ? new Date(end + "T12:00:00") : null;
   if (!e || isNaN(e.getTime())) return format.format(s);
+  // A range across a year names no year, as the English rule does: the intake panel adds the end year
+  // itself, and formatRange would otherwise print the years inside the range as well.
+  if (s.getFullYear() !== e.getFullYear()) return `${format.format(s)} – ${format.format(e)}`;
   return format.formatRange(s, e);
+}
+
+/** `en` or `en-*` (the first entry when a list is given): these keep the English rule. */
+function isEnglishLocale(locale: string | string[]): boolean {
+  const primary = Array.isArray(locale) ? locale[0] : locale;
+  return typeof primary === "string" && /^en(-|$)/i.test(primary);
 }
