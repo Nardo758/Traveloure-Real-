@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { isAcceptableArrivalLine, isHotelItemTitle } from "../../../shared/draft-basis";
 import { actAndAwait, ok2xx, appears, testid } from "../../../e2e/supply-demand/lib/ui";
 import { fillPlanEntryToStart, clickPlanStart } from "../../../e2e/supply-demand/lib/flows";
+import { PAYMENT_METHOD_PROMPT_DISMISS_KEY } from "../../../client/src/lib/payment-method-setup";
 import { BASE_URL, registerUser, createTrip, createItem, rows, closePool } from "./_journey-helpers";
 
 /**
@@ -26,7 +27,24 @@ test.afterAll(async () => {
   await closePool();
 });
 
+/**
+ * A fresh traveler, signed in on `page`.
+ *
+ * Row 288: the same init script as row 285's `signedInTraveler` in `j-kyoto-trips-golden-path.spec.ts`
+ * (#1747). Before the app mounts, the page holds the state a traveler's "Not now" click on the
+ * add-a-card prompt leaves behind, so the prompt's bottom bar does not cover the controls these
+ * journeys click (Decision 43: the step is skippable). The key is the app's own constant; "1" is the
+ * value `writePaymentMethodPromptDismissed()` stores. The prompt itself is proven still there, and
+ * still skippable, by the golden-path spec's "add-a-card prompt" test.
+ */
 async function signedInTraveler(page: Page, label: string): Promise<{ id: string; email: string }> {
+  await page.addInitScript((key: string) => {
+    try {
+      window.sessionStorage.setItem(key, "1");
+    } catch {
+      // A page without sessionStorage shows the prompt; the journey's own click then says so.
+    }
+  }, PAYMENT_METHOD_PROMPT_DISMISS_KEY);
   return registerUser(page.request, `kyoto-stub-${label}`, "Kyoto", label);
 }
 
