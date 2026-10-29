@@ -38,6 +38,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { getTripContext, updateTripContext } from '@/lib/trip-context';
 import { guestLandingRows, type GuestLandingPayload, type GuestLandingRow } from '@/lib/guest-landing';
+import { GuestPostRsvpCard } from '@/components/GuestPostRsvpCard';
 import { SEOHead } from '@/components/seo-head';
 
 /** The guest-safe invite (row 277's seven keys); nothing else is returned or read. */
@@ -251,6 +252,10 @@ export function GuestInvitePage() {
       });
       
       setCurrentStep('confirmed');
+      // Order 279: re-read the landing once, so a "yes" shows the street address without a reload
+      // (the server releases it only after "accepted"). The view beacon is its own effect and is
+      // not re-sent by this read.
+      void fetchInvite();
       
     } catch (error: any) {
       toast({
@@ -537,6 +542,8 @@ export function GuestInvitePage() {
                 </CardTitle>
               </CardHeader>
             </Card>
+            {/* Order 279 (ledger `2026-10-29-guest-post-rsvp-card`): the post-RSVP card, for every answer. */}
+            <GuestPostRsvpCard landing={landing} landingRows={landingRows} />
           </div>
         )}
       </div>
