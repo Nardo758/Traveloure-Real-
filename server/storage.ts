@@ -9674,7 +9674,8 @@ export class DatabaseStorage implements IStorage {
     rsvpDate: Date;
     numberOfGuests: number;
     dietaryRestrictions: string[];
-    accommodationPreference: string;
+    /** Present only for "accepted"; absent leaves the column as it is (ledger `2026-10-29-rsvp-accommodation-by-answer`). */
+    accommodationPreference?: string;
     transportationNeeded: boolean;
     specialRequests?: string;
     message?: string;

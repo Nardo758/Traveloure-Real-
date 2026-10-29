@@ -9,6 +9,11 @@
 // not the address was already on the list.
 // LC-1b: the other-city question is an optional free-text note on both forms (WAITLIST_OTHER_CITY_PROMPT).
 // The preset city list is gone. The sign-up stays the launch market. Wedding stays in the trip-type list.
+// 291b (ledger `2026-10-29-waitlist-consent-screens`): both forms draw ONE shared `ConsentBoxes` carrying the role —
+// the first box unchanged (`consent` → launch_waitlist_updates) and a second, never pre-ticked news box
+// (`marketingConsent` → launch_marketing_news). The news box is drawn only while WAITLIST_MARKETING_BOX_ENABLED is on
+// (row 294 flips it once the consent text is seeded) AND its words resolve for the market; until then it is not drawn
+// and the page posts `marketingConsent: false`. A box whose tick would save nothing is never drawn.
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -21,15 +26,18 @@ import { SEOHead } from "@/components/seo-head";
 import { supplySignupContinuation } from "@shared/supply-entry";
 import {
   WAITLIST_CONSENT_PRIVACY_LINK,
+  WAITLIST_MARKETING_BOX_ENABLED,
   WAITLIST_EMAIL_ERROR,
   WAITLIST_MARKET_OPTIONS,
   WAITLIST_OTHER_CITY_PROMPT,
   waitlistCityName,
   waitlistConsentLine,
+  waitlistMarketingConsentLine,
   waitlistOtherCityProviderDone,
   WAITLIST_SERVICE_TYPES,
   WAITLIST_TRIP_TYPES,
   WAITLIST_WORRY_MAX,
+  type WaitlistRole,
   type WaitlistServiceType,
   type WaitlistTripType,
 } from "@shared/launch-waitlist";
@@ -95,6 +103,56 @@ function ConsentTick({ id, market, checked, onChange }: { id: string; market: st
   );
 }
 
+/**
+ * The news box is drawn only while WAITLIST_MARKETING_BOX_ENABLED is on (row 294 flips it once the consent text is
+ * seeded) AND its words resolve for this market. No network call.
+ */
+export function marketingBoxOpen(market: string, enabled: boolean = WAITLIST_MARKETING_BOX_ENABLED): boolean {
+  return enabled && waitlistMarketingConsentLine(market) !== null;
+}
+
+function MarketingTick({ id, line, checked, onChange }: { id: string; line: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div className="flex items-start gap-2">
+      <Checkbox id={id} checked={checked} onCheckedChange={(v) => onChange(v === true)} data-testid={`checkbox-${id}`} />
+      <Label htmlFor={id} className="min-w-0 break-words text-sm font-normal leading-snug" data-testid={`label-${id}`}>{line}</Label>
+    </div>
+  );
+}
+
+/**
+ * The two consent boxes, one component for both forms (ruling 5). Box 1 is the unchanged waitlist tick; box 2 is the
+ * news tick, independent of box 1, drawn only when `marketingOpen`. Ids keep each form's prefix.
+ */
+export function ConsentBoxes({
+  role,
+  market,
+  consent,
+  onConsent,
+  marketingConsent,
+  onMarketingConsent,
+  marketingOpen,
+}: {
+  role: WaitlistRole;
+  market: string;
+  consent: boolean;
+  onConsent: (v: boolean) => void;
+  marketingConsent: boolean;
+  onMarketingConsent: (v: boolean) => void;
+  marketingOpen: boolean;
+}) {
+  const prefix = role === "provider" ? "provider" : "waitlist";
+  const line = marketingOpen ? waitlistMarketingConsentLine(market) : null;
+  return (
+    <div className="space-y-3" data-testid={`consent-boxes-${role}`}>
+      <ConsentTick id={`${prefix}-consent`} market={market} checked={consent} onChange={onConsent} />
+      {line !== null && (
+        <MarketingTick id={`${prefix}-marketing-consent`} line={line} checked={marketingConsent} onChange={onMarketingConsent} />
+      )}
+    </div>
+  );
+}
+
 const selectClass =
   "h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring";
 
@@ -112,6 +170,8 @@ function TravelerForm({ source, refCode, launchMarket }: { source: string | null
   const market = launchMarket;
   const [email, setEmail] = useState("");
   const [consent, setConsent] = useState(false);
+  const [marketingConsent, setMarketingConsent] = useState(false);
+  const marketingOpen = marketingBoxOpen(market);
   const [tripType, setTripType] = useState<WaitlistTripType | "">("");
   const [month, setMonth] = useState("");
   const [year, setYear] = useState("");
@@ -136,6 +196,7 @@ function TravelerForm({ source, refCode, launchMarket }: { source: string | null
       email: email.trim(),
       market,
       consent,
+      marketingConsent: marketingOpen && marketingConsent,
       ...(source ? { source } : {}),
       ...(refCode ? { ref: refCode } : {}),
       ...(tripType ? { tripType } : {}),
@@ -180,7 +241,15 @@ function TravelerForm({ source, refCode, launchMarket }: { source: string | null
         )}
       </div>
       <Honeypot id="waitlist-homepage" value={homepage} onChange={setHomepage} />
-      <ConsentTick id="waitlist-consent" market={market} checked={consent} onChange={setConsent} />
+      <ConsentBoxes
+        role="traveler"
+        market={market}
+        consent={consent}
+        onConsent={setConsent}
+        marketingConsent={marketingConsent}
+        onMarketingConsent={setMarketingConsent}
+        marketingOpen={marketingOpen}
+      />
       <fieldset className="space-y-2">
         <legend className="text-sm font-medium">What's the trip for?</legend>
         <div className="flex flex-wrap gap-2">
@@ -257,6 +326,8 @@ function ProviderForm({
   const [email, setEmail] = useState("");
   const [serviceType, setServiceType] = useState<WaitlistServiceType | "">("");
   const [consent, setConsent] = useState(false);
+  const [marketingConsent, setMarketingConsent] = useState(false);
+  const marketingOpen = marketingBoxOpen(market);
   const [otherCity, setOtherCity] = useState("");
   const [homepage, setHomepage] = useState("");
   const [status, setStatus] = useState<Status>("idle");
@@ -276,6 +347,7 @@ function ProviderForm({
       email: email.trim(),
       market,
       consent,
+      marketingConsent: marketingOpen && marketingConsent,
       contactName: contactName.trim(),
       ...(businessName.trim() ? { businessName: businessName.trim() } : {}),
       serviceType,
@@ -358,7 +430,15 @@ function ProviderForm({
         </div>
       </fieldset>
       <Honeypot id="provider-homepage" value={homepage} onChange={setHomepage} />
-      <ConsentTick id="provider-consent" market={market} checked={consent} onChange={setConsent} />
+      <ConsentBoxes
+        role="provider"
+        market={market}
+        consent={consent}
+        onConsent={setConsent}
+        marketingConsent={marketingConsent}
+        onMarketingConsent={setMarketingConsent}
+        marketingOpen={marketingOpen}
+      />
       <ElsewhereField id="provider-city" value={otherCity} onChange={setOtherCity} />
       <Button type="submit" disabled={status === "sending"} data-testid="button-provider-waitlist-send">
         Send my details

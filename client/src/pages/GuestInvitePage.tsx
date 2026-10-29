@@ -38,6 +38,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { getTripContext, updateTripContext } from '@/lib/trip-context';
 import { guestLandingRows, type GuestLandingPayload, type GuestLandingRow } from '@/lib/guest-landing';
+import { GuestPostRsvpCard } from '@/components/GuestPostRsvpCard';
 import { SEOHead } from '@/components/seo-head';
 
 /** The guest-safe invite (row 277's seven keys); nothing else is returned or read. */
@@ -120,6 +121,9 @@ export function GuestInvitePage() {
   const [numberOfGuests, setNumberOfGuests] = useState(1);
   const [dietaryRestrictions, setDietaryRestrictions] = useState<string[]>([]);
   const [accommodationPreference, setAccommodationPreference] = useState('');
+  // A yes with no accommodation choice marks the field instead of sending a body the server refuses.
+  const [accommodationMissing, setAccommodationMissing] = useState(false);
+  const accommodationTriggerRef = useRef<HTMLButtonElement>(null);
   const [transportationNeeded, setTransportationNeeded] = useState(false);
   const [specialRequests, setSpecialRequests] = useState('');
   const [message, setMessage] = useState('');
@@ -227,6 +231,14 @@ export function GuestInvitePage() {
       });
       return;
     }
+
+    // Ledger `2026-10-29-rsvp-accommodation-by-answer`: accommodation is asked only of a guest
+    // who is coming. A yes with no choice marks the field and sends nothing.
+    if (rsvpStatus === 'accepted' && !accommodationPreference) {
+      setAccommodationMissing(true);
+      accommodationTriggerRef.current?.focus();
+      return;
+    }
     
     try {
       const response = await fetch(`/api/invites/${token}/rsvp`, {
@@ -236,7 +248,7 @@ export function GuestInvitePage() {
           rsvpStatus,
           numberOfGuests,
           dietaryRestrictions,
-          accommodationPreference,
+          ...(rsvpStatus === 'accepted' ? { accommodationPreference } : {}),
           transportationNeeded,
           specialRequests,
           message,
@@ -251,6 +263,10 @@ export function GuestInvitePage() {
       });
       
       setCurrentStep('confirmed');
+      // Order 279: re-read the landing once, so a "yes" shows the street address without a reload
+      // (the server releases it only after "accepted"). The view beacon is its own effect and is
+      // not re-sent by this read.
+      void fetchInvite();
       
     } catch (error: any) {
       toast({
@@ -462,8 +478,20 @@ export function GuestInvitePage() {
                   {/* Accommodation Preference */}
                   <div className="space-y-2">
                     <Label htmlFor="accommodation">Accommodation Preference</Label>
-                    <Select value={accommodationPreference} onValueChange={setAccommodationPreference}>
-                      <SelectTrigger>
+                    <Select
+                      value={accommodationPreference}
+                      onValueChange={(value) => {
+                        setAccommodationPreference(value);
+                        setAccommodationMissing(false);
+                      }}
+                    >
+                      <SelectTrigger
+                        id="accommodation"
+                        ref={accommodationTriggerRef}
+                        aria-invalid={accommodationMissing || undefined}
+                        className={accommodationMissing ? 'border-destructive ring-1 ring-destructive' : undefined}
+                        data-testid="select-accommodation"
+                      >
                         <SelectValue placeholder="Select preference" />
                       </SelectTrigger>
                       <SelectContent>
@@ -537,6 +565,8 @@ export function GuestInvitePage() {
                 </CardTitle>
               </CardHeader>
             </Card>
+            {/* Order 279 (ledger `2026-10-29-guest-post-rsvp-card`): the post-RSVP card, for every answer. */}
+            <GuestPostRsvpCard landing={landing} landingRows={landingRows} />
           </div>
         )}
       </div>

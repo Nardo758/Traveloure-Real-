@@ -6,6 +6,7 @@
 // find a row by email and delete it (the server writes the audit row, keeping the row id and a hash of the address).
 // LW-2: every operating market's totals in one table, and a market filter (default the launch market) that the
 // counts and both CSVs follow; each CSV row carries its market_slug.
+// 291b: the "market opened" card queues the waitlist_open email for one city and one role (WaitlistMarketOpenedCard).
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -18,6 +19,7 @@ import { AdminLayout } from "@/components/admin-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Download } from "lucide-react";
+import { WaitlistMarketOpenedCard } from "@/components/admin/WaitlistMarketOpenedCard";
 import {
   WAITLIST_MARKET_OPTIONS, WAITLIST_SEARCH_MIN_CHARS, WAITLIST_SERVICE_TYPES, WAITLIST_TRIP_TYPES, waitlistCityName,
 } from "@shared/launch-waitlist";
@@ -266,6 +268,7 @@ export default function AdminWaitlist() {
                 />
               </CardContent>
             </Card>
+            <WaitlistMarketOpenedCard />
             <WaitlistSearch />
           </>
         )}
