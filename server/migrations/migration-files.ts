@@ -2191,4 +2191,10 @@ export const MIGRATION_FILES = [
   // HELD for "Migration 416 SQL approved — Leon". Ledger 2026-10-29-provider-payout-block.
   // Declared in shared/schema.ts.
   "416_provider_payout_snapshot.sql",
+  // 417 — event_invites.plan_trip_id and plan_user_id. Two additive nullable varchars.
+  // FKs to trips(id) and users(id), both ON DELETE SET NULL. No default, no check,
+  // no index, no backfill. HELD for "Migration 417 SQL approved — Leon".
+  // Ledger 2026-10-29-invite-plan-around-event. Declared in shared/guest-invites-schema.ts.
+  // 416 is held by row 292a (service_bookings.payout_snapshot) and is not on main.
+  "417_event_invites_plan_trip_id.sql",
 ] as const;

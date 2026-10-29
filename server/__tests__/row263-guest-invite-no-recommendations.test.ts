@@ -10,7 +10,7 @@
  *
  *   R1  guest-invites.ts names neither route nor anything only they used
  *   R2  no GET handler in guest-invites.ts writes
- *   R3  exactly four /api/invites/:token routes remain, and /origin and /rsvp still project the invite
+ *   R3  exactly five /api/invites/:token routes remain, and /origin and /rsvp still project the invite
  *   R4  storage.ts has none of the three travel-plan methods; the schema still exports the table
  *   R5  the SERP integration template is deleted and nothing names it (the needle is built by
  *       concatenation, so this file does not match itself)
@@ -77,13 +77,14 @@ test("R2: no GET handler in guest-invites.ts writes", () => {
   }
 });
 
-test("R3: exactly four /api/invites/:token routes remain, and /origin and /rsvp still project", () => {
+test("R3: exactly five /api/invites/:token routes remain, and /origin and /rsvp still project", () => {
   const registrations = Array.from(
     ROUTES.matchAll(/router\.(get|post|put|patch|delete)\(\s*"(\/api\/invites\/:token[^"]*)"/g),
   ).map((m) => `${m[1].toUpperCase()} ${m[2]}`);
   assert.deepEqual(registrations.sort(), [
     "GET /api/invites/:token",
     "POST /api/invites/:token/origin",
+    "POST /api/invites/:token/plan",
     "POST /api/invites/:token/rsvp",
     "POST /api/invites/:token/view",
   ]);

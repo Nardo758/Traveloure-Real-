@@ -4,13 +4,13 @@ Generated deterministically from `generated/security/mutation-auth-manifest.json
 
 ## Coverage summary
 
-- **Tested: 0/725**; remaining: **725**.
-- Admin: **0/196**; payments: **0/31**; user-data: **0/251**; other: **0/247**.
+- **Tested: 0/726**; remaining: **726**.
+- Admin: **0/196**; payments: **0/31**; user-data: **0/251**; other: **0/248**.
 
 ## Methodology and live evidence
 
 - Every unique `METHOD effectivePath` in the manifest receives exactly one tested/untested disposition; duplicate registrations are normalized to one reachable endpoint.
-- Evidence state: **evidence manifest SHA-256 is stale**; manifest SHA-256: `58965e198286f2d4390a74db62ba78e2a1d3be3d9512e6f84f502ff14eccc5be`; run timestamp: 2026-09-25T00:56:06.499Z.
+- Evidence state: **evidence manifest SHA-256 is stale**; manifest SHA-256: `65f3a3a54a93dad47f17a7f87c049098432f2a234503f4edb06f75e25640a24d`; run timestamp: 2026-09-25T00:56:06.499Z.
 - `admin`: **passed**, 146 exact endpoint keys, context `admin`.
 - `highrisk-unauthenticated`: **passed**, 236 exact endpoint keys, context `unauthenticated`.
 - `expert-provider-wrong-role`: **passed**, 54 exact endpoint keys, context `wrong-role`.
@@ -494,8 +494,9 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/instagram/deauthorize | other | public-or-system | server/routes/instagram.ts:598 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /api/instagram/disconnect | other | session-self | server/routes/instagram.ts:533 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/instagram/publish | other | session-self | server/routes/instagram.ts:274 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/invite-templates | other | session-self | server/routes/guest-invites.ts:596 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/invite-templates | other | session-self | server/routes/guest-invites.ts:621 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/invites/:token/origin | other | public-or-system | server/routes/guest-invites.ts:513 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /api/invites/:token/plan | other | session-self | server/routes/guest-invites.ts:594 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/invites/:token/rsvp | other | public-or-system | server/routes/guest-invites.ts:547 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /api/invites/:token/view | other | public-or-system | server/routes/guest-invites.ts:495 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /api/itinerary-comparisons | other | signature | server/routes.ts:10299 | Other-category endpoint is intentionally outside the strict tested set. |
