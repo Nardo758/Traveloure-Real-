@@ -205,11 +205,11 @@ describe("Restore my draft on the Versions board", () => {
   it("CR16 the one mount on the board, the fences, and the files this PR may not touch", () => {
     const board = read(BOARD);
     assert.equal(count(board, 'import { VersionsRestoreStrip } from "./VersionsRestoreStrip";'), 1);
-    assert.equal(count(board, "<VersionsRestoreStrip tripId={tripId} />"), 1);
+    assert.equal(count(board, "<VersionsRestoreStrip tripId={tripId} tripRole={tripRole} />"), 1);
     const lines = board.split("\n");
     const at = lines.findIndex((l) => l.trim() === "{headerOffer}");
     const next = lines.slice(at + 1).find((l) => l.trim() !== "");
-    assert.equal(next?.trim(), "<VersionsRestoreStrip tripId={tripId} />");
+    assert.equal(next?.trim(), "<VersionsRestoreStrip tripId={tripId} tripRole={tripRole} />");
     assert.ok(!board.includes("Restore my draft") && !board.includes("versions-restore-day"));
     assert.doesNotMatch(board, /\/restorable|\/restore\b/);
   });
