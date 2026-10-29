@@ -1,11 +1,11 @@
 # Mounted mutation authorization inventory
 
-Generated from `server/routes.ts`. **733** raw mounted mutation registrations and **725** unique METHOD+normalizedPath pairs were found.
+Generated from `server/routes.ts`. **734** raw mounted mutation registrations and **726** unique METHOD+normalizedPath pairs were found.
 
-The unique-pair count is **+179** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
+The unique-pair count is **+180** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
 
-Category totals: payments 31; admin 196; user-data 251; other 247.
-Boundary totals: admin-role 196; session-self 368; resource-owner 102; signature 6; public-or-system 53; unknown 0.
+Category totals: payments 31; admin 196; user-data 251; other 248.
+Boundary totals: admin-role 196; session-self 369; resource-owner 102; signature 6; public-or-system 53; unknown 0.
 
 | Method | Normalized path | Risk | Boundary | Ownership applicable | Expected ownership | Registrations | Fixture | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -411,9 +411,10 @@ Boundary totals: admin-role 196; session-self 368; resource-owner 102; signature
 | POST | `/api/instagram/deauthorize` | other | public-or-system | no | unknown | `server/routes/instagram.ts:598` (/deauthorize) | unknown | unknown |
 | POST | `/api/instagram/disconnect` | other | session-self | no | unknown | `server/routes/instagram.ts:533` (/disconnect) | unknown | unknown |
 | POST | `/api/instagram/publish` | other | session-self | no | unknown | `server/routes/instagram.ts:274` (/publish) | unknown | unknown |
-| POST | `/api/invite-templates` | other | session-self | no | unknown | `server/routes/guest-invites.ts:596` | unknown | unknown |
+| POST | `/api/invite-templates` | other | session-self | no | unknown | `server/routes/guest-invites.ts:621` | unknown | unknown |
 | DELETE | `/api/invites/:inviteId` | other | session-self | no | unknown | `server/routes/guest-invites.ts:414` | unknown | unknown |
 | POST | `/api/invites/:token/origin` | other | public-or-system | no | unknown | `server/routes/guest-invites.ts:513` | unknown | unknown |
+| POST | `/api/invites/:token/plan` | other | session-self | no | unknown | `server/routes/guest-invites.ts:594` | unknown | unknown |
 | POST | `/api/invites/:token/rsvp` | other | public-or-system | no | unknown | `server/routes/guest-invites.ts:547` | unknown | unknown |
 | POST | `/api/invites/:token/view` | other | public-or-system | no | unknown | `server/routes/guest-invites.ts:495` | unknown | unknown |
 | POST | `/api/itinerary-comparisons` | other | signature | no | verified | `server/routes.ts:10299` | unknown | unknown |

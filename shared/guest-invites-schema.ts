@@ -3,7 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
 import { users } from "./models/auth";
-import { userExperiences } from "./schema";
+import { trips, userExperiences } from "./schema";
 
 // === GUEST INVITE SYSTEM ===
 // Game-changing feature for destination weddings and events
@@ -64,6 +64,15 @@ export const eventInvites = pgTable("event_invites", {
   // Tracking
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+
+  // Row 280a (migration 417, ledger `2026-10-29-invite-plan-around-event`). The one trip a
+  // signed-in guest minted from this invite, and the session user who minted it. Both nullable,
+  // no DEFAULT, no CHECK. NULL = this invite has no guest plan. Same user reads the trip back;
+  // a different user is refused. ON DELETE SET NULL: deleting the trip or the user drops the
+  // binding and does not delete the invite. Server-written only (§19 — omitted from the insert
+  // schema below). Declared here per the deploy-push rule.
+  planTripId: varchar("plan_trip_id").references(() => trips.id, { onDelete: "set null" }),
+  planUserId: varchar("plan_user_id").references(() => users.id, { onDelete: "set null" }),
 });
 
 /**
@@ -216,6 +225,10 @@ export const insertEventInviteSchema = createInsertSchema(eventInvites).omit({
   viewCount: true,
   createdAt: true,
   updatedAt: true,
+  // Row 280a. Under this denylist a new column is client-settable by default (§19).
+  // POST /api/invites/:token/plan is the one writer, from the session, never the body.
+  planTripId: true,
+  planUserId: true,
 });
 
 export const insertGuestTravelPlanSchema = createInsertSchema(guestTravelPlans).omit({

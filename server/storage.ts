@@ -237,6 +237,8 @@ import { createServiceReviewWithAggregate } from "./services/review-mutation.ser
 import { resolveOccasionTemplate } from "./services/occasion-templates";
 import { logger } from "./infrastructure/logger";
 import { loadEarnerRatings } from "./services/earner-rating.service";
+import { OPERATING_MARKETS } from "@shared/operating-markets";
+import { buildGuestLanding } from "./services/guest-invite-landing";
 import type { User } from "@shared/models/auth";
 import {
   eventInvites,
@@ -1588,6 +1590,37 @@ function assertPriceBasisValue(value: unknown, writer: string): void {
   if (!isPriceBasis(value)) {
     throw new Error(`${writer}: priceBasis must be "per_person", "per_booking" or null, got ${JSON.stringify(value)}`);
   }
+}
+
+/** Row 280a. Thrown inside the invite lock when the conditional bind matches no row, so the
+ *  trip insert rolls back and the caller returns the winner instead of a second trip. */
+class InvitePlanBindLost extends Error {
+  constructor() {
+    super("invite plan bind lost");
+    this.name = "InvitePlanBindLost";
+  }
+}
+
+export type GuestPlanFromInviteResult =
+  | { ok: true; created: boolean; tripId: string }
+  | { ok: false; status: 404 | 403 | 409; reason: string };
+
+/**
+ * A `date` column as `YYYY-MM-DD`, or null. node-pg parses a date as a local-midnight Date
+ * (`postgres-date`), so the calendar day is read back from that local date. No UTC shift and
+ * no invented day.
+ */
+function calendarDay(value: unknown): string | null {
+  if (typeof value === "string") {
+    const match = /^(\d{4}-\d{2}-\d{2})/.exec(value.trim());
+    return match ? match[1] : null;
+  }
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${value.getFullYear()}-${month}-${day}`;
+  }
+  return null;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -9671,6 +9704,186 @@ export class DatabaseStorage implements IStorage {
     const [row] = await db.update(eventInvites).set(values)
       .where(eq(eventInvites.uniqueToken, token)).returning();
     return row ?? null;
+  }
+
+  /**
+   * Row 280a — the one writer of `event_invites.plan_trip_id` and `plan_user_id`.
+   *
+   * A signed-in guest's "plan around the event". The invite row is locked, then the trip, the
+   * one anchor item and the binding commit together. `storage.createTrip` cannot join that lock
+   * (it writes on the pool connection), so this mint calls the same `resolveMarketSlug` /
+   * `resolveTripTimezone` createTrip uses and writes the owner collaborator the same way. It does
+   * not drain the pre-trip pen and does not register content: the plan's contents are the anchor
+   * only. No Google lookup and no minute arithmetic.
+   *
+   * The anchor is a confirmed itinerary item. When the event has a start time, that wall-clock
+   * string is copied unchanged and `isFlexible` is false. When it has none, the item is confirmed
+   * and unscheduled. `userExperienceId` names the event the guest was invited to, which lives on
+   * the host's plan: 280b reads `rsvp_by` through that reference. The generic item rails still
+   * refuse a client-supplied cross-trip link.
+   */
+  async createGuestPlanFromInvite(params: { token: string; userId: string }): Promise<GuestPlanFromInviteResult> {
+    try {
+      return await db.transaction((tx) => this.insertGuestPlanFromInvite(tx, params));
+    } catch (err) {
+      if (!(err instanceof InvitePlanBindLost)) throw err;
+      return this.existingGuestPlan(params.token, params.userId);
+    }
+  }
+
+  private async existingGuestPlan(token: string, userId: string): Promise<GuestPlanFromInviteResult> {
+    const [invite] = await db.select({
+      planTripId: eventInvites.planTripId,
+      planUserId: eventInvites.planUserId,
+    }).from(eventInvites).where(eq(eventInvites.uniqueToken, token)).limit(1);
+    if (!invite?.planTripId) return { ok: false, status: 409, reason: "invite_plan_other_user" };
+    const [trip] = await db.select({ userId: trips.userId }).from(trips).where(eq(trips.id, invite.planTripId)).limit(1);
+    if (invite.planUserId === userId && trip?.userId === userId) {
+      return { ok: true, created: false, tripId: invite.planTripId };
+    }
+    return { ok: false, status: 409, reason: "invite_plan_other_user" };
+  }
+
+  private async insertGuestPlanFromInvite(
+    tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+    params: { token: string; userId: string },
+  ): Promise<GuestPlanFromInviteResult> {
+    const locked = await tx.execute(sql`
+      SELECT
+        i.id,
+        i.rsvp_status,
+        i.plan_trip_id,
+        i.plan_user_id,
+        i.experience_id,
+        e.title AS event_title,
+        e.event_date,
+        e.start_time,
+        e.location,
+        e.host_note,
+        e.venue_address,
+        e.rsvp_by,
+        u.first_name AS host_first_name,
+        t.market_slug AS trip_market_slug,
+        t.timezone AS trip_timezone
+      FROM event_invites i
+      LEFT JOIN user_experiences e ON e.id = i.experience_id
+      LEFT JOIN users u ON u.id = i.organizer_id
+      LEFT JOIN trips t ON t.id = e.trip_id
+      WHERE i.unique_token = ${params.token}
+      FOR UPDATE OF i
+    `);
+    const row = (locked.rows ?? [])[0] as {
+      id: string;
+      rsvp_status: string | null;
+      plan_trip_id: string | null;
+      plan_user_id: string | null;
+      experience_id: string | null;
+      event_title: string | null;
+      event_date: string | null;
+      start_time: string | null;
+      location: string | null;
+      host_note: string | null;
+      venue_address: string | null;
+      rsvp_by: string | null;
+      host_first_name: string | null;
+      trip_market_slug: string | null;
+      trip_timezone: string | null;
+    } | undefined;
+    if (!row) return { ok: false, status: 404, reason: "invite_not_found" };
+
+    if (row.plan_trip_id) {
+      const [bound] = await tx.select({ userId: trips.userId }).from(trips).where(eq(trips.id, row.plan_trip_id)).limit(1);
+      if (row.plan_user_id === params.userId && bound?.userId === params.userId) {
+        return { ok: true, created: false, tripId: row.plan_trip_id };
+      }
+      return { ok: false, status: 409, reason: "invite_plan_other_user" };
+    }
+
+    // Architect ruling 4: the button is for an accepted guest. Anything else is a named 403.
+    if (row.rsvp_status !== "accepted") {
+      return { ok: false, status: 403, reason: "invite_not_accepted" };
+    }
+
+    const marketSlugOnEvent = typeof row.trip_market_slug === "string" ? row.trip_market_slug : null;
+    const market = OPERATING_MARKETS.find((m) => m.marketKey === marketSlugOnEvent);
+    if (!market) return { ok: false, status: 409, reason: "event_market_unresolved" };
+
+    const eventDate = calendarDay(row.event_date);
+    if (!eventDate) return { ok: false, status: 409, reason: "event_date_missing" };
+
+    // Destination is the market's city name, so the same resolvers createTrip uses stamp the
+    // same market and zone. A city name that does not round-trip to the event's market is refused.
+    const destination = market.cityName;
+    const marketSlug = resolveMarketSlug(destination);
+    const timezone = resolveTripTimezone(destination);
+    if (marketSlug !== marketSlugOnEvent || !timezone) {
+      return { ok: false, status: 409, reason: "event_market_unresolved" };
+    }
+
+    const landing = buildGuestLanding({
+      title: row.event_title,
+      eventDate,
+      startTime: row.start_time,
+      location: row.location,
+      hostNote: row.host_note,
+      rsvpBy: calendarDay(row.rsvp_by),
+      venueAddress: row.venue_address,
+      hostFirstName: row.host_first_name,
+      marketSlug,
+      tripTimezone: timezone,
+      rsvpStatus: row.rsvp_status,
+    });
+    const title = landing.title ?? "My Trip";
+    const trackingNumber = await this.generateTrackingNumber("TRV");
+    const [created] = await tx.insert(trips).values({
+      userId: params.userId,
+      trackingNumber,
+      title,
+      destination,
+      startDate: eventDate,
+      endDate: eventDate,
+      marketSlug,
+      timezone,
+      // The window is the event's date, pre-loaded because the columns are NOT NULL. The guest
+      // did not pick it on a date control, so the mint makes no "dates chosen" claim.
+      datesConfirmedAt: null,
+    }).returning({ id: trips.id });
+
+    await tx.insert(tripCollaborators).values({
+      tripId: created.id,
+      userId: params.userId,
+      role: "owner",
+    }).onConflictDoNothing();
+
+    await tx.insert(itineraryItems).values({
+      tripId: created.id,
+      title,
+      itemType: "activity",
+      status: "confirmed",
+      dayNumber: 1,
+      scheduledDate: eventDate,
+      // Fixed wall-clock when the event has one. Absent means unscheduled: no end, no duration.
+      startTime: landing.startTime ?? null,
+      endTime: null,
+      durationMinutes: null,
+      isFlexible: false,
+      locationName: landing.venue ?? null,
+      locationAddress: landing.venueAddress ?? null,
+      userExperienceId: row.experience_id,
+      origin: "traveler",
+    });
+
+    const bound = await tx.update(eventInvites).set({
+      planTripId: created.id,
+      planUserId: params.userId,
+      updatedAt: new Date(),
+    }).where(and(
+      eq(eventInvites.id, row.id),
+      isNull(eventInvites.planTripId),
+    )).returning({ id: eventInvites.id });
+    if (bound.length === 0) throw new InvitePlanBindLost();
+
+    return { ok: true, created: true, tripId: created.id };
   }
 
   async createInviteTemplate(values: {
