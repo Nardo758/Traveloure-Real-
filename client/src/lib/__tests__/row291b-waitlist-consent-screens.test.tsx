@@ -4,7 +4,8 @@
  * components under react-dom/server, the network through a fake fetcher, page sources read with readFileSync.
  * No git, no execSync, no execFileSync, no comparison with any ref.
  *
- *   W1  each form draws box 2 exactly once when the gate is open, unticked; not at all when it is closed (today).
+ *   W1  box 2 is drawn only while WAITLIST_MARKETING_BOX_ENABLED is true AND its words resolve (once per form,
+ *       unticked); the flag is false today, so it is not drawn, and no network call decides it.
  *   W2  box 1 is unchanged: same tick, same ids, same label source.
  *   W3  box 2 posts `marketingConsent`; box 1 and box 2 are independent.
  *   W4  every posted body passes the strict `waitlistJoinBodySchema`; the only new key is `marketingConsent`.
@@ -30,6 +31,7 @@ import React from "react";
 import { renderToString } from "react-dom/server";
 import { Router } from "wouter";
 import {
+  WAITLIST_MARKETING_BOX_ENABLED,
   WAITLIST_MARKETING_CONSENT_LINE,
   WAITLIST_MARKET_OPTIONS,
   waitlistConsentLine,
@@ -38,7 +40,7 @@ import {
 } from "@shared/launch-waitlist";
 import { CLIENT_ROUTES } from "@shared/client-routes.generated";
 import { WAITLIST_CONSENT_COPY } from "../waitlist-consent-copy";
-import { ConsentBoxes, WAITLIST_MARKETING_TEXT_VERSION_ROUTE, marketingBoxOpen } from "../../pages/launch-waitlist";
+import { ConsentBoxes, marketingBoxOpen } from "../../pages/launch-waitlist";
 import {
   UnsubscribeView,
   loadUnsubscribe,
@@ -117,22 +119,25 @@ describe("W1 — box 2 renders only behind the gate", () => {
       assert.equal(count(html, `data-testid="checkbox-${prefix}-consent"`), 1, `${role}: box 1 still drawn`);
     }
   });
-  it("opens only for a market with words AND a server-reported version; closed on main today", () => {
-    assert.equal(marketingBoxOpen("kyoto", "v1"), true);
-    assert.equal(marketingBoxOpen("kyoto", null), false);
-    assert.equal(marketingBoxOpen("kyoto", undefined), false);
-    assert.equal(marketingBoxOpen("kyoto", "  "), false);
-    assert.equal(marketingBoxOpen("kyoto", 3), false);
-    assert.equal(marketingBoxOpen("lisbon", "v1"), false, "no words for a market ⇒ no box");
+  it("opens only while the flag is on AND the market has words; off on main today", () => {
+    assert.equal(WAITLIST_MARKETING_BOX_ENABLED, false, "row 294 flips this once the consent text is seeded");
+    assert.equal(marketingBoxOpen("kyoto"), false, "the default reads the flag");
+    assert.equal(marketingBoxOpen("kyoto", true), true);
+    assert.equal(marketingBoxOpen("kyoto", false), false);
+    assert.equal(marketingBoxOpen("lisbon", true), false, "no words for a market ⇒ no box");
     assert.equal(waitlistMarketingConsentLine("lisbon"), null);
-    assert.equal(WAITLIST_MARKETING_TEXT_VERSION_ROUTE, null, "no version route yet (row 294) ⇒ the box never renders");
-    assert.ok(PAGE.includes("enabled: WAITLIST_MARKETING_TEXT_VERSION_ROUTE !== null"));
+    assert.ok(PAGE.includes("return enabled && waitlistMarketingConsentLine(market) !== null;"));
+  });
+  it("no network call decides the box", () => {
+    const code = stripComments(PAGE);
+    assert.doesNotMatch(code, /TEXT_VERSION_ROUTE|useMarketingTextVersion|consent-text-version/);
+    assert.equal(count(code, "useQuery<"), 3, "only the page's existing three reads (signup mode, live markets, experts)");
   });
   it("both forms use the one shared component and pass their role", () => {
     assert.equal(count(PAGE, "<ConsentBoxes\n"), 2);
     assert.ok(PAGE.includes('<ConsentBoxes\n        role="traveler"'));
     assert.ok(PAGE.includes('<ConsentBoxes\n        role="provider"'));
-    assert.equal(count(PAGE, "const marketingOpen = marketingBoxOpen(market, useMarketingTextVersion());"), 2);
+    assert.equal(count(PAGE, "const marketingOpen = marketingBoxOpen(market);"), 2);
   });
 });
 
@@ -363,6 +368,8 @@ describe("A2 — choose, confirm, then one POST of {market, role}", () => {
     const html = renderToString(<WaitlistMarketOpenedCard post={async () => { throw new Error("no post on render"); }} />);
     assert.match(button(html, "button-market-opened"), /disabled=""/);
     assert.equal(count(html, '<option value="" selected="">—</option>'), 2, "no default city or role");
+    assert.ok(html.includes('<option value="traveler">Traveler</option>'), "role value unchanged, label shown");
+    assert.ok(html.includes('<option value="provider">Provider</option>'));
     assert.ok(CARD.includes("onClick={() => setConfirming(true)}"));
     assert.equal(count(stripComments(CARD), "run(market, role)"), 1, "the POST runs from the confirm only");
   });
@@ -455,6 +462,8 @@ describe("X1 — the strings table", () => {
       adminConfirm: "Queue the \"we're open\" email for {role}s on the {city} waitlist?",
       adminResult: "{enqueued} queued, {skipped} skipped",
       adminError: "Could not queue the email.",
+      adminRoleTraveler: "Traveler",
+      adminRoleProvider: "Provider",
     });
     for (const v of [...Object.values(WAITLIST_CONSENT_COPY), WAITLIST_MARKETING_CONSENT_LINE]) {
       assert.doesNotMatch(v, /\bAI\b/);

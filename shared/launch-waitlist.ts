@@ -238,10 +238,15 @@ export function waitlistConsentText(marketKey: string): string {
  * 291b (ruling 1): the news/marketing box's words, per market, beside the box above. WORDING HELD FOR LEON (strings
  * table key box2Label). A market left out of the map has no box. Showing these words is not the same as storing them:
  * the server writes a `launch_marketing_news` consent row only when a `consent_texts` version exists (row 294), and
- * the page draws the box only once the server reports one.
+ * the page draws the box only while WAITLIST_MARKETING_BOX_ENABLED is true.
  */
 export const WAITLIST_MARKETING_CONSENT_LINE =
   "Send me news and offers from Traveloure. You can unsubscribe at any time.";
+/**
+ * The news box's on/off switch. Off until row 294 seeds a `launch_marketing_news` consent text and flips this: a box
+ * whose tick would save nothing is never drawn. No network call decides it.
+ */
+export const WAITLIST_MARKETING_BOX_ENABLED = false;
 export const WAITLIST_MARKETING_CONSENT_LINES: Readonly<Record<string, string>> = Object.fromEntries(
   WAITLIST_MARKET_OPTIONS.map((m) => [m.key, WAITLIST_MARKETING_CONSENT_LINE]),
 );

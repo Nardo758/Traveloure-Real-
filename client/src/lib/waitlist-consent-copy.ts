@@ -17,6 +17,8 @@ export const WAITLIST_CONSENT_COPY = {
   adminConfirm: "Queue the \"we're open\" email for {role}s on the {city} waitlist?",
   adminResult: "{enqueued} queued, {skipped} skipped",
   adminError: "Could not queue the email.",
+  adminRoleTraveler: "Traveler",
+  adminRoleProvider: "Provider",
 } as const;
 
 /** Fill `{name}` slots. A slot with no value is left as written, so a missing value is visible, never blank. */

@@ -11,9 +11,9 @@
 // The preset city list is gone. The sign-up stays the launch market. Wedding stays in the trip-type list.
 // 291b (ledger `2026-10-29-waitlist-consent-screens`): both forms draw ONE shared `ConsentBoxes` carrying the role —
 // the first box unchanged (`consent` → launch_waitlist_updates) and a second, never pre-ticked news box
-// (`marketingConsent` → launch_marketing_news). The news box is drawn only where its words resolve for the market AND
-// the server reports a text version for launch_marketing_news (row 294); until then it is not drawn and the page posts
-// `marketingConsent: false`. A box whose tick would save nothing is never drawn.
+// (`marketingConsent` → launch_marketing_news). The news box is drawn only while WAITLIST_MARKETING_BOX_ENABLED is on
+// (row 294 flips it once the consent text is seeded) AND its words resolve for the market; until then it is not drawn
+// and the page posts `marketingConsent: false`. A box whose tick would save nothing is never drawn.
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -26,7 +26,7 @@ import { SEOHead } from "@/components/seo-head";
 import { supplySignupContinuation } from "@shared/supply-entry";
 import {
   WAITLIST_CONSENT_PRIVACY_LINK,
-  WAITLIST_MARKETING_CONSENT_KEY,
+  WAITLIST_MARKETING_BOX_ENABLED,
   WAITLIST_EMAIL_ERROR,
   WAITLIST_MARKET_OPTIONS,
   WAITLIST_OTHER_CITY_PROMPT,
@@ -104,30 +104,11 @@ function ConsentTick({ id, market, checked, onChange }: { id: string; market: st
 }
 
 /**
- * The route that reports the launch_marketing_news text version, answering `{ version: string | null }`. No such
- * route exists yet (row 294 adds the seed and its report), so this is null and the news box is never drawn. Turning
- * the box on is setting this one constant to that route — no logic changes. A route that answers anything else
- * (an error, HTML, no `version`) keeps the box closed.
+ * The news box is drawn only while WAITLIST_MARKETING_BOX_ENABLED is on (row 294 flips it once the consent text is
+ * seeded) AND its words resolve for this market. No network call.
  */
-export const WAITLIST_MARKETING_TEXT_VERSION_ROUTE: string | null = null;
-
-/** The news box is drawn only when its words resolve for this market AND the server has reported a text version. */
-export function marketingBoxOpen(market: string, serverTextVersion: unknown): boolean {
-  return (
-    waitlistMarketingConsentLine(market) !== null &&
-    typeof serverTextVersion === "string" &&
-    serverTextVersion.trim() !== ""
-  );
-}
-
-/** The server's reported `launch_marketing_news` text version, or null (no route yet, loading, or any error). */
-function useMarketingTextVersion(): string | null {
-  const { data } = useQuery<{ version?: unknown }>({
-    queryKey: [WAITLIST_MARKETING_TEXT_VERSION_ROUTE ?? `consent-text-version:${WAITLIST_MARKETING_CONSENT_KEY}`],
-    enabled: WAITLIST_MARKETING_TEXT_VERSION_ROUTE !== null,
-    retry: false,
-  });
-  return typeof data?.version === "string" ? data.version : null;
+export function marketingBoxOpen(market: string, enabled: boolean = WAITLIST_MARKETING_BOX_ENABLED): boolean {
+  return enabled && waitlistMarketingConsentLine(market) !== null;
 }
 
 function MarketingTick({ id, line, checked, onChange }: { id: string; line: string; checked: boolean; onChange: (v: boolean) => void }) {
@@ -190,7 +171,7 @@ function TravelerForm({ source, refCode, launchMarket }: { source: string | null
   const [email, setEmail] = useState("");
   const [consent, setConsent] = useState(false);
   const [marketingConsent, setMarketingConsent] = useState(false);
-  const marketingOpen = marketingBoxOpen(market, useMarketingTextVersion());
+  const marketingOpen = marketingBoxOpen(market);
   const [tripType, setTripType] = useState<WaitlistTripType | "">("");
   const [month, setMonth] = useState("");
   const [year, setYear] = useState("");
@@ -346,7 +327,7 @@ function ProviderForm({
   const [serviceType, setServiceType] = useState<WaitlistServiceType | "">("");
   const [consent, setConsent] = useState(false);
   const [marketingConsent, setMarketingConsent] = useState(false);
-  const marketingOpen = marketingBoxOpen(market, useMarketingTextVersion());
+  const marketingOpen = marketingBoxOpen(market);
   const [otherCity, setOtherCity] = useState("");
   const [homepage, setHomepage] = useState("");
   const [status, setStatus] = useState<Status>("idle");

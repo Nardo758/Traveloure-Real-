@@ -130,7 +130,7 @@ export function WaitlistMarketOpenedCard({ post = apiRequest }: { post?: Poster 
           >
             <option value="">—</option>
             {WAITLIST_ROLES.map((r) => (
-              <option key={r} value={r}>{r}</option>
+              <option key={r} value={r}>{r === "provider" ? COPY.adminRoleProvider : COPY.adminRoleTraveler}</option>
             ))}
           </select>
         </div>
