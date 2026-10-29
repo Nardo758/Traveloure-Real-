@@ -8,7 +8,7 @@
  *   RF4 nothing under client/src imports a deleted module
  *   RF5 App.tsx has no MyItineraryPage and keeps both redirects
  *   RF6 the TN9, TN16 and TS16 fences are gone
- *   RF7 the three importer-clean orphans are gone and unimported; lib/transport-cancel.ts was kept
+ *   RF7 the three importer-clean orphans are gone and unimported; lib/transport-cancel.ts is gone too (row 254)
  *   RF8 the page-hex baseline has no itinerary.tsx key
  *
  * Run: npx tsx --test client/src/components/plancard/__tests__/row54-dead-files-gone.test.tsx
@@ -109,11 +109,19 @@ describe("row 54 part 2: the dead itinerary surface is gone", () => {
     }
   });
 
-  it("RF7 the three importer-clean orphans are gone and unimported; lib/transport-cancel.ts was kept", () => {
+  it("RF7 the three importer-clean orphans are gone and unimported; lib/transport-cancel.ts is gone too (row 254)", () => {
     for (const f of ORPHANS) assert.equal(fs.existsSync(abs(f)), false, f);
+    // Row 254 (sanctioned RF7 edit, Architect Oct 29, 2026): the module and its own test are deleted,
+    // and nothing imports it; the dialog pins moved to lib/__tests__/cancel-booking-dialog.test.ts.
+    for (const f of ["client/src/lib/transport-cancel.ts", "client/src/lib/__tests__/transport-cancel.test.ts"]) {
+      assert.equal(fs.existsSync(abs(f)), false, f);
+    }
     const names = /itinerary\/(BookingFeeBreakdown|MultiDayPassCard|PartnerizeBookingCTA)$|^\.\/(BookingFeeBreakdown|MultiDayPassCard|PartnerizeBookingCTA)$/;
     for (const { rel, text } of sources()) {
-      for (const spec of importsOf(text)) assert.ok(!names.test(spec), `${rel} imports ${spec}`);
+      for (const spec of importsOf(text)) {
+        assert.ok(!names.test(spec), `${rel} imports ${spec}`);
+        assert.ok(!/(^|\/)transport-cancel$/.test(spec), `${rel} imports ${spec}`);
+      }
     }
   });
 
