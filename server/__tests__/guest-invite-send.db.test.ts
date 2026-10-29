@@ -146,6 +146,7 @@ after(async () => {
   }
   await db.execute(sql`DELETE FROM user_experiences WHERE id IN (${ids.experience}, ${ids.otherExperience})`);
   await db.execute(sql`DELETE FROM user_experiences WHERE id LIKE ${`gis-${RUN}-s7-%`}`);
+  await db.execute(sql`DELETE FROM trips WHERE id LIKE ${`gis-${RUN}-tz-%`}`);
   await db.execute(sql`DELETE FROM experience_types WHERE id = ${ids.experienceType}`);
   await db.execute(sql`DELETE FROM users WHERE id IN (${ids.owner}, ${ids.stranger})`);
 });
@@ -611,6 +612,52 @@ test("S7 — enqueue sets expires_at = rsvp_by when set, else the event date", a
   const openRows = await outboxFor(openInvite);
   assert.equal(openRows.length, 1);
   assert.equal(openRows[0].expires_at, null);
+});
+
+test("expires at the end of the rsvp day in Asia/Tokyo", async () => {
+  assert.equal(
+    guestInviteExpiresAt("2026-11-01", "2026-10-11", "Asia/Tokyo")?.toISOString(),
+    "2026-11-01T15:00:00.000Z",
+  );
+  assert.equal(
+    guestInviteExpiresAt(null, "2026-11-01", "Asia/Tokyo")?.toISOString(),
+    "2026-11-01T15:00:00.000Z",
+  );
+
+  const tripId = `gis-${RUN}-tz-kyoto`;
+  const expId = `gis-${RUN}-s7-tokyo`;
+  await db.execute(sql`
+    INSERT INTO trips (id, user_id, destination, start_date, end_date, timezone)
+    VALUES (${tripId}, ${ids.owner}, 'Kyoto', '2026-11-01', '2026-11-03', 'Asia/Tokyo')
+  `);
+  await db.execute(sql`
+    INSERT INTO user_experiences (id, user_id, experience_type_id, title, event_date, rsvp_by, trip_id)
+    VALUES (${expId}, ${ids.owner}, ${ids.experienceType}, 'Kyoto ceremony', '2026-10-11', '2026-11-01', ${tripId})
+  `);
+  const inviteId = await makeInvite({ experienceId: expId });
+  const sent = await sendExperienceInvites({
+    experienceId: expId,
+    organizerId: ids.owner,
+    inviteIds: [inviteId],
+  });
+  assert.equal(sent.ok && sent.results[0].outcome, "enqueued");
+  const rows = await outboxFor(inviteId);
+  assert.equal(rows.length, 1);
+  assert.equal(instantIso(rows[0].expires_at), "2026-11-01T15:00:00.000Z");
+});
+
+test("America/New_York expires at the local end of the day, not UTC midnight", () => {
+  const at = guestInviteExpiresAt("2026-06-15", "2026-11-01", "America/New_York");
+  assert.equal(at?.toISOString(), "2026-06-16T04:00:00.000Z");
+  assert.notEqual(at?.toISOString(), "2026-06-16T00:00:00.000Z");
+});
+
+test("absent or unusable zone falls back to the next UTC day", () => {
+  const utc = "2026-11-02T00:00:00.000Z";
+  for (const zone of [null, undefined, "", "Mars/Phobos"]) {
+    assert.equal(guestInviteExpiresAt("2026-11-01", "2026-10-11", zone)?.toISOString(), utc, String(zone));
+  }
+  assert.equal(guestInviteExpiresAt(null, "2026-10-11", "Not/AZone")?.toISOString(), "2026-10-12T00:00:00.000Z");
 });
 
 test("S8 — landing.hasVenueAddress is true only when venue_address is set", () => {

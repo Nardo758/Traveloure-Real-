@@ -1053,9 +1053,10 @@ export async function enqueueBookingAlertEmail(params: BookingAlertParams): Prom
  * is written.
  *
  * `created` / `updated` carry the row id. `null` means no durable row could be
- * written. ENQUEUED IS NOT DELIVERED. expires_at is set on the insert only
- * (rsvp_by when that day is usable, otherwise the event date, otherwise null).
- * A re-click does not write expires_at again. The drain is unchanged.
+ * written. ENQUEUED IS NOT DELIVERED. expires_at is set on the insert only:
+ * the end of the rsvp_by day, else the event-date day, in trips.timezone
+ * (next UTC day only when that zone is absent or unusable). A re-click does
+ * not write expires_at again. The drain is unchanged.
  */
 export type GuestInviteEnqueueResult =
   | { action: "created" | "updated" | "left_sent"; outboxId: number }
@@ -1162,10 +1163,13 @@ export async function enqueueGuestInviteEmail(params: {
   rsvpBy?: string | null;
   /** Raw "YYYY-MM-DD" from user_experiences.event_date. */
   eventDay?: string | null;
+  /** trips.timezone. Absent or unusable falls back inside guestInviteExpiresAt. */
+  tripTimezone?: string | null;
 }): Promise<GuestInviteEnqueueResult> {
   const payload = buildGuestInviteEmailPayload(params.email);
   const rsvpBy = params.rsvpBy ?? null;
   const eventDay = params.eventDay ?? null;
+  const tripTimezone = params.tripTimezone ?? null;
   const resolved = await resolveGuestInviteOutbox(params.inviteId);
 
   if (resolved.kind === "ambiguous") return { action: "ambiguous" };
@@ -1199,6 +1203,7 @@ export async function enqueueGuestInviteEmail(params: {
       dedupeKey: guestInviteDedupeKey(params.inviteId),
       rsvpBy,
       eventDate: eventDay,
+      tripTimezone,
     },
   });
   if (outboxId == null) return null;

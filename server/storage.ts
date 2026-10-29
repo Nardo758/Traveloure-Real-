@@ -9445,6 +9445,7 @@ export class DatabaseStorage implements IStorage {
     location: string | null;
     eventDate: string | null;
     rsvpBy: string | null;
+    tripTimezone: string | null;
     defaultVisibility: string | null;
   } | null> {
     const [row] = await db
@@ -9455,10 +9456,12 @@ export class DatabaseStorage implements IStorage {
         location: userExperiences.location,
         eventDate: userExperiences.eventDate,
         rsvpBy: userExperiences.rsvpBy,
+        tripTimezone: trips.timezone,
         defaultVisibility: experienceTypes.defaultVisibility,
       })
       .from(userExperiences)
       .leftJoin(experienceTypes, eq(userExperiences.experienceTypeId, experienceTypes.id))
+      .leftJoin(trips, eq(userExperiences.tripId, trips.id))
       .where(eq(userExperiences.id, experienceId))
       .limit(1);
     return row ?? null;

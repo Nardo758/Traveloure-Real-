@@ -109,6 +109,8 @@ export interface ExperienceSendContext {
   eventDate: string | null;
   /** user_experiences.rsvp_by, "YYYY-MM-DD", or null when the occasion never stated one. */
   rsvpBy?: string | null;
+  /** trips.timezone for the event's plan. Null when the event has no trip or the plan never captured a zone. */
+  tripTimezone?: string | null;
   defaultVisibility: string | null;
 }
 
@@ -164,6 +166,7 @@ export interface InviteSendPorts {
     /** Raw calendar days. The letter's formatted date stays on `email.eventDate`. */
     rsvpBy?: string | null;
     eventDay?: string | null;
+    tripTimezone?: string | null;
   }): Promise<InviteEnqueuePortResult>;
   now(): Date;
 }
@@ -342,6 +345,7 @@ async function sendExperienceInvitesAction(
         experienceId: params.experienceId,
         rsvpBy: asGuestInviteCalendarDay(ctx.rsvpBy),
         eventDay: asGuestInviteCalendarDay(ctx.eventDate),
+        tripTimezone: ctx.tripTimezone ?? null,
         email: {
           guestName: invite.guestName,
           eventTitle: ctx.title,
