@@ -38,7 +38,7 @@
  */
 
 import { db } from "../db";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, sql, type SQL } from "drizzle-orm";
 import { emailOutbox, itineraryComparisons, users, type InsertEmailOutbox } from "../../shared/schema";
 import { logger } from "../infrastructure/logger";
 import { runBackgroundJob } from "./background-job-runner";
@@ -69,7 +69,14 @@ import {
   outboxRowExpired,
   type OutboxHoldSummary,
 } from "./email-outbox-expiry";
-import { isDeliveryPriorityEmail, outboxDeliveryPrioritySql } from "./email-outbox-classes";
+import { WAITLIST_CONSENT_KEY } from "@shared/launch-waitlist";
+import {
+  isDeliveryPriorityEmail,
+  isMarketingEmailType,
+  MARKETING_EMAIL_TYPES,
+  outboxDeliveryPrioritySql,
+  WAITLIST_MARKETING_REVOKED_REASON,
+} from "./email-outbox-classes";
 
 // ── Backoff schedule ──────────────────────────────────────────────────────────
 
@@ -366,6 +373,60 @@ function createdAtMillis(value: Date | string | null | undefined): number {
   return Number.isFinite(ms) ? ms : 0;
 }
 
+/**
+ * True when this outbox alias is a marketing type addressed to a waitlist row
+ * that has unsubscribed or whose notify consent (launch_waitlist_updates) is revoked.
+ * The alias must be `e`. A marketSlug on the row limits the match to that market;
+ * a missing market matches any market for that address.
+ */
+function marketingRevokedExistsSql(): SQL {
+  const types = sql.join(MARKETING_EMAIL_TYPES.map((name) => sql`${name}`), sql`, `);
+  return sql`(
+    e.email_type = ANY(ARRAY[${types}]::text[])
+    AND EXISTS (
+      SELECT 1 FROM launch_waitlist w
+      WHERE lower(btrim(w.email)) = lower(btrim(e.to_email))
+        AND (
+          NULLIF(btrim(e.metadata->>'marketSlug'), '') IS NULL
+          OR w.market_slug = e.metadata->>'marketSlug'
+        )
+        AND (
+          w.unsubscribed_at IS NOT NULL
+          OR EXISTS (
+            SELECT 1 FROM consent_records c
+            WHERE c.waitlist_id = w.id
+              AND c.consent_key = ${WAITLIST_CONSENT_KEY}
+              AND c.revoked_at IS NOT NULL
+          )
+        )
+    )
+  )`;
+}
+
+/** Cancel one due marketing row whose address has revoked or unsubscribed. Returns true when a row was settled. */
+async function cancelRevokedMarketingDelivery(outboxId: number): Promise<boolean> {
+  const result = await db.execute(sql`
+    UPDATE email_outbox AS e
+    SET    status      = 'cancelled',
+           last_error  = ${WAITLIST_MARKETING_REVOKED_REASON},
+           retry_after = NULL,
+           updated_at  = NOW()
+    WHERE  e.id = ${outboxId}
+      AND  e.status IN ('pending', 'failed', 'held')
+      AND  (e.retry_after IS NULL OR e.retry_after <= NOW())
+      AND  ${marketingRevokedExistsSql()}
+    RETURNING e.id
+  `);
+  const cancelled = (result.rows?.length ?? 0) > 0;
+  if (cancelled) {
+    logger.info(
+      { outboxId, reason: WAITLIST_MARKETING_REVOKED_REASON },
+      "[email-outbox] marketing send cancelled; consent revoked",
+    );
+  }
+  return cancelled;
+}
+
 /** Priority rows first. created_at order inside each group. Stable on a tie. */
 function compareDeliveryOrder(
   a: { email_type: string; metadata: unknown; created_at?: Date | string | null },
@@ -445,10 +506,23 @@ async function drainOutboxImpl(): Promise<DrainOutboxResult> {
           AND  d.expires_at <= NOW()
         RETURNING e.id
       ),
+      revoked AS (
+        UPDATE email_outbox AS e
+        SET    status      = 'cancelled',
+               last_error  = ${WAITLIST_MARKETING_REVOKED_REASON},
+               retry_after = NULL,
+               updated_at  = NOW()
+        FROM   due d
+        WHERE  e.id = d.id
+          AND  NOT EXISTS (SELECT 1 FROM expired x WHERE x.id = d.id)
+          AND  ${marketingRevokedExistsSql()}
+        RETURNING e.id
+      ),
       candidates AS (
         SELECT d.id FROM due d
         WHERE (d.expires_at IS NULL OR d.expires_at > NOW())
           AND NOT EXISTS (SELECT 1 FROM expired x WHERE x.id = d.id)
+          AND NOT EXISTS (SELECT 1 FROM revoked r WHERE r.id = d.id)
       )
       UPDATE email_outbox AS o
       SET    status      = 'processing',
@@ -509,6 +583,11 @@ export async function deliverQueuedEmail(outboxId: number): Promise<void> {
           { outboxId, emailType: peeked.email_type ?? null, reason: "EMAIL_TEMPLATE_ALLOWLIST" },
           "[email-outbox] send refused; EMAIL_TEMPLATE_ALLOWLIST",
         );
+        return;
+      }
+      // After EMAIL_SENDS_ENABLED and the allowlist, same order as the drain claim.
+      // Only a marketing type is considered; transactional rows are not queried.
+      if (peeked && isMarketingEmailType(peeked.email_type) && await cancelRevokedMarketingDelivery(outboxId)) {
         return;
       }
     }

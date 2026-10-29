@@ -7,18 +7,24 @@
 //     came from. The latest submission's role and answers replace the earlier ones ("a repeat sign-up updates the
 //     answers"), and the other role's fields are set NULL, so a row only ever carries its own role's answers.
 //   - Consent is an opt-in, not a gate (Launch ruling 1): ticking stamps consent_at and names the consent version;
-//     a repeat sign-up without the tick never clears an earlier consent (withdrawal is its own action, not built).
+//     a repeat sign-up without the tick never clears an earlier consent. Unsubscribe is the withdrawal:
+//     it sets revoked_at on every consent_records row for that waitlist id and launch_waitlist.unsubscribed_at.
+//     A later sign-up does not clear either.
 //   - The caller learns nothing about whether the address was already on the list.
 import crypto from "node:crypto";
 import { sql, type SQL } from "drizzle-orm";
 import { db } from "../db";
 import { accessAuditLogs } from "@shared/schema";
+import { waitlistUnsubscribeUrl } from "./waitlist-unsubscribe-token";
+import { composeWaitlistOpenEmail } from "./waitlist-open-email";
 import {
   WAITLIST_QA_EMAIL_DOMAIN,
   WAITLIST_SEARCH_LIMIT,
   WAITLIST_CONSENT_KEY,
+  WAITLIST_MARKETING_CONSENT_KEY,
   WAITLIST_EXPERT_LINK_SOURCE,
   WAITLIST_MARKET_OPTIONS,
+  waitlistCityName,
   waitlistConsentText,
   waitlistConsentVersion,
   normalizeWaitlistEmail,
@@ -26,18 +32,59 @@ import {
   type WaitlistJoinBody,
 } from "@shared/launch-waitlist";
 
+type SqlClient = Pick<typeof db, "execute">;
+
 /**
  * Records the market's consent wording once (ON CONFLICT DO NOTHING on (consent_key, version)); returns its version.
  * LW-2: one row per market, version `f1-2026-10-15:<market>`, body the exact text shown beside that city's tick.
  */
-export async function ensureConsentText(marketSlug: string): Promise<string> {
+export async function ensureConsentText(marketSlug: string, exec: SqlClient = db): Promise<string> {
   const version = waitlistConsentVersion(marketSlug);
-  await db.execute(sql`
+  await exec.execute(sql`
     INSERT INTO consent_texts (id, consent_key, version, body, created_at)
     VALUES (gen_random_uuid(), ${WAITLIST_CONSENT_KEY}, ${version}, ${waitlistConsentText(marketSlug)}, NOW())
     ON CONFLICT (consent_key, version) DO NOTHING
   `);
   return version;
+}
+
+/**
+ * The news box has no seeded wording. A version is present only when a consent_texts row
+ * for launch_marketing_news already exists. Absent means the ticked box writes nothing.
+ */
+async function marketingTextVersion(exec: SqlClient): Promise<string | null> {
+  const found = await exec.execute(sql`
+    SELECT version FROM consent_texts
+    WHERE consent_key = ${WAITLIST_MARKETING_CONSENT_KEY}
+      AND version IS NOT NULL
+      AND btrim(version) <> ''
+    ORDER BY created_at DESC NULLS LAST
+    LIMIT 1
+  `);
+  const version = (found.rows?.[0] as { version?: unknown } | undefined)?.version;
+  return typeof version === "string" && version.trim() !== "" ? version.trim() : null;
+}
+
+/**
+ * One consent_records row. A repeat tick keeps the first consented_at and the first text version,
+ * and never clears revoked_at (re-consent after revoke is not this rail).
+ */
+async function writeConsentRow(
+  exec: SqlClient,
+  row: { waitlistId: string; marketSlug: string; consentKey: string; version: string },
+): Promise<void> {
+  await exec.execute(sql`
+    INSERT INTO consent_records
+      (id, waitlist_id, market_slug, consent_key, consent_text_version, consented_at, revoked_at, created_at)
+    VALUES
+      (gen_random_uuid()::text, ${row.waitlistId}, ${row.marketSlug}, ${row.consentKey}, ${row.version}, NOW(), NULL, NOW())
+    ON CONFLICT (waitlist_id, consent_key) DO UPDATE SET
+      consented_at = COALESCE(consent_records.consented_at, EXCLUDED.consented_at),
+      consent_text_version = CASE
+        WHEN consent_records.consented_at IS NULL THEN EXCLUDED.consent_text_version
+        ELSE consent_records.consent_text_version
+      END
+  `);
 }
 
 /** A credit the server resolved from a short link (`resolveWaitlistReferral`), never from a request body. */
@@ -62,7 +109,8 @@ export async function joinWaitlist(
   const referrerUserId = credit?.referrerUserId ?? null;
   const shortLinkCode = credit?.shortLinkCode ?? null;
   const consent = body.consent === true;
-  const consentVersion = consent ? await ensureConsentText(marketSlug) : null;
+  // Omitted marketingConsent is false. A ticked box still writes nothing until a text version exists.
+  const marketingConsent = body.marketingConsent === true;
   const tripType = traveler ? body.tripType ?? null : null;
   const roughMonth = traveler ? body.roughMonth ?? null : null;
   const worry = traveler && body.worry?.trim() ? body.worry.trim() : null;
@@ -73,33 +121,55 @@ export async function joinWaitlist(
   const area = body.otherCity?.trim() ? body.otherCity.trim() : null;
   // `created_at` is written only on insert. A repeat sets `updated_at` and leaves `created_at`, so the two
   // are equal only when this statement born the row. That is the invite's once-per-sign-up gate (S-22).
-  const written = await db.execute(sql`
-    INSERT INTO launch_waitlist
-      (id, email, market_slug, role, source, trip_type, rough_month, worry,
-       contact_name, business_name, service_type, area, referrer_user_id, short_link_code,
-       consent_at, consent_text_version, created_at, updated_at)
-    VALUES
-      (gen_random_uuid(), ${email}, ${marketSlug}, ${role}, ${source}, ${tripType}, ${roughMonth}, ${worry},
-       ${contactName}, ${businessName}, ${serviceType}, ${area}, ${referrerUserId}, ${shortLinkCode},
-       CASE WHEN ${consent} THEN NOW() ELSE NULL END, ${consentVersion}, NOW(), NOW())
-    ON CONFLICT (email, market_slug) DO UPDATE SET
-      updated_at           = NOW(),
-      role                 = EXCLUDED.role,
-      trip_type            = EXCLUDED.trip_type,
-      rough_month          = EXCLUDED.rough_month,
-      worry                = EXCLUDED.worry,
-      contact_name         = EXCLUDED.contact_name,
-      business_name        = EXCLUDED.business_name,
-      service_type         = EXCLUDED.service_type,
-      area                 = EXCLUDED.area,
-      consent_text_version = CASE WHEN launch_waitlist.consent_at IS NULL THEN EXCLUDED.consent_text_version ELSE launch_waitlist.consent_text_version END,
-      consent_at           = COALESCE(launch_waitlist.consent_at, EXCLUDED.consent_at)
-    RETURNING created_at, updated_at
-  `);
-  const row = written.rows[0] as { created_at?: Date | string; updated_at?: Date | string } | undefined;
-  const created = row?.created_at ? new Date(row.created_at).getTime() : NaN;
-  const updated = row?.updated_at ? new Date(row.updated_at).getTime() : NaN;
-  return { inserted: Number.isFinite(created) && created === updated };
+  // Consent rows are written in the SAME transaction as the upsert. An unticked box writes nothing.
+  return db.transaction(async (tx) => {
+    const consentVersion = consent ? await ensureConsentText(marketSlug, tx) : null;
+    const marketingVersion = marketingConsent ? await marketingTextVersion(tx) : null;
+    const written = await tx.execute(sql`
+      INSERT INTO launch_waitlist
+        (id, email, market_slug, role, source, trip_type, rough_month, worry,
+         contact_name, business_name, service_type, area, referrer_user_id, short_link_code,
+         consent_at, consent_text_version, created_at, updated_at)
+      VALUES
+        (gen_random_uuid(), ${email}, ${marketSlug}, ${role}, ${source}, ${tripType}, ${roughMonth}, ${worry},
+         ${contactName}, ${businessName}, ${serviceType}, ${area}, ${referrerUserId}, ${shortLinkCode},
+         CASE WHEN ${consent} THEN NOW() ELSE NULL END, ${consentVersion}, NOW(), NOW())
+      ON CONFLICT (email, market_slug) DO UPDATE SET
+        updated_at           = NOW(),
+        role                 = EXCLUDED.role,
+        trip_type            = EXCLUDED.trip_type,
+        rough_month          = EXCLUDED.rough_month,
+        worry                = EXCLUDED.worry,
+        contact_name         = EXCLUDED.contact_name,
+        business_name        = EXCLUDED.business_name,
+        service_type         = EXCLUDED.service_type,
+        area                 = EXCLUDED.area,
+        consent_text_version = CASE WHEN launch_waitlist.consent_at IS NULL THEN EXCLUDED.consent_text_version ELSE launch_waitlist.consent_text_version END,
+        consent_at           = COALESCE(launch_waitlist.consent_at, EXCLUDED.consent_at)
+      RETURNING id, created_at, updated_at
+    `);
+    const row = written.rows[0] as { id?: string; created_at?: Date | string; updated_at?: Date | string } | undefined;
+    const waitlistId = row?.id ? String(row.id) : null;
+    if (waitlistId && consent && consentVersion) {
+      await writeConsentRow(tx, {
+        waitlistId,
+        marketSlug,
+        consentKey: WAITLIST_CONSENT_KEY,
+        version: consentVersion,
+      });
+    }
+    if (waitlistId && marketingConsent && marketingVersion) {
+      await writeConsentRow(tx, {
+        waitlistId,
+        marketSlug,
+        consentKey: WAITLIST_MARKETING_CONSENT_KEY,
+        version: marketingVersion,
+      });
+    }
+    const created = row?.created_at ? new Date(row.created_at).getTime() : NaN;
+    const updated = row?.updated_at ? new Date(row.updated_at).getTime() : NaN;
+    return { inserted: Number.isFinite(created) && created === updated };
+  });
 }
 
 /**
@@ -351,4 +421,129 @@ export async function deleteWaitlistRow(
     });
     return true;
   });
+}
+
+export const WAITLIST_UNSUBSCRIBE_LIST = "waitlist";
+
+export interface WaitlistUnsubscribeConfirm {
+  ok: true;
+  list: typeof WAITLIST_UNSUBSCRIBE_LIST;
+  market: string | null;
+  city: string | null;
+}
+
+/** GET confirm. Verifies the token and names the list and city. Does not revoke. */
+export async function confirmWaitlistUnsubscribe(token: string): Promise<WaitlistUnsubscribeConfirm | { ok: false }> {
+  const { verifyWaitlistUnsubscribeToken } = await import("./waitlist-unsubscribe-token");
+  const id = verifyWaitlistUnsubscribeToken(token);
+  if (!id) return { ok: false };
+  const found = await db.execute(sql`
+    SELECT market_slug FROM launch_waitlist WHERE id = ${id} LIMIT 1
+  `);
+  const row = found.rows?.[0] as { market_slug?: string | null } | undefined;
+  if (!row) return { ok: false };
+  const market = row.market_slug ?? null;
+  return {
+    ok: true,
+    list: WAITLIST_UNSUBSCRIBE_LIST,
+    market,
+    city: market ? waitlistCityName(market) : null,
+  };
+}
+
+/**
+ * POST revoke. Sets revoked_at on every consent_records row for this waitlist id
+ * (first timestamp kept) and launch_waitlist.unsubscribed_at (first timestamp kept).
+ * A bad token or a missing row writes nothing.
+ */
+export async function revokeWaitlistUnsubscribe(token: string): Promise<{ ok: true } | { ok: false }> {
+  const { verifyWaitlistUnsubscribeToken } = await import("./waitlist-unsubscribe-token");
+  const id = verifyWaitlistUnsubscribeToken(token);
+  if (!id) return { ok: false };
+  return db.transaction(async (tx) => {
+    const found = await tx.execute(sql`
+      SELECT id FROM launch_waitlist WHERE id = ${id} FOR UPDATE
+    `);
+    if (!found.rows?.[0]) return { ok: false };
+    await tx.execute(sql`
+      UPDATE consent_records
+      SET revoked_at = COALESCE(revoked_at, NOW())
+      WHERE waitlist_id = ${id}
+    `);
+    await tx.execute(sql`
+      UPDATE launch_waitlist
+      SET unsubscribed_at = COALESCE(unsubscribed_at, NOW()),
+          updated_at = NOW()
+      WHERE id = ${id}
+    `);
+    return { ok: true };
+  });
+}
+
+export interface MarketOpenedCounts { enqueued: number; skipped: number }
+
+/**
+ * Enqueue one waitlist_open email per consented, not-revoked, not-unsubscribed recipient
+ * in this market and role. QA addresses are left out. A second call for the same
+ * market, role and email enqueues nothing (dedupeKey). This does not decide whether
+ * the row is sent: EMAIL_SENDS_ENABLED and EMAIL_TEMPLATE_ALLOWLIST stay as they are.
+ */
+export async function enqueueMarketOpened(input: { market: string; role: "traveler" | "provider" }): Promise<MarketOpenedCounts> {
+  const { enqueueEmail } = await import("./email-outbox.service");
+  const market = input.market;
+  const role = input.role;
+  const city = waitlistCityName(market);
+  const recipients = await db.execute(sql`
+    SELECT w.id, w.email
+    FROM launch_waitlist w
+    WHERE w.market_slug = ${market}
+      AND COALESCE(w.role, 'traveler') = ${role}
+      AND w.unsubscribed_at IS NULL
+      AND w.email IS NOT NULL
+      AND btrim(w.email) <> ''
+      AND NOT ${isQaSql(sql.raw("w.email"))}
+      AND EXISTS (
+        SELECT 1 FROM consent_records c
+        WHERE c.waitlist_id = w.id
+          AND c.consent_key = ${WAITLIST_CONSENT_KEY}
+          AND c.consented_at IS NOT NULL
+          AND c.revoked_at IS NULL
+      )
+  `);
+  let enqueued = 0;
+  let skipped = 0;
+  for (const raw of recipients.rows as { id: string; email: string }[]) {
+    const email = normalizeWaitlistEmail(raw.email);
+    const dedupeKey = `market-opened-${market}-${role}-${email}`;
+    const existing = await db.execute(sql`
+      SELECT 1 FROM email_outbox WHERE metadata->>'dedupeKey' = ${dedupeKey} LIMIT 1
+    `);
+    if ((existing.rows?.length ?? 0) > 0) {
+      skipped += 1;
+      continue;
+    }
+    if (!city) {
+      skipped += 1;
+      continue;
+    }
+    const composed = await composeWaitlistOpenEmail({
+      cityName: city,
+      unsubscribeUrl: waitlistUnsubscribeUrl(String(raw.id)),
+    });
+    if (!composed.ok) {
+      skipped += 1;
+      continue;
+    }
+    const id = await enqueueEmail({
+      to: email,
+      subject: composed.subject,
+      html: composed.html,
+      text: composed.text,
+      emailType: "waitlist_open",
+      metadata: { dedupeKey, marketSlug: market, role },
+    });
+    if (id == null) skipped += 1;
+    else enqueued += 1;
+  }
+  return { enqueued, skipped };
 }

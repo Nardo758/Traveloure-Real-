@@ -13067,3 +13067,21 @@ export const consentTexts = pgTable("consent_texts", {
   keyVersionUniq: uniqueIndex("uq_consent_texts_key_version").on(table.consentKey, table.version),
 }));
 export type ConsentText = typeof consentTexts.$inferSelect;
+
+// 291a (migration 415, HELD): one consent row per (waitlist row, consent key). market_slug is copied
+// from the waitlist row. launch_waitlist is not altered — its market_slug already exists (381).
+// No IP and no user-agent. Unique (waitlist_id, consent_key) is born with the empty table.
+// ON DELETE CASCADE so the admin hard-delete of a waitlist row removes its consent rows with it.
+export const consentRecords = pgTable("consent_records", {
+  id: varchar("id").primaryKey(),
+  waitlistId: varchar("waitlist_id").notNull().references(() => launchWaitlist.id, { onDelete: "cascade" }),
+  marketSlug: varchar("market_slug", { length: 64 }),
+  consentKey: varchar("consent_key", { length: 64 }).notNull(),
+  consentTextVersion: varchar("consent_text_version", { length: 40 }),
+  consentedAt: timestamp("consented_at"),
+  revokedAt: timestamp("revoked_at"),
+  createdAt: timestamp("created_at"),
+}, (table) => ({
+  waitlistKeyUniq: uniqueIndex("uq_consent_records_waitlist_key").on(table.waitlistId, table.consentKey),
+}));
+export type ConsentRecord = typeof consentRecords.$inferSelect;

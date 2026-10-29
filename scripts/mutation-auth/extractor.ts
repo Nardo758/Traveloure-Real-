@@ -74,7 +74,12 @@ const paymentBoundaryOverrides: Record<string, Boundary> = {
 // classification used by existing-trip mutations.
 // The launch waitlist (LW-1c/LW-1d) is a public, rate-limited form: anonymous visitors join it. It reads the
 // session only OPTIONALLY (getUserId), to refuse crediting a visitor through their own short link — never to admit.
-const publicSystemOverrides = new Set(["POST /api/trips", "POST /api/waitlist"]);
+const publicSystemOverrides = new Set([
+  "POST /api/trips",
+  "POST /api/waitlist",
+  // 291a: public unsubscribe. No session. A token is not a user id.
+  "POST /api/waitlist/unsubscribe",
+]);
 
 function textPath(node: ts.Expression): string | undefined {
   if (ts.isStringLiteralLike(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text;

@@ -2180,4 +2180,10 @@ export const MIGRATION_FILES = [
   // Ledger 2026-10-28-invite-send-state-server. Declared in shared/guest-invites-schema.ts.
   // The organizer send state is derived; this column is the pointer, not a status.
   "414_invite_send_log_outbox_id.sql",
+  // 415 — consent_records. New table only. waitlist_id FK to launch_waitlist(id)
+  // ON DELETE CASCADE, market_slug, UNIQUE (waitlist_id, consent_key).
+  // Does not alter launch_waitlist. No DEFAULT, no CHECK, no IP, no backfill.
+  // HELD for "Migration 415 SQL approved — Leon". Ledger 2026-10-29-waitlist-consent-server.
+  // Declared in shared/schema.ts.
+  "415_consent_records.sql",
 ] as const;
