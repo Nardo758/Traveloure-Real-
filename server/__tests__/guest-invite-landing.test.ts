@@ -60,7 +60,7 @@ const FULL = {
   tripTimezone: "Asia/Tokyo",
   rsvpStatus: "accepted",
 };
-const TEN = ["area", "eventDate", "hostFirstName", "hostNote", "rsvpBy", "startTime", "timezone", "title", "venue", "venueAddress"];
+const ELEVEN = ["area", "eventDate", "hasVenueAddress", "hostFirstName", "hostNote", "rsvpBy", "startTime", "timezone", "title", "venue", "venueAddress"];
 
 /** An invite carrying EVERY event_invites column with a distinct sentinel value. */
 function sentinelInvite(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -70,14 +70,15 @@ function sentinelInvite(overrides: Record<string, unknown> = {}): Record<string,
 }
 const SEVEN = ["guestName", "id", "numberOfGuests", "originCity", "originCountry", "originState", "rsvpStatus"];
 
-test("L1 the landing is an allowlist of exactly ten keys", () => {
+test("L1 the landing is an allowlist of exactly eleven keys", () => {
   const input = {
     ...FULL,
     budget: "5000", preferences: { a: 1 }, stepData: { s: 1 }, mapData: {}, guestCount: 80, tripId: "trip-1",
     userId: "user-1", organizerId: "org-1", hostEmail: "host@example.com", hostPhone: "555-0100", lastName: "Lee",
     vendors: [{ name: "Florist" }],
   } as any;
-  assert.deepEqual(Object.keys(buildGuestLanding(input)).sort(), TEN);
+  // Row 207 added hasVenueAddress. The other ten keys are the row 277 allowlist.
+  assert.deepEqual(Object.keys(buildGuestLanding(input)).sort(), ELEVEN);
 });
 
 test("L2 the street address is released only at rsvpStatus accepted", () => {

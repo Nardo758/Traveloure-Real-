@@ -46,6 +46,7 @@
 
 import type { GuestInviteEmailParams } from "./guest-invite-email";
 import type { EventInvite, InviteTemplate } from "../../shared/guest-invites-schema";
+import { asGuestInviteCalendarDay } from "./email-outbox-expiry";
 import { dispatchMessagingEvent } from "../automations/messaging/runtime";
 import { dispatchMessagingProducer } from "../automations/messaging/producer-index";
 import { guestInviteSendAutomation } from "../automations/messaging/guest-invite-send";
@@ -77,7 +78,14 @@ export const INVITE_SEND_METHOD = "email" as const;
  *                          or the row does not belong to this experience/organizer pair.
  * `enqueue_failed`       — no durable outbox row could be written; `invite_sent_at` was put back.
  */
-export type InviteSendOutcome = "enqueued" | "skipped_recently_sent" | "enqueue_failed";
+export type InviteSendOutcome =
+  | "enqueued"
+  | "skipped_recently_sent"
+  | "enqueue_failed"
+  /** The existing outbox row is already sent. It was not changed and no second row was written. */
+  | "already_sent"
+  /** More than one outbox row and no pointer. Nothing was written. */
+  | "ambiguous_outbox";
 
 export interface InviteSendRowResult {
   inviteId: string;
@@ -99,7 +107,31 @@ export interface ExperienceSendContext {
   title: string | null;
   location: string | null;
   eventDate: string | null;
+  /** user_experiences.rsvp_by, "YYYY-MM-DD", or null when the occasion never stated one. */
+  rsvpBy?: string | null;
   defaultVisibility: string | null;
+}
+
+/**
+ * What `enqueue` reports. A bare number is the test double's "the outbox
+ * accepted this id". The real outbox returns the action.
+ */
+export type InviteEnqueuePortResult =
+  | number
+  | null
+  | { action: "created" | "updated" | "left_sent"; outboxId: number }
+  | { action: "ambiguous" };
+
+function readEnqueueResult(result: InviteEnqueuePortResult):
+  | { action: "created" | "updated"; outboxId: number }
+  | { action: "left_sent"; outboxId: number }
+  | { action: "ambiguous" }
+  | { action: "failed" } {
+  if (result == null) return { action: "failed" };
+  if (typeof result === "number") return { action: "created", outboxId: result };
+  if (result.action === "ambiguous") return { action: "ambiguous" };
+  if (result.action === "left_sent") return { action: "left_sent", outboxId: result.outboxId };
+  return { action: result.action, outboxId: result.outboxId };
 }
 
 /** Every effect this module has, so the decision logic can be tested without either. */
@@ -120,6 +152,8 @@ export interface InviteSendPorts {
     recipientAddress: string;
     status: string;
     errorMessage?: string | null;
+    /** Set when an outbox row exists. Omitted on a failure so a later upsert does not clear a pointer. */
+    outboxId?: number | null;
   }): Promise<unknown>;
   getInviteTemplateForUser(templateId: string, userId: string): Promise<InviteTemplate | null>;
   enqueue(params: {
@@ -127,7 +161,10 @@ export interface InviteSendPorts {
     inviteId: string;
     experienceId: string;
     email: GuestInviteEmailParams;
-  }): Promise<number | null>;
+    /** Raw calendar days. The letter's formatted date stays on `email.eventDate`. */
+    rsvpBy?: string | null;
+    eventDay?: string | null;
+  }): Promise<InviteEnqueuePortResult>;
   now(): Date;
 }
 
@@ -295,14 +332,16 @@ async function sendExperienceInvitesAction(
     }
 
     const invite = claim.invite;
-    let outboxId: number | null = null;
     let failure: string | null = null;
+    let enqueued: InviteEnqueuePortResult = null;
 
     try {
-      outboxId = await ports.enqueue({
+      enqueued = await ports.enqueue({
         toEmail: invite.guestEmail,
         inviteId: invite.id,
         experienceId: params.experienceId,
+        rsvpBy: asGuestInviteCalendarDay(ctx.rsvpBy),
+        eventDay: asGuestInviteCalendarDay(ctx.eventDate),
         email: {
           guestName: invite.guestName,
           eventTitle: ctx.title,
@@ -320,7 +359,19 @@ async function sendExperienceInvitesAction(
       console.error("[guest-invite] enqueue threw", { inviteId: invite.id, error: failure });
     }
 
-    if (outboxId === null) {
+    const read = readEnqueueResult(enqueued);
+    if (read.action === "left_sent" || read.action === "ambiguous") {
+      // The claim moved invite_sent_at. Put the previous stamp back: this click
+      // did not send, and it did not change the outbox row.
+      await ports.releaseInviteSendClaim(invite.id, now, claim.previousSentAt);
+      results.push({
+        inviteId: invite.id,
+        outcome: read.action === "left_sent" ? "already_sent" : "ambiguous_outbox",
+      });
+      continue;
+    }
+
+    if (read.action === "failed") {
       // No durable outbox row ⇒ nothing will ever be retried ⇒ the stamp would be false.
       await ports.releaseInviteSendClaim(invite.id, now, claim.previousSentAt);
       await ports.recordInviteSendLog({
@@ -338,10 +389,11 @@ async function sendExperienceInvitesAction(
       inviteId: invite.id,
       method: INVITE_SEND_METHOD,
       recipientAddress: invite.guestEmail,
-      // 'sent' here means THE OUTBOX ACCEPTED IT. The outbox row carries the real delivery state
-      // and its own retries; this log row records that the host asked and the platform took it.
+      // Attempt record only: the outbox accepted or already held a row. The
+      // organizer's send state is derived from that row and is not this column.
       status: "sent",
       errorMessage: null,
+      outboxId: read.outboxId,
     });
     results.push({ inviteId: invite.id, outcome: "enqueued", sentAt: now.toISOString() });
   }

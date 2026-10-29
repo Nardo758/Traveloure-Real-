@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, timestamp, boolean, jsonb, decimal, integer, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, jsonb, decimal, integer, bigint, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
@@ -156,9 +156,15 @@ export const inviteSendLog = pgTable("invite_send_log", {
   method: varchar("method", { length: 20 }).notNull(), // email, sms, whatsapp
   recipientAddress: varchar("recipient_address", { length: 255 }).notNull(),
   
-  // Send status
+  // Attempt record. 'sent' means the outbox accepted a row; 'failed' means no
+  // durable row was written. It is NOT the organizer's send state — that is
+  // derived (shared/invite-send-state.ts) and is not stored.
   status: varchar("status", { length: 20 }).notNull(), // sent, failed, bounced, opened, clicked
   errorMessage: text("error_message"),
+  // Row 207 (migration 414). Pointer at email_outbox.id. NULL = none recorded
+  // (every row from before this column, and a failed enqueue). Nullable, no
+  // default, no FK: a dangling id is read as not sent. Not a status.
+  outboxId: bigint("outbox_id", { mode: "number" }),
   
   // Tracking
   sentAt: timestamp("sent_at").defaultNow(),
@@ -227,6 +233,8 @@ export const insertInviteTemplateSchema = createInsertSchema(inviteTemplates).om
 export const insertInviteSendLogSchema = createInsertSchema(inviteSendLog).omit({
   id: true,
   sentAt: true,
+  // Server-written pointer. A client body must not name the outbox row (§19).
+  outboxId: true,
 });
 
 // === TYPES ===

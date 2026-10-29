@@ -1043,34 +1043,166 @@ export async function enqueueBookingAlertEmail(params: BookingAlertParams): Prom
 // ── Guest invite ──────────────────────────────────────────────────────────────
 
 /**
- * Enqueue ONE guest's invite email through the outbox (ledger 2026-09-04-invite-mailer).
+ * Enqueue ONE guest's invite email through the outbox (ledger 2026-09-04-invite-mailer,
+ * row 207).
  *
- * The guest-invite rail has no mail path of its own: it enqueues here like every other
- * transactional email, so the platform kill switch, the retry schedule and the admin
- * dead-letter view all apply unchanged (§18 rule 1 — one mail implementation, many callers).
+ * One outbox row per invite. The first call inserts and attempts delivery through
+ * the existing enqueue path. A later call re-addresses that row (recipient, body,
+ * expires_at) and does not insert another. A row whose status is already `sent`
+ * is left unchanged. Two or more rows and no log pointer is `ambiguous`: nothing
+ * is written.
  *
- * Returns the outbox row id, or null when NO durable row could be written. The caller treats
- * null as "not enqueued" and must not stamp the invite as sent — an email with no outbox row is
- * never retried, so calling it sent would be a claim the platform cannot support (§13).
- *
- * ENQUEUED IS NOT DELIVERED. A non-null id means the outbox accepted the message, nothing more.
- * Never report it to a host as received, opened or read.
+ * `created` / `updated` carry the row id. `null` means no durable row could be
+ * written. ENQUEUED IS NOT DELIVERED. expires_at is set on the insert only
+ * (rsvp_by when that day is usable, otherwise the event date, otherwise null).
+ * A re-click does not write expires_at again. The drain is unchanged.
  */
+export type GuestInviteEnqueueResult =
+  | { action: "created" | "updated" | "left_sent"; outboxId: number }
+  | { action: "ambiguous" }
+  | null;
+
+function guestInviteDedupeKey(inviteId: string): string {
+  return `guest-invite:${inviteId}`;
+}
+
+function outboxIdOf(value: unknown): number | null {
+  if (value == null) return null;
+  const id = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(id) ? id : null;
+}
+
+/**
+ * The one outbox row for this invite, or why there isn't one to update.
+ *
+ * The log's outbox_id is the pointer when it is set. Otherwise a single
+ * guest_invite row whose metadata names the invite is that row. Two or more,
+ * and no pointer, is ambiguous: this does not pick one and does not insert
+ * another.
+ */
+async function resolveGuestInviteOutbox(inviteId: string): Promise<
+  | { kind: "none" }
+  | { kind: "one"; id: number; status: string }
+  | { kind: "ambiguous" }
+> {
+  const pointer = await db.execute(sql`
+    SELECT outbox_id
+    FROM invite_send_log
+    WHERE invite_id = ${inviteId}
+      AND outbox_id IS NOT NULL
+    ORDER BY sent_at DESC NULLS LAST, id DESC
+    LIMIT 1
+  `);
+  const pointerId = outboxIdOf((pointer.rows?.[0] as { outbox_id?: unknown } | undefined)?.outbox_id);
+  if (pointerId != null) {
+    const pointed = await db.execute(sql`
+      SELECT id, status FROM email_outbox WHERE id = ${pointerId}
+    `);
+    const row = pointed.rows?.[0] as { id?: unknown; status?: unknown } | undefined;
+    if (row) return { kind: "one", id: Number(row.id), status: String(row.status) };
+  }
+
+  const candidates = await db.execute(sql`
+    SELECT id, status
+    FROM email_outbox
+    WHERE email_type = 'guest_invite'
+      AND (
+        metadata->>'inviteId' = ${inviteId}
+        OR metadata->>'dedupeKey' = ${guestInviteDedupeKey(inviteId)}
+      )
+    ORDER BY id ASC
+  `);
+  const rows = (candidates.rows ?? []) as Array<{ id?: unknown; status?: unknown }>;
+  if (rows.length === 0) return { kind: "none" };
+  if (rows.length === 1) return { kind: "one", id: Number(rows[0].id), status: String(rows[0].status) };
+  return { kind: "ambiguous" };
+}
+
+/**
+ * Rewrite the address and body of an existing row. A sent row matches nothing
+ * here. Status, attempt count, the provider id and expires_at stay as the
+ * insert left them (expiry is recorded once; email-outbox-expiry.test.ts).
+ */
+async function readdressGuestInviteOutbox(
+  outboxId: number,
+  params: {
+    toEmail: string;
+    inviteId: string;
+    experienceId: string;
+    subject: string;
+    html: string;
+    text: string;
+  },
+): Promise<boolean> {
+  const updated = await db.execute(sql`
+    UPDATE email_outbox
+    SET    to_email    = ${params.toEmail},
+           subject     = ${params.subject},
+           html        = ${params.html},
+           text_body   = ${params.text},
+           metadata    = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
+             'inviteId', ${params.inviteId}::text,
+             'experienceId', ${params.experienceId}::text,
+             'dedupeKey', ${guestInviteDedupeKey(params.inviteId)}::text
+           ),
+           updated_at  = NOW()
+    WHERE  id = ${outboxId}
+      AND  status <> 'sent'
+    RETURNING id
+  `);
+  return (updated.rows ?? []).length > 0;
+}
+
 export async function enqueueGuestInviteEmail(params: {
   toEmail: string;
   inviteId: string;
   experienceId: string;
   email: GuestInviteEmailParams;
-}): Promise<number | null> {
+  /** Raw "YYYY-MM-DD" from user_experiences.rsvp_by. Not the formatted letter date. */
+  rsvpBy?: string | null;
+  /** Raw "YYYY-MM-DD" from user_experiences.event_date. */
+  eventDay?: string | null;
+}): Promise<GuestInviteEnqueueResult> {
   const payload = buildGuestInviteEmailPayload(params.email);
-  return enqueueEmail({
+  const rsvpBy = params.rsvpBy ?? null;
+  const eventDay = params.eventDay ?? null;
+  const resolved = await resolveGuestInviteOutbox(params.inviteId);
+
+  if (resolved.kind === "ambiguous") return { action: "ambiguous" };
+
+  if (resolved.kind === "one") {
+    if (resolved.status === "sent") return { action: "left_sent", outboxId: resolved.id };
+    const wrote = await readdressGuestInviteOutbox(resolved.id, {
+      toEmail: params.toEmail,
+      inviteId: params.inviteId,
+      experienceId: params.experienceId,
+      subject: payload.subject,
+      html: payload.html,
+      text: payload.text,
+    });
+    if (wrote) return { action: "updated", outboxId: resolved.id };
+    const still = await db.execute(sql`SELECT status FROM email_outbox WHERE id = ${resolved.id}`);
+    const status = (still.rows?.[0] as { status?: unknown } | undefined)?.status;
+    if (status === "sent") return { action: "left_sent", outboxId: resolved.id };
+    return null;
+  }
+
+  const outboxId = await enqueueEmail({
     emailType: "guest_invite",
     to:        params.toEmail,
     subject:   payload.subject,
     html:      payload.html,
     text:      payload.text,
-    metadata:  { inviteId: params.inviteId, experienceId: params.experienceId },
+    metadata:  {
+      inviteId: params.inviteId,
+      experienceId: params.experienceId,
+      dedupeKey: guestInviteDedupeKey(params.inviteId),
+      rsvpBy,
+      eventDate: eventDay,
+    },
   });
+  if (outboxId == null) return null;
+  return { action: "created", outboxId };
 }
 
 // ── Scheduler wrapper (used by server/index.ts) ───────────────────────────────

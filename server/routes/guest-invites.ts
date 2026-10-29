@@ -6,6 +6,7 @@ import { storage } from "../storage";
 import { createRateLimiter, strictRateLimiter } from "../infrastructure/rate-limiter";
 import crypto from "crypto";
 import { buildInviteLink, sendExperienceInvites } from "../services/guest-invite-send.service";
+import { loadInviteSendStates } from "../services/invite-send-state";
 import { loadPlanGuestRoster } from "../services/plan-guest-roster.service";
 import { authorizeTripOwnerTier } from "../utils/trip-logistics-auth";
 import { buildGuestLanding, projectInviteForGuest } from "../services/guest-invite-landing";
@@ -271,10 +272,10 @@ router.get("/api/events/:experienceId/invites", isAuthenticated, async (req: Req
 
     const invites = await storage.getInvitesByExperience(experienceId);
 
-    // The send record (ledger `2026-09-04-invite-mailer`). `invite_send_log` is the table of what
-    // actually went out; the host sees the most recent attempt per invite beside the row. It says
-    // ACCEPTED FOR DELIVERY and nothing more — no opened, no clicked, no received.
+    // `lastSend` is the latest invite_send_log row (ledger `2026-09-04-invite-mailer`).
+    // `sendState` is derived from that row and the outbox (row 207) and is not stored.
     const sendLog = await storage.getSendLogByExperience(experienceId);
+    const sendStates = await loadInviteSendStates(experienceId);
     const lastSendByInvite = new Map<string, (typeof sendLog)[number]>();
     for (const entry of sendLog) {
       if (!lastSendByInvite.has(entry.inviteId)) lastSendByInvite.set(entry.inviteId, entry);
@@ -288,6 +289,8 @@ router.get("/api/events/:experienceId/invites", isAuthenticated, async (req: Req
         lastSend: last
           ? { status: last.status, sentAt: last.sentAt, errorMessage: last.errorMessage }
           : null,
+        // Derived. not_sent | held | sent | failed. Not a stored column.
+        sendState: sendStates.get(invite.id) ?? "not_sent",
       };
     });
 
@@ -354,8 +357,10 @@ router.post(
       const enqueued = outcome.results.filter((r) => r.outcome === "enqueued").length;
       const skipped = outcome.results.filter((r) => r.outcome === "skipped_recently_sent").length;
       const failed = outcome.results.filter((r) => r.outcome === "enqueue_failed").length;
+      const leftSent = outcome.results.filter((r) => r.outcome === "already_sent").length;
+      const ambiguous = outcome.results.filter((r) => r.outcome === "ambiguous_outbox").length;
 
-      return res.json({ enqueued, skipped, failed, results: outcome.results });
+      return res.json({ enqueued, skipped, failed, leftSent, ambiguous, results: outcome.results });
     } catch (error: any) {
       console.error("Error sending invites:", error);
       return res.status(500).json({ error: error.message });
