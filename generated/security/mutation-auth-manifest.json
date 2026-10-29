@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "generatedBy": "scripts/generate-mutation-auth-manifest.ts",
   "entrypoint": "server/routes.ts",
-  "mutationCount": 733,
-  "rawRegistrationCount": 733,
-  "uniqueMethodNormalizedPathCount": 725,
-  "distinctMethodPathCount": 725,
+  "mutationCount": 734,
+  "rawRegistrationCount": 734,
+  "uniqueMethodNormalizedPathCount": 726,
+  "distinctMethodPathCount": 726,
   "duplicateRegistrations": [
     {
       "methodPath": "POST /api/chats",
@@ -132,11 +132,11 @@
     "payments": 31,
     "admin": 196,
     "user-data": 251,
-    "other": 247
+    "other": 248
   },
   "boundaryTotals": {
     "admin-role": 196,
-    "session-self": 368,
+    "session-self": 369,
     "resource-owner": 102,
     "signature": 6,
     "public-or-system": 53,
@@ -144,7 +144,7 @@
   },
   "historicalComparison": {
     "count": 546,
-    "delta": 187,
+    "delta": 188,
     "note": "The historical count is a comparison-only baseline; generation reads only the current source mount graph."
   },
   "diagnostics": [],
@@ -7394,7 +7394,7 @@
       "path": "/api/invite-templates",
       "effectivePath": "/api/invite-templates",
       "source": "server/routes/guest-invites.ts",
-      "line": 596,
+      "line": 621,
       "risk": "other",
       "expectedAuth": "required",
       "expectedRoles": [],
@@ -7434,6 +7434,23 @@
       "expectedRoles": [],
       "expectedOwnership": "unknown",
       "expectedBoundary": "public-or-system",
+      "ownershipApplies": false,
+      "fixtureStatus": "unknown",
+      "testStatus": "unknown",
+      "diagnostics": []
+    },
+    {
+      "method": "POST",
+      "rawPath": "/api/invites/:token/plan",
+      "path": "/api/invites/:token/plan",
+      "effectivePath": "/api/invites/:token/plan",
+      "source": "server/routes/guest-invites.ts",
+      "line": 594,
+      "risk": "other",
+      "expectedAuth": "required",
+      "expectedRoles": [],
+      "expectedOwnership": "unknown",
+      "expectedBoundary": "session-self",
       "ownershipApplies": false,
       "fixtureStatus": "unknown",
       "testStatus": "unknown",

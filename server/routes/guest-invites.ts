@@ -585,6 +585,31 @@ router.post("/api/invites/:token/rsvp", guestTokenLimiter, async (req: Request, 
   }
 });
 
+/**
+ * POST /api/invites/:token/plan
+ * Row 280a. A signed-in guest mints one Trip Slip around this invite. The session user is the
+ * only identity read; the body is ignored. Repeat calls by that user return the same trip.
+ * A different user is 409. A guest who has not accepted is 403.
+ */
+router.post("/api/invites/:token/plan", guestTokenLimiter, isAuthenticated, async (req: Request, res: Response) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const result = await storage.createGuestPlanFromInvite({ token: req.params.token, userId });
+    if (!result.ok) {
+      if (result.status === 404) return res.status(404).json({ error: "Invite not found" });
+      return res.status(result.status).json({ reason: result.reason });
+    }
+    return res.status(result.created ? 201 : 200).json({ tripId: result.tripId });
+  } catch (error: any) {
+    console.error("Error planning around invite:", error);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
 // ================================================================
 // INVITE TEMPLATES — session-scoped (§14: userId from session, never body)
 // ================================================================
