@@ -10,6 +10,7 @@
  * The token is bound to the waitlist id. It does not expire. It carries no email.
  */
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { getAppBaseUrl } from "./email.service";
 
 const DOMAIN = "waitlist-unsubscribe:v1";
 
@@ -58,18 +59,10 @@ export function verifyWaitlistUnsubscribeToken(token: string, secret = waitlistU
   return id;
 }
 
-function publicBase(): string {
-  const configured = process.env.APP_BASE_URL?.trim();
-  if (configured) return configured;
-  const replit = process.env.REPLIT_DOMAINS?.split(",")[0]?.trim();
-  if (replit) return `https://${replit}`;
-  return "http://localhost:5000";
-}
-
-/** GET confirm URL. Opening it does not revoke; the confirm page POSTs the same token. */
+/** Page URL (/unsubscribe?token=). Opening it does not revoke; the confirm page POSTs the same token. */
 export function waitlistUnsubscribeUrl(waitlistId: string): string {
-  const base = publicBase();
-  const url = new URL("/api/waitlist/unsubscribe", base.endsWith("/") ? base : `${base}/`);
+  const base = getAppBaseUrl().trim();
+  const url = new URL("/unsubscribe", base.endsWith("/") ? base : `${base}/`);
   url.searchParams.set("token", signWaitlistUnsubscribeToken(waitlistId));
   return url.href;
 }

@@ -161,6 +161,7 @@ const AdminWaitlist = lazy(() => import("@/pages/admin/waitlist"));
 const AdminTicker = lazy(() => import("@/pages/admin/ticker"));
 // LW-1c: the launch market's waitlist page.
 const LaunchWaitlistPage = lazy(() => import("@/pages/launch-waitlist"));
+const WaitlistUnsubscribePage = lazy(() => import("@/pages/waitlist-unsubscribe"));
 const AdminEventPackages = lazy(() => import("@/pages/admin/event-packages"));
 const AdminPlatformProviders = lazy(() => import("@/pages/admin/platform-providers"));
 const AdminRoutingQueue = lazy(() => import("@/pages/admin/routing-queue"));
@@ -699,6 +700,10 @@ function Router() {
           blocked traveler (?blocked=1) and where the blog CTA points (?source=blog&ref=<post>). */}
       <Route path="/kyoto">
         <Layout><LaunchWaitlistPage /></Layout>
+      </Route>
+      {/* 291b: the waitlist unsubscribe page (?token=…). Public. GET confirms; only the button's POST revokes. */}
+      <Route path="/unsubscribe">
+        <Layout><WaitlistUnsubscribePage /></Layout>
       </Route>
       <Route path="/blog/:slug">
         <Layout><BlogPostPage /></Layout>

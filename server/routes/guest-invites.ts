@@ -10,6 +10,7 @@ import { loadInviteSendStates } from "../services/invite-send-state";
 import { loadPlanGuestRoster } from "../services/plan-guest-roster.service";
 import { authorizeTripOwnerTier } from "../utils/trip-logistics-auth";
 import { buildGuestLanding, projectInviteForGuest } from "../services/guest-invite-landing";
+import { rsvpSchema, rsvpUpdateValues } from "../services/guest-rsvp-body";
 
 /**
  * GUEST INVITE SYSTEM — organizer invite management + public token-based guest RSVP.
@@ -55,16 +56,6 @@ const originSchema = z.object({
   originCountry: z.string().max(100).optional(),
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
-});
-
-const rsvpSchema = z.object({
-  rsvpStatus: z.enum(["accepted", "declined", "maybe"]),
-  numberOfGuests: z.number().int().min(1).max(50).optional(),
-  dietaryRestrictions: z.array(z.string().max(100)).max(20).optional(),
-  accommodationPreference: z.enum(["hotel_block", "own_booking", "with_family", "undecided"]).optional(),
-  transportationNeeded: z.boolean().optional(),
-  specialRequests: z.string().max(2000).optional(),
-  message: z.string().max(2000).optional(),
 });
 
 /**
@@ -548,31 +539,14 @@ router.post("/api/invites/:token/rsvp", guestTokenLimiter, async (req: Request, 
   try {
     const { token } = req.params;
 
+    // Accommodation is required for "accepted" and refused for "maybe"/"declined", where it is
+    // never stored (ledger `2026-10-29-rsvp-accommodation-by-answer`).
     const validation = rsvpSchema.safeParse(req.body);
     if (!validation.success) {
       return res.status(400).json({ error: "Validation failed", details: validation.error.errors });
     }
 
-    const {
-      rsvpStatus,
-      numberOfGuests,
-      dietaryRestrictions,
-      accommodationPreference,
-      transportationNeeded,
-      specialRequests,
-      message,
-    } = validation.data;
-
-    const updated = await storage.updateInviteRsvp(token, {
-      rsvpStatus,
-      rsvpDate: new Date(),
-      numberOfGuests: numberOfGuests || 1,
-      dietaryRestrictions: dietaryRestrictions || [],
-      accommodationPreference: accommodationPreference || "undecided",
-      transportationNeeded: transportationNeeded || false,
-      specialRequests,
-      message,
-    });
+    const updated = await storage.updateInviteRsvp(token, rsvpUpdateValues(validation.data));
 
     if (!updated) {
       return res.status(404).json({ error: "Invite not found" });
