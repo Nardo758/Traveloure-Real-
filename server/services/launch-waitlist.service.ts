@@ -128,8 +128,8 @@ export async function joinWaitlist(
   const businessName = traveler || expert ? null : body.businessName?.trim() || null;
   const serviceType = traveler || expert ? null : body.serviceType ?? null;
   // LC-1b: the optional "somewhere else" note. `area` is the existing varchar(120); NULL = not answered.
-  // WL-B: an expert's "City you know best" is their area.
-  const area = expert ? body.expertCity?.trim() || null : body.otherCity?.trim() ? body.otherCity.trim() : null;
+  // WL-B: an expert's "City you know best" is the row's market (the picker), so nothing is written on `area`.
+  const area = expert ? null : body.otherCity?.trim() ? body.otherCity.trim() : null;
   // WL-B: an expert's languages and link use the existing `languages` / `website` columns; NULL = not answered.
   const languages = expert ? waitlistLanguagesList(body.languages) : null;
   const website = expert ? body.link?.trim() || null : null;

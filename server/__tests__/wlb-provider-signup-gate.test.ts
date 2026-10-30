@@ -11,10 +11,12 @@
  *   G8  the expert refusal carries reason, the exact message and applyPath = WAITLIST_EXPERT_FORM_PATH
  *   G9  a provider or traveler answer never carries applyPath or the expert message
  *   G10 WAITLIST_EXPERT_FORM_PATH is "/kyoto#experts" and WAITLIST_ROLES has "expert"
- *   G12 the waitlist body: an expert needs contactName and expertCity and may not send traveler or provider fields;
+ *   G12 the waitlist body: an expert needs contactName and a market ("City you know best" is the market picker) and
+ *       may not send traveler or provider fields;
  *       traveler and provider bodies validate as before
  *   G14 the expert keep rate the page shows is GET /api/fee-policies/keep-rates (admin config), never a literal
- *   L   a supply sign-up that names no role is decided exactly as before WL-B (open question on the PR)
+ *   L   a supply sign-up that names no role is refused provider_fields_required before launch; a social door's role
+ *       is taken from its return path (/become-expert ⇒ expert, /become-provider ⇒ provider)
  *
  * Run: npx tsx --test server/__tests__/wlb-provider-signup-gate.test.ts
  */
@@ -132,7 +134,8 @@ describe("WL-B decision", () => {
     assert.deepEqual(decideFirstTimeSignup({ mode: "waitlist", intent: "traveler", qaCodeValid: false }), { allowed: false, code: TRAVELER_WAITLIST });
     assert.deepEqual(decideFirstTimeSignup({ mode: "waitlist", intent: "traveler", qaCodeValid: true }), { allowed: true });
     assert.deepEqual(decideFirstTimeSignup({ mode: "open", intent: "traveler", qaCodeValid: false }), { allowed: true });
-    assert.deepEqual(decideFirstTimeSignup({ mode: "waitlist", intent: "supply", qaCodeValid: false }), { allowed: true });
+    assert.deepEqual(decideFirstTimeSignup({ mode: "waitlist", intent: "supply", qaCodeValid: false }), { allowed: false, reason: PROVIDER_FIELDS_REQUIRED });
+    assert.deepEqual(decideFirstTimeSignup({ mode: "waitlist", intent: "supply", qaCodeValid: true }), { allowed: true }, "a QA sign-up passes");
     assert.deepEqual(decideFirstTimeSignup({ mode: "open", intent: "supply", qaCodeValid: false, supplyRole: "expert" }), { allowed: true }, "after launch nobody is refused");
   });
 
@@ -174,7 +177,8 @@ describe("WL-B on every path", () => {
     await assert.rejects(() => upsertUser({ sub: "wlb-r-1" }, { intent: "supply", supplyRole: "expert" }), new RegExp(EXPERT_APPLY_NOW));
     await assert.rejects(() => upsertUser({ sub: "wlb-r-2" }, { intent: "supply", supplyRole: "provider" }), new RegExp(PROVIDER_FIELDS_REQUIRED));
     assert.equal(created.length, 0);
-    assert.equal(await upsertUser({ sub: "wlb-r-3" }, { intent: "supply" }), "wlb-r-3", "no role: as before");
+    await assert.rejects(() => upsertUser({ sub: "wlb-r-3" }, { intent: "supply" }), new RegExp(PROVIDER_FIELDS_REQUIRED), "no role: refused");
+    assert.equal(created.length, 0);
     const profile: any = { id: "9191", displayName: "F B", emails: [{ value: "wlb-fb@example.com" }], photos: [], name: { givenName: "F" } };
     for (const [role, code] of [["expert", EXPERT_APPLY_NOW], ["provider", PROVIDER_FIELDS_REQUIRED]] as const) {
       created = [];
@@ -196,29 +200,36 @@ describe("WL-B on every path", () => {
     const odd: any = { query: { intent: "supply", supplyRole: "admin" }, session: {} };
     stashSignupIntent(odd, 1_000);
     assert.equal(readSupplyRole(odd, 2_000), null);
+    const expertDoor: any = { query: { intent: "supply", returnTo: "/become-expert?type=local_expert" }, session: {} };
+    stashSignupIntent(expertDoor, 1_000);
+    assert.equal(readSupplyRole(expertDoor, 2_000), "expert", "a role-less expert door is an expert");
+    const providerDoor: any = { query: { intent: "supply", returnTo: "/become-provider" }, session: {} };
+    stashSignupIntent(providerDoor, 1_000);
+    assert.equal(readSupplyRole(providerDoor, 2_000), "provider");
   });
 });
 
 describe("WL-B waitlist body", () => {
   const base = { email: "wlb-expert@example.com", consent: true };
-  it("G12 an expert needs contactName and expertCity and may not send another role's fields", () => {
-    assert.ok(waitlistJoinBodySchema.safeParse({ ...base, role: "expert", contactName: "Fixture Expert", expertCity: "Kyoto" }).success);
-    assert.ok(waitlistJoinBodySchema.safeParse({ ...base, role: "expert", contactName: "Fixture Expert", expertCity: "Kyoto", languages: "Japanese", link: "https://example.com/work" }).success);
-    for (const missing of ["contactName", "expertCity"] as const) {
-      const body: Record<string, unknown> = { ...base, role: "expert", contactName: "Fixture Expert", expertCity: "Kyoto" };
+  it("G12 an expert needs contactName and a market and may not send another role's fields", () => {
+    assert.ok(waitlistJoinBodySchema.safeParse({ ...base, role: "expert", contactName: "Fixture Expert", market: "kyoto" }).success);
+    assert.ok(waitlistJoinBodySchema.safeParse({ ...base, role: "expert", contactName: "Fixture Expert", market: "kyoto", languages: "Japanese", link: "https://example.com/work" }).success);
+    for (const missing of ["contactName", "market"] as const) {
+      const body: Record<string, unknown> = { ...base, role: "expert", contactName: "Fixture Expert", market: "kyoto" };
       delete body[missing];
       const r = waitlistJoinBodySchema.safeParse(body);
       assert.equal(r.success, false);
       assert.ok(!r.success && r.error.issues.some((i) => i.path[0] === missing), missing);
       assert.equal(waitlistJoinBodySchema.safeParse({ ...body, [missing]: "   " }).success, false, `${missing} blank`);
     }
-    const trip = waitlistJoinBodySchema.safeParse({ ...base, role: "expert", contactName: "X", expertCity: "Kyoto", tripType: "wedding" });
+    const trip = waitlistJoinBodySchema.safeParse({ ...base, role: "expert", contactName: "X", market: "kyoto", tripType: "wedding" });
     assert.ok(!trip.success && trip.error.issues.some((i) => i.message === "traveler field"));
-    const svc = waitlistJoinBodySchema.safeParse({ ...base, role: "expert", contactName: "X", expertCity: "Kyoto", serviceType: "venue" });
+    const svc = waitlistJoinBodySchema.safeParse({ ...base, role: "expert", contactName: "X", market: "kyoto", serviceType: "venue" });
     assert.ok(!svc.success && svc.error.issues.some((i) => i.message === "provider field"));
     assert.ok(waitlistJoinBodySchema.safeParse({ ...base, tripType: "wedding" }).success, "a traveler body as before");
     assert.ok(waitlistJoinBodySchema.safeParse({ ...base, role: "provider", contactName: "P", serviceType: "transport", businessName: "B" }).success, "a provider body as before");
-    assert.equal(waitlistJoinBodySchema.safeParse({ ...base, expertCity: "Kyoto" }).success, false, "a traveler may not send expert fields");
+    assert.equal(waitlistJoinBodySchema.safeParse({ ...base, link: "https://example.com" }).success, false, "a traveler may not send expert fields");
+    assert.equal(waitlistJoinBodySchema.safeParse({ ...base, role: "expert", contactName: "X", market: "kyoto", expertCity: "Kyoto" } as any).success, false, "no expertCity key");
     assert.deepEqual(waitlistLanguagesList("Japanese, English;  "), ["Japanese", "English"]);
     assert.equal(waitlistLanguagesList("  "), null);
   });

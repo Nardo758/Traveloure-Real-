@@ -11,7 +11,7 @@
 //   - LW-1d: a supply door's raw `?source=` tag rides along (capped, never trusted as a value): the verify callback
 //     hands it to the ONE writer `recordSignupSource`, which normalizes it and stores it once on a new account.
 import { OAUTH_STATE_TTL_MS, safeReturnPath } from "../../utils/oauth-state";
-import { normalizeSignupIntent, normalizeSupplyRole, type SignupIntent, type SupplySignupRole } from "@shared/launch-signup";
+import { normalizeSignupIntent, normalizeSupplyRole, supplyRoleFromPath, type SignupIntent, type SupplySignupRole } from "@shared/launch-signup";
 
 const SESSION_KEY = "lw1SignupIntent";
 
@@ -52,9 +52,11 @@ export function readSignupIntent(req: any, now: number = Date.now()): SignupInte
   return readStash(req, now)?.intent ?? "traveler";
 }
 
-/** WL-B: the stashed supply role (or null). */
+/** WL-B: the stashed supply role; a supply door that states none takes the role its return path implies (or null). */
 export function readSupplyRole(req: any, now: number = Date.now()): SupplySignupRole | null {
-  return readStash(req, now)?.supplyRole ?? null;
+  const s = readStash(req, now);
+  if (!s || s.intent !== "supply") return null;
+  return s.supplyRole ?? supplyRoleFromPath(s.returnTo);
 }
 
 /** LW-1d: the stashed raw source tag (or null). */

@@ -120,8 +120,8 @@ export const waitlistJoinBodySchema = z
     market: z.string().trim().toLowerCase().max(64).optional(),
     // LC-1b: the optional free-text answer to "Planning somewhere else? Tell us where." Stored on `area`.
     otherCity: z.string().trim().max(120).optional(),
-    // WL-B: the expert form's fields. `expertCity` is stored on `area`, `languages` on `languages`, `link` on `website`.
-    expertCity: z.string().trim().max(120).optional(),
+    // WL-B: the expert form's fields. "City you know best" is the existing `market` picker (Leon, Oct 30, 2026: no
+    // new column); `languages` is stored on `languages` and `link` on `website`.
     languages: z.string().trim().max(200).optional(),
     link: z.string().trim().url().max(200).optional(),
     homepage: z.string().max(200).optional(),
@@ -131,7 +131,7 @@ export const waitlistJoinBodySchema = z
     const role = b.role ?? "traveler";
     const travelerFields = ["tripType", "roughMonth", "worry"] as const;
     const providerFields = ["businessName", "serviceType"] as const;
-    const expertFields = ["expertCity", "languages", "link"] as const;
+    const expertFields = ["languages", "link"] as const;
     if (role === "provider") {
       if (!b.contactName) ctx.addIssue({ code: "custom", path: ["contactName"], message: "required" });
       if (!b.serviceType) ctx.addIssue({ code: "custom", path: ["serviceType"], message: "required" });
@@ -143,7 +143,7 @@ export const waitlistJoinBodySchema = z
       }
     } else if (role === "expert") {
       if (!b.contactName) ctx.addIssue({ code: "custom", path: ["contactName"], message: "required" });
-      if (!b.expertCity) ctx.addIssue({ code: "custom", path: ["expertCity"], message: "required" });
+      if (!b.market) ctx.addIssue({ code: "custom", path: ["market"], message: "required" });
       for (const k of travelerFields) {
         if (b[k] !== undefined) ctx.addIssue({ code: "custom", path: [k], message: "traveler field" });
       }

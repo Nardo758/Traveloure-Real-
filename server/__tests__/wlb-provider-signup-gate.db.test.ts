@@ -5,7 +5,8 @@
  *
  *   G7  a new provider account writes its fields to launch_waitlist (role provider) and nothing to users beyond the
  *       account, and no service_provider_forms row; a repeat updates the same row
- *   G11 an expert waitlist row stores contactName, expertCity (area), languages and link (website)
+ *   G11 an expert waitlist row stores contactName, its market (the "City you know best" picker), languages and link
+ *       (website)
  *   G13 expert rows are counted as neither travelers nor providers
  *
  * Run: JOURNEY_DB_WRITES_OK=1 npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/wlb-provider-signup-gate.db.test.ts
@@ -117,11 +118,11 @@ test("G7 a provider sign-up writes its fields to the waitlist row, not to a prov
 
 test("G11/G13 an expert row stores its fields and is counted as neither travelers nor providers", async () => {
   const before = await waitlistCounts(MARKET);
-  await joinWaitlist({ role: "expert", email: expertEmail, consent: true, contactName: "Fixture Expert", expertCity: "Kyoto", languages: "Japanese", link: "https://example.com/work" } as any, MARKET);
+  await joinWaitlist({ role: "expert", email: expertEmail, consent: true, contactName: "Fixture Expert", market: MARKET, languages: "Japanese", link: "https://example.com/work" } as any, MARKET);
   const [row] = await waitlistRow(expertEmail);
   assert.equal(row.role, "expert");
   assert.equal(row.contact_name, "Fixture Expert");
-  assert.equal(row.area, "Kyoto");
+  assert.equal(row.area, null, "the city is the row's market");
   assert.deepEqual(row.languages, ["Japanese"]);
   assert.equal(row.website, "https://example.com/work");
   assert.equal(row.business_name, null);
