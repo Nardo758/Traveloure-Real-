@@ -18,7 +18,8 @@ describe("panel trip dates read the shared formatter", () => {
     const src = read(INTAKE);
     assert.match(src, IMPORT);
     assert.doesNotMatch(src, /formatDateRange/);
-    assert.match(src, /formatTripDates\(startDate, endDate\)/);
+    // Row 159 (sanctioned PD1 edit, Architect Oct 29, 2026): the call passes the browser language.
+    assert.match(src, /formatTripDates\(startDate, endDate, browserLocale\(\)\)/);
     assert.match(src, /`\$\{recapRange\}, \$\{recapEndYear\}`/);
     assert.match(src, /data-testid="pill-recap-dates"[\s\S]{0,40}\{recapDates\}/);
   });
@@ -27,6 +28,7 @@ describe("panel trip dates read the shared formatter", () => {
     const src = read(DRAFT);
     assert.match(src, IMPORT);
     assert.doesNotMatch(src, /formatDateRange/);
-    assert.match(src, /value=\{startDate && endDate \? formatTripDates\(startDate, endDate\) : null\}/);
+    // Row 159 (sanctioned PD2 edit, Architect Oct 29, 2026): the call passes the browser language.
+    assert.match(src, /value=\{startDate && endDate \? formatTripDates\(startDate, endDate, browserLocale\(\)\) : null\}/);
   });
 });

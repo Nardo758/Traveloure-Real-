@@ -17,6 +17,7 @@ import { updateTripContextIdentitySafe } from "@/lib/trip-context";
 import { trackEvent } from "@/lib/analytics";
 import { parsePartyCountInput, travelersForSave } from "@/lib/plan-vocabulary";
 import { formatTripDates } from "@/lib/trip-dates";
+import { browserLocale } from "@/lib/browser-locale";
 import { eventTypeForSlug } from "@shared/occasions";
 import type { ExperienceType, InsertTrip } from "@shared/schema";
 
@@ -121,7 +122,7 @@ export function IntakePanel({
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   // Recap pill: the shared trip-date range plus the end year — "Oct 12–17, 2026", "Oct 26, 2026".
-  const recapRange = formatTripDates(startDate, endDate);
+  const recapRange = formatTripDates(startDate, endDate, browserLocale());
   const recapEndYear = new Date(`${endDate}T12:00:00`).getFullYear();
   const recapDates = recapRange
     ? isNaN(recapEndYear) ? recapRange : `${recapRange}, ${recapEndYear}`
