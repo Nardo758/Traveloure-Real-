@@ -31,8 +31,10 @@ const id = (suffix: string) => `${P}-${suffix}`;
 const MIGRATION = fs.readFileSync(path.resolve("server/migrations/408_payout_setup.sql"), "utf8");
 const ROUTING = "021000021";
 // The run id is hex; an all-digit id would be an 8-digit run, which the bank-number rule rightly refuses.
-// Digits are mapped to letters so the test's own PayPal handle is never bank-like by chance.
-const HANDLE = `ps${RUN.replace(/\d/g, (d) => "abcdefghij"[Number(d)])}@example.test`;
+// Digits are mapped to letters so no PayPal handle the test builds (HANDLE, admin, other, mark, race) is
+// ever bank-like by chance.
+const HANDLE_RUN = RUN.replace(/\d/g, (d) => "abcdefghij"[Number(d)]);
+const HANDLE = `ps${HANDLE_RUN}@example.test`;
 
 const adminId = id("admin");
 const bareId = id("bare");
@@ -251,7 +253,7 @@ describe("payout setup database", { concurrency: 1 }, () => {
     await insertForm(expertDoneId, "complete");
     await insertUser(bankId, "service_provider", { method: "other", handle: ROUTING });
     await insertUser(stripeId, "service_provider", { stripe: true });
-    await insertUser(adminCreateId, "service_provider", { method: "paypal", handle: `admin${RUN}@example.test` });
+    await insertUser(adminCreateId, "service_provider", { method: "paypal", handle: `admin${HANDLE_RUN}@example.test` });
     await earning("provider_earnings", "provider_id", bareId, "25.00", "releasable", past);
     await earning("provider_earnings", "provider_id", bareId, "40.00", "held", future);
     await earning("provider_earnings", "provider_id", paypalId, "25.00", "releasable", past);
@@ -311,10 +313,10 @@ describe("payout setup database", { concurrency: 1 }, () => {
 
     const saved = await call(paymentsRouter, "put", "/api/me/payout-setup", otherId, {
       payoutMethodType: "paypal",
-      payoutHandle: `other${RUN}@example.test`,
+      payoutHandle: `other${HANDLE_RUN}@example.test`,
     });
     assert.equal(saved.statusCode, 200);
-    assert.equal(saved.body.payoutHandle, `other${RUN}@example.test`);
+    assert.equal(saved.body.payoutHandle, `other${HANDLE_RUN}@example.test`);
     assert.equal(saved.body.setupComplete, true);
     assert.deepEqual(await storedHandle(paypalId), { method: "paypal", handle: HANDLE });
 
@@ -324,7 +326,7 @@ describe("payout setup database", { concurrency: 1 }, () => {
       firstName: "Still",
     } as any);
     assert.equal(viaAuth?.firstName, "Still");
-    assert.deepEqual(await storedHandle(otherId), { method: "paypal", handle: `other${RUN}@example.test` });
+    assert.deepEqual(await storedHandle(otherId), { method: "paypal", handle: `other${HANDLE_RUN}@example.test` });
     assert.equal(JSON.stringify(viaAuth).includes(ROUTING), false);
   });
 
@@ -482,7 +484,7 @@ describe("payout setup database", { concurrency: 1 }, () => {
     assert.equal(markPaidBodySchema.safeParse({ requesterType: "provider", method: "paypal", notes: "desk-ref" }).success, true);
 
     const markUser = id("marku");
-    const markHandle = `mark${RUN}@example.test`;
+    const markHandle = `mark${HANDLE_RUN}@example.test`;
     await insertUser(markUser, "service_provider", { method: "paypal", handle: markHandle });
     await earning(
       "provider_earnings",
@@ -527,7 +529,7 @@ describe("payout setup database", { concurrency: 1 }, () => {
       VALUES (${payoutId}, ${stripeId}, '10.00', 'pending')
     `);
     await db.execute(sql`
-      UPDATE users SET payout_method_type = 'paypal', payout_handle = ${`race${RUN}@example.test`}
+      UPDATE users SET payout_method_type = 'paypal', payout_handle = ${`race${HANDLE_RUN}@example.test`}
       WHERE id = ${stripeId}
     `);
     const blocked = await storage.claimProviderPayoutForStripeTransfer(payoutId, stripeId);
@@ -550,7 +552,7 @@ describe("payout setup database", { concurrency: 1 }, () => {
     assert.equal(Number((reserved.rows[0] as any)?.n), 1);
 
     await db.execute(sql`
-      UPDATE users SET payout_method_type = 'paypal', payout_handle = ${`race${RUN}@example.test`}
+      UPDATE users SET payout_method_type = 'paypal', payout_handle = ${`race${HANDLE_RUN}@example.test`}
       WHERE id = ${stripeId}
     `);
     const released = await storage.recheckStripeTransferBeforeSend(payoutId, "provider", stripeId);

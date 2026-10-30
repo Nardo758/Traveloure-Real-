@@ -74,6 +74,7 @@ import type { PhotoView } from "@shared/place-photos";
 import { planItemDomId } from "@shared/plan-jump-targets";
 import { usePlanRowLook } from "./row-look";
 import { BoardRowFrame, boardDotFor } from "./BoardRowFrame";
+import { slipRsvpByLine } from "@/lib/guest-landing";
 
 export type ItemRowMode = "edit" | "read";
 export type ItemRowRole = "traveler" | "expert";
@@ -183,6 +184,7 @@ export function ItemRow(props: ItemRowProps) {
   // FB-1 step 5c: entry needs a timed slot, linked to the official site.
   const timedEntry = itemTimedEntryWarning(facts, timeZone);
   const showMenu = mode === "edit" && menu && hasAnyEntry(menu, !!anchor);
+  const rsvpByLine = slipRsvpByLine(a.rsvpBy);
   const look = usePlanRowLook();
   if (look === "board") return <BoardItemRow {...props} place={place} factsLine={factsLine} closing={closing} timedEntry={timedEntry} showMenu={!!showMenu} />;
 
@@ -230,6 +232,9 @@ export function ItemRow(props: ItemRowProps) {
           <Lock className="w-3 h-3" aria-hidden="true" />
           {ITEM_LOCKED_LABEL}
         </p>
+      ) : null}
+      {rsvpByLine ? (
+        <p className="text-xs text-muted-foreground" data-testid={`slip-item-rsvp-by-${a.id}`}>{rsvpByLine}</p>
       ) : null}
       {place ? (
         // S10-9: the same format and the same link as the facts line below — one sourced-line style.
@@ -453,6 +458,7 @@ function BoardItemRow(
   const time = anchor ? (anchor.time !== undefined ? anchor.time : a.time || null) : a.time || null;
   const title = anchor ? anchor.title || a.name : a.name;
   const dot = boardDotFor({ isAnchor: !!anchor, anchorFromTool: anchor?.fromTool ?? null, hasFacts: !!factsLine, withExpert: !!props.pen });
+  const rsvpByLine = slipRsvpByLine(a.rsvpBy);
   const titleClass = `min-w-0 break-words text-left text-base font-semibold leading-tight ${props.visited?.checked ? "text-[color:var(--slip-muted)] line-through" : "text-[color:var(--slip-ink)]"}`;
   const body = (
     <div data-testid={anchor ? `slip-anchor-row-${a.id}` : undefined} data-anchor-placeholder={anchor && !anchor.fromTool ? "true" : undefined} className="flex min-w-0 flex-col gap-1">
@@ -509,6 +515,9 @@ function BoardItemRow(
           <Lock className="h-3 w-3" aria-hidden="true" />
           {ITEM_LOCKED_LABEL}
         </p>
+      ) : null}
+      {rsvpByLine ? (
+        <p className="text-xs text-[color:var(--slip-muted)]" data-testid={`slip-item-rsvp-by-${a.id}`}>{rsvpByLine}</p>
       ) : null}
       {place ? (
         <p className="text-[13px] text-[color:var(--slip-muted)]" data-testid={`slip-item-place-${a.id}`}>
