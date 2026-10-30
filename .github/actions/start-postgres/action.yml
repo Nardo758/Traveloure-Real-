@@ -27,7 +27,7 @@ inputs:
   expected-major:
     description: Space-separated PostgreSQL major versions CI accepts (fails on any other). Production is 16.
     required: false
-    default: '16'
+    default: '18'
 
 runs:
   using: composite
