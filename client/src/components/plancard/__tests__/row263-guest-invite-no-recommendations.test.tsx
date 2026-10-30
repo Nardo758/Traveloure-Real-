@@ -88,6 +88,8 @@ const CARD_COPY = {
   lineWithoutCity: "See what there is to do around this event.",
   button: "See how it works",
   href: "/experiences",
+  // Row 280b (sanctioned GR3 addition, Architect Oct 29, 2026): the approved button label.
+  planButton: "Plan my day around this",
 };
 
 describe("row 263 guest invite drops recommendations", () => {
@@ -139,6 +141,7 @@ describe("row 263 guest invite drops recommendations", () => {
         lineWithoutCity: GUEST_CARD_COPY.line(),
         button: GUEST_CARD_COPY.button,
         href: GUEST_CARD_COPY.href,
+        planButton: GUEST_CARD_COPY.planButton,
       },
       CARD_COPY,
     );

@@ -36,7 +36,7 @@ jobs:
   affiliate-partner-admin-guard:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: affiliate-partner writes stay under /api/admin
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 10
     env:
       DATABASE_URL: postgresql://unused:unused@127.0.0.1:1/unused

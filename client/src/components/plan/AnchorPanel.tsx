@@ -45,6 +45,7 @@ import {
   type StayRatesView,
 } from "@/lib/stay-card";
 import type { StayLink } from "@shared/stay-link";
+import { PETS_WELCOME_LABEL, petsWelcomeShown, type FactView } from "@shared/content-facts";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { BedDouble, ChevronRight, ExternalLink, MapPin } from "lucide-react";
@@ -97,6 +98,11 @@ export interface AnchorPanelViewProps {
    * whose stay was added by hand has none.
    */
   lodgingSet?: { id: string; status: string } | null;
+  /**
+   * Row 187 (`change` stage): the plan's current stay row's facts. "Pets welcome" is drawn only when a sourced,
+   * checked pet-policy fact is among them (`petsWelcomeShown`); otherwise nothing is drawn.
+   */
+  stayFacts?: readonly FactView[] | null;
   /** The compare page for `lodgingSet` ("I'm deciding — compare places"). */
   compareHref?: string | null;
   onReopen?: () => void;
@@ -489,6 +495,11 @@ export function AnchorPanelView(props: AnchorPanelViewProps) {
         <h3 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
           <BedDouble className="w-4 h-4" /> {ANCHOR_PANEL_DRAFTED_TITLE}
         </h3>
+        {petsWelcomeShown(props.stayFacts) ? (
+          <p className="text-sm text-foreground" data-testid="where-to-stay-pets-welcome">
+            {PETS_WELCOME_LABEL}
+          </p>
+        ) : null}
         {canChoose ? (
           set ? (
             <div className="space-y-2">

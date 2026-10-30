@@ -82,7 +82,7 @@ jobs:
   # list it cannot read, or this job failing outright leaves the suites running (fail open).
   changes:
     name: changes (skip suites on drafts and docs-only pushes)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 5
     permissions:
       contents: read
@@ -104,7 +104,7 @@ jobs:
 
   composite-action-script-paths:
     name: composite-action-script-paths (assert referenced scripts exist)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5.1.0
@@ -166,7 +166,7 @@ jobs:
 
   ci-db-setup-lint:
     name: ci-db-setup-lint (no inline migration steps)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5.1.0
@@ -457,7 +457,7 @@ jobs:
 
   ci-db-setup-lint-self-test:
     name: ci-db-setup-lint-self-test (verify lint catches inline steps)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 5
     steps:
       - name: Self-test — lint patterns must flag a synthetic bad workflow
@@ -495,7 +495,7 @@ jobs:
           on: [push]
           jobs:
             bad-job:
-              runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+              runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
               steps:
                 - name: Inline migration step
                   run: npx tsx server/migrations/migrate-entry.ts
@@ -519,7 +519,7 @@ jobs:
           on: [push]
           jobs:
             clean-job:
-              runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+              runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
               steps:
                 - name: Set up CI database
                   uses: ./.github/actions/ci-db-setup
