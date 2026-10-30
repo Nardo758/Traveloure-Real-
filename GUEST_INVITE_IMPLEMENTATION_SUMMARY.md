@@ -68,8 +68,7 @@ psql $DATABASE_URL -f server/migrations/001_guest_invite_system.sql
 - `GET /api/invites/:token` - Get invite details (public)
 - `POST /api/invites/:token/origin` - Save origin city
 - `POST /api/invites/:token/rsvp` - Submit RSVP
-- `GET /api/invites/:token/recommendations` - Get personalized travel recs
-- `POST /api/invites/:token/travel-plans` - Save travel selections
+- The guest recommendations GET and travel-plans POST were removed by #1744 (row 263, ledger `2026-10-28-row263-dead-recommendations-route`).
 
 #### Template Endpoints
 - `POST /api/invite-templates` - Create custom template
@@ -143,9 +142,11 @@ psql $DATABASE_URL -f server/migrations/001_guest_invite_system.sql
 
 ---
 
-### 5. SERP API Integration Template ✅
+### 5. SERP API Integration Template — removed
 
-**File:** `/server/services/serp-api-integration.ts`
+> `server/services/serp-api-integration.ts` was removed by #1744 (row 263, ledger `2026-10-28-row263-dead-recommendations-route`). The section below describes it as first built.
+
+**File:** ~~`/server/services/serp-api-integration.ts`~~
 
 **Template Functions:**
 - `searchFlights()` - Flight search API integration
@@ -456,7 +457,7 @@ Traveloure-Platform/
 │   ├── routes/
 │   │   └── guest-invites.ts                 (16.1 KB) ✅
 │   └── services/
-│       └── serp-api-integration.ts          (16.3 KB) ✅ Template
+│       └── serp-api-integration.ts          (16.3 KB) — removed by #1744 (row 263)
 ├── client/
 │   └── src/
 │       ├── components/
