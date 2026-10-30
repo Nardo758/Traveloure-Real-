@@ -48,6 +48,8 @@ import { waitlistSourceFromSearch, type SignupModeView } from "@/lib/launch-wait
 import { ProviderWaitlistResult } from "@/lib/waitlist-apply-done";
 import { arrivalRef } from "@/lib/ready-made-waitlist";
 import { getAcquisitionRef } from "@/lib/acquisition";
+import { WLB_SIGNUP_COPY } from "@/lib/wlb-signup-copy";
+import { ExpertWaitlistForm } from "@/components/waitlist/ExpertWaitlistForm";
 
 /** The waitlist's "offer services" door uses the same continuation as the homepage join line. */
 function offerServicesHref(): string {
@@ -55,7 +57,7 @@ function offerServicesHref(): string {
   return next.kind === "account" ? "/signup?intent=supply" : next.href;
 }
 
-const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+export const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
@@ -63,7 +65,7 @@ const MONTHS = [
 
 type Status = "idle" | "sending" | "done" | "error";
 
-async function postWaitlist(body: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> {
+export async function postWaitlist(body: Record<string, unknown>): Promise<{ ok: boolean; error?: string }> {
   try {
     const res = await fetch("/api/waitlist", {
       method: "POST",
@@ -79,7 +81,7 @@ async function postWaitlist(body: Record<string, unknown>): Promise<{ ok: boolea
   }
 }
 
-function Honeypot({ value, onChange, id }: { value: string; onChange: (v: string) => void; id: string }) {
+export function Honeypot({ value, onChange, id }: { value: string; onChange: (v: string) => void; id: string }) {
   // Hidden from people and from assistive technology; a bot that fills it is answered as a success.
   return (
     <div aria-hidden="true" style={{ position: "absolute", left: "-10000px", width: 1, height: 1, overflow: "hidden" }}>
@@ -141,7 +143,7 @@ export function ConsentBoxes({
   onMarketingConsent: (v: boolean) => void;
   marketingOpen: boolean;
 }) {
-  const prefix = role === "provider" ? "provider" : "waitlist";
+  const prefix = role === "traveler" ? "waitlist" : role;
   const line = marketingOpen ? waitlistMarketingConsentLine(market) : null;
   return (
     <div className="space-y-3" data-testid={`consent-boxes-${role}`}>
@@ -506,6 +508,8 @@ export default function LaunchWaitlistPage() {
         </div>
         <p className="mt-6 text-sm">
           <a href="#providers" className="underline" data-testid="link-waitlist-providers">I'm a Kyoto guide or provider →</a>
+          {" · "}
+          <a href="#experts" className="underline" data-testid="link-waitlist-experts">{WLB_SIGNUP_COPY.expertHeading} →</a>
         </p>
       </header>
 
@@ -553,6 +557,11 @@ export default function LaunchWaitlistPage() {
         <p className="mt-6 text-sm">
           <Link href={offerServicesHref()} className="underline" data-testid="link-waitlist-offer-services">Offer my services in Kyoto</Link>
         </p>
+      </section>
+
+      <section id="experts" className="mt-12 scroll-mt-20 rounded-xl border p-4 sm:p-6" data-testid="section-waitlist-experts">
+        <h2 className="text-xl font-semibold">{WLB_SIGNUP_COPY.expertHeading}</h2>
+        <ExpertWaitlistForm key={launchMarket} source={source} launchMarket={launchMarket} />
       </section>
     </div>
   );
