@@ -739,6 +739,15 @@ if (process.env.NODE_ENV === "production") {
     legacyCutoff.message,
   );
 
+  // Row 294: the news-box sentence, before any waitlist join can record it. Idempotent.
+  // A failed seed is logged; a tick then stores nothing rather than a consent with no text.
+  try {
+    const { ensureMarketingConsentText } = await import("./services/launch-waitlist.service");
+    await ensureMarketingConsentText();
+  } catch (err) {
+    logger.error({ err }, "marketing consent text was not seeded; a news-box tick stores nothing until it is");
+  }
+
   await registerRoutes(httpServer, app);
 
   // Unknown /api/* paths must return 404 JSON, not fall through to the SPA

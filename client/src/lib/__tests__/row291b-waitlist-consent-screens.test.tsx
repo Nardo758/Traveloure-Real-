@@ -5,7 +5,7 @@
  * No git, no execSync, no execFileSync, no comparison with any ref.
  *
  *   W1  box 2 is drawn only while WAITLIST_MARKETING_BOX_ENABLED is true AND its words resolve (once per form,
- *       unticked); the flag is false today, so it is not drawn, and no network call decides it.
+ *       unticked). Row 294 leaves the flag on. No network call decides it.
  *   W2  box 1 is unchanged: same tick, same ids, same label source.
  *   W3  box 2 posts `marketingConsent`; box 1 and box 2 are independent.
  *   W4  every posted body passes the strict `waitlistJoinBodySchema`; the only new key is `marketingConsent`.
@@ -119,9 +119,9 @@ describe("W1 — box 2 renders only behind the gate", () => {
       assert.equal(count(html, `data-testid="checkbox-${prefix}-consent"`), 1, `${role}: box 1 still drawn`);
     }
   });
-  it("opens only while the flag is on AND the market has words; off on main today", () => {
-    assert.equal(WAITLIST_MARKETING_BOX_ENABLED, false, "row 294 flips this once the consent text is seeded");
-    assert.equal(marketingBoxOpen("kyoto"), false, "the default reads the flag");
+  it("opens only while the flag is on AND the market has words", () => {
+    assert.equal(WAITLIST_MARKETING_BOX_ENABLED, true, "row 294: the approved news sentence is on");
+    assert.equal(marketingBoxOpen("kyoto"), true, "the default reads the flag");
     assert.equal(marketingBoxOpen("kyoto", true), true);
     assert.equal(marketingBoxOpen("kyoto", false), false);
     assert.equal(marketingBoxOpen("lisbon", true), false, "no words for a market ⇒ no box");
@@ -212,7 +212,8 @@ describe("W4 — the posted bodies pass the strict schema", () => {
 
 describe("W5 — box 2's label", () => {
   it("is the box2Label text, for every market that has one", () => {
-    assert.equal(WAITLIST_MARKETING_CONSENT_LINE, "Send me news and offers from Traveloure. You can unsubscribe at any time.");
+    assert.equal(WAITLIST_MARKETING_CONSENT_LINE, "Send me Traveloure news and tips.");
+    assert.equal(WAITLIST_MARKETING_CONSENT_LINE.includes("unsubscribe"), false);
     for (const m of WAITLIST_MARKET_OPTIONS) assert.equal(waitlistMarketingConsentLine(m.key), WAITLIST_MARKETING_CONSENT_LINE);
     const html = boxes("traveler");
     assert.ok(html.includes(`data-testid="label-waitlist-marketing-consent">${WAITLIST_MARKETING_CONSENT_LINE}<`));

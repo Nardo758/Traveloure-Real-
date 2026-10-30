@@ -66,6 +66,11 @@ import { conversationChatPath, startConversation, threadChatPath } from "@/lib/e
 // control and read-out. `/api/provider/bookings` carries the SERVER's own `completionDeclaration`,
 // so the traveler's review window is never counted out on this page.
 import { SellerCompletionPanel } from "@/components/bookings/SellerCompletionPanel";
+import { ProviderPayoutBlock } from "@/components/provider/ProviderPayoutBlock";
+import {
+  providerPayoutBlockForState,
+  type ProviderPayoutBlockValues,
+} from "@/lib/provider-payout-block-copy";
 
 // ─── Shared shapes ──────────────────────────────────────────────────────────
 //
@@ -101,6 +106,7 @@ interface InboxBooking {
   totalAmount?: string | number | null;
   platformFee?: string | number | null;
   providerEarnings?: string | number | null;
+  payoutBlock?: ProviderPayoutBlockValues | null;
   bookingMetadata?: VisaBookingMetadata;
   [key: string]: any;
 }
@@ -494,6 +500,9 @@ function BookingCard({
   const payout = booking.providerEarnings != null
     ? Number(booking.providerEarnings)
     : (total != null ? total - (fee ?? 0) : null);
+  // Row 292b: the payout block sentence, from the server block, on a banked row only.
+  const payoutBlockLine = providerPayoutBlockForState(payoutState, booking.payoutBlock);
+  const showStamped = payout != null || total != null;
 
   return (
     <Card className="border border-console-light" data-testid={`inbox-booking-${booking.id}`}>
@@ -543,8 +552,7 @@ function BookingCard({
               >
                 {PROVISIONAL_BOOKING_HINT}
               </div>
-            ) : (payout != null || total != null) && (
-              payoutState === "banked" ? (
+            ) : payoutState === "banked" && (showStamped || payoutBlockLine) ? (
                 <div
                   className="mt-3 rounded-md bg-green-50 border border-green-200 px-3 py-2"
                   data-testid={`booking-payout-${booking.id}`}
@@ -555,14 +563,16 @@ function BookingCard({
                       You earn ${payout.toFixed(2)}
                     </div>
                   )}
-                  {total != null && (
+                  {payoutBlockLine ? (
+                    <ProviderPayoutBlock block={booking.payoutBlock} bookingId={booking.id} />
+                  ) : total != null && (
                     <p className="text-xs text-green-700 mt-0.5">
                       Booking total ${total.toFixed(2)}
                       {fee != null && <> · platform fee ${fee.toFixed(2)}</>}
                     </p>
                   )}
                 </div>
-              ) : (
+              ) : showStamped ? (
                 // CLOSED (declined/cancelled/refunded): disclosed via the status badge above,
                 // never implied payable — no dollar figure rides a row that isn't earnings.
                 <div
@@ -571,8 +581,7 @@ function BookingCard({
                 >
                   No payout — this booking was {booking.status === "refunded" ? "refunded" : "cancelled"}.
                 </div>
-              )
-            )}
+              ) : null}
           </div>
           <div className="flex flex-col gap-2 flex-shrink-0">
             {showAcceptDecline && (
