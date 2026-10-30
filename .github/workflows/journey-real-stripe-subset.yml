@@ -1,0 +1,178 @@
+name: Journey real-Stripe subset (OC1 · OC3 · the real "Not now")
+
+# Row 287 (ledger `2026-10-29-journey-real-stripe-pr-subset`). The full Journey Wave 1 suite
+# (journey-suite.yml) runs on push to main, nightly and on dispatch only, so a regression of the
+# add-a-card overlay class reached main before anything caught it. The Kyoto spec already runs on
+# every PR through kyoto-slice-gate.yml (stub key); what never ran before merge were the tests that
+# need a REAL Stripe test key (Architect, Oct 28, 2026, 16:15 ET, relayed by Leon).
+#
+# The subset, verbatim (Architect, Oct 29, 2026): "OC1, OC3 and the real 'Not now' test; 10-minute
+# budget; job skips when STRIPE_SECRET_KEY is absent (forks never have it)."
+#   - OC1, OC3: server/__tests__/checkout-oneclick.stripe.db.test.ts (one-click off-session confirm;
+#     an SCA card hands the clientSecret back and the claim stays reclaimable).
+#   - The real "Not now": playwright/tests/journeys/j-kyoto-trips-golden-path.spec.ts, describe
+#     "row 285 · the add-a-card prompt" (the prompt is offered only with a configured Stripe key).
+#
+# WHY A SEPARATE FILE, NOT A pull_request TRIGGER ON journey-suite.yml: scripts/ci/ci-skip-rules.cjs
+# (CI-1b (e)1) refuses a non-required workflow that runs on a PR AND again on the merge push to main,
+# and journey-suite.yml must keep its push / nightly runs. This file runs on pull requests (and on
+# dispatch) only, with the canonical paths: list and a draft skip on every job, as that guard requires.
+# It provides no required status check, so it never blocks a merge by itself.
+#
+# A job-level `if` cannot read secrets, so a small gate job reports whether STRIPE_SECRET_KEY exists;
+# without it (a fork never has it) the subset job is SKIPPED, shown as skipped, never a silent green.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+    paths:
+      - '**'
+      - '!**/*.md'
+      - 'CLAUDE.md'
+      - 'generated/**'
+      - 'client/public/.well-known/**'
+      - '!.github/workflows/**'
+      - '.github/workflows/journey-real-stripe-subset.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: journey-real-stripe-subset-${{ github.ref }}
+  cancel-in-progress: ${{ github.event.action != 'ready_for_review' }}
+permissions:
+  contents: read
+
+jobs:
+  real-stripe-key-gate:
+    name: real-stripe-subset gate (is STRIPE_SECRET_KEY present?)
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 2
+    outputs:
+      present: ${{ steps.check.outputs.present }}
+    steps:
+      - id: check
+        env:
+          KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+        run: |
+          if [ -n "$KEY" ]; then
+            echo "present=1" >> "$GITHUB_OUTPUT"
+            echo "STRIPE_SECRET_KEY present → the real-Stripe subset runs."
+          else
+            echo "present=0" >> "$GITHUB_OUTPUT"
+            echo "::notice::STRIPE_SECRET_KEY absent (a fork never has it) → the real-Stripe subset is SKIPPED."
+          fi
+
+  real-stripe-subset:
+    name: real-stripe-subset (OC1 · OC3 · the real "Not now")
+    needs: real-stripe-key-gate
+    if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && needs.real-stripe-key-gate.outputs.present == '1'
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5.1.0
+      - name: Start PostgreSQL (runner-installed; no registry pull)
+        uses: ./.github/actions/start-postgres
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright (chromium)
+        run: |
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
+            npx playwright install-deps chromium
+          else
+            npx playwright install --with-deps chromium
+          fi
+
+      - name: Build production bundle
+        run: npm run build
+        env:
+          VITE_STRIPE_PUBLISHABLE_KEY: ${{ secrets.VITE_STRIPE_PUBLISHABLE_KEY }}
+
+      - name: Set up CI database (migrations, sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          seed-ci-users: 'false'
+
+      - name: OC1 and OC3 (live Stripe test mode)
+        run: npx tsx --test --test-name-pattern "^OC[13]:" server/__tests__/checkout-oneclick.stripe.db.test.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          JOURNEY_DB_WRITES_OK: '1'
+
+      - name: Start production server (real Stripe test key)
+        if: ${{ !cancelled() }}
+        run: node dist/index.cjs &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET_TEST: whsec_ci_stub_no_real_calls
+          STRIPE_CONNECT_WEBHOOK_SECRET_TEST: whsec_ci_stub_no_real_calls
+          XAI_API_KEY: xai-ci-stub-no-real-calls
+          ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
+          RESEND_API_KEY: re_ci_stub_no_real_calls
+          GIT_COMMIT: ${{ github.sha }}
+          NODE_ENV: production
+          ALLOW_TEST_ACCOUNTS: '1'
+          E2E_AI_STUB: '1'
+          TRAVEL_TIME_SERVICE_ENABLED: '1'
+          ROUTING_ADAPTER_STUB: '1'
+          PORT: 5000
+          SESSION_COOKIE_INSECURE: '1'
+          RATE_LIMIT_LOOPBACK_SKIP: '1'
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+
+      - name: Wait for server and seeding
+        if: ${{ !cancelled() }}
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://localhost:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then
+              echo "Server ready ✅"; exit 0
+            fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"
+          exit 1
+
+      - name: The real "Not now" click (row 285 · the add-a-card prompt)
+        if: ${{ !cancelled() }}
+        run: npx playwright test playwright/tests/journeys/j-kyoto-trips-golden-path.spec.ts --project=chromium --workers=1 --grep "row 285 · the add-a-card prompt"
+        env:
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+          CI: 'true'
+          JOURNEY_DB_WRITES_OK: '1'
+          JOURNEY_STRIPE_UNAVAILABLE: '0'
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+
+      - name: Upload the subset's Playwright JSON report (the spec-arming gate reads playwright-json*)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-json-real-stripe-subset
+          path: playwright-json/
+          if-no-files-found: ignore
