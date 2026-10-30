@@ -105,6 +105,7 @@ export function VersionsBoard({
   onPaidRun,
   noRunCta,
   headerOffer = null,
+  tripRole = null,
 }: {
   tripId: string;
   destination: string;
@@ -119,6 +120,8 @@ export function VersionsBoard({
   noRunCta?: ReactNode;
   /** Ruling 3: the Trip Pass offer in the Versions header (the page owner-gates it). */
   headerOffer?: ReactNode;
+  /** Row 251: the viewer's role on the plan; the restore strip draws only for "owner" (absent ⇒ hidden). */
+  tripRole?: string | null;
 }) {
   const { toast } = useToast();
   const isDesktop = useIsDesktop();
@@ -342,7 +345,7 @@ export function VersionsBoard({
         </p>
       </div>
       {headerOffer}
-      <VersionsRestoreStrip tripId={tripId} />
+      <VersionsRestoreStrip tripId={tripId} tripRole={tripRole} />
 
       {mode === "choose" ? (
         <>

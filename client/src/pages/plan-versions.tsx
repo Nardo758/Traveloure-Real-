@@ -126,6 +126,7 @@ export default function PlanVersionsPage() {
         destination={plan.data.trip?.destination ?? ""}
         days={plan.data.days ?? []}
         onPaidRun={() => setLocation(optimizeHref)}
+        tripRole={plan.data.tripRole ?? null}
         headerOffer={
           // Ruling 3 (slip conformance, Versions board): the Trip Pass is offered in the Versions
           // header — the board draws it only once a run exists — to the plan's OWNER (LD 52), with

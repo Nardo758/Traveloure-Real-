@@ -6,6 +6,10 @@
  * Confirm sends ONE POST with that row's own snapshotId. A changed day has no button; a finalized plan
  * has one line and no buttons. When the GET fails, is missing or has nothing to restore, the strip draws
  * nothing and the board looks as it did (the degrade table D1-D5). No retry, no force, no second endpoint.
+ *
+ * Row 251 (CB-R Q1 follow-up; ledger `2026-10-29-versions-restore-owner-only`): the strip is the trip
+ * OWNER's. A read-only viewer's POST answers 404 with no code (string R10), so the strip draws nothing,
+ * and sends no GET, unless `tripRole` is "owner". An absent role is treated as a viewer (hidden).
  */
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -144,9 +148,15 @@ export function VersionsRestoreView({ finalized, rows, previewDay, pending, note
   );
 }
 
-export function VersionsRestoreStrip({ tripId }: { tripId: string }) {
+/** Row 251: only the trip's owner is offered a restore; any other role, or none, sees no strip. */
+export function restoreStripShown(tripRole: string | null | undefined): boolean {
+  return tripRole === "owner";
+}
+
+export function VersionsRestoreStrip({ tripId, tripRole }: { tripId: string; tripRole?: string | null }) {
+  const shownForRole = restoreStripShown(tripRole);
   const key = restorableKey(tripId);
-  const { data } = useQuery<unknown>({ queryKey: key, retry: false, staleTime: 15_000 });
+  const { data } = useQuery<unknown>({ queryKey: key, retry: false, staleTime: 15_000, enabled: shownForRole });
   const shown = restoreRowsToShow(readRestorable(data));
   const [previewDay, setPreviewDay] = useState<number | null>(null);
   const [notes, setNotes] = useState<Record<number, RestoreNoteKey>>({});
@@ -170,6 +180,7 @@ export function VersionsRestoreStrip({ tripId }: { tripId: string }) {
     },
   });
 
+  if (!shownForRole) return null;
   return (
     <VersionsRestoreView
       finalized={shown.finalized}

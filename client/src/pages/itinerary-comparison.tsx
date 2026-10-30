@@ -1662,6 +1662,7 @@ export default function ItineraryComparisonPage() {
                     destination={slipPlancard.trip?.destination ?? ""}
                     days={slipPlancard.days}
                     onPaidRun={() => setLocation(`/plans/${slipTripId}`)}
+                    tripRole={slipPlancard.tripRole ?? null}
                   />
                 ) : null}
 
