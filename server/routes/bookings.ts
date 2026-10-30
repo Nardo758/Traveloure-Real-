@@ -38,6 +38,7 @@ import {
 import Stripe from 'stripe';
 import { getStripeSecretKey, getStripeWebhookSecret } from '../utils/stripe-key';
 import { processPlatformWebhookEvent, PLATFORM_EVENT_TYPES } from '../services/stripe-dispute.service';
+import { withExpandedDisputeCharge } from '../services/webhook-claim.service';
 import { logger } from '../infrastructure/logger';
 import { hasPaymentOnRecord, NO_PAYMENT_ON_RECORD } from '@shared/payment-on-record';
 import { isCanonicalBookingEmailPersistenceError } from '../services/canonical-booking-email.service';
@@ -630,13 +631,15 @@ export function createPlatformStripeWebhookHandler(actions: {
       if (shouldRunAutomation) {
         await dispatchPaymentEvent(platformEventAutomationId, event.type, event, async () => {
           if (PLATFORM_EVENT_TYPES.has(event.type)) {
-            await (actions.processPlatformEvent ?? processPlatformWebhookEvent)(event, stripe);
+            // Row 98: the dispute's charge is fetched here, before the platform claim's transaction opens.
+            await (actions.processPlatformEvent ?? processPlatformWebhookEvent)(await withExpandedDisputeCharge(event, stripe), stripe);
           } else {
             await (actions.handlePaymentWebhook ?? ((received) => stripePaymentService.handleWebhook(received)))(event);
           }
         });
       } else if (PLATFORM_EVENT_TYPES.has(event.type)) {
-        await (actions.processPlatformEvent ?? processPlatformWebhookEvent)(event, stripe);
+        // Row 98: the dispute's charge is fetched here, before the platform claim's transaction opens.
+        await (actions.processPlatformEvent ?? processPlatformWebhookEvent)(await withExpandedDisputeCharge(event, stripe), stripe);
       } else {
         await (actions.handlePaymentWebhook ?? ((received) => stripePaymentService.handleWebhook(received)))(event);
       }

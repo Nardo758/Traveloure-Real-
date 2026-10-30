@@ -21,7 +21,15 @@ import { getStripeSecretKey, getStripeWebhookSecret } from "../utils/stripe-key"
 import { handleStripeDispute } from "../services/stripe-dispute.service";
 import { markCheckoutPaymentFailed } from "../services/checkout-claim.service";
 import { isCanonicalBookingEmailPersistenceError } from "../services/canonical-booking-email.service";
-import { claimWebhookEvent, completeWebhookClaim, failWebhookClaim, WebhookClaimInFlightError } from "../services/webhook-claim.service";
+import {
+  claimWebhookEvent,
+  completeWebhookClaim,
+  DISPUTE_EVENT_TYPES,
+  failWebhookClaim,
+  runUnderWebhookClaimTx,
+  withExpandedDisputeCharge,
+  WebhookClaimInFlightError,
+} from "../services/webhook-claim.service";
 import {
   CONNECT_FINANCIAL_EVENT_AUTOMATION_IDS,
   dispatchPaymentEvent,
@@ -117,7 +125,16 @@ router.post("/persona", (_req, res) => {
 //
 // Any unhandled error is surfaced via the error column on webhook_events and
 // will appear in GET /api/admin/webhooks/unprocessed for manual review.
-async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
+export async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
+  // ── Row 98, option (b) (ledger `2026-10-30-row98-webhook-dedupe-replay`) ──
+  // A dispute's handler already takes a transaction, so its claim, its work and its completion share ONE: a throw
+  // rolls the claim back with the work and the next delivery re-runs it. The charge is fetched first, outside the
+  // transaction (no Stripe call inside it). Every other event keeps the separate claim below.
+  if (event.id && DISPUTE_EVENT_TYPES.has(String(event.type))) {
+    await processConnectDisputeEvent(event);
+    return;
+  }
+
   // ── 1. Claim (PAY-1 §3, ledger `2026-10-15-pay1-payment-checks`) ──────────
   // Stripe guarantees at-least-once delivery; the same event ID can arrive twice, and two deliveries
   // can arrive at once. The old check-then-insert on webhook_events.processed let both run. The
@@ -476,6 +493,39 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
     `);
     throw new Error(processingError);
   }
+}
+
+/** Row 98: a Connect dispute event — the webhook_events record, then one transaction for claim + handler + completion. */
+async function processConnectDisputeEvent(event: Stripe.Event): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO webhook_events (stripe_event_id, event_type, processed, raw_payload)
+    VALUES (${event.id}, ${event.type}, FALSE, ${JSON.stringify(event)}::jsonb)
+    ON CONFLICT (stripe_event_id) DO NOTHING
+  `);
+  try {
+    const expanded = await withExpandedDisputeCharge(event, stripe);
+    const outcome = await runUnderWebhookClaimTx(event, "connect", event, (tx) =>
+      handleStripeDispute(
+        expanded.data.object as Stripe.Dispute,
+        stripe,
+        { closed: event.type === "charge.dispute.closed", eventId: event.id },
+        tx,
+      ),
+    );
+    if (outcome === "already_completed") {
+      console.info(`[WEBHOOK] Duplicate event ${event.id} (${event.type}) already completed — skipping`);
+    }
+  } catch (err: any) {
+    if (!(err instanceof WebhookClaimInFlightError)) {
+      await db.execute(sql`
+        UPDATE webhook_events SET error = ${err?.message ?? String(err)} WHERE stripe_event_id = ${event.id}
+      `);
+    }
+    throw err;
+  }
+  await db.execute(sql`
+    UPDATE webhook_events SET processed = TRUE, processed_at = NOW() WHERE stripe_event_id = ${event.id}
+  `);
 }
 
 // POST /api/webhooks/stripe
