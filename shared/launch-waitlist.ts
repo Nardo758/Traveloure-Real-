@@ -106,8 +106,8 @@ export const waitlistJoinBodySchema = z
     role: z.enum(WAITLIST_ROLES).optional(),
     email: z.string().trim().email().max(254),
     consent: z.boolean().optional(),
-    // 291a: the news/marketing box. Omitted means false. A row is written only when this is
-    // true AND a launch_marketing_news consent_texts version already exists (nothing is seeded).
+    // 291a / row 294: the news box. Omitted means false. A row is written only when this is
+    // true AND the launch_marketing_news consent text (seeded at boot) is present.
     marketingConsent: z.boolean().optional(),
     source: z.string().max(200).optional(),
     tripType: z.enum(TRIP_TYPE_KEYS).optional(),
@@ -185,8 +185,8 @@ export const waitlistMarketOpenedBodySchema = z
 export const WAITLIST_CONSENT_KEY = "launch_waitlist_updates";
 /**
  * News/marketing box (291a, Architect F2). Not renamed from the notify key above.
- * No seeded wording: a consent_records row is written only when a consent_texts version
- * for this key is already present.
+ * Row 294 seeds one consent_texts version for this key. A consent_records row is written
+ * only when that version is already present.
  */
 export const WAITLIST_MARKETING_CONSENT_KEY = "launch_marketing_news";
 export const WAITLIST_CONSENT_VERSION = "f1-2026-10-15";
@@ -280,18 +280,19 @@ export function waitlistConsentText(marketKey: string): string {
 }
 
 /**
- * 291b (ruling 1): the news/marketing box's words, per market, beside the box above. WORDING HELD FOR LEON (strings
- * table key box2Label). A market left out of the map has no box. Showing these words is not the same as storing them:
- * the server writes a `launch_marketing_news` consent row only when a `consent_texts` version exists (row 294), and
- * the page draws the box only while WAITLIST_MARKETING_BOX_ENABLED is true.
+ * Row 294 (Leon, Oct 30, 2026, 5:54 PM ET): the news box's words, the same sentence for every market that has one.
+ * A market left out of the map has no box. A wording change is a new version, never an edit of this one.
+ * The server writes a `launch_marketing_news` consent row only when this version is already in `consent_texts`,
+ * and the page draws the box only while WAITLIST_MARKETING_BOX_ENABLED is true.
  */
-export const WAITLIST_MARKETING_CONSENT_LINE =
-  "Send me news and offers from Traveloure. You can unsubscribe at any time.";
+export const WAITLIST_MARKETING_CONSENT_LINE = "Send me Traveloure news and tips.";
+/** The consent_texts version that stores the sentence above. varchar(40). */
+export const WAITLIST_MARKETING_CONSENT_VERSION = "r294-2026-10-30";
 /**
- * The news box's on/off switch. Off until row 294 seeds a `launch_marketing_news` consent text and flips this: a box
- * whose tick would save nothing is never drawn. No network call decides it.
+ * The news box's on/off switch. On once the approved sentence has a consent_texts version (seeded at boot).
+ * A market with no words still draws no box. No network call decides it.
  */
-export const WAITLIST_MARKETING_BOX_ENABLED = false;
+export const WAITLIST_MARKETING_BOX_ENABLED = true;
 export const WAITLIST_MARKETING_CONSENT_LINES: Readonly<Record<string, string>> = Object.fromEntries(
   WAITLIST_MARKET_OPTIONS.map((m) => [m.key, WAITLIST_MARKETING_CONSENT_LINE]),
 );
