@@ -232,9 +232,10 @@ function checkReadyForReviewCancel(file, text) {
 // from the repository variable CI_RUNNER, but ONLY when the event says the repository is private — a
 // public repository runs fork PRs, and a fork's code must never reach a self-hosted machine. Unset
 // variable, a public repository, or an event whose payload carries no repository (a schedule may not)
-// all fall back to GitHub-hosted ubuntu-24.04: the failure mode is hosted minutes, never exposure.
+// all fall back to GitHub-hosted ubuntu-26.04 (an explicit label, never ubuntu-latest; ledger
+// 2026-10-30-row253a-playwright-unpin): the failure mode is hosted minutes, never exposure.
 // NEGATIVE SPACE: this reads the workflow text; it cannot see the variable's value or the runner group.
-const RUNS_ON = "${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}";
+const RUNS_ON = "${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}";
 function checkRunsOn(file, text) {
   const errs = [];
   for (const m of text.matchAll(/^\s+runs-on:\s*(.*?)\s*$/gm)) {

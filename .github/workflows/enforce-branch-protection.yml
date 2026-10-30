@@ -66,7 +66,7 @@ permissions:
 jobs:
   enforce-branch-protection:
     name: enforce-required-status-checks
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5.1.0

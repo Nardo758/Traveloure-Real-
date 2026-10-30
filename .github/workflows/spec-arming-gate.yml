@@ -61,7 +61,7 @@ jobs:
   spec-arming-gate:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: spec-arming-gate (green-run evidence)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     # Waits (bounded by SPEC_ARMING_WAIT_MINUTES) for the arming workflow's own run on the head commit to finish.
     timeout-minutes: 60
     steps:

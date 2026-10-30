@@ -4,7 +4,7 @@
  * through `openHandoffChooser`; one host on the slip listens and opens it. Pure helpers here are
  * the words the banner and the rows say, stated once (§18 rule 1).
  */
-import { HANDOFF_HOLD_TRAVELER_COPY, HANDOFF_KIND_LABEL, findingLine, type HandoffBannerState, type HandoffKind } from "@shared/handoff";
+import { HANDOFF_HOLD_TRAVELER_COPY, HANDOFF_KIND_LABEL, findingLine, type FailedBookingBannerPayment, type HandoffBannerState, type HandoffKind } from "@shared/handoff";
 
 export const HANDOFF_CHOOSER_EVENT = "traveloure:handoff-chooser";
 
@@ -94,6 +94,9 @@ export function handoffBannerLine(read: Pick<HandoffRead, "banner" | "city" | "t
       return b.holdReleased
         ? HANDOFF_WITHDRAWN_HOLD_RELEASED
         : "Request withdrawn — what isn't kept is refunded to your card.";
+    case "booking_failed":
+      // Row 276: the server chose the payment state; the client only reads it (no refund id, Stripe object or amount).
+      return [HANDOFF_FAILED_BOOKING_BANNER_COPY.headline, failedBookingPaymentLine(b.payment)].join(" ");
     default:
       return null;
   }
@@ -101,6 +104,36 @@ export function handoffBannerLine(read: Pick<HandoffRead, "banner" | "city" | "t
 
 /** Smoke 13 #5: the confirmation a withdrawal before any capture reads. */
 export const HANDOFF_WITHDRAWN_HOLD_RELEASED = "Request withdrawn — hold released";
+
+/**
+ * Row 276 (ledger `2026-10-30-failed-booking-banner-client`): the failed-booking banner's words. WORDING
+ * HELD FOR LEON: do not merge until "Wording approved — Leon" is on the PR. Not the server's notification
+ * copy (HANDOFF_FAILED_BOOKING_TRAVELER_COPY), which is separate.
+ */
+export const HANDOFF_FAILED_BOOKING_BANNER_COPY = {
+  headline: "This booking didn't go ahead.",
+  holdReleased: "We've released your card hold.",
+  refunded: "You've been refunded in full.",
+  checking: "We're checking on your payment. You'll hear from us by email.",
+  reviewing: "We're reviewing your payment and will email you about it.",
+  noCharge: "You haven't been charged.",
+} as const;
+
+/** Pure. The one payment line for the server's payment value; an unknown value reads the checking line. */
+export function failedBookingPaymentLine(payment: FailedBookingBannerPayment | string | null | undefined): string {
+  switch (payment) {
+    case "refunded":
+      return HANDOFF_FAILED_BOOKING_BANNER_COPY.refunded;
+    case "hold_released":
+      return HANDOFF_FAILED_BOOKING_BANNER_COPY.holdReleased;
+    case "reviewing":
+      return HANDOFF_FAILED_BOOKING_BANNER_COPY.reviewing;
+    case "no_charge":
+      return HANDOFF_FAILED_BOOKING_BANNER_COPY.noCharge;
+    default:
+      return HANDOFF_FAILED_BOOKING_BANNER_COPY.checking;
+  }
+}
 
 /** Pure. What withdrawing costs, said before the tap (R-t). */
 export function withdrawLine(h: ClientHandoff | null): string | null {

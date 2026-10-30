@@ -58,7 +58,7 @@ permissions:
 jobs:
   journeys:
     name: journeys (J1 golden path + J2 AI entry)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     # NO `continue-on-error` — see the header. This workflow has no `pull_request` trigger, so
     # it cannot block a merge in any case; masking the job conclusion only made the RUN read
     # green over red specs. Red tests must be red at a glance in the Actions list.

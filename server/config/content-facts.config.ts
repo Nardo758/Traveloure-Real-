@@ -34,6 +34,8 @@ const TTL_DAYS: Record<FactType, number | null> = {
   last_service: 30,
   // FB-1 step 5c: a timed-entry requirement is an official operational fact like the two above.
   timed_entry_required: 30,
+  // Row 187 (Architect, Oct 30, 2026): a sourced pet policy is re-checked every 180 days.
+  pet_policy: 180,
 };
 
 export function factTtlDays(type: FactType): number | null {
