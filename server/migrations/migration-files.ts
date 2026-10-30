@@ -2186,6 +2186,11 @@ export const MIGRATION_FILES = [
   // HELD for "Migration 415 SQL approved — Leon". Ledger 2026-10-29-waitlist-consent-server.
   // Declared in shared/schema.ts.
   "415_consent_records.sql",
+  // 416 — service_bookings.payout_snapshot. Additive nullable jsonb, no DEFAULT,
+  // no CHECK, no index, no backfill. NULL = this accept did not snapshot a block.
+  // HELD for "Migration 416 SQL approved — Leon". Ledger 2026-10-29-provider-payout-block.
+  // Declared in shared/schema.ts.
+  "416_provider_payout_snapshot.sql",
   // 417 — event_invites.plan_trip_id and plan_user_id. Two additive nullable varchars.
   // FKs to trips(id) and users(id), both ON DELETE SET NULL. No default, no check,
   // no index, no backfill. HELD for "Migration 417 SQL approved — Leon".
