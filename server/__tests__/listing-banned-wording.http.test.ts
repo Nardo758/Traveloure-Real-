@@ -11,7 +11,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { readFileSync } from "node:fs";
-import { registerAndSignIn } from "./fixtures/register-and-sign-in";
+import { registerAndSignIn, SUPPLY_PROVIDER_SIGNUP_EXTRA } from "./fixtures/register-and-sign-in";
 
 const { Pool } = await import("pg");
 const readPool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -73,7 +73,7 @@ async function registerActor(label: string): Promise<Actor> {
     firstName: "Wording",
     lastName: label,
     // Waitlist mode refuses a traveler sign-up. Supply intent is allowed and grants no role.
-    extra: { intent: "supply" },
+    extra: SUPPLY_PROVIDER_SIGNUP_EXTRA,
   });
   createdEmails.push(email);
   return { id: actor.id, email, cookie: actor.cookie };

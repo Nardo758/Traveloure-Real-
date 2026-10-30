@@ -12,7 +12,7 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { after, before, test } from "node:test";
-import { registerAndSignIn } from "./fixtures/register-and-sign-in";
+import { registerAndSignIn, SUPPLY_PROVIDER_SIGNUP_EXTRA } from "./fixtures/register-and-sign-in";
 import { STRIPE_CONNECT_REMINDER_COOLDOWN_MS, STRIPE_CONNECT_REMINDER_TYPE } from "../services/stripe-connect-reminder-policy";
 
 const { Pool } = await import("pg");
@@ -44,7 +44,7 @@ before(async () => {
   const health = await fetch(`${BASE_URL}/api/health`).catch(() => null);
   assert.ok(health?.ok, `dev server must be running on ${BASE_URL}`);
   assert.equal(process.env.JOURNEY_DB_WRITES_OK, "1", "Refusing to write fixtures without JOURNEY_DB_WRITES_OK=1");
-  const a = await registerAndSignIn({ baseUrl: BASE_URL, email: `${P}-admin@traveloure.test`, password: "TestPass123!", firstName: "Gap9", lastName: "Admin", extra: { intent: "supply" } });
+  const a = await registerAndSignIn({ baseUrl: BASE_URL, email: `${P}-admin@traveloure.test`, password: "TestPass123!", firstName: "Gap9", lastName: "Admin", extra: SUPPLY_PROVIDER_SIGNUP_EXTRA });
   admin = { id: a.id, cookie: a.cookie };
   await pool.query(`UPDATE users SET role = 'admin' WHERE id = $1`, [admin.id]);
   const insertUser = `INSERT INTO users (id, email, first_name, last_name, role, stripe_account_id, can_receive_payments) VALUES ($1, $2, 'Synthetic', $3, $4, $5, $6)`;

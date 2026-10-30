@@ -162,12 +162,18 @@ describe("S2 — email register in waitlist mode", () => {
     assert.ok(!JSON.stringify(res.body).includes("traveloure-qa.test"), "the refusal carries no email");
     assert.equal(selectCalls, 0, "refused before the existing-email check");
   });
-  it("lets a supply sign-up past the gate", async () => {
-    const res = await register({ intent: "supply" });
+  // WL-B (Leon, Oct 30, 2026 — sanctioned pin edit): before launch a supply sign-up must name its role; a provider
+  // with its fields passes, a role-less one is sent to the provider email path.
+  it("lets a provider supply sign-up with its fields past the gate; a role-less one is refused", async () => {
+    const res = await register({ intent: "supply", supplyRole: "provider", provider: { businessName: "B", category: "other", city: "Kyoto" } });
     // AUTH-1 fix 3b: an existing address gets the neutral 202, never "already exists".
     assert.equal(res.statusCode, REGISTRATION_NEUTRAL_STATUS);
     assert.equal(res.body.code, REGISTRATION_NEUTRAL_CODE);
     assert.equal(selectCalls, 1);
+    const bare = await register({ intent: "supply" });
+    assert.equal(bare.statusCode, 403);
+    assert.equal(bare.body.reason, "provider_fields_required");
+    assert.equal(selectCalls, 1, "refused before the existing-email check");
   });
   it("an unknown intent is a traveler", async () => {
     const res = await register({ intent: "provider" });
@@ -267,7 +273,8 @@ describe("S6 — the Ready-Made purchase gate", () => {
 describe("S7 — the pure rules", () => {
   it("decides, normalises and builds the path", () => {
     assert.deepEqual(decideFirstTimeSignup({ mode: "open", intent: "traveler", qaCodeValid: false }), { allowed: true });
-    assert.deepEqual(decideFirstTimeSignup({ mode: "waitlist", intent: "supply", qaCodeValid: false }), { allowed: true });
+    // WL-B (sanctioned pin edit): a role-less supply sign-up is refused before launch.
+    assert.deepEqual(decideFirstTimeSignup({ mode: "waitlist", intent: "supply", qaCodeValid: false }), { allowed: false, reason: "provider_fields_required" });
     assert.deepEqual(decideFirstTimeSignup({ mode: "waitlist", intent: "traveler", qaCodeValid: true }), { allowed: true });
     assert.deepEqual(decideFirstTimeSignup({ mode: "waitlist", intent: "traveler", qaCodeValid: false }), { allowed: false, code: TRAVELER_WAITLIST });
     assert.equal(normalizeSignupIntent("supply"), "supply");
@@ -294,7 +301,13 @@ describe("S8 — Replit OIDC", () => {
     await assert.rejects(() => upsertUser({ sub: "r-new-1" }), new RegExp(TRAVELER_WAITLIST));
     assert.equal(created.length, 0);
   });
-  it("waitlist mode lets a first-time supply sign-up through", async () => {
+  // WL-B (sanctioned pin edit): a social sign-in carries no provider fields, so before launch a first-time supply
+  // sign-up is refused there and nothing is created; it passes once sign-up is open.
+  it("waitlist mode refuses a first-time supply sign-up and creates nothing; open mode lets it through", async () => {
+    await assert.rejects(() => upsertUser({ sub: "r-new-2" }, { intent: "supply" }), /provider_fields_required/);
+    assert.equal(created.length, 0);
+    settings.traveler_signup_mode = "open";
+    invalidatePlatformFlagCache();
     assert.equal(await upsertUser({ sub: "r-new-2" }, { intent: "supply" }), "r-new-2");
     assert.equal(created.length, 1);
   });
@@ -330,7 +343,15 @@ describe("S9 — Facebook", () => {
     assert.ok(!JSON.stringify(out.info).includes("@"), "the refusal carries no email");
     assert.equal(created.length, 0);
   });
-  it("waitlist mode lets a first-time supply sign-up through, recorded as a Facebook account", async () => {
+  // WL-B (sanctioned pin edit): refused before launch (no provider fields on a social sign-in); open mode lets it
+  // through, recorded as a Facebook account.
+  it("waitlist mode refuses a first-time supply sign-up; open mode records it as a Facebook account", async () => {
+    const refused = await verify("supply");
+    assert.equal(refused.user, false);
+    assert.equal(refused.info.code, "provider_fields_required");
+    assert.equal(created.length, 0);
+    settings.traveler_signup_mode = "open";
+    invalidatePlatformFlagCache();
     const out = await verify("supply");
     assert.equal(out.user?.claims?.sub, "fb_4242");
     assert.equal(created[0]?.authProvider, "facebook");

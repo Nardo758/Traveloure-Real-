@@ -14,6 +14,16 @@
  */
 import assert from "node:assert/strict";
 
+/**
+ * WL-B (ledger `2026-10-30-wlb-provider-signup-gate`; Leon, Oct 30, 2026): before launch a supply sign-up must name
+ * its role, and a provider gives its light fields. The `extra` a suite passes for a supply (non-traveler) account.
+ */
+export const SUPPLY_PROVIDER_SIGNUP_EXTRA = {
+  intent: "supply",
+  supplyRole: "provider",
+  provider: { businessName: "Fixture Supply", category: "other", city: "Kyoto" },
+} as const;
+
 export interface SignedInActor {
   id: string;
   email: string;
