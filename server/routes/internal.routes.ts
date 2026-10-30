@@ -31,6 +31,7 @@ import { runBookingAutoCompletion } from "../jobs/bookingAutoCompletion";
 import { runFactsRecheck } from "../jobs/factsRecheck";
 import { contentExpiryCensusCrashed, contentExpiryCensusReportedFailure, runContentExpiryCensus } from "../jobs/contentExpiryCensus";
 import { runWaitlistRetention } from "../jobs/waitlistRetention";
+import { runGuestDataRetention } from "../jobs/guestDataRetention";
 import { runOfficialRefresh } from "../jobs/officialRefresh";
 import { runLiteapiSync } from "../jobs/liteapiSync";
 import { runLiteapiBookingSync } from "../jobs/liteapiBookingSync";
@@ -235,6 +236,8 @@ export const JOB_CADENCE: readonly JobCadence[] = [
   // LW-1h (ledger `2026-10-16-lw1h-waitlist-retention`): posted daily; `not_open` / `not_due` until 12 months after
   // traveler sign-up first opens, then deletes never-converted waitlist rows, each with its audit row.
   { job: "waitlist-retention", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
+  // Row 210. Posted daily. Unset N answers `unset` and erases nothing; a due pass erases and audits the count.
+  { job: "guest-data-retention", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
   // S1-d-1 (ledger `2026-10-10-s1-d1-liteapi`): LiteAPI static content, Kyoto only, incremental.
   { job: "liteapi-sync", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
   // SS-1b (ledger `2026-10-10-ss1b-official-refresh`): posted daily; reads only targets that are DUE on their
@@ -470,6 +473,17 @@ router.post("/internal/jobs/content-expiry-census", requireInternalSecret, async
 // months after traveler sign-up first opened; an unreadable opening date or an unauditable deletion is an error.
 router.post("/internal/jobs/waitlist-retention", requireInternalSecret, async (_req, res) => {
   const { status, body } = await runJob("waitlist-retention", () => runWaitlistRetention(), (r) => r?.status === "error");
+  res.status(status).json(body);
+});
+
+// Row 210. The daily guest-data retention pass. Unset N is a success that erased nothing.
+// A pass that found due rows and could not audit them is an error and deletes nothing.
+router.post("/internal/jobs/guest-data-retention", requireInternalSecret, async (_req, res) => {
+  const { status, body } = await runJob(
+    "guest-data-retention",
+    () => runGuestDataRetention(),
+    (r) => r?.status === "error",
+  );
   res.status(status).json(body);
 });
 

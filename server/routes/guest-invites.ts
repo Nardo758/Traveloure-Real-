@@ -11,6 +11,7 @@ import { loadPlanGuestRoster } from "../services/plan-guest-roster.service";
 import { authorizeTripOwnerTier } from "../utils/trip-logistics-auth";
 import { buildGuestLanding, projectInviteForGuest } from "../services/guest-invite-landing";
 import { rsvpSchema, rsvpUpdateValues } from "../services/guest-rsvp-body";
+import { eraseGuestInviteOnRequest, readGuestDataRetentionDays } from "../jobs/guestDataRetention";
 
 /**
  * GUEST INVITE SYSTEM — organizer invite management + public token-based guest RSVP.
@@ -471,6 +472,8 @@ router.get("/api/invites/:token", guestTokenLimiter, async (req: Request, res: R
       invite: projectInviteForGuest(invite),
       experience: redactExperienceForGuest(experience),
       landing,
+      // Null when the admin has not set N. The page then omits the retention sentence.
+      retentionDays: await readGuestDataRetentionDays(),
     });
   } catch (error: any) {
     console.error("Error fetching invite:", error);
@@ -555,6 +558,25 @@ router.post("/api/invites/:token/rsvp", guestTokenLimiter, async (req: Request, 
     return res.json({ message: "RSVP submitted successfully", invite: projectInviteForGuest(updated) });
   } catch (error: any) {
     console.error("Error submitting RSVP:", error);
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/invites/:token/delete-rsvp-details
+ * The guest asked to delete their RSVP details sooner (row 210). The token is the only input.
+ * 204 when that invite is gone. 404 when the token names nothing — the same sentence as the other
+ * guest reads, so the route cannot be used to probe which invites exist.
+ */
+router.post("/api/invites/:token/delete-rsvp-details", guestTokenLimiter, async (req: Request, res: Response) => {
+  try {
+    const result = await eraseGuestInviteOnRequest(req.params.token);
+    if (!result.erased) {
+      return res.status(404).json({ error: "Invite not found" });
+    }
+    return res.status(204).end();
+  } catch (error: any) {
+    console.error("Error erasing guest RSVP details");
     return res.status(500).json({ error: error.message });
   }
 });
