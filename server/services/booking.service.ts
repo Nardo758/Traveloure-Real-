@@ -32,13 +32,15 @@ const stripe = new Stripe(getStripeSecretKey() || '', {
 });
 
 // Detached provider notices. Confirmation returns without waiting on them.
-// Tests join the set so a later outbox census does not observe the insert mid-count.
-const bookingBackground = new Set<Promise<unknown>>();
+// Tests join the list so a later outbox census does not observe the insert mid-count.
+// An array, not a Set: spreading a Set is a tsc error at this project's target.
+const bookingBackground: Promise<unknown>[] = [];
 
 function retainBookingBackground(work: Promise<unknown>): void {
-  bookingBackground.add(work);
+  bookingBackground.push(work);
   void work.finally(() => {
-    bookingBackground.delete(work);
+    const index = bookingBackground.indexOf(work);
+    if (index >= 0) bookingBackground.splice(index, 1);
   });
 }
 
@@ -46,8 +48,8 @@ export async function __settleBookingBackgroundForTests(): Promise<void> {
   if (process.env.NODE_ENV !== "test") {
     throw new Error("__settleBookingBackgroundForTests is test-only");
   }
-  for (let guard = 0; bookingBackground.size > 0 && guard < 20; guard++) {
-    await Promise.allSettled([...bookingBackground]);
+  for (let guard = 0; bookingBackground.length > 0 && guard < 20; guard++) {
+    await Promise.allSettled(bookingBackground.slice());
   }
 }
 
