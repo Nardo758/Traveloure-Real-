@@ -144,7 +144,7 @@
 | `OptimizeGateTeaser` | `client/src/pages/optimize.tsx` | Upsell teaser | Rendered inline | `/optimize` page | — | — | — | Delta-only teaser (no offering IDs) |
 | `AddToExperienceDialog` | `client/src/components/add-to-experience-dialog.tsx` | Add to trip | `open` prop | `experience-template.tsx`, `service-detail.tsx` | — | — | **Medium** | `useMutation` for `addToTrip` |
 | `AddCustomVenueModal` | `client/src/components/add-custom-venue-modal.tsx` | Venue add | `open` prop | `expert/workspace.tsx` | — | — | **Medium** | Venue creation in workspace |
-| `SerpInquiryDialog` | `client/src/components/serp-inquiry-dialog.tsx` | Search inquiry | `open` prop | `serp-api-integration.ts` (search results) | — | — | — | Search result dialog |
+| `SerpInquiryDialog` | `client/src/components/serp-inquiry-dialog.tsx` | Search inquiry | `open` prop | ~~`serp-api-integration.ts`~~ (search results; the file was removed by #1744 (row 263, ledger `2026-10-28-row263-dead-recommendations-route`)) | — | — | — | Search result dialog |
 
 ---
 
@@ -272,7 +272,7 @@ Ranked by fan-in × money proximity. Each journey maps to a terminal (money in o
 | `SmartServiceRecommendations` narrow usage | `client/src/components/SmartServiceRecommendations.tsx` | Only used in `dashboard.tsx` and `expert-detail.tsx` | Not surfaced in `/discover` or `/services/:id` where it would be most valuable |
 | `ItineraryComparisonWithBooking` | `client/src/components/ItineraryComparisonWithBooking.tsx` | Imports `BookingFlowModal` but route `/itinerary-comparison/:id` uses `ItineraryComparisonPage` (different component) | App.tsx:405 uses `ItineraryComparisonPage`, not `ItineraryComparisonWithBooking` |
 | `AddCustomVenueModal` | `client/src/components/add-custom-venue-modal.tsx` | Referenced only in `expert/workspace.tsx` | Low usage — may be valid but narrow |
-| `SerpInquiryDialog` | `client/src/components/serp-inquiry-dialog.tsx` | Referenced only in `serp-api-integration.ts` (server-side) | Server generates inquiry but client dialog may not be wired |
+| `SerpInquiryDialog` | `client/src/components/serp-inquiry-dialog.tsx` | Was referenced only in `serp-api-integration.ts` (server-side), which was removed by #1744 (row 263, ledger `2026-10-28-row263-dead-recommendations-route`) | Server generates inquiry but client dialog may not be wired |
 | `city-feed-card` → `/local-experts` | `client/src/components/city-feed-card.tsx` | `href="/local-experts"` but no route | 404 risk — route table missing |
 
 ### 4.3 Redirects That May Hide Orphans

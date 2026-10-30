@@ -49,7 +49,7 @@ view/send telemetry (`:59-62`).
 | `DELETE /api/invites/:inviteId` | `server/routes/guest-invites.ts:377` | Gated on the invite's PARENT experience. |
 | `POST /api/invites/:token/origin` | `server/routes/guest-invites.ts:439` | **The guest**, public-by-token. |
 | `POST /api/invites/:token/rsvp` | `server/routes/guest-invites.ts:473` | **The guest**, public-by-token. |
-| `POST /api/invites/:token/travel-plans` | `server/routes/guest-invites.ts:571` | **The guest**, public-by-token. |
+| ~~`POST /api/invites/:token/travel-plans`~~ | ~~`server/routes/guest-invites.ts:571`~~ | **The guest**, public-by-token. *Later removed by #1744 (row 263, ledger `2026-10-28-row263-dead-recommendations-route`).* |
 | view-count stamp | `server/storage.ts:8105-8111` | On the token GET. |
 
 Storage layer: `server/storage.ts:7889-8137`.
@@ -61,7 +61,7 @@ Storage layer: `server/storage.ts:7889-8137`.
 | `GET /api/events/:experienceId/invites` (organizer list) | `server/routes/guest-invites.ts:226` |
 | `GET /api/events/:experienceId/invites/stats` | `server/routes/guest-invites.ts:338` |
 | `GET /api/invites/:token` (redacted event view) | `server/routes/guest-invites.ts:414` |
-| `GET /api/invites/:token/recommendations` | `server/routes/guest-invites.ts:519` |
+| ~~`GET /api/invites/:token/recommendations`~~ *(later removed by #1744 (row 263, ledger `2026-10-28-row263-dead-recommendations-route`))* | ~~`server/routes/guest-invites.ts:519`~~ |
 
 ### Surfaces
 
