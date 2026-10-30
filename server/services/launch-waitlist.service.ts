@@ -22,6 +22,8 @@ import {
   WAITLIST_SEARCH_LIMIT,
   WAITLIST_CONSENT_KEY,
   WAITLIST_MARKETING_CONSENT_KEY,
+  WAITLIST_MARKETING_CONSENT_LINE,
+  WAITLIST_MARKETING_CONSENT_VERSION,
   WAITLIST_EXPERT_LINK_SOURCE,
   WAITLIST_MARKET_OPTIONS,
   waitlistCityName,
@@ -58,8 +60,27 @@ export async function ensureConsentText(marketSlug: string, exec: SqlClient = db
 }
 
 /**
- * The news box has no seeded wording. A version is present only when a consent_texts row
- * for launch_marketing_news already exists. Absent means the ticked box writes nothing.
+ * Row 294: record the approved news sentence once. ON CONFLICT DO NOTHING on (consent_key, version),
+ * so a second boot is a no-op and the stored body is never edited. The join path does not call this:
+ * a tick writes a consent row only when this version is already present (a missing seed stores nothing).
+ */
+export async function ensureMarketingConsentText(exec: SqlClient = db): Promise<string> {
+  await exec.execute(sql`
+    INSERT INTO consent_texts (id, consent_key, version, body, created_at)
+    VALUES (
+      gen_random_uuid(),
+      ${WAITLIST_MARKETING_CONSENT_KEY},
+      ${WAITLIST_MARKETING_CONSENT_VERSION},
+      ${WAITLIST_MARKETING_CONSENT_LINE},
+      NOW()
+    )
+    ON CONFLICT (consent_key, version) DO NOTHING
+  `);
+  return WAITLIST_MARKETING_CONSENT_VERSION;
+}
+
+/**
+ * The news sentence's version, if it has been seeded. Absent means a ticked box writes nothing.
  */
 async function marketingTextVersion(exec: SqlClient): Promise<string | null> {
   const found = await exec.execute(sql`
@@ -118,7 +139,7 @@ export async function joinWaitlist(
   const referrerUserId = credit?.referrerUserId ?? null;
   const shortLinkCode = credit?.shortLinkCode ?? null;
   const consent = body.consent === true;
-  // Omitted marketingConsent is false. A ticked box still writes nothing until a text version exists.
+  // Omitted marketingConsent is false (no consent row). A tick writes a row only when the seeded text exists.
   const marketingConsent = body.marketingConsent === true;
   const tripType = traveler ? body.tripType ?? null : null;
   const roughMonth = traveler ? body.roughMonth ?? null : null;
