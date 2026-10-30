@@ -31,6 +31,26 @@ const stripe = new Stripe(getStripeSecretKey() || '', {
   apiVersion: '2024-12-18.acacia' as any,
 });
 
+// Detached provider notices. Confirmation returns without waiting on them.
+// Tests join the set so a later outbox census does not observe the insert mid-count.
+const bookingBackground = new Set<Promise<unknown>>();
+
+function retainBookingBackground(work: Promise<unknown>): void {
+  bookingBackground.add(work);
+  void work.finally(() => {
+    bookingBackground.delete(work);
+  });
+}
+
+export async function __settleBookingBackgroundForTests(): Promise<void> {
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error("__settleBookingBackgroundForTests is test-only");
+  }
+  for (let guard = 0; bookingBackground.size > 0 && guard < 20; guard++) {
+    await Promise.allSettled([...bookingBackground]);
+  }
+}
+
 export interface CartItem {
   id: string;
   tripId: string;
@@ -973,8 +993,9 @@ class BookingService {
       );
     }
 
-    // Fire-and-forget: provider in-app notification + email (non-critical; must not block caller)
-    ;(async () => {
+    // Provider notice stays off the confirmation return path. The task is retained so a
+    // test can join the outbox insert; the alert enqueue is part of that same task.
+    retainBookingBackground((async () => {
       try {
         if (!providerId) return;
         const { storage } = await import('../storage');
@@ -1014,7 +1035,7 @@ class BookingService {
 
         if (providerEmail && providerEmailBookingAlerts) {
           // Through the retrying outbox (board #1564): never throws, retried on a Resend outage.
-          void enqueueBookingAlertEmail({
+          await enqueueBookingAlertEmail({
             providerEmail,
             providerName,
             bookingId,
@@ -1026,7 +1047,7 @@ class BookingService {
       } catch (notifErr) {
         console.error(`[BookingService] Post-confirmation notifications failed for booking ${bookingId}:`, notifErr);
       }
-    })();
+    })());
 
     // Traveler confirmation was persisted in the transaction above; try it once now that it has
     // committed. The existing outbox drain still owns delivery, including after a process restart.
