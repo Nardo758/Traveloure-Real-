@@ -33,6 +33,12 @@ export function landingDay(value: string | undefined): string | undefined {
   return day ? day.toLocaleDateString() : undefined;
 }
 
+/** Row 280c: the slip anchor item's "RSVP by {date}" line, the same approved guest copy and day reading. */
+export function slipRsvpByLine(rsvpBy: string | undefined): string | undefined {
+  const day = landingDay(rsvpBy);
+  return day ? GUEST_LANDING_COPY.rsvpBy(day) : undefined;
+}
+
 export function guestLandingRows(
   landing: GuestLandingPayload | null | undefined,
   rsvpStatus: string | null | undefined,

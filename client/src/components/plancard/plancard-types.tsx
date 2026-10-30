@@ -335,6 +335,11 @@ export interface PlanCardActivity {
    */
   userExperienceId?: string | null;
   /**
+   * Row 280c — mirrors `TripPlanActivity.rsvpBy`: the event's RSVP-by day ("YYYY-MM-DD"), on the guest's invite
+   * anchor item only. Absent ⇒ nothing is drawn (§13).
+   */
+  rsvpBy?: string;
+  /**
    * Migration 181 (ledger `2026-09-06-item-origin-chip`, CLAUDE.md Locked Decision 12) —
    * `itinerary_items.origin`: WHO put this item on the plan. Mirrors `TripPlanActivity.origin`
    * (shared/trip-plan.ts): PRESENT ONLY when the row really carries one, so an ABSENT key and a
