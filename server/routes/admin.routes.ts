@@ -4635,7 +4635,11 @@ router.get("/api/admin/data/location-summary", isAuthenticated, async (req, res)
 
   // Manually refresh all cities (admin only)
 
-router.get("/api/admin/affiliate/reconciliation", isAuthenticated, async (req, res) => {
+  // Row 272 (Architect, Oct 28 and Oct 29, 2026; ledger `2026-10-29-affiliate-reconciliation-post`): a POST,
+  // because getReconciliationView runs matchRecords, which writes affiliate_earnings (matched status, partner
+  // reference, report data) and, on an exact report-token match, the linked expert_earnings amount. Period
+  // and partner come from the JSON body.
+router.post("/api/admin/affiliate/reconciliation", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -4644,8 +4648,9 @@ router.get("/api/admin/affiliate/reconciliation", isAuthenticated, async (req, r
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const period = (req.query.period as string) || "this_month";
-      const partner = (req.query.partner as string) || undefined;
+      const body = (req.body ?? {}) as { period?: unknown; partner?: unknown };
+      const period = typeof body.period === "string" && body.period !== "" ? body.period : "this_month";
+      const partner = typeof body.partner === "string" && body.partner !== "" ? body.partner : undefined;
       const validPeriods = ["this_month", "last_month", "last_90_days"];
       if (!validPeriods.includes(period)) {
         return res.status(400).json({ message: "Invalid period. Use: this_month, last_month, last_90_days" });

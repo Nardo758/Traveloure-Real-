@@ -710,10 +710,10 @@ function ReconciliationPanel() {
   const { data, isLoading, refetch } = useQuery<ReconciliationData>({
     queryKey,
     queryFn: async () => {
-      const params = new URLSearchParams({ period });
-      if (partnerFilter && partnerFilter !== "all") params.set("partner", partnerFilter);
-      const res = await fetch(`/api/admin/affiliate/reconciliation?${params}`, { credentials: "include" });
-      if (!res.ok) throw new Error(await res.text());
+      // Row 272: a POST, because the view runs the matching pass, which writes.
+      const body: { period: string; partner?: string } = { period };
+      if (partnerFilter && partnerFilter !== "all") body.partner = partnerFilter;
+      const res = await apiRequest("POST", "/api/admin/affiliate/reconciliation", body);
       return res.json();
     },
   });
