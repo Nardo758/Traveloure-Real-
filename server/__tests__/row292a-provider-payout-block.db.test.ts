@@ -34,7 +34,7 @@ import {
   isProviderBookingStatusRequest,
   resolvePayoutBlock,
 } from "../services/provider-payout-block.service";
-import { registerAndSignIn } from "./fixtures/register-and-sign-in";
+import { registerAndSignIn, SUPPLY_PROVIDER_SIGNUP_EXTRA } from "./fixtures/register-and-sign-in";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 const PASSWORD = "TestPass123!";
@@ -240,7 +240,7 @@ before(async () => {
   await db.execute(sql`
     INSERT INTO users (id, email, role, first_name) VALUES (${travelerId}, ${email("trav")}, 'user', 'Trav')
   `);
-  const supply = { intent: "supply" };
+  const supply = SUPPLY_PROVIDER_SIGNUP_EXTRA;
   const provider = await registerAndSignIn({
     baseUrl: BASE_URL, email: email("prov"), password: PASSWORD, firstName: "Prov", extra: supply,
   });

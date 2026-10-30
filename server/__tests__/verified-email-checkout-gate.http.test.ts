@@ -18,7 +18,7 @@ import { sql } from "drizzle-orm";
 
 import { db, pool } from "../db";
 import { emailVerificationDeniedBody } from "../../shared/email-verification-gate";
-import { registerAndSignIn } from "./fixtures/register-and-sign-in";
+import { registerAndSignIn, SUPPLY_PROVIDER_SIGNUP_EXTRA } from "./fixtures/register-and-sign-in";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 const PASSWORD = "TestPass123!";
@@ -96,7 +96,7 @@ before(async () => {
     leaveUnverified: true,
     // Waitlist mode refuses a first-time traveler. Supply intent is the existing
     // bypass and still creates role=user (emailAuth ignores userType).
-    extra: { intent: "supply" },
+    extra: SUPPLY_PROVIDER_SIGNUP_EXTRA,
   });
   buyerCookie = buyer.cookie;
   buyerId = buyer.id;

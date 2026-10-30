@@ -3,6 +3,8 @@
 // market's waitlist; SUPPLY sign-up (people offering services), existing-account sign-in, QA-tagged accounts and
 // admins are never refused. ONE spelling of the mode set, the intent set and the refusal, read by the server's
 // gates and by the client (§18 rule 1).
+import { z } from "zod";
+import { WAITLIST_EXPERT_FORM_PATH, WAITLIST_SERVICE_TYPES } from "./launch-waitlist";
 
 /** platform_settings key; seeded 'waitlist' by migration 381. Leon flips it in admin (audited). */
 export const TRAVELER_SIGNUP_MODE_SETTING = "traveler_signup_mode";
@@ -57,19 +59,90 @@ export const TRAVELER_WAITLIST_MESSAGE =
   "Traveloure isn't open for traveler sign-ups yet. Join the Kyoto waitlist to be first to book when Kyoto opens.";
 export const TRAVELER_WAITLIST_BUTTON = "Join the Kyoto waitlist";
 
-export type TravelerSignupDecision = { allowed: true } | { allowed: false; code: typeof TRAVELER_WAITLIST };
+// ── WL-B (ledger `2026-10-30-wlb-provider-signup-gate`): before launch, providers are the one supply role that may
+// create an account; an expert is refused and sent to "Apply Now" on the waitlist. ──────────────────────────────
+
+/** Which supply sign-up this is. Absent = a supply door that names no role (refused before launch). */
+export const SUPPLY_SIGNUP_ROLES = ["provider", "expert"] as const;
+export type SupplySignupRole = (typeof SUPPLY_SIGNUP_ROLES)[number];
+export function normalizeSupplyRole(value: unknown): SupplySignupRole | null {
+  return value === "provider" || value === "expert" ? value : null;
+}
+
+/**
+ * WL-B (Leon, Oct 30, 2026: role-less supply doors close): the supply role a door's return path implies, for a door
+ * that states none — the expert application ⇒ expert, the provider application ⇒ provider; anything else ⇒ null.
+ */
+export function supplyRoleFromPath(path: string | null | undefined): SupplySignupRole | null {
+  if (typeof path !== "string") return null;
+  const p = path.split(/[?#]/, 1)[0];
+  if (p === "/become-expert") return "expert";
+  if (p === "/become-provider") return "provider";
+  return null;
+}
+
+export const EXPERT_APPLY_NOW = "expert_apply_now";
+export const PROVIDER_FIELDS_REQUIRED = "provider_fields_required";
+/** HELD FOR LEON (FOUNDER WORDING REVIEW on the PR): the refused expert's sentence, carried in the refusal. */
+export const EXPERT_APPLY_NOW_MESSAGE = "Expert accounts open at launch. Apply now to join as a local expert.";
+
+const PROVIDER_CATEGORY_KEYS = WAITLIST_SERVICE_TYPES.map((t) => t.key) as [string, ...string[]];
+/**
+ * WL-B, option (c) (Leon, Oct 30, 2026): a provider sign-up's light fields. Required: business name, category, city
+ * (the email is the account's own). Optional: website, languages. Stored on the launch-market waitlist row; the full
+ * provider profile is completed later at /become-provider.
+ */
+export const providerSignupFieldsSchema = z
+  .object({
+    businessName: z.string().trim().min(1).max(160),
+    category: z.enum(PROVIDER_CATEGORY_KEYS),
+    city: z.string().trim().min(1).max(120),
+    website: z.string().trim().url().max(500).optional(),
+    languages: z.string().trim().max(200).optional(),
+  })
+  .strict();
+export type ProviderSignupFields = z.infer<typeof providerSignupFieldsSchema>;
+
+/**
+ * WL-B: a social sign-in cannot carry a provider's fields, so a provider who starts one is sent to the email sign-up
+ * with its role kept (the screen asks the fields there). The reason rides in the query; no email is in the URL.
+ */
+export const PROVIDER_EMAIL_SIGNUP_PATH = `/signup?intent=supply&supplyRole=provider&error=${PROVIDER_FIELDS_REQUIRED}`;
+
+/** Where a social sign-in refused by a WL-B reason is sent. */
+export function supplyRefusalRedirect(reason: typeof EXPERT_APPLY_NOW | typeof PROVIDER_FIELDS_REQUIRED): string {
+  return reason === EXPERT_APPLY_NOW ? WAITLIST_EXPERT_FORM_PATH : PROVIDER_EMAIL_SIGNUP_PATH;
+}
+
+export type TravelerSignupDecision =
+  | { allowed: true }
+  | { allowed: false; code: typeof TRAVELER_WAITLIST }
+  | { allowed: false; reason: typeof EXPERT_APPLY_NOW; message: string; applyPath: string }
+  | { allowed: false; reason: typeof PROVIDER_FIELDS_REQUIRED };
 
 /**
  * The ONE decision for a first-time account: open mode, supply intent or a QA sign-up (a QA-domain address AND the
- * right code — `qaSignupAllowed`) passes.
+ * right code — `qaSignupAllowed`) passes. WL-B: in waitlist mode a supply sign-up is decided by its role — an expert
+ * is refused with `expert_apply_now`, a provider passes only with its fields, and a sign-up that names no role is
+ * refused `provider_fields_required` (Leon, Oct 30, 2026: the role-less supply doors close).
  */
 export function decideFirstTimeSignup(input: {
   mode: TravelerSignupMode;
   intent: SignupIntent;
   qaCodeValid: boolean;
+  supplyRole?: SupplySignupRole | null;
+  providerFieldsValid?: boolean;
 }): TravelerSignupDecision {
   if (input.mode === "open") return { allowed: true };
-  if (input.intent === "supply") return { allowed: true };
+  if (input.intent === "supply") {
+    if (input.qaCodeValid) return { allowed: true };
+    if (input.supplyRole === "expert") {
+      return { allowed: false, reason: EXPERT_APPLY_NOW, message: EXPERT_APPLY_NOW_MESSAGE, applyPath: WAITLIST_EXPERT_FORM_PATH };
+    }
+    // A provider passes only with its fields; a supply sign-up that names no role is sent to the provider email path.
+    if (input.supplyRole === "provider" && input.providerFieldsValid) return { allowed: true };
+    return { allowed: false, reason: PROVIDER_FIELDS_REQUIRED };
+  }
   if (input.qaCodeValid) return { allowed: true };
   return { allowed: false, code: TRAVELER_WAITLIST };
 }
