@@ -7,39 +7,33 @@ never the SPA's "404 – Lost at Sea?" page.
 
 This README is itself public (it is served at `/.well-known/README.md`). Put nothing secret here.
 
-## MISSING: the Apple Pay domain-association file (operator drop-in)
+## The Apple Pay domain-association file
 
 CLAUDE.md Locked Decision 43(e): Apple Pay needs a one-time Stripe-dashboard domain
 registration, and Stripe verifies the domain by fetching
 
     https://<domain>/.well-known/apple-developer-merchantid-domain-association
 
-The file itself is **one fixed public file, identical for every Stripe account**. It could not
-be downloaded in the environment this lane was built in (the egress proxy refused
-`stripe.com:443`), so it is **NOT committed** — the route is ready and the file is not. Nothing
-in the codebase can fabricate it: a wrong body fails verification in a way that looks like a
-routing bug, which is exactly the confusion this lane exists to remove.
+That file is **committed in this directory**, with no file extension:
 
-**To finish the job (operator, ~2 minutes):**
+    client/public/.well-known/apple-developer-merchantid-domain-association
 
-1. Download the file, verbatim, no re-encoding and no added newline:
+It is Stripe's one fixed public file, identical for every Stripe account, stored verbatim (no
+re-encoding, no added newline), from
+<https://stripe.com/files/apple-pay/apple-developer-merchantid-domain-association>. Canonical source (Stripe docs):
+<https://docs.stripe.com/payments/payment-methods/pmd-registration>. Do not edit it: a wrong body
+fails verification in a way that looks like a routing bug.
 
-       curl -fsSL -o apple-developer-merchantid-domain-association \
-         https://stripe.com/files/apple-pay/apple-developer-merchantid-domain-association
+**Registering the domain is an operator step (LD 43(e)):**
 
-   Canonical source (Stripe docs): <https://docs.stripe.com/payments/payment-methods/pmd-registration>
+1. Confirm the live path answers the file and not HTML:
 
-2. Commit it into **this directory**, with **no file extension**:
+       curl -si https://www.traveloure.com/.well-known/apple-developer-merchantid-domain-association | head -5
 
-       client/public/.well-known/apple-developer-merchantid-domain-association
+2. Stripe dashboard → **Settings → Payment method domains → Add a new domain** →
+   `www.traveloure.com` → Verify. (Same for any other domain the checkout is served from.)
 
-   No code change is needed — the mount serves any file dropped here.
-
-3. Publish, then confirm the live path answers the file and not HTML:
-
-       curl -si https://traveloure.com/.well-known/apple-developer-merchantid-domain-association | head -5
-
-4. Stripe dashboard → **Settings → Payment method domains → Add a new domain** →
-   `traveloure.com` → Verify. (Same for any other domain the checkout is served from.)
-
-Step 4 is an operator step by ruling — no test can assert it was done (LD 43(e)).
+No test can assert step 2 was done. With `STRIPE_PAYMENT_DOMAIN_CHECK=1` set, the server lists the
+account's payment method domains once at boot and logs a warning if the site's domain is missing,
+disabled, or does not have Apple Pay active (`server/utils/stripe-payment-domain-check.ts`). It
+only reads; it never registers a domain and never stops the server from starting.
