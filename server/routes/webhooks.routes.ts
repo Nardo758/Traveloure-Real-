@@ -517,8 +517,9 @@ async function processConnectDisputeEvent(event: Stripe.Event): Promise<void> {
     }
   } catch (err: any) {
     if (!(err instanceof WebhookClaimInFlightError)) {
+      const processingError = err?.message ?? String(err);
       await db.execute(sql`
-        UPDATE webhook_events SET error = ${err?.message ?? String(err)} WHERE stripe_event_id = ${event.id}
+        UPDATE webhook_events SET error = ${processingError} WHERE stripe_event_id = ${event.id}
       `);
     }
     throw err;
