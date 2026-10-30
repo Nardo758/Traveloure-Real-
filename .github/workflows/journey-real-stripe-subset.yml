@@ -46,7 +46,7 @@ jobs:
   real-stripe-key-gate:
     name: real-stripe-subset gate (is STRIPE_SECRET_KEY present?)
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 2
     outputs:
       present: ${{ steps.check.outputs.present }}
@@ -67,7 +67,7 @@ jobs:
     name: real-stripe-subset (OC1 · OC3 · the real "Not now")
     needs: real-stripe-key-gate
     if: (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && needs.real-stripe-key-gate.outputs.present == '1'
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5.1.0

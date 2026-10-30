@@ -29,7 +29,7 @@ jobs:
   # secrets.* are unavailable in `if:` conditions — probe in a job and publish an output.
   config:
     name: 'staging config probe'
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     outputs:
       configured: ${{ steps.guard.outputs.run }}
     env:
@@ -57,7 +57,7 @@ jobs:
     # 90 min: tests use 90 s element timeouts × 13 tests + 2 retries each = ~40 min
     # plus 10 min server wake-up window.
     timeout-minutes: 90
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     name: 'Playwright E2E Tests (staging)'
     needs: config
     if: needs.config.outputs.configured == 'true'
@@ -258,7 +258,7 @@ jobs:
   # as a passing run from the checks list alone.
   test-summary:
     name: ${{ needs.config.outputs.configured == 'true' && 'Test Summary (staging)' || 'STAGING NOT CONFIGURED — journey suite DID NOT RUN' }}
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     needs: [config, playwright-tests]
     if: always()
 
