@@ -9,6 +9,7 @@
  *   NODE_ENV=test SESSION_COOKIE_INSECURE=1 \
  *   npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/email-verification-gate.http.test.ts
  */
+import { SUPPLY_PROVIDER_SIGNUP_EXTRA } from "./fixtures/register-and-sign-in";
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -178,7 +179,7 @@ describe("held sign-in", () => {
 
   it("a supply sign-up can sign in and open the product", async () => {
     const reg = await request(server, "POST", "/api/auth/register", {
-      body: { email, password, firstName: "Supply", lastName: "Scout", intent: "supply" },
+      body: { email, password, firstName: "Supply", lastName: "Scout", ...SUPPLY_PROVIDER_SIGNUP_EXTRA },
     });
     assert.equal(reg.status, 202);
     assert.equal(reg.data.code, REGISTRATION_NEUTRAL_CODE);

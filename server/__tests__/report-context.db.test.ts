@@ -12,7 +12,7 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { after, before, test } from "node:test";
-import { registerAndSignIn } from "./fixtures/register-and-sign-in";
+import { registerAndSignIn, SUPPLY_PROVIDER_SIGNUP_EXTRA } from "./fixtures/register-and-sign-in";
 import { MESSAGE_REPORT_CONTEXT_VIEWED_ACTION, MESSAGE_REPORT_RESOURCE } from "../services/admin-decision-audit";
 
 const { Pool } = await import("pg");
@@ -31,7 +31,7 @@ const accounts: Record<string, { id: string; cookie: string; email: string }> = 
 
 async function signIn(key: string, role: string | null) {
   const email = `gap10-${RUN}-${key}@traveloure.test`;
-  const a = await registerAndSignIn({ baseUrl: BASE_URL, email, password: PASSWORD, firstName: "Gap10", lastName: key, extra: { intent: "supply" } });
+  const a = await registerAndSignIn({ baseUrl: BASE_URL, email, password: PASSWORD, firstName: "Gap10", lastName: key, extra: SUPPLY_PROVIDER_SIGNUP_EXTRA });
   if (role) await pool.query(`UPDATE users SET role = $2 WHERE id = $1`, [a.id, role]);
   accounts[key] = { id: a.id, cookie: a.cookie, email };
 }

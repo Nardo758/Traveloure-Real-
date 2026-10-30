@@ -62,11 +62,23 @@ export const TRAVELER_WAITLIST_BUTTON = "Join the Kyoto waitlist";
 // ── WL-B (ledger `2026-10-30-wlb-provider-signup-gate`): before launch, providers are the one supply role that may
 // create an account; an expert is refused and sent to "Apply Now" on the waitlist. ──────────────────────────────
 
-/** Which supply sign-up this is. Absent = a supply door that names no role (decided as before WL-B). */
+/** Which supply sign-up this is. Absent = a supply door that names no role (refused before launch). */
 export const SUPPLY_SIGNUP_ROLES = ["provider", "expert"] as const;
 export type SupplySignupRole = (typeof SUPPLY_SIGNUP_ROLES)[number];
 export function normalizeSupplyRole(value: unknown): SupplySignupRole | null {
   return value === "provider" || value === "expert" ? value : null;
+}
+
+/**
+ * WL-B (Leon, Oct 30, 2026: role-less supply doors close): the supply role a door's return path implies, for a door
+ * that states none — the expert application ⇒ expert, the provider application ⇒ provider; anything else ⇒ null.
+ */
+export function supplyRoleFromPath(path: string | null | undefined): SupplySignupRole | null {
+  if (typeof path !== "string") return null;
+  const p = path.split(/[?#]/, 1)[0];
+  if (p === "/become-expert") return "expert";
+  if (p === "/become-provider") return "provider";
+  return null;
 }
 
 export const EXPERT_APPLY_NOW = "expert_apply_now";
@@ -110,9 +122,9 @@ export type TravelerSignupDecision =
 
 /**
  * The ONE decision for a first-time account: open mode, supply intent or a QA sign-up (a QA-domain address AND the
- * right code — `qaSignupAllowed`) passes. WL-B: in waitlist mode a supply sign-up that names its role is decided by
- * it — an expert is refused with `expert_apply_now`, a provider passes only with its fields. A supply sign-up that
- * names no role is decided exactly as before WL-B.
+ * right code — `qaSignupAllowed`) passes. WL-B: in waitlist mode a supply sign-up is decided by its role — an expert
+ * is refused with `expert_apply_now`, a provider passes only with its fields, and a sign-up that names no role is
+ * refused `provider_fields_required` (Leon, Oct 30, 2026: the role-less supply doors close).
  */
 export function decideFirstTimeSignup(input: {
   mode: TravelerSignupMode;
@@ -123,13 +135,13 @@ export function decideFirstTimeSignup(input: {
 }): TravelerSignupDecision {
   if (input.mode === "open") return { allowed: true };
   if (input.intent === "supply") {
-    if (input.supplyRole === "expert" && !input.qaCodeValid) {
+    if (input.qaCodeValid) return { allowed: true };
+    if (input.supplyRole === "expert") {
       return { allowed: false, reason: EXPERT_APPLY_NOW, message: EXPERT_APPLY_NOW_MESSAGE, applyPath: WAITLIST_EXPERT_FORM_PATH };
     }
-    if (input.supplyRole === "provider" && !input.providerFieldsValid && !input.qaCodeValid) {
-      return { allowed: false, reason: PROVIDER_FIELDS_REQUIRED };
-    }
-    return { allowed: true };
+    // A provider passes only with its fields; a supply sign-up that names no role is sent to the provider email path.
+    if (input.supplyRole === "provider" && input.providerFieldsValid) return { allowed: true };
+    return { allowed: false, reason: PROVIDER_FIELDS_REQUIRED };
   }
   if (input.qaCodeValid) return { allowed: true };
   return { allowed: false, code: TRAVELER_WAITLIST };

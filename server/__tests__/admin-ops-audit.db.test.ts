@@ -17,7 +17,7 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { after, before, test } from "node:test";
-import { registerAndSignIn } from "./fixtures/register-and-sign-in";
+import { registerAndSignIn, SUPPLY_PROVIDER_SIGNUP_EXTRA } from "./fixtures/register-and-sign-in";
 import {
   AUTO_CANCEL_CONFIG_ACTION,
   AUTO_CANCEL_RESOURCE,
@@ -93,7 +93,7 @@ before(async () => {
     password: "TestPass123!",
     firstName: "Gap8",
     lastName: "Admin",
-    extra: { intent: "supply" },
+    extra: SUPPLY_PROVIDER_SIGNUP_EXTRA,
   });
   adminCookie = admin.cookie;
   adminId = admin.id;

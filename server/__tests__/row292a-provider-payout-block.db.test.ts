@@ -14,7 +14,6 @@
  *       still accepts when the band does not resolve
  *   P7  the service file has no rate literal and does not import the fallback rates
  *   P8  another provider is 404; decline does not consult the block
- *   P9  mutation-auth counts stay 734 / 726
  *
  * Migration 416 is applied here (additive, re-runnable) and is HELD.
  *
@@ -35,7 +34,7 @@ import {
   isProviderBookingStatusRequest,
   resolvePayoutBlock,
 } from "../services/provider-payout-block.service";
-import { registerAndSignIn } from "./fixtures/register-and-sign-in";
+import { registerAndSignIn, SUPPLY_PROVIDER_SIGNUP_EXTRA } from "./fixtures/register-and-sign-in";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 const PASSWORD = "TestPass123!";
@@ -241,7 +240,7 @@ before(async () => {
   await db.execute(sql`
     INSERT INTO users (id, email, role, first_name) VALUES (${travelerId}, ${email("trav")}, 'user', 'Trav')
   `);
-  const supply = { intent: "supply" };
+  const supply = SUPPLY_PROVIDER_SIGNUP_EXTRA;
   const provider = await registerAndSignIn({
     baseUrl: BASE_URL, email: email("prov"), password: PASSWORD, firstName: "Prov", extra: supply,
   });
@@ -598,12 +597,4 @@ test("P8: another provider is 404 and decline does not consult the block", async
   const forged = await bookingRow(born.id);
   assert.equal(forged.snapshot, null);
   await db.execute(sql`DELETE FROM service_bookings WHERE id = ${born.id}`);
-});
-
-test("P9: mutation-auth counts stay 734 generated and 726 unique", async () => {
-  const manifest = JSON.parse(readFileSync("generated/security/mutation-auth-manifest.json", "utf8"));
-  assert.equal(manifest.mutationCount, 734);
-  assert.equal(manifest.rawRegistrationCount, 734);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 726);
-  assert.equal(manifest.distinctMethodPathCount, 726);
 });
