@@ -221,6 +221,12 @@ export interface TripPlanTransition {
   createdAt: string;
 }
 
+/**
+ * Row 242 (ledger `2026-10-30-row242-cost-source`). Where a slip activity's `cost` came from.
+ * First match wins; no match means the key is absent. `ai` only when `origin` is exactly `"ai"`.
+ */
+export type CostSource = "booking" | "traveler" | "service_link" | "expert" | "ai";
+
 export interface TripPlanActivity {
   id: string;
 
@@ -426,6 +432,26 @@ export interface TripPlanActivity {
   /** Display status, via the plancard `mapItemStatus` mapping (NOT the raw row status). */
   status: string;
   cost: number;
+  /**
+   * Row 242 (ledger `2026-10-30-row242-cost-source`). Where `cost` came from:
+   * `booking`, then `traveler`, then `service_link`, then `expert`, then `ai`
+   * (`ai` only when `origin` is exactly `"ai"`). PRESENT ONLY WHEN A SIGNAL MATCHES —
+   * an absent key is not an authorship claim for a row with no signal (§13).
+   * LABEL ONLY: `cost` (`estimated_cost`) stays the carrier of the amount; nothing
+   * here reads a listing price. Derived per read, never stored. Full level only —
+   * teaser, preview and the variant snapshot do not emit it.
+   */
+  costSource?: CostSource;
+  /**
+   * Row 242. The row's currency code, present only when it is not USD. No conversion.
+   * A null or empty currency is read as USD (the column default) and the key is omitted.
+   */
+  costCurrency?: string;
+  /**
+   * Row 242. PRESENT ONLY WHEN `cost_per_person` is true — the same shape as `supplySlot`.
+   * Flag only; it does not change `cost`.
+   */
+  costPerPerson?: true;
   comments: number;
   suggestedBy: string | null;
   changes: TripPlanActivityChange[];

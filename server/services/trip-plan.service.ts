@@ -55,6 +55,7 @@ import { contentOriginFor } from "@shared/content-origin";
 import { plancardPartyCount } from "@shared/plan-vocabulary";
 import { planDatesAreConfirmed } from "@shared/plan-dates";
 import { itemBookingLabelStatus, itemBookingStatusEntry } from "@shared/booking-visibility";
+import { deriveCostFlags, deriveCostSource } from "./cost-source";
 import { outOfBandFullyRefundedBookingIds } from "./out-of-band-refund.service";
 import {
   TRIP_PLAN_VERSION,
@@ -934,6 +935,10 @@ export async function assembleTripPlan(
   const buildActivity = (item: any): TripPlanActivity => {
     const title = item.title;
     const startTime = item.startTime || null;
+    // Row 242: one local, so the booked-or-not split and the price label read the same object.
+    // `!!linked.booking` is the live booking (counts as booked). An ended booking is `endedBooking`.
+    const linked = linkedBookingFields(item.bookingId ? bookingById.get(item.bookingId) : undefined);
+    const costSource = deriveCostSource(item, !!linked.booking);
     return {
       id: item.id,
       title,
@@ -985,7 +990,7 @@ export async function assembleTripPlan(
       // `refunded`) is therefore disclosed as `endedBooking`, never as `booking` — every surface
       // reads `booking`'s presence as "Booked". Present-only-when-real: an unbooked item carries
       // neither key, so every pre-existing consumer of this activity shape is untouched (§13).
-      ...linkedBookingFields(item.bookingId ? bookingById.get(item.bookingId) : undefined),
+      ...linked,
       ...(retryItemIds.has(item.id)
         ? { retryOpensCheckout: !(item.providerServiceId && retryRefusedListingIds.has(item.providerServiceId)) }
         : {}),
@@ -1031,6 +1036,10 @@ export async function assembleTripPlan(
       // R-w (ledger `2026-10-03-rw-ai-place-text`): a venue-less AI item is a SUPPLY SLOT — derived
       // from the row by the ONE predicate (`isSupplySlot`), present only when true, full level only.
       ...(isSupplySlot(item as any) ? { supplySlot: true as const } : {}),
+      // Row 242: price provenance and flags. Present only when real — no null, no default.
+      // Label only: `cost` above stays the amount. This live builder is the only emitter.
+      ...(costSource ? { costSource } : {}),
+      ...deriveCostFlags(item),
 
       // D-4 (ruling 2026-09-15; ledger `2026-09-15-d4-item-kind-contract`): the two LINK columns
       // the item-kind derivation reads. PRESENT ONLY WHEN THE ROW REALLY NAMES ONE — the same
