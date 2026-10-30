@@ -597,6 +597,34 @@ export function linkedBookingFields(
 }
 
 /** Meeting points for items linked to a platform service. Bulk-read once per assembly. */
+/**
+ * Row 280c: the RSVP-by day for the trip's invite anchor item. The anchor is the item on this trip whose
+ * user_experience is the event of an invite bound to this trip (`event_invites.plan_trip_id`); the first such
+ * item by creation when there are several. Absent when the event has no rsvp_by. A failed read returns an
+ * empty map and never fails the plan read (§15b).
+ */
+async function resolveInviteAnchorRsvpBy(tripId: string): Promise<Map<string, string>> {
+  try {
+    const result = await db.execute(sql`
+      SELECT DISTINCT ON (ii.user_experience_id)
+             ii.id AS item_id, to_char(e.rsvp_by, 'YYYY-MM-DD') AS rsvp_by
+        FROM event_invites i
+        JOIN user_experiences e ON e.id = i.experience_id
+        JOIN itinerary_items ii ON ii.trip_id = i.plan_trip_id AND ii.user_experience_id = i.experience_id
+       WHERE i.plan_trip_id = ${tripId}
+       ORDER BY ii.user_experience_id, ii.created_at ASC NULLS LAST, ii.id ASC
+    `);
+    const out = new Map<string, string>();
+    for (const row of result.rows as Array<{ item_id: string; rsvp_by: string | null }>) {
+      if (row.rsvp_by) out.set(row.item_id, row.rsvp_by);
+    }
+    return out;
+  } catch (err) {
+    console.warn("[trip-plan] invite anchor rsvp_by read failed (non-fatal):", (err as any)?.message);
+    return new Map();
+  }
+}
+
 async function resolveMeetingPoints(serviceIds: string[]): Promise<Record<string, string | null>> {
   const out: Record<string, string | null> = {};
   if (serviceIds.length === 0) return out;
@@ -881,6 +909,10 @@ export async function assembleTripPlan(
   }
   const retryItemIds = new Set(retryItems.map((i: any) => i.id as string));
 
+  // Row 280c (ledger `2026-10-30-row280c-slip-rsvp-by`): the guest's invite anchor item carries its event's
+  // RSVP-by day, read through the anchor's user_experience reference (no trip-level key dates).
+  const inviteAnchorRsvpBy = await resolveInviteAnchorRsvpBy(tripId);
+
   const dayNumbers = Array.from(new Set(items.map((i) => i.dayNumber))).sort((a, b) => a - b);
 
   const buildLeg = (leg: any): TripPlanLeg => buildTripPlanLegCore(leg, legBookingMap[leg.id]);
@@ -975,6 +1007,8 @@ export async function assembleTripPlan(
       ...((item as any).userExperienceId
         ? { userExperienceId: (item as any).userExperienceId as string }
         : {}),
+      // Row 280c: present only on the trip's invite anchor item, and only when its event states an RSVP-by day.
+      ...(inviteAnchorRsvpBy.has(item.id) ? { rsvpBy: inviteAnchorRsvpBy.get(item.id)! } : {}),
 
       // Migration 181 (ledger `2026-09-06-item-origin-chip`, CLAUDE.md Locked Decision 12): the
       // item's PROVENANCE — who put it on the plan. PRESENT ONLY when the row really carries one,
