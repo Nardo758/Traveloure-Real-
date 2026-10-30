@@ -416,16 +416,13 @@ Filed, not fixed, per the dispatch. Evidence lives in `docs/audits/expert-field-
 
 Four items the lane deliberately did NOT build. Each names why it is a separate decision.
 
-- **`job-staleness-alerting` (needs a channel decision — NOT a code question).** `job_heartbeats` +
-  `GET /internal/jobs/health` + the `/admin/reconciliation` tile make a dead cron channel *visible*;
-  nothing *pages* anyone. A heartbeat that goes stale at 03:00 on a Saturday is discovered whenever
-  someone next opens the admin page, which for a MONEY job (earnings release, booking
-  auto-completion) is not a monitoring story. **The blocker is a channel, not an implementation:**
-  where does it go — the existing admin-digest email, a Slack webhook, a PagerDuty-style escalation?
-  Each has a different on-call assumption and none is currently wired for machine-generated alerts.
-  Build shape once ruled: the daily admin digest already runs (`admin-digest-scheduler.service.ts`);
-  the cheapest honest version is a digest section listing any job not `ok`, which needs no new
-  channel at all and should probably be the first cut. **Decision needed from the decision-maker.**
+- **`job-staleness-alerting` — the alert half landed (ledger `2026-10-30-row100-missed-run-cron-alerts`).**
+  A roster job that is `stale` or `never_succeeded` raises one `scheduled_job_missed_run` ops alert per
+  job per UTC day (unread `admin_notifications` digest row plus one staff `notifications` row per admin)
+  from the `routing-recheck` hourly pass, which the cron posts every tick. The alert does not stamp a
+  heartbeat and does not send mail; the existing admin digest is the mail path. Still not built, and
+  outside that row: a dedicated "Scheduled jobs" digest section, moving the digest send onto the cron,
+  and an admin button that re-runs one job.
 
 - **`internal-jobs-runner-architecture` (a ruling request — F5's root cause, untouched by design).**
   See the one-paragraph recommendation below. The dispatch explicitly forbade a keep-alive hack, so
