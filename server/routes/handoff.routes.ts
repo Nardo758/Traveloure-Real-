@@ -47,6 +47,7 @@ import {
   onTripSupportCents,
   quoteHandoff,
   requestHandoffChanges,
+  rowWasEverDelivered,
   startOnTripSupport,
   typicalAcceptHours,
   withdrawHandoff,
@@ -58,7 +59,7 @@ import {
   resolveExpertSuggestion,
   suggestionSummary,
 } from "../services/expert-suggestions.service";
-import { HANDOFF_KINDS, handoffBannerState, handoffCityName, handoffExpertDisclosed } from "@shared/handoff";
+import { HANDOFF_KINDS, failedBookingBannerInput, handoffBannerState, handoffCityName, handoffExpertDisclosed } from "@shared/handoff";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { getPlatformFlag } from "../services/platform-flags";
@@ -157,7 +158,20 @@ router.get("/api/trips/:tripId/handoff", isAuthenticated, async (req: any, res) 
     handoff: projectHandoff(row, {
       expertName: row && handoffExpertDisclosed(row) ? await expertDisplayName(row.assignedExpertId) : null,
     }),
-    banner: row ? handoffBannerState({ status: row.status, fallbackOfferedAt: row.fallbackOfferedAt, city, capturedAt: row.capturedAt }) : null,
+    // Row C3b: a failed booking's payment state comes from the row's own bookingFailure marker; the
+    // banner never carries a refund id, a Stripe object or an amount.
+    banner: row
+      ? handoffBannerState({
+          status: row.status,
+          fallbackOfferedAt: row.fallbackOfferedAt,
+          city,
+          capturedAt: row.capturedAt,
+          failedBooking: failedBookingBannerInput(row.optimizationContext, {
+            everDelivered: rowWasEverDelivered(row),
+            hadHold: !!row.paymentIntentId && Number(row.feeCents ?? 0) + Number(row.travelerFeeCents ?? 0) > 0,
+          }),
+        })
+      : null,
     city,
     typicalAcceptHours: await typicalAcceptHours().catch(() => null),
     onTripSupportCents: row?.onTripSupportOfferedAt ? await onTripSupportCents() : null,

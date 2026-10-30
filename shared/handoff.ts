@@ -152,16 +152,66 @@ export type HandoffBannerState =
   | { kind: "delivered" }
   /** Smoke 13 #5: the traveler withdrew. `holdReleased` ⇔ nothing was ever captured. */
   | { kind: "withdrawn"; holdReleased: boolean }
+  /** Row C3b (server half of row 276): an accepted request ended without a booking. */
+  | { kind: "booking_failed"; payment: FailedBookingBannerPayment }
   | null;
+
+/**
+ * Row C3b: what happened to the traveler's money on a failed booking, derived ONLY from the server's
+ * own `optimization_context.bookingFailure` marker and the row (never a refund id, a Stripe object
+ * or an amount). `no_charge` is said only when the server has confirmed there was no money.
+ */
+export type FailedBookingBannerPayment = "refunded" | "checking" | "hold_released" | "reviewing" | "no_charge";
+
+/** Row C3b: the failed-booking facts the banner reads. Present only when the row carries the marker. */
+export interface FailedBookingBannerInput {
+  refundStatus: string | null;
+  everDelivered?: boolean;
+  hadHold?: boolean;
+}
+
+/**
+ * Row C3b, pure: the banner's failed-booking input from a row's `optimization_context`, or null when
+ * the row carries no `bookingFailure` marker. `everDelivered` and `hadHold` are the server's own
+ * readings of the row (`rowWasEverDelivered`; a payment intent with a total above zero).
+ */
+export function failedBookingBannerInput(
+  ctx: unknown,
+  facts: { everDelivered?: boolean; hadHold?: boolean } = {},
+): FailedBookingBannerInput | null {
+  const b = (ctx as { bookingFailure?: { refundStatus?: unknown } } | null)?.bookingFailure;
+  if (!b || typeof b !== "object") return null;
+  const refundStatus = typeof b.refundStatus === "string" && b.refundStatus ? b.refundStatus : null;
+  return { refundStatus, everDelivered: facts.everDelivered, hadHold: facts.hadHold };
+}
+
+/** Row C3b, pure: the payment state a `booking_failed` row shows. Ever-delivered is checked FIRST. */
+function failedBookingPayment(row: { capturedAt?: string | Date | null; failedBooking?: FailedBookingBannerInput | null }): FailedBookingBannerPayment {
+  const fb = row.failedBooking;
+  // No marker input: nothing confirms there was no charge, so the banner says the money is being checked.
+  if (!fb) return "checking";
+  if (fb.everDelivered) return "reviewing";
+  if (fb.refundStatus === "succeeded") return "refunded";
+  if (fb.refundStatus !== null) return "checking";
+  if (row.capturedAt) return "checking";
+  return fb.hadHold === false ? "no_charge" : "checking";
+}
 
 export function handoffBannerState(row: {
   status: string | null;
   fallbackOfferedAt?: string | Date | null;
   city?: string | null;
   capturedAt?: string | Date | null;
+  /** Row C3b: present only when `optimization_context.bookingFailure` exists. */
+  failedBooking?: FailedBookingBannerInput | null;
 }): HandoffBannerState {
-  if (row.status === "release_pending") return { kind: "release_pending" };
-  if (row.status === "released") return { kind: "released" };
+  if (row.status === "release_pending") {
+    return row.failedBooking ? { kind: "booking_failed", payment: "checking" } : { kind: "release_pending" };
+  }
+  if (row.status === "released") {
+    return row.failedBooking ? { kind: "booking_failed", payment: "hold_released" } : { kind: "released" };
+  }
+  if (row.status === "booking_failed") return { kind: "booking_failed", payment: failedBookingPayment(row) };
   if (row.status === "withdrawn") return { kind: "withdrawn", holdReleased: !row.capturedAt };
   if (row.status === "authorizing") return { kind: "authorizing" };
   if (row.status === "proposed" || row.status === "unmatched") {

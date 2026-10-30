@@ -22,8 +22,10 @@ import {
   HANDOFF_HOLD_TRAVELER_COPY,
   HANDOFF_LIVE_STATUSES,
   HANDOFF_STATUSES,
+  failedBookingBannerInput,
   handoffBannerState,
   handoffHoldReleaseBackoffMs,
+  type FailedBookingBannerInput,
   withdrawalStage,
 } from "@shared/handoff";
 import { handoffFulfilmentHours, handoffFulfilmentSince } from "../config/handoff.config";
@@ -650,7 +652,7 @@ test("F9: one Stripe call site each, no migration, status list and the banner st
   assert.ok(HANDOFF_STATUSES.includes("booking_failed"));
   assert.equal(HANDOFF_LIVE_STATUSES.includes("booking_failed" as never), false);
   assert.equal(withdrawalStage("booking_failed"), null);
-  assert.equal(handoffBannerState({ status: "booking_failed" }), null);
+  assert.deepEqual(handoffBannerState({ status: "booking_failed" }), { kind: "booking_failed", payment: "checking" });
   const client = fs.readFileSync("client/src/lib/handoff-client.ts", "utf8");
   assert.ok(client.includes("No local was free in time"));
   const cfg = fs.readFileSync("server/config/handoff.config.ts", "utf8");
@@ -1070,4 +1072,135 @@ test("F18b: a failed cancel still retries on the backoff, and the cap still aler
   assert.equal((await alertRows(capped.id, "handoff_hold_release_failed")).length, 1);
   assert.equal((await handoff.getHandoff(capped.id))!.status, "release_pending");
   cancelMode = "ok";
+});
+
+// ─── Row C3b (server half of row 276): the failed-booking banner kind ──────────────────────────
+// The banner's payment state comes only from the row's own bookingFailure marker and the row; the
+// helper has no refund-id, Stripe-object or amount input.
+
+test("C3b-A1: every status called with {status} only returns what it returned before", () => {
+  assert.deepEqual(handoffBannerState({ status: "release_pending" }), { kind: "release_pending" });
+  assert.deepEqual(handoffBannerState({ status: "released" }), { kind: "released" });
+  assert.deepEqual(handoffBannerState({ status: "withdrawn" }), { kind: "withdrawn", holdReleased: true });
+  assert.deepEqual(handoffBannerState({ status: "withdrawn", capturedAt: new Date() }), { kind: "withdrawn", holdReleased: false });
+  assert.deepEqual(handoffBannerState({ status: "authorizing" }), { kind: "authorizing" });
+  assert.deepEqual(handoffBannerState({ status: "proposed" }), { kind: "finding", city: null });
+  assert.deepEqual(handoffBannerState({ status: "unmatched", city: "Kyoto" }), { kind: "finding", city: "Kyoto" });
+  assert.deepEqual(handoffBannerState({ status: "proposed", fallbackOfferedAt: new Date() }), { kind: "fallback_offered" });
+  assert.deepEqual(handoffBannerState({ status: "accepted" }), { kind: "accepted" });
+  assert.deepEqual(handoffBannerState({ status: "delivered" }), { kind: "delivered" });
+  assert.equal(handoffBannerState({ status: "approved" }), null);
+  assert.equal(handoffBannerState({ status: null }), null);
+  // The one sanctioned change (:653): status only, no marker input ⇒ no confirmed no-charge ⇒ checking.
+  assert.deepEqual(handoffBannerState({ status: "booking_failed" }), { kind: "booking_failed", payment: "checking" });
+});
+
+const failed = (failedBooking: FailedBookingBannerInput | null, capturedAt: Date | null = null) =>
+  handoffBannerState({ status: "booking_failed", capturedAt, failedBooking });
+
+test("C3b-A2: a booking_failed row's payment state follows the marker's refund status", () => {
+  assert.deepEqual(failed({ refundStatus: "succeeded", hadHold: true }, new Date()), { kind: "booking_failed", payment: "refunded" });
+  assert.deepEqual(failed({ refundStatus: "pending", hadHold: true }, new Date()), { kind: "booking_failed", payment: "checking" });
+  assert.deepEqual(failed({ refundStatus: "failed", hadHold: true }, new Date()), { kind: "booking_failed", payment: "checking" });
+  assert.deepEqual(failed({ refundStatus: null, hadHold: true }, new Date()), { kind: "booking_failed", payment: "checking" });
+  assert.deepEqual(failed({ refundStatus: null, hadHold: false }), { kind: "booking_failed", payment: "no_charge" });
+  assert.deepEqual(failed({ refundStatus: null, hadHold: true }), { kind: "booking_failed", payment: "checking" });
+  assert.deepEqual(failed({ refundStatus: null }), { kind: "booking_failed", payment: "checking" }, "hadHold unknown is not a confirmed no-charge");
+});
+
+test("C3b-A3: an ever-delivered failure is reviewing whatever the refund status", () => {
+  const ever = [
+    handoff.rowWasEverDelivered({ optimizationContext: { everDeliveredAt: "2027-06-01T00:00:00.000Z" } }),
+    handoff.rowWasEverDelivered({ deliveredAt: new Date() }),
+    handoff.rowWasEverDelivered({ changeRounds: 1 }),
+  ];
+  assert.deepEqual(ever, [true, true, true]);
+  assert.equal(handoff.rowWasEverDelivered({}), false);
+  for (const everDelivered of ever) {
+    for (const refundStatus of [null, "succeeded", "pending", "failed"]) {
+      for (const hadHold of [true, false, undefined]) {
+        for (const capturedAt of [null, new Date()]) {
+          assert.deepEqual(failed({ refundStatus, everDelivered, hadHold }, capturedAt), { kind: "booking_failed", payment: "reviewing" });
+        }
+      }
+    }
+  }
+});
+
+test("C3b-A4: a refund id is not an input; pending with a refund on the row is still checking", () => {
+  const input = failedBookingBannerInput({ bookingFailure: { refundStatus: "pending", refundId: "re_x" } }, { hadHold: true });
+  assert.deepEqual(input, { refundStatus: "pending", everDelivered: undefined, hadHold: true });
+  assert.deepEqual(Object.keys(input!).sort(), ["everDelivered", "hadHold", "refundStatus"]);
+  assert.deepEqual(handoffBannerState({ status: "booking_failed", capturedAt: new Date(), failedBooking: input }), { kind: "booking_failed", payment: "checking" });
+  assert.equal(failedBookingBannerInput(null), null);
+  assert.equal(failedBookingBannerInput({}), null);
+  assert.equal(failedBookingBannerInput({ holdRelease: {} }), null);
+  assert.deepEqual(failedBookingBannerInput({ bookingFailure: { refundStatus: "" } }), { refundStatus: null, everDelivered: undefined, hadHold: undefined });
+});
+
+test("C3b-A5: released/release_pending with the marker are failed-booking kinds; without it they are unchanged", () => {
+  const marker = failedBookingBannerInput({ bookingFailure: { kind: "expert_withdrew" } }, { hadHold: true });
+  assert.deepEqual(handoffBannerState({ status: "released", failedBooking: marker }), { kind: "booking_failed", payment: "hold_released" });
+  assert.deepEqual(handoffBannerState({ status: "release_pending", failedBooking: marker }), { kind: "booking_failed", payment: "checking" });
+  assert.deepEqual(handoffBannerState({ status: "released", failedBooking: null }), { kind: "released" });
+  assert.deepEqual(handoffBannerState({ status: "release_pending", failedBooking: null }), { kind: "release_pending" });
+  const client = fs.readFileSync("client/src/lib/handoff-client.ts", "utf8");
+  assert.ok(client.includes("No local was free in time"), "the plain released line stays");
+});
+
+test("C3b-A6: no_charge only for the confirmed no-money case; hold_released only for released + marker", () => {
+  const statuses = [...HANDOFF_STATUSES, null] as const;
+  for (const status of statuses) {
+    for (const marker of [false, true]) {
+      for (const refundStatus of [null, "succeeded", "pending", "failed"]) {
+        for (const captured of [false, true]) {
+          for (const hadHold of [true, false, undefined]) {
+            for (const everDelivered of [false, true]) {
+              const failedBooking = marker ? { refundStatus, everDelivered, hadHold } : null;
+              const b = handoffBannerState({ status, capturedAt: captured ? new Date() : null, failedBooking });
+              const label = JSON.stringify({ status, marker, refundStatus, captured, hadHold, everDelivered });
+              const isNoCharge = !!b && b.kind === "booking_failed" && b.payment === "no_charge";
+              const isHoldReleased = !!b && b.kind === "booking_failed" && b.payment === "hold_released";
+              assert.equal(
+                isNoCharge,
+                status === "booking_failed" && marker && !everDelivered && refundStatus === null && !captured && hadHold === false,
+                label,
+              );
+              assert.equal(isHoldReleased, status === "released" && marker, label);
+              if (b && b.kind === "booking_failed") assert.deepEqual(Object.keys(b).sort(), ["kind", "payment"], label);
+            }
+          }
+        }
+      }
+    }
+  }
+});
+
+test("C3b-A7: GET /api/trips/:tripId/handoff carries the kind and payment, and no refund or Stripe field", async () => {
+  refundMode = "succeeded";
+  cancelMode = "ok";
+  const noMoney = await proposed("c3bnomoney");
+  await db.execute(sql`
+    UPDATE expert_requests
+    SET status = 'accepted', accepted_at = NOW(), payment_intent_id = NULL, fee_cents = 0, traveler_fee_cents = 0, captured_at = NULL
+    WHERE id = ${noMoney.id}
+  `);
+  assert.equal((await handoff.failHandoffBooking(noMoney.id, { kind: "expert_withdrew", expertId: ids.expert })).ok, true);
+  const nm = await call(ids.owner, "GET", `/api/trips/${noMoney.trip}/handoff`);
+  assert.equal(nm.status, 200, JSON.stringify(nm.body));
+  assert.deepEqual(nm.body.banner, { kind: "booking_failed", payment: "no_charge" });
+
+  const refunded = await acceptedCaptured("c3brefund");
+  const cb = await call(ids.expert, "POST", `/api/handoffs/${refunded.id}/cannot-book`, { reason: "withdrew" });
+  assert.equal(cb.status, 200, JSON.stringify(cb.body));
+  const rf = await call(ids.owner, "GET", `/api/trips/${refunded.trip}/handoff`);
+  assert.equal(rf.status, 200, JSON.stringify(rf.body));
+  assert.deepEqual(rf.body.banner, { kind: "booking_failed", payment: "refunded" });
+
+  for (const body of [nm.body, rf.body]) {
+    const text = JSON.stringify(body);
+    for (const leak of ["refundId", "refund_id", "paymentIntentId", "payment_intent", "optimizationContext", "bookingFailure", "refundStatus", "\"re_", "\"pi_"]) {
+      assert.equal(text.includes(leak), false, leak);
+    }
+  }
 });
