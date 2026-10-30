@@ -39,7 +39,7 @@ jobs:
   fee-preview:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: fee-preview (Trip-Pass informational waiver)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     # A HANG MUST FAIL, NEVER STALL (ledger `2026-09-05-fee-ledger-test-robustness`). Two runs in
     # 24h left the ledger step with no output for 30-80 minutes while every other job on the same
     # SHA was green; with no timeout anywhere the job was free to sit until GitHub's 6-hour default.

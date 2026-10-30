@@ -34,7 +34,7 @@ jobs:
   stay-book-sandbox:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: stay-book-sandbox (LiteAPI sandbox book + immediate cancel)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 30
     env:
       HAS_KEY: ${{ secrets.LITEAPI_SANDBOX_API_KEY != '' }}
