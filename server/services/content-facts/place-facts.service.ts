@@ -17,6 +17,7 @@ import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "../../db";
 import { contentSources, itineraryItems, placeFacts, trips } from "@shared/schema";
 import {
+  admitPetPolicyFact,
   asFactOrigin,
   DATED_FACT_TYPES,
   REVIEWED_ORIGINS,
@@ -116,6 +117,13 @@ export async function recordFacts(
     if (!placeFactTags(d.origin, d.license, d.factType)) {
       console.info(`[place-facts] refused untagged origin=${d.origin} fact_type=${d.factType} plan_id=${ctx.planId ?? "none"}`);
       return false;
+    }
+    // Row 187 (ledger `2026-10-30-row187-pets-welcome-gate`): a pet policy is stored only with a source and a checked
+    // date, and never from Google Places or OTA data.
+    if (d.factType === "pet_policy") {
+      const r = admitPetPolicyFact(d);
+      if (!r.ok) console.info(`[place-facts] refused fact_type=pet_policy reason=${r.reason} origin=${d.origin} source_id=${d.sourceId ?? "none"}`);
+      return r.ok;
     }
     if (!isFeasibilityFactType(d.factType)) return true;
     const verdict = admitFeasibilityFact(d);
@@ -754,6 +762,8 @@ function toView(r: FactRow, now: Date, sources: Map<string, SourceFacts> = new M
     sourceUrl: r.sourceUrl ?? null,
     provenance: factProvenanceLine(f, now, timeZone),
     checkedAt: r.fetchedAt ? new Date(r.fetchedAt as any).toISOString() : null,
+    // Row 187: the slip's "Pets welcome" gate reads when the fact was verified.
+    verifiedAt: r.verifiedAt ? new Date(r.verifiedAt as any).toISOString() : null,
     stale: isFactStale(f, now),
     publishable: isPublishable(f),
   };

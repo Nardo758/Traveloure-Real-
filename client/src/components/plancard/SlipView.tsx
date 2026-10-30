@@ -1814,6 +1814,7 @@ export function useSlipViewModel({
       fromFallback={!!tripsAnchor?.fromFallback}
       view={whereToStay}
       lodgingSet={lodgingSet}
+      stayFacts={currentStay ? data.placeFacts?.[currentStay.id] ?? null : null}
       canChoose={canEditItems}
       addPlacesControl={hasOpenLodgingSet ? null : <SlipAnchorCompareButton tripId={tripId} label={ANCHOR_PANEL_ADD_PLACES} variant={stage === "empty" ? "board" : "outline"} />}
       addFixedControl={
