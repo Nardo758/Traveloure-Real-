@@ -72,8 +72,8 @@ export async function loadRankedAnchors(
  * neighborhood ids are looked up in the catalog so the coordinates are SERVER-derived (the client's
  * coords are never trusted for a catalog id); an `activity` pin resolves to one of the trip's own
  * stops, and a custom placement is accepted as the traveler's own coordinates (§22). Returns null
- * when the pin cannot be resolved to a real location — the optimizer then falls back to auto anchors
- * rather than inventing one (§13).
+ * when the pin cannot be resolved to a real location. A caller that already took payment must
+ * fail that run (`paidPinFellBack`) rather than treat the null as auto-anchor mode.
  */
 /**
  * The located catalog candidate for a non-custom id, or null when that id is
@@ -126,8 +126,9 @@ type ResolvePinnedAnchor = (
 
 /**
  * Shared request-to-optimizer pin rail for both comparison creation and regeneration.
- * Missing or malformed input deliberately returns undefined so the optimizer keeps its
- * existing auto-anchor behavior.
+ * Missing or malformed input returns undefined so the optimizer keeps auto-anchor mode.
+ * A parsed pin that does not resolve also returns undefined. That second undefined is
+ * not auto-anchor: the paid run must fail (`paidPinFellBack` in paid-pin-resolution.ts).
  */
 export async function resolveOptimizerPinnedAnchor(
   rawPinnedAnchor: unknown,
