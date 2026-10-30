@@ -104,12 +104,23 @@ export interface StayCloseness {
   locatedDays: number;
   basis: "routed" | "straight_line";
 }
-export function stayDayCloseness(
+/**
+ * Row 244 (ledger `2026-10-30-row244-stay-day-closeness`): one located day's answer from the SAME computation as
+ * the N-of-M totals — `nearStops` against the caller's threshold, never the minutes or metres. `dayIndex` is
+ * 0-based (`dayNumber − 1`). A day with no located stop has no entry (§13: unknown, never "far").
+ */
+export interface StayDayCloseness {
+  dayIndex: number;
+  nearStops: boolean;
+  source: StayCloseness["basis"];
+}
+
+/** The one per-day computation both outputs read (§18 rule 1). */
+function closeByDay(
   stops: readonly StayPickStop[],
   cost: (stopIndex: number) => number | null,
   threshold: number,
-  basis: StayCloseness["basis"],
-): StayCloseness | null {
+): Map<number, boolean> | null {
   const ordered = canonicalStops(stops);
   if (!ordered.length || !Number.isFinite(threshold) || threshold <= 0) return null;
   const byDay = new Map<number, boolean>();
@@ -118,6 +129,31 @@ export function stayDayCloseness(
     const ok = c !== null && Number.isFinite(c) && c <= threshold;
     byDay.set(s.dayNumber, (byDay.get(s.dayNumber) ?? true) && ok);
   });
+  return byDay;
+}
+
+/** Row 244: the per-day list, ordered by day. Null when the totals are null. */
+export function stayDayClosenessList(
+  stops: readonly StayPickStop[],
+  cost: (stopIndex: number) => number | null,
+  threshold: number,
+  basis: StayCloseness["basis"],
+): StayDayCloseness[] | null {
+  const byDay = closeByDay(stops, cost, threshold);
+  if (!byDay) return null;
+  return Array.from(byDay.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([dayNumber, ok]) => ({ dayIndex: dayNumber - 1, nearStops: ok, source: basis }));
+}
+
+export function stayDayCloseness(
+  stops: readonly StayPickStop[],
+  cost: (stopIndex: number) => number | null,
+  threshold: number,
+  basis: StayCloseness["basis"],
+): StayCloseness | null {
+  const byDay = closeByDay(stops, cost, threshold);
+  if (!byDay) return null;
   let closeDays = 0;
   byDay.forEach((ok) => {
     if (ok) closeDays += 1;
@@ -129,6 +165,12 @@ export function stayDayCloseness(
 export function straightLineCloseness(candidate: StayPickCandidate, stops: readonly StayPickStop[], thresholdKm: number): StayCloseness | null {
   const ordered = canonicalStops(stops);
   return stayDayCloseness(ordered, (i) => haversineMeters(candidate.lat, candidate.lng, ordered[i].lat, ordered[i].lng), thresholdKm * 1000, "straight_line");
+}
+
+/** Row 244: the straight-line per-day list of one candidate, from the same distances as `straightLineCloseness`. */
+export function straightLineDayCloseness(candidate: StayPickCandidate, stops: readonly StayPickStop[], thresholdKm: number): StayDayCloseness[] | null {
+  const ordered = canonicalStops(stops);
+  return stayDayClosenessList(ordered, (i) => haversineMeters(candidate.lat, candidate.lng, ordered[i].lat, ordered[i].lng), thresholdKm * 1000, "straight_line");
 }
 
 /** Straight-line order over the plan's stops (the free list, and the paid scoring order). */
@@ -196,6 +238,8 @@ export interface StayPick {
    * stored before FU-S1-3 (no backfill — read as null until the next re-score, §13).
    */
   closeness?: StayCloseness | null;
+  /** Row 244: the pick's per-day routed list, beside `closeness`. Absent on a pick stored before row 244 (§13). */
+  dayCloseness?: StayDayCloseness[] | null;
   /**
    * Which router ranked the pick (decision-maker, Oct 18, 2026 — ledger `2026-10-18-stay-pick-est-fallback`).
    * `"osrm"` = the engine's own adapter between open coordinates. Absent = a pick stored before #1536, ranked by
@@ -231,7 +275,22 @@ export function readStayPick(value: unknown): StayPick | null {
     changed: v.changed === true,
     closeness: readCloseness(v.closeness),
     router: v.router === "osrm" ? "osrm" : null,
+    ...(readDayCloseness(v.dayCloseness) ? { dayCloseness: readDayCloseness(v.dayCloseness) } : {}),
   };
+}
+
+/** Row 244: a stored per-day list that is not this shape is no list (§13). */
+export function readDayCloseness(value: unknown): StayDayCloseness[] | null {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const out: StayDayCloseness[] = [];
+  for (const d of value) {
+    if (!d || typeof d !== "object") return null;
+    const { dayIndex, nearStops, source } = d as Partial<StayDayCloseness>;
+    if (!Number.isInteger(dayIndex) || (dayIndex as number) < 0 || typeof nearStops !== "boolean") return null;
+    if (source !== "routed" && source !== "straight_line") return null;
+    out.push({ dayIndex: dayIndex as number, nearStops, source });
+  }
+  return out;
 }
 
 /** A stored closeness that is not this shape is no closeness (§13 — never guessed into one). */

@@ -37,6 +37,7 @@ import {
   stayCardModel,
   stayCardSubtitle,
   stayClosenessLine,
+  stayFarDayLines,
   stayCardLink,
   STAY_RATES_LOADING,
   STAY_RATES_SEE,
@@ -259,6 +260,12 @@ export function StayPickCard({
                 {stayClosenessLine(h.closeness)}
               </span>
             ) : null}
+            {stayFarDayLines(h.dayCloseness).map((line, i) => (
+              // Row 244: the server's per-day list, display only.
+              <span key={i} className="basis-full text-xs text-[color:var(--slip-muted,#5B6B7A)]" data-testid={`stay-pick-far-day-${h.id}-${i}`}>
+                {line}
+              </span>
+            ))}
             <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
               {(() => {
                 // S1-b: a Traveloure stay opens its listing page with the plan ("See rooms"), unattributed.
