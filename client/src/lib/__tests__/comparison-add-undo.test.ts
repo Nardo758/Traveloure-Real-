@@ -29,7 +29,7 @@ describe("row 195: single add with undo", () => {
   it("AU1: the add is instant — the + mutates directly and the toast fires on success, no confirm", () => {
     assert.match(PAGE, /onAdoptStop=\{\(variantItemId\) => \{\s*setAdoptingStopId\(variantItemId\);\s*adoptStopMutation\.mutate\(variantItemId\);/);
     const adopt = mutationBlock("adoptStopMutation");
-    assert.match(adopt, /title: "Added to your plan",\s*description: "That stop is now in your plan\. Your original is preserved; nothing is purchased\."/);
+    assert.match(adopt, /title: "Added to your plan",\s*description: "Added\. Your other stops are unchanged\."/);
     assert.match(adopt, /action:\s*tripId && undoItemId \?/);
   });
 

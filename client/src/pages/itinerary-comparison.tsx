@@ -932,7 +932,7 @@ export default function ItineraryComparisonPage() {
       const undoItemId = tripId ? undoTargetForAdopt(r, slipPlancard?.trip) : null;
       toast({
         title: "Added to your plan",
-        description: "That stop is now in your plan. Your original is preserved; nothing is purchased.",
+        description: "Added. Your other stops are unchanged.",
         action:
           tripId && undoItemId ? (
             <ToastAction

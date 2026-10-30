@@ -11,9 +11,9 @@
 // The preset city list is gone. The sign-up stays the launch market. Wedding stays in the trip-type list.
 // 291b (ledger `2026-10-29-waitlist-consent-screens`): both forms draw ONE shared `ConsentBoxes` carrying the role —
 // the first box unchanged (`consent` → launch_waitlist_updates) and a second, never pre-ticked news box
-// (`marketingConsent` → launch_marketing_news). The news box is drawn only while WAITLIST_MARKETING_BOX_ENABLED is on
-// (row 294 flips it once the consent text is seeded) AND its words resolve for the market; until then it is not drawn
-// and the page posts `marketingConsent: false`. A box whose tick would save nothing is never drawn.
+// (`marketingConsent` → launch_marketing_news). The news box is drawn while WAITLIST_MARKETING_BOX_ENABLED is on
+// and its words resolve for the market (row 294). It starts unticked. A market with no words posts
+// `marketingConsent: false`.
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -106,8 +106,8 @@ function ConsentTick({ id, market, checked, onChange }: { id: string; market: st
 }
 
 /**
- * The news box is drawn only while WAITLIST_MARKETING_BOX_ENABLED is on (row 294 flips it once the consent text is
- * seeded) AND its words resolve for this market. No network call.
+ * The news box is drawn while WAITLIST_MARKETING_BOX_ENABLED is on and its words resolve for this market.
+ * No network call.
  */
 export function marketingBoxOpen(market: string, enabled: boolean = WAITLIST_MARKETING_BOX_ENABLED): boolean {
   return enabled && waitlistMarketingConsentLine(market) !== null;
