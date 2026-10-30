@@ -7,7 +7,15 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { ADMIN_OPS_COPY as T, OUTBOX_STATUSES, emailCountLabel, outboxListUrl, outboxRetryable } from "@/lib/admin-ops";
+import {
+  ADMIN_OPS_COPY as T,
+  HELD_GUEST_INVITES_URL,
+  OUTBOX_STATUSES,
+  emailCountLabel,
+  outboxListUrl,
+  outboxRetryable,
+  type HeldGuestInviteList,
+} from "@/lib/admin-ops";
 
 export interface OutboxRow {
   id: number;
@@ -113,7 +121,36 @@ export function EmailOutboxTab({ initialStatus = "" }: { initialStatus?: string 
             </table>
           </div>
         )}
+        <HeldGuestInvitesSection />
       </CardContent>
     </Card>
+  );
+}
+
+/** Row 209: guest_invite rows held off the allowlist. Read-only — no retry, no send; emails arrive masked. */
+export function HeldGuestInvitesSection() {
+  const { data, error } = useQuery<HeldGuestInviteList>({ queryKey: [HELD_GUEST_INVITES_URL] });
+  if (error || !data) return null;
+  return (
+    <section className="space-y-2 border-t pt-4" data-testid="ops-held-invites">
+      <h3 className="text-sm font-semibold">{T.heldInvitesTitle}</h3>
+      {data.rows.length === 0 ? (
+        <p className="text-sm text-muted-foreground" data-testid="ops-held-invites-empty">{T.heldInvitesEmpty}</p>
+      ) : (
+        <ul className="space-y-2 text-sm">
+          {data.rows.map((r) => (
+            <li key={r.id} className="space-y-0.5" data-testid={`ops-held-invite-${r.id}`}>
+              <div className="flex flex-wrap gap-x-3">
+                <span className="whitespace-nowrap">{new Date(r.createdAt).toLocaleString()}</span>
+                <span>{r.toEmail}</span>
+                {r.subject ? <span>{r.subject}</span> : null}
+                {r.inviteId ? <span className="text-muted-foreground">{r.inviteId}</span> : null}
+              </div>
+              {r.lastError ? <p className="max-w-md break-words text-xs text-muted-foreground">{r.lastError}</p> : null}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
