@@ -370,8 +370,9 @@ test("current mounted graph parity includes auth helpers and shared api paths", 
   // 734 / 726: POST /api/invites/:token/plan (row 280a).
   // 735 / 727: POST /api/admin/reconciliation/run-now, converted from a GET (row 270).
   // 736 / 728: POST /api/admin/affiliate/reconciliation, converted from a GET (row 272).
-  assert.equal(result.mutations.length, 736);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 728);
+  // 737 / 729: POST /api/webhooks/resend (Z-21, fix-queue row 171).
+  assert.equal(result.mutations.length, 737);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 729);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -381,7 +382,7 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "generated/security/mutation-auth-manifest.json"), "utf8"));
   const markdown = fs.readFileSync(path.join(root, "generated/security/mutation-auth-inventory.md"), "utf8");
   const endpointRows = markdown.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| ---")).slice(1);
-  assert.equal(endpointRows.length, 728);
+  assert.equal(endpointRows.length, 729);
   // 709 / 701 (ledger `2026-10-18-fd4-share-projection`): the shadowed quick-start twin is deleted; unique paths stay 701.
   // 710 / 702 (ledger `2026-10-19-fb1-free-retime`): + POST /api/trips/:tripId/retime-fixes/:itemId/apply.
   // 712 / 704 (ledger `2026-10-18-cs1-source-signoff`): the sign-off and photo-block POSTs.
@@ -402,8 +403,9 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // 734 / 726: POST /api/invites/:token/plan (row 280a).
   // 735 / 727: POST /api/admin/reconciliation/run-now, converted from a GET (row 270).
   // 736 / 728: POST /api/admin/affiliate/reconciliation, converted from a GET (row 272).
-  assert.equal(manifest.rawRegistrationCount, 736);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 728);
+  // 737 / 729: POST /api/webhooks/resend (Z-21, fix-queue row 171).
+  assert.equal(manifest.rawRegistrationCount, 737);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 729);
   // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R274): user-data,
   // session-self; the owner/delegate check runs in the service before any write.
   // + POST /api/admin/content-sources/:id/public-ok (ledger `2026-10-03-official-facts-public-ok`, R278):
@@ -458,7 +460,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // other 247 → 248 (row 280a): POST /api/invites/:token/plan.
   // admin 196 → 197 (row 270): POST /api/admin/reconciliation/run-now, converted from a GET.
   // admin 197 → 198 (row 272): POST /api/admin/affiliate/reconciliation, converted from a GET.
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 198, "user-data": 251, other: 248 });
+  // other 248 → 249 (Z-21): POST /api/webhooks/resend.
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 198, "user-data": 251, other: 249 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
@@ -507,8 +510,9 @@ test("generated user-facing inventory contains one row per unique endpoint and s
     // session-self 368 → 369 (row 280a): POST /api/invites/:token/plan.
     // admin-role 196 → 197 (row 270): POST /api/admin/reconciliation/run-now, converted from a GET.
     // admin-role 197 → 198 (row 272): POST /api/admin/affiliate/reconciliation, converted from a GET.
+    // signature 6 → 7 (Z-21): POST /api/webhooks/resend.
     "admin-role": 198, "session-self": 369, "resource-owner": 102,
-    signature: 6, "public-or-system": 53, unknown: 0,
+    signature: 7, "public-or-system": 53, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
     `${mutation.method} ${mutation.effectivePath}`, mutation,
@@ -517,6 +521,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   assert.equal(byEndpoint.get("POST /api/bookings/process-cart").expectedBoundary, "session-self");
   assert.equal(byEndpoint.get("POST /api/coordination-states/:id/pay").expectedBoundary, "resource-owner");
   assert.equal(byEndpoint.get("POST /api/webhooks/stripe").expectedBoundary, "signature");
+  assert.equal(byEndpoint.get("POST /api/webhooks/resend").expectedBoundary, "signature");
+  assert.equal(byEndpoint.get("POST /api/webhooks/resend").risk, "other");
   assert.equal(byEndpoint.get("POST /api/admin/payouts").risk, "admin");
   assert.equal(byEndpoint.get("POST /api/admin/payouts").expectedBoundary, "admin-role");
   assert.equal(byEndpoint.get("POST /api/admin/payouts/:id/mark-paid").risk, "admin");

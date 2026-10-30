@@ -2197,4 +2197,9 @@ export const MIGRATION_FILES = [
   // Ledger 2026-10-29-invite-plan-around-event. Declared in shared/guest-invites-schema.ts.
   // 416 is held by row 292a (service_bookings.payout_snapshot) and is not on main.
   "417_event_invites_plan_trip_id.sql",
+  // 421 — email_suppressions. New table only. Unique (email, reason).
+  // No DEFAULT, no CHECK, no backfill. Declared in shared/schema.ts.
+  // Z-21, fix-queue row 171. Held for owner review of the SQL.
+  // 418, 419 and 420 are claimed by other lanes and are not in this chain.
+  "421_email_suppressions.sql",
 ] as const;
