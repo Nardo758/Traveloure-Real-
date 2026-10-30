@@ -13,7 +13,7 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { after, before, test } from "node:test";
-import { registerAndSignIn } from "./fixtures/register-and-sign-in";
+import { registerAndSignIn, SUPPLY_PROVIDER_SIGNUP_EXTRA } from "./fixtures/register-and-sign-in";
 import {
   LISTING_AFFINITY_TAGS_ACTION,
   LISTING_DELETE_ACTION,
@@ -181,7 +181,7 @@ before(async () => {
     password: PASSWORD,
     firstName: "Gap13",
     lastName: "Admin",
-    extra: { intent: "supply" },
+    extra: SUPPLY_PROVIDER_SIGNUP_EXTRA,
   });
   adminCookie = admin.cookie;
   adminId = admin.id;

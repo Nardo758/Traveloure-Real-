@@ -11,8 +11,8 @@ import { issueEmailVerification } from "./emailAuth";
 import { pathAfterAuth } from "../../services/email-verification.service";
 import { EMAIL_VERIFICATION_HOLD_PATH } from "@shared/email-verification-gate";
 import { getPlatformFlag, FLAG_REGISTRATION_ENABLED, getTravelerSignupMode, getLaunchMarketSlug } from "../../services/platform-flags";
-import { decideFirstTimeSignup, waitlistBlockedPath, TRAVELER_WAITLIST, type SignupIntent } from "@shared/launch-signup";
-import { stashSignupIntent, readSignupIntent, readSignupSourceTag, takeStashedReturnTo } from "./signup-intent-stash";
+import { decideFirstTimeSignup, supplyRefusalRedirect, waitlistBlockedPath, EXPERT_APPLY_NOW, PROVIDER_FIELDS_REQUIRED, TRAVELER_WAITLIST, type SignupIntent, type SupplySignupRole } from "@shared/launch-signup";
+import { stashSignupIntent, readSignupIntent, readSignupSourceTag, readSupplyRole, takeStashedReturnTo } from "./signup-intent-stash";
 import { recordSignupSource } from "../../services/signup-source-record";
 import {
   decideEmailMerge,
@@ -89,7 +89,7 @@ export async function facebookVerify(
   refreshToken: string,
   profile: FacebookStrategy.Profile,
   done: (error: any, user?: any, info?: any) => void,
-  opts: { intent?: SignupIntent; sourceTag?: string | null } = {}
+  opts: { intent?: SignupIntent; sourceTag?: string | null; supplyRole?: SupplySignupRole | null } = {}
 ): Promise<void> {
   try {
     const email = profile.emails?.[0]?.value;
@@ -144,8 +144,11 @@ export async function facebookVerify(
           mode: await getTravelerSignupMode(),
           intent: opts.intent ?? "traveler",
           qaCodeValid: false,
+          // WL-B: a social sign-in carries no provider fields, so a provider is sent to the email sign-up.
+          supplyRole: opts.supplyRole ?? null,
+          providerFieldsValid: false,
         });
-        if (!decision.allowed) return done(null, false, { code: TRAVELER_WAITLIST } as any);
+        if (!decision.allowed) return done(null, false, { code: "reason" in decision ? decision.reason : TRAVELER_WAITLIST } as any);
       }
 
       // Row 156: a blank profile address is not written over a stored one; a different address is stored unverified. A stored password keeps both the address and its stamp, because this call passes no verified flag. authStorage.upsertUser applies that.
@@ -232,7 +235,7 @@ export function setupFacebookAuth(app: Express) {
           },
           // LW-1b: the request carries the stashed sign-up intent into the verify callback.
           (req: any, accessToken: string, refreshToken: string, profile: FacebookStrategy.Profile, done: any) =>
-            facebookVerify(accessToken, refreshToken, profile, done, { intent: readSignupIntent(req), sourceTag: readSignupSourceTag(req) })
+            facebookVerify(accessToken, refreshToken, profile, done, { intent: readSignupIntent(req), sourceTag: readSignupSourceTag(req), supplyRole: readSupplyRole(req) })
         )
       );
       registeredStrategies.add(strategyName);
@@ -270,6 +273,11 @@ export function setupFacebookAuth(app: Express) {
           .then((slug) => res.redirect(waitlistBlockedPath(slug)))
           .catch(() => res.redirect("/"));
         return;
+      }
+      // WL-B: a refused expert goes to the waitlist's expert form; a provider goes to the email sign-up.
+      if (!user && (info?.code === EXPERT_APPLY_NOW || info?.code === PROVIDER_FIELDS_REQUIRED)) {
+        takeStashedReturnTo(req);
+        return res.redirect(supplyRefusalRedirect(info.code));
       }
       if (!user) return res.redirect("/become-expert?influencer=true&error=auth_failed");
       // LW-1b: return to the page the flow started from (read before req.logIn regenerates the session); the

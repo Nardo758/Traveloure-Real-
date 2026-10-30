@@ -12,7 +12,15 @@ import { getPlatformFlag, FLAG_REGISTRATION_ENABLED, getTravelerSignupMode, getL
 import { qaSignupAllowed } from "../../services/qa-signup-code";
 import { isTestAccount } from "../../services/test-account";
 import { recordSignupSource } from "../../services/signup-source-record";
-import { decideFirstTimeSignup, normalizeSignupIntent, waitlistBlockedPath, TRAVELER_WAITLIST_MESSAGE } from "@shared/launch-signup";
+import { recordProviderSignup } from "../../services/launch-waitlist.service";
+import {
+  decideFirstTimeSignup,
+  normalizeSignupIntent,
+  normalizeSupplyRole,
+  providerSignupFieldsSchema,
+  waitlistBlockedPath,
+  TRAVELER_WAITLIST_MESSAGE,
+} from "@shared/launch-signup";
 import { CURRENT_TERMS_VERSION, CURRENT_PRIVACY_VERSION } from "@shared/legal-versions";
 import { REGISTRATION_NEUTRAL_STATUS, registrationNeutralBody } from "@shared/registration-neutral";
 import {
@@ -82,6 +90,10 @@ const registerSchema = z.object({
   // LW-1d: a supply sign-up's raw `?source=` tag. Only `recordSignupSource` reads it, normalized against the
   // launch market; it is distinct from the funnel `source` above, whose client default ("direct") is not a tag.
   signupSource: z.string().max(200).optional(),
+  // WL-B (ledger `2026-10-30-wlb-provider-signup-gate`): which supply sign-up this is ("provider" | "expert"), and a
+  // provider's light fields. Both grant nothing: the role stays 'user' and the fields go to the waitlist row only.
+  supplyRole: z.string().max(20).optional(),
+  provider: z.unknown().optional(),
 });
 
 const loginSchema = z.object({
@@ -135,11 +147,19 @@ export function setupEmailAuth(app: Express): void {
       // refused and sent to the launch market's waitlist; supply intent and a QA sign-up (QA-domain address AND the
       // right code) pass. Decided before
       // the existing-email check, so the refusal says nothing about whether the address has an account.
+      const supplyRole = normalizeSignupIntent(validation.data.intent) === "supply" ? normalizeSupplyRole(validation.data.supplyRole) : null;
+      const providerFields = supplyRole === "provider" ? providerSignupFieldsSchema.safeParse(validation.data.provider ?? {}) : null;
       const signupDecision = decideFirstTimeSignup({
         mode: await getTravelerSignupMode(),
         intent: normalizeSignupIntent(validation.data.intent),
         qaCodeValid: qaSignupAllowed(email, validation.data.qaCode),
+        supplyRole,
+        providerFieldsValid: providerFields?.success === true,
       });
+      // WL-B: a refused expert is sent to the waitlist's expert form; a provider without its fields gets the reason only.
+      if (!signupDecision.allowed && "reason" in signupDecision) {
+        return res.status(403).json(signupDecision);
+      }
       if (!signupDecision.allowed) {
         return res.status(403).json({
           code: signupDecision.code,
@@ -204,6 +224,26 @@ export function setupEmailAuth(app: Express): void {
       // LW-1d: a supply account records its sign-up source tag once. Never fails the sign-up (the writer never throws).
       if (normalizeSignupIntent(validation.data.intent) === "supply") {
         await recordSignupSource(newUser.id, validation.data.signupSource);
+      }
+
+      // WL-B, option (c): a new provider account's light fields go on its launch-market waitlist row; the full
+      // provider profile is completed later at /become-provider. Never fails the sign-up.
+      if (providerFields?.success) {
+        try {
+          const marketSlug = await getLaunchMarketSlug();
+          if (marketSlug) {
+            await recordProviderSignup({
+              email: newUser.email!,
+              contactName: [firstName, lastName].filter(Boolean).join(" ").trim() || null,
+              fields: providerFields.data,
+              marketSlug,
+            });
+          } else {
+            console.warn("[auth/register] provider sign-up fields not stored: no launch market is set");
+          }
+        } catch (err: any) {
+          console.error("[auth/register] provider sign-up fields not stored (non-fatal):", err?.message);
+        }
       }
 
       // Fire-and-forget: T1 funnel event (includes paid-acquisition attribution)
