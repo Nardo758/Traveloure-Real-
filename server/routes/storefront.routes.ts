@@ -1595,13 +1595,14 @@ router.get("/t/:slug", async (req, res, next) => {
       preview.priceLine,
       "See a sample day, then get the whole trip.",
     ].filter(Boolean).join(" ");
-    const shareUrl = `https://traveloure.com${preview.path}`;
+    // Row 265: canonical, og:url, og:image and twitter:image are www (SITE_ORIGIN), like the other share pages.
+    const shareUrl = `${SITE_ORIGIN}${preview.path}`;
     // Slice B2: the generated 1200×630 link card for the listing as it now reads (versioned URL).
     const { readyMadeShareVersion } = await import("../services/ready-made-share-data.service");
     const version = await readyMadeShareVersion(preview.id);
     const ogImage = version
-      ? `https://traveloure.com/api/share-image/ready-made/${preview.id}.png?format=og&v=${version}`
-      : (preview.heroImageUrl ?? "https://traveloure.com/og-cover.png");
+      ? `${SITE_ORIGIN}/api/share-image/ready-made/${preview.id}.png?format=og&v=${version}`
+      : (preview.heroImageUrl ?? `${SITE_ORIGIN}/og-cover.png`);
     const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
     const ogTags = [
       `<title>${esc(title)}</title>`,

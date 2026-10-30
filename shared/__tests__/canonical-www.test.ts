@@ -10,8 +10,8 @@
  *   AW16 robots.txt Sitemap line.
  *   AW17 static shell.
  *   AW18 SEOHead.
- *   AW19 producers; /t/:slug keeps its apex literals.
- *   AW20 no apex host in canonical output except that /t/:slug block.
+ *   AW19 producers; /t/:slug uses SITE_ORIGIN like the other share pages (row 265).
+ *   AW20 no apex host in canonical output, /t/:slug included (row 265).
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -159,7 +159,7 @@ test("AW18: SEOHead builds fullUrl and imageUrl from SITE_ORIGIN", () => {
   assert.equal(src.includes("https://traveloure.com"), false);
 });
 
-test("AW19: seo.routes.ts calls the helpers; storefront apex literals stay inside /t/:slug", () => {
+test("AW19: seo.routes.ts calls the helpers; every storefront share page, /t/:slug included, uses SITE_ORIGIN", () => {
   const seo = read("server/routes/seo.routes.ts");
   assert.equal(seo.includes("https://traveloure.com"), false);
   assert.equal(seo.includes("CANONICAL_ORIGIN"), false);
@@ -169,20 +169,18 @@ test("AW19: seo.routes.ts calls the helpers; storefront apex literals stay insid
   assert.match(seo, /routeHeadTags\(/);
 
   const storefront = read("server/routes/storefront.routes.ts");
-  const preview = routeHandler(storefront, '"/t/:slug"');
-  assert.match(preview.block, /https:\/\/traveloure\.com/);
-  assert.equal(preview.rest.includes("https://traveloure.com"), false);
-  for (const route of ['"/s/:handle"', '"/services/:id"', '"/ready-made/:id"']) {
+  // Row 265 (sanctioned): the /t/:slug handler moved to SITE_ORIGIN, so it joins the other share pages.
+  assert.equal(storefront.includes("https://traveloure.com"), false);
+  for (const route of ['"/t/:slug"', '"/s/:handle"', '"/services/:id"', '"/ready-made/:id"']) {
     const handler = routeHandler(storefront, route);
     assert.match(handler.block, /SITE_ORIGIN/);
     assert.equal(handler.block.includes("https://traveloure.com"), false);
   }
 });
 
-test("AW20: canonical output has no apex host except the /t/:slug block", () => {
+test("AW20: canonical output has no apex host, /t/:slug included", () => {
   const storefront = read("server/routes/storefront.routes.ts");
-  const preview = routeHandler(storefront, '"/t/:slug"');
-  assert.match(preview.block, APEX_HOST_RE);
+  // Row 265 (sanctioned): the /t/:slug block no longer carries the apex host, so the whole file is checked.
   const produced = [
     ...sampleUrls.map((u) => u.loc),
     sampleXml,
@@ -191,7 +189,7 @@ test("AW20: canonical output has no apex host except the /t/:slug block", () => 
     read("client/index.html"),
     read("client/src/components/seo-head.tsx"),
     read("server/routes/seo.routes.ts"),
-    preview.rest,
+    storefront,
   ].join("\n");
   assert.equal(APEX_HOST_RE.test(produced), false);
 });
