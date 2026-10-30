@@ -1,5 +1,16 @@
 import { useEffect, useLayoutEffect, useState } from "react";
-import { TRAVELER_WAITLIST, normalizeSignupIntent, waitlistBlockedPath } from "@shared/launch-signup";
+import { TRAVELER_WAITLIST, normalizeSignupIntent, normalizeSupplyRole, waitlistBlockedPath } from "@shared/launch-signup";
+import { WAITLIST_SERVICE_TYPES } from "@shared/launch-waitlist";
+import { KEEP_RATES_ENDPOINT, type PublicKeepRates } from "@/lib/fee-keep-copy";
+import {
+  EMPTY_PROVIDER_DRAFT,
+  WLB_SIGNUP_COPY,
+  expertRefusalFrom,
+  providerKeepLine,
+  providerSignupBody,
+  providerSignupReady,
+  type ProviderSignupDraft,
+} from "@/lib/wlb-signup-copy";
 import { isRegistrationNeutral } from "@shared/registration-neutral";
 import { supplySignupContinuation } from "@shared/supply-entry";
 import { sanitizeReturnTo } from "@/lib/safe-return-to";
@@ -24,6 +35,21 @@ export function SignupPage() {
   const intent = normalizeSignupIntent(params.get("intent"));
   const showQaCode = params.get("qa") === "1";
   const [qaCode, setQaCode] = useState("");
+  // WL-B: the supply role a door states. A provider answers its light fields here; an expert is refused by the server.
+  const supplyRole = intent === "supply" ? normalizeSupplyRole(params.get("supplyRole")) : null;
+  const isProvider = supplyRole === "provider";
+  const [provider, setProvider] = useState<ProviderSignupDraft>(EMPTY_PROVIDER_DRAFT);
+  const [expertRefusal, setExpertRefusal] = useState<{ message: string; applyPath: string } | null>(null);
+  const [keepRates, setKeepRates] = useState<PublicKeepRates | null>(null);
+  useEffect(() => {
+    if (!isProvider) return;
+    let cancelled = false;
+    fetch(KEEP_RATES_ENDPOINT)
+      .then((r) => readAuthResponse(r))
+      .then((read) => { if (!cancelled && read.kind === "json" && read.ok) setKeepRates(read.data as PublicKeepRates); })
+      .catch(() => { /* no rate ⇒ no keep line */ });
+    return () => { cancelled = true; };
+  }, [isProvider]);
 
   // LW-1b: in waitlist mode a traveler has nothing to sign up for here — go to the launch market's waitlist.
   useEffect(() => {
@@ -67,6 +93,8 @@ export function SignupPage() {
           refToken,
           source,
           ...(intent === "supply" ? { intent } : {}),
+          ...(supplyRole ? { supplyRole } : {}),
+          ...(isProvider ? { provider: providerSignupBody(provider) } : {}),
           // LW-1d: the raw `?source=` tag of a supply sign-up (never the "direct" default above).
           ...(intent === "supply" && params.get("source") ? { signupSource: params.get("source") } : {}),
           ...(showQaCode && qaCode ? { qaCode } : {}),
@@ -78,6 +106,12 @@ export function SignupPage() {
       // check-email screen is not shown. Sign-in is the next step.
       if (read.kind === "json" && isRegistrationNeutral(res.status, read.data)) {
         window.location.assign("/login");
+        return;
+      }
+      // WL-B: an expert is told to apply on the waitlist — the server's message and its form, nothing else.
+      const refusal = read.kind === "json" ? expertRefusalFrom(res.status, read.data) : null;
+      if (refusal) {
+        setExpertRefusal(refusal);
         return;
       }
       if (read.kind === "json" && res.status === 403 && read.data.code === TRAVELER_WAITLIST) {
@@ -97,6 +131,26 @@ export function SignupPage() {
       setLoading(false);
     }
   };
+
+  if (expertRefusal) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <div className="bg-white rounded-2xl border border-gray-200 p-8 w-full max-w-md" data-testid="signup-expert-refusal">
+          <p className="text-sm text-gray-700" data-testid="text-expert-refusal">{expertRefusal.message}</p>
+          <a
+            href={expertRefusal.applyPath}
+            data-testid="button-expert-apply-now"
+            className="mt-4 block w-full bg-gray-900 text-white rounded-lg py-2.5 text-center text-sm font-semibold hover:bg-gray-700"
+          >
+            {WLB_SIGNUP_COPY.applyNow}
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  const providerKeep = isProvider ? providerKeepLine(keepRates) : null;
+  const inputClass = "w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900";
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
@@ -128,7 +182,7 @@ export function SignupPage() {
 
           <div>
             <label className="text-sm font-medium text-gray-700 block mb-1">
-              {t("fields.email")}
+              {isProvider ? WLB_SIGNUP_COPY.email : t("fields.email")}
             </label>
             <input
               data-testid="input-email"
@@ -154,6 +208,43 @@ export function SignupPage() {
             />
           </div>
 
+          {isProvider && (
+            <div className="space-y-4" data-testid="signup-provider-fields">
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1" htmlFor="input-provider-business">{WLB_SIGNUP_COPY.businessName}</label>
+                <input id="input-provider-business" data-testid="input-provider-business" type="text" required value={provider.businessName}
+                  onChange={(e) => setProvider((p) => ({ ...p, businessName: e.target.value }))} className={inputClass} />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1" htmlFor="input-provider-category">{WLB_SIGNUP_COPY.category}</label>
+                <select id="input-provider-category" data-testid="input-provider-category" required value={provider.category}
+                  onChange={(e) => setProvider((p) => ({ ...p, category: e.target.value }))} className={inputClass}>
+                  <option value="" />
+                  {WAITLIST_SERVICE_TYPES.map((c) => (
+                    <option key={c.key} value={c.key}>{c.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1" htmlFor="input-provider-city">{WLB_SIGNUP_COPY.city}</label>
+                <input id="input-provider-city" data-testid="input-provider-city" type="text" required value={provider.city}
+                  onChange={(e) => setProvider((p) => ({ ...p, city: e.target.value }))} className={inputClass} />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1" htmlFor="input-provider-website">{WLB_SIGNUP_COPY.website}</label>
+                <input id="input-provider-website" data-testid="input-provider-website" type="url" value={provider.website}
+                  onChange={(e) => setProvider((p) => ({ ...p, website: e.target.value }))} className={inputClass} />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1" htmlFor="input-provider-languages">{WLB_SIGNUP_COPY.languages}</label>
+                <input id="input-provider-languages" data-testid="input-provider-languages" type="text" value={provider.languages}
+                  onChange={(e) => setProvider((p) => ({ ...p, languages: e.target.value }))} className={inputClass} />
+              </div>
+              {providerKeep && <p className="text-sm text-gray-600" data-testid="text-provider-keep">{providerKeep}</p>}
+              <p className="text-sm text-gray-600" data-testid="text-provider-finish-later">{WLB_SIGNUP_COPY.finishProfileLater}</p>
+            </div>
+          )}
+
           {showQaCode && (
             <div>
               <label className="text-sm font-medium text-gray-700 block mb-1" htmlFor="input-qa-code">
@@ -176,7 +267,7 @@ export function SignupPage() {
           <button
             data-testid="button-create-account"
             onClick={handleSubmit}
-            disabled={loading}
+            disabled={loading || (isProvider && !providerSignupReady(provider, form.email))}
             className="w-full bg-gray-900 text-white rounded-lg py-2.5 text-sm font-semibold hover:bg-gray-700 disabled:opacity-50 transition-colors"
           >
             {loading ? t("signupPage.creating") : t("signupPage.createAccount")}

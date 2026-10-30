@@ -92,6 +92,10 @@ export function supplySignupContinuation(search: string): SupplyContinuation {
   const params = searchParamsOf(search);
   if (normalizeSignupIntent(params.get("intent")) !== "supply") return { kind: "account" };
   if (params.get("qa") === "1") return { kind: "account" };
+  // WL-B (ledger `2026-10-30-wlb-provider-signup-screen`): a door that states the supply role ("provider" | "expert")
+  // stays on the account form — a provider answers its fields there, an expert is told to apply on the waitlist.
+  const supplyRole = params.get("supplyRole");
+  if (supplyRole === "provider" || supplyRole === "expert") return { kind: "account" };
   const role = params.get("role");
   const path = role && Object.prototype.hasOwnProperty.call(SUPPLY_APPLICATION_BY_ROLE, role)
     ? SUPPLY_APPLICATION_BY_ROLE[role as SupplyApplicationRole]
