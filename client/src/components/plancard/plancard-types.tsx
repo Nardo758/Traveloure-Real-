@@ -6,7 +6,7 @@ import { differenceInDays, isValid } from "date-fns";
 import { MODE_COLORS, MODE_ICON_MAP, getModeIcon } from "@/lib/transport-modes";
 import { eventTypeEnum, type RoutingStatus } from "@shared/schema";
 import { classifyOccasion, normalizeOccasionKey } from "@shared/occasions";
-import type { TripPlanBooking, TripPlanPlanApproval } from "@shared/trip-plan";
+import type { CostSource, TripPlanBooking, TripPlanPlanApproval } from "@shared/trip-plan";
 import type { AffiliateBookingInfo } from "./affiliate-booking";
 import { parseCalendarDate } from "@/lib/calendar-date";
 
@@ -279,6 +279,13 @@ export interface PlanCardActivity {
   /** GC-1 (migration 387): where the row's own point came from; absent = Google (NULL), as is a Places pin. */
   coordSource?: string;
   cost: number;
+  /**
+   * Row 242 type mirror of `TripPlanActivity` (`@shared/trip-plan`). Present only when the
+   * server sent them. Nothing on the client reads these.
+   */
+  costSource?: CostSource;
+  costCurrency?: string;
+  costPerPerson?: true;
   comments: number;
   changes?: Array<{ who: string; what: string }>;
   expertNote?: string;
