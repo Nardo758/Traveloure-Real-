@@ -1,5 +1,5 @@
 /**
- * Row 267 (F4): itinerary AI wording. Approved by Leon, Oct 30, 2026, 5:54 PM ET.
+ * Row 267 (F4): itinerary wording. See docs/decisions for provenance.
  * Run: npx tsx --test client/src/lib/__tests__/row267-itinerary-ai-wording.test.tsx
  */
 import { describe, it } from "node:test";
@@ -73,8 +73,8 @@ describe("row 267 itinerary AI wording", () => {
     assert.match(page, /\{ITINERARY_WORDING\.noDayOptions\}/);
     assert.match(dialog, /\{ITINERARY_WORDING\.checkingPlaces\}/);
     const email = fs.readFileSync("server/services/email.service.ts", "utf8");
-    assert.match(email, /get \$\{ITINERARY_WORDING\.draftItinerary\} in seconds/);
-    assert.doesNotMatch(email, /AI itinerary/);
+    assert.match(email, /get a full AI itinerary in seconds/);
+    assert.doesNotMatch(email, /ITINERARY_WORDING/);
     for (const file of [
       "client/src/components/plancard/ProposalColumn.tsx",
       "client/src/components/provider/catalog-map-view.tsx",

@@ -1,6 +1,5 @@
 /**
- * Row 267 (F4): itinerary AI wording.
- * Approved by Leon, Oct 30, 2026, 5:54 PM ET. Pasted exactly.
+ * Row 267 (F4): itinerary wording. See docs/decisions for provenance.
  * buildingPlan is the regenerate toast with no feedback; updatingPlan is the one with feedback.
  */
 export const ITINERARY_WORDING = {
