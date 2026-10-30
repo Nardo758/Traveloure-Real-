@@ -60,6 +60,8 @@ export interface GeocodeDetailedDeps {
   countToday?: () => Promise<number | null>;
   /** Invoked only when a refused call is the daily cap. Must not change the refusal. */
   onCapReached?: (info: { used: number | null; cap: number }) => Promise<void>;
+  /** Row 220: invoked only when a made call failed (never on a gate refusal). Must not change the result. */
+  onProviderError?: () => Promise<void>;
   fetchImpl?: typeof fetch;
 }
 
@@ -175,6 +177,20 @@ async function notifyCap(deps: GeocodeDetailedDeps, info: { used: number | null;
   }
 }
 
+/** Row 220: a made call failed — one staff alert per UTC day. The result stands whether or not it was recorded. */
+async function notifyProviderError(deps: GeocodeDetailedDeps): Promise<void> {
+  try {
+    if (deps.onProviderError) {
+      await deps.onProviderError();
+      return;
+    }
+    const { recordGeocodeProviderErrorAlert } = await import("../services/geocode-cap-alert.service");
+    await recordGeocodeProviderErrorAlert();
+  } catch {
+    // never throws
+  }
+}
+
 /**
  * Every finite Google result, plus one typed reason. A single placeable hit is the only success.
  * More than one hit is ambiguous even when one of them is placeable. Placeability lives in
@@ -193,6 +209,8 @@ export async function geocodeAddressDetailed(
   try {
     out = await gate(async (apiKey) => ({ value: await readGooglePayload(fetchImpl, address.trim(), apiKey) }));
   } catch {
+    // The call was made and failed (the gate recorded success = false). A refusal below makes no call.
+    await notifyProviderError(deps);
     return { ok: false, reason: "provider_error", results: [] };
   }
   if ("refused" in out) {
