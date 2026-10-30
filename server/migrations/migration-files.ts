@@ -2197,4 +2197,9 @@ export const MIGRATION_FILES = [
   // Ledger 2026-10-29-invite-plan-around-event. Declared in shared/guest-invites-schema.ts.
   // 416 is held by row 292a (service_bookings.payout_snapshot) and is not on main.
   "417_event_invites_plan_trip_id.sql",
+  // 418 — DATA ONLY. Four Kyoto discover gems: image_url + image_credit.
+  // Replaces three 404 Unsplash URLs and Ginkaku-ji's null photo with Wikimedia
+  // Commons files. No ALTER. HELD for "Migration 418 SQL approved — Leon".
+  // Ledger 2026-10-30-row250-kyoto-discover-photos.
+  "418_kyoto_gem_photo_credits.sql",
 ] as const;

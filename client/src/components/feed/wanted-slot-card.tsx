@@ -19,6 +19,12 @@ import { useExpertAvailability } from "@/lib/expert-availability";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import { buildWantedSlotSignupHref } from "@/lib/wanted-slot-link";
 import { trackRecruitmentClick } from "@/lib/analytics";
+import {
+  ARASHIYAMA_ITINERARY_EXPERT_HREF,
+  ARASHIYAMA_ITINERARY_EXPERT_LINK,
+  ARASHIYAMA_ITINERARY_TRAVELER_LINE,
+  isArashiyamaItineraryWanted,
+} from "@/lib/arashiyama-wanted-copy";
 
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
@@ -37,6 +43,13 @@ export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" 
     neighborhoodId,
   } = item.data as WantedSlotData;
   const isHighDemand = (demandCount ?? 0) >= 5;
+  // Leon, Oct 30, 2026: this one tile states the gap and the expert application.
+  // No demand count, high-demand badge, or trending line.
+  const arashiyamaItinerary = isArashiyamaItineraryWanted({
+    offeringLabel,
+    offeringKey,
+    neighborhoodName,
+  });
   // SH-1 item 11: Ask draws only when the server says this city has an expert to ask.
   const expertAvailable = useExpertAvailability({ city: slotCity });
 
@@ -53,7 +66,7 @@ export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" 
         >
           Wanted here
         </div>
-        {isHighDemand && (
+        {isHighDemand && !arashiyamaItinerary && (
           <span
             className="mb-1 inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-orange-600"
             data-testid="badge-high-demand"
@@ -63,15 +76,33 @@ export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" 
         )}
         {/* C2 (cosmetic-public-surfaces dispatch): `truncate` clipped the only variable part of
             this line ("Local City Itinerary wanted in A…") on a ~200px card. line-clamp-2 shows
-            the whole name instead of an ellipsis mid-word. */}
-        <p className="line-clamp-2 text-[13px] font-semibold" style={{ color: "var(--earn-ink)" }}>
-          {offeringLabel} wanted in {neighborhoodName}
+            the whole name instead of an ellipsis mid-word. The Arashiyama line is the approved
+            sentence and is allowed a third line so it is not cut off. */}
+        <p
+          className={`${arashiyamaItinerary ? "line-clamp-3" : "line-clamp-2"} text-[13px] font-semibold`}
+          style={{ color: "var(--earn-ink)" }}
+          data-testid={arashiyamaItinerary ? "wanted-arashiyama-traveler-line" : undefined}
+        >
+          {arashiyamaItinerary
+            ? ARASHIYAMA_ITINERARY_TRAVELER_LINE
+            : `${offeringLabel} wanted in ${neighborhoodName}`}
         </p>
-        <p className="line-clamp-2 text-[11px]" style={{ color: "var(--earn-muted)" }}>
-          {demandCount && demandCount > 0
-            ? `${demandCount} traveler${demandCount !== 1 ? "s" : ""} in ${neighborhoodName} want this${dateContext ? ` for ${dateContext}` : ""} · Be the first to offer it`
-            : `Be the first to offer ${offeringLabel.toLowerCase()} for travelers in ${neighborhoodName}`}
-        </p>
+        {arashiyamaItinerary ? (
+          <a
+            href={ARASHIYAMA_ITINERARY_EXPERT_HREF}
+            className="mt-1 inline-flex text-[11px] font-semibold hover:underline"
+            style={{ color: "var(--earn-teal-ink)" }}
+            data-testid="link-arashiyama-expert-apply"
+          >
+            {ARASHIYAMA_ITINERARY_EXPERT_LINK}
+          </a>
+        ) : (
+          <p className="line-clamp-2 text-[11px]" style={{ color: "var(--earn-muted)" }}>
+            {demandCount && demandCount > 0
+              ? `${demandCount} traveler${demandCount !== 1 ? "s" : ""} in ${neighborhoodName} want this${dateContext ? ` for ${dateContext}` : ""} · Be the first to offer it`
+              : `Be the first to offer ${offeringLabel.toLowerCase()} for travelers in ${neighborhoodName}`}
+          </p>
+        )}
         {/* C5 (cosmetic-public-surfaces dispatch, ruled): /earn is the specific target for a
             recruitment card's "More info" — /how-it-works was generic and unrelated to earning. */}
         <a
@@ -90,15 +121,17 @@ export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" 
             so a neighbourhood recruitment slot dropped the offering the demand was measured
             against AND landed the applicant in the Trip Planner flow. The mapping now lives in
             ONE tested place; `offeringTypeKey` is emitted only for a real catalog key. */}
-        <a
-          href={buildWantedSlotSignupHref({ city: slotCity, neighborhoodName, offeringKey, offeringLabel })}
-          className="inline-flex items-center gap-0.5 rounded-md px-2.5 py-1 text-[11px] font-bold text-white"
-          style={{ background: "var(--earn-gold-ink)" }}
-          data-testid="link-wanted-apply"
-          onClick={() => trackRecruitmentClick({ source: "discover_wanted_slot", target: offeringKey ?? offeringLabel, city: slotCity ?? undefined })}
-        >
-          Ways to earn <ChevronRight className="h-3 w-3" />
-        </a>
+        {!arashiyamaItinerary && (
+          <a
+            href={buildWantedSlotSignupHref({ city: slotCity, neighborhoodName, offeringKey, offeringLabel })}
+            className="inline-flex items-center gap-0.5 rounded-md px-2.5 py-1 text-[11px] font-bold text-white"
+            style={{ background: "var(--earn-gold-ink)" }}
+            data-testid="link-wanted-apply"
+            onClick={() => trackRecruitmentClick({ source: "discover_wanted_slot", target: offeringKey ?? offeringLabel, city: slotCity ?? undefined })}
+          >
+            Ways to earn <ChevronRight className="h-3 w-3" />
+          </a>
+        )}
         {expertAvailable && (
           <button
             type="button"

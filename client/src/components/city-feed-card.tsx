@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useImpressionTracker } from "@/hooks/use-impression-tracker";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ import { SaveToggle } from "@/components/SaveToggle";
 import { buildSaveItem } from "@/lib/saved-items";
 import type { SaveItemBody } from "@shared/saved-items";
 import { stripPartnerCardPhrase } from "@shared/banned-copy";
+import { GemPhotoMedia } from "@/components/gem-photo-band";
 
 // Bookability (native | deeplink | info_only) is DERIVED, never stored. The single
 // source of truth is `resolveBookability` in @shared/bookability — both this client
@@ -916,6 +917,7 @@ export function CityFeedCardGem({
   compactActionState,
 }: CityFeedCardGemProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
+  const [imgFailed, setImgFailed] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const askExpert = useAskExpert();
   // SH-1 item 11: Ask draws only when the server says this city has an expert to ask.
@@ -923,9 +925,13 @@ export function CityFeedCardGem({
   // An official source with no stored image is text-only. A stock search would invent a photo.
   const textOnly = !gem.imageUrl && typeof gem.sourceUrl === "string" && gem.sourceUrl.length > 0;
   const { photoUrl, loading } = useGemPhoto(gem.id, gem.placeName, city, gem.imageUrl, { allowFetch: !textOnly });
-  // What the heart saves (#330): the card's own identity, name, photo and city — a display cache
-  // for the Saved places shelf. A photo is carried only when it is an http(s) or site path.
-  const gemSaveItem = buildSaveItem({ contentType: "gem", contentId: gem.id, name: gem.placeName, image: photoUrl, city });
+  useEffect(() => {
+    setImgFailed(false);
+    setImgLoaded(false);
+  }, [photoUrl]);
+  // A missing URL or a failed load paints the place name. The heart stores a photo only when one is showing.
+  const showGemPhoto = !loading && Boolean(photoUrl) && !imgFailed;
+  const gemSaveItem = buildSaveItem({ contentType: "gem", contentId: gem.id, name: gem.placeName, image: showGemPhoto ? photoUrl : null, city });
 
   const resolvedBookability: Bookability = bookability ?? resolveBookability(gem);
   // DISABLED: GET /api/gems/:id/matched-service has no server implementation — every gem
@@ -990,21 +996,19 @@ export function CityFeedCardGem({
         isRow ? "w-36 self-stretch" : "h-[104px] w-full",
       )}
     >
-      {!loading && photoUrl && (
-        <img
-          src={photoUrl}
-          srcSet={srcSet}
-          sizes={sizes}
-          alt={gem.placeName}
-          loading="lazy"
-          onLoad={() => setImgLoaded(true)}
-          className={cn(
-            "absolute inset-0 w-full h-full object-cover transition-opacity duration-300",
-            imgLoaded ? "opacity-100" : "opacity-0",
-          )}
-        />
-      )}
-      {/* No-photo fallback is the kind gradient ALONE — no emoji glyph (Phase 2d). */}
+      <GemPhotoMedia
+        photoUrl={photoUrl}
+        loading={loading}
+        failed={imgFailed}
+        placeName={gem.placeName}
+        id={gem.id}
+        srcSet={srcSet}
+        sizes={sizes}
+        loaded={imgLoaded}
+        onLoad={() => setImgLoaded(true)}
+        onError={() => setImgFailed(true)}
+      />
+      {/* No-photo fallback is the place name on the kind gradient — no empty box, no emoji glyph. */}
       {/* SH-1 item 1: the tile carries its card type (Eat, Do, Stay, Photo spot), never a "Hidden gem" claim. */}
       <span
         className={cn("absolute top-2 left-2 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide", typeMeta.tagBg, typeMeta.tagText)}
@@ -1024,7 +1028,7 @@ export function CityFeedCardGem({
       {/* Tier-1 reference-photo chip (2026-09-01-photo-tiers): a stock/places image on this
           TEASER surface is labeled until an attributed real photo replaces it. Non-stock
           (attributed) photos and the no-photo gradient carry no chip. */}
-      {!loading && photoUrl && isReferencePhoto({ url: photoUrl }) && (
+      {showGemPhoto && photoUrl && isReferencePhoto({ url: photoUrl }) && (
         <ReferencePhotoChip testId={`gem-reference-photo-${gem.id}`} />
       )}
       {/* #330: save this place to Saved places. Bottom-left — the reference chip holds bottom-right. */}
@@ -1054,7 +1058,7 @@ export function CityFeedCardGem({
       {!compact && !isRow && bodyText && (
         <p className="text-[12px] text-muted-foreground line-clamp-2">{bodyText}</p>
       )}
-      {!compact && <GemImageCredit gem={gem} photoUrl={photoUrl} />}
+      {!compact && <GemImageCredit gem={gem} photoUrl={showGemPhoto ? photoUrl : null} />}
       {!compact && <GemOfficialFacts gem={gem} />}
 
       {/* Row layout body copy */}
@@ -1206,20 +1210,18 @@ export function CityFeedCardGem({
               typeMeta.phText,
             )}
           >
-            {!loading && photoUrl && (
-              <img
-                src={photoUrl}
-                srcSet={srcSet}
-                sizes={sizes}
-                alt={gem.placeName}
-                loading="lazy"
-                onLoad={() => setImgLoaded(true)}
-                className={cn(
-                  "absolute inset-0 w-full h-full object-cover transition-opacity duration-300",
-                  imgLoaded ? "opacity-100" : "opacity-0",
-                )}
-              />
-            )}
+            <GemPhotoMedia
+              photoUrl={photoUrl}
+              loading={loading}
+              failed={imgFailed}
+              placeName={gem.placeName}
+              id={gem.id}
+              srcSet={srcSet}
+              sizes={sizes}
+              loaded={imgLoaded}
+              onLoad={() => setImgLoaded(true)}
+              onError={() => setImgFailed(true)}
+            />
             <span
               className={cn("absolute top-2 left-2 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide", typeMeta.tagBg, typeMeta.tagText)}
               style={{ fontFamily: EARN_MONO }}
@@ -1237,7 +1239,7 @@ export function CityFeedCardGem({
               </span>
             )}
             {/* Tier-1 reference-photo chip (2026-09-01-photo-tiers) — see full-density note above. */}
-            {!loading && photoUrl && isReferencePhoto({ url: photoUrl }) && (
+            {showGemPhoto && photoUrl && isReferencePhoto({ url: photoUrl }) && (
               <ReferencePhotoChip testId={`gem-reference-photo-${gem.id}`} />
             )}
           </div>
@@ -1245,7 +1247,7 @@ export function CityFeedCardGem({
             <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">
               {gem.placeName}
             </h3>
-            <GemImageCredit gem={gem} photoUrl={photoUrl} />
+            <GemImageCredit gem={gem} photoUrl={showGemPhoto ? photoUrl : null} />
             <GemOfficialFacts gem={gem} />
             <CompactMetaLine text={metaText} testid={`gem-facts-${gem.id}`} />
             {/* C1 (cosmetic-public-surfaces dispatch): the compact action row had no `flex-wrap`
