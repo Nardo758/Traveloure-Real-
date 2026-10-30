@@ -13,7 +13,7 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { after, before, test } from "node:test";
-import { registerAndSignIn } from "./fixtures/register-and-sign-in";
+import { registerAndSignIn, SUPPLY_PROVIDER_SIGNUP_EXTRA } from "./fixtures/register-and-sign-in";
 import {
   CONTACT_SUBMISSION_RESOURCE,
   SUPPORT_ASSIGN_ACTION,
@@ -65,7 +65,7 @@ before(async () => {
   const health = await fetch(`${BASE_URL}/api/health`).catch(() => null);
   assert.ok(health?.ok, `dev server must be running on ${BASE_URL}`);
   assert.equal(process.env.JOURNEY_DB_WRITES_OK, "1", "Refusing to write fixtures without JOURNEY_DB_WRITES_OK=1");
-  const admin = await registerAndSignIn({ baseUrl: BASE_URL, email: adminEmail, password: "TestPass123!", firstName: "Gap7", lastName: "Admin", extra: { intent: "supply" } });
+  const admin = await registerAndSignIn({ baseUrl: BASE_URL, email: adminEmail, password: "TestPass123!", firstName: "Gap7", lastName: "Admin", extra: SUPPLY_PROVIDER_SIGNUP_EXTRA });
   adminCookie = admin.cookie;
   adminId = admin.id;
   await pool.query(`UPDATE users SET role = 'admin' WHERE id = $1`, [adminId]);

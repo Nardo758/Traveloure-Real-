@@ -11,7 +11,7 @@
 //   - LW-1d: a supply door's raw `?source=` tag rides along (capped, never trusted as a value): the verify callback
 //     hands it to the ONE writer `recordSignupSource`, which normalizes it and stores it once on a new account.
 import { OAUTH_STATE_TTL_MS, safeReturnPath } from "../../utils/oauth-state";
-import { normalizeSignupIntent, type SignupIntent } from "@shared/launch-signup";
+import { normalizeSignupIntent, normalizeSupplyRole, supplyRoleFromPath, type SignupIntent, type SupplySignupRole } from "@shared/launch-signup";
 
 const SESSION_KEY = "lw1SignupIntent";
 
@@ -20,6 +20,8 @@ interface StashedIntent {
   returnTo: string | null;
   /** LW-1d: the raw `?source=` tag of a supply sign-up (normalized only by `recordSignupSource`). */
   source: string | null;
+  /** WL-B: `?supplyRole=provider|expert` of a supply sign-up; null when the door names none. */
+  supplyRole?: SupplySignupRole | null;
   issuedAt: number;
 }
 
@@ -33,6 +35,7 @@ export function stashSignupIntent(req: any, now: number = Date.now()): void {
     intent: normalizeSignupIntent(query.intent),
     returnTo: returnTo || null,
     source: typeof query.source === "string" && query.source.trim() ? query.source.trim().slice(0, SOURCE_TAG_MAX) : null,
+    supplyRole: normalizeSignupIntent(query.intent) === "supply" ? normalizeSupplyRole(query.supplyRole) : null,
     issuedAt: now,
   };
   req.session[SESSION_KEY] = stash;
@@ -47,6 +50,13 @@ function readStash(req: any, now: number): StashedIntent | null {
 
 export function readSignupIntent(req: any, now: number = Date.now()): SignupIntent {
   return readStash(req, now)?.intent ?? "traveler";
+}
+
+/** WL-B: the stashed supply role; a supply door that states none takes the role its return path implies (or null). */
+export function readSupplyRole(req: any, now: number = Date.now()): SupplySignupRole | null {
+  const s = readStash(req, now);
+  if (!s || s.intent !== "supply") return null;
+  return s.supplyRole ?? supplyRoleFromPath(s.returnTo);
 }
 
 /** LW-1d: the stashed raw source tag (or null). */
