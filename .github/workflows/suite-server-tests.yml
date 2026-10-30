@@ -51,6 +51,9 @@ jobs:
       # without it the mutation-auth-shaped audits skip themselves — the
       # green-but-vacuous shape triage note 3 forbids wiring.
       TIER2_DEV_AUDIT_OK: '1'
+      # K4 reconciles kyoto-temples@traveloure.test only when this secret is set.
+      # Unset → that one test skips. No hard-coded fallback.
+      KYOTO_FIXTURE_PASSWORD: ${{ secrets.KYOTO_FIXTURE_PASSWORD }}
     steps:
       - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)

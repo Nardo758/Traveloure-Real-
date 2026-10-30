@@ -16,7 +16,9 @@
  *      the same lifecycle (idempotent: if it already exists, its facts are
  *      re-asserted). It is intentionally NOT cleaned up — built once, owned here,
  *      consumed by the journey suite (see the bench registry in
- *      docs/testing/CONSOLE_SIGMA_AUDIT.md §12).
+ *      docs/testing/CONSOLE_SIGMA_AUDIT.md §12). Its password is
+ *      process.env.KYOTO_FIXTURE_PASSWORD. When that variable is unset, K4 skips
+ *      and does not fall back to a hard-coded password.
  *
  * §11 re-diff note: the dispatch's "application guard + DB CHECK" premise is
  * half-true — there is NO DB CHECK on local_expert_forms.status (schema comment
@@ -69,9 +71,16 @@ const { storage } = await import("../storage");
 const adminRoutes = (await import("../routes/admin.routes")).default;
 
 const PASSWORD = "test-password-sigma2";
-/** Standard fixture-bench convention (audit §0.7 / ruling 23). */
-const BENCH_PASSWORD = "TestPass123!";
 const BENCH_EMAIL = "kyoto-temples@traveloure.test";
+
+/**
+ * Durable bench credential. Empty or unset skips K4. There is no hard-coded fallback.
+ */
+function kyotoFixturePassword(): string | null {
+  const value = process.env.KYOTO_FIXTURE_PASSWORD;
+  if (typeof value !== "string" || value.length === 0) return null;
+  return value;
+}
 
 function hashPassword(password: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -260,29 +269,36 @@ test("K3: a Kyoto local expert cannot be approved without a city-knowledge pass"
 // seeded via the SAME lifecycle, idempotently. Never cleaned up: it is the
 // journey suite's Kyoto expert (bench registry: audit §12).
 // ---------------------------------------------------------------------------
-test("K4: durable Kyoto bench fixture exists via the full lifecycle (reconciling, idempotent)", async () => {
+test("K4: durable Kyoto bench fixture exists via the full lifecycle (reconciling, idempotent)", async (t) => {
+  const benchPassword = kyotoFixturePassword();
+  if (!benchPassword) {
+    t.skip(
+      "KYOTO_FIXTURE_PASSWORD is unset. K4 reconciles the durable Kyoto bench fixture only when that variable is set, and it does not fall back to a hard-coded password.",
+    );
+    return;
+  }
   // RECONCILE, don't just branch on user-exists: a prior interrupted run may have
   // left a partial fixture (user without form, pending/rejected form, stale
   // password). Every repair step goes through the same lifecycle layers — the
   // application guard for submission, the admin HTTP route for approval. The only
-  // direct write is the deterministic bench password (auth credential, not
+  // direct write is the password from KYOTO_FIXTURE_PASSWORD (auth credential, not
   // lifecycle state).
   let [bench] = await db.select().from(users).where(eq(users.email, BENCH_EMAIL));
   if (!bench) {
     benchUserCreatedThisRun = true;
     const id = crypto.randomUUID();
-    const password = await hashPassword(BENCH_PASSWORD);
+    const password = await hashPassword(benchPassword);
     await db.insert(users).values({
       id, email: BENCH_EMAIL, password, firstName: "Kyoto", lastName: "Temples",
       role: "traveler", authProvider: "email",
     } as any);
     [bench] = await db.select().from(users).where(eq(users.email, BENCH_EMAIL));
   } else {
-    // Deterministic credential policy: the bench password is part of the fixture
-    // contract, so converge it (covers a pre-existing user seeded another way).
+    // Converge a stale credential to KYOTO_FIXTURE_PASSWORD (covers a pre-existing
+    // user seeded another way).
     await db
       .update(users)
-      .set({ password: await hashPassword(BENCH_PASSWORD), authProvider: "email" } as any)
+      .set({ password: await hashPassword(benchPassword), authProvider: "email" } as any)
       .where(eq(users.id, bench.id));
   }
 
@@ -336,13 +352,13 @@ test("K4: durable Kyoto bench fixture exists via the full lifecycle (reconciling
   assert.equal(finalForm.status, "approved");
   assert.equal(finalForm.city, "Kyoto");
 
-  // The bench account must actually be able to log in with the standard convention.
+  // The bench account must be able to log in with KYOTO_FIXTURE_PASSWORD.
   const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email: BENCH_EMAIL, password: BENCH_PASSWORD }),
+    body: JSON.stringify({ email: BENCH_EMAIL, password: benchPassword }),
   });
-  assert.equal(loginRes.status, 200, "bench fixture must log in with the standard convention password");
+  assert.equal(loginRes.status, 200, "bench fixture must log in with KYOTO_FIXTURE_PASSWORD");
 });
 
 // ---------------------------------------------------------------------------
