@@ -5,8 +5,24 @@
 import { z } from "zod";
 import { OPERATING_MARKETS } from "./operating-markets";
 
-/** Who a row is for. Provider rows are never counted as travelers. */
-export const WAITLIST_ROLES = ["traveler", "provider"] as const;
+/**
+ * Who a row is for. Provider rows are never counted as travelers. WL-B (ledger `2026-10-30-wlb-provider-signup-gate`):
+ * `expert` is one expert type, applying from the waitlist page; expert rows are counted as neither travelers nor providers.
+ */
+export const WAITLIST_ROLES = ["traveler", "provider", "expert"] as const;
+
+/** WL-B: where a refused expert sign-up is sent — the expert form on the launch waitlist page (Leon, Oct 30, 2026). */
+export const WAITLIST_EXPERT_FORM_PATH = "/kyoto#experts";
+
+/** WL-B: the `source` a provider sign-up's waitlist row carries (set by the server, never by a body). */
+export const WAITLIST_PROVIDER_SIGNUP_SOURCE = "provider_signup";
+
+/** WL-B: a free-text languages answer ("Japanese, English") as the column's array; empty ⇒ null (§13). */
+export function waitlistLanguagesList(value: string | null | undefined): string[] | null {
+  if (typeof value !== "string") return null;
+  const list = value.split(/[,;]/).map((l) => l.trim()).filter(Boolean).slice(0, 20);
+  return list.length ? list : null;
+}
 export type WaitlistRole = (typeof WAITLIST_ROLES)[number];
 
 /** "What's the trip for?" — stored key → F1 label. */
@@ -26,6 +42,8 @@ export const WAITLIST_SERVICE_TYPES = [
   { key: "experience", label: "Experience or activity" },
   { key: "wedding_proposal", label: "Wedding / proposal services" },
   { key: "accommodation", label: "Accommodation" },
+  // WL-B (Architect, Oct 30, 2026): a venue is its own category.
+  { key: "venue", label: "Venue" },
   { key: "other", label: "Other" },
 ] as const;
 export type WaitlistServiceType = (typeof WAITLIST_SERVICE_TYPES)[number]["key"];
@@ -102,20 +120,42 @@ export const waitlistJoinBodySchema = z
     market: z.string().trim().toLowerCase().max(64).optional(),
     // LC-1b: the optional free-text answer to "Planning somewhere else? Tell us where." Stored on `area`.
     otherCity: z.string().trim().max(120).optional(),
+    // WL-B: the expert form's fields. `expertCity` is stored on `area`, `languages` on `languages`, `link` on `website`.
+    expertCity: z.string().trim().max(120).optional(),
+    languages: z.string().trim().max(200).optional(),
+    link: z.string().trim().url().max(200).optional(),
     homepage: z.string().max(200).optional(),
   })
   .strict()
   .superRefine((b, ctx) => {
     const role = b.role ?? "traveler";
+    const travelerFields = ["tripType", "roughMonth", "worry"] as const;
+    const providerFields = ["businessName", "serviceType"] as const;
+    const expertFields = ["expertCity", "languages", "link"] as const;
     if (role === "provider") {
       if (!b.contactName) ctx.addIssue({ code: "custom", path: ["contactName"], message: "required" });
       if (!b.serviceType) ctx.addIssue({ code: "custom", path: ["serviceType"], message: "required" });
-      for (const k of ["tripType", "roughMonth", "worry"] as const) {
+      for (const k of travelerFields) {
         if (b[k] !== undefined) ctx.addIssue({ code: "custom", path: [k], message: "traveler field" });
       }
-    } else {
-      for (const k of ["contactName", "businessName", "serviceType"] as const) {
+      for (const k of expertFields) {
+        if (b[k] !== undefined) ctx.addIssue({ code: "custom", path: [k], message: "expert field" });
+      }
+    } else if (role === "expert") {
+      if (!b.contactName) ctx.addIssue({ code: "custom", path: ["contactName"], message: "required" });
+      if (!b.expertCity) ctx.addIssue({ code: "custom", path: ["expertCity"], message: "required" });
+      for (const k of travelerFields) {
+        if (b[k] !== undefined) ctx.addIssue({ code: "custom", path: [k], message: "traveler field" });
+      }
+      for (const k of providerFields) {
         if (b[k] !== undefined) ctx.addIssue({ code: "custom", path: [k], message: "provider field" });
+      }
+    } else {
+      for (const k of ["contactName", ...providerFields] as const) {
+        if (b[k] !== undefined) ctx.addIssue({ code: "custom", path: [k], message: "provider field" });
+      }
+      for (const k of expertFields) {
+        if (b[k] !== undefined) ctx.addIssue({ code: "custom", path: [k], message: "expert field" });
       }
     }
   });
@@ -128,11 +168,16 @@ export const waitlistUnsubscribeBodySchema = z
   })
   .strict();
 
-/** Admin "market opened" body. Market is an operating-market key; role is traveler or provider. */
+/**
+ * Admin "market opened" body. Market is an operating-market key; role is traveler or provider. WL-B: expert rows are
+ * not in this list — the market-opened email has no expert wording, so none is sent to them.
+ */
+export const WAITLIST_MARKET_OPENED_ROLES = ["traveler", "provider"] as const;
+export type WaitlistMarketOpenedRole = (typeof WAITLIST_MARKET_OPENED_ROLES)[number];
 export const waitlistMarketOpenedBodySchema = z
   .object({
     market: z.string().trim().toLowerCase().min(1).max(64),
-    role: z.enum(WAITLIST_ROLES),
+    role: z.enum(WAITLIST_MARKET_OPENED_ROLES),
   })
   .strict();
 

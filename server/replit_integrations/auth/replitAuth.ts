@@ -14,8 +14,8 @@ import connectPg from "connect-pg-simple";
 import { authStorage } from "./storage";
 import { sendWelcomeEmail } from "../../services/email.service";
 import { getPlatformFlag, FLAG_REGISTRATION_ENABLED, getTravelerSignupMode, getLaunchMarketSlug } from "../../services/platform-flags";
-import { decideFirstTimeSignup, waitlistBlockedPath, TRAVELER_WAITLIST, type SignupIntent } from "@shared/launch-signup";
-import { stashSignupIntent, readSignupIntent, readSignupSourceTag, takeStashedReturnTo } from "./signup-intent-stash";
+import { decideFirstTimeSignup, supplyRefusalRedirect, waitlistBlockedPath, EXPERT_APPLY_NOW, PROVIDER_FIELDS_REQUIRED, TRAVELER_WAITLIST, type SignupIntent, type SupplySignupRole } from "@shared/launch-signup";
+import { stashSignupIntent, readSignupIntent, readSignupSourceTag, readSupplyRole, takeStashedReturnTo } from "./signup-intent-stash";
 import { safeReturnPath } from "../../utils/oauth-state";
 import { pathAfterAuth } from "../../services/email-verification.service";
 import { EMAIL_VERIFICATION_HOLD_PATH } from "@shared/email-verification-gate";
@@ -93,7 +93,7 @@ function updateUserSession(
 // Exported for tests — the registration-flag gate is verified without a live
 // OIDC handshake. Resolves to the id of the account the session belongs to: the
 // Replit sub, or the existing account a verified email-match was merged into.
-export async function upsertUser(claims: any, opts: { intent?: SignupIntent; sourceTag?: string | null } = {}): Promise<string> {
+export async function upsertUser(claims: any, opts: { intent?: SignupIntent; sourceTag?: string | null; supplyRole?: SupplySignupRole | null } = {}): Promise<string> {
   const userId: string = claims["sub"];
   const email: string | undefined = claims["email"];
 
@@ -137,8 +137,11 @@ export async function upsertUser(claims: any, opts: { intent?: SignupIntent; sou
       mode: await getTravelerSignupMode(),
       intent: opts.intent ?? "traveler",
       qaCodeValid: false,
+      // WL-B: a social sign-in carries no provider fields, so a provider is sent to the email sign-up.
+      supplyRole: opts.supplyRole ?? null,
+      providerFieldsValid: false,
     });
-    if (!decision.allowed) throw new Error(TRAVELER_WAITLIST);
+    if (!decision.allowed) throw new Error("reason" in decision ? decision.reason : TRAVELER_WAITLIST);
   }
 
   const user = await authStorage.upsertUser({
@@ -220,7 +223,7 @@ export async function setupAuth(app: Express) {
   ) => {
     const user: any = {};
     try {
-      const accountId = await upsertUser(tokens.claims(), { intent: readSignupIntent(req), sourceTag: readSignupSourceTag(req) });
+      const accountId = await upsertUser(tokens.claims(), { intent: readSignupIntent(req), sourceTag: readSignupSourceTag(req), supplyRole: readSupplyRole(req) });
       const sub = (tokens.claims() as any)?.sub;
       if (accountId && accountId !== sub) user.accountId = accountId;
     } catch (err: any) {
@@ -235,6 +238,9 @@ export async function setupAuth(app: Express) {
       }
       if (err?.message === TRAVELER_WAITLIST) {
         return verified(null, false, { code: TRAVELER_WAITLIST } as any);
+      }
+      if (err?.message === EXPERT_APPLY_NOW || err?.message === PROVIDER_FIELDS_REQUIRED) {
+        return verified(null, false, { code: err.message } as any);
       }
       return verified(err as Error);
     }
@@ -298,6 +304,11 @@ export async function setupAuth(app: Express) {
           .then((slug) => res.redirect(waitlistBlockedPath(slug)))
           .catch(() => res.redirect("/"));
         return;
+      }
+      // WL-B: a refused expert goes to the waitlist's expert form; a provider goes to the email sign-up.
+      if (!user && (info?.code === EXPERT_APPLY_NOW || info?.code === PROVIDER_FIELDS_REQUIRED)) {
+        takeStashedReturnTo(req);
+        return res.redirect(supplyRefusalRedirect(info.code));
       }
       if (!user) return res.redirect("/api/login");
       // Read the stashed return path BEFORE req.logIn regenerates the session.

@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { WAITLIST_MARKET_OPTIONS, WAITLIST_ROLES, waitlistCityName, type WaitlistRole } from "@shared/launch-waitlist";
+import { WAITLIST_MARKET_OPTIONS, WAITLIST_MARKET_OPENED_ROLES, waitlistCityName, type WaitlistMarketOpenedRole as WaitlistRole } from "@shared/launch-waitlist";
 import { WAITLIST_CONSENT_COPY as COPY, fillWaitlistCopy } from "@/lib/waitlist-consent-copy";
 
 export const MARKET_OPENED_ROUTE = "/api/admin/waitlist/market-opened";
@@ -129,7 +129,7 @@ export function WaitlistMarketOpenedCard({ post = apiRequest }: { post?: Poster 
             data-testid="select-market-opened-role"
           >
             <option value="">—</option>
-            {WAITLIST_ROLES.map((r) => (
+            {WAITLIST_MARKET_OPENED_ROLES.map((r) => (
               <option key={r} value={r}>{r === "provider" ? COPY.adminRoleProvider : COPY.adminRoleTraveler}</option>
             ))}
           </select>

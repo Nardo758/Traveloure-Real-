@@ -29,10 +29,19 @@ import {
   waitlistConsentVersion,
   normalizeWaitlistEmail,
   normalizeWaitlistSource,
+  waitlistLanguagesList,
+  WAITLIST_PROVIDER_SIGNUP_SOURCE,
   type WaitlistJoinBody,
+  type WaitlistMarketOpenedRole,
 } from "@shared/launch-waitlist";
+import type { ProviderSignupFields } from "@shared/launch-signup";
 
 type SqlClient = Pick<typeof db, "execute">;
+
+/** WL-B: a text[] value. drizzle's `sql` would spread a JS array into separate parameters, so it is built here. */
+function textArray(list: string[] | null): SQL {
+  return list && list.length ? sql`ARRAY[${sql.join(list.map((l) => sql`${l}`), sql`, `)}]::text[]` : sql`NULL::text[]`;
+}
 
 /**
  * Records the market's consent wording once (ON CONFLICT DO NOTHING on (consent_key, version)); returns its version.
@@ -114,11 +123,16 @@ export async function joinWaitlist(
   const tripType = traveler ? body.tripType ?? null : null;
   const roughMonth = traveler ? body.roughMonth ?? null : null;
   const worry = traveler && body.worry?.trim() ? body.worry.trim() : null;
+  const expert = role === "expert";
   const contactName = traveler ? null : body.contactName?.trim() || null;
-  const businessName = traveler ? null : body.businessName?.trim() || null;
-  const serviceType = traveler ? null : body.serviceType ?? null;
+  const businessName = traveler || expert ? null : body.businessName?.trim() || null;
+  const serviceType = traveler || expert ? null : body.serviceType ?? null;
   // LC-1b: the optional "somewhere else" note. `area` is the existing varchar(120); NULL = not answered.
-  const area = body.otherCity?.trim() ? body.otherCity.trim() : null;
+  // WL-B: an expert's "City you know best" is their area.
+  const area = expert ? body.expertCity?.trim() || null : body.otherCity?.trim() ? body.otherCity.trim() : null;
+  // WL-B: an expert's languages and link use the existing `languages` / `website` columns; NULL = not answered.
+  const languages = expert ? waitlistLanguagesList(body.languages) : null;
+  const website = expert ? body.link?.trim() || null : null;
   // `created_at` is written only on insert. A repeat sets `updated_at` and leaves `created_at`, so the two
   // are equal only when this statement born the row. That is the invite's once-per-sign-up gate (S-22).
   // Consent rows are written in the SAME transaction as the upsert. An unticked box writes nothing.
@@ -129,11 +143,11 @@ export async function joinWaitlist(
       INSERT INTO launch_waitlist
         (id, email, market_slug, role, source, trip_type, rough_month, worry,
          contact_name, business_name, service_type, area, referrer_user_id, short_link_code,
-         consent_at, consent_text_version, created_at, updated_at)
+         consent_at, consent_text_version, created_at, updated_at${expert ? sql`, website, languages` : sql``})
       VALUES
         (gen_random_uuid(), ${email}, ${marketSlug}, ${role}, ${source}, ${tripType}, ${roughMonth}, ${worry},
          ${contactName}, ${businessName}, ${serviceType}, ${area}, ${referrerUserId}, ${shortLinkCode},
-         CASE WHEN ${consent} THEN NOW() ELSE NULL END, ${consentVersion}, NOW(), NOW())
+         CASE WHEN ${consent} THEN NOW() ELSE NULL END, ${consentVersion}, NOW(), NOW()${expert ? sql`, ${website}, ${textArray(languages)}` : sql``})
       ON CONFLICT (email, market_slug) DO UPDATE SET
         updated_at           = NOW(),
         role                 = EXCLUDED.role,
@@ -143,7 +157,9 @@ export async function joinWaitlist(
         contact_name         = EXCLUDED.contact_name,
         business_name        = EXCLUDED.business_name,
         service_type         = EXCLUDED.service_type,
-        area                 = EXCLUDED.area,
+        area                 = EXCLUDED.area,${expert ? sql`
+        website              = EXCLUDED.website,
+        languages            = EXCLUDED.languages,` : sql``}
         consent_text_version = CASE WHEN launch_waitlist.consent_at IS NULL THEN EXCLUDED.consent_text_version ELSE launch_waitlist.consent_text_version END,
         consent_at           = COALESCE(launch_waitlist.consent_at, EXCLUDED.consent_at)
       RETURNING id, created_at, updated_at
@@ -170,6 +186,39 @@ export async function joinWaitlist(
     const updated = row?.updated_at ? new Date(row.updated_at).getTime() : NaN;
     return { inserted: Number.isFinite(created) && created === updated };
   });
+}
+
+/**
+ * WL-B, option (c) (Leon, Oct 30, 2026): a NEW provider account's light sign-up fields, on its launch-market waitlist
+ * row (role `provider`). Business name, category (`service_type`), city (`area`), website and languages. Consent is
+ * not touched: an account is not a tick on the waitlist box. A repeat keeps the first `source` and any consent.
+ */
+export async function recordProviderSignup(input: {
+  email: string;
+  contactName: string | null;
+  fields: ProviderSignupFields;
+  marketSlug: string;
+}): Promise<void> {
+  const email = normalizeWaitlistEmail(input.email);
+  const f = input.fields;
+  await db.execute(sql`
+    INSERT INTO launch_waitlist
+      (id, email, market_slug, role, source, contact_name, business_name, service_type, area, website, languages,
+       created_at, updated_at)
+    VALUES
+      (gen_random_uuid(), ${email}, ${input.marketSlug}, 'provider', ${WAITLIST_PROVIDER_SIGNUP_SOURCE},
+       ${input.contactName}, ${f.businessName.trim()}, ${f.category}, ${f.city.trim()}, ${f.website?.trim() || null},
+       ${textArray(waitlistLanguagesList(f.languages))}, NOW(), NOW())
+    ON CONFLICT (email, market_slug) DO UPDATE SET
+      updated_at    = NOW(),
+      role          = 'provider',
+      contact_name  = EXCLUDED.contact_name,
+      business_name = EXCLUDED.business_name,
+      service_type  = EXCLUDED.service_type,
+      area          = EXCLUDED.area,
+      website       = EXCLUDED.website,
+      languages     = EXCLUDED.languages
+  `);
 }
 
 /**
@@ -488,7 +537,7 @@ export interface MarketOpenedCounts { enqueued: number; skipped: number }
  * market, role and email enqueues nothing (dedupeKey). This does not decide whether
  * the row is sent: EMAIL_SENDS_ENABLED and EMAIL_TEMPLATE_ALLOWLIST stay as they are.
  */
-export async function enqueueMarketOpened(input: { market: string; role: "traveler" | "provider" }): Promise<MarketOpenedCounts> {
+export async function enqueueMarketOpened(input: { market: string; role: WaitlistMarketOpenedRole }): Promise<MarketOpenedCounts> {
   const { enqueueEmail } = await import("./email-outbox.service");
   const market = input.market;
   const role = input.role;
