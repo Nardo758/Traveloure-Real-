@@ -135,10 +135,10 @@
     "other": 248
   },
   "boundaryTotals": {
-    "admin-role": 198,
+    "admin-role": 199,
     "session-self": 369,
     "resource-owner": 102,
-    "signature": 7,
+    "signature": 6,
     "public-or-system": 53,
     "unknown": 0
   },
@@ -3362,9 +3362,9 @@
     },
     {
       "method": "POST",
-      "rawPath": "/api/admin/webhooks/:stripeEventId/replay",
-      "path": "/api/admin/webhooks/:stripeEventId/replay",
-      "effectivePath": "/api/admin/webhooks/:stripeEventId/replay",
+      "rawPath": "/api/admin/webhook-events/:stripeEventId/replay",
+      "path": "/api/admin/webhook-events/:stripeEventId/replay",
+      "effectivePath": "/api/admin/webhook-events/:stripeEventId/replay",
       "source": "server/routes/admin.routes.ts",
       "line": 1027,
       "risk": "admin",
@@ -3373,7 +3373,7 @@
         "admin"
       ],
       "expectedOwnership": "unknown",
-      "expectedBoundary": "signature",
+      "expectedBoundary": "admin-role",
       "ownershipApplies": false,
       "fixtureStatus": "unknown",
       "testStatus": "unknown",

@@ -5,7 +5,7 @@ Generated from `server/routes.ts`. **737** raw mounted mutation registrations an
 The unique-pair count is **+183** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
 
 Category totals: payments 31; admin 199; user-data 251; other 248.
-Boundary totals: admin-role 198; session-self 369; resource-owner 102; signature 7; public-or-system 53; unknown 0.
+Boundary totals: admin-role 199; session-self 369; resource-owner 102; signature 6; public-or-system 53; unknown 0.
 
 | Method | Normalized path | Risk | Boundary | Ownership applicable | Expected ownership | Registrations | Fixture | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -178,7 +178,7 @@ Boundary totals: admin-role 198; session-self 369; resource-owner 102; signature
 | PATCH | `/api/admin/users/:id/verification` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:3425` | unknown | unknown |
 | DELETE | `/api/admin/waitlist/:id` | admin | admin-role | no | unknown | `server/routes/launch-waitlist.routes.ts:189` | unknown | unknown |
 | POST | `/api/admin/waitlist/market-opened` | admin | admin-role | no | unknown | `server/routes/launch-waitlist.routes.ts:210` | unknown | unknown |
-| POST | `/api/admin/webhooks/:stripeEventId/replay` | admin | signature | no | unknown | `server/routes/admin.routes.ts:1027` | unknown | unknown |
+| POST | `/api/admin/webhook-events/:stripeEventId/replay` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:1027` | unknown | unknown |
 | POST | `/api/affiliate-booking-requests` | other | resource-owner | no | verified | `server/routes/content.routes.ts:7683` | unknown | unknown |
 | PATCH | `/api/affiliate-booking-requests/:id` | other | resource-owner | no | verified | `server/routes/content.routes.ts:8120` | unknown | unknown |
 | POST | `/api/affiliate-booking-requests/:id/claim` | other | session-self | no | unknown | `server/routes/content.routes.ts:8062` | unknown | unknown |

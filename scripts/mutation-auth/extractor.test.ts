@@ -355,7 +355,7 @@ test("resolves named re-exports used by authentication registration helpers", ()
  * Oct 29, 2026, sanctioned): GET /api/admin/affiliate/reconciliation became POST, because the view runs the
  * matching pass, which writes affiliate_earnings. admin 197 → 198, admin-role 197 → 198.
  * 736 / 728 → 737 / 729 (row 98, ledger `2026-10-30-row98-webhook-dedupe-replay`; Architect, Oct 30, 2026,
- * sanctioned): POST /api/admin/webhooks/:stripeEventId/replay, admin-only, re-runs a failed event only.
+ * sanctioned): POST /api/admin/webhook-events/:stripeEventId/replay, admin-only, re-runs a failed event only.
  *
  * THE COUNTS ARE THE POINT: they exist so a route appearing or vanishing from
  * the mounted graph fails here. Now that the file is wired into CI, changing a
@@ -372,7 +372,7 @@ test("current mounted graph parity includes auth helpers and shared api paths", 
   // 734 / 726: POST /api/invites/:token/plan (row 280a).
   // 735 / 727: POST /api/admin/reconciliation/run-now, converted from a GET (row 270).
   // 736 / 728: POST /api/admin/affiliate/reconciliation, converted from a GET (row 272).
-  // 737 / 729: POST /api/admin/webhooks/:stripeEventId/replay (row 98).
+  // 737 / 729: POST /api/admin/webhook-events/:stripeEventId/replay (row 98).
   assert.equal(result.mutations.length, 737);
   assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 729);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
@@ -405,7 +405,7 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // 734 / 726: POST /api/invites/:token/plan (row 280a).
   // 735 / 727: POST /api/admin/reconciliation/run-now, converted from a GET (row 270).
   // 736 / 728: POST /api/admin/affiliate/reconciliation, converted from a GET (row 272).
-  // 737 / 729: POST /api/admin/webhooks/:stripeEventId/replay (row 98).
+  // 737 / 729: POST /api/admin/webhook-events/:stripeEventId/replay (row 98).
   assert.equal(manifest.rawRegistrationCount, 737);
   assert.equal(manifest.uniqueMethodNormalizedPathCount, 729);
   // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R274): user-data,
@@ -462,7 +462,7 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // other 247 → 248 (row 280a): POST /api/invites/:token/plan.
   // admin 196 → 197 (row 270): POST /api/admin/reconciliation/run-now, converted from a GET.
   // admin 197 → 198 (row 272): POST /api/admin/affiliate/reconciliation, converted from a GET.
-  // admin 198 → 199 (row 98): POST /api/admin/webhooks/:stripeEventId/replay.
+  // admin 198 → 199 (row 98): POST /api/admin/webhook-events/:stripeEventId/replay.
   assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 199, "user-data": 251, other: 248 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
@@ -512,10 +512,9 @@ test("generated user-facing inventory contains one row per unique endpoint and s
     // session-self 368 → 369 (row 280a): POST /api/invites/:token/plan.
     // admin-role 196 → 197 (row 270): POST /api/admin/reconciliation/run-now, converted from a GET.
     // admin-role 197 → 198 (row 272): POST /api/admin/affiliate/reconciliation, converted from a GET.
-    // signature 6 → 7 (row 98): POST /api/admin/webhooks/:stripeEventId/replay. The heuristic reads `/webhooks/`
-    // in the path as a signature boundary; the route is admin-only under the blanket guard and requireAdminLocal.
-    "admin-role": 198, "session-self": 369, "resource-owner": 102,
-    signature: 7, "public-or-system": 53, unknown: 0,
+    // admin-role 198 → 199 (row 98): POST /api/admin/webhook-events/:stripeEventId/replay.
+    "admin-role": 199, "session-self": 369, "resource-owner": 102,
+    signature: 6, "public-or-system": 53, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
     `${mutation.method} ${mutation.effectivePath}`, mutation,

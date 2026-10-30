@@ -1,5 +1,5 @@
 /**
- * Row 98 (ledger `2026-10-30-row98-webhook-dedupe-replay`): POST /api/admin/webhooks/:stripeEventId/replay re-runs a
+ * Row 98 (ledger `2026-10-30-row98-webhook-dedupe-replay`): POST /api/admin/webhook-events/:stripeEventId/replay re-runs a
  * FAILED event only, never one marked processed. Synthetic rows only; the replayed event's dispute charge is expanded,
  * so no Stripe call is made.
  *
@@ -41,7 +41,7 @@ async function seed(suffix: string, state: { error: string | null; completed: bo
   return id;
 }
 async function replay(id: string, cookie: string | null, body: unknown = { consumer: "connect" }) {
-  const res = await fetch(`${BASE_URL}/api/admin/webhooks/${id}/replay`, {
+  const res = await fetch(`${BASE_URL}/api/admin/webhook-events/${id}/replay`, {
     method: "POST",
     headers: { "content-type": "application/json", ...(cookie ? { cookie } : {}) },
     body: JSON.stringify(body),

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "generatedBy": "scripts/generate-mutation-auth-coverage.ts",
   "manifest": "generated/security/mutation-auth-manifest.json",
-  "manifestSha256": "234bd40ce6a5342a73879aa57be20c0d10fe6c133edeed4ec678fe0a3a984fe8",
+  "manifestSha256": "e35721ee4493166cae3d9949c6e1b509bb49434049fd003b35a32f0e94ce8a90",
   "evidence": {
     "path": "generated/security/mutation-auth-evidence.json",
     "state": "evidence manifest SHA-256 is stale",
@@ -6374,9 +6374,9 @@
     },
     {
       "method": "POST",
-      "rawPath": "/api/admin/webhooks/:stripeEventId/replay",
-      "path": "/api/admin/webhooks/:stripeEventId/replay",
-      "effectivePath": "/api/admin/webhooks/:stripeEventId/replay",
+      "rawPath": "/api/admin/webhook-events/:stripeEventId/replay",
+      "path": "/api/admin/webhook-events/:stripeEventId/replay",
+      "effectivePath": "/api/admin/webhook-events/:stripeEventId/replay",
       "source": "server/routes/admin.routes.ts",
       "line": 1027,
       "risk": "admin",
@@ -6385,14 +6385,14 @@
         "admin"
       ],
       "expectedOwnership": "unknown",
-      "expectedBoundary": "signature",
+      "expectedBoundary": "admin-role",
       "ownershipApplies": false,
       "fixtureStatus": "unknown",
       "testStatus": "unknown",
       "diagnostics": [],
-      "key": "POST /api/admin/webhooks/:stripeEventId/replay",
+      "key": "POST /api/admin/webhook-events/:stripeEventId/replay",
       "tested": false,
-      "reason": "Signature endpoint is outside the payments/user-data unsigned-request scope."
+      "reason": "Not run: evidence manifest SHA-256 is stale."
     },
     {
       "method": "POST",

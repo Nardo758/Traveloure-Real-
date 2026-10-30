@@ -1017,14 +1017,14 @@ router.get("/api/admin/webhooks/unprocessed", isAuthenticated, async (req, res) 
 });
 
 /**
- * POST /api/admin/webhooks/:stripeEventId/replay
+ * POST /api/admin/webhook-events/:stripeEventId/replay
  * Row 98 (ledger `2026-10-30-row98-webhook-dedupe-replay`): re-run ONE failed Stripe event for one consumer, through
  * the same claim the delivery used. Only a FAILED claim (`error` set, `completed_at` NULL) replays; a processed
  * event is refused `replay_already_completed`, a claim with no error `replay_not_failed`, an unknown one
  * `replay_not_found`. The event is the stored payload; nothing is taken from the body but the consumer.
  */
 const webhookReplayBodySchema = z.object({ consumer: z.enum(["platform", "connect"]) }).strict();
-router.post("/api/admin/webhooks/:stripeEventId/replay", requireAdminLocal, async (req, res) => {
+router.post("/api/admin/webhook-events/:stripeEventId/replay", requireAdminLocal, async (req, res) => {
   const parsed = webhookReplayBodySchema.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ reason: "replay_invalid_body" });
   const consumer = parsed.data.consumer;
