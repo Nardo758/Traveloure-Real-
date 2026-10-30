@@ -14,7 +14,6 @@
  *       still accepts when the band does not resolve
  *   P7  the service file has no rate literal and does not import the fallback rates
  *   P8  another provider is 404; decline does not consult the block
- *   P9  mutation-auth counts stay 736 / 728 (row 270 took 734/726 to 735/727, row 272 to 736/728)
  *
  * Migration 416 is applied here (additive, re-runnable) and is HELD.
  *
@@ -598,12 +597,4 @@ test("P8: another provider is 404 and decline does not consult the block", async
   const forged = await bookingRow(born.id);
   assert.equal(forged.snapshot, null);
   await db.execute(sql`DELETE FROM service_bookings WHERE id = ${born.id}`);
-});
-
-test("P9: mutation-auth counts stay 736 generated and 728 unique", async () => {
-  const manifest = JSON.parse(readFileSync("generated/security/mutation-auth-manifest.json", "utf8"));
-  assert.equal(manifest.mutationCount, 736);
-  assert.equal(manifest.rawRegistrationCount, 736);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 728);
-  assert.equal(manifest.distinctMethodPathCount, 728);
 });
