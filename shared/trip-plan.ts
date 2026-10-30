@@ -354,6 +354,13 @@ export interface TripPlanActivity {
   userExperienceId?: string;
 
   /**
+   * Row 280c (ledger `2026-10-30-row280c-slip-rsvp-by`): the event's RSVP-by day ("YYYY-MM-DD"), on the guest's
+   * invite anchor item ONLY, read through its `userExperienceId` reference. Absent when the event states none,
+   * and on every other item (§13).
+   */
+  rsvpBy?: string;
+
+  /**
    * ADDITIVE (migration 181, ledger `2026-09-06-item-origin-chip`) — `itinerary_items.origin`, the
    * item's PROVENANCE: who put it on the plan. App-enforced value set `ai | traveler | expert`
    * (CLAUDE.md Locked Decision 12), stamped SERVER-SIDE at create from the actor's role and
