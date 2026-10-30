@@ -141,11 +141,11 @@ test("P3: /t/:slug carries real OG and Twitter tags; stale 301s; unknown falls t
   assert.equal(r.status, 200);
   const html = await r.text();
   assert.match(html, /<meta property="og:type" content="product" \/>/);
-  assert.match(html, new RegExp(`<meta property="og:url" content="https://traveloure.com/t/${slug}" />`));
+  assert.match(html, new RegExp(`<meta property="og:url" content="https://www.traveloure.com/t/${slug}" />`));
   // Slice B2: the generated 1200×630 link card, for the listing as it now reads.
   const version = await shareData.readyMadeShareVersion(ids.listing);
   assert.match(version!, /^[0-9a-f]{12}$/);
-  const card = `https://traveloure.com/api/share-image/ready-made/${ids.listing}.png?format=og&amp;v=${version}`;
+  const card = `https://www.traveloure.com/api/share-image/ready-made/${ids.listing}.png?format=og&amp;v=${version}`;
   assert.ok(html.includes(`<meta property="og:image" content="${card}" />`), "og:image is the generated card");
   assert.ok(html.includes(`<meta name="twitter:image" content="${card}" />`));
   assert.match(html, /<meta property="og:image:width" content="1200" \/>/);
