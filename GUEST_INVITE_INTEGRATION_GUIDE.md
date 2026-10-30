@@ -283,7 +283,8 @@ Navigate to: `http://localhost:5000/invite/abc123xyz`
 3. Click "Continue"
 4. Fill RSVP form
 5. Submit RSVP
-6. See recommendations page (placeholder UI for now)
+
+(The guest recommendations page and its route were removed by #1744 (row 263, ledger `2026-10-28-row263-dead-recommendations-route`).)
 
 #### 5. Verify in Database
 
@@ -450,10 +451,7 @@ In `GuestInvitePage.tsx`:
    - Get credentials
    - Add to `server/services/hotel-search.ts`
 
-3. **Update `/api/invites/:token/recommendations`**
-   - Call flight search API when guest has origin city
-   - Cache results in `guest_travel_plans.flight_options`
-   - Return real data instead of placeholders
+3. ~~**Update the guest recommendations endpoint**~~ — that route was removed by #1744 (row 263, ledger `2026-10-28-row263-dead-recommendations-route`); there is no guest recommendations endpoint to update.
 
 ### Phase 2: Email Integration
 

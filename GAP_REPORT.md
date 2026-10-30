@@ -204,7 +204,7 @@ Plus 12 ⚪ DEFERRED items captured separately at end of §2.
 | H4 | Time Efficiency algorithms (clustering, TSP, skip-the-line, optimal visit times, mode selection, buffer elimination) | 🟡 | `transport-leg-calculator.ts` handles routing; LLM prompts handle clustering | No TSP solver located. |
 | H5 | Hidden Gems algorithm (local DB, review analysis <500/4.8+, neighborhood match) | ✅ | `shared/schema.ts:3258` `aiDiscoveredGems`, `:3286` `discoveryJobs`, `:3299` `userSavedGems`; `server/services/grok-discovery.service.ts`; `routes.ts:11202-11328` discovery endpoints; `App.tsx:314` `/hidden-gems` | Review-threshold rule (<500 reviews, 4.8+) not verified as a coded constant. |
 | H6 | Implicit profiling from cart (no questions) — infers budget/interests/style/group from selections | 🟡 | `aiInteractions` table; itinerary-optimizer takes cart inputs | Explicit "profile inference from cart" service not located as a dedicated module. |
-| H7 | Hybrid SERP+native inventory — native first, SERP fills gaps | ✅ | `routes.ts:1752` `/api/catalog/search-hybrid`; `server/services/serp.service.ts`; `shared/schema.ts:3096-3124` serpCache/Tracking/Inquiries; `client/src/components/serp-inquiry-dialog.tsx` | `server/services/serp-api-integration.ts:85,176,248,264,334` has 5 mock TODOs. |
+| H7 | Hybrid SERP+native inventory — native first, SERP fills gaps | ✅ | `routes.ts:1752` `/api/catalog/search-hybrid`; `server/services/serp.service.ts`; `shared/schema.ts:3096-3124` serpCache/Tracking/Inquiries; `client/src/components/serp-inquiry-dialog.tsx` | `server/services/serp-api-integration.ts:85,176,248,264,334` has 5 mock TODOs (that file was later removed by #1744, row 263, ledger `2026-10-28-row263-dead-recommendations-route`). |
 | H8 | AI Trip Planner standalone (free) with stepwise inputs + progress UI | ✅ | `routes.ts:7806` POST `/api/quick-start-itinerary`; `App.tsx:317` `/quick-start` | |
 | H9 | AI-Powered Expert Match scoring (specializations × interests × availability × rating) | ✅ | `shared/schema.ts:1845` `expertMatchScores`, `:4427` `expertMatchAnalytics`; `routes.ts:7568` `/api/grok/match-experts` | |
 | H10 | Expert AI Assistant (per-expert delegate, drafting, vendor research, optimization, comparison) | ✅ | (see B13) | |
@@ -258,7 +258,7 @@ These are the 🔴 / 🟡 items that block the launch. Ranked by how directly th
 11. **🔴 A11 / F2 — AI Optimization upsell modal with $19.99/$49.99/$199 tiers + money-back guarantee is unbuilt.** Variant generation works but the paywall is missing — no revenue capture on the AI value-add.
 12. **🟡 H1 — "Gronk" optimizer in spec is "Grok" in code, and the explicit 0.35/0.35/0.30 weighting tuple is not coded as constants.** Functions, but spec parity is loose.
 13. **🟡 F8 — "Platform providers first" is implemented ad-hoc in transport + a discover branch only.** No global ranking utility; risk of inconsistent rules across `/discover`, `/catalog/search`, vertical endpoints.
-14. **🟡 H7 — SERP integration has 5 mock TODOs in `serp-api-integration.ts`** and the production SERP service is younger. Hybrid strategy works for some paths and not others.
+14. **🟡 H7 — SERP integration has 5 mock TODOs in `serp-api-integration.ts`** (that file was later removed by #1744 (row 263, ledger `2026-10-28-row263-dead-recommendations-route`)) and the production SERP service is younger. Hybrid strategy works for some paths and not others.
 15. **🟡 B17 / C4 — Background verification flow is partial.** Stripe Identity session exists; per-category required-document matrix and references collection are not built. Insurance proof attachment (B18) has no plumbing.
 
 ### P3 — Will Be Noticed Post-Launch
@@ -324,7 +324,7 @@ Commands run by inventory subagent (representative — full list in agent transc
 | Count Drizzle tables | `grep -cn "pgTable(" shared/schema.ts` | ~140 tables |
 | Find "Coming Soon" placeholders | `grep -rn "Coming Soon\|coming soon" client/src` | 6 distinct placeholder UI locations (see §9 of inventory) |
 | Find TODOs in Stripe payment | `grep -n "TODO" server/services/stripe-payment.service.ts` | Lines 158, 159, 185, 226, 227 |
-| Find TODOs in SERP integration | `grep -n "TODO" server/services/serp-api-integration.ts` | Lines 85, 176, 248, 264, 334 |
+| Find TODOs in SERP integration | `grep -n "TODO" server/services/serp-api-integration.ts` | Lines 85, 176, 248, 264, 334 (file later removed by #1744 (row 263, ledger `2026-10-28-row263-dead-recommendations-route`)) |
 | Confirm transport post-optimization | Read `server/services/transport-leg-calculator.ts:69-95` | `calculateTransportLegs(variantId, activities[])` sorts activities by `.order` (L87), then pairs `sorted[i] → sorted[i+1]` (L89). Transport legs are derived AFTER activity ordering — confirms post-optimization. |
 | Confirm native maps handoff | Read `server/services/maps-url-builder.ts` + `client/src/lib/navigate.ts` | iOS branch → `maps://maps.apple.com/?q=`, otherwise → Google Maps web URL |
 

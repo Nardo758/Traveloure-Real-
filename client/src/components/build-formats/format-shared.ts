@@ -5,6 +5,8 @@
  * client/src/index.css — never raw hex in console surfaces. The Workstation canvas that renders
  * these views is wrapped by BackofficeShell (via ExpertLayout), so the tokens always resolve.
  */
+import { pendingPlanItemMarker } from "@shared/pending-plan-items";
+
 export const INK = "var(--console-ink)";
 export const MID = "var(--console-mid)";
 export const FAINT = "var(--console-faint)";
@@ -79,6 +81,27 @@ export function dayRibbon(item: FlatFormatItem): string {
  * Rendered only when a real note exists (§13 — never an empty slot).
  */
 export function itemNote(item: FormatItem): string | null {
-  const n = (item.notes ?? "").trim();
+  const n = withoutGemMarker(item.notes ?? "").trim();
   return n.length > 0 ? n : null;
+}
+
+/**
+ * Row 264 (ledger `2026-10-29-hide-gem-marker-in-notes`): the Billboard gem marker is an
+ * idempotency key written into an item's notes (`pendingPlanItemMarker`, shared/pending-plan-items.ts)
+ * and compared by exact match when the gem is added (client/src/lib/billboard-gem-planning.ts). It is
+ * not a note, so it is removed here, at render time only: what is stored and the marker text are
+ * never changed. The prefix is read from the one marker function, never restated.
+ */
+const GEM_MARKER_PREFIX = pendingPlanItemMarker("");
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const GEM_MARKER = new RegExp(`${escapeRegExp(GEM_MARKER_PREFIX)}\\S+`, "g");
+
+/** The notes with every gem marker removed, and no blank lines left behind where one stood. */
+export function withoutGemMarker(notes: string): string {
+  return notes
+    .replace(GEM_MARKER, "")
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n");
 }

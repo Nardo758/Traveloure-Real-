@@ -44,25 +44,44 @@ export type ApiMatch = { method: string | string[]; path: RegExp };
 
 /**
  * Perform `act` and return the HTTP status of the first response matching `match`, with the wait
- * registered BEFORE the action (so a fast response is never missed). `null` = the action produced
- * no such request — the silent case every helper used to report as success.
+ * registered BEFORE the action (so a fast response is never missed).
+ *
+ * Row 289 (ledger `2026-10-29-act-and-await-fails-loud`): it FAILS LOUD. A failed action (a click
+ * that could not land) and a missing response (no matching request answered within `timeoutMs`)
+ * both THROW, naming the request it waited for. It used to swallow both and return `null`, which
+ * every caller then read as an ordinary "not 2xx" — the silent case this helper exists to remove.
+ * Any status the server does answer, 2xx or not, is still returned for the caller to judge.
  */
 export async function actAndAwait(
   page: Page,
   act: () => Promise<unknown>,
   match: ApiMatch,
   timeoutMs: number = RESPONSE_MS,
-): Promise<number | null> {
+): Promise<number> {
   const methods = Array.isArray(match.method) ? match.method : [match.method];
+  const wanted = `${methods.join('|')} ${match.path}`;
   const answered = page
     .waitForResponse(
       (r) => methods.includes(r.request().method()) && match.path.test(new URL(r.url()).pathname),
       { timeout: timeoutMs },
     )
-    .then((r) => r.status())
-    .catch(() => null);
-  await act().catch(() => {});
-  return answered;
+    .then((r) => r.status());
+  // The wait may settle after the action has already thrown; this keeps that rejection handled.
+  answered.catch(() => {});
+  try {
+    await act();
+  } catch (err) {
+    throw new Error(`actAndAwait: the action failed before ${wanted} answered: ${errorText(err)}`);
+  }
+  try {
+    return await answered;
+  } catch (err) {
+    throw new Error(`actAndAwait: no ${wanted} response within ${timeoutMs}ms: ${errorText(err)}`);
+  }
+}
+
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message.split('\n')[0] : String(err);
 }
 
 export const ok2xx = (status: number | null): boolean => status !== null && status >= 200 && status < 300;

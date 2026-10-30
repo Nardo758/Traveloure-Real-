@@ -958,7 +958,7 @@ async function alertBookingFailed(row: HandoffRow, triggerKind: string, state: F
   });
 }
 
-function rowWasEverDelivered(input: {
+export function rowWasEverDelivered(input: {
   optimizationContext?: unknown;
   deliveredAt?: Date | string | null;
   changeRounds?: number | null;

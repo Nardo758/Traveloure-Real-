@@ -27,7 +27,7 @@ import { planLegDomId, planLegPairDomId } from "@shared/plan-jump-targets";
 import { TRANSPORT_MODE_LABELS } from "@/lib/maps-platform";
 import { TRAVEL_TIME_NOT_CHECKED_LINE } from "@/lib/slip-legs";
 import { PLAN_COMPARE_MINUTE_COPY } from "@/lib/plan-compare";
-import { legRuleClass, storedLegIsRouted } from "@/lib/leg-rule";
+import { LEG_ESTIMATE_MARK, legRuleClass, storedLegIsRouted } from "@/lib/leg-rule";
 
 /** The leg between two stops, as `GET /api/trips/:tripId/transport-legs` returns it (no user id). */
 export interface StopLeg {
@@ -135,6 +135,8 @@ export function StopLegRow({
   const pick = authorPickLine(leg);
   const checked = legCheckedLine(leg);
   const expert = role === "expert";
+  // Row 247: one routed test for the rule and the minutes mark (§18 rule 1).
+  const routed = storedLegIsRouted(leg);
   const pairId =
     leg.fromActivityId && leg.toActivityId ? planLegPairDomId(leg.dayNumber, leg.fromActivityId, leg.toActivityId) : undefined;
   const pickupName = leg.pickupProviderServiceId
@@ -143,7 +145,7 @@ export function StopLegRow({
   return (
     <div
       id={domIds ? planLegDomId(leg.id) : undefined}
-      className={`ml-4 ${legRuleClass(storedLegIsRouted(leg))} px-3 py-2 space-y-1.5`}
+      className={`ml-4 ${legRuleClass(routed)} px-3 py-2 space-y-1.5`}
       data-testid={`leg-row-${leg.id}`}
       data-pair-id={pairId}
       data-leg-status={leg.proposalStatus ?? "none"}
@@ -155,6 +157,7 @@ export function StopLegRow({
           <span className="inline-flex items-center gap-0.5">
             <Clock className="w-3 h-3" aria-hidden="true" />
             {leg.estimatedDurationMinutes} min
+            {routed ? null : <span data-testid={`leg-minutes-est-${leg.id}`}>{LEG_ESTIMATE_MARK}</span>}
           </span>
         ) : null}
         {leg.distanceDisplay ? <span>· {leg.distanceDisplay}</span> : null}

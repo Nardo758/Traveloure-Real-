@@ -16,3 +16,10 @@ export function storedLegIsRouted(leg: { source?: string | null; estimatedDurati
   const minutes = Number(leg.estimatedDurationMinutes);
   return leg.source != null && Number.isFinite(minutes) && minutes > 0;
 }
+
+/**
+ * Row 247 (ledger `2026-10-29-leg-minutes-est`): the mark an EXPERT surface prints after minutes that
+ * are not a routed answer (a straight-line estimate). Expert-facing only; the Architect approved the
+ * word Oct 29, 2026. The traveler surfaces do not print such minutes at all (audit B8).
+ */
+export const LEG_ESTIMATE_MARK = "est.";

@@ -8,6 +8,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { updateTripContextIdentitySafe, useTripContext, type TripContext } from "@/lib/trip-context";
 import { SELECTED_PLAN_KEEPS_ITS_BASICS_NOTE } from "@/lib/plan-city";
 import { formatTripDates } from "@/lib/trip-dates";
+import { browserLocale } from "@/lib/browser-locale";
 import { planningRouteForTrip, usePlanning } from "@/contexts/PlanningContext";
 
 /**
@@ -160,7 +161,7 @@ export function AiPlannerDraftPanel({
         <DraftField
           icon={<Calendar className="w-4 h-4" />}
           label="Dates"
-          value={startDate && endDate ? formatTripDates(startDate, endDate) : null}
+          value={startDate && endDate ? formatTripDates(startDate, endDate, browserLocale()) : null}
           testId="draft-field-dates"
         />
         <DraftField
