@@ -2,6 +2,7 @@ import { type Express, type NextFunction, type Request, type Response } from "ex
 import fs from "fs";
 import path from "path";
 import { logger } from "./infrastructure/logger";
+import { warnIfPaymentDomainsUnregistered } from "./utils/stripe-payment-domain-check";
 
 /**
  * `/.well-known` — served as static files, BEFORE either SPA catch-all.
@@ -143,4 +144,8 @@ export function mountWellKnown(
 
   // Always mounted, directory or not: an unknown /.well-known path must never reach the SPA.
   app.use(WELL_KNOWN_URL_PREFIX, wellKnownNotFound);
+
+  // Row 283: once at boot, a read-only check that the site's domain is a ready Stripe payment method
+  // domain. Off unless STRIPE_PAYMENT_DOMAIN_CHECK=1; warn-only; never awaited and never throws.
+  void warnIfPaymentDomainsUnregistered();
 }
