@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { WAITLIST_EMAIL_ERROR, waitlistCityName } from "@shared/launch-waitlist";
+import { WAITLIST_EMAIL_ERROR, WAITLIST_MARKET_OPTIONS, waitlistCityName } from "@shared/launch-waitlist";
 import { KEEP_RATES_ENDPOINT, type PublicKeepRates } from "@/lib/fee-keep-copy";
 import {
   EMPTY_EXPERT_DRAFT,
@@ -32,8 +32,9 @@ export function ExpertWaitlistForm({ source, launchMarket }: { source: string | 
  * unreadable rate leaves that sentence out.
  */
 export function ExpertForm({ source, launchMarket, keepRates }: { source: string | null; launchMarket: string; keepRates: PublicKeepRates | null }) {
-  const market = launchMarket;
   const [draft, setDraft] = useState<ExpertApplicationDraft>(EMPTY_EXPERT_DRAFT);
+  // The consent words and the subline follow the picked city; before a pick, the launch market's.
+  const market = draft.market || launchMarket;
   const [consent, setConsent] = useState(false);
   const [marketingConsent, setMarketingConsent] = useState(false);
   const marketingOpen = marketingBoxOpen(market);
@@ -41,7 +42,7 @@ export function ExpertForm({ source, launchMarket, keepRates }: { source: string
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState<{ name: string; email: string } | null>(null);
-  const set = (k: keyof ExpertApplicationDraft) => (e: React.ChangeEvent<HTMLInputElement>) => setDraft((d) => ({ ...d, [k]: e.target.value }));
+  const set = (k: keyof ExpertApplicationDraft) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setDraft((d) => ({ ...d, [k]: e.target.value }));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -54,7 +55,6 @@ export function ExpertForm({ source, launchMarket, keepRates }: { source: string
     setError(null);
     const r = await postWaitlist({
       ...expertApplicationBody(draft),
-      market,
       consent,
       marketingConsent: marketingOpen && marketingConsent,
       ...(source ? { source } : {}),
@@ -97,7 +97,19 @@ export function ExpertForm({ source, launchMarket, keepRates }: { source: string
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="expert-city">{WLB_SIGNUP_COPY.expertCity}</Label>
-        <Input id="expert-city" required maxLength={120} value={draft.expertCity} onChange={set("expertCity")} data-testid="input-expert-city" />
+        <select
+          id="expert-city"
+          required
+          value={draft.market}
+          onChange={set("market")}
+          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          data-testid="input-expert-city"
+        >
+          <option value="" />
+          {WAITLIST_MARKET_OPTIONS.map((m) => (
+            <option key={m.key} value={m.key}>{m.city}</option>
+          ))}
+        </select>
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="expert-languages">{WLB_SIGNUP_COPY.expertLanguages}</Label>

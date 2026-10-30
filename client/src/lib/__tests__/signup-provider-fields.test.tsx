@@ -11,7 +11,8 @@
  *   S6/S7/S9  the expert refusal draws the server's message and ONE "Apply Now" link to applyPath ("/kyoto#experts")
  *   S8  a provider or traveler answer draws no refusal
  *   S10 /kyoto has section#experts holding form-expert-waitlist
- *   S11 the expert body: role expert with contactName, email, expertCity; submit disabled until those are in
+ *   S11 the expert body: role expert with contactName, email and the picked market ("City you know best" is the
+ *       market picker); submit disabled until those are in
  *   S13 the keep sentence is the server's rate; no literal percent in the components
  *   S14 the after-send words carry the name and email and end with the approved payouts sentence
  *   S15 no "founding", PayPal, traveler fee, launch date or reply-time text on the expert surfaces
@@ -143,6 +144,8 @@ describe("WL-B screen: the waitlist expert form", () => {
     assert.ok(html.includes('data-testid="form-expert-waitlist"'));
     assert.ok(html.includes("You keep 85% of what you earn."), "the server's rate");
     assert.ok(html.includes(WLB_SIGNUP_COPY.expertSublineLead("Kyoto")));
+    assert.match(html, /<select[^>]*data-testid="input-expert-city"/, "the city is the market picker");
+    assert.ok(html.includes(WLB_SIGNUP_COPY.expertCity));
     assert.match(html, /<button[^>]*disabled=""[^>]*data-testid="button-expert-waitlist-send"|<button[^>]*data-testid="button-expert-waitlist-send"[^>]*disabled=""/);
     const noRate = renderPage(<ExpertForm source={null} launchMarket="kyoto" keepRates={null} />);
     assert.equal(noRate.includes("You keep"), false, "an unreadable rate leaves the sentence out");
@@ -150,11 +153,11 @@ describe("WL-B screen: the waitlist expert form", () => {
 
   it("S11 the expert body", () => {
     assert.equal(expertApplicationReady(EMPTY_EXPERT_DRAFT), false);
-    const d = { ...EMPTY_EXPERT_DRAFT, contactName: "Fixture Expert", email: "expert@example.com", expertCity: "Kyoto" };
+    const d = { ...EMPTY_EXPERT_DRAFT, contactName: "Fixture Expert", email: "expert@example.com", market: "kyoto" };
     assert.equal(expertApplicationReady(d), true);
     const body = expertApplicationBody(d);
-    assert.deepEqual(body, { role: "expert", contactName: "Fixture Expert", email: "expert@example.com", expertCity: "Kyoto" });
-    assert.ok(waitlistJoinBodySchema.safeParse({ ...body, consent: true, market: "kyoto" }).success);
+    assert.deepEqual(body, { role: "expert", contactName: "Fixture Expert", email: "expert@example.com", market: "kyoto" });
+    assert.ok(waitlistJoinBodySchema.safeParse({ ...body, consent: true }).success);
     assert.ok(waitlistJoinBodySchema.safeParse({ ...expertApplicationBody({ ...d, languages: "Japanese", link: "https://example.com" }), consent: true }).success);
   });
 

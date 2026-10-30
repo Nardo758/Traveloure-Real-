@@ -26,6 +26,7 @@ export const WLB_SIGNUP_COPY = {
   expertKeep: (pct: number) => `You keep ${pct}% of what you earn.`, // APPROVED (Leon, Oct 30, 2026)
   expertName: "Your name",
   expertEmail: "Email",
+  // Leon, Oct 30, 2026: Marketing's label for the existing market picker (no new column).
   expertCity: "City you know best",
   expertLanguages: "Languages (optional)",
   expertLink: "Link to your work (optional)",
@@ -87,14 +88,15 @@ export function expertRefusalFrom(status: number, data: unknown): { message: str
 export interface ExpertApplicationDraft {
   contactName: string;
   email: string;
-  expertCity: string;
+  /** The picked operating market's key — "City you know best" (Leon, Oct 30, 2026). */
+  market: string;
   languages: string;
   link: string;
 }
-export const EMPTY_EXPERT_DRAFT: ExpertApplicationDraft = { contactName: "", email: "", expertCity: "", languages: "", link: "" };
+export const EMPTY_EXPERT_DRAFT: ExpertApplicationDraft = { contactName: "", email: "", market: "", languages: "", link: "" };
 
 export function expertApplicationReady(d: ExpertApplicationDraft): boolean {
-  return Boolean(d.contactName.trim() && d.email.trim() && d.expertCity.trim());
+  return Boolean(d.contactName.trim() && d.email.trim() && d.market);
 }
 
 /** The `/api/waitlist` body for an expert application. Empty optionals are left out. */
@@ -103,7 +105,7 @@ export function expertApplicationBody(d: ExpertApplicationDraft): Record<string,
     role: "expert",
     contactName: d.contactName.trim(),
     email: d.email.trim(),
-    expertCity: d.expertCity.trim(),
+    market: d.market,
     ...(d.languages.trim() ? { languages: d.languages.trim() } : {}),
     ...(d.link.trim() ? { link: d.link.trim() } : {}),
   };
