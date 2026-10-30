@@ -57,6 +57,7 @@ import {
   isAnyJobUnhealthy,
   type JobCadence,
 } from "../services/job-heartbeats.service";
+import { recordStaleJobAlerts } from "../services/job-stale-alert.service";
 
 const router = Router();
 
@@ -499,6 +500,11 @@ router.post("/internal/jobs/liteapi-booking-sync", requireInternalSecret, async 
 // deduped findings, never a leg. A failed candidate scan never stamps.
 router.post("/internal/jobs/routing-recheck", requireInternalSecret, async (_req, res) => {
   const { status, body } = await runJob("routing-recheck", () => runRoutingRecheck(), (r) => !!r?.error);
+  // Row 100 (ledger `2026-10-30-row100-missed-run-cron-alerts`): this hourly route is posted on
+  // every cron tick, after the other every-run jobs. Alert staff about roster jobs that are stale
+  // or have never succeeded. The alert does not stamp those jobs, and it must not change this
+  // response.
+  await recordStaleJobAlerts({ roster: JOB_CADENCE });
   res.status(status).json(body);
 });
 
