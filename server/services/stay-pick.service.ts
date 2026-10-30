@@ -40,6 +40,7 @@ import {
   rankStays,
   readStayPick,
   stayDayCloseness,
+  stayDayClosenessList,
   stayPickIsShown,
   stayStopsHash,
   straightLineOrder,
@@ -217,6 +218,8 @@ export async function computeStayPick(tripId: string, deps: StayPickDeps = {}): 
   // FU-S1-3: the pick's per-day closeness, from the matrix row already fetched above — no extra call.
   const topRow = minutes.get(`${top.kind}:${top.id}`);
   const closeness = stayDayCloseness(stops, (i) => topRow?.[i] ?? null, stayCloseRoutedMinutes(), "routed");
+  // Row 244: the per-day list from the same row and threshold (no minutes stored).
+  const dayCloseness = stayDayClosenessList(stops, (i) => topRow?.[i] ?? null, stayCloseRoutedMinutes(), "routed");
   const next = nextStayPick(prev, {
     hotelId: top.id,
     hotelKind: top.kind,
@@ -225,6 +228,7 @@ export async function computeStayPick(tripId: string, deps: StayPickDeps = {}): 
     stopsHash: hash,
     computedAt: (deps.now?.() ?? new Date()).toISOString(),
     closeness,
+    dayCloseness,
     router: "osrm",
   });
   await db.update(trips).set({ stayPick: next }).where(eq(trips.id, tripId));
