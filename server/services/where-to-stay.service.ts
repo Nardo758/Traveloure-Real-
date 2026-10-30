@@ -57,7 +57,7 @@ import {
   type WhereToStayView,
 } from "@shared/where-to-stay";
 import { haversineMeters } from "@shared/geo";
-import { freeStayShortList, readStayPick, stayPickIsShown, straightLineCloseness, toStayPickCandidate, type StayPickStop } from "@shared/stay-pick";
+import { freeStayShortList, readStayPick, stayPickIsShown, straightLineCloseness, straightLineDayCloseness, toStayPickCandidate, type StayPickStop } from "@shared/stay-pick";
 import { stayCloseStraightKm } from "../config/stay-closeness.config";
 import { pendingLookupItemIds } from "./content-facts/lookup-progress.pure";
 import { rankFactsByOrigin } from "./upsell-engine.service";
@@ -483,6 +483,8 @@ async function stayBlock(
         computedAt: pick.computedAt,
         // FU-S1-3: stored by the one writer; null when the pick predates FU-S1-3.
         closeness: pick.closeness ?? null,
+        // Row 244: the stored per-day list (no minutes); absent on a pick stored before it.
+        ...(pick.dayCloseness ? { dayCloseness: pick.dayCloseness } : {}),
       };
     }
     // Decision-maker, Oct 18, 2026 (ledger `2026-10-18-stay-pick-est-fallback`): a paid plan with no pick it may
@@ -510,7 +512,11 @@ async function stayBlock(
     tier: "straight_line",
     ...(routed ? { estimated: true as const } : {}),
     hotels: await listStayLinks(
-      list.map((c) => ({ ...strip(byKey.get(`${c.kind}:${c.id}`)!), closeness: straightLineCloseness(c, stops, km) })),
+      list.map((c) => {
+        // Row 244: the per-day list from the same distances; no metres leave this function.
+        const dayCloseness = straightLineDayCloseness(c, stops, km);
+        return { ...strip(byKey.get(`${c.kind}:${c.id}`)!), closeness: straightLineCloseness(c, stops, km), ...(dayCloseness ? { dayCloseness } : {}) };
+      }),
       city,
     ),
   };
