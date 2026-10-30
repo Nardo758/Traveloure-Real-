@@ -150,6 +150,9 @@ export const FACT_TYPES = [
   // FB-1 step 5c (ledger `2026-10-19-fb1-timed-entry`): entry needs a timed slot reserved on the official site —
   // structured, admitted by `admitFeasibilityFact`, flag-only in the checker.
   "timed_entry_required",
+  // Row 187 (ledger `2026-10-30-row187-pets-welcome-gate`): a PLACE's pet policy, `{ petsWelcome: true }`, admitted
+  // only with a source and a checked date (`admitPetPolicyFact`) — content sourcing only, never Google Places or OTA data.
+  "pet_policy",
 ] as const;
 export type FactType = (typeof FACT_TYPES)[number];
 
@@ -495,6 +498,44 @@ export interface FactView {
    * Mon>" (surface spec v1.2 §3). Null when the row carries no fetch time. Additive key.
    */
   checkedAt?: string | null;
+  /**
+   * Row 187: when a person or an official read verified the fact (`verified_at`, ISO); null when it was never
+   * verified. The "Pets welcome" gate reads it (`petsWelcomeShown`). Additive key.
+   */
+  verifiedAt?: string | null;
   stale: boolean;
   publishable: boolean;
+}
+
+/**
+ * Row 187 (ledger `2026-10-30-row187-pets-welcome-gate`; Architect, Oct 30, 2026): "Pets welcome" — the ONE string.
+ * It is drawn only where a sourced, checked pet-policy fact says so. No fact ⇒ no mark at all: there is no
+ * "unknown" mark and no "Ask a local" mark (absence is the honest state). `trips.pet_kind` / `pet_count`
+ * (migration 358) are the TRAVELER's pets and say nothing about a place.
+ */
+export const PETS_WELCOME_LABEL = "Pets welcome";
+
+/** Google Places and OTA (hotel cache) data never carry a pet policy. */
+export const PET_POLICY_REFUSED_ORIGINS = ["places_api", "hotel_cache"] as const;
+
+export type PetPolicyRefusal = "refused_origin" | "no_source" | "not_checked" | "bad_value";
+
+/** The ONE admission rule for a `pet_policy` fact: a content-sourced origin, a source URL, a checked date, `{ petsWelcome: true }`. */
+export function admitPetPolicyFact(f: {
+  origin: string | null | undefined;
+  sourceUrl: string | null | undefined;
+  verifiedAt?: Date | string | null;
+  value: unknown;
+}): { ok: true } | { ok: false; reason: PetPolicyRefusal } {
+  if (!f.origin || (PET_POLICY_REFUSED_ORIGINS as readonly string[]).includes(f.origin)) return { ok: false, reason: "refused_origin" };
+  if (typeof f.sourceUrl !== "string" || !f.sourceUrl.trim()) return { ok: false, reason: "no_source" };
+  if (f.verifiedAt == null || f.verifiedAt === "" || Number.isNaN(new Date(f.verifiedAt as any).getTime())) return { ok: false, reason: "not_checked" };
+  const v = f.value as { petsWelcome?: unknown } | null | undefined;
+  if (!v || typeof v !== "object" || v.petsWelcome !== true) return { ok: false, reason: "bad_value" };
+  return { ok: true };
+}
+
+/** Does a stay's facts carry a pet policy the slip may draw as "Pets welcome"? Same rule as the writer, and the fact must not be stale. */
+export function petsWelcomeShown(facts: ReadonlyArray<Pick<FactView, "factType" | "origin" | "sourceUrl" | "value" | "stale"> & { verifiedAt?: string | null }> | null | undefined): boolean {
+  return (facts ?? []).some((f) => f.factType === "pet_policy" && !f.stale && admitPetPolicyFact(f).ok);
 }

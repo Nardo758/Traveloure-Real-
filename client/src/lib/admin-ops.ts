@@ -26,6 +26,10 @@ export const ADMIN_OPS_COPY = {
   outboxRetryFailed: "Could not retry this email",
   outboxLoadFailed: "Could not load the email outbox",
 
+  // Row 209 — HELD FOR LEON (FOUNDER WORDING REVIEW on the PR).
+  heldInvitesTitle: "Held guest invites",
+  heldInvitesEmpty: "No held invites.",
+
   refundsTitle: "Refunds outside the platform",
   refundsDescription:
     "Bookings refunded in Stripe without going through the platform. They cannot complete or pay the seller until resolved.",
@@ -80,6 +84,22 @@ export function outboxListUrl(status: string): string {
   return (OUTBOX_STATUSES as readonly string[]).includes(status)
     ? `/api/admin/email-outbox?status=${status}`
     : "/api/admin/email-outbox";
+}
+
+/** Row 209: the read-only list of guest_invite rows held off the allowlist (admin-only, emails masked). */
+export const HELD_GUEST_INVITES_URL = "/api/admin/email-outbox/held-guest-invites";
+export interface HeldGuestInviteRow {
+  id: number;
+  createdAt: string;
+  subject: string | null;
+  lastError: string | null;
+  inviteId: string | null;
+  /** Masked by the server as j•••@domain; the full address is never sent. */
+  toEmail: string;
+}
+export interface HeldGuestInviteList {
+  rows: HeldGuestInviteRow[];
+  total: number;
 }
 
 export function emailCountLabel(n: number): string {
