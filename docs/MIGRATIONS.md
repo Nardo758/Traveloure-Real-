@@ -13,8 +13,10 @@ GitHub user **Nardo758** (Leon):
 
 The `migration-approval` check requires that sentence for every numbered
 migration the pull request adds or changes. A plain hyphen is the accepted
-variant of the same sentence. Merging is not approval. The authoring rules
-are in `server/migrations/AUTHORING.md`.
+variant of the same sentence. Merging is not approval. A diff that only adds
+or removes blank lines and `--` line comments does not change SQL, so it does
+not need the sentence. A sentence written in the SQL file is not approval.
+The authoring rules are in `server/migrations/AUTHORING.md`.
 
 ## Today's reality (push-managed, with documentary SQL artifacts)
 

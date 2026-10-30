@@ -6,7 +6,9 @@ name: migration-approval
 #
 #   Migration <NNN> SQL approved — Leon
 #
-# A plain hyphen is also accepted. Merging is not approval. The job name is the
+# A plain hyphen is also accepted. Merging is not approval. A diff that only
+# adds or removes blank lines and `--` line comments does not need the sentence.
+# A sentence written in the SQL file is not approval. The job name is the
 # status check, so it can be required later. This workflow does not edit branch
 # protection.
 #
