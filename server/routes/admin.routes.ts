@@ -2076,11 +2076,6 @@ router.post("/api/admin/disputes/:bookingId/refund-rejected-artifact", isAuthent
   }
 });
 
-/**
- * GET /api/admin/reconciliation/run-now
- * Triggers Stripe reconciliation immediately and returns the result.
- * Useful for on-demand checks without waiting for the daily schedule.
- */
 // ── GET /api/admin/jobs/health ─────────────────────────────────────────────────────────────────
 // The admin-authenticated twin of GET /internal/jobs/health (internal-jobs-hardening, L6). ONE
 // compute (computeJobHealth over JOB_CADENCE), TWO callers — the ops/cron read behind the shared
@@ -2106,7 +2101,16 @@ router.get("/api/admin/jobs/health", isAuthenticated, async (_req, res) => {
   }
 });
 
-router.get("/api/admin/reconciliation/run-now", isAuthenticated, async (req, res) => {
+/**
+ * POST /api/admin/reconciliation/run-now
+ * Triggers Stripe reconciliation immediately and returns the result.
+ * Useful for on-demand checks without waiting for the daily schedule.
+ *
+ * Row 270 (Architect, Oct 28 and Oct 29, 2026): a POST, never a GET. The detector's narrow repair can
+ * promote a paid checkout (promotePaidCheckout), so the trigger changes payment state; a GET on this
+ * path is now an unknown /api route (404) and runs nothing. Listed in the mutation-auth manifest.
+ */
+router.post("/api/admin/reconciliation/run-now", isAuthenticated, async (req, res) => {
   const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });

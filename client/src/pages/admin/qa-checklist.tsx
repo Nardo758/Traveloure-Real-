@@ -136,9 +136,11 @@ const BLOCKS: Block[] = [
       },
       {
         id: "P5", label: "Reconciliation job scheduled daily",
-        detail: "setInterval(runStripeReconciliation, 24h) + GET /api/admin/reconciliation/run-now",
+        detail: "setInterval(runStripeReconciliation, 24h) + POST /api/admin/reconciliation/run-now",
         verifyMethod: "api",
-        apiEndpoint: "/api/admin/reconciliation/run-now",
+        // Row 270: run-now is a POST that can change payment state, so this read-only check reads the
+        // reconciliation record instead of running a pass.
+        apiEndpoint: "/api/admin/reconciliation/exceptions",
         apiCheck: (_data, status) => ({
           pass: status === 200,
           detail: status === 200 ? "Reconciliation endpoint responds 200" : `HTTP ${status}`,

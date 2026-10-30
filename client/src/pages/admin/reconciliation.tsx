@@ -182,7 +182,7 @@ export default function AdminReconciliation() {
 
   // Trigger reconciliation now
   const runNowMutation = useMutation({
-    mutationFn: () => apiRequest("GET", "/api/admin/reconciliation/run-now"),
+    mutationFn: () => apiRequest("POST", "/api/admin/reconciliation/run-now"),
     onSuccess: async (res) => {
       const data: ReconciliationResult = await res.json();
       setLastRunResult(data);

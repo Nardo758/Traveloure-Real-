@@ -347,6 +347,10 @@ test("resolves named re-exports used by authentication registration helpers", ()
  * POST /api/invites/:token/plan. isAuthenticated, so the heuristic classes it other / session-self.
  * other 247 → 248, session-self 368 → 369.
  *
+ * 734 / 726 → 735 / 727 (row 270, ledger `2026-10-29-reconciliation-run-now-post`; Architect, Oct 28 and
+ * Oct 29, 2026, sanctioned): GET /api/admin/reconciliation/run-now became POST, because the detector can
+ * promote a paid checkout and a GET that changes state is a bug. admin 196 → 197, admin-role 196 → 197.
+ *
  * THE COUNTS ARE THE POINT: they exist so a route appearing or vanishing from
  * the mounted graph fails here. Now that the file is wired into CI, changing a
  * number is a decision that needs its reason stated, exactly as this one does.
@@ -360,8 +364,9 @@ test("current mounted graph parity includes auth helpers and shared api paths", 
   // 731 / 723: POST /api/invites/:token/travel-plans deleted (row 263, no caller after #1741).
   // 733 / 725: POST /api/waitlist/unsubscribe and POST /api/admin/waitlist/market-opened (291a).
   // 734 / 726: POST /api/invites/:token/plan (row 280a).
-  assert.equal(result.mutations.length, 734);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 726);
+  // 735 / 727: POST /api/admin/reconciliation/run-now, converted from a GET (row 270).
+  assert.equal(result.mutations.length, 735);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 727);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -371,7 +376,7 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "generated/security/mutation-auth-manifest.json"), "utf8"));
   const markdown = fs.readFileSync(path.join(root, "generated/security/mutation-auth-inventory.md"), "utf8");
   const endpointRows = markdown.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| ---")).slice(1);
-  assert.equal(endpointRows.length, 726);
+  assert.equal(endpointRows.length, 727);
   // 709 / 701 (ledger `2026-10-18-fd4-share-projection`): the shadowed quick-start twin is deleted; unique paths stay 701.
   // 710 / 702 (ledger `2026-10-19-fb1-free-retime`): + POST /api/trips/:tripId/retime-fixes/:itemId/apply.
   // 712 / 704 (ledger `2026-10-18-cs1-source-signoff`): the sign-off and photo-block POSTs.
@@ -390,8 +395,9 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // 731 / 723: POST /api/invites/:token/travel-plans deleted (row 263, no caller after #1741).
   // 733 / 725: POST /api/waitlist/unsubscribe and POST /api/admin/waitlist/market-opened (291a).
   // 734 / 726: POST /api/invites/:token/plan (row 280a).
-  assert.equal(manifest.rawRegistrationCount, 734);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 726);
+  // 735 / 727: POST /api/admin/reconciliation/run-now, converted from a GET (row 270).
+  assert.equal(manifest.rawRegistrationCount, 735);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 727);
   // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R274): user-data,
   // session-self; the owner/delegate check runs in the service before any write.
   // + POST /api/admin/content-sources/:id/public-ok (ledger `2026-10-03-official-facts-public-ok`, R278):
@@ -444,7 +450,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // other 246 → 247: POST /api/handoffs/:id/cannot-book (row 268). user-data stays 251.
   // other 247 → 246 (row 263): POST /api/invites/:token/travel-plans deleted.
   // other 247 → 248 (row 280a): POST /api/invites/:token/plan.
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 196, "user-data": 251, other: 248 });
+  // admin 196 → 197 (row 270): POST /api/admin/reconciliation/run-now, converted from a GET.
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 197, "user-data": 251, other: 248 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
@@ -491,7 +498,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
     // public-or-system 53 → 52 (row 263): POST /api/invites/:token/travel-plans deleted.
     // admin-role 195 → 196 and public-or-system 52 → 53 (291a): market-opened and unsubscribe.
     // session-self 368 → 369 (row 280a): POST /api/invites/:token/plan.
-    "admin-role": 196, "session-self": 369, "resource-owner": 102,
+    // admin-role 196 → 197 (row 270): POST /api/admin/reconciliation/run-now, converted from a GET.
+    "admin-role": 197, "session-self": 369, "resource-owner": 102,
     signature: 6, "public-or-system": 53, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
