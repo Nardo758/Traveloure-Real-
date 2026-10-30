@@ -39,7 +39,7 @@ jobs:
   setup:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: setup (build + browser cache warm-up)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5.1.0
@@ -79,7 +79,7 @@ jobs:
   admin-test-email-smoke:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: admin-test-email-smoke (Playwright UI gate)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     needs: [setup]
     timeout-minutes: 20
     steps:
@@ -197,7 +197,7 @@ jobs:
 
   report:
     name: report (PR comment)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     needs: [admin-test-email-smoke]
     if: ${{ (github.event_name != 'pull_request' || github.event.pull_request.draft == false) && (always() && github.event_name == 'pull_request') }}
     steps:

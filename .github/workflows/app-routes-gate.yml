@@ -65,7 +65,7 @@ jobs:
   # list it cannot read, or this job failing outright leaves the suites running (fail open).
   changes:
     name: changes (skip suites on drafts and docs-only pushes)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 5
     permissions:
       contents: read
@@ -89,7 +89,7 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     name: setup (build + browser cache warm-up)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5.1.0
@@ -139,7 +139,7 @@ jobs:
   app-routes-smoke:
     name: app-routes-smoke (Playwright DOM gate)
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' && needs.setup.result == 'success' }}
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     needs: [changes, setup]
     # 30, not 20: the test step itself takes ~13 minutes on every green run (three measured 2026-09-03),
     # and a cold runner can spend 8 minutes in checkout/install/cache before it starts — run 33813994877
@@ -290,7 +290,7 @@ jobs:
   cosmetic-public-surfaces:
     name: cosmetic-public-surfaces (Playwright DOM gate)
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' && needs.setup.result == 'success' }}
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     needs: [changes, setup]
     timeout-minutes: 30
     steps:
@@ -392,7 +392,7 @@ jobs:
 
   report:
     name: report (PR comment)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     needs: [changes, app-routes-smoke, cosmetic-public-surfaces]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' && (always() && github.event_name == 'pull_request') }}
     steps:

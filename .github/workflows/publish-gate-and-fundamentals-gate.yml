@@ -78,7 +78,7 @@ jobs:
   publish-gate-and-fundamentals:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: publish-gate-and-fundamentals (DECISIONS.md rulings 53, 56; D3/D4)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 25
     env:
       # Shared by every suite step below: real HTTP against the server started in this job,

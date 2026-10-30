@@ -44,7 +44,7 @@ jobs:
   guest-trip-mint-responds:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: guest-trip-mint-responds (R-9; ledger 2026-09-14-guest-trip-mint-responds)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     # A HANG MUST FAIL, NEVER STALL (the fee-preview-gate precedent, and this lane's whole subject):
     # per-step ceilings name the failing step in the log, and this is the job backstop. The suite
     # itself also carries a per-request abort deadline, so a never-answering route reports as a
