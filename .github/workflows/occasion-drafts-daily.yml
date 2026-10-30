@@ -13,7 +13,7 @@ permissions:
 jobs:
   run-occasion-drafts:
     name: Run production occasion drafts
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 10
     steps:
       - name: POST the daily runner

@@ -12,12 +12,12 @@ description: >
 # limit exceeded") and jobs died in "Initialize containers" before any test ran.
 # The runner already has PostgreSQL installed, so no pull is needed at all.
 #
-# THE VERSION IS ASSERTED, NEVER ASSUMED. The runner image decides which major
-# version is installed. If an image update changes it, this step fails loudly
-# naming both versions, instead of every suite silently running on a server
-# nobody chose. Widen `expected-major` deliberately when that happens. 16 and 18 are both accepted
-# (ledger 2026-10-27-ci-postgres-18-runner): GitHub's ubuntu-24.04 image moved from 16 to 18 on
-# Oct 27, 2026. This is the CI runner only; production's PostgreSQL version is unchanged.
+# THE VERSION IS CHOSEN AND ASSERTED, NEVER ASSUMED (ledger 2026-10-30-row253b-ci-postgres-16). CI
+# tests production's major, PostgreSQL 16 (production is 16.15). The runner image may ship another
+# major (GitHub's ubuntu-24.04 image moved from 16 to 18 on Oct 27, 2026), so this step installs
+# postgresql-16 from the PGDG apt repository when it is missing (major pinned, patch floats), moves
+# every other cluster off port 5432 and puts 16/main on it. The assert then accepts 16 only; any other
+# major fails loudly naming both. This reverses the '16 18' acceptance of 2026-10-27-ci-postgres-18-runner.
 #
 # USAGE: put it immediately after actions/checkout, before anything that touches
 # the database. DB setup (migrations, sessions table, CI users) stays in
@@ -25,9 +25,9 @@ description: >
 
 inputs:
   expected-major:
-    description: Space-separated PostgreSQL major versions the runner may provide (fails on any other).
+    description: Space-separated PostgreSQL major versions CI accepts (fails on any other). Production is 16.
     required: false
-    default: '16 18'
+    default: '16'
 
 runs:
   using: composite
@@ -48,8 +48,39 @@ runs:
         # runner cluster's default (C.UTF-8).
         PG_LOCALE=en_US.UTF-8
 
+        # Production's major, from the PGDG apt repository: major pinned, patch floats. Skipped when the
+        # runner already has it. apt.postgresql.org.sh (shipped by postgresql-common) adds the repository
+        # only when the runner's own sources do not already offer postgresql-16.
+        PG_MAJOR=16
+        if [ ! -x "/usr/lib/postgresql/${PG_MAJOR}/bin/postgres" ]; then
+          echo "Installing PostgreSQL ${PG_MAJOR} from the PGDG apt repository..."
+          sudo apt-get update -qq
+          if ! apt-cache policy "postgresql-${PG_MAJOR}" | grep -q 'Candidate: [0-9]'; then
+            sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y >/dev/null
+          fi
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "postgresql-${PG_MAJOR}" >/dev/null
+        fi
+
+        # Only 16/main may hold port 5432 or start with the service: every other cluster is stopped,
+        # moved to another port and set to start manually, so the default connection is PostgreSQL 16.
+        sudo systemctl stop postgresql.service || true
+        while read -r ver name port _; do
+          if [ "${ver}" != "${PG_MAJOR}" ] || [ "${name}" != "main" ]; then
+            sudo pg_ctlcluster "${ver}" "${name}" stop >/dev/null 2>&1 || true
+            echo manual | sudo tee "/etc/postgresql/${ver}/${name}/start.conf" >/dev/null
+            sudo pg_conftool "${ver}" "${name}" set port "$(( 5500 + ver ))"
+          fi
+        done < <(pg_lsclusters --no-header)
+        if ! pg_lsclusters --no-header | awk '{print $1"/"$2}' | grep -qx "${PG_MAJOR}/main"; then
+          sudo pg_createcluster "${PG_MAJOR}" main --port 5432 >/dev/null
+        fi
+        sudo pg_conftool "${PG_MAJOR}" main set port 5432
+        echo auto | sudo tee "/etc/postgresql/${PG_MAJOR}/main/start.conf" >/dev/null
+        # postgresql-common's systemd generator reads start.conf only on a daemon reload.
+        sudo systemctl daemon-reload
+
         if ! command -v pg_isready >/dev/null 2>&1 || ! ls -d /usr/lib/postgresql/*/bin >/dev/null 2>&1; then
-          echo "::error::No PostgreSQL installation found on this runner. This action relies on the one GitHub's ubuntu-24.04 image ships."
+          echo "::error::No PostgreSQL installation found on this runner, and installing postgresql-16 from the PGDG apt repository did not provide one."
           exit 1
         fi
 
@@ -72,7 +103,7 @@ runs:
 
         ACTUAL_MAJOR=$(( $(sudo -u postgres psql -tAc "SHOW server_version_num") / 10000 ))
         if [[ " ${EXPECTED_MAJOR} " != *" ${ACTUAL_MAJOR} "* ]]; then
-          echo "::error::The runner provides PostgreSQL ${ACTUAL_MAJOR}, but CI accepts only PostgreSQL ${EXPECTED_MAJOR// / or }. The runner image changed; widen expected-major in .github/actions/start-postgres/action.yml deliberately after checking the migrations pass on ${ACTUAL_MAJOR}."
+          echo "::error::The server on localhost:5432 is PostgreSQL ${ACTUAL_MAJOR}, but CI accepts only PostgreSQL ${EXPECTED_MAJOR// / or } (production's major). Check the PGDG install and cluster steps in .github/actions/start-postgres/action.yml."
           exit 1
         fi
         echo "PostgreSQL ${ACTUAL_MAJOR} accepted (CI accepts ${EXPECTED_MAJOR// / or })."

@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   diagnose-branch-protection-token:
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 5
     steps:
       - name: Verify BRANCH_PROTECTION_PAT is configured
