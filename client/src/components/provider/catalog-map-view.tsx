@@ -53,6 +53,7 @@ import {
   hasDepositTerms,
   type WeeklyPatternLike,
 } from "@/lib/service-good-to-know";
+import { stopsPlaced } from "@/lib/itinerary-wording";
 import { isPropertyEditorShape, propertyEditorHref } from "@/lib/property-editor-link";
 
 export interface CatalogMapService {
@@ -1053,7 +1054,7 @@ export function CatalogMapView({
           {stops.length > 0 && (
             <CapLine testId="catalog-map-coverage">
               {selected ? `${displayName(selected)}: ` : ""}
-              {locatedCount} of {stops.length} stops located
+              {stopsPlaced(locatedCount, stops.length)}
               {locatedCount < stops.length ? " — unlocated stops stay listed but are never drawn." : "."}
             </CapLine>
           )}
@@ -1209,7 +1210,7 @@ export function CatalogMapView({
               stops.length > 0 ? (
                 <>
                   <b style={{ color: INK }}>
-                    {locatedCount} of {stops.length} stops located.
+                    {stopsPlaced(locatedCount, stops.length)}.
                   </b>{" "}
                   Only the stops with coordinates are drawn. The others are named above — not
                   dropped, and not guessed onto the map.

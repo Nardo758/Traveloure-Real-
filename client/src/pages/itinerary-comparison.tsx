@@ -89,6 +89,7 @@ import {
 } from "@/lib/custom-pin-refusal";
 import { VersionsBoard } from "@/components/plancard/VersionsBoard";
 import { COMPARISON_PAGE_COPY, formatComparisonPerPerson, formatComparisonPrice } from "@/lib/comparison-page-copy";
+import { ITINERARY_WORDING } from "@/lib/itinerary-wording";
 import { busyAroundDatesLine } from "@/lib/comparison-context";
 import { planBudgetLine } from "@/lib/plan-budget";
 import { withoutUncheckedTravelMetrics } from "@/lib/variant-metrics";
@@ -405,7 +406,7 @@ function VariantTransportLegs({ variantId }: { variantId: string }) {
           ) : (
             <div className="flex items-center gap-2 py-3 px-3 text-sm text-muted-foreground rounded-md bg-muted/20 border border-dashed">
               <Bus className="h-4 w-4 shrink-0 opacity-60" />
-              <span>No transport legs yet. They are calculated when an AI itinerary is generated from the Transportation tab.</span>
+              <span>No transport legs yet. They are calculated when {ITINERARY_WORDING.draftItinerary} is generated from the Transportation tab.</span>
             </div>
           )}
         </div>
@@ -1023,8 +1024,8 @@ export default function ItineraryComparisonPage() {
       toast({
         title: "Regenerating alternatives",
         description: feedbackChips.length > 0
-          ? "AI is re-optimizing around your feedback..."
-          : "AI is creating optimized versions...",
+          ? ITINERARY_WORDING.updatingPlan
+          : ITINERARY_WORDING.buildingPlan,
       });
       refetch();
     },
@@ -1468,7 +1469,7 @@ export default function ItineraryComparisonPage() {
           <Card className="mb-6 border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20" data-testid="banner-auto-apply-error">
             <CardContent className="p-8 text-center">
               <AlertCircle className="h-12 w-12 mx-auto mb-4 text-amber-500" />
-              <h3 className="text-lg font-semibold mb-2">No optimized variants were generated</h3>
+              <h3 className="text-lg font-semibold mb-2">{ITINERARY_WORDING.noDayOptions}</h3>
               {data?.comparison?.optimizationFeeRefund ? (
                 <p className="text-muted-foreground mb-6" data-testid="optimize-failure-refund">
                   {data.comparison.optimizationFeeRefund === "refunded"

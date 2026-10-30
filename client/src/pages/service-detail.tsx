@@ -1,6 +1,7 @@
 import { CANCELLATION_TIER_LABELS } from "@shared/cancellation-schedule";
 import { useEffect, useRef, useState } from "react";
 import { BUY_NOW_CART_PATH } from "@/lib/cart-intent";
+import { stopsPlaced } from "@/lib/itinerary-wording";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link, useLocation, useSearch } from "wouter";
 import { Layout } from "@/components/layout";
@@ -1615,7 +1616,7 @@ export default function ServiceDetailPage() {
                     {routeStops.length > 0 && (
                       <div className="mt-4">
                         <p className="text-[12.5px] font-semibold text-[color:var(--earn-navy)] mb-2" data-testid="text-route-summary">
-                          Route — {locatedStops.length} of {routeStops.length} stops located
+                          Route — {stopsPlaced(locatedStops.length, routeStops.length)}
                         </p>
                         <ol className="space-y-[7px]">
                           {routeStops

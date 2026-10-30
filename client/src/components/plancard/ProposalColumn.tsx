@@ -21,6 +21,7 @@ import { Anchor, Award, Car, Loader2, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import { stopsPlaced } from "@/lib/itinerary-wording";
 import { cn } from "@/lib/utils";
 import type { PlanCardProposalData } from "./plancard-types";
 import { ROUTING_TINTS } from "./slip-tokens";
@@ -192,7 +193,7 @@ export function ProposalColumn({ proposal }: { proposal: PlanCardProposalData })
             className="border-t border-[var(--earn-border)] pt-1 text-xs text-muted-foreground"
             data-testid={`proposal-location-coverage-${proposal.variantId}`}
           >
-            {proposal.locationCoverage.locatedStops} of {proposal.locationCoverage.totalStops} stops located
+            {stopsPlaced(proposal.locationCoverage.locatedStops, proposal.locationCoverage.totalStops)}
             {proposal.locationCoverage.locatedStops < proposal.locationCoverage.totalStops
               ? " · travel estimate based on located stops only"
               : ""}

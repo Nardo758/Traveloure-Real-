@@ -45,6 +45,7 @@ import { escHtml, stripCrLf } from "../utils/email-escape";
 import { PASSWORD_CHANGED_COPY } from "./password-changed-copy";
 import { EMAIL_CHANGED_OLD_COPY } from "./email-changed-copy";
 import type { OutboxHoldSummary } from "./email-outbox-expiry";
+import { ITINERARY_WORDING } from "@shared/itinerary-wording";
 import { reconciliationKindLabel } from "@shared/reconciliation-kinds";
 import { shapeAdminDigestLists } from "./admin-digest-shape";
 import type { AdminAuditDigest } from "./admin-audit-digest";
@@ -1842,7 +1843,7 @@ export function buildWelcomeEmailPayload(params: WelcomeEmailParams): SendEmailP
           <td style="padding: 16px; background: #FFF1F2; border-radius: 8px; vertical-align: top; width: 30%;">
             <div style="font-size: 24px; margin-bottom: 8px;">🗺️</div>
             <div style="font-weight: 700; color: #111827; margin-bottom: 4px;">Plan a trip</div>
-            <div style="color: #6B7280; font-size: 13px;">Tell us where you're going and get a full AI itinerary in seconds.</div>
+            <div style="color: #6B7280; font-size: 13px;">Tell us where you're going and get ${ITINERARY_WORDING.draftItinerary} in seconds.</div>
           </td>
           <td style="width: 4%;"></td>
           <td style="padding: 16px; background: #F0FDF4; border-radius: 8px; vertical-align: top; width: 30%;">
