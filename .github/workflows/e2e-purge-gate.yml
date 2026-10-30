@@ -34,7 +34,7 @@ jobs:
   e2e-purge:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: e2e-purge (FK-blocked accounts are named, not swallowed)
-    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       SESSION_SECRET: ci-test-secret-not-for-production

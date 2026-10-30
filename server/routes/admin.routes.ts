@@ -4635,7 +4635,11 @@ router.get("/api/admin/data/location-summary", isAuthenticated, async (req, res)
 
   // Manually refresh all cities (admin only)
 
-router.get("/api/admin/affiliate/reconciliation", isAuthenticated, async (req, res) => {
+  // Row 272 (Architect, Oct 28 and Oct 29, 2026; ledger `2026-10-29-affiliate-reconciliation-post`): a POST,
+  // because getReconciliationView runs matchRecords, which writes affiliate_earnings (matched status, partner
+  // reference, report data) and, on an exact report-token match, the linked expert_earnings amount. Period
+  // and partner come from the JSON body.
+router.post("/api/admin/affiliate/reconciliation", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -4644,8 +4648,9 @@ router.get("/api/admin/affiliate/reconciliation", isAuthenticated, async (req, r
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const period = (req.query.period as string) || "this_month";
-      const partner = (req.query.partner as string) || undefined;
+      const body = (req.body ?? {}) as { period?: unknown; partner?: unknown };
+      const period = typeof body.period === "string" && body.period !== "" ? body.period : "this_month";
+      const partner = typeof body.partner === "string" && body.partner !== "" ? body.partner : undefined;
       const validPeriods = ["this_month", "last_month", "last_90_days"];
       if (!validPeriods.includes(period)) {
         return res.status(400).json({ message: "Invalid period. Use: this_month, last_month, last_90_days" });
@@ -10287,6 +10292,59 @@ router.get("/api/admin/email-outbox", isAuthenticated, async (req, res) => {
   } catch (err: any) {
     console.error("[admin/email-outbox] list error:", err);
     res.status(500).json({ message: "Failed to fetch email outbox", error: err.message });
+  }
+});
+
+/** Row 209: "j•••@domain" — first character, then •••, then @ and the domain. The full address never leaves. */
+function maskHeldInviteEmail(address: unknown): string {
+  const value = typeof address === "string" ? address.trim() : "";
+  const at = value.lastIndexOf("@");
+  if (at < 0) return "•••";
+  const first = at > 0 ? value.charAt(0) : "";
+  return `${first}•••@${value.slice(at + 1)}`;
+}
+
+/**
+ * GET /api/admin/email-outbox/held-guest-invites
+ * Row 209 (ledger `2026-10-30-row209-held-guest-invites-view`): guest_invite rows held off the allowlist,
+ * newest first. Read-only: no send, no retry, no status change; the allowlist is untouched. Admin-only.
+ */
+router.get("/api/admin/email-outbox/held-guest-invites", requireAdminLocal, async (req, res) => {
+  try {
+    const limit  = Math.min(parseInt(String(req.query.limit  ?? "50"),  10) || 50,  200);
+    const offset = Math.max(parseInt(String(req.query.offset ?? "0"),   10) || 0,   0);
+
+    const rows = await db.execute(sql`
+      SELECT id, created_at, subject, last_error, to_email,
+             metadata->>'inviteId' AS invite_id
+      FROM   email_outbox
+      WHERE  email_type = 'guest_invite' AND status = 'held'
+      ORDER  BY created_at DESC, id DESC
+      LIMIT  ${limit}
+      OFFSET ${offset}
+    `);
+    const total = await db.execute(sql`
+      SELECT COUNT(*)::int AS n
+      FROM   email_outbox
+      WHERE  email_type = 'guest_invite' AND status = 'held'
+    `);
+
+    res.json({
+      rows: (rows.rows as any[]).map((r) => ({
+        id: r.id,
+        createdAt: r.created_at,
+        subject: r.subject ?? null,
+        lastError: r.last_error ?? null,
+        inviteId: r.invite_id ?? null,
+        toEmail: maskHeldInviteEmail(r.to_email),
+      })),
+      total: (total.rows[0] as any)?.n ?? 0,
+      limit,
+      offset,
+    });
+  } catch (err: any) {
+    console.error("[admin/email-outbox] held guest invites error:", err?.message);
+    res.status(500).json({ message: "Failed to fetch held guest invites" });
   }
 });
 

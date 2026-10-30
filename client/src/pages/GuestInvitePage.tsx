@@ -39,6 +39,7 @@ import { useToast } from '@/hooks/use-toast';
 import { getTripContext, updateTripContext } from '@/lib/trip-context';
 import { guestLandingRows, type GuestLandingPayload, type GuestLandingRow } from '@/lib/guest-landing';
 import { GuestPostRsvpCard } from '@/components/GuestPostRsvpCard';
+import { GuestPlanMyDayButton } from '@/components/GuestPlanMyDayButton';
 import { SEOHead } from '@/components/seo-head';
 
 /** The guest-safe invite (row 277's seven keys); nothing else is returned or read. */
@@ -567,6 +568,8 @@ export function GuestInvitePage() {
             </Card>
             {/* Order 279 (ledger `2026-10-29-guest-post-rsvp-card`): the post-RSVP card, for every answer. */}
             <GuestPostRsvpCard landing={landing} landingRows={landingRows} />
+            {/* Row 280b (ledger `2026-10-29-guest-plan-my-day-button`): signed-in and accepted only. */}
+            <GuestPlanMyDayButton token={token} rsvpStatus={invite.rsvpStatus} />
           </div>
         )}
       </div>
