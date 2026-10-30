@@ -13,12 +13,14 @@
  * No amount/identity/rate is read here (§19 N/A — ordinary content).
  */
 import { ChevronRight } from "lucide-react";
+import { isExpertRole } from "@shared/roles";
 import type { FeedItem } from "@/lib/feed-stream";
 import type { WantedSlotData } from "@/lib/feed-composition";
 import { useExpertAvailability } from "@/lib/expert-availability";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import { buildWantedSlotSignupHref } from "@/lib/wanted-slot-link";
 import { trackRecruitmentClick } from "@/lib/analytics";
+import { useAuth } from "@/hooks/use-auth";
 import {
   ARASHIYAMA_ITINERARY_EXPERT_HREF,
   ARASHIYAMA_ITINERARY_EXPERT_LINK,
@@ -33,6 +35,7 @@ const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace"
 // (~200px, descriptive copy at line-clamp-2), so full and compact render the same.
 export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" | "compact" }) {
   const askExpert = useAskExpert();
+  const { user } = useAuth();
   const {
     offeringLabel,
     offeringKey,
@@ -43,13 +46,15 @@ export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" 
     neighborhoodId,
   } = item.data as WantedSlotData;
   const isHighDemand = (demandCount ?? 0) >= 5;
-  // Leon, Oct 30, 2026: this one tile states the gap and the expert application.
-  // No demand count, high-demand badge, or trending line.
+  // Leon, Oct 30, 2026: this one tile states the gap. No demand count,
+  // high-demand badge, or trending line. The approved expert link is only
+  // for a signed-in expert. Everyone else keeps Ways to earn.
   const arashiyamaItinerary = isArashiyamaItineraryWanted({
     offeringLabel,
     offeringKey,
     neighborhoodName,
   });
+  const showArashiyamaExpertLink = arashiyamaItinerary && isExpertRole(user?.role);
   // SH-1 item 11: Ask draws only when the server says this city has an expert to ask.
   const expertAvailable = useExpertAvailability({ city: slotCity });
 
@@ -87,7 +92,7 @@ export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" 
             ? ARASHIYAMA_ITINERARY_TRAVELER_LINE
             : `${offeringLabel} wanted in ${neighborhoodName}`}
         </p>
-        {arashiyamaItinerary ? (
+        {showArashiyamaExpertLink ? (
           <a
             href={ARASHIYAMA_ITINERARY_EXPERT_HREF}
             className="mt-1 inline-flex text-[11px] font-semibold hover:underline"
@@ -96,7 +101,7 @@ export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" 
           >
             {ARASHIYAMA_ITINERARY_EXPERT_LINK}
           </a>
-        ) : (
+        ) : arashiyamaItinerary ? null : (
           <p className="line-clamp-2 text-[11px]" style={{ color: "var(--earn-muted)" }}>
             {demandCount && demandCount > 0
               ? `${demandCount} traveler${demandCount !== 1 ? "s" : ""} in ${neighborhoodName} want this${dateContext ? ` for ${dateContext}` : ""} · Be the first to offer it`
@@ -121,7 +126,7 @@ export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" 
             so a neighbourhood recruitment slot dropped the offering the demand was measured
             against AND landed the applicant in the Trip Planner flow. The mapping now lives in
             ONE tested place; `offeringTypeKey` is emitted only for a real catalog key. */}
-        {!arashiyamaItinerary && (
+        {!showArashiyamaExpertLink && (
           <a
             href={buildWantedSlotSignupHref({ city: slotCity, neighborhoodName, offeringKey, offeringLabel })}
             className="inline-flex items-center gap-0.5 rounded-md px-2.5 py-1 text-[11px] font-bold text-white"

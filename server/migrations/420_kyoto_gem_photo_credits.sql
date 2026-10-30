@@ -1,4 +1,4 @@
--- 418 — DATA ONLY. Four Kyoto discover gems whose photo area was blank.
+-- 420 — DATA ONLY. Four Kyoto discover gems whose photo area was blank.
 --
 -- Rechecked 2026-10-30 on production: Yoshida Sanso Ryokan, Fushimi Inari Torii
 -- Tunnel at Dawn, and Philosopher's Path Canal in Autumn stored Unsplash URLs
@@ -8,8 +8,7 @@
 -- license in image_credit. Constants: shared/kyoto-gem-photos.ts.
 --
 -- HELD for Leon's comment before merge. The citation form is in
--- server/migrations/AUTHORING.md. This file is not that comment.
--- "Migration 418 SQL approved — Leon"
+-- server/migrations/AUTHORING.md. This file does not carry that sentence.
 --
 -- Match is city + place_name. image_url and image_credit are written only while
 -- the stored URL is null, blank, the known-dead Unsplash URL, or already this

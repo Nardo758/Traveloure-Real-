@@ -2,8 +2,9 @@
  * Row 250 — the four blank Kyoto discover cards get a licensed photo and a credit.
  *
  *   P1  each of the four names has an image URL and an image credit
- *   P2  migration 418 names those URLs and credits, replaces only the known-dead
- *       Unsplash ids (or a null Ginkaku-ji), and is data-only
+ *   P2  migration 420 names those URLs and credits, replaces only the known-dead
+ *       Unsplash ids (or a null Ginkaku-ji), and is data-only. The file does not
+ *       carry an approval sentence.
  *   P3  a fresh popular-cities insert reads kyotoGemPhoto, and the three dead ids
  *       are gone from that seed
  *   P4  migration 400's Ginkaku-ji null stays on KYOTO_CANONICAL_GEMS (KF3)
@@ -19,7 +20,8 @@ import { KYOTO_GEM_PHOTOS, kyotoGemPhoto } from "../kyoto-gem-photos";
 
 const ROOT = process.cwd();
 const read = (p: string) => readFileSync(path.join(ROOT, p), "utf8");
-const sql = read("server/migrations/418_kyoto_gem_photo_credits.sql");
+const sql = read("server/migrations/420_kyoto_gem_photo_credits.sql");
+const registry = read("server/migrations/migration-files.ts");
 const NAMES = [
   "Yoshida Sanso Ryokan",
   "Fushimi Inari Torii Tunnel at Dawn",
@@ -44,9 +46,13 @@ test("P1 the four Kyoto gems each have an image URL and a credit", () => {
   assert.match(kyotoGemPhoto("Yoshida Sanso Ryokan")!.replacesUrl ?? "", /images\.unsplash\.com/);
 });
 
-test("P2 migration 418 writes those photos and nothing else", () => {
+test("P2 migration 420 writes those photos and nothing else", () => {
   assert.match(sql, /HELD for Leon's comment/);
-  assert.match(sql, /Migration 418 SQL approved — Leon/);
+  assert.doesNotMatch(sql, /SQL approved/);
+  const entry = registry.slice(registry.lastIndexOf("// 420 —"));
+  assert.match(entry, /"420_kyoto_gem_photo_credits.sql"/);
+  assert.doesNotMatch(entry, /SQL approved/);
+  assert.equal(registry.includes("418_kyoto_gem_photo_credits.sql"), false);
   const body = sql
     .split("\n")
     .filter((line) => !line.trimStart().startsWith("--"))

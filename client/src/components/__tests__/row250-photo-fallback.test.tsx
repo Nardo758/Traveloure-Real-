@@ -18,6 +18,7 @@ import { GemPhotoMedia } from "../gem-photo-band";
 import { CityTileFace } from "../city-tile-face";
 import { FeedWantedSlotCard } from "../feed/wanted-slot-card";
 import type { FeedItem } from "../../lib/feed-stream";
+import { EXPERT_ROLES } from "@shared/roles";
 import {
   ARASHIYAMA_ITINERARY_EXPERT_HREF,
   ARASHIYAMA_ITINERARY_EXPERT_LINK,
@@ -26,8 +27,9 @@ import {
 
 (globalThis as any).React = React;
 
-function render(node: React.ReactNode): string {
+function render(node: React.ReactNode, user: { id: string; role: string } | null = null): string {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  qc.setQueryData(["/api/auth/user"], user);
   return renderToString(
     <QueryClientProvider client={qc}>
       <Router ssrPath="/discover/kyoto">
@@ -161,20 +163,58 @@ describe("Arashiyama wanted tile", () => {
     },
   });
 
-  it("uses the approved traveler line and expert link, with no crowd language", () => {
-    const html = render(<FeedWantedSlotCard item={item()} />);
+  function assertGapCopy(html: string, label: string) {
     const t = text(html);
-    assert.match(html, /data-testid="wanted-arashiyama-traveler-line"/);
-    assert.ok(t.includes(ARASHIYAMA_ITINERARY_TRAVELER_LINE));
-    assert.match(html, new RegExp(`href="${ARASHIYAMA_ITINERARY_EXPERT_HREF}"`));
-    assert.ok(t.includes(ARASHIYAMA_ITINERARY_EXPERT_LINK));
-    assert.equal(/high demand/i.test(t), false);
-    assert.equal(/trending/i.test(t), false);
-    assert.equal(/traveler/i.test(t), false);
-    assert.equal(t.includes("12"), false);
-    assert.equal(t.includes("wanted in"), false);
-    assert.equal(html.includes("badge-high-demand"), false);
-    assert.equal(html.includes("link-wanted-apply"), false);
+    assert.equal(
+      ARASHIYAMA_ITINERARY_TRAVELER_LINE,
+      "No local itinerary for Arashiyama yet. Build your own day here.",
+    );
+    assert.equal(
+      ARASHIYAMA_ITINERARY_EXPERT_LINK,
+      "Know Arashiyama well? Apply now as a local expert.",
+    );
+    assert.equal(ARASHIYAMA_ITINERARY_EXPERT_HREF, "/kyoto#experts");
+    assert.match(html, /data-testid="wanted-arashiyama-traveler-line"/, label);
+    assert.ok(t.includes(ARASHIYAMA_ITINERARY_TRAVELER_LINE), label);
+    assert.equal(/high demand/i.test(t), false, label);
+    assert.equal(/trending/i.test(t), false, label);
+    assert.equal(/traveler/i.test(t), false, label);
+    assert.equal(t.includes("12"), false, label);
+    assert.equal(t.includes("wanted in"), false, label);
+    assert.equal(html.includes("badge-high-demand"), false, label);
+    return t;
+  }
+
+  it("shows the approved expert link only to a signed-in expert", () => {
+    for (const role of EXPERT_ROLES) {
+      const html = render(<FeedWantedSlotCard item={item()} />, { id: "ex-1", role });
+      const t = assertGapCopy(html, role);
+      assert.match(html, new RegExp(`href="${ARASHIYAMA_ITINERARY_EXPERT_HREF}"`), role);
+      assert.match(html, /data-testid="link-arashiyama-expert-apply"/, role);
+      assert.ok(t.includes(ARASHIYAMA_ITINERARY_EXPERT_LINK), role);
+      assert.equal(html.includes("link-wanted-apply"), false, role);
+      assert.equal(t.includes("Ways to earn"), false, role);
+    }
+  });
+
+  it("keeps Ways to earn for everyone who is not a signed-in expert", () => {
+    const viewers: Array<{ id: string; role: string } | null> = [
+      null,
+      { id: "traveler", role: "user" },
+      { id: "provider", role: "service_provider" },
+      { id: "admin", role: "admin" },
+      { id: "ea", role: "executive_assistant" },
+    ];
+    for (const user of viewers) {
+      const label = user?.role ?? "signed-out";
+      const html = render(<FeedWantedSlotCard item={item()} />, user);
+      const t = assertGapCopy(html, label);
+      assert.equal(t.includes(ARASHIYAMA_ITINERARY_EXPERT_LINK), false, label);
+      assert.equal(html.includes(ARASHIYAMA_ITINERARY_EXPERT_HREF), false, label);
+      assert.equal(html.includes("link-arashiyama-expert-apply"), false, label);
+      assert.match(html, /data-testid="link-wanted-apply"/, label);
+      assert.ok(t.includes("Ways to earn"), label);
+    }
   });
 
   it("leaves every other wanted tile on the existing line", () => {
