@@ -570,7 +570,7 @@ export interface IStorage {
    */
   createServiceBookingAtomic(booking: InsertServiceBooking): Promise<ServiceBooking>;
 
-  updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[], notify?: BookingStatusNotification | BookingStatusNotification[]): Promise<ServiceBooking | undefined>;
+  updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[], notify?: BookingStatusNotification | BookingStatusNotification[], payoutSnapshot?: Record<string, unknown> | null): Promise<ServiceBooking | undefined>;
 
   mintCompletionEarningsForBooking(booking: ServiceBooking, outerTx?: unknown): Promise<boolean>;
 
@@ -3488,6 +3488,7 @@ export class DatabaseStorage implements IStorage {
       // carrying a declaration instant would be swept into the window's close and minted for work
       // nobody declared. Its one writer is the guarded `completion_declared` flip.
       completionDeclaredAt: _clientSuppliedCompletionDeclaredAt,
+      payoutSnapshot: _clientSuppliedPayoutSnapshot,
       ...safeBooking
     } = booking as InsertServiceBooking & {
       stripePaymentIntentId?: unknown;
@@ -3498,6 +3499,7 @@ export class DatabaseStorage implements IStorage {
       deliveredAt?: unknown;
       deliverableFile?: unknown;
       completionDeclaredAt?: unknown;
+      payoutSnapshot?: unknown;
     };
     if (_clientSuppliedPi !== undefined && _clientSuppliedPi !== null) {
       // Ops-visible, never silent: reaching here means a caller tried to birth an authorized-looking
@@ -3584,6 +3586,7 @@ export class DatabaseStorage implements IStorage {
       deliveredAt: _deliveredAt,
       deliverableFile: _deliverableFile,
       completionDeclaredAt: _completionDeclaredAt, // D-7 — same strip as createServiceBooking
+      payoutSnapshot: _payoutSnapshot, // row 292a — same strip as createServiceBooking
       ...safeBooking
     } = booking as InsertServiceBooking & {
       stripePaymentIntentId?: unknown;
@@ -3594,6 +3597,7 @@ export class DatabaseStorage implements IStorage {
       deliveredAt?: unknown;
       deliverableFile?: unknown;
       completionDeclaredAt?: unknown;
+      payoutSnapshot?: unknown;
     };
     if (_pi !== undefined && _pi !== null) {
       console.error(
@@ -3706,9 +3710,9 @@ export class DatabaseStorage implements IStorage {
    * promote. The `vendor_availability_slots.booked_count` taken at claim time was destroyed for
    * good, with no code path to give it back.
    */
-  async updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[], notify?: BookingStatusNotification): Promise<ServiceBooking | undefined> {
+  async updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[], notify?: BookingStatusNotification, payoutSnapshot?: Record<string, unknown> | null): Promise<ServiceBooking | undefined> {
     const action = () =>
-      this.updateServiceBookingStatusAction(id, status, reason, expectedFromStatuses, notify);
+      this.updateServiceBookingStatusAction(id, status, reason, expectedFromStatuses, notify, payoutSnapshot);
     if (status === "confirmed" && notify?.type === "booking_confirmed") {
       return dispatchBookingEvent(
         "bookings.provider-acceptance-follow-on",
@@ -3730,14 +3734,22 @@ export class DatabaseStorage implements IStorage {
     return action();
   }
 
-  private async updateServiceBookingStatusAction(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[], notify?: BookingStatusNotification): Promise<ServiceBooking | undefined> {
+  private async updateServiceBookingStatusAction(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[], notify?: BookingStatusNotification, payoutSnapshot?: Record<string, unknown> | null): Promise<ServiceBooking | undefined> {
     // Read prior status before applying any update so side-effects are idempotent.
     const prior = await this.getServiceBooking(id);
     if (!prior) return undefined;
     const priorStatus = prior.status;
 
     const updates: any = { status, updatedAt: new Date() };
-    if (status === "confirmed") updates.confirmedAt = new Date();
+    if (status === "confirmed") {
+      const confirmedAt = new Date();
+      updates.confirmedAt = confirmedAt;
+      // Row 292a: the payout snapshot rides THIS update, so a lost race (the WHERE
+      // matches nothing) writes no snapshot. Absent for every other caller.
+      if (payoutSnapshot && typeof payoutSnapshot === "object") {
+        updates.payoutSnapshot = { ...payoutSnapshot, acceptedAt: confirmedAt.toISOString() };
+      }
+    }
     // V-24 (§18b; ledger `2026-09-15-v23-v25-from-state-guards`): `completed_at` is stamped ONCE —
     // on the FIRST completion — and a RE-completion leaves the original instant alone. This was an
     // unconditional `new Date()`, so the admin dispute-reject rail (completed → disputed →

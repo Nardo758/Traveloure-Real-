@@ -1835,6 +1835,14 @@ export const serviceBookings = pgTable("service_bookings", {
   // Nothing reads it to make a decision in this lane: B1 records, OC-B2 decides.
   offeringContractSnapshot: jsonb("offering_contract_snapshot"),
 
+  // Row 292a (ledger `2026-10-29-provider-payout-block`, migration 416, HELD).
+  // The provider-accept snapshot for a booking that had no purchase-time split.
+  // Written only inside the same status UPDATE that accepts the booking. NULL = this
+  // accept did not snapshot one (accepted before the column, or the purchase-time
+  // split was already stored and was not recomputed). No DEFAULT, no CHECK.
+  // Omitted from insertServiceBookingSchema and stripped in storage (§19).
+  payoutSnapshot: jsonb("payout_snapshot"),
+
   // Attribution (S4): source vocabulary is direct | link | cross_sell, DERIVED SERVER-SIDE at
   // checkout (payments.routes.ts) — 'link' only when acquisitionRef resolves to a real
   // short_links.code (migration 139). App-enforced, no DB CHECK. acquisitionRef is a soft
@@ -3396,6 +3404,9 @@ export const insertServiceBookingSchema = createInsertSchema(serviceBookings).om
   // `createServiceBooking`/`createServiceBookingAtomic` (layer 2, which also covers the internal
   // `as any` callers a type-level omit cannot reach).
   offeringContractSnapshot: true,
+  // Row 292a: the provider-accept payout snapshot is written only by the provider status
+  // flip. Under a denylist schema a new column is client-settable until it is named here.
+  payoutSnapshot: true,
   // D-6 acceptance (migration 303, ledger `2026-09-15-d24-d26-acceptance-columns`). The same §19
   // class as the PI-linkage columns above: under a denylist schema a freshly-added column is
   // client-settable BY DEFAULT, and these three decide when an artifact booking completes, how long

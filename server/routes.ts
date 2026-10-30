@@ -316,6 +316,11 @@ import customersRoutes from "./routes/customers.routes";
 import contentRoutes, { seedDatabase, registerDiscoveryRoutes, tripParticipantCreateSchema } from "./routes/content.routes";
 import paymentsRoutes, { resolveItemBaseAmount, resolveCartSurcharges, resolveStayNightlyRates } from "./routes/payments.routes";
 import { cartAmountDue, composeTravelerCharge, travelerChargeForRow } from "./services/traveler-charge";
+import {
+  FEE_SETTING_UNRESOLVED,
+  isProviderBookingStatusRequest,
+  resolvePayoutBlock,
+} from "./services/provider-payout-block.service";
 import crossSellRoutes from "./routes/cross-sell.routes";
 import expertWorkspaceRoutes from "./routes/expert-workspace.routes";
 import { createDMOCrawler } from "./content/scrapers/DMOCrawler";
@@ -6808,10 +6813,14 @@ ${bannedCopyPromptLine()}`;
       const traveler = await storage.getUser(booking.travelerId);
       const sanitizedTraveler = traveler ? sanitizeUserForRole(traveler, userRole, false) : null;
       const sellerDeclaration = describeCompletionDeclaration(booking, declaredCompletionWindowDays());
+      // Row 292a: the payout block is on this provider list only. Omitted entirely when
+      // it cannot be shown (no null, no zeros standing in for an unresolved setting).
+      const payout = await resolvePayoutBlock(booking, { categoryId: service?.categoryId ?? null });
       return {
         ...sanitizeBookingForExpert(booking, userRole, userId),
         // LD 47 read exposure — same derivation, same reason as /api/expert/bookings above.
         ...(sellerDeclaration ? { completionDeclaration: sellerDeclaration } : {}),
+        ...(payout.kind === "block" ? { payoutBlock: payout.block } : {}),
         service,
         traveler: sanitizedTraveler ? {
           ...sanitizedTraveler,
@@ -7768,6 +7777,25 @@ ${bannedCopyPromptLine()}`;
           reason: "unpaid",
         });
       }
+      // Row 292a — provider accept only. A stored purchase-time split is not recomputed
+      // and is not snapshotted. A booking with no stored split is resolved now; nothing
+      // resolved refuses the accept and writes nothing. The expert alias does not enter
+      // here. No client fee id or rate is compared.
+      let acceptPayoutSnapshot: Record<string, unknown> | undefined;
+      if (status === "confirmed" && isProviderBookingStatusRequest(req)) {
+        const payout = await resolvePayoutBlock(booking);
+        if (payout.kind === "unresolved") {
+          return res.status(409).json({
+            message:
+              "No admin fee setting resolves a payout for this booking, so it cannot be accepted.",
+            currentStatus: booking.status,
+            reason: FEE_SETTING_UNRESOLVED,
+          });
+        }
+        if (payout.kind === "block" && payout.writeSnapshot) {
+          acceptPayoutSnapshot = { ...payout.block };
+        }
+      }
       // Owner cancels a PAID booking → the traveler gets a FULL refund (service price + platform
       // fee + insurance fee — never policy-scaled: a provider-initiated cancellation is the
       // provider's doing, so the traveler is made whole; platform-owner ruling 2026-08-10) and an
@@ -7992,7 +8020,14 @@ ${bannedCopyPromptLine()}`;
             }
         : undefined;
 
-      const updated = await storage.updateServiceBookingStatus(req.params.id, status, reason, allowedFrom, notify);
+      const updated = await storage.updateServiceBookingStatus(
+        req.params.id,
+        status,
+        reason,
+        allowedFrom,
+        notify,
+        acceptPayoutSnapshot,
+      );
       if (!updated) {
         // Lost the atomic race (or the row vanished): another actor moved it first. Exactly one
         // caller wins; the loser changes nothing and fires no side-effects — including no
