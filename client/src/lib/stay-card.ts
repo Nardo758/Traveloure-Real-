@@ -15,7 +15,7 @@
  * for the hotel's name and the plan's city, labelled with its attribution beside it.
  */
 import type { StayHotel, WhereToStayStay } from "@shared/where-to-stay";
-import type { StayCloseness } from "@shared/stay-pick";
+import type { StayCloseness, StayDayCloseness } from "@shared/stay-pick";
 import type { StayLink } from "@shared/stay-link";
 import { buildGoogleMapsDeepLink } from "@/lib/maps";
 import { cancellationLine, type StayRatesState } from "@shared/liteapi-rates";
@@ -111,7 +111,22 @@ export function stayClosenessLine(c: StayCloseness | null | undefined): string |
   return basis === "straight_line" ? `${base} ${STAY_CLOSE_STRAIGHT_SUFFIX}` : base;
 }
 
-export type StayCardHotel = StayHotel & { closeness?: StayCloseness | null };
+/**
+ * Row 244 (ledger `2026-10-30-row244-stay-day-closeness`): one line per located day the server marks as not near
+ * every stop, from the server's own `dayCloseness` (the card computes nothing). No list or every day near ⇒ none.
+ * HELD FOR LEON (FOUNDER WORDING REVIEW on the PR).
+ */
+export const STAY_FAR_DAY_COPY = {
+  farDay: (n: number) => `Day ${n} is a longer trip from here.`,
+} as const;
+export function stayFarDayLines(days: readonly StayDayCloseness[] | null | undefined): string[] {
+  if (!Array.isArray(days)) return [];
+  return days
+    .filter((d) => d && d.nearStops === false && Number.isInteger(d.dayIndex) && d.dayIndex >= 0)
+    .map((d) => STAY_FAR_DAY_COPY.farDay(d.dayIndex + 1));
+}
+
+export type StayCardHotel = StayHotel & { closeness?: StayCloseness | null; dayCloseness?: StayDayCloseness[] };
 export type StayCardModel =
   | { tier: "routed"; hotels: [StayCardHotel]; scoredLine: string | null; changed: boolean }
   | { tier: "straight_line"; hotels: StayCardHotel[]; scoredLine: null; changed: false; estimated: boolean };
@@ -121,7 +136,7 @@ export function stayCardModel(stay: WhereToStayStay | null | undefined): StayCar
   if (!stay) return null;
   if (stay.tier === "routed") {
     if (!stay.pick) return null;
-    return { tier: "routed", hotels: [{ ...stay.pick, closeness: stay.closeness ?? null }], scoredLine: stayScoredLine(stay.scoredCount, stay.candidateCount), changed: !!stay.changed };
+    return { tier: "routed", hotels: [{ ...stay.pick, closeness: stay.closeness ?? null, ...(stay.dayCloseness ? { dayCloseness: stay.dayCloseness } : {}) }], scoredLine: stayScoredLine(stay.scoredCount, stay.candidateCount), changed: !!stay.changed };
   }
   const hotels = (stay.hotels ?? []).slice(0, 3);
   return hotels.length ? { tier: "straight_line", hotels, scoredLine: null, changed: false, estimated: stay.estimated === true } : null;
