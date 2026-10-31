@@ -18,7 +18,8 @@ import { OPTIONAL_PHONE_ERROR, optionalPhoneError } from "./supply-registration"
 // deploy-push durability rule).
 import { conversations } from "./models/chat";
 
-// Re-export auth models
+// Re-export auth models. users.apple_sub (migration 424, held) is declared on
+// the users table in models/auth.ts and reaches this module through the re-export.
 export * from "./models/auth";
 export * from "./models/chat";
 

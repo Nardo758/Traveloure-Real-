@@ -95,6 +95,7 @@ function leakyExpertRow(): Record<string, any> {
     vacationMessage: null,
     emailBookingAlerts: true,
     homeCity: "Kyoto",
+    appleSub: "apple-subject-must-not-publish",
 
     // ── the whole local_expert_forms row ─────────────────────────────────────
     expertForm: {
@@ -175,7 +176,7 @@ const MUST_NOT_APPEAR_TOP_LEVEL = [
   "backgroundCheckConfirmed", "preferredCurrency", "stripeCustomerId", "stripeAccountId",
   "stripeAccountStatus", "canReceivePayments", "payoutMethodType", "payoutHandle", "notificationEmail", "updatedAt",
   "isDeleted", "deletedAt", "isSuspended", "suspendedAt", "suspensionReason",
-  "vacationUntil", "vacationMessage", "emailBookingAlerts", "homeCity",
+  "vacationUntil", "vacationMessage", "emailBookingAlerts", "homeCity", "appleSub",
 ] as const;
 
 /** The `local_expert_forms` columns that must never reach an anonymous caller. */
@@ -262,6 +263,7 @@ test("P8 — a users column added LATER is excluded by default (the §19 propert
   // dropped without appearing in any hand-written list in `expert-read-scope.ts`.
   const out = toPublicExpert(leakyExpertRow());
   assert.equal("homeCity" in out, false);
+  assert.equal("appleSub" in out, false);
   // And a key that is NOT a users column is not silently dropped either — that is the other half
   // of the property, and the reason this is not a blanket pick over the whole object.
   assert.equal((toPublicExpert({ ...leakyExpertRow(), someFutureComputedKey: 7 }) as any).someFutureComputedKey, 7);
