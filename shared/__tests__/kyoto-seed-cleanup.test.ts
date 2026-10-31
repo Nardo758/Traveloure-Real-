@@ -79,9 +79,11 @@ test("C1 removed phrases are caught on the prior text and absent from the cleane
   }
   assert.equal(YOSHIDA_SANSO_ADDRESS, "59-1 Yoshida Shimooji-cho");
   assert.match(GINKAKU_ADMISSION_HELD, /elementary and junior high/);
-  assert.match(GINKAKU_AUTUMN_VIEWING_HELD, /Nov 1 – Dec 5/);
+  assert.equal(GINKAKU_AUTUMN_VIEWING_HELD, "Autumn viewing Nov 1 – Dec 5, 2026");
+  assert.match(GINKAKU_AUTUMN_VIEWING_HELD, /Nov 1 – Dec 5, 2026/);
   assert.match(GINKAKU_HOURS, new RegExp(GINKAKU_AUTUMN_VIEWING_HELD.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  assert.ok(GINKAKU_HOURS.includes(GINKAKU_AUTUMN_SOURCE_URL));
+  assert.equal(GINKAKU_HOURS.includes(GINKAKU_AUTUMN_SOURCE_URL), false);
+  assert.equal(/https?:\/\//.test(GINKAKU_HOURS), false);
   const line = composeGemFactLine({
     hours: GINKAKU_HOURS,
     admission: GINKAKU_ADMISSION_HELD,
@@ -92,7 +94,8 @@ test("C1 removed phrases are caught on the prior text and absent from the cleane
   assert.equal(line.checkedLabel, "31 Oct 2026");
   assert.equal(line.sourceUrl, GINKAKU_ACCESS_SOURCE_URL);
   assert.match(line.lead, /elementary and junior high ¥500/);
-  assert.match(line.lead, /Autumn viewing Nov 1 – Dec 5/);
+  assert.match(line.lead, /Autumn viewing Nov 1 – Dec 5, 2026/);
+  assert.equal(/https?:\/\//.test(line.lead), false);
 });
 
 test("C2 Kyoto gem seed fields no longer carry a removed phrase", () => {
@@ -160,7 +163,7 @@ test("C3 migration 421 writes the cleanup and nothing else", () => {
 });
 
 test("C4 the seed and the canonical Ginkaku-ji card equal migration 421", () => {
-  const hoursExpr = "${GINKAKU_HOURS_PRIOR}. ${GINKAKU_AUTUMN_VIEWING_HELD} (${GINKAKU_AUTUMN_SOURCE_URL})";
+  const hoursExpr = "${GINKAKU_HOURS_PRIOR}. ${GINKAKU_AUTUMN_VIEWING_HELD}";
   const canonicalSrc = read("shared/kyoto-feed-cleanup.ts");
   const seed = read("server/seeds/popular-cities-content.seed.ts");
   for (const file of ["shared/kyoto-seed-cleanup.ts", "shared/kyoto-feed-cleanup.ts", "server/seeds/popular-cities-content.seed.ts"]) {
@@ -170,7 +173,6 @@ test("C4 the seed and the canonical Ginkaku-ji card equal migration 421", () => 
     "GINKAKU_ADMISSION_HELD",
     "GINKAKU_AUTUMN_VIEWING_HELD",
     "GINKAKU_ACCESS_SOURCE_URL",
-    "GINKAKU_AUTUMN_SOURCE_URL",
     "GINKAKU_FACT_CHECKED_ON",
   ]) {
     assert.match(seed, new RegExp(`\\b${name}\\b`), name);
@@ -202,7 +204,8 @@ test("C4 the seed and the canonical Ginkaku-ji card equal migration 421", () => 
   assert.equal(ginkaku.sourceUrl, GINKAKU_ACCESS_SOURCE_URL);
   assert.equal(ginkaku.factCheckedOn, GINKAKU_FACT_CHECKED_ON);
   assert.ok(ginkaku.hours.includes(GINKAKU_AUTUMN_VIEWING_HELD));
-  assert.ok(ginkaku.hours.includes(GINKAKU_AUTUMN_SOURCE_URL));
+  assert.equal(ginkaku.hours.includes(GINKAKU_AUTUMN_SOURCE_URL), false);
+  assert.equal(/https?:\/\//.test(ginkaku.hours), false);
   assert.ok(ginkaku.hours.startsWith(GINKAKU_HOURS_PRIOR));
   assert.ok(sql.includes(ginkaku.hours));
   assert.ok(sql.includes(ginkaku.admission));

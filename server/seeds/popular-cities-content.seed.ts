@@ -34,7 +34,6 @@ import {
   FUSHIMI_DAWN_WHY,
   GINKAKU_ACCESS_SOURCE_URL,
   GINKAKU_ADMISSION_HELD,
-  GINKAKU_AUTUMN_SOURCE_URL,
   GINKAKU_AUTUMN_VIEWING_HELD,
   GINKAKU_FACT_CHECKED_ON,
   GINKAKU_HOURS_PRIOR,
@@ -73,7 +72,7 @@ interface GemSeed {
 
 /** The Ginkaku-ji fact migration 421 writes. A fresh boot stamps the same four fields. */
 const ginkakuSeededFact = {
-  hours: `${GINKAKU_HOURS_PRIOR}. ${GINKAKU_AUTUMN_VIEWING_HELD} (${GINKAKU_AUTUMN_SOURCE_URL})`,
+  hours: `${GINKAKU_HOURS_PRIOR}. ${GINKAKU_AUTUMN_VIEWING_HELD}`,
   admission: GINKAKU_ADMISSION_HELD,
   sourceUrl: GINKAKU_ACCESS_SOURCE_URL,
   factCheckedOn: GINKAKU_FACT_CHECKED_ON,

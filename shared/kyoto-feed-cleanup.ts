@@ -20,7 +20,6 @@ import {
 import {
   GINKAKU_ACCESS_SOURCE_URL,
   GINKAKU_ADMISSION_HELD,
-  GINKAKU_AUTUMN_SOURCE_URL,
   GINKAKU_AUTUMN_VIEWING_HELD,
   GINKAKU_FACT_CHECKED_ON,
   GINKAKU_HOURS_PRIOR,
@@ -160,7 +159,7 @@ export const KYOTO_CANONICAL_GEMS = [
     description: "The Silver Pavilion temple, with a sand garden and moss paths at the start of the Philosopher's Path.",
     imageUrl: null,
     imageCredit: null,
-    hours: `${GINKAKU_HOURS_PRIOR}. ${GINKAKU_AUTUMN_VIEWING_HELD} (${GINKAKU_AUTUMN_SOURCE_URL})`,
+    hours: `${GINKAKU_HOURS_PRIOR}. ${GINKAKU_AUTUMN_VIEWING_HELD}`,
     admission: GINKAKU_ADMISSION_HELD,
     sourceUrl: GINKAKU_ACCESS_SOURCE_URL,
     factCheckedOn: GINKAKU_FACT_CHECKED_ON,

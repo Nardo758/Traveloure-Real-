@@ -32,13 +32,13 @@ export const GINKAKU_FACT_CHECKED_ON_PRIOR = "2026-10-20";
 /** HELD. Replaces "school ¥500". Official English page says "Primary and Middle School Students 500 yen". */
 export const GINKAKU_ADMISSION_HELD = "Adult ¥1,000; elementary and junior high ¥500";
 
-/** HELD. The autumn special viewing period. The URL is the temple event page, not extra wording. */
-export const GINKAKU_AUTUMN_VIEWING_HELD = "Autumn viewing Nov 1 – Dec 5";
+/** HELD. The autumn viewing period, with the year. source_url and fact_checked_on carry the source. */
+export const GINKAKU_AUTUMN_VIEWING_HELD = "Autumn viewing Nov 1 – Dec 5, 2026";
 export const GINKAKU_AUTUMN_SOURCE_URL = "https://www.shokoku-ji.jp/ginkakuji/event/";
 export const GINKAKU_ACCESS_SOURCE_URL = "https://www.shokoku-ji.jp/en/ginkakuji/access/";
 export const GINKAKU_FACT_CHECKED_ON = "2026-10-31";
 export const GINKAKU_HOURS =
-  `${GINKAKU_HOURS_PRIOR}. ${GINKAKU_AUTUMN_VIEWING_HELD} (${GINKAKU_AUTUMN_SOURCE_URL})`;
+  `${GINKAKU_HOURS_PRIOR}. ${GINKAKU_AUTUMN_VIEWING_HELD}`;
 
 export const FUSHIMI_DAWN_DESCRIPTION =
   "The lower torii tunnel photographed empty, backlit by the first sun slicing through the orange gates.";

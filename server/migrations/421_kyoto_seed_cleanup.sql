@@ -7,8 +7,9 @@
 --
 -- Ginkaku-ji hours, admission, source_url and fact_checked_on are the seeded fact.
 -- They are realigned while any of the four differs, the same posture migration 400
--- uses for this card. The autumn viewing period cites the temple event page inside
--- the hours line. The fee and the regular hours cite the access page.
+-- uses for this card. The autumn viewing period is named in the hours line.
+-- source_url and fact_checked_on carry the source. The hours line has no URL.
+-- The fee and the regular hours cite the access page.
 -- Checked 2026-10-31.
 --   https://www.shokoku-ji.jp/en/ginkakuji/access/
 --   https://www.shokoku-ji.jp/ginkakuji/event/
@@ -77,14 +78,14 @@ WHERE city ILIKE 'kyoto'
   AND best_for @> $tag$["avoiding crowds"]$tag$::jsonb;
 
 UPDATE travel_pulse_hidden_gems
-SET hours = $hrs$Mar–Nov 8:30–17:00; Dec–Feb 9:00–16:30. Autumn viewing Nov 1 – Dec 5 (https://www.shokoku-ji.jp/ginkakuji/event/)$hrs$,
+SET hours = $hrs$Mar–Nov 8:30–17:00; Dec–Feb 9:00–16:30. Autumn viewing Nov 1 – Dec 5, 2026$hrs$,
     admission = $adm$Adult ¥1,000; elementary and junior high ¥500$adm$,
     source_url = 'https://www.shokoku-ji.jp/en/ginkakuji/access/',
     fact_checked_on = DATE '2026-10-31'
 WHERE city ILIKE 'kyoto'
   AND place_name = 'Ginkaku-ji'
   AND (
-    hours IS DISTINCT FROM $hrs$Mar–Nov 8:30–17:00; Dec–Feb 9:00–16:30. Autumn viewing Nov 1 – Dec 5 (https://www.shokoku-ji.jp/ginkakuji/event/)$hrs$
+    hours IS DISTINCT FROM $hrs$Mar–Nov 8:30–17:00; Dec–Feb 9:00–16:30. Autumn viewing Nov 1 – Dec 5, 2026$hrs$
     OR admission IS DISTINCT FROM $adm$Adult ¥1,000; elementary and junior high ¥500$adm$
     OR source_url IS DISTINCT FROM 'https://www.shokoku-ji.jp/en/ginkakuji/access/'
     OR fact_checked_on IS DISTINCT FROM DATE '2026-10-31'
