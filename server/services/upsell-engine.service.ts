@@ -30,6 +30,7 @@ import { sql } from "drizzle-orm";
 import { originTier } from "@shared/content-facts";
 import { buildLegUpsellLines, isBookableLegOptionType, isUpsellTransportCategory, type UpsellLine, type UpsellLineCandidate } from "@shared/upsell-line";
 import { getTripTransportLegs } from "./trip-transport-legs.service";
+import { verifyTripOwnership } from "../utils/trip-ownership";
 
 // ─── Types (per spec §B1) ────────────────────────────────────────────────────
 
@@ -468,6 +469,16 @@ export async function logImpressions(
   } catch (err) {
     console.error("[upsell-engine] impression log failed (non-fatal):", err);
   }
+}
+
+/**
+ * Row 179: who receives the on-trip upsell lines (decision-maker, Oct 31, 2026): the plan's owner only. An advisor,
+ * a delegate, the trip's author and an admin are not shown them, even where they may read the plan's logistics.
+ * Decided here, on the server; the screen never hides lines it was sent.
+ */
+export async function mayReceiveUpsellLines(tripId: string, userId: string | null | undefined): Promise<boolean> {
+  if (!userId) return false;
+  return verifyTripOwnership(tripId, userId);
 }
 
 /**

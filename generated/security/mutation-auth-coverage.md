@@ -10,7 +10,7 @@ Generated deterministically from `generated/security/mutation-auth-manifest.json
 ## Methodology and live evidence
 
 - Every unique `METHOD effectivePath` in the manifest receives exactly one tested/untested disposition; duplicate registrations are normalized to one reachable endpoint.
-- Evidence state: **evidence manifest SHA-256 is stale**; manifest SHA-256: `020d7c29ba33a5a7f05607a968d954e74981132b8f93ce62955c937e38e24cc4`; run timestamp: 2026-09-25T00:56:06.499Z.
+- Evidence state: **evidence manifest SHA-256 is stale**; manifest SHA-256: `f3666a1c29cca0b6006d35e1ef9642184173394672f64fd2a70c53d553bd8139`; run timestamp: 2026-09-25T00:56:06.499Z.
 - `admin`: **passed**, 146 exact endpoint keys, context `admin`.
 - `highrisk-unauthenticated`: **passed**, 236 exact endpoint keys, context `unauthenticated`.
 - `expert-provider-wrong-role`: **passed**, 54 exact endpoint keys, context `wrong-role`.
@@ -99,7 +99,7 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | DELETE /api/trips/:tripId/option-sets/:setId/options/:optionId | user-data | session-self | server/routes/plan-option-sets.routes.ts:213 | Not run: evidence manifest SHA-256 is stale. |
 | DELETE /api/trips/:tripId/phone-delivery/calendar | user-data | session-self | server/routes/phone-delivery.routes.ts:59 | Not run: evidence manifest SHA-256 is stale. |
 | DELETE /api/trips/:tripId/transport-legs/:legId | user-data | session-self | server/routes/transport-legs.routes.ts:394 | Not run: evidence manifest SHA-256 is stale. |
-| DELETE /api/upsell/expert-review/endorse | other | session-self | server/routes/upsell.routes.ts:735 | Other-category endpoint is intentionally outside the strict tested set. |
+| DELETE /api/upsell/expert-review/endorse | other | session-self | server/routes/upsell.routes.ts:745 | Other-category endpoint is intentionally outside the strict tested set. |
 | DELETE /api/user-experience-items/:id | other | resource-owner | server/routes/content.routes.ts:2164 | Other-category endpoint is intentionally outside the strict tested set. |
 | DELETE /api/user-experiences/:id | other | session-self | server/routes/content.routes.ts:2078 | Other-category endpoint is intentionally outside the strict tested set. |
 | PATCH /api/admin/affiliate/partners/:id | admin | admin-role | server/routes/content.routes.ts:8872 | Not run: evidence manifest SHA-256 is stale. |
@@ -692,19 +692,19 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/trips/:tripId/versions/apply-days | user-data | session-self | server/routes/versions.routes.ts:79 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/versions/days/:day/restore | user-data | session-self | server/routes/versions.routes.ts:109 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/where-to-stay | user-data | session-self | server/routes/plan-option-sets.routes.ts:343 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/upsell/ai-concierge | other | session-self | server/routes/upsell.routes.ts:887 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/upsell/cart | other | session-self | server/routes/upsell.routes.ts:161 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/upsell/checkout | other | session-self | server/routes/upsell.routes.ts:781 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/upsell/click | other | public-or-system | server/routes/upsell.routes.ts:972 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/upsell/discover-date | other | public-or-system | server/routes/upsell.routes.ts:276 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/upsell/discover-location | other | public-or-system | server/routes/upsell.routes.ts:231 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/upsell/expert-review | other | session-self | server/routes/upsell.routes.ts:641 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/upsell/expert-review/endorse | other | session-self | server/routes/upsell.routes.ts:699 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/upsell/impression | other | public-or-system | server/routes/upsell.routes.ts:936 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/upsell/optimize-gate | other | session-self | server/routes/upsell.routes.ts:379 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/upsell/plancard-ontrip | other | session-self | server/routes/upsell.routes.ts:507 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/upsell/plancard-pretrip | other | session-self | server/routes/upsell.routes.ts:441 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/upsell/post-booking | other | session-self | server/routes/upsell.routes.ts:833 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/upsell/ai-concierge | other | session-self | server/routes/upsell.routes.ts:897 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/upsell/cart | other | session-self | server/routes/upsell.routes.ts:164 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/upsell/checkout | other | session-self | server/routes/upsell.routes.ts:791 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/upsell/click | other | public-or-system | server/routes/upsell.routes.ts:982 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /api/upsell/discover-date | other | public-or-system | server/routes/upsell.routes.ts:279 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /api/upsell/discover-location | other | public-or-system | server/routes/upsell.routes.ts:234 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /api/upsell/expert-review | other | session-self | server/routes/upsell.routes.ts:651 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/upsell/expert-review/endorse | other | session-self | server/routes/upsell.routes.ts:709 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/upsell/impression | other | public-or-system | server/routes/upsell.routes.ts:946 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /api/upsell/optimize-gate | other | session-self | server/routes/upsell.routes.ts:382 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/upsell/plancard-ontrip | other | resource-owner | server/routes/upsell.routes.ts:510 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/upsell/plancard-pretrip | other | session-self | server/routes/upsell.routes.ts:444 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/upsell/post-booking | other | session-self | server/routes/upsell.routes.ts:843 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/user-experiences | other | session-self | server/routes/content.routes.ts:1986 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/user-experiences/:id/items | other | resource-owner | server/routes/content.routes.ts:2118 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/vendors | other | session-self | server/routes.ts:2653 | Other-category endpoint is intentionally outside the strict tested set. |
