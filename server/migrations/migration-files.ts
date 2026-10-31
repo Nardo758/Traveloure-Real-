@@ -2207,4 +2207,11 @@ export const MIGRATION_FILES = [
   // request. 418 is PR #1785. 419 is PR #1794.
   // Ledger 2026-10-30-row250-kyoto-discover-photos.
   "420_kyoto_gem_photo_credits.sql",
+  // 422 — discover_tile_panel_facts and discover_tile_panel_photos.
+  // Additive tables. No CHECK. No DEFAULT on reviewed_at or photo_rights_ticked.
+  // Index idx_discover_tile_panel_facts_tile_id, and a unique (tile_id, position)
+  // on the photo table. Declared in shared/schema.ts.
+  // HELD until the owner approves the SQL on the PR. 421 is PR #1804.
+  // Ledger 2026-10-31-row303a-tile-detail-panel.
+  "422_discover_tile_panel.sql",
 ] as const;
