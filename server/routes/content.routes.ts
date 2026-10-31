@@ -1019,6 +1019,26 @@ router.get("/api/discover/location/:city", async (req, res) => {
     }
   });
 
+  // Row 303a — tile detail panel. Facts are sourced or omitted. The store is the held DDL.
+  router.get("/api/discover/tiles/:tileId/panel", async (req, res) => {
+    const { isTilePanelId } = await import("@shared/tile-detail-panel");
+    const tileId = req.params.tileId;
+    if (typeof tileId !== "string" || !isTilePanelId(tileId)) {
+      res.status(400).json({ reason: "invalid_tile_id" });
+      return;
+    }
+    try {
+      const { readTileDetailPanel } = await import("../services/tile-detail-panel.service");
+      const panel = await readTileDetailPanel(tileId, new Date());
+      res.set("Cache-Control", "private, no-store");
+      res.json(panel);
+    } catch (err) {
+      const code = err && typeof err === "object" && "code" in err ? String((err as { code?: unknown }).code) : "error";
+      console.error(`[tile-panel] read failed (${code})`);
+      res.status(500).json({ reason: "panel_read_failed" });
+    }
+  });
+
   // === Service Categories Routes ===
 
   // Get all categories
