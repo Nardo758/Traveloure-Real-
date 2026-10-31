@@ -371,6 +371,11 @@ test("resolves named re-exports used by authentication registration helpers", ()
  * 742 / 734 → 743 / 735 (Z-21): POST /api/webhooks/resend. other / signature.
  * other 251 → 252, signature 6 → 7.
  *
+ * 743 / 735 unchanged (row 179, ledger `2026-10-30-row179-upsell-line-server`; decision-maker, Oct 31, 2026):
+ * POST /api/upsell/plancard-ontrip now sends its upsell lines to the plan's owner only, checked on the server
+ * with verifyTripOwnership, so the heuristic classes it resource-owner / verified. No rail added.
+ * session-self 369 → 368, resource-owner 102 → 103.
+ *
  * THE COUNTS ARE THE POINT: they exist so a route appearing or vanishing from
  * the mounted graph fails here. Now that the file is wired into CI, changing a
  * number is a decision that needs its reason stated, exactly as this one does.
@@ -547,7 +552,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
     // public-or-system 55 → 56 (row 282): POST /api/auth/apple/callback.
     // admin-role 199 → 201 (CN-1): POST and PATCH /api/admin/concierge-task-kinds.
     // signature 6 → 7 (Z-21): POST /api/webhooks/resend.
-    "admin-role": 201, "session-self": 369, "resource-owner": 102,
+    // session-self 369 → 368, resource-owner 102 → 103 (row 179): POST /api/upsell/plancard-ontrip, owner-only lines.
+    "admin-role": 201, "session-self": 368, "resource-owner": 103,
     signature: 7, "public-or-system": 56, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
