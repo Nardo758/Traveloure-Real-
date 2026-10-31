@@ -58,6 +58,7 @@ import { newSlipViewId, recordRoutedLegsCtaTap, useLocalTeaserShown } from "@/li
 import { anchorMissedBanner, leaveByMissed, missedLine, type LeaveByRow } from "@shared/leave-by";
 import type { UpsellLine } from "@shared/upsell-line";
 import { buildServicesBrowseHref } from "@/lib/services-browse";
+import { postUpsellClick } from "@/components/UpsellSlot";
 
 export interface TripCardDaysProps {
   tripId: string;
@@ -275,10 +276,19 @@ export function TripCardDays(props: TripCardDaysProps) {
   const [funnelViewId] = useState(newSlipViewId);
   useLocalTeaserShown(tripId, days, "trip_card", funnelViewId);
   const todayIso = calendarDayOf(props.now ?? new Date(), timeZone);
-  // Row 179: an item's "Add X for this leg" line, linked to the services browse for its category on this plan.
+  // Row 179: an item's "Add X for this leg" line, linked to the services browse for its category on this plan. A tap
+  // is recorded through the existing upsell click event on the on-trip surface (decision-maker, Oct 31, 2026); a
+  // failed record never blocks the link.
   const upsellFor = (itemId: string) => {
     const line = props.upsellLines?.get(itemId);
-    return line ? { line, href: buildServicesBrowseHref({ categoryKey: line.categoryKey, tripId, location: props.destination }) } : null;
+    if (!line) return null;
+    return {
+      line,
+      href: buildServicesBrowseHref({ categoryKey: line.categoryKey, tripId, location: props.destination }),
+      onClick: () => {
+        void postUpsellClick("plancard_ontrip", line.offeringType, tripId).catch(() => {});
+      },
+    };
   };
   const order = cardDayOrder(days, todayIso);
   const [openDay, setOpenDay] = useState<number | null>(() => {

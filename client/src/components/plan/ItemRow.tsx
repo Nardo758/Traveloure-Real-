@@ -131,7 +131,7 @@ export interface ItemRowProps {
    * Row 179: the item's "Add X for this leg" line from the on-trip upsell read, with the browse link the caller built.
    * Absent ⇒ nothing is drawn.
    */
-  upsell?: { line: UpsellLineDto; href: string } | null;
+  upsell?: { line: UpsellLineDto; href: string; onClick?: () => void } | null;
   /**
    * This row is a fixed point; `fromTool` names where it was fixed. Anchors carry no Move. A null
    * `fromTool` is a TRAVEL row nothing has fixed yet (step 2 addendum: an AI arrival/departure item
@@ -301,7 +301,7 @@ export function ItemRow(props: ItemRowProps) {
           followUp={props.expertNote.followUp}
         />
       ) : null}
-      {props.upsell ? <UpsellLine line={props.upsell.line} href={props.upsell.href} /> : null}
+      {props.upsell ? <UpsellLine line={props.upsell.line} href={props.upsell.href} onClick={props.upsell.onClick} /> : null}
       {props.children}
     </>
   );
@@ -596,7 +596,7 @@ function BoardItemRow(
           followUp={props.expertNote.followUp}
         />
       ) : null}
-      {props.upsell ? <UpsellLine line={props.upsell.line} href={props.upsell.href} /> : null}
+      {props.upsell ? <UpsellLine line={props.upsell.line} href={props.upsell.href} onClick={props.upsell.onClick} /> : null}
       {props.children}
     </div>
   );

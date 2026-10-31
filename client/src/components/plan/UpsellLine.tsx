@@ -19,11 +19,17 @@ export function upsellLineVisible(line: Pick<UpsellLineDto, "title" | "socialPro
   return !!line && line.socialProof == null && line.title.trim().length > 0;
 }
 
-export function UpsellLine({ line, href }: { line: UpsellLineDto; href: string }) {
+/** `onClick` records the tap through the existing upsell click event (the caller passes it); no new tracking. */
+export function UpsellLine({ line, href, onClick }: { line: UpsellLineDto; href: string; onClick?: () => void }) {
   if (!upsellLineVisible(line)) return null;
   return (
     <p className="text-xs" data-testid={`item-upsell-line-${line.itemId}`}>
-      <Link href={href} className="font-semibold underline underline-offset-2 hover:text-foreground" data-testid={`item-upsell-link-${line.itemId}`}>
+      <Link
+        href={href}
+        onClick={onClick}
+        className="font-semibold underline underline-offset-2 hover:text-foreground"
+        data-testid={`item-upsell-link-${line.itemId}`}
+      >
         {UPSELL_LINE_COPY.addForLeg(line.title.trim())}
       </Link>
     </p>

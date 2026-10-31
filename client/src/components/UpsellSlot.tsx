@@ -162,6 +162,14 @@ export function upsellSlotQueryOptions(surface: UpsellSurface, tripId?: string, 
  * natively (e.g. the Discover feed-composition layer) consume this hook;
  * <UpsellSlot /> remains the default presentation built on top of it.
  */
+/**
+ * The one upsell click event (`POST /api/upsell/click`, which marks the latest matching impression clicked). The
+ * slot and row 179's per-leg line both send it through here, so a line tap is the same event as a slot tap.
+ */
+export function postUpsellClick(surface: UpsellSurface, offeringId: string, tripId?: string) {
+  return apiRequest("POST", "/api/upsell/click", { surface, offeringId, tripId });
+}
+
 export function useUpsellSlot(
   surface: UpsellSurface,
   opts: { tripId?: string; contextPayload?: Record<string, unknown>; maxItems?: number; enabled?: boolean } = {},
@@ -172,8 +180,7 @@ export function useUpsellSlot(
   const { data } = useQuery({ ...upsellSlotQueryOptions(surface, tripId, contextPayload), enabled });
 
   const logClick = useMutation({
-    mutationFn: (offeringId: string) =>
-      apiRequest("POST", "/api/upsell/click", { surface, offeringId, tripId }),
+    mutationFn: (offeringId: string) => postUpsellClick(surface, offeringId, tripId),
   });
 
   const logImpression = useMutation({

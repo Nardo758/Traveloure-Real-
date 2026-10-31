@@ -8,6 +8,9 @@
  *   L3  the legacy slot is unchanged: same component, same props, and its query key is the one it always had;
  *       the card reads the lines through that same key (one request, no impressions of its own)
  *   L4  the card asks only on the card surface, never for a viewer, and the hook sits before the early returns
+ *   L5  a tap records the existing upsell click event (`POST /api/upsell/click`, on-trip surface, the line's offering);
+ *       the client has one call site for that event and no new tracking (decision-maker, Oct 31, 2026)
+ *   L6  the line draws no dismiss control (decision-maker, Oct 31, 2026)
  *
  * Run: npx tsx --test client/src/components/plancard/__tests__/upsell-line.test.tsx
  */
@@ -36,7 +39,7 @@ const line: UpsellLine = {
 };
 const href = "/services?categoryKey=private_transportation&tripId=t1";
 
-function render(upsell: { line: UpsellLine; href: string } | null, look: "plain" | "board") {
+function render(upsell: { line: UpsellLine; href: string; onClick?: () => void } | null, look: "plain" | "board") {
   return renderToString(
     <Router ssrPath="/trip/t1">
       <QueryClientProvider client={new QueryClient()}>
@@ -89,5 +92,26 @@ describe("row 179: UpsellLine under ItemRow", () => {
     assert.ok(hook < card.indexOf('if (stage === "proposal")'), "the hook runs before the early returns");
     assert.match(card, /enabled: routingReadOnly && !embedded && stage === "full" && !!plancardData\?\.tripRole && !isPlanCardViewerRole\(plancardData\.tripRole\)/);
     assert.match(card, /upsellLines=\{upsellLines\}/);
+  });
+  it("L5 a tap records the existing upsell click event, through its one call site", () => {
+    const slot = readFileSync("client/src/components/UpsellSlot.tsx", "utf8");
+    const days = readFileSync("client/src/components/plancard/TripCardDays.tsx", "utf8");
+    const lineSrc = readFileSync("client/src/components/plan/UpsellLine.tsx", "utf8");
+    assert.equal(slot.match(/"\/api\/upsell\/click"/g)?.length, 1, "one call site for the click event");
+    assert.match(slot, /export function postUpsellClick\(surface: UpsellSurface, offeringId: string, tripId\?: string\)/);
+    assert.match(slot, /mutationFn: \(offeringId: string\) => postUpsellClick\(surface, offeringId, tripId\)/);
+    assert.match(days, /postUpsellClick\("plancard_ontrip", line\.offeringType, tripId\)\.catch\(\(\) => \{\}\)/);
+    assert.match(lineSrc, /onClick=\{onClick\}/);
+    assert.doesNotMatch(days + lineSrc, /\/api\/upsell\/(impression|track)|trackEvent|analytics\./, "no new tracking");
+  });
+
+  it("L6 the line draws no dismiss control", () => {
+    for (const look of ["plain", "board"] as const) {
+      const html = render({ line, href, onClick: () => {} }, look);
+      const at = html.indexOf('data-testid="item-upsell-line-i1"');
+      assert.ok(at >= 0, look);
+      const block = html.slice(at, html.indexOf("</p>", at));
+      assert.doesNotMatch(block, /<button|dismiss|aria-label="(Close|Dismiss)/i, look);
+    }
   });
 });
