@@ -2225,4 +2225,11 @@ export const MIGRATION_FILES = [
   // approves the SQL on the pull request. 421–423 are open PRs #1804, #1803
   // and #1802; 424 is #1807. Ledger 2026-10-31-kyoto-1796-followups.
   "425_kyoto_1796_followups.sql",
+  // 426 — DATA ONLY. #1796 follow-up, item 7: Yoshida Sanso's description and why line
+  // (one approved rewording, the rest removals), and the superlatives 421 left on
+  // Philosopher's Path, the pre-dawn hike and the dawn tunnel. Written only while a
+  // column still holds 421's output or the text before 421. No ALTER. HELD until the
+  // owner approves the SQL on the pull request. 422 and 423 are open PRs.
+  // Ledger 2026-10-31-kyoto-1796-item7.
+  "426_kyoto_1796_item7_copy.sql",
 ] as const;
