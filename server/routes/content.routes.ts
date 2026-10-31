@@ -2525,7 +2525,7 @@ router.get("/api/services/:id", async (req, res) => {
         : null;
     // Ruling 22: ordered route stops ride the public detail on every product shape. The
     // traveler map renders LOCATED stops only; unlocated stops still list by name and the
-    // client states "X of Y stops located" rather than guessing a pin (§13).
+    // client states "X of Y stops placed" rather than guessing a pin (§13).
     const routePoints = await storage.getServiceRoutePoints(service.id);
     // Lane M3 (gap #13's "Starts" row): the weekly repeat rule. `service_availability_patterns`
     // (ledger row 102) had an owner-gated PUT and an owner-gated GET and NO public read — so a

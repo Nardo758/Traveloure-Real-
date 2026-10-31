@@ -37,7 +37,7 @@ const { db, pool } = await import("../db");
 const { bookings, users, emailOutbox, paymentIntents, providerEarnings, platformRevenue, adminNotifications } =
   await import("../../shared/schema");
 const { stripePaymentService } = await import("../services/stripe-payment.service");
-const { bookingService } = await import("../services/booking.service");
+const { bookingService, __settleBookingBackgroundForTests } = await import("../services/booking.service");
 const { _outboxTestHooks, drainOutbox } = await import("../services/email-outbox.service");
 const { isLegacyBookingEmailPersistenceError } = await import("../services/legacy-booking-email-persistence-error");
 
@@ -233,11 +233,16 @@ test("a stale page writer racing the webhook cannot mint earnings after losing",
 });
 
 test("missing legacy IDs cannot enqueue a traveler confirmation", async () => {
+  // The previous page writer leaves a provider_booking_alert insert detached.
+  // On a fast run that row committed inside this census (14 !== 13) after the
+  // missing booking had already been skipped.
+  await __settleBookingBackgroundForTests();
   const before = await db.select().from(emailOutbox);
   await stripePaymentService.handlePaymentSucceeded({
     id: `pi_fixture_${crypto.randomUUID()}`,
     metadata: { bookingIds: crypto.randomUUID() },
   } as Stripe.PaymentIntent);
+  await __settleBookingBackgroundForTests();
   assert.equal((await db.select().from(emailOutbox)).length, before.length);
 });
 
