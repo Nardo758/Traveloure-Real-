@@ -10,7 +10,6 @@ import { ADD_TO_PLAN_LABEL } from "./plan-vocabulary";
 
 export const TILE_ACTION_COPY = {
   addToPlan: ADD_TO_PLAN_LABEL,
-  checkDates: "Check dates",
   checkAvailability: "Check availability",
   getThisTrip: "Get this trip",
   askThisExpert: "Ask this expert",

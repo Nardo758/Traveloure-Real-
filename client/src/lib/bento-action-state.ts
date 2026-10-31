@@ -87,9 +87,9 @@ export function tileActionLabel(kind: FeedItem["kind"], ctx: TileActionContext =
     case "loose-gem":
     case "event":
     case "supply-activity":
-      return addToPlanLabel(ctx.scheduledDate);
+    // The hotel tile's click adds the stay to the plan, so it says so (architect, #1810).
     case "supply-hotel":
-      return TILE_ACTION_COPY.checkDates;
+      return addToPlanLabel(ctx.scheduledDate);
     case "vendor-service":
       return ctx.bookable ? TILE_ACTION_COPY.checkAvailability : addToPlanLabel(ctx.scheduledDate);
     case "recommendation":

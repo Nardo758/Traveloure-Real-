@@ -46,7 +46,6 @@ describe("tileAction (row 302a)", () => {
     assert.deepEqual(TILE_ACTION_COPY, {
       // Main's existing casing (ADD_TO_PLAN_LABEL), unchanged by this row.
       addToPlan: "Add to Plan",
-      checkDates: "Check dates",
       checkAvailability: "Check availability",
       getThisTrip: "Get this trip",
       askThisExpert: "Ask this expert",
@@ -65,7 +64,7 @@ describe("tileAction (row 302a)", () => {
       "loose-gem": TILE_ACTION_COPY.addToPlan,
       "event": TILE_ACTION_COPY.addToPlan,
       "supply-activity": TILE_ACTION_COPY.addToPlan,
-      "supply-hotel": "Check dates",
+      "supply-hotel": TILE_ACTION_COPY.addToPlan,
       "vendor-service": TILE_ACTION_COPY.addToPlan,
       "recommendation": TILE_ACTION_COPY.addToPlan,
       "package": "Get this trip",
@@ -89,7 +88,7 @@ describe("tileAction (row 302a)", () => {
     for (const kind of ["loose-gem", "event", "supply-activity"] as const) {
       assert.equal(tileActionLabel(kind, { scheduledDate: "2026-11-03" }), dated, kind);
     }
-    assert.equal(tileActionLabel("supply-hotel", { scheduledDate: "2026-11-03" }), "Check dates");
+    assert.equal(tileActionLabel("supply-hotel", { scheduledDate: "2026-11-03" }), dated);
   });
 
   it("package is Get this trip and goes to the ready-made detail page", () => {

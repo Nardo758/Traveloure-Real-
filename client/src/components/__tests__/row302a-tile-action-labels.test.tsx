@@ -74,7 +74,8 @@ describe("row 302a — cards read tileActionLabel", () => {
     assert.equal(primaryText(render(<CityFeedCardGem gem={gem} city={CITY} density="compact" onAdd={() => {}} compactActionState="platform" />)), tileActionLabel("loose-gem"));
     assert.equal(primaryText(render(<CityFeedCardEvent event={event} city={CITY} density="compact" onAdd={() => {}} />)), tileActionLabel("event"));
     assert.equal(primaryText(render(<CityFeedCardSupply item={supply} kind="supply-activity" city={CITY} density="compact" onAdd={() => {}} />)), tileActionLabel("supply-activity"));
-    assert.equal(primaryText(render(<CityFeedCardSupply item={supply} kind="supply-hotel" city={CITY} density="compact" onAdd={() => {}} />)), "Check dates");
+    assert.equal(primaryText(render(<CityFeedCardSupply item={supply} kind="supply-hotel" city={CITY} density="compact" onAdd={() => {}} />)), tileActionLabel("supply-hotel"));
+    assert.equal(tileActionLabel("supply-hotel"), tileActionLabel("supply-activity"), "the hotel click adds to the plan");
     assert.equal(primaryText(render(<CityFeedCardVendorService service={service} city={CITY} density="compact" compactActionState="platform" onAdd={() => {}} />)), "Check availability");
     assert.equal(primaryText(render(<CityFeedCardVendorService service={service} city={CITY} density="compact" compactActionState="not-bookable" onAdd={() => {}} />)), tileActionLabel("supply-activity"));
     assert.equal(primaryText(render(<CityFeedCardExpert expert={expert} city={CITY} density="compact" />, { expertAvailable: true })), "Ask this expert");
