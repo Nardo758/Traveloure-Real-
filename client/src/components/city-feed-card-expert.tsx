@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tileActionLabel } from "@/lib/bento-action-state";
 import { Button } from "@/components/ui/button";
 import { Info, Star, MapPin, UserCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -154,7 +155,7 @@ export function CityFeedCardExpert({ expert, city, className, cardPosition, dens
                 data-testid={`btn-ask-expert-${expert.id}`}
                 data-bento-primary-action=""
               >
-                Ask an expert
+                {tileActionLabel("expert", { canAsk: true })}
               </Button>
             ) : (
               <Button
@@ -166,7 +167,7 @@ export function CityFeedCardExpert({ expert, city, className, cardPosition, dens
                 data-bento-primary-action=""
               >
                 <a href={profileHref} onClick={(e) => e.stopPropagation()}>
-                  View profile
+                  {tileActionLabel("expert", { canAsk: false })}
                 </a>
               </Button>
             )}

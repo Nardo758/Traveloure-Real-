@@ -118,7 +118,6 @@ export function neighbourhoodWantedBody(name: string): string {
   return `Know ${name} well? We're looking for local experts and providers here.`;
 }
 
-export const NEIGHBOURHOOD_WANTED_BUTTON = "Join Traveloure";
 export const NEIGHBOURHOOD_WANTED_HREF = "/earn";
 
 function positiveCount(value: unknown): boolean {

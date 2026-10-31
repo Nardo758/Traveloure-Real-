@@ -156,10 +156,10 @@ test.describe('Bento section chrome — real Mumbai data (no fixture)', () => {
         proof.flatMap((tile) => tile.actions).filter((action) => !action.contained),
       ).toEqual([]);
 
-      // A section with an anchor gets the one permitted coral action: its plan
-      // CTA. Compact cards themselves must not introduce another coral CTA.
+      // A section with an anchor gets the one permitted coral action: its ask
+      // CTA (row 302a label). Compact cards themselves must not introduce another coral CTA.
       const anchorCount = await section.locator('[data-bento-role="anchor"]').count();
-      const coralPlanActions = section.getByRole('button', { name: /^Plan with /i });
+      const coralPlanActions = section.getByRole('button', { name: /^Ask this expert/i });
       await expect(coralPlanActions).toHaveCount(anchorCount);
 
       // These sections currently contain gems/partner supply but no compact

@@ -4,6 +4,7 @@
  *
  * Run: npx tsx --test client/src/lib/__tests__/feed-stream-empty-neighbourhood.test.ts
  */
+import { tileActionLabel } from "../bento-action-state";
 import { describe, it } from "node:test";
 import assert from "node:assert";
 import {
@@ -11,7 +12,6 @@ import {
   neighbourhoodIsUnstocked,
   neighbourhoodSectionNeedsWantedTile,
   neighbourhoodWantedBody,
-  NEIGHBOURHOOD_WANTED_BUTTON,
   NEIGHBOURHOOD_WANTED_HREF,
   placeUnstockedNeighbourhoods,
   withoutUnstockedNeighbourhoods,
@@ -125,12 +125,13 @@ describe("empty neighbourhoods stay in the city feed", () => {
     assert.equal(section.data.gemCount, 1);
   });
 
-  it("E4: the Wanted tile copy is the marketing sentence and links to /earn", () => {
+  it("E4: the Wanted tile copy is the marketing sentence, its button reads Apply and links to /earn", () => {
     assert.equal(
       neighbourhoodWantedBody("Ohara"),
       "Know Ohara well? We're looking for local experts and providers here.",
     );
-    assert.equal(NEIGHBOURHOOD_WANTED_BUTTON, "Join Traveloure");
+    // Row 302a: the button is the wanted tile's one action, "Apply", from tileActionLabel.
+    assert.equal(tileActionLabel("wanted-slot"), "Apply");
     assert.equal(NEIGHBOURHOOD_WANTED_HREF, "/earn");
   });
 
