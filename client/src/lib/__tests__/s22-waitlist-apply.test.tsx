@@ -55,7 +55,7 @@ describe("S22a — a live city shows the apply path", () => {
     assert.equal(invite.screen.body, SCREEN_BODY);
     assert.equal(invite.screen.button, "Apply as a Kyoto provider");
     assert.equal(invite.mail.subject, "You're on the Traveloure list");
-    assert.equal(invite.mail.preheader, "Run a business in Kyoto? Apply as a provider.");
+    assert.equal(invite.mail.preheader, "Run a business in Kyoto? Sign up as a provider.");
     assert.equal(invite.mail.body, MAIL_BODY);
     assert.equal(invite.mail.cta, "Apply as a Kyoto provider");
     assert.equal(waitlistApplyFirstName("Ada Lovelace"), "Ada");

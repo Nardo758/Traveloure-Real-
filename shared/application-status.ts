@@ -8,6 +8,7 @@
  *
  * No database. Safe for the client.
  */
+import { PROVIDER_SIGNUP_COPY } from "./copy-2026-10-31";
 import { isEarnerRole, isExpertRole, isProviderRole } from "./roles";
 
 export type StepStatus = "completed" | "in_progress" | "pending" | "failed";
@@ -493,8 +494,8 @@ export function accessDeniedCopy(input: AccessDeniedInput): AccessDeniedCopy {
     }
     if (input.requiredRole === "provider") {
       return denied("This page is for approved providers.", "Submit a provider application to open it.", {
-        actionHref: "/become-provider",
-        actionLabel: "Apply as a provider",
+        actionHref: PROVIDER_SIGNUP_COPY.href,
+        actionLabel: PROVIDER_SIGNUP_COPY.label,
       });
     }
     if (input.requiredRole === "expert") {

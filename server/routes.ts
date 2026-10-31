@@ -280,6 +280,13 @@ import versionsRoutes from "./routes/versions.routes";
 import adminMarketsRoutes from "./routes/admin-markets.routes";
 import adminPlaceCoordsRoutes from "./routes/admin-place-coords.routes";
 import experienceThemesRoutes from "./routes/experience-themes.routes";
+import conciergeTaskKindRoutes from "./routes/concierge-task-kinds.routes";
+import {
+  admitConciergeListingWrite,
+  commitConciergeTasks,
+  conciergeListingExtras,
+  loadListingConciergeTasks,
+} from "./services/concierge-listing.service";
 import { dedupedRequest, callWithCircuitBreaker } from "./utils/requestDeduplication";
 import { aiFailureResponse, isNonRetryableAiError, reportAiUpstreamError } from "./services/ai-upstream-errors";
 import adminRoutes from "./routes/admin.routes";
@@ -1164,6 +1171,7 @@ export async function registerRoutes(
   // LG-1: admin-entered routing coordinates (§2 blanket guard on /api/admin).
   app.use(adminPlaceCoordsRoutes);
   app.use(experienceThemesRoutes);
+  app.use(conciergeTaskKindRoutes);
 
   // Optimization routes - heuristic preview + payment-gated AI optimization
   app.use(optimizationRoutes);
@@ -3371,11 +3379,18 @@ ${bannedCopyPromptLine()}`;
         }
       }
       // Ruling 22: route stops ride the same owner read the edit surfaces already use
-      const [routePoints, pickupRoutePoints] = await Promise.all([
+      const [routePoints, pickupRoutePoints, conciergeTaskViews] = await Promise.all([
         storage.getServiceRoutePoints(service.id),
         storage.getServicePickupRoutePoints(service.id),
+        loadListingConciergeTasks(service.id),
       ]);
-      res.json({ ...service, neighborhoods, routePoints, pickupRoutePoints });
+      res.json({
+        ...service,
+        neighborhoods,
+        routePoints,
+        pickupRoutePoints,
+        ...conciergeListingExtras(service, conciergeTaskViews),
+      });
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch service" });
     }
@@ -4159,6 +4174,22 @@ ${bannedCopyPromptLine()}`;
       }
       const priceBasisPatch = priceBasisAdmission.present ? { priceBasis: priceBasisAdmission.value } : {};
 
+      // CN-1a: concierge type, per-trip price unit, and task picks. A null serviceType
+      // is not a clear — the column default still applies on create.
+      if ((input as any).serviceType === null) delete (input as any).serviceType;
+      const conciergeAdmission = await admitConciergeListingWrite({
+        userId,
+        body: bodyWithoutLocation,
+        storedServiceType: null,
+        nextServiceType: (input as any).serviceType ?? "planning",
+        pricingUnitProvided: Object.prototype.hasOwnProperty.call(input, "pricingUnit"),
+        nextPricingUnit: (input as any).pricingUnit ?? null,
+        storedPricingUnit: null,
+      });
+      if (!conciergeAdmission.ok) {
+        return res.status(conciergeAdmission.status).json(conciergeAdmission.body);
+      }
+
       // Meeting-point completeness gate: an in-person/hybrid service can't go live (status:"active")
       // without telling the traveler where to meet. Draft saves are exempt. Grandfathers existing
       // listings (only enforced on this publish write).
@@ -4364,6 +4395,10 @@ ${bannedCopyPromptLine()}`;
         userId,
         ...(saveIntent.draft ? { approvalStatus: "draft" as const } : {}),
       });
+      if (conciergeAdmission.tasks !== null) {
+        await commitConciergeTasks(service.id, conciergeAdmission.tasks);
+      }
+      const conciergeTaskViews = await loadListingConciergeTasks(service.id);
       if (themeAdmission.suggestion) {
         await recordThemeSuggestion({
           label: themeAdmission.suggestion,
@@ -4403,6 +4438,7 @@ ${bannedCopyPromptLine()}`;
       });
       res.status(201).json({
         ...omitFields(service, ["revenueShareRate"] as const),
+        ...conciergeListingExtras(service, conciergeTaskViews),
         ...(titleWarning ? { warnings: { protectedTitleClaim: titleWarning } } : {}),
         bannedWording: listingBannedWording({
           serviceName: service.serviceName,
@@ -4601,6 +4637,24 @@ ${bannedCopyPromptLine()}`;
         return res.status(priceBasisAdmission.refusal.status).json(priceBasisAdmission.refusal.body);
       }
       const priceBasisPatch = priceBasisAdmission.present ? { priceBasis: priceBasisAdmission.value } : {};
+
+      // CN-1a: same admission as create. An omitted serviceType leaves the stored type.
+      if ((input as any).serviceType === null) delete (input as any).serviceType;
+      const nextServiceType = Object.prototype.hasOwnProperty.call(input, "serviceType")
+        ? (input as any).serviceType
+        : (ownedService.serviceType ?? "planning");
+      const conciergeAdmission = await admitConciergeListingWrite({
+        userId,
+        body: bodyWithoutLocation,
+        storedServiceType: ownedService.serviceType ?? null,
+        nextServiceType: nextServiceType ?? "planning",
+        pricingUnitProvided: Object.prototype.hasOwnProperty.call(input, "pricingUnit"),
+        nextPricingUnit: (input as any).pricingUnit ?? null,
+        storedPricingUnit: (ownedService as any).pricingUnit ?? null,
+      });
+      if (!conciergeAdmission.ok) {
+        return res.status(conciergeAdmission.status).json(conciergeAdmission.body);
+      }
 
       // Meeting-point completeness gate on publish — resolve from the patch or the existing row.
       if (input.status === "active") {
@@ -4926,6 +4980,11 @@ ${bannedCopyPromptLine()}`;
         });
       }
 
+      if (conciergeAdmission.tasks !== null && finalRow) {
+        await commitConciergeTasks(finalRow.id, conciergeAdmission.tasks);
+      }
+      const conciergeTaskViews = finalRow ? await loadListingConciergeTasks(finalRow.id) : [];
+
       const scannedName = (input as any).serviceName ?? finalRow?.serviceName ?? ownedService.serviceName;
       const scannedDescription = (input as any).description ?? finalRow?.description ?? ownedService.description;
       const titleWarningUpd = detectProtectedTitleClaims({
@@ -4936,6 +4995,7 @@ ${bannedCopyPromptLine()}`;
         finalRow
           ? {
               ...omitFields(finalRow, ["revenueShareRate"] as const),
+              ...conciergeListingExtras(finalRow, conciergeTaskViews),
               ...(titleWarningUpd ? { warnings: { protectedTitleClaim: titleWarningUpd } } : {}),
               // Ruling 112 Q8: tell the owner which fields went to re-review — the live listing
               // is unchanged for those, and nothing was taken down.
@@ -7831,57 +7891,79 @@ ${bannedCopyPromptLine()}`;
 
       if (status === "cancelled" && booking.stripePaymentIntentId) {
         // A stamped PI is NOT proof of payment (a pending request-rail booking can carry a
-        // never-charged intent). Only a Stripe-verified `succeeded` PI enters the refund branch;
-        // anything else is an unpaid cancellation and falls through to the plain status flip.
-        let piSucceeded = false;
+        // never-charged intent). Stripe's own status decides (ledger
+        // `2026-10-31-booking-decline-releases-hold`):
+        //   • succeeded          — refund, exactly as before.
+        //   • requires_capture   — cancel the uncaptured authorization so the card hold is
+        //                          released, then fall through to the status flip. Nothing was
+        //                          captured, so this is not a refund.
+        //   • canceled           — the hold is already gone. A retry is a no-op at Stripe.
+        //   • anything else      — an unpaid cancellation, the plain status flip.
+        // A cancel that does not release the hold refuses the decline (the booking stays
+        // cancellable). The log line from `settleBookingDeclinePayment` names the booking, the
+        // PaymentIntent id, the status and the outcome — never the intent body, which can carry
+        // a card.
+        const { stripe, stripePaymentService } = await import("./services/stripe-payment.service");
+        const { settleBookingDeclinePayment } = await import("./services/booking-decline-payment.service");
+        const { logger } = await import("./infrastructure/logger");
+        let settled: Awaited<ReturnType<typeof settleBookingDeclinePayment<{
+          alreadyRefunded: boolean;
+          refundResult: { alreadyRefunded?: boolean; amount?: number };
+          amountPaid: number;
+          isDepositRefund: boolean;
+        }>>>;
         try {
-          const { stripe } = await import("./services/stripe-payment.service");
-          const pi = await stripe.paymentIntents.retrieve(booking.stripePaymentIntentId);
-          piSucceeded = pi.status === "succeeded";
-        } catch (piErr) {
-          console.error("Provider cancel: PI lookup failed, treating as unpaid:", piErr);
-        }
-        // A `deposit_paid` row whose deposit PI Stripe will not vouch for is the same refusal as
-        // `unresolvable` above: falling through here would cancel a deposit-taking booking with no
-        // refund at all and no error — the exact silent-money outcome this ruling exists to stop.
-        if (!piSucceeded && capturedDeposit.kind === "deposit_only") {
-          return res.status(409).json({
-            message:
-              "This booking's deposit payment could not be confirmed with the payment processor, so it was NOT cancelled. Please try again in a moment.",
-            currentStatus: booking.status,
-            reason: "deposit_intent_unconfirmed",
+          settled = await settleBookingDeclinePayment({
+            bookingId: req.params.id,
+            paymentIntentId: booking.stripePaymentIntentId,
+            retrieve: async (id) => {
+              const pi = await stripe.paymentIntents.retrieve(id);
+              return { status: pi.status };
+            },
+            // Provider decline is not the traveler's own withdrawal. The shared cancel leaves
+            // cancellation_reason at its default, the same as every non-traveler caller.
+            cancel: (id, key) => stripePaymentService.cancelPaymentIntent(id, key),
+            refund: async () => {
+              // THE REFUNDABLE AMOUNT, SERVER-DERIVED (§14). For a deposit-partial booking that is the
+              // captured deposit; for every other booking it is the full charged amount, exactly as
+              // before. `refundServiceBooking` clamps it to what the row was charged and owns the
+              // Stripe call, its deterministic idempotency key (`refund-sb-<id>-<cents>` — booking id +
+              // operation amount, so a retry produces ONE refund, §15) and the atomic status claim.
+              const isDepositRefund = capturedDeposit.kind === "deposit_only";
+              // Ledger 2026-09-08-cart-fee-line: the full-refund basis is read through the ONE
+              // `travelerChargeForRow` (§18 rule 1) — a row priced under A3 was never charged the
+              // provider's commission or the insurance leg, so a make-whole refund must not return
+              // them; a PRE-A3 row keeps exactly the previous basis.
+              const amountPaid = isDepositRefund
+                ? capturedDeposit.amount
+                : travelerChargeForRow({
+                    totalAmount: booking.totalAmount,
+                    platformFee: (booking as any).platformFee,
+                    insuranceFee: (booking as any).insuranceFee,
+                    conciergeFeeSnapshot:
+                      (booking as any).bookingDetails?.travelerCharge?.conciergeFee ?? null,
+                  }).amount;
+              const refundResult = await stripePaymentService.refundServiceBooking(
+                req.params.id,
+                reason || "cancelled_by_provider",
+                // Ruling 2026-09-02-traveler-fee-refundability: a PROVIDER cancellation makes the
+                // traveler whole — the traveler service fee refunds at 100%, never policy-scaled.
+                { amountOverride: amountPaid, feeRefundPercent: 100 }, // fee-literal-ok: 100 = full make-whole refund %, not a fee_bands rate
+              );
+              return {
+                alreadyRefunded: Boolean(refundResult?.alreadyRefunded),
+                refundResult,
+                amountPaid,
+                isDepositRefund,
+              };
+            },
+            log: (line) => {
+              logger.info(line, "[booking-decline] payment outcome");
+            },
           });
-        }
-        if (piSucceeded) {
-          // THE REFUNDABLE AMOUNT, SERVER-DERIVED (§14). For a deposit-partial booking that is the
-          // captured deposit; for every other booking it is the full charged amount, exactly as
-          // before. `refundServiceBooking` clamps it to what the row was charged and owns the
-          // Stripe call, its deterministic idempotency key (`refund-sb-<id>-<cents>` — booking id +
-          // operation amount, so a retry produces ONE refund, §15) and the atomic status claim.
-          const isDepositRefund = capturedDeposit.kind === "deposit_only";
-          // Ledger 2026-09-08-cart-fee-line: the full-refund basis is read through the ONE
-          // `travelerChargeForRow` (§18 rule 1) — a row priced under A3 was never charged the
-          // provider's commission or the insurance leg, so a make-whole refund must not return
-          // them; a PRE-A3 row keeps exactly the previous basis.
-          const amountPaid = isDepositRefund
-            ? capturedDeposit.amount
-            : travelerChargeForRow({
-                totalAmount: booking.totalAmount,
-                platformFee: (booking as any).platformFee,
-                insuranceFee: (booking as any).insuranceFee,
-                conciergeFeeSnapshot:
-                  (booking as any).bookingDetails?.travelerCharge?.conciergeFee ?? null,
-              }).amount;
-          try {
-            const { stripePaymentService } = await import("./services/stripe-payment.service");
-            const refundResult = await stripePaymentService.refundServiceBooking(
-              req.params.id,
-              reason || "cancelled_by_provider",
-              // Ruling 2026-09-02-traveler-fee-refundability: a PROVIDER cancellation makes the
-              // traveler whole — the traveler service fee refunds at 100%, never policy-scaled.
-              { amountOverride: amountPaid, feeRefundPercent: 100 }, // fee-literal-ok: 100 = full make-whole refund %, not a fee_bands rate
-            );
-            if (refundResult?.alreadyRefunded) {
+          if (settled.outcome === "refund") {
+            const { refundResult, amountPaid, isDepositRefund } = settled.payload;
+            if (settled.alreadyRefunded || refundResult?.alreadyRefunded) {
               // Another path (e.g. a concurrent traveler cancel) won the atomic refund claim and
               // owns the ledger reversal + notification — report factually, fire no side-effects.
               const refreshed = await storage.getServiceBooking(req.params.id);
@@ -7969,7 +8051,8 @@ ${bannedCopyPromptLine()}`;
                 scope: isDepositRefund ? "deposit" : "full",
               },
             });
-          } catch (refundErr: any) {
+          }
+        } catch (refundErr: any) {
             console.error("Provider cancellation refund error:", refundErr);
             // PR #1066: refused at the Stripe boundary because a lost chargeback on this payment
             // already returned the money. No Stripe call was made and nothing was changed.
@@ -7986,7 +8069,32 @@ ${bannedCopyPromptLine()}`;
               message: "The refund could not be issued, so the booking was NOT cancelled. Please try again.",
               error: refundErr?.message,
             });
-          }
+        }
+        // A hold we could not release must not become a declined booking: the card authorization
+        // would stay, and the from-state guard would turn the retry into a 409 that can never
+        // release it. Same posture as a failed refund above.
+        if (settled!.outcome === "release_failed") {
+          return res.status(502).json({
+            message: "The card hold could not be released, so the booking was NOT declined. Please try again.",
+            currentStatus: booking.status,
+          });
+        }
+        // A `deposit_paid` row whose deposit PI Stripe will not vouch for is the same refusal as
+        // `unresolvable` above: falling through here would cancel a deposit-taking booking with no
+        // refund at all and no error — the exact silent-money outcome this ruling exists to stop.
+        // A requires_capture deposit is vouched for: the cancel above released it, and a canceled
+        // one is already released. Both fall through. Only an unread or uncaptured-other status
+        // is refused.
+        if (
+          capturedDeposit.kind === "deposit_only" &&
+          (settled!.outcome === "lookup_failed" || settled!.outcome === "unpaid")
+        ) {
+          return res.status(409).json({
+            message:
+              "This booking's deposit payment could not be confirmed with the payment processor, so it was NOT cancelled. Please try again in a moment.",
+            currentStatus: booking.status,
+            reason: "deposit_intent_unconfirmed",
+          });
         }
       }
 
@@ -8008,8 +8116,8 @@ ${bannedCopyPromptLine()}`;
               dedupeKey: `booking:${req.params.id}:accepted`,
             }
           : {
-              // Reached only for an UNPAID cancellation (a stamped-but-not-succeeded PI falls
-              // through to this same branch — see the piSucceeded check above) — the paid-refund
+              // Reached for an UNPAID cancellation and for a decline that released an uncaptured
+              // hold (nothing was captured, so there is no refund notice). The succeeded-refund
               // branch above returns earlier with its own notification.
               userId: booking.travelerId,
               type: "booking_cancelled",

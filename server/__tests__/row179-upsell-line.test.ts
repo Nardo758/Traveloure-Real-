@@ -7,8 +7,9 @@
  *       no transport candidate ⇒ no lines; never paired by plan order
  *   U2  socialProof is null on every line
  *   U3  the pre-trip handler is untouched, and the on-trip response adds `lines` only when there is one, and only for
- *       a caller who may read the plan's logistics
+ *       the plan's owner (decision-maker, Oct 31, 2026), decided on the server
  *   U4  the database read: confirmed legs of this plan only, a platform or partner option only, items of this plan
+ *   U5  the audience: the owner receives the lines; an admin, a stranger and a signed-out caller do not
  *
  * Run: DATABASE_URL=… JOURNEY_DB_WRITES_OK=1 npx tsx --test --test-force-exit server/__tests__/row179-upsell-line.test.ts
  */
@@ -75,19 +76,22 @@ describe("row 179: the routes", () => {
     assert.doesNotMatch(handler('router.post("/api/upsell/plancard-pretrip"'), /legUpsellLinesForTrip|lines/);
   });
 
-  test("U3: the on-trip read adds lines only when there is one, and only for a caller who may read the plan", () => {
+  test("U3: the on-trip read adds lines only when there is one, and only for the plan's owner", () => {
     const h = handler('router.post("/api/upsell/plancard-ontrip"');
-    assert.match(h, /authorizeTripLogistics\(body\.tripId, getUserId\(req\)/);
-    assert.match(h, /mayReadLegs \? await legUpsellLinesForTrip\(body\.tripId, decorated\) : \[\]/);
+    assert.match(h, /mayReceiveUpsellLines\(body\.tripId, getUserId\(req\)\)/);
+    assert.match(h, /ownerReads \? await legUpsellLinesForTrip\(body\.tripId, decorated\) : \[\]/);
+    assert.doesNotMatch(h, /authorizeTripLogistics/, "the logistics tier (advisors, delegates, admins) is not the audience");
     assert.match(h, /\.\.\.\(lines\.length > 0 \? \{ lines \} : \{\}\)/);
   });
 });
 
 const RUN_DB = !!process.env.DATABASE_URL;
-describe("row 179: the database read (U4)", { skip: !RUN_DB }, () => {
+describe("row 179: the database read (U4, U5)", { skip: !RUN_DB }, () => {
   const R = crypto.randomUUID().slice(0, 8);
   const ids = {
     owner: `r179-owner-${R}`,
+    admin: `r179-admin-${R}`,
+    stranger: `r179-stranger-${R}`,
     trip: `r179-trip-${R}`,
     other: `r179-other-${R}`,
     a: `r179-a-${R}`,
@@ -101,6 +105,7 @@ describe("row 179: the database read (U4)", { skip: !RUN_DB }, () => {
   };
   let db: any;
   let legUpsellLinesForTrip: typeof import("../services/upsell-engine.service").legUpsellLinesForTrip;
+  let mayReceiveUpsellLines: typeof import("../services/upsell-engine.service").mayReceiveUpsellLines;
 
   const legRow = (id: string, from: string, to: string, order: number, status: string) => sql`
     INSERT INTO transport_legs (id, trip_id, day_number, leg_order, from_activity_id, from_name, from_lat, from_lng,
@@ -112,8 +117,11 @@ describe("row 179: the database read (U4)", { skip: !RUN_DB }, () => {
 
   before(async () => {
     db = (await import("../db")).db;
-    legUpsellLinesForTrip = (await import("../services/upsell-engine.service")).legUpsellLinesForTrip;
-    await db.execute(sql`INSERT INTO users (id, email, role) VALUES (${ids.owner}, ${`${ids.owner}@example.com`}, 'traveler')`);
+    ({ legUpsellLinesForTrip, mayReceiveUpsellLines } = await import("../services/upsell-engine.service"));
+    await db.execute(sql`INSERT INTO users (id, email, role) VALUES
+      (${ids.owner}, ${`${ids.owner}@example.com`}, 'traveler'),
+      (${ids.admin}, ${`${ids.admin}@example.com`}, 'admin'),
+      (${ids.stranger}, ${`${ids.stranger}@example.com`}, 'traveler')`);
     await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, start_date, end_date, status)
       VALUES (${ids.trip}, ${ids.owner}, 'Row 179', 'Kyoto, Japan', '2027-05-01', '2027-05-02', 'draft'),
              (${ids.other}, ${ids.owner}, 'Row 179 other', 'Kyoto, Japan', '2027-05-01', '2027-05-02', 'draft')`);
@@ -135,7 +143,7 @@ describe("row 179: the database read (U4)", { skip: !RUN_DB }, () => {
   after(async () => {
     if (!db) return;
     await db.execute(sql`DELETE FROM trips WHERE id IN (${ids.trip}, ${ids.other})`);
-    await db.execute(sql`DELETE FROM users WHERE id = ${ids.owner}`);
+    await db.execute(sql`DELETE FROM users WHERE id IN (${ids.owner}, ${ids.admin}, ${ids.stranger})`);
   });
 
   test("U4: a confirmed leg from this plan's item with a partner option gets the line; a rideshare-only, proposed or foreign-item leg does not", async () => {
@@ -147,5 +155,12 @@ describe("row 179: the database read (U4)", { skip: !RUN_DB }, () => {
 
   test("U4: no transport candidate reads nothing and sends no lines", async () => {
     assert.deepEqual(await legUpsellLinesForTrip(ids.trip, [tour]), []);
+  });
+  test("U5: only the plan's owner receives the lines; an admin, a stranger and a signed-out caller do not", async () => {
+    assert.equal(await mayReceiveUpsellLines(ids.trip, ids.owner), true);
+    assert.equal(await mayReceiveUpsellLines(ids.trip, ids.admin), false, "an admin may read logistics but is not shown lines");
+    assert.equal(await mayReceiveUpsellLines(ids.trip, ids.stranger), false);
+    assert.equal(await mayReceiveUpsellLines(ids.trip, null), false);
+    assert.equal(await mayReceiveUpsellLines(`r179-missing-${R}`, ids.owner), false, "an unknown plan sends none");
   });
 });

@@ -26,11 +26,11 @@ import { Router } from "express";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { getUserId } from "../utils/auth";
-import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
 import {
   rankCandidates,
   getSlotConfig,
   legUpsellLinesForTrip,
+  mayReceiveUpsellLines,
   logImpressions,
   DEFAULT_POLICY,
   type Surface,
@@ -534,10 +534,10 @@ router.post("/api/upsell/plancard-ontrip", isAuthenticated, async (req, res) => 
     const { candidates, suppressed, displayLookup } = await rankAndLog("plancard_ontrip", ctx, raw, req);
     const decorated = decorate(candidates, displayLookup);
     // Row 179: one "Add X for this leg" line per selected item whose leg has a bookable option. Present only when
-    // real, so a plan with no such leg gets the response it got before. The lines name the plan's own items and legs,
-    // so they go only to someone who may read this plan's logistics; anyone else gets the response unchanged.
-    const mayReadLegs = (await authorizeTripLogistics(body.tripId, getUserId(req), "POST /api/upsell/plancard-ontrip")) === null;
-    const lines = mayReadLegs ? await legUpsellLinesForTrip(body.tripId, decorated) : [];
+    // real, so a plan with no such leg gets the response it got before. The lines go to the plan's owner only
+    // (decision-maker, Oct 31, 2026); anyone else, an advisor or an admin included, gets the response unchanged.
+    const ownerReads = await mayReceiveUpsellLines(body.tripId, getUserId(req));
+    const lines = ownerReads ? await legUpsellLinesForTrip(body.tripId, decorated) : [];
     res.json({
       candidates: decorated,
       suppressed,

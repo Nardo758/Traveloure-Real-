@@ -341,6 +341,23 @@ test.describe("journey-traveler — free traveler (browse -> cart -> checkout + 
             ? "PASS"
             : "FAIL",
       });
+
+      // Row 302a: "Get this trip" keeps its rail. A buyer who already owns the trip is answered 409
+      // with the purchase, whose cloneTripId is the same editable copy the confirm redirected to
+      // (ready-made-detail.tsx navigates to /plans/{cloneTripId} on that 409).
+      const againRes = await request.post(`${BASE_URL}/api/ready-made/${listingId}/purchase`);
+      const againBody = await againRes.json().catch(() => ({}));
+      report.record({
+        action: `buy "${READY_MADE_TITLE}" again after owning it`,
+        ui: `purchase ${againRes.status()} -> /plans/${againBody?.purchase?.cloneTripId}`,
+        db: JSON.stringify({ cloneTripId: confirmBody.cloneTripId }),
+        verdict:
+          againRes.status() === 409 &&
+          againBody?.purchase?.cloneTripId === confirmBody.cloneTripId &&
+          `/plans/${againBody.purchase.cloneTripId}` === confirmBody.redirect
+            ? "PASS"
+            : "FAIL",
+      });
     }
 
     report.write();

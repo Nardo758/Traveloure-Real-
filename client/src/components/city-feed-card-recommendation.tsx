@@ -30,7 +30,7 @@ import { useGemPhoto } from "@/hooks/use-gem-photo";
 import { useExpertAvailability } from "@/lib/expert-availability";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import type { BentoCompactActionState } from "@/lib/bento-action-state";
-import { ADD_TO_PLAN_LABEL } from "@/lib/plan-vocabulary";
+import { tileActionLabel } from "@/lib/bento-action-state";
 
 export interface RecommendationCandidate {
   offeringId: string;
@@ -139,7 +139,7 @@ export function CityFeedCardRecommendation({
     density === "compact"
       ? compactActionState === "affiliate"
       : candidate.sourceType === "affiliate";
-  const bookLabel = isAffiliate ? "Book on partner" : "Book now";
+  const bookLabel = tileActionLabel("recommendation", { bookable: true, affiliate: isAffiliate }) ?? "";
   const bookStyle = {
     background: isAffiliate ? "var(--earn-gold-ink)" : "var(--earn-teal)",
     color: "#fff",
@@ -170,9 +170,7 @@ export function CityFeedCardRecommendation({
   // so look one up by display name + city, with the category emoji fallback.
   const { photoUrl, loading } = useGemPhoto(`rec-${position}-${name}`, name, city, null);
 
-  const addLabel = scheduledDate
-    ? `Add to ${new Date(scheduledDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
-    : ADD_TO_PLAN_LABEL;
+  const addLabel = tileActionLabel("recommendation", { bookable: false, scheduledDate }) ?? "";
 
   const photoArea = (
     <div

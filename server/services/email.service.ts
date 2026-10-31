@@ -49,6 +49,9 @@ import { reconciliationKindLabel } from "@shared/reconciliation-kinds";
 import { shapeAdminDigestLists } from "./admin-digest-shape";
 import type { AdminAuditDigest } from "./admin-audit-digest";
 import { EMAIL_DELIVERY_TARGETS, type DeliveryTargetMisses } from "./email-delivery-targets";
+import { marketingStreamConfig, MARKETING_STREAM_UNCONFIGURED } from "./email-stream";
+import { emailStreamForType } from "./email-outbox-classes";
+import { addressSuppressionHit } from "./email-suppression";
 
 /** Production send gate. Only the exact string true allows a provider call. */
 export function emailSendsEnabled(value: string | undefined = process.env.EMAIL_SENDS_ENABLED): boolean {
@@ -149,9 +152,19 @@ export interface SendEmailResult {
    * `development_gate` is canQueueGenerationNotice.
    * `kill_switch` is email_notifications_enabled.
    * `template_not_allowed` is a missing or unlisted emailType.
+   * `address_suppressed` is a suppression-table refusal. `error` is the reason.
+   * `marketing_stream` is a marketing type whose separate stream is not configured.
+   * `suppression_lookup` is a failed read of the suppression table.
    * None of these is a failed attempt.
    */
-  suppressed?: "sends_disabled" | "development_gate" | "kill_switch" | "template_not_allowed";
+  suppressed?:
+    | "sends_disabled"
+    | "development_gate"
+    | "kill_switch"
+    | "template_not_allowed"
+    | "address_suppressed"
+    | "marketing_stream"
+    | "suppression_lookup";
 }
 
 /**
@@ -168,6 +181,7 @@ export const _emailProviderTestHooks: {
       text?: string;
       replyTo?: string;
       attachments?: SendEmailParams["attachments"];
+      tags?: Array<{ name: string; value: string }>;
     },
     options: { idempotencyKey: string } | undefined,
     emailType: string,
@@ -219,6 +233,38 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
     return { ok: false, error: reason, suppressed: "template_not_allowed" };
   }
 
+  // After the allowlist, before the notifications flag. A suppressed address
+  // is a permanent refusal. The flag being off must not hide it, and turning
+  // the flag back on must not deliver it.
+  const suppression = await addressSuppressionHit({
+    emailType,
+    authCritical: params.authCritical === true,
+    recipients,
+  });
+  if (suppression) {
+    logger.warn(
+      { reason: suppression.error, emailType, authCritical: params.authCritical === true },
+      "[email] send refused; suppressed address",
+    );
+    return { ok: false, error: suppression.error, suppressed: suppression.suppressed };
+  }
+
+  const transactionalFrom = process.env.EMAIL_FROM_NOREPLY ?? process.env.EMAIL_FROM;
+  let from = transactionalFrom;
+  let tags: Array<{ name: string; value: string }> | undefined;
+  if (emailStreamForType(emailType) === "marketing") {
+    const stream = marketingStreamConfig(process.env, transactionalFrom);
+    if (!stream.ok) {
+      logger.warn(
+        { reason: MARKETING_STREAM_UNCONFIGURED, emailType, missing: stream.missing },
+        "[email] send refused; marketing stream is not configured",
+      );
+      return { ok: false, error: MARKETING_STREAM_UNCONFIGURED, suppressed: "marketing_stream" };
+    }
+    from = stream.from;
+    tags = stream.tags;
+  }
+
   // Admin-controlled kill switch (/admin/system → "Email Notifications").
   // Auth-critical outbox rows (password reset, email verification) set
   // authCritical and are the only sends that skip this flag. They still
@@ -238,7 +284,6 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
   }
 
   const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.EMAIL_FROM_NOREPLY ?? process.env.EMAIL_FROM;
   const explicitReplyTo = typeof params.replyTo === "string" ? params.replyTo.trim() : "";
   const replyTo = explicitReplyTo || process.env.EMAIL_REPLY_TO || "";
 
@@ -264,6 +309,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
       ...(params.text ? { text: params.text } : {}),
       replyTo,
       ...(params.attachments?.length ? { attachments: params.attachments } : {}),
+      ...(tags && tags.length > 0 ? { tags } : {}),
     };
     const options = params.idempotencyKey ? { idempotencyKey: params.idempotencyKey } : undefined;
     const { data, error } = _emailProviderTestHooks.send

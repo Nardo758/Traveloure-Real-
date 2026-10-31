@@ -34,6 +34,7 @@ import {
   CONNECT_FINANCIAL_EVENT_AUTOMATION_IDS,
   dispatchPaymentEvent,
 } from "../automations/payments/runtime";
+import { resendWebhookHandler } from "../services/resend-webhook";
 
 const router = Router();
 
@@ -584,5 +585,11 @@ export function createConnectStripeWebhookHandler(
 }
 
 router.post("/stripe", createConnectStripeWebhookHandler());
+
+// POST /api/webhooks/resend — Resend bounce and complaint events.
+// Signature is required. RESEND_WEBHOOK_SECRET is the verifier. No session.
+router.post("/resend", (req, res) => {
+  void resendWebhookHandler(req, res);
+});
 
 export default router;

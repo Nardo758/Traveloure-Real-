@@ -4,13 +4,13 @@
  * Match is the neighbourhood slug and the offering key. A display label is not a match.
  */
 
-import { WAITLIST_EXPERT_FORM_PATH, WAITLIST_PROVIDER_FORM_PATH } from "@shared/launch-waitlist";
+import { WAITLIST_EXPERT_FORM_PATH } from "@shared/launch-waitlist";
 
 export const ARASHIYAMA_ITINERARY_EXPERT_LINK =
   "Know Arashiyama well? Apply now as a local expert.";
 
 export const ARASHIYAMA_ITINERARY_PROVIDER_LINK =
-  "Run a business in Arashiyama? Apply as a provider.";
+  "Run a business in Arashiyama? Sign up as a provider.";
 
 /** Signed-in travelers. Everyone else sees the two apply lines. */
 export const ARASHIYAMA_PLAN_YOUR_DAY = "Plan your day here";
@@ -21,8 +21,11 @@ export const ARASHIYAMA_PLAN_YOUR_DAY_HREF = "/experiences?city=Kyoto";
 /** Waitlist expert application (WL-B). */
 export const ARASHIYAMA_ITINERARY_EXPERT_HREF = WAITLIST_EXPERT_FORM_PATH;
 
-/** Waitlist provider application (WL-B), `section#providers`. */
-export const ARASHIYAMA_ITINERARY_PROVIDER_HREF = WAITLIST_PROVIDER_FORM_PATH;
+/**
+ * Provider sign-up, not the waitlist (#1796 follow-up, item 2). Signup reads `intent=supply` and
+ * `supplyRole=provider` and keeps the person on the account form with the provider fields.
+ */
+export const ARASHIYAMA_ITINERARY_PROVIDER_HREF = "/signup?intent=supply&supplyRole=provider";
 
 const TRAVELER_ROLE = "user";
 
