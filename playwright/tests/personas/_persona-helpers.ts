@@ -273,6 +273,43 @@ async function fillCurrentStep(page: Page, input: ServiceFormInput): Promise<voi
 }
 
 /**
+ * A new listing, and a draft leaving review, must name one catalog theme before
+ * submit (ledger `2026-10-23-experience-themes`). The create mutation throws
+ * `THEME_REQUIRED_MESSAGE` and never POSTs when the pick is empty — the submit
+ * button stays enabled, so a click that looks successful writes no
+ * `provider_services` row. Keyword suggestion only fires on one unambiguous
+ * whole-word match (`suggestThemeSlug`); the persona titles do not have one.
+ * Same choice as `pickListingTheme` in `e2e/supply-demand/lib/flows.ts`:
+ * `city_itinerary` when that chip is on the list, otherwise the first catalog
+ * chip. "Other" is not chosen — it stores a suggestion and does not tag the
+ * listing. No-op when the picker is not on this step (it mounts on Basics only)
+ * or a catalog chip is already pressed.
+ */
+async function pickListingThemeIfPresent(page: Page): Promise<boolean> {
+  const picker = page.getByTestId("listing-theme-picker");
+  if (!(await picker.isVisible().catch(() => false))) return false;
+  const catalog = picker.locator('[data-testid^="theme-option-"]:not([data-testid="theme-option-other"])');
+  try {
+    await catalog.first().waitFor({ state: "visible", timeout: 8_000 });
+  } catch {
+    console.error("[driveServiceFormToSubmit] listing theme catalog did not render");
+    return false;
+  }
+  const pressed = catalog.locator('[aria-pressed="true"]');
+  if ((await pressed.count()) > 0) return true;
+  const preferred = page.getByTestId("theme-option-city_itinerary");
+  const chip = (await preferred.isVisible().catch(() => false)) ? preferred : catalog.first();
+  await chip.click();
+  try {
+    await expect(chip).toHaveAttribute("aria-pressed", "true", { timeout: 3_000 });
+  } catch {
+    console.error("[driveServiceFormToSubmit] theme chip did not stay pressed");
+    return false;
+  }
+  return true;
+}
+
+/**
  * Discards a restored autosave checkpoint, if the wizard opened with one (client/src/components
  * /ServiceForm.tsx: `traveloure:new-service-autosave:v1:${role}` in localStorage, keyed by role
  * only — NOT per-service). This is the STALE-STATE FIX for creating more than one service in the
@@ -311,14 +348,29 @@ export async function driveServiceFormToSubmit(
   publishStatus: "draft" | "submit",
 ): Promise<"button-submit-service" | "button-publish-service" | null> {
   await discardAutosaveIfPresent(page);
+  // The theme picker mounts only on Basics. A restored checkpoint can open on
+  // Review, where a submit click throws before any request. Open Basics once
+  // in that case, name the theme, then walk forward again.
+  let themeNamed = false;
+  let openedBasicsForTheme = false;
   for (let guard = 0; guard < 12; guard++) {
     await fillCurrentStep(page, input);
+    themeNamed = (await pickListingThemeIfPresent(page)) || themeNamed;
 
     const submitBtn = page.getByTestId("button-submit-service");
     const publishBtn = page.getByTestId("button-publish-service");
     const submitVisible = await submitBtn.isVisible().catch(() => false);
     const publishVisible = await publishBtn.isVisible().catch(() => false);
     if (submitVisible || publishVisible) {
+      if (!themeNamed && !openedBasicsForTheme) {
+        openedBasicsForTheme = true;
+        const basics = page.locator('[data-step-key="basics"]');
+        if (await basics.isVisible().catch(() => false)) {
+          await basics.click();
+          await page.waitForTimeout(400);
+          continue;
+        }
+      }
       if (publishStatus === "draft") {
         const draftBtn = page.getByTestId("button-save-draft");
         if (await draftBtn.isVisible().catch(() => false)) {
