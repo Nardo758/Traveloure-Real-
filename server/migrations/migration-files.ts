@@ -2105,12 +2105,11 @@ export const MIGRATION_FILES = [
   // shared/schema.ts.
   "396_open_place_admin_entry.sql",
   // 397 — SH-1 item 12: users.is_test, nullable boolean, no default (NULL = not a test account by flag).
-  // HELD for Leon's comment. Ledger 2026-10-19-sh1-test-flag.
+  // Merged in #1581. Ledger 2026-10-19-sh1-test-flag.
   "397_users_is_test.sql",
   // 398 — DATA ONLY: SH-1 item 1 seed copy. Carries the never-say edits made to the insert-only seeders onto rows they
   // already wrote: each UPDATE is matched by the row's id/slug (or its seeder key) AND only while the exact old text is
-  // present, so it is idempotent and never clobbers a hand edit. 394–397 are taken by open PRs (397_users_is_test.sql
-  // is to sit before this entry). HELD for Leon's comment. Ledger 2026-10-19-sh1-banned-copy.
+  // present, so it is idempotent and never clobbers a hand edit. Merged in #1582. Ledger 2026-10-19-sh1-banned-copy.
   "398_sh1_seed_copy.sql",
   // 399 — DATA ONLY: the IMAGINE NOH continuous-run row (manual / imagine-noh-2026) gets withdrawn_at while it is still
   // live; nothing deleted. The four shows are seeded as one row each. SH-1 item 5, ledger 2026-10-19-sh1-show-dates.
@@ -2207,10 +2206,17 @@ export const MIGRATION_FILES = [
   // request. 418 is PR #1785. 419 is PR #1794.
   // Ledger 2026-10-30-row250-kyoto-discover-photos.
   "420_kyoto_gem_photo_credits.sql",
+  // 424 — users.apple_sub. Additive nullable text, no DEFAULT, no CHECK, no
+  // backfill. Partial unique index where apple_sub IS NOT NULL.
+  // HELD until Leon approves the SQL on the pull request.
+  // Ledger 2026-10-31-sign-in-with-apple. Declared in shared/models/auth.ts
+  // (re-exported from shared/schema.ts). 421 is open PRs #1804 and #1802.
+  // 422 is #1803. 423 is reserved for #1802.
+  "424_users_apple_sub.sql",
   // 425 — DATA ONLY. #1796 follow-ups: hide the Yoshida Sanso Ryokan seeded card
   // (hidden_at while NULL) and NULL image_url / image_credit where a Kyoto row
   // still stores one of three 404 Unsplash URLs. No ALTER. HELD until the owner
-  // approves the SQL on the pull request. 421–424 are open PRs #1804, #1803,
-  // #1802 and #1807. Ledger 2026-10-31-kyoto-1796-followups.
+  // approves the SQL on the pull request. 421–423 are open PRs #1804, #1803
+  // and #1802; 424 is #1807. Ledger 2026-10-31-kyoto-1796-followups.
   "425_kyoto_1796_followups.sql",
 ] as const;

@@ -69,6 +69,9 @@ const INDEX_MANIFEST = [
   //    before this index lands (exactly what blocked the Aug-2026 prod deploy).
   { name: "idx_fever_event_cache_event_id", table: "fever_event_cache",
     cols: ["event_id"], where: null, migration: "221" },
+  // Sign in with Apple subject. NULL stays non-unique. Migration 424 is held.
+  { name: "users_apple_sub_unique", table: "users",
+    cols: ["apple_sub"], where: "apple_sub IS NOT NULL", migration: "424" },
 ];
 
 /**

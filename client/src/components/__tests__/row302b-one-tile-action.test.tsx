@@ -324,8 +324,8 @@ describe("row 302b — one primary action per bento kind", () => {
   });
 
   it("the neighbourhood wanted panel's join link is the one primary action", () => {
-    const src = fs.readFileSync(path.join(process.cwd(), "client/src/pages/discover-location.tsx"), "utf8");
-    const panel = src.slice(src.indexOf("function NeighbourhoodWantedPanel"), src.indexOf("function BentoGroup"));
+    // Row 301 moved the panel out of the page into its own card file; the assertions are unchanged.
+    const panel = fs.readFileSync(path.join(process.cwd(), "client/src/components/feed/neighbourhood-wanted-card.tsx"), "utf8");
     assert.match(panel, /data-bento-primary-action/);
     assert.equal(panel.includes("More info"), false);
     const marked = panel.match(/data-bento-primary-action/g) ?? [];

@@ -1,6 +1,6 @@
 -- 398 — SH-1 item 1: never-say phrases removed from SEED copy (ledger `2026-10-19-sh1-banned-copy`).
 --
--- HELD FOR LEON'S COMMENT on the PR before merge.
+-- Carries those seed-copy edits onto rows the insert-only seeders already wrote. Merged in #1582.
 --
 -- What it does: the seeders that wrote these rows are insert-only and never rewrite an existing row, so the copy
 -- edits made to the seed files (server/data/hidden-gems.json, server/seeds/**, server/seed-*.ts) would never reach a
