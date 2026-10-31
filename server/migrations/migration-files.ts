@@ -2207,4 +2207,10 @@ export const MIGRATION_FILES = [
   // request. 418 is PR #1785. 419 is PR #1794.
   // Ledger 2026-10-30-row250-kyoto-discover-photos.
   "420_kyoto_gem_photo_credits.sql",
+  // 425 — DATA ONLY. #1796 follow-ups: hide the Yoshida Sanso Ryokan seeded card
+  // (hidden_at while NULL) and NULL image_url / image_credit where a Kyoto row
+  // still stores one of three 404 Unsplash URLs. No ALTER. HELD until the owner
+  // approves the SQL on the pull request. 421–424 are open PRs #1804, #1803,
+  // #1802 and #1807. Ledger 2026-10-31-kyoto-1796-followups.
+  "425_kyoto_1796_followups.sql",
 ] as const;
