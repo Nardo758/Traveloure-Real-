@@ -43,7 +43,10 @@ function text(value: unknown): boolean {
 export async function readSupplyAccount(userId: string): Promise<SupplyAccount> {
   const [user] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1);
   const role = user?.role ?? "user";
-  const publishesFreely = role === "admin" || isEarnerRole(role);
+  // Earner role only. An admin session is not an approved supply account, and
+  // it does not skip the listing write gate below. Public reads still keep an
+  // admin-owned row (public-listing-owner.ts). That is a different fact.
+  const publishesFreely = isEarnerRole(role);
 
   const [expert] = await db.select().from(localExpertForms).where(eq(localExpertForms.userId, userId)).limit(1);
   // Same current-row order as storage.getServiceProviderForm (non-rejected first).
@@ -125,6 +128,21 @@ export async function readSupplyAccount(userId: string): Promise<SupplyAccount> 
   return empty;
 }
 
+/**
+ * Refuses a listing create, submit, or publish while the account is not an earner.
+ * Returns null when the write may proceed. A pending account may still save a draft.
+ *
+ * An admin session does not skip this gate. The four callers pass the session
+ * user and write that user's own listing. None of them is an on-behalf override,
+ * and none depended on the old admin skip:
+ *   POST /api/provider/services
+ *   PATCH /api/provider/services/:id
+ *   POST /api/provider/services/:id/submit
+ *   POST /api/expert/service-listings/:id/submit
+ * Approving someone else's submitted listing stays on
+ * POST /api/admin/provider-services/:id/approve, which is already audit-logged
+ * and does not call this function.
+ */
 export async function refuseUnapprovedListingWrite(
   userId: string,
   write: ListingWriteIntent,
