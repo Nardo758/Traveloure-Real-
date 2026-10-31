@@ -1,4 +1,4 @@
--- 426 — DATA ONLY. #1796 follow-up, item 7: the Kyoto copy #1804 (migration 421) left.
+-- 427 — DATA ONLY. #1796 follow-up, item 7: the Kyoto copy #1804 (migration 421) left.
 --
 -- Yoshida Sanso Ryokan: "Imperial guesthouse" becomes "villa of the Higashi-Fushimi imperial
 -- family" (the one approved rewording); "Nine suites", "kaiseki dinner served in your room" and

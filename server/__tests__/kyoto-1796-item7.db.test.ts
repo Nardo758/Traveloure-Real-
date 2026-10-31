@@ -1,5 +1,5 @@
 /**
- * MIGRATION 426: #1796 follow-up, item 7 (ledger `2026-10-31-kyoto-1796-item7`).
+ * MIGRATION 427: #1796 follow-up, item 7 (ledger `2026-10-31-kyoto-1796-item7`).
  *
  *   K1 each Kyoto row holding a prior (421's output or the pre-421 text) takes the new value; the
  *      dawn tunnel's why line is cleared to NULL.
@@ -17,7 +17,7 @@ import { KYOTO_ITEM7_FIXES } from "../../shared/kyoto-1796-item7";
 
 const { Pool } = await import("pg");
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const SQL = fs.readFileSync(path.resolve(import.meta.dirname, "../migrations/426_kyoto_1796_item7_copy.sql"), "utf-8");
+const SQL = fs.readFileSync(path.resolve(import.meta.dirname, "../migrations/427_kyoto_1796_item7_copy.sql"), "utf-8");
 
 after(async () => {
   await pool.end();

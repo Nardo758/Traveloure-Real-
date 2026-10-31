@@ -4,7 +4,7 @@
  *   I1 the new values: the one approved Yoshida rewording, the rest removals, a cleared field is null.
  *   I2 no item-7 phrase remains in a new value, the Kyoto seed or the cleanup copy.
  *   I3 the seed writes the new values; Ginkaku-ji keeps #1804's approved admission and autumn lines.
- *   I4 migration 426 is registered after 425, data-only, carries every fix and no approval sentence.
+ *   I4 migration 427 is registered after 425, data-only, carries every fix and no approval sentence.
  *
  * Run: npx tsx --test shared/__tests__/kyoto-1796-item7.test.ts
  */
@@ -27,7 +27,7 @@ import {
 import { KYOTO_CANONICAL_GEMS } from "../kyoto-feed-cleanup";
 
 const read = (p: string) => readFileSync(path.join(process.cwd(), p), "utf8");
-const sql = read("server/migrations/426_kyoto_1796_item7_copy.sql");
+const sql = read("server/migrations/427_kyoto_1796_item7_copy.sql");
 const seed = read("server/seeds/popular-cities-content.seed.ts");
 
 const hit = (text: string) => KYOTO_ITEM7_REMOVED_PHRASES.filter((re) => re.test(text)).map(String);
@@ -75,9 +75,9 @@ test("I3 the seed writes the new values; Ginkaku-ji keeps #1804's lines", () => 
   assert.equal(/https?:\/\//.test(ginkaku.hours), false);
 });
 
-test("I4 migration 426", () => {
+test("I4 migration 427", () => {
   const registry = read("server/migrations/migration-files.ts");
-  assert.ok(registry.indexOf('"425_kyoto_1796_followups.sql"') < registry.indexOf('"426_kyoto_1796_item7_copy.sql"'));
+  assert.ok(registry.indexOf('"425_kyoto_1796_followups.sql"') < registry.indexOf('"427_kyoto_1796_item7_copy.sql"'));
   for (const fix of KYOTO_ITEM7_FIXES) {
     assert.ok(sql.includes(fix.placeName), fix.placeName);
     if (fix.next) assert.ok(sql.includes(fix.next), fix.next);
