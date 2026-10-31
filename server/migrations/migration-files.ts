@@ -2207,4 +2207,11 @@ export const MIGRATION_FILES = [
   // request. 418 is PR #1785. 419 is PR #1794.
   // Ledger 2026-10-30-row250-kyoto-discover-photos.
   "420_kyoto_gem_photo_credits.sql",
+  // 424 — users.apple_sub. Additive nullable text, no DEFAULT, no CHECK, no
+  // backfill. Partial unique index where apple_sub IS NOT NULL.
+  // HELD until Leon approves the SQL on the pull request.
+  // Ledger 2026-10-31-sign-in-with-apple. Declared in shared/models/auth.ts
+  // (re-exported from shared/schema.ts). 421 is open PRs #1804 and #1802.
+  // 422 is #1803. 423 is reserved for #1802.
+  "424_users_apple_sub.sql",
 ] as const;

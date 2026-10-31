@@ -16,7 +16,7 @@ import { CURRENT_TERMS_VERSION, CURRENT_PRIVACY_VERSION } from "@shared/legal-ve
 function sanitizeUser(user: any) {
   if (!user) return user;
   // payoutHandle is returned only by GET/PUT /api/me/payout-setup, never on the session user.
-  const { password, instagramAccessToken, payoutHandle, payout_handle, ...safeUser } = user;
+  const { password, instagramAccessToken, payoutHandle, payout_handle, appleSub, apple_sub, ...safeUser } = user;
   return safeUser;
 }
 

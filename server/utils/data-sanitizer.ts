@@ -98,12 +98,22 @@ export function withoutPayoutHandle<T extends Record<string, any>>(data: T): T {
   return copy;
 }
 
+/** The Apple subject is an account key. It stays off profile payloads. */
+export function withoutAppleSubject<T extends Record<string, any>>(data: T): T {
+  if (!data || typeof data !== "object") return data;
+  if (!("appleSub" in data) && !("apple_sub" in data)) return data;
+  const copy = { ...data };
+  delete copy.appleSub;
+  delete copy.apple_sub;
+  return copy;
+}
+
 export function sanitizeUserForRole<T extends Record<string, any>>(
   userData: T,
   requesterRole: string,
   isOwnProfile: boolean = false
 ): Partial<T> {
-  const stripped = withoutPayoutHandle(userData);
+  const stripped = withoutAppleSubject(withoutPayoutHandle(userData));
   const { password, ...withoutPassword } = stripped;
   const safeData = withoutPassword as T;
 

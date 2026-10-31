@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, decimal, index, jsonb, pgTable, text, timestamp, varchar } from "drizzle-orm/pg-core";
+import { boolean, decimal, index, jsonb, pgTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/pg-core";
 
 // Session storage table.
 // (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
@@ -61,6 +61,11 @@ export const users = pgTable("users", {
   instagramUserId: varchar("instagram_user_id"),
   instagramAccessToken: varchar("instagram_access_token", { length: 512 }),
   authProvider: varchar("auth_provider", { length: 20 }).default("email"), // email, replit, google, etc.
+  // Row 282, migration 424, HELD until Leon approves the SQL on the pull request.
+  // Ledger `2026-10-31-sign-in-with-apple`. The Apple subject. NULL = no Apple
+  // identity. Unique when set. Written only by createAppleUser and
+  // attachAppleIdentity; generic upsert/update strip it.
+  appleSub: text("apple_sub"),
   // Per-expert commission override (EXP-OVR.P1) — expert keeps this %; platform takes 100-x%.
   // NULL = use booking_fee_configs category default. Honors §6.9 beta-recruitment terms.
   // Resolved server-side in commission.ts:resolveCommissionRates before the category lookup.
@@ -160,6 +165,7 @@ export const users = pgTable("users", {
   // remove these before any migration re-runs them.
   index("users_is_deleted_idx").on(table.isDeleted).where(sql`is_deleted = true`),
   index("users_is_suspended_idx").on(table.id).where(sql`is_suspended = true`),
+  uniqueIndex("users_apple_sub_unique").on(table.appleSub).where(sql`apple_sub IS NOT NULL`),
 ]);
 
 export type UpsertUser = typeof users.$inferInsert;
