@@ -1,12 +1,12 @@
 /**
  * Row 300a — Kyoto discover seed cleanup.
  *
- * The popular-cities seed is what a fresh boot inserts. Migration 421 writes the
- * same strings onto rows that already exist. Migration 400's canonical card stays
- * the historical insert; this module is the later fact.
+ * The popular-cities seed and KYOTO_CANONICAL_GEMS write these strings on a fresh
+ * boot. Migration 421 writes the same strings onto rows that already exist.
+ * Migration 400's SQL keeps the prior Ginkaku-ji fact; the priors below name it.
  *
  * Two traveler-facing sentences are HELD for the owner. They are constants here
- * so the seed, the migration and the pull request name the same words.
+ * so the seed, the canonical card and the migration name the same words.
  * Checked 2026-10-31:
  *   hours and the elementary/junior high fee — https://www.shokoku-ji.jp/en/ginkakuji/access/
  *   autumn viewing 1 Nov–5 Dec 2026 — https://www.shokoku-ji.jp/ginkakuji/event/
@@ -16,29 +16,27 @@
 import { kyotoGemCredit } from "./kyoto-gem-photos";
 import {
   BAMBOO_IMAGE_URL,
-  KYOTO_CANONICAL_GEMS,
   TENRYUJI_IMAGE_CREDIT,
   TENRYUJI_IMAGE_URL,
-} from "./kyoto-feed-cleanup";
-
-const ginkaku = KYOTO_CANONICAL_GEMS.find((row) => row.placeName === "Ginkaku-ji");
-if (!ginkaku?.hours || !ginkaku.admission) {
-  throw new Error("Ginkaku-ji canonical hours and admission are the prior fact");
-}
+} from "./kyoto-canonical-images";
 
 export const YOSHIDA_SANSO_ADDRESS = "59-1 Yoshida Shimooji-cho";
 export const YOSHIDA_SANSO_ADDRESS_PRIOR = "59-1 Yoshida Shimoadachi-cho, Sakyo Ward, Kyoto";
 
+/** Migration 400's Ginkaku-ji card. The later fact is the HELD constants below. */
+export const GINKAKU_HOURS_PRIOR = "Mar–Nov 8:30–17:00; Dec–Feb 9:00–16:30";
+export const GINKAKU_ADMISSION_PRIOR = "Adult ¥1,000; school ¥500";
+export const GINKAKU_SOURCE_URL_PRIOR = "https://www.shokoku-ji.jp/en/ginkakuji/";
+export const GINKAKU_FACT_CHECKED_ON_PRIOR = "2026-10-20";
+
 /** HELD. Replaces "school ¥500". Official English page says "Primary and Middle School Students 500 yen". */
 export const GINKAKU_ADMISSION_HELD = "Adult ¥1,000; elementary and junior high ¥500";
-export const GINKAKU_ADMISSION_PRIOR = ginkaku.admission;
 
 /** HELD. The autumn special viewing period. The URL is the temple event page, not extra wording. */
 export const GINKAKU_AUTUMN_VIEWING_HELD = "Autumn viewing Nov 1 – Dec 5";
 export const GINKAKU_AUTUMN_SOURCE_URL = "https://www.shokoku-ji.jp/ginkakuji/event/";
 export const GINKAKU_ACCESS_SOURCE_URL = "https://www.shokoku-ji.jp/en/ginkakuji/access/";
 export const GINKAKU_FACT_CHECKED_ON = "2026-10-31";
-export const GINKAKU_HOURS_PRIOR = ginkaku.hours;
 export const GINKAKU_HOURS =
   `${GINKAKU_HOURS_PRIOR}. ${GINKAKU_AUTUMN_VIEWING_HELD} (${GINKAKU_AUTUMN_SOURCE_URL})`;
 

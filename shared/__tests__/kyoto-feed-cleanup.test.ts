@@ -18,7 +18,16 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { feverTitleBlocked } from "../fever-title-filter";
 import { gemRowHidden } from "../gem-visibility";
-import { composeGemFactLine } from "../gem-fact-line";
+import { composeGemFactLine, formatFactCheckedOn } from "../gem-fact-line";
+import {
+  GINKAKU_ACCESS_SOURCE_URL,
+  GINKAKU_ADMISSION_PRIOR,
+  GINKAKU_FACT_CHECKED_ON,
+  GINKAKU_FACT_CHECKED_ON_PRIOR,
+  GINKAKU_HOURS,
+  GINKAKU_HOURS_PRIOR,
+  GINKAKU_SOURCE_URL_PRIOR,
+} from "../kyoto-seed-cleanup";
 import { kyotoUnswappedPhrase, rewordKyotoBannedCopy, scanKyotoGemSeedSource } from "../kyoto-gem-copy";
 import {
   BAMBOO_IMAGE_URL,
@@ -83,8 +92,9 @@ test("KF3 the fact line ends with the checked date and the source link; bamboo h
   assert.equal(bamboo.imageCredit, null);
   const ginkakuLine = composeGemFactLine(ginkaku);
   assert.ok(ginkakuLine);
-  assert.equal(ginkakuLine.checkedLabel, "20 Oct 2026");
-  assert.equal(ginkakuLine.sourceUrl, "https://www.shokoku-ji.jp/en/ginkakuji/");
+  assert.equal(ginkaku.factCheckedOn, GINKAKU_FACT_CHECKED_ON);
+  assert.equal(ginkakuLine.checkedLabel, formatFactCheckedOn(GINKAKU_FACT_CHECKED_ON));
+  assert.equal(ginkakuLine.sourceUrl, GINKAKU_ACCESS_SOURCE_URL);
   assert.equal(ginkaku.imageUrl, null);
   assert.equal(composeGemFactLine({ hours: "9:00–17:00", admission: null, sourceUrl: null, factCheckedOn: null })?.lead, "9:00–17:00");
   assert.equal(composeGemFactLine({ hours: "9:00–17:00" })?.checkedLabel, "", "a missing checked date is not invented");
@@ -141,6 +151,15 @@ test("KF5 migration 400 carries the hide list, the reword, the neighbourhoods an
   for (const gem of KYOTO_CANONICAL_GEMS) {
     assert.ok(sql.includes(gem.id), gem.id);
     assert.ok(sql.includes(gem.description), gem.placeName);
+    if (gem.placeName === "Ginkaku-ji") {
+      assert.ok(sql.includes(GINKAKU_HOURS_PRIOR), gem.placeName);
+      assert.ok(sql.includes(GINKAKU_ADMISSION_PRIOR), gem.placeName);
+      assert.ok(sql.includes(GINKAKU_SOURCE_URL_PRIOR), gem.placeName);
+      assert.ok(sql.includes(GINKAKU_FACT_CHECKED_ON_PRIOR), gem.placeName);
+      assert.equal(sql.includes(GINKAKU_HOURS), false);
+      assert.equal(sql.includes(GINKAKU_ACCESS_SOURCE_URL), false);
+      continue;
+    }
     if (gem.hours) assert.ok(sql.includes(gem.hours), gem.placeName);
     if (gem.sourceUrl) assert.ok(sql.includes(gem.sourceUrl), gem.placeName);
   }

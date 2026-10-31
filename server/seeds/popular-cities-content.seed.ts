@@ -32,6 +32,12 @@ import { kyotoCopyNeedsDescriptionHide, rewordKyotoBannedCopy } from "@shared/ky
 import {
   FUSHIMI_DAWN_DESCRIPTION,
   FUSHIMI_DAWN_WHY,
+  GINKAKU_ACCESS_SOURCE_URL,
+  GINKAKU_ADMISSION_HELD,
+  GINKAKU_AUTUMN_SOURCE_URL,
+  GINKAKU_AUTUMN_VIEWING_HELD,
+  GINKAKU_FACT_CHECKED_ON,
+  GINKAKU_HOURS_PRIOR,
   PHILOSOPHER_DESCRIPTION,
   PRE_DAWN_DESCRIPTION,
   PRE_DAWN_WHY,
@@ -40,7 +46,7 @@ import {
 } from "@shared/kyoto-seed-cleanup";
 import { db } from "../db";
 import { travelPulseHiddenGems } from "@shared/schema";
-import { and, eq, isNull, or } from "drizzle-orm";
+import { and, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { logger } from "../infrastructure";
 
 interface GemSeed {
@@ -64,6 +70,14 @@ interface GemSeed {
   neighborhood: string | null;
   imageUrl?: string;
 }
+
+/** The Ginkaku-ji fact migration 421 writes. A fresh boot stamps the same four fields. */
+const ginkakuSeededFact = {
+  hours: `${GINKAKU_HOURS_PRIOR}. ${GINKAKU_AUTUMN_VIEWING_HELD} (${GINKAKU_AUTUMN_SOURCE_URL})`,
+  admission: GINKAKU_ADMISSION_HELD,
+  sourceUrl: GINKAKU_ACCESS_SOURCE_URL,
+  factCheckedOn: GINKAKU_FACT_CHECKED_ON,
+} as const;
 
 const HIDDEN_GEMS: GemSeed[] = [
   // ── TOKYO (8 gems: 3 Eat · 2 Do · 1 Stay · 2 Photo) ─────────────────────
@@ -1876,9 +1890,34 @@ export async function seedPopularCitiesContent(): Promise<{ gems: number }> {
       imageUrl: photo?.imageUrl ?? gem.imageUrl,
       ...(photo ? { imageCredit: photo.imageCredit } : {}),
       aiGenerated: false,
+      ...(gem.placeName === "Ginkaku-ji" ? ginkakuSeededFact : {}),
     });
     gemsCreated++;
   }
+
+  // Migration 400 inserts Ginkaku-ji before this seed runs. Realign the four fact
+  // columns to the same values migration 421 writes, and leave the row alone once
+  // they already match.
+  await db
+    .update(travelPulseHiddenGems)
+    .set({
+      hours: ginkakuSeededFact.hours,
+      admission: ginkakuSeededFact.admission,
+      sourceUrl: ginkakuSeededFact.sourceUrl,
+      factCheckedOn: ginkakuSeededFact.factCheckedOn,
+    })
+    .where(
+      and(
+        ilike(travelPulseHiddenGems.city, "kyoto"),
+        eq(travelPulseHiddenGems.placeName, "Ginkaku-ji"),
+        or(
+          sql`${travelPulseHiddenGems.hours} IS DISTINCT FROM ${ginkakuSeededFact.hours}`,
+          sql`${travelPulseHiddenGems.admission} IS DISTINCT FROM ${ginkakuSeededFact.admission}`,
+          sql`${travelPulseHiddenGems.sourceUrl} IS DISTINCT FROM ${ginkakuSeededFact.sourceUrl}`,
+          sql`${travelPulseHiddenGems.factCheckedOn} IS DISTINCT FROM ${ginkakuSeededFact.factCheckedOn}::date`,
+        ),
+      ),
+    );
 
   return { gems: gemsCreated };
 }

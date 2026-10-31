@@ -6,14 +6,17 @@
  *   C3  migration 421 writes the cleaned copy, the held Ginkaku-ji fact, and the
  *       remaining photo credits, and is data-only. The file does not carry an
  *       approval sentence.
+ *   C4  the popular-cities seed and KYOTO_CANONICAL_GEMS equal the Ginkaku-ji
+ *       fact migration 421 writes. The held sentences are imported, not copied.
  *
- * Run: npx tsx --test shared/__tests__/kyoto-seed-cleanup.test.ts
+ * Run: npx tsx --test shared/__tests__/kyoto-seed-cleanup.test.ts shared/__tests__/kyoto-feed-cleanup.test.ts shared/__tests__/kyoto-gem-photos.test.ts
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { composeGemFactLine } from "../gem-fact-line";
+import { KYOTO_CANONICAL_GEMS } from "../kyoto-feed-cleanup";
 import { kyotoGemPhoto } from "../kyoto-gem-photos";
 import { kyotoRemovedPhrase, rewordKyotoBannedCopy, scanKyotoGemRemovedPhrases } from "../kyoto-gem-copy";
 import {
@@ -28,6 +31,7 @@ import {
   GINKAKU_AUTUMN_VIEWING_HELD,
   GINKAKU_FACT_CHECKED_ON,
   GINKAKU_HOURS,
+  GINKAKU_HOURS_PRIOR,
   KYOTO_COPY_FIXES,
   KYOTO_REMAINING_GEM_PHOTOS,
   PHILOSOPHER_DESCRIPTION,
@@ -153,4 +157,57 @@ test("C3 migration 421 writes the cleanup and nothing else", () => {
     assert.equal(kyotoRemainingGemPhoto(photo.placeName)?.imageUrl, photo.imageUrl);
   }
   assert.equal(sqlBody.match(/UPDATE travel_pulse_hidden_gems/g)?.length, 1 + KYOTO_COPY_FIXES.length + 1 + KYOTO_REMAINING_GEM_PHOTOS.length);
+});
+
+test("C4 the seed and the canonical Ginkaku-ji card equal migration 421", () => {
+  const hoursExpr = "${GINKAKU_HOURS_PRIOR}. ${GINKAKU_AUTUMN_VIEWING_HELD} (${GINKAKU_AUTUMN_SOURCE_URL})";
+  const canonicalSrc = read("shared/kyoto-feed-cleanup.ts");
+  const seed = read("server/seeds/popular-cities-content.seed.ts");
+  for (const file of ["shared/kyoto-seed-cleanup.ts", "shared/kyoto-feed-cleanup.ts", "server/seeds/popular-cities-content.seed.ts"]) {
+    assert.ok(read(file).includes(hoursExpr), file);
+  }
+  for (const name of [
+    "GINKAKU_ADMISSION_HELD",
+    "GINKAKU_AUTUMN_VIEWING_HELD",
+    "GINKAKU_ACCESS_SOURCE_URL",
+    "GINKAKU_AUTUMN_SOURCE_URL",
+    "GINKAKU_FACT_CHECKED_ON",
+  ]) {
+    assert.match(seed, new RegExp(`\\b${name}\\b`), name);
+    assert.match(canonicalSrc, new RegExp(`\\b${name}\\b`), name);
+  }
+  assert.equal(seed.includes(GINKAKU_ADMISSION_HELD), false);
+  assert.equal(seed.includes(GINKAKU_AUTUMN_VIEWING_HELD), false);
+  assert.equal(seed.includes(GINKAKU_ACCESS_SOURCE_URL), false);
+  assert.equal(seed.includes(GINKAKU_AUTUMN_SOURCE_URL), false);
+  assert.equal(seed.includes(GINKAKU_FACT_CHECKED_ON), false);
+  assert.equal(seed.includes(GINKAKU_HOURS), false);
+  assert.equal(canonicalSrc.includes(GINKAKU_ADMISSION_HELD), false);
+  assert.equal(canonicalSrc.includes(GINKAKU_AUTUMN_VIEWING_HELD), false);
+  assert.equal(canonicalSrc.includes(GINKAKU_ACCESS_SOURCE_URL), false);
+  assert.equal(canonicalSrc.includes(GINKAKU_AUTUMN_SOURCE_URL), false);
+  assert.equal(canonicalSrc.includes(GINKAKU_FACT_CHECKED_ON), false);
+  assert.equal(canonicalSrc.includes(GINKAKU_HOURS), false);
+  assert.match(seed, /admission: GINKAKU_ADMISSION_HELD/);
+  assert.match(seed, /sourceUrl: GINKAKU_ACCESS_SOURCE_URL/);
+  assert.match(seed, /factCheckedOn: GINKAKU_FACT_CHECKED_ON/);
+  assert.match(canonicalSrc, /admission: GINKAKU_ADMISSION_HELD/);
+  assert.match(canonicalSrc, /sourceUrl: GINKAKU_ACCESS_SOURCE_URL/);
+  assert.match(canonicalSrc, /factCheckedOn: GINKAKU_FACT_CHECKED_ON/);
+
+  const ginkaku = KYOTO_CANONICAL_GEMS.find((row) => row.placeName === "Ginkaku-ji");
+  assert.ok(ginkaku);
+  assert.equal(ginkaku.hours, GINKAKU_HOURS);
+  assert.equal(ginkaku.admission, GINKAKU_ADMISSION_HELD);
+  assert.equal(ginkaku.sourceUrl, GINKAKU_ACCESS_SOURCE_URL);
+  assert.equal(ginkaku.factCheckedOn, GINKAKU_FACT_CHECKED_ON);
+  assert.ok(ginkaku.hours.includes(GINKAKU_AUTUMN_VIEWING_HELD));
+  assert.ok(ginkaku.hours.includes(GINKAKU_AUTUMN_SOURCE_URL));
+  assert.ok(ginkaku.hours.startsWith(GINKAKU_HOURS_PRIOR));
+  assert.ok(sql.includes(ginkaku.hours));
+  assert.ok(sql.includes(ginkaku.admission));
+  assert.ok(sql.includes(ginkaku.sourceUrl));
+  assert.ok(sql.includes(ginkaku.factCheckedOn));
+  assert.equal(seed.includes(ginkaku.hours), false);
+  assert.equal(canonicalSrc.includes(ginkaku.hours), false);
 });
