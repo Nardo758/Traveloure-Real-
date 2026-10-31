@@ -69,6 +69,15 @@ export function SignupPage() {
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [timeZone, setTimeZone] = useState("");
+  const [suggestedTimeZone, setSuggestedTimeZone] = useState("");
+  useEffect(() => {
+    try {
+      setSuggestedTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone || "");
+    } catch {
+      // No suggestion is safer than guessing; the optional field stays empty.
+    }
+  }, []);
 
   if (supplyContinuation.kind !== "account") return null;
 
@@ -90,6 +99,7 @@ export function SignupPage() {
           lastName,
           email: form.email,
           password: form.password,
+          ...(timeZone.trim() ? { timeZone: timeZone.trim() } : {}),
           refToken,
           source,
           ...(intent === "supply" ? { intent } : {}),
@@ -102,6 +112,11 @@ export function SignupPage() {
         }),
       });
       const read = await readAuthResponse(res);
+      if (read.kind === "json" && res.status === 400 && Array.isArray(read.data.errors) &&
+          read.data.errors.some((issue: { path?: unknown[] }) => issue.path?.[0] === "timeZone")) {
+        setError(t("fields.timeZoneInvalid"));
+        return;
+      }
       // Ledger `2026-10-23-drop-check-email`: the 202 still signs nobody in. The
       // check-email screen is not shown. Sign-in is the next step.
       if (read.kind === "json" && isRegistrationNeutral(res.status, read.data)) {
@@ -206,6 +221,34 @@ export function SignupPage() {
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
               placeholder={t("fields.passwordPlaceholderSignup")}
             />
+          </div>
+
+          <div>
+            <label htmlFor="signup-time-zone" className="text-sm font-medium text-gray-700 block mb-1">
+              {t("fields.timeZone")}
+            </label>
+            <input
+              id="signup-time-zone"
+              data-testid="input-signup-time-zone"
+              type="text"
+              maxLength={100}
+              value={timeZone}
+              onChange={(e) => setTimeZone(e.target.value)}
+              aria-describedby="signup-time-zone-help"
+              className={inputClass}
+              placeholder={t("fields.timeZonePlaceholder")}
+            />
+            <p id="signup-time-zone-help" className="mt-1 text-xs text-gray-600">{t("fields.timeZoneHelp")}</p>
+            {suggestedTimeZone && (
+              <button
+                type="button"
+                data-testid="button-use-browser-time-zone"
+                className="mt-1 text-xs underline"
+                onClick={() => setTimeZone(suggestedTimeZone)}
+              >
+                {t("fields.useBrowserTimeZone", { zone: suggestedTimeZone })}
+              </button>
+            )}
           </div>
 
           {isProvider && (

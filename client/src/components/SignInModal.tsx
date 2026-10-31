@@ -59,6 +59,16 @@ export function SignInModal({
   // no "Account created". Guest state and the return destination wait for an actual sign-in.
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [acceptPrivacy, setAcceptPrivacy] = useState(false);
+  const [timeZone, setTimeZone] = useState("");
+  const [suggestedTimeZone, setSuggestedTimeZone] = useState("");
+  useEffect(() => {
+    if (!open || mode !== "signup") return;
+    try {
+      setSuggestedTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone || "");
+    } catch {
+      setSuggestedTimeZone("");
+    }
+  }, [open, mode]);
   // TEST 10 — aria-live error: screen readers need an in-DOM alert, not just a toast
   const [authError, setAuthError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
@@ -135,6 +145,7 @@ export function SignInModal({
         ? { email: formData.email, password: formData.password }
         : {
             ...formData,
+            ...(timeZone.trim() ? { timeZone: timeZone.trim() } : {}),
             ...(intent === "supply" ? { intent } : {}),
             // LW-1d: the supply door's `?source=` tag, stored once on the new account by the server.
             ...(intent === "supply" && supplySourceTag(window.location.search)
@@ -150,6 +161,11 @@ export function SignInModal({
       });
 
       const read = await readAuthResponse(response);
+      if (mode === "signup" && read.kind === "json" && response.status === 400 &&
+          Array.isArray(read.data.errors) &&
+          read.data.errors.some((issue: { path?: unknown[] }) => issue.path?.[0] === "timeZone")) {
+        throw new Error(t("fields.timeZoneInvalid"));
+      }
       const genericError = t("signupPage.genericError");
 
       // Ledger `2026-10-23-drop-check-email`: the 202 still signs nobody in.
@@ -381,6 +397,32 @@ export function SignInModal({
                     data-testid="link-forgot-password"
                   >
                     {t("fields.forgotPassword")}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {mode === "signup" && (
+              <div className="space-y-2">
+                <Label htmlFor="modal-signup-time-zone">{t("fields.timeZone")}</Label>
+                <Input
+                  id="modal-signup-time-zone"
+                  data-testid="input-signup-time-zone"
+                  maxLength={100}
+                  value={timeZone}
+                  onChange={(e) => setTimeZone(e.target.value)}
+                  aria-describedby="modal-signup-time-zone-help"
+                  placeholder={t("fields.timeZonePlaceholder")}
+                />
+                <p id="modal-signup-time-zone-help" className="text-xs text-muted-foreground">{t("fields.timeZoneHelp")}</p>
+                {suggestedTimeZone && (
+                  <button
+                    type="button"
+                    data-testid="button-use-browser-time-zone"
+                    className="text-xs underline"
+                    onClick={() => setTimeZone(suggestedTimeZone)}
+                  >
+                    {t("fields.useBrowserTimeZone", { zone: suggestedTimeZone })}
                   </button>
                 )}
               </div>

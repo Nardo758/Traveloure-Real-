@@ -20,6 +20,7 @@ import { db } from "../db";
 import { users } from "@shared/schema";
 
 export type UserPreferences = Record<string, any>;
+type PreferencesTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export interface PreferencesWrite<T> {
   /** The whole next `users.preferences` value. */
@@ -43,9 +44,11 @@ export async function updateUserPreferences<T>(
    * the UPDATE and while the row lock is still held (the itinerary follow-ups cancel their queued
    * emails here when a traveler opts out). It receives the merge's result.
    */
-  afterWrite?: (tx: Parameters<Parameters<typeof db.transaction>[0]>[0], result: T) => Promise<void>,
+  afterWrite?: (tx: PreferencesTransaction, result: T) => Promise<void>,
+  /** Gap: signup must persist preferences in its account/welcome transaction, not a second commit. */
+  transaction?: PreferencesTransaction,
 ): Promise<T | null> {
-  return db.transaction(async (tx) => {
+  const write = async (tx: PreferencesTransaction): Promise<T | null> => {
     const locked = await tx.execute(sql`SELECT preferences FROM users WHERE id = ${userId} FOR UPDATE`);
     const row = locked.rows[0] as { preferences: unknown } | undefined;
     if (!row) return null;
@@ -57,5 +60,6 @@ export async function updateUserPreferences<T>(
       .where(eq(users.id, userId));
     if (afterWrite) await afterWrite(tx, next.result);
     return next.result;
-  });
+  };
+  return transaction ? write(transaction) : db.transaction(write);
 }

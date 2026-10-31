@@ -21,6 +21,8 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { after, before, test } from "node:test";
 import { updateUserPreferences } from "../services/user-preferences-writer";
+import { db } from "../db";
+import { users } from "@shared/schema";
 
 const { Pool } = await import("pg");
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -111,4 +113,63 @@ test("W3: an unknown user writes nothing and resolves null", async () => {
   });
   assert.equal(result, null);
   assert.equal(merged, false, "the merge is not even run for a user that does not exist");
+});
+
+// Gap: new-account preferences must reuse its caller's transaction without changing existing callers.
+test("W4: caller transaction can write preferences on its own uncommitted account", async () => {
+  const id = `upw-${RUN}-signup`;
+  try {
+    await db.transaction(async (tx) => {
+      await tx.insert(users).values({ id, email: `${id}@traveloure-qa.test` });
+      let afterWriteCalls = 0;
+      const result = await updateUserPreferences(id, current => ({
+        preferences: { ...current, itineraryMarketing: { timeZone: "Asia/Tokyo" } },
+        result: true,
+      }), async (sameTransaction, saved) => {
+        assert.equal(sameTransaction, tx);
+        assert.equal(saved, true);
+        afterWriteCalls += 1;
+      }, tx);
+      assert.equal(result, true);
+      assert.equal(afterWriteCalls, 1);
+    });
+    const result = await pool.query("SELECT preferences FROM users WHERE id = $1", [id]);
+    assert.deepEqual(result.rows[0].preferences, { itineraryMarketing: { timeZone: "Asia/Tokyo" } });
+  } finally {
+    await pool.query("DELETE FROM users WHERE id = $1", [id]);
+  }
+});
+
+test("W5: caller rollback undoes its account and preferences and propagates an afterWrite failure", async () => {
+  const id = `upw-${RUN}-rollback`;
+  await assert.rejects(db.transaction(async (tx) => {
+    await tx.insert(users).values({ id, email: `${id}@traveloure-qa.test` });
+    await updateUserPreferences(id, current => ({
+      preferences: { ...current, itineraryMarketing: { timeZone: "Europe/London" } },
+      result: true,
+    }), async () => { throw new Error("injected caller transaction failure"); }, tx);
+  }), /injected caller transaction failure/);
+  const result = await pool.query("SELECT count(*)::int AS count FROM users WHERE id = $1", [id]);
+  assert.equal(result.rows[0].count, 0);
+});
+
+test("W6: caller transaction preserves unrelated namespaces and does not invent consent or quiet hours", async () => {
+  const before = await preferences();
+  await db.transaction(async (tx) => {
+    await updateUserPreferences(USER_ID, current => ({
+      preferences: {
+        ...current,
+        itineraryMarketing: { ...(current.itineraryMarketing ?? {}), timeZone: "Asia/Calcutta" },
+      },
+      result: true,
+    }), undefined, tx);
+  });
+  const after = await preferences();
+  assert.deepEqual(after, {
+    ...before,
+    itineraryMarketing: { ...(before.itineraryMarketing ?? {}), timeZone: "Asia/Calcutta" },
+  });
+  assert.equal(after.itineraryMarketing.enabled, before.itineraryMarketing?.enabled);
+  assert.equal(after.itineraryMarketing.quietStart, before.itineraryMarketing?.quietStart);
+  assert.equal(after.itineraryMarketing.quietEnd, before.itineraryMarketing?.quietEnd);
 });

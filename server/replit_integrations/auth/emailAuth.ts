@@ -46,6 +46,7 @@ import {
   changeUnverifiedEmail,
 } from "../../services/email-verification.service";
 import { isEmailUniqueViolation } from "./email-unique-violation";
+import { updateUserPreferences } from "../../services/user-preferences-writer";
 
 export { issueEmailVerification, isEmailUniqueViolation };
 
@@ -75,6 +76,16 @@ const validUserTypes = [
 ] as const;
 
 const registerSchema = z.object({
+  // Gap: an explicitly chosen zone is optional; no IP, destination or server-zone fallback.
+  timeZone: z.string().trim().max(100).refine((zone) => {
+    if (!zone) return true;
+    try {
+      new Intl.DateTimeFormat("en", { timeZone: zone }).format();
+      return true;
+    } catch {
+      return false;
+    }
+  }, "Choose a valid IANA time zone.").transform((zone) => zone || undefined).optional(),
   email: z.string().email("Invalid email address").max(254, "Email is too long"),
   // Cap password length too: bcrypt only reads the first 72 bytes, and an unbounded
   // password is a cheap CPU-DoS vector (hashing a multi-MB string). 8..200 is ample.
@@ -207,6 +218,21 @@ export function setupEmailAuth(app: Express): void {
               isTest: isTestAccount({ email }) ? true : null,
             })
             .returning();
+          if (validation.data.timeZone) {
+            const zone = validation.data.timeZone;
+            const saved = await updateUserPreferences(newUser.id, (current) => ({
+              preferences: {
+                ...current,
+                itineraryMarketing: {
+                  ...(current.itineraryMarketing && typeof current.itineraryMarketing === "object" &&
+                    !Array.isArray(current.itineraryMarketing) ? current.itineraryMarketing : {}),
+                  timeZone: zone,
+                },
+              },
+              result: true,
+            }), undefined, tx);
+            if (saved !== true) throw new Error("Signup time-zone preference could not be saved.");
+          }
           const welcomeId = await enqueueSignupWelcome(tx, newUser.id);
           return { newUser, welcomeId };
         });

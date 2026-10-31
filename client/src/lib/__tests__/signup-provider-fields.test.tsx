@@ -62,9 +62,47 @@ const SIGNUP_SRC = fs.readFileSync("client/src/pages/Signup.tsx", "utf8");
 const WAITLIST_SRC = fs.readFileSync("client/src/pages/launch-waitlist.tsx", "utf8");
 const COPY_SRC = fs.readFileSync("client/src/lib/wlb-signup-copy.ts", "utf8");
 const FORM_SRC = fs.readFileSync("client/src/components/waitlist/ExpertWaitlistForm.tsx", "utf8");
+const SIGNIN_SRC = fs.readFileSync("client/src/components/SignInModal.tsx", "utf8");
 
 before(() => { (globalThis as any).window = { location: { search: "", replace() {}, assign() {} } }; });
 after(() => { (globalThis as any).window = origWindow; });
+
+describe("signup time-zone capture: authored contract coverage, execution held", () => {
+  it("TZ-UI1: the signup page renders an optional blank field, never a server/browser default", async () => {
+    const html = await renderSignup("");
+    const field = html.match(/<input[^>]*data-testid="input-signup-time-zone"[^>]*>/)?.[0];
+    assert.ok(field);
+    assert.match(field, /value=""/);
+    assert.doesNotMatch(field, /\brequired\b/);
+    assert.match(field, /aria-describedby="signup-time-zone-help"/);
+    assert.equal(html.includes('data-testid="button-use-browser-time-zone"'), false, "effects do not infer a zone during server rendering");
+  });
+
+  it("TZ-UI2: both forms omit a blank zone and only the explicit action copies a browser suggestion", () => {
+    for (const source of [SIGNUP_SRC, SIGNIN_SRC]) {
+      assert.match(source, /const \[timeZone, setTimeZone\] = useState\(""\)/);
+      assert.match(source, /\.\.\.\(timeZone\.trim\(\) \? \{ timeZone: timeZone\.trim\(\) \} : \{\}\)/);
+      assert.match(source, /onClick=\{\(\) => setTimeZone\(suggestedTimeZone\)\}/);
+      assert.doesNotMatch(source, /setTimeZone\(Intl|setTimeZone\(.*resolvedOptions/);
+      assert.match(source, /fields\.timeZoneInvalid/);
+      assert.doesNotMatch(source, /itineraryMarketing\s*:|quietStart\s*:|quietEnd\s*:/);
+    }
+    const signinBody = SIGNIN_SRC.slice(SIGNIN_SRC.indexOf('const body = mode === "signin"'), SIGNIN_SRC.indexOf("const response = await fetch(endpoint"));
+    assert.match(signinBody, /\? \{ email: formData\.email, password: formData\.password \}/);
+    assert.match(SIGNIN_SRC, /mode === "signup" && \(\s*<div className="space-y-2">\s*<Label htmlFor="modal-signup-time-zone"/);
+  });
+
+  it("TZ-UI3: both existing locale files explain optional capture without marketing consent", () => {
+    for (const language of ["en", "ja"]) {
+      const locale = JSON.parse(fs.readFileSync(`client/src/locales/${language}/auth.json`, "utf8"));
+      for (const key of ["timeZone", "timeZonePlaceholder", "timeZoneHelp", "useBrowserTimeZone", "timeZoneInvalid"]) {
+        assert.equal(typeof locale.fields[key], "string");
+        assert.ok(locale.fields[key].length > 0);
+      }
+      assert.ok(locale.fields.useBrowserTimeZone.includes("{{zone}}"));
+    }
+  });
+});
 
 describe("WL-B screen: provider sign-up", () => {
   it("S1/S2 the provider fields draw; the button waits for the required ones", async () => {

@@ -255,11 +255,11 @@ describe("AUTH-1 fix 3b: neutral registration", () => {
     emails.push(e);
     return e;
   }
-  async function register(email: string, cookie?: string) {
+  async function register(email: string, cookie?: string, extra: Record<string, unknown> = {}) {
     const res = await fetch(`${base3}/api/auth/register`, {
       method: "POST",
       headers: { "content-type": "application/json", ...(cookie ? { cookie } : {}) },
-      body: JSON.stringify({ email, password: PASSWORD, firstName: "Neutral", lastName: "Fixture" }),
+      body: JSON.stringify({ email, password: PASSWORD, firstName: "Neutral", lastName: "Fixture", ...extra }),
     });
     const text = await res.text();
     return { status: res.status, text, body: JSON.parse(text), setCookie: res.headers.get("set-cookie") };
@@ -441,5 +441,91 @@ describe("AUTH-1 fix 3b: neutral registration", () => {
     assert.equal(scryptCalls, 1, "an existing address hashes once too");
     // Recorded, not asserted: the proposal does not claim constant-time network behaviour.
     console.log(`[auth1-3b] N6 timings: new ${newMs.toFixed(1)} ms, existing ${dupMs.toFixed(1)} ms`);
+  });
+
+  // Gap: signup zone capture. Authored only; execution awaits the owner's testing authorization.
+  it("TZ1: an explicit IANA zone saves only that preference and leaves the response neutral", async () => {
+    const email = addr("tz1");
+    const result = await register(email, undefined, {
+      timeZone: " Asia/Calcutta ",
+      // Unknown preferences are not accepted as consent through the registration body.
+      preferences: { itineraryMarketing: { enabled: true, quietStart: "00:00", quietEnd: "00:00" } },
+    });
+    assert.equal(result.status, 202);
+    assert.deepEqual(result.body, { code: REGISTRATION_NEUTRAL_CODE, message: REGISTRATION_NEUTRAL_MESSAGE });
+    assert.equal(result.setCookie, null);
+    const [user] = await accountsFor(email);
+    assert.deepEqual(user.preferences, { itineraryMarketing: { timeZone: "Asia/Calcutta" } });
+    assert.equal((await welcomesFor(user.id)).length, 1);
+    const duplicate = await register(email, undefined, { timeZone: "Europe/London" });
+    assert.equal(duplicate.status, result.status);
+    assert.deepEqual(duplicate.body, result.body);
+    assert.deepEqual((await accountsFor(email))[0].preferences, user.preferences);
+    assert.equal((await welcomesFor(user.id)).length, 1);
+  });
+
+  it("TZ2: omitted and blank zones never infer a timezone or marketing consent", async () => {
+    for (const extra of [{}, { timeZone: "" }, { timeZone: "   " }]) {
+      const email = addr("tz2");
+      assert.equal((await register(email, undefined, extra)).status, 202);
+      const [user] = await accountsFor(email);
+      assert.equal((user.preferences as any)?.itineraryMarketing?.timeZone, undefined);
+      assert.equal((user.preferences as any)?.itineraryMarketing?.enabled, undefined);
+    }
+  });
+
+  it("TZ3: malformed or invalid zones reject both new and duplicate requests without changing accounts", async () => {
+    const existingEmail = addr("tz3-existing");
+    assert.equal((await register(existingEmail, undefined, { timeZone: "Asia/Tokyo" })).status, 202);
+    const [before] = await accountsFor(existingEmail);
+    for (const timeZone of ["not/a-zone", "x".repeat(101), null, 9, {}, []]) {
+      for (const email of [addr("tz3-new"), existingEmail]) {
+        const result = await register(email, undefined, { timeZone });
+        assert.equal(result.status, 400);
+        assert.equal(result.body.message, "Validation failed");
+        assert.equal(result.body.errors[0].path[0], "timeZone");
+        if (email !== existingEmail) assert.equal((await accountsFor(email)).length, 0);
+      }
+    }
+    assert.deepEqual((await accountsFor(existingEmail))[0].preferences, before.preferences);
+    assert.equal((await welcomesFor(before.id)).length, 1);
+  });
+
+  it("TZ4: concurrent signup zones create one account and one welcome; the winning zone stays", async () => {
+    const email = addr("tz4");
+    const zones = ["Asia/Tokyo", "Europe/London", "America/New_York"];
+    const results = await Promise.all(zones.map(timeZone => register(email, undefined, { timeZone })));
+    for (const result of results) {
+      assert.equal(result.status, 202);
+      assert.deepEqual(result.body, { code: REGISTRATION_NEUTRAL_CODE, message: REGISTRATION_NEUTRAL_MESSAGE });
+    }
+    const rows = await accountsFor(email);
+    assert.equal(rows.length, 1);
+    const stored = (rows[0].preferences as any)?.itineraryMarketing;
+    assert.ok(zones.includes(stored.timeZone));
+    assert.deepEqual(Object.keys(stored), ["timeZone"]);
+    assert.equal((await welcomesFor(rows[0].id)).length, 1);
+    for (const timeZone of zones) await register(email, undefined, { timeZone });
+    assert.deepEqual((await accountsFor(email))[0].preferences, rows[0].preferences);
+  });
+
+  it("TZ5: a welcome queue failure rolls back the new account and its timezone together", async () => {
+    const email = addr("tz5");
+    (db as any).transaction = (callback: (tx: unknown) => Promise<unknown>, options: unknown) =>
+      origTransaction.call(db, async (tx: any) => callback(new Proxy(tx, {
+        get(target, property) {
+          if (property === "insert") return (table: unknown) => {
+            if (table === emailOutbox) throw new Error("injected signup welcome enqueue failure");
+            return target.insert(table);
+          };
+          const value = Reflect.get(target, property);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      })), options);
+    const result = await register(email, undefined, { timeZone: "Asia/Tokyo" });
+    assert.equal(result.status, 500);
+    assert.equal((await accountsFor(email)).length, 0);
+    const orphaned = await db.select({ id: emailOutbox.id }).from(emailOutbox).where(eq(emailOutbox.toEmail, email));
+    assert.equal(orphaned.length, 0);
   });
 });
