@@ -72,7 +72,7 @@ const fillerKinds = (() => {
   const src = fs.readFileSync(path.join(process.cwd(), "client/src/pages/discover-location.tsx"), "utf8");
   const block = src.match(/const FILLER_KINDS = new Set<FeedItem\["kind"\]>\(\[([\s\S]*?)\]\)/);
   assert.ok(block, "FILLER_KINDS block");
-  return [...block[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+  return (block[1].match(/"([^"]+)"/g) ?? []).map((quoted) => quoted.slice(1, -1));
 })();
 
 const gem = { id: "g1", placeName: "Philosopher's Path", placeType: "temple", description: "A lane." };
