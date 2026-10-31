@@ -1,0 +1,1 @@
+| 2026-10-30-row179-upsell-line-server | 2026-10-30 | [guarded: server/__tests__/row179-upsell-line.test.ts] (server; no new route; no migration) | **R? — THE PLANCARD UPSELL READ CARRIES AT MOST ONE UPSELL LINE PER SELECTED ITEM; SOCIAL PROOF IS NULL UNTIL A REAL BOOKING-DATA SOURCE AND CONFIG THRESHOLDS EXIST.** | numeric citation R? |

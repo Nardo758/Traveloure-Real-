@@ -28,6 +28,8 @@
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { originTier } from "@shared/content-facts";
+import { buildLegUpsellLines, isBookableLegOptionType, isUpsellTransportCategory, type UpsellLine, type UpsellLineCandidate } from "@shared/upsell-line";
+import { getTripTransportLegs } from "./trip-transport-legs.service";
 
 // ─── Types (per spec §B1) ────────────────────────────────────────────────────
 
@@ -234,7 +236,7 @@ export function isTransportSuppressed(
   surface: Surface,
   options?: { tripIsPostOptimize?: boolean },
 ): boolean {
-  const isTransport = categoryKey === "private_transportation" || categoryKey === "aff_ground_transport";
+  const isTransport = isUpsellTransportCategory(categoryKey);
   if (!isTransport) return false;
   if (surface === "plancard_ontrip") return false;
   if (surface === "checkout" && options?.tripIsPostOptimize === true) return false;
@@ -465,5 +467,50 @@ export async function logImpressions(
     }
   } catch (err) {
     console.error("[upsell-engine] impression log failed (non-fatal):", err);
+  }
+}
+
+/**
+ * Row 179 (ledger `2026-10-30-row179-upsell-line-server`): the on-trip read's per-leg lines. The legs are the
+ * traveler's own read (`getTripTransportLegs`, confirmed only); a leg counts when it starts at an item on this plan
+ * and has a platform or partner option. No ranking happens here: the top transport candidate the engine already
+ * ranked is attached by `buildLegUpsellLines`. A failed read sends no lines and never fails the response.
+ */
+export async function legUpsellLinesForTrip(
+  tripId: string,
+  candidates: ReadonlyArray<UpsellLineCandidate>,
+): Promise<UpsellLine[]> {
+  if (!candidates.some((c) => isUpsellTransportCategory(c.categoryKey))) return [];
+  try {
+    const legs = await getTripTransportLegs(tripId);
+    const fromIds = Array.from(new Set(legs.map((l: any) => l.fromActivityId).filter((x: unknown): x is string => typeof x === "string" && x.length > 0)));
+    if (legs.length === 0 || fromIds.length === 0) return [];
+    const legIds = legs.map((l: any) => String(l.id));
+    const items = await db.execute(sql`
+      SELECT id FROM itinerary_items
+      WHERE trip_id = ${tripId} AND id IN (${sql.join(fromIds.map((id) => sql`${id}`), sql`, `)})
+    `);
+    const selected = new Set<string>((items.rows ?? []).map((r: any) => String(r.id)));
+    const options = await db.execute(sql`
+      SELECT transport_leg_id, booking_type FROM transport_booking_options
+      WHERE transport_leg_id IN (${sql.join(legIds.map((id) => sql`${id}`), sql`, `)})
+    `);
+    const bookable = new Set<string>(
+      (options.rows ?? []).filter((r: any) => isBookableLegOptionType(r.booking_type)).map((r: any) => String(r.transport_leg_id)),
+    );
+    return buildLegUpsellLines(
+      legs.map((l: any) => ({
+        legId: String(l.id),
+        fromItemId: l.fromActivityId ?? null,
+        dayNumber: Number(l.dayNumber),
+        legOrder: Number(l.legOrder),
+        hasBookableOption: bookable.has(String(l.id)),
+      })),
+      selected,
+      candidates,
+    );
+  } catch (err) {
+    console.warn("[upsell-engine] leg upsell lines failed (non-fatal):", err);
+    return [];
   }
 }
