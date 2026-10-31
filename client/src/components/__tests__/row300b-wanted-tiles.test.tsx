@@ -56,7 +56,8 @@ const slot = (demandCount: number): FeedItem => ({
 
 const page = fs.readFileSync("client/src/pages/discover-location.tsx", "utf8");
 const between = (src: string, start: string, end: string) => src.slice(src.indexOf(start), src.indexOf(end, src.indexOf(start)));
-const panelSrc = between(page, "function NeighbourhoodWantedPanel(", "\n}\n");
+// Row 301 moved the panel out of the page into its own card file.
+const panelSrc = fs.readFileSync("client/src/components/feed/neighbourhood-wanted-card.tsx", "utf8");
 const emptyMarketSrc = between(page, 'data-testid="section-expert-recruitment-generic"', "</div>");
 
 describe("row 300b — Wanted tiles make no demand claim", () => {
