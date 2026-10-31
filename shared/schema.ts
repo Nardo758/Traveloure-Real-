@@ -11296,6 +11296,8 @@ export const platformWebhookConsumers = pgTable("platform_webhook_consumers", {
   completedAt: timestamp("completed_at"),
   error: text("error"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  // Row 98 (migration 418, HELD): when the claim was last taken. NULL = claimed before the column existed.
+  claimedAt: timestamp("claimed_at"),
 }, (table) => [primaryKey({ columns: [table.stripeEventId, table.consumer] })]);
 
 // The terminal outcome is shared by both verified webhook consumers so a

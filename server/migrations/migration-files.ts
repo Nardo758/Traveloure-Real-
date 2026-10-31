@@ -2197,6 +2197,10 @@ export const MIGRATION_FILES = [
   // Ledger 2026-10-29-invite-plan-around-event. Declared in shared/guest-invites-schema.ts.
   // 416 is held by row 292a (service_bookings.payout_snapshot) and is not on main.
   "417_event_invites_plan_trip_id.sql",
+  // 418 — platform_webhook_consumers.claimed_at. One additive nullable timestamp. No default,
+  // no check, no index, no backfill. HELD for "Migration 418 SQL approved — Leon".
+  // Ledger 2026-10-30-row98-webhook-dedupe-replay. Declared in shared/schema.ts.
+  "418_platform_webhook_consumers_claimed_at.sql",
   // 420 — DATA ONLY. Four Kyoto discover gems: image_url + image_credit.
   // Replaces three 404 Unsplash URLs and Ginkaku-ji's null photo with Wikimedia
   // Commons files. No ALTER. HELD until the owner approves the SQL on the pull
