@@ -212,8 +212,10 @@ describe("W4 — the posted bodies pass the strict schema", () => {
 
 describe("W5 — box 2's label", () => {
   it("is the box2Label text, for every market that has one", () => {
-    assert.equal(WAITLIST_MARKETING_CONSENT_LINE, "Send me Traveloure news and tips.");
-    assert.equal(WAITLIST_MARKETING_CONSENT_LINE.includes("unsubscribe"), false);
+    assert.equal(
+      WAITLIST_MARKETING_CONSENT_LINE,
+      "Send me news and offers from Traveloure. You can unsubscribe at any time.",
+    );
     for (const m of WAITLIST_MARKET_OPTIONS) assert.equal(waitlistMarketingConsentLine(m.key), WAITLIST_MARKETING_CONSENT_LINE);
     const html = boxes("traveler");
     assert.ok(html.includes(`data-testid="label-waitlist-marketing-consent">${WAITLIST_MARKETING_CONSENT_LINE}<`));

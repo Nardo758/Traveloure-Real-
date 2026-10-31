@@ -1246,7 +1246,9 @@ export const providerServices = pgTable("provider_services", {
   serviceName: varchar("service_name", { length: 255 }).notNull(),
   shortDescription: varchar("short_description", { length: 150 }),
   description: text("description"),
-  serviceType: varchar("service_type", { length: 50 }).default("planning"), // consultation, planning, action, concierge, experience, specialty
+  // consultation, planning, action, concierge, experience, specialty.
+  // concierge is a per-trip listing. Existing rows are not rewritten.
+  serviceType: varchar("service_type", { length: 50 }).default("planning"),
   categoryId: varchar("category_id").references(() => serviceCategories.id, { onDelete: "set null" }),
   subcategoryId: varchar("subcategory_id").references(() => serviceSubcategories.id, { onDelete: "set null" }),
 
@@ -1371,6 +1373,7 @@ export const providerServices = pgTable("provider_services", {
   // above) — DESCRIPTIVE ONLY. Neither feeds shared/service-fundamentals.ts's completionRuleFor
   // (unchanged — async_messaging/voice_notes already route to 'provider_declared') or
   // server/services/booking-completion.service.ts, which this lane does not touch.
+  // A concierge listing reuses responseWindowHours for its own reply window. No second column.
   responseWindowHours: integer("response_window_hours"),
   scopeStatement: text("scope_statement"),
 
@@ -1428,6 +1431,8 @@ export const providerServices = pgTable("provider_services", {
 
   // Property rung (§17, migration 153). pricingUnit: NULL = flat price (every existing row),
   // 'per_night' = price is a nightly rate — charge = nights × rate, server-derived (§14).
+  // 'per_trip' is the concierge listing unit (CN-1). The route refuses it unless the live
+  // service type is concierge. No backfill, and checkout math is unchanged.
   // parentServiceId: room-child → parent property self-FK, ON DELETE RESTRICT (a property
   // can't be deleted while rooms exist — the bundle-components posture). Both additive
   // nullable, no DB CHECK.
@@ -1675,6 +1680,32 @@ export const experienceThemeSuggestions = pgTable("experience_theme_suggestions"
   reviewedAt: timestamp("reviewed_at"),
   reviewedBy: varchar("reviewed_by").references(() => users.id, { onDelete: "set null" }),
 });
+
+// Concierge task catalog (migration 426). Admin-edited. A listing picks rows
+// in provider_service_concierge_tasks. id is the task key. active NULL or true
+// is listed; false is hidden. No DEFAULT, no CHECK. Link-only is derived in
+// shared/concierge-tasks.ts (stays and transport), not stored.
+export const conciergeTaskKinds = pgTable("concierge_task_kinds", {
+  id: varchar("id").primaryKey(),
+  label: varchar("label", { length: 120 }).notNull(),
+  domain: varchar("domain", { length: 40 }).notNull(),
+  sortOrder: integer("sort_order"),
+  active: boolean("active"),
+});
+
+// Tasks one concierge listing offers, each with an optional cap. NULL cap =
+// no cap. ON DELETE CASCADE with the listing. The kind FK is RESTRICT.
+// Unique (service_id, task_kind_id) and the service index are declared so
+// publish does not drop them.
+export const providerServiceConciergeTasks = pgTable("provider_service_concierge_tasks", {
+  id: varchar("id").primaryKey(),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  taskKindId: varchar("task_kind_id").notNull().references(() => conciergeTaskKinds.id, { onDelete: "restrict" }),
+  cap: integer("cap"),
+}, (table) => ({
+  serviceKindKey: uniqueIndex("provider_service_concierge_tasks_service_kind_key").on(table.serviceId, table.taskKindId),
+  serviceIdx: index("idx_provider_service_concierge_tasks_service_id").on(table.serviceId),
+}));
 
 // === Bundle components (Product Builder §17, migration 151 — ratified join-table decision) ===
 // A bundle IS a provider_services row (product_shape='bundle') so the F2 approval queue,
@@ -3242,6 +3273,10 @@ export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcateg
 // approve/reject writers below unconditionally overwrite all four the moment a real review
 // happens). Found by `scripts/check-privileged-field-completeness.cjs` (§19 "close the class").
 export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true, declaredArtifactDeliverable: true, pendingChanges: true, editReviewStatus: true, createdVia: true, sourceRef: true, approvalStatus: true, submittedAt: true, reviewedAt: true, reviewedBy: true, rejectionReason: true, expertOfferingTypeKey: true, priceBasis: true, themeId: true }).extend({
+  // service_type is varchar with no DB CHECK. This is the vocabulary check.
+  // Field-level so it survives .partial() on PATCH. Null is left for the
+  // route to treat as "not in this write" so an edit cannot clear a stored type.
+  serviceType: z.enum(serviceTypeEnum).nullish(),
   // X1: app-enforced vocabulary (migration 144 has no DB CHECK) — reject anything outside the set here.
   cancellationPolicyType: z.enum(cancellationPolicyTypeEnum).nullable().optional(),
   // deliveryMethod vocabulary — UNLIKE the publish-trap fields below, a DB CHECK exists here

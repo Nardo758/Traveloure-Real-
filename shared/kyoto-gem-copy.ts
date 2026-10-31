@@ -42,6 +42,37 @@ export function kyotoCopyNeedsDescriptionHide(
   return texts.some((text) => kyotoUnswappedPhrase(text) != null);
 }
 
+/**
+ * Row 300a. Phrases removed from Kyoto gem copy. `rewordKyotoBannedCopy` does not
+ * touch these — that function stays the approved geisha/alley swaps. This list is
+ * what stops the removed lines coming back in a seed or a stored field.
+ * "5am" is the Fushimi dawn claim. A Kyoto gem that says 4:30am or 7am is not a hit.
+ */
+export const KYOTO_REMOVED_PHRASES: readonly { id: string; pattern: RegExp }[] = [
+  { id: "5am", pattern: /\b5\s*am\b/i },
+  { id: "200 queuing", pattern: /200\s+people\s+queuing|\b200\s+queuing\b/i },
+  { id: "best in Japan", pattern: /best\s+in\s+japan|best\s+photo\s+opportunity\s+in\s+all\s+of\s+japan/i },
+  { id: "no crowds", pattern: /\bno crowds\b/i },
+  { id: "less visited", pattern: /less visited/i },
+  { id: "overcrowded", pattern: /overcrowded/i },
+  { id: "completely alone", pattern: /completely alone/i },
+  { id: "most tourists", pattern: /most tourists only/i },
+  { id: "avoiding crowds", pattern: /avoiding crowds/i },
+  { id: "most photogenic", pattern: /most photogenic/i },
+  { id: "school ¥500", pattern: /school\s*¥\s*500/i },
+  { id: "Shimoadachi", pattern: /Shimoadachi/i },
+];
+
+/** The first removed phrase still in the text, or null. */
+export function kyotoRemovedPhrase(text: string | null | undefined): string | null {
+  if (typeof text !== "string" || text.trim() === "") return null;
+  for (const phrase of KYOTO_REMOVED_PHRASES) {
+    const hit = text.match(phrase.pattern);
+    if (hit) return phrase.id;
+  }
+  return null;
+}
+
 /** Traveler payload: a flagged row shows no description and no why-text. The row itself is unchanged. */
 export function gemCopyForTraveler<T extends { descriptionHiddenAt?: Date | string | null; description?: string | null; whyLocalsLoveIt?: string | null }>(
   row: T,
@@ -85,10 +116,55 @@ export function scanKyotoGemSeedSource(source: string): KyotoUnswappedCopyRow[] 
   return kyotoUnswappedCopyReport(found);
 }
 
+/** Kyoto gem fields that still carry a row-300a removed phrase. One hit per field. */
+export function scanKyotoGemRemovedPhrases(source: string): KyotoRemovedPhraseRow[] {
+  const parts = source.split(/(?:"placeName"|placeName):\s*"/);
+  const out: KyotoRemovedPhraseRow[] = [];
+  for (let i = 1; i < parts.length; i++) {
+    const titleEnd = parts[i].indexOf('"');
+    if (titleEnd < 0) continue;
+    const placeName = parts[i].slice(0, titleEnd);
+    const cityPattern = /city:\s*"([^"]+)"|"city":\s*"([^"]+)"/g;
+    let city = "";
+    let cityMatch: RegExpExecArray | null;
+    while ((cityMatch = cityPattern.exec(parts[i - 1])) !== null) {
+      city = cityMatch[1] || cityMatch[2] || "";
+    }
+    if (city.trim().toLowerCase() !== "kyoto") continue;
+    const fields: Array<["description" | "whyLocalsLoveIt" | "address" | "bestFor", string | null]> = [
+      ["description", readSeedString(parts[i], "description")],
+      ["whyLocalsLoveIt", readSeedString(parts[i], "whyLocalsLoveIt")],
+      ["address", readSeedString(parts[i], "address")],
+      ["bestFor", readSeedArray(parts[i], "bestFor")],
+    ];
+    for (const [field, text] of fields) {
+      const matchedPhrase = kyotoRemovedPhrase(text);
+      if (matchedPhrase && text) {
+        out.push({ placeName, field, matchedPhrase, text });
+      }
+    }
+  }
+  return out;
+}
+
+export interface KyotoRemovedPhraseRow {
+  placeName: string;
+  field: "description" | "whyLocalsLoveIt" | "address" | "bestFor";
+  matchedPhrase: string;
+  text: string;
+}
+
 function readSeedString(chunk: string, name: string): string | null {
   const pattern = new RegExp(`(?:"${name}"|${name}):\\s*"((?:\\\\.|[^"\\\\])*)"`);
   const match = chunk.match(pattern);
   return match ? match[1].replace(/\\"/g, '"') : null;
+}
+
+/** The inside of a seed array literal, or null when the field is absent. */
+function readSeedArray(chunk: string, name: string): string | null {
+  const pattern = new RegExp(`(?:"${name}"|${name}):\\s*\\[([^\\]]*)\\]`);
+  const match = chunk.match(pattern);
+  return match ? match[1] : null;
 }
 
 /** One report line per matching field. The description is the stored text, not a rewrite. */

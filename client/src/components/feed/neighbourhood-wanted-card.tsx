@@ -3,13 +3,9 @@
  * section shows, moved out of `pages/discover-location.tsx` into the card family unchanged. The
  * bento's `BentoTile` renders it for a `wanted-slot` item carrying `neighbourhoodWantedHero`.
  */
-import {
-  neighbourhoodWantedBody,
-  NEIGHBOURHOOD_WANTED_BUTTON,
-  NEIGHBOURHOOD_WANTED_HREF,
-} from "@/lib/feed-stream";
+import { neighbourhoodWantedBody, NEIGHBOURHOOD_WANTED_HREF } from "@/lib/feed-stream";
+import { tileActionLabel } from "@/lib/bento-action-state";
 
-const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
 export function FeedNeighbourhoodWantedCard({ name, slug }: { name: string; slug: string }) {
   return (
@@ -19,12 +15,6 @@ export function FeedNeighbourhoodWantedCard({ name, slug }: { name: string; slug
       data-testid={`neighbourhood-wanted-${slug}`}
     >
       <div className="min-w-0">
-        <div
-          className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em]"
-          style={{ color: "var(--earn-gold-ink)", fontFamily: EARN_MONO }}
-        >
-          Wanted here
-        </div>
         <p className="text-[13px] font-semibold" style={{ color: "var(--earn-ink)" }}>
           {neighbourhoodWantedBody(name || slug)}
         </p>
@@ -36,7 +26,7 @@ export function FeedNeighbourhoodWantedCard({ name, slug }: { name: string; slug
         data-testid={`link-neighbourhood-join-${slug}`}
         data-bento-primary-action=""
       >
-        {NEIGHBOURHOOD_WANTED_BUTTON}
+        {tileActionLabel("wanted-slot")}
       </a>
     </div>
   );

@@ -1,3 +1,4 @@
+import { DISCOVER_HEADLINE_COPY } from "@shared/copy-2026-10-31";
 import { heroEyebrowFragments } from "@/lib/hero-eyebrow";
 import { formatTripDates } from "@/lib/trip-dates";
 import { isKyotoCity, KYOTO_CITY_DESCRIPTION } from "@/lib/g02-g06-copy";
@@ -1511,8 +1512,8 @@ export default function DiscoverLocationPage() {
   // A selected theme asks /api/discover so the filter is server-side and the location cache stays untouched.
   const servicesForFeed = selectedThemeSlugs.length > 0 ? (themedDiscover?.services ?? []) : platformServices;
   // Trailhead T4.3: published external stubs + the render-time trend headline.
-  const externalStubs = data?.externalStubs?.data?.stubs ?? [];
   const externalTrendContext = data?.externalStubs?.data?.trendContext ?? null;
+  const externalStubs = data?.externalStubs?.data?.stubs ?? [];
 
   // ── Engine recommendations (discover_location / discover_date surface) ──
   // expertEndorsedKeys passes local expert IDs so the server boosts offerings
@@ -1941,11 +1942,8 @@ export default function DiscoverLocationPage() {
                 className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-4 text-center"
                 data-testid="section-expert-recruitment-generic"
               >
-                <p className="text-sm font-semibold text-primary mb-1">
+                <p className="text-sm font-semibold text-primary mb-3">
                   Local experts wanted in {toTitleCase(city)}
-                </p>
-                <p className="text-xs text-muted-foreground mb-3">
-                  Know this city well? Travelers are looking for guides, advisors, and service providers here.
                 </p>
                 {/* Gap 15: name the track. Without `type=` the wizard fell back to its
                     `travel_expert` default, so a "local experts wanted" card opened the Trip
@@ -1960,16 +1958,17 @@ export default function DiscoverLocationPage() {
               </div>
             )}
 
-            {/* Trailhead T4.4: render-time trend headline for external content — honest ceiling
-                ("‹Market› is trending · ‹Event› approaching"), server-computed, never stored, only
-                shown when published external stubs exist for this market. */}
+            {/* Trailhead T4.4: the headline over published external content now reads
+                "Discover ‹Market›" (approved copy, ledger 2026-10-31-four-copy-strings). It names the
+                market and makes no trend claim. Shown under the same condition as before: a server
+                trend line exists and published external stubs exist. */}
             {externalTrendContext && externalStubs.length > 0 && (
               <div
                 data-testid="external-trend-context"
                 className="mb-3 flex items-center gap-2 text-xs font-medium text-muted-foreground"
               >
                 <Globe className="w-3.5 h-3.5" />
-                <span>{externalTrendContext}</span>
+                <span>{DISCOVER_HEADLINE_COPY.forMarket(displayCity)}</span>
               </div>
             )}
 

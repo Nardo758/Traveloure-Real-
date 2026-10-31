@@ -91,7 +91,12 @@ export const SEEDER_INPUT_FILES = {
   seedCityNeighborhoods: ["server/seeds/city-neighborhoods.seed.ts"],
   seedManualCityEvents: ["server/seeds/city-events.manual.ts", "server/services/city-events.service.ts"],
   seedLandingHeroDemo: ["server/seeds/landing-hero-demo.seed.ts"],
-  seedPopularCitiesContent: ["server/seeds/popular-cities-content.seed.ts"],
+  seedPopularCitiesContent: [
+    "server/seeds/popular-cities-content.seed.ts",
+    "shared/kyoto-seed-cleanup.ts",
+    "shared/kyoto-feed-cleanup.ts",
+    "shared/kyoto-canonical-images.ts",
+  ],
   seedMajorCitiesBackfill: ["server/seeds/major-cities-backfill.seed.ts"],
   seedPhaseDKyotoVendors: ["server/seeds/phase-d-kyoto-vendors.seed.ts"],
   seedTripOwnership: ["server/seeds/trip-ownership.seed.ts"],

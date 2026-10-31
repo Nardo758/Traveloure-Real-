@@ -12,6 +12,7 @@
  * §13: a real rating renders only when reviewCount > 0, otherwise an honest "New".
  */
 import React, { useState } from "react";
+import { tileActionLabel } from "@/lib/bento-action-state";
 import { Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -143,7 +144,7 @@ export function FeedReadyMadeCard({
               data-bento-primary-action=""
               onClick={(e: React.MouseEvent) => e.stopPropagation()}
             >
-              <a href={ctaHref}>Get this trip</a>
+              <a href={ctaHref}>{tileActionLabel("package")}</a>
             </Button>
           </div>
         </div>
@@ -286,7 +287,7 @@ export function FeedReadyMadeCard({
             data-testid={`btn-view-package-${template.id}`}
             onClick={(e: React.MouseEvent) => e.stopPropagation()}
           >
-            <a href={ctaHref}>Get this trip</a>
+            <a href={ctaHref}>{tileActionLabel("package")}</a>
           </Button>
         </div>
       </div>
