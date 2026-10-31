@@ -1,3 +1,4 @@
+import { COMPARISON_ADD_TOAST_COPY } from "@shared/copy-2026-10-31";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { isBookedActivity } from "@/lib/item-booking-state";
@@ -931,8 +932,7 @@ export default function ItineraryComparisonPage() {
       // while the plan is not finalized and the row carries no money (`undoTargetForAdopt`).
       const undoItemId = tripId ? undoTargetForAdopt(r, slipPlancard?.trip) : null;
       toast({
-        title: "Added to your plan",
-        description: "Added. Your other stops are unchanged.",
+        title: COMPARISON_ADD_TOAST_COPY.added,
         action:
           tripId && undoItemId ? (
             <ToastAction
