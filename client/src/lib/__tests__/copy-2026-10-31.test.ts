@@ -3,7 +3,7 @@
  *
  *   C1 the approved strings, held once in shared/copy-2026-10-31.ts.
  *   C2 the denied provider page and the waitlist mail say "Sign up as a provider"; the page links to provider sign-up.
- *   C3 the Discover headline over external content reads "Discover ‹Market›" and no longer renders the trend line.
+ *   C3 the Discover headline over external content reads "Discover ‹Market›", under its unchanged display condition.
  *   C4 the comparison board's add toast is the one approved line.
  *   C5 no shipped string says "founding": the expert heading reads "Local experts — apply now".
  *
@@ -40,7 +40,9 @@ describe("four copy strings (Oct 31)", () => {
   it("C3: the Discover headline names the market", () => {
     const page = read("client/src/pages/discover-location.tsx");
     assert.ok(page.includes("DISCOVER_HEADLINE_COPY.forMarket(displayCity)"));
-    assert.equal(page.includes("externalTrendContext"), false);
+    // Same display condition as before; only the string changed.
+    assert.ok(page.includes("{externalTrendContext && externalStubs.length > 0 && ("));
+    assert.equal(page.includes("<span>{externalTrendContext}</span>"), false);
   });
 
   it("C4: the add toast is one line", () => {

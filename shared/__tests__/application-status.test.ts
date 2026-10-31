@@ -196,8 +196,8 @@ test("access denied for a missing application does not say under review", () => 
   assert.equal(copy.reason, "This page is for approved providers.");
   assert.doesNotMatch(copy.reason, /under review/);
   assert.equal(copy.next, "Submit a provider application to open it.");
-  assert.equal(copy.actionHref, "/become-provider");
-  assert.equal(copy.actionLabel, "Apply as a provider");
+  assert.equal(copy.actionHref, "/signup?intent=supply&supplyRole=provider");
+  assert.equal(copy.actionLabel, "Sign up as a provider");
   assert.equal(copy.backLabel, "Back to Dashboard");
 });
 
