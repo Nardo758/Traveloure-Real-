@@ -2207,4 +2207,10 @@ export const MIGRATION_FILES = [
   // request. 418 is PR #1785. 419 is PR #1794.
   // Ledger 2026-10-30-row250-kyoto-discover-photos.
   "420_kyoto_gem_photo_credits.sql",
+  // 421 — DATA ONLY. Kyoto seed cleanup (row 300a): address, crowd-line copy,
+  // Ginkaku-ji admission and autumn viewing, and photo credits the 299a file
+  // did not cover. No ALTER. HELD for Leon's comment. 419 is the WL-B supply
+  // sign-up migration and is not on main.
+  // Ledger 2026-10-31-row300a-kyoto-seed-cleanup.
+  "421_kyoto_seed_cleanup.sql",
 ] as const;
