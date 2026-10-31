@@ -1,4 +1,4 @@
--- 421 — email_suppressions (Z-21, fix-queue row 171).
+-- 423 — email_suppressions (Z-21, fix-queue row 171).
 --
 -- Held. Do not merge, and do not run this against production, until the owner
 -- has approved this SQL on the pull request.
@@ -8,7 +8,7 @@
 -- Additive: IF NOT EXISTS. No DEFAULT, no CHECK, no backfill. A second run is
 -- a no-op. Declared in shared/schema.ts.
 --
--- 418, 419 and 420 are claimed by other lanes. This file is 421.
+-- 421 is PR #1804. 422 is PR #1803. This file is 423.
 
 CREATE TABLE IF NOT EXISTS email_suppressions (
   id varchar PRIMARY KEY,

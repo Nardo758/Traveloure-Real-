@@ -2207,9 +2207,8 @@ export const MIGRATION_FILES = [
   // request. 418 is PR #1785. 419 is PR #1794.
   // Ledger 2026-10-30-row250-kyoto-discover-photos.
   "420_kyoto_gem_photo_credits.sql",
-  // 421 — email_suppressions. New table only. Unique (email, reason).
+  // 423 — email_suppressions. New table only. Unique (email, reason).
   // No DEFAULT, no CHECK, no backfill. Declared in shared/schema.ts.
-  // Z-21, fix-queue row 171. Held for owner review of the SQL.
-  // 418, 419 and 420 are claimed by other lanes and are not in this chain.
-  "421_email_suppressions.sql",
+  // Z-21, fix-queue row 171. HELD. 421 is PR #1804. 422 is PR #1803.
+  "423_email_suppressions.sql",
 ] as const;

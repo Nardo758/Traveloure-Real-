@@ -12413,7 +12413,7 @@ export const emailOutbox = pgTable("email_outbox", {
 export type EmailOutbox = typeof emailOutbox.$inferSelect;
 export type InsertEmailOutbox = typeof emailOutbox.$inferInsert;
 
-// Z-21 (migration 421, held). One row per normalized address and reason.
+// Z-21 (migration 423, held). 421 is PR #1804. 422 is PR #1803. One row per normalized address and reason.
 // reason is app-enforced (hard_bounce, complaint). No DEFAULT, no CHECK, no backfill.
 // The unique index is the webhook retry guard. Declared here so publish does not drop it.
 export const emailSuppressions = pgTable("email_suppressions", {

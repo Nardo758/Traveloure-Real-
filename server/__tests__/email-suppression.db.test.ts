@@ -165,10 +165,10 @@ test("S1 every known email_type is exactly one stream", () => {
   for (const type of classed) assert.ok(known.includes(type), type);
   const streamSource = readFileSync("server/services/email-stream.ts", "utf8");
   assert.doesNotMatch(streamSource, /@[a-z0-9.-]+\.[a-z]{2,}/i);
-  const migration = readFileSync("server/migrations/421_email_suppressions.sql", "utf8");
+  const migration = readFileSync("server/migrations/423_email_suppressions.sql", "utf8");
   assert.match(migration, /CREATE TABLE IF NOT EXISTS email_suppressions/);
   assert.doesNotMatch(migration, /SQL approved/);
-  assert.match(readFileSync("server/migrations/migration-files.ts", "utf8"), /421_email_suppressions\.sql/);
+  assert.match(readFileSync("server/migrations/migration-files.ts", "utf8"), /423_email_suppressions\.sql/);
 });
 
 test("S2 the allowlist still allows nothing until it is set", () => {
