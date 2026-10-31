@@ -109,6 +109,53 @@ export function isMarketingEmailType(emailType: string | null | undefined): bool
   return typeof emailType === "string" && (MARKETING_EMAIL_TYPES as readonly string[]).includes(emailType);
 }
 
+/**
+ * Z-21 stream. Marketing mail leaves on a separate sender and a separate
+ * Resend tag or audience. This list is the itinerary follow-ups (the only
+ * automation type "marketing") plus MARKETING_EMAIL_TYPES. It does not
+ * replace MARKETING_EMAIL_TYPES: the consent cancel stays waitlist_open only.
+ */
+export const STREAM_MARKETING_EMAIL_TYPES = [
+  "itinerary_nudge_2h",
+  "itinerary_followup_24h",
+  "itinerary_reengagement_5d",
+  "waitlist_open",
+] as const;
+
+/** Sender inventory type that is not in the five class lists. authCritical classifies the row. */
+export const PASSWORD_CHANGED_EMAIL_TYPE = "password_changed" as const;
+
+const STREAM_MARKETING = new Set<string>(STREAM_MARKETING_EMAIL_TYPES);
+
+export type EmailStream = "marketing" | "transactional";
+
+/** Every known email_type is one stream. An unknown type stays transactional. */
+export function emailStreamForType(emailType: string | null | undefined): EmailStream {
+  return typeof emailType === "string" && STREAM_MARKETING.has(emailType) ? "marketing" : "transactional";
+}
+
+/**
+ * Security for the suppression gate. authCritical is security even when the
+ * class lists return old-address or cancelled first. A type in
+ * SECURITY_EMAIL_TYPES is security without the flag.
+ */
+export function suppressionTreatsAsSecurity(emailType: string, authCritical: boolean): boolean {
+  if (authCritical) return true;
+  return classifyOutboxEmail(emailType, null) === "security";
+}
+
+/** Every email_type the class lists and the password-changed sender name. */
+export function knownOutboxEmailTypes(): string[] {
+  return [
+    ...SECURITY_EMAIL_TYPES,
+    PASSWORD_CHANGED_EMAIL_TYPE,
+    ...MUST_HAVE_EMAIL_TYPES,
+    ...OLD_ADDRESS_BY_DESIGN_EMAIL_TYPES,
+    ...NOT_ACCOUNT_BOUND_EMAIL_TYPES,
+    ...CANCELLED_BY_DEFAULT_EMAIL_TYPES,
+  ];
+}
+
 export type OutboxEmailClass =
   | "security"
   | "must_have"

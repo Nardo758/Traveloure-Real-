@@ -20,6 +20,7 @@
  * verbatim so playwright/tests/experts-flow.spec.ts stays green.
  */
 import { LiveStatusBadges } from "@/components/live/LiveStatusBadges";
+import { tileActionLabel } from "@/lib/bento-action-state";
 import { Badge } from "@/components/ui/badge";
 import { Star, MapPin, Languages, MessageCircle, Clock, CheckCircle, Award, Briefcase, Heart, Home, Plane, PartyPopper, BookOpen, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -132,7 +133,7 @@ interface ExpertCardProps {
    * "anchor" (city-feed bento, Phase 2) renders the dark-gradient lead-expert
    * anchor treatment: neutral role badge, Fraunces name, lede, and one primary
    * action. When this city has an expert to ask, that action is the coral
-   * "Plan with {name}" (the price only when a real one exists, §13). Otherwise
+   * "Ask this expert" from tileActionLabel (row 302a; the price only when a real one exists, §13). Otherwise
    * it is "View profile". The default browse card is unchanged.
    */
   variant?: "default" | "anchor";
@@ -224,7 +225,9 @@ function ExpertAnchorCard({
                 data-testid="button-plan-with-expert"
                 data-bento-primary-action=""
               >
-                {price !== null ? `Plan with ${firstName} · from $${price}` : `Plan with ${firstName}`}
+                {price !== null
+                  ? `${tileActionLabel("lead-expert", { canAsk: true })} · from $${price}`
+                  : tileActionLabel("lead-expert", { canAsk: true })}
               </button>
             </Link>
           ) : (
@@ -234,7 +237,7 @@ function ExpertAnchorCard({
                 data-testid="button-view-profile"
                 data-bento-primary-action=""
               >
-                View profile
+                {tileActionLabel("lead-expert", { canAsk: false })}
               </button>
             </Link>
           )}

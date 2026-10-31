@@ -869,9 +869,9 @@ test.describe('city-feed bento — /discover/location', () => {
         return matches;
       }, token);
 
-    // Platform service → teal Book now.
+    // Platform service → teal Check availability (row 302a label; same /services/:id path).
     const serviceBook = page.getByTestId('btn-book-svc-svc-1');
-    await expect(serviceBook).toHaveText('Book now');
+    await expect(serviceBook).toHaveText('Check availability');
     expect(await usesToken(serviceBook, '--earn-teal')).toBe(true);
     expect(await usesToken(serviceBook, '--earn-navy')).toBe(false);
 
@@ -995,7 +995,7 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(wanted).toHaveAttribute('data-col-span', '2');
     await expect(wanted).toHaveAttribute('data-row-span', '1');
     const join = page.getByTestId('link-neighbourhood-join-ohara');
-    await expect(join).toHaveText('Join Traveloure');
+    await expect(join).toHaveText('Apply');
     await expect(join).toHaveAttribute('href', '/earn');
     await expect(page.getByTestId('section-recruitment-ohara')).toHaveCount(0);
 

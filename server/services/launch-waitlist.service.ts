@@ -61,8 +61,10 @@ export async function ensureConsentText(marketSlug: string, exec: SqlClient = db
 
 /**
  * Row 294: record the approved news sentence once. ON CONFLICT DO NOTHING on (consent_key, version),
- * so a second boot is a no-op and the stored body is never edited. The join path does not call this:
- * a tick writes a consent row only when this version is already present (a missing seed stores nothing).
+ * so a second boot is a no-op and a stored body is never edited. A new sentence is a new version
+ * (`WAITLIST_MARKETING_CONSENT_VERSION`); the previous version's row is left as stored.
+ * The join path does not call this: a tick writes a consent row only when a version is already
+ * present (a missing seed stores nothing), and it keeps that row's own consented_at.
  */
 export async function ensureMarketingConsentText(exec: SqlClient = db): Promise<string> {
   await exec.execute(sql`

@@ -4,11 +4,28 @@
  *
  * Seeds run after migrations, so an UPDATE in migration 400 matches nothing on an empty
  * database. `kyotoGemSeedOverlay` is what the popular-cities insert applies, and the pin
- * checks that migration 400's SQL still names every entry here.
+ * checks that migration 400's SQL still names every entry here. Ginkaku-ji's hours,
+ * admission, source and checked date are the later fact from kyoto-seed-cleanup — the
+ * same strings migration 421 writes. Migration 400 still names that card's prior fact.
  *
  * City-wide is `null` (no neighbourhood slug). Kurama and Kibune cards stay city-wide;
  * they are not assigned to `kurama-kibune`. Card 36 is reworded, not hidden.
  */
+
+import {
+  BAMBOO_IMAGE_URL,
+  TENRYUJI_IMAGE_CREDIT,
+  TENRYUJI_IMAGE_URL,
+} from "./kyoto-canonical-images";
+import {
+  GINKAKU_ACCESS_SOURCE_URL,
+  GINKAKU_ADMISSION_HELD,
+  GINKAKU_AUTUMN_VIEWING_HELD,
+  GINKAKU_FACT_CHECKED_ON,
+  GINKAKU_HOURS_PRIOR,
+} from "./kyoto-seed-cleanup";
+
+export { BAMBOO_IMAGE_URL, TENRYUJI_IMAGE_CREDIT, TENRYUJI_IMAGE_URL };
 
 /** Exact Kyoto `place_name` values whose cleanup action starts with HIDE. 28 names. */
 export const KYOTO_GEMS_TO_HIDE = [
@@ -41,6 +58,13 @@ export const KYOTO_GEMS_TO_HIDE = [
   "Kishiwada Cafe",
   "Otagi Nenbutsu-ji",
 ] as const;
+
+/**
+ * Kyoto cards hidden later than migration 400, by migration 425 (#1796 follow-up, item 8).
+ * Kept apart from KYOTO_GEMS_TO_HIDE, whose entries migration 400's SQL names one for one.
+ * Yoshida Sanso Ryokan is hidden, not deleted: the card can return if it joins as a provider.
+ */
+export const KYOTO_GEMS_HIDDEN_BY_425 = ["Yoshida Sanso Ryokan"] as const;
 
 /**
  * Happening-now titles hidden by migration 400. #1603 removed this title from
@@ -107,12 +131,6 @@ export const KYOTO_NEW_NEIGHBORHOODS = [
 
 export const UCHIDA_SOURCE_ID = "mitsuko-uchida-kyoto-2026";
 
-export const TENRYUJI_IMAGE_URL =
-  "https://upload.wikimedia.org/wikipedia/commons/c/c7/Tenry%C5%AB-ji_Garten.jpg";
-export const TENRYUJI_IMAGE_CREDIT = "Marco Almbauer / Wikimedia Commons, CC BY-SA 4.0";
-export const BAMBOO_IMAGE_URL =
-  "https://upload.wikimedia.org/wikipedia/commons/e/ef/Arashiyama_Bamboo_Grove_%28Unsplash%29.jpg";
-
 export const KYOTO_CANONICAL_GEMS = [
   {
     id: "kyoto-gem-tenryu-ji",
@@ -148,10 +166,10 @@ export const KYOTO_CANONICAL_GEMS = [
     description: "The Silver Pavilion temple, with a sand garden and moss paths at the start of the Philosopher's Path.",
     imageUrl: null,
     imageCredit: null,
-    hours: "Mar–Nov 8:30–17:00; Dec–Feb 9:00–16:30",
-    admission: "Adult ¥1,000; school ¥500",
-    sourceUrl: "https://www.shokoku-ji.jp/en/ginkakuji/",
-    factCheckedOn: "2026-10-20",
+    hours: `${GINKAKU_HOURS_PRIOR}. ${GINKAKU_AUTUMN_VIEWING_HELD}`,
+    admission: GINKAKU_ADMISSION_HELD,
+    sourceUrl: GINKAKU_ACCESS_SOURCE_URL,
+    factCheckedOn: GINKAKU_FACT_CHECKED_ON,
   },
 ] as const;
 
@@ -161,7 +179,9 @@ export function kyotoGemSeedOverlay(
   placeName: string,
 ): { hidden: boolean; neighborhood?: string | null } {
   if (city.trim().toLowerCase() !== "kyoto") return { hidden: false };
-  const hidden = (KYOTO_GEMS_TO_HIDE as readonly string[]).includes(placeName);
+  const hidden =
+    (KYOTO_GEMS_TO_HIDE as readonly string[]).includes(placeName) ||
+    (KYOTO_GEMS_HIDDEN_BY_425 as readonly string[]).includes(placeName);
   if (Object.prototype.hasOwnProperty.call(KYOTO_GEM_NEIGHBORHOOD, placeName)) {
     return { hidden, neighborhood: KYOTO_GEM_NEIGHBORHOOD[placeName] };
   }

@@ -9,6 +9,7 @@
  *   - `btn-earn-expert` (Become an expert → /earn), the one primary action
  */
 import { Button } from "@/components/ui/button";
+import { tileActionLabel } from "@/lib/bento-action-state";
 import { trackRecruitmentClick } from "@/lib/analytics";
 
 const FRAUNCES = "'Fraunces', Georgia, serif";
@@ -56,7 +57,7 @@ export function FeedEarnCard({ city, density = "full" }: { city: string; density
           data-testid="btn-earn-expert"
           data-bento-primary-action=""
         >
-          <a href="/earn" onClick={() => trackRecruitmentClick({ source: "discover_earn_card", target: "become_expert", city })}>Become an expert</a>
+          <a href="/earn" onClick={() => trackRecruitmentClick({ source: "discover_earn_card", target: "become_expert", city })}>{tileActionLabel("earn-card")}</a>
         </Button>
       </div>
     </div>

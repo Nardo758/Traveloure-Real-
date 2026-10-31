@@ -3,11 +3,8 @@
  * section shows, moved out of `pages/discover-location.tsx` into the card family unchanged. The
  * bento's `BentoTile` renders it for a `wanted-slot` item carrying `neighbourhoodWantedHero`.
  */
-import {
-  neighbourhoodWantedBody,
-  NEIGHBOURHOOD_WANTED_BUTTON,
-  NEIGHBOURHOOD_WANTED_HREF,
-} from "@/lib/feed-stream";
+import { neighbourhoodWantedBody, NEIGHBOURHOOD_WANTED_HREF } from "@/lib/feed-stream";
+import { tileActionLabel } from "@/lib/bento-action-state";
 
 
 export function FeedNeighbourhoodWantedCard({ name, slug }: { name: string; slug: string }) {
@@ -29,7 +26,7 @@ export function FeedNeighbourhoodWantedCard({ name, slug }: { name: string; slug
         data-testid={`link-neighbourhood-join-${slug}`}
         data-bento-primary-action=""
       >
-        {NEIGHBOURHOOD_WANTED_BUTTON}
+        {tileActionLabel("wanted-slot")}
       </a>
     </div>
   );

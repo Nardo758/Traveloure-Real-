@@ -10,6 +10,7 @@ import {
 import { getWelcomeVerificationWindowDays } from "./platform-flags";
 import { welcomeVerificationRetryMinutes } from "../config/signup-welcome.config";
 import { WELCOME_AWAITING_VERIFICATION, WELCOME_NEVER_VERIFIED } from "@shared/welcome-verification";
+import { outboxSettleForSendRefusal } from "./email-suppression";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export const SIGNUP_WELCOME_EMAIL_TYPE = "signup_welcome";
@@ -164,6 +165,16 @@ export async function deliverSignupWelcome(
         lastError: result.error ?? "Email notifications are disabled by platform settings",
         retryAfter: nextRetryAfter(1),
         updatedAt: now,
+      }).where(and(eq(emailOutbox.id, outboxId), eq(emailOutbox.status, "processing")));
+      return;
+    }
+    const refusal = outboxSettleForSendRefusal(result);
+    if (refusal) {
+      await tx.update(emailOutbox).set({
+        status: refusal.status,
+        lastError: refusal.lastError,
+        retryAfter: null,
+        updatedAt: new Date(),
       }).where(and(eq(emailOutbox.id, outboxId), eq(emailOutbox.status, "processing")));
       return;
     }

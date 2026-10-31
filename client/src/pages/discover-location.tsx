@@ -1,10 +1,11 @@
+import { DISCOVER_HEADLINE_COPY } from "@shared/copy-2026-10-31";
 import { heroEyebrowFragments } from "@/lib/hero-eyebrow";
 import { formatTripDates } from "@/lib/trip-dates";
 import { isKyotoCity, KYOTO_CITY_DESCRIPTION } from "@/lib/g02-g06-copy";
 import { SEOHead } from "@/components/seo-head";
 import { SEASONAL_WRITER_LIVE } from "@/lib/season-line";
 import { PRICE_OPTIONS, extractTilePrice, priceMatches } from "@/lib/tile-price";
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { resolveCoverPhoto, type CoverPhotoCredit } from "@/lib/cover-photo";
 import { useParams, useSearch, useLocation, Link } from "wouter";
 import { trackCityView } from "@/hooks/use-recently-viewed";
@@ -37,6 +38,8 @@ import { FeedWantedSlotCard } from "@/components/feed/wanted-slot-card";
 import { FeedEarnCard } from "@/components/feed/earn-card";
 import { FeedReadyMadeCard } from "@/components/feed/ready-made-card";
 import { FeedNeighbourhoodWantedCard } from "@/components/feed/neighbourhood-wanted-card";
+import { TileDetailPanel } from "@/components/feed/tile-detail-panel";
+import { collectTileActions, opensTileDetail, tileDisplayName, tileOpensDetailPanel, type TilePanelAction } from "@/lib/tile-detail";
 import {
   buildFeedStream,
   filterFeedStream,
@@ -637,6 +640,43 @@ const COL_SPAN_CLASS: Record<number, string> = {
   4: "min-[900px]:col-span-4", // fee-literal-ok: Tailwind responsive breakpoint, not a fee
 };
 
+// ─── Tile detail panel (row 303b) ─────────────────────────────────────────────
+
+interface OpenTileDetail {
+  item: FeedItem;
+  actions: TilePanelAction[];
+  returnFocusTo: HTMLElement;
+}
+
+/**
+ * Opening a tile opens the detail panel: a click on the tile body, or Enter on the tile. The tile's
+ * own controls (its action button, a save toggle, a credit link) keep their own click. Only tiles
+ * with no body-click detail path of their own get these handlers (`tileOpensDetailPanel`); every
+ * other tile keeps its existing body click, untouched.
+ */
+function tileDetailHandlers(item: FeedItem, open: (o: OpenTileDetail) => void) {
+  const openFrom = (tile: HTMLElement) => {
+    const active = typeof document !== "undefined" ? document.activeElement : null;
+    const returnFocusTo = active instanceof HTMLElement && tile.contains(active) ? active : tile;
+    open({ item, actions: collectTileActions(tile), returnFocusTo });
+  };
+  return {
+    onClickCapture: (e: ReactMouseEvent<HTMLDivElement>) => {
+      if (!opensTileDetail(e.target as Element, e.currentTarget)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      openFrom(e.currentTarget);
+    },
+    onKeyDownCapture: (e: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      if (!opensTileDetail(e.target as Element, e.currentTarget)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      openFrom(e.currentTarget);
+    },
+  };
+}
+
 // ─── Neighbourhood bento group ────────────────────────────────────────────────
 
 /**
@@ -670,6 +710,8 @@ function BentoGroup({
   onBookRec?: (c: { offeringId: string; categoryKey: string }) => void;
   recLabels?: RecLabels;
 }) {
+  const [detail, setDetail] = useState<OpenTileDetail | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
   const runItems = taggedRun.map((entry) => entry.item);
   // Unstocked neighbourhood: heading plus one Wanted tile. Filler that is not
   // a gem, service, expert or ready-made does not share this section — the
@@ -755,7 +797,7 @@ function BentoGroup({
           <div
             key={tile.item.id}
             className={cn(
-              "h-full min-w-0 overflow-hidden",
+              "h-full min-w-0 overflow-hidden rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               tile.item.kind === "package" && "rounded-xl border bg-card shadow-sm transition-shadow hover:shadow-md",
               tile.rowSpan === 2 && "min-[900px]:row-span-2", // fee-literal-ok: Tailwind responsive breakpoint, not a fee
               COL_SPAN_CLASS[tile.colSpan] ?? "",
@@ -766,6 +808,16 @@ function BentoGroup({
             data-col-span={tile.colSpan}
             data-row-span={tile.rowSpan}
             data-bento-action-state={resolveBentoCompactActionState(tile.item)}
+            {...(tileOpensDetailPanel(tile.item.kind, tile.isAnchor)
+              ? {
+                  tabIndex: 0,
+                  "aria-haspopup": "dialog" as const,
+                  ...tileDetailHandlers(tile.item, (o) => {
+                    setDetail(o);
+                    setDetailOpen(true);
+                  }),
+                }
+              : {})}
           >
             <BentoTile
               item={tile.item}
@@ -781,6 +833,14 @@ function BentoGroup({
           </div>
         ))}
       </div>
+      <TileDetailPanel
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        tileId={detail?.item.id ?? null}
+        title={detail ? tileDisplayName(detail.item.data) : null}
+        actions={detail?.actions ?? []}
+        returnFocusTo={detail?.returnFocusTo ?? null}
+      />
     </section>
   );
 }
@@ -1511,8 +1571,8 @@ export default function DiscoverLocationPage() {
   // A selected theme asks /api/discover so the filter is server-side and the location cache stays untouched.
   const servicesForFeed = selectedThemeSlugs.length > 0 ? (themedDiscover?.services ?? []) : platformServices;
   // Trailhead T4.3: published external stubs + the render-time trend headline.
-  const externalStubs = data?.externalStubs?.data?.stubs ?? [];
   const externalTrendContext = data?.externalStubs?.data?.trendContext ?? null;
+  const externalStubs = data?.externalStubs?.data?.stubs ?? [];
 
   // ── Engine recommendations (discover_location / discover_date surface) ──
   // expertEndorsedKeys passes local expert IDs so the server boosts offerings
@@ -1957,16 +2017,17 @@ export default function DiscoverLocationPage() {
               </div>
             )}
 
-            {/* Trailhead T4.4: render-time trend headline for external content — honest ceiling
-                ("‹Market› is trending · ‹Event› approaching"), server-computed, never stored, only
-                shown when published external stubs exist for this market. */}
+            {/* Trailhead T4.4: the headline over published external content now reads
+                "Discover ‹Market›" (approved copy, ledger 2026-10-31-four-copy-strings). It names the
+                market and makes no trend claim. Shown under the same condition as before: a server
+                trend line exists and published external stubs exist. */}
             {externalTrendContext && externalStubs.length > 0 && (
               <div
                 data-testid="external-trend-context"
                 className="mb-3 flex items-center gap-2 text-xs font-medium text-muted-foreground"
               >
                 <Globe className="w-3.5 h-3.5" />
-                <span>{externalTrendContext}</span>
+                <span>{DISCOVER_HEADLINE_COPY.forMarket(displayCity)}</span>
               </div>
             )}
 

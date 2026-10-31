@@ -593,7 +593,11 @@ jobs:
       # Kyoto feed cleanup (ledger 2026-10-20-kyoto-feed-cleanup): hide flag, Fever titles, fact line.
       - if: ${{ !cancelled() }}
         name: Kyoto feed cleanup pins
-        run: npx tsx --test shared/__tests__/kyoto-feed-cleanup.test.ts shared/__tests__/kyoto-gem-photos.test.ts
+        run: npx tsx --test shared/__tests__/kyoto-feed-cleanup.test.ts shared/__tests__/kyoto-gem-photos.test.ts shared/__tests__/kyoto-seed-cleanup.test.ts shared/__tests__/kyoto-1796-followups.test.ts shared/__tests__/kyoto-1796-item7.test.ts
+      # Row 303a — tile detail panel: unsourced facts, photo-rights tick, partner cache window.
+      - if: ${{ !cancelled() }}
+        name: Tile detail panel rules
+        run: npx tsx --test shared/__tests__/tile-detail-panel.test.ts
       # F-1: trip DATE columns reach the client as "YYYY-MM-DD"; `new Date()` reads those as
       # UTC midnight, so a viewer west of UTC rendered the PREVIOUS day. The pin only reproduces
       # west of UTC, so it runs under three timezones — a UTC-only run would pass on the bug.

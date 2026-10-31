@@ -43,7 +43,7 @@ function text(value: unknown): boolean {
 export async function readSupplyAccount(userId: string): Promise<SupplyAccount> {
   const [user] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1);
   const role = user?.role ?? "user";
-  const publishesFreely = role === "admin" || isEarnerRole(role);
+  const earner = isEarnerRole(role);
 
   const [expert] = await db.select().from(localExpertForms).where(eq(localExpertForms.userId, userId)).limit(1);
   // Same current-row order as storage.getServiceProviderForm (non-rejected first).
@@ -54,6 +54,11 @@ export async function readSupplyAccount(userId: string): Promise<SupplyAccount> 
   if (provider) sides.push({ kind: "provider", status: provider.status ?? null, rank: openness(provider.status ?? null) });
   sides.sort((a, b) => b.rank - a.rank);
   const chosen = sides[0] ?? null;
+  // An earner publishes. An admin with no supply application publishes too
+  // (the verification gate's staff case). An unapproved application does not
+  // get that pass. A missing or closed form is not an unapproved application.
+  const unapprovedSupply = chosen != null && chosen.rank > 0 && chosen.status !== "approved";
+  const publishesFreely = earner || (role === "admin" && !unapprovedSupply);
 
   const empty: SupplyAccount = {
     kind: null,
@@ -125,6 +130,7 @@ export async function readSupplyAccount(userId: string): Promise<SupplyAccount> 
   return empty;
 }
 
+/** Null when the write may proceed. A pending account may still save a draft. */
 export async function refuseUnapprovedListingWrite(
   userId: string,
   write: ListingWriteIntent,

@@ -172,10 +172,10 @@ describe("Arashiyama wanted tile", () => {
   function assertQuiet(html: string, label: string) {
     const t = text(html);
     assert.equal(ARASHIYAMA_ITINERARY_EXPERT_LINK, "Know Arashiyama well? Apply now as a local expert.");
-    assert.equal(ARASHIYAMA_ITINERARY_PROVIDER_LINK, "Run a business in Arashiyama? Apply as a provider.");
+    assert.equal(ARASHIYAMA_ITINERARY_PROVIDER_LINK, "Run a business in Arashiyama? Sign up as a provider.");
     assert.equal(ARASHIYAMA_PLAN_YOUR_DAY, "Plan your day here");
     assert.equal(ARASHIYAMA_ITINERARY_EXPERT_HREF, "/kyoto#experts");
-    assert.equal(ARASHIYAMA_ITINERARY_PROVIDER_HREF, "/kyoto#providers");
+    assert.equal(ARASHIYAMA_ITINERARY_PROVIDER_HREF, "/signup?intent=supply&supplyRole=provider");
     assert.equal(t.includes(RETIRED), false, label);
     assert.equal(/wanted here/i.test(t), false, label);
     assert.equal(t.includes("Ways to earn"), false, label);
@@ -240,7 +240,8 @@ describe("Arashiyama wanted tile", () => {
       assert.ok(t.includes(ARASHIYAMA_ITINERARY_EXPERT_LINK), label);
       assert.ok(t.includes(ARASHIYAMA_ITINERARY_PROVIDER_LINK), label);
       assert.match(html, new RegExp(`href="${ARASHIYAMA_ITINERARY_EXPERT_HREF}"`), label);
-      assert.match(html, new RegExp(`href="${ARASHIYAMA_ITINERARY_PROVIDER_HREF}"`), label);
+      // The provider href carries a query string, so it is matched as text (React escapes & as &amp;).
+      assert.ok(html.includes(`href="${ARASHIYAMA_ITINERARY_PROVIDER_HREF.replace(/&/g, "&amp;")}"`), label);
       assert.equal(t.includes(ARASHIYAMA_PLAN_YOUR_DAY), false, label);
     }
   });
@@ -273,7 +274,9 @@ describe("Arashiyama wanted tile", () => {
     assert.equal(t.includes(ARASHIYAMA_ITINERARY_EXPERT_LINK), false);
     // Row 300b: the generic tile carries no "Wanted here" eyebrow.
     assert.equal(/wanted here/i.test(t), false);
-    assert.ok(t.includes("Ways to earn"));
+    // Row 302a: the generic wanted tile's one action reads "Apply".
+    assert.ok(t.includes("Apply"));
+    assert.equal(t.includes("Ways to earn"), false);
     assert.match(html, /data-testid="link-wanted-apply"/);
   });
 });

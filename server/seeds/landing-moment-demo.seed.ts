@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { curatedGemTags } from "@shared/content-tiers";
+import { kyotoRemainingGemPhoto } from "@shared/kyoto-seed-cleanup";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { localExpertForms, travelPulseHiddenGems, users } from "@shared/schema";
@@ -188,10 +189,12 @@ export async function seedLandingMomentDemo(): Promise<{
     const curatorId = curatorIds.get(gem.curatorKey);
     if (!curatorId) throw new Error(`Missing Landing Moment demo curator: ${gem.curatorKey}`);
     const { curatorKey: _curatorKey, ...gemValues } = gem;
+    const photoCredit = kyotoRemainingGemPhoto(gem.placeName)?.imageCredit;
     await db
       .insert(travelPulseHiddenGems)
       .values({
         ...gemValues,
+        ...(photoCredit ? { imageCredit: photoCredit } : {}),
         aiGenerated: false,
         aiGeneratedAt: null,
         curatedByExpertId: curatorId,
@@ -214,6 +217,7 @@ export async function seedLandingMomentDemo(): Promise<{
           bestFor: [...gem.bestFor],
           priceRange: gem.priceRange,
           imageUrl: gem.imageUrl,
+          ...(photoCredit ? { imageCredit: photoCredit } : {}),
           aiGenerated: false,
           aiGeneratedAt: null,
           curatedByExpertId: curatorId,
