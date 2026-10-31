@@ -1,3 +1,4 @@
+import { PROVIDER_SIGNUP_COPY } from "@shared/copy-2026-10-31";
 import { Link, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
@@ -80,7 +81,7 @@ export default function DashboardListingPage() {
             ) : (
               <>
                 <Link href="/expert/apply"><span className="text-primary underline">Apply as an expert</span></Link>
-                <Link href="/become-provider"><span className="text-primary underline">Apply as a provider</span></Link>
+                <Link href={PROVIDER_SIGNUP_COPY.href}><span className="text-primary underline">{PROVIDER_SIGNUP_COPY.label}</span></Link>
               </>
             )}
             <a href="/dashboard" className="text-primary underline">Back to Dashboard</a>
