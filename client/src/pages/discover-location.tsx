@@ -36,24 +36,18 @@ import { ExpertCard } from "@/components/expert-card";
 import { FeedWantedSlotCard } from "@/components/feed/wanted-slot-card";
 import { FeedEarnCard } from "@/components/feed/earn-card";
 import { FeedReadyMadeCard } from "@/components/feed/ready-made-card";
+import { FeedNeighbourhoodWantedCard } from "@/components/feed/neighbourhood-wanted-card";
 import {
   buildFeedStream,
   filterFeedStream,
   neighbourhoodIsUnstocked,
   neighbourhoodSectionNeedsWantedTile,
-  neighbourhoodWantedBody,
-  NEIGHBOURHOOD_WANTED_BUTTON,
-  NEIGHBOURHOOD_WANTED_HREF,
   placeUnstockedNeighbourhoods,
   withoutUnstockedNeighbourhoods,
   type FeedItem,
 } from "@/lib/feed-stream";
 import { appendCityWideReadyMadeFill } from "@/lib/feed-composition";
-import {
-  bentoBaseColSpan,
-  isPartnerOrThirdPartyFeedItem,
-  selectBentoHero,
-} from "@/lib/bento-anchor";
+import { buildBentoTiles } from "@/lib/bento-spans";
 import {
   resolveBentoCompactActionState,
   type BentoCompactActionState,
@@ -588,7 +582,7 @@ function BentoTile({
     case "wanted-slot":
       if (item.data?.neighbourhoodWantedHero) {
         return (
-          <NeighbourhoodWantedPanel
+          <FeedNeighbourhoodWantedCard
             name={String(item.data.name ?? "")}
             slug={String(item.data.slug ?? "")}
           />
@@ -642,171 +636,6 @@ const COL_SPAN_CLASS: Record<number, string> = {
   3: "min-[900px]:col-span-3", // fee-literal-ok: Tailwind responsive breakpoint, not a fee
   4: "min-[900px]:col-span-4", // fee-literal-ok: Tailwind responsive breakpoint, not a fee
 };
-
-/** A tile placed in the bento, carrying its resolved desktop spans. */
-interface PlacedTile {
-  item: FeedItem;
-  /** Original position in the neighbourhood's stream run (order-preservation proof). */
-  order: number;
-  colSpan: number;
-  /** 2 only for the tall lead-expert anchor (the mock's full-section-height lead). */
-  rowSpan: number;
-  isAnchor: boolean;
-}
-
-/**
- * Assign spans over the 4-wide grid (Phase 2d rules):
- *  - the anchor is col-span-2; a lead-EXPERT anchor is additionally row-span-2
- *    (the mock's full-section-height lead) — a ready-made or gem fallback
- *    anchor stays 2×1;
- *  - every ready-made is col-span-2 (photo-left 2×1); everything else starts 1;
- *  - NO tile is ever stretched past col-span-2. A mid-grid hole is avoided by
- *    widening a 1-wide tile in the closing row by one column (never past 2);
- *    the LAST row is allowed to run short — an honest short row beats a
- *    stretched lone tile.
- * Row capacities account for the tall anchor: while it spans rows 1–2, those
- * rows have 2 free columns beside it. Computed purely from the tile sequence
- * (never re-ranked).
- */
-function assignBentoSpans(tiles: { item: FeedItem; order: number; isAnchor: boolean }[]): PlacedTile[] {
-  const n = tiles.length;
-  if (n === 0) return [];
-
-  const isExpertAnchor = (t: { item: FeedItem; isAnchor: boolean }) =>
-    t.isAnchor && (t.item.kind === "lead-expert" || t.item.kind === "expert");
-
-  const base = tiles.map((t) => bentoBaseColSpan(t.item, t.isAnchor));
-  const rowSpans = tiles.map((t) => (isExpertAnchor(t) ? 2 : 1));
-
-  // Pack the NON-anchor tiles (the anchor is placed first by the grid) through
-  // a row-capacity sequence: a tall anchor leaves capacity 2 in its two rows; a
-  // 2×1 anchor leaves capacity 2 in its single row; rows after that are full 4s.
-  const startIdx = tiles[0]?.isAnchor ? 1 : 0;
-  const besideAnchorRows = startIdx === 1 ? (rowSpans[0] === 2 ? 2 : 1) : 0;
-  let rowNumber = 0; // 0-based row counter for capacity lookup
-  const capacityOf = (r: number) => (r < besideAnchorRows ? 2 : 4);
-
-  let rowTiles: number[] = []; // indices (into tiles) of the current row
-  let used = 0;
-  const closeRow = (deficit: number) => {
-    // Fill a mid-grid short row by widening ONE 1-wide tile per missing column
-    // (cap col-span-2). With tile widths ∈ {1,2} the deficit is always coverable.
-    let need = deficit;
-    for (let k = rowTiles.length - 1; k >= 0 && need > 0; k--) {
-      const idx = rowTiles[k];
-      if (base[idx] === 1 && !isPartnerOrThirdPartyFeedItem(tiles[idx].item)) {
-        base[idx] = 2;
-        need -= 1;
-      }
-    }
-    rowTiles = [];
-    used = 0;
-    rowNumber += 1;
-  };
-
-  for (let i = startIdx; i < n; i++) {
-    const cap = capacityOf(rowNumber);
-    const s = Math.min(base[i], 2);
-    if (used + s > cap) closeRow(cap - used);
-    rowTiles.push(i);
-    used += s;
-    if (used === capacityOf(rowNumber)) closeRow(0);
-  }
-  // The FINAL row stays as-is — a short last row is fine (Phase 2d).
-
-  return tiles.map((t, i) => ({
-    item: t.item,
-    order: t.order,
-    colSpan: Math.min(base[i], 2),
-    rowSpan: rowSpans[i],
-    isAnchor: t.isAnchor,
-  }));
-}
-
-/**
- * Build the ordered tile list for a neighbourhood bento from an already-TAGGED
- * run ({item, order} — order = the tile's position in the neighbourhood's
- * merged stream run, assigned BEFORE any chip/price filtering so it stays the
- * order-preservation proof). The hero floats to the front: an eligible expert,
- * else the first ready-made, else a Wanted tile. A partner card never floats
- * and never widens. Under an explicit price sort the user's sort is the order,
- * so every tile stays in place and no hero is minted.
- */
-function neighbourhoodWantedHeroItem(neighbourhood: any | null, city: string): FeedItem {
-  const name =
-    neighbourhood?.name ??
-    neighbourhood?.neighborhood_name ??
-    neighbourhood?.neighborhoodName ??
-    city;
-  const slug = String(neighbourhood?.slug ?? neighbourhood?.id ?? city ?? "city")
-    .trim()
-    .replace(/\s+/g, "-");
-  return {
-    kind: "wanted-slot",
-    id: `neighbourhood-wanted-hero-${slug}`,
-    data: { neighbourhoodWantedHero: true, name: String(name || slug), slug },
-  };
-}
-
-function buildBentoTiles(
-  tagged: { item: FeedItem; order: number }[],
-  floatAnchor: boolean = true,
-  neighbourhood: any | null = null,
-  city: string = "",
-): PlacedTile[] {
-  if (!floatAnchor) {
-    if (tagged.length === 0) return [];
-    return assignBentoSpans(tagged.map((t) => ({ ...t, isAnchor: false })));
-  }
-  if (tagged.length === 0) {
-    return assignBentoSpans([
-      { item: neighbourhoodWantedHeroItem(neighbourhood, city), order: -1, isAnchor: true },
-    ]);
-  }
-  const withAnchor = tagged.map((t) => ({ ...t, isAnchor: false }));
-  const hero = selectBentoHero(withAnchor, neighbourhood, city);
-  if (hero.index !== null && hero.index >= 0) {
-    withAnchor[hero.index].isAnchor = true;
-    const anchor = withAnchor[hero.index];
-    const rest = withAnchor.filter((_, i) => i !== hero.index);
-    return assignBentoSpans([anchor, ...rest]);
-  }
-  return assignBentoSpans([
-    { item: neighbourhoodWantedHeroItem(neighbourhood, city), order: -1, isAnchor: true },
-    ...withAnchor,
-  ]);
-}
-
-function NeighbourhoodWantedPanel({ name, slug }: { name: string; slug: string }) {
-  return (
-    <div
-      className="flex h-full flex-col justify-between gap-2 rounded-xl border border-dashed p-3.5"
-      style={{ borderColor: "var(--earn-gold)", background: "var(--earn-gold-wash)" }}
-      data-testid={`neighbourhood-wanted-${slug}`}
-    >
-      <div className="min-w-0">
-        <div
-          className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em]"
-          style={{ color: "var(--earn-gold-ink)", fontFamily: EARN_MONO }}
-        >
-          Wanted here
-        </div>
-        <p className="text-[13px] font-semibold" style={{ color: "var(--earn-ink)" }}>
-          {neighbourhoodWantedBody(name || slug)}
-        </p>
-      </div>
-      <a
-        href={NEIGHBOURHOOD_WANTED_HREF}
-        className="inline-flex w-fit items-center rounded-md px-2.5 py-1 text-[11px] font-bold text-white"
-        style={{ background: "var(--earn-gold-ink)" }}
-        data-testid={`link-neighbourhood-join-${slug}`}
-        data-bento-primary-action=""
-      >
-        {NEIGHBOURHOOD_WANTED_BUTTON}
-      </a>
-    </div>
-  );
-}
 
 // ─── Neighbourhood bento group ────────────────────────────────────────────────
 

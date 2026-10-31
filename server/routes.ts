@@ -99,7 +99,7 @@ import { pendingPlanItemMarker } from "@shared/pending-plan-items";
 import { isActionableBooking, isProvisionalBooking } from "@shared/booking-visibility";
 import { IDENTITY_EDIT_FIELDS } from "@shared/edit-split";
 import { z } from "zod";
-import { setupAuth, registerAuthRoutes, isAuthenticated, setupFacebookAuth, setupEmailAuth } from "./replit_integrations/auth";
+import { setupAuth, registerAuthRoutes, isAuthenticated, setupFacebookAuth, setupEmailAuth, registerAppleAuthRoutes } from "./replit_integrations/auth";
 import { refuseUnverifiedTravelerContact, refuseUnverifiedTravelerSender, requireVerifiedEmail } from "./services/verified-email-action-gate";
 import { emailVerificationGate } from "./middleware/email-verification-gate";
 import { isExpert, isProvider, isEarner, isEarnerOrPendingDraft } from "./middleware/role-rbac";
@@ -904,6 +904,7 @@ export async function registerRoutes(
     registerAuthRoutes(app);
     setupFacebookAuth(app);
     setupEmailAuth(app);
+    registerAppleAuthRoutes(app);
   } catch (error) {
     console.warn("Auth setup failed (OK for development):", (error as Error).message);
     // Continue without auth - public routes will still work

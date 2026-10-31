@@ -13,7 +13,9 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
   OAUTH_STATE_TTL_MS,
+  isValidOAuthNonce,
   isValidOAuthState,
+  newOAuthNonce,
   newOAuthState,
   safeReturnPath,
 } from "../utils/oauth-state";
@@ -63,6 +65,17 @@ test("O4: the guest map is kept; an open redirect is the dashboard default", () 
   ]) {
     assert.equal(safeReturnPath(bad, "/dashboard"), "/dashboard", `refused: ${JSON.stringify(bad)}`);
   }
+});
+
+test("O6: a nonce matches only the value this session issued", () => {
+  const nonce = newOAuthNonce();
+  assert.equal(isValidOAuthNonce(nonce, nonce), true);
+  assert.equal(isValidOAuthNonce(nonce, newOAuthNonce()), false);
+  assert.equal(isValidOAuthNonce(nonce, ""), false);
+  assert.equal(isValidOAuthNonce("", ""), false);
+  assert.equal(isValidOAuthNonce(nonce, nonce + "x"), false);
+  assert.equal(isValidOAuthNonce(undefined, nonce), false);
+  assert.notEqual(newOAuthNonce(), newOAuthNonce());
 });
 
 test("O5: the Replit callback redirects only through safeReturnPath", () => {

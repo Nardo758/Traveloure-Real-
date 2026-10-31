@@ -18,10 +18,27 @@ export interface IssuedOAuthState {
   state: string;
   returnTo: string;
   issuedAt: number;
+  /** Set by flows that also bind an id_token nonce (Sign in with Apple). */
+  nonce?: string;
 }
 
 export function newOAuthState(): string {
   return crypto.randomBytes(24).toString("hex");
+}
+
+/** A one-time nonce for an OAuth id_token. Same randomness as `state`. */
+export function newOAuthNonce(): string {
+  return crypto.randomBytes(24).toString("hex");
+}
+
+/**
+ * True only when the nonce returned in a token is the one this session issued.
+ * Empty values fail. Constant-time comparison; a length mismatch is a refusal.
+ */
+export function isValidOAuthNonce(issued: unknown, received: unknown): boolean {
+  if (typeof issued !== "string" || typeof received !== "string") return false;
+  if (!issued || issued.length !== received.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(issued), Buffer.from(received));
 }
 
 /**

@@ -1,6 +1,7 @@
 import type { FeedItem } from "./feed-stream";
+import { BENTO_LAYOUT_CONFIG, type BentoAnchorPriority, type BentoLayoutConfig } from "./feed-composition-config";
 
-export type BentoAnchorPriority = "neighborhood-local" | "city-local" | "planner";
+export type { BentoAnchorPriority } from "./feed-composition-config";
 
 type TaggedBentoItem = { item: FeedItem; order: number; isAnchor: boolean };
 
@@ -183,11 +184,19 @@ export function isPartnerOrThirdPartyFeedItem(item: FeedItem): boolean {
   return false;
 }
 
-/** Desktop column span before row packing. A third-party tile stays 1 wide. */
-export function bentoBaseColSpan(item: FeedItem, isAnchor: boolean): number {
-  if (isPartnerOrThirdPartyFeedItem(item)) return 1;
-  if (isAnchor || item.kind === "package") return 2;
-  return 1;
+/** Desktop column span before row packing (row 301: from `BENTO_LAYOUT_CONFIG`). A third-party tile stays default width. */
+export function bentoBaseColSpan(
+  item: FeedItem,
+  isAnchor: boolean,
+  config: BentoLayoutConfig = BENTO_LAYOUT_CONFIG,
+): number {
+  if (isPartnerOrThirdPartyFeedItem(item)) return config.defaultSpan.colSpan;
+  if (isAnchor) {
+    const isExpert = item.kind === "lead-expert" || item.kind === "expert";
+    return (isExpert ? config.anchorSpans.expert : config.anchorSpans.fallback).colSpan;
+  }
+  if (item.kind === "package") return config.readyMadeSpan.colSpan;
+  return config.defaultSpan.colSpan;
 }
 
 export type BentoHeroSelection =
@@ -197,31 +206,39 @@ export type BentoHeroSelection =
 
 /**
  * The one hero for a neighbourhood section or the city-feed intro.
- * Order: an eligible expert (neighbourhood local, city local, then trip
- * planner), else the first ready-made, else a Wanted tile. Index null means
- * the section has no Wanted card yet and the renderer supplies one. A partner
- * card is never returned.
+ * Order (row 301: `BENTO_LAYOUT_CONFIG.heroOrder`): an eligible expert (neighbourhood local, city
+ * local, then trip planner), else the first ready-made, else a Wanted tile. Index null means the
+ * section has no Wanted card yet and the renderer supplies one. A partner card is never returned
+ * while `partnerTiles.canAnchor` is false.
  */
 export function selectBentoHero(
   tagged: TaggedBentoItem[],
   neighbourhood: any | null,
   city: string,
+  config: BentoLayoutConfig = BENTO_LAYOUT_CONFIG,
 ): BentoHeroSelection {
-  const expertIndex = selectBentoAnchorIndex(tagged, neighbourhood, city);
-  if (expertIndex >= 0 && !isPartnerOrThirdPartyFeedItem(tagged[expertIndex].item)) {
-    return { kind: "expert", index: expertIndex };
+  const anchorable = (item: FeedItem) => config.partnerTiles.canAnchor || !isPartnerOrThirdPartyFeedItem(item);
+  for (const kind of config.heroOrder) {
+    if (kind === "expert") {
+      const expertIndex = selectBentoAnchorIndex(tagged, neighbourhood, city, config);
+      if (expertIndex >= 0 && anchorable(tagged[expertIndex].item)) {
+        return { kind: "expert", index: expertIndex };
+      }
+    } else if (kind === "ready-made") {
+      const readyMadeIndex = tagged.findIndex(
+        (entry) => entry.item.kind === "package" && anchorable(entry.item),
+      );
+      if (readyMadeIndex >= 0) return { kind: "ready-made", index: readyMadeIndex };
+    } else {
+      const wantedIndex = tagged.findIndex(
+        (entry) =>
+          entry.item.kind === "wanted-slot" &&
+          !entry.item.data?.neighbourhoodWantedHero &&
+          anchorable(entry.item),
+      );
+      if (wantedIndex >= 0) return { kind: "wanted", index: wantedIndex };
+    }
   }
-  const readyMadeIndex = tagged.findIndex(
-    (entry) => entry.item.kind === "package" && !isPartnerOrThirdPartyFeedItem(entry.item),
-  );
-  if (readyMadeIndex >= 0) return { kind: "ready-made", index: readyMadeIndex };
-  const wantedIndex = tagged.findIndex(
-    (entry) =>
-      entry.item.kind === "wanted-slot" &&
-      !entry.item.data?.neighbourhoodWantedHero &&
-      !isPartnerOrThirdPartyFeedItem(entry.item),
-  );
-  if (wantedIndex >= 0) return { kind: "wanted", index: wantedIndex };
   return { kind: "wanted", index: null };
 }
 
@@ -233,13 +250,14 @@ export function selectBentoAnchorIndex(
   tagged: TaggedBentoItem[],
   neighbourhood: any | null,
   city: string,
+  config: BentoLayoutConfig = BENTO_LAYOUT_CONFIG,
 ): number {
   let selectedIndex = -1;
   let selectedPriority = Number.POSITIVE_INFINITY;
-  const priority: Record<BentoAnchorPriority, number> = {
-    "neighborhood-local": 0,
-    "city-local": 1,
-    planner: 2,
+  // Row 301: rank = position in the configured priority order; an unlisted priority never anchors.
+  const rankOf = (p: BentoAnchorPriority): number => {
+    const i = config.anchorPriorityOrder.indexOf(p);
+    return i < 0 ? Number.POSITIVE_INFINITY : i;
   };
 
   let selectedQuality = { rating: Number.NEGATIVE_INFINITY, offerings: Number.NEGATIVE_INFINITY };
@@ -248,7 +266,8 @@ export function selectBentoAnchorIndex(
     const candidatePriority = bentoAnchorPriority(entry.item, neighbourhood, city);
     if (candidatePriority === null) return;
 
-    const candidateRank = priority[candidatePriority];
+    const candidateRank = rankOf(candidatePriority);
+    if (!Number.isFinite(candidateRank)) return;
     const candidateQuality = anchorQuality(entry.item);
     const outranksSelection =
       candidateRank < selectedPriority ||
