@@ -5,6 +5,7 @@
 // The confirmation screen and the email share these sentences (§18 rule 1). A city that is not live returns
 // no invite: no button and no email. The email is sent only when the waitlist row is born (a repeat updates
 // the row and sends nothing) AND the marketing footer setting is present — that gate lives with the sender.
+import { PROVIDER_SIGNUP_COPY } from "./copy-2026-10-31";
 import { OPERATING_MARKETS } from "./operating-markets";
 import { WAITLIST_SERVICE_TYPES, type WaitlistServiceType } from "./launch-waitlist";
 
@@ -61,7 +62,7 @@ export function waitlistApplyScreen(city: string): WaitlistApplyScreen {
 export function waitlistApplyMail(city: string, firstName: string): WaitlistApplyMail {
   return {
     subject: "You're on the Traveloure list",
-    preheader: `Run a business in ${city}? Apply as a provider.`,
+    preheader: `Run a business in ${city}? ${PROVIDER_SIGNUP_COPY.label}.`,
     body: `Hi ${firstName},\n\nThanks for joining the Traveloure list. Traveloure helps travelers plan trips and occasions with local experts and providers.\n\nIf you offer experiences, food, stays or other services in ${city}, you can apply to list them. It's free to apply, and we review every application and reply by email.`,
     cta: `Apply as a ${city} provider`,
   };

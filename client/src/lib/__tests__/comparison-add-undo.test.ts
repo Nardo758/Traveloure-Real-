@@ -1,6 +1,7 @@
 /**
  * Row 195 (CB-2026-10-25-C, ruling R3): single add with undo on the Optimize comparison page.
  */
+import { COMPARISON_ADD_TOAST_COPY } from "@shared/copy-2026-10-31";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -29,7 +30,8 @@ describe("row 195: single add with undo", () => {
   it("AU1: the add is instant — the + mutates directly and the toast fires on success, no confirm", () => {
     assert.match(PAGE, /onAdoptStop=\{\(variantItemId\) => \{\s*setAdoptingStopId\(variantItemId\);\s*adoptStopMutation\.mutate\(variantItemId\);/);
     const adopt = mutationBlock("adoptStopMutation");
-    assert.match(adopt, /title: "Added to your plan",\s*description: "Added\. Your other stops are unchanged\."/);
+    assert.match(adopt, /title: COMPARISON_ADD_TOAST_COPY\.added,/);
+    assert.equal(COMPARISON_ADD_TOAST_COPY.added, "Added. Your other stops are unchanged.");
     assert.match(adopt, /action:\s*tripId && undoItemId \?/);
   });
 
