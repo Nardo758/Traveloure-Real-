@@ -2,7 +2,7 @@
  * Row 294 (ledger `2026-10-30-row294-marketing-consent`): the waitlist news box.
  * DB-free. The storage half is server/__tests__/row294-marketing-consent.db.test.ts.
  *
- *   D1  the label is exactly "Send me Traveloure news and tips." and has no unsubscribe sentence.
+ *   D1  the label is exactly "Send me news and offers from Traveloure. You can unsubscribe at any time."
  *   D2  traveler, provider and expert each start the box unticked.
  *
  * Run: node --import ./client/src/lib/__tests__/lc1-css-register.mjs --import tsx --test client/src/lib/__tests__/row294-marketing-consent.test.tsx
@@ -26,7 +26,7 @@ import { ConsentBoxes, marketingBoxOpen } from "../../pages/launch-waitlist";
 
 const PAGE = fs.readFileSync("client/src/pages/launch-waitlist.tsx", "utf8");
 const EXPERT = fs.readFileSync("client/src/components/waitlist/ExpertWaitlistForm.tsx", "utf8");
-const LINE = "Send me Traveloure news and tips.";
+const LINE = "Send me news and offers from Traveloure. You can unsubscribe at any time.";
 const noop = () => {};
 
 function render(node: React.ReactElement): string {
@@ -39,11 +39,10 @@ function checkbox(html: string, id: string): string {
 }
 
 describe("row 294 — the news box starts unticked", () => {
-  it("D1 the label is the approved sentence, with no unsubscribe line", () => {
+  it("D1 the label is the approved sentence", () => {
     assert.equal(WAITLIST_MARKETING_CONSENT_LINE, LINE);
-    assert.equal(WAITLIST_MARKETING_CONSENT_VERSION, "r294-2026-10-30");
+    assert.equal(WAITLIST_MARKETING_CONSENT_VERSION, "r294-2026-10-31");
     assert.ok(WAITLIST_MARKETING_CONSENT_VERSION.length <= 40);
-    assert.equal(/unsubscribe/i.test(WAITLIST_MARKETING_CONSENT_LINE), false);
     assert.equal(WAITLIST_MARKETING_BOX_ENABLED, true);
     assert.equal(marketingBoxOpen("kyoto"), true);
   });
@@ -65,11 +64,9 @@ describe("row 294 — the news box starts unticked", () => {
       );
       assert.match(checkbox(html, id), /aria-checked="false"/, role);
       assert.ok(html.includes(`>${LINE}<`), role);
-      assert.equal(/unsubscribe/i.test(html), false, role);
     }
     const expert = render(<ExpertForm source={null} launchMarket="kyoto" keepRates={null} />);
     assert.match(checkbox(expert, "checkbox-expert-marketing-consent"), /aria-checked="false"/);
     assert.ok(expert.includes(`>${LINE}<`));
-    assert.equal(/unsubscribe/i.test(expert), false);
   });
 });
