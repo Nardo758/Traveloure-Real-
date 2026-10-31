@@ -24,7 +24,7 @@ import { TILE_PANEL_SECTION_HEADINGS, type TileDetailPanel } from "@shared/tile-
 import { tileAction } from "@/lib/bento-action-state";
 import type { FeedItem } from "@/lib/feed-stream";
 import { TILE_DETAIL_COPY } from "@/lib/tile-detail-copy";
-import { CityFeedCardGem } from "../city-feed-card";
+import { FeedEarnCard } from "../feed/earn-card";
 import { TileDetailPanelBody } from "../feed/tile-detail-panel";
 
 (globalThis as any).React = React;
@@ -129,9 +129,8 @@ describe("row 303b — tile detail panel screen", () => {
   });
 
   it("P4 the panel action equals the tile's action", () => {
-    const gem = { id: "g1", placeName: "Gio-ji", placeType: "temple", description: "A moss garden." };
-    const item: FeedItem = { kind: "loose-gem", id: "gem-g1", data: gem } as FeedItem;
-    const tileHtml = render(<CityFeedCardGem gem={gem} city={CITY} density="compact" onAdd={() => {}} compactActionState="platform" />);
+    const item: FeedItem = { kind: "earn-card", id: "earn-1", data: {} } as FeedItem;
+    const tileHtml = render(<FeedEarnCard city={CITY} density="compact" />);
     const drawn = primaryText(tileHtml);
     assert.equal(drawn, tileAction(item)?.label, "the card draws tileAction(item)");
 
@@ -168,6 +167,7 @@ describe("row 303b — tile detail panel screen", () => {
     const page = fs.readFileSync("client/src/pages/discover-location.tsx", "utf8");
     assert.match(page, /<TileDetailPanel\b/);
     assert.match(page, /tileDetailHandlers\(tile\.item/);
+    assert.match(page, /tileOpensDetailPanel\(tile\.item\.kind, tile\.isAnchor\)/);
     for (const f of [
       "client/src/components/feed/tile-detail-panel.tsx",
       "client/src/lib/tile-detail.ts",

@@ -39,7 +39,7 @@ import { FeedEarnCard } from "@/components/feed/earn-card";
 import { FeedReadyMadeCard } from "@/components/feed/ready-made-card";
 import { FeedNeighbourhoodWantedCard } from "@/components/feed/neighbourhood-wanted-card";
 import { TileDetailPanel } from "@/components/feed/tile-detail-panel";
-import { collectTileActions, opensTileDetail, tileDisplayName, type TilePanelAction } from "@/lib/tile-detail";
+import { collectTileActions, opensTileDetail, tileDisplayName, tileOpensDetailPanel, type TilePanelAction } from "@/lib/tile-detail";
 import {
   buildFeedStream,
   filterFeedStream,
@@ -642,15 +642,6 @@ const COL_SPAN_CLASS: Record<number, string> = {
 
 // ─── Tile detail panel (row 303b) ─────────────────────────────────────────────
 
-/** Kinds whose card root is already a keyboard stop (role="link", tabIndex 0): the wrapper adds none. */
-const CARD_ROOT_FOCUSABLE_KINDS = new Set<FeedItem["kind"]>([
-  "loose-gem",
-  "event",
-  "supply-hotel",
-  "supply-activity",
-  "vendor-service",
-]);
-
 interface OpenTileDetail {
   item: FeedItem;
   actions: TilePanelAction[];
@@ -659,8 +650,9 @@ interface OpenTileDetail {
 
 /**
  * Opening a tile opens the detail panel: a click on the tile body, or Enter on the tile. The tile's
- * own controls (its action button, a save toggle, a credit link) keep their own click. Capture phase,
- * so a card's own body click (its older details sheet, the service link) does not also run.
+ * own controls (its action button, a save toggle, a credit link) keep their own click. Only tiles
+ * with no body-click detail path of their own get these handlers (`tileOpensDetailPanel`); every
+ * other tile keeps its existing body click, untouched.
  */
 function tileDetailHandlers(item: FeedItem, open: (o: OpenTileDetail) => void) {
   const openFrom = (tile: HTMLElement) => {
@@ -816,12 +808,16 @@ function BentoGroup({
             data-col-span={tile.colSpan}
             data-row-span={tile.rowSpan}
             data-bento-action-state={resolveBentoCompactActionState(tile.item)}
-            tabIndex={CARD_ROOT_FOCUSABLE_KINDS.has(tile.item.kind) ? undefined : 0}
-            aria-haspopup="dialog"
-            {...tileDetailHandlers(tile.item, (o) => {
-              setDetail(o);
-              setDetailOpen(true);
-            })}
+            {...(tileOpensDetailPanel(tile.item.kind, tile.isAnchor)
+              ? {
+                  tabIndex: 0,
+                  "aria-haspopup": "dialog" as const,
+                  ...tileDetailHandlers(tile.item, (o) => {
+                    setDetail(o);
+                    setDetailOpen(true);
+                  }),
+                }
+              : {})}
           >
             <BentoTile
               item={tile.item}

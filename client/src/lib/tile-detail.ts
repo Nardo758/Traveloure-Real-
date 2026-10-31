@@ -157,3 +157,27 @@ export function opensTileDetail(
   // The tile wrapper itself is never one of its own controls.
   return control === tile;
 }
+
+/**
+ * Which bento tiles open the detail panel (decision-maker, Oct 31, 2026): only tiles with no
+ * body-click detail path of their own: the wanted tile, the earn tile, the partner tile and the
+ * anchor expert card.
+ *
+ * Every other tile keeps its existing body click: gem, event and supply open their details sheet,
+ * the recommendation opens its "why recommended" sheet, the compact expert opens the profile, the
+ * ready-made opens its page, and the vendor service opens the service page. Moving those onto the
+ * panel is a later row, once sourced facts exist for them.
+ */
+export const TILE_DETAIL_PANEL_KINDS: ReadonlySet<string> = new Set([
+  "wanted-slot",
+  "earn-card",
+  "external-stub",
+]);
+
+/** The anchor expert card (`ExpertCard variant="anchor"`) draws no body click; the compact one does. */
+const ANCHOR_ONLY_PANEL_KINDS: ReadonlySet<string> = new Set(["expert", "lead-expert"]);
+
+export function tileOpensDetailPanel(kind: string, isAnchor = false): boolean {
+  if (TILE_DETAIL_PANEL_KINDS.has(kind)) return true;
+  return isAnchor && ANCHOR_ONLY_PANEL_KINDS.has(kind);
+}

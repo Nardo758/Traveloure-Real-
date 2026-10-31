@@ -10,6 +10,7 @@
  *   D7 the tile body opens the panel; the tile's own controls keep their click.
  *   D8 an absent store draws nothing.
  *   D9 the checked-on date reads as a calendar day.
+ *  D10 only tiles with no body-click detail path open the panel: wanted, earn, partner, anchor expert.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -21,6 +22,7 @@ import {
   panelPhotosForDisplay,
   panelSectionsForDisplay,
   tileDisplayName,
+  tileOpensDetailPanel,
   TILE_PRIMARY_ACTION_SELECTOR,
 } from "../tile-detail";
 
@@ -170,5 +172,28 @@ describe("row 303b tile detail panel rules", () => {
     assert.equal(tileDisplayName({ placeName: "Gio-ji" }), "Gio-ji");
     assert.equal(tileDisplayName({ candidate: { title: "Tea walk" } }), "Tea walk");
     assert.equal(tileDisplayName({}), null);
+  });
+
+  it("D10 only no-path tiles open the panel", () => {
+    for (const kind of ["wanted-slot", "earn-card", "external-stub"]) {
+      assert.equal(tileOpensDetailPanel(kind), true, kind);
+    }
+    assert.equal(tileOpensDetailPanel("expert", true), true, "anchor expert");
+    assert.equal(tileOpensDetailPanel("lead-expert", true), true, "anchor lead expert");
+    for (const kind of [
+      "loose-gem",
+      "event",
+      "supply-hotel",
+      "supply-activity",
+      "vendor-service",
+      "recommendation",
+      "package",
+      "expert",
+      "lead-expert",
+    ]) {
+      assert.equal(tileOpensDetailPanel(kind), false, `${kind} keeps its own body click`);
+    }
+    assert.equal(tileOpensDetailPanel("loose-gem", true), false, "an anchor gem keeps its sheet");
+    assert.equal(tileOpensDetailPanel("package", true), false, "an anchor ready-made keeps its page");
   });
 });
