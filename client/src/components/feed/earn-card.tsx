@@ -6,8 +6,7 @@
  * the TEXT eyebrow is coral-ink as the mock draws it; the primary CTA is
  * navy-filled. Behaviour and testids preserved verbatim:
  *   - wrapper testid `feed-card-earn`
- *   - `btn-earn-expert` (Become an expert → /earn)
- *   - `btn-earn-provider` (List a service → /earn)
+ *   - `btn-earn-expert` (Become an expert → /earn), the one primary action
  */
 import { Button } from "@/components/ui/button";
 import { trackRecruitmentClick } from "@/lib/analytics";
@@ -48,17 +47,6 @@ export function FeedEarnCard({ city, density = "full" }: { city: string; density
       <p className={isCompact ? "text-[12px] line-clamp-2" : "text-[12px]"} style={{ color: "var(--earn-muted)" }}>
         Local experts share their knowledge; providers list bookable services — both earn on Traveloure.
       </p>
-      {/* C5 (cosmetic-public-surfaces dispatch, ruled): /earn is the specific target for this
-          card's own "More info" — it already sits on an earn-on-Traveloure card. */}
-      <a
-        href="/earn"
-        className="w-fit text-[11px] hover:underline"
-        style={{ color: "var(--earn-teal-ink)", fontFamily: EARN_MONO }}
-        data-testid="link-earn-more-info"
-        onClick={() => trackRecruitmentClick({ source: "discover_earn_card", target: "more_info", city })}
-      >
-        More info →
-      </a>
       <div className="mt-auto flex flex-wrap gap-1.5 pt-1">
         <Button
           size="sm"
@@ -66,11 +54,9 @@ export function FeedEarnCard({ city, density = "full" }: { city: string; density
           style={{ background: "var(--earn-navy)" }}
           asChild
           data-testid="btn-earn-expert"
+          data-bento-primary-action=""
         >
           <a href="/earn" onClick={() => trackRecruitmentClick({ source: "discover_earn_card", target: "become_expert", city })}>Become an expert</a>
-        </Button>
-        <Button size="sm" variant="outline" className="h-7 px-3 text-xs" asChild data-testid="btn-earn-provider">
-          <a href="/earn" onClick={() => trackRecruitmentClick({ source: "discover_earn_card", target: "list_service", city })}>List a service</a>
         </Button>
       </div>
     </div>

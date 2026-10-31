@@ -140,6 +140,7 @@ export function FeedReadyMadeCard({
               style={{ background: "var(--earn-teal)", color: "#fff", border: "none" }}
               asChild
               data-testid={`btn-view-package-${template.id}`}
+              data-bento-primary-action=""
               onClick={(e: React.MouseEvent) => e.stopPropagation()}
             >
               <a href={ctaHref}>Get this trip</a>
