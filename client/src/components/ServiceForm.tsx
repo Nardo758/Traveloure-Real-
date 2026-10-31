@@ -1498,7 +1498,7 @@ export function ServiceForm({ role, id, onSuccess, draftOnly = false }: ServiceF
         // client write is retired. No neighborhood → the key is omitted so an edit never
         // clobbers a stored location with a placeholder.
         location: (() => {
-          const sel = allNeighborhoods.find((n) => n.slug === formData.neighborhood);
+          const sel = allNeighborhoods.find((n) => n?.slug === formData.neighborhood);
           if (!sel) return undefined;
           // A listing with no meeting place (video, call, PDF…) names only the CITY the host is
           // based in — a neighborhood there would read as a meeting point that does not exist.

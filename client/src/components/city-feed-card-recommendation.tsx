@@ -407,7 +407,7 @@ export function CityFeedCardRecommendation({
             </div>
           )}
           <div className="flex flex-wrap gap-1.5 pt-0.5 items-center mt-auto min-w-0">
-            {onBook && compactActionState !== "not-bookable" && (
+            {onBook && compactActionState !== "not-bookable" ? (
               <Button
                 size="sm"
                 className="h-7 text-xs px-3 flex-1 min-w-0 whitespace-nowrap"
@@ -417,42 +417,30 @@ export function CityFeedCardRecommendation({
                   onBook(candidate);
                 }}
                 data-testid={`btn-book-rec-${position}`}
+                data-bento-primary-action=""
               >
                 {bookLabel}
               </Button>
-            )}
-            <Button
-              size="sm"
-              className="h-7 text-xs px-3 flex-1 min-w-0 whitespace-nowrap"
-              style={{ background: "var(--earn-navy)", color: "#fff", border: "none" }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onAdd?.({
-                  title: name,
-                  description: candidate.tagline,
-                  city,
-                  type: "recommendation",
-                  scheduledDate,
-                });
-              }}
-              data-testid={`btn-add-rec-${position}`}
-            >
-              <Plus className="w-3 h-3 mr-1" />
-              {addLabel}
-            </Button>
-            {/* Compact = exactly two buttons: Ask shows ONLY when Book is absent. */}
-            {expertAvailable && (!onBook || compactActionState === "not-bookable") && (
+            ) : (
               <Button
                 size="sm"
-                variant="outline"
-                className="h-7 text-xs px-2.5 flex-1 min-w-0 whitespace-nowrap"
+                className="h-7 text-xs px-3 flex-1 min-w-0 whitespace-nowrap"
+                style={{ background: "var(--earn-navy)", color: "#fff", border: "none" }}
                 onClick={(e) => {
                   e.stopPropagation();
-                  askExpert({ city, subject: name });
+                  onAdd?.({
+                    title: name,
+                    description: candidate.tagline,
+                    city,
+                    type: "recommendation",
+                    scheduledDate,
+                  });
                 }}
-                data-testid={`btn-ask-rec-${position}`}
+                data-testid={`btn-add-rec-${position}`}
+                data-bento-primary-action=""
               >
-                Ask an expert
+                <Plus className="w-3 h-3 mr-1" />
+                {addLabel}
               </Button>
             )}
           </div>

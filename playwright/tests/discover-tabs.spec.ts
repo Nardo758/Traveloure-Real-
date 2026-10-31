@@ -724,9 +724,9 @@ test.describe('city-feed bento — /discover/location', () => {
     // rides as `offeringTypeKey=`; an unresolved one emits NOTHING rather than a placeholder,
     // so this asserts absence of the dead param, not presence of the new one.
     expect(offerHref).not.toContain('offering=');
-    // Earn routes → /earn.
+    // Earn's one action → /earn.
     await expect(page.getByTestId('btn-earn-expert')).toHaveAttribute('href', '/earn');
-    await expect(page.getByTestId('btn-earn-provider')).toHaveAttribute('href', '/earn');
+    await expect(page.getByTestId('btn-earn-provider')).toHaveCount(0);
     // §4a: every tappable compact tile has exactly one passive Info cue in its
     // photo band. Bodiless panels carry a single mono link instead, never both.
     const tappableCompactTiles = page.locator('[data-bento-role="tile"] > [role="link"]');
@@ -772,14 +772,12 @@ test.describe('city-feed bento — /discover/location', () => {
       )
       .toBe(true);
     const wanted = page.getByTestId('section-recruitment-gion');
-    // C5 (cosmetic-public-surfaces dispatch, decision-maker ruled 2026-09-18,
-    // landed via PR #997, ledger 2026-09-19-cosmetic-public-surfaces): a
-    // recruitment card's "More info" points at /earn, not the generic
-    // /how-it-works.
-    await expect(wanted.getByTestId('link-wanted-more-info-gion')).toHaveAttribute('href', '/earn');
+    await expect(wanted.getByTestId('link-wanted-more-info-gion')).toHaveCount(0);
+    await expect(wanted.locator('[data-bento-primary-action]')).toHaveCount(1);
     await expect(wanted.locator('[data-testid^="info-cue-"]')).toHaveCount(0);
     const earn = page.getByTestId('feed-card-earn');
-    await expect(earn.getByTestId('link-earn-more-info')).toHaveAttribute('href', '/earn');
+    await expect(earn.getByTestId('link-earn-more-info')).toHaveCount(0);
+    await expect(earn.locator('[data-bento-primary-action]')).toHaveCount(1);
     await expect(earn.locator('[data-testid^="info-cue-"]')).toHaveCount(0);
     // View source → NO storefront/profile link on a partner tile; the source control
     // is present (its outbound rel="noopener,noreferrer" lives in the window.open call).
@@ -919,7 +917,7 @@ test.describe('city-feed bento — /discover/location', () => {
     expect(url.searchParams.get('upsellSource')).toBeNull();
   });
 
-  test('13. gem byline + Ask targeting — attribution renders only from server-resolved curatedBy (2026-08-29 audit rulings 1+2)', async ({ page }) => {
+  test('13. gem byline — attribution renders only from server-resolved curatedBy (2026-08-29 audit rulings 1+2)', async ({ page }) => {
     // g-gion-1 carries curatedBy (Yuki Tanaka) in the fixture; g-gion-2 does not.
     // Ruling 1: the byline renders ONLY from the resolved attribution — an
     // unattributed gem shows no byline fragment and no curator name anywhere.
@@ -929,10 +927,11 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(attributed.getByTestId('gem-facts-g-gion-1')).toContainText('curated by Yuki');
     await expect(unattributed).not.toContainText('curated by');
 
-    // Ruling 2: the attributed gem's Ask CTA names the curator; the
-    // unattributed gem keeps the honest generic label (city-resolution fallback).
-    await expect(attributed.getByTestId('btn-ask-gem-g-gion-1')).toHaveText('Ask Yuki');
-    await expect(unattributed.getByTestId('btn-ask-gem-g-gion-2')).toHaveText('Ask an expert');
+    // The compact tile's one action is Add. The curator name stays on the byline.
+    await expect(attributed.getByTestId('btn-ask-gem-g-gion-1')).toHaveCount(0);
+    await expect(unattributed.getByTestId('btn-ask-gem-g-gion-2')).toHaveCount(0);
+    await expect(attributed.locator('[data-bento-primary-action]')).toHaveCount(1);
+    await expect(unattributed.locator('[data-bento-primary-action]')).toHaveCount(1);
 
     // The details sheet carries the full byline for the attributed gem only.
     await attributed.locator('h3').click();
@@ -1060,6 +1059,20 @@ test.describe('city-feed bento — /discover/location', () => {
     const stub = page.getByTestId('bento-tile-external-stub-stub-1');
     await expect(stub).toHaveAttribute('data-bento-role', 'tile');
     await expect(stub).toHaveAttribute('data-col-span', '1');
+  });
+
+  test('17. one primary action per tile, and no More info (row 302b)', async ({ page }) => {
+    await expect(page.getByText('More info', { exact: false })).toHaveCount(0);
+    const tiles = page.locator('[data-testid^="bento-tile-"]');
+    const count = await tiles.count();
+    expect(count).toBeGreaterThan(0);
+    for (let i = 0; i < count; i++) {
+      const tile = tiles.nth(i);
+      const text = await tile.innerText();
+      const pair =
+        text.includes('Know Arashiyama well?') && text.includes('Run a business in Arashiyama?');
+      await expect(tile.locator('[data-bento-primary-action]')).toHaveCount(pair ? 2 : 1);
+    }
   });
 });
 

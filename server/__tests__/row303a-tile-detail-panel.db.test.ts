@@ -75,7 +75,10 @@ after(async () => {
 
 test("P1–P5 the panel read drops an unsourced fact, an unticked photo, and a stale partner fact", async () => {
   refuseRemote();
-  assert.equal(MIGRATION_FILES[MIGRATION_FILES.length - 1], MIGRATION_FILE);
+  const registry = MIGRATION_FILES as readonly string[];
+  const at = registry.indexOf(MIGRATION_FILE);
+  assert.equal(registry[at - 1], "420_kyoto_gem_photo_credits.sql");
+  assert.equal(registry[at + 1], "424_users_apple_sub.sql");
   await dropTables();
 
   const absent = await getPanel();
