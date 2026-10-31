@@ -12,6 +12,11 @@
  * case: it goes through decideEmailMerge, and an unverified email never merges
  * and never creates a second account.
  *
+ * Leon, Oct 31 2026: only a traveler may create an Apple account. A provider
+ * or expert signs in only when apple_sub is already on that account. Any other
+ * attempt that would create a non-traveler account, or that targets a provider
+ * or expert role, fails with the existing generic auth refusal.
+ *
  * APPLE_* values are read from process.env and are never logged.
  */
 import crypto from "crypto";
@@ -27,7 +32,6 @@ import {
 import {
   stashSignupIntent,
   readSignupIntent,
-  readSignupSourceTag,
   readSupplyRole,
   takeStashedReturnTo,
 } from "./signup-intent-stash";
@@ -62,7 +66,7 @@ import {
   PROVIDER_FIELDS_REQUIRED,
   TRAVELER_WAITLIST,
 } from "@shared/launch-signup";
-import { recordSignupSource } from "../../services/signup-source-record";
+import { isEarnerRole } from "@shared/roles";
 import type { User } from "@shared/models/auth";
 
 const APPLE_STRATEGY = "apple";
@@ -131,6 +135,21 @@ function blocked(user: { isDeleted?: boolean | null; isSuspended?: boolean | nul
   return user.isDeleted === true || user.isSuspended === true;
 }
 
+/** A supply door, or a provider/expert supply role, is not a traveler sign-up. */
+function targetsNonTravelerSignup(input: {
+  intent: ReturnType<typeof readSignupIntent>;
+  supplyRole: ReturnType<typeof readSupplyRole>;
+}): boolean {
+  return input.intent === "supply" || input.supplyRole === "provider" || input.supplyRole === "expert";
+}
+
+/** Linking Apple onto a provider or expert who does not already have a subject. */
+function refuseUnlinkedEarner(owner: { id: string; role?: string | null }): ResolveResult | null {
+  if (!isEarnerRole(owner.role)) return null;
+  console.warn(`[Apple Auth] provider or expert Apple link refused for existing account ${owner.id}`);
+  return { ok: false, code: "auth_failed" };
+}
+
 async function linkVerifiedOwner(
   owner: User,
   sub: string,
@@ -166,13 +185,20 @@ export async function resolveAppleAccount(input: {
   firstName: string | null;
   lastName: string | null;
   intent: ReturnType<typeof readSignupIntent>;
-  sourceTag: string | null;
   supplyRole: ReturnType<typeof readSupplyRole>;
 }): Promise<ResolveResult> {
   const existing = await authStorage.getUserByAppleSub(input.sub);
   if (existing) {
     if (blocked(existing)) return { ok: false, code: "account_blocked" };
     return { ok: true, user: existing };
+  }
+
+  // Already-linked subjects signed in above, including providers and experts.
+  // A new Apple account is a traveler's. A supply door, or an email that belongs
+  // to a provider or expert, does not create one and does not attach a subject.
+  if (targetsNonTravelerSignup(input)) {
+    console.warn("[Apple Auth] non-traveler Apple sign-up refused");
+    return { ok: false, code: "auth_failed" };
   }
 
   if (input.email) {
@@ -184,6 +210,8 @@ export async function resolveAppleAccount(input: {
     if (owners.length === 1) {
       const owner = owners[0];
       if (blocked(owner)) return { ok: false, code: "account_blocked" };
+      const earnerRefusal = refuseUnlinkedEarner(owner);
+      if (earnerRefusal) return earnerRefusal;
       const decision = decideEmailMerge({ emailVerified: input.emailVerified, owner });
       if (!decision.merge) {
         console.warn(`[Apple Auth] email-match merge refused (${decision.reason}) for existing account ${owner.id}`);
@@ -216,7 +244,6 @@ export async function resolveAppleAccount(input: {
       emailVerified: input.emailVerified ? new Date() : null,
       appleSub: input.sub,
     });
-    if (input.intent === "supply") await recordSignupSource(user.id, input.sourceTag);
     if (input.email) {
       sendWelcomeEmail({ toEmail: input.email, firstName: input.firstName }).catch(() => {
         console.error("[Apple Auth] welcome email failed (non-fatal)");
@@ -232,6 +259,8 @@ export async function resolveAppleAccount(input: {
     if (input.email && isEmailUniqueViolation(err)) {
       const owners = await authStorage.getUsersByEmailNormalized(input.email);
       if (owners.length === 1 && !blocked(owners[0])) {
+        const earnerRefusal = refuseUnlinkedEarner(owners[0]);
+        if (earnerRefusal) return earnerRefusal;
         const decision = decideEmailMerge({ emailVerified: input.emailVerified, owner: owners[0] });
         if (decision.merge) {
           return linkVerifiedOwner(owners[0], input.sub, input.emailVerified, input.firstName, input.lastName);
@@ -356,7 +385,6 @@ async function authenticateApple(
       firstName: names.firstName,
       lastName: names.lastName,
       intent: readSignupIntent(req),
-      sourceTag: readSignupSourceTag(req),
       supplyRole: readSupplyRole(req),
     });
     if (!resolved.ok) {

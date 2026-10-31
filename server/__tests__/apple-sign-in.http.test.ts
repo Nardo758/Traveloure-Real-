@@ -218,8 +218,8 @@ describe("Sign in with Apple", () => {
     await pool.end();
   });
 
-  async function start(): Promise<{ state: string; nonce: string; cookie: string; location: string }> {
-    const hit = await request(server, "GET", "/api/auth/apple");
+  async function start(path = "/api/auth/apple"): Promise<{ state: string; nonce: string; cookie: string; location: string }> {
+    const hit = await request(server, "GET", path);
     assert.equal(hit.status, 302);
     assert.ok(hit.location);
     assert.ok(hit.setCookie);
@@ -264,7 +264,105 @@ describe("Sign in with Apple", () => {
     assert.equal(rows[0].firstName, "Aki");
     assert.equal(rows[0].lastName, "Mori");
     assert.equal(rows[0].authProvider, "apple");
+    assert.equal(rows[0].role, "user");
     assert.ok(rows[0].emailVerified);
+  });
+
+  it("a traveler sign-up is allowed", async () => {
+    const tag = crypto.randomBytes(4).toString("hex");
+    const email = `apple-traveler-${tag}@t.test`;
+    const sub = `sub-traveler-${tag}`;
+    const begun = await start("/api/auth/apple?intent=traveler");
+    const done = await finish(begun.cookie, begun.state, idToken(begun.nonce, { sub, email, email_verified: true }));
+    assert.equal(done.status, 302);
+    assert.equal(new URL(done.location ?? "/", "http://127.0.0.1").pathname, "/");
+    const rows = await db.select().from(users).where(eq(users.appleSub, sub));
+    assert.equal(rows.length, 1);
+    createdIds.push(rows[0].id);
+    assert.equal(rows[0].role, "user");
+    assert.equal(rows[0].email, email);
+  });
+
+  async function refusedSignup(path: string): Promise<void> {
+    const tag = crypto.randomBytes(4).toString("hex");
+    const email = `apple-supply-${tag}@t.test`;
+    const sub = `sub-supply-${tag}`;
+    const begun = await start(path);
+    const done = await finish(begun.cookie, begun.state, idToken(begun.nonce, { sub, email, email_verified: true }));
+    assert.equal(done.status, 302);
+    const loc = new URL(done.location ?? "/", "http://127.0.0.1");
+    assert.equal(loc.pathname, "/login");
+    assert.equal(loc.search, "");
+    const bySub = await db.select().from(users).where(eq(users.appleSub, sub));
+    assert.equal(bySub.length, 0);
+    const byEmail = await db.select().from(users).where(eq(users.email, email));
+    assert.equal(byEmail.length, 0);
+  }
+
+  it("a provider sign-up is refused with the generic auth redirect", async () => {
+    await refusedSignup("/api/auth/apple?intent=supply&supplyRole=provider");
+  });
+
+  it("an expert sign-up is refused with the generic auth redirect", async () => {
+    await refusedSignup("/api/auth/apple?intent=supply&supplyRole=expert");
+  });
+
+  it("an existing linked provider or expert account can still sign in", async () => {
+    for (const role of ["service_provider", "local_expert"] as const) {
+      const tag = crypto.randomBytes(4).toString("hex");
+      const email = `apple-linked-${role}-${tag}@t.test`;
+      const sub = `sub-linked-${role}-${tag}`;
+      const id = crypto.randomUUID();
+      await db.insert(users).values({
+        id,
+        email,
+        firstName: "Linked",
+        lastName: role,
+        role,
+        authProvider: "email",
+        appleSub: sub,
+        emailVerified: new Date(),
+      });
+      createdIds.push(id);
+      const begun = await start("/api/auth/apple?intent=supply&supplyRole=provider");
+      const done = await finish(begun.cookie, begun.state, idToken(begun.nonce, { sub }));
+      assert.equal(done.status, 302);
+      assert.equal(new URL(done.location ?? "/", "http://127.0.0.1").pathname, "/");
+      const rows = await db.select().from(users).where(eq(users.appleSub, sub));
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0].id, id);
+      assert.equal(rows[0].role, role);
+    }
+  });
+
+  it("an unlinked provider or expert is not given an Apple subject", async () => {
+    for (const role of ["service_provider", "travel_expert"] as const) {
+      const tag = crypto.randomBytes(4).toString("hex");
+      const email = `apple-unlinked-${role}-${tag}@t.test`;
+      const sub = `sub-unlinked-${role}-${tag}`;
+      const id = crypto.randomUUID();
+      await db.insert(users).values({
+        id,
+        email,
+        firstName: "Unlinked",
+        lastName: role,
+        role,
+        authProvider: "email",
+        emailVerified: new Date(),
+      });
+      createdIds.push(id);
+      const begun = await start();
+      const done = await finish(begun.cookie, begun.state, idToken(begun.nonce, { sub, email, email_verified: true }));
+      assert.equal(done.status, 302);
+      const loc = new URL(done.location ?? "/", "http://127.0.0.1");
+      assert.equal(loc.pathname, "/login");
+      assert.equal(loc.search, "");
+      const [owner] = await db.select().from(users).where(eq(users.id, id));
+      assert.equal(owner.appleSub, null);
+      assert.equal(owner.role, role);
+      const created = await db.select().from(users).where(eq(users.appleSub, sub));
+      assert.equal(created.length, 0);
+    }
   });
 
   it("a second sign-in with no email links the same account", async () => {
