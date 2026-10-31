@@ -2,7 +2,7 @@
  * Row 300b (ledger `2026-10-31-wanted-tiles-no-demand`): a Wanted tile makes no crowd or demand
  * claim. Fixtures are synthetic.
  *
- *   W1 demandCount 0, 3 and 12: no traveler count, no "want this", no high-demand badge; the
+ *   W1 demandCount 0, 3 and 12: no traveler count, no "want this", no high-demand badge, no "Wanted here"; the
  *      no-count line "Be the first to offer …" shows on every tile.
  *   W2 the neighbourhood Wanted panel has no "Wanted here" eyebrow.
  *   W3 the empty-market card has no "Travelers are looking" line.
@@ -60,7 +60,7 @@ const panelSrc = between(page, "function NeighbourhoodWantedPanel(", "\n}\n");
 const emptyMarketSrc = between(page, 'data-testid="section-expert-recruitment-generic"', "</div>");
 
 describe("row 300b — Wanted tiles make no demand claim", () => {
-  it("W1: no count, no 'want this', no badge, at demandCount 0, 3 and 12", () => {
+  it("W1: no count, no 'want this', no badge, no eyebrow, at demandCount 0, 3 and 12", () => {
     for (const n of [0, 3, 12]) {
       const html = render(<FeedWantedSlotCard item={slot(n)} density="compact" />);
       const t = text(html);
@@ -69,6 +69,7 @@ describe("row 300b — Wanted tiles make no demand claim", () => {
       assert.equal(/high demand/i.test(t), false, `badge text at ${n}`);
       assert.equal(html.includes("badge-high-demand"), false, `badge testid at ${n}`);
       assert.equal(t.includes("Nov 12"), false, `date context at ${n}`);
+      assert.equal(/wanted here/i.test(t), false, `eyebrow at ${n}`);
       assert.ok(t.includes("Be the first to offer local guide for travelers in Gion"), `no-count line at ${n}`);
     }
   });

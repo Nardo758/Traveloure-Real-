@@ -29,7 +29,6 @@ import {
   isArashiyamaItineraryWanted,
 } from "@/lib/arashiyama-wanted-copy";
 
-const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
 // Phase 2e Part A (2026-08-26-bento-compact-density): `density` is accepted so the
 // bento call site can pass it uniformly. This panel already meets the compact spec
@@ -45,7 +44,7 @@ export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" 
     neighborhoodId,
   } = item.data as WantedSlotData;
   // 299b: slug + offering key. Signed-in travelers see "Plan your day here".
-  // Everyone else sees the two cleared apply lines. No Wanted here, no Ways to earn.
+  // Everyone else sees the two cleared apply lines. No Ways to earn. No tile shows a "Wanted here" eyebrow (row 300b).
   const arashiyamaItinerary = isArashiyamaItineraryWanted({
     offeringKey,
     neighborhoodSlug,
@@ -59,14 +58,6 @@ export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" 
       data-testid={`section-recruitment-${neighborhoodId}`}
     >
       <div className="min-w-0">
-        {!arashiyamaItinerary && (
-          <div
-            className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em]"
-            style={{ color: "var(--earn-gold-ink)", fontFamily: EARN_MONO }}
-          >
-            Wanted here
-          </div>
-        )}
         {/* C2 (cosmetic-public-surfaces dispatch): `truncate` clipped the only variable part of
             this line ("Local City Itinerary wanted in A…") on a ~200px card. line-clamp-2 shows
             the whole name instead of an ellipsis mid-word. */}
