@@ -37,6 +37,7 @@
 
 import { isProdStrictEnv, checkStripeKeyPrefix } from "./utils/stripe-key-policy";
 import { getStripeSecretKey, getStripeWebhookSecret } from "./utils/stripe-key";
+import { SIGN_IN_WITH_APPLE_ENABLED, appleSignInFlagOn, missingAppleEnvNames } from "./replit_integrations/auth/apple-env";
 
 // Object storage bucket — non-fatal warn. Vendor-document uploads (and any
 // future file uploads) will throw at call-time if this is missing, which is
@@ -86,4 +87,13 @@ if (key) {
   if (!process.env.STRIPE_IDENTITY_WEBHOOK_SECRET) {
     console.warn("[validate-env] WARN: STRIPE_IDENTITY_WEBHOOK_SECRET is not set — identity webhooks cannot be verified.");
   }
+}
+
+// Sign in with Apple is optional and off unless the flag is exactly "true".
+// This warns with env names only. Values are never read into the message.
+const missingApple = missingAppleEnvNames();
+if (appleSignInFlagOn() && missingApple.length > 0) {
+  console.warn(
+    `[validate-env] WARN: ${SIGN_IN_WITH_APPLE_ENABLED} is on but ${missingApple.join(", ")} is unset — Apple sign-in stays off.`,
+  );
 }

@@ -5,10 +5,11 @@
  * The generic tile's one primary action reads `tileActionLabel("wanted-slot")` (row 302a). The Arashiyama
  * itinerary tile keeps its own lines. ADDITIVE testids that remain:
  *   - wrapper testid `section-recruitment-${neighborhoodId}`
- *   - the high-demand badge `badge-high-demand` (≥5 demandCount)
  *   - the apply CTA testid `link-wanted-apply` (still /become-expert — its PARAMS changed;
  *     see the note on the CTA and `lib/wanted-slot-link.ts`)
- *   - the demandCount copy branch
+ * Row 300b (ledger `2026-10-31-wanted-tiles-no-demand`): the tile makes no crowd or demand
+ * claim. The high-demand badge and the traveler-count line are gone; `demandCount` stays on the
+ * data and is not rendered.
  * No amount/identity/rate is read here (§19 N/A — ordinary content).
  */
 import { ChevronRight } from "lucide-react";
@@ -29,7 +30,6 @@ import {
   isArashiyamaItineraryWanted,
 } from "@/lib/arashiyama-wanted-copy";
 
-const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
 // Phase 2e Part A (2026-08-26-bento-compact-density): `density` is accepted so the
 // bento call site can pass it uniformly. This panel already meets the compact spec
@@ -42,13 +42,10 @@ export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" 
     neighborhoodName,
     neighborhoodSlug,
     city: slotCity,
-    demandCount,
-    dateContext,
     neighborhoodId,
   } = item.data as WantedSlotData;
-  const isHighDemand = (demandCount ?? 0) >= 5;
   // 299b: slug + offering key. Signed-in travelers see "Plan your day here".
-  // Everyone else sees the two cleared apply lines. No Wanted here, no Ways to earn.
+  // Everyone else sees the two cleared apply lines. No Ways to earn. No tile shows a "Wanted here" eyebrow (row 300b).
   const arashiyamaItinerary = isArashiyamaItineraryWanted({
     offeringKey,
     neighborhoodSlug,
@@ -62,22 +59,6 @@ export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" 
       data-testid={`section-recruitment-${neighborhoodId}`}
     >
       <div className="min-w-0">
-        {!arashiyamaItinerary && (
-          <div
-            className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em]"
-            style={{ color: "var(--earn-gold-ink)", fontFamily: EARN_MONO }}
-          >
-            Wanted here
-          </div>
-        )}
-        {isHighDemand && !arashiyamaItinerary && (
-          <span
-            className="mb-1 inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-orange-600"
-            data-testid="badge-high-demand"
-          >
-            🔥 High demand
-          </span>
-        )}
         {/* C2 (cosmetic-public-surfaces dispatch): `truncate` clipped the only variable part of
             this line ("Local City Itinerary wanted in A…") on a ~200px card. line-clamp-2 shows
             the whole name instead of an ellipsis mid-word. */}
@@ -121,9 +102,7 @@ export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" 
         )}
         {!arashiyamaItinerary && (
           <p className="line-clamp-2 text-[11px]" style={{ color: "var(--earn-muted)" }}>
-            {demandCount && demandCount > 0
-              ? `${demandCount} traveler${demandCount !== 1 ? "s" : ""} in ${neighborhoodName} want this${dateContext ? ` for ${dateContext}` : ""} · Be the first to offer it`
-              : `Be the first to offer ${offeringLabel.toLowerCase()} for travelers in ${neighborhoodName}`}
+            {`Be the first to offer ${offeringLabel.toLowerCase()} for travelers in ${neighborhoodName}`}
           </p>
         )}
       </div>

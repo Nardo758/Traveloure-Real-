@@ -104,6 +104,7 @@ describe("row 302a — cards read tileActionLabel", () => {
       "client/src/components/feed/earn-card.tsx",
       "client/src/components/feed/wanted-slot-card.tsx",
       "client/src/pages/discover-location.tsx",
+      "client/src/components/feed/neighbourhood-wanted-card.tsx",
     ];
     for (const f of files) {
       const src = fs.readFileSync(f, "utf8");

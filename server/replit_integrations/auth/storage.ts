@@ -7,21 +7,36 @@ import { eq, sql } from "drizzle-orm";
 export interface IAuthStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
+  getUserByAppleSub(appleSub: string): Promise<User | undefined>;
+  getUsersByEmailNormalized(email: string): Promise<User[]>;
   upsertUser(user: UpsertUser, opts?: { providerEmailVerified?: boolean }): Promise<User>;
   updateUser(id: string, data: Partial<UpsertUser>): Promise<User | undefined>;
+  createAppleUser(input: {
+    id: string;
+    email: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    emailVerified: Date | null;
+    appleSub: string;
+  }): Promise<User>;
+  attachAppleIdentity(
+    userId: string,
+    patch: { appleSub: string; emailVerified?: Date; firstName?: string | null; lastName?: string | null },
+  ): Promise<User | undefined>;
   acceptTerms(userId: string, termsVersion: string, privacyVersion: string): Promise<User | undefined>;
 }
 
 /**
  * §19 layer 2. `isTest` is written only by the admin test-flag route and at QA sign-up.
  * `payoutMethodType` / `payoutHandle` are written only by saveOwnPayoutSetup
- * (ledger 2026-10-23-payout-setup-server). These generic writers drop all three,
- * whatever object a caller hands them.
+ * (ledger 2026-10-23-payout-setup-server). `appleSub` is written only by
+ * createAppleUser and attachAppleIdentity (ledger `2026-10-31-sign-in-with-apple`).
+ * These generic writers drop all four, whatever object a caller hands them.
  */
 function withoutServerOwnedUserFields<T extends Partial<UpsertUser>>(
   data: T,
-): Omit<T, "isTest" | "payoutMethodType" | "payoutHandle"> {
-  const { isTest: _test, payoutMethodType: _method, payoutHandle: _handle, ...rest } = data;
+): Omit<T, "isTest" | "payoutMethodType" | "payoutHandle" | "appleSub"> {
+  const { isTest: _test, payoutMethodType: _method, payoutHandle: _handle, appleSub: _apple, ...rest } = data;
   return rest;
 }
 
@@ -33,6 +48,61 @@ class AuthStorage implements IAuthStorage {
 
   async getUserByEmail(email: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
+  }
+
+  async getUserByAppleSub(appleSub: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.appleSub, appleSub));
+    return user;
+  }
+
+  /** Case-insensitive match, the same comparison upsertUser uses for an address. At most two rows. */
+  async getUsersByEmailNormalized(email: string): Promise<User[]> {
+    return db
+      .select()
+      .from(users)
+      .where(sql`lower(btrim(${users.email})) = lower(btrim(${email}))`)
+      .limit(2);
+  }
+
+  async createAppleUser(input: {
+    id: string;
+    email: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    emailVerified: Date | null;
+    appleSub: string;
+  }): Promise<User> {
+    const [user] = await db
+      .insert(users)
+      .values({
+        id: input.id,
+        email: input.email,
+        firstName: input.firstName,
+        lastName: input.lastName,
+        emailVerified: input.emailVerified,
+        authProvider: "apple",
+        appleSub: input.appleSub,
+      })
+      .returning();
+    return user;
+  }
+
+  async attachAppleIdentity(
+    userId: string,
+    patch: { appleSub: string; emailVerified?: Date; firstName?: string | null; lastName?: string | null },
+  ): Promise<User | undefined> {
+    const set: {
+      appleSub: string;
+      updatedAt: Date;
+      emailVerified?: Date;
+      firstName?: string;
+      lastName?: string;
+    } = { appleSub: patch.appleSub, updatedAt: new Date() };
+    if (patch.emailVerified instanceof Date) set.emailVerified = patch.emailVerified;
+    if (patch.firstName) set.firstName = patch.firstName;
+    if (patch.lastName) set.lastName = patch.lastName;
+    const [user] = await db.update(users).set(set).where(eq(users.id, userId)).returning();
     return user;
   }
 

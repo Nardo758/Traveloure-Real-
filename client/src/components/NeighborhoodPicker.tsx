@@ -31,8 +31,19 @@ export function useAllNeighborhoods() {
       let offset = 0;
       for (;;) {
         const res = await fetch(`/api/city-neighborhoods?limit=${PAGE}&offset=${offset}`);
-        const json = (await res.json()) as { data: NeighborhoodOption[]; hasMore: boolean };
-        all = all.concat(json.data);
+        // A non-OK body has no `data` array. Concatenating that inserts `undefined`
+        // and the picker then crashes on `n.city`, which takes down the whole wizard.
+        if (!res.ok) {
+          throw new Error(`city neighborhoods ${res.status}`);
+        }
+        const json = (await res.json()) as { data?: NeighborhoodOption[]; hasMore?: boolean };
+        const pageRows = Array.isArray(json.data)
+          ? json.data.filter(
+              (n): n is NeighborhoodOption =>
+                !!n && typeof n.city === "string" && typeof n.country === "string" && typeof n.name === "string",
+            )
+          : [];
+        all = all.concat(pageRows);
         if (!json.hasMore) break;
         offset += PAGE;
       }
@@ -56,21 +67,23 @@ export function NeighborhoodPicker({
   emptyText = "No neighborhoods available.",
 }: NeighborhoodPickerProps) {
   const [query, setQuery] = useState("");
+  const rows = neighborhoods.filter(
+    (n) => n && typeof n.city === "string" && typeof n.country === "string" && typeof n.name === "string",
+  );
 
-  if (neighborhoods.length === 0) {
+  if (rows.length === 0) {
     return <p className="text-xs text-muted-foreground" data-testid="text-no-neighborhoods">{emptyText}</p>;
   }
-
-  const sel = value ? neighborhoods.find((n) => n.slug === value) : undefined;
+  const sel = value ? rows.find((n) => n.slug === value) : undefined;
   const q = query.trim().toLowerCase();
   const filtered = q
-    ? neighborhoods.filter(
+    ? rows.filter(
         (n) =>
           n.name.toLowerCase().includes(q) ||
           n.city.toLowerCase().includes(q) ||
           n.country.toLowerCase().includes(q),
       )
-    : neighborhoods;
+    : rows;
 
   return (
     <>
