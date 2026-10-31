@@ -31,18 +31,22 @@ import { kyotoGemPhoto } from "@shared/kyoto-gem-photos";
 import { kyotoCopyNeedsDescriptionHide, rewordKyotoBannedCopy } from "@shared/kyoto-gem-copy";
 import {
   FUSHIMI_DAWN_DESCRIPTION,
-  FUSHIMI_DAWN_WHY,
   GINKAKU_ACCESS_SOURCE_URL,
   GINKAKU_ADMISSION_HELD,
   GINKAKU_AUTUMN_VIEWING_HELD,
   GINKAKU_FACT_CHECKED_ON,
   GINKAKU_HOURS_PRIOR,
-  PHILOSOPHER_DESCRIPTION,
-  PRE_DAWN_DESCRIPTION,
   PRE_DAWN_WHY,
   YOSHIDA_SANSO_ADDRESS,
   kyotoRemainingGemPhoto,
 } from "@shared/kyoto-seed-cleanup";
+import {
+  FUSHIMI_DAWN_WHY_ITEM7,
+  PHILOSOPHER_DESCRIPTION_ITEM7,
+  PRE_DAWN_DESCRIPTION_ITEM7,
+  YOSHIDA_SANSO_DESCRIPTION,
+  YOSHIDA_SANSO_WHY,
+} from "@shared/kyoto-1796-item7";
 import { db } from "../db";
 import { travelPulseHiddenGems } from "@shared/schema";
 import { and, eq, ilike, isNull, or, sql } from "drizzle-orm";
@@ -324,7 +328,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     gemScore: 92,
     discoveryStatus: "hidden",
     daysUntilMainstream: 730,
-    description: PRE_DAWN_DESCRIPTION,
+    description: PRE_DAWN_DESCRIPTION_ITEM7,
     whyLocalsLoveIt: PRE_DAWN_WHY,
     bestFor: ["hiking", "spiritual experience"],
     priceRange: "$",
@@ -366,8 +370,8 @@ const HIDDEN_GEMS: GemSeed[] = [
     gemScore: 88,
     discoveryStatus: "hidden",
     daysUntilMainstream: 400,
-    description: "A converted 1932 Imperial guesthouse on the forested slopes of Mount Yoshida. Nine suites, a private garden, and multi-course kaiseki dinner served in your room.",
-    whyLocalsLoveIt: "The Japanese imperial hospitality tradition is alive here. No-one rushes you, no-one under 18, pure Kyoto.",
+    description: YOSHIDA_SANSO_DESCRIPTION,
+    whyLocalsLoveIt: YOSHIDA_SANSO_WHY,
     bestFor: ["luxury stay", "couples", "authentic ryokan"],
     priceRange: "$$$$",
     neighborhood: null,
@@ -388,7 +392,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     discoveryStatus: "hidden",
     daysUntilMainstream: 730,
     description: FUSHIMI_DAWN_DESCRIPTION,
-    whyLocalsLoveIt: FUSHIMI_DAWN_WHY,
+    whyLocalsLoveIt: FUSHIMI_DAWN_WHY_ITEM7,
     bestFor: ["photography", "dawn", "iconic shot"],
     priceRange: "$",
     neighborhood: "fushimi",
@@ -407,7 +411,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     localMentions: 2000,
     gemScore: 75,
     discoveryStatus: "emerging",
-    description: PHILOSOPHER_DESCRIPTION,
+    description: PHILOSOPHER_DESCRIPTION_ITEM7,
     whyLocalsLoveIt: "Autumn maples reflected in the still canal at 7am.",
     bestFor: ["photography", "autumn foliage", "walking", "golden hour"],
     priceRange: "$",

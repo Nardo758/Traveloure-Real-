@@ -2231,4 +2231,11 @@ export const MIGRATION_FILES = [
   // HELD. The SQL file is unchanged. 425 is 425_kyoto_1796_followups.sql.
   // Declared in shared/schema.ts.
   "426_cn1_concierge_task_kinds.sql",
+  // 427 — DATA ONLY. #1796 follow-up, item 7: Yoshida Sanso's description and why line
+  // (one approved rewording, the rest removals), and the superlatives 421 left on
+  // Philosopher's Path, the pre-dawn hike and the dawn tunnel. Written only while a
+  // column still holds 421's output or the text before 421. No ALTER. HELD until the
+  // owner approves the SQL on the pull request. 422 and 423 are open PRs; 426 is #1816.
+  // Ledger 2026-10-31-kyoto-1796-item7.
+  "427_kyoto_1796_item7_copy.sql",
 ] as const;
