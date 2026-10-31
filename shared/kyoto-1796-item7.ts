@@ -5,7 +5,7 @@
  * "villa of the Higashi-Fushimi imperial family". A removed phrase is not replaced. When a whole
  * field was the phrase, the field is cleared (null).
  *
- * The popular-cities seed writes `next` on a fresh boot. Migration 426 writes the same value onto
+ * The popular-cities seed writes `next` on a fresh boot. Migration 427 writes the same value onto
  * a stored row, and only while that row still holds one of the `priors` (421's output, or the text
  * before 421). Ginkaku-ji is not here: #1804 already writes the approved admission and autumn lines
  * through the GINKAKU_* constants in kyoto-seed-cleanup.ts.
