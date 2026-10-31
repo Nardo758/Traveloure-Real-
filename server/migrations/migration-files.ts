@@ -2212,6 +2212,14 @@ export const MIGRATION_FILES = [
   // sign-up migration and is not on main.
   // Ledger 2026-10-31-row300a-kyoto-seed-cleanup.
   "421_kyoto_seed_cleanup.sql",
+  // 422 — discover_tile_panel_facts and discover_tile_panel_photos.
+  // Additive tables. No CHECK. No DEFAULT on reviewed_at or photo_rights_ticked.
+  // Index idx_discover_tile_panel_facts_tile_id, and a unique (tile_id, position)
+  // on the photo table. Declared in shared/schema.ts.
+  // HELD. The SQL file is unchanged. 421 is the Kyoto seed cleanup.
+  // 423 stays reserved. Registered beside 424, 425 and 426.
+  // Ledger 2026-10-31-row303a-tile-detail-panel.
+  "422_discover_tile_panel.sql",
   // 424 — users.apple_sub. Additive nullable text, no DEFAULT, no CHECK, no
   // backfill. Partial unique index where apple_sub IS NOT NULL.
   // HELD until Leon approves the SQL on the pull request.

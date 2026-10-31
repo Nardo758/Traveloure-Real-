@@ -13136,3 +13136,42 @@ export const consentRecords = pgTable("consent_records", {
   waitlistKeyUniq: uniqueIndex("uq_consent_records_waitlist_key").on(table.waitlistId, table.consentKey),
 }));
 export type ConsentRecord = typeof consentRecords.$inferSelect;
+
+// Row 303a (migration 422, HELD until the owner approves the SQL on the PR; 421 is PR #1804;
+// ledger `2026-10-31-row303a-tile-detail-panel`): facts and photos for the discover tile
+// detail panel. Additive. No CHECK. No DEFAULT on reviewed_at or photo_rights_ticked:
+// NULL means not reviewed, and NULL means the photo-rights tick is unset. Declared here
+// so a publish push does not drop the tables or the indexes.
+export const discoverTilePanelFacts = pgTable("discover_tile_panel_facts", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  tileId: varchar("tile_id", { length: 200 }).notNull(),
+  subjectKind: varchar("subject_kind", { length: 16 }).notNull(),
+  section: varchar("section", { length: 24 }).notNull(),
+  value: text("value").notNull(),
+  source: text("source"),
+  sourceUrl: text("source_url"),
+  checkedOn: date("checked_on"),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  fetchedAt: timestamp("fetched_at", { withTimezone: true }),
+  attribution: text("attribution"),
+}, (table) => ({
+  tileIdIdx: index("idx_discover_tile_panel_facts_tile_id").on(table.tileId),
+}));
+export type DiscoverTilePanelFact = typeof discoverTilePanelFacts.$inferSelect;
+
+export const discoverTilePanelPhotos = pgTable("discover_tile_panel_photos", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  tileId: varchar("tile_id", { length: 200 }).notNull(),
+  subjectKind: varchar("subject_kind", { length: 16 }).notNull(),
+  imageUrl: text("image_url").notNull(),
+  credit: text("credit"),
+  sourceUrl: text("source_url"),
+  licenseUrl: text("license_url"),
+  photoRightsTicked: boolean("photo_rights_ticked"),
+  fetchedAt: timestamp("fetched_at", { withTimezone: true }),
+  attribution: text("attribution"),
+  position: integer("position").notNull(),
+}, (table) => ({
+  tilePositionUniq: uniqueIndex("uq_discover_tile_panel_photos_tile_position").on(table.tileId, table.position),
+}));
+export type DiscoverTilePanelPhoto = typeof discoverTilePanelPhotos.$inferSelect;
