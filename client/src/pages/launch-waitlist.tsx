@@ -17,6 +17,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
+import { useScrollToHash } from "@/lib/use-hash-scroll";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -455,6 +456,7 @@ export function kyotoExpertsSectionVisible(data: unknown, isSuccess: boolean): b
 }
 
 export default function LaunchWaitlistPage() {
+  useScrollToHash();
   const { data: signup } = useQuery<SignupModeView>({ queryKey: ["/api/public/signup-mode"], retry: false });
   const { data: liveMarkets } = useQuery<{ marketKeys?: string[] }>({ queryKey: [LIVE_MARKETS_ROUTE], retry: false });
   const liveMarketKeys = Array.isArray(liveMarkets?.marketKeys) ? liveMarkets.marketKeys : [];

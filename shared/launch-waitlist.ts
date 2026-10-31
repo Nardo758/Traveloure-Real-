@@ -14,6 +14,9 @@ export const WAITLIST_ROLES = ["traveler", "provider", "expert"] as const;
 /** WL-B: where a refused expert sign-up is sent — the expert form on the launch waitlist page (Leon, Oct 30, 2026). */
 export const WAITLIST_EXPERT_FORM_PATH = "/kyoto#experts";
 
+/** WL-B: the provider form on the same page (`section#providers`). */
+export const WAITLIST_PROVIDER_FORM_PATH = "/kyoto#providers";
+
 /** WL-B: the `source` a provider sign-up's waitlist row carries (set by the server, never by a body). */
 export const WAITLIST_PROVIDER_SIGNUP_SOURCE = "provider_signup";
 

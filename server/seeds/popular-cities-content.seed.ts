@@ -27,6 +27,7 @@
 
 import { teamSeededGemTags } from "@shared/content-tiers";
 import { kyotoGemSeedOverlay } from "@shared/kyoto-feed-cleanup";
+import { kyotoGemPhoto } from "@shared/kyoto-gem-photos";
 import { kyotoCopyNeedsDescriptionHide, rewordKyotoBannedCopy } from "@shared/kyoto-gem-copy";
 import { db } from "../db";
 import { travelPulseHiddenGems } from "@shared/schema";
@@ -347,7 +348,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["luxury stay", "couples", "authentic ryokan"],
     priceRange: "$$$$",
     neighborhood: null,
-    imageUrl: "https://images.unsplash.com/photo-1548165892-cd6be85a7f69?auto=format&fit=crop&w=800&q=80",
+    // Photo: kyotoGemPhoto (row 250). The previous Unsplash id returns 404.
   },
   {
     city: "Kyoto",
@@ -368,7 +369,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["photography", "dawn", "iconic shot"],
     priceRange: "$",
     neighborhood: "fushimi",
-    imageUrl: "https://images.unsplash.com/photo-1580917922805-21d32edd27e3?auto=format&fit=crop&w=800&q=80",
+    // Photo: kyotoGemPhoto (row 250). The previous Unsplash id returns 404.
   },
   {
     city: "Kyoto",
@@ -388,7 +389,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["photography", "autumn foliage", "walking", "golden hour"],
     priceRange: "$",
     neighborhood: null,
-    imageUrl: "https://images.unsplash.com/photo-1601823984263-6ec76b4c8aaf?auto=format&fit=crop&w=800&q=80",
+    // Photo: kyotoGemPhoto (row 250). The previous Unsplash id returns 404.
   },
 
   // ── PARIS (8 gems: 3 Eat · 2 Do · 1 Stay · 2 Photo) ─────────────────────
@@ -1836,6 +1837,7 @@ export async function seedPopularCitiesContent(): Promise<{ gems: number }> {
     }
 
     const overlay = kyotoGemSeedOverlay(gem.city, gem.placeName);
+    const photo = kyotoGemPhoto(gem.placeName);
     const descriptionHidden = kyotoCopyNeedsDescriptionHide(gem.city.toLowerCase() === "kyoto" ? gem.description : null, gem.city.toLowerCase() === "kyoto" ? gem.whyLocalsLoveIt : null);
     await db.insert(travelPulseHiddenGems).values({
       ...teamSeededGemTags(), // FD-2: a team seed (ledger 2026-10-09-fd2-content-tier-tags)
@@ -1860,7 +1862,8 @@ export async function seedPopularCitiesContent(): Promise<{ gems: number }> {
       // Migration 400 hides these names; the seed runs after migrations, so a fresh boot must stamp it too.
       ...(overlay.hidden ? { hiddenAt: new Date("2026-10-20T00:00:00Z") } : {}),
       ...(descriptionHidden ? { descriptionHiddenAt: new Date("2026-10-20T00:00:00Z") } : {}),
-      imageUrl: gem.imageUrl,
+      imageUrl: photo?.imageUrl ?? gem.imageUrl,
+      ...(photo ? { imageCredit: photo.imageCredit } : {}),
       aiGenerated: false,
     });
     gemsCreated++;
