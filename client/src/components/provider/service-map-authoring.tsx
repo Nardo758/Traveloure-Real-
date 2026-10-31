@@ -54,6 +54,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { Link } from "wouter";
+import { stopsPlaced } from "@/lib/itinerary-wording";
 import { ServiceLocationMap, type ServiceRouteStopView } from "@/components/service-location-map";
 import type { LocationPoint } from "@/components/backoffice/location-point-picker";
 
@@ -569,7 +570,7 @@ export function ServiceMapAuthoring({
           )}
           {draft.length > 0 && (
             <p className="text-[12px] text-muted-foreground" data-testid="flow-map-coverage">
-              {locatedCount} of {draft.length} stops located
+              {stopsPlaced(locatedCount, draft.length)}
               {locatedCount < draft.length ? " — unlocated stops stay listed but are never drawn." : "."}
             </p>
           )}

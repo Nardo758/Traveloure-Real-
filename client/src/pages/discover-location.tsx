@@ -800,6 +800,7 @@ function NeighbourhoodWantedPanel({ name, slug }: { name: string; slug: string }
         className="inline-flex w-fit items-center rounded-md px-2.5 py-1 text-[11px] font-bold text-white"
         style={{ background: "var(--earn-gold-ink)" }}
         data-testid={`link-neighbourhood-join-${slug}`}
+        data-bento-primary-action=""
       >
         {NEIGHBOURHOOD_WANTED_BUTTON}
       </a>
@@ -1819,6 +1820,7 @@ export default function DiscoverLocationPage() {
       // answered yet" state: the demand lookup skips it and the CTA omits the param (§13).
       offeringKey: offering?.offering_type_key ?? "",
       neighborhoodName: nbName,
+      neighborhoodSlug: typeof nb.slug === "string" ? nb.slug : "",
       city,
       neighborhoodId: String(nb.id ?? nb.slug ?? nbName),
     }];

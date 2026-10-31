@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useImpressionTracker } from "@/hooks/use-impression-tracker";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ import { SaveToggle } from "@/components/SaveToggle";
 import { buildSaveItem } from "@/lib/saved-items";
 import type { SaveItemBody } from "@shared/saved-items";
 import { stripPartnerCardPhrase } from "@shared/banned-copy";
+import { GemPhotoMedia } from "@/components/gem-photo-band";
 
 // Bookability (native | deeplink | info_only) is DERIVED, never stored. The single
 // source of truth is `resolveBookability` in @shared/bookability — both this client
@@ -531,8 +532,8 @@ interface MoreInfoSheetProps {
   onClose: () => void;
   cardType: MoreInfoCardType;
   data: any;
-  /** #330: when set, the sheet offers Save. A compact card is ruled to two buttons, so its
-   *  save lives here, on the detail path its tap opens. */
+  /** #330: when set, the sheet offers Save. The compact tile's one primary action is not
+   *  Save, so Save lives here, on the detail path its tap opens. */
   saveItem?: SaveItemBody | null;
 }
 
@@ -913,9 +914,10 @@ export function CityFeedCardGem({
   cardPosition,
   topPick = false,
   density = "full",
-  compactActionState,
+  compactActionState: _compactActionState,
 }: CityFeedCardGemProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
+  const [imgFailed, setImgFailed] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const askExpert = useAskExpert();
   // SH-1 item 11: Ask draws only when the server says this city has an expert to ask.
@@ -923,9 +925,13 @@ export function CityFeedCardGem({
   // An official source with no stored image is text-only. A stock search would invent a photo.
   const textOnly = !gem.imageUrl && typeof gem.sourceUrl === "string" && gem.sourceUrl.length > 0;
   const { photoUrl, loading } = useGemPhoto(gem.id, gem.placeName, city, gem.imageUrl, { allowFetch: !textOnly });
-  // What the heart saves (#330): the card's own identity, name, photo and city — a display cache
-  // for the Saved places shelf. A photo is carried only when it is an http(s) or site path.
-  const gemSaveItem = buildSaveItem({ contentType: "gem", contentId: gem.id, name: gem.placeName, image: photoUrl, city });
+  useEffect(() => {
+    setImgFailed(false);
+    setImgLoaded(false);
+  }, [photoUrl]);
+  // A missing URL or a failed load paints the place name. The heart stores a photo only when one is showing.
+  const showGemPhoto = !loading && Boolean(photoUrl) && !imgFailed;
+  const gemSaveItem = buildSaveItem({ contentType: "gem", contentId: gem.id, name: gem.placeName, image: showGemPhoto ? photoUrl : null, city });
 
   const resolvedBookability: Bookability = bookability ?? resolveBookability(gem);
   // DISABLED: GET /api/gems/:id/matched-service has no server implementation — every gem
@@ -958,10 +964,6 @@ export function CityFeedCardGem({
     suggestion?.href ??
     (gem.providerServiceId ? `/services/${gem.providerServiceId}` : null) ??
     platformPath;
-  const compactHasBookAction =
-    compactActionState === "platform" &&
-    resolvedBookability !== "info_only" &&
-    Boolean(bookHref);
   const typeMeta = gemTypeMeta(gem.placeType);
 
   const addLabel = scheduledDate
@@ -990,21 +992,19 @@ export function CityFeedCardGem({
         isRow ? "w-36 self-stretch" : "h-[104px] w-full",
       )}
     >
-      {!loading && photoUrl && (
-        <img
-          src={photoUrl}
-          srcSet={srcSet}
-          sizes={sizes}
-          alt={gem.placeName}
-          loading="lazy"
-          onLoad={() => setImgLoaded(true)}
-          className={cn(
-            "absolute inset-0 w-full h-full object-cover transition-opacity duration-300",
-            imgLoaded ? "opacity-100" : "opacity-0",
-          )}
-        />
-      )}
-      {/* No-photo fallback is the kind gradient ALONE — no emoji glyph (Phase 2d). */}
+      <GemPhotoMedia
+        photoUrl={photoUrl}
+        loading={loading}
+        failed={imgFailed}
+        placeName={gem.placeName}
+        id={gem.id}
+        srcSet={srcSet}
+        sizes={sizes}
+        loaded={imgLoaded}
+        onLoad={() => setImgLoaded(true)}
+        onError={() => setImgFailed(true)}
+      />
+      {/* No-photo fallback is the place name on the kind gradient — no empty box, no emoji glyph. */}
       {/* SH-1 item 1: the tile carries its card type (Eat, Do, Stay, Photo spot), never a "Hidden gem" claim. */}
       <span
         className={cn("absolute top-2 left-2 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide", typeMeta.tagBg, typeMeta.tagText)}
@@ -1024,7 +1024,7 @@ export function CityFeedCardGem({
       {/* Tier-1 reference-photo chip (2026-09-01-photo-tiers): a stock/places image on this
           TEASER surface is labeled until an attributed real photo replaces it. Non-stock
           (attributed) photos and the no-photo gradient carry no chip. */}
-      {!loading && photoUrl && isReferencePhoto({ url: photoUrl }) && (
+      {showGemPhoto && photoUrl && isReferencePhoto({ url: photoUrl }) && (
         <ReferencePhotoChip testId={`gem-reference-photo-${gem.id}`} />
       )}
       {/* #330: save this place to Saved places. Bottom-left — the reference chip holds bottom-right. */}
@@ -1054,7 +1054,7 @@ export function CityFeedCardGem({
       {!compact && !isRow && bodyText && (
         <p className="text-[12px] text-muted-foreground line-clamp-2">{bodyText}</p>
       )}
-      {!compact && <GemImageCredit gem={gem} photoUrl={photoUrl} />}
+      {!compact && <GemImageCredit gem={gem} photoUrl={showGemPhoto ? photoUrl : null} />}
       {!compact && <GemOfficialFacts gem={gem} />}
 
       {/* Row layout body copy */}
@@ -1206,20 +1206,18 @@ export function CityFeedCardGem({
               typeMeta.phText,
             )}
           >
-            {!loading && photoUrl && (
-              <img
-                src={photoUrl}
-                srcSet={srcSet}
-                sizes={sizes}
-                alt={gem.placeName}
-                loading="lazy"
-                onLoad={() => setImgLoaded(true)}
-                className={cn(
-                  "absolute inset-0 w-full h-full object-cover transition-opacity duration-300",
-                  imgLoaded ? "opacity-100" : "opacity-0",
-                )}
-              />
-            )}
+            <GemPhotoMedia
+              photoUrl={photoUrl}
+              loading={loading}
+              failed={imgFailed}
+              placeName={gem.placeName}
+              id={gem.id}
+              srcSet={srcSet}
+              sizes={sizes}
+              loaded={imgLoaded}
+              onLoad={() => setImgLoaded(true)}
+              onError={() => setImgFailed(true)}
+            />
             <span
               className={cn("absolute top-2 left-2 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide", typeMeta.tagBg, typeMeta.tagText)}
               style={{ fontFamily: EARN_MONO }}
@@ -1237,7 +1235,7 @@ export function CityFeedCardGem({
               </span>
             )}
             {/* Tier-1 reference-photo chip (2026-09-01-photo-tiers) — see full-density note above. */}
-            {!loading && photoUrl && isReferencePhoto({ url: photoUrl }) && (
+            {showGemPhoto && photoUrl && isReferencePhoto({ url: photoUrl }) && (
               <ReferencePhotoChip testId={`gem-reference-photo-${gem.id}`} />
             )}
           </div>
@@ -1245,7 +1243,7 @@ export function CityFeedCardGem({
             <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">
               {gem.placeName}
             </h3>
-            <GemImageCredit gem={gem} photoUrl={photoUrl} />
+            <GemImageCredit gem={gem} photoUrl={showGemPhoto ? photoUrl : null} />
             <GemOfficialFacts gem={gem} />
             <CompactMetaLine text={metaText} testid={`gem-facts-${gem.id}`} />
             {/* C1 (cosmetic-public-surfaces dispatch): the compact action row had no `flex-wrap`
@@ -1253,26 +1251,6 @@ export function CityFeedCardGem({
                 width the buttons overflowed the card and "Ask an expert" clipped at the right
                 edge. Fixed identically on all four compact-row copies in this file. */}
             <div className="flex gap-1.5 pt-0.5 flex-wrap items-center mt-auto">
-              {compactHasBookAction && (
-                <Button
-                  size="sm"
-                  className="h-7 text-xs px-3"
-                  style={BOOK_BTN_STYLE}
-                  asChild
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const impId = getImpressionId();
-                    fetch("/api/affiliates/track", {
-                      method: "POST",
-                      keepalive: true,
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ partner: "discover", destination: city, contentType: "gem", contentId: String(gem.id), impressionId: impId }),
-                    }).catch(() => {});
-                  }}
-                >
-                  <a href={bookHref ?? undefined}>{resolvedBookability === "deeplink" ? "Reserve" : "Book now"}</a>
-                </Button>
-              )}
               <Button
                 size="sm"
                 className="h-7 text-xs px-3"
@@ -1290,35 +1268,11 @@ export function CityFeedCardGem({
                   });
                 }}
                 data-testid={`btn-add-gem-${gem.id}`}
+                data-bento-primary-action=""
               >
                 <Plus className="w-3 h-3 mr-1" />
                 {addLabel}
               </Button>
-              {/* Compact = exactly two buttons: Ask shows ONLY when Book is absent.
-                  Ruling 2: an attributed gem's Ask targets ITS curator by name;
-                  otherwise the honest city-resolution fallback stands. */}
-              {expertAvailable && !compactHasBookAction && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs px-2.5"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    askExpert({
-                      city,
-                      subject: gem.placeName,
-                      // LD 40 lane 2: still id-addressed — see the note on the other gem CTA:
-                      // `gem.curatedBy` has no handle on the feed payload.
-                      expertId: gemCurator(gem)?.id ?? null,
-                      fallbackName: gemCuratorFullName(gem),
-                      fallbackAvatar: gemCurator(gem)?.profileImageUrl ?? null,
-                    });
-                  }}
-                  data-testid={`btn-ask-gem-${gem.id}`}
-                >
-                  {curatorName ? `Ask ${curatorName}` : "Ask an expert"}
-                </Button>
-              )}
             </div>
           </div>
         </div>
@@ -1472,14 +1426,6 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
               <p className="text-[10px] text-muted-foreground break-words" data-testid={`event-osm-credit-${event.id}`}>{partnerPlace.credit}</p>
             )}
             <div className="flex gap-1.5 pt-0.5 flex-wrap items-center mt-auto">
-              {priceToken && (
-                <PartnerPriceButton
-                  token={priceToken}
-                  testid={`btn-event-partner-price-${event.id}`}
-                  onOpen={() => trackEventPriceOpen(String(event.id), city, getImpIdEvt())}
-                  onResult={(ok) => setPriceOpenFailed(!ok)}
-                />
-              )}
               <Button
                 size="sm"
                 className="h-7 text-xs px-3"
@@ -1496,31 +1442,15 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
                   });
                 }}
                 data-testid={`btn-add-event-${event.id}`}
+                data-bento-primary-action=""
               >
                 <Plus className="w-3 h-3 mr-1" />
                 {addLabel}
               </Button>
-              {/* Compact = exactly two buttons: "See current price" IS the book action, so Ask
-                  shows ONLY when there is no partner link. */}
-              {expertAvailable && !priceToken && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs px-2.5"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    askExpert({ city, subject: eventName });
-                  }}
-                  data-testid={`btn-ask-event-${event.id}`}
-                >
-                  Ask an expert
-                </Button>
-              )}
             </div>
             {priceToken && (
               <p className="text-[11px] text-muted-foreground break-words" data-testid={`event-partner-commission-${event.id}`}>{PARTNER_COMMISSION_NOTE}</p>
             )}
-            {priceOpenFailed && <p className="text-[11px] text-destructive break-words">Couldn't open the partner's page. Try again in a moment.</p>}
           </div>
         </div>
         <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="event" data={event} />
@@ -1820,7 +1750,7 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
             <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">{service.serviceName}</h3>
             <CompactSourceMetaLine duration={durationLabel} source={source} testid={`svc-facts-${service.id}`} />
             <div className="flex gap-1.5 pt-0.5 flex-wrap items-center mt-auto">
-              {compactActionState === "platform" && resolvedBookability !== "info_only" && (
+              {compactActionState === "platform" && resolvedBookability !== "info_only" ? (
                 <Button
                   size="sm"
                   className="h-7 text-xs px-3"
@@ -1830,11 +1760,11 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
                     window.location.href = `/services/${service.id}`;
                   }}
                   data-testid={`btn-book-svc-${service.id}`}
+                  data-bento-primary-action=""
                 >
                   {resolvedBookability === "deeplink" ? "Reserve" : "Book now"}
                 </Button>
-              )}
-              {onAdd && (
+              ) : onAdd ? (
                 <Button
                   size="sm"
                   className="h-7 text-xs px-3"
@@ -1852,13 +1782,12 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
                     });
                   }}
                   data-testid={`btn-add-svc-${service.id}`}
+                  data-bento-primary-action=""
                 >
                   <Plus className="w-3 h-3 mr-1" />
                   Add to trip
                 </Button>
-              )}
-              {/* Compact = exactly two buttons (Book + Add): the Globe/website and
-                  Ask buttons are dropped here; their full-density counterparts stay. */}
+              ) : null}
             </div>
           </div>
         </div>
@@ -2079,8 +2008,9 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
   );
   // G-02: an activity whose label is only a banned phrase is not a card. Hooks above still run.
   if (isActivity && !itemName) return null;
-  // #330: a stay or an activity is saved from its detail sheet (the compact card keeps its two
-  // buttons). Keyed on the same id the impression uses; no id and no name ⇒ nothing to save.
+  // #330: a stay or an activity is saved from its detail sheet. The compact tile's one
+  // primary action is Add, so Save stays on that sheet. Keyed on the same id the impression
+  // uses; no id and no name ⇒ nothing to save.
   const supplySaveItem = buildSaveItem({
     contentType: isHotel ? "hotel" : "activity",
     contentId: item.id,
@@ -2190,24 +2120,11 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
                   });
                 }}
                 data-testid={`btn-add-supply-${item.id}`}
+                data-bento-primary-action=""
               >
                 <Plus className="w-3 h-3 mr-1" />
                 {addLabel}
               </Button>
-              {expertAvailable && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs px-2.5"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    askExpert({ city, subject: itemName });
-                  }}
-                  data-testid={`btn-ask-supply-${item.id}`}
-                >
-                  Ask an expert
-                </Button>
-              )}
             </div>
           </div>
         </div>

@@ -175,6 +175,7 @@ import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant,
 import { loadTripOptimizerInputs, loadOptimizerCatalog } from "./services/optimizer-baseline.service";
 // Phase 1c: the traveler's "build around THIS" pin is resolved here on the LIVE generate handler.
 import { baselineItemsToAnchorStops, resolveOptimizerPinnedAnchor } from "./services/anchor-candidates";
+import { paidPinFellBack, recordUnresolvedPaidPin } from "./services/paid-pin-resolution";
 import { placeCustomPinBeforeCharge } from "./services/custom-pin-place";
 import { groundAiItems } from "./services/slip-grounding.service";
 import messagesRouter from "./routes/messages";
@@ -10566,6 +10567,16 @@ ${bannedCopyPromptLine()}`;
           rawPinnedAnchor,
           baselineItems,
         );
+        // A pin the traveler sent that did not resolve is not auto-anchor mode.
+        // Payment is already authorized on this row; fail the run and refund it.
+        if (paidPinFellBack(rawPinnedAnchor, resolvedPinnedAnchor)) {
+          const failed = await recordUnresolvedPaidPin(comparison.id);
+          return res.status(201).json({
+            ...failed,
+            runBasis,
+            ...(placedPinForCreate.placement ? { placement: placedPinForCreate.placement } : {}),
+          });
+        }
 
         generateOptimizedItineraries(
           comparison.id,
@@ -10949,6 +10960,22 @@ ${bannedCopyPromptLine()}`;
         actor: userId,
       });
 
+      // Resolve the pin before the started response. A pin that does not resolve
+      // after this comparison's payment is authorized fails the run here; it is
+      // not handed to the optimizer as "no pin" (auto anchors).
+      const resolvedPinnedAnchor = await resolveOptimizerPinnedAnchor(
+        rawPinnedAnchor,
+        baselineItems,
+      );
+      if (paidPinFellBack(rawPinnedAnchor, resolvedPinnedAnchor)) {
+        const failed = await recordUnresolvedPaidPin(comparisonId);
+        return res.status(200).json({
+          ...failed,
+          runBasis: runAuth.basis,
+          ...(placedPinForGenerate.placement ? { placement: placedPinForGenerate.placement } : {}),
+        });
+      }
+
       // Same shared catalog query as the create path (L6, ledger
       // 2026-08-22-optimizer-catalog-honesty): active + APPROVED + destination-scoped.
       const availableServices = await loadOptimizerCatalog(comparison.destination);
@@ -10974,14 +11001,6 @@ ${bannedCopyPromptLine()}`;
           };
         }
       }
-
-      // A found catalog id keeps this resolver. A miss already returned 400. A custom
-      // name-only pin was placed onto rawPinnedAnchor (lat/lng) or refused with 409
-      // before the pay gate, so an unplaceable custom pin never falls through to auto anchors.
-      const resolvedPinnedAnchor = await resolveOptimizerPinnedAnchor(
-        rawPinnedAnchor,
-        baselineItems,
-      );
 
       generateOptimizedItineraries(
         comparisonId,

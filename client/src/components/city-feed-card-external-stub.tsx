@@ -170,6 +170,7 @@ export function CityFeedCardExternalStub({ stub, city }: { stub: ExternalStubDat
             href={cta.href!}
             data-testid={`external-stub-provider-${stub.id}`}
             data-cta-kind="provider"
+            data-bento-primary-action=""
             className="mt-1 inline-flex items-center justify-center gap-1.5 rounded-lg border border-primary bg-primary/10 px-3 py-2 text-sm font-medium text-foreground hover:bg-primary/20 transition-colors"
           >
             {cta.label}
@@ -181,6 +182,7 @@ export function CityFeedCardExternalStub({ stub, city }: { stub: ExternalStubDat
             onClick={handleAffiliate}
             data-testid={`external-stub-affiliate-${stub.id}`}
             data-cta-kind="affiliate"
+            data-bento-primary-action=""
             className="mt-1 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
           >
             {cta.label}
@@ -192,6 +194,7 @@ export function CityFeedCardExternalStub({ stub, city }: { stub: ExternalStubDat
             onClick={handleViewSource}
             data-testid={`external-stub-source-${stub.id}`}
             data-cta-kind="external"
+            data-bento-primary-action=""
             className="mt-1 inline-flex items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
           >
             {cta.label}

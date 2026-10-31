@@ -25,6 +25,7 @@ import type {
   ComparisonPinnedAnchorType,
 } from "@/lib/create-comparison";
 import { CUSTOM_PIN_REFUSAL_STRINGS, refusalMessage, refusalOptions, type PinRefusal } from "@/lib/custom-pin-refusal";
+import { ITINERARY_WORDING } from "@/lib/itinerary-wording";
 
 interface AnchorCandidate {
   anchorId: string;
@@ -307,7 +308,7 @@ export function BuildAroundDialog({
               {loading ? (
                 <div className="flex min-h-20 items-center justify-center gap-2 rounded-xl border border-dashed border-[color:var(--earn-border-dash)] text-sm text-[color:var(--earn-muted)]">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Scoring locations against your stops…
+                  {ITINERARY_WORDING.checkingPlaces}
                 </div>
               ) : loadError ? (
                 <div

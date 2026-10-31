@@ -354,6 +354,15 @@ test("resolves named re-exports used by authentication registration helpers", ()
  * 735 / 727 → 736 / 728 (row 272, ledger `2026-10-29-affiliate-reconciliation-post`; Architect, Oct 28 and
  * Oct 29, 2026, sanctioned): GET /api/admin/affiliate/reconciliation became POST, because the view runs the
  * matching pass, which writes affiliate_earnings. admin 197 → 198, admin-role 197 → 198.
+ * 736 / 728 → 737 / 729 (row 98, ledger `2026-10-30-row98-webhook-dedupe-replay`; Architect, Oct 30, 2026,
+ * sanctioned): POST /api/admin/webhook-events/:stripeEventId/replay, admin-only, re-runs a failed event only.
+ *
+ * 736 / 728 → 738 / 730 (row 210): POST /internal/jobs/guest-data-retention and
+ * POST /api/invites/:token/delete-rsvp-details. Both other / public-or-system.
+ * other 248 → 250, public-or-system 53 → 55.
+ *
+ * 739 / 731 → 740 / 732 (Z-21, fix-queue row 171): POST /api/webhooks/resend.
+ * other 250 → 251, signature 6 → 7.
  *
  * THE COUNTS ARE THE POINT: they exist so a route appearing or vanishing from
  * the mounted graph fails here. Now that the file is wired into CI, changing a
@@ -370,9 +379,11 @@ test("current mounted graph parity includes auth helpers and shared api paths", 
   // 734 / 726: POST /api/invites/:token/plan (row 280a).
   // 735 / 727: POST /api/admin/reconciliation/run-now, converted from a GET (row 270).
   // 736 / 728: POST /api/admin/affiliate/reconciliation, converted from a GET (row 272).
-  // 737 / 729: POST /api/webhooks/resend (Z-21, fix-queue row 171).
-  assert.equal(result.mutations.length, 737);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 729);
+  // 737 / 729: POST /api/admin/webhook-events/:stripeEventId/replay (row 98).
+  // 738 / 730: POST /internal/jobs/guest-data-retention and POST /api/invites/:token/delete-rsvp-details (row 210).
+  // 740 / 732: POST /api/webhooks/resend (Z-21, fix-queue row 171).
+  assert.equal(result.mutations.length, 740);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 732);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -382,7 +393,9 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "generated/security/mutation-auth-manifest.json"), "utf8"));
   const markdown = fs.readFileSync(path.join(root, "generated/security/mutation-auth-inventory.md"), "utf8");
   const endpointRows = markdown.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| ---")).slice(1);
-  assert.equal(endpointRows.length, 729);
+  // 728 → 730 (row 210): the daily retention job and the guest delete-rsvp-details POST.
+  // 731 → 732 (Z-21, fix-queue row 171): POST /api/webhooks/resend.
+  assert.equal(endpointRows.length, 732);
   // 709 / 701 (ledger `2026-10-18-fd4-share-projection`): the shadowed quick-start twin is deleted; unique paths stay 701.
   // 710 / 702 (ledger `2026-10-19-fb1-free-retime`): + POST /api/trips/:tripId/retime-fixes/:itemId/apply.
   // 712 / 704 (ledger `2026-10-18-cs1-source-signoff`): the sign-off and photo-block POSTs.
@@ -403,9 +416,11 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // 734 / 726: POST /api/invites/:token/plan (row 280a).
   // 735 / 727: POST /api/admin/reconciliation/run-now, converted from a GET (row 270).
   // 736 / 728: POST /api/admin/affiliate/reconciliation, converted from a GET (row 272).
-  // 737 / 729: POST /api/webhooks/resend (Z-21, fix-queue row 171).
-  assert.equal(manifest.rawRegistrationCount, 737);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 729);
+  // 737 / 729: POST /api/admin/webhook-events/:stripeEventId/replay (row 98).
+  // 738 / 730: POST /internal/jobs/guest-data-retention and POST /api/invites/:token/delete-rsvp-details (row 210).
+  // 740 / 732: POST /api/webhooks/resend (Z-21, fix-queue row 171).
+  assert.equal(manifest.rawRegistrationCount, 740);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 732);
   // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R274): user-data,
   // session-self; the owner/delegate check runs in the service before any write.
   // + POST /api/admin/content-sources/:id/public-ok (ledger `2026-10-03-official-facts-public-ok`, R278):
@@ -460,8 +475,10 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // other 247 → 248 (row 280a): POST /api/invites/:token/plan.
   // admin 196 → 197 (row 270): POST /api/admin/reconciliation/run-now, converted from a GET.
   // admin 197 → 198 (row 272): POST /api/admin/affiliate/reconciliation, converted from a GET.
-  // other 248 → 249 (Z-21): POST /api/webhooks/resend.
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 198, "user-data": 251, other: 249 });
+  // admin 198 → 199 (row 98): POST /api/admin/webhook-events/:stripeEventId/replay.
+  // other 248 → 250 (row 210): the daily retention job and the guest delete-rsvp-details POST.
+  // other 250 → 251 (Z-21): POST /api/webhooks/resend.
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 199, "user-data": 251, other: 251 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
@@ -510,9 +527,11 @@ test("generated user-facing inventory contains one row per unique endpoint and s
     // session-self 368 → 369 (row 280a): POST /api/invites/:token/plan.
     // admin-role 196 → 197 (row 270): POST /api/admin/reconciliation/run-now, converted from a GET.
     // admin-role 197 → 198 (row 272): POST /api/admin/affiliate/reconciliation, converted from a GET.
+    // admin-role 198 → 199 (row 98): POST /api/admin/webhook-events/:stripeEventId/replay.
+    // public-or-system 53 → 55 (row 210): the daily retention job and the guest delete-rsvp-details POST.
     // signature 6 → 7 (Z-21): POST /api/webhooks/resend.
-    "admin-role": 198, "session-self": 369, "resource-owner": 102,
-    signature: 7, "public-or-system": 53, unknown: 0,
+    "admin-role": 199, "session-self": 369, "resource-owner": 102,
+    signature: 7, "public-or-system": 55, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
     `${mutation.method} ${mutation.effectivePath}`, mutation,

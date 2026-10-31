@@ -8,6 +8,7 @@ import { zodErrorBody } from "../utils/zod-error-body";
 import { getTripRole } from "../utils/trip-role";
 import { demoSeedsAllowed, demoSeedSkipMessage } from "../seeds/lib/demo-seed-gate";
 import { getUserId, requireDbAdmin } from "../utils/auth";
+import { eraseGuestDataOnHostDelete } from "../jobs/guestDataRetention";
 import { isCustomVenueOwner, scopeTripFilter } from '../utils/custom-venue-owner';
 import { sanitizeStringFields, sanitizeText } from '../utils/text-sanitizer';
 import { withQueryTimer } from '../utils/queryTimer';
@@ -2060,7 +2061,9 @@ router.delete("/api/user-experiences/:id", isAuthenticated, async (req, res) => 
     if (!experience || experience.userId !== userId) {
       return res.status(404).json({ message: "Experience not found" });
     }
-    await storage.deleteUserExperience(req.params.id);
+    // Row 210. Guest RSVP rows go in the same transaction as the audit count, then the event.
+    // A host delete does not wait for the retention setting.
+    await eraseGuestDataOnHostDelete({ experienceId: req.params.id, actorId: userId });
     res.status(204).send();
   });
 
@@ -2522,7 +2525,7 @@ router.get("/api/services/:id", async (req, res) => {
         : null;
     // Ruling 22: ordered route stops ride the public detail on every product shape. The
     // traveler map renders LOCATED stops only; unlocated stops still list by name and the
-    // client states "X of Y stops located" rather than guessing a pin (§13).
+    // client states "X of Y stops placed" rather than guessing a pin (§13).
     const routePoints = await storage.getServiceRoutePoints(service.id);
     // Lane M3 (gap #13's "Starts" row): the weekly repeat rule. `service_availability_patterns`
     // (ledger row 102) had an owner-gated PUT and an owner-gated GET and NO public read — so a

@@ -130,10 +130,10 @@ interface ExpertCardProps {
   /**
    * Presentation variant. "default" (existing browse card) is unchanged.
    * "anchor" (city-feed bento, Phase 2) renders the dark-gradient lead-expert
-   * anchor treatment: neutral role badge, Fraunces name, lede, the coral
-   * "Plan with {name} · from $N" primary (the ONE coral CTA on the surface —
-   * Phase 2c; renders the price only when a real one exists, §13) and an
-   * outline "View profile". ADDITIVE — no default-path prop removed.
+   * anchor treatment: neutral role badge, Fraunces name, lede, and one primary
+   * action. When this city has an expert to ask, that action is the coral
+   * "Plan with {name}" (the price only when a real one exists, §13). Otherwise
+   * it is "View profile". The default browse card is unchanged.
    */
   variant?: "default" | "anchor";
 }
@@ -216,25 +216,28 @@ function ExpertAnchorCard({
           {lede}
         </p>
         <div className="flex flex-wrap items-center gap-2 pt-4">
-          {expertAvailable && (
+          {expertAvailable ? (
             <Link href={`${earnerProfilePath(expert) ?? "/experts"}${detailQuery ?? ""}`}>
               <button
                 className="inline-flex h-9 items-center rounded-md px-3.5 text-[12px] font-bold text-white"
                 style={{ background: "var(--earn-coral-ink)", boxShadow: "0 4px 14px rgba(232,93,85,.35)" }}
                 data-testid="button-plan-with-expert"
+                data-bento-primary-action=""
               >
                 {price !== null ? `Plan with ${firstName} · from $${price}` : `Plan with ${firstName}`}
               </button>
             </Link>
+          ) : (
+            <Link href={`${earnerProfilePath(expert) ?? "/experts"}${detailQuery ?? ""}`}>
+              <button
+                className="inline-flex h-9 items-center rounded-md border border-white/40 px-3.5 text-[12px] font-semibold text-white/90 hover:bg-white/10"
+                data-testid="button-view-profile"
+                data-bento-primary-action=""
+              >
+                View profile
+              </button>
+            </Link>
           )}
-          <Link href={`${earnerProfilePath(expert) ?? "/experts"}${detailQuery ?? ""}`}>
-            <button
-              className="inline-flex h-9 items-center rounded-md border border-white/40 px-3.5 text-[12px] font-semibold text-white/90 hover:bg-white/10"
-              data-testid="button-view-profile"
-            >
-              View profile
-            </button>
-          </Link>
         </div>
       </div>
     </article>

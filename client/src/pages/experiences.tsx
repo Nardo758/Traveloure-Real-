@@ -23,7 +23,7 @@
 import { useMemo } from "react";
 import { Link, useSearch } from "wouter";
 import { EXPERIENCES_PAGE_DESCRIPTION, OPERATING_MARKETS } from "@shared/operating-markets";
-import { PageLayout, PAGE_ACTION, HEADING_STYLE } from "@/components/company/company-page";
+import { PageLayout, PAGE_ACTION } from "@/components/company/company-page";
 import { SEOHead } from "@/components/seo-head";
 import { PlanEntryPanel } from "@/components/plan/PlanEntry";
 import { usePlanning } from "@/contexts/PlanningContext";
@@ -36,6 +36,7 @@ import {
   preselectedMarket,
   projectToWorldMap,
 } from "@/lib/experiences-entry";
+import { CityTileFace } from "@/components/city-tile-face";
 
 /** The page's Place picker: the world map with eight pins, then the eight city cards. */
 function PlacePicker({ picked, pick }: { picked: string | null; pick: (marketKey: string) => void }) {
@@ -90,20 +91,10 @@ function PlacePicker({ picked, pick }: { picked: string | null; pick: (marketKey
               data-testid={`city-card-${m.marketKey}`}
               data-photo={photo ? "credited" : "none"}
             >
-              {photo ? (
-                <div className="relative aspect-[4/3] w-full">
-                  <img src={photo.src} alt={m.cityName} className="h-full w-full object-cover" loading="lazy" />
-                  <span className="absolute bottom-0 right-0 bg-black/55 px-1 text-[9px] text-white">{photo.credit}</span>
-                </div>
-              ) : (
-                // Ruling 3 (8a): no photo of this city is in the repo, so the card is typographic —
-                // never stock, never AI, never a Google photo.
-                <div className="flex aspect-[4/3] w-full items-center justify-center bg-muted px-2">
-                  <span className="text-center text-[17px] font-semibold" style={HEADING_STYLE}>
-                    {m.cityName}
-                  </span>
-                </div>
-              )}
+              {/* Ruling 3 (8a): only Kyoto and Bogotá have photos. The other cities use the
+                  painted typographic ground — never stock, never AI, never a Google photo.
+                  A photo that fails to load uses that same ground (row 250). */}
+              <CityTileFace cityName={m.cityName} photo={photo} />
               <span className="px-2.5 py-2">
                 <span className="block text-sm font-semibold text-foreground">{m.cityName}</span>
                 <span className="block text-xs text-muted-foreground">{m.country}</span>

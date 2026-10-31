@@ -2,6 +2,7 @@ import { verifyTripOwnership } from '../utils/trip-ownership';
 import { EVENT_OUTSIDE_CITY_THRESHOLD_SETTING, isValidOutsideCityThresholdSetting } from "@shared/city-events";
 import { BOT_FACT_DEFAULT_EXPIRY_SETTING, isValidExpiryDaysSetting } from "@shared/bot-proposals";
 import { WELCOME_VERIFICATION_WINDOW_SETTING, isValidWelcomeVerificationWindowSetting } from "@shared/welcome-verification";
+import { GUEST_DATA_RETENTION_DAYS_SETTING, guestDataRetentionDaysRefusal } from "@shared/guest-data-retention";
 import { BLOG_FOOTER_MIN_PUBLISHED_SETTING, isValidBlogFooterMinPublishedSetting } from "@shared/blog-footer";
 import { TRAVELER_SIGNUP_MODE_SETTING, TRAVELER_SIGNUP_OPENED_AT_SETTING, LAUNCH_MARKET_SLUG_SETTING, isTravelerSignupModeValue } from "@shared/launch-signup";
 import { PHONE_DELIVERY_SWITCH_KEYS } from "@shared/phone-delivery";
@@ -1013,6 +1014,45 @@ router.get("/api/admin/webhooks/unprocessed", isAuthenticated, async (req, res) 
   } catch (err) {
     console.error("Unprocessed webhooks error:", err);
     res.status(500).json({ message: "Failed to fetch unprocessed webhook events" });
+  }
+});
+
+/**
+ * POST /api/admin/webhook-events/:stripeEventId/replay
+ * Row 98 (ledger `2026-10-30-row98-webhook-dedupe-replay`): re-run ONE failed Stripe event for one consumer, through
+ * the same claim the delivery used. Only a FAILED claim (`error` set, `completed_at` NULL) replays; a processed
+ * event is refused `replay_already_completed`, a claim with no error `replay_not_failed`, an unknown one
+ * `replay_not_found`. The event is the stored payload; nothing is taken from the body but the consumer.
+ */
+const webhookReplayBodySchema = z.object({ consumer: z.enum(["platform", "connect"]) }).strict();
+router.post("/api/admin/webhook-events/:stripeEventId/replay", requireAdminLocal, async (req, res) => {
+  const parsed = webhookReplayBodySchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ reason: "replay_invalid_body" });
+  const consumer = parsed.data.consumer;
+  const eventId = String(req.params.stripeEventId);
+  try {
+    const found = await db.execute(sql`
+      SELECT raw_payload, completed_at, error FROM platform_webhook_consumers
+      WHERE stripe_event_id = ${eventId} AND consumer = ${consumer}
+    `);
+    const row = found.rows[0] as { raw_payload: any; completed_at: unknown; error: string | null } | undefined;
+    if (!row) return res.status(404).json({ reason: "replay_not_found" });
+    if (row.completed_at) return res.status(409).json({ reason: "replay_already_completed" });
+    if (!row.error) return res.status(409).json({ reason: "replay_not_failed" });
+    const event = row.raw_payload;
+    if (!event || event.id !== eventId) return res.status(409).json({ reason: "replay_payload_missing" });
+    console.info(`[admin/webhooks/replay] ${eventId} (${consumer}) replayed by ${getUserId(req)}`);
+    if (consumer === "connect") {
+      const { processStripeWebhookEvent } = await import("./webhooks.routes");
+      await processStripeWebhookEvent(event);
+    } else {
+      const { stripePaymentService } = await import("../services/stripe-payment.service");
+      await stripePaymentService.handleWebhook(event);
+    }
+    return res.json({ replayed: true, stripeEventId: eventId, consumer });
+  } catch (err: any) {
+    console.error("[admin/webhooks/replay] replay failed:", err?.message);
+    return res.status(500).json({ reason: "replay_failed" });
   }
 });
 
@@ -8741,6 +8781,11 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       // would silently fall back to the default.
       if (settingKey === WELCOME_VERIFICATION_WINDOW_SETTING && !isValidWelcomeVerificationWindowSetting(settingValue)) {
         return res.status(400).json({ error: `${settingKey} must be a whole number of days from 1 to 9999`, got: settingValue });
+      }
+      // Row 210. Empty unsets N (the daily job then erases nothing). There is no code default.
+      if (settingKey === GUEST_DATA_RETENTION_DAYS_SETTING) {
+        const refusal = guestDataRetentionDaysRefusal(settingValue);
+        if (refusal) return res.status(400).json({ error: refusal, got: settingValue });
       }
       // ED-1 footer count: the published-post minimum for the footer's Blog link is a whole number.
       if (settingKey === BLOG_FOOTER_MIN_PUBLISHED_SETTING && !isValidBlogFooterMinPublishedSetting(settingValue)) {

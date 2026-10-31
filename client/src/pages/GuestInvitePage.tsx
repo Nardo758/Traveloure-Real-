@@ -40,6 +40,8 @@ import { getTripContext, updateTripContext } from '@/lib/trip-context';
 import { guestLandingRows, type GuestLandingPayload, type GuestLandingRow } from '@/lib/guest-landing';
 import { GuestPostRsvpCard } from '@/components/GuestPostRsvpCard';
 import { GuestPlanMyDayButton } from '@/components/GuestPlanMyDayButton';
+import { GuestDataRetentionNotice } from '@/components/GuestDataRetentionNotice';
+import { retentionDaysFromPayload } from '@shared/guest-data-retention';
 import { SEOHead } from '@/components/seo-head';
 
 /** The guest-safe invite (row 277's seven keys); nothing else is returned or read. */
@@ -109,6 +111,7 @@ export function GuestInvitePage() {
   const [invite, setInvite] = useState<Invite | null>(null);
   const [experience, setExperience] = useState<Experience | null>(null);
   const [landing, setLanding] = useState<GuestLandingPayload | null>(null);
+  const [retentionDays, setRetentionDays] = useState<number | null>(null);
   const viewRecordedFor = useRef<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [currentStep, setCurrentStep] = useState<'welcome' | 'origin' | 'rsvp' | 'confirmed'>('welcome');
@@ -150,6 +153,7 @@ export function GuestInvitePage() {
         setInvite(data.invite);
         setExperience(data.experience);
         setLanding(data.landing ?? null);
+        setRetentionDays(retentionDaysFromPayload(data.retentionDays));
         stampInviteTripContext(data.experience);
 
         // Set initial form values if already filled
@@ -327,7 +331,18 @@ export function GuestInvitePage() {
             </dl>
           )}
         </div>
-        
+
+        {token ? (
+          <GuestDataRetentionNotice
+            retentionDays={retentionDays}
+            token={token}
+            onErased={() => {
+              setInvite(null);
+              setExperience(null);
+            }}
+          />
+        ) : null}
+
         {/* Welcome Step */}
         {currentStep === 'welcome' && (
           <Card className="max-w-2xl mx-auto">
