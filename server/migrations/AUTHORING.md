@@ -26,11 +26,7 @@ note in this file are different sentences.
 Only a comment authored by Nardo758 counts. A comment from a bot, a comment whose
 body starts with `[bot:`, and the same sentence from anyone else do not count.
 Merging the pull request is not approval. A pull request that does not add or change
-a numbered migration passes without the sentence. A diff that only adds or removes
-blank lines and `--` line comments does not change SQL, so it does not need the
-sentence either. The check reads the pull request file diff to tell those lines
-apart. A sentence written in the SQL file is not approval. When GitHub returns no
-diff, the sentence is still required. Renaming the file still requires both numbers.
+a numbered migration passes without the sentence.
 
 The check is the GitHub Actions job `migration-approval`
 (`.github/workflows/migration-approval.yml`, `scripts/check-migration-approval.cjs`).

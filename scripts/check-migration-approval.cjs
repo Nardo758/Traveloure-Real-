@@ -21,20 +21,14 @@
  * of the number (`052` and `52` are the same). A letter suffix is (`025b` is
  * not `25`).
  *
- * A diff that only adds or removes blank lines and `--` line comments does not
- * change SQL, so it does not need the sentence (fix-queue row 133). The check
- * reads the pull request file diff to tell those lines apart. A sentence written
- * in the SQL file is not approval. A missing diff fails closed and still needs
- * the sentence. Renaming the file still needs both numbers.
- *
- * NEGATIVE SPACE: this does not execute SQL, does not judge the SQL, and does
- * not read the pull request body, review state, or commit messages. An
- * unnumbered `.sql` file in a migrations directory is reported and not gated.
- * A nested path under a migrations directory is not a numbered migration. An
- * `issue_comment` run reports in Actions; the token is read-only, so that run
- * does not overwrite the pull_request status check on the head SHA. Re-run the
- * pull_request job after the comment. A closed pull request is not gated by an
- * `issue_comment` run.
+ * NEGATIVE SPACE: this does not execute SQL, does not read the migration's
+ * contents, and does not read the pull request body, review state, or commit
+ * messages. An unnumbered `.sql` file in a migrations directory is reported
+ * and not gated. A nested path under a migrations directory is not a numbered
+ * migration. An `issue_comment` run reports in Actions; the token is read-only,
+ * so that run does not overwrite the pull_request status check on the head SHA.
+ * Re-run the pull_request job after the comment. A closed pull request is not
+ * gated by an `issue_comment` run.
  *
  * Node built-ins only. Unit tests: `node --test scripts/check-migration-approval.test.cjs`
  */
@@ -141,33 +135,6 @@ function discoverLayout(root) {
   return { migrationsDirs, registries };
 }
 
-/**
- * True when every added or removed line is blank or a `--` line comment.
- * A missing or empty diff is not comment-only: the check then still requires
- * the approval sentence.
- */
-function patchIsSqlCommentOnly(patch) {
-  if (typeof patch !== "string" || patch.length === 0) return false;
-  let changed = false;
-  for (const rawLine of patch.split("\n")) {
-    const line = rawLine.replace(/\r$/, "");
-    if (
-      line.startsWith("@@") ||
-      line.startsWith("diff ") ||
-      line.startsWith("index ") ||
-      line.startsWith("\\") ||
-      /^(?:---|\+\+\+) (?:a\/|b\/|\/dev\/null)/.test(line)
-    ) {
-      continue;
-    }
-    if (!line.startsWith("+") && !line.startsWith("-")) continue;
-    changed = true;
-    const body = line.slice(1).trim();
-    if (body !== "" && !body.startsWith("--")) return false;
-  }
-  return changed;
-}
-
 function sqlIdAt(posixPath, layout) {
   const base = path.posix.basename(posixPath);
   const dir = path.posix.dirname(posixPath);
@@ -198,24 +165,16 @@ function unnumberedSql(posixPath, layout) {
  */
 function migrationIdsFromChanges(files, layout) {
   const ids = new Set();
-  const commentOnly = new Set();
   const problems = [];
   const unnumbered = [];
   for (const file of files) {
-    const current = (file.filename || "").replace(/\\/g, "/");
-    const previous = file.previous_filename ? file.previous_filename.replace(/\\/g, "/") : "";
-    const paths = [current, previous].filter(Boolean);
-    const renamed = Boolean(previous) && previous !== current;
-    const commentOnlyPatch = !renamed && patchIsSqlCommentOnly(file.patch);
+    const paths = [file.filename, file.previous_filename].filter(Boolean).map((p) => p.replace(/\\/g, "/"));
     for (const posixPath of paths) {
       const raw = sqlIdAt(posixPath, layout);
-      if (raw) {
-        const id = normalizeMigrationId(raw);
-        if (commentOnlyPatch) commentOnly.add(id);
-        else ids.add(id);
-      }
+      if (raw) ids.add(normalizeMigrationId(raw));
       if (unnumberedSql(posixPath, layout) && !unnumbered.includes(posixPath)) unnumbered.push(posixPath);
     }
+    const current = (file.filename || "").replace(/\\/g, "/");
     if (!isRegistryPath(current, layout)) continue;
     if (file.patch == null) {
       problems.push(
@@ -225,13 +184,7 @@ function migrationIdsFromChanges(files, layout) {
     }
     for (const id of idsFromRegistryPatch(file.patch)) ids.add(id);
   }
-  for (const id of ids) commentOnly.delete(id);
-  return {
-    ids: [...ids].sort(compareIds),
-    problems,
-    unnumbered,
-    commentOnly: [...commentOnly].sort(compareIds),
-  };
+  return { ids: [...ids].sort(compareIds), problems, unnumbered };
 }
 
 function evaluate({ migrationIds, comments }) {
@@ -329,13 +282,12 @@ async function checkPullRequest({ repo, pr, token, root, eventName, fetchImpl })
     token,
     fetchFn,
   );
-  const { ids, problems, unnumbered, commentOnly } = migrationIdsFromChanges(files, layout);
+  const { ids, problems, unnumbered } = migrationIdsFromChanges(files, layout);
   const notes = [];
   notes.push(`migrations dirs: ${layout.migrationsDirs.join(", ") || "(none)"}`);
   notes.push(`registries: ${layout.registries.join(", ") || "(none)"}`);
   notes.push(`head ${meta.head && meta.head.sha ? meta.head.sha : "(unknown)"}`);
   if (unnumbered.length) notes.push(`unnumbered SQL is not gated: ${unnumbered.join(", ")}`);
-  if (commentOnly.length) notes.push(`comment-only SQL diffs are not gated: ${commentOnly.join(", ")}`);
   if (problems.length) {
     return { exitCode: 1, message: [...notes, ...problems].join("\n"), migrationIds: ids };
   }
@@ -392,7 +344,6 @@ module.exports = {
   compareIds,
   discoverLayout,
   evaluate,
-  patchIsSqlCommentOnly,
   idsFromRegistryPatch,
   isCountedComment,
   migrationIdsFromChanges,
