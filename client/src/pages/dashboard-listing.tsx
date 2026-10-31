@@ -54,7 +54,7 @@ export default function DashboardListingPage() {
     );
   }
 
-  if (isEarnerRole(role) || role === "admin") {
+  if (isEarnerRole(role)) {
     const href = isProviderRole(role) ? "/provider/services/new" : isExpertRole(role) ? "/expert/services/new" : "/dashboard";
     const label = isProviderRole(role) ? "Provider console" : isExpertRole(role) ? "Expert console" : "Back to Dashboard";
     return (

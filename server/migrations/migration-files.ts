@@ -2225,6 +2225,12 @@ export const MIGRATION_FILES = [
   // approves the SQL on the pull request. 421–423 are open PRs #1804, #1803
   // and #1802; 424 is #1807. Ledger 2026-10-31-kyoto-1796-followups.
   "425_kyoto_1796_followups.sql",
+  // 426 — concierge_task_kinds and provider_service_concierge_tasks.
+  // Additive tables, no DEFAULT, no CHECK, no listing backfill.
+  // Does not alter provider_services or expert_offering_types.
+  // HELD. The SQL file is unchanged. 425 is 425_kyoto_1796_followups.sql.
+  // Declared in shared/schema.ts.
+  "426_cn1_concierge_task_kinds.sql",
   // 427 — DATA ONLY. #1796 follow-up, item 7: Yoshida Sanso's description and why line
   // (one approved rewording, the rest removals), and the superlatives 421 left on
   // Philosopher's Path, the pre-dawn hike and the dawn tunnel. Written only while a

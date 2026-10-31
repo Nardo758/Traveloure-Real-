@@ -3,6 +3,8 @@
  * itself is forced approved and active. An earner with no form, an account with no
  * application, and an account with an approved application stay public. A rejected
  * application with no approval stays off. The write gate allows a draft and refuses publish.
+ * An admin with a pending application uses that same gate. An admin with no
+ * application still publishes: that is the verification gate's staff case.
  *
  * DISPOSABLE DB ONLY.
  */
@@ -29,7 +31,7 @@ const { sql } = await import("drizzle-orm");
 const { storage } = await import("../storage");
 const { locationViewService } = await import("../services/location-view.service");
 const { listingOwnerIsPublic, withoutUnapprovedOwnerListings } = await import("../services/public-listing-owner");
-const { refuseUnapprovedListingWrite } = await import("../services/pending-supply-account");
+const { readSupplyAccount, refuseUnapprovedListingWrite } = await import("../services/pending-supply-account");
 
 const id = (k: string) => `psup-${RUN}-${k}`;
 const CITY = `Psup${RUN}`;
@@ -45,6 +47,9 @@ before(async () => {
     ["both", "user"],
     ["plain", "user"],
     ["rejected", "user"],
+    ["admpend", "admin"],
+    ["admappr", "admin"],
+    ["admnone", "admin"],
   ] as const;
   for (const [k, role] of users) {
     await db.execute(sql`
@@ -55,6 +60,14 @@ before(async () => {
   await db.execute(sql`
     INSERT INTO local_expert_forms (id, user_id, first_name, last_name, email, status, destinations, identity_verification_status)
     VALUES (${id("pexpert-form")}, ${id("pexpert")}, 'PS', 'Pending', ${`${id("pexpert")}@form.invalid`}, 'pending', '[]'::jsonb, 'pending')
+  `);
+  await db.execute(sql`
+    INSERT INTO local_expert_forms (id, user_id, first_name, last_name, email, status, destinations, identity_verification_status)
+    VALUES (${id("admpend-form")}, ${id("admpend")}, 'PS', 'AdminPending', ${`${id("admpend")}@form.invalid`}, 'pending', '[]'::jsonb, 'pending')
+  `);
+  await db.execute(sql`
+    INSERT INTO local_expert_forms (id, user_id, first_name, last_name, email, status, destinations, bio, identity_verification_status)
+    VALUES (${id("admappr-form")}, ${id("admappr")}, 'PS', 'AdminApproved', ${`${id("admappr")}@form.invalid`}, 'approved', ${JSON.stringify([CITY])}::jsonb, 'A bio', 'verified')
   `);
   await db.execute(sql`
     INSERT INTO local_expert_forms (id, user_id, first_name, last_name, email, status, destinations, bio, identity_verification_status)
@@ -158,10 +171,56 @@ test("a pending account can save a draft and cannot submit or publish", async ()
   );
 });
 
+test("an admin session cannot create or publish for an unapproved supply account", async () => {
+  const pending = await readSupplyAccount(id("admpend"));
+  assert.equal(pending.publishesFreely, false);
+  assert.equal(pending.canSaveDraftListing, true);
+  assert.equal(
+    await refuseUnapprovedListingWrite(id("admpend"), { draft: true, enteringReview: false, statusActive: false }),
+    null,
+  );
+  const pendingSubmit = await refuseUnapprovedListingWrite(id("admpend"), { draft: false, enteringReview: true, statusActive: false });
+  assert.equal(pendingSubmit?.status, 403);
+  assert.equal(pendingSubmit?.body.code, "APPLICATION_UNDER_REVIEW");
+  const pendingActive = await refuseUnapprovedListingWrite(id("admpend"), { draft: false, enteringReview: false, statusActive: true });
+  assert.equal(pendingActive?.status, 403);
+  assert.equal(pendingActive?.body.code, "APPLICATION_UNDER_REVIEW");
+
+  const approved = await readSupplyAccount(id("admappr"));
+  assert.equal(approved.publishesFreely, true);
+  assert.equal(approved.phase, "approved");
+  assert.equal(approved.canSaveDraftListing, false);
+  assert.equal(
+    await refuseUnapprovedListingWrite(id("admappr"), { draft: false, enteringReview: true, statusActive: true }),
+    null,
+  );
+
+  const none = await readSupplyAccount(id("admnone"));
+  assert.equal(none.publishesFreely, true);
+  assert.equal(none.canSaveDraftListing, false);
+  assert.equal(
+    await refuseUnapprovedListingWrite(id("admnone"), { draft: false, enteringReview: false, statusActive: true }),
+    null,
+  );
+
+  // Public reads still keep an admin owner, including one whose application is pending.
+  assert.equal(await listingOwnerIsPublic(id("admpend")), true);
+  assert.equal(await listingOwnerIsPublic(id("admappr")), true);
+  assert.equal(await listingOwnerIsPublic(id("admnone")), true);
+});
+
 test("public readers and the write rails call the one owner predicate", () => {
   const read = (rel: string) => fs.readFileSync(path.join(process.cwd(), rel), "utf8");
   const routes = read("server/routes.ts");
+  const writeCalls = routes.split("refuseUnapprovedListingWrite(").length - 1;
+  assert.equal(writeCalls, 4, "create, patch, provider submit, expert submit");
   assert.ok(routes.includes("refuseUnapprovedListingWrite"));
+  const gate = read("server/services/pending-supply-account.ts");
+  assert.match(gate, /const unapprovedSupply = chosen != null && chosen\.rank > 0 && chosen\.status !== "approved"/);
+  assert.match(gate, /const publishesFreely = earner \|\| \(role === "admin" && !unapprovedSupply\)/);
+  assert.equal(gate.includes('role === "admin" || isEarnerRole'), false);
+  const draftPage = read("client/src/pages/dashboard-listing.tsx");
+  assert.equal(/isEarnerRole\(role\) \|\| role === "admin"/.test(draftPage), false);
   assert.ok(routes.includes("withoutUnapprovedOwnerListings"));
   assert.ok(routes.includes("buildExpertApplicationTimeline"));
   assert.ok(routes.includes("buildProviderApplicationTimeline"));
