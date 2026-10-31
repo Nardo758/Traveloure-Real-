@@ -272,7 +272,9 @@ describe("Arashiyama wanted tile", () => {
     assert.ok(t.includes("Local guide wanted in Gion"));
     assert.equal(t.includes(ARASHIYAMA_ITINERARY_EXPERT_LINK), false);
     assert.ok(t.includes("Wanted here"));
-    assert.ok(t.includes("Ways to earn"));
+    // Row 302a: the generic wanted tile's one action reads "Apply".
+    assert.ok(t.includes("Apply"));
+    assert.equal(t.includes("Ways to earn"), false);
     assert.match(html, /data-testid="link-wanted-apply"/);
   });
 });

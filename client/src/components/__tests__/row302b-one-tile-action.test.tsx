@@ -239,17 +239,21 @@ describe("row 302b — one primary action per bento kind", () => {
     assertOnePrimary(ask, "expert ask");
     assert.match(ask, /data-testid="btn-ask-expert-ex-1"/);
     assert.equal(ask.includes("btn-contact-expert-"), false);
+    assert.ok(text(ask).includes("Ask this expert"), "row 302a label");
 
     const view = render(<CityFeedCardExpert expert={expert} city={CITY} density="compact" />);
     assertOnePrimary(view, "expert view");
     assert.match(view, /data-testid="btn-contact-expert-ex-1"/);
     assert.equal(view.includes("btn-ask-expert-"), false);
+    assert.ok(text(view).includes("View profile"));
   });
 
-  it("lead-expert anchor is Plan with when the city has an expert to ask, otherwise View profile", () => {
+  it("lead-expert anchor is Ask this expert when the city has an expert to ask, otherwise View profile", () => {
     const plan = render(<ExpertCard expert={expert} variant="anchor" />, { expertAvailable: true });
     assertOnePrimary(plan, "anchor plan");
     assert.match(plan, /data-testid="button-plan-with-expert"/);
+    assert.ok(text(plan).includes("Ask this expert"), "row 302a label");
+    assert.equal(text(plan).includes("Plan with"), false);
     assert.equal(plan.includes("button-view-profile"), false);
 
     const view = render(<ExpertCard expert={expert} variant="anchor" />);
@@ -258,13 +262,15 @@ describe("row 302b — one primary action per bento kind", () => {
     assert.equal(view.includes("button-plan-with-expert"), false);
   });
 
-  it("a generic wanted tile is Ways to earn, with no More info and no Ask", () => {
+  it("a generic wanted tile is Apply, with no More info and no Ask", () => {
     const html = render(<FeedWantedSlotCard item={wanted()} density="compact" />, {
       expertAvailable: true,
       user: { id: "u", role: "user" },
     });
     assertOnePrimary(html, "wanted");
     assert.match(html, /data-testid="link-wanted-apply"/);
+    assert.ok(text(html).includes("Apply"), "row 302a label");
+    assert.equal(text(html).includes("Ways to earn"), false);
     assert.equal(html.includes("link-wanted-ask-"), false);
     assert.equal(html.includes("link-wanted-more-info-"), false);
   });

@@ -42,7 +42,6 @@ import {
   neighbourhoodIsUnstocked,
   neighbourhoodSectionNeedsWantedTile,
   neighbourhoodWantedBody,
-  NEIGHBOURHOOD_WANTED_BUTTON,
   NEIGHBOURHOOD_WANTED_HREF,
   placeUnstockedNeighbourhoods,
   withoutUnstockedNeighbourhoods,
@@ -56,6 +55,7 @@ import {
 } from "@/lib/bento-anchor";
 import {
   resolveBentoCompactActionState,
+  tileActionLabel,
   type BentoCompactActionState,
 } from "@/lib/bento-action-state";
 import { useExpertAvailability } from "@/lib/expert-availability";
@@ -802,7 +802,7 @@ function NeighbourhoodWantedPanel({ name, slug }: { name: string; slug: string }
         data-testid={`link-neighbourhood-join-${slug}`}
         data-bento-primary-action=""
       >
-        {NEIGHBOURHOOD_WANTED_BUTTON}
+        {tileActionLabel("wanted-slot")}
       </a>
     </div>
   );
