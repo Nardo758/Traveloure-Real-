@@ -60,6 +60,13 @@ export const KYOTO_GEMS_TO_HIDE = [
 ] as const;
 
 /**
+ * Kyoto cards hidden later than migration 400, by migration 425 (#1796 follow-up, item 8).
+ * Kept apart from KYOTO_GEMS_TO_HIDE, whose entries migration 400's SQL names one for one.
+ * Yoshida Sanso Ryokan is hidden, not deleted: the card can return if it joins as a provider.
+ */
+export const KYOTO_GEMS_HIDDEN_BY_425 = ["Yoshida Sanso Ryokan"] as const;
+
+/**
  * Happening-now titles hidden by migration 400. #1603 removed this title from
  * the seeds. A database that already inserted the row is hidden by exact title,
  * not deleted. seed-travelpulse stamps hidden_at if the title is inserted again.
@@ -172,7 +179,9 @@ export function kyotoGemSeedOverlay(
   placeName: string,
 ): { hidden: boolean; neighborhood?: string | null } {
   if (city.trim().toLowerCase() !== "kyoto") return { hidden: false };
-  const hidden = (KYOTO_GEMS_TO_HIDE as readonly string[]).includes(placeName);
+  const hidden =
+    (KYOTO_GEMS_TO_HIDE as readonly string[]).includes(placeName) ||
+    (KYOTO_GEMS_HIDDEN_BY_425 as readonly string[]).includes(placeName);
   if (Object.prototype.hasOwnProperty.call(KYOTO_GEM_NEIGHBORHOOD, placeName)) {
     return { hidden, neighborhood: KYOTO_GEM_NEIGHBORHOOD[placeName] };
   }
