@@ -50,7 +50,7 @@ export function suppressionRefusalReason(input: {
   if (emailStreamForType(input.emailType) === "marketing") {
     if (bounce) return SUPPRESSED_HARD_BOUNCE;
     if (complaint) return SUPPRESSED_COMPLAINT;
-    const other = [...reasons][0];
+    const other = Array.from(reasons)[0];
     return `suppressed:${other}`;
   }
   if (suppressionTreatsAsSecurity(input.emailType, input.authCritical)) {
@@ -66,11 +66,11 @@ export async function addressSuppressionHit(input: {
   authCritical: boolean;
   recipients: readonly string[];
 }): Promise<AddressSuppressionHit | null> {
-  const normalized = [...new Set(
+  const normalized = Array.from(new Set(
     input.recipients
       .map((recipient) => normalizeSuppressionEmail(recipient))
       .filter((email): email is string => email != null),
-  )];
+  ));
   if (normalized.length === 0) return null;
   let reasons: string[] = [];
   try {
