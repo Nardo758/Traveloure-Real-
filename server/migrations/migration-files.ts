@@ -2220,6 +2220,10 @@ export const MIGRATION_FILES = [
   // 423 stays reserved. Registered beside 424, 425 and 426.
   // Ledger 2026-10-31-row303a-tile-detail-panel.
   "422_discover_tile_panel.sql",
+  // 423 — email_suppressions. New table only. Unique (email, reason).
+  // No DEFAULT, no CHECK, no backfill. Declared in shared/schema.ts.
+  // Z-21, fix-queue row 171. HELD. 421 is PR #1804. 422 is PR #1803.
+  "423_email_suppressions.sql",
   // 424 — users.apple_sub. Additive nullable text, no DEFAULT, no CHECK, no
   // backfill. Partial unique index where apple_sub IS NOT NULL.
   // HELD until Leon approves the SQL on the pull request.

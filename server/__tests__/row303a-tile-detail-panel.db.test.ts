@@ -77,9 +77,10 @@ test("P1–P5 the panel read drops an unsourced fact, an unticked photo, and a s
   refuseRemote();
   const registry = MIGRATION_FILES as readonly string[];
   const at = registry.indexOf(MIGRATION_FILE);
-  assert.deepEqual(registry.slice(at - 1, at + 5), [
+  assert.deepEqual(registry.slice(at - 1, at + 6), [
     "421_kyoto_seed_cleanup.sql",
     "422_discover_tile_panel.sql",
+    "423_email_suppressions.sql",
     "424_users_apple_sub.sql",
     "425_kyoto_1796_followups.sql",
     "426_cn1_concierge_task_kinds.sql",
