@@ -76,8 +76,7 @@ test("S3 — one seeded sentence, and a second seed writes nothing more", async 
   );
   assert.equal(rows.rows.length, 1);
   assert.equal(rows.rows[0].body, WAITLIST_MARKETING_CONSENT_LINE);
-  assert.equal(rows.rows[0].body, "Send me Traveloure news and tips.");
-  assert.equal(/unsubscribe/i.test(String(rows.rows[0].body)), false);
+  assert.equal(rows.rows[0].body, "Send me news and offers from Traveloure. You can unsubscribe at any time.");
 });
 
 test("S1 — a tick stores true as its own consent row and timestamp", async () => {

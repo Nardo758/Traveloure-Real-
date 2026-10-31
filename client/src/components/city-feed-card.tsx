@@ -19,7 +19,7 @@ import { useAskExpert } from "@/lib/use-ask-expert";
 import type { BentoCompactActionState } from "@/lib/bento-action-state";
 import { isReferencePhoto } from "@/lib/photo-provenance";
 import { ReferencePhotoChip } from "@/components/ui/reference-photo-chip";
-import { ADD_TO_PLAN_LABEL } from "@/lib/plan-vocabulary";
+import { tileActionLabel } from "@/lib/bento-action-state";
 import { SaveToggle } from "@/components/SaveToggle";
 import { buildSaveItem } from "@/lib/saved-items";
 import type { SaveItemBody } from "@shared/saved-items";
@@ -966,9 +966,7 @@ export function CityFeedCardGem({
     platformPath;
   const typeMeta = gemTypeMeta(gem.placeType);
 
-  const addLabel = scheduledDate
-    ? `Add to ${new Date(scheduledDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
-    : ADD_TO_PLAN_LABEL;
+  const addLabel = tileActionLabel("loose-gem", { scheduledDate }) ?? "";
   const { srcSet, sizes } = buildSrcSet(photoUrl);
 
   const isRow = layout === "row";
@@ -1353,9 +1351,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
     actionVariant: "affiliate",
     href: "/experiences",
   };
-  const addLabel = scheduledDate
-    ? `Add to ${new Date(scheduledDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
-    : ADD_TO_PLAN_LABEL;
+  const addLabel = tileActionLabel("event", { scheduledDate }) ?? "";
   const { srcSet, sizes } = buildSrcSet(photoUrl);
 
   // Price chip
@@ -1762,7 +1758,7 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
                   data-testid={`btn-book-svc-${service.id}`}
                   data-bento-primary-action=""
                 >
-                  {resolvedBookability === "deeplink" ? "Reserve" : "Book now"}
+                  {tileActionLabel("vendor-service", { bookable: true })}
                 </Button>
               ) : onAdd ? (
                 <Button
@@ -1785,7 +1781,7 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
                   data-bento-primary-action=""
                 >
                   <Plus className="w-3 h-3 mr-1" />
-                  Add to trip
+                  {tileActionLabel("vendor-service", { bookable: false, scheduledDate })}
                 </Button>
               ) : null}
             </div>
@@ -2019,9 +2015,7 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
     city,
   });
 
-  const addLabel = scheduledDate
-    ? `Add to ${new Date(scheduledDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
-    : ADD_TO_PLAN_LABEL;
+  const addLabel = tileActionLabel(isHotel ? "supply-hotel" : "supply-activity", { scheduledDate }) ?? "";
   const { srcSet, sizes } = buildSrcSet(photoUrl);
 
   // Partner amounts render in the source currency. No currency ⇒ "See current price", never a "$" prefix (LC-1).

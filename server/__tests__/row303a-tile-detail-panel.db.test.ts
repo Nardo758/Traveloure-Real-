@@ -77,8 +77,14 @@ test("P1–P5 the panel read drops an unsourced fact, an unticked photo, and a s
   refuseRemote();
   const registry = MIGRATION_FILES as readonly string[];
   const at = registry.indexOf(MIGRATION_FILE);
-  assert.equal(registry[at - 1], "420_kyoto_gem_photo_credits.sql");
-  assert.equal(registry[at + 1], "424_users_apple_sub.sql");
+  assert.deepEqual(registry.slice(at - 1, at + 5), [
+    "421_kyoto_seed_cleanup.sql",
+    "422_discover_tile_panel.sql",
+    "424_users_apple_sub.sql",
+    "425_kyoto_1796_followups.sql",
+    "426_cn1_concierge_task_kinds.sql",
+    "427_kyoto_1796_item7_copy.sql",
+  ]);
   await dropTables();
 
   const absent = await getPanel();

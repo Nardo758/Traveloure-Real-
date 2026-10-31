@@ -2206,11 +2206,18 @@ export const MIGRATION_FILES = [
   // request. 418 is PR #1785. 419 is PR #1794.
   // Ledger 2026-10-30-row250-kyoto-discover-photos.
   "420_kyoto_gem_photo_credits.sql",
+  // 421 — DATA ONLY. Kyoto seed cleanup (row 300a): address, crowd-line copy,
+  // Ginkaku-ji admission and autumn viewing, and photo credits the 299a file
+  // did not cover. No ALTER. HELD for Leon's comment. 419 is the WL-B supply
+  // sign-up migration and is not on main.
+  // Ledger 2026-10-31-row300a-kyoto-seed-cleanup.
+  "421_kyoto_seed_cleanup.sql",
   // 422 — discover_tile_panel_facts and discover_tile_panel_photos.
   // Additive tables. No CHECK. No DEFAULT on reviewed_at or photo_rights_ticked.
   // Index idx_discover_tile_panel_facts_tile_id, and a unique (tile_id, position)
   // on the photo table. Declared in shared/schema.ts.
-  // HELD until the owner approves the SQL on the PR. 421 is PR #1804.
+  // HELD. The SQL file is unchanged. 421 is the Kyoto seed cleanup.
+  // 423 stays reserved. Registered beside 424, 425 and 426.
   // Ledger 2026-10-31-row303a-tile-detail-panel.
   "422_discover_tile_panel.sql",
   // 424 — users.apple_sub. Additive nullable text, no DEFAULT, no CHECK, no
@@ -2220,4 +2227,23 @@ export const MIGRATION_FILES = [
   // (re-exported from shared/schema.ts). 421 is open PRs #1804 and #1802.
   // 422 is #1803. 423 is reserved for #1802.
   "424_users_apple_sub.sql",
+  // 425 — DATA ONLY. #1796 follow-ups: hide the Yoshida Sanso Ryokan seeded card
+  // (hidden_at while NULL) and NULL image_url / image_credit where a Kyoto row
+  // still stores one of three 404 Unsplash URLs. No ALTER. HELD until the owner
+  // approves the SQL on the pull request. 421–423 are open PRs #1804, #1803
+  // and #1802; 424 is #1807. Ledger 2026-10-31-kyoto-1796-followups.
+  "425_kyoto_1796_followups.sql",
+  // 426 — concierge_task_kinds and provider_service_concierge_tasks.
+  // Additive tables, no DEFAULT, no CHECK, no listing backfill.
+  // Does not alter provider_services or expert_offering_types.
+  // HELD. The SQL file is unchanged. 425 is 425_kyoto_1796_followups.sql.
+  // Declared in shared/schema.ts.
+  "426_cn1_concierge_task_kinds.sql",
+  // 427 — DATA ONLY. #1796 follow-up, item 7: Yoshida Sanso's description and why line
+  // (one approved rewording, the rest removals), and the superlatives 421 left on
+  // Philosopher's Path, the pre-dawn hike and the dawn tunnel. Written only while a
+  // column still holds 421's output or the text before 421. No ALTER. HELD until the
+  // owner approves the SQL on the pull request. 422 and 423 are open PRs; 426 is #1816.
+  // Ledger 2026-10-31-kyoto-1796-item7.
+  "427_kyoto_1796_item7_copy.sql",
 ] as const;

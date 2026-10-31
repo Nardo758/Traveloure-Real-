@@ -29,9 +29,27 @@ import { teamSeededGemTags } from "@shared/content-tiers";
 import { kyotoGemSeedOverlay } from "@shared/kyoto-feed-cleanup";
 import { kyotoGemPhoto } from "@shared/kyoto-gem-photos";
 import { kyotoCopyNeedsDescriptionHide, rewordKyotoBannedCopy } from "@shared/kyoto-gem-copy";
+import {
+  FUSHIMI_DAWN_DESCRIPTION,
+  GINKAKU_ACCESS_SOURCE_URL,
+  GINKAKU_ADMISSION_HELD,
+  GINKAKU_AUTUMN_VIEWING_HELD,
+  GINKAKU_FACT_CHECKED_ON,
+  GINKAKU_HOURS_PRIOR,
+  PRE_DAWN_WHY,
+  YOSHIDA_SANSO_ADDRESS,
+  kyotoRemainingGemPhoto,
+} from "@shared/kyoto-seed-cleanup";
+import {
+  FUSHIMI_DAWN_WHY_ITEM7,
+  PHILOSOPHER_DESCRIPTION_ITEM7,
+  PRE_DAWN_DESCRIPTION_ITEM7,
+  YOSHIDA_SANSO_DESCRIPTION,
+  YOSHIDA_SANSO_WHY,
+} from "@shared/kyoto-1796-item7";
 import { db } from "../db";
 import { travelPulseHiddenGems } from "@shared/schema";
-import { and, eq, isNull, or } from "drizzle-orm";
+import { and, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { logger } from "../infrastructure";
 
 interface GemSeed {
@@ -55,6 +73,14 @@ interface GemSeed {
   neighborhood: string | null;
   imageUrl?: string;
 }
+
+/** The Ginkaku-ji fact migration 421 writes. A fresh boot stamps the same four fields. */
+const ginkakuSeededFact = {
+  hours: `${GINKAKU_HOURS_PRIOR}. ${GINKAKU_AUTUMN_VIEWING_HELD}`,
+  admission: GINKAKU_ADMISSION_HELD,
+  sourceUrl: GINKAKU_ACCESS_SOURCE_URL,
+  factCheckedOn: GINKAKU_FACT_CHECKED_ON,
+} as const;
 
 const HIDDEN_GEMS: GemSeed[] = [
   // ── TOKYO (8 gems: 3 Eat · 2 Do · 1 Stay · 2 Photo) ─────────────────────
@@ -245,7 +271,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["tea lovers", "cultural immersion", "quiet afternoon"],
     priceRange: "$$",
     neighborhood: "kawaramachi-sanjo",
-    imageUrl: "https://images.unsplash.com/photo-1569144157591-c60f3f82f137?auto=format&fit=crop&w=800&q=80",
+    // Photo: kyotoRemainingGemPhoto (row 300a). Commons file of the Ippodo shop.
   },
   {
     city: "Kyoto",
@@ -265,7 +291,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["food tasting", "local culture", "lunch"],
     priceRange: "$",
     neighborhood: "kawaramachi-sanjo",
-    imageUrl: "https://images.unsplash.com/photo-1564419320461-6870880221ad?auto=format&fit=crop&w=800&q=80",
+    // Photo: kyotoRemainingGemPhoto (row 300a). Commons file of Nishiki Market.
   },
   {
     city: "Kyoto",
@@ -286,7 +312,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     bestFor: ["fine dining", "vegetarian", "cultural immersion"],
     priceRange: "$$$",
     neighborhood: null,
-    imageUrl: "https://images.unsplash.com/photo-1492571350019-22de08371fd3?auto=format&fit=crop&w=800&q=80",
+    // Photo: kyotoRemainingGemPhoto (row 300a). Commons file of Kanga-an.
   },
   {
     city: "Kyoto",
@@ -302,11 +328,12 @@ const HIDDEN_GEMS: GemSeed[] = [
     gemScore: 92,
     discoveryStatus: "hidden",
     daysUntilMainstream: 730,
-    description: "The 10,000 torii path is magical but overcrowded by 8am. Arriving at 4:30am means walking the full summit trail completely alone in mist and candlelight.",
-    whyLocalsLoveIt: "Dawn at the summit is a genuinely spiritual experience. Most tourists only do the first 30 minutes.",
-    bestFor: ["hiking", "spiritual experience", "avoiding crowds"],
+    description: PRE_DAWN_DESCRIPTION_ITEM7,
+    whyLocalsLoveIt: PRE_DAWN_WHY,
+    bestFor: ["hiking", "spiritual experience"],
     priceRange: "$",
     neighborhood: "fushimi",
+    // Hidden card. The Unsplash file's photographer page was not resolved, so no credit is stored.
     imageUrl: "https://images.unsplash.com/photo-1478436127897-769e1b3f0f36?auto=format&fit=crop&w=800&q=80",
   },
   {
@@ -323,7 +350,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     gemScore: 80,
     discoveryStatus: "emerging",
     description: "A 500-metre stone alley running parallel to the Kamo River. In summer, restaurants extend kawayuka elevated platforms over the water for open-air dining.",
-    whyLocalsLoveIt: "The pre-dinner golden hour with lanterns just lit and no crowds is the most photogenic moment in all Kyoto.",
+    whyLocalsLoveIt: "",
     bestFor: ["evening walk", "summer dining", "atmosphere"],
     priceRange: "$$",
     neighborhood: "pontocho",
@@ -334,7 +361,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     country: "Japan",
     placeName: "Yoshida Sanso Ryokan",
     placeType: "ryokan",
-    address: "59-1 Yoshida Shimoadachi-cho, Sakyo Ward, Kyoto",
+    address: YOSHIDA_SANSO_ADDRESS,
     latitude: "35.0267000",
     longitude: "135.7839000",
     localRating: "4.9",
@@ -343,8 +370,8 @@ const HIDDEN_GEMS: GemSeed[] = [
     gemScore: 88,
     discoveryStatus: "hidden",
     daysUntilMainstream: 400,
-    description: "A converted 1932 Imperial guesthouse on the forested slopes of Mount Yoshida. Nine suites, a private garden, and multi-course kaiseki dinner served in your room.",
-    whyLocalsLoveIt: "The Japanese imperial hospitality tradition is alive here. No-one rushes you, no-one under 18, pure Kyoto.",
+    description: YOSHIDA_SANSO_DESCRIPTION,
+    whyLocalsLoveIt: YOSHIDA_SANSO_WHY,
     bestFor: ["luxury stay", "couples", "authentic ryokan"],
     priceRange: "$$$$",
     neighborhood: null,
@@ -364,8 +391,8 @@ const HIDDEN_GEMS: GemSeed[] = [
     gemScore: 93,
     discoveryStatus: "hidden",
     daysUntilMainstream: 730,
-    description: "The lower torii tunnel photographed empty at 5am, backlit by the first sun slicing through the orange gates. Arguably the best photo opportunity in all of Japan.",
-    whyLocalsLoveIt: "By 9am this exact spot has 200 people queuing. At dawn it is yours alone and lit like a film set.",
+    description: FUSHIMI_DAWN_DESCRIPTION,
+    whyLocalsLoveIt: FUSHIMI_DAWN_WHY_ITEM7,
     bestFor: ["photography", "dawn", "iconic shot"],
     priceRange: "$",
     neighborhood: "fushimi",
@@ -384,7 +411,7 @@ const HIDDEN_GEMS: GemSeed[] = [
     localMentions: 2000,
     gemScore: 75,
     discoveryStatus: "emerging",
-    description: "The canal-side path connecting Nanzen-ji to Ginkaku-ji. Less visited in autumn than spring, the red maple canopy over the water is arguably more beautiful than sakura season.",
+    description: PHILOSOPHER_DESCRIPTION_ITEM7,
     whyLocalsLoveIt: "Autumn maples reflected in the still canal at 7am.",
     bestFor: ["photography", "autumn foliage", "walking", "golden hour"],
     priceRange: "$",
@@ -1837,8 +1864,9 @@ export async function seedPopularCitiesContent(): Promise<{ gems: number }> {
     }
 
     const overlay = kyotoGemSeedOverlay(gem.city, gem.placeName);
-    const photo = kyotoGemPhoto(gem.placeName);
+    const photo = kyotoGemPhoto(gem.placeName) ?? kyotoRemainingGemPhoto(gem.placeName);
     const descriptionHidden = kyotoCopyNeedsDescriptionHide(gem.city.toLowerCase() === "kyoto" ? gem.description : null, gem.city.toLowerCase() === "kyoto" ? gem.whyLocalsLoveIt : null);
+    const whyText = gem.city.toLowerCase() === "kyoto" ? rewordKyotoBannedCopy(gem.whyLocalsLoveIt) : gem.whyLocalsLoveIt;
     await db.insert(travelPulseHiddenGems).values({
       ...teamSeededGemTags(), // FD-2: a team seed (ledger 2026-10-09-fd2-content-tier-tags)
       city: gem.city,
@@ -1855,7 +1883,7 @@ export async function seedPopularCitiesContent(): Promise<{ gems: number }> {
       discoveryStatus: gem.discoveryStatus,
       daysUntilMainstream: gem.daysUntilMainstream,
       description: gem.city.toLowerCase() === "kyoto" ? rewordKyotoBannedCopy(gem.description) : gem.description,
-      whyLocalsLoveIt: gem.city.toLowerCase() === "kyoto" ? rewordKyotoBannedCopy(gem.whyLocalsLoveIt) : gem.whyLocalsLoveIt,
+      whyLocalsLoveIt: whyText === "" ? null : whyText,
       bestFor: gem.bestFor,
       priceRange: gem.priceRange,
       neighborhood: overlay.neighborhood === undefined ? gem.neighborhood : overlay.neighborhood,
@@ -1865,9 +1893,34 @@ export async function seedPopularCitiesContent(): Promise<{ gems: number }> {
       imageUrl: photo?.imageUrl ?? gem.imageUrl,
       ...(photo ? { imageCredit: photo.imageCredit } : {}),
       aiGenerated: false,
+      ...(gem.placeName === "Ginkaku-ji" ? ginkakuSeededFact : {}),
     });
     gemsCreated++;
   }
+
+  // Migration 400 inserts Ginkaku-ji before this seed runs. Realign the four fact
+  // columns to the same values migration 421 writes, and leave the row alone once
+  // they already match.
+  await db
+    .update(travelPulseHiddenGems)
+    .set({
+      hours: ginkakuSeededFact.hours,
+      admission: ginkakuSeededFact.admission,
+      sourceUrl: ginkakuSeededFact.sourceUrl,
+      factCheckedOn: ginkakuSeededFact.factCheckedOn,
+    })
+    .where(
+      and(
+        ilike(travelPulseHiddenGems.city, "kyoto"),
+        eq(travelPulseHiddenGems.placeName, "Ginkaku-ji"),
+        or(
+          sql`${travelPulseHiddenGems.hours} IS DISTINCT FROM ${ginkakuSeededFact.hours}`,
+          sql`${travelPulseHiddenGems.admission} IS DISTINCT FROM ${ginkakuSeededFact.admission}`,
+          sql`${travelPulseHiddenGems.sourceUrl} IS DISTINCT FROM ${ginkakuSeededFact.sourceUrl}`,
+          sql`${travelPulseHiddenGems.factCheckedOn} IS DISTINCT FROM ${ginkakuSeededFact.factCheckedOn}::date`,
+        ),
+      ),
+    );
 
   return { gems: gemsCreated };
 }
