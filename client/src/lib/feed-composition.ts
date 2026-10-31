@@ -107,6 +107,8 @@ export interface WantedSlotData {
   offeringLabel: string;
   offeringKey: string;
   neighborhoodName: string;
+  /** Neighbourhood slug. The Arashiyama itinerary tile matches this, not the display name. */
+  neighborhoodSlug?: string;
   city: string;
   neighborhoodId: string;
   /** Number of travellers who have requested this offering in this neighbourhood. */

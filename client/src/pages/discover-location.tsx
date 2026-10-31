@@ -1819,6 +1819,7 @@ export default function DiscoverLocationPage() {
       // answered yet" state: the demand lookup skips it and the CTA omits the param (§13).
       offeringKey: offering?.offering_type_key ?? "",
       neighborhoodName: nbName,
+      neighborhoodSlug: typeof nb.slug === "string" ? nb.slug : "",
       city,
       neighborhoodId: String(nb.id ?? nb.slug ?? nbName),
     }];

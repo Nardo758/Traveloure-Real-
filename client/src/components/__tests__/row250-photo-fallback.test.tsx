@@ -18,11 +18,14 @@ import { GemPhotoMedia } from "../gem-photo-band";
 import { CityTileFace } from "../city-tile-face";
 import { FeedWantedSlotCard } from "../feed/wanted-slot-card";
 import type { FeedItem } from "../../lib/feed-stream";
-import { EXPERT_ROLES } from "@shared/roles";
 import {
   ARASHIYAMA_ITINERARY_EXPERT_HREF,
   ARASHIYAMA_ITINERARY_EXPERT_LINK,
-  ARASHIYAMA_ITINERARY_TRAVELER_LINE,
+  ARASHIYAMA_ITINERARY_PROVIDER_HREF,
+  ARASHIYAMA_ITINERARY_PROVIDER_LINK,
+  ARASHIYAMA_PLAN_YOUR_DAY,
+  ARASHIYAMA_PLAN_YOUR_DAY_HREF,
+  isArashiyamaItineraryWanted,
 } from "../../lib/arashiyama-wanted-copy";
 
 (globalThis as any).React = React;
@@ -156,6 +159,7 @@ describe("Arashiyama wanted tile", () => {
       offeringLabel: "Local City Itinerary",
       offeringKey: "local_city_itinerary",
       neighborhoodName: "Arashiyama",
+      neighborhoodSlug: "arashiyama",
       city: "Kyoto",
       neighborhoodId: "arashiyama",
       demandCount: 12,
@@ -163,58 +167,92 @@ describe("Arashiyama wanted tile", () => {
     },
   });
 
-  function assertGapCopy(html: string, label: string) {
+  const RETIRED = "No local itinerary for Arashiyama yet. Build your own day here.";
+
+  function assertQuiet(html: string, label: string) {
     const t = text(html);
-    assert.equal(
-      ARASHIYAMA_ITINERARY_TRAVELER_LINE,
-      "No local itinerary for Arashiyama yet. Build your own day here.",
-    );
-    assert.equal(
-      ARASHIYAMA_ITINERARY_EXPERT_LINK,
-      "Know Arashiyama well? Apply now as a local expert.",
-    );
+    assert.equal(ARASHIYAMA_ITINERARY_EXPERT_LINK, "Know Arashiyama well? Apply now as a local expert.");
+    assert.equal(ARASHIYAMA_ITINERARY_PROVIDER_LINK, "Run a business in Arashiyama? Apply as a provider.");
+    assert.equal(ARASHIYAMA_PLAN_YOUR_DAY, "Plan your day here");
     assert.equal(ARASHIYAMA_ITINERARY_EXPERT_HREF, "/kyoto#experts");
-    assert.match(html, /data-testid="wanted-arashiyama-traveler-line"/, label);
-    assert.ok(t.includes(ARASHIYAMA_ITINERARY_TRAVELER_LINE), label);
+    assert.equal(ARASHIYAMA_ITINERARY_PROVIDER_HREF, "/kyoto#providers");
+    assert.equal(t.includes(RETIRED), false, label);
+    assert.equal(/wanted here/i.test(t), false, label);
+    assert.equal(t.includes("Ways to earn"), false, label);
     assert.equal(/high demand/i.test(t), false, label);
-    assert.equal(/trending/i.test(t), false, label);
-    assert.equal(/traveler/i.test(t), false, label);
     assert.equal(t.includes("12"), false, label);
-    assert.equal(t.includes("wanted in"), false, label);
     assert.equal(html.includes("badge-high-demand"), false, label);
+    assert.equal(html.includes("link-wanted-apply"), false, label);
+    assert.equal(html.includes("More info"), false, label);
     return t;
   }
 
-  it("shows the approved expert link only to a signed-in expert", () => {
-    for (const role of EXPERT_ROLES) {
-      const html = render(<FeedWantedSlotCard item={item()} />, { id: "ex-1", role });
-      const t = assertGapCopy(html, role);
-      assert.match(html, new RegExp(`href="${ARASHIYAMA_ITINERARY_EXPERT_HREF}"`), role);
-      assert.match(html, /data-testid="link-arashiyama-expert-apply"/, role);
-      assert.ok(t.includes(ARASHIYAMA_ITINERARY_EXPERT_LINK), role);
-      assert.equal(html.includes("link-wanted-apply"), false, role);
-      assert.equal(t.includes("Ways to earn"), false, role);
-    }
+  it("matches the offering key and the neighbourhood slug, not the label", () => {
+    assert.equal(
+      isArashiyamaItineraryWanted({
+        offeringKey: "local_city_itinerary",
+        neighborhoodSlug: "arashiyama",
+        offeringLabel: "Renamed itinerary",
+      } as { offeringKey: string; neighborhoodSlug: string }),
+      true,
+    );
+    assert.equal(
+      isArashiyamaItineraryWanted({
+        offeringKey: "guide",
+        neighborhoodSlug: "arashiyama",
+      }),
+      false,
+    );
+    assert.equal(
+      isArashiyamaItineraryWanted({
+        offeringKey: "local_city_itinerary",
+        neighborhoodSlug: "gion",
+      }),
+      false,
+    );
+    const renamed = render(
+      <FeedWantedSlotCard item={item({ offeringLabel: "A different label" })} />,
+    );
+    assert.ok(text(renamed).includes(ARASHIYAMA_ITINERARY_EXPERT_LINK));
+    const byLabelOnly = render(
+      <FeedWantedSlotCard
+        item={item({
+          offeringKey: "guide",
+          offeringLabel: "Local City Itinerary",
+          neighborhoodSlug: "arashiyama",
+        })}
+      />,
+    );
+    assert.equal(text(byLabelOnly).includes(ARASHIYAMA_ITINERARY_EXPERT_LINK), false);
   });
 
-  it("keeps Ways to earn for everyone who is not a signed-in expert", () => {
+  it("shows both apply lines to everyone except a signed-in traveler", () => {
     const viewers: Array<{ id: string; role: string } | null> = [
       null,
-      { id: "traveler", role: "user" },
+      { id: "ex", role: "travel_expert" },
       { id: "provider", role: "service_provider" },
       { id: "admin", role: "admin" },
-      { id: "ea", role: "executive_assistant" },
     ];
     for (const user of viewers) {
       const label = user?.role ?? "signed-out";
       const html = render(<FeedWantedSlotCard item={item()} />, user);
-      const t = assertGapCopy(html, label);
-      assert.equal(t.includes(ARASHIYAMA_ITINERARY_EXPERT_LINK), false, label);
-      assert.equal(html.includes(ARASHIYAMA_ITINERARY_EXPERT_HREF), false, label);
-      assert.equal(html.includes("link-arashiyama-expert-apply"), false, label);
-      assert.match(html, /data-testid="link-wanted-apply"/, label);
-      assert.ok(t.includes("Ways to earn"), label);
+      const t = assertQuiet(html, label);
+      assert.ok(t.includes(ARASHIYAMA_ITINERARY_EXPERT_LINK), label);
+      assert.ok(t.includes(ARASHIYAMA_ITINERARY_PROVIDER_LINK), label);
+      assert.match(html, new RegExp(`href="${ARASHIYAMA_ITINERARY_EXPERT_HREF}"`), label);
+      assert.match(html, new RegExp(`href="${ARASHIYAMA_ITINERARY_PROVIDER_HREF}"`), label);
+      assert.equal(t.includes(ARASHIYAMA_PLAN_YOUR_DAY), false, label);
     }
+  });
+
+  it("shows a signed-in traveler only Plan your day here", () => {
+    const html = render(<FeedWantedSlotCard item={item()} />, { id: "traveler", role: "user" });
+    const t = assertQuiet(html, "user");
+    assert.ok(t.includes(ARASHIYAMA_PLAN_YOUR_DAY));
+    assert.match(html, new RegExp(`href="${ARASHIYAMA_PLAN_YOUR_DAY_HREF.replace("?", "\\?")}"`));
+    assert.equal(t.includes(ARASHIYAMA_ITINERARY_EXPERT_LINK), false);
+    assert.equal(t.includes(ARASHIYAMA_ITINERARY_PROVIDER_LINK), false);
+    assert.equal(t, ARASHIYAMA_PLAN_YOUR_DAY);
   });
 
   it("leaves every other wanted tile on the existing line", () => {
@@ -224,6 +262,7 @@ describe("Arashiyama wanted tile", () => {
           offeringLabel: "Local guide",
           offeringKey: "guide",
           neighborhoodName: "Gion",
+          neighborhoodSlug: "gion",
           neighborhoodId: "gion",
           demandCount: 0,
         })}
@@ -231,7 +270,9 @@ describe("Arashiyama wanted tile", () => {
     );
     const t = text(html);
     assert.ok(t.includes("Local guide wanted in Gion"));
-    assert.equal(t.includes(ARASHIYAMA_ITINERARY_TRAVELER_LINE), false);
+    assert.equal(t.includes(ARASHIYAMA_ITINERARY_EXPERT_LINK), false);
+    assert.ok(t.includes("Wanted here"));
+    assert.ok(t.includes("Ways to earn"));
     assert.match(html, /data-testid="link-wanted-apply"/);
   });
 });

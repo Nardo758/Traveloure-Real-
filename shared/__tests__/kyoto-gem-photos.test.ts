@@ -16,7 +16,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { KYOTO_CANONICAL_GEMS } from "../kyoto-feed-cleanup";
-import { KYOTO_GEM_PHOTOS, kyotoGemPhoto } from "../kyoto-gem-photos";
+import { KYOTO_GEM_PHOTOS, kyotoGemPhoto, kyotoPhotoSeasonConflict } from "../kyoto-gem-photos";
 
 const ROOT = process.cwd();
 const read = (p: string) => readFileSync(path.join(ROOT, p), "utf8");
@@ -42,8 +42,32 @@ test("P1 the four Kyoto gems each have an image URL and a credit", () => {
     assert.ok(row.imageCredit.length > 8, name);
   }
   assert.equal(kyotoGemPhoto("Tenryu-ji"), null);
-  assert.equal(kyotoGemPhoto("Ginkaku-ji")!.replacesUrl, null);
-  assert.match(kyotoGemPhoto("Yoshida Sanso Ryokan")!.replacesUrl ?? "", /images\.unsplash\.com/);
+  assert.deepEqual(kyotoGemPhoto("Ginkaku-ji")!.replacesUrls, []);
+  assert.match(kyotoGemPhoto("Yoshida Sanso Ryokan")!.replacesUrls[0] ?? "", /images\.unsplash\.com/);
+  assert.equal(kyotoGemPhoto("Philosopher's Path Canal in Autumn")!.takenMonth, 11);
+  assert.equal(kyotoGemPhoto("Fushimi Inari Torii Tunnel at Dawn")!.timeOfDay, "early-morning");
+  assert.equal(kyotoGemPhoto("Fushimi Inari Torii Tunnel at Dawn")!.takenClock, "05:48");
+});
+
+test("P1b every credit carries the Commons file page and the license URL", () => {
+  for (const row of KYOTO_GEM_PHOTOS) {
+    assert.match(row.sourcePageUrl, /^https:\/\/commons\.wikimedia\.org\/wiki\/File:/, row.placeName);
+    assert.match(row.licenseUrl, /^https:\/\/creativecommons\.org\//, row.placeName);
+    assert.ok(row.imageCredit.includes(row.sourcePageUrl), row.placeName);
+    assert.ok(row.imageCredit.includes(row.licenseUrl), row.placeName);
+    assert.ok(sql.includes(row.sourcePageUrl), row.placeName);
+    assert.ok(sql.includes(row.licenseUrl), row.placeName);
+  }
+});
+
+test("P1c no photo month or time contradicts a season word in the card title", () => {
+  for (const row of KYOTO_GEM_PHOTOS) {
+    assert.equal(kyotoPhotoSeasonConflict(row), null, row.placeName);
+  }
+  const autumnInApril = { ...KYOTO_GEM_PHOTOS[2], takenMonth: 4 };
+  assert.match(kyotoPhotoSeasonConflict(autumnInApril) ?? "", /autumn/);
+  const dawnByDay = { ...KYOTO_GEM_PHOTOS[1], timeOfDay: "day" as const };
+  assert.match(kyotoPhotoSeasonConflict(dawnByDay) ?? "", /dawn/);
 });
 
 test("P2 migration 420 writes those photos and nothing else", () => {
@@ -67,7 +91,7 @@ test("P2 migration 420 writes those photos and nothing else", () => {
     assert.ok(sql.includes(`'${quoted}'`), row.placeName);
     assert.ok(sql.includes(row.imageUrl), row.placeName);
     assert.ok(sql.includes(row.imageCredit), row.placeName);
-    if (row.replacesUrl) assert.ok(sql.includes(row.replacesUrl), row.placeName);
+    for (const prior of row.replacesUrls) assert.ok(sql.includes(prior), row.placeName);
   }
   assert.equal((sql.match(/UPDATE travel_pulse_hidden_gems/g) ?? []).length, 4);
 });
@@ -77,8 +101,9 @@ test("P3 the popular-cities seed takes the photo from kyotoGemPhoto and drops th
   assert.match(seed, /kyotoGemPhoto\(gem\.placeName\)/);
   assert.match(seed, /imageCredit: photo\.imageCredit/);
   for (const row of KYOTO_GEM_PHOTOS) {
-    if (!row.replacesUrl) continue;
-    assert.equal(seed.includes(row.replacesUrl), false, row.placeName);
+    for (const prior of row.replacesUrls) {
+      assert.equal(seed.includes(prior), false, row.placeName);
+    }
   }
 });
 
