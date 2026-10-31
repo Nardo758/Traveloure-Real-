@@ -21,6 +21,7 @@ import { useEffect, useRef, Component, type ReactNode } from "react";
 import { apiRequest } from "@/lib/queryClient";
 // The `/services` browse URL contract, stated once and imported by both ends (§18 rule 1).
 import { buildServicesBrowseHref } from "@/lib/services-browse";
+import type { UpsellLine as UpsellLineDto } from "@shared/upsell-line";
 
 export type UpsellSurface =
   | "plancard_pretrip"
@@ -130,6 +131,31 @@ export interface UseUpsellSlotResult {
   logClick: (offeringId: string) => void;
 }
 
+/** The on-trip read also carries row 179's per-leg lines (`shared/upsell-line.ts`), present only when real. */
+export interface UpsellSlotResponse {
+  candidates: UpsellCandidate[];
+  suppressed?: Array<{ offeringId: string; reason?: string }>;
+  lines?: UpsellLineDto[];
+}
+
+/**
+ * The ONE query a surface's upsell read runs. Row 179: the Trip Card reads the on-trip lines through the SAME key, so
+ * the slot and the card share one request and the card fires no impressions of its own.
+ */
+export function upsellSlotQueryOptions(surface: UpsellSurface, tripId?: string, contextPayload?: Record<string, unknown>) {
+  const body: Record<string, unknown> = { surface, ...(contextPayload ?? {}) };
+  if (tripId) body.tripId = tripId;
+  return {
+    queryKey: [ENDPOINT[surface], tripId, JSON.stringify(contextPayload)] as const,
+    queryFn: async (): Promise<UpsellSlotResponse> => {
+      const res = await apiRequest("POST", ENDPOINT[surface], body);
+      return res.json();
+    },
+    staleTime: 5 * 60_000,
+    retry: false as const,
+  };
+}
+
 /**
  * Data layer of the upsell slot: fetch + impression/click attribution,
  * without the default block rendering. Surfaces that render candidates
@@ -143,19 +169,7 @@ export function useUpsellSlot(
   const { tripId, contextPayload, maxItems, enabled = true } = opts;
   const impressionFiredRef = useRef(false);
 
-  const body: Record<string, unknown> = { surface, ...(contextPayload ?? {}) };
-  if (tripId) body.tripId = tripId;
-
-  const { data } = useQuery<{ candidates: UpsellCandidate[]; suppressed?: Array<{ offeringId: string; reason?: string }> }>({
-    queryKey: [ENDPOINT[surface], tripId, JSON.stringify(contextPayload)],
-    queryFn: async () => {
-      const res = await apiRequest("POST", ENDPOINT[surface], body);
-      return res.json();
-    },
-    staleTime: 5 * 60_000,
-    retry: false,
-    enabled,
-  });
+  const { data } = useQuery({ ...upsellSlotQueryOptions(surface, tripId, contextPayload), enabled });
 
   const logClick = useMutation({
     mutationFn: (offeringId: string) =>

@@ -1,0 +1,1 @@
+| 2026-10-30-row179-upsell-line-screen | 2026-10-30 | [guarded: client/src/components/plancard/__tests__/upsell-line.test.tsx] (client only) | **R? — A SELECTED ITEM WITH AN UPSELL CANDIDATE SHOWS ONE LINE, "ADD X FOR THIS LEG"; NO SOCIAL PROOF IS SHOWN; THE LEGACY GAP-FILL SLOT IS UNCHANGED.** | numeric citation R? |

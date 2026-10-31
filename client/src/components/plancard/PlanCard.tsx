@@ -22,7 +22,7 @@ import { SectionTabs } from "./SectionTabs";
 import { ActivitiesSection } from "./ActivitiesSection";
 import { TransportSection } from "./TransportSection";
 import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
-import { PlanCardUpsellSlot } from "./PlanCardUpsellSlot";
+import { PlanCardUpsellSlot, usePlanCardUpsellLines } from "./PlanCardUpsellSlot";
 import { PlanCardHeader } from "./PlanCardHeader";
 import { tripCardEyebrow } from "@/lib/trip-card-eyebrow";
 import { ConciergeModule } from "./ConciergeModule";
@@ -551,6 +551,11 @@ function PlanCardSummary({
 
 // ── Main PlanCard component ────────────────────────────────────────────────
 
+/** A role that only reads the card. A `payer` (LD 42 D9) reads the plan to settle a balance; it is a viewer here. */
+function isPlanCardViewerRole(role: PlanCardRole): boolean {
+  return role === "viewer" || role === "friend" || role === "payer";
+}
+
 export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full", days: daysProp, embedded = false, initialSelectedDay, proposal, suggestionsHome = "card", onShare, routingReadOnly = false }: PlanCardProps) {
   // Mobile-lens audit #1: seed from the page's already-computed "today" index (when given)
   // so a mid-flight trip opens on today's day, not always Day 1 — the temporal engine
@@ -602,6 +607,17 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
     staleTime: 60000,
   });
   const advisor = advisorData?.advisor ?? null;
+
+  // Row 179: the Trip Card's "Add X for this leg" lines — the on-trip slot's own read under the slot's own window,
+  // asked only on the card surface and only once the server has said this person is not a viewer (a viewer never
+  // triggers the ranked read, which logs impressions server-side). Declared before the early returns below.
+  const upsellLines = usePlanCardUpsellLines({
+    tripId: trip.id,
+    eventType: (trip as any).eventType,
+    startDate: trip.startDate,
+    endDate: trip.endDate,
+    enabled: routingReadOnly && !embedded && stage === "full" && !!plancardData?.tripRole && !isPlanCardViewerRole(plancardData.tripRole),
+  });
 
   // Spec C (SLIP_EXPERIENCE_DISPATCH §4): the variant-comparison column. Pure presentational
   // derivation of the `proposal` prop — no query of its own, no routing actions, apply-only.
@@ -727,7 +743,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
 
   const effectiveRole: PlanCardRole = plancardData?.tripRole ?? role ?? "viewer";
   // A `payer` (LD 42 D9) reads the plan to settle a balance; it is a viewer here, never an editor.
-  const isViewer = effectiveRole === "viewer" || effectiveRole === "friend" || effectiveRole === "payer";
+  const isViewer = isPlanCardViewerRole(effectiveRole);
   const isOwner = effectiveRole === "owner";
   // W7 expert-return edge (routing.routes.ts): the trip's assigned expert gets the ONE
   // with_expert → in_planning write; ActivitiesSection/RoutingActions enforce the rest.
@@ -987,6 +1003,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
                   advisorName={advisorName}
                   isOwner={isOwner}
                   readyMadeSource={plancardData?.readyMadeSource ?? null}
+                  upsellLines={upsellLines}
                   onOpenDayChange={onCardDayChange}
                 />
               </>

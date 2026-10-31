@@ -3,8 +3,8 @@
  * `2026-10-03-surface-step1-item-row`). Replaces the slip's `SlipItemRow` now; the Trip Card's
  * `ActivitiesSection` rows and the Workstation's `ItemsEditorPanel` rows move onto it in steps 6–7.
  *
- * THE CONTRACT IS DECLARED IN FULL; ONLY WHAT THE SLIP NEEDS TODAY IS DRAWN. `routing`, `suggestion`
- * and `upsell` are accepted and not rendered yet (steps 7 and 10 draw them); `mode: "read"` draws the
+ * THE CONTRACT IS DECLARED IN FULL; ONLY WHAT THE SLIP NEEDS TODAY IS DRAWN. `routing` and `suggestion`
+ * are accepted and not rendered yet (step 7 draws them); `upsell` draws its one line (row 179); `mode: "read"` draws the
  * row without its ⋯ menu — its booking chip and "Message host" arrive with the Trip Card in step 6.
  *
  * WHAT A ROW SAYS, top to bottom (edit mode):
@@ -18,6 +18,8 @@
  * a plan, not a basket.
  */
 import { SET_AS_STAY_LABEL } from "@shared/where-to-stay";
+import type { UpsellLine as UpsellLineDto } from "@shared/upsell-line";
+import { UpsellLine } from "./UpsellLine";
 import type { ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, Circle, Clock, Lock, MoreHorizontal, Navigation } from "lucide-react";
 import { Link } from "wouter";
@@ -125,8 +127,11 @@ export interface ItemRowProps {
   expertNote?: { note: string; author: string | null; neighbourhood?: string | null; followUp?: ReactNode } | null;
   /** Declared for step 7 (suggestions); not drawn in step 1. */
   suggestion?: unknown;
-  /** Declared for step 10 (`UpsellLine`); not drawn in step 1. */
-  upsell?: unknown;
+  /**
+   * Row 179: the item's "Add X for this leg" line from the on-trip upsell read, with the browse link the caller built.
+   * Absent ⇒ nothing is drawn.
+   */
+  upsell?: { line: UpsellLineDto; href: string } | null;
   /**
    * This row is a fixed point; `fromTool` names where it was fixed. Anchors carry no Move. A null
    * `fromTool` is a TRAVEL row nothing has fixed yet (step 2 addendum: an AI arrival/departure item
@@ -296,6 +301,7 @@ export function ItemRow(props: ItemRowProps) {
           followUp={props.expertNote.followUp}
         />
       ) : null}
+      {props.upsell ? <UpsellLine line={props.upsell.line} href={props.upsell.href} /> : null}
       {props.children}
     </>
   );
@@ -590,6 +596,7 @@ function BoardItemRow(
           followUp={props.expertNote.followUp}
         />
       ) : null}
+      {props.upsell ? <UpsellLine line={props.upsell.line} href={props.upsell.href} /> : null}
       {props.children}
     </div>
   );
