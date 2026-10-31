@@ -38,6 +38,7 @@ const JOB_ROUTES = [
   "/internal/jobs/facts-recheck",
   "/internal/jobs/leg-google-coords",
   "/internal/jobs/routing-recheck",
+  "/internal/jobs/guest-data-retention",
 ];
 
 async function withServer<T>(fn: (baseUrl: string) => Promise<T>): Promise<T> {

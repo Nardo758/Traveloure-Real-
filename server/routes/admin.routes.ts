@@ -2,6 +2,7 @@ import { verifyTripOwnership } from '../utils/trip-ownership';
 import { EVENT_OUTSIDE_CITY_THRESHOLD_SETTING, isValidOutsideCityThresholdSetting } from "@shared/city-events";
 import { BOT_FACT_DEFAULT_EXPIRY_SETTING, isValidExpiryDaysSetting } from "@shared/bot-proposals";
 import { WELCOME_VERIFICATION_WINDOW_SETTING, isValidWelcomeVerificationWindowSetting } from "@shared/welcome-verification";
+import { GUEST_DATA_RETENTION_DAYS_SETTING, guestDataRetentionDaysRefusal } from "@shared/guest-data-retention";
 import { BLOG_FOOTER_MIN_PUBLISHED_SETTING, isValidBlogFooterMinPublishedSetting } from "@shared/blog-footer";
 import { TRAVELER_SIGNUP_MODE_SETTING, TRAVELER_SIGNUP_OPENED_AT_SETTING, LAUNCH_MARKET_SLUG_SETTING, isTravelerSignupModeValue } from "@shared/launch-signup";
 import { PHONE_DELIVERY_SWITCH_KEYS } from "@shared/phone-delivery";
@@ -8780,6 +8781,11 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       // would silently fall back to the default.
       if (settingKey === WELCOME_VERIFICATION_WINDOW_SETTING && !isValidWelcomeVerificationWindowSetting(settingValue)) {
         return res.status(400).json({ error: `${settingKey} must be a whole number of days from 1 to 9999`, got: settingValue });
+      }
+      // Row 210. Empty unsets N (the daily job then erases nothing). There is no code default.
+      if (settingKey === GUEST_DATA_RETENTION_DAYS_SETTING) {
+        const refusal = guestDataRetentionDaysRefusal(settingValue);
+        if (refusal) return res.status(400).json({ error: refusal, got: settingValue });
       }
       // ED-1 footer count: the published-post minimum for the footer's Blog link is a whole number.
       if (settingKey === BLOG_FOOTER_MIN_PUBLISHED_SETTING && !isValidBlogFooterMinPublishedSetting(settingValue)) {

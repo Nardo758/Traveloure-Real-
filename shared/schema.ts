@@ -224,7 +224,9 @@ export const trips = pgTable("trips", {
   // SERVER-DERIVED, never client-settable (§14 posture, same placement as marketSlug above):
   // insertTripSchema omits it and storage.createTrip/updateTrip derive it from `destination` via
   // server/services/trip-timezone.ts (a launch-market lookup over the existing 8-market config —
-  // not a geocoder, no network call).
+  // not a geocoder, no network call). Row 172a: a NULL on an existing row is filled on the next
+  // getTrip/getTrips from that same resolver and persisted (`WHERE timezone IS NULL`, so a stored
+  // zone is never overwritten). A destination the resolver cannot place stays NULL and is not written.
   timezone: varchar("timezone", { length: 64 }),
   // ── The two STEP-4 questions the occasion's own switches ask (migration 284, ledger
   // `2026-09-04-step4-variants-fields`, CLAUDE.md Locked Decision 38). Additive nullable, NO
