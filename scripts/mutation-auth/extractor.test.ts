@@ -364,6 +364,10 @@ test("resolves named re-exports used by authentication registration helpers", ()
  * 739 / 731 → 740 / 732 (row 282): POST /api/auth/apple/callback. The text heuristic
  * classes it other / public-or-system. other 250 → 251, public-or-system 55 → 56.
  *
+ * 740 / 732 → 742 / 734 (CN-1): POST /api/admin/concierge-task-kinds and
+ * PATCH /api/admin/concierge-task-kinds/:id. Both admin / admin-role.
+ * admin 199 → 201, admin-role 199 → 201.
+ *
  * THE COUNTS ARE THE POINT: they exist so a route appearing or vanishing from
  * the mounted graph fails here. Now that the file is wired into CI, changing a
  * number is a decision that needs its reason stated, exactly as this one does.
@@ -382,8 +386,9 @@ test("current mounted graph parity includes auth helpers and shared api paths", 
   // 737 / 729: POST /api/admin/webhook-events/:stripeEventId/replay (row 98).
   // 738 / 730: POST /internal/jobs/guest-data-retention and POST /api/invites/:token/delete-rsvp-details (row 210).
   // 740 / 732: POST /api/auth/apple/callback (row 282).
-  assert.equal(result.mutations.length, 740);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 732);
+  // 742 / 734: POST and PATCH /api/admin/concierge-task-kinds (CN-1).
+  assert.equal(result.mutations.length, 742);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 734);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -395,7 +400,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   const endpointRows = markdown.split("\n").filter((line) => line.startsWith("| ") && !line.startsWith("| ---")).slice(1);
   // 728 → 730 (row 210): the daily retention job and the guest delete-rsvp-details POST.
   // 732: POST /api/auth/apple/callback (row 282).
-  assert.equal(endpointRows.length, 732);
+  // 734: POST and PATCH /api/admin/concierge-task-kinds (CN-1).
+  assert.equal(endpointRows.length, 734);
   // 709 / 701 (ledger `2026-10-18-fd4-share-projection`): the shadowed quick-start twin is deleted; unique paths stay 701.
   // 710 / 702 (ledger `2026-10-19-fb1-free-retime`): + POST /api/trips/:tripId/retime-fixes/:itemId/apply.
   // 712 / 704 (ledger `2026-10-18-cs1-source-signoff`): the sign-off and photo-block POSTs.
@@ -419,8 +425,9 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // 737 / 729: POST /api/admin/webhook-events/:stripeEventId/replay (row 98).
   // 738 / 730: POST /internal/jobs/guest-data-retention and POST /api/invites/:token/delete-rsvp-details (row 210).
   // 740 / 732: POST /api/auth/apple/callback (row 282).
-  assert.equal(manifest.rawRegistrationCount, 740);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 732);
+  // 742 / 734: POST and PATCH /api/admin/concierge-task-kinds (CN-1).
+  assert.equal(manifest.rawRegistrationCount, 742);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 734);
   // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R274): user-data,
   // session-self; the owner/delegate check runs in the service before any write.
   // + POST /api/admin/content-sources/:id/public-ok (ledger `2026-10-03-official-facts-public-ok`, R278):
@@ -478,7 +485,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // admin 198 → 199 (row 98): POST /api/admin/webhook-events/:stripeEventId/replay.
   // other 248 → 250 (row 210): the daily retention job and the guest delete-rsvp-details POST.
   // other 250 → 251 (row 282): POST /api/auth/apple/callback.
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 199, "user-data": 251, other: 251 });
+  // admin 199 → 201 (CN-1): POST and PATCH /api/admin/concierge-task-kinds.
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 201, "user-data": 251, other: 251 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
@@ -530,7 +538,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
     // admin-role 198 → 199 (row 98): POST /api/admin/webhook-events/:stripeEventId/replay.
     // public-or-system 53 → 55 (row 210): the daily retention job and the guest delete-rsvp-details POST.
     // public-or-system 55 → 56 (row 282): POST /api/auth/apple/callback.
-    "admin-role": 199, "session-self": 369, "resource-owner": 102,
+    // admin-role 199 → 201 (CN-1): POST and PATCH /api/admin/concierge-task-kinds.
+    "admin-role": 201, "session-self": 369, "resource-owner": 102,
     signature: 6, "public-or-system": 56, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
