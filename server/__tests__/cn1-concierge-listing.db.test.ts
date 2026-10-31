@@ -33,7 +33,7 @@ const BANNED = [
   /\b48\b/,
 ];
 
-test("approved listing copy is the CN-1 sentences, with no fee or crowd claim", () => {
+test("CN-1 listing copy matches the brief sentences, with no fee or crowd claim", () => {
   assert.equal(CN1_COPY.filter, "Local concierge");
   assert.equal(CN1_COPY.profileSection, "Local concierge for your trip");
   assert.equal(CN1_COPY.listingTypeConcierge, "Concierge: I help during the trip");
