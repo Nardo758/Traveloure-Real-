@@ -280,14 +280,17 @@ export function waitlistConsentText(marketKey: string): string {
 }
 
 /**
- * Row 294 (Leon, Oct 30, 2026, 5:54 PM ET): the news box's words, the same sentence for every market that has one.
- * A market left out of the map has no box. A wording change is a new version, never an edit of this one.
- * The server writes a `launch_marketing_news` consent row only when this version is already in `consent_texts`,
- * and the page draws the box only while WAITLIST_MARKETING_BOX_ENABLED is true.
+ * Row 294 marketing box (Leon Dixon, Oct 31, 2026, 2:45 PM ET). The same sentence on every market that has
+ * one. A market left out of the map has no box. A wording change is a new version, never an edit of an
+ * earlier one (migration 381: a consent_texts row is not rewritten). The Oct 30 sentence stays on
+ * `r294-2026-10-30` wherever it was already seeded. This sentence is `r294-2026-10-31`.
+ * The server writes a `launch_marketing_news` consent row only when a seeded version is already in
+ * `consent_texts`, and the page draws the box only while WAITLIST_MARKETING_BOX_ENABLED is true.
  */
-export const WAITLIST_MARKETING_CONSENT_LINE = "Send me Traveloure news and tips.";
+export const WAITLIST_MARKETING_CONSENT_LINE =
+  "Send me news and offers from Traveloure. You can unsubscribe at any time.";
 /** The consent_texts version that stores the sentence above. varchar(40). */
-export const WAITLIST_MARKETING_CONSENT_VERSION = "r294-2026-10-30";
+export const WAITLIST_MARKETING_CONSENT_VERSION = "r294-2026-10-31";
 /**
  * The news box's on/off switch. On once the approved sentence has a consent_texts version (seeded at boot).
  * A market with no words still draws no box. No network call decides it.
