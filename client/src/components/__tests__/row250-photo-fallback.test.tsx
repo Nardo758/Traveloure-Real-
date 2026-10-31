@@ -273,7 +273,9 @@ describe("Arashiyama wanted tile", () => {
     assert.equal(t.includes(ARASHIYAMA_ITINERARY_EXPERT_LINK), false);
     // Row 300b: the generic tile carries no "Wanted here" eyebrow.
     assert.equal(/wanted here/i.test(t), false);
-    assert.ok(t.includes("Ways to earn"));
+    // Row 302a: the generic wanted tile's one action reads "Apply".
+    assert.ok(t.includes("Apply"));
+    assert.equal(t.includes("Ways to earn"), false);
     assert.match(html, /data-testid="link-wanted-apply"/);
   });
 });

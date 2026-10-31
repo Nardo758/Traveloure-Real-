@@ -2,7 +2,7 @@
  * Feed panel — Wanted / recruitment slot (extracted from discover-location.tsx
  * inline `WantedSlotCard` for the city-feed bento, Phase 2).
  *
- * The generic tile's one primary action is `Ways to earn`. The Arashiyama
+ * The generic tile's one primary action reads `tileActionLabel("wanted-slot")` (row 302a). The Arashiyama
  * itinerary tile keeps its own lines. ADDITIVE testids that remain:
  *   - wrapper testid `section-recruitment-${neighborhoodId}`
  *   - the apply CTA testid `link-wanted-apply` (still /become-expert — its PARAMS changed;
@@ -13,6 +13,7 @@
  * No amount/identity/rate is read here (§19 N/A — ordinary content).
  */
 import { ChevronRight } from "lucide-react";
+import { tileActionLabel } from "@/lib/bento-action-state";
 import type { FeedItem } from "@/lib/feed-stream";
 import type { WantedSlotData } from "@/lib/feed-composition";
 import { buildWantedSlotSignupHref } from "@/lib/wanted-slot-link";
@@ -120,7 +121,7 @@ export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" 
             data-bento-primary-action=""
             onClick={() => trackRecruitmentClick({ source: "discover_wanted_slot", target: offeringKey ?? offeringLabel, city: slotCity ?? undefined })}
           >
-            Ways to earn <ChevronRight className="h-3 w-3" />
+            {tileActionLabel("wanted-slot")} <ChevronRight className="h-3 w-3" />
           </a>
         )}
       </div>
