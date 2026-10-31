@@ -1941,11 +1941,8 @@ export default function DiscoverLocationPage() {
                 className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-4 text-center"
                 data-testid="section-expert-recruitment-generic"
               >
-                <p className="text-sm font-semibold text-primary mb-1">
+                <p className="text-sm font-semibold text-primary mb-3">
                   Local experts wanted in {toTitleCase(city)}
-                </p>
-                <p className="text-xs text-muted-foreground mb-3">
-                  Know this city well? Travelers are looking for guides, advisors, and service providers here.
                 </p>
                 {/* Gap 15: name the track. Without `type=` the wizard fell back to its
                     `travel_expert` default, so a "local experts wanted" card opened the Trip

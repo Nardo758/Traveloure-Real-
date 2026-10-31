@@ -9,7 +9,6 @@ import {
   NEIGHBOURHOOD_WANTED_HREF,
 } from "@/lib/feed-stream";
 
-const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
 export function FeedNeighbourhoodWantedCard({ name, slug }: { name: string; slug: string }) {
   return (
@@ -19,12 +18,6 @@ export function FeedNeighbourhoodWantedCard({ name, slug }: { name: string; slug
       data-testid={`neighbourhood-wanted-${slug}`}
     >
       <div className="min-w-0">
-        <div
-          className="mb-1 text-[10px] font-semibold uppercase tracking-[0.12em]"
-          style={{ color: "var(--earn-gold-ink)", fontFamily: EARN_MONO }}
-        >
-          Wanted here
-        </div>
         <p className="text-[13px] font-semibold" style={{ color: "var(--earn-ink)" }}>
           {neighbourhoodWantedBody(name || slug)}
         </p>
