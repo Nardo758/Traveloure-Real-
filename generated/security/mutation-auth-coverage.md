@@ -10,7 +10,7 @@ Generated deterministically from `generated/security/mutation-auth-manifest.json
 ## Methodology and live evidence
 
 - Every unique `METHOD effectivePath` in the manifest receives exactly one tested/untested disposition; duplicate registrations are normalized to one reachable endpoint.
-- Evidence state: **evidence manifest SHA-256 is stale**; manifest SHA-256: `934bea827c2f8ad4a3ffd31fe52075b61f2137215cf6702edbe37e223a9a0f13`; run timestamp: 2026-09-25T00:56:06.499Z.
+- Evidence state: **evidence manifest SHA-256 is stale**; manifest SHA-256: `93129de01f8403171ebc93151b39fba1ed3eaef2d59ae191997af17a007903ee`; run timestamp: 2026-09-25T00:56:06.499Z.
 - `admin`: **passed**, 146 exact endpoint keys, context `admin`.
 - `highrisk-unauthenticated`: **passed**, 236 exact endpoint keys, context `unauthenticated`.
 - `expert-provider-wrong-role`: **passed**, 54 exact endpoint keys, context `wrong-role`.
@@ -350,7 +350,7 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/analytics/recruitment-click | other | session-self | server/routes/content.routes.ts:3133 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/analytics/search-event | other | session-self | server/routes/content.routes.ts:3150 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/auth/accept-terms | other | session-self | server/replit_integrations/auth/routes.ts:164 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/auth/apple/callback | other | public-or-system | server/replit_integrations/auth/appleAuth.ts:488 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /api/auth/apple/callback | other | public-or-system | server/replit_integrations/auth/appleAuth.ts:516 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /api/auth/change-unverified-email | other | public-or-system | server/replit_integrations/auth/emailAuth.ts:551 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /api/auth/forgot-password | other | public-or-system | server/replit_integrations/auth/emailAuth.ts:394 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /api/auth/login | other | session-self | server/replit_integrations/auth/emailAuth.ts:281 | Other-category endpoint is intentionally outside the strict tested set. |

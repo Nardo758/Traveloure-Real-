@@ -3776,7 +3776,7 @@
       "path": "/api/auth/apple/callback",
       "effectivePath": "/api/auth/apple/callback",
       "source": "server/replit_integrations/auth/appleAuth.ts",
-      "line": 488,
+      "line": 516,
       "risk": "other",
       "expectedAuth": "unknown",
       "expectedRoles": [],

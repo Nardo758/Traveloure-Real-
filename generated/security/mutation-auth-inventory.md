@@ -202,7 +202,7 @@ Boundary totals: admin-role 199; session-self 369; resource-owner 102; signature
 | PUT | `/api/anchors/:id` | other | resource-owner | no | verified | `server/routes/trips.routes.ts:1698` | unknown | unknown |
 | POST | `/api/auth/accept-terms` | other | session-self | no | unknown | `server/replit_integrations/auth/routes.ts:164` | unknown | unknown |
 | DELETE | `/api/auth/account` | user-data | session-self | no | unknown | `server/replit_integrations/auth/routes.ts:220` | unknown | unknown |
-| POST | `/api/auth/apple/callback` | other | public-or-system | no | unknown | `server/replit_integrations/auth/appleAuth.ts:488` | unknown | unknown |
+| POST | `/api/auth/apple/callback` | other | public-or-system | no | unknown | `server/replit_integrations/auth/appleAuth.ts:516` | unknown | unknown |
 | POST | `/api/auth/change-unverified-email` | other | public-or-system | no | unknown | `server/replit_integrations/auth/emailAuth.ts:551` | unknown | unknown |
 | POST | `/api/auth/forgot-password` | other | public-or-system | no | unknown | `server/replit_integrations/auth/emailAuth.ts:394` | unknown | unknown |
 | POST | `/api/auth/login` | other | session-self | no | unknown | `server/replit_integrations/auth/emailAuth.ts:281` | unknown | unknown |
