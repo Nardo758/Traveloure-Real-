@@ -3,8 +3,8 @@
  * itself is forced approved and active. An earner with no form, an account with no
  * application, and an account with an approved application stay public. A rejected
  * application with no approval stays off. The write gate allows a draft and refuses publish.
- * An admin session uses that same gate. Staff role is not an earner, so an admin
- * cannot create or publish for an unapproved supply account.
+ * An admin with a pending application uses that same gate. An admin with no
+ * application still publishes: that is the verification gate's staff case.
  *
  * DISPOSABLE DB ONLY.
  */
@@ -187,28 +187,23 @@ test("an admin session cannot create or publish for an unapproved supply account
   assert.equal(pendingActive?.body.code, "APPLICATION_UNDER_REVIEW");
 
   const approved = await readSupplyAccount(id("admappr"));
-  assert.equal(approved.publishesFreely, false);
+  assert.equal(approved.publishesFreely, true);
   assert.equal(approved.phase, "approved");
-  assert.equal(approved.canSaveDraftListing, true);
+  assert.equal(approved.canSaveDraftListing, false);
   assert.equal(
-    await refuseUnapprovedListingWrite(id("admappr"), { draft: true, enteringReview: false, statusActive: false }),
+    await refuseUnapprovedListingWrite(id("admappr"), { draft: false, enteringReview: true, statusActive: true }),
     null,
   );
-  const approvedPublish = await refuseUnapprovedListingWrite(id("admappr"), { draft: false, enteringReview: true, statusActive: true });
-  assert.equal(approvedPublish?.status, 403);
-  assert.match(approvedPublish?.body.message ?? "", /activated/);
 
   const none = await readSupplyAccount(id("admnone"));
-  assert.equal(none.publishesFreely, false);
+  assert.equal(none.publishesFreely, true);
   assert.equal(none.canSaveDraftListing, false);
-  const noneDraft = await refuseUnapprovedListingWrite(id("admnone"), { draft: true, enteringReview: false, statusActive: false });
-  assert.equal(noneDraft?.status, 403);
-  assert.equal(noneDraft?.body.code, "APPLICATION_REQUIRED");
-  const noneActive = await refuseUnapprovedListingWrite(id("admnone"), { draft: false, enteringReview: false, statusActive: true });
-  assert.equal(noneActive?.status, 403);
-  assert.equal(noneActive?.body.code, "APPLICATION_REQUIRED");
+  assert.equal(
+    await refuseUnapprovedListingWrite(id("admnone"), { draft: false, enteringReview: false, statusActive: true }),
+    null,
+  );
 
-  // The public read still keeps an admin owner. The write gate does not.
+  // Public reads still keep an admin owner, including one whose application is pending.
   assert.equal(await listingOwnerIsPublic(id("admpend")), true);
   assert.equal(await listingOwnerIsPublic(id("admappr")), true);
   assert.equal(await listingOwnerIsPublic(id("admnone")), true);
@@ -221,7 +216,8 @@ test("public readers and the write rails call the one owner predicate", () => {
   assert.equal(writeCalls, 4, "create, patch, provider submit, expert submit");
   assert.ok(routes.includes("refuseUnapprovedListingWrite"));
   const gate = read("server/services/pending-supply-account.ts");
-  assert.match(gate, /const publishesFreely = isEarnerRole\(role\)/);
+  assert.match(gate, /const unapprovedSupply = chosen != null && chosen\.rank > 0 && chosen\.status !== "approved"/);
+  assert.match(gate, /const publishesFreely = earner \|\| \(role === "admin" && !unapprovedSupply\)/);
   assert.equal(gate.includes('role === "admin" || isEarnerRole'), false);
   const draftPage = read("client/src/pages/dashboard-listing.tsx");
   assert.equal(/isEarnerRole\(role\) \|\| role === "admin"/.test(draftPage), false);
