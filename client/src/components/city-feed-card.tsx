@@ -542,7 +542,7 @@ interface MoreInfoSheetProps {
 // (1024px) and above, staying a bottom sheet below it. `client/src/hooks/use-mobile.tsx` exists
 // but is fixed at 768px for a different purpose (checked first, per the dispatch's mechanics
 // note); this is a local, single-consumer media query rather than widening that hook's meaning.
-function useIsDesktopPanel(): boolean {
+export function useIsDesktopPanel(): boolean {
   const [isDesktop, setIsDesktop] = useState(false);
   React.useEffect(() => {
     const mql = window.matchMedia("(min-width: 1024px)");
