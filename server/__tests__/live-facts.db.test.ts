@@ -144,13 +144,15 @@ test("LF2 — the plan reads live facts only, and an expired last entry waits wi
   assert.equal(await recordFacts([lastEntry(PLACE_OLD)], { planId: null, itemId: null }), 1);
   assert.equal(await recordFacts([lastEntry(PLACE_LIVE, { expiresAt: LIVE })], { planId: null, itemId: null }), 1);
   // A legacy machine row from before the writer refused one (raw insert): never read.
-  await db.insert(placeFacts).values({ ...lastEntry(PLACE_OLD), id: id("legacy"), expiresAt: null, value: { byWeekday: { "1": "15:00" }, quote: "15:00" }, sourceClass: "public", reuseClass: "link_only" } as any);
+  // The quote is a sentinel, not a clock time: a live row's ISO timestamp can contain "15:00"
+  // (any instant whose clock reads xx:15:00), so a string search of the views is not a proof.
+  await db.insert(placeFacts).values({ ...lastEntry(PLACE_OLD), id: id("legacy"), expiresAt: null, value: { byWeekday: { "1": "15:00" }, quote: "LEGACY-SENTINEL" }, sourceClass: "public", reuseClass: "link_only" } as any);
 
   const views = await factsForTrip(trip, now);
   assert.equal((views[id("old")] ?? []).some((v) => v.factType === "last_admission"), false, "expired: not read");
   assert.equal((views[id("live")] ?? []).some((v) => v.factType === "last_admission"), true, "live: read");
   assert.equal((views[id("live")] ?? []).some((v) => (v.value as any)?.text === `NOTE-${RUN}`), true, "the expert's note is read");
-  assert.equal(JSON.stringify(views).includes("15:00"), false, "the legacy no-expiry row is never read");
+  assert.equal(Object.values(views).some((list) => list.some((v) => v.id === id("legacy"))), false, "the legacy no-expiry row is never read");
   assert.equal(JSON.stringify(views).includes("may have changed"), false);
 
   const feas = JSON.stringify(await feasibilityFactsForTrip(trip, "kyoto", now));
