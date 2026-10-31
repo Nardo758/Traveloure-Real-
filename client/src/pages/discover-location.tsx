@@ -800,6 +800,7 @@ function NeighbourhoodWantedPanel({ name, slug }: { name: string; slug: string }
         className="inline-flex w-fit items-center rounded-md px-2.5 py-1 text-[11px] font-bold text-white"
         style={{ background: "var(--earn-gold-ink)" }}
         data-testid={`link-neighbourhood-join-${slug}`}
+        data-bento-primary-action=""
       >
         {NEIGHBOURHOOD_WANTED_BUTTON}
       </a>
