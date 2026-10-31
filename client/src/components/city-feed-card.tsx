@@ -532,8 +532,8 @@ interface MoreInfoSheetProps {
   onClose: () => void;
   cardType: MoreInfoCardType;
   data: any;
-  /** #330: when set, the sheet offers Save. A compact card is ruled to two buttons, so its
-   *  save lives here, on the detail path its tap opens. */
+  /** #330: when set, the sheet offers Save. The compact tile's one primary action is not
+   *  Save, so Save lives here, on the detail path its tap opens. */
   saveItem?: SaveItemBody | null;
 }
 
@@ -914,7 +914,7 @@ export function CityFeedCardGem({
   cardPosition,
   topPick = false,
   density = "full",
-  compactActionState,
+  compactActionState: _compactActionState,
 }: CityFeedCardGemProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
   const [imgFailed, setImgFailed] = useState(false);
@@ -964,10 +964,6 @@ export function CityFeedCardGem({
     suggestion?.href ??
     (gem.providerServiceId ? `/services/${gem.providerServiceId}` : null) ??
     platformPath;
-  const compactHasBookAction =
-    compactActionState === "platform" &&
-    resolvedBookability !== "info_only" &&
-    Boolean(bookHref);
   const typeMeta = gemTypeMeta(gem.placeType);
 
   const addLabel = scheduledDate
@@ -1255,26 +1251,6 @@ export function CityFeedCardGem({
                 width the buttons overflowed the card and "Ask an expert" clipped at the right
                 edge. Fixed identically on all four compact-row copies in this file. */}
             <div className="flex gap-1.5 pt-0.5 flex-wrap items-center mt-auto">
-              {compactHasBookAction && (
-                <Button
-                  size="sm"
-                  className="h-7 text-xs px-3"
-                  style={BOOK_BTN_STYLE}
-                  asChild
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    const impId = getImpressionId();
-                    fetch("/api/affiliates/track", {
-                      method: "POST",
-                      keepalive: true,
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ partner: "discover", destination: city, contentType: "gem", contentId: String(gem.id), impressionId: impId }),
-                    }).catch(() => {});
-                  }}
-                >
-                  <a href={bookHref ?? undefined}>{resolvedBookability === "deeplink" ? "Reserve" : "Book now"}</a>
-                </Button>
-              )}
               <Button
                 size="sm"
                 className="h-7 text-xs px-3"
@@ -1292,35 +1268,11 @@ export function CityFeedCardGem({
                   });
                 }}
                 data-testid={`btn-add-gem-${gem.id}`}
+                data-bento-primary-action=""
               >
                 <Plus className="w-3 h-3 mr-1" />
                 {addLabel}
               </Button>
-              {/* Compact = exactly two buttons: Ask shows ONLY when Book is absent.
-                  Ruling 2: an attributed gem's Ask targets ITS curator by name;
-                  otherwise the honest city-resolution fallback stands. */}
-              {expertAvailable && !compactHasBookAction && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs px-2.5"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    askExpert({
-                      city,
-                      subject: gem.placeName,
-                      // LD 40 lane 2: still id-addressed — see the note on the other gem CTA:
-                      // `gem.curatedBy` has no handle on the feed payload.
-                      expertId: gemCurator(gem)?.id ?? null,
-                      fallbackName: gemCuratorFullName(gem),
-                      fallbackAvatar: gemCurator(gem)?.profileImageUrl ?? null,
-                    });
-                  }}
-                  data-testid={`btn-ask-gem-${gem.id}`}
-                >
-                  {curatorName ? `Ask ${curatorName}` : "Ask an expert"}
-                </Button>
-              )}
             </div>
           </div>
         </div>
@@ -1474,14 +1426,6 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
               <p className="text-[10px] text-muted-foreground break-words" data-testid={`event-osm-credit-${event.id}`}>{partnerPlace.credit}</p>
             )}
             <div className="flex gap-1.5 pt-0.5 flex-wrap items-center mt-auto">
-              {priceToken && (
-                <PartnerPriceButton
-                  token={priceToken}
-                  testid={`btn-event-partner-price-${event.id}`}
-                  onOpen={() => trackEventPriceOpen(String(event.id), city, getImpIdEvt())}
-                  onResult={(ok) => setPriceOpenFailed(!ok)}
-                />
-              )}
               <Button
                 size="sm"
                 className="h-7 text-xs px-3"
@@ -1498,31 +1442,15 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
                   });
                 }}
                 data-testid={`btn-add-event-${event.id}`}
+                data-bento-primary-action=""
               >
                 <Plus className="w-3 h-3 mr-1" />
                 {addLabel}
               </Button>
-              {/* Compact = exactly two buttons: "See current price" IS the book action, so Ask
-                  shows ONLY when there is no partner link. */}
-              {expertAvailable && !priceToken && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs px-2.5"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    askExpert({ city, subject: eventName });
-                  }}
-                  data-testid={`btn-ask-event-${event.id}`}
-                >
-                  Ask an expert
-                </Button>
-              )}
             </div>
             {priceToken && (
               <p className="text-[11px] text-muted-foreground break-words" data-testid={`event-partner-commission-${event.id}`}>{PARTNER_COMMISSION_NOTE}</p>
             )}
-            {priceOpenFailed && <p className="text-[11px] text-destructive break-words">Couldn't open the partner's page. Try again in a moment.</p>}
           </div>
         </div>
         <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="event" data={event} />
@@ -1822,7 +1750,7 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
             <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">{service.serviceName}</h3>
             <CompactSourceMetaLine duration={durationLabel} source={source} testid={`svc-facts-${service.id}`} />
             <div className="flex gap-1.5 pt-0.5 flex-wrap items-center mt-auto">
-              {compactActionState === "platform" && resolvedBookability !== "info_only" && (
+              {compactActionState === "platform" && resolvedBookability !== "info_only" ? (
                 <Button
                   size="sm"
                   className="h-7 text-xs px-3"
@@ -1832,11 +1760,11 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
                     window.location.href = `/services/${service.id}`;
                   }}
                   data-testid={`btn-book-svc-${service.id}`}
+                  data-bento-primary-action=""
                 >
                   {resolvedBookability === "deeplink" ? "Reserve" : "Book now"}
                 </Button>
-              )}
-              {onAdd && (
+              ) : onAdd ? (
                 <Button
                   size="sm"
                   className="h-7 text-xs px-3"
@@ -1854,13 +1782,12 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
                     });
                   }}
                   data-testid={`btn-add-svc-${service.id}`}
+                  data-bento-primary-action=""
                 >
                   <Plus className="w-3 h-3 mr-1" />
                   Add to trip
                 </Button>
-              )}
-              {/* Compact = exactly two buttons (Book + Add): the Globe/website and
-                  Ask buttons are dropped here; their full-density counterparts stay. */}
+              ) : null}
             </div>
           </div>
         </div>
@@ -2081,8 +2008,9 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
   );
   // G-02: an activity whose label is only a banned phrase is not a card. Hooks above still run.
   if (isActivity && !itemName) return null;
-  // #330: a stay or an activity is saved from its detail sheet (the compact card keeps its two
-  // buttons). Keyed on the same id the impression uses; no id and no name ⇒ nothing to save.
+  // #330: a stay or an activity is saved from its detail sheet. The compact tile's one
+  // primary action is Add, so Save stays on that sheet. Keyed on the same id the impression
+  // uses; no id and no name ⇒ nothing to save.
   const supplySaveItem = buildSaveItem({
     contentType: isHotel ? "hotel" : "activity",
     contentId: item.id,
@@ -2192,24 +2120,11 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
                   });
                 }}
                 data-testid={`btn-add-supply-${item.id}`}
+                data-bento-primary-action=""
               >
                 <Plus className="w-3 h-3 mr-1" />
                 {addLabel}
               </Button>
-              {expertAvailable && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs px-2.5"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    askExpert({ city, subject: itemName });
-                  }}
-                  data-testid={`btn-ask-supply-${item.id}`}
-                >
-                  Ask an expert
-                </Button>
-              )}
             </div>
           </div>
         </div>

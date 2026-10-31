@@ -135,18 +135,7 @@ export function CityFeedCardExpert({ expert, city, className, cardPosition, dens
             </div>
           )}
           <div className="flex gap-1.5 mt-auto pt-0.5">
-            <Button
-              size="sm"
-              asChild
-              className="flex-1 h-7 text-xs"
-              style={{ background: "var(--earn-navy)", color: "#fff", border: "none" }}
-              data-testid={`btn-contact-expert-${expert.id}`}
-            >
-              <a href={profileHref} onClick={(e) => e.stopPropagation()}>
-                View profile
-              </a>
-            </Button>
-            {expertAvailable && (
+            {expertAvailable ? (
               <Button
                 size="sm"
                 variant="outline"
@@ -163,8 +152,22 @@ export function CityFeedCardExpert({ expert, city, className, cardPosition, dens
                   });
                 }}
                 data-testid={`btn-ask-expert-${expert.id}`}
+                data-bento-primary-action=""
               >
                 Ask an expert
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                asChild
+                className="flex-1 h-7 text-xs"
+                style={{ background: "var(--earn-navy)", color: "#fff", border: "none" }}
+                data-testid={`btn-contact-expert-${expert.id}`}
+                data-bento-primary-action=""
+              >
+                <a href={profileHref} onClick={(e) => e.stopPropagation()}>
+                  View profile
+                </a>
               </Button>
             )}
           </div>
