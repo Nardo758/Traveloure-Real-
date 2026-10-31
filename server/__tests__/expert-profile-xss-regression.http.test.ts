@@ -62,7 +62,7 @@ async function assertDisposableDb(): Promise<void> {
 
 // ── Constants ─────────────────────────────────────────────────────────────────────────────
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
-const BENCH_PASSWORD = "TestPass123!";
+const BENCH_PASSWORD = crypto.randomBytes(18).toString("hex");
 const RUN = crypto.randomUUID().slice(0, 8);
 /** Disposable, per-run — see the header note: NOT the durable kyoto bench. */
 const BENCH_EMAIL = `xss-reg-${RUN}-expert@t.test`;

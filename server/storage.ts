@@ -1623,6 +1623,76 @@ function calendarDay(value: unknown): string | null {
   return null;
 }
 
+/**
+ * A trip row the zone fill can see. `destination` is the resolver's only input; `timezone`
+ * null means the column was never captured.
+ */
+type TripZoneRow = {
+  id: string;
+  destination: string | null;
+  timezone: string | null;
+};
+
+/**
+ * Row 172a. Fill a null `trips.timezone` from the same launch-market resolver every mint uses
+ * (`resolveTripTimezone`) and persist it. One UPDATE per resolved zone, guarded by
+ * `timezone IS NULL`, so a stored zone is never overwritten and a second reader cannot clobber
+ * the first. A destination outside the operating markets resolves to null: that stays null and
+ * nothing is written. A list with nothing to fill runs no UPDATE.
+ *
+ * When the conditional UPDATE matches no row, the zone was written between the read and the
+ * write. The fresh column is read back so the caller returns what was persisted.
+ */
+async function persistResolvedTripTimezones<T extends TripZoneRow>(rows: T[]): Promise<T[]> {
+  const idsByZone = new Map<string, string[]>();
+  const seen = new Set<string>();
+  for (const row of rows) {
+    if (row.timezone != null) continue;
+    const zone = resolveTripTimezone(row.destination);
+    if (!zone) continue;
+    if (seen.has(row.id)) continue;
+    seen.add(row.id);
+    const ids = idsByZone.get(zone);
+    if (ids) ids.push(row.id);
+    else idsByZone.set(zone, [row.id]);
+  }
+  if (idsByZone.size === 0) return rows;
+
+  const written = new Map<string, string>();
+  for (const [zone, ids] of Array.from(idsByZone.entries())) {
+    const updated = await db
+      .update(trips)
+      .set({ timezone: zone })
+      .where(and(inArray(trips.id, ids), isNull(trips.timezone)))
+      .returning({ id: trips.id });
+    for (const row of updated) written.set(row.id, zone);
+  }
+
+  const missed = Array.from(seen).filter((id) => !written.has(id));
+  if (missed.length > 0) {
+    const fresh = await db
+      .select({ id: trips.id, timezone: trips.timezone })
+      .from(trips)
+      .where(inArray(trips.id, missed));
+    for (const row of fresh) {
+      if (row.timezone != null) written.set(row.id, row.timezone);
+    }
+  }
+
+  if (written.size === 0) return rows;
+  return rows.map((row) => {
+    const zone = written.get(row.id);
+    if (zone == null || row.timezone != null) return row;
+    return { ...row, timezone: zone };
+  });
+}
+
+/** Row 172a. The single-row form of {@link persistResolvedTripTimezones}. */
+export async function ensureTripTimezone<T extends TripZoneRow>(trip: T): Promise<T> {
+  const [next] = await persistResolvedTripTimezones([trip]);
+  return next ?? trip;
+}
+
 export class DatabaseStorage implements IStorage {
   // Trips
   async getTrips(userId?: string, status?: string): Promise<TripListItem[]> {
@@ -1648,6 +1718,10 @@ export class DatabaseStorage implements IStorage {
     // can flip between "Open slip" (pre-final) and "View Trip Card · Final · v{N}" (post-final).
     // A final EXISTS ⇔ MAX(version) is present; a reopened trip still has its versions, so it
     // still reads as having a final (finalVersion != null), matching the /trip/:id snapshot render.
+    // Row 172a: null zones are filled from the market resolver and persisted, one UPDATE per
+    // resolved zone. A list whose zones are already set, or that the resolver cannot place, does not write.
+    const filledTrips = await persistResolvedTripTimezones(rows.map((r) => r.trip));
+
     const tripIds = Array.from(new Set(rows.map((r) => r.trip.id)));
     const finalVersionByTrip = new Map<string, number>();
     if (tripIds.length > 0) {
@@ -1661,21 +1735,27 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    return rows.map(({ trip, occasionLabel, occasionDate, occasionTemplateKey }) => ({
-      ...trip,
-      occasion: occasionDate && occasionTemplateKey
-        ? {
-            label: occasionLabel?.trim() || resolveOccasionTemplate(occasionTemplateKey).defaultLabel,
-            date: occasionDate,
-          }
-        : null,
-      finalVersion: finalVersionByTrip.get(trip.id) ?? null,
-    }));
+    return rows.map(({ occasionLabel, occasionDate, occasionTemplateKey }, index) => {
+      const trip = filledTrips[index];
+      return {
+        ...trip,
+        occasion: occasionDate && occasionTemplateKey
+          ? {
+              label: occasionLabel?.trim() || resolveOccasionTemplate(occasionTemplateKey).defaultLabel,
+              date: occasionDate,
+            }
+          : null,
+        finalVersion: finalVersionByTrip.get(trip.id) ?? null,
+      };
+    });
   }
 
   async getTrip(id: string): Promise<Trip | undefined> {
     const [trip] = await db.select().from(trips).where(eq(trips.id, id));
-    return trip;
+    if (!trip) return trip;
+    // Row 172a: a null zone is filled from the destination and persisted before the row is handed
+    // to any reader. An already-set zone, and a destination the resolver cannot place, are unchanged.
+    return ensureTripTimezone(trip);
   }
 
   async createTrip(trip: InsertTrip & { userId: string }, options?: TripMintOptions): Promise<Trip> {
