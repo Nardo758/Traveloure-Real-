@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "generatedBy": "scripts/generate-mutation-auth-coverage.ts",
   "manifest": "generated/security/mutation-auth-manifest.json",
-  "manifestSha256": "7ae35177bc99e30609d9fb4f1bd355f4a6703d7638a0387118b0df939a3b553e",
+  "manifestSha256": "be80f14673110496ae1868ae9bb6bca12526acd158814eeca561ed2e4af10c53",
   "evidence": {
     "path": "generated/security/mutation-auth-evidence.json",
     "state": "evidence manifest SHA-256 is stale",
@@ -10,8 +10,8 @@
   },
   "totals": {
     "tested": 0,
-    "total": 731,
-    "remaining": 731,
+    "total": 732,
+    "remaining": 732,
     "categories": {
       "payments": {
         "tested": 0,
@@ -27,7 +27,7 @@
       },
       "other": {
         "tested": 0,
-        "total": 250
+        "total": 251
       }
     }
   },
@@ -14026,7 +14026,7 @@
       "path": "/api/webhooks/persona",
       "effectivePath": "/api/webhooks/persona",
       "source": "server/routes/webhooks.routes.ts",
-      "line": 112,
+      "line": 113,
       "risk": "other",
       "expectedAuth": "unknown",
       "expectedRoles": [],
@@ -14042,11 +14042,31 @@
     },
     {
       "method": "POST",
+      "rawPath": "/resend",
+      "path": "/api/webhooks/resend",
+      "effectivePath": "/api/webhooks/resend",
+      "source": "server/routes/webhooks.routes.ts",
+      "line": 591,
+      "risk": "other",
+      "expectedAuth": "unknown",
+      "expectedRoles": [],
+      "expectedOwnership": "unknown",
+      "expectedBoundary": "signature",
+      "ownershipApplies": false,
+      "fixtureStatus": "unknown",
+      "testStatus": "unknown",
+      "diagnostics": [],
+      "key": "POST /api/webhooks/resend",
+      "tested": false,
+      "reason": "Other-category endpoint is intentionally outside the strict tested set."
+    },
+    {
+      "method": "POST",
       "rawPath": "/stripe",
       "path": "/api/webhooks/stripe",
       "effectivePath": "/api/webhooks/stripe",
       "source": "server/routes/webhooks.routes.ts",
-      "line": 586,
+      "line": 587,
       "risk": "payments",
       "expectedAuth": "unknown",
       "expectedRoles": [],
@@ -14066,7 +14086,7 @@
       "path": "/api/webhooks/stripe-identity",
       "effectivePath": "/api/webhooks/stripe-identity",
       "source": "server/routes/webhooks.routes.ts",
-      "line": 46,
+      "line": 47,
       "risk": "other",
       "expectedAuth": "unknown",
       "expectedRoles": [],

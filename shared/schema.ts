@@ -12413,6 +12413,22 @@ export const emailOutbox = pgTable("email_outbox", {
 export type EmailOutbox = typeof emailOutbox.$inferSelect;
 export type InsertEmailOutbox = typeof emailOutbox.$inferInsert;
 
+// Z-21 (migration 423, held). 421 is PR #1804. 422 is PR #1803. One row per normalized address and reason.
+// reason is app-enforced (hard_bounce, complaint). No DEFAULT, no CHECK, no backfill.
+// The unique index is the webhook retry guard. Declared here so publish does not drop it.
+export const emailSuppressions = pgTable("email_suppressions", {
+  id: varchar("id").primaryKey(),
+  email: varchar("email").notNull(),
+  reason: varchar("reason").notNull(),
+  providerEventId: varchar("provider_event_id"),
+  providerEmailId: varchar("provider_email_id"),
+  recordedAt: timestamp("recorded_at"),
+  createdAt: timestamp("created_at"),
+}, (table) => ({
+  emailReasonUniq: uniqueIndex("uq_email_suppressions_email_reason").on(table.email, table.reason),
+}));
+export type EmailSuppression = typeof emailSuppressions.$inferSelect;
+
 // trend_scores — materialized resolver output. One row per entity. Rewritten each scoring run.
 // crowd_band null = entity is below confidence floor (L9) — must not appear on any surface.
 // contributing_sources: jsonb array of source keys that fed this score.

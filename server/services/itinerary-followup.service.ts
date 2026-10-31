@@ -14,6 +14,7 @@ import {
   MARKETING_FOOTER_RETRY_MS, applyMarketingEmailFooter, logMarketingEmailSkip, readMarketingEmailFooter,
 } from "./marketing-email-footer";
 import { computeOutboxExpiresAt } from "./email-outbox-expiry";
+import { outboxSettleForSendRefusal } from "./email-suppression";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export interface FollowupMetadata {
@@ -239,6 +240,16 @@ export async function deliverItineraryFollowup(outboxId: number, sender: (params
         updatedAt: new Date(),
       }).where(eq(emailOutbox.id, outboxId));
       return result.suppressed === "development_gate" ? "cancelled" as const : "deferred" as const;
+    }
+    const refusal = outboxSettleForSendRefusal(result);
+    if (refusal) {
+      await tx.update(emailOutbox).set({
+        status: refusal.status,
+        lastError: refusal.lastError,
+        retryAfter: null,
+        updatedAt: new Date(),
+      }).where(eq(emailOutbox.id, outboxId));
+      return refusal.status === "cancelled" ? "cancelled" as const : "held" as const;
     }
     const dead = attemptCount >= row.maxAttempts;
     await tx.update(emailOutbox).set({

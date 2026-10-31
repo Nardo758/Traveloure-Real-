@@ -77,6 +77,7 @@ import {
   outboxDeliveryPrioritySql,
   WAITLIST_MARKETING_REVOKED_REASON,
 } from "./email-outbox-classes";
+import { outboxSettleForSendRefusal } from "./email-suppression";
 
 // ── Backoff schedule ──────────────────────────────────────────────────────────
 
@@ -837,6 +838,15 @@ async function attemptDelivery(
       "pending",
       result.error ?? "Email notifications are disabled by platform settings",
       _nextRetryAfter(1),
+    );
+    return;
+  }
+  const refusal = outboxSettleForSendRefusal(result);
+  if (refusal) {
+    await settleWithoutAttempt(outboxId, refusal.status, refusal.lastError, null);
+    logger.warn(
+      { outboxId, emailType: current.emailType ?? null, reason: refusal.lastError },
+      "[email-outbox] send refused",
     );
     return;
   }

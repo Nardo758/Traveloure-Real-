@@ -1,11 +1,11 @@
 # Mounted mutation authorization inventory
 
-Generated from `server/routes.ts`. **739** raw mounted mutation registrations and **731** unique METHOD+normalizedPath pairs were found.
+Generated from `server/routes.ts`. **740** raw mounted mutation registrations and **732** unique METHOD+normalizedPath pairs were found.
 
-The unique-pair count is **+185** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
+The unique-pair count is **+186** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
 
-Category totals: payments 31; admin 199; user-data 251; other 250.
-Boundary totals: admin-role 199; session-self 369; resource-owner 102; signature 6; public-or-system 55; unknown 0.
+Category totals: payments 31; admin 199; user-data 251; other 251.
+Boundary totals: admin-role 199; session-self 369; resource-owner 102; signature 7; public-or-system 55; unknown 0.
 
 | Method | Normalized path | Risk | Boundary | Ownership applicable | Expected ownership | Registrations | Fixture | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -712,9 +712,10 @@ Boundary totals: admin-role 199; session-self 369; resource-owner 102; signature
 | POST | `/api/waitlist` | other | public-or-system | no | unknown | `server/routes/launch-waitlist.routes.ts:53` | unknown | unknown |
 | POST | `/api/waitlist/unsubscribe` | other | public-or-system | no | unknown | `server/routes/launch-waitlist.routes.ts:104` | unknown | unknown |
 | POST | `/api/wallet/add-credits` | payments | session-self | no | self | `server/routes/payments.routes.ts:280` | unknown | unknown |
-| POST | `/api/webhooks/persona` | other | signature | no | unknown | `server/routes/webhooks.routes.ts:112` (/persona) | unknown | unknown |
-| POST | `/api/webhooks/stripe` | payments | signature | no | unknown | `server/routes/webhooks.routes.ts:586` (/stripe) | unknown | unknown |
-| POST | `/api/webhooks/stripe-identity` | other | signature | no | unknown | `server/routes/webhooks.routes.ts:46` (/stripe-identity) | unknown | unknown |
+| POST | `/api/webhooks/persona` | other | signature | no | unknown | `server/routes/webhooks.routes.ts:113` (/persona) | unknown | unknown |
+| POST | `/api/webhooks/resend` | other | signature | no | unknown | `server/routes/webhooks.routes.ts:591` (/resend) | unknown | unknown |
+| POST | `/api/webhooks/stripe` | payments | signature | no | unknown | `server/routes/webhooks.routes.ts:587` (/stripe) | unknown | unknown |
+| POST | `/api/webhooks/stripe-identity` | other | signature | no | unknown | `server/routes/webhooks.routes.ts:47` (/stripe-identity) | unknown | unknown |
 | POST | `/email-preferences` | other | session-self | no | unknown | `server/routes/itinerary-email-preferences.routes.ts:78` | unknown | unknown |
 | POST | `/email-preferences/unsubscribe/:token` | other | resource-owner | no | verified | `server/routes/itinerary-email-preferences.routes.ts:110` | unknown | unknown |
 | POST | `/internal/jobs/availability-materialization` | other | public-or-system | no | unknown | `server/routes/internal.routes.ts:330` | unknown | unknown |
