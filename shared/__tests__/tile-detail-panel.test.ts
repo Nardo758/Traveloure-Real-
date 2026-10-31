@@ -177,7 +177,7 @@ test("a feed tile id is accepted and a path segment is not", () => {
   assert.equal(isTilePanelId(""), false);
 });
 
-test("headings are the held map and the module carries no migration approval sentence", () => {
+test("headings are the approved constants and the migration carries no approval sentence", () => {
   assert.deepEqual(TILE_PANEL_SECTION_HEADINGS, {
     what_it_is: "What it is",
     where: "Where",
@@ -187,10 +187,16 @@ test("headings are the held map and the module carries no migration approval sen
   });
   const dir = dirname(fileURLToPath(import.meta.url));
   const src = readFileSync(join(dir, "../tile-detail-panel.ts"), "utf8");
-  const held = readFileSync(join(dir, "../../server/services/tile-detail-panel.held-sql.ts"), "utf8");
+  const migration = readFileSync(join(dir, "../../server/migrations/422_discover_tile_panel.sql"), "utf8");
+  const schema = readFileSync(join(dir, "../schema.ts"), "utf8");
   assert.doesNotMatch(src, /SQL approved/);
-  assert.doesNotMatch(held, /SQL approved/);
-  assert.match(held, /HELD for Leon's comment/);
+  assert.doesNotMatch(migration, /SQL approved/);
+  assert.match(migration, /HELD until the owner approves the SQL on the PR/);
+  assert.match(migration, /421 is PR #1804/);
+  assert.match(schema, /pgTable\("discover_tile_panel_facts"/);
+  assert.match(schema, /pgTable\("discover_tile_panel_photos"/);
+  assert.match(schema, /index\("idx_discover_tile_panel_facts_tile_id"/);
+  assert.match(schema, /uniqueIndex\("uq_discover_tile_panel_photos_tile_position"/);
   for (const phrase of ["best in", "high demand", "founding", "PayPal", "traveler fee", "queuing"]) {
     assert.equal(src.toLowerCase().includes(phrase), false, phrase);
   }

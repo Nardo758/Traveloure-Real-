@@ -9,13 +9,14 @@
  * and Klook, and only inside the terms recorded here: which sections may be shown, how long a
  * stored read may be shown, and the attribution the fact must carry.
  *
- * Section headings are HELD. The read returns this map; a screen does not restate it.
+ * Section headings are the approved constants below. The read returns this map;
+ * a screen does not restate it.
  */
 
 export const TILE_PANEL_SECTIONS = ["what_it_is", "where", "when", "cost", "expert_tip"] as const;
 export type TilePanelSection = (typeof TILE_PANEL_SECTIONS)[number];
 
-/** HELD. Section headings on the tile detail panel. */
+/** Approved section headings on the tile detail panel. */
 export const TILE_PANEL_SECTION_HEADINGS: Record<TilePanelSection, string> = {
   what_it_is: "What it is",
   where: "Where",

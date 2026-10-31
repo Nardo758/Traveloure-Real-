@@ -1,14 +1,16 @@
 /**
  * Row 303a — GET /api/discover/tiles/:tileId/panel on a real database.
  *
- *   P1  before the held DDL, the read says the store is absent and returns no fact
+ *   P1  before the tables exist, the read says the store is absent and returns no fact
  *   P2  an unsourced fact is stored and is not returned
  *   P3  a photo without the rights tick is stored and is not returned; a ticked photo is
  *   P4  a partner fact older than the cache window is not returned; the same row is returned
  *       when the read clock equals its fetch time
  *   P5  a research fact with no review is not returned; a reviewed one is
  *
- * The DDL is applied here and dropped afterwards. It is not a registered migration.
+ * The tables come from the migration runner (422). P1 drops them so the absent read
+ * is observable, clears that one ledger row, and the runner creates them again.
+ * Fixture rows are removed afterwards. The tables stay.
  *
  * Run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/row303a-tile-detail-panel.db.test.ts
  */
@@ -16,8 +18,11 @@ import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { pool } from "../db";
-import { DISCOVER_TILE_PANEL_HELD_STATEMENTS } from "../services/tile-detail-panel.held-sql";
+import { MIGRATION_FILES } from "../migrations/migration-files";
+import { runMigrations } from "../migrations/run-migrations";
 import { readTileDetailPanel } from "../services/tile-detail-panel.service";
+
+const MIGRATION_FILE = "422_discover_tile_panel.sql";
 
 const BASE = process.env.BASE_URL ?? process.env.JOURNEY_BASE_URL ?? "http://127.0.0.1:5000";
 const RUN = crypto.randomUUID().slice(0, 8);
@@ -35,10 +40,13 @@ async function dropTables() {
   await pool.query("DROP TABLE IF EXISTS discover_tile_panel_facts");
 }
 
-async function applyHeld() {
-  for (const statement of DISCOVER_TILE_PANEL_HELD_STATEMENTS) {
-    await pool.query(statement);
+async function applyFromRunner() {
+  await pool.query("DELETE FROM schema_migrations WHERE migration_name = $1", [MIGRATION_FILE]);
+  const result = await runMigrations();
+  if (result.dryRun || result.bootstrapOnly) {
+    throw new Error("migration runner did not apply");
   }
+  assert.equal(result.applied.includes(MIGRATION_FILE), true);
 }
 
 async function getPanel(tileId = TILE) {
@@ -54,11 +62,20 @@ async function getPanel(tileId = TILE) {
 }
 
 after(async () => {
-  await dropTables();
+  await pool.query("DELETE FROM discover_tile_panel_photos WHERE tile_id = $1", [TILE]).catch(() => {});
+  await pool.query("DELETE FROM discover_tile_panel_facts WHERE tile_id = $1", [TILE]).catch(() => {});
+  const present = await pool.query(
+    `SELECT to_regclass('public.discover_tile_panel_facts') AS facts,
+            to_regclass('public.discover_tile_panel_photos') AS photos`,
+  );
+  if (!present.rows[0]?.facts || !present.rows[0]?.photos) {
+    await applyFromRunner();
+  }
 });
 
 test("P1–P5 the panel read drops an unsourced fact, an unticked photo, and a stale partner fact", async () => {
   refuseRemote();
+  assert.equal(MIGRATION_FILES[MIGRATION_FILES.length - 1], MIGRATION_FILE);
   await dropTables();
 
   const absent = await getPanel();
@@ -73,7 +90,15 @@ test("P1–P5 the panel read drops an unsourced fact, an unticked photo, and a s
   assert.equal(bad.status, 400);
   assert.equal(bad.body.reason, "invalid_tile_id");
 
-  await applyHeld();
+  await applyFromRunner();
+  const indexes = await pool.query(
+    `SELECT indexname FROM pg_indexes
+     WHERE schemaname = 'public'
+       AND tablename IN ('discover_tile_panel_facts', 'discover_tile_panel_photos')`,
+  );
+  const indexNames = indexes.rows.map((row) => row.indexname);
+  assert.equal(indexNames.includes("idx_discover_tile_panel_facts_tile_id"), true);
+  assert.equal(indexNames.includes("uq_discover_tile_panel_photos_tile_position"), true);
   const empty = await getPanel();
   assert.equal(empty.body.store, "present");
   assert.deepEqual(empty.body.facts, {});

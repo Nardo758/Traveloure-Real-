@@ -1,8 +1,8 @@
 /**
  * Discover tile detail panel read (row 303a).
  *
- * The tables are the held DDL in tile-detail-panel.held-sql.ts. Until that DDL
- * is registered, a missing relation is store "absent": no fact and no photo.
+ * The tables are migration 422. A missing relation is store "absent":
+ * no fact and no photo.
  */
 import { pool } from "../db";
 import {
