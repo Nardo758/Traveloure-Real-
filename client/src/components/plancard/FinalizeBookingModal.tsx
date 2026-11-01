@@ -43,6 +43,13 @@ import { useTravelerDoors } from "@/hooks/use-traveler-doors";
 type FinalizeTrip = { id: string; destination: string | null; travelers: number | null };
 type Lane = "myself" | "agent" | "expert" | "concierge";
 
+/**
+ * Row 194 (R2 ruling, Nov 1, 2026): the chooser keeps "I book them myself" and "Travel expert"; the Booking
+ * agent lane is hidden (not rendered) while row 298 is parked. Its submit path is kept for when 298 unparks.
+ * The Concierge lane is unchanged (its own flag, off by default).
+ */
+export const FINALIZE_AGENT_LANE_SHOWN = false;
+
 /** Partner-bookable stops carry an opaque §16 bookingToken on `affiliateBooking` (never a URL). */
 function affiliateStops(activities: PlanCardActivity[]) {
   return activities.filter((a) => !!a.affiliateBooking?.bookingToken);
@@ -145,13 +152,18 @@ export function FinalizeBookingModal({
   }
 
   const people: Array<{ id: Lane; label: string; blurb: string; icon: typeof UserCheck; disabled?: boolean; disabledNote?: string }> = [
-    {
-      id: "agent",
-      label: "Booking agent",
-      blurb: agentAvailable ? "Books it as-is" : "No partner-bookable stops in this plan",
-      icon: Handshake,
-      disabled: !agentAvailable,
-    },
+    // Row 194 (R2): the Booking agent lane is not rendered while row 298 is parked (`FINALIZE_AGENT_LANE_SHOWN`).
+    ...(FINALIZE_AGENT_LANE_SHOWN
+      ? [
+          {
+            id: "agent" as Lane,
+            label: "Booking agent",
+            blurb: agentAvailable ? "Books it as-is" : "No partner-bookable stops in this plan",
+            icon: Handshake,
+            disabled: !agentAvailable,
+          },
+        ]
+      : []),
     { id: "expert", label: "Travel expert", blurb: "Reviews and refines — you book at checkout", icon: UserCheck },
     // Ledger `2026-10-18-traveler-doors-hidden`: the Concierge lane opens the old concierge, off by default.
     ...(conciergeShown ? [{ id: "concierge" as Lane, label: "Concierge", blurb: "Ask about full-service help", icon: Sparkles }] : []),
