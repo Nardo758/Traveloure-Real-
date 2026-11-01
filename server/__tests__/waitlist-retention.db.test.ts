@@ -213,6 +213,10 @@ describe("LW-1h: waitlist retention", () => {
     const goneEmail = `retention-gone-${RUN}@example.org`;
     const gone = await waitlistRow(goneEmail);
     const noEmail = await waitlistRow(null);
+    // The per-row floor (H7) keeps a row until its own 12 months have passed, so these rows are dated before the
+    // opening, as H7 dates its own; created at the real clock they would stop being due once that clock passed the
+    // opening instant.
+    await pool.query(`UPDATE launch_waitlist SET created_at = '2026-10-01 12:00:00' WHERE id = ANY($1)`, [[converted, gone, noEmail]]);
     await putOpenedAt("2026-11-01T09:00:00Z", adminId);
 
     const res = await runWaitlistRetention(new Date("2027-11-01T09:00:01Z"));
