@@ -1,5 +1,6 @@
 /**
  * CN-1a / CN-1b server: concierge listing type, per-trip price, task kinds, reply hours.
+ * CN-1h: duplicate and from-template run that same admission before the row exists.
  *
  * Run: npx tsx --test server/__tests__/cn1-concierge-listing.db.test.ts
  */
@@ -76,6 +77,7 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const tag = `cn1-${Date.now().toString(36)}`;
 const actors: RegisteredActor[] = [];
 const serviceIds: string[] = [];
+const templateIds: string[] = [];
 let extraKind: string | null = null;
 
 async function actor(role: string, label: string): Promise<RegisteredActor> {
@@ -129,7 +131,11 @@ before(async () => {
 
 after(async () => {
   if (serviceIds.length) {
+    await pool.query(`DELETE FROM content_registry WHERE content_id = ANY($1::varchar[])`, [serviceIds]);
     await pool.query(`DELETE FROM provider_services WHERE id = ANY($1::varchar[])`, [serviceIds]);
+  }
+  if (templateIds.length) {
+    await pool.query(`DELETE FROM service_templates WHERE id = ANY($1::varchar[])`, [templateIds]);
   }
   if (extraKind) await pool.query(`DELETE FROM concierge_task_kinds WHERE id = $1`, [extraKind]);
   const userIds = actors.map((actor) => actor.id);
@@ -360,4 +366,209 @@ test("admin manages the task list; a stay cannot be bookable; an inactive kind i
   });
   assert.equal(tasksOnPlanning.status, 400);
   assert.equal(tasksOnPlanning.json.code, "TASKS_NEED_CONCIERGE");
+});
+
+const DUPLICATE_PATHS = [
+  (id: string) => `/api/provider/services/${id}/duplicate`,
+  (id: string) => `/api/expert/services/${id}/duplicate`,
+];
+
+async function serviceCount(userId: string): Promise<number> {
+  const found = await pool.query(`SELECT count(*)::int AS n FROM provider_services WHERE user_id = $1`, [userId]);
+  return found.rows[0].n;
+}
+
+async function insertListing(opts: {
+  userId: string;
+  label: string;
+  serviceType: string;
+  pricingUnit?: string | null;
+  cap?: number | null;
+  taskKind?: string | null;
+}): Promise<string> {
+  const id = `${tag}-${opts.label}`;
+  await pool.query(
+    `INSERT INTO provider_services (id, user_id, service_name, service_type, price, pricing_unit, status, approval_status, delivery_method)
+     VALUES ($1, $2, $3, $4, '90.00', $5, 'draft', 'submitted', 'pdf')`,
+    [id, opts.userId, `${tag} ${opts.label}`, opts.serviceType, opts.pricingUnit ?? null],
+  );
+  serviceIds.push(id);
+  if (opts.taskKind) {
+    await pool.query(
+      `INSERT INTO provider_service_concierge_tasks (id, service_id, task_kind_id, cap) VALUES ($1, $2, $3, $4)`,
+      [`${id}-task`, id, opts.taskKind, opts.cap ?? null],
+    );
+  }
+  return id;
+}
+
+async function insertTemplate(serviceType: string): Promise<string> {
+  const id = `${tag}-tpl-${serviceType}`;
+  await pool.query(
+    `INSERT INTO service_templates (id, title, service_type, suggested_price, delivery_method, is_active)
+     VALUES ($1, $2, $3, '80.00', 'pdf', true)`,
+    [id, `${tag} ${serviceType} template`, serviceType],
+  );
+  templateIds.push(id);
+  return id;
+}
+
+test("CN-1h: concierge duplicate is admitted before the copy; a planning duplicate is unchanged", async () => {
+  const expert = await actor("local_expert", "dup-expert");
+  const provider = await actor("service_provider", "dup-provider");
+  const admin = await actor("admin", "dup-admin");
+  actors.push(expert, provider, admin);
+
+  const providerListing = await insertListing({
+    userId: provider.id,
+    label: "dup-provider-concierge",
+    serviceType: "concierge",
+    pricingUnit: "per_trip",
+    taskKind: "meals",
+    cap: 2,
+  });
+  const beforeProvider = await serviceCount(provider.id);
+  const providerRefused = await api(provider.cookie, "POST", `/api/provider/services/${providerListing}/duplicate`);
+  assert.equal(providerRefused.status, 403, JSON.stringify(providerRefused.json));
+  assert.equal(providerRefused.json.code, "CONCIERGE_EXPERT_REQUIRED");
+  assert.equal(providerRefused.json.message, "A concierge listing is saved by an expert account.");
+  assert.equal(await serviceCount(provider.id), beforeProvider);
+
+  // /api/expert/services is expert-or-admin. Admin is not an expert account, so the admission still refuses.
+  const adminListing = await insertListing({
+    userId: admin.id,
+    label: "dup-admin-concierge",
+    serviceType: "concierge",
+    pricingUnit: "per_trip",
+    taskKind: "meals",
+    cap: 2,
+  });
+  const beforeAdmin = await serviceCount(admin.id);
+  const adminRefused = await api(admin.cookie, "POST", `/api/expert/services/${adminListing}/duplicate`);
+  assert.equal(adminRefused.status, 403, JSON.stringify(adminRefused.json));
+  assert.equal(adminRefused.json.code, "CONCIERGE_EXPERT_REQUIRED");
+  assert.equal(adminRefused.json.message, "A concierge listing is saved by an expert account.");
+  assert.equal(await serviceCount(admin.id), beforeAdmin);
+
+  const invalid = await insertListing({
+    userId: expert.id,
+    label: "dup-invalid",
+    serviceType: "concierge",
+    pricingUnit: "per_trip",
+    taskKind: "meals",
+    cap: 0,
+  });
+  const beforeInvalid = await serviceCount(expert.id);
+  for (const pathOf of DUPLICATE_PATHS) {
+    const refused = await api(expert.cookie, "POST", pathOf(invalid));
+    assert.equal(refused.status, 400, JSON.stringify(refused.json));
+    assert.equal(refused.json.code, "TASK_CAP");
+    assert.equal(refused.json.message, "A task cap is a positive whole number, or empty.");
+  }
+  assert.equal(await serviceCount(expert.id), beforeInvalid);
+
+  const valid = await insertListing({
+    userId: expert.id,
+    label: "dup-valid",
+    serviceType: "concierge",
+    pricingUnit: "per_trip",
+    taskKind: "meals",
+    cap: 2,
+  });
+  for (const pathOf of DUPLICATE_PATHS) {
+    const created = await api(expert.cookie, "POST", pathOf(valid));
+    assert.equal(created.status, 201, JSON.stringify(created.json));
+    assert.notEqual(created.json.id, valid);
+    serviceIds.push(created.json.id);
+    assert.equal(created.json.serviceType, "concierge");
+    assert.equal(created.json.pricingUnit, "per_trip");
+    assert.equal(created.json.status, "draft");
+    assert.equal(created.json.approvalStatus, "submitted");
+    assert.match(created.json.serviceName, /\(Copy\)$/);
+    const tasks = await pool.query(
+      `SELECT task_kind_id, cap FROM provider_service_concierge_tasks WHERE service_id = $1`,
+      [created.json.id],
+    );
+    assert.equal(tasks.rows.length, 1);
+    assert.equal(tasks.rows[0].task_kind_id, "meals");
+    assert.equal(tasks.rows[0].cap, 2);
+  }
+
+  const planning = await insertListing({
+    userId: expert.id,
+    label: "dup-planning",
+    serviceType: "planning",
+  });
+  for (const pathOf of DUPLICATE_PATHS) {
+    const created = await api(expert.cookie, "POST", pathOf(planning));
+    assert.equal(created.status, 201, JSON.stringify(created.json));
+    serviceIds.push(created.json.id);
+    assert.equal(created.json.serviceType, "planning");
+    assert.equal(created.json.status, "draft");
+    assert.equal(created.json.approvalStatus, "submitted");
+    assert.equal(created.json.pricingUnit, null);
+    const tasks = await pool.query(
+      `SELECT count(*)::int AS n FROM provider_service_concierge_tasks WHERE service_id = $1`,
+      [created.json.id],
+    );
+    assert.equal(tasks.rows[0].n, 0);
+  }
+});
+
+test("CN-1h: from-template is admitted before insert; a planning template is unchanged", async () => {
+  const expert = await actor("local_expert", "tpl-expert");
+  const admin = await actor("admin", "tpl-admin");
+  actors.push(expert, admin);
+  const conciergeTemplate = await insertTemplate("concierge");
+  const planningTemplate = await insertTemplate("planning");
+  const validBody = { pricingUnit: "per_trip", conciergeTasks: [{ taskKindKey: "meals", cap: 2 }] };
+
+  // The template route sits on /api/expert, so a provider never reaches it. Admin does, and is not an expert account.
+  const beforeAdmin = await serviceCount(admin.id);
+  const refused = await api(admin.cookie, "POST", `/api/expert/services/from-template/${conciergeTemplate}`, validBody);
+  assert.equal(refused.status, 403, JSON.stringify(refused.json));
+  assert.equal(refused.json.code, "CONCIERGE_EXPERT_REQUIRED");
+  assert.equal(refused.json.message, "A concierge listing is saved by an expert account.");
+  assert.equal(await serviceCount(admin.id), beforeAdmin);
+
+  const beforeInvalid = await serviceCount(expert.id);
+  const invalid = await api(expert.cookie, "POST", `/api/expert/services/from-template/${conciergeTemplate}`, {
+    pricingUnit: "per_trip",
+    conciergeTasks: [{ taskKindKey: "meals", cap: 0 }],
+  });
+  assert.equal(invalid.status, 400, JSON.stringify(invalid.json));
+  assert.equal(invalid.json.code, "TASK_CAP");
+  assert.equal(invalid.json.message, "A task cap is a positive whole number, or empty.");
+  assert.equal(await serviceCount(expert.id), beforeInvalid);
+
+  const created = await api(expert.cookie, "POST", `/api/expert/services/from-template/${conciergeTemplate}`, validBody);
+  assert.equal(created.status, 201, JSON.stringify(created.json));
+  serviceIds.push(created.json.id);
+  assert.equal(created.json.serviceType, "concierge");
+  assert.equal(created.json.status, "draft");
+  assert.equal(created.json.createdVia, "template");
+  // The template insert still does not take a price unit from the body. The admission only lets a per-trip unit through.
+  assert.equal(created.json.pricingUnit, null);
+  const tasks = await pool.query(
+    `SELECT task_kind_id, cap FROM provider_service_concierge_tasks WHERE service_id = $1`,
+    [created.json.id],
+  );
+  assert.equal(tasks.rows.length, 1);
+  assert.equal(tasks.rows[0].task_kind_id, "meals");
+  assert.equal(tasks.rows[0].cap, 2);
+
+  const planning = await api(expert.cookie, "POST", `/api/expert/services/from-template/${planningTemplate}`, {
+    pricingUnit: "per_trip",
+    conciergeTasks: [{ taskKindKey: "yacht" }],
+  });
+  assert.equal(planning.status, 201, JSON.stringify(planning.json));
+  serviceIds.push(planning.json.id);
+  assert.equal(planning.json.serviceType, "planning");
+  assert.equal(planning.json.pricingUnit, null);
+  assert.equal(planning.json.createdVia, "template");
+  const planningTasks = await pool.query(
+    `SELECT count(*)::int AS n FROM provider_service_concierge_tasks WHERE service_id = $1`,
+    [planning.json.id],
+  );
+  assert.equal(planningTasks.rows[0].n, 0);
 });
