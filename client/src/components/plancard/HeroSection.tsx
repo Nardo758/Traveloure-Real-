@@ -1,7 +1,10 @@
 import { useToast } from "@/hooks/use-toast";
-import { PhoneDeliveryButton } from "./PhoneDeliveryDialog";
+import { useState } from "react";
+import { PhoneDeliveryButton, PhoneDeliveryDialog } from "./PhoneDeliveryDialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { TRIP_CARD_HEADER_MENU_COPY } from "@/lib/trip-card-header-menu";
 import { differenceInDays, format } from "date-fns";
-import { Users, Share2, Download, CheckCircle2, RefreshCw, CalendarPlus, FileText } from "lucide-react";
+import { Users, Share2, Download, CheckCircle2, RefreshCw, CalendarPlus, FileText, MoreHorizontal } from "lucide-react";
 import { Link } from "wouter";
 import { computeDayCount, type PlanCardTrip, type PlanCardDay } from "./plancard-types";
 import { PlanCardHeader } from "./PlanCardHeader";
@@ -125,6 +128,7 @@ export function HeroControls({
   showExports?: boolean;
 }) {
   const { toast } = useToast();
+  const [phoneOpen, setPhoneOpen] = useState(false);
   function handleShare() {
     if (onShare) {
       onShare();
@@ -154,48 +158,52 @@ export function HeroControls({
         <Share2 className="w-3.5 h-3.5" />
         <span className="hidden sm:inline">Share</span>
       </button>
-      {showExports ? (
-        /* Ledger `2026-09-07-trip-card-one-page`: Calendar and PDF are the SAME two routes the
-           slip's Share card offers (`slipCalendarPath` / `slipPdfPath` — one spelling, §18 rule 1).
-           They replace the old "Export" link, which pointed at `/itinerary/:id` — a redirect back
-           to `/trip/:id`, i.e. a button that went nowhere. */
-        <>
-          <a
-            href={slipCalendarPath(trip.id)}
-            download
-            className="bg-background/50 backdrop-blur-sm border-0 text-foreground px-2 py-1.5 rounded-lg cursor-pointer text-xs font-semibold flex items-center gap-1 hover:bg-background/70 transition-colors"
-            data-testid={`button-calendar-${trip.id}`}
-          >
-            <CalendarPlus className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Calendar</span>
-          </a>
-          <a
-            href={slipPdfPath(trip.id)}
-            download
-            className="bg-background/50 backdrop-blur-sm border-0 text-foreground px-2 py-1.5 rounded-lg cursor-pointer text-xs font-semibold flex items-center gap-1 hover:bg-background/70 transition-colors"
-            data-testid={`button-pdf-${trip.id}`}
-          >
-            <FileText className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">PDF</span>
-          </a>
-          {/* §8 phone delivery: drawn only for the plan's owner, and only when a channel's admin
-              switch is on — the state read is owner-gated and answers nothing to anyone else. */}
-          <PhoneDeliveryButton
-            tripId={trip.id}
-            className="bg-background/50 backdrop-blur-sm border-0 text-foreground px-2 py-1.5 rounded-lg cursor-pointer text-xs font-semibold flex items-center gap-1 hover:bg-background/70 transition-colors"
-          />
-        </>
-      ) : (
-        <Link href={`/itinerary/${trip.id}`} className="hidden sm:block">
+      {/* Row 194 (R2): Share stays visible; Calendar, PDF, Export and phone delivery live in this ⋯ menu.
+          The testids are the ones the buttons carried. The mobile BottomActionBar and the slip's
+          SlipPlanMenu are unchanged. */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
           <button
+            type="button"
+            aria-label={TRIP_CARD_HEADER_MENU_COPY.trigger}
             className="bg-background/50 backdrop-blur-sm border-0 text-foreground px-2 py-1.5 rounded-lg cursor-pointer text-xs font-semibold flex items-center gap-1 hover:bg-background/70 transition-colors"
-            data-testid={`button-export-${trip.id}`}
+            data-testid={`button-header-menu-${trip.id}`}
           >
-            <Download className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Export</span>
+            <MoreHorizontal className="w-3.5 h-3.5" />
           </button>
-        </Link>
-      )}
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {showExports ? (
+            /* Ledger `2026-09-07-trip-card-one-page`: Calendar and PDF are the SAME two routes the
+               slip's Share card offers (`slipCalendarPath` / `slipPdfPath` — one spelling, §18 rule 1). */
+            <>
+              <DropdownMenuItem asChild>
+                <a href={slipCalendarPath(trip.id)} download data-testid={`button-calendar-${trip.id}`}>
+                  <CalendarPlus className="w-3.5 h-3.5 mr-2" />
+                  {TRIP_CARD_HEADER_MENU_COPY.calendar}
+                </a>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <a href={slipPdfPath(trip.id)} download data-testid={`button-pdf-${trip.id}`}>
+                  <FileText className="w-3.5 h-3.5 mr-2" />
+                  {TRIP_CARD_HEADER_MENU_COPY.pdf}
+                </a>
+              </DropdownMenuItem>
+              {/* §8 phone delivery: drawn only for the plan's owner, and only when a channel's admin
+                  switch is on — the state read is owner-gated and answers nothing to anyone else. */}
+              <PhoneDeliveryButton tripId={trip.id} asMenuItem label={TRIP_CARD_HEADER_MENU_COPY.phone} onOpen={() => setPhoneOpen(true)} />
+            </>
+          ) : (
+            <DropdownMenuItem asChild>
+              <Link href={`/itinerary/${trip.id}`} data-testid={`button-export-${trip.id}`}>
+                <Download className="w-3.5 h-3.5 mr-2" />
+                {TRIP_CARD_HEADER_MENU_COPY.export}
+              </Link>
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {showExports ? <PhoneDeliveryDialog tripId={trip.id} open={phoneOpen} onOpenChange={setPhoneOpen} /> : null}
     </div>
   );
 }

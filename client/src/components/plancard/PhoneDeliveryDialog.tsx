@@ -9,6 +9,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarPlus, Smartphone } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { apiRequest } from "@/lib/queryClient";
 import { canPromptInstall, promptInstall, runningFromHomeScreen } from "@/lib/install-prompt";
 import {
@@ -188,17 +189,44 @@ export function PhoneDeliveryDialog({
 }
 
 /** The Trip Card header's button: drawn only for the owner when at least one channel is on. */
-export function PhoneDeliveryButton({ tripId, className }: { tripId: string; className?: string }) {
+export function PhoneDeliveryButton({
+  tripId,
+  className,
+  asMenuItem = false,
+  label,
+  onOpen,
+}: {
+  tripId: string;
+  className?: string;
+  /** Row 194 (R2): drawn as an entry of the Trip Card header's ⋯ menu. */
+  asMenuItem?: boolean;
+  /** Overrides the visible label (the ⋯ menu's own label). */
+  label?: string;
+  /**
+   * When given, the click calls this and the button renders no dialog of its own: a ⋯ menu entry
+   * unmounts with the menu, so the dialog lives with the menu's owner.
+   */
+  onOpen?: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const { data: state } = useQuery<PhoneDeliveryStateView>({ queryKey: phoneDeliveryKey(tripId), retry: false });
   if (!phoneDeliveryHasChannels(state)) return null;
+  const openIt = () => (onOpen ? onOpen() : setOpen(true));
+  if (asMenuItem) {
+    return (
+      <DropdownMenuItem onSelect={openIt} data-testid={`button-phone-delivery-${tripId}`}>
+        <Smartphone className="w-3.5 h-3.5 mr-2" />
+        {label ?? "On my phone"}
+      </DropdownMenuItem>
+    );
+  }
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className={className} data-testid={`button-phone-delivery-${tripId}`}>
+      <button type="button" onClick={openIt} className={className} data-testid={`button-phone-delivery-${tripId}`}>
         <Smartphone className="w-3.5 h-3.5" />
-        <span className="hidden sm:inline">On my phone</span>
+        <span className="hidden sm:inline">{label ?? "On my phone"}</span>
       </button>
-      <PhoneDeliveryDialog tripId={tripId} open={open} onOpenChange={setOpen} />
+      {onOpen ? null : <PhoneDeliveryDialog tripId={tripId} open={open} onOpenChange={setOpen} />}
     </>
   );
 }
