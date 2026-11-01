@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { PaymentMethodsCard } from "@/components/payment/PaymentMethodsCard";
 import { EaInvitationsCard } from "@/components/profile/EaInvitationsCard";
+import { TravelStyleCard } from "@/components/travel-style-card";
 
 import { Camera, Mail, Bell, MapPin, Calendar, Save, Loader2 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
@@ -516,6 +517,9 @@ export default function Profile() {
             </a>
           </CardContent>
         </Card>
+
+        {/* Row 306: draws nothing while the selection profile is off. */}
+        <TravelStyleCard />
 
         {/* Notification email — experts and providers only */}
         {isEarner && (
