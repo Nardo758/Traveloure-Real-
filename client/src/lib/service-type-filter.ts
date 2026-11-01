@@ -1,6 +1,6 @@
 /**
  * CN-1c-UI (ledger `2026-11-01-cn1c-ui-local-concierge-filter`): the concierge filter on /services and the city
- * page, and the profile's planning/concierge sections.
+ * page, and the profile's concierge section.
  *
  * The filter sends `serviceType` to the server and keeps the server's order. The server owns the value set and the
  * refusal (`shared/service-type-query.ts`, UNKNOWN_SERVICE_TYPE_MESSAGE); this module restates neither. No choice sends
@@ -15,7 +15,7 @@ export const SERVICE_TYPE_FILTER_PARAM = "serviceType";
 export const SERVICE_TYPE_FILTER_COPY = {
   /** HELD (pending Leon): the no-filter choice. */
   all: "All listings",
-  /** HELD (pending Leon): the planning choice, and the profile's planning-section heading. */
+  /** HELD (pending Leon): the planning filter choice. */
   planning: "Trip planning",
   /** Approved: CN-1 OPEN call (B), Nov 1, 2026. */
   concierge: CN1_COPY.filter,
@@ -56,27 +56,19 @@ export async function readFailureMessage(res: Response, fallback: string): Promi
   return typeof body?.message === "string" && body.message ? body.message : fallback;
 }
 
-export type ProfileListingSection<T> = { kind: "planning" | "concierge" | null; items: T[] };
+/** Approved (Leon, Nov 1, 2026): the profile's concierge section heading. */
+export const PROFILE_CONCIERGE_HEADING = CN1_COPY.filter;
 
 /**
- * The profile's listing sections. Both types present: two sections, planning first, each holding only its own rows
- * (a row with no stored type reads as planning, the column default). One type: a single section, as before, in the
- * server's order. Nothing is re-sorted.
+ * The profile's listings. When an earner sells concierge listings AND other listings, the concierge ones move into the
+ * one new section and every other listing stays where it is today, in the server's order. With one kind only, nothing
+ * moves (`concierge` is null). A row with no stored type is not concierge (planning is the column default).
  */
 export function profileListingSections<T extends { serviceType?: string | null }>(
   services: readonly T[],
-): ProfileListingSection<T>[] {
+): { listings: T[]; concierge: T[] | null } {
   const concierge = services.filter((s) => listingTypeFromStored(s.serviceType) === "concierge");
   const other = services.filter((s) => listingTypeFromStored(s.serviceType) !== "concierge");
-  if (concierge.length > 0 && other.length > 0) {
-    return [
-      { kind: "planning", items: other },
-      { kind: "concierge", items: concierge },
-    ];
-  }
-  return [{ kind: null, items: [...services] }];
-}
-
-export function profileSectionTitle(kind: "planning" | "concierge"): string {
-  return kind === "concierge" ? SERVICE_TYPE_FILTER_COPY.concierge : SERVICE_TYPE_FILTER_COPY.planning;
+  if (concierge.length > 0 && other.length > 0) return { listings: other, concierge };
+  return { listings: [...services], concierge: null };
 }

@@ -7,7 +7,8 @@
  *   L2  /services: picking "Local concierge" sends serviceType=concierge to its read and keeps it in the URL; clearing
  *       sends no param and drops it from the URL
  *   L3  city page: the same two cases on GET /api/discover/location/:city (and on the theme read)
- *   L4  profile: an earner with both types gets two sections, each holding only its own type; one type gets one
+ *   L4  profile: an earner with concierge AND other listings gets one new "Local concierge" section holding only the
+ *       concierge ones; every other listing renders as today under today's "Services" heading; one kind moves nothing
  *   L5  an unknown type shows the server's own "Unknown service type."
  *   L6  the concierge empty line names the city
  *   L7  the new code and copy carry no ranking, "top", crowd, trending or superlative word and no traveler fee
@@ -27,8 +28,8 @@ import {
   SERVICE_TYPE_FILTER_COPY,
   SERVICE_TYPE_FILTER_PARAM,
   emptyConciergeLine,
+  PROFILE_CONCIERGE_HEADING,
   profileListingSections,
-  profileSectionTitle,
   readFailureMessage,
   serviceTypeFromUrl,
   withServiceType,
@@ -89,33 +90,34 @@ describe("CN-1c-UI Local concierge filter", () => {
     assert.match(themeFn, /if \(serviceType\) params\.set\(SERVICE_TYPE_FILTER_PARAM, serviceType\);/);
   });
 
-  it("L4 the profile shows two sections only when both types exist, each with only its own type", () => {
+  it("L4 the profile adds one concierge section only when both kinds exist; other listings render as today", () => {
     const rows = [
       { id: "a", serviceType: "concierge" },
       { id: "b", serviceType: "planning" },
       { id: "c", serviceType: null },
+      { id: "e", serviceType: "consultation" },
       { id: "d", serviceType: "concierge" },
     ];
     const both = profileListingSections(rows);
-    assert.equal(both.length, 2);
-    assert.equal(both[0].kind, "planning");
-    assert.deepEqual(both[0].items.map((r) => r.id), ["b", "c"]);
-    assert.equal(both[1].kind, "concierge");
-    assert.deepEqual(both[1].items.map((r) => r.id), ["a", "d"], "server order kept");
-    assert.equal(profileSectionTitle("concierge"), CN1_COPY.filter);
-    assert.equal(profileSectionTitle("planning"), SERVICE_TYPE_FILTER_COPY.planning);
+    assert.deepEqual(both.listings.map((r) => r.id), ["b", "c", "e"], "non-concierge stay in place, server order");
+    assert.deepEqual(both.concierge?.map((r) => r.id), ["a", "d"], "only concierge, server order");
+    assert.equal(PROFILE_CONCIERGE_HEADING, CN1_COPY.filter);
+    assert.equal(PROFILE_CONCIERGE_HEADING, "Local concierge");
 
     for (const one of [[{ id: "x", serviceType: "planning" }], [{ id: "y", serviceType: "concierge" }]]) {
       const single = profileListingSections(one);
-      assert.equal(single.length, 1);
-      assert.equal(single[0].kind, null);
-      assert.deepEqual(single[0].items, one);
+      assert.equal(single.concierge, null);
+      assert.deepEqual(single.listings, one);
     }
 
     const page = read("client/src/pages/storefront.tsx");
     assert.match(page, /const serviceSections = profileListingSections\(visibleServices\);/);
-    assert.match(page, /data-testid=\{`storefront-section-\$\{section\.kind\}`\}/);
-    assert.match(page, /title=\{profileSectionTitle\(section\.kind\)\}/);
+    // Today's lane heading always renders; the one new section is the concierge one.
+    assert.match(page, /<LaneHeader eyebrow="Book directly" title="Services" \/>\n/);
+    assert.match(page, /data-testid="storefront-section-concierge"/);
+    assert.match(page, /title=\{PROFILE_CONCIERGE_HEADING\}/);
+    assert.equal(page.includes("storefront-section-planning"), false, "no planning section");
+    assert.equal(page.includes("SERVICE_TYPE_FILTER_COPY.planning"), false, "no Trip planning heading on the profile");
   });
 
   it("L5 an unknown type shows the server's own message", async () => {

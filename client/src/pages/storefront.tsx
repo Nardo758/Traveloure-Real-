@@ -47,7 +47,7 @@
  * tile), so no ODbL attribution is owed here.
  */
 import { useMemo, useState, type ReactNode } from "react";
-import { profileListingSections, profileSectionTitle } from "@/lib/service-type-filter";
+import { PROFILE_CONCIERGE_HEADING, profileListingSections } from "@/lib/service-type-filter";
 import { useQuery } from "@tanstack/react-query";
 import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import { useRoute, useSearch, useLocation, Link, Redirect } from "wouter";
@@ -819,7 +819,7 @@ export default function StorefrontPage() {
     setCategory("All");
   }
 
-  // CN-1c-UI: an earner with planning AND concierge listings shows them as two sections; one type keeps the one lane.
+  // CN-1c-UI: an earner who sells concierge AND other listings gets one new concierge section; everything else is as before.
   const serviceSections = profileListingSections(visibleServices);
   // CN-1c-UI: one card renderer, read by the single lane and by the two type sections alike.
   const renderServiceCard = (s: StorefrontService) => {
@@ -1256,7 +1256,7 @@ export default function StorefrontPage() {
           {/* Lane 1: services — book directly */}
           {visibleServices.length > 0 && (
             <div className="mb-10 sm:mb-12 scroll-mt-6" id={SERVICES_ANCHOR_ID} data-testid="storefront-lane-services">
-              {serviceSections.length === 1 ? <LaneHeader eyebrow="Book directly" title="Services" /> : null}
+              <LaneHeader eyebrow="Book directly" title="Services" />
               {/* Ruling 116 (§13): when any card falls back to its original language under the
                   viewer's locale, say so once — never a silent mix. */}
               {visibleServices.some((s) => s.shownInOriginal) && (
@@ -1264,20 +1264,18 @@ export default function StorefrontPage() {
                   {t("contentTranslation.someInOriginal")}
                 </p>
               )}
-              {serviceSections.map((section) =>
-                section.kind === null ? (
-                  <div key="all" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {section.items.map(renderServiceCard)}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {serviceSections.listings.map(renderServiceCard)}
+              </div>
+              {/* CN-1c-UI: the one new section — an earner who also sells concierge listings shows them here. */}
+              {serviceSections.concierge ? (
+                <div className="mt-8" data-testid="storefront-section-concierge">
+                  <LaneHeader eyebrow="Book directly" title={PROFILE_CONCIERGE_HEADING} />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {serviceSections.concierge.map(renderServiceCard)}
                   </div>
-                ) : (
-                  <div key={section.kind} className="mb-8 last:mb-0" data-testid={`storefront-section-${section.kind}`}>
-                    <LaneHeader eyebrow="Book directly" title={profileSectionTitle(section.kind)} />
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {section.items.map(renderServiceCard)}
-                    </div>
-                  </div>
-                ),
-              )}
+                </div>
+              ) : null}
             </div>
           )}
 
