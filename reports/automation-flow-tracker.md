@@ -9,7 +9,8 @@
   `reports/automation-flow-tracker.md`. This focused document does not
   reinterpret its counts as implementation on current main.
 - Scope: test fixture setup/teardown plus this report only. No runtime,
-  production, migration, payment, flag, transport or workflow changes.
+  production, migration-file, payment, flag, transport or workflow changes.
+  Existing migrations ran only inside a private disposable PostgreSQL instance.
 - No local commit is created in the production deploy checkout or the
   separate verification checkout. The PR commit is created through GitHub.
 
@@ -33,32 +34,49 @@ Only an existing helper import and fixture declarations/hooks change.
 R1–R5 and N1–N6 bodies: 11/11 byte-identical; added/removed cases: 0.
 Owned-target guard cases: 7/7, including 5 denied targets.
 
-## Fresh proof and blockers
+## Fresh migration-built proof — ready for review
 
-Current main contains 11 auth tests and 3 preference-writer tests: 14 total,
-not the held branch's 22. Its 5 time-zone and 3 additional preference tests
-were not copied into this PR.
+Current main has 11 auth cases and 3 preference cases: 14, not the held
+branch's 22. No held runtime code, constraint-name repair, or extra tests
+were copied into this PR.
 
-- First fresh isolated run: 3/14 passed; 11 auth failures.
-- First underlying schema error: `users.apple_sub` is absent from the
-  development schema cloned by the runner. Its definition is in main's
-  existing `424_users_apple_sub.sql`; the migration ledger was not inspected.
-- Temporary setting restored: 1/1; shared setting unchanged: 1/1;
-  disposable namespace removed: 1/1.
-- Clean signup loops: 0/2. A second run is not justified until the underlying
-  schema blocker is approved/resolved. No test was weakened.
-- Main also does not contain the held constraint-name preservation repair.
-  It was not copied, bypassed or silently added to this two-file PR.
-- Fresh typecheck: baseline 110, current 110, new diagnostics 0, ceiling 111.
-  Normalized diagnostic lists are identical; this is not a globally clean build.
-- Static guards: 79/79 after a provider-free private build supplied the bundle
-  required by two guards (initially 77/79; only those two were rerun).
-  Registry/roster: 2/2; mutation-auth checks: 2/2; private build: 1/1.
-  An existing stale manifest-line-number notice is non-blocking; no rail changed.
+| Fresh loop | Registered migrations recorded | Boot/migration phase | Normal session initialization | Tests | Failures | Cancelled |
+|---|---:|---:|---:|---:|---:|---:|
+| 1 | 422/422 through 428 | 29.48 s | 1.34 s | 14/14 | 0 | 0 |
+| 2 | 422/422 through 428 | 15.25 s | 1.14 s | 14/14 | 0 | 0 |
 
-No shared schema repair, migration execution, release activation, real email,
-inbox observation, payment writer, direct sender or scheduler change occurred.
-Signup is **NOT DEV-CLOSED** on fresh main. Draft PR; **RELEASE HELD**.
+- Provider-free main build: passed, 15.16 s; reused without source changes.
+- PostgreSQL 16.15, private temporary instance, fresh empty database per loop.
+  No workspace DATABASE_URL or shared/production connection was used.
+- Main's unchanged compiled boot ran the full registered chain with NODE_ENV=test,
+  no copied history. Both ended at 428_selection_events.sql. Timings above cover
+  the migration boot phase and process shutdown, not SQL-only execution.
+- users_email_unique was created by the application's migrations in both loops.
+  The classifier is unchanged; no index/constraint rename repair was used.
+- Baseline deliberately excludes sessions, which express-session owns. The
+  application's unchanged getSession middleware initialized it via a synthetic
+  session save/destroy before each test run. Bootstrap sessions remaining: 0/0.
+- Isolation scaffolding only: hand off public to an owned automation_msg namespace
+  and retain an independent public.platform_settings control snapshot for the
+  unchanged guard. No manual application-column or constraint repair.
+- Original auth fixture blob is unchanged from the prior PR head; all test bodies
+  and assertions are unchanged. No fake GitHub CI markers were used.
+- Full initial migration-only attempt: 9/14, R1-R5 failed because sessions was
+  not initialized. Earlier clone attempts: 3/14 (missing apple_sub), then 13/14
+  (N3, generated key name). These failures are retained, not counted clean.
+- Final consecutive clean loops: 2/2. Shared-setting guard passed in both private
+  control snapshots. Databases remaining after each loop: 0/0; private PostgreSQL
+  stopped. No real email, QA-inbox observation or elapsed-time proof.
+
+Previously verified, unchanged-source gates (not rerun for this operational proof):
+- Typecheck baseline/current 110/110, new diagnostics 0, ceiling 111. Not globally clean.
+- Static guards 79/79; registry/roster 2/2; mutation-auth checks 2/2.
+
+Evidence: .local/verification-evidence/auth-empty-chain-20261101/ in the workspace,
+including the operational driver, normal session bootstrap, sanitized boot/test
+logs, source-integrity comparison and cleanup records.
+
+**Fixture PR: READY FOR REVIEW. No merge performed. Broader automation RELEASE HELD.**
 
 ## Held inventory counts — unchanged by this PR
 
