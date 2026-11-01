@@ -56,6 +56,9 @@ import { legRuleClass } from "@/lib/leg-rule";
 import { travelRowTitle } from "@/components/plan/AnchorRow";
 import { newSlipViewId, recordRoutedLegsCtaTap, useLocalTeaserShown } from "@/lib/slip-funnel-client";
 import { anchorMissedBanner, leaveByMissed, missedLine, type LeaveByRow } from "@shared/leave-by";
+import type { UpsellLine } from "@shared/upsell-line";
+import { buildServicesBrowseHref } from "@/lib/services-browse";
+import { postUpsellClick } from "@/components/UpsellSlot";
 
 export interface TripCardDaysProps {
   tripId: string;
@@ -83,6 +86,8 @@ export interface TripCardDaysProps {
    * "Open in maps" header) follow the selected day instead of staying on the page's own first day.
    */
   onOpenDayChange?: (dayNum: number) => void;
+  /** Row 179: the on-trip "Add X for this leg" lines, by item id (the owner's card only). Absent ⇒ none. */
+  upsellLines?: ReadonlyMap<string, UpsellLine>;
 }
 
 type DayTransport = NonNullable<PlanCardDay["transports"]>[number];
@@ -271,6 +276,20 @@ export function TripCardDays(props: TripCardDaysProps) {
   const [funnelViewId] = useState(newSlipViewId);
   useLocalTeaserShown(tripId, days, "trip_card", funnelViewId);
   const todayIso = calendarDayOf(props.now ?? new Date(), timeZone);
+  // Row 179: an item's "Add X for this leg" line, linked to the services browse for its category on this plan. A tap
+  // is recorded through the existing upsell click event on the on-trip surface (decision-maker, Oct 31, 2026); a
+  // failed record never blocks the link.
+  const upsellFor = (itemId: string) => {
+    const line = props.upsellLines?.get(itemId);
+    if (!line) return null;
+    return {
+      line,
+      href: buildServicesBrowseHref({ categoryKey: line.categoryKey, tripId, location: props.destination }),
+      onClick: () => {
+        void postUpsellClick("plancard_ontrip", line.offeringType, tripId).catch(() => {});
+      },
+    };
+  };
   const order = cardDayOrder(days, todayIso);
   const [openDay, setOpenDay] = useState<number | null>(() => {
     const t = days.findIndex((d) => isCardToday(d, todayIso));
@@ -535,6 +554,7 @@ export function TripCardDays(props: TripCardDaysProps) {
                   navigateHref={navigateHref({ name: a.name, lat: a.lat ?? null, lng: a.lng ?? null }, props.destination)}
                   onOpenDetails={() => setSheetFor(a)}
                   visited={isToday ? { checked: visited.has(a.id), onToggle: () => toggleVisited(a.id) } : null}
+                  upsell={upsellFor(a.id)}
                 />
                 {/* 9b-c (LB1–LB9): today's leave-by for this stop, derived at read from the ONE core (never stored). */}
                 {isToday && upNext ? <LeaveByLine row={upNext.leaveByRows.find((r) => r.stopId === a.id) ?? null} rows={upNext.leaveByRows} nowMinute={upNext.nowMinute} stopName={a.name} stopId={a.id} /> : null}

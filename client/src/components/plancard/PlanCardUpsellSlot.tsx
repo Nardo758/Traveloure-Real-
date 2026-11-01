@@ -10,8 +10,10 @@
  * because it is plancard-specific logic not relevant to other surfaces.
  */
 
-import { UpsellSlot } from "@/components/UpsellSlot";
+import { useQuery } from "@tanstack/react-query";
+import { UpsellSlot, upsellSlotQueryOptions } from "@/components/UpsellSlot";
 import { parseTripDate } from "@/lib/calendar-date";
+import type { UpsellLine } from "@shared/upsell-line";
 
 export type UpsellSurface = "plancard_pretrip" | "plancard_ontrip";
 
@@ -28,7 +30,7 @@ interface PlanCardUpsellSlotProps {
   surface: UpsellSurface;
 }
 
-function inWindow(surface: UpsellSurface, startDate?: string, endDate?: string): boolean {
+export function inWindow(surface: UpsellSurface, startDate?: string, endDate?: string): boolean {
   if (!startDate || !endDate) return false;
   const now = new Date(); now.setHours(0, 0, 0, 0);
   // F-1: DATE columns arrive as "YYYY-MM-DD"; `new Date()` reads those as UTC midnight, which
@@ -39,6 +41,29 @@ function inWindow(surface: UpsellSurface, startDate?: string, endDate?: string):
   start.setHours(0, 0, 0, 0);
   end.setHours(0, 0, 0, 0);
   return surface === "plancard_pretrip" ? now < start : now >= start && now <= end;
+}
+
+/**
+ * Row 179: the on-trip read's per-leg lines, keyed by item id. The SAME query (and key) the on-trip slot runs, under
+ * the SAME window, so nothing is fetched twice and no impression is logged by the card. Not in the window, or
+ * not enabled ⇒ an empty map.
+ */
+export function usePlanCardUpsellLines(opts: {
+  tripId: string;
+  eventType?: string;
+  startDate?: string;
+  endDate?: string;
+  enabled: boolean;
+}): Map<string, UpsellLine> {
+  const active = opts.enabled && inWindow("plancard_ontrip", opts.startDate, opts.endDate);
+  const { data } = useQuery({
+    ...upsellSlotQueryOptions("plancard_ontrip", opts.tripId, { templateKey: opts.eventType ?? "travel" }),
+    enabled: active,
+  });
+  const out = new Map<string, UpsellLine>();
+  if (!active) return out;
+  for (const line of data?.lines ?? []) if (!out.has(line.itemId)) out.set(line.itemId, line);
+  return out;
 }
 
 export function PlanCardUpsellSlot({
