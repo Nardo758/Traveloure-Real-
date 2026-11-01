@@ -5,7 +5,9 @@
  *   · placeholder, empty state — `CATALOGUE_SEARCH_COPY` (shared), approved by Leon, Oct 31, 2026, 8:51 PM ET.
  *   · "Book", "Book on Viator", "Book on the official site", "From [price] on Viator, as of [time]",
  *     "Not checked yet" — quoted in the row 305 brief (Claude session 2 doc / CS-3 brief 8).
- *   · "Add to plan" — `ADD_TO_PLAN_LABEL`; the commission line — `PARTNER_COMMISSION_NOTE` (both on main).
+ *   · "Add to plan" — `ADD_TO_PLAN_LABEL` (on main).
+ *   · the Viator disclosure — "Traveloure may earn a commission on bookings made through this link" (sanctioned
+ *     Nov 1, 2026): a disclosure only, never a rate or an amount.
  *   · "from <source> · <checked date>" — the public attribution the server already formats
  *     (`publicFactAttribution`, ruling R-p).
  * Anything else is HELD for Leon and is a placeholder.
@@ -13,7 +15,6 @@
 import type { CatalogueResult } from "@shared/catalogue-search";
 import { MARKET_TIMEZONES } from "@shared/market-today";
 import { ADD_TO_PLAN_LABEL } from "./plan-vocabulary";
-import { PARTNER_COMMISSION_NOTE } from "./browse-supply";
 import { exactOperatingMarket } from "./experiences-entry";
 
 export const CATALOGUE_RESULT_COPY = {
@@ -22,7 +23,8 @@ export const CATALOGUE_RESULT_COPY = {
   bookOnOfficialSite: "Book on the official site",
   addToPlan: ADD_TO_PLAN_LABEL,
   viatorPrice: (price: string, time: string) => `From ${price} on Viator, as of ${time}`,
-  commission: PARTNER_COMMISSION_NOTE,
+  /** The Viator result's disclosure line: never a rate or an amount. */
+  commission: "Traveloure may earn a commission on bookings made through this link",
   notCheckedYet: "Not checked yet",
   /** The link to the official site beside "Not checked yet". HELD for Leon. */
   officialSiteLink: "[HELD for Leon]",

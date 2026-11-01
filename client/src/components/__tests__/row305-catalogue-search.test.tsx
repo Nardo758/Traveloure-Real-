@@ -110,7 +110,11 @@ describe("row 305 — catalogue search results", () => {
     assert.match(html, /data-testid="catalogue-attribution-viator:5010P1"[^>]*>Viator</);
     assert.equal(viatorPriceLine(results[6].livePrice, "Asia/Tokyo"), "From $45 on Viator, as of 14:05");
     assert.match(clean(html), /From \$45 on Viator, as of 14:05/);
-    assert.match(clean(html), new RegExp(CATALOGUE_RESULT_COPY.commission));
+    assert.equal(CATALOGUE_RESULT_COPY.commission, "Traveloure may earn a commission on bookings made through this link");
+    const disclosure = html.slice(html.indexOf('data-testid="catalogue-commission-viator:5010P1"'));
+    const line = clean(disclosure.slice(disclosure.indexOf(">") + 1, disclosure.indexOf("</p>")));
+    assert.equal(line, CATALOGUE_RESULT_COPY.commission);
+    assert.doesNotMatch(line, /\d|%/, "a disclosure, never a rate or an amount");
     assert.doesNotMatch(html, /rating|review|<img /i);
   });
 
