@@ -283,6 +283,8 @@ import experienceThemesRoutes from "./routes/experience-themes.routes";
 import conciergeTaskKindRoutes from "./routes/concierge-task-kinds.routes";
 import {
   admitConciergeListingWrite,
+  admitDuplicatedConciergeListing,
+  admitFromTemplateConciergeListing,
   commitConciergeTasks,
   conciergeListingExtras,
   loadListingConciergeTasks,
@@ -6752,7 +6754,20 @@ ${bannedCopyPromptLine()}`;
       if (!service || service.userId !== userId) {
         return res.status(404).json({ message: "Service not found or not owned by you" });
       }
+      // CN-1h: a concierge copy is admitted before the row exists. Any other type is unchanged.
+      const conciergeAdmission = await admitDuplicatedConciergeListing({
+        userId,
+        serviceId: service.id,
+        serviceType: service.serviceType,
+        pricingUnit: service.pricingUnit,
+      });
+      if (!conciergeAdmission.ok) {
+        return res.status(conciergeAdmission.status).json(conciergeAdmission.body);
+      }
       const duplicated = await storage.duplicateService(req.params.id, userId);
+      if (duplicated && conciergeAdmission.tasks !== null) {
+        await commitConciergeTasks(duplicated.id, conciergeAdmission.tasks);
+      }
       // NEW-2 (V3): the raw .returning() row leaks revenueShareRate (§18 read-side) — same
       // projection as the POST/PATCH create paths.
       res.status(201).json(duplicated ? omitFields(duplicated, ["revenueShareRate"] as const) : duplicated);
@@ -6773,7 +6788,20 @@ ${bannedCopyPromptLine()}`;
       if (!service || service.userId !== userId) {
         return res.status(404).json({ message: "Service not found or not owned by you" });
       }
+      // CN-1h: same admission as the expert duplicate above, before the row exists.
+      const conciergeAdmission = await admitDuplicatedConciergeListing({
+        userId,
+        serviceId: service.id,
+        serviceType: service.serviceType,
+        pricingUnit: service.pricingUnit,
+      });
+      if (!conciergeAdmission.ok) {
+        return res.status(conciergeAdmission.status).json(conciergeAdmission.body);
+      }
       const duplicated = await storage.duplicateService(req.params.id, userId);
+      if (duplicated && conciergeAdmission.tasks !== null) {
+        await commitConciergeTasks(duplicated.id, conciergeAdmission.tasks);
+      }
       // NEW-2 (V3): same §18 read-side projection as the expert duplicate above.
       res.status(201).json(duplicated ? omitFields(duplicated, ["revenueShareRate"] as const) : duplicated);
     } catch (err) {
@@ -6841,7 +6869,20 @@ ${bannedCopyPromptLine()}`;
         sourceRef: templateId,
       };
 
+      // CN-1h: a concierge template is admitted before the row exists. Any other type is unchanged.
+      const conciergeAdmission = await admitFromTemplateConciergeListing({
+        userId,
+        serviceType,
+        body: req.body,
+      });
+      if (!conciergeAdmission.ok) {
+        return res.status(conciergeAdmission.status).json(conciergeAdmission.body);
+      }
+
       const service = await storage.createProviderService(serviceData as any);
+      if (conciergeAdmission.tasks !== null) {
+        await commitConciergeTasks(service.id, conciergeAdmission.tasks);
+      }
       res.status(201).json(service);
     } catch (err) {
       console.error("Error creating service from template:", err);
