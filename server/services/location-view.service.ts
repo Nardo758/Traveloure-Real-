@@ -275,6 +275,27 @@ interface CacheEntry {
 
 const locationViewCache = new Map<string, CacheEntry>();
 
+/**
+ * Drop cached city payloads for one city. A listing that just left the
+ * approved-and-active gate (Row 307: a serviceType change returns it to review)
+ * must not keep showing on /city/:slug for the rest of this cache window.
+ * Keys are `v5|<city>:<country>`, and a later type filter may append more
+ * after the country. The city is the segment before the first colon.
+ */
+export function invalidateLocationViewCache(cityName: string | null | undefined): void {
+  const city = (cityName ?? "").trim().toLowerCase();
+  if (!city) return;
+  const drop: string[] = [];
+  locationViewCache.forEach((_entry, key) => {
+    if (!key.startsWith("v5|")) return;
+    const rest = key.slice(3);
+    const sep = rest.indexOf(":");
+    const cachedCity = (sep === -1 ? rest : rest.slice(0, sep)).trim().toLowerCase();
+    if (cachedCity === city) drop.push(key);
+  });
+  for (const key of drop) locationViewCache.delete(key);
+}
+
 class LocationViewService {
   async getLocationView(
     cityName: string,
