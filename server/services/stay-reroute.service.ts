@@ -77,8 +77,12 @@ function point(lat: unknown, lng: unknown): { lat: number; lng: number } | null 
   return { lat: la, lng: ln };
 }
 
-/** The plan's stay item id, or null — the ONE choice of which item is the stay (see the header). */
-export async function stayItemIdForPlan(tripId: string): Promise<string | null> {
+/**
+ * The accommodation item a CHOSEN option set put on the plan — primary set first, else the newest
+ * chosen set. This is the first half of `stayItemIdForPlan` and the on-trip map's stay anchor.
+ * An open set and a hand-added lodging row are not chosen.
+ */
+export async function chosenStayItemId(tripId: string): Promise<string | null> {
   const [chosen] = await db
     .select({ itemId: planOptionSets.itineraryItemId })
     .from(planOptionSets)
@@ -92,7 +96,12 @@ export async function stayItemIdForPlan(tripId: string): Promise<string | null> 
     )
     .orderBy(sql`CASE WHEN ${planOptionSets.anchorRole} = 'primary' THEN 0 ELSE 1 END`, desc(planOptionSets.createdAt))
     .limit(1);
-  let itemId = chosen?.itemId ?? null;
+  return chosen?.itemId ?? null;
+}
+
+/** The plan's stay item id, or null — the ONE choice of which item is the stay (see the header). */
+export async function stayItemIdForPlan(tripId: string): Promise<string | null> {
+  let itemId = await chosenStayItemId(tripId);
   if (!itemId) {
     const [own] = await db
       .select({ id: itineraryItems.id })

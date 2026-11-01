@@ -783,6 +783,12 @@ export interface TripPlanPlancardExtras {
    * Flight data — never on a public page (`@shared/airport-leg`).
    */
   finalAirportLeg?: import("./trip-card-final").FinalAirportLeg;
+  /**
+   * Row 185 J5. The Trip Card's on-trip map (`projectOnTripMap`): today's confirmed stops
+   * from stored non-Google coordinates, the chosen stay anchor, and the current leg's leave-by.
+   * Present only on the card render (`render: "final"`). No sentences.
+   */
+  onTripMap?: import("./on-trip-map").OnTripMap;
   stats: TripPlanStats;
 }
 

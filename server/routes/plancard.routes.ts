@@ -1030,6 +1030,9 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       // Row 185 J6. Owner + final-render gating stays in the assembler. This whitelist
       // forwards the field only when that read attached it.
       ...(plan.plancard.finalAirportLeg ? { finalAirportLeg: plan.plancard.finalAirportLeg } : {}),
+      // Row 185 J5. The assembler attaches this only on the card render. A client position
+      // is not read and not stored — this handler takes no lat/lng from the query or the body.
+      ...(plan.plancard.onTripMap ? { onTripMap: plan.plancard.onTripMap } : {}),
       stats: plan.plancard.stats,
       // ADDITIVE TripPlan v1 envelope (docs/EXECUTION_MAP.md §3). New consumers read these;
       // existing consumers ignore them.
