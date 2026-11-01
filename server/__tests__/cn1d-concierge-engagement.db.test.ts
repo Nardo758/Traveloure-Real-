@@ -68,10 +68,24 @@ describe("access window", () => {
     assert.equal(conciergeAccessUntil("not-a-day", "America/New_York"), null);
   });
 
-  test("the accept window defaults to 48 hours", () => {
-    assert.equal(conciergeAcceptHours({} as NodeJS.ProcessEnv), 48);
-    assert.equal(conciergeAcceptHours({ CONCIERGE_ACCEPT_HOURS: "48" } as NodeJS.ProcessEnv), 48);
-    assert.equal(conciergeAcceptHours({ CONCIERGE_ACCEPT_HOURS: "0" } as NodeJS.ProcessEnv), 48);
+  test("the accept window is the env var only: unset, empty, 0 or invalid disables the job", () => {
+    for (const raw of [undefined, "", "  ", "0", "-3", "abc", "NaN", "Infinity"]) {
+      const env = (raw === undefined ? {} : { CONCIERGE_ACCEPT_HOURS: raw }) as NodeJS.ProcessEnv;
+      assert.equal(conciergeAcceptHours(env), null, String(raw));
+    }
+    assert.equal(conciergeAcceptHours({ CONCIERGE_ACCEPT_HOURS: "36" } as NodeJS.ProcessEnv), 36);
+    assert.equal(conciergeAcceptHours({ CONCIERGE_ACCEPT_HOURS: "1.5" } as NodeJS.ProcessEnv), 1.5);
+    const src = fs.readFileSync(path.join(ROOT, "server/services/concierge-accept-timeout.service.ts"), "utf8");
+    assert.doesNotMatch(src.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, ""), /\b48\b/, "no default hours literal in code");
+  });
+
+  test("the internal-jobs route is the only runner: no in-process scheduler", () => {
+    assert.equal(fs.existsSync(path.join(ROOT, "server/services/concierge-accept-timeout-scheduler.service.ts")), false);
+    const index = fs.readFileSync(path.join(ROOT, "server/index.ts"), "utf8");
+    assert.doesNotMatch(index, /concierge-accept-timeout|conciergeAcceptTimeout/);
+    const internal = fs.readFileSync(path.join(ROOT, "server/routes/internal.routes.ts"), "utf8");
+    assert.match(internal, /\{ job: "concierge-accept-timeout", expectedIntervalSec: 60 \* 60, bucket: "hourly" \}/);
+    assert.match(internal, /router\.post\("\/internal\/jobs\/concierge-accept-timeout", requireInternalSecret/);
   });
 });
 
@@ -150,12 +164,7 @@ async function booking(opts: { id: string; tripId: string; status: string; ageHo
 }
 
 test("accept sets source concierge and access_until at the end of the last day", async () => {
-  await grantConciergeAdvisorOnAccept({
-    tripId: tripDst,
-    localExpertId: expert,
-    endDate: "2026-11-01",
-    timezone: "America/New_York",
-  });
+  await grantConciergeAdvisorOnAccept({ tripId: tripDst, localExpertId: expert });
   const row = await advisor(tripDst);
   assert.equal(row?.status, "accepted");
   assert.equal(row?.source, "concierge");
@@ -174,12 +183,7 @@ test("a handoff pending row then a concierge accept keeps concierge access", asy
   assert.equal(row?.status, "pending");
   assert.equal(row?.source, "handoff");
   assert.equal(row?.access_until, null);
-  await grantConciergeAdvisorOnAccept({
-    tripId: tripHandoff,
-    localExpertId: expert,
-    endDate: "2027-06-03",
-    timezone: "America/New_York",
-  });
+  await grantConciergeAdvisorOnAccept({ tripId: tripHandoff, localExpertId: expert });
   row = await advisor(tripHandoff);
   assert.equal(row?.status, "accepted");
   assert.equal(row?.source, "concierge");
@@ -246,7 +250,10 @@ test("the timeout refunds an unaccepted concierge booking and reuses booking_can
     WHERE trip_id = ${tripDst} AND local_expert_id = ${expert}
   `);
   refundKeys.length = 0;
-  const result = await runConciergeAcceptTimeout(new Date());
+  const disabled = await runConciergeAcceptTimeout(new Date(), {} as NodeJS.ProcessEnv);
+  assert.deepEqual(disabled, { scanned: 0, declined: 0, errors: 0, disabled: true }, "unset window: the job is a no-op");
+  assert.deepEqual(refundKeys, []);
+  const result = await runConciergeAcceptTimeout(new Date(), { CONCIERGE_ACCEPT_HOURS: "48" } as NodeJS.ProcessEnv);
   assert.equal(result.declined, 1);
   assert.equal(result.errors, 0);
   assert.deepEqual(refundKeys, [`refund-sb-${oldId}-8000`]);
@@ -266,12 +273,7 @@ test("the timeout refunds an unaccepted concierge booking and reuses booking_can
 });
 
 test("handoff decline and withdraw do not end an accepted concierge row", async () => {
-  await grantConciergeAdvisorOnAccept({
-    tripId: tripHandoff,
-    localExpertId: expert,
-    endDate: "2027-06-03",
-    timezone: "America/New_York",
-  });
+  await grantConciergeAdvisorOnAccept({ tripId: tripHandoff, localExpertId: expert });
   const before = await advisor(tripHandoff);
   const declineId = crypto.randomUUID();
   const withdrawId = crypto.randomUUID();

@@ -52,7 +52,7 @@ import { accommodationCategoryId, isPropertyProductShape } from "./utils/propert
 import { trackFunnelEvent } from "./utils/funnelTracker";
 import fs from "fs";
 import path from "path";
-import { storage, ExpertApplicationExistsError, stampItemSourceClass, type BookingStatusNotification } from "./storage";
+import { storage, ExpertApplicationExistsError, stampItemSourceClass, type BookingStatusNotification, type BookingStatusInTransaction } from "./storage";
 import { claimFreeDraft, promoteFreeDraft, releaseFreeDraft, freeDraftRefusalBody, FREE_DRAFT_REFUSAL_STATUS } from "./services/free-draft-cap.service";
 import { isFreeDraftEligible } from "@shared/content-tiers";
 import { freeDraftGemContext } from "@shared/share-projection";
@@ -7914,14 +7914,40 @@ ${bannedCopyPromptLine()}`;
           }
         : undefined;
 
-      const updated = await storage.updateServiceBookingStatus(
-        req.params.id,
-        status,
-        reason,
-        allowedFrom,
-        notify,
-        acceptPayoutSnapshot,
-      );
+      // CN-1d: a concierge accept grants the expert plan access, and that grant is PART of the
+      // accept — it runs on the status flip's own transaction, so if it fails the booking is not
+      // accepted and the error is returned. Decided BEFORE the flip; the acting expert is the
+      // session user, already checked as the booking's owner (§14).
+      let conciergeGrant: BookingStatusInTransaction | undefined;
+      if (status === "confirmed" && booking.tripId) {
+        const [ownerRow] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1);
+        const acceptService = booking.serviceId ? await storage.getProviderServiceById(booking.serviceId) : null;
+        if (isExpertRole(ownerRow?.role) && acceptService?.serviceType === "concierge") {
+          const tripId = booking.tripId;
+          conciergeGrant = (tx) => grantConciergeAdvisorOnAccept({ tripId, localExpertId: userId, tx });
+        }
+      }
+
+      let updated: Awaited<ReturnType<typeof storage.updateServiceBookingStatus>>;
+      try {
+        updated = await storage.updateServiceBookingStatus(
+          req.params.id,
+          status,
+          reason,
+          allowedFrom,
+          notify,
+          acceptPayoutSnapshot,
+          conciergeGrant,
+        );
+      } catch (grantErr: any) {
+        if (!conciergeGrant) throw grantErr;
+        // The accept rolled back with the grant. Return the error as it was raised (its own
+        // message, code and status — e.g. expert_not_routable 409); never a silent success.
+        console.error("[concierge-accept] advisor grant failed; accept rolled back", req.params.id, grantErr);
+        return res
+          .status(typeof grantErr?.status === "number" ? grantErr.status : 500)
+          .json({ message: grantErr?.message ?? String(grantErr), ...(grantErr?.code ? { code: grantErr.code } : {}) });
+      }
       if (!updated) {
         // Lost the atomic race (or the row vanished): another actor moved it first. Exactly one
         // caller wins; the loser changes nothing and fires no side-effects — including no
@@ -7939,7 +7965,9 @@ ${bannedCopyPromptLine()}`;
       // table has a UNIQUE(tripId, localExpertId) index, so an existing row (any
       // status) is reused rather than re-inserted; a pending row is atomically
       // flipped to accepted. Accept-only — decline/other statuses never reach here.
-      if (status === "confirmed" && booking.tripId) {
+      // The concierge accept granted its access inside the flip above; this bridge covers every other
+      // expert booking and stays non-fatal, as before.
+      if (status === "confirmed" && booking.tripId && !conciergeGrant) {
         try {
           const [ownerRow] = await db
             .select({ role: users.role })
@@ -7947,35 +7975,20 @@ ${bannedCopyPromptLine()}`;
             .where(eq(users.id, userId))
             .limit(1);
           if (isExpertRole(ownerRow?.role)) {
-            const service = booking.serviceId ? await storage.getProviderServiceById(booking.serviceId) : null;
-            if (service?.serviceType === "concierge") {
-              const [tripRow] = await db
-                .select({ endDate: trips.endDate, timezone: trips.timezone })
-                .from(trips)
-                .where(eq(trips.id, booking.tripId))
-                .limit(1);
-              await grantConciergeAdvisorOnAccept({
+            const existing = await storage.getTripExpertAdvisoryAssignment(booking.tripId, userId);
+            if (!existing) {
+              await storage.createTripExpertAdvisor({
                 tripId: booking.tripId,
                 localExpertId: userId,
-                endDate: tripRow?.endDate ?? null,
-                timezone: tripRow?.timezone ?? null,
+                status: "accepted",
               });
-            } else {
-              const existing = await storage.getTripExpertAdvisoryAssignment(booking.tripId, userId);
-              if (!existing) {
-                await storage.createTripExpertAdvisor({
-                  tripId: booking.tripId,
-                  localExpertId: userId,
-                  status: "accepted",
-                });
-              } else if (existing.status === "pending") {
-                await storage.acceptTripAssignment(existing.id, userId);
-              }
-              // Any other existing status (already accepted, rejected) is left as-is.
+            } else if (existing.status === "pending") {
+              await storage.acceptTripAssignment(existing.id, userId);
             }
+            // Any other existing status (already accepted, rejected) is left as-is.
           }
         } catch (bridgeErr) {
-          // Non-fatal: the booking accept itself must still succeed.
+          // Non-fatal for a non-concierge booking: the booking accept itself must still succeed.
           console.error("Failed to bridge booking accept to trip_expert_advisors:", bridgeErr);
         }
       }

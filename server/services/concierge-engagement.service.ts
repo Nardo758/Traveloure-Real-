@@ -4,23 +4,35 @@
  * the existing owner decline: a captured charge is refunded, not held.
  */
 import { conciergeAccessUntil } from "@shared/concierge-access";
-import { upsertTripAdvisorRow } from "./booking-actions.service";
+import { upsertTripAdvisorRow, type TripAdvisorRowExecutor } from "./booking-actions.service";
 import { db } from "../db";
-import { tripExpertAdvisors } from "@shared/schema";
+import { tripExpertAdvisors, trips } from "@shared/schema";
 import { and, eq } from "drizzle-orm";
 
+/**
+ * Part of the concierge accept, not a side effect of it: the accept route runs this on the status
+ * flip's own transaction (`tx`), so a failure here (an unroutable expert, the trip gone) rolls the
+ * accept back and the error reaches the caller. It throws; it never swallows.
+ */
 export async function grantConciergeAdvisorOnAccept(input: {
   tripId: string;
   localExpertId: string;
-  endDate: string | Date | null | undefined;
-  timezone: string | null | undefined;
+  tx?: TripAdvisorRowExecutor;
 }): Promise<void> {
+  const exec = (input.tx ?? db) as typeof db;
+  const [trip] = await exec
+    .select({ endDate: trips.endDate, timezone: trips.timezone })
+    .from(trips)
+    .where(eq(trips.id, input.tripId))
+    .limit(1);
+  if (!trip) throw new Error(`concierge accept: trip ${input.tripId} not found`);
   await upsertTripAdvisorRow({
     tripId: input.tripId,
     localExpertId: input.localExpertId,
     status: "accepted",
     source: "concierge",
-    accessUntil: conciergeAccessUntil(input.endDate, input.timezone),
+    accessUntil: conciergeAccessUntil(trip.endDate, trip.timezone),
+    tx: input.tx,
   });
 }
 
