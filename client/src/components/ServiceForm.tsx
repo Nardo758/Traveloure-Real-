@@ -37,7 +37,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useExpertVerificationStatus } from "@/hooks/use-expert-verification-status";
 import { LOCAL_EXPERT_TIERS, TRIP_PLANNER_TIERS, isAffiliateCategory } from "@/lib/earn-roles";
-import { DEFAULT_LISTING_TYPE, LISTING_TYPE_CHOICES, listingTypeFromStored, listingTypePayload } from "@/lib/listing-type";
+import { DEFAULT_LISTING_TYPE, LISTING_TYPE_CHOICES, listingTypeEditable, listingTypeFromStored, listingTypePayload } from "@/lib/listing-type";
 import {
   parseStoredPoint,
   type LocationPoint,
@@ -3798,14 +3798,20 @@ export function ServiceForm({ role, id, onSuccess, draftOnly = false }: ServiceF
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2" role="radiogroup">
                 {LISTING_TYPE_CHOICES.map((choice) => {
                   const selected = formData.serviceType === choice.value;
+                  // An approved listing keeps its type; drafts and pending listings may change it.
+                  const typeLocked = isEditMode && !listingTypeEditable(formData.approvalStatus);
                   return (
                     <button
                       key={choice.value}
                       type="button"
                       role="radio"
                       aria-checked={selected}
-                      onClick={() => setFormData((prev) => ({ ...prev, serviceType: choice.value }))}
-                      className={`text-left rounded-md border p-3 text-sm ${selected ? "border-primary bg-primary/5 font-semibold" : "border-border"}`}
+                      disabled={typeLocked}
+                      onClick={() => {
+                        if (typeLocked) return;
+                        setFormData((prev) => ({ ...prev, serviceType: choice.value }));
+                      }}
+                      className={`text-left rounded-md border p-3 text-sm disabled:cursor-not-allowed disabled:opacity-60 ${selected ? "border-primary bg-primary/5 font-semibold" : "border-border"}`}
                       data-testid={`listing-type-${choice.value}`}
                     >
                       {choice.label}

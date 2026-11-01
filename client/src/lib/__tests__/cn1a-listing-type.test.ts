@@ -6,6 +6,7 @@
  *   T3  an edit that leaves the type alone sends back the stored type, so it never flips
  *   T4  local_expert sees the live-support tier and the concierge choice; the choice reads CN-1's held keys
  *   T5  a provider listing sends no type at all
+ *   T6  an approved listing's type choice is disabled; a draft, pending, rejected or new listing may change it
  *
  * Run: node --import ./client/src/lib/__tests__/lc1-css-register.mjs --import tsx --test client/src/lib/__tests__/cn1a-listing-type.test.ts
  */
@@ -13,7 +14,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { CN1_COPY } from "@shared/cn1-copy";
-import { DEFAULT_LISTING_TYPE, LISTING_TYPE_CHOICES, listingTypeFromStored, listingTypePayload } from "../listing-type";
+import { DEFAULT_LISTING_TYPE, LISTING_TYPE_CHOICES, listingTypeEditable, listingTypeFromStored, listingTypePayload } from "../listing-type";
 import { LOCAL_EXPERT_TIERS } from "../earn-roles";
 
 const form = readFileSync("client/src/components/ServiceForm.tsx", "utf8");
@@ -54,5 +55,13 @@ describe("CN-1a-UI: listing type choice", () => {
 
   it("T5 a provider listing sends no type", () => {
     assert.deepEqual(listingTypePayload("provider", "concierge"), {});
+  });
+
+  it("T6 an approved listing keeps its type; drafts and pending listings may change it", () => {
+    assert.equal(listingTypeEditable("approved"), false);
+    for (const status of ["draft", "submitted", "rejected", null, undefined]) assert.equal(listingTypeEditable(status as any), true, String(status));
+    assert.match(form, /const typeLocked = isEditMode && !listingTypeEditable\(formData\.approvalStatus\);/);
+    assert.match(form, /disabled=\{typeLocked\}/);
+    assert.match(form, /if \(typeLocked\) return;/);
   });
 });
