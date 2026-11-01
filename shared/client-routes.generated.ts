@@ -19,6 +19,7 @@ export const CLIENT_ROUTES: readonly string[] = [
   "/admin/categories",
   "/admin/category-fees",
   "/admin/concierge-requests",
+  "/admin/concierge-task-kinds",
   "/admin/content-mapping",
   "/admin/content-ops",
   "/admin/content-sources",
