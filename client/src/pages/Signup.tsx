@@ -112,7 +112,7 @@ export function SignupPage() {
         }),
       });
       const read = await readAuthResponse(res);
-      if (read.kind === "json" && res.status === 400 && Array.isArray(read.data.errors) &&
+      if (read.kind === "json" && res.status === 400 && "errors" in read.data && Array.isArray(read.data.errors) &&
           read.data.errors.some((issue: { path?: unknown[] }) => issue.path?.[0] === "timeZone")) {
         setError(t("fields.timeZoneInvalid"));
         return;

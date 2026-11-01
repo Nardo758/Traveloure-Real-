@@ -2,9 +2,12 @@
 
 **DEV-CLOSED WITH BLOCKERS. RELEASE HELD. REGISTER NOT YET BUILD-COMPLETE.**
 
-Report date: 2026-10-31. Documentation only. No test, build, provider call,
+Inventory snapshot: 2026-10-31. Documentation only. No test, build, provider call,
 database query, migration, runtime edit, restart, flag change, push or merge
 was performed for this inventory.
+
+Fresh verification is recorded in the dated addendum below; the inventory's
+historical statements are not claims about that later verification.
 
 ## Source, counting and classification
 
@@ -205,7 +208,7 @@ locator is not authorization to edit a payment writer or convert a sender.
 | C22 | Late-night first step / later due times | EXISTS | ITIN original generation timestamps and next-window deferral |
 | C23 | Cart wins over itinerary; loser deferred | BUILT | Held SWEEP/SEND + CART-LOOPS readable subset; not integrated into main; future-day slot priority is W-PRIORITY |
 | C24 | Cap used / deferred not lost | EXISTS | ITIN reservation and next-window recheck |
-| C25 | Missing time zone holds | NOT BUILT | ZONE-DEV code/tests visible, but its own two clean-loop evidence was not located in this inventory; do not copy PDF BUILT label or rebuild code |
+| C25 | Missing time zone holds | NOT BUILT | 2026-11-01: targeted cases 10/10, enclosing isolated suite 28/30; 0/2 clean full loops. Stopped after first failed loop; 2 retained fixture gaps, no runtime edits. See fresh evidence below. |
 | C26 | Same behavior across plan tiers | NOT BUILT | ITIN exists; exact tier matrix/no-credit scenario harness not established |
 | C27 | New generation fails / old plan | WAITING | W-ITIN-POLICY: Z-14 policy and sequence semantics need confirmation |
 | C28 | Failed attempt then successful plan | EXISTS | ITIN failed/ready generation separation |
@@ -485,10 +488,11 @@ carried-forward blockers for the final build-complete gate.
 2. **Missing-zone code exists; do not rebuild.** ZONE-DEV holds a missing
    zone, but only after the existing consent/quiet-hour preferences are
    otherwise valid. Invalid zone still maps to invalid_preferences.
-   No standalone two-clean-loop evidence for this correction was located
-   in the inspected report set, so C25 is conservatively NOT BUILT under
-   the owner's loop-based definition, not “no code.” First action after
-   approval is locate/reconcile its retained proof, not rewrite it.
+   At inventory time no standalone two-clean-loop evidence was located.
+   Fresh 2026-11-01 verification passed 10/10 targeted cases but failed
+   2 surrounding cases (28/30 overall); 0 clean full loops. C25 remains
+   NOT BUILT under the owner's loop-based definition, not “no code.”
+   Do not rebuild the hold or promote the row from targeted passes alone.
    No production counts of invalid-preference cancellations were queried.
 3. **Cart readable subset exists on the visible held branch; do not
    rebuild.** CART-LOOPS reports two clean native loops for Parts 4–6;
@@ -527,7 +531,7 @@ touch list before each change. Atomic reset and held cart code must be
 reused, not recreated. No runtime slice, test execution, real email setup,
 provider call or release activation is authorized by this report.
 
-## Approved build-only slice — signup time-zone capture
+## Historical build-only slice — signup time-zone capture
 
 Owner approved the inventory, deferred C25 proof, approved this slice's
 ten-file touch list for **build only**, and explicitly approved carrying
@@ -588,3 +592,151 @@ payment or production route was exercised.
 
 **STOP: build-only work is not DEV-CLOSED. Testing, real email and release
 remain held. No next slice starts without its own approved gap list.**
+
+## Verification authorization — 2026-11-01
+
+The owner clarified that build verification is authorized: typecheck,
+static guards, registry, mutation-auth checks and provider-free loops.
+Two consecutive clean provider-free loops are required for BUILT.
+Real delivery, QA-inbox observation, real elapsed time, real-provider
+concurrency and end-to-end journeys remain held. Sending settings stay off.
+
+The earlier build-only 0-run record above is historical, not a continued
+hold on provider-free verification. No scenario count is raised merely
+because a test has been authored or because a browser-zone suggestion exists.
+
+### Default and skipped-zone behavior
+
+Both signup inputs default to an empty string. Browser zone detection only
+offers a separate suggestion button; it does not select or submit the zone.
+No IP, city, language or server-zone inference is made. A skipped/blank zone
+is omitted from the request and no timeZone preference is written.
+Signup does not create marketing consent or quiet-hour preferences.
+Without valid marketing eligibility no marketing sends. On the held C25
+implementation a missing-zone row holds only when the other consent and
+quiet-hour preferences are already valid; invalid preferences retain their
+existing cancellation behavior. That code is not silently copied into main.
+
+### Browser pre-fill proposal — NOT IMPLEMENTED
+
+Offer the browser-reported IANA zone pre-filled for review, with an explicit,
+initially unconfirmed confirmation control. Submit the zone only after
+confirmation or an explicit manual choice. If skipped, unavailable or
+unconfirmed, omit it exactly as today. No IP fallback and no marketing
+consent implication. Recommend this opt-in confirmation design; it requires
+a separately approved touch list and provider-free browser-field proofs.
+
+### Fresh verification evidence
+
+Private evidence directory:
+`.local/verification-evidence/signup-timezone-20261101/`.
+
+The first signup typecheck reported 114 diagnostics, including 4 new
+response-type errors in the two forms. Narrowing the existing response body
+before accessing validation errors fixed those 4 without changing other
+authentication paths. The fresh source baseline is 110, ceiling 111.
+
+Two isolated-fixture setup gaps were also identified, without changing
+shared data or runtime code: the empty fixture lacks the CI-required open
+signup setting, and PostgreSQL LIKE INCLUDING ALL changes the copied email
+unique-constraint name to users_email_key. Development's source constraint
+was read-only verified as users_email_unique / UNIQUE (email).
+Only each owned, disposable namespace receives the signup-mode fixture and
+the original constraint name. Uniqueness is preserved, not weakened.
+The missing-configuration attempt failed 11/22 tests; the next fixture
+attempt passed 20/22 and exposed the copied-name mismatch. These failures
+reset clean-loop counts and are not counted as successful loops.
+
+The source review found no new sender, consent default, quiet-hour default,
+table, schema migration or scheduler. The explicitly chosen zone adds the
+existing locked preferences read/update inside signup's existing transaction;
+omitting the zone adds neither query. No benchmark or real-provider proof
+is claimed. Existing standalone preferences-writer calls retain their own
+transaction and afterWrite behavior.
+
+### Signup result — DEV-CLOSED, provider-free scope only
+
+| Gate | Loop 3 | Loop 4 |
+|---|---:|---:|
+| Registration / preferences database cases | 22/22 | 22/22 |
+| UI render / source-contract cases | 15/15 | 15/15 |
+| Combined tests | 37/37 | 37/37 |
+| Static guard batch | 79/79 | 79/79 |
+| Mutation manifest / coverage checks | 2/2 | 2/2 |
+| Registry / roster | 2/2 | 2/2 |
+| Diagnostics / ceiling | 110/111 | 110/111 |
+| New diagnostics vs fresh source baseline | 0 | 0 |
+| Cancelled / skipped tests | 0/0 | 0/0 |
+| Owned test schemas removed | 1 | 1 |
+
+Two consecutive clean loops: 2. Runtime fix: response type narrowing in
+2 existing form files. No globally clean typecheck claim: compiler exits
+nonzero with the same 110 baseline diagnostics. Diagnostic identity was
+compared against a separate checkout of the exact source base, not merely
+against a count. Mutation rail set unchanged (739 registrations); stale
+line-number notices are non-failing and no generated manifest was edited.
+
+Absence assertions in the provider-free cases cover rejected/rolled-back
+account/outbox state and unchanged duplicate preferences. Transport keys
+are stripped by the retained harness and the real send gate remains off.
+These are not QA-inbox observation, provider delivery or four-part live
+absence proof. Browser interaction journeys were not run.
+
+Evidence: `signup-final-summary.json`, `typecheck-comparison.json`,
+`loop3-*`, `loop4-*`. Guard artifacts were moved from the runner's default
+generated output into `guard-artifacts/` in the private evidence directory.
+The original build-only record is superseded for signup build verification,
+not for release authorization.
+
+### C25 result — STOPPED / BLOCKED, not DEV-CLOSED
+
+Verified the existing implementation from the preserved
+`work/stage2-part4-atomic-reset-timezone` branch in a separate checkout.
+No C25 code was copied into the signup slice and no C25 runtime or test
+source was changed.
+
+| Metric | Count |
+|---|---:|
+| Full isolated itinerary suite passed / total | 28/30 |
+| Failed tests | 2 |
+| Targeted missing-zone cases passed / total | 10/10 |
+| Attempted full loops | 1 |
+| Clean full loops | 0/2 |
+| Second full loop executed | 0 |
+| C25 runtime / fixture-source changes | 0/0 |
+| Owned schema removed | 1 |
+
+Failed retained tests:
+
+1. `itinerary_followup_24h SQL loop 1: registry fires, persisted send, stable retry identity`
+   — expected expert copy absent; the retained expert fixture lacks the
+   verified-identity and complete-Connect fields required for eligibility.
+2. `actual outbox claim routes a due follow-up and will not claim a future one`
+   — expected 1 stub send, observed 0; the retained fixture lacks the
+   explicit bookable/expert/age options used by the separately preserved
+   fixture correction.
+
+These match the two existing fixture-only corrections preserved in
+`8a6a71630a0efa789dd57a031c5e9edd9cd02749`; they were identified, not applied.
+The latest instruction says stop on a C25 loop failure. No retry, guarantee
+change or runtime fix was attempted. This is not STRUCTURAL RISK after six
+loops: only one full C25 loop was attempted.
+
+The retained approved isolation tool reported migration-416 fixture column
+already present (`added=0`) and removed its namespace. No migration was
+applied to shared development. Evidence: `c25-loop1.log`,
+`c25-loop1-summary.json`, `c25-final-summary.json`.
+
+### Current register counts and held proof
+
+| BUILT | EXISTS | WAITING | NOT BUILT | EXCLUDED | Total |
+|---:|---:|---:|---:|---:|---:|
+| 33 | 76 | 70 | 88 | 2 | 269 |
+
+Changed scenario classifications: 0. Signup capture is a verified supporting
+capability, not a new 270th scenario or completion of the absent verification
+reminder family. C25 stays NOT BUILT because its full clean-loop gate failed.
+A09 and F12 are not promoted. Real deliveries, QA-inbox observations, real
+elapsed-time proofs, real-provider concurrency and journeys: 0 each.
+Shared send-setting changes, production changes, migrations, pushes,
+merges and deployment actions: 0 each. RELEASE HELD.

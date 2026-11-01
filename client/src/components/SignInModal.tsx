@@ -162,7 +162,7 @@ export function SignInModal({
 
       const read = await readAuthResponse(response);
       if (mode === "signup" && read.kind === "json" && response.status === 400 &&
-          Array.isArray(read.data.errors) &&
+          "errors" in read.data && Array.isArray(read.data.errors) &&
           read.data.errors.some((issue: { path?: unknown[] }) => issue.path?.[0] === "timeZone")) {
         throw new Error(t("fields.timeZoneInvalid"));
       }
