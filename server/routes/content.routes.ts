@@ -37,6 +37,7 @@ import {
   resolveClickAttribution,
 } from "../services/discover-impressions.service";
 import { UNKNOWN_THEME_MESSAGE, parseDiscoverThemeParam } from "@shared/experience-themes";
+import { parseServiceTypeQuery, UNKNOWN_SERVICE_TYPE_MESSAGE } from "@shared/service-type-query";
 import { resolveThemeIdsBySlug } from "../services/experience-themes.service";
 import { db } from "../db";
 import { storage } from "../storage";
@@ -1008,9 +1009,21 @@ router.get("/api/discover/location/:city", async (req, res) => {
       // date passthrough harvested from the routes.ts shadow copy — the service's
       // LocationViewOptions.date exists for this route (no behavior change server-side yet).
       const date = typeof req.query.date === "string" ? req.query.date : undefined;
+      // CN-1c: the city page (/city/:slug → this payload) can ask for one listing type.
+      // Absent means every type. The services section keeps its approved-and-active gate.
+      const parsedType = parseServiceTypeQuery(req.query.serviceType);
+      if (!parsedType.ok) {
+        return res.status(400).json({ message: UNKNOWN_SERVICE_TYPE_MESSAGE });
+      }
 
       const { locationViewService } = await import("../services/location-view.service");
-      const payload = await locationViewService.getLocationView(city, country, { month, year, limit, date });
+      const payload = await locationViewService.getLocationView(city, country, {
+        month,
+        year,
+        limit,
+        date,
+        ...(parsedType.serviceType ? { serviceType: parsedType.serviceType } : {}),
+      });
       res.set("Cache-Control", "public, max-age=300");
       res.json(payload);
     } catch (err: any) {
@@ -2994,7 +3007,12 @@ router.get("/api/services/:id", async (req, res) => {
 router.get("/api/services", async (req, res) => {
     const categoryId = req.query.categoryId as string | undefined;
     const location = req.query.location as string | undefined;
-    const services = await storage.getAllActiveServices(categoryId, location);
+    // CN-1c: optional serviceType. The approved-and-active gate stays inside getAllActiveServices.
+    const parsedType = parseServiceTypeQuery(req.query.serviceType);
+    if (!parsedType.ok) {
+      return res.status(400).json({ message: UNKNOWN_SERVICE_TYPE_MESSAGE });
+    }
+    const services = await storage.getAllActiveServices(categoryId, location, parsedType.serviceType ?? undefined);
     // S8/G2 privacy circle (docs/briefs/WAVE3_SCHEMA_PROPOSALS.md, ledger row 102): the same
     // pre-booking jitter as the public detail read, applied here so the public BROWSE list never
     // carries an exact property/room pin either. Every other product shape is returned untouched
