@@ -1061,6 +1061,16 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
       console.warn("[Optimizer] Traveler profile fetch failed (non-critical):", (err as Error).message);
     }
     const travelerProfileSection = travelerProfile ? buildTravelerProfilePromptSection(travelerProfile) : "";
+    // Row 306: the traveler's own selection pattern (plain counts). "" while `selection_profile` is off or when there
+    // is no trait, so the prompt is unchanged; a read failure is no signal, never a failed run.
+    let selectionProfileSection = "";
+    try {
+      const { readSelectionTraits } = await import("./services/selection-profile.service");
+      const { selectionTraitsPromptLine } = await import("@shared/selection-profile");
+      selectionProfileSection = selectionTraitsPromptLine(await readSelectionTraits(userId));
+    } catch (err) {
+      console.warn("[Optimizer] selection profile read failed (non-critical):", (err as Error).message);
+    }
     const profileTransportPrefs = travelerProfile ? effectiveProfileToTransportPrefs(travelerProfile.effective) : {};
     // An explicit prefs object passed in by the caller (none does today — see the service
     // header's note) still wins over the profile-derived defaults, same "explicit beats derived"
@@ -1364,7 +1374,7 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
 
     const prompt = `You are a travel optimization AI. Analyze the user's itinerary and generate 3 optimized alternatives.
 
-DESTINATION: ${destination} | DATES: ${startDate} to ${endDate} | TRAVELERS: ${travelers || 1} | BUDGET: ${budget ? `$${budget}` : "Open"}${logisticsContextSection}${cityIntelligenceSection}${travelerProfileSection}${anchorPromptSection}${fixedCommitmentSection}${marqueeSection}
+DESTINATION: ${destination} | DATES: ${startDate} to ${endDate} | TRAVELERS: ${travelers || 1} | BUDGET: ${budget ? `$${budget}` : "Open"}${logisticsContextSection}${cityIntelligenceSection}${travelerProfileSection}${selectionProfileSection}${anchorPromptSection}${fixedCommitmentSection}${marqueeSection}
 
 USER'S CURRENT ITINERARY:
 ${compactBaseline}

@@ -2250,4 +2250,8 @@ export const MIGRATION_FILES = [
   // owner approves the SQL on the pull request. 422 and 423 are open PRs; 426 is #1816.
   // Ledger 2026-10-31-kyoto-1796-item7.
   "427_kyoto_1796_item7_copy.sql",
+  // Row 306 (CS-3 brief 10, selection profile): selection_events, one coarse row per planner action while
+  // `selection_profile` is on. HELD until the owner approves the SQL on the pull request.
+  // Ledger 2026-11-01-row306-selection-profile-server.
+  "428_selection_events.sql",
 ] as const;

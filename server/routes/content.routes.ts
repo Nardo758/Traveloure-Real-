@@ -1650,6 +1650,33 @@ router.get("/api/search/catalogue", async (req, res) => {
   }
 });
 
+// Row 306 (CS-3 brief 10): the traveler's own selection profile. Session-owned (§14): the owner is the session,
+// never the body or the query. While `selection_profile` is off the read answers { enabled: false, traits: [] }.
+router.get("/api/me/selection-profile", isAuthenticated, async (req, res) => {
+  try {
+    const { readSelectionTraits, selectionProfileOn } = await import("../services/selection-profile.service");
+    const enabled = await selectionProfileOn();
+    const traits = enabled ? await readSelectionTraits(getUserId(req)) : [];
+    res.set("Cache-Control", "private, no-store");
+    res.json({ enabled, traits });
+  } catch (err) {
+    console.error(`[selection-profile] read failed (${(err as any)?.code ?? "error"})`);
+    res.status(500).json({ reason: "selection_profile_read_failed" });
+  }
+});
+
+// Reset clears the traveler's own rows. It takes no body; the owner is the session.
+router.post("/api/me/selection-profile/reset", isAuthenticated, async (req, res) => {
+  try {
+    const { resetSelectionProfile } = await import("../services/selection-profile.service");
+    const removed = await resetSelectionProfile(getUserId(req)!);
+    res.json({ reset: true, removed });
+  } catch (err) {
+    console.error(`[selection-profile] reset failed (${(err as any)?.code ?? "error"})`);
+    res.status(500).json({ reason: "selection_profile_reset_failed" });
+  }
+});
+
 // VD-1: live Viator product search (Partner API, Basic Access). Nothing is stored; the price is as of
 // this request; every item names Viator. Off unless VIATOR_DIRECT_ENABLED=1; Kyoto only.
 router.get("/api/viator/live/products", isAuthenticated, async (req, res) => {
@@ -3054,6 +3081,12 @@ router.get("/api/discover", async (req, res) => {
     const resolvedThemes = await resolveThemeIdsBySlug(parsedThemes.slugs);
     if (!resolvedThemes.ok) {
       return res.status(400).json({ message: UNKNOWN_THEME_MESSAGE });
+    }
+    // Row 306: a signed-in traveler's text search is one "search" row — the action only, never the words
+    // (no-op unless `selection_profile` is on; never delays or fails the search).
+    if (typeof req.query.q === "string" && req.query.q.trim() && getUserId(req)) {
+      const { recordSelection } = await import("../services/selection-profile.service");
+      void recordSelection({ userId: getUserId(req), action: "search" });
     }
     const filters = {
       query: req.query.q as string | undefined,
@@ -4938,8 +4971,18 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
           storage.getDayBoundaries(tripIdParam),
         ]);
       }
+      // Row 306: the planner reads the traveler's own selection pattern; "" while `selection_profile` is off or with
+      // no trait, so the prompt is unchanged. A read failure is no signal, never a failed draft.
+      let selectionProfileLine = "";
+      try {
+        const { readSelectionTraits } = await import("../services/selection-profile.service");
+        const { selectionTraitsPromptLine } = await import("@shared/selection-profile");
+        selectionProfileLine = selectionTraitsPromptLine(await readSelectionTraits(userId));
+      } catch (err) {
+        console.warn(`[generate-itinerary] selection profile read failed (${(err as any)?.code ?? "error"})`);
+      }
       const anchorBlock =
-        buildAnchorPromptBlock(tripAnchors, tripBoundaries, dates.start) + draftBasisPromptBlock(draftBasis, heldSlots);
+        buildAnchorPromptBlock(tripAnchors, tripBoundaries, dates.start) + draftBasisPromptBlock(draftBasis, heldSlots) + selectionProfileLine;
 
       // Generate itinerary (Anthropic draft tier) — deduplicated + circuit-broken.
       //
