@@ -378,3 +378,29 @@ describe("service detail — provider shapes", () => {
     assert.equal(SERVICE_DETAIL_ASK_LABEL.dates, "Pick your dates");
   });
 });
+
+// CN-1d-UI (ledger `2026-11-01-cn1d-ui-server-reads`) — sanctioned addition: the concierge row.
+describe("resolver — a concierge listing is hired for one trip", () => {
+  it("S3 concierge → hire / 'Hire for this trip', lands on checkout, needs a plan; never Book or Request", () => {
+    for (const over of [{}, { bookingMode: "request" as const }, { hasPublishedAvailability: false }, { deliveryMethod: "async_messaging" }]) {
+      const action = resolveBuyAction(p1({ serviceType: "concierge", ...over }), MEMBER);
+      assert.equal(action.primary.kind, "hire");
+      assert.equal(action.primary.label, "Hire for this trip");
+      assert.equal(action.secondary, undefined, "no tripless add beside it");
+      assert.equal(action.landing.store, "checkout");
+      assert.deepEqual(action.ask, ["which_plan"]);
+    }
+    assert.deepEqual(resolveBuyAction(p1({ serviceType: "concierge" }), GUEST).ask, ["sign_in", "which_plan"]);
+    assert.deepEqual(resolveBuyAction(p1({ serviceType: "concierge" }), { ...MEMBER, chipTripId: "t1" }).ask, []);
+    // A hidden or not-live concierge listing is still not available, exactly as any listing.
+    assert.equal(resolveBuyAction(p1({ serviceType: "concierge", isLive: false }), MEMBER).refusal?.reason, "not_available");
+  });
+
+  it("S3 other listing types resolve exactly as before", () => {
+    for (const serviceType of [undefined, null, "planning", "consultation"]) {
+      assert.deepEqual(resolveBuyAction(p1({ serviceType }), MEMBER), resolveBuyAction(p1(), MEMBER));
+      assert.deepEqual(resolveBuyAction({ ...P5, serviceType }, MEMBER), resolveBuyAction(P5, MEMBER));
+    }
+    assert.equal(resolveBuyAction(p1(), MEMBER).primary.label, "Book");
+  });
+});
