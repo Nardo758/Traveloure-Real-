@@ -363,7 +363,9 @@ describe("row 280a invite plan", { concurrency: false }, () => {
     const [event] = await db.select().from(userExperiences).where(eq(userExperiences.id, present.experienceId));
     assert.equal(dayOf(event.rsvpBy), RSVP_BY);
     const trip = await storage.getTrip(created.json.tripId);
-    const dumped = JSON.stringify(trip);
+    // Every *At key is a timestamp of when something happened (createdAt, updatedAt, …), which can fall on
+    // RSVP_BY's own day; it is dropped at any depth so the search only sees what the trip says about its plan.
+    const dumped = JSON.stringify(trip, (key, value) => (/At$/.test(key) ? undefined : value));
     assert.equal(dumped.includes(RSVP_BY), false);
     const anchors = await db.select().from(temporalAnchors).where(eq(temporalAnchors.tripId, created.json.tripId));
     assert.equal(anchors.length, 0);
