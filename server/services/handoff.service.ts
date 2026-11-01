@@ -389,7 +389,7 @@ async function proposeTo(requestId: string, expertId: string, routabilityOverrid
   const tripId = (r.rows?.[0] as any)?.trip_id as string | undefined;
   if (!tripId) return;
   const { upsertTripAdvisorRow, getTripLabel } = await import("./booking-actions.service");
-  await upsertTripAdvisorRow({ tripId, localExpertId: expertId, status: "pending", message: null, ...(routabilityOverride ? { routabilityOverride } : {}) }).catch((err) =>
+  await upsertTripAdvisorRow({ tripId, localExpertId: expertId, status: "pending", message: null, source: "handoff", ...(routabilityOverride ? { routabilityOverride } : {}) }).catch((err) =>
     console.error("[handoff] read grant failed (non-fatal):", err),
   );
   const label = await getTripLabel(tripId).catch(() => "a trip");
@@ -558,7 +558,7 @@ export async function acceptHandoff(requestId: string, expertId: string): Promis
   }
   const { upsertTripAdvisorRow } = await import("./booking-actions.service");
   if (row.tripId) {
-    await upsertTripAdvisorRow({ tripId: row.tripId, localExpertId: expertId, status: "accepted", message: null });
+    await upsertTripAdvisorRow({ tripId: row.tripId, localExpertId: expertId, status: "accepted", message: null, source: "handoff" });
     await flipScope(row.tripId, scopeIds(row), "in_planning", "with_expert", "expert", expertId);
     await notify(row.userId, row.tripId, "handoff_accepted", "Your local accepted", "Their changes will arrive as suggestions on your plan.", { requestId });
   }

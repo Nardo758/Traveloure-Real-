@@ -66,6 +66,7 @@ import { itineraryGenerationSweepScheduler } from "./services/itinerary-generati
 import { emailOutboxScheduler } from "./services/email-outbox.service";
 import { occasionDraftsScheduler } from "./services/occasion-drafts-scheduler.service";
 import { evidenceScorerScheduler } from "./services/evidence-scorer-scheduler.service";
+import { conciergeAcceptTimeoutScheduler } from "./services/concierge-accept-timeout-scheduler.service";
 import { runNightlyQA } from "./jobs/nightlyQA";
 import { runStripeReconciliation } from "./jobs/stripeReconciliation";
 import { runPaymentSchedule } from "./automations/payments/runtime";
@@ -874,6 +875,9 @@ if (process.env.NODE_ENV === "production") {
     // (claim_id, version); key-gated (no ANTHROPIC_API_KEY ⇒ claims stay submitted, flagged no_key).
     evidenceScorerScheduler.start();
     logger.info("Evidence scorer scheduler started");
+
+    conciergeAcceptTimeoutScheduler.start();
+    logger.info("Concierge accept-timeout scheduler started");
 
     // DMO ingestion scheduler — OFF unless DMO_INGEST_ENABLED=1 AND TAVILY_API_KEY set (D3).
     dmoIngestScheduler.start();

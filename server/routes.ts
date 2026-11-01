@@ -18,6 +18,8 @@ import { staffMayPassBlanketGuard } from "@shared/staff-permissions";
 import { isCustomVenueOwner } from "./utils/custom-venue-owner";
 import { isBusinessVerificationStatus } from "./utils/earner-verification";
 import { OWNER_BOOKING_TRANSITIONS, ownerTransitionRefusal } from "./utils/booking-from-states";
+import { applyOwnerDecline } from "./services/booking-owner-decline.service";
+import { grantConciergeAdvisorOnAccept } from "./services/concierge-engagement.service";
 // Ledger `2026-09-17-surfaces-acceptance-completion` — READ EXPOSURE ONLY. The three booking LISTS
 // below carry the SAME two server derivations the single-booking GET already carries
 // (`describeAcceptance`, `describeCompletionDeclaration`), so no surface has to restate an
@@ -163,7 +165,6 @@ import Anthropic from "@anthropic-ai/sdk";
 import { toPublicListing } from "./utils/public-service-listing";
 import { scoreKnowledgeProof, KNOWLEDGE_PROOF_QUESTIONS, type KnowledgeProofAnswerInput } from "./services/expertise-scoring.service";
 import { stampNoNeighborhoodsAvailable } from "./services/neighborhood-claims.service";
-import { resolveCapturedDeposit } from "./services/deposit.service";
 // W2 (Trip-Canon Lane 1 Phase 1b): `cart_items` has exactly ONE writer — the projection module.
 // Every cart write below goes through `cartProjection.*`; the functions are thin passthroughs to
 // the storage layer, so behavior is identical to the pre-funnel code. Do not call
@@ -323,7 +324,7 @@ import calendarRoutes from "./routes/calendar.routes";
 import customersRoutes from "./routes/customers.routes";
 import contentRoutes, { seedDatabase, registerDiscoveryRoutes, tripParticipantCreateSchema } from "./routes/content.routes";
 import paymentsRoutes, { resolveItemBaseAmount, resolveCartSurcharges, resolveStayNightlyRates } from "./routes/payments.routes";
-import { cartAmountDue, composeTravelerCharge, travelerChargeForRow } from "./services/traveler-charge";
+import { cartAmountDue, composeTravelerCharge } from "./services/traveler-charge";
 import {
   FEE_SETTING_UNRESOLVED,
   isProviderBookingStatusRequest,
@@ -7884,276 +7885,33 @@ ${bannedCopyPromptLine()}`;
           acceptPayoutSnapshot = { ...payout.block };
         }
       }
-      // Owner cancels a PAID booking → the traveler gets a FULL refund (service price + platform
-      // fee + insurance fee — never policy-scaled: a provider-initiated cancellation is the
-      // provider's doing, so the traveler is made whole; platform-owner ruling 2026-08-10) and an
-      // in-app notification. Refund BEFORE any terminal status write (retry-safe: on Stripe
-      // failure refundServiceBooking restores the prior status and throws, so the booking stays
-      // cancellable). refundServiceBooking's atomic claim (pending/confirmed → refunded) is the
-      // concurrency guard — a simultaneous traveler cancel and owner cancel issue at most ONE refund.
-      //
-      // ── DEPOSIT-PAID CANCEL (ledger 2026-09-03-deposit-paid-cancel) ─────────────────────────────
-      // What a `deposit_paid` booking has actually CAPTURED is resolved from the ROW (§14 — never
-      // from req.body, and never from the caller's belief about the price) by the ONE place a
-      // deposit amount is derived, `deposit.service.ts`. Three honest answers, three behaviours:
-      //   • not_deposit_paid — every existing path below is byte-identical to before (§13).
-      //   • deposit_only     — the refund is the DEPOSIT, not the total. The balance was never
-      //                        charged; refunding it would be inventing a return of money nobody
-      //                        paid, and Stripe would reject a refund exceeding the charge anyway.
-      //   • unresolvable     — the row is `deposit_paid` but its columns cannot say what was
-      //                        captured. REFUSED (409), never cancelled with a "$0 refund": that
-      //                        would take the booking terminal while the traveler's deposit is
-      //                        still at Stripe, and would state a refund that did not happen.
-      const capturedDeposit =
-        status === "cancelled" ? resolveCapturedDeposit(booking as any) : { kind: "not_deposit_paid" as const };
-      if (capturedDeposit.kind === "unresolvable") {
-        return res.status(409).json({
-          message:
-            "This booking took a deposit, but the platform cannot tell how much was captured, so it will not be cancelled with an unknown refund. Support has been given the details.",
-          currentStatus: booking.status,
-          reason: capturedDeposit.reason,
+      // Decline (captured refund, uncaptured cancel, or an unpaid status flip) is
+      // ONE implementation, shared with the concierge accept-window timeout.
+      if (status === "cancelled") {
+        const role = (await getDbRole(req)) ?? "provider";
+        const outcome = await applyOwnerDecline({
+          booking,
+          bookingId: String(req.params.id),
+          reason: reason ?? null,
+          actorUserId: userId,
+          role,
         });
+        return res.status(outcome.status).json(outcome.body);
       }
 
-      if (status === "cancelled" && booking.stripePaymentIntentId) {
-        // A stamped PI is NOT proof of payment (a pending request-rail booking can carry a
-        // never-charged intent). Stripe's own status decides (ledger
-        // `2026-10-31-booking-decline-releases-hold`):
-        //   • succeeded          — refund, exactly as before.
-        //   • requires_capture   — cancel the uncaptured authorization so the card hold is
-        //                          released, then fall through to the status flip. Nothing was
-        //                          captured, so this is not a refund.
-        //   • canceled           — the hold is already gone. A retry is a no-op at Stripe.
-        //   • anything else      — an unpaid cancellation, the plain status flip.
-        // A cancel that does not release the hold refuses the decline (the booking stays
-        // cancellable). The log line from `settleBookingDeclinePayment` names the booking, the
-        // PaymentIntent id, the status and the outcome — never the intent body, which can carry
-        // a card.
-        const { stripe, stripePaymentService } = await import("./services/stripe-payment.service");
-        const { settleBookingDeclinePayment } = await import("./services/booking-decline-payment.service");
-        const { logger } = await import("./infrastructure/logger");
-        let settled: Awaited<ReturnType<typeof settleBookingDeclinePayment<{
-          alreadyRefunded: boolean;
-          refundResult: { alreadyRefunded?: boolean; amount?: number };
-          amountPaid: number;
-          isDepositRefund: boolean;
-        }>>>;
-        try {
-          settled = await settleBookingDeclinePayment({
-            bookingId: req.params.id,
-            paymentIntentId: booking.stripePaymentIntentId,
-            retrieve: async (id) => {
-              const pi = await stripe.paymentIntents.retrieve(id);
-              return { status: pi.status };
-            },
-            // Provider decline is not the traveler's own withdrawal. The shared cancel leaves
-            // cancellation_reason at its default, the same as every non-traveler caller.
-            cancel: (id, key) => stripePaymentService.cancelPaymentIntent(id, key),
-            refund: async () => {
-              // THE REFUNDABLE AMOUNT, SERVER-DERIVED (§14). For a deposit-partial booking that is the
-              // captured deposit; for every other booking it is the full charged amount, exactly as
-              // before. `refundServiceBooking` clamps it to what the row was charged and owns the
-              // Stripe call, its deterministic idempotency key (`refund-sb-<id>-<cents>` — booking id +
-              // operation amount, so a retry produces ONE refund, §15) and the atomic status claim.
-              const isDepositRefund = capturedDeposit.kind === "deposit_only";
-              // Ledger 2026-09-08-cart-fee-line: the full-refund basis is read through the ONE
-              // `travelerChargeForRow` (§18 rule 1) — a row priced under A3 was never charged the
-              // provider's commission or the insurance leg, so a make-whole refund must not return
-              // them; a PRE-A3 row keeps exactly the previous basis.
-              const amountPaid = isDepositRefund
-                ? capturedDeposit.amount
-                : travelerChargeForRow({
-                    totalAmount: booking.totalAmount,
-                    platformFee: (booking as any).platformFee,
-                    insuranceFee: (booking as any).insuranceFee,
-                    conciergeFeeSnapshot:
-                      (booking as any).bookingDetails?.travelerCharge?.conciergeFee ?? null,
-                  }).amount;
-              const refundResult = await stripePaymentService.refundServiceBooking(
-                req.params.id,
-                reason || "cancelled_by_provider",
-                // Ruling 2026-09-02-traveler-fee-refundability: a PROVIDER cancellation makes the
-                // traveler whole — the traveler service fee refunds at 100%, never policy-scaled.
-                { amountOverride: amountPaid, feeRefundPercent: 100 }, // fee-literal-ok: 100 = full make-whole refund %, not a fee_bands rate
-              );
-              return {
-                alreadyRefunded: Boolean(refundResult?.alreadyRefunded),
-                refundResult,
-                amountPaid,
-                isDepositRefund,
-              };
-            },
-            log: (line) => {
-              logger.info(line, "[booking-decline] payment outcome");
-            },
-          });
-          if (settled.outcome === "refund") {
-            const { refundResult, amountPaid, isDepositRefund } = settled.payload;
-            if (settled.alreadyRefunded || refundResult?.alreadyRefunded) {
-              // Another path (e.g. a concurrent traveler cancel) won the atomic refund claim and
-              // owns the ledger reversal + notification — report factually, fire no side-effects.
-              const refreshed = await storage.getServiceBooking(req.params.id);
-              // FU-R167-1: the owner rail answers with the SAME earner projection the list routes use.
-              return res.json({ ...(refreshed ? sanitizeBookingForExpert(refreshed, (await getDbRole(req)) ?? 'provider', userId) : refreshed), refund: { issued: false, alreadyRefunded: true } });
-            }
-            // This caller WON the refund claim — apply the matching full-fraction ledger
-            // compensation (idempotent flips; a crash here is repaired by the admin refund
-            // rail re-running them, never by a second Stripe refund).
-            //
-            // The SAME two reversals run for a deposit cancel, deliberately: 100% of what this
-            // booking captured is going back, so 100% of anything recognised against it must be
-            // reversed. In practice a `deposit_paid` booking has neither to reverse — completion
-            // never fired, so no `expert_earnings` were minted and no `platform_revenue` row was
-            // written (booking.service.ts mints both on the completion flip) — and both helpers
-            // are no-ops on an empty set. They run for the reason they run on the full path: to
-            // sweep anything that raced in between the read and the claim.
-            await storage.reverseEarningsForBooking(req.params.id);
-            await storage.reversePlatformRevenueForBooking(req.params.id, new Date(), 1);
-            await db.execute(sql`
-              UPDATE service_bookings
-              SET cancelled_at = NOW(), cancellation_reason = ${reason ?? "Cancelled by the provider"}, updated_at = NOW()
-              WHERE id = ${req.params.id}
-            `);
-            const { revertPurchasedItemsForBooking } = await import("./services/item-routing.service");
-            await revertPurchasedItemsForBooking(req.params.id);
-            if (booking.travelerId) {
-              try {
-                // §13 wording: a deposit cancel returns the DEPOSIT — everything the traveler
-                // actually paid — but calling that "a full refund" of the booking would describe a
-                // return of money they were never charged. The balance is simply never collected.
-                const refundNoun = isDepositRefund
-                  ? `A refund of your deposit ($${amountPaid.toFixed(2)}) has been issued to your original payment method, and the outstanding balance will not be collected.`
-                  : `A full refund of $${amountPaid.toFixed(2)} has been issued to your original payment method.`;
-                await storage.createNotification({
-                  userId: booking.travelerId,
-                  type: "booking_cancelled",
-                  title: isDepositRefund
-                    ? "Booking cancelled by provider — deposit refunded"
-                    : "Booking cancelled by provider — full refund issued",
-                  message: reason
-                    ? `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. ${refundNoun} Reason: ${reason}`
-                    : `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. ${refundNoun}`,
-                  relatedId: req.params.id,
-                  relatedType: "booking",
-                  data: {
-                    bookingId: req.params.id,
-                    refundAmount: amountPaid,
-                    cancelledBy: "provider",
-                    ...(isDepositRefund ? { refundScope: "deposit" } : {}),
-                    ...(reason ? { reason } : {}),
-                  },
-                });
-              } catch (notifyErr) {
-                console.error("Failed to notify traveler of provider cancellation:", notifyErr);
-              }
-              // Send a cancellation + refund email so the traveler sees both the reason and
-              // confirmation that their money is being returned.
-              try {
-                const traveler = await storage.getUser(booking.travelerId);
-                if (traveler?.email) {
-                  const { sendBookingCancellationWithRefundEmail } = await import("./services/email.service");
-                  await sendBookingCancellationWithRefundEmail({
-                    toEmail: traveler.email,
-                    travelerName: traveler.firstName ?? null,
-                    bookingTrackingNumber: booking.trackingNumber ?? null,
-                    serviceName: (booking as any).serviceName ?? null,
-                    refundAmount: amountPaid,
-                    cancellationReason: reason ?? null,
-                    bookingId: req.params.id,
-                  });
-                }
-              } catch (emailErr) {
-                console.error("Failed to send cancellation+refund email to traveler:", emailErr);
-              }
-            }
-            const refreshed = await storage.getServiceBooking(req.params.id);
-            return res.json({
-              ...(refreshed ? sanitizeBookingForExpert(refreshed, (await getDbRole(req)) ?? 'provider', userId) : refreshed),
-              refund: {
-                issued: true,
-                amount: refundResult?.amount ?? amountPaid,
-                // "deposit" says the outstanding balance was never charged and never will be —
-                // the client must not render this as a full-price refund (§13).
-                scope: isDepositRefund ? "deposit" : "full",
-              },
-            });
-          }
-        } catch (refundErr: any) {
-            console.error("Provider cancellation refund error:", refundErr);
-            // PR #1066: refused at the Stripe boundary because a lost chargeback on this payment
-            // already returned the money. No Stripe call was made and nothing was changed.
-            if (refundErr?.name === "LostChargebackRefundBlockedError") {
-              const { lostChargebackRefusalBody } = await import("./services/lost-chargeback-guard.service");
-              return res.status(409).json(lostChargebackRefusalBody(refundErr.result));
-            }
-            if (refundErr?.name === "ServiceBookingRefundRefusedError") {
-              // R163 amendment: a state the app refund never touches (payment_pending, failed,
-              // disputed). Refused before the claim — no Stripe call, nothing changed.
-              return res.status(409).json({ error: "refund_refused_status", status: refundErr.bookingStatus, message: refundErr.message });
-            }
-            return res.status(502).json({
-              message: "The refund could not be issued, so the booking was NOT cancelled. Please try again.",
-              error: refundErr?.message,
-            });
-        }
-        // A hold we could not release must not become a declined booking: the card authorization
-        // would stay, and the from-state guard would turn the retry into a 409 that can never
-        // release it. Same posture as a failed refund above.
-        if (settled!.outcome === "release_failed") {
-          return res.status(502).json({
-            message: "The card hold could not be released, so the booking was NOT declined. Please try again.",
-            currentStatus: booking.status,
-          });
-        }
-        // A `deposit_paid` row whose deposit PI Stripe will not vouch for is the same refusal as
-        // `unresolvable` above: falling through here would cancel a deposit-taking booking with no
-        // refund at all and no error — the exact silent-money outcome this ruling exists to stop.
-        // A requires_capture deposit is vouched for: the cancel above released it, and a canceled
-        // one is already released. Both fall through. Only an unread or uncaptured-other status
-        // is refused.
-        if (
-          capturedDeposit.kind === "deposit_only" &&
-          (settled!.outcome === "lookup_failed" || settled!.outcome === "unpaid")
-        ) {
-          return res.status(409).json({
-            message:
-              "This booking's deposit payment could not be confirmed with the payment processor, so it was NOT cancelled. Please try again in a moment.",
-            currentStatus: booking.status,
-            reason: "deposit_intent_unconfirmed",
-          });
-        }
-      }
-
-      // QA-2 (ledger 96, Finding A/B): the traveler notification for BOTH the accept and the
-      // unpaid-decline branches now travels IN the same transaction as the status flip (see
-      // storage.updateServiceBookingStatus) instead of a separate best-effort call after commit —
-      // a crash between the flip and the old separate write left a status change with no
-      // notification, and the atomic-conditional guard turned a client retry into a 409 that could
-      // never repair it. dedupeKey = `booking:<id>:<event>` makes a concurrent duplicate/retry of
-      // this SAME transition a no-op (ON CONFLICT DO NOTHING on notifications.dedupe_key).
+      // QA-2 (ledger 96, Finding A/B): the accept notification travels IN the same transaction
+      // as the status flip (storage.updateServiceBookingStatus). Decline uses that same writer
+      // from applyOwnerDecline. dedupeKey = `booking:<id>:<event>` makes a retry of this
+      // transition a no-op (ON CONFLICT DO NOTHING on notifications.dedupe_key).
       const notify: BookingStatusNotification | undefined = booking.travelerId
-        ? status === "confirmed"
-          ? {
-              userId: booking.travelerId,
-              type: "booking_confirmed",
-              title: "Booking accepted",
-              message: `Your booking ${booking.trackingNumber ?? ""} was accepted by the provider.`,
-              data: { bookingId: req.params.id, acceptedBy: "provider" },
-              dedupeKey: `booking:${req.params.id}:accepted`,
-            }
-          : {
-              // Reached for an UNPAID cancellation and for a decline that released an uncaptured
-              // hold (nothing was captured, so there is no refund notice). The succeeded-refund
-              // branch above returns earlier with its own notification.
-              userId: booking.travelerId,
-              type: "booking_cancelled",
-              title: "Booking declined by provider",
-              message: reason
-                ? `Your booking ${booking.trackingNumber ?? ""} was declined by the provider. Reason: ${reason}`
-                : `Your booking ${booking.trackingNumber ?? ""} was declined by the provider.`,
-              data: { bookingId: req.params.id, cancelledBy: "provider", ...(reason ? { reason } : {}) },
-              dedupeKey: `booking:${req.params.id}:cancelled`,
-            }
+        ? {
+            userId: booking.travelerId,
+            type: "booking_confirmed",
+            title: "Booking accepted",
+            message: `Your booking ${booking.trackingNumber ?? ""} was accepted by the provider.`,
+            data: { bookingId: req.params.id, acceptedBy: "provider" },
+            dedupeKey: `booking:${req.params.id}:accepted`,
+          }
         : undefined;
 
       const updated = await storage.updateServiceBookingStatus(
@@ -8170,27 +7928,6 @@ ${bannedCopyPromptLine()}`;
         // notification (the notify insert lives inside the same transaction the lost race rolled
         // back).
         return res.status(409).json({ message: "This booking changed before your update was applied. Reload and try again." });
-      }
-
-      // Send a decline email so the traveler sees the reason even if they don't check the app.
-      // Non-fatal: a delivery failure must never roll back the already-committed status flip.
-      if (status === "cancelled" && booking.travelerId) {
-        try {
-          const traveler = await storage.getUser(booking.travelerId);
-          if (traveler?.email) {
-            const { sendBookingDeclineEmail } = await import("./services/email.service");
-            await sendBookingDeclineEmail({
-              toEmail: traveler.email,
-              travelerName: traveler.firstName ?? null,
-              bookingTrackingNumber: booking.trackingNumber ?? null,
-              bookingId: req.params.id,
-              serviceName: (booking as any).serviceName ?? null,
-              declineReason: reason ?? null,
-            });
-          }
-        } catch (emailErr) {
-          console.error("Failed to send decline email to traveler:", emailErr);
-        }
       }
 
       // E1: trip-share bridge. When an EXPERT accepts a booking that carries a
@@ -8210,17 +7947,32 @@ ${bannedCopyPromptLine()}`;
             .where(eq(users.id, userId))
             .limit(1);
           if (isExpertRole(ownerRow?.role)) {
-            const existing = await storage.getTripExpertAdvisoryAssignment(booking.tripId, userId);
-            if (!existing) {
-              await storage.createTripExpertAdvisor({
+            const service = booking.serviceId ? await storage.getProviderServiceById(booking.serviceId) : null;
+            if (service?.serviceType === "concierge") {
+              const [tripRow] = await db
+                .select({ endDate: trips.endDate, timezone: trips.timezone })
+                .from(trips)
+                .where(eq(trips.id, booking.tripId))
+                .limit(1);
+              await grantConciergeAdvisorOnAccept({
                 tripId: booking.tripId,
                 localExpertId: userId,
-                status: "accepted",
+                endDate: tripRow?.endDate ?? null,
+                timezone: tripRow?.timezone ?? null,
               });
-            } else if (existing.status === "pending") {
-              await storage.acceptTripAssignment(existing.id, userId);
+            } else {
+              const existing = await storage.getTripExpertAdvisoryAssignment(booking.tripId, userId);
+              if (!existing) {
+                await storage.createTripExpertAdvisor({
+                  tripId: booking.tripId,
+                  localExpertId: userId,
+                  status: "accepted",
+                });
+              } else if (existing.status === "pending") {
+                await storage.acceptTripAssignment(existing.id, userId);
+              }
+              // Any other existing status (already accepted, rejected) is left as-is.
             }
-            // Any other existing status (already accepted, rejected) is left as-is.
           }
         } catch (bridgeErr) {
           // Non-fatal: the booking accept itself must still succeed.
