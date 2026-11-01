@@ -93,7 +93,7 @@ function isMapsHost(host: string): boolean {
  * The source's top-level page for a waiting line; none for a `link_out_no_link` source, an unreadable homepage, or a
  * Google Maps / Places host.
  */
-function officialTopLevelUrl(input: { homepage?: string | null; termsClass?: string | null }): string | null {
+export function officialTopLevelUrl(input: { homepage?: string | null; termsClass?: string | null }): string | null {
   if (input.termsClass === "link_out_no_link") return null;
   try {
     if (input.homepage) {
