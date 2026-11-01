@@ -1,5 +1,5 @@
 -- 397 — SH-1 item 12: a test-account flag on users. Ledger `2026-10-19-sh1-test-flag`.
--- Adds nullable users.is_test with no default. Merged in #1581.
+-- HELD FOR LEON'S COMMENT on the PR before merge.
 --
 -- A test account is `is_test` TRUE OR an email on the QA_ACCOUNT_EMAIL_DOMAIN setting (one predicate,
 -- server/services/test-account.ts). Its listings are left out of public readers and it is never routed.
