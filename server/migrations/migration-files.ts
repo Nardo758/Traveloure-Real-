@@ -2254,4 +2254,8 @@ export const MIGRATION_FILES = [
   // `selection_profile` is on. HELD until the owner approves the SQL on the pull request.
   // Ledger 2026-11-01-row306-selection-profile-server.
   "428_selection_events.sql",
+  // 429 — trip_expert_advisors.source (no DEFAULT; UPDATE backfill 'handoff')
+  // and access_until timestamptz NULL. HELD until Leon approves the SQL.
+  // Declared in shared/schema.ts. No CHECK.
+  "429_concierge_engagement_access.sql",
 ] as const;

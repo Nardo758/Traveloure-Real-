@@ -796,6 +796,15 @@ export interface UpsertTripAdvisorRowInput {
    * No other caller passes it.
    */
   routabilityOverride?: { adminId: string };
+  /**
+   * Migration 429. Omitted ⇒ 'handoff' on insert, matching the backfill. The SQL
+   * column has no DEFAULT. A conflict writes 'concierge' over whatever is stored
+   * and sets access_until; a handoff write never replaces a concierge source and
+   * never clears access_until.
+   */
+  source?: "handoff" | "concierge";
+  /** Set with source 'concierge'. Null leaves the column null on insert. */
+  accessUntil?: Date | null;
 }
 
 /** `db`, or the handle drizzle hands a `db.transaction(...)` callback. */
@@ -877,6 +886,8 @@ export async function upsertTripAdvisorRow(
       workspaceStatus: "draft",
       message: input.message ?? null,
       assignedAt: new Date(),
+      source: input.source ?? "handoff",
+      accessUntil: input.accessUntil ?? null,
     })
     .onConflictDoUpdate({
       target: [tripExpertAdvisors.tripId, tripExpertAdvisors.localExpertId],
@@ -885,6 +896,11 @@ export async function upsertTripAdvisorRow(
           `CASE WHEN (${incomingRank}) > (${storedRank}) THEN excluded.status ELSE trip_expert_advisors.status END`,
         ),
         message: sql.raw("COALESCE(trip_expert_advisors.message, excluded.message)"),
+        // A concierge accept labels the row and sets its window. A handoff write
+        // does not replace that label and does not clear the window. Status still
+        // follows the rank ladder above and never downgrades.
+        source: sql`CASE WHEN excluded.source = 'concierge' THEN excluded.source ELSE trip_expert_advisors.source END`,
+        accessUntil: sql`CASE WHEN excluded.source = 'concierge' THEN excluded.access_until ELSE trip_expert_advisors.access_until END`,
       },
     })
     .returning({

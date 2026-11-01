@@ -255,6 +255,12 @@ import {
 // applied to notifications), keyed by `dedupeKey` against notifications.dedupe_key's partial
 // UNIQUE index (ON CONFLICT DO NOTHING) so a crash-retry of the SAME transition never inserts a
 // duplicate row. `dedupeKey` should be shaped `booking:<id>:<event>` (e.g. `booking:<id>:accepted`).
+/** CN-1d: a write that belongs to a status transition, run on the transition's own transaction. */
+export type BookingStatusInTransaction = (
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  updated: ServiceBooking,
+) => Promise<void>;
+
 export interface BookingStatusNotification {
   userId: string;
   type: string;
@@ -570,7 +576,7 @@ export interface IStorage {
    */
   createServiceBookingAtomic(booking: InsertServiceBooking): Promise<ServiceBooking>;
 
-  updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[], notify?: BookingStatusNotification | BookingStatusNotification[], payoutSnapshot?: Record<string, unknown> | null): Promise<ServiceBooking | undefined>;
+  updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[], notify?: BookingStatusNotification | BookingStatusNotification[], payoutSnapshot?: Record<string, unknown> | null, inTransaction?: BookingStatusInTransaction): Promise<ServiceBooking | undefined>;
 
   mintCompletionEarningsForBooking(booking: ServiceBooking, outerTx?: unknown): Promise<boolean>;
 
@@ -3794,9 +3800,9 @@ export class DatabaseStorage implements IStorage {
    * promote. The `vendor_availability_slots.booked_count` taken at claim time was destroyed for
    * good, with no code path to give it back.
    */
-  async updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[], notify?: BookingStatusNotification, payoutSnapshot?: Record<string, unknown> | null): Promise<ServiceBooking | undefined> {
+  async updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[], notify?: BookingStatusNotification, payoutSnapshot?: Record<string, unknown> | null, inTransaction?: BookingStatusInTransaction): Promise<ServiceBooking | undefined> {
     const action = () =>
-      this.updateServiceBookingStatusAction(id, status, reason, expectedFromStatuses, notify, payoutSnapshot);
+      this.updateServiceBookingStatusAction(id, status, reason, expectedFromStatuses, notify, payoutSnapshot, inTransaction);
     if (status === "confirmed" && notify?.type === "booking_confirmed") {
       return dispatchBookingEvent(
         "bookings.provider-acceptance-follow-on",
@@ -3818,7 +3824,7 @@ export class DatabaseStorage implements IStorage {
     return action();
   }
 
-  private async updateServiceBookingStatusAction(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[], notify?: BookingStatusNotification, payoutSnapshot?: Record<string, unknown> | null): Promise<ServiceBooking | undefined> {
+  private async updateServiceBookingStatusAction(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[], notify?: BookingStatusNotification, payoutSnapshot?: Record<string, unknown> | null, inTransaction?: BookingStatusInTransaction): Promise<ServiceBooking | undefined> {
     // Read prior status before applying any update so side-effects are idempotent.
     const prior = await this.getServiceBooking(id);
     if (!prior) return undefined;
@@ -3890,6 +3896,11 @@ export class DatabaseStorage implements IStorage {
         .where(guard)
         .returning();
       if (!u) return undefined;
+
+      // CN-1d: a write that is PART of this transition (the concierge accept's advisor grant) runs
+      // here, on this transaction. If it throws, the flip rolls back with it and the error reaches
+      // the caller — the transition never commits without it.
+      if (inTransaction) await inTransaction(tx, u);
 
       // A transition to "completed" is a MONEY event: the status flip and the earnings mint must
       // commit or roll back as ONE transaction (task 1091 review). If the mint fails, the booking

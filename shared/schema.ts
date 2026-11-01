@@ -533,6 +533,15 @@ export const tripExpertAdvisors = pgTable("trip_expert_advisors", {
   planApprovalStatus: varchar("plan_approval_status", { length: 20 }),
   planApprovedAt: timestamp("plan_approved_at"),
   planReviewNote: text("plan_review_note"),
+  // Migration 429. text, NO column DEFAULT, NO CHECK (publish-trap). The app
+  // writes 'handoff' or 'concierge'. Existing rows are backfilled to 'handoff'
+  // by the migration's UPDATE. NULL on a row the writer has not labeled yet is
+  // not an expiry and is not a concierge engagement.
+  source: text("source"),
+  // NULL = no expiry. A concierge accept sets the first instant of the day
+  // after the trip's last day, in the trip's zone. Access ends once now is
+  // later than this instant.
+  accessUntil: timestamp("access_until", { withTimezone: true }),
 }, (table) => ({
   uniqueTripExpert: uniqueIndex("trip_expert_advisors_trip_expert_unique").on(table.tripId, table.localExpertId),
 }));
