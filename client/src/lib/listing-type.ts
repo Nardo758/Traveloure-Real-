@@ -25,6 +25,15 @@ export function listingTypeFromStored(stored: string | null | undefined): string
 }
 
 /**
+ * Whether the seller may change the type on this listing. An approved listing keeps its type (the server does not yet
+ * treat the type as an identity edit that re-enters review, so this client guard holds it until that follow-up lands).
+ * A draft, a pending (submitted) or a rejected listing, and a new one, may change it.
+ */
+export function listingTypeEditable(approvalStatus: string | null | undefined): boolean {
+  return approvalStatus !== "approved";
+}
+
+/**
  * What the write sends. Only an expert listing carries the choice; a provider listing sends nothing, so its stored type
  * is never touched. An edit sends back the value it loaded, so leaving the choice alone never flips the type.
  */
