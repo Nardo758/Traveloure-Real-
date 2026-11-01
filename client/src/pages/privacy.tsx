@@ -4,6 +4,7 @@ import { SEOHead } from "@/components/seo-head";
 import { PRICING_AND_LEGAL_TITLE_COPY } from "@/lib/pricing-and-legal-title-copy";
 import { PageLayout, PAGE_ACTION, PAGE_H2_CLASS, HEADING_STYLE } from "@/components/company/company-page";
 import { COMPANY_CONTACT_EMAIL } from "@/lib/company-facts";
+import { PRIVACY_SELECTIONS_LINE } from "@/lib/travel-style-copy";
 
 export default function PrivacyPolicyPage() {
   useEffect(() => {
@@ -153,6 +154,7 @@ export default function PrivacyPolicyPage() {
               <li>Analyze usage patterns and trends</li>
               <li>Conduct research, testing, and development</li>
               <li>Personalize your experience and provide tailored recommendations</li>
+              <li>{PRIVACY_SELECTIONS_LINE}</li>
               <li>Develop new features and services</li>
               <li>Optimize platform performance and user experience</li>
             </ul>
