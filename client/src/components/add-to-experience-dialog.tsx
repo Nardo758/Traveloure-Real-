@@ -31,6 +31,10 @@ interface ExperienceItem {
   description?: string;
   type: "gem" | "neighborhood" | "hotel" | "activity" | "event" | "recommendation";
   scheduledDate?: string | null;
+  /** Row 305: a catalogue result's own listing, kept on the plan item (the add rail re-checks it). */
+  providerServiceId?: string;
+  /** Row 305: a catalogue result's Viator product (the add rail admits it through `admitViatorAdd`). */
+  viatorProductCode?: string;
 }
 
 interface AddToExperienceDialogProps {
@@ -75,6 +79,10 @@ export function AddToExperienceDialog({
       dayNumber,
       status: "planned",
       ...(item?.scheduledDate ? { scheduledDate: item.scheduledDate } : {}),
+      // Row 305: a catalogue result keeps its link — the listing it names, or its Viator product. The add rail
+      // re-checks both server-side (the listing gate; `admitViatorAdd`).
+      ...(typeof item?.providerServiceId === "string" ? { providerServiceId: item.providerServiceId } : {}),
+      ...(typeof item?.viatorProductCode === "string" ? { viatorProductCode: item.viatorProductCode } : {}),
     };
   };
 

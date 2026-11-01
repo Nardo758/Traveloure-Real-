@@ -18,6 +18,8 @@ import { buildServicesBrowseHref, SERVICES_BROWSE_THEME_PARAM } from "@/lib/serv
 import { DiscoverThemeFilter } from "@/components/discover-theme-filter";
 import { parseDiscoverThemeParam } from "@shared/experience-themes";
 import { AddToExperienceDialog } from "@/components/add-to-experience-dialog";
+import { CatalogueSearchResults } from "@/components/catalogue-search-results";
+import { CATALOGUE_SEARCH_COPY } from "@shared/catalogue-search";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -1952,7 +1954,7 @@ export default function DiscoverLocationPage() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[color:var(--earn-muted)]" />
                 <Input
-                  placeholder={`What do you need help with in ${displayCity}?`}
+                  placeholder={CATALOGUE_SEARCH_COPY.placeholder(displayCity)}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-9 h-10"
@@ -1976,6 +1978,9 @@ export default function DiscoverLocationPage() {
                 onSort={setSortMode}
               />
             </div>
+
+            {/* Row 305 (CS-3 brief 8, D): the same box searches the catalogue — one action per result. */}
+            <CatalogueSearchResults city={displayCity} query={searchQuery} onAdd={handleAdd} />
 
             {/* ── Spine chip rail (Phase 2c — the visible gem-type filter) ── */}
             <SpineChipRail active={activeFilter} counts={chipCounts} onSelect={setActiveFilter} />
