@@ -47,6 +47,7 @@
  * tile), so no ODbL attribution is owed here.
  */
 import { useMemo, useState, type ReactNode } from "react";
+import { profileListingSections, profileSectionTitle } from "@/lib/service-type-filter";
 import { useQuery } from "@tanstack/react-query";
 import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import { useRoute, useSearch, useLocation, Link, Redirect } from "wouter";
@@ -198,6 +199,8 @@ interface StorefrontService {
   cancellationPolicyType?: string | null;
   /** `provider_services.expert_offering_type_key` — `"ask_me_anything"` names a Q&A Session. */
   expertOfferingTypeKey?: string | null;
+  /** CN-1c-UI: `provider_services.service_type` — splits the profile into planning and concierge sections. */
+  serviceType?: string | null;
   /**
    * The ONE resolved buy action (ruling 9 / LD 42; `resolveBuyAction`, shared/buy-action.ts) —
    * the card renders it and never re-derives whether/how the listing can be bought
@@ -816,6 +819,78 @@ export default function StorefrontPage() {
     setCategory("All");
   }
 
+  // CN-1c-UI: an earner with planning AND concierge listings shows them as two sections; one type keeps the one lane.
+  const serviceSections = profileListingSections(visibleServices);
+  // CN-1c-UI: one card renderer, read by the single lane and by the two type sections alike.
+  const renderServiceCard = (s: StorefrontService) => {
+    const chips = s.deliveryMethod && DELIVERY_LABELS[s.deliveryMethod]
+      ? [DELIVERY_LABELS[s.deliveryMethod]]
+      : [];
+    // D5: place-anchored listings get a city-level location chip (text only, from
+    // the row's own city field — nothing derived, nothing mapped; §13).
+    if (isPlaceAnchored({ deliveryMethod: s.deliveryMethod, productShape: s.productShape }) && s.city?.trim()) {
+      chips.push(`📍 ${s.city.trim()}`);
+    }
+    const unit = priceUnitPhrase({ priceType: s.priceType, pricingUnit: s.pricingUnit });
+    // ONE price formatter, shared with the /providers card: cents are kept ($0.08 never
+    // rounds to "$0", $42.50 never to "$43") and a missing or non-positive price is never
+    // printed as a price (§13) — the card falls back to "Custom quote".
+    const amount = formatListingPrice(s.price);
+    const price = amount ?? "Custom quote";
+    // Vacation mode: the CTA stops promising "book" while the owner is away —
+    // the listing itself stays visible and clickable (its detail page carries
+    // the same honest away state and disables the actual booking action).
+    const cta = away || bookingClosed ? "View listing →" : s.pricingUnit === "per_night" ? "Check dates →" : "View & book →";
+    const tripQuery = planContext.ownedTrip ? `?tripId=${encodeURIComponent(planContext.ownedTrip.id)}` : "";
+    const serviceHref = `/services/${s.id}${tripQuery}`;
+    // Vacation mode (the `ld23-buy-action-gap` note above): the server's `buyAction`
+    // does not yet know the owner is away, so this button — like `cta` above —
+    // withholds itself rather than promising "Book" on an away storefront (§13).
+    // The label is mapped FROM the resolved action only (ledger
+    // `2026-09-25-provider-action-buttons`): no listing column is read here.
+    const actionLabel = away || bookingClosed ? null : storefrontOfferingActionLabel(s.buyAction);
+    // The resolver offers NO booking verb (not live / provider hid the CTA): the
+    // card offers Message about this listing, and no buy button at all.
+    const messageOnly = !away && !bookingClosed && offeringActionIsMessageOnly(s.buyAction);
+    const nextAvailableText = offeringShowsNextAvailable(s.buyAction) ? formatNextAvailable(s.nextAvailable) : null;
+    return (
+      <StorefrontOfferingCard
+        key={s.id}
+        // A plan the viewer OWNS (resolved by the panel's hook, never the raw query
+        // param) rides along, so the listing's "Add to plan" targets that plan.
+        href={serviceHref}
+        testId={`storefront-service-${s.id}`}
+        image={s.serviceImage}
+        categoryLabel="Service"
+        showCategory={readyMade.length > 0}
+        title={s.serviceName}
+        chips={chips}
+        ratingSlot={<RatingLine rating={s.averageRating} count={s.reviewCount} />}
+        price={price}
+        unit={amount ? unit : null}
+        cta={cta}
+        showPrice={s.showPrice}
+        bookingMode={s.bookingMode}
+        actionId={s.id}
+        actionLabel={actionLabel ?? undefined}
+        actionHref={actionLabel ? buildStorefrontActionHref(serviceHref, actionLabel, s.nextAvailable) : undefined}
+        actionCharges={actionLabel ? storefrontActionCharges(s.buyAction) : undefined}
+        nextAvailableText={actionLabel ? nextAvailableText : null}
+        onMessage={
+          messageOnly && contactAvailable
+            ? () =>
+                askExpert({
+                  serviceId: s.id,
+                  subject: s.serviceName,
+                  returnTo: serviceHref,
+                  fallbackName: displayName,
+                })
+            : undefined
+        }
+      />
+    );
+  };
+
   return (
     <div className="min-h-screen bg-[var(--earn-ground)]" data-testid="storefront-page">
       <SEOHead
@@ -1181,7 +1256,7 @@ export default function StorefrontPage() {
           {/* Lane 1: services — book directly */}
           {visibleServices.length > 0 && (
             <div className="mb-10 sm:mb-12 scroll-mt-6" id={SERVICES_ANCHOR_ID} data-testid="storefront-lane-services">
-              <LaneHeader eyebrow="Book directly" title="Services" />
+              {serviceSections.length === 1 ? <LaneHeader eyebrow="Book directly" title="Services" /> : null}
               {/* Ruling 116 (§13): when any card falls back to its original language under the
                   viewer's locale, say so once — never a silent mix. */}
               {visibleServices.some((s) => s.shownInOriginal) && (
@@ -1189,76 +1264,20 @@ export default function StorefrontPage() {
                   {t("contentTranslation.someInOriginal")}
                 </p>
               )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {visibleServices.map((s) => {
-                  const chips = s.deliveryMethod && DELIVERY_LABELS[s.deliveryMethod]
-                    ? [DELIVERY_LABELS[s.deliveryMethod]]
-                    : [];
-                  // D5: place-anchored listings get a city-level location chip (text only, from
-                  // the row's own city field — nothing derived, nothing mapped; §13).
-                  if (isPlaceAnchored({ deliveryMethod: s.deliveryMethod, productShape: s.productShape }) && s.city?.trim()) {
-                    chips.push(`📍 ${s.city.trim()}`);
-                  }
-                  const unit = priceUnitPhrase({ priceType: s.priceType, pricingUnit: s.pricingUnit });
-                  // ONE price formatter, shared with the /providers card: cents are kept ($0.08 never
-                  // rounds to "$0", $42.50 never to "$43") and a missing or non-positive price is never
-                  // printed as a price (§13) — the card falls back to "Custom quote".
-                  const amount = formatListingPrice(s.price);
-                  const price = amount ?? "Custom quote";
-                  // Vacation mode: the CTA stops promising "book" while the owner is away —
-                  // the listing itself stays visible and clickable (its detail page carries
-                  // the same honest away state and disables the actual booking action).
-                  const cta = away || bookingClosed ? "View listing →" : s.pricingUnit === "per_night" ? "Check dates →" : "View & book →";
-                  const tripQuery = planContext.ownedTrip ? `?tripId=${encodeURIComponent(planContext.ownedTrip.id)}` : "";
-                  const serviceHref = `/services/${s.id}${tripQuery}`;
-                  // Vacation mode (the `ld23-buy-action-gap` note above): the server's `buyAction`
-                  // does not yet know the owner is away, so this button — like `cta` above —
-                  // withholds itself rather than promising "Book" on an away storefront (§13).
-                  // The label is mapped FROM the resolved action only (ledger
-                  // `2026-09-25-provider-action-buttons`): no listing column is read here.
-                  const actionLabel = away || bookingClosed ? null : storefrontOfferingActionLabel(s.buyAction);
-                  // The resolver offers NO booking verb (not live / provider hid the CTA): the
-                  // card offers Message about this listing, and no buy button at all.
-                  const messageOnly = !away && !bookingClosed && offeringActionIsMessageOnly(s.buyAction);
-                  const nextAvailableText = offeringShowsNextAvailable(s.buyAction) ? formatNextAvailable(s.nextAvailable) : null;
-                  return (
-                    <StorefrontOfferingCard
-                      key={s.id}
-                      // A plan the viewer OWNS (resolved by the panel's hook, never the raw query
-                      // param) rides along, so the listing's "Add to plan" targets that plan.
-                      href={serviceHref}
-                      testId={`storefront-service-${s.id}`}
-                      image={s.serviceImage}
-                      categoryLabel="Service"
-                      showCategory={readyMade.length > 0}
-                      title={s.serviceName}
-                      chips={chips}
-                      ratingSlot={<RatingLine rating={s.averageRating} count={s.reviewCount} />}
-                      price={price}
-                      unit={amount ? unit : null}
-                      cta={cta}
-                      showPrice={s.showPrice}
-                      bookingMode={s.bookingMode}
-                      actionId={s.id}
-                      actionLabel={actionLabel ?? undefined}
-                      actionHref={actionLabel ? buildStorefrontActionHref(serviceHref, actionLabel, s.nextAvailable) : undefined}
-                      actionCharges={actionLabel ? storefrontActionCharges(s.buyAction) : undefined}
-                      nextAvailableText={actionLabel ? nextAvailableText : null}
-                      onMessage={
-                        messageOnly && contactAvailable
-                          ? () =>
-                              askExpert({
-                                serviceId: s.id,
-                                subject: s.serviceName,
-                                returnTo: serviceHref,
-                                fallbackName: displayName,
-                              })
-                          : undefined
-                      }
-                    />
-                  );
-                })}
-              </div>
+              {serviceSections.map((section) =>
+                section.kind === null ? (
+                  <div key="all" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {section.items.map(renderServiceCard)}
+                  </div>
+                ) : (
+                  <div key={section.kind} className="mb-8 last:mb-0" data-testid={`storefront-section-${section.kind}`}>
+                    <LaneHeader eyebrow="Book directly" title={profileSectionTitle(section.kind)} />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {section.items.map(renderServiceCard)}
+                    </div>
+                  </div>
+                ),
+              )}
             </div>
           )}
 

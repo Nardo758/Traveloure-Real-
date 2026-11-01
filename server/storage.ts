@@ -601,7 +601,7 @@ export interface IStorage {
     limit?: number;
     offset?: number;
     themeIds?: string[];
-
+    serviceType?: string;
   }): Promise<{ services: (ProviderService & { providerFirstName?: string | null; providerLastName?: string | null; providerImageUrl?: string | null; providerRating?: string | null; providerBusinessName?: string | null; providerHandle?: string | null; themeSlug: string | null; themeLabel: string | null })[]; total: number; suggestion: string | null }>;
 
   // Cart
@@ -4279,6 +4279,7 @@ export class DatabaseStorage implements IStorage {
     limit?: number;
     offset?: number;
     themeIds?: string[];
+    serviceType?: string;
   }): Promise<{ services: (ProviderService & { themeSlug: string | null; themeLabel: string | null })[]; total: number; suggestion: string | null }> {
     // F2 public read-gate: unified search is a public surface — approved listings only.
     // Search-quality task: ILIKE '%q%' replaced with Postgres full-text search (tsvector,
@@ -4311,6 +4312,10 @@ export class DatabaseStorage implements IStorage {
     // An empty theme list is "no theme filter": untagged listings stay in the result.
     if (filters.themeIds && filters.themeIds.length > 0) {
       baseConditions.push(inArray(providerServices.themeId, filters.themeIds));
+    }
+    // CN-1c-UI: an optional serviceType narrows the same gate. It adds no sort key.
+    if (filters.serviceType) {
+      baseConditions.push(eq(providerServices.serviceType, filters.serviceType));
     }
 
     // Clamp to 200 so no single request can dump the entire table.

@@ -3082,6 +3082,11 @@ router.get("/api/discover", async (req, res) => {
     if (!resolvedThemes.ok) {
       return res.status(400).json({ message: UNKNOWN_THEME_MESSAGE });
     }
+    // CN-1c-UI: the same optional serviceType the /api/services read takes (one parser, one refusal).
+    const parsedDiscoverType = parseServiceTypeQuery(req.query.serviceType);
+    if (!parsedDiscoverType.ok) {
+      return res.status(400).json({ message: UNKNOWN_SERVICE_TYPE_MESSAGE });
+    }
     // Row 306: a signed-in traveler's text search is one "search" row — the action only, never the words
     // (no-op unless `selection_profile` is on; never delays or fails the search).
     if (typeof req.query.q === "string" && req.query.q.trim() && getUserId(req)) {
@@ -3099,6 +3104,7 @@ router.get("/api/discover", async (req, res) => {
       limit,
       offset,
       themeIds: resolvedThemes.ids.length > 0 ? resolvedThemes.ids : undefined,
+      serviceType: parsedDiscoverType.serviceType ?? undefined,
     };
     const result = await storage.unifiedSearch(filters);
 

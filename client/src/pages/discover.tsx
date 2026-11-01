@@ -88,6 +88,8 @@ import { useAddPlanResolution } from "@/hooks/use-open-plans";
 // page is the READER; a bare literal here is how a link and the page it points at drift apart.
 import { SERVICES_BROWSE_CATEGORY_PARAM, SERVICES_BROWSE_THEME_PARAM } from "@/lib/services-browse";
 import { DiscoverThemeFilter } from "@/components/discover-theme-filter";
+import { ServiceTypeFilter } from "@/components/service-type-filter";
+import { SERVICE_TYPE_FILTER_PARAM, emptyConciergeLine, readFailureMessage, serviceTypeFromUrl } from "@/lib/service-type-filter";
 import { parseDiscoverThemeParam } from "@shared/experience-themes";
 // L11 (ledger `2026-09-07-discover-in-shell`): the plan chip + "For your plan" role chips. Both
 // derivations already exist and are CALLED here, never re-implemented (§18 rule 1) —
@@ -1056,6 +1058,8 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
   const initialThemes = parseDiscoverThemeParam(urlParams.get(SERVICES_BROWSE_THEME_PARAM) ?? undefined);
   const [selectedThemes, setSelectedThemes] = useState<string[]>(initialThemes.ok ? initialThemes.slugs : []);
   const [themeParamError, setThemeParamError] = useState(!initialThemes.ok);
+  // CN-1c-UI: the listing-type filter. "" = no filter (no param sent); the server refuses an unknown value.
+  const [serviceType, setServiceType] = useState(() => serviceTypeFromUrl(urlParams));
   const hasMountedSearch = useRef(false);
   const hasMountedThemes = useRef(false);
   const limit = 12;
@@ -1102,12 +1106,13 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
     setOrDelete("sortBy", sortBy, sortBy === "rating");
     setOrDelete("page", String(page + 1), page === 0);
     setOrDelete(SERVICES_BROWSE_THEME_PARAM, selectedThemes.join(","));
+    setOrDelete(SERVICE_TYPE_FILTER_PARAM, serviceType);
     const query = params.toString();
     const nextUrl = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
     if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== nextUrl) {
       window.history.replaceState(window.history.state, "", nextUrl);
     }
-  }, [debouncedQuery, locationFilter, selectedCategory, minPrice, maxPrice, minRating, sortBy, page, selectedThemes]);
+  }, [debouncedQuery, locationFilter, selectedCategory, minPrice, maxPrice, minRating, sortBy, page, selectedThemes, serviceType]);
 
   useEffect(() => {
     if (!hasMountedThemes.current) {
@@ -1193,6 +1198,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
       sortBy,
       page,
       selectedThemes.join(","),
+      serviceType,
     ],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -1204,13 +1210,13 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
       if (minRating > 0) params.set("minRating", String(minRating));
       if (sortBy) params.set("sortBy", sortBy);
       if (selectedThemes.length > 0) params.set(SERVICES_BROWSE_THEME_PARAM, selectedThemes.join(","));
+      if (serviceType) params.set(SERVICE_TYPE_FILTER_PARAM, serviceType);
       params.set("limit", String(limit));
       params.set("offset", String(page * limit));
       
       const res = await fetch(`/api/discover?${params.toString()}`);
       if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.message || "Failed to fetch");
+        throw new Error(await readFailureMessage(res, "Failed to fetch"));
       }
       return res.json();
     },
@@ -1851,6 +1857,14 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                     setSelectedThemes(next);
                   }}
                 />
+                <ServiceTypeFilter
+                  value={serviceType}
+                  onChange={(next) => {
+                    setServiceType(next);
+                    setPage(0);
+                  }}
+                  error={servicesError && serviceType && servicesQueryError instanceof Error ? servicesQueryError.message : null}
+                />
                 {(themeParamError || (servicesError && selectedThemes.length > 0)) && (
                   <p className="text-sm text-destructive mb-3" data-testid="text-theme-filter-error">
                     {servicesQueryError instanceof Error ? servicesQueryError.message : "Unknown theme."}
@@ -2020,6 +2034,10 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                               {result.suggestion}
                             </button>
                             ?
+                          </p>
+                        ) : serviceType === "concierge" && locationFilter ? (
+                          <p className="text-muted-foreground mb-4" data-testid="text-concierge-empty">
+                            {emptyConciergeLine(locationFilter)}
                           </p>
                         ) : (
                           <p className="text-muted-foreground mb-4">
