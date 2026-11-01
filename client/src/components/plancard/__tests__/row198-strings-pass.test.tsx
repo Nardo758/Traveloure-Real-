@@ -198,7 +198,7 @@ describe("row 198 strings pass", () => {
     assert.ok(!PAGE.includes("OPTIMIZE_RERUN_RULE"));
     assert.ok(!PAGE.includes("text-rerun-rule"));
     assert.ok(!PAGE.includes("A re-run uses a Trip Pass or a payment"));
-    assert.equal(OPTIMIZE_RERUN_RULE, "After a run, re-timing a day on the versions board is free for 24 hours.");
+    assert.equal(OPTIMIZE_RERUN_RULE, "Re-timing a day is free for 24 hours.");
   });
 
   it("CS14 #21 is held: the 15-minute fragment stays", () => {
