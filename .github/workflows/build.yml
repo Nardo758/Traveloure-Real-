@@ -2258,6 +2258,9 @@ jobs:
       - if: ${{ !cancelled() }}
         name: the platform's own Booking Concierge listing (F1-F6)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/platform-concierge-listing.db.test.ts
+      - if: ${{ !cancelled() }}
+        name: concierge engagement access, decline refund, and accept timeout (CN-1d)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/cn1d-concierge-engagement.db.test.ts
 
       # 2026-09-21-platform-concierge-price-editable: migration 313 seeded a fee_bands row AND a
       # static provider_services.price from it, and nothing re-resolved the column — while
