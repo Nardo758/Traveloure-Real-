@@ -30,6 +30,7 @@ import { MapControlCenter, locatedCountLabel } from "./MapControlCenter";
 import { planMapAnchor } from "@/lib/map-scene";
 import { slipAdvisorName } from "@/lib/slip-rail";
 import { UpNextHero } from "./UpNextHero";
+import { OnTripMapPanel } from "./OnTripMap";
 import { TripCardDays, cardLegCount } from "./TripCardDays";
 import { CollapsedSections } from "./CollapsedSections";
 import { BottomActionBar } from "./BottomActionBar";
@@ -988,6 +989,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
             {cardSurface ? (
               <>
                 <UpNextHero tripId={trip.id} day={day} legs={dayLegs} timezone={planTimezone} datesConfirmed={planDatesConfirmed} placeFacts={(plancardData as any)?.placeFacts ?? null} />
+                <OnTripMapPanel map={plancardData?.onTripMap ?? null} />
                 <TripCardDays
                   tripId={trip.id}
                   destination={trip.destination ?? null}

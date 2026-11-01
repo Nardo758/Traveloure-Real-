@@ -626,6 +626,8 @@ export interface PlanCardData {
   finalCard?: import("@shared/trip-card-final").FinalCardMeta;
   /** Row 185 J6 (#1701): the frozen airport leg, owner-only on the final card read; absent otherwise. */
   finalAirportLeg?: import("@shared/trip-card-final").FinalAirportLeg;
+  /** Row 185 J5: the on-trip map projection, on the card read only; absent otherwise. The screen draws it as sent. */
+  onTripMap?: import("@shared/on-trip-map").OnTripMap;
   /**
    * Trip-Canon Lane 1 W4/H2 — EVERY real booking on this trip, including ones no plan item points at
    * (see `TripPlanBooking` / the plancard route's `bookings` key). Used by W7's "Purchases" section to
