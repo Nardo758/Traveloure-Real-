@@ -22,7 +22,7 @@
  * real Klook source exists), Google Places (display-only data must not become an addable result), the web.
  * Nothing here writes.
  */
-import { and, desc, eq, ilike, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, isNotNull, ne, sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import { contentSources, hotelCache, placeFacts } from "@shared/schema";
@@ -159,6 +159,8 @@ export const defaultCatalogueReaders: CatalogueReaders = {
         and(
           eq(placeFacts.placeRefKind, "free_text"),
           eq(placeFacts.market, market),
+          // A Places fact is display-only inside a plan (LD 57): never even fetched by this public read.
+          ne(placeFacts.origin, "places_api"),
           sql`${placeFacts.supersededBy} IS NULL`,
           ilike(placeFacts.placeRef, like(query)),
         ),
