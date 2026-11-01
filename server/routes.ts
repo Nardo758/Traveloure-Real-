@@ -4878,17 +4878,35 @@ ${bannedCopyPromptLine()}`;
       // APPROVED listing it is staged for review rather than applied to the live row.
       let safeInput = { ...safeInputWithoutLocation, ...locationPatch, ...cityPatchUpd, ...expertOfferingPatch, ...declaredArtifactPatch, ...priceBasisPatch, ...themePatch };
 
+      // Row 307 (CN-1c follow-up, Leon Oct 31 2026): changing serviceType on an APPROVED
+      // listing is an identity edit that returns the listing to review. The review-queue
+      // value is approval_status 'submitted' — the same writer and the same
+      // /api/admin/provider-services/pending list a first submission uses. The new type is
+      // written on the row the reviewer sees. GET /api/services and the city payload keep
+      // their approved-and-active gate, so the listing leaves both. A draft stays a draft.
+      // A listing already in review stays there. Sending the stored type again is a no-op
+      // (the wizard PATCHes full payloads). Any other approved edit keeps the §23 split
+      // below: this return-to-review runs only when the type actually changes, and in that
+      // case the rest of the patch is part of the resubmission rather than a staged edit
+      // on a listing that is no longer live.
+      const serviceTypeNorm = (v: unknown) => (v === undefined || v === null ? "" : String(v));
+      const serviceTypeChanged =
+        Object.prototype.hasOwnProperty.call(safeInput, "serviceType") &&
+        serviceTypeNorm((safeInput as any).serviceType) !== serviceTypeNorm(ownedService.serviceType);
+      const serviceTypeReturnsToReview =
+        serviceTypeChanged && ownedService.approvalStatus === "approved";
+
       // ── Ruling 112 Q8 (CLAUDE.md §23) — the EDIT SPLIT, decided ONLY here ─────────────────
-      // An APPROVED listing is never taken down for an edit. Identity-changing fields are
-      // diverted into pending_changes (the approved version stays live and bookable, the admin
-      // queue applies them); everything else applies immediately. The split compares against
-      // the STORED row — the wizard PATCHes full payloads, so an unchanged serviceName must
-      // pass through as a no-op, not trigger a review.
+      // An APPROVED listing is never taken down for an edit that does not change serviceType.
+      // Identity-changing fields are diverted into pending_changes (the approved version stays
+      // live and bookable, the admin queue applies them); everything else applies immediately.
+      // The split compares against the STORED row — the wizard PATCHes full payloads, so an
+      // unchanged serviceName must pass through as a no-op, not trigger a review.
       // S-1 (ledger 2026-08-16-console-sweep): the field list lives in @shared/edit-split so
       // the listing home's "Editing a live listing" panel reads THIS handler's own predicate
       // rather than restating it (§18 rule 1). The split is still decided only here.
       let stagedEditKeys: string[] = [];
-      if (ownedService.approvalStatus === "approved") {
+      if (ownedService.approvalStatus === "approved" && !serviceTypeReturnsToReview) {
         const identityPatch: Record<string, unknown> = {};
         for (const key of IDENTITY_EDIT_FIELDS) {
           if (!Object.prototype.hasOwnProperty.call(safeInput, key)) continue;
@@ -4965,6 +4983,14 @@ ${bannedCopyPromptLine()}`;
           .set({ approvalStatus: "draft", updatedAt: new Date() })
           .where(eq(providerServices.id, req.params.id));
         finalRow = (await storage.getProviderServiceById(req.params.id)) ?? updated;
+      } else if (serviceTypeReturnsToReview) {
+        // Same submit writer as a first submission. updateProviderService strips
+        // approvalStatus, so the review transition cannot ride the generic patch.
+        await storage.submitProviderServiceListing(req.params.id);
+        finalRow = (await storage.getProviderServiceById(req.params.id)) ?? updated;
+        const { invalidateLocationViewCache } = await import("./services/location-view.service");
+        invalidateLocationViewCache(ownedService.city);
+        invalidateLocationViewCache(finalRow?.city);
       }
 
       // CC-8/T3-4: same omission as POST /api/provider/services — revenueShareRate is a
