@@ -1619,6 +1619,24 @@ router.get("/api/catalog/viator-feed", isAuthenticated, (_req, res) => {
   res.status(410).json({ message: "The Viator feed is retired; Viator results are live only.", items: [], total: 0 });
 });
 
+// Row 305 (CS-3 brief 8, D): catalogue single-search. One box over our listings, checked places, official
+// sites, Viator (signed-in only, live, link-out) and hotels (links only); each result carries exactly one
+// action and an add-to-plan body. Public read, nothing written; behind the /api/search rate limiter.
+router.get("/api/search/catalogue", async (req, res) => {
+  try {
+    const { searchCatalogue } = await import("../services/catalogue-search.service");
+    const city = typeof req.query.city === "string" ? req.query.city : "";
+    const query = typeof req.query.q === "string" ? req.query.q : "";
+    const result = await searchCatalogue({ city, query, signedIn: !!getUserId(req) });
+    res.set("Cache-Control", "private, no-store");
+    res.json(result);
+  } catch (err) {
+    const code = err && typeof err === "object" && "code" in err ? String((err as { code?: unknown }).code) : "error";
+    console.error(`[catalogue-search] failed (${code})`);
+    res.status(500).json({ reason: "catalogue_search_failed" });
+  }
+});
+
 // VD-1: live Viator product search (Partner API, Basic Access). Nothing is stored; the price is as of
 // this request; every item names Viator. Off unless VIATOR_DIRECT_ENABLED=1; Kyoto only.
 router.get("/api/viator/live/products", isAuthenticated, async (req, res) => {
