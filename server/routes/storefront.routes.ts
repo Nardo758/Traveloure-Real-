@@ -664,6 +664,8 @@ async function loadStorefrontFromOwner(
       // delivered as `async_messaging`, Locked Decision 54(d)) apart from an ordinary listing —
       // never re-derived client-side from a guess, read straight off the row.
       expertOfferingTypeKey: providerServices.expertOfferingTypeKey,
+      // CN-1c-UI: the listing's type, so the profile can show planning and concierge listings as two sections.
+      serviceType: providerServices.serviceType,
       // Provider action buttons (ledger `2026-09-25-provider-action-buttons`): the facts the ONE
       // resolver reads to tell a ride (category) and a deposit listing apart. Read server-side
       // only — `categoryId` and the deposit config are stripped before the row leaves (below).

@@ -8,6 +8,8 @@ import { PRICE_OPTIONS, extractTilePrice, priceMatches } from "@/lib/tile-price"
 import { useRef, useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { resolveCoverPhoto, type CoverPhotoCredit } from "@/lib/cover-photo";
 import { useParams, useSearch, useLocation, Link } from "wouter";
+import { ServiceTypeFilter } from "@/components/service-type-filter";
+import { SERVICE_TYPE_FILTER_PARAM, emptyConciergeLine, readFailureMessage, serviceTypeFromUrl, withServiceType } from "@/lib/service-type-filter";
 import { trackCityView } from "@/hooks/use-recently-viewed";
 import { useQuery } from "@tanstack/react-query";
 import { NAV_LEAF_ICONS } from "@/components/layout";
@@ -1413,6 +1415,12 @@ export default function DiscoverLocationPage() {
   const neighbourhoodFilter = searchParams.get("neighborhood");
   const themeParsed = parseDiscoverThemeParam(searchParams.get(SERVICES_BROWSE_THEME_PARAM) ?? undefined);
   const selectedThemeSlugs = themeParsed.ok ? themeParsed.slugs : [];
+  // CN-1c-UI: the listing-type filter lives in the URL (?serviceType=) and is sent to the location read as it is.
+  const serviceType = serviceTypeFromUrl(searchParams);
+  const setServiceType = (next: string) => {
+    const qs = withServiceType(new URLSearchParams(searchString), next).toString();
+    navigate(`/discover/location/${cityRaw}${qs ? `?${qs}` : ""}`);
+  };
   const setThemeSlugs = (next: string[]) => {
     const params = new URLSearchParams(searchString);
     if (next.length > 0) params.set(SERVICES_BROWSE_THEME_PARAM, next.join(","));
@@ -1473,14 +1481,15 @@ export default function DiscoverLocationPage() {
   });
 
   const { data, isLoading, error } = useQuery<LocationViewPayload>({
-    queryKey: ["/api/discover/location", city, country],
+    queryKey: ["/api/discover/location", city, country, serviceType],
     queryFn: async () => {
       const qs = new URLSearchParams();
       if (country) qs.set("country", country);
+      if (serviceType) qs.set(SERVICE_TYPE_FILTER_PARAM, serviceType);
       const res = await fetch(
         `/api/discover/location/${encodeURIComponent(city)}${qs.toString() ? `?${qs.toString()}` : ""}`,
       );
-      if (!res.ok) throw new Error(`Location view fetch failed: ${res.status}`);
+      if (!res.ok) throw new Error(await readFailureMessage(res, `Location view fetch failed: ${res.status}`));
       return res.json();
     },
     enabled: !!city,
@@ -1554,12 +1563,13 @@ export default function DiscoverLocationPage() {
     staleTime: 5 * 60_000,
   });
   const { data: themedDiscover, isError: themedDiscoverError, error: themedDiscoverQueryError } = useQuery<{ services: any[] }>({
-    queryKey: ["/api/discover", "location-theme", city, selectedThemeSlugs.join(",")],
+    queryKey: ["/api/discover", "location-theme", city, selectedThemeSlugs.join(","), serviceType],
     enabled: selectedThemeSlugs.length > 0 && !!city,
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set("location", city);
       params.set(SERVICES_BROWSE_THEME_PARAM, selectedThemeSlugs.join(","));
+      if (serviceType) params.set(SERVICE_TYPE_FILTER_PARAM, serviceType);
       params.set("limit", "50");
       const res = await fetch(`/api/discover?${params.toString()}`);
       if (!res.ok) {
@@ -1928,14 +1938,17 @@ export default function DiscoverLocationPage() {
           </div>
         )}
 
-        {error && (
+        {error && serviceType ? (
+          // CN-1c-UI: a refused type keeps the filter on screen with the server's message, so it can be cleared.
+          <ServiceTypeFilter value={serviceType} onChange={setServiceType} error={(error as Error).message} />
+        ) : error ? (
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
               {(error as Error).message ?? "Failed to load location view."}
             </AlertDescription>
           </Alert>
-        )}
+        ) : null}
 
         {data && (
           <div className="space-y-4">
@@ -1984,6 +1997,13 @@ export default function DiscoverLocationPage() {
 
             {/* ── Spine chip rail (Phase 2c — the visible gem-type filter) ── */}
             <SpineChipRail active={activeFilter} counts={chipCounts} onSelect={setActiveFilter} />
+
+            <ServiceTypeFilter value={serviceType} onChange={setServiceType} />
+            {serviceType === "concierge" && servicesForFeed.length === 0 && !(selectedThemeSlugs.length > 0 && !themedDiscover) && (
+              <p className="text-sm text-muted-foreground -mt-2 mb-4" data-testid="text-concierge-empty">
+                {emptyConciergeLine(displayCity)}
+              </p>
+            )}
 
             <DiscoverThemeFilter
               themes={experienceThemeCatalog?.themes ?? []}
