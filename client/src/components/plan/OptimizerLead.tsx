@@ -17,7 +17,7 @@
 import { Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FREE_PLAN_COVERAGE_FOOTER, LEAD_DRAFT_FIRST, LEAD_EYEBROW, LEAD_VERSIONS, LEAD_ZERO, findingLine, findingStopLines, leadCoverageLine, leadDeltaLine, unlocatedStopGroups, type Finding, type LegCoverage } from "@shared/optimizer-lead";
-import { OPTIMIZE_RERUN_RULE, TRIP_PASS_COVERED_LABEL, formatMoneyCents, tripPassRunsLine, type OptimizationFeeQuote } from "@/lib/optimization-preview";
+import { TRIP_PASS_COVERED_LABEL, optimizeRerunRule, formatMoneyCents, tripPassRunsLine, type OptimizationFeeQuote } from "@/lib/optimization-preview";
 import { OPTIMIZE_UNAVAILABLE, optimizeUnavailable } from "@/lib/optimize-pay-copy";
 
 /** P0-d: no coverage answer is an incomplete one — never an all-clear (§13). */
@@ -207,9 +207,11 @@ function PlainOptimizerLead({ findings, coverage, routedPlan, hasPricedItems, fe
           {tripPassRunsLine(fee)}
         </p>
       ) : null}
-      <p className="text-[11px] text-muted-foreground" data-testid="optimizer-lead-rerun">
-        {OPTIMIZE_RERUN_RULE}
-      </p>
+      {optimizeRerunRule(fee) ? (
+        <p className="text-[11px] text-muted-foreground" data-testid="optimizer-lead-rerun">
+          {optimizeRerunRule(fee)}
+        </p>
+      ) : null}
         </>
       )}
     </section>
@@ -359,9 +361,9 @@ function BoardOptimizerLead({
           {tripPassRunsLine(fee)}
         </p>
       )}
-      {optimizeUnavailable(fee) ? null : (
+      {optimizeUnavailable(fee) || !optimizeRerunRule(fee) ? null : (
       <p className={quiet} data-testid="optimizer-lead-rerun">
-        {OPTIMIZE_RERUN_RULE}
+        {optimizeRerunRule(fee)}
       </p>
       )}
     </section>
