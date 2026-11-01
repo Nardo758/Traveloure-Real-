@@ -37,6 +37,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useExpertVerificationStatus } from "@/hooks/use-expert-verification-status";
 import { LOCAL_EXPERT_TIERS, TRIP_PLANNER_TIERS, isAffiliateCategory } from "@/lib/earn-roles";
+import { DEFAULT_LISTING_TYPE, LISTING_TYPE_CHOICES, listingTypeEditable, listingTypeFromStored, listingTypePayload } from "@/lib/listing-type";
 import {
   parseStoredPoint,
   type LocationPoint,
@@ -209,6 +210,8 @@ interface ServiceFormData {
    * sold, never who the seller is, and it confers no verified status (LD 27 is untouched).
    */
   expertOfferingTypeKey: string;
+  /** CN-1a-UI: the listing's type — planning or concierge (`provider_services.service_type`). */
+  serviceType: string;
   approvalStatus: "draft" | "submitted" | "approved" | "rejected";
   // Provider-specific: which /earn service_offering_types row this listing IS
   // (migration 148 FK). "" = unlinked (legacy row, or not yet picked).
@@ -403,6 +406,7 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     duration: "",
     deliveryMethod: "in-person",
     expertOfferingTypeKey: "",
+    serviceType: DEFAULT_LISTING_TYPE,
     approvalStatus: "draft",
     serviceOfferingTypeId: "",
     revisionsIncluded: 0,
@@ -494,6 +498,7 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     // `expertOfferingTypeId` is deliberately NOT read back: the key is the canonical answer and
     // the only one this form can write (ledger `2026-09-12-offering-key-is-canonical`).
     expertOfferingTypeKey: s.expertOfferingTypeKey || "",
+    serviceType: listingTypeFromStored(s.serviceType),
     approvalStatus: s.approvalStatus || "draft",
     serviceOfferingTypeId: s.serviceOfferingTypeId || "",
     revisionsIncluded: Number(s.revisionsIncluded || 0),
@@ -1674,6 +1679,8 @@ export function ServiceForm({ role, id, onSuccess, draftOnly = false }: ServiceF
       // (ledger `2026-09-12-offering-key-is-canonical`), so this form cannot put the two columns
       // into disagreement.
       payload.expertOfferingTypeKey = formData.expertOfferingTypeKey || null;
+      // CN-1a-UI: an expert listing states its type; a provider listing sends none.
+      Object.assign(payload, listingTypePayload(role, formData.serviceType));
 
       if (formData.themeChoice === "catalog" && formData.themeId) {
         payload.themeChoice = "catalog";
@@ -3785,6 +3792,35 @@ export function ServiceForm({ role, id, onSuccess, draftOnly = false }: ServiceF
               (`service-form-required.ts`, `applicable: role === "expert"`), unchanged by this
               lane. It exists so an automated flow can fill the field it is obliged to fill
               without answering an OPTIONAL question on a provider's behalf. */}
+          {/* CN-1a-UI: an expert listing is trip planning or concierge. Labels are CN-1's held keys. */}
+          {role === "expert" ? (
+            <div data-testid="listing-type-choice">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2" role="radiogroup">
+                {LISTING_TYPE_CHOICES.map((choice) => {
+                  const selected = formData.serviceType === choice.value;
+                  // An approved listing keeps its type; drafts and pending listings may change it.
+                  const typeLocked = isEditMode && !listingTypeEditable(formData.approvalStatus);
+                  return (
+                    <button
+                      key={choice.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      disabled={typeLocked}
+                      onClick={() => {
+                        if (typeLocked) return;
+                        setFormData((prev) => ({ ...prev, serviceType: choice.value }));
+                      }}
+                      className={`text-left rounded-md border p-3 text-sm disabled:cursor-not-allowed disabled:opacity-60 ${selected ? "border-primary bg-primary/5 font-semibold" : "border-border"}`}
+                      data-testid={`listing-type-${choice.value}`}
+                    >
+                      {choice.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
           <div data-testid={role === "expert" ? "expert-offering-required" : "expert-offering-optional"}>
             <Label>
               What you sell{role === "expert" ? " *" : ""}{" "}
