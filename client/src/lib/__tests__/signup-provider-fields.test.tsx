@@ -67,7 +67,7 @@ const SIGNIN_SRC = fs.readFileSync("client/src/components/SignInModal.tsx", "utf
 before(() => { (globalThis as any).window = { location: { search: "", replace() {}, assign() {} } }; });
 after(() => { (globalThis as any).window = origWindow; });
 
-describe("signup time-zone capture: authored contract coverage, execution held", () => {
+describe("signup time-zone capture: provider-free contracts; real journeys held", () => {
   it("TZ-UI1: the signup page renders an optional blank field, never a server/browser default", async () => {
     const html = await renderSignup("");
     const field = html.match(/<input[^>]*data-testid="input-signup-time-zone"[^>]*>/)?.[0];
@@ -100,6 +100,51 @@ describe("signup time-zone capture: authored contract coverage, execution held",
         assert.ok(locale.fields[key].length > 0);
       }
       assert.ok(locale.fields.useBrowserTimeZone.includes("{{zone}}"));
+    }
+  });
+
+  it("TZ-UI5: browser detection cannot confirm or submit its own suggestion", () => {
+    for (const source of [SIGNUP_SRC, SIGNIN_SRC]) {
+      const detector = source.match(/useEffect\(\(\) => \{\s*(?:if \(!open \|\| mode !== "signup"\) return;\s*)?try \{\s*setSuggestedTimeZone[\s\S]*?\}, \[[^\]]*\]\);/)?.[0];
+      assert.ok(detector, "browser detector remains explicit and auditable");
+      assert.doesNotMatch(detector, /\bsetTimeZone\(/);
+      assert.doesNotMatch(detector, /fetch\(|geolocation|latitude|longitude/);
+      assert.match(source, /\.\.\.\(timeZone\.trim\(\) \? \{ timeZone: timeZone\.trim\(\) \} : \{\}\)/);
+      assert.doesNotMatch(source, /timeZone:\s*suggestedTimeZone/);
+    }
+  });
+
+  it("TZ-UI6: confirmation and manual selection are the only chosen-zone writers", () => {
+    for (const source of [SIGNUP_SRC, SIGNIN_SRC]) {
+      assert.equal(source.match(/\bsetTimeZone\(/g)?.length, 2);
+      assert.match(source, /onChange=\{\(e\) => setTimeZone\(e\.target\.value\)\}/);
+      assert.match(source, /onClick=\{\(\) => setTimeZone\(suggestedTimeZone\)\}/);
+      const button = source.match(/<button\s+type="button"\s+data-testid="button-use-browser-time-zone"[\s\S]*?<\/button>/)?.[0];
+      assert.ok(button, "confirming a suggestion never submits the form");
+    }
+  });
+
+  it("TZ-UI7: unavailable browser detection leaves no inferred zone", () => {
+    for (const source of [SIGNUP_SRC, SIGNIN_SRC]) {
+      assert.match(source, /const \[suggestedTimeZone, setSuggestedTimeZone\] = useState\(""\)/);
+      assert.match(source, /const \[timeZone, setTimeZone\] = useState\(""\)/);
+      const body = source.match(/useEffect\(\(\) => \{((?:\s*if \(!open \|\| mode !== "signup"\) return;)?\s*try \{\s*setSuggestedTimeZone[\s\S]*?)\}, \[[^\]]*\]\);/)?.[1];
+      assert.ok(body);
+      for (const reported of [undefined, "Asia/Calcutta", "throws"]) {
+        let suggestion = "";
+        let selected = "";
+        const browser = { DateTimeFormat: () => {
+          if (reported === "throws") throw new Error("Browser setting unavailable");
+          return { resolvedOptions: () => ({ timeZone: reported }) };
+        } };
+        new Function("setSuggestedTimeZone", "setTimeZone", "Intl", "open", "mode", body)(
+          (value: string) => { suggestion = value; },
+          (value: string) => { selected = value; },
+          browser, true, "signup",
+        );
+        assert.equal(suggestion, reported === "Asia/Calcutta" ? reported : "");
+        assert.equal(selected, "", "even a valid detected zone remains unconfirmed");
+      }
     }
   });
 });

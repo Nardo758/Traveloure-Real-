@@ -18,13 +18,13 @@ Source: `attached_assets/user_automation_1793284974335.pdf`, 66 pages,
 The older 45-family tracker and 25-journey summary are different units and
 are not substituted for these 269 rows.
 
-### Counts by Part and status
+### Counts by Part and status — updated after approved C25 proof
 
 | Part | BUILT | EXISTS | WAITING | NOT BUILT | EXCLUDED | Total |
 |---|---:|---:|---:|---:|---:|---:|
 | A | 0 | 9 | 4 | 18 | 0 | 31 |
 | B | 5 | 10 | 5 | 6 | 0 | 26 |
-| C | 1 | 24 | 4 | 4 | 2 | 35 |
+| C | 2 | 24 | 4 | 3 | 2 | 35 |
 | D | 22 | 0 | 12 | 1 | 0 | 35 |
 | E | 0 | 11 | 3 | 4 | 0 | 18 |
 | F | 3 | 9 | 2 | 6 | 0 | 20 |
@@ -32,7 +32,7 @@ are not substituted for these 269 rows.
 | H | 0 | 4 | 1 | 7 | 0 | 12 |
 | J | 2 | 3 | 16 | 27 | 0 | 48 |
 | X | 0 | 0 | 10 | 6 | 0 | 16 |
-| **Total** | **33** | **76** | **70** | **88** | **2** | **269** |
+| **Total** | **34** | **76** | **70** | **87** | **2** | **269** |
 
 Document consistency check: 269 rows, 269 unique IDs, zero missing source
 IDs and zero extra IDs. This is a report-count check, not an automation
@@ -208,7 +208,7 @@ locator is not authorization to edit a payment writer or convert a sender.
 | C22 | Late-night first step / later due times | EXISTS | ITIN original generation timestamps and next-window deferral |
 | C23 | Cart wins over itinerary; loser deferred | BUILT | Held SWEEP/SEND + CART-LOOPS readable subset; not integrated into main; future-day slot priority is W-PRIORITY |
 | C24 | Cap used / deferred not lost | EXISTS | ITIN reservation and next-window recheck |
-| C25 | Missing time zone holds | NOT BUILT | 2026-11-01: targeted cases 10/10, enclosing isolated suite 28/30; 0/2 clean full loops. Stopped after first failed loop; 2 retained fixture gaps, no runtime edits. See fresh evidence below. |
+| C25 | Missing time zone holds | BUILT | Approved fixture-only corrections followed by 2 fresh clean full-suite loops, 30/30 each, including 10/10 target cases each; paired held-source typecheck 110→110, 0 new. Held implementation only; not main reconciliation or release proof. |
 | C26 | Same behavior across plan tiers | NOT BUILT | ITIN exists; exact tier matrix/no-credit scenario harness not established |
 | C27 | New generation fails / old plan | WAITING | W-ITIN-POLICY: Z-14 policy and sequence semantics need confirmation |
 | C28 | Failed attempt then successful plan | EXISTS | ITIN failed/ready generation separation |
@@ -489,10 +489,12 @@ carried-forward blockers for the final build-complete gate.
    zone, but only after the existing consent/quiet-hour preferences are
    otherwise valid. Invalid zone still maps to invalid_preferences.
    At inventory time no standalone two-clean-loop evidence was located.
-   Fresh 2026-11-01 verification passed 10/10 targeted cases but failed
-   2 surrounding cases (28/30 overall); 0 clean full loops. C25 remains
-   NOT BUILT under the owner's loop-based definition, not “no code.”
-   Do not rebuild the hold or promote the row from targeted passes alone.
+   The first 2026-11-01 verification passed 10/10 targeted cases but failed
+   2 surrounding cases (28/30 overall); it was correctly held. After the
+   subsequent approved fixture-only corrections, 2 fresh full-suite loops
+   passed 30/30 each with paired source-baseline typecheck 110→110, 0 new.
+   C25 is now BUILT on the held implementation, not reconciled into main
+   or release-certified. Invalid preferences remain unchanged.
    No production counts of invalid-preference cancellations were queried.
 3. **Cart readable subset exists on the visible held branch; do not
    rebuild.** CART-LOOPS reports two clean native loops for Parts 4–6;
@@ -688,7 +690,7 @@ generated output into `guard-artifacts/` in the private evidence directory.
 The original build-only record is superseded for signup build verification,
 not for release authorization.
 
-### C25 result — STOPPED / BLOCKED, not DEV-CLOSED
+### Historical C25 result before fixture approval — STOPPED / BLOCKED
 
 Verified the existing implementation from the preserved
 `work/stage2-part4-atomic-reset-timezone` branch in a separate checkout.
@@ -727,7 +729,7 @@ already present (`added=0`) and removed its namespace. No migration was
 applied to shared development. Evidence: `c25-loop1.log`,
 `c25-loop1-summary.json`, `c25-final-summary.json`.
 
-### Current register counts and held proof
+### Historical register counts before approved fixture correction
 
 | BUILT | EXISTS | WAITING | NOT BUILT | EXCLUDED | Total |
 |---:|---:|---:|---:|---:|---:|
@@ -740,3 +742,266 @@ A09 and F12 are not promoted. Real deliveries, QA-inbox observations, real
 elapsed-time proofs, real-provider concurrency and journeys: 0 each.
 Shared send-setting changes, production changes, migrations, pushes,
 merges and deployment actions: 0 each. RELEASE HELD.
+
+## Approved follow-up work — 2026-11-01
+
+Scope: development only; no push, merge, production, migration, payment
+writer, send-setting or secret changes. Private evidence:
+`.local/verification-evidence/automation-approvals-20261101/`.
+
+### Reproducible isolated constraint names
+
+Approved files: `scripts/verification/run-messaging-gate.mjs` and
+`scripts/verification/__tests__/automation-baseline-evidence.test.mjs`.
+Local commit: `fc1c17ac1`. Not pushed or merged.
+
+The runner reads public primary/unique constraint metadata without changing
+it. Inside its existing fixture-creation transaction it matches copied keys
+by table, kind and exact definition, renames in two collision-safe phases,
+then compares every restored name/definition with the source. Unknown,
+missing or extra definitions fail closed and roll back fixture creation.
+Existing FK cloning, independent serials, fingerprint check, provider-free
+environment and finally-cleanup remain unchanged. No manual wrapper or
+application duplicate-detection change is needed for key-name preservation.
+Unit cases: 9/9, including renamed unique keys, PKs, duplicate definitions,
+quoted names, incompatible uniqueness and refusal of an unowned schema.
+Real isolated runs also report `ISOLATED_KEY_CONSTRAINTS_PRESERVED=true`.
+
+### Separate waitlist fixture issue — NOT FIXED
+
+The direct, unmodified runner invocation of the signup/preferences suites
+passed 11/22 and failed 11/22. N1–N6: 6 failures; TZ1–TZ5: 5 failures.
+The owned schema is empty and has 0 traveler_signup_mode rows. Registration
+therefore follows the existing waitlist default and returns 403 before the
+signup assertions; no open-mode fixture was added. Runtime settings and
+application behavior were not changed. Original source constraints were
+preserved and the namespace was removed.
+
+The earlier two clean signup loops used an explicitly open disposable
+fixture. Their scoped historical evidence is retained, but the requested
+no-workaround rerun is BLOCKED, not a fresh signup DEV-CLOSED claim.
+Fixing that test-fixture mode remains a separate approval; it is not hidden
+inside the constraint repair or a development-wide flag change.
+
+### Itinerary fixture correction and C25
+
+Unchanged held source was freshly re-proved: 28/30 passed; exactly the same
+2 failures as before. Then only 3 fixture lines were changed: verified
+identity/complete Connect on the QA expert, and explicit bookable/expert/
+age options on the outbox-claim fixture. No eligibility or expiry assertion
+was weakened and no runtime file changed.
+
+The separate branch `work/c25-fixture-proof-20261101` preserves these
+test-only corrections at `153ed84814010e4839a198931a869874379b0bfa`;
+the original held branch remains unchanged. Its incremental private bundle
+is `c25-fixture-proof.bundle` in the evidence directory.
+
+| Proof phase | Loop 1 | Loop 2 |
+|---|---:|---:|
+| Corrected full itinerary suite | 30/30 | 30/30 |
+| Subsequent independent C25 full-suite runs | 30/30 | 30/30 |
+| Targeted C25 cases in each subsequent run | 10/10 | 10/10 |
+| Namespace removal per run | 1 | 1 |
+
+Each run used a fresh randomized owned schema. Evidence:
+`c25-unchanged-base.json`, `itinerary-fixture-loop1.json`,
+`itinerary-fixture-loop2.json`, `c25-loop1.json`, `c25-loop2.json`.
+This is provider-free proof on the held implementation, not reconciliation
+into main, production proof or real elapsed time.
+The unchanged held source and corrected fixture checkout both have exactly
+110 diagnostics, with identical normalized diagnostics and 0 new; the
+changed fixture file has 0 diagnostics. The held source was compared with
+its own original baseline, not confused with a different main revision.
+Evidence: `c25-typecheck-comparison.json`. C25: DEV-CLOSED for that subset.
+
+### Browser-zone offer — reuse before building
+
+After the itinerary/C25 loops, inspection confirmed the approved offer
+already exists in both signup forms: detection writes suggestedTimeZone
+only; an explicit button or manual edit writes timeZone. Blank selection
+is omitted. Both existing locales already contain the optional-field and
+suggestion copy. No duplicate control, helper, locale key or runtime
+implementation was added.
+
+Only the existing UI test file was extended with 3 contracts: detection
+cannot select/submit its own suggestion; manual selection and the non-submit
+confirmation button are the only chosen-zone setters; unavailable, empty
+and valid browser settings execute the real detector body without selecting
+anything. These are provider-free component/source contracts, not a browser
+journey or no-JavaScript compatibility claim.
+
+The initial added assertion incorrectly demanded that both catch blocks
+explicitly clear an already-empty suggestion; 17/18 passed. The assertion
+was replaced by execution of the actual detector body for all 3 outcomes,
+checking both suggestion and chosen-zone state. No runtime code changed;
+the failed loop does not count toward closure.
+
+## Invalid non-empty signup zone — PROPOSAL ONLY
+
+Do not implement before approval. Smallest proposed touch list:
+
+| Existing file | Proposed gap fix |
+|---|---|
+| `server/replit_integrations/auth/emailAuth.ts` | Normalize an unsupported non-empty string to an absent optional zone, rather than failing the otherwise valid signup; record `invalid_timezone` with the existing structured log path, without address, IP or raw supplied value. Bound work before invoking Intl; no IP/city/language/server fallback. |
+| `server/__tests__/auth-three-defects.db.test.ts` | Replace only the invalid-string rejection contract with account-created/no-zone/reason assertions; retain omitted/blank cases, duplicate-account immutability, transactional rollback and concurrency contracts. |
+
+Recommendation: invalid or overlong strings become unknown without calling
+Intl on an overlong value; existing request-body size limits still apply.
+Non-string input handling must be explicitly approved too: recommend ignore
+that optional field and record the same reason, rather than rejecting the
+account. No new preference field, table, email type or migration is needed.
+This is not permission to accept invalid email/password/terms input.
+
+Effect on the prior DEV-CLOSED slice: changes its deliberate invalid-zone
+validation contract, so its previous two clean loops would not certify the
+new behavior. Re-prove all signup/preference/UI cases with 2 new clean loops
+and the REFINE gates; first resolve the separately held open-mode fixture.
+No time-zone-dependent marketing may become eligible from this fallback.
+Zone-specific client error handling need not change for the minimal server
+proposal; no client/locale edit is silently included.
+
+## The 70 WAITING rows — primary blocker allocation
+
+Each scenario is counted once under a primary blocker; other dependencies
+remain open. In particular W-SEND-WINDOW also blocks D33 (counted under
+W-RAILS), W-PRIORITY also affects X03/X12, and W-EXPIRY also affects X15.
+These cross-links are not additional rows. Provider policy and provider
+proof are distinct groups, not a prefix match.
+
+| Blocker | Rows | Primary IDs | Decision needed | Recommended option |
+|---|---:|---|---|---|
+| W-ADDRESS | 2 | A14,A23 | Typo/disposable-address policy | Neutral first-message copy; no guessed address filtering |
+| W-PROVIDER | 6 | A27,A28,B08,B14,B25,X11 | Provider reset/link/ownership contract | Explicit owner-confirmed linking; never silently merge identities |
+| W-SECURITY | 2 | B22,B23 | Lockout and device/privacy rules | Design bounded protection first; no new identity storage implicitly |
+| W-RAILS | 15 | C04,C12,D05,D21,D28,D30,D31,D32,D33,E01,E05,J14,X05,X06,X12 | Close lifecycle/ownership UNKNOWN rails | Read-only trusted joins where demonstrable; otherwise hold; no payment edits |
+| W-ITIN-POLICY | 2 | C17,C27 | Partial booking and failed-new-generation behavior | Keep existing booking truth; explicit owner policy before eligibility changes |
+| W-ITEM | 3 | D08,D18,D19 | Inventory/payment ordering guarantee | Keep item-change sending blocked pending adequate final-read safety |
+| W-PAYMENT-POLICY | 2 | D29,D34 | Session pause/decline and balance-reminder scope | Exclude unsupported balance reminders; approve exact Z-05/Z-06 contract first |
+| W-SEND-WINDOW | 0 | — | D33 residual payment/send window, secondary blocker | Accept only measured marketing residual; no inventory/must-have guarantee |
+| W-RECIPIENT | 1 | E14 | Readdress versus frozen security recipient | Preserve frozen security recipients; explicit per-type retargeting |
+| W-CONSENT | 1 | F08 | Account-wide resubscribe | Keep current narrower behavior until an explicit account-wide policy |
+| W-ZONE | 3 | F13,J37,X14 | Stored-zone changes and elapsed-hour semantics | Use explicit stored zone and real elapsed hours; no guesses |
+| W-DELETION | 15 | G16–G28,J12,X10 | Retention, grace, access, cancellation and re-signup | Legal/owner design first; no destructive implementation now |
+| W-DORMANT | 2 | H03,X16 | Dormancy threshold and reactivation | Owner supplies actual threshold; do not invent days |
+| W-PROVIDER-PROOF | 3 | J04,J05,X15 | Once-only/accepted-DB-failure/timeout provider proof | Keep real-provider work held until explicit testing authorization |
+| W-EXPIRY | 3 | J09,J34,X03 | Deferred usefulness and kill-switch recovery | Preserve current expiry; no stale-email replay without explicit policy |
+| W-LEGAL-COPY | 3 | J23,J24,J25 | Terms/refund/footer/tracking review | Owner/legal approve the actual copy; no assumed compliance |
+| W-DELIVERY | 1 | J27 | Domain/header and real receipt proof | Authorize a bounded QA-only proof separately; not now |
+| W-COMPLAINT | 1 | J29 | Complaint streams, suppression scope and owner | Marketing suppression only; named operational owner |
+| W-MONITOR | 1 | J33 | Alert thresholds/operator/channel | Reuse registry/heartbeat/admin surfaces; approve limits first |
+| W-SUPPORT | 1 | J36 | Audited resend/cancel authority | Least privilege, explicit reasons and existing audit path |
+| W-RETENTION | 1 | J44 | Body/log retention and anonymization | Owner/legal duration; no indefinite default invented |
+| W-CLIENTS | 1 | J46 | Manual client/device evidence | Separate testing authorization; not source-contract proof |
+| W-PRIORITY | 1 | X13 | Occasion contender and future-day reservation | Preserve cart → itinerary → nudge; approve reservation separately |
+| **Total** | **70** | **70 unique scenario IDs** | | |
+
+## Build plan for the original 88 NOT BUILT rows — NOT APPROVED TO BUILD
+
+This is a proposal, not an implementation authorization. It accounts for
+the original 88 IDs, including the separately approved C25 proof work.
+Once C25 clears its full gates, 1 of these 88 is closed and 87 remain.
+No other row is promoted by this plan.
+
+Files below use exact existing paths from the locator table above:
+AUTH, VERIFY, WELCOME, RESET, LOGIN, CHANGE, OUTBOX, EXIT, ITIN, PREF, COPY,
+BOOKINGS, NOTIFY, SUSPEND and held CART/SWEEP/SEND/ITEM. A locator means
+those existing files, not a new service. Evidence-only slices touch their
+existing tests/reports first. Before any slice, refresh the existence map,
+resolve overlaps, show its exact gaps-only touch list and await approval.
+Any genuinely missing file/type/schema requires separate approval, not a
+new copy of an existing helper. Existing direct senders remain observed
+only; payment writers are never included.
+
+Size: S = 1–2 existing files; M = 3–5; L = 6+ or a policy-dependent
+workflow that must be split at its exact-touch-list gate. These are scope
+estimates, not promises or elapsed-time claims. Every slice requires
+provider-free positive/negative/concurrency/fault contracts, typecheck,
+guards, registry and mutation-auth checks, 2 clean loops and REFINE.
+Real delivery, real elapsed time, provider concurrency and E2E remain held.
+
+| Order | Slice | Original row IDs | Existing files / tests | Dependencies and limits | Size |
+|---:|---|---|---|---|---|
+| 01 | C25 proof, approved separately | C25 | ITIN held tests and proof report | Fixture-only correction; no invalid-preference change | S |
+| 02 | Combined durable resend/address caps | A04,A05,A17,A18,B18,G12,J41 | AUTH, VERIFY, RESET, CHANGE existing tests | Approve exact address/IP policies; no new table; stop if existing storage cannot enforce | L |
+| 03 | Token/normalization race proof | A16,A19,B03,J16,J17 | AUTH, VERIFY, RESET tests | No plus-folding guess; existing hashed/scoped token helpers only | M |
+| 04 | Existing-account notice reconciliation | A15 | AUTH, OUTBOX, retained notice branch/tests | Reuse registered type and caps, no branch wholesale copy; sending stays off | M |
+| 05 | Expired versus used reset UI | B06,B07 | RESET, `client/src/pages/reset-password.tsx`, existing reset tests | Security-neutral response contract; no token disclosure | M |
+| 06 | Forwarded and altered-link owner proof | B15,C33,J18,J20 | RESET, ITIN, BOOKINGS existing owner/link tests | Provider-free HTTP contracts only; full cross-browser journey held | M |
+| 07 | Fresh email-change proof and audit rollback | G01,G13,J11 | AUTH, CHANGE existing tests | Current auth/audit guarantees; no identity storage addition | M |
+| 08 | Pending email-change lifecycle | G02,G03,G07,G08,G09 | CHANGE, AUTH, OUTBOX existing tests | Reconcile current main, #1675 and row 156; schema need stops work | L |
+| 09 | Post-change sessions/provider overwrite | G05 | AUTH, CHANGE existing tests | Provider-link policy first; no provider-identity storage | M |
+| 10 | Security-writer audit/suspension proof | J13,J15 | SUSPEND, AUTH, OUTBOX existing tests | Preserve authoritative writers; no blanket metadata or payment edits | M |
+| 11 | Zone/clock boundary contracts | F12,J38,J39,J40 | PREF, ITIN, held SEND tests | C25 first; invalid-zone hold is separately approved policy; fixture dates only, no real-clock claim | M |
+| 12 | Account-wide preferences and deferral | F04,F15 | PREF, OUTBOX, ITIN, held SEND tests | W-CONSENT, cart reconciliation and three-family scope | L |
+| 13 | Marketing-only unsubscribe headers | F05,J28 | EXIT, ITIN existing tests | Existing single transport; no security-email opt-out header | M |
+| 14 | Unsubscribe token ownership/masking | F07,J43 | ITIN, PREF existing tests/UI | No cross-user mutation; real browser proof held | M |
+| 15 | Classification and unbuilt-type exclusion | F10,H12 | Registry, OUTBOX, EXIT existing tests | Approved list only; new types remain off | M |
+| 16 | Tier/disconnect generation proof | C26,C29 | ITIN, existing generation-writer tests | No tier/credit behavior change; provider-free disconnect simulation only | M |
+| 17 | Cart date/quantity activity gap | D17 | Held CART and its existing tests | Narrow main reconciliation; no checkout/payment write edits; stop on such a dependency | M |
+| 18 | Accepted bounce/complaint handling | A22,J06,J30,J31 | Existing receipt/webhook tests, OUTBOX, EXIT | W-COMPLAINT; provider contract first; no second scheduler/table | L |
+| 19 | Booking/refund content proof | E07,E12 | BOOKINGS, COPY existing tests | Observe/stub payment rails only; never alter payment/refund writers | M |
+| 20 | Direct-sender observation | E15,E16,J35 | Existing sender report, EXIT tests | No sender conversion or real kill-switch toggle | M |
+| 21 | Hostile and forbidden-copy contracts | J19,J22,J26,J47 | COPY, existing template tests | Approved copy; no claim of actual mail-client accessibility | M |
+| 22 | Language and RTL fallback | A21,J48 | COPY, existing locale/template tests | Explicit language fallback; no location inference | M |
+| 23 | Structured decision-log coverage | J32 | OUTBOX, ITIN, EXIT existing tests | Existing logging only, no PII/raw inbox values or new table | M |
+| 24 | Neutral response matrix | J42 | AUTH, RESET, CHANGE, LOGIN tests | Equal credential work, not identical-timing claim | M |
+| 25 | Evidence secrecy audit | J45 | Existing evidence tests/reports | Redacted counts only; owner rotation confirmation remains separate | S |
+| 26 | Social-provider signup proof | A24,A25,A26 | AUTH, VERIFY, WELCOME existing tests | W-PROVIDER; no new identity storage or silent email linking | L |
+| 27 | Unusual-sign-in design/proof | B24 | LOGIN, AUTH, OUTBOX existing tests | W-SECURITY; owner-defined signals/thresholds, no invented anomaly producer | L |
+| 28 | Verification reminder family | A07,A08,A09,A10,A11,A12,X02 | VERIFY, registry, OUTBOX, EXIT, PREF existing tests | After launch and explicit family approval; existing jobs only; all new types off | L |
+| 29 | Profile/planner nudges and precedence | H01,H02,H04,H05,H06,H07 | Registry, OUTBOX, PREF, ITIN existing tests | Approved trigger/copy; cart → itinerary → nudges; existing sweep only | L |
+| 30 | Concurrent duplicates and 09:00 queue volume | J01,J08 | OUTBOX, EXIT existing database tests | Local provider-free DB concurrency and owned 5,000-row queue only; no provider traffic or production load | M |
+| 31 | Combined cross-flow scenarios | X01,X04,X07,X08,X09 | AUTH, VERIFY, WELCOME, ITIN, held CART/SEND, CHANGE, SUSPEND tests | Preceding component gates and UNKNOWN rails; provider-free composition only, journeys held | L |
+
+No slices 02–31 have been started under this plan. Approval of the plan is
+still required. C25's separate fixture/proof authorization is not a general
+approval to implement F12, verification reminders, nudges or cart integration.
+
+## Completion gates for these approvals
+
+| Gate | Verification loop 2 | Verification loop 3 |
+|---|---:|---:|
+| Browser-zone contracts | 18/18 | 18/18 |
+| Isolated-runner evidence tests | 9/9 | 9/9 |
+| Combined provider-free unit/contracts | 27/27 | 27/27 |
+| Static guard batch | 79/79 | 79/79 |
+| Typecheck diagnostics / ceiling | 110/111 | 110/111 |
+| New diagnostics vs source baseline | 0 | 0 |
+| Registry / roster | 2/2 | 2/2 |
+| Mutation manifest / coverage | 2/2 | 2/2 |
+
+The initial added UI assertion failed 1/18; it was not counted clean.
+After the behavior-based correction, loops 2 and 3 are consecutive clean
+provider-free loops. No six-loop STRUCTURAL RISK threshold was reached.
+REFINE review: no duplicate browser field, locale key or helper was added;
+no dead runtime path was introduced; key restoration has verification-only
+catalog queries/DDL and adds zero queries to real signup/cart/payment writes.
+Both final loops ran after that review/correction.
+
+Root and held C25 snapshots were each checked against their own source
+baseline. Both remain at 110, with 0 new diagnostics. This is not a globally
+clean build claim. The root gates do not certify all unrelated held-branch
+changes. Provider-free UI contracts do not prove real browser interactions,
+provider behavior, QA inbox contents or no-JavaScript signup.
+
+Current statuses:
+- Constraint repair: DEV-CLOSED verification tooling, locally committed only.
+- Corrected itinerary/C25 readable subset: DEV-CLOSED on held source.
+- Existing browser-zone offer: reused; provider-free contracts DEV-CLOSED.
+- Full signup no-workaround rerun: BLOCKED by the separately held fixture mode
+  (11/22 passed, 6 N failures and 5 TZ failures); no fresh unqualified
+  signup DEV-CLOSED claim replaces that result.
+- Invalid-zone fallback: proposal only, 0 runtime changes.
+- Remaining build plan: 88 original IDs mapped exactly once; C25 closes 1,
+  leaving 87 NOT BUILT IDs. No new slice started.
+- WAITING allocation: 70 unique IDs, 0 missing, primary counts sum 70.
+
+| BUILT | EXISTS | WAITING | NOT BUILT | EXCLUDED | Total |
+|---:|---:|---:|---:|---:|---:|
+| 34 | 76 | 70 | 87 | 2 | 269 |
+
+Change: C25 alone moved NOT BUILT → BUILT. No A09/F12 or whole-family
+promotion. New persistent tables, migrations, payment changes, production
+changes, send-setting changes, pushes, merges, real emails, inbox observations,
+real elapsed-time proofs and E2E journeys: 0 each. Fresh owned namespaces
+removed: 6/6. All original branches retained. RELEASE HELD.
