@@ -13743,6 +13743,11 @@ ${bannedCopyPromptLine()}`;
       if (!gemWrite || gemWrite.created) {
         logItineraryChange(tripId, userName, `Added "${item.title}"`, "add", owned ? "owner" : "expert", item.id);
       }
+      // Row 306: the owner's own add is one selection row (no-op unless `selection_profile` is on; never fails the add).
+      if (owned && (!gemWrite || gemWrite.created)) {
+        const { recordSelection } = await import("./services/selection-profile.service");
+        void recordSelection({ userId, action: "add", tripId, item: item as any });
+      }
 
       // If traveler added item and expert is assigned, notify the expert
       if (owned && (!gemWrite || gemWrite.created)) {
@@ -13873,6 +13878,11 @@ ${bannedCopyPromptLine()}`;
       // transport-legs.routes.ts). Reuses the `owned` flag computed above for the mode-flip gate.
       const role = owned ? "owner" : "editor";
       logItineraryChange(req.params.tripId, userName, `Reordered Day ${dayNumber} activities`, "reorder", role);
+      // Row 306: the owner's own reorder is one "move" row (no stop fields; no-op unless `selection_profile` is on).
+      if (owned) {
+        const { recordSelection } = await import("./services/selection-profile.service");
+        void recordSelection({ userId, action: "move", tripId: req.params.tripId });
+      }
       res.json(items);
     } catch (error) {
       res.status(500).json({ message: "Failed to reorder items" });

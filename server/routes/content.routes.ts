@@ -37,6 +37,7 @@ import {
   resolveClickAttribution,
 } from "../services/discover-impressions.service";
 import { UNKNOWN_THEME_MESSAGE, parseDiscoverThemeParam } from "@shared/experience-themes";
+import { parseServiceTypeQuery, UNKNOWN_SERVICE_TYPE_MESSAGE } from "@shared/service-type-query";
 import { resolveThemeIdsBySlug } from "../services/experience-themes.service";
 import { db } from "../db";
 import { storage } from "../storage";
@@ -1008,9 +1009,21 @@ router.get("/api/discover/location/:city", async (req, res) => {
       // date passthrough harvested from the routes.ts shadow copy — the service's
       // LocationViewOptions.date exists for this route (no behavior change server-side yet).
       const date = typeof req.query.date === "string" ? req.query.date : undefined;
+      // CN-1c: the city page (/city/:slug → this payload) can ask for one listing type.
+      // Absent means every type. The services section keeps its approved-and-active gate.
+      const parsedType = parseServiceTypeQuery(req.query.serviceType);
+      if (!parsedType.ok) {
+        return res.status(400).json({ message: UNKNOWN_SERVICE_TYPE_MESSAGE });
+      }
 
       const { locationViewService } = await import("../services/location-view.service");
-      const payload = await locationViewService.getLocationView(city, country, { month, year, limit, date });
+      const payload = await locationViewService.getLocationView(city, country, {
+        month,
+        year,
+        limit,
+        date,
+        ...(parsedType.serviceType ? { serviceType: parsedType.serviceType } : {}),
+      });
       res.set("Cache-Control", "public, max-age=300");
       res.json(payload);
     } catch (err: any) {
@@ -1617,6 +1630,51 @@ router.get("/api/catalog/wegotrip", isAuthenticated, async (req, res) => {
 // live only, through `/api/viator/live/products`.
 router.get("/api/catalog/viator-feed", isAuthenticated, (_req, res) => {
   res.status(410).json({ message: "The Viator feed is retired; Viator results are live only.", items: [], total: 0 });
+});
+
+// Row 305 (CS-3 brief 8, D): catalogue single-search. One box over our listings, checked places, official
+// sites, Viator (signed-in only, live, link-out) and hotels (links only); each result carries exactly one
+// action and an add-to-plan body. Public read, nothing written; behind the /api/search rate limiter.
+router.get("/api/search/catalogue", async (req, res) => {
+  try {
+    const { searchCatalogue } = await import("../services/catalogue-search.service");
+    const city = typeof req.query.city === "string" ? req.query.city : "";
+    const query = typeof req.query.q === "string" ? req.query.q : "";
+    const result = await searchCatalogue({ city, query, signedIn: !!getUserId(req) });
+    res.set("Cache-Control", "private, no-store");
+    res.json(result);
+  } catch (err) {
+    const code = err && typeof err === "object" && "code" in err ? String((err as { code?: unknown }).code) : "error";
+    console.error(`[catalogue-search] failed (${code})`);
+    res.status(500).json({ reason: "catalogue_search_failed" });
+  }
+});
+
+// Row 306 (CS-3 brief 10): the traveler's own selection profile. Session-owned (§14): the owner is the session,
+// never the body or the query. While `selection_profile` is off the read answers { enabled: false, traits: [] }.
+router.get("/api/me/selection-profile", isAuthenticated, async (req, res) => {
+  try {
+    const { readSelectionTraits, selectionProfileOn } = await import("../services/selection-profile.service");
+    const enabled = await selectionProfileOn();
+    const traits = enabled ? await readSelectionTraits(getUserId(req)) : [];
+    res.set("Cache-Control", "private, no-store");
+    res.json({ enabled, traits });
+  } catch (err) {
+    console.error(`[selection-profile] read failed (${(err as any)?.code ?? "error"})`);
+    res.status(500).json({ reason: "selection_profile_read_failed" });
+  }
+});
+
+// Reset clears the traveler's own rows. It takes no body; the owner is the session.
+router.post("/api/me/selection-profile/reset", isAuthenticated, async (req, res) => {
+  try {
+    const { resetSelectionProfile } = await import("../services/selection-profile.service");
+    const removed = await resetSelectionProfile(getUserId(req)!);
+    res.json({ reset: true, removed });
+  } catch (err) {
+    console.error(`[selection-profile] reset failed (${(err as any)?.code ?? "error"})`);
+    res.status(500).json({ reason: "selection_profile_reset_failed" });
+  }
 });
 
 // VD-1: live Viator product search (Partner API, Basic Access). Nothing is stored; the price is as of
@@ -2994,7 +3052,12 @@ router.get("/api/services/:id", async (req, res) => {
 router.get("/api/services", async (req, res) => {
     const categoryId = req.query.categoryId as string | undefined;
     const location = req.query.location as string | undefined;
-    const services = await storage.getAllActiveServices(categoryId, location);
+    // CN-1c: optional serviceType. The approved-and-active gate stays inside getAllActiveServices.
+    const parsedType = parseServiceTypeQuery(req.query.serviceType);
+    if (!parsedType.ok) {
+      return res.status(400).json({ message: UNKNOWN_SERVICE_TYPE_MESSAGE });
+    }
+    const services = await storage.getAllActiveServices(categoryId, location, parsedType.serviceType ?? undefined);
     // S8/G2 privacy circle (docs/briefs/WAVE3_SCHEMA_PROPOSALS.md, ledger row 102): the same
     // pre-booking jitter as the public detail read, applied here so the public BROWSE list never
     // carries an exact property/room pin either. Every other product shape is returned untouched
@@ -3018,6 +3081,12 @@ router.get("/api/discover", async (req, res) => {
     const resolvedThemes = await resolveThemeIdsBySlug(parsedThemes.slugs);
     if (!resolvedThemes.ok) {
       return res.status(400).json({ message: UNKNOWN_THEME_MESSAGE });
+    }
+    // Row 306: a signed-in traveler's text search is one "search" row — the action only, never the words
+    // (no-op unless `selection_profile` is on; never delays or fails the search).
+    if (typeof req.query.q === "string" && req.query.q.trim() && getUserId(req)) {
+      const { recordSelection } = await import("../services/selection-profile.service");
+      void recordSelection({ userId: getUserId(req), action: "search" });
     }
     const filters = {
       query: req.query.q as string | undefined,
@@ -4902,8 +4971,18 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
           storage.getDayBoundaries(tripIdParam),
         ]);
       }
+      // Row 306: the planner reads the traveler's own selection pattern; "" while `selection_profile` is off or with
+      // no trait, so the prompt is unchanged. A read failure is no signal, never a failed draft.
+      let selectionProfileLine = "";
+      try {
+        const { readSelectionTraits } = await import("../services/selection-profile.service");
+        const { selectionTraitsPromptLine } = await import("@shared/selection-profile");
+        selectionProfileLine = selectionTraitsPromptLine(await readSelectionTraits(userId));
+      } catch (err) {
+        console.warn(`[generate-itinerary] selection profile read failed (${(err as any)?.code ?? "error"})`);
+      }
       const anchorBlock =
-        buildAnchorPromptBlock(tripAnchors, tripBoundaries, dates.start) + draftBasisPromptBlock(draftBasis, heldSlots);
+        buildAnchorPromptBlock(tripAnchors, tripBoundaries, dates.start) + draftBasisPromptBlock(draftBasis, heldSlots) + selectionProfileLine;
 
       // Generate itinerary (Anthropic draft tier) — deduplicated + circuit-broken.
       //

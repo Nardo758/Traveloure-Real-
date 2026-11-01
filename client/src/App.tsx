@@ -101,6 +101,7 @@ const AdminRevenue = lazy(() => import("@/pages/admin/revenue"));
 const AdminAnalytics = lazy(() => import("@/pages/admin/analytics"));
 const AdminCategories = lazy(() => import("@/pages/admin/categories"));
 const AdminExperienceThemes = lazy(() => import("@/pages/admin/experience-themes"));
+const AdminConciergeTaskKinds = lazy(() => import("@/pages/admin/concierge-task-kinds"));
 const AdminExpertTemplates = lazy(() => import("@/pages/admin/expert-templates"));
 const AdminTemplateApprovals = lazy(() => import("@/pages/admin/template-approvals"));
 const AdminSearch = lazy(() => import("@/pages/admin/search"));
@@ -1290,6 +1291,9 @@ function Router() {
       </Route>
       <Route path="/admin/categories">
         {() => <ProtectedRoute component={AdminCategories} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/concierge-task-kinds">
+        {() => <ProtectedRoute component={AdminConciergeTaskKinds} requiredRole="admin" />}
       </Route>
       <Route path="/admin/experience-themes">
         {() => <ProtectedRoute component={AdminExperienceThemes} requiredRole="admin" />}

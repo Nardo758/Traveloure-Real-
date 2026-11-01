@@ -13158,6 +13158,23 @@ export type ConsentRecord = typeof consentRecords.$inferSelect;
 // detail panel. Additive. No CHECK. No DEFAULT on reviewed_at or photo_rights_ticked:
 // NULL means not reviewed, and NULL means the photo-rights tick is unset. Declared here
 // so a publish push does not drop the tables or the indexes.
+// Row 306 (migration 428, HELD): the selection profile's rows — the action and four coarse fields only
+// (shared/selection-profile.ts). No place name, coordinate, trip id, or religion/health field. Declared here so a
+// publish push does not drop the table or its index.
+export const selectionEvents = pgTable("selection_events", {
+  id: varchar("id", { length: 64 }).primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  action: varchar("action", { length: 20 }).notNull(),
+  stopType: varchar("stop_type", { length: 20 }),
+  neighbourhood: varchar("neighbourhood", { length: 120 }),
+  timeOfDay: varchar("time_of_day", { length: 12 }),
+  priceBand: varchar("price_band", { length: 12 }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  userCreatedIdx: index("idx_selection_events_user_created").on(table.userId, table.createdAt),
+}));
+export type SelectionEvent = typeof selectionEvents.$inferSelect;
+
 export const discoverTilePanelFacts = pgTable("discover_tile_panel_facts", {
   id: varchar("id", { length: 64 }).primaryKey(),
   tileId: varchar("tile_id", { length: 200 }).notNull(),

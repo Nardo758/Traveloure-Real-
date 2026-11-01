@@ -359,6 +359,16 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
       console.error("[apply-to-trip] auto re-finalize failed (non-fatal):", (err as any)?.message);
     }
 
+    // Row 306: keeping an optimized version is one "version_kept" row for the plan's owner (no stop fields;
+    // no-op unless `selection_profile` is on; never fails the apply).
+    {
+      const { verifyTripOwnership } = await import("../utils/trip-ownership");
+      if (await verifyTripOwnership(tripId, userId)) {
+        const { recordSelection } = await import("../services/selection-profile.service");
+        void recordSelection({ userId, action: "version_kept", tripId });
+      }
+    }
+
     // ADDITIVE fields (§13 honest reporting): how many already-routed items the apply left in
     // place, how many proposed items were dropped because the plan already held them, and how
     // many losing variants were discarded. Existing consumers read `tripId`/`delta` and are
@@ -1030,6 +1040,9 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       // Row 185 J6. Owner + final-render gating stays in the assembler. This whitelist
       // forwards the field only when that read attached it.
       ...(plan.plancard.finalAirportLeg ? { finalAirportLeg: plan.plancard.finalAirportLeg } : {}),
+      // Row 185 J5. The assembler attaches this only on the card render. A client position
+      // is not read and not stored — this handler takes no lat/lng from the query or the body.
+      ...(plan.plancard.onTripMap ? { onTripMap: plan.plancard.onTripMap } : {}),
       stats: plan.plancard.stats,
       // ADDITIVE TripPlan v1 envelope (docs/EXECUTION_MAP.md §3). New consumers read these;
       // existing consumers ignore them.

@@ -275,3 +275,74 @@ function jsonResponse(data) {
     },
   };
 }
+
+// ── A data UPDATE inside a dollar-quoted string is gated (ledger `2026-11-01-migration-approval-dollar-quote`) ──
+// The Oct 31, 2026 concern: a detector that skips "comment-only" diffs reads a line starting with `--` as a comment
+// even inside `$$…$$`, where it is the string an UPDATE writes. The diff below changes only such lines, so it changes
+// stored data while every changed line "looks like" a comment. This check reads no SQL at all: any added or changed
+// numbered migration needs Leon's sentence, whatever its text says. These cases pin that.
+const DOLLAR_QUOTED_UPDATE_PATCH = [
+  "@@ -4,5 +4,5 @@",
+  " UPDATE platform_settings SET value = $$",
+  "-  -- the stored value, before",
+  "+  -- the stored value, after",
+  " $$",
+  " WHERE setting_key = 'example_setting';",
+].join("\n");
+
+function dollarQuotedFetch(pr, patch, comments) {
+  return async (url) => {
+    if (url.includes(`/pulls/${pr}`) && !url.includes(`/pulls/${pr}/`)) {
+      return jsonResponse({ state: "open", head: { sha: "abc" } });
+    }
+    if (url.includes(`/pulls/${pr}/files`)) {
+      return jsonResponse([sql("999_dollar_quote_probe.sql", { status: "modified", patch })]);
+    }
+    if (url.includes(`/issues/${pr}/comments`)) return jsonResponse(comments);
+    return jsonResponse([]);
+  };
+}
+
+function runDollarQuoteCheck(pr, patch, comments) {
+  return checkPullRequest({
+    repo: "Nardo758/Traveloure-Real-",
+    pr,
+    token: "test-token",
+    root: path.resolve(__dirname, ".."),
+    eventName: "pull_request",
+    fetchImpl: dollarQuotedFetch(pr, patch, comments),
+  });
+}
+
+test("dollar-quote: an UPDATE's $$…$$ value changed only on lines starting with -- still needs approval", () => {
+  const found = migrationIdsFromChanges(
+    [sql("999_dollar_quote_probe.sql", { status: "modified", patch: DOLLAR_QUOTED_UPDATE_PATCH })],
+    layout,
+  );
+  assert.deepEqual(found.ids, ["999"]);
+  const result = evaluate({ migrationIds: found.ids, comments: [] });
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.missing, ["999"]);
+});
+
+test("dollar-quote: the full check fails the pull request without Leon's sentence", async () => {
+  const result = await runDollarQuoteCheck("71", DOLLAR_QUOTED_UPDATE_PATCH, []);
+  assert.equal(result.exitCode, 1);
+  assert.deepEqual(result.missing, ["999"]);
+  assert.match(result.message, /Migration approval is missing/);
+});
+
+test("dollar-quote: an approval sentence written inside the SQL is not approval", async () => {
+  const patch = `${DOLLAR_QUOTED_UPDATE_PATCH}\n+-- Migration 999 SQL approved — Leon`;
+  const result = await runDollarQuoteCheck("72", patch, []);
+  assert.equal(result.exitCode, 1);
+  assert.deepEqual(result.missing, ["999"]);
+});
+
+test("dollar-quote: Leon's comment on the pull request is what passes it", async () => {
+  const result = await runDollarQuoteCheck("73", DOLLAR_QUOTED_UPDATE_PATCH, [
+    { user: { login: "Nardo758", type: "User" }, body: "Migration 999 SQL approved — Leon" },
+  ]);
+  assert.equal(result.exitCode, 0);
+  assert.deepEqual(result.missing, []);
+});

@@ -1,4 +1,5 @@
 import { Link, useLocation } from "wouter";
+import { CN1B_HELD_COPY } from "@/lib/concierge-listing-form";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -89,6 +90,8 @@ const menuGroups = [
       { title: "Services", href: "/admin/services", icon: Package },
       { title: "Categories", href: "/admin/categories", icon: FolderKanban },
       { title: "Themes", href: "/admin/experience-themes", icon: Tags },
+      // CN-1b-UI: the concierge task list (label HELD for Leon, `CN1B_HELD_COPY.adminTitle`).
+      { title: CN1B_HELD_COPY.adminTitle, href: "/admin/concierge-task-kinds", icon: Tags },
       { title: "Offering Types", href: "/admin/offering-types", icon: Layers },
       // Ready Made Trips: catalog + approvals are tabs on this page.
       { title: "Ready Made Trips", href: "/admin/expert-templates", icon: LayoutTemplate },

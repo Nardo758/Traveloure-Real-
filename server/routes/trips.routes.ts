@@ -3383,6 +3383,11 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
       // Slice A3 (ledger `2026-10-05-stay-reroute-gaps`): an edit to (or into, or out of) a stay item
       // re-routes a copy's end legs. Best-effort, never fails the edit (§15b).
       await rerouteIfStayItemChanged(tripId, [existing as any, updated as any]);
+      // Row 306: the owner marking a stop skipped is one "skip" row (no-op unless `selection_profile` is on).
+      if ((updated as any).status === "skipped" && (existing as any).status !== "skipped" && (await verifyTripOwnership(tripId, userId))) {
+        const { recordSelection } = await import("../services/selection-profile.service");
+        void recordSelection({ userId, action: "skip", tripId, item: updated as any });
+      }
       // Smoke 10 S10-5: a time (or day) change re-sorts the item's day by time, so the list reads in
       // the order the day runs. The response is the row as stored, re-read after the re-sort.
       const timeTouched =
@@ -3455,6 +3460,11 @@ router.delete("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asy
       });
       // Slice A3: removing a stay lets the next one (if any) take the end legs. Best-effort (§15b).
       await rerouteIfStayItemChanged(tripId, [existing as any]);
+      // Row 306: the owner's own removal is one selection row (no-op unless `selection_profile` is on).
+      if (await verifyTripOwnership(tripId, userId)) {
+        const { recordSelection } = await import("../services/selection-profile.service");
+        void recordSelection({ userId, action: "remove", tripId, item: existing as any });
+      }
       res.json({ success: true });
     } catch (err) {
       console.error("[ItineraryItems] DELETE error:", err);
