@@ -143,6 +143,37 @@ export function formatMoneyCents(cents: number, currency: string): string {
 // R-ac (step 6): the unlimited 24-hour full re-run is retired. What stays free after a run is re-timing
 // a day on the versions board (smart-sequencing, no model call); another full run is paid, or covered
 // by a Trip Pass up to its cap.
-export const OPTIMIZE_RERUN_RULE = "After a run, re-timing a day on the versions board is free for 24 hours.";
+//
+// Row 266 (ledger `2026-11-01-row266-free-retime-copy`): the line states the count the SERVER allows
+// (`freeRetimesPerVersion` on the fee quote) and reads the Trip Pass line when the server says the pass
+// covers the run. No client env read and no literal count. The board keeps its own line (`retimeLine`).
+// Approvals: `free` and `freeWithCount` Leon, Oct 27, 2026; `freeOne` Leon, Oct 28, 2026; `tripPass` the
+// Architect, Oct 27, 2026, with Leon approving the PR before it ships.
+export const OPTIMIZE_RERUN_COPY = {
+  /** No usable count on the quote (null, absent, or not a whole number). */
+  free: "Re-timing a day is free for 24 hours.",
+  /** The quote's count is exactly one. */
+  freeOne: "Re-timing a day is free for 24 hours, with one free re-time for each version.",
+  /** The quote's count is two or more. */
+  freeWithCount: (count: number) => `Re-timing a day is free for 24 hours, with ${count} free re-times for each version.`,
+  /** The server's `coveredByTripPass` is true. */
+  tripPass: "Re-timing a day is included with your Trip Pass, for 24 hours after each run.",
+} as const;
+
+/** The count-free line. The cart reads no fee quote, so its bullet stays this one. */
+export const OPTIMIZE_RERUN_RULE = OPTIMIZE_RERUN_COPY.free;
+
+/**
+ * The Optimize card's re-run line for this quote. A count of zero shows no line (ruled), so this returns
+ * null; any other unusable value reads the count-free line.
+ */
+export function optimizeRerunRule(fee: OptimizationFeeQuote | null | undefined): string | null {
+  if (fee?.coveredByTripPass === true) return OPTIMIZE_RERUN_COPY.tripPass;
+  const n = fee?.freeRetimesPerVersion;
+  if (typeof n !== "number" || !Number.isInteger(n) || n < 0) return OPTIMIZE_RERUN_COPY.free;
+  if (n === 0) return null;
+  if (n === 1) return OPTIMIZE_RERUN_COPY.freeOne;
+  return OPTIMIZE_RERUN_COPY.freeWithCount(n);
+}
 
 // The fee chip's sentence moved onto the card's CTA (`optimizeCtaLabel`, `components/plan/OptimizerLead`).

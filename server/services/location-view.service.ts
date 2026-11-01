@@ -42,6 +42,7 @@ import {
   type ResolutionSubclass,
 } from "@shared/trailhead-resolution";
 import { sortByFeaturedAdjusted } from "./featured-sort";
+import type { ListingServiceType } from "@shared/service-type-query";
 import { logger } from "../infrastructure/logger";
 
 /**
@@ -225,6 +226,8 @@ export interface LocationViewOptions {
   limit?: number;
   /** ISO date string (YYYY-MM-DD) for date-aware planning mode. Passed through to payload; no behavior change yet. */
   date?: string;
+  /** CN-1c. When set, the services section is that listing type only. */
+  serviceType?: ListingServiceType;
 }
 
 const SECTION_TIMEOUT_MS = 12_000;
@@ -289,7 +292,10 @@ class LocationViewService {
 
     // v4: payload shape change — neighborhoods now carry localExpert (Feed v2 F8).
     // v5: payload shape change — adds externalStubs (Trailhead T4.3 published scraped stubs).
-    const cacheKey = `v5|${cityName}:${country ?? ""}`;
+    // A serviceType read uses its own entry. The unfiltered key stays v5|city:country.
+    const cacheKey = opts.serviceType
+      ? `v5|${cityName}:${country ?? ""}|serviceType:${opts.serviceType}`
+      : `v5|${cityName}:${country ?? ""}`;
     const cached = locationViewCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       return cached.payload;
@@ -564,6 +570,9 @@ class LocationViewService {
           publicListingOwnerSql(providerServices.userId),
           // TC-3 catalog rides are not city-page listings (ledger `2026-10-11-tc3-ride-seed`).
           notRideListingSql(providerServices.id),
+          // CN-1c: optional listing type. The approved and active predicates above still apply.
+          // The featured-adjusted order below is unchanged.
+          ...(opts.serviceType ? [eq(providerServices.serviceType, opts.serviceType)] : []),
           // FP-1 / B4: structured `city` first, free-text `location` only as the grandfathering
           // fallback for rows that predate the server-side derivation (see cityScopePredicate).
           cityScopePredicate(cityName),

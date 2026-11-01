@@ -1156,7 +1156,12 @@ test.describe("6 · paid run", () => {
     const [preview, fee] = await Promise.all([previewResp, feeResp]);
     expect(ok2xx(preview.status()), `preview answered ${preview.status()}`).toBe(true);
     expect(ok2xx(fee.status()), `fee answered ${fee.status()}`).toBe(true);
-    const feeBody = (await fee.json()) as { feeCents: number; currency: string; coveredByTripPass: boolean };
+    const feeBody = (await fee.json()) as {
+      feeCents: number;
+      currency: string;
+      coveredByTripPass: boolean;
+      freeRetimesPerVersion?: number | null;
+    };
 
     await expect(testid(page, "slip-action-optimize")).toBeVisible({ timeout: 20_000 });
     // Surface step 4 (spec §8): the OptimizerLead — its eyebrow, and the fee ON the CTA.
@@ -1168,7 +1173,19 @@ test.describe("6 · paid run", () => {
     await expect(testid(page, "slip-action-optimize")).toContainText(`Optimize · $${(feeBody.feeCents / 100).toFixed(2)}`);
     // B3 (ledger `2026-09-30-b3-b6-draft-is-the-deliverable`): the card states the ONE re-run
     // rule — the same sentence the comparison board renders (LD 41 (a)).
-    await expect(testid(page, "optimizer-lead-rerun")).toHaveText("After a run, re-timing a day on the versions board is free for 24 hours.");
+    // Row 266: the line states the server's own free re-time count (no literal); a count of 0 shows no line.
+    const freeRetimes = feeBody.freeRetimesPerVersion;
+    if (freeRetimes === 0) {
+      await expect(testid(page, "optimizer-lead-rerun")).toHaveCount(0);
+    } else {
+      await expect(testid(page, "optimizer-lead-rerun")).toHaveText(
+        typeof freeRetimes === "number" && Number.isInteger(freeRetimes) && freeRetimes >= 2
+          ? `Re-timing a day is free for 24 hours, with ${freeRetimes} free re-times for each version.`
+          : freeRetimes === 1
+            ? "Re-timing a day is free for 24 hours, with one free re-time for each version."
+            : "Re-timing a day is free for 24 hours.",
+      );
+    }
     // R-f: the preview carries kinds and counts, never an order.
     const body = (await preview.json()) as { findings?: Array<{ kind: string; count: number; days: number[] }> };
     expect(Array.isArray(body.findings)).toBe(true);

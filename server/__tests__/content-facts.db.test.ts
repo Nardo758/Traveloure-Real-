@@ -299,6 +299,12 @@ test("C5: no Places fact reaches a public route", async () => {
     // is not `places_api` — person-checked or official (`public_ok`) hours, with their provenance line. The feed is
     // reachable by its link, so nothing a public page may not carry leaves; no Places fact and no point is read out.
     "server/services/phone-delivery.service.ts",
+    // Row 305 (ledger `2026-11-01-row305-catalogue-search-server`; sanctioned Nov 1, 2026): the public catalogue
+    // search reads named places in a market under the same publishable gate as the blog reader above — a place is
+    // shown only through a fact `isPublishable`, `isFactLive` and `publicFactAttribution` pass, and `places_api` rows
+    // are excluded in SQL, never fetched. An expired place leaves only "not checked yet" and the source's top-level
+    // site, never fact content.
+    "server/services/catalogue-search.service.ts",
   ]);
   const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
   const offenders: string[] = [];

@@ -546,7 +546,7 @@ export interface IStorage {
 
   getProviderServicesByStatus(userId: string, status?: string): Promise<ProviderService[]>;
 
-  getAllActiveServices(categoryId?: string, location?: string): Promise<ProviderService[]>;
+  getAllActiveServices(categoryId?: string, location?: string, serviceType?: string): Promise<ProviderService[]>;
 
   toggleServiceStatus(id: string, status: string): Promise<ProviderService | undefined>;
 
@@ -3389,8 +3389,9 @@ export class DatabaseStorage implements IStorage {
     return rows.map(DatabaseStorage.normalizeServiceImage);
   }
 
-  async getAllActiveServices(categoryId?: string, location?: string): Promise<ProviderService[]> {
+  async getAllActiveServices(categoryId?: string, location?: string, serviceType?: string): Promise<ProviderService[]> {
     // F2 public read-gate: only approved listings surface to public browse (never a submitted/draft one).
+    // CN-1c: an optional serviceType narrows that same gate. It does not change the bookings order below.
     let conditions = [
       eq(providerServices.status, "active"),
       eq(providerServices.approvalStatus, "approved"),
@@ -3410,6 +3411,9 @@ export class DatabaseStorage implements IStorage {
       // #1385: whole-city match, never a substring (server/utils/location-filter-sql.ts).
       const match = listingLocationMatches(location, providerServices.city, providerServices.location);
       if (match) conditions.push(match);
+    }
+    if (serviceType) {
+      conditions.push(eq(providerServices.serviceType, serviceType));
     }
     const rows = await db.select().from(providerServices)
       .where(and(...conditions))
