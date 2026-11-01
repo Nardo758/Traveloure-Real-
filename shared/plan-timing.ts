@@ -189,6 +189,17 @@ export function calendarDayOf(instant: Date, timezone: string | null | undefined
 }
 
 /**
+ * Minutes since midnight of `instant` in the plan's zone. UTC when the zone is absent or unusable —
+ * the same NULL posture as `calendarDayOf` (a clock reading, no zone claimed).
+ */
+export function zonedMinuteOfDay(instant: Date, timezone: string | null | undefined): number {
+  if (!isUsableTimeZone(timezone)) return instant.getUTCHours() * 60 + instant.getUTCMinutes();
+  const w = wallClockInZone(instant, timezone);
+  const h = w.h === 24 ? 0 : w.h;
+  return h * 60 + w.mi;
+}
+
+/**
  * P0 legs ruling 3: is this trip day already over in the plan's zone (UTC when it has none)? A past day
  * is never routed: its legs are frozen — nothing asked, nothing recomputed, nothing deleted. No start
  * date ⇒ not past (the caller's own dates gate decides). Moved here from

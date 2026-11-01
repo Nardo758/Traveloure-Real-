@@ -56,6 +56,36 @@ export const LEAVE_BY_COPY = {
 
 export type LeaveByMode = "walk" | "taxi" | "private_car" | "drive" | "transit" | "cycle" | "other";
 
+/** A stored mode spelling as a leave-by mode. One mapping — the card's leg reader uses this. */
+export function leaveByModeOf(raw: string | null | undefined): LeaveByMode {
+  const m = String(raw ?? "").toLowerCase().trim();
+  if (m === "walk" || m === "walking") return "walk";
+  if (m === "taxi" || m === "rideshare" || m === "ride_hail") return "taxi";
+  if (m === "private_car" || m === "car" || m === "private car") return "private_car";
+  if (m === "transit" || m === "train" || m === "bus" || m === "subway" || m === "metro" || m === "tram" || m === "rail") return "transit";
+  if (m === "drive" || m === "driving") return "drive";
+  if (m === "cycle" || m === "bike" || m === "cycling") return "cycle";
+  return "other";
+}
+
+/**
+ * Which mode a stored leg is, and whether the traveler (or an author taxi tip) chose it.
+ * Walk's buffer does not depend on `modeChosen`; taxi and private car do.
+ */
+export function leaveByModeDecision(leg: {
+  userSelectedMode?: string | null;
+  recommendedMode?: string | null;
+  mode?: string | null;
+  authorTip?: string | null;
+}): { mode: LeaveByMode; modeChosen: boolean } {
+  const authorTaxi = typeof leg.authorTip === "string" && /\btaxi\b/i.test(leg.authorTip);
+  const picked = leg.userSelectedMode ? leaveByModeOf(leg.userSelectedMode) : null;
+  let mode = leaveByModeOf(leg.userSelectedMode ?? leg.recommendedMode ?? leg.mode ?? null);
+  if (authorTaxi && (mode === "drive" || mode === "other")) mode = "taxi";
+  const modeChosen = authorTaxi || picked === "taxi" || picked === "private_car";
+  return { mode, modeChosen };
+}
+
 export interface LeaveByStop {
   id: string;
   name: string;

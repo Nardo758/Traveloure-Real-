@@ -21,9 +21,10 @@ import {
   leaveByBuffer,
   leaveByConfig,
   leaveByHero,
+  leaveByModeDecision,
+  leaveByModeOf,
   type LeaveByConfig,
   type LeaveByLeg,
-  type LeaveByMode,
   type LeaveByRow,
   type LeaveByStop,
 } from "@shared/leave-by";
@@ -269,27 +270,11 @@ export function leaveByTime(startTime: string | null | undefined, legMinutes: nu
   return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
 }
 
-/** 9b-c: a stored mode spelling as a leave-by mode. */
-export function leaveByModeOf(raw: string | null | undefined): LeaveByMode {
-  const m = String(raw ?? "").toLowerCase().trim();
-  if (m === "walk" || m === "walking") return "walk";
-  if (m === "taxi" || m === "rideshare" || m === "ride_hail") return "taxi";
-  if (m === "private_car" || m === "car" || m === "private car") return "private_car";
-  if (m === "transit" || m === "train" || m === "bus" || m === "subway" || m === "metro" || m === "tram" || m === "rail") return "transit";
-  if (m === "drive" || m === "driving") return "drive";
-  if (m === "cycle" || m === "bike" || m === "cycling") return "cycle";
-  return "other";
-}
-
 /** 9b-c: a card leg as the leave-by core reads it — routed (the engine's own answer), its mode and who chose it. */
 export function leaveByLegOf(leg: any, timezone?: string | null): LeaveByLeg | null {
   if (!leg) return null;
   const minutes = Number(leg.estimatedDurationMinutes ?? leg.duration);
-  const authorTaxi = typeof leg.authorTip === "string" && /\btaxi\b/i.test(leg.authorTip);
-  const picked = leg.userSelectedMode ? leaveByModeOf(leg.userSelectedMode) : null;
-  let mode = leaveByModeOf(leg.userSelectedMode ?? leg.recommendedMode ?? leg.mode ?? null);
-  if (authorTaxi && (mode === "drive" || mode === "other")) mode = "taxi";
-  const modeChosen = authorTaxi || picked === "taxi" || picked === "private_car";
+  const { mode, modeChosen } = leaveByModeDecision(leg);
   const routed = !!leg.routed && Number.isFinite(minutes) && minutes > 0;
   return {
     routed,

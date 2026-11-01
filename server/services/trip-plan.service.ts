@@ -39,10 +39,12 @@
 
 import { resolvePlanBookingPaths, readFrozenBookingPaths } from "./booking-path.service";
 import type { BookingPath } from "@shared/booking-path";
-import { routedFactsOf, selectPlanLegs } from "./routing/plan-legs";
+import { legIsRouted, routedFactsOf, selectPlanLegs } from "./routing/plan-legs";
 import { legOptionsChecked, routedLegOptions } from "@shared/leg-options";
 import { tripGetsRoutedLegs } from "./routing/plan-routed-legs.service";
 import { readFinalAirportLeg, readFinalCardMeta } from "@shared/trip-card-final";
+import { projectOnTripMap, type OnTripMap } from "@shared/on-trip-map";
+import { chosenStayItemId } from "./stay-reroute.service";
 import { coordinatesStillPending, geocodeQuery, hasItemLocation, isAreaLevelGeocode } from "./coordinate-backfill.pure";
 import { isAreaOnlyLocation, rowCoordinatesTrusted } from "@shared/ai-place-text";
 import { isSupplySlot } from "@shared/ai-place-text";
@@ -153,6 +155,11 @@ export interface AssembleTripPlanOptions {
    * booking status overlaid. `finalVersion` is emitted either way.
    */
   render?: "final" | "live";
+  /**
+   * Row 185 J5. The on-trip map's clock. The plancard route does not pass this — a client
+   * clock, and a device position, are never inputs. Tests inject it.
+   */
+  now?: Date;
 }
 
 // ── Display mappings (moved verbatim from plancard.routes.ts — the existing contract) ──────────
@@ -1278,6 +1285,43 @@ export async function assembleTripPlan(
   const finalAirportLeg =
     renderingSnapshot && viewerIsOwner && latestFinal ? readFinalAirportLeg(latestFinal.snapshot) : null;
 
+  // Row 185 J5. The Trip Card's one map projection, from the items and legs this read already
+  // loaded plus the chosen-stay id (the stay reader's own query — not a second item read, and
+  // not Places / geocode / a device position). The live slip does not ask for it.
+  const onTripMap: OnTripMap | null =
+    options.render === "final"
+      ? projectOnTripMap({
+          now: options.now ?? new Date(),
+          timezone: (trip as any).timezone ?? null,
+          startDate: (trip as any).startDate ?? null,
+          chosenStayItemId: await chosenStayItemId(tripId),
+          items: items.map((item: any) => ({
+            id: item.id,
+            status: item.status ?? null,
+            itemType: item.itemType ?? null,
+            dayNumber: item.dayNumber ?? null,
+            startTime: item.startTime ?? null,
+            endTime: item.endTime ?? null,
+            durationMinutes: item.durationMinutes ?? null,
+            sortOrder: item.sortOrder ?? null,
+            latitude: item.latitude ?? null,
+            longitude: item.longitude ?? null,
+            coordSource: item.coordSource ?? null,
+          })),
+          legs: tripLegs.map((leg: any) => ({
+            id: leg.id,
+            dayNumber: leg.dayNumber ?? null,
+            fromActivityId: leg.fromActivityId ?? null,
+            toActivityId: leg.toActivityId ?? null,
+            estimatedDurationMinutes: leg.estimatedDurationMinutes ?? null,
+            recommendedMode: leg.recommendedMode ?? null,
+            userSelectedMode: leg.userSelectedMode ?? null,
+            authorTip: leg.authorTip ?? null,
+            routed: legIsRouted(leg),
+          })),
+        })
+      : null;
+
   // Transport totals count every leg really on the plan — its own trip-scoped legs (P0-b item 3).
   const activeLegs = [...tripLegs];
   const budget = await resolveBudget(tripId, trip.budget);
@@ -1397,6 +1441,7 @@ export async function assembleTripPlan(
       // snapshot (§13).
       ...(renderingSnapshot && readFinalCardMeta(latestFinal!.snapshot) ? { finalCard: readFinalCardMeta(latestFinal!.snapshot)! } : {}),
       ...(finalAirportLeg ? { finalAirportLeg } : {}),
+      ...(onTripMap ? { onTripMap } : {}),
       stats: {
         totalDays: fallbackDays || days.length,
         totalActivities: fallbackActivityCount,
