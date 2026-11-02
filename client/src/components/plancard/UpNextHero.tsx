@@ -8,7 +8,11 @@
  * honest absence on a fully-past or not-yet-started day), matching the FAB's own gate.
  */
 import { Navigation2, MapPin, Phone, Car, ExternalLink } from "lucide-react";
+import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { LegSheet } from "@/components/plan/LegSheet";
+import { slipLegBetween } from "@/lib/slip-legs";
+import { UP_NEXT_HERO_COPY } from "@/lib/up-next-hero-copy";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
@@ -43,7 +47,11 @@ interface UpNextHeroProps {
   datesConfirmed?: boolean;
 }
 
-function BookRideButton({ leg, activityName }: { leg: PlanCardLegData; activityName: string }) {
+/**
+ * Kept, unreachable from the Trip Card (row 2 ruling, Nov 1, 2026): the booking-agent request lane is parked behind
+ * row 298. The hero renders `RideOptionsButton` instead. Do not re-mount without lifting 298.
+ */
+export function BookRideButton({ leg, activityName }: { leg: PlanCardLegData; activityName: string }) {
   const { user } = useAuth();
   const { openSignInModal } = useSignInModal();
   const { toast } = useToast();
@@ -88,6 +96,46 @@ function BookRideButton({ leg, activityName }: { leg: PlanCardLegData; activityN
       <ExternalLink className="w-4 h-4" />
       {mutation.isSuccess ? "Requested ✓" : mutation.isPending ? "Sending…" : "Book this ride"}
     </button>
+  );
+}
+
+/**
+ * "Ride options": opens the leg's existing travel-options sheet (`LegSheet`), read-only — the Trip Card is a
+ * read-out, not a planning surface (LD 42 D8), so nothing is picked or asked here. It draws only for a routed
+ * leg the plan already carries; with none there are no options to show, so nothing renders (§13).
+ */
+function RideOptionsButton({ tripId, day, leg, timezone }: { tripId: string; day: PlanCardDay; leg: PlanCardLegData; timezone: string | null }) {
+  const [open, setOpen] = useState(false);
+  const view = leg.fromActivityId && leg.toActivityId ? slipLegBetween([day] as any, leg.fromActivityId, leg.toActivityId) : null;
+  if (!view || view.kind !== "routed") return null;
+  const title = [leg.fromName, leg.toName].filter(Boolean).join(" → ") || UP_NEXT_HERO_COPY.rideOptions;
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex-1 min-h-11 bg-primary text-primary-foreground rounded-xl px-4 py-2.5 text-[13.5px] font-bold flex items-center justify-center gap-2"
+        data-testid="button-hero-ride-options"
+      >
+        <Car className="w-4 h-4" />
+        {UP_NEXT_HERO_COPY.rideOptions}
+      </button>
+      <LegSheet
+        open={open}
+        onOpenChange={setOpen}
+        tripId={tripId}
+        legId={view.legId}
+        fromId={view.fromId}
+        toId={view.toId}
+        title={title}
+        options={view.options}
+        optionsChecked={view.optionsChecked}
+        timeZone={timezone}
+        canEditItems={false}
+        isOwner={false}
+        hostPickupConfirmed={view.hostPickupConfirmed}
+      />
+    </>
   );
 }
 
@@ -237,7 +285,7 @@ export function UpNextHero({ tripId, day, legs, timezone = null, datesConfirmed 
             <MapPin className="w-3.5 h-3.5 flex-shrink-0" />
             <span>{action.activity.location}</span>
           </div>
-          <BookRideButton leg={action.leg} activityName={action.activity.name} />
+          <RideOptionsButton tripId={tripId} day={day} leg={action.leg} timezone={timezone} />
         </div>
       )}
     </div>
