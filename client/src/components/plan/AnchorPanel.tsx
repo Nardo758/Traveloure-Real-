@@ -11,7 +11,7 @@
  *                         (R-o; its platform-first sort deleted by S1-b). When
  *                         the top two tie on day-count, the top one says why it leads; the rest say
  *                         nothing.
- *   DRAFTED, collapsed    R-y: no option has a stay ⇒ one line, "Best area for these days: <top> ·
+ *   DRAFTED, collapsed    R-y: no option has a stay ⇒ one line, "Closest area to your days: <top> ·
  *                         <one-liner> · Skip".
  *
  *   CHOOSER (the tray)    smoke 8 item 1: the tools tray's "Where to stay" chip ALWAYS opens the full
@@ -71,7 +71,7 @@ export const ANCHOR_PANEL_START_HERE = "Start here";
 export const ANCHOR_PANEL_EMPTY_DETAIL =
   "Add one to three places you're considering and every day gets built around them. Not sure yet? Draft first — we'll suggest a neighborhood once your days exist.";
 export const ANCHOR_PANEL_DRAFTED_TITLE = "Where to stay";
-export const ANCHOR_PANEL_DRAFTED_SUBTITLE = "Optional — ranked by where your days are.";
+export const ANCHOR_PANEL_DRAFTED_SUBTITLE = "Optional — closest to your days.";
 export const ANCHOR_PANEL_ADD_PLACES = "Add places I'm considering";
 export const ANCHOR_PANEL_SORTED = "I've got lodging sorted";
 export const ANCHOR_PANEL_SKIP = "Skip for now";
@@ -510,7 +510,8 @@ export function AnchorPanelView(props: AnchorPanelViewProps) {
                     {ANCHOR_PANEL_CHANGE}
                   </button>
                 ) : null}
-                {props.compareHref ? (
+                {/* Row P-6: no compare door when there are no stays to compare. */}
+                {props.compareHref && view?.hotelsAvailable !== false ? (
                   <a className={link} href={props.compareHref} data-testid="where-to-stay-deciding">
                     {ANCHOR_PANEL_DECIDING}
                   </a>

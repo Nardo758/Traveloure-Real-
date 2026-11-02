@@ -379,13 +379,8 @@ test("A10: Finalize writes a version and opens the chooser; then View as Trip ca
   for (const tab of ["tab-itinerary", "tab-bookings", "tab-logistics"]) {
     await expect(page.getByTestId(tab)).toHaveCount(0);
   }
-  // The right rail renders for the owner, with the booking-agent card in its ruled vocabulary.
-  // §13: this plan has no affiliate booking requests, so the card SAYS SO rather than drawing a
-  // stage strip for stages nobody is in — and it never claims a copilot exists.
+  // The right rail renders for the owner. The booking-agent card is removed while the agent lane is parked (P-6).
   await expect(page.getByTestId("trip-card-rail")).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByTestId("trip-card-rail-booking-agent")).toBeVisible();
-  await expect(page.getByTestId("trip-card-booking-agent-empty")).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByTestId("trip-card-booking-agent-list")).toHaveCount(0);
   // No advisor on this plan ⇒ the Expert card says so; the hire picker stays on the slip (D16).
   await expect(page.getByTestId("trip-card-expert-none")).toBeVisible();
   // §13: the Purchases drawer renders because the payload ANSWERED (an empty booking list), and

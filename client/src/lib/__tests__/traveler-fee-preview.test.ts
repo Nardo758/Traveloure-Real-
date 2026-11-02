@@ -120,9 +120,10 @@ test("F10 one checkout key is reused for the same lines and cleared on success",
   assert.notEqual(fresh, first);
 });
 
-test("F8 the cart and the slip both read this module and restate no label", () => {
+test("F8 the cart reads this module and restates no label; the slip shows no fee line (Row P-6)", () => {
   const root = path.resolve(process.cwd(), "client");
-  for (const rel of ["src/pages/cart.tsx", "src/components/plancard/SlipRail.tsx"]) {
+  assert.ok(!fs.readFileSync(path.join(root, "src/components/plancard/SlipRail.tsx"), "utf8").includes("traveler-fee-preview"));
+  for (const rel of ["src/pages/cart.tsx"]) {
     const src = fs.readFileSync(path.join(root, rel), "utf8");
     assert.match(src, /from "@\/lib\/traveler-fee-preview"/, `${rel} imports the one rule`);
     assert.match(src, /travelerFeePreviewDisplay\(/, `${rel} calls the one rule`);

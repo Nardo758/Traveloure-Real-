@@ -28,7 +28,7 @@ export function ExperiencesRail() {
   return (
     <OpenSection testId="section-experiences">
       <SectionHeader
-        eyebrow="Popular on Traveloure"
+        eyebrow="On Traveloure now"
         title="What people are planning"
         link={{ label: "See all experiences →", href: "/experiences/travel", testId: "link-see-all-experiences" }}
       />

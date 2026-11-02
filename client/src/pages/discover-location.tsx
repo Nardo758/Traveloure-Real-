@@ -274,7 +274,7 @@ function HeroBand({
 // ─── Filters popover (price + sort ONLY — Phase 2c) ───────────────────────────
 
 const SORT_OPTIONS: { id: string; label: string }[] = [
-  { id: "recommended", label: "Recommended" },
+  { id: "recommended", label: "For your days" },
   { id: "price_asc", label: "Price: low to high" },
   { id: "price_desc", label: "Price: high to low" },
 ];

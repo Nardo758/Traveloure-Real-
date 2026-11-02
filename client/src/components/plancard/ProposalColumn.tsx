@@ -17,7 +17,7 @@
  * with_expert items appear in NO column — their exclusion is stated ONCE in the
  * CompareHeader (the page's concern), never as grayed rows here (ruling 8).
  */
-import { Anchor, Award, Car, Loader2, Plus } from "lucide-react";
+import { Anchor, Car, Loader2, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
@@ -77,22 +77,15 @@ export function ProposalColumn({ proposal }: { proposal: PlanCardProposalData })
     <Card
       className={cn(
         "review-card relative flex flex-col",
-        proposal.recommended && "review-card--recommended border-2",
         proposal.isBaseline && "review-card--baseline",
       )}
       data-testid={`proposal-column-${proposal.testId ?? proposal.variantId}`}
     >
       <CardHeader className="pt-6 pb-3">
-        {(proposal.eyebrow || proposal.recommended) && (
-          <Badge
-            variant="outline"
-            className={cn(
-              "mb-1 w-fit text-[10px] uppercase tracking-wide",
-              proposal.recommended && "review-recommended",
-            )}
-            data-testid={proposal.recommended ? `proposal-recommended-${proposal.testId ?? proposal.variantId}` : undefined}
-          >
-            {proposal.recommended ? <><Award className="h-3 w-3 mr-1" />Recommended</> : proposal.eyebrow}
+        {/* Row P-6: no bare "Recommended" badge. No server field states a reason for one, so none is drawn. */}
+        {proposal.eyebrow && (
+          <Badge variant="outline" className="mb-1 w-fit text-[10px] uppercase tracking-wide">
+            {proposal.eyebrow}
           </Badge>
         )}
         <p className="font-semibold text-base">{proposal.displayName ?? proposal.name}</p>

@@ -37,7 +37,7 @@ test("NS1 the site list catches every ruled phrase", () => {
   ];
   for (const [text, words] of cases) assert.ok(siteNeverSayHits(text).includes(words), `${text} ⇒ ${words}`);
   assert.equal(containsSiteNeverSay("A quiet lane near the river"), false);
-  assert.equal(SITE_NEVER_SAY.length, 17);
+  assert.equal(SITE_NEVER_SAY.length, 33);
 });
 
 test("NS2 the draft rule and the expert-hook list are unchanged", () => {

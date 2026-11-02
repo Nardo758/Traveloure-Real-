@@ -220,7 +220,7 @@ export function anchorPanelMode(neighborhoods: ReadonlyArray<{ hotels: readonly 
 
 /** R-y: the collapsed panel's one line. The one-liner is omitted when there is none (§13). */
 export function collapsedStayLine(top: { name: string; oneLiner?: { text: string } | null }): string {
-  return ["Best area for these days: " + top.name, top.oneLiner?.text ?? null].filter(Boolean).join(" · ");
+  return ["Closest area to your days: " + top.name, top.oneLiner?.text ?? null].filter(Boolean).join(" · ");
 }
 
 /**

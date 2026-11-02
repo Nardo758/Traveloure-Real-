@@ -593,7 +593,7 @@ function MoreInfoSheet({ open, onClose, cardType, data, saveItem }: MoreInfoShee
 
       {Array.isArray(data.bestFor) && data.bestFor.length > 2 && (
         <div>
-          <p className="text-[13px] font-semibold text-foreground mb-1.5">Best for</p>
+          <p className="text-[13px] font-semibold text-foreground mb-1.5">Good for</p>
           <div className="flex flex-wrap gap-1.5">
             {(data.bestFor as string[]).map((tag) => (
               <span key={tag} className="text-[11px] bg-amber-50 text-amber-800 rounded-full px-2.5 py-0.5">
@@ -1011,14 +1011,7 @@ export function CityFeedCardGem({
       >
         {typeMeta.label}
       </span>
-      {topPick && (
-        <span
-          className="absolute top-2 right-2 bg-foreground/80 text-background text-[10px] font-medium rounded-full px-2 py-0.5"
-          data-testid={`gem-top-pick-${gem.id}`}
-        >
-          Top pick
-        </span>
-      )}
+      {/* Row P-6: the "Top pick" badge is removed (no ranking claims). */}
       {/* Tier-1 reference-photo chip (2026-09-01-photo-tiers): a stock/places image on this
           TEASER surface is labeled until an attributed real photo replaces it. Non-stock
           (attributed) photos and the no-photo gradient carry no chip. */}
@@ -1087,7 +1080,7 @@ export function CityFeedCardGem({
         <FactsRow
           facts={[
             { value: gemAreaName(gem) ?? "", label: "area" },
-            { value: bestForFace[0] ?? "", label: "best for" },
+            { value: bestForFace[0] ?? "", label: "good for" },
           ]}
           testid={`gem-facts-${gem.id}`}
         />
@@ -1180,7 +1173,7 @@ export function CityFeedCardGem({
     // no attribution ⇒ the fragment is omitted (§13), never placeholdered.
     const curatorName = gemCuratorShortName(gem);
     const metaText = joinMeta(
-      bestForFace[0] ? `best for ${bestForFace[0]}` : null,
+      bestForFace[0] ? `good for ${bestForFace[0]}` : null,
       gemAreaName(gem),
       curatorName ? `curated by ${curatorName}` : null,
     );
@@ -1224,14 +1217,7 @@ export function CityFeedCardGem({
               {typeMeta.label}
             </span>
             <CompactInfoCue testid={`info-cue-gem-${gem.id}`} />
-            {topPick && (
-              <span
-                className="absolute top-9 right-2 bg-foreground/80 text-background text-[10px] font-medium rounded-full px-2 py-0.5"
-                data-testid={`gem-top-pick-${gem.id}`}
-              >
-                Top pick
-              </span>
-            )}
+            {/* Row P-6: the "Top pick" badge is removed (no ranking claims). */}
             {/* Tier-1 reference-photo chip (2026-09-01-photo-tiers) — see full-density note above. */}
             {showGemPhoto && photoUrl && isReferencePhoto({ url: photoUrl }) && (
               <ReferencePhotoChip testId={`gem-reference-photo-${gem.id}`} />
