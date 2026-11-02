@@ -155,7 +155,14 @@ export function AiPlannerDraftPanel({
       navigate(planningRouteForTrip(context.tripId, context.endDate));
       return;
     }
-    openPlanner(assistantDoor(context));
+    const door = assistantDoor(context);
+    openPlanner({
+      ...(door.destination ? { destination: door.destination } : {}),
+      ...(door.experienceSlug ? { experienceSlug: door.experienceSlug } : {}),
+      ...(door.startDate && door.endDate ? { startDate: door.startDate, endDate: door.endDate } : {}),
+      ...(door.adults !== undefined ? { adults: door.adults } : {}),
+      ...(door.kids !== undefined ? { kids: door.kids } : {}),
+    });
   }
 
   return (
