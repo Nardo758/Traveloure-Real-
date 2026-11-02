@@ -7,8 +7,8 @@
  *    existing openInMaps helper with that mode.
  *  - Booked chauffeured leg (taxi/rideshare/private_driver WITH real booking data) →
  *    pickup card (pickup point, time, ride details, call driver) — real fields only.
- *  - Chauffeured but unbooked → destination address + a "Book this ride" CTA through the
- *    EXISTING booking-agent rail (§16 — never a raw window.open to a partner).
+ *  - Chauffeured but unbooked → destination address + a "Ride options" control (the leg's travel-options sheet; formerly a booking-agent CTA through the
+ *    EXISTING booking-agent rail, kept but unreachable while row 298 is parked).  (§16 — never a raw window.open to a partner.)
  *  - No leg data → destination-only Navigate (today's behavior).
  *
  * KNOWN GAP (see plancard-mobile-lens-jul30.md §2): the plancard payload does not carry
