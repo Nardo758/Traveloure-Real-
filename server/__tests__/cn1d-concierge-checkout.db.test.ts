@@ -11,6 +11,9 @@
  *       email; a planning listing's checkout still promotes to `confirmed` with its email
  *   K3  the expert's accept → `confirmed` + the advisor row (source concierge, access_until end of last day)
  *   K4  the CONCIERGE_ACCEPT_HOURS timeout refunds a paid, unaccepted concierge booking with the existing key
+ *   K5  the promotion leaves the traveler ONE `concierge_hire_charged` notice per concierge booking (a second
+ *       promotion adds none) and none for a planning listing; the held copy states the window only when
+ *       CONCIERGE_ACCEPT_HOURS is set
  *
  * CI's stub Stripe key fails the checkout's PaymentIntent AFTER the claim rows are written (the
  * checkout-stamp-from-line-trip precedent), so the payment is applied by stamping the PaymentIntent the way the
@@ -21,6 +24,8 @@
  *   JOURNEY_DB_WRITES_OK=1 npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/cn1d-concierge-checkout.db.test.ts
  */
 process.env.STRIPE_SECRET_KEY ||= "sk_test_dummy_key_for_cn1d_checkout";
+// The promotion runs in THIS process, so the notice reads this process's window.
+process.env.CONCIERGE_ACCEPT_HOURS = "48";
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -30,6 +35,7 @@ import { sql } from "drizzle-orm";
 import { db, pool } from "../db";
 import { promotePaidCheckout } from "../services/checkout-claim.service";
 import { runConciergeAcceptTimeout } from "../services/concierge-accept-timeout.service";
+import { conciergeHireChargedNotice } from "../services/concierge-engagement.service";
 import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
@@ -193,6 +199,15 @@ test("K1 a request-mode concierge listing is a cart line; a request-mode plannin
 });
 
 let acceptedId = "";
+let planningPaidId = "";
+
+async function hireNotices(bookingId: string) {
+  const r = await db.execute(sql`
+    SELECT type, title, message, user_id, dedupe_key FROM notifications
+    WHERE related_id = ${bookingId} AND type = 'concierge_hire_charged'
+  `);
+  return r.rows as Array<{ type: string; title: string; message: string; user_id: string; dedupe_key: string }>;
+}
 
 test("K2 a paid concierge booking lands pending with its payment on record and no confirmed email; planning unchanged", async () => {
   acceptedId = await buyThroughCheckout(ids.concierge);
@@ -204,6 +219,7 @@ test("K2 a paid concierge booking lands pending with its payment on record and n
   assert.equal(await confirmationEmails(acceptedId), 0, "no 'Booking confirmed' email for an unaccepted hire");
 
   const planId = await buyThroughCheckout(ids.planningInstant);
+  planningPaidId = planId;
   await pay(planId);
   const plan = await booking(planId);
   assert.equal(plan.status, "confirmed");
@@ -237,4 +253,30 @@ test("K4 the accept-window timeout refunds a paid, unaccepted concierge booking 
   assert.equal((await booking(id)).status, "refunded");
   const mine = refundKeys.filter((k) => k.startsWith(`refund-sb-${id}-`));
   assert.equal(mine.length, 1, `existing refund key used: ${JSON.stringify(refundKeys)}`);
+});
+
+test("K5 one concierge_hire_charged notice per concierge booking, none for a planning listing; held copy", async () => {
+  const notes = await hireNotices(acceptedId);
+  assert.equal(notes.length, 1);
+  assert.equal(notes[0].user_id, buyerId);
+  assert.equal(notes[0].dedupe_key, `booking:${acceptedId}:concierge_hire_charged`);
+  assert.equal(notes[0].title, "You're charged — awaiting Aya's answer");
+  assert.equal(notes[0].message, "Aya has 48 hours to accept. If they can't take this trip, you get a full refund.");
+
+  // A second promotion signal for the same booking adds nothing.
+  const pi = `pi_${P}_${acceptedId.slice(-8)}`;
+  await promotePaidCheckout({ paymentIntentId: pi, actor: "webhook", metadataBookingIds: [acceptedId] });
+  assert.equal((await hireNotices(acceptedId)).length, 1);
+
+  assert.equal((await hireNotices(planningPaidId)).length, 0, "a planning listing gets no hire notice");
+  const any = await db.execute(sql`
+    SELECT count(*)::int AS n FROM notifications WHERE related_id = ${planningPaidId} AND type = 'concierge_hire_charged'
+  `);
+  assert.equal((any.rows[0] as { n: number }).n, 0);
+
+  // Unset window: the first sentence is omitted, never a guessed number.
+  assert.deepEqual(conciergeHireChargedNotice("Aya", null), {
+    title: "You're charged — awaiting Aya's answer",
+    message: "If they can't take this trip, you get a full refund.",
+  });
 });

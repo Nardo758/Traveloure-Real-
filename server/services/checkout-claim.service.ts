@@ -1278,7 +1278,7 @@ async function promoteOneBooking(
   const hasOutstandingBalance =
     row.balanceAmount != null && parseFloat(row.balanceAmount) > 0 && row.balancePaid !== true;
   try {
-    return await db.transaction(async (tx) => {
+    const promotion: { promoted: boolean; diaryRows: number; terminalStatus: string | null; awaitsExpert?: boolean } = await db.transaction(async (tx) => {
       // ── CN-1d: A FULLY PAID CONCIERGE HIRE AWAITS THE EXPERT (Architect ruling, Nov 2, 2026; ledger
       //    `2026-11-02-cn1d-concierge-checkout`; LD 49 amended) ──────────────────────────────────────
       // The charge is captured here like any service line, but a concierge booking is NOT confirmed
@@ -1360,8 +1360,17 @@ async function promoteOneBooking(
           paidCharge: stamp,
         });
       }
-      return { promoted: true, diaryRows, terminalStatus: null };
+      return { promoted: true, diaryRows, terminalStatus: null, awaitsExpert };
     });
+    // CN-1d (#1852): the traveler is told the hire is charged and awaits the expert — AFTER the
+    // promotion commits, once per booking (dedupe key), and never at the promotion's expense (§15b).
+    if (promotion.promoted && promotion.awaitsExpert) {
+      const { notifyConciergeHireCharged } = await import("./concierge-engagement.service");
+      await notifyConciergeHireCharged(row.id).catch((err) =>
+        logger.error({ err, bookingId: row.id }, "[checkout-promote] concierge hire-charged notice failed (booking stands)"),
+      );
+    }
+    return { promoted: promotion.promoted, diaryRows: promotion.diaryRows, terminalStatus: promotion.terminalStatus };
   } catch (err) {
     logger.error(
       { err, bookingId: row.id, paymentIntentId, actor },
