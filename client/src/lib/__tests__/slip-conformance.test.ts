@@ -138,6 +138,9 @@ function functionBody(src: string, declaration: string): string {
  * pin is about the control existing and pointing where it did, never about which file holds it.
  */
 const ALLOWED_ADDITIONS = {
+  // Row P-7 (ledger `2026-11-02-p7-get-help-with-this-plan`): the drafted-plan Get-help note and its button.
+  "slip-get-help-note": "P-7: the drafted-plan Get-help note under the last day",
+  "slip-get-help-note-button": "P-7: the drafted-plan Get-help note under the last day",
   // TC-5a (ledger `2026-10-12-tc5a-trip-card-entry`): the owner's ⋯ menu entry to the Trip Card,
   // after Share link, on any plan that has ever been finalized (`tripCardHasFinal(finalVersion)`).
   "slip-menu-trip-card": "TC-5a — the owner's menu link to /trip/:id on an ever-finalized plan",

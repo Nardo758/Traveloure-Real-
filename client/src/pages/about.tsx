@@ -75,7 +75,7 @@ export default function AboutPage() {
             Last updated: {ABOUT_LAST_UPDATED}. This page changes as markets open.
           </p>
           <div className="flex flex-wrap items-center gap-4 pt-2">
-            <Button onClick={() => openPlanning()} className={PAGE_ACTION.primary} data-testid="button-start-planning">
+            <Button onClick={() => openPlanning({ newPlan: true })} className={PAGE_ACTION.primary} data-testid="button-start-planning">
               {START_PLAN_LABEL}
             </Button>
             <Link href="/earn" className={`${PAGE_LINK} text-sm`}>Work with travelers in your city →</Link>

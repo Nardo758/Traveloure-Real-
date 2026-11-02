@@ -71,6 +71,21 @@ import { syncActiveTripToContext } from "@/lib/trip-selection";
 // descriptor's (§18 rule 1 — a second opinion about which verb to show is how the page came to
 // offer purchases the server refuses). `addedTitle` stays: a toast is not a buy button.
 import { serviceDetailBuyRender, serviceDetailTrustPanel } from "@/lib/service-buy-action";
+import { useTrips } from "@/hooks/use-trips";
+import { isActivePlan } from "@/lib/add-target";
+import { ConciergeHireDialog, ConciergeListingDetails, type ConciergeTaskView } from "@/components/concierge-hire";
+import {
+  CONCIERGE_HIRE_COPY,
+  firstNameOf,
+  hireCartBody,
+  hireEligiblePlan,
+  noEligiblePlanLine,
+  pickerDescriptionLine,
+  serverMessageOf,
+  type HirePlan,
+} from "@/lib/concierge-hire-copy";
+import { conciergePerTripPrice } from "@shared/cn1-copy";
+import { BUY_NOW_CART_PATH as HIRE_CART_PATH } from "@/lib/cart-intent";
 import type { BuyAction } from "@shared/buy-action";
 import { trackEvent } from "@/lib/analytics";
 // Ledger 2026-09-04-which-event-picker (migration 277; CLAUDE.md Locked Decision 29) — the
@@ -284,6 +299,10 @@ interface Service {
   // comment on GET /api/services/:id) — it only ever appears on the confirmed-booking surface.
   responseWindowHours?: number | null;
   scopeStatement?: string | null;
+  /** CN-1d-UI: `provider_services.service_type` — `concierge` is hired for one trip. */
+  serviceType?: string | null;
+  /** CN-1d-UI: a concierge listing's tasks (public read, #1846). Absent on any other listing. */
+  conciergeTasks?: ConciergeTaskView[];
   /**
    * THE BUY BUTTON AND THE LANDING RULE, RESOLVED SERVER-SIDE (ruling 9, lane L23; punchlist
    * V-13). `resolveBuyAction` is the SOLE author — a listing carries no CTA of its own — and
@@ -458,6 +477,25 @@ export default function ServiceDetailPage() {
     // the approved listing's owner and applies the same F2 read-gate the detail read applies.
     queryKey: ["/api/services", id, "provider-verification"],
     enabled: !!id,
+  });
+
+  // ── CN-1d-UI: "Hire for this trip" (a concierge listing only) ─────────────────────────────────────
+  // A hire is charged at checkout and refunded in full on decline or timeout (LD 49 as amended, #1852).
+  // It needs a plan whose dates the traveler chose; it goes into the cart for THAT plan (POST /api/cart
+  // with its tripId — the cart path, never the plan-item path) and on to the payment step.
+  const { data: myTrips } = useTrips();
+  const [hirePickOpen, setHirePickOpen] = useState(false);
+  const [hireTrip, setHireTrip] = useState<(HirePlan & { id: string }) | null>(null);
+  const [hireError, setHireError] = useState<string | null>(null);
+  const hireMutation = useMutation({
+    mutationFn: async (tripId: string) =>
+      apiRequest("POST", "/api/cart", hireCartBody(id ?? "", tripId)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+      setHireTrip(null);
+      navigate(HIRE_CART_PATH);
+    },
+    onError: (err: unknown) => setHireError(serverMessageOf(err)),
   });
 
   // The same-owner package cross-sell (`expert_templates`) RETIRED — ledger
@@ -1061,7 +1099,11 @@ export default function ServiceDetailPage() {
   // the SAME derivation; per booking (or never stated) adds nothing — the ordinary price reading.
   const priceUnit = resolvePriceUnit({ priceType: service.priceType, pricingUnit: service.pricingUnit, priceBasis: service.priceBasis });
   const priceTypeUnit = resolvePriceUnit({ priceType: service.priceType, priceBasis: service.priceBasis });
-  const priceLabel = priceNum <= 0
+  // CN-1d-UI: a concierge listing priced per trip reads CN-1's approved "{price} per trip".
+  const conciergePerTrip = service.serviceType === "concierge" && service.pricingUnit === "per_trip" && priceNum > 0;
+  const priceLabel = conciergePerTrip
+    ? conciergePerTripPrice(fmtPrice(priceNum))
+    : priceNum <= 0
     ? "Custom quote"
     : priceUnit
     ? `${fmtPrice(priceNum)} / ${priceUnitWord(priceUnit)}`
@@ -1070,7 +1112,9 @@ export default function ServiceDetailPage() {
     : service.priceType === "variable"
     ? `From ${fmtPrice(priceNum)}`
     : fmtPrice(priceNum);
-  const priceSubLabel = priceUnit === "night" && priceNum > 0
+  const priceSubLabel = conciergePerTrip
+    ? ""
+    : priceUnit === "night" && priceNum > 0
     ? "per night"
     : priceTypeUnit === "hour"
     ? "billed by the hour"
@@ -1225,7 +1269,8 @@ export default function ServiceDetailPage() {
   // omitted (§13), never a guessed "we'll get back to you soon". joinLink is deliberately NOT
   // rendered here: it only ever exists on the CONFIRMED-booking surface (server-side reveal),
   // never on this public pre-purchase read at all.
-  const responseWindowText = formatResponseWindow(service.responseWindowHours);
+  // A concierge listing states its reply window in CN-1's own line (below the price), not twice.
+  const responseWindowText = service.serviceType === "concierge" ? null : formatResponseWindow(service.responseWindowHours);
   const scopeStatementText = (service.scopeStatement ?? "").trim() || null;
   const hasGoodToKnow =
     !!partySizeText || !!seatingText || hasLeadTime || hasChangeCutoff || !!startWindowText || !!weeklyPatternText || hasBuffer ||
@@ -1261,6 +1306,21 @@ export default function ServiceDetailPage() {
   // `isLive: true` for every approved+active listing, so the descriptor cannot say "this provider
   // is away" — the `isAway` disabling below stays exactly as it was, on top of the descriptor.
   const buy = serviceDetailBuyRender(service.buyAction);
+  // CN-1d-UI: the hire's facts. The name is the owner's first name off the listing-addressed verification
+  // read; a plan qualifies only with chosen dates (`hireEligiblePlan`) and while it is not past.
+  const isConcierge = service.serviceType === "concierge";
+  const hireName = firstNameOf(providerVerification?.displayName);
+  const hirePlans = (myTrips ?? []).filter((t: any) => isActivePlan(t, new Date()) && hireEligiblePlan(t));
+  const hireNoPlan = !!user && Array.isArray(myTrips) && hirePlans.length === 0;
+  const beginHire = () => {
+    if (!user) {
+      openSignInModal();
+      return;
+    }
+    if (hireNoPlan || !hireName) return;
+    setHireError(null);
+    setHirePickOpen(true);
+  };
   // THE TRUST PANEL'S PAYMENT CLAIM IS THE DESCRIPTOR'S TOO (ledger
   // `2026-09-14-direct-booking-panel-conditioned`, punchlist V-20). Until this lane the panel
   // below asserted "Payment is processed securely through Traveloure" on every listing, including
@@ -1936,7 +1996,37 @@ export default function ServiceDetailPage() {
                     that row 11 rules a REQUEST. Each control below now renders ONLY when the
                     shipped descriptor names its kind, and its words are the descriptor's label. The
                     page keeps no verb of its own. */}
+                {isConcierge && (
+                  <div className="pt-[17px]">
+                    <ConciergeListingDetails
+                      tasks={service.conciergeTasks}
+                      responseWindowHours={service.responseWindowHours}
+                      expertName={hireName}
+                    />
+                  </div>
+                )}
                 <div className="grid gap-2 py-[17px]">
+                  {buy.hire && (
+                    // CN-1d-UI: the one primary control keeps the `button-book-now` test id in every mode.
+                    // With no plan that has chosen dates it stays visible and does nothing, and says why (H1).
+                    <>
+                      <Button
+                        className="w-full min-h-[42px] rounded-[8px] bg-[var(--earn-coral-ink)] hover:bg-[var(--earn-coral-ink)]/90 border border-[color:var(--earn-coral-ink)] text-white font-bold text-[12px] shadow-[0_5px_13px_rgba(243,77,110,0.2)]"
+                        onClick={beginHire}
+                        disabled={isAway || hireMutation.isPending || (!!user && !hireName)}
+                        aria-disabled={hireNoPlan || undefined}
+                        title={awayTitle}
+                        data-testid="button-book-now"
+                      >
+                        {buy.hire.label}
+                      </Button>
+                      {hireNoPlan && hireName && (
+                        <p className="text-[11px] leading-[1.5] text-[color:var(--earn-muted)]" data-testid="text-concierge-no-eligible-plan">
+                          {noEligiblePlanLine(hireName)}
+                        </p>
+                      )}
+                    </>
+                  )}
                   {buy.book && (
                     <Button
                       className="w-full min-h-[42px] rounded-[8px] bg-[var(--earn-coral-ink)] hover:bg-[var(--earn-coral-ink)]/90 border border-[color:var(--earn-coral-ink)] text-white font-bold text-[12px] shadow-[0_5px_13px_rgba(243,77,110,0.2)]"
@@ -2435,6 +2525,44 @@ export default function ServiceDetailPage() {
           the picker's ONLY input for the role hint; whether any event actually wants it is
           answered against each event row's own `rolesNeeded`, inside the pure module. Absent on a
           listing whose category predates the key column, and then no row is marked. */}
+      {isConcierge && hireName && (
+        <>
+          <PlanPickerDialog
+            open={hirePickOpen}
+            onOpenChange={setHirePickOpen}
+            itemName={service.serviceName}
+            description={pickerDescriptionLine(service.serviceName)}
+            mode={{
+              planFilter: (plan) => hireEligiblePlan(plan as HirePlan),
+              hideStartNew: true,
+              emptyNote: noEligiblePlanLine(hireName),
+              confirmLabel: CONCIERGE_HIRE_COPY.cta,
+            }}
+            onPick={(plan) => {
+              setHirePickOpen(false);
+              setHireError(null);
+              setHireTrip(plan as HirePlan & { id: string });
+            }}
+            onStartNew={() => undefined}
+          />
+          <ConciergeHireDialog
+            open={hireTrip !== null}
+            onOpenChange={(next) => {
+              if (!next) {
+                setHireTrip(null);
+                setHireError(null);
+              }
+            }}
+            expertName={hireName}
+            tripEndDate={hireTrip?.endDate ?? null}
+            pending={hireMutation.isPending}
+            error={hireError}
+            onConfirm={() => {
+              if (hireTrip && !hireMutation.isPending) hireMutation.mutate(hireTrip.id);
+            }}
+          />
+        </>
+      )}
       <PlanPickerDialog
         open={pickForAdd !== null}
         onOpenChange={(next) => { if (!next) setPickForAdd(null); }}

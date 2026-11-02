@@ -109,7 +109,11 @@ export interface ConciergeTaskView {
   requestedAt: string;
   travelerOkAt: string | null;
   resolvedAt: string | null;
-  events: Array<{ fromState: ConciergeTaskState | null; toState: ConciergeTaskState; actorType: ConciergeTaskActorType; createdAt: string }>;
+  /**
+   * `note` (CN-1e-UI-s, ledger `2026-11-02-cn1e-ui-server-reads`) is the note stored on THAT event row — the
+   * expert's reason on done / could-not-get. Every other event carries null.
+   */
+  events: Array<{ fromState: ConciergeTaskState | null; toState: ConciergeTaskState; actorType: ConciergeTaskActorType; createdAt: string; note: string | null }>;
 }
 
 const iso = (d: Date | string | null | undefined) => (d == null ? null : new Date(d).toISOString());
@@ -147,6 +151,7 @@ async function viewTasks(e: Engagement, taskIds?: string[]): Promise<ConciergeTa
         toState: ev.toState as ConciergeTaskState,
         actorType: ev.actorType as ConciergeTaskActorType,
         createdAt: iso(ev.createdAt)!,
+        note: ev.note ?? null,
       })),
   }));
 }
