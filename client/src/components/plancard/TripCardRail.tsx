@@ -54,6 +54,7 @@ import {
 import { AskAiDrawer } from "./AskAiDrawer";
 import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
 import { useReopenMutation } from "./use-reopen-mutation";
+import { TripCardConciergeTasks } from "./TripCardConciergeTasks";
 
 export interface TripCardRailTrip {
   id: string;
@@ -235,6 +236,7 @@ function YourExpertCard({ trip, advisor }: { trip: TripCardRailTrip; advisor: Sl
           </Link>
         </Button>
       )}
+      <TripCardConciergeTasks tripId={trip.id} advisor={advisor} expertFirstName={advisor?.first_name?.trim() || state.name} />
     </RailCard>
   );
 }
