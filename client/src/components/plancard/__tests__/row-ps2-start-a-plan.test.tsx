@@ -23,8 +23,10 @@ describe("PS-2 Start a plan always starts a new plan", () => {
       assert.match(read(f), /openPlanning\(\{ newPlan: true \}\)/, f);
       assert.doesNotMatch(read(f), /openPlanning\(\)/, f);
     }
-    // The ticker keeps its pinned call text; its local openPlanning adds newPlan.
-    assert.match(read("components/CityTickerTape.tsx"), /const openPlanning = \(source: PlanningSource\) => open\(\{ \.\.\.source, newPlan: true \}\);/);
+    // The ticker calls the plain opener and names newPlan at the call (no wrapper, so the guard sees it).
+    const ticker = read("components/CityTickerTape.tsx");
+    assert.match(ticker, /const \{ open: openPlanning \} = usePlanning\(\);/);
+    assert.ok(ticker.includes("onPlan={(city) => openPlanning({ city, newPlan: true })}"));
     assert.match(read("components/dashboard/WishlistSection.tsx"), /planning\.open\(\{ city, newPlan: true \}\)/);
     // The five PlanEntryCta sites go through planEntrySource (T2).
     for (const f of ["pages/ready-made-detail.tsx", "pages/shared-saved-places.tsx", "pages/providers-directory.tsx", "pages/storefront.tsx", "pages/chat.tsx"]) {
