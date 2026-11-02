@@ -11,7 +11,8 @@ import { dispatchBookingEvent } from "./automations/bookings/runtime";
 import { dispatchMessagingEvent } from "./automations/messaging/runtime";
 import { sql } from "drizzle-orm";
 import { guardedDeleteProviderService } from "./services/service-delete-guard";
-import { availableAtFor } from "./config/earnings-hold.config";
+import { availableAtFor, conciergeAvailableAt } from "./config/earnings-hold.config";
+import { conciergeAccessUntil } from "@shared/concierge-access";
 import { isTripAdvisor, isTripAdvisorWithWriteAccess } from "./utils/trip-advisor";
 // THE ONE AUTHOR of `trip_expert_advisors` (ledger `2026-09-04-advisor-row-one-author`,
 // CLAUDE.md Locked Decision 32 CORRECTION, §18 rule 1). `createTripExpertAdvisor` below is a
@@ -4004,6 +4005,33 @@ export class DatabaseStorage implements IStorage {
   }
 
   /**
+   * CN-1f: the available-at for a concierge booking's earnings, or null for any other booking (the caller then keeps the
+   * ordinary declaration anchor). A concierge booking with no trip, or a trip end that does not resolve, anchors on the
+   * declaration and says so in one log line — never a NULL available_at.
+   */
+  private async conciergeEarningAvailableAt(booking: ServiceBooking, declaredAnchor: Date | undefined): Promise<Date | null> {
+    if (!booking.serviceId) return null;
+    const service = await this.getProviderServiceById(booking.serviceId);
+    if (service?.serviceType !== "concierge") return null;
+    let tripEnd: Date | null = null;
+    if (booking.tripId) {
+      const [trip] = await db
+        .select({ endDate: trips.endDate, timezone: trips.timezone })
+        .from(trips)
+        .where(eq(trips.id, booking.tripId))
+        .limit(1);
+      if (trip) tripEnd = conciergeAccessUntil(trip.endDate as any, trip.timezone);
+    }
+    if (!tripEnd) {
+      logger.warn(
+        { bookingId: booking.id, tripId: booking.tripId ?? null },
+        "[mintCompletionEarnings] concierge booking has no resolvable trip end — hold anchored on the completion declaration",
+      );
+    }
+    return conciergeAvailableAt(tripEnd, declaredAnchor);
+  }
+
+  /**
    * Completion side-effects for a service booking, extracted from updateServiceBookingStatus and
    * made IDEMPOTENT (task 1091 review): each ledger effect is guarded by its own existence check,
    * so this is safe to call (a) on every completed transition, (b) again after a crash that left
@@ -4133,7 +4161,11 @@ export class DatabaseStorage implements IStorage {
     // artifact acceptance, a property checkout, an admin dispute-reject on an undeclared row) keeps
     // today's `now` anchor verbatim — `availableAtFor`'s existing `from` parameter, nothing new.
     const declaredAnchor = booking.completionDeclaredAt ? new Date(booking.completionDeclaredAt) : undefined;
-    const availableAt = availableAtFor('service_booking', declaredAnchor); // escrow P2: per-surface clearance window (config)
+    // CN-1f (ledger `2026-11-02-cn1f-concierge-payout-hold`): a CONCIERGE booking's earnings are held until the trip
+    // ends — the later of the trip's end (trip zone) and the declaration, plus CONCIERGE_HOLD_DAYS (unset = the
+    // bookings default). Every other booking keeps the declaration anchor exactly as above.
+    const conciergeAvailable = await this.conciergeEarningAvailableAt(booking, declaredAnchor);
+    const availableAt = conciergeAvailable ?? availableAtFor('service_booking', declaredAnchor); // escrow P2: per-surface clearance window (config)
     // RACE-PROOF + ATOMIC (task 1091 review): the DB is the guard, not a SELECT. Each ledger
     // effect is an INSERT ... ON CONFLICT DO NOTHING against migration 203's partial unique
     // indexes, so under concurrent callers (traveler confirm vs scheduler vs reconciliation)
