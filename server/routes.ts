@@ -6874,8 +6874,12 @@ ${bannedCopyPromptLine()}`;
       const traveler = await storage.getUser(booking.travelerId);
       const sanitizedTraveler = traveler ? sanitizeUserForRole(traveler, userRole, false) : null;
       const sellerDeclaration = describeCompletionDeclaration(booking, declaredCompletionWindowDays());
+      // CN-1e-UI-s (ledger `2026-11-02-cn1e-ui-server-reads`): the listing this booking is for, so the console can
+      // tell a concierge hire apart. Three fields only; null when the booking names no listing (transport).
+      const listing = booking.serviceId ? await storage.getProviderServiceById(booking.serviceId) : null;
       return {
         ...sanitizeBookingForExpert(booking, userRole, userId),
+        service: listing ? { id: listing.id, serviceName: listing.serviceName, serviceType: listing.serviceType ?? null } : null,
         // LD 47 read exposure (ledger `2026-09-17-surfaces-acceptance-completion`): the SELLER's
         // console must say "you declared this on <date>; the traveler's window closes <date>", and
         // that date is the SERVER's derivation — a console that added N days itself would be a

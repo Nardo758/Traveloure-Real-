@@ -61,11 +61,14 @@ describe("rendered doors", () => {
     assert.ok(!text(render(<ConciergeModule destination="Kyoto" />, { ...ON, eventConcierge: false })).includes("Ask the Concierge"));
   });
 
-  it("R2 the bottom bar's Get help: absent off, present on", () => {
+  it("R2 the bottom bar no longer reads the concierge door and never links /concierge", () => {
+    // Row P-7 (sanctioned): the bar's help door reads /api/expert-availability, not event_concierge.
     const bar = <BottomActionBar tripId="t1" destination="Kyoto" shareToken={null as any} advisor={null} />;
-    assert.ok(!text(render(bar, OFF)).includes("Get help"));
     assert.ok(render(bar, OFF).indexOf('href="/concierge"') === -1);
-    assert.ok(text(render(bar, ON)).includes("Get help"));
+    assert.ok(render(bar, ON).indexOf('href="/concierge"') === -1);
+    const src = fs.readFileSync("client/src/components/plancard/BottomActionBar.tsx", "utf8");
+    assert.doesNotMatch(src, /useTravelerDoors/);
+    assert.doesNotMatch(src, /"\/concierge"/);
   });
 
   it("R3 /concierge renders its page only while event_concierge is on", () => {

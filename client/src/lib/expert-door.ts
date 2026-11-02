@@ -38,7 +38,7 @@ export const ADD_EXPERT_LABEL = "Add a local expert";
  */
 export function emptyActionLabel(cityName: string | null): string {
   const who = cityName ? `a ${cityName} expert` : "a local expert";
-  return `Start with the free AI draft. We record your interest so ${who} can pick it up.`;
+  return `Start with a free Quick draft. We record your interest so ${who} can pick it up.`;
 }
 
 /** The line under a choice's title: its band, or — with nobody offering it — nothing numeric. */

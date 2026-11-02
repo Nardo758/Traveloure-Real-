@@ -11,7 +11,7 @@
  */
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { MapContainer, Marker, Polyline, TileLayer, useMap } from "react-leaflet";
+import { MapContainer, Marker, TileLayer, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { MAP_DISTRICT_ZOOM, clampFramingZoom, mapFraming } from "@/lib/map-framing";
@@ -88,9 +88,7 @@ export function SceneMapLeaflet({ scene, center, selectedId, onSelect, onSelectB
       {scene.areas.map((a) => (
         <Marker key={a.slug} position={[a.lat, a.lng]} icon={areaIcon(a)} title={a.name} interactive={false} keyboard={false} zIndexOffset={-1000} />
       ))}
-      {scene.connector.length > 1 ? (
-        <Polyline positions={scene.connector.map((p) => [p.lat, p.lng] as [number, number])} pathOptions={{ color: "#64748B", weight: 2, opacity: 0.6 }} />
-      ) : null}
+      {/* Row PS-1 (GC-1): pins only — no stop-to-stop line. */}
       {markers.map((m) => (
         <Marker
           key={m.testId}

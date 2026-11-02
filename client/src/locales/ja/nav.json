@@ -72,7 +72,7 @@
     "honeymoon": "新婚旅行",
     "anniversaryTrip": "記念日の旅",
     "browseAllOccasions": "すべてのシーンを見る",
-    "aiPlanPlanner": "AI プランナー",
+    "aiPlanPlanner": "プランアシスタント",
     "visaHelp": "ビザのサポート",
     "liveIntel": "現地のリアルタイム情報",
     "todaysDeals": "本日のお得情報"
@@ -129,10 +129,6 @@
     "myself": {
       "label": "自分でつくる",
       "meta": "無料 · 探して自分のプランを組み立てる"
-    },
-    "ai": {
-      "label": "AIでプランニング",
-      "meta": "いま教えてくれた内容から旅程の下書きをつくります"
     },
     "local": {
       "label": "地元のエキスパートに頼む",

@@ -34,7 +34,7 @@ import { isActivePlan } from "@/lib/add-target";
 import { formatShortTripRange } from "@/lib/calendar-date";
 import { preselectAddPlan, statedCity, toOpenPlanRef, type AddItemFit } from "@/lib/trip-target";
 import type { TripIdentitySource } from "@/lib/trip-selection";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 
 export type PickablePlan = TripIdentitySource & { finalVersion?: number | null };
 
@@ -45,25 +45,43 @@ function planRowFacts(plan: PickablePlan): { name: string; city: string | null; 
   return { name, city, dates: dates && dates.replace(/[–-]/g, "").trim() ? dates : null };
 }
 
+/**
+ * CN-1d-UI: the hire mode. A surface that may only use SOME plans (a concierge hire needs a plan with chosen dates)
+ * narrows the list with `planFilter`, and a surface that must not start a plan from here hides New plan
+ * (`hideStartNew`) — then an empty list shows the surface's own `emptyNote`, and the confirm reads `confirmLabel`.
+ * Absent ⇒ the picker is exactly what it was.
+ */
+export interface PlanPickerMode {
+  planFilter?: (plan: PickablePlan) => boolean;
+  hideStartNew?: boolean;
+  emptyNote?: React.ReactNode;
+  confirmLabel?: string;
+}
+
 export function PlanPickerList({
   onPick,
   onStartNew,
   disabled,
   item,
+  mode,
 }: {
   onPick: (plan: PickablePlan) => void;
   onStartNew: () => void;
   disabled?: boolean;
   /** City, and for an event the date, used only to check a row. */
   item?: AddItemFit | null;
+  mode?: PlanPickerMode;
 }) {
   const { data, isLoading, isError } = useTrips();
   const now = new Date();
   // `useTrips` answers null on a 401 — an unanswered read, not an empty account (§13).
   const unreadable = isError || (!isLoading && data === null);
-  const plans = ((data ?? []) as PickablePlan[]).filter((t) => isActivePlan(t, now));
+  const plans = ((data ?? []) as PickablePlan[])
+    .filter((t) => isActivePlan(t, now))
+    .filter((t) => (mode?.planFilter ? mode.planFilter(t) : true));
   const preselect = preselectAddPlan(plans.map(toOpenPlanRef), item);
-  const preselectValue = preselect.kind === "plan" ? preselect.tripId : "new";
+  const preselectValue =
+    preselect.kind === "plan" ? preselect.tripId : mode?.hideStartNew ? (plans[0]?.id ?? "") : "new";
   const [selected, setSelected] = useState(preselectValue);
   useEffect(() => {
     setSelected(preselectValue);
@@ -96,6 +114,10 @@ export function PlanPickerList({
           {unreadable ? (
             <p className="text-sm text-muted-foreground" data-testid="text-plan-picker-unreadable">
               We couldn't load your plans just now. You can still start a new one.
+            </p>
+          ) : plans.length === 0 && mode?.emptyNote ? (
+            <p className="text-sm text-muted-foreground" data-testid="text-plan-picker-empty">
+              {mode.emptyNote}
             </p>
           ) : plans.length === 0 ? (
             <div className="text-center py-4" data-testid="text-plan-picker-empty">
@@ -139,6 +161,7 @@ export function PlanPickerList({
               );
             })
           )}
+          {!mode?.hideStartNew && (
           <button
             type="button"
             role="radio"
@@ -154,9 +177,10 @@ export function PlanPickerList({
               New plan
             </p>
           </button>
+          )}
         </div>
       )}
-      {!isLoading && (
+      {!isLoading && !(mode?.hideStartNew && plans.length === 0) && (
         <Button
           type="button"
           className="w-full"
@@ -164,7 +188,7 @@ export function PlanPickerList({
           disabled={disabled || (selected !== "new" && !plans.some((row) => row.id === selected))}
           data-testid="button-plan-picker-confirm"
         >
-          {selected === "new" ? "New plan" : "Add to this plan"}
+          {selected === "new" ? "New plan" : (mode?.confirmLabel ?? "Add to this plan")}
         </Button>
       )}
     </div>
@@ -178,6 +202,8 @@ export function PlanPickerDialog({
   onPick,
   onStartNew,
   item,
+  mode,
+  description,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -186,6 +212,10 @@ export function PlanPickerDialog({
   onStartNew: () => void;
   /** Forwarded to the list for the checked row. */
   item?: AddItemFit | null;
+  /** CN-1d-UI hire mode (see `PlanPickerMode`). */
+  mode?: PlanPickerMode;
+  /** Replaces the line under the title — a hire-mode picker offers no "start a new plan". */
+  description?: string;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -193,10 +223,10 @@ export function PlanPickerDialog({
         <DialogHeader>
           <DialogTitle>Which plan?</DialogTitle>
           <DialogDescription>
-            {itemName ? `Choose where "${itemName}" goes, or start a new plan for it.` : "Choose a plan, or start a new one."}
+            {description ?? (itemName ? `Choose where "${itemName}" goes, or start a new plan for it.` : "Choose a plan, or start a new one.")}
           </DialogDescription>
         </DialogHeader>
-        <PlanPickerList onPick={onPick} onStartNew={onStartNew} item={item} />
+        <PlanPickerList onPick={onPick} onStartNew={onStartNew} item={item} mode={mode} />
       </DialogContent>
     </Dialog>
   );

@@ -72,7 +72,7 @@ function sourceFiles(root: string): string[] {
 }
 
 const HELPER = "client/src/lib/item-origin.ts";
-const CHIP_LABELS = ["you added", "AI draft", "from your expert"];
+const CHIP_LABELS = ["you added", "Quick draft", "from your expert"];
 
 describe("R1-R3 — the DTO carries origin, present-only-when-set", () => {
   const shared = read("shared", "trip-plan.ts");

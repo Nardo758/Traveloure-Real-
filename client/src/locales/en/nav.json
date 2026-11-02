@@ -72,7 +72,7 @@
     "honeymoon": "Honeymoon",
     "anniversaryTrip": "Anniversary Trip",
     "browseAllOccasions": "Browse all occasions",
-    "aiPlanPlanner": "AI Planner",
+    "aiPlanPlanner": "Plan assistant",
     "visaHelp": "Visa Help",
     "liveIntel": "Live Intel",
     "todaysDeals": "Today's Deals"
@@ -129,10 +129,6 @@
     "myself": {
       "label": "Build it myself",
       "meta": "free · browse and build your own slip"
-    },
-    "ai": {
-      "label": "Plan with AI",
-      "meta": "a full draft itinerary from what you just told us"
     },
     "local": {
       "label": "Get a local expert",

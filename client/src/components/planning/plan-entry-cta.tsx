@@ -51,6 +51,15 @@ export interface PlanEntryCtaProps {
   testId?: string;
 }
 
+/**
+ * Row PS-2 (ledger `2026-11-02-ps2-start-a-plan-always-new`; audit D14): "Start a plan" always opens
+ * PlanEntry as a NEW plan. With a plan bound and no door, `open()` would route to that plan's edit
+ * window, so the button asks for a new plan unless the caller names its plan with `tripId`.
+ */
+export function planEntrySource(source: PlanningSource | undefined): PlanningSource {
+  return source?.tripId ? source : { ...source, newPlan: true };
+}
+
 export function PlanEntryCta({
   source,
   className,
@@ -63,7 +72,7 @@ export function PlanEntryCta({
       type="button"
       variant={variant}
       className={cn("font-medium", className)}
-      onClick={() => planning.open(source)}
+      onClick={() => planning.open(planEntrySource(source))}
       data-testid={testId}
     >
       {START_PLAN_LABEL}

@@ -118,6 +118,10 @@ export interface SlipRailAdvisor {
    * invitation (§13, decision-maker ruling 2026-09-20).
    */
   message?: string | null;
+  /** CN-1d (#1846): how the advisor joined — 'concierge' or 'handoff' (NULL on a pre-429 row). */
+  source?: string | null;
+  /** CN-1d (#1846): when a concierge engagement's plan access ends (ISO), or null. */
+  accessUntil?: string | null;
 }
 
 /**

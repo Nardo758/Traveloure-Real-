@@ -77,7 +77,10 @@ export interface AskAiProposalsResponse {
  */
 export const ASK_AI_COPY = {
   /** The rail card and the drawer share a title — one control, one name. */
-  title: "Ask AI about this plan",
+  // Row P-2: the drawer's name is Leon's; this is the proposal held for his wording approval.
+  title: "Ask about this plan",
+  /** The drawer's eyebrow and the pay line's lead word (held with `title`). */
+  eyebrow: "Ask",
   railMeta: "charged on apply",
 
   // Rule 1 — A PROPOSAL IS A PROPOSAL. Nothing is *added*, *updated*, *saved* or *done* on the
@@ -117,7 +120,7 @@ export const ASK_AI_COPY = {
 
   // Rule 10 — A DAY THE PROPOSAL DID NOT NAME IS NOT THE AI'S ANSWER.
   unplacedDay:
-    "This one names no day. Applying it places it on day 1 so it has somewhere to live — that is a placement you can move, not a time the AI chose.",
+    "This one names no day. Applying it places it on day 1 so it has somewhere to live — that is a placement you can move, not a time we chose.",
 
   // D-45 (RULED = A, STATELESS): the question column plus this log IS the thread. Said out loud so
   // nobody reads a memory into it that does not exist (§13).
@@ -128,7 +131,7 @@ export const ASK_AI_COPY = {
   // from nothing, and never becomes a second free rail.
   emptyPlanDeferralTitle: "Start with the free draft",
   emptyPlanDeferral:
-    "This plan has no items yet. A free AI draft is what an empty plan wants — come back here once there is something to ask about.",
+    "This plan has no items yet. A free Quick draft is what an empty plan wants — come back here once there is something to ask about.",
 
   // The ask box.
   askPlaceholder: "Ask about this plan…",
@@ -157,7 +160,7 @@ export const ASK_AI_COPY = {
     "You can ask, read and discard on this plan. Applying a proposal — and paying for one — is the plan owner's.",
 
   // The refusals, each in the server's own voice where the server gave one.
-  notAvailableYet: "Asking the AI about a plan is not available yet.",
+  notAvailableYet: "Asking about a plan isn't available.",
   inFlight: "An answer for this plan is already on its way.",
   askFailed: "We couldn't ask about this plan.",
 } as const;
@@ -344,13 +347,13 @@ export function askAiPriceLine(aiTask: AskAiTaskBlock | null | undefined): AskAi
 
 /**
  * The bottom bar's button (slip conformance, Main board; ledger `2026-10-08-slip-main-rail`):
- * "Ask AI · $2.99" when the server priced it, "Ask AI · included" when the plan's Trip Pass covers it,
- * and just "Ask AI" when we have no answer (§13 — no number we were not told).
+ * "Ask · $2.99" when the server priced it, "Ask · included" when the plan's Trip Pass covers it,
+ * and just "Ask" when we have no answer (§13 — no number we were not told).
  */
 export function askAiBarLabel(line: AskAiPriceLine): string {
-  if (line.kind === "priced") return `Ask AI · ${line.amount}`;
-  if (line.kind === "covered") return "Ask AI · included";
-  return "Ask AI";
+  if (line.kind === "priced") return `${ASK_AI_COPY.eyebrow} · ${line.amount}`;
+  if (line.kind === "covered") return `${ASK_AI_COPY.eyebrow} · included`;
+  return ASK_AI_COPY.eyebrow;
 }
 
 // ── Reading a proposal row (§5.4 rules 1, 3, 7, 8, 9, 10) ────────────────────────────────────

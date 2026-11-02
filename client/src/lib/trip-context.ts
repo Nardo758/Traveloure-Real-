@@ -331,6 +331,9 @@ const SWITCH_FIELDS = [
   "experienceType",
 ] as const;
 
+/** The per-plan party answers a switch to a different plan clears (Row PS-3). */
+const PLAN_PARTY_FIELDS = ["adults", "kids", "petKind", "petCount"] as const;
+
 /**
  * Atomically switch the active trip: identity (`tripId`) and the display fields
  * it's paired with are written together in ONE call with REPLACE semantics for
@@ -363,6 +366,13 @@ export function switchTripContext(patch: TripContextPatch): TripContext {
   }
   const base: Record<string, unknown> = { ...current };
   for (const key of SWITCH_FIELDS) delete base[key];
+  // Row PS-3 (audit D2): the party belongs to a plan. When the switch moves to a DIFFERENT plan,
+  // the previous plan's adults/kids (and pet answers) do not come along — a new plan starts clean.
+  // A same-plan re-sync (`switchTripContextPreservingId` keeping the id) carries them, so a stated
+  // answer is never cleared just because the caller did not repeat it.
+  if ((sanitized.tripId ?? undefined) !== (current.tripId ?? undefined)) {
+    for (const key of PLAN_PARTY_FIELDS) delete base[key];
+  }
   const next = { ...base, ...sanitized } as TripContext;
 
   try {
@@ -418,6 +428,46 @@ export function replaceTripContextPlanAnswers(answers: {
   }
   if (typeof answers.experienceSlug === "string" && answers.experienceSlug.trim().length > 0) {
     next.experienceSlug = answers.experienceSlug.trim();
+  }
+  try {
+    sessionStorage.setItem(storageKey(), JSON.stringify(next));
+  } catch {
+    /* storage full/unavailable — context is best-effort */
+  }
+  try {
+    window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
+  } catch {
+    /* non-browser env */
+  }
+  schedulePush(next as TripContext);
+  return next as TripContext;
+}
+
+/**
+ * WRITE WHAT A PLAN WRITE SAVED INTO THE PEN — Row PS-3 (audit D3). The slip's inline "Set your
+ * dates" and "Who's coming?" panels write the trip row; this keeps the pen in step so the two
+ * stores never disagree within a session. Only when the pen names THIS plan: another plan's pen is
+ * never touched. Dates are written as given; the party uses the same rule as
+ * `replaceTripContextPlanAnswers` (a value the plan does not hold is removed, never carried), for
+ * the keys passed only — the occasion is left alone.
+ */
+export function writePlanAnswersToContext(
+  tripId: string,
+  answers: { startDate?: string; endDate?: string; adults?: number | null; kids?: number | null },
+): TripContext | null {
+  const current = getTripContext();
+  if (!tripId || current.tripId !== tripId) return null;
+  const next: Record<string, unknown> = { ...current };
+  for (const key of ["startDate", "endDate"] as const) {
+    if (answers[key] === undefined) continue;
+    const normalized = normalizeDate(answers[key] as string);
+    if (normalized !== undefined) next[key] = normalized;
+  }
+  for (const key of ["adults", "kids"] as const) {
+    if (!(key in answers)) continue;
+    const value = answers[key];
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) next[key] = value;
+    else delete next[key];
   }
   try {
     sessionStorage.setItem(storageKey(), JSON.stringify(next));

@@ -44,6 +44,7 @@
  * is not rendered at all.
  */
 import { helpArticlePath } from "@shared/help-article-slugs";
+import { conciergeAccessLine } from "@/lib/concierge-hire-copy";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
@@ -313,7 +314,7 @@ export function useSlipAiAction(tripId: string, activities: PlanCardActivity[]):
 }
 
 /**
- * The "Draft it with AI" row and its mutation, lifted VERBATIM out of `BuildCard` (step 8b-1) so the
+ * The "Quick draft" row and its mutation, lifted VERBATIM out of `BuildCard` (step 8b-1) so the
  * map layout can render the same row. `BuildCard` still decides WHEN it shows (owner, empty plan).
  */
 export function SlipDraftAiRow({ trip, tripId }: { trip: SlipTrip; tripId: string }) {
@@ -337,10 +338,10 @@ export function SlipDraftAiRow({ trip, tripId }: { trip: SlipTrip; tripId: strin
 
   return (
         <>
-          <DatesGate trip={trip} action="Draft it with AI" testId="slip-draft-dates-gate">
+          <DatesGate trip={trip} action="Quick draft" testId="slip-draft-dates-gate">
             {(guard) => (
               <RailRow
-                label="Draft it with AI"
+                label="Quick draft"
                 meta="empty plan"
                 icon={<Sparkles className="w-3.5 h-3.5" />}
                 onClick={() => guard((dates) => draft.mutate(dates))}
@@ -798,7 +799,13 @@ function ExpertCard({
   expertState,
   otherAdvisorsLine,
   messageControl = null,
+  conciergeLine = null,
 }: {
+  /**
+   * CN-1d-UI: a concierge advisor's access window (or that it has ended), from `conciergeAccessLine`. Null for a
+   * handoff advisor, whose card is exactly as before.
+   */
+  conciergeLine?: { kind: "active" | "ended"; text: string } | null;
   /** The ONE "Message <name>" control (`ExpertMessageRow`), owner only. */
   messageControl?: React.ReactNode;
   /**
@@ -845,6 +852,14 @@ function ExpertCard({
                 data-testid="slip-rail-expert-standing"
               >
                 {standing}
+              </p>
+            )}
+            {conciergeLine && (
+              <p
+                className="text-[11px] leading-snug text-muted-foreground break-words"
+                data-testid={conciergeLine.kind === "ended" ? "slip-rail-expert-concierge-ended" : "slip-rail-expert-concierge-access"}
+              >
+                {conciergeLine.text}
               </p>
             )}
           </div>
@@ -1461,6 +1476,7 @@ export function SlipRail({
         expertState={expertState}
         otherAdvisorsLine={otherAdvisorsLine}
         messageControl={isOwner ? <ExpertMessageRow trip={trip} tripId={tripId} expertState={expertState} /> : null}
+        conciergeLine={isOwner ? conciergeAccessLine(advisor, trip, new Date()) : null}
       />
       <PlanCard
         tripId={tripId}

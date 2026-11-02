@@ -31,8 +31,8 @@ describe("itemOriginChip — the three ratified values", () => {
     assert.deepEqual(itemOriginChip("traveler"), { label: "you added", tone: "neutral" });
   });
 
-  it("O2 — `ai` is 'AI draft'", () => {
-    assert.deepEqual(itemOriginChip("ai"), { label: "AI draft", tone: "neutral" });
+  it("O2 — `ai` is 'Quick draft'", () => {
+    assert.deepEqual(itemOriginChip("ai"), { label: "Quick draft", tone: "neutral" });
   });
 
   it("O3 — `expert` is 'from your expert', and it is the one tinted tone", () => {
@@ -67,7 +67,7 @@ describe("itemOriginChip — the three ratified values", () => {
     const labels = ["traveler", "ai", "expert"].map((o) => itemOriginChip(o)!.label);
     assert.equal(new Set(labels).size, 3);
     for (const l of labels) {
-      assert.ok(["you added", "AI draft", "from your expert"].includes(l), `unratified label: ${l}`);
+      assert.ok(["you added", "Quick draft", "from your expert"].includes(l), `unratified label: ${l}`);
     }
   });
 });

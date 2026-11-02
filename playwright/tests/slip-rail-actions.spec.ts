@@ -238,7 +238,7 @@ test("A5: the ONE AI action follows the item count, and stops before the externa
   await expect(draft).toBeEnabled();
   // Main-rail (sanctioned placement edit): the empty plan's AI action is the Empty board's draft card
   // button — the board's own words — rather than the rail row whose meta read "empty plan".
-  await expect(draft).toContainText("Draft it with AI");
+  await expect(draft).toContainText("Quick draft");
   // Smoke 9 S9-4: the optimizer card still leads the page, but on an undrafted plan it says "Draft
   // first" and its CTA is disabled — never "this draft already works".
   await expect(page.getByTestId("optimizer-lead-draft-first")).toHaveText("Draft first — Optimize works on a drafted plan");
