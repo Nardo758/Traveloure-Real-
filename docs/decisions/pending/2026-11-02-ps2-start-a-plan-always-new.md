@@ -1,1 +1,0 @@
-| 2026-11-02-ps2-start-a-plan-always-new | 2026-11-02 | [guarded: client/src/components/plancard/__tests__/row-ps2-start-a-plan.test.tsx] (PS-2 brief, Nov 2, 2026; audit D14) | **R? — EVERY START A PLAN CTA OPENS PLANENTRY AS A NEW PLAN; PLANENTRYCTA DEFAULTS NEWPLAN.** | numeric citation R? |
