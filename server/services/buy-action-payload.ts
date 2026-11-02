@@ -83,6 +83,8 @@ export interface ListingBuyRow {
   /** `provider_services.category_id` — resolved to its `category_key` here, one batched query. */
   categoryId?: string | null;
   expertOfferingTypeKey?: string | null;
+  /** `provider_services.service_type` — `concierge` resolves to the hire row (CN-1d-UI). */
+  serviceType?: string | null;
   depositEnabled?: boolean | null;
   depositType?: string | null;
   depositPercentage?: number | null;
@@ -95,6 +97,7 @@ export interface ListingBuyFactsSource {
   pricingUnit?: string | null;
   categoryId?: string | null;
   expertOfferingTypeKey?: string | null;
+  serviceType?: string | null;
   depositEnabled?: boolean | null;
   depositType?: string | null;
   depositPercentage?: number | null;
@@ -112,6 +115,7 @@ export function listingBuyFacts(row: ListingBuyFactsSource): Pick<
   | "pricingUnit"
   | "categoryId"
   | "expertOfferingTypeKey"
+  | "serviceType"
   | "depositEnabled"
   | "depositType"
   | "depositPercentage"
@@ -122,6 +126,7 @@ export function listingBuyFacts(row: ListingBuyFactsSource): Pick<
     pricingUnit: row.pricingUnit ?? null,
     categoryId: row.categoryId ?? null,
     expertOfferingTypeKey: row.expertOfferingTypeKey ?? null,
+    serviceType: row.serviceType ?? null,
     depositEnabled: row.depositEnabled ?? null,
     depositType: row.depositType ?? null,
     depositPercentage: row.depositPercentage ?? null,
@@ -303,6 +308,7 @@ export async function buildListingBuyActions(
           pricingUnit: row.pricingUnit ?? null,
           categoryKey: row.categoryId ? (categoryKeyById.get(row.categoryId) ?? null) : null,
           offeringTypeKey: row.expertOfferingTypeKey ?? null,
+          serviceType: row.serviceType ?? null,
           takesDeposit: listingTakesDeposit(row),
         },
         buyer,

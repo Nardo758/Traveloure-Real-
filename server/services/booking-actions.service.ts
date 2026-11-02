@@ -620,6 +620,9 @@ export async function listTripExpertAdvisors(tripId: string): Promise<any[]> {
   const result = await db.execute(sql`
     SELECT
       tea.id as advisor_id, tea.status, tea.message, tea.expert_response, tea.assigned_at,
+      -- CN-1d-UI: how the advisor joined (migration 429: 'handoff' | 'concierge') and, for a concierge
+      -- engagement, when its plan access ends. Mapped to accessUntil (ISO or null) below.
+      tea.source, tea.access_until,
       lef.id as expert_form_id, lef.first_name, lef.last_name,
       lef.bio, lef.specialties, lef.destinations, lef.hourly_rate,
       u.profile_image_url,
@@ -642,11 +645,17 @@ export async function listTripExpertAdvisors(tripId: string): Promise<any[]> {
       -- or Connect has lapsed is a real hire and stays.
       AND ${publicExpertSql(sql`lef.status`, sql`u.email`, sql`u.is_test`)}
     GROUP BY tea.id, tea.status, tea.message, tea.expert_response, tea.assigned_at,
+             tea.source, tea.access_until,
              lef.id, lef.first_name, lef.last_name, lef.bio, lef.specialties,
              lef.destinations, lef.hourly_rate, u.profile_image_url, u.handle
     ORDER BY tea.assigned_at DESC
   `);
-  return (result.rows ?? []) as any[];
+  // NULL access_until = no expiry (a handoff row, or a pre-429 row); it is published as null, never
+  // a guessed date (§13).
+  return ((result.rows ?? []) as any[]).map(({ access_until, ...row }) => ({
+    ...row,
+    accessUntil: access_until ? new Date(access_until).toISOString() : null,
+  }));
 }
 
 export async function getExistingAdvisorRecord(tripId: string): Promise<{ id: string; status: string } | null> {

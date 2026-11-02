@@ -38,6 +38,7 @@ import {
 } from "../services/discover-impressions.service";
 import { UNKNOWN_THEME_MESSAGE, parseDiscoverThemeParam } from "@shared/experience-themes";
 import { parseServiceTypeQuery, UNKNOWN_SERVICE_TYPE_MESSAGE } from "@shared/service-type-query";
+import { conciergeListingExtras, loadListingConciergeTasks } from "../services/concierge-listing.service";
 import { resolveThemeIdsBySlug } from "../services/experience-themes.service";
 import { db } from "../db";
 import { storage } from "../storage";
@@ -2916,7 +2917,15 @@ router.get("/api/services/:id", async (req, res) => {
       });
       return res.json(withTranslation(publicDetail({ ...jitteredRoom, property: visibleProperty, away, routePoints, availabilityPatterns, surchargeTiers, neighborhoods, categoryKey, buyAction })));
     }
-    res.json(withTranslation(publicDetail({ ...service, away, routePoints, availabilityPatterns, surchargeTiers, neighborhoods, categoryKey, buyAction })));
+    // CN-1d-UI (ledger `2026-11-01-cn1d-ui-server-reads`): a concierge listing carries its task list and
+    // its two CN-1 labels on the public read — the SAME `conciergeListingExtras` the owner routes
+    // spread (§18 rule 1). This branch is already behind the approved-and-active gate above. Any other
+    // listing type gets nothing new, so its payload is unchanged.
+    const conciergeExtras =
+      service.serviceType === "concierge"
+        ? conciergeListingExtras(service, await loadListingConciergeTasks(service.id))
+        : {};
+    res.json(withTranslation(publicDetail({ ...service, ...conciergeExtras, away, routePoints, availabilityPatterns, surchargeTiers, neighborhoods, categoryKey, buyAction })));
   });
 
   // C2: public read-only availability calendar for a service's detail page.
