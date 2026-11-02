@@ -66,6 +66,9 @@ const ANCHOR_TYPE_LABELS: Record<string, string> = {
   hotel: "Hotel",
   neighborhood: "Neighborhood",
   activity: "Activity",
+  // OPT-B: the Experiences page's own words (approved group labels).
+  event: "Event",
+  day: "Date",
 };
 
 /**

@@ -14,6 +14,8 @@
 import {
   isCustomLocationRefusal,
   PINNED_ANCHOR_NOT_FOUND,
+  PINNED_ANCHOR_NOT_FOUND_DETAILS,
+  type PinnedAnchorNotFoundDetail,
   readCustomPinPlacement,
   type CustomLocationRefusalReason,
   type CustomPinPlacement,
@@ -28,8 +30,25 @@ import type { ComparisonPinnedAnchor, ComparisonPinnedAnchorType } from "./creat
  */
 export const STALE_PIN_ERRORS = [PINNED_ANCHOR_NOT_FOUND, "pinned_anchor_invalid"] as const;
 
-/** The dialog's refusal states: the five placement reasons, plus a stale list-pick id. */
-export type PinRefusal = CustomLocationRefusalReason | "stale_pin";
+/**
+ * The dialog's refusal states: the five placement reasons, a stale list-pick id, and (OPT-B) the
+ * three reasons the server gives when an event or day pin cannot be built around.
+ */
+export type PinRefusal = CustomLocationRefusalReason | "stale_pin" | PinnedAnchorNotFoundDetail;
+
+/** The server's `detail` on a 400 `pinned_anchor_not_found`, when it is one of the three it sends. */
+export function pinnedAnchorDetail(body: unknown): PinnedAnchorNotFoundDetail | undefined {
+  if (!body || typeof body !== "object") return undefined;
+  const detail = (body as Record<string, unknown>).detail;
+  return typeof detail === "string" && (PINNED_ANCHOR_NOT_FOUND_DETAILS as readonly string[]).includes(detail)
+    ? (detail as PinnedAnchorNotFoundDetail)
+    : undefined;
+}
+
+/** True for the event/day refusal reasons (no name to retry; list or no pin only). */
+export function isPlanAnchorRefusal(reason: PinRefusal): reason is PinnedAnchorNotFoundDetail {
+  return (PINNED_ANCHOR_NOT_FOUND_DETAILS as readonly string[]).includes(reason);
+}
 
 export function isStalePinnedAnchor(status: number, body: unknown): boolean {
   if (status !== 400 || !body || typeof body !== "object") return false;
@@ -51,6 +70,15 @@ export const CUSTOM_PIN_REFUSAL_STRINGS = {
     cap_reached: "Place lookups are paused for now. Try again later, or continue without a pin.",
     provider_error: "The place lookup didn't respond. Try again in a bit, or continue without a pin.",
   } satisfies Record<CustomLocationRefusalReason, string>,
+  /**
+   * OPT-B R1–R3, HELD for Leon's approval (ledger 2026-11-02-opt-b-build-around-place-date-event).
+   * Each ends with the stale-pin message's "you haven't been charged" sentence.
+   */
+  planAnchor: {
+    event_not_anchorable: "That event can't be built around — it needs a place and a start time. You haven't been charged.",
+    day_not_anchorable: "That day has no located stops to build around. You haven't been charged.",
+    day_nothing_to_rebuild: "Everything on your plan is on that day, so there's nothing to rebuild around it. You haven't been charged.",
+  } satisfies Record<PinnedAnchorNotFoundDetail, string>,
   options: {
     tryDifferentName: "Try a different name",
     pickFromList: "Pick from the list",
@@ -71,7 +99,8 @@ export interface RefusalOptions {
 
 export function refusalOptions(reason: PinRefusal, hasCandidates: boolean): RefusalOptions {
   return {
-    tryDifferentName: reason !== "cap_reached" && reason !== "provider_error",
+    // An event or day pin has no name to retry: list or no pin only.
+    tryDifferentName: reason !== "cap_reached" && reason !== "provider_error" && !isPlanAnchorRefusal(reason),
     pickFromList: hasCandidates,
     continueWithoutPin: true,
   };
@@ -86,12 +115,15 @@ export function refusalFromError(err: unknown): PinRefusal | null {
   const status = Number(raw.match(/^\s*(\d{3}):/)?.[1]);
   const body = parseApiRefusal(err);
   if (isCustomLocationRefusal(status, body)) return body.reason;
-  return isStalePinnedAnchor(status, body) ? "stale_pin" : null;
+  if (!isStalePinnedAnchor(status, body)) return null;
+  return pinnedAnchorDetail(body) ?? "stale_pin";
 }
 
 /** The dialog's message for a refusal state. */
 export function refusalMessage(refusal: PinRefusal): string {
-  return refusal === "stale_pin" ? CUSTOM_PIN_REFUSAL_STRINGS.stalePin : CUSTOM_PIN_REFUSAL_STRINGS.reasons[refusal];
+  if (refusal === "stale_pin") return CUSTOM_PIN_REFUSAL_STRINGS.stalePin;
+  if (isPlanAnchorRefusal(refusal)) return CUSTOM_PIN_REFUSAL_STRINGS.planAnchor[refusal];
+  return CUSTOM_PIN_REFUSAL_STRINGS.reasons[refusal];
 }
 
 /** The custom pin the client last sent, with the placement the server last returned for it. */
@@ -116,10 +148,20 @@ export function pinForRequest(
   held: HeldCustomPin | null | undefined,
 ): ComparisonPinnedAnchor | undefined {
   if (!pin) return undefined;
-  if (!isCustomPin(pin)) return pin.id ? { type: pin.type, id: pin.id, ...(pin.name ? { name: pin.name } : {}) } : undefined;
+  if (!isCustomPin(pin)) return pin.id ? { type: pin.type, id: planAnchorBareId(pin.type, pin.id), ...(pin.name ? { name: pin.name } : {}) } : undefined;
   const name = pin.name.trim();
   const echo = held && held.placement && held.type === pin.type && held.name === name ? held.placement : undefined;
   return { type: pin.type, name, ...(echo ? { placement: echo } : {}) };
+}
+
+/**
+ * OPT-B: the server takes an event or day pin by its BARE id (`<itemId>` / `<n>`); the candidate read
+ * names them `event:<itemId>` / `day:<n>`. Strips that one prefix; any other id is unchanged.
+ */
+export function planAnchorBareId(type: ComparisonPinnedAnchorType, id: string): string {
+  if (type !== "event" && type !== "day") return id;
+  const prefix = `${type}:`;
+  return id.startsWith(prefix) ? id.slice(prefix.length) : id;
 }
 
 /**
@@ -150,7 +192,7 @@ export function readStoredPin(raw: string | null): HeldCustomPin | null {
   try {
     const v = JSON.parse(raw) as Partial<HeldCustomPin>;
     if (!v || typeof v !== "object") return null;
-    if (v.type !== "hotel" && v.type !== "neighborhood" && v.type !== "activity") return null;
+    if (v.type !== "hotel" && v.type !== "neighborhood" && v.type !== "activity" && v.type !== "event" && v.type !== "day") return null;
     if (typeof v.name !== "string" || v.name.trim() === "") return null;
     return { type: v.type, name: v.name, ...(v.placement && readCustomPinPlacement(v.placement) ? { placement: v.placement } : {}) };
   } catch {
