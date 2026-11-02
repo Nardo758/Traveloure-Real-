@@ -1277,13 +1277,31 @@ async function promoteOneBooking(
   // booking (no `balance_amount`) is byte-identical to before: target `confirmed` (§13).
   const hasOutstandingBalance =
     row.balanceAmount != null && parseFloat(row.balanceAmount) > 0 && row.balancePaid !== true;
-  const targetStatus = hasOutstandingBalance ? "deposit_paid" : "confirmed";
   try {
     return await db.transaction(async (tx) => {
+      // ── CN-1d: A FULLY PAID CONCIERGE HIRE AWAITS THE EXPERT (Architect ruling, Nov 2, 2026; ledger
+      //    `2026-11-02-cn1d-concierge-checkout`; LD 49 amended) ──────────────────────────────────────
+      // The charge is captured here like any service line, but a concierge booking is NOT confirmed
+      // by payment: it lands `pending`, where the expert's accept (`PATCH …/bookings/:id/status`)
+      // confirms it and grants plan access in the same transaction (#1845), and a decline or the
+      // CONCIERGE_ACCEPT_HOURS timeout refunds it in full through the existing owner decline. The
+      // listing type is read from the row's OWN service, never from a caller. A deposit leg is
+      // unchanged (`deposit_paid`), and every non-concierge booking promotes exactly as before.
+      const conciergeRead = await tx.execute(sql`
+        SELECT ps.service_type FROM service_bookings sb
+        JOIN provider_services ps ON ps.id = sb.service_id
+        WHERE sb.id = ${row.id}
+      `);
+      const awaitsExpert =
+        !hasOutstandingBalance && (conciergeRead.rows[0] as any)?.service_type === "concierge";
+      const targetStatus = hasOutstandingBalance ? "deposit_paid" : awaitsExpert ? "pending" : "confirmed";
+      // The payment stamp names the PAYMENT LEG, not the booking's status: a concierge hire is a
+      // full charge (`confirmed` leg) on a row that is `pending` until the expert answers.
+      const paidLeg = hasOutstandingBalance ? "deposit_paid" : "confirmed";
       const claimed = await tx.execute(sql`
         UPDATE service_bookings
         SET status = ${targetStatus},
-            confirmed_at = ${hasOutstandingBalance ? sql`confirmed_at` : sql`NOW()`},
+            confirmed_at = ${hasOutstandingBalance || awaitsExpert ? sql`confirmed_at` : sql`NOW()`},
             deposit_paid = ${hasOutstandingBalance ? sql`true` : sql`deposit_paid`},
             stripe_deposit_intent_id = ${hasOutstandingBalance ? sql`${paymentIntentId}` : sql`stripe_deposit_intent_id`},
             deposit_amount = ${hasOutstandingBalance ? sql`COALESCE(deposit_amount, ROUND((total_amount + COALESCE(platform_fee, 0)) - balance_amount, 2))` : sql`deposit_amount`},
@@ -1326,17 +1344,22 @@ async function promoteOneBooking(
       // `booking_details.paidCharge` in THIS transaction — not a savepoint, so a failed stamp rolls
       // the flip back and a paid row can never read as unpaid to the earning paths.
       const paidRow = paidTransitionRowFromSql(claimed.rows[0]);
-      const stamp = await stampPaidCharge(tx, row.id, targetStatus, paidRevenueAmount(targetStatus, paidRow));
+      const stamp = await stampPaidCharge(tx, row.id, paidLeg, paidRevenueAmount(paidLeg, paidRow));
       // T6 revenue is recorded HERE, by the winning flip and inside its transaction, so a paid
       // transition has exactly one event and an unpaid row has none (ledger
       // `2026-09-27-funnel-revenue-on-paid`). Derived from the stamp; savepointed, never throws (§15b).
       await recordPaidRevenueEvent(tx, stamp, paidRow);
-      await persistCanonicalBookingConfirmation(tx, {
-        bookingId: row.id,
-        paymentIntentId,
-        leg: hasOutstandingBalance ? "deposit" : "full",
-        paidCharge: stamp,
-      });
+      // A pending concierge hire is not confirmed, so it is not sent the "Booking confirmed" email
+      // (§13 — that subject would claim an acceptance nobody has given). The traveler hears the
+      // expert's answer through the existing booking_confirmed / booking_cancelled notices.
+      if (!awaitsExpert) {
+        await persistCanonicalBookingConfirmation(tx, {
+          bookingId: row.id,
+          paymentIntentId,
+          leg: hasOutstandingBalance ? "deposit" : "full",
+          paidCharge: stamp,
+        });
+      }
       return { promoted: true, diaryRows, terminalStatus: null };
     });
   } catch (err) {
