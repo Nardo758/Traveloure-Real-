@@ -62,9 +62,10 @@ function groupRows(proposal: PlanCardProposalData): DayGroup[] {
   return groups;
 }
 
-function anchorTone(anchorLine: string | null | undefined): "hotel" | "neighborhood" | "activity" | null {
+function anchorTone(anchorLine: string | null | undefined): "hotel" | "neighborhood" | "activity" | "event" | "day" | null {
   const kind = anchorLine?.split(" · ")[0]?.trim().toLowerCase();
-  return kind === "hotel" || kind === "neighborhood" || kind === "activity" ? kind : null;
+  if (kind === "date") return "day"; // the board labels a day anchor "Date"
+  return kind === "hotel" || kind === "neighborhood" || kind === "activity" || kind === "event" ? kind : null;
 }
 
 export function ProposalColumn({ proposal }: { proposal: PlanCardProposalData }) {

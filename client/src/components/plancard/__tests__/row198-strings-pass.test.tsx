@@ -147,14 +147,17 @@ describe("row 198 strings pass", () => {
     }
     assert.doesNotMatch(DIALOG_CODE, /^\s*recommended\s*$/m);
     for (const key of ["description", "loadError", "autoBody", "chooseYourOwn", "optionsLabel("]) assert.ok(DIALOG.includes(`BUILD_AROUND_COPY.${key}`), key);
-    assert.equal(BUILD_AROUND_COPY.description, "Choose what to build your three versions around.");
+    // OPT-B (sanctioned, Architect Nov 2): the P-3 values — H1, H2, H3 and E1 are HELD for Leon.
+    assert.equal(BUILD_AROUND_COPY.description, "We suggest 3 starting points. Or build around a place, a date or an event on your plan.");
+    assert.equal(BUILD_AROUND_COPY.autoLabel, "We'll suggest 3");
     assert.equal(BUILD_AROUND_COPY.chooseYourOwn, "Or choose your own");
     assert.equal(BUILD_AROUND_COPY.autoBody, "We suggest a hotel, a neighborhood and an activity to build around, ranked by straight-line distance to your stops.");
-    assert.equal(BUILD_AROUND_COPY.loadError, "We couldn't load places to build around. Close and reopen to try again, or choose Auto.");
+    assert.equal(BUILD_AROUND_COPY.loadError, "We couldn't load places to build around. Close and reopen to try again, or let us suggest 3.");
     assert.equal(BUILD_AROUND_COPY.optionsLabel("Hotel"), "Hotel options");
     for (const type of ["hotel", "neighborhood", "activity"]) {
       assert.ok(DIALOG.includes(`${type}: "No ${type} suggestions near your stops yet. You can type one below."`), type);
     }
+    assert.ok(DIALOG.includes('event: "No events with a time on your plan yet. Add one with a start time first."'), "E1");
     const catchBlock = DIALOG.slice(DIALOG.indexOf("} catch"), DIALOG.indexOf("} finally"));
     assert.ok(!catchBlock.includes("error?.message"));
     assert.ok(!catchBlock.includes(".message"));
