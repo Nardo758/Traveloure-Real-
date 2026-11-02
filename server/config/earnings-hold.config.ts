@@ -52,3 +52,30 @@ export function availableAtFor(surface?: string | null, from?: Date): Date {
   const base = from ?? new Date();
   return new Date(base.getTime() + holdWindowDays(surface) * DAY_MS);
 }
+
+/**
+ * CN-1f (ledger `2026-11-02-cn1f-concierge-payout-hold`; CN-1 OPEN (C), Leon: "Default unchanged; override by env only
+ * (CONCIERGE_HOLD_DAYS)"). The concierge hold length: CONCIERGE_HOLD_DAYS when it is a whole number ≥ 0, else the
+ * bookings default (`holdWindowDays('service_booking')`, i.e. EARNINGS_HOLD_DAYS). Unset = default — deliberately NOT the
+ * "unset disables" shape CONCIERGE_ACCEPT_HOURS uses. Read at call time, so a deploy's env change applies to the next mint.
+ */
+export function conciergeHoldDays(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = (env.CONCIERGE_HOLD_DAYS ?? "").trim();
+  if (/^\d+$/.test(raw)) {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 0) return n;
+  }
+  return holdWindowDays("service_booking");
+}
+
+/**
+ * CN-1f: when a concierge earning becomes available. The hold starts at the LATER of the trip's end (the first instant
+ * after its last day, in the trip's zone — `conciergeAccessUntil`) and the completion declaration (or now, when there is
+ * none), then adds `conciergeHoldDays()`. With no usable trip end the anchor is the declaration (or now). Never null: a
+ * NULL available_at is never released.
+ */
+export function conciergeAvailableAt(tripEnd: Date | null, declaredAt: Date | undefined, now: Date = new Date()): Date {
+  const declared = declaredAt ?? now;
+  const anchor = tripEnd && tripEnd.getTime() > declared.getTime() ? tripEnd : declared;
+  return new Date(anchor.getTime() + conciergeHoldDays() * DAY_MS);
+}
