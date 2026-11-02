@@ -140,6 +140,11 @@ export interface ServiceDetailBuyRender {
    */
   request: BuyActionButton | null;
   /**
+   * CN-1d-UI: a concierge listing's "Hire for this trip" (`kind: "hire"`). The page drives its own hire flow
+   * (plan with chosen dates → consent → cart line → checkout) from it; its label is the descriptor's.
+   */
+  hire: BuyActionButton | null;
+  /**
    * The descriptor named the message rail in `primary` or `secondary`. The page renders that with
    * its EXISTING Contact control rather than a second message button — Contact is the LD 40
    * contact rail, not a buy button, and ruling 9 does not author it.
@@ -171,6 +176,7 @@ const EMPTY: Omit<ServiceDetailBuyRender, "refusal"> = {
   book: null,
   add: null,
   request: null,
+  hire: null,
   namesMessage: false,
   asks: [],
   unaskedSteps: [],
@@ -193,6 +199,7 @@ export function serviceDetailBuyRender(action: BuyAction | undefined | null): Se
   let book: BuyActionButton | null = null;
   let add: BuyActionButton | null = null;
   let request: BuyActionButton | null = null;
+  let hire: BuyActionButton | null = null;
   let namesMessage = false;
   const unrenderedKinds: BuyActionKind[] = [];
 
@@ -211,6 +218,9 @@ export function serviceDetailBuyRender(action: BuyAction | undefined | null): Se
       // `service_quotes` row — so it takes that control, with the resolver's label.
       case "request_quote":
         request = button;
+        break;
+      case "hire":
+        hire = button;
         break;
       case "message":
         namesMessage = true;
@@ -236,7 +246,7 @@ export function serviceDetailBuyRender(action: BuyAction | undefined | null): Se
     else unaskedSteps.push(step);
   }
 
-  const noBuyControl = !book && !add && !request;
+  const noBuyControl = !book && !add && !request && !hire;
   const refusal = action.refusal
     ? BUY_REFUSAL_SENTENCE[action.refusal.reason]
     : noBuyControl && unrenderedKinds.length > 0
@@ -247,6 +257,7 @@ export function serviceDetailBuyRender(action: BuyAction | undefined | null): Se
     book,
     add,
     request,
+    hire,
     namesMessage,
     refusal,
     asks,
