@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { usePlanning } from "@/contexts/PlanningContext";
+import { usePlanning, type PlanningSource } from "@/contexts/PlanningContext";
 import { launchCityName, tickerButton, type PublicTickerItem } from "@shared/ticker";
 import { TickerRibbon } from "./ticker-ribbon";
 import "./CityTickerTape.css";
@@ -22,7 +22,9 @@ interface SignupModeAnswer {
 }
 
 export function CityTickerTape() {
-  const { open: openPlanning } = usePlanning();
+  const { open } = usePlanning();
+  // Row PS-2 (audit D14): the ribbon's Start a plan always opens PlanEntry as a NEW plan.
+  const openPlanning = (source: PlanningSource) => open({ ...source, newPlan: true });
   const signup = useQuery<SignupModeAnswer>({ queryKey: ["/api/public/signup-mode"], staleTime: 30_000 });
   const slug = signup.data?.launchMarketSlug ?? null;
   const cityName = launchCityName(slug);
