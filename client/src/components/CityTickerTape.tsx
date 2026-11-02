@@ -38,7 +38,7 @@ export function CityTickerTape() {
       cityName={cityName}
       betaCities={ticker.data.betaCities ?? []}
       button={tickerButton(signup.data?.mode, slug, cityName)}
-      onPlan={(city) => openPlanning({ city })}
+      onPlan={(city) => openPlanning({ city, newPlan: true })}
     />
   );
 }
