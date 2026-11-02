@@ -2258,4 +2258,8 @@ export const MIGRATION_FILES = [
   // and access_until timestamptz NULL. HELD until Leon approves the SQL.
   // Declared in shared/schema.ts. No CHECK.
   "429_concierge_engagement_access.sql",
+  // 430 — CN-1e: concierge_tasks + concierge_task_events (the concierge task log). Two new
+  // tables, no DEFAULT, no CHECK. Declared in shared/schema.ts. HELD until Leon approves the SQL.
+  // Ledger 2026-11-01-cn1e-concierge-task-log.
+  "430_cn1e_concierge_tasks.sql",
 ] as const;
