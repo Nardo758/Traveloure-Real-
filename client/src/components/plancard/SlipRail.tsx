@@ -44,6 +44,7 @@
  * is not rendered at all.
  */
 import { helpArticlePath } from "@shared/help-article-slugs";
+import { conciergeAccessLine } from "@/lib/concierge-hire-copy";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
@@ -796,7 +797,13 @@ function ExpertCard({
   expertState,
   otherAdvisorsLine,
   messageControl = null,
+  conciergeLine = null,
 }: {
+  /**
+   * CN-1d-UI: a concierge advisor's access window (or that it has ended), from `conciergeAccessLine`. Null for a
+   * handoff advisor, whose card is exactly as before.
+   */
+  conciergeLine?: { kind: "active" | "ended"; text: string } | null;
   /** The ONE "Message <name>" control (`ExpertMessageRow`), owner only. */
   messageControl?: React.ReactNode;
   /**
@@ -843,6 +850,14 @@ function ExpertCard({
                 data-testid="slip-rail-expert-standing"
               >
                 {standing}
+              </p>
+            )}
+            {conciergeLine && (
+              <p
+                className="text-[11px] leading-snug text-muted-foreground break-words"
+                data-testid={conciergeLine.kind === "ended" ? "slip-rail-expert-concierge-ended" : "slip-rail-expert-concierge-access"}
+              >
+                {conciergeLine.text}
               </p>
             )}
           </div>
@@ -1459,6 +1474,7 @@ export function SlipRail({
         expertState={expertState}
         otherAdvisorsLine={otherAdvisorsLine}
         messageControl={isOwner ? <ExpertMessageRow trip={trip} tripId={tripId} expertState={expertState} /> : null}
+        conciergeLine={isOwner ? conciergeAccessLine(advisor, trip, new Date()) : null}
       />
       <PlanCard
         tripId={tripId}
