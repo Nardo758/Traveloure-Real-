@@ -1,5 +1,5 @@
 /**
- * THE FREE DRAFT, AS ONE ACTION — shared by the rail's "Draft it with AI" row and the Empty
+ * THE FREE DRAFT, AS ONE ACTION — shared by the rail's "Quick draft" row and the Empty
  * board's draft card (slip conformance, ledger `2026-10-08-conformance-slip-phase0`).
  *
  * Both presses run the SAME call (`runFreeDraft`, the existing generate rail, LD 41 (b)) with the
@@ -36,7 +36,7 @@ import { InlineDatesPanel, type PlanWindow } from "./SlipAnchorPanels";
 import { DRAFT_AI_QUERY, DRAFT_AI_VALUE } from "@/lib/plan-landing";
 
 /**
- * E2 ruling 2 / Q1 (a): `?draft=ai` on a plan's URL starts "Draft it with AI" ONCE. Two surfaces mount
+ * E2 ruling 2 / Q1 (a): `?draft=ai` on a plan's URL starts "Quick draft" ONCE. Two surfaces mount
  * this hook (the rail and the empty board), so the request is consumed per plan, by whichever mounts
  * first, and the parameter is removed from the address so a reload never drafts twice.
  */
@@ -47,8 +47,8 @@ export function asksToStartDraft(search: string): boolean {
   return new URLSearchParams(search).get(DRAFT_AI_QUERY) === DRAFT_AI_VALUE;
 }
 
-/** The action's name in the gate's line ("Draft it with AI needs your dates…"). */
-const DRAFT_ACTION = "Draft it with AI";
+/** The action's name in the gate's line ("Quick draft needs your dates…"). */
+export const DRAFT_ACTION = "Quick draft";
 
 export interface FreeDraftTripInput {
   id?: string;

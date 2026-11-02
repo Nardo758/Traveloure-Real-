@@ -112,7 +112,7 @@ export const NAV_LEAF_ICONS: Record<string, React.ComponentType<{ className?: st
   "Boys Trip":         Users,
   "Girls Trip":        UsersRound,
   "Reunions":          PartyPopper,
-  "AI Planner":        Bot,
+  "Plan assistant":    Bot,
   "Visa Help":         FileText,
   "Live Intel":        Sparkles,
   "Today's Deals":     CreditCard,

@@ -1,0 +1,1 @@
+| 2026-11-02-p2-ai-purge-round-2 | 2026-11-02 | [guarded: client/src/components/plancard/__tests__/row-p2-ai-purge.test.tsx] (P-2 brief, Nov 2, 2026; "Quick draft" ruled by Leon; other wording held for owner approval) | **R? — PLANNING SURFACES AND NAV CARRY NO TRAVELER-VISIBLE 'AI'; ASK DRAWER / ASSISTANT NAMES PER LEON.** | numeric citation R? |

@@ -90,7 +90,7 @@ describe("Z7 the dates gate", () => {
     assert.deepEqual(datesPanelCanSave("2027-04-12", "2027-04-10"), { ok: false, inverted: true });
     assert.match(planDatesGateLine("Optimize"), /^Optimize needs your dates/);
     const rail = read("client/src/components/plancard/SlipRail.tsx");
-    assert.match(rail, /<DatesGate trip=\{trip\} action="Draft it with AI"/);
+    assert.match(rail, /<DatesGate trip=\{trip\} action="Quick draft"/);
     assert.match(rail, /<DatesGate trip=\{trip\} action="Optimize"/);
     assert.match(read("client/src/components/plancard/TripPassCard.tsx"), /<DatesGate trip=\{trip \?\? \{ id: tripId \}\} action="The Trip Pass"/);
     assert.match(read("client/src/components/plan/LegSheet.tsx"), /props\.open && !needsDates &&/);

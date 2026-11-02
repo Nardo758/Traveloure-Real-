@@ -314,7 +314,7 @@ export function useSlipAiAction(tripId: string, activities: PlanCardActivity[]):
 }
 
 /**
- * The "Draft it with AI" row and its mutation, lifted VERBATIM out of `BuildCard` (step 8b-1) so the
+ * The "Quick draft" row and its mutation, lifted VERBATIM out of `BuildCard` (step 8b-1) so the
  * map layout can render the same row. `BuildCard` still decides WHEN it shows (owner, empty plan).
  */
 export function SlipDraftAiRow({ trip, tripId }: { trip: SlipTrip; tripId: string }) {
@@ -338,10 +338,10 @@ export function SlipDraftAiRow({ trip, tripId }: { trip: SlipTrip; tripId: strin
 
   return (
         <>
-          <DatesGate trip={trip} action="Draft it with AI" testId="slip-draft-dates-gate">
+          <DatesGate trip={trip} action="Quick draft" testId="slip-draft-dates-gate">
             {(guard) => (
               <RailRow
-                label="Draft it with AI"
+                label="Quick draft"
                 meta="empty plan"
                 icon={<Sparkles className="w-3.5 h-3.5" />}
                 onClick={() => guard((dates) => draft.mutate(dates))}

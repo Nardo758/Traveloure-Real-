@@ -36,8 +36,8 @@ describe("expert door words", () => {
     assert.match(handle.line, /you approve and pay/);
   });
   it("X5: the empty action records, it does not promise", () => {
-    assert.equal(emptyActionLabel("Kyoto"), "Start with the free AI draft. We record your interest so a Kyoto expert can pick it up.");
-    assert.equal(emptyActionLabel(null), "Start with the free AI draft. We record your interest so a local expert can pick it up.");
+    assert.equal(emptyActionLabel("Kyoto"), "Start with a free Quick draft. We record your interest so a Kyoto expert can pick it up.");
+    assert.equal(emptyActionLabel(null), "Start with a free Quick draft. We record your interest so a local expert can pick it up.");
     assert.doesNotMatch(emptyActionLabel("Kyoto"), /tell you|notify|let you know|email/i);
   });
 });

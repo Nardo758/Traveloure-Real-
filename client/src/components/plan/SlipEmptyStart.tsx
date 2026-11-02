@@ -96,7 +96,7 @@ export function SlipEmptyStart({
           // `SlipDraftAiRow` is the other placement, and exactly one renders per view.
           data-testid="slip-action-draft-ai"
         >
-          {draft.isPending ? "Drafting…" : "Draft it with AI · free"}
+          {draft.isPending ? "Drafting…" : "Quick draft · free"}
         </button>
         {draft.datesPanel}
       </section>

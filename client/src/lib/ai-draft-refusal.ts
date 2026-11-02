@@ -58,7 +58,7 @@ export function readSlipHasItemsRefusal(status: number, body: unknown): AiDraftR
         ? b.message
         // Only reached if the server ever answers the code with no sentence. Says the same thing
         // the server's own copy says, and still claims nothing about price.
-        : "This plan already has items in it, so the free AI draft won't rebuild it.",
+        : "This plan already has items in it, so Quick draft won't rebuild it.",
     itemCount: typeof rawCount === "number" && Number.isFinite(rawCount) ? rawCount : 0,
     tripId,
   };
