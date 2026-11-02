@@ -53,6 +53,7 @@ import { useGoogleMapsAuthFailed } from "@/lib/google-maps-auth";
 import { trackEvent } from "@/lib/analytics";
 import { MAPS_BROWSER_KEY } from "@/lib/maps-browser-key";
 import { siblingDayIso } from "@/lib/plan-day";
+import { WorkspaceConciergeTasks } from "@/components/expert/WorkspaceConciergeTasks";
 
 const MAPS_KEY = MAPS_BROWSER_KEY;
 
@@ -4409,6 +4410,7 @@ export default function ExpertWorkspace() {
                   {!isAuthoring && workspaceStatus === "delivered" && <StateChip tone="ok">Delivered</StateChip>}
                   {!isAuthoring && planApproved && <StateChip tone="ok">Approved</StateChip>}
                 </div>
+                {!isAuthoring && <WorkspaceConciergeTasks tripId={tripId} assignment={workspaceCtx?.assignment as { source?: string | null } | null | undefined} />}
                 {isAuthoring ? (
                   <div style={{ padding: "14px 12px", fontSize: 12.5, color: MID, lineHeight: 1.55 }} data-testid="text-distribute-client-muted">
                     Not attached to a client. Client delivery starts from an accepted trip assignment.

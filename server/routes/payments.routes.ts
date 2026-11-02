@@ -216,6 +216,8 @@ import {
 import { calculateCommission, BookingType } from "../utils/commissionCalculator";
 import { getStripeSecretKey } from "../utils/stripe-key";
 import { sanitizeInput } from "../utils/sanitize";
+import { waitlistPurchaseDecisionFor } from "../services/waitlist-purchase-gate";
+import { TRAVELER_WAITLIST, TRAVELER_WAITLIST_MESSAGE } from "@shared/launch-signup";
 
 const router = Router();
 
@@ -1142,6 +1144,12 @@ function claimChargeDisclosure(rows: Array<{
 router.post("/api/checkout", isAuthenticated, requireVerifiedEmail("checkout"), async (req, res) => {
     try {
       const userId = getUserId(req)!;
+      // P-1s (ledger `2026-11-02-p1s-waitlist-purchase-gate`): in traveler waitlist mode nobody but an admin or a
+      // QA-domain account buys — refused before any read or Stripe call.
+      const waitlistGate = await waitlistPurchaseDecisionFor(userId);
+      if (!waitlistGate.allowed) {
+        return res.status(403).json({ code: TRAVELER_WAITLIST, message: TRAVELER_WAITLIST_MESSAGE });
+      }
 
       // ── THE QUOTE-BORN ARM (ledger `2026-09-18-quote-born-charge`) ──────────────────────────
       // Taken on the PRESENCE of the key, before the cart arm's own `idempotencyKey` requirement:
