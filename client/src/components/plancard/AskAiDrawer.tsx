@@ -467,7 +467,7 @@ export function AskAiDrawer({
         className="font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
         style={{ fontFamily: EARN_MONO }}
       >
-        Ask AI
+        {ASK_AI_COPY.eyebrow}
       </p>
 
       <Button

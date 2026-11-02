@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { PLAN_ASSISTANT_COPY } from "@/lib/plan-assistant-copy";
 import ReactMarkdown from "react-markdown";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -295,7 +296,7 @@ export default function AIAssistant() {
         description:
           error instanceof Error && error.message
             ? `${error.message}. Your message wasn't lost — try sending again.`
-            : "Something went wrong reaching the AI assistant. Your message wasn't lost — try sending again.",
+            : PLAN_ASSISTANT_COPY.sendFailed,
         variant: "destructive",
       });
     } finally {
@@ -353,10 +354,10 @@ export default function AIAssistant() {
               </div>
               <div>
                 <h1 className="text-xl md:text-2xl font-bold text-foreground">
-                  AI Travel Assistant
+                  {PLAN_ASSISTANT_COPY.pageTitle}
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                  AI-assisted, human-backed — our team steps in whenever you need a person
+                  {PLAN_ASSISTANT_COPY.pageTagline}
                 </p>
               </div>
             </div>
@@ -649,9 +650,6 @@ export default function AIAssistant() {
                     )}
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground mt-2 text-center">
-                  AI assistant powered by Claude. Responses are for planning purposes only.
-                </p>
               </div>
             </CardContent>
           </Card>

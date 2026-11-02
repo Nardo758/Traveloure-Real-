@@ -351,7 +351,7 @@ export default function EnhancedPlanningModal({
           mobilityConsiderations: mobilityConsiderations.includes('none') ? undefined : mobilityConsiderations,
           budget: budgetTier,
           specialRequests: specialRequests || undefined,
-          // Smoke 4 item 5 (ledger `2026-10-02-smoke4-draft-fixes`): "Draft it with AI" always
+          // Smoke 4 item 5 (ledger `2026-10-02-smoke4-draft-fixes`): "Quick draft" always
           // drafts — the explicit skip is sent on every call, and where to stay is recommended on
           // the slip after the draft, never asked before it.
           withoutAnchor: true,
@@ -416,7 +416,7 @@ export default function EnhancedPlanningModal({
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Sign in to Plan Your Trip</h2>
           <p className="text-gray-600 mb-6">
-            Create a free account or sign in to generate your personalized AI travel itinerary.
+            Create a free account or sign in to start a Quick draft of your days.
           </p>
           <div className="flex gap-3 justify-center">
             <button
@@ -837,7 +837,7 @@ export default function EnhancedPlanningModal({
             <ul className="text-sm text-blue-800 space-y-1">
               <li className="flex items-start gap-2">
                 <span className="text-blue-600">1.</span>
-                <span>AI generates a personalized itinerary based on your preferences</span>
+                <span>A Quick draft lays out your days from what you tell us</span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-blue-600">2.</span>

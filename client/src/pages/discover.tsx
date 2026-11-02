@@ -1499,7 +1499,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
       return;
     }
     if (!user) {
-      toast({ title: "Please sign in", description: "Sign in to use AI comparison" });
+      toast({ title: "Please sign in", description: "Sign in to compare plans" });
       return;
     }
     // §13 honest-or-absent: this page has no destination the user actually told us — no
@@ -1579,7 +1579,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
     <>
       <SEOHead
         title={SURFACE_META[surface].seoTitle}
-        description="Browse expert services, curated trip packages, and get AI-powered recommendations for your next adventure. Find travel planners, venues, and unique experiences."
+        description="Browse expert services, curated trip packages, and compare options for your days. Find travel planners, venues, and unique experiences."
         keywords={["discover travel", "travel services", "trip packages", "vacation planning", "experience marketplace"]}
         url={SURFACE_META[surface].url}
       />
