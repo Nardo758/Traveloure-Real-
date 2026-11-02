@@ -46,13 +46,8 @@ import {
   type PinnedAnchorInput,
 } from "./anchor-candidates-map";
 import { signCustomPinPlacement, verifyCustomPinPlacement } from "./custom-pin-placement";
-import {
-  loadPlanAnchorContext,
-  resolveDayAnchor,
-  resolveEventAnchor,
-  tripDayCount,
-  type PlanAnchorContext,
-} from "./plan-anchors.service";
+// plan-anchors.service loads the db; imported lazily (as the catalog seam is) so this module stays importable without one.
+import type { PlanAnchorContext } from "./plan-anchors.service";
 import { geocodeAddressDetailed, type GeocodeDetailed } from "../utils/geocode";
 
 export interface PlaceCustomPinInput {
@@ -204,6 +199,7 @@ async function placePlanAnchorPin(input: PlaceCustomPinInput, parsed: PinnedAnch
   const id = typeof parsed.id === "string" ? parsed.id.trim() : "";
   if (!id) return invalid();
   if (!input.tripId) return notFound();
+  const { loadPlanAnchorContext, resolveDayAnchor, resolveEventAnchor, tripDayCount } = await import("./plan-anchors.service");
   const context = await (input.planAnchorContext ?? loadPlanAnchorContext)(input.tripId);
   if (!context) return notFound();
   const result =
