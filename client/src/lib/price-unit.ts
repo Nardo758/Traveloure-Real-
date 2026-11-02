@@ -39,7 +39,7 @@
  * table so that surface's rendering is unchanged; they are not a claim that the column holds them.
  */
 
-export type PriceUnit = "night" | "day" | "person" | "hour" | "event" | "group";
+export type PriceUnit = "night" | "day" | "person" | "hour" | "event" | "group" | "trip";
 
 export interface PriceUnitInput {
   priceType?: string | null;
@@ -62,6 +62,10 @@ export function resolvePriceUnit(input: PriceUnitInput): PriceUnit | null {
       return "hour";
     case "per_group":
       return "group";
+    // CN-1d-UI: a concierge listing priced per trip (shared/concierge-tasks.ts PER_TRIP_PRICING_UNIT). The
+    // service page words it through CN1_COPY.pricePerTrip; cards read "/trip" and "per trip".
+    case "per_trip":
+      return "trip";
   }
   // Locked Decision 56: a listing that SAYS its price is per person (`price_basis`) reads so; a
   // per-booking (or never-stated) basis adds no unit — the ordinary reading of a price.
@@ -85,6 +89,7 @@ const SHORT_WORD: Record<PriceUnit, string> = {
   hour: "hr",
   event: "event",
   group: "group",
+  trip: "trip",
 };
 
 /** Long spelling, as the phrase register uses it ("per hour", not "per hr"). */
@@ -95,6 +100,7 @@ const LONG_WORD: Record<PriceUnit, string> = {
   hour: "hour",
   event: "event",
   group: "group",
+  trip: "trip",
 };
 
 /** "night" | "person" | "hr" | "event" | "group" — the bare short word, for a caller composing

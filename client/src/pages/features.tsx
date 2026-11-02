@@ -139,7 +139,7 @@ export default function FeaturesPage() {
               <Button
                 size="lg"
                 className="bg-primary hover:bg-primary/90 text-white px-8"
-                onClick={() => openPlanning()}
+                onClick={() => openPlanning({ newPlan: true })}
                 data-testid="button-start-planning"
               >
                 Start Planning <ArrowRight className="w-4 h-4 ml-2" />

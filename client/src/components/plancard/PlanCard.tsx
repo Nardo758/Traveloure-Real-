@@ -1186,7 +1186,6 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
             // the ONE derivation (§18 rule 1). The card loads no option sets, so only the stay.
             anchor={planMapAnchor(days.flatMap((d) => d.activities ?? []))}
             readOnly
-            showTravelMinutes={(plancardData as any)?.travelTimesShown === true}
           />
         )}
 

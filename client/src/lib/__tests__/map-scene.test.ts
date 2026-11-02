@@ -164,7 +164,8 @@ test("M6 renderer parity: both renderers draw exactly sceneMarkers(scene) — sa
   const leaflet = read("client/src/components/plancard/map/SceneMapLeaflet.tsx");
   for (const [name, src] of [["google", google], ["leaflet", leaflet]] as const) {
     assert.match(src, /sceneMarkers\(scene\)/, `${name} maps over the shared marker list`);
-    assert.match(src, /scene\.connector/, `${name} draws the scene's connector`);
+    // Row PS-1 (sanctioned): pins only — neither renderer draws the connector or any line (GC-1).
+    assert.doesNotMatch(src, /scene\.connector|Polyline/, `${name} draws no connector line`);
     assert.match(src, /scene\.areas/, `${name} draws the scene's areas`);
     assert.match(src, /data-testid|testId/, `${name} carries the descriptor testids`);
     // The one read either renderer makes is the tile configuration (Leaflet) — never plan data.
@@ -180,9 +181,10 @@ test("M6 renderer parity: both renderers draw exactly sceneMarkers(scene) — sa
 
 test("M7 no travel minutes unless the travel-time service is on", () => {
   const mcc = read("client/src/components/plancard/MapControlCenter.tsx");
-  assert.match(mcc, /if \(!showTravelMinutes \|\| version \|\| !day\?\.transports\?\.length\) return \[\];/);
+  // Row PS-1 (sanctioned): the map draws no minutes at all (B8) — no leg labels and no travel-minutes switch.
+  assert.doesNotMatch(mcc, /showTravelMinutes|durationLabel|\$\{tr\.duration\}m/);
   assert.match(read("server/routes/plancard.routes.ts"), /travelTimesShown: travelTimeServiceEnabled\(\)/);
-  assert.match(read("client/src/components/plancard/SlipView.tsx"), /showTravelMinutes=\{data\.travelTimesShown === true\}/);
+  assert.doesNotMatch(read("client/src/components/plancard/SlipView.tsx"), /showTravelMinutes=\{data\.travelTimesShown === true\}/);
   // The board shows clock times only.
   assert.ok(!/durationMinutes\}|minutes\b.*\{/.test(read("client/src/components/plancard/VersionsBoard.tsx")));
 });

@@ -1,0 +1,1 @@
+| 2026-11-02-p7-get-help-with-this-plan | 2026-11-02 | [guarded: client/src/components/plancard/__tests__/row-p7-get-help.test.tsx] (P-7 brief, Nov 2, 2026; wording held for owner approval) | **R802 — ONE EXPERT-DOOR STRING, GATED BY /API/EXPERT-AVAILABILITY.** | numeric citation R802; merged 1f72300 |
