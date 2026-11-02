@@ -60,6 +60,7 @@ import { loadRankedAnchors } from "./services/anchor-candidates";
 import { sanityMetricRows, versionSanityFlags } from "./services/version-sanity";
 import { optimizerDinnerFromMinutes, optimizerLatestStopStartMinutes } from "./config/optimizer-sanity.config";
 import { pickAutoAnchors } from "./services/anchor-candidates-map";
+import { eventDayAnchorLine, pinRunFixedItems, runFixedForAnchor } from "./services/plan-anchors.service";
 import { baselineVariantAnchorFields } from "./services/baseline-variant-anchor";
 import type { AnchorScore } from "./services/anchor-scoring";
 import {
@@ -517,6 +518,51 @@ function buildFixedCommitmentSection(commitments: FixedCommitment[]): string {
 ${lines}
 
 These are already on the traveler's plan and are NOT yours to change. Do NOT include them in your variants, do NOT replace, remove, substitute or reschedule them, and do NOT place any activity that overlaps their time or that requires the traveler to be somewhere else at that time. Treat their location as where the traveler will be. Plan AROUND them.`;
+}
+
+/**
+ * OPT-A: stops the traveler fixed for this run by building around an event or a day. Not purchased,
+ * so they are not in the ALREADY BOOKED section; the rule for the model is the same.
+ */
+function buildRunFixedSection(commitments: FixedCommitment[]): string {
+  if (commitments.length === 0) return '';
+  const lines = commitments
+    .slice()
+    .sort((a, b) => (a.dayNumber - b.dayNumber) || (a.startTime ?? '').localeCompare(b.startTime ?? ''))
+    .map(c => {
+      const when = c.startTime ? ` at ${c.startTime.slice(0, 5)}` : '';
+      const where = c.location ? ` (${c.location})` : '';
+      return `- Day ${c.dayNumber}${when}: ${c.name}${where}`;
+    })
+    .join('\n');
+  return `\n\nFIXED FOR THIS VERSION — THE TRAVELER IS BUILDING AROUND THESE:
+${lines}
+
+These stay exactly where and when they are. Do NOT include them in your variants, do NOT replace, remove, substitute or reschedule them, and do NOT place any activity that overlaps their time. Plan AROUND them.`;
+}
+
+/** OPT-A: after the legs step, put each run-fixed stop back on its baseline day and times. */
+async function restoreRunFixedVariantItems(
+  variantId: string,
+  baselineItems: ItineraryItem[],
+  fixedIds: Set<string>,
+): Promise<void> {
+  if (fixedIds.size === 0) return;
+  const byPlanId = new Map(baselineItems.map((b) => [String(b.planItemId ?? b.id), b]));
+  const rows = await db
+    .select({ id: itineraryVariantItems.id, sourceItemId: itineraryVariantItems.sourceItemId })
+    .from(itineraryVariantItems)
+    .where(and(eq(itineraryVariantItems.variantId, variantId), inArray(itineraryVariantItems.sourceItemId, Array.from(fixedIds))));
+  await Promise.all(
+    rows.map((row) => {
+      const base = row.sourceItemId ? byPlanId.get(row.sourceItemId) : undefined;
+      if (!base) return Promise.resolve();
+      return db
+        .update(itineraryVariantItems)
+        .set({ dayNumber: base.dayNumber ?? 1, startTime: base.startTime ?? null, endTime: base.endTime ?? null })
+        .where(eq(itineraryVariantItems.id, row.id));
+    }),
+  );
 }
 
 /**
@@ -1037,9 +1083,17 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
     }
     // A per-version prompt line — omitted (empty string) when there is no anchor for that slot, so
     // the AI is only ever told about a real, scored location and never invents one.
+    // OPT-A (ledger 2026-11-01-opt-a-event-day-anchors): an event pin fixes that one plan stop; a day
+    // pin fixes every stop on that day. Both are held for THIS run only — kept out of the variants,
+    // carried through unchanged by reconciliation, and restored to their own day and times below.
+    const runFixed = runFixedForAnchor(pinnedAnchor, baselineItems, fixedCommitments);
+    const runFixedCommitments = runFixed.extraCommitments.length > 0
+      ? [...fixedCommitments, ...runFixed.extraCommitments]
+      : fixedCommitments;
     const anchorLine = (i: number): string => {
       const a = chosenAnchors[i];
       if (!a) return "";
+      if (a.type === "event" || a.type === "day") return eventDayAnchorLine(runFixed, a) ?? "";
       const kind = a.type === "hotel" ? "hotel" : a.type === "neighborhood" ? "neighborhood" : "central activity";
       const fit = a.medianMeters != null
         ? ` (typical straight-line distance to the trip's located stops ≈ ${(a.medianMeters / 1000).toFixed(1)} km; estimate, not routed)`
@@ -1344,10 +1398,12 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
     // rejection below the AI call is the enforcement, this is just steering to keep false
     // rejections rare.
     const mustRetainItems = baselineItems.filter(item => item.mustRetain);
+    // OPT-A: a stop held fixed for this run is listed in the fixed section, never as a movable protected item.
+    const isRunFixed = (item: ItineraryItem) => runFixed.fixedIds.has(String(item.planItemId ?? item.id));
     const protectedPromptItems = [
       ...marqueeItems,
       ...mustRetainItems.filter(item => !marqueeItems.includes(item)),
-    ];
+    ].filter(item => !isRunFixed(item));
 
     let marqueeSection = '';
     if (protectedPromptItems.length > 0) {
@@ -1358,7 +1414,8 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
     }
 
     // ── Lane 5b: already-purchased items as immovable constraints ─────────────
-    const fixedCommitmentSection = buildFixedCommitmentSection(fixedCommitments);
+    const fixedCommitmentSection =
+      buildFixedCommitmentSection(fixedCommitments) + buildRunFixedSection(runFixed.extraCommitments);
 
     // FB-1 step 5 (ledger `2026-10-19-fb1-prompt-cleanup`): an empty day stays empty — the run no longer tells the
     // model to fill it, and the checker does not flag it.
@@ -1569,7 +1626,7 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
       // true. Applied BEFORE sequencing/metrics so an echoed commitment can neither occupy a slot
       // nor double-count its price into the variant's totals.
       const { kept: activitiesAfterCommitmentStrip, stripped: strippedEchoes } =
-        stripFixedCommitmentEchoes(activitiesForSequencing, fixedCommitments);
+        stripFixedCommitmentEchoes(activitiesForSequencing, runFixedCommitments);
       if (strippedEchoes > 0) {
         console.warn(
           `[optimizer] variant "${variant.name}": dropped ${strippedEchoes} item(s) echoing an already-purchased commitment`,
@@ -1624,6 +1681,9 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
         }
         reorderedItems = anchorAdjusted;
       }
+
+      // OPT-A: sequencing may re-time a stop; a stop held fixed for this run keeps its own day and times.
+      reorderedItems = pinRunFixedItems(reorderedItems, baselineItems, runFixed.fixedIds);
 
       // Resolve honest coordinates before persistence and transport-leg calculation. Catalog and
       // canonical baseline coordinates win. Only a validated catalog-linked activity may use the
@@ -1977,6 +2037,10 @@ The "variants" array MUST contain EXACTLY THREE objects, one per VARIANT above, 
       } catch (legErr) {
         console.error("Transport leg calculation error (non-critical):", legErr);
       }
+
+      // OPT-A: the legs step re-times stops from the routed legs; a stop held fixed for this run is put
+      // back on its own times, so the version keeps it exactly as built.
+      await restoreRunFixedVariantItems(newVariant.id, baselineItems, runFixed.fixedIds);
 
       // FB-1 step 3 (rulings 1–3): THE GATE, after legs — the stored, re-timed version against its draft. A version
       // that leaves a draft issue unresolved or adds one is HELD (never shown or adopted); its findings are metric
