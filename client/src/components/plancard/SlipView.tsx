@@ -171,6 +171,8 @@ import { DayExpertHook } from "../plan/DayExpertHook";
 import { HandoffChooserHost } from "@/components/plan/HandoffChooser";
 import { HandoffBanner, HandoffFooter, SuggestionStrip, useExpertSuggestions, useHandoff } from "@/components/plan/HandoffBanner";
 import { handoffDayStat, handoffExpertLabel, handoffPenScope, openHandoffChooser } from "@/lib/handoff-client";
+import { useExpertAvailability } from "@/lib/expert-availability";
+import { EXPERT_DOOR_COPY, getHelpNoteShown } from "@/lib/expert-door-copy";
 import {
   resolveAddDayNumber,
   slipItemTools,
@@ -1626,6 +1628,8 @@ export function useSlipViewModel({
   const cardReady = data.trip ? tripCardBannerState({ ...primaryInputFromTrip(data.trip), finalVersion: data.trip.finalVersion }) === "ready" : false;
 
   const allActivities = useMemo(() => days.flatMap((d) => d.activities), [days]);
+  // Row P-7: the one expert-door gate for the drafted-slip note.
+  const slipExpertsAvailable = useExpertAvailability({ city: data?.trip?.destination ?? null });
   // The Handoff board: while an expert holds the pen, the stops in the request's scope carry the pen
   // mark and the day says how many are theirs. The SAME handoff read the banner makes (one cache).
   const { data: handoffRead } = useHandoff(tripId, isOwner || isExpertViewer);
@@ -2041,6 +2045,7 @@ export function useSlipViewModel({
     expertName,
     openPlanModal,
     hasAdvisor,
+    slipExpertsAvailable,
     expertDoorState,
     setExpertDoorState,
     expertDoorLive,
@@ -2139,6 +2144,7 @@ export function SlipView({
     expertName,
     openPlanModal,
     hasAdvisor,
+    slipExpertsAvailable,
     expertDoorState,
     setExpertDoorState,
     expertDoorLive,
@@ -2916,6 +2922,23 @@ export function SlipView({
             );
           })}
       </div>
+      {/* Row P-7: one note under the last day — a drafted plan with no advisor, while an expert is live. */}
+      {getHelpNoteShown({ isOwner, itemCount: allActivities.length, expertsAvailable: slipExpertsAvailable, hasAdvisor }) ? (
+        <div
+          className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] px-4 py-3"
+          data-testid="slip-get-help-note"
+        >
+          <span className="text-sm text-[color:var(--slip-ink)]">{EXPERT_DOOR_COPY.draftedNote}</span>
+          <button
+            type="button"
+            className="min-h-11 rounded-full border border-[color:var(--slip-line)] px-4 text-[13px] font-semibold text-[color:var(--slip-teal-ink)] hover:bg-[color:var(--slip-ground)]"
+            onClick={() => openHandoffChooser({})}
+            data-testid="slip-get-help-note-button"
+          >
+            {EXPERT_DOOR_COPY.getHelp}
+          </button>
+        </div>
+      ) : null}
       {/* The Handoff board's footer — "When <name> is done" — under the days it is about. */}
       {isOwner ? <HandoffFooter tripId={tripId} isOwner={isOwner} /> : null}
       </>
