@@ -2932,7 +2932,7 @@ export function SlipView({
           <span className="text-sm text-[color:var(--slip-ink)]">{EXPERT_DOOR_COPY.draftedNote}</span>
           <button
             type="button"
-            className="min-h-11 rounded-full border border-[color:var(--slip-line)] px-4 text-[13px] font-semibold text-[color:var(--slip-teal)] hover:bg-[color:var(--slip-ground)]"
+            className="min-h-11 rounded-full border border-[color:var(--slip-line)] px-4 text-[13px] font-semibold text-[color:var(--slip-teal-ink)] hover:bg-[color:var(--slip-ground)]"
             onClick={() => openHandoffChooser({})}
             data-testid="slip-get-help-note-button"
           >

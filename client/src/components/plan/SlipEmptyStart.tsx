@@ -134,7 +134,7 @@ export function SlipEmptyStart({
             {/* Row P-7: the door's label, drawn as a button inside the card. The whole card is the one
                 button (a button may not hold another), so the label is part of its accessible name. */}
             <span
-              className="inline-flex min-h-11 items-center rounded-full border border-[color:var(--slip-line)] px-4 text-[13px] font-semibold text-[color:var(--slip-teal)]"
+              className="inline-flex min-h-11 items-center rounded-full border border-[color:var(--slip-line)] px-4 text-[13px] font-semibold text-[color:var(--slip-teal-ink)]"
               data-testid="slip-empty-get-help"
             >
               {EXPERT_DOOR_COPY.getHelp}
