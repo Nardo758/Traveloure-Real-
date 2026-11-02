@@ -5,8 +5,8 @@
  *   T2 the same six, signed in as a traveler → 410 (no auth runs first)
  *   T3 GET /api/traveler-doors → { eventConcierge: false, handoffBooking: <flag> } for handoff_booking "true" and
  *      "false", with event_concierge set to "true" in the database
- *   T4 the admin settings PATCH no longer treats event_concierge as a boolean switch: a non-boolean value is not
- *      refused as one, and whatever is written, GET /api/traveler-doors still answers eventConcierge: false
+ *   T4 writing event_concierge through the admin settings PATCH ("true" and "false") leaves GET /api/traveler-doors
+ *      at eventConcierge: false (brief amendment, Leon Nov 2, 2026: no admin refusal for the retired key)
  *   T5 the CN-1 task-kind and task-log routes still answer (not 410)
  *   T6 handoff_booking off still refuses a new `book` quote with 410 handoff_booking_off
  *   T7 source pin: server/routes/concierge.routes.ts does not exist; routes.ts has no conciergeRoutes import
@@ -160,16 +160,16 @@ test("T3 GET /api/traveler-doors: eventConcierge is always false; handoffBooking
   }
 });
 
-test("T4 the admin PATCH no longer validates event_concierge as a switch, and nothing reads it", async () => {
-  const res = await live("PATCH", `/api/admin/platform-settings/${EVENT_CONCIERGE_SETTING}`, { settingValue: "yes" }, admin.cookie);
-  // Not in BOOLEAN_FLAG_KEYS: the "must be 'true' or 'false'" refusal no longer fires. The route has no key
-  // allowlist (admin.routes.ts PATCH /api/admin/platform-settings/:settingKey), so an unvalidated key is written.
-  assert.ok(!(res.status === 400 && String(res.body?.error ?? "").includes("must be 'true' or 'false'")), JSON.stringify(res.body));
-  const on = await live("PATCH", `/api/admin/platform-settings/${EVENT_CONCIERGE_SETTING}`, { settingValue: "true" }, admin.cookie);
-  assert.ok(on.status < 500, JSON.stringify(on.body));
-  const doors = await live("GET", "/api/traveler-doors");
-  assert.equal(doors.status, 200);
-  assert.equal(doors.body?.eventConcierge, false);
+test("T4 writing event_concierge through the admin settings PATCH leaves eventConcierge false", async () => {
+  // Brief amendment (Leon, Nov 2, 2026): no admin refusal for the retired key. The write is accepted like any other
+  // setting; what matters is that nothing reads it.
+  for (const value of ["true", "false", "true"]) {
+    const res = await live("PATCH", `/api/admin/platform-settings/${EVENT_CONCIERGE_SETTING}`, { settingValue: value }, admin.cookie);
+    assert.ok(res.status < 400, JSON.stringify(res.body));
+    const doors = await live("GET", "/api/traveler-doors");
+    assert.equal(doors.status, 200);
+    assert.equal(doors.body?.eventConcierge, false, value);
+  }
 });
 
 test("T5 the CN-1 task-kind and task-log routes still answer", async () => {
