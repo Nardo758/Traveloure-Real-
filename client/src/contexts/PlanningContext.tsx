@@ -33,7 +33,7 @@ import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
-import { getTripContext, releasePendingEventsPen, switchTripContext, updateTripContext } from "@/lib/trip-context";
+import { getTripContext, releasePendingEventsPen, switchTripContext, updateTripContext, writePlanAnswersToContext } from "@/lib/trip-context";
 import { mintTripSlip } from "@/lib/trip-slip";
 import { finishForBranch, isPlanDoor, type PlanDoor } from "@shared/slip-funnel-events";
 import { eventTypeForSlug } from "@shared/occasions";
@@ -513,14 +513,21 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
       const party: { adults?: number; kids?: number } = {};
       if (start.adults !== undefined) party.adults = start.adults;
       if (start.kids !== undefined) party.kids = start.kids;
+      // Row PS-3 (audit D1): keep what the server SAVED for the party, so the pen can carry it below.
+      let savedParty: { adults?: number | null; kids?: number | null } = {};
       await apiRequest("PATCH", `/api/trips/${tripId}/occasion`, {
         experienceSlug: start.occasionSlug,
         eventType: eventTypeForSlug(start.occasionSlug),
         ...party,
-      }).catch((err) => {
-        // eslint-disable-next-line no-console
-        console.warn("[plan-entry] occasion not saved on the new plan:", err?.message);
-      });
+      })
+        .then(async (res) => {
+          const body = (await res.json().catch(() => null)) as { adults?: number | null; kids?: number | null } | null;
+          if (body) savedParty = { adults: body.adults, kids: body.kids };
+        })
+        .catch((err) => {
+          // eslint-disable-next-line no-console
+          console.warn("[plan-entry] occasion not saved on the new plan:", err?.message);
+        });
 
       // The new plan becomes the bound plan, with its occasion, BEFORE the traveler lands on it — the
       // same identity switch the old finish made — so every surface (the edit window included) reads
@@ -531,6 +538,8 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
         ...(start.startDate && start.endDate ? { startDate: start.startDate, endDate: start.endDate } : {}),
       });
       updateTripContext({ experienceSlug: start.occasionSlug, eventType: eventTypeForSlug(start.occasionSlug) });
+      // The switch above cleared the previous plan's party; the new plan's own saved answer goes in.
+      writePlanAnswersToContext(tripId, savedParty);
 
       if (start.event) {
         const existing = await readPlanEventTitles(tripId);
