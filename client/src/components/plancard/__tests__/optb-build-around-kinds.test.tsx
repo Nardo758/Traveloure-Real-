@@ -135,7 +135,7 @@ describe("OPT-B Build-around: Place · Date · Event", () => {
     assert.match(row3, /disabled=""/);
     assert.match(row3, /aria-disabled="true"/);
     assert.match(date, /data-testid="build-around-day-reason-day:3"[^>]*>Nothing on this day has a location yet\./);
-    assert.match(date, /data-testid="build-around-day-reason-day:4"[^>]*>Everything on this day is already fixed\./);
+    assert.match(date, /data-testid="build-around-day-reason-day:4"[^>]*>Nothing else on your plan can be rebuilt around this day\./);
     assert.doesNotMatch(date, /build-around-day-reason-day:1/);
     assert.doesNotMatch(date.match(/<button[^>]*data-testid="build-around-candidate-day:1"[^>]*>/)![0], /disabled/);
 
@@ -224,7 +224,7 @@ describe("OPT-B Build-around: Place · Date · Event", () => {
   });
 
   it("B5 strings from the constants; no AI, winner label or minute figure; distance helper unchanged", () => {
-    for (const key of ["description", "autoLabel", "loadError", "customPlaceholder", "groups[g]", "dayReason.noLocatedStops", "dayReason.allFixed"]) {
+    for (const key of ["description", "autoLabel", "loadError", "customPlaceholder", "groups[g]", "dayReason.noLocatedStops", "dayReason.nothingToRebuild"]) {
       assert.ok(DIALOG.includes(`BUILD_AROUND_COPY.${key}`), key);
     }
     assert.ok(DIALOG.includes("{EMPTY_COPY.event}"));

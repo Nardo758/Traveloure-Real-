@@ -134,7 +134,7 @@ export const BUILD_AROUND_COPY = {
   customPlaceholder: "Type an address or place name",
   dayReason: {
     noLocatedStops: "Nothing on this day has a location yet.",
-    allFixed: "Everything on this day is already fixed.",
+    nothingToRebuild: "Nothing else on your plan can be rebuilt around this day.",
   },
 } as const;
 
@@ -160,7 +160,7 @@ export function dayCandidateLabel(c: { dayNumber: number; date: string | null })
 /** Why a day cannot be built around: D1 when nothing on it is located, D2 otherwise. */
 export function dayCandidateReason(c: DayAnchorCandidate): string | null {
   if (c.anchorable) return null;
-  return c.locatedStops === 0 ? BUILD_AROUND_COPY.dayReason.noLocatedStops : BUILD_AROUND_COPY.dayReason.allFixed;
+  return c.locatedStops === 0 ? BUILD_AROUND_COPY.dayReason.noLocatedStops : BUILD_AROUND_COPY.dayReason.nothingToRebuild;
 }
 
 /**
