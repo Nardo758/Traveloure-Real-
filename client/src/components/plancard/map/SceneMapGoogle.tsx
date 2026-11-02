@@ -7,10 +7,8 @@
 import { useEffect } from "react";
 import { APIProvider, Map, useMap } from "@vis.gl/react-google-maps";
 import { MapMarker, GOOGLE_MAPS_MAP_ID, HIDDEN_PIN_ICON } from "@/components/ui/map-marker";
-import { Polyline } from "@/components/ui/map-polyline";
 import { clampFramingZoom, mapFraming } from "@/lib/map-framing";
 import { ANCHOR_COLOR, AREA_PIN_STYLE, BROWSE_TEAL, PIN_STYLE, areaPinLabel, sceneMarkers, type MapScene } from "@/lib/map-scene";
-import type { SceneLeg } from "./scene-legs";
 
 export interface SceneMapProps {
   scene: MapScene;
@@ -18,7 +16,6 @@ export interface SceneMapProps {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onSelectBrowse: (id: string) => void;
-  legs?: SceneLeg[];
 }
 
 function Framing({ scene }: { scene: MapScene }) {
@@ -70,18 +67,13 @@ function AreaPins({ scene }: { scene: MapScene }) {
   );
 }
 
-function Scene({ scene, selectedId, onSelect, onSelectBrowse, legs }: Omit<SceneMapProps, "center">) {
+function Scene({ scene, selectedId, onSelect, onSelectBrowse }: Omit<SceneMapProps, "center">) {
   const markers = sceneMarkers(scene);
   return (
     <>
       <Framing scene={scene} />
       <AreaPins scene={scene} />
-      {scene.connector.length > 1 ? (
-        <Polyline path={scene.connector} strokeColor="#64748B" strokeOpacity={0.6} strokeWeight={2} />
-      ) : null}
-      {(legs ?? []).map((l) => (
-        <Polyline key={l.id} path={[l.from, l.to]} strokeColor={l.color} strokeOpacity={0.8} strokeWeight={3} />
-      ))}
+      {/* Row PS-1 (GC-1, B8): pins and the stay ring only — no stop-to-stop line, no leg lines, no minutes. */}
       {markers.map((m) => {
         if (m.kind === "pin") {
           const st = PIN_STYLE[m.state];

@@ -2543,7 +2543,6 @@ export function SlipView({
             compareHref={data.lastComparisonId ? `/itinerary-comparison/${data.lastComparisonId}` : null}
             browse={mapBrowse}
             onBrowseChange={setMapBrowse}
-            showTravelMinutes={data.travelTimesShown === true}
             layout="split"
             planEmptyNote={planEmptyReason}
           />
