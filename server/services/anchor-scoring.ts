@@ -26,7 +26,9 @@
 import { haversineMeters, estWalkMinutes } from "@shared/geo";
 import { metersPerMinute } from "@shared/travel-speeds";
 
-export type AnchorType = "hotel" | "neighborhood" | "activity";
+// OPT-A (ledger 2026-11-01-opt-a-event-day-anchors): "event" is a plan stop with a place and a start
+// time, fixed; "day" is one day of the trip locked as built. Both resolve only from the plan's own items.
+export type AnchorType = "hotel" | "neighborhood" | "activity" | "event" | "day";
 
 export interface GeoPoint {
   lat: number;

@@ -32,8 +32,13 @@ export const PINNED_ANCHOR_NOT_FOUND = "pinned_anchor_not_found" as const;
 
 export const PINNED_ANCHOR_NOT_FOUND_STATUS = 400 as const;
 
+/** OPT-A: why an event or day pin does not resolve from the plan. Machine codes; the words are OPT-B's. */
+export const PINNED_ANCHOR_NOT_FOUND_DETAILS = ["event_not_anchorable", "day_not_anchorable", "day_nothing_to_rebuild"] as const;
+export type PinnedAnchorNotFoundDetail = (typeof PINNED_ANCHOR_NOT_FOUND_DETAILS)[number];
+
 export interface PinnedAnchorNotFoundBody {
   error: typeof PINNED_ANCHOR_NOT_FOUND;
+  detail?: PinnedAnchorNotFoundDetail;
 }
 
 /**
@@ -127,14 +132,14 @@ export function isCustomLocationRefusal(
 }
 
 export interface ResolvedCustomPin {
-  type: "hotel" | "neighborhood" | "activity";
+  type: "hotel" | "neighborhood" | "activity" | "event" | "day";
   name: string;
   lat: number;
   lng: number;
   formattedAddress: string | null;
 }
 
-const PIN_TYPES = new Set(["hotel", "neighborhood", "activity"]);
+const PIN_TYPES = new Set(["hotel", "neighborhood", "activity", "event", "day"]);
 
 export function readResolvedPinnedAnchor(raw: unknown): ResolvedCustomPin | null {
   if (!raw || typeof raw !== "object") return null;

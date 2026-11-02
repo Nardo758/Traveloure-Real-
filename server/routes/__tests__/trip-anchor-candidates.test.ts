@@ -66,6 +66,10 @@ describe("GET /api/trips/:id/anchor-candidates", () => {
           activity: rankActivityAnchors(stops),
         };
       },
+      loadPlanAnchors: async (tripId: string) => {
+        calls.push(`plan:${tripId}`);
+        return { startDate: "2027-11-08", endDate: "2027-11-08", items: [] };
+      },
     } as any);
 
     const { captured, res } = makeRes();
@@ -85,7 +89,9 @@ describe("GET /api/trips/:id/anchor-candidates", () => {
     );
     assert.deepEqual(captured.body.neighborhood, [], "empty inventory must stay honestly empty");
     assert.equal(captured.body.activity.length, 2);
-    assert.deepEqual(calls, ["trip:trip-1", "inputs:trip-1", "rank:Kyoto, Japan"]);
+    assert.deepEqual(captured.body.event, [], "OPT-A: no timed, located plan stop ⇒ no event candidate");
+    assert.deepEqual(captured.body.day.map((d: any) => d.anchorId), ["day:1"], "OPT-A: one day candidate per trip day");
+    assert.deepEqual(calls, ["trip:trip-1", "inputs:trip-1", "rank:Kyoto, Japan", "plan:trip-1"]);
   });
 
   it("returns 404 for a non-owner without loading inputs or candidates", async () => {

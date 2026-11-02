@@ -86,7 +86,9 @@ export function baselineItemsToAnchorStops(
   });
 }
 
-const PIN_ANCHOR_TYPES = new Set<AnchorType>(["hotel", "neighborhood", "activity"]);
+// OPT-A: "event" and "day" are pin kinds too, so an unresolvable event/day pin on a paid run fails and
+// refunds through `paidPinFellBack` exactly as the other kinds do. Auto mode never picks them.
+const PIN_ANCHOR_TYPES = new Set<AnchorType>(["hotel", "neighborhood", "activity", "event", "day"]);
 export function parsePinnedAnchorInput(raw: any): PinnedAnchorInput | undefined {
   if (!raw || typeof raw !== "object" || !PIN_ANCHOR_TYPES.has(raw.type)) return undefined;
   const asNum = (v: unknown): number | undefined =>
@@ -193,7 +195,7 @@ export function pickAutoAnchors(
   const chosen: AnchorScore[] = [];
   const seen = new Set<string>();
   const key = (a: AnchorScore) => a.type + "|" + a.name;
-  const types: AnchorType[] = ["hotel", "neighborhood", "activity"];
+  const types = ["hotel", "neighborhood", "activity"] as const;
   for (const t of types) {
     const top = ranked[t].find((a) => a.medianMeters != null);
     if (top && !seen.has(key(top))) {
