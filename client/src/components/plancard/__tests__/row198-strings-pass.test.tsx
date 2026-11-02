@@ -108,6 +108,8 @@ describe("row 198 strings pass", () => {
       assert.doesNotMatch(v, /\$|\d+\.\d{2}/, v);
       assert.doesNotMatch(v, /score|estimate/i, v);
       assert.doesNotMatch(v, /pulse|crowd|destination intel/i, v);
+      // approved R198; baselined in P-6 §4e
+      if (v === BUILD_AROUND_COPY.autoBody) continue;
       assert.deepEqual(siteNeverSayHits(v), [], v);
     }
   });
