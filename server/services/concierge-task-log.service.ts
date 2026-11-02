@@ -19,7 +19,8 @@
  * transaction. A repeat of an applied transition answers the current task and writes nothing.
  * Decline and timeout (CN-1d) do not touch tasks: access ends, so they become unreachable (T5).
  * A listing edit after tasks exist affects future creates only (T7). No amount, price or payment
- * field exists (T4). Notifications are machine-typed; the words are CN-1e-UI's; no email.
+ * field exists (T4). No notification row is written: the counterpart notification waits for
+ * CN-1e-UI, which supplies its words.
  */
 import crypto from "node:crypto";
 import { and, asc, count, eq, inArray, notInArray, sql } from "drizzle-orm";
@@ -37,7 +38,6 @@ import {
   CONCIERGE_TASK_ACTOR_FOR,
   CONCIERGE_TASK_ERRORS as E,
   CONCIERGE_TASK_FREED_STATES,
-  CONCIERGE_TASK_NOTIFICATION_TYPE,
   isHttpsLink,
   isLegalConciergeTaskTransition,
   type ConciergeTaskActorType,
@@ -94,26 +94,6 @@ function roleOf(e: Engagement, userId: string): "traveler" | "expert" | null {
   if (e.travelerId && e.travelerId === userId) return "traveler";
   if (e.providerId && e.providerId === userId) return "expert";
   return null;
-}
-
-async function notifyCounterpart(e: Engagement, taskId: string, toState: ConciergeTaskState, actor: "traveler" | "expert") {
-  const userId = actor === "traveler" ? e.providerId : e.travelerId;
-  if (!userId) return;
-  try {
-    await storage.createNotificationOnce({
-      userId,
-      type: CONCIERGE_TASK_NOTIFICATION_TYPE,
-      // Machine codes only: the words are CN-1e-UI's (CN1_COPY task strings).
-      title: CONCIERGE_TASK_NOTIFICATION_TYPE,
-      message: toState,
-      relatedId: e.id,
-      relatedType: "booking",
-      data: { taskId, bookingId: e.id, toState },
-      dedupeKey: `concierge-task:${taskId}:${toState}`,
-    } as any);
-  } catch (err) {
-    console.error(`[concierge-task] notification failed (${(err as any)?.code ?? "error"})`);
-  }
 }
 
 /** The projection both parties and admins read: ids, kind, words the traveler typed, state, timestamps, roles. */
@@ -255,7 +235,6 @@ export async function createConciergeTask(
     return "created" as const;
   });
   if (outcome === "cap") return fail(409, E.capReached);
-  await notifyCounterpart(e, taskId, "requested", role);
   const [view] = await viewTasks(e, [taskId]);
   return { ok: true, status: 201, body: view };
 }
@@ -337,7 +316,6 @@ export async function transitionConciergeTask(
     }
     return fail(409, E.illegalTransition, { from: now2?.state ?? from, to });
   }
-  await notifyCounterpart(e, taskId, to, required);
   const [view] = await viewTasks(e, [taskId]);
   return { ok: true, status: 200, body: view };
 }

@@ -8,10 +8,12 @@
  *       NULL cap is unlimited; two parallel creates at cap-1 → one 201, one 409
  *   E5  a link-only kind: done without a link → 400 concierge_link_required; https → done; http → 400
  *   E6  done from requested → 409; traveler_ok from done → 409; withdraw by the expert → 403
- *   E7  one concierge_task_update notification per transition, to the counterpart, deduped; no email outbox row
+ *   E7  no notification row and no email outbox row is written (the counterpart notification waits for CN-1e-UI)
  *   E8  migration 430 applies twice cleanly; no DEFAULT and no CHECK in its SQL
  *   E9  a handoff engagement (no confirmed concierge booking) cannot create tasks → 409
  *   E10 the six routes are in the mutation-auth manifest (server/routes registered, resource-owner checks in the service)
+ *   H1  through the real route: traveler-ok by the expert → 403 concierge_task_owner_only
+ *   H2  through the real route: done after access_until → 403 concierge_access_ended
  *
  * Run: DATABASE_URL=… npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/cn1e-concierge-tasks.db.test.ts
  */
@@ -25,6 +27,17 @@ import { db, pool } from "../db";
 import { grantConciergeAdvisorOnAccept, endConciergeAdvisorAccess } from "../services/concierge-engagement.service";
 import { upsertTripAdvisorRow } from "../services/booking-actions.service";
 import { createConciergeTask, listConciergeTasks, transitionConciergeTask } from "../services/concierge-task-log.service";
+import http from "node:http";
+import express from "express";
+import passport from "passport";
+
+process.env.SESSION_COOKIE_INSECURE ??= "1";
+process.env.SESSION_SECRET ??= "cn1e-test-session-secret";
+const PASSWORD = "cn1e-pass-123";
+function scryptHash(password: string): string {
+  const salt = crypto.randomBytes(16).toString("hex");
+  return `${salt}:${crypto.scryptSync(password, salt, 64).toString("hex")}`;
+}
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
 const MIGRATION = path.join(ROOT, "server/migrations/430_cn1e_concierge_tasks.sql");
@@ -57,9 +70,9 @@ async function state(taskId: string) {
   const r = await db.execute(sql`SELECT state FROM concierge_tasks WHERE id = ${taskId}`);
   return (r.rows[0] as any)?.state as string | undefined;
 }
-async function notes(userId: string) {
-  const r = await db.execute(sql`SELECT type, data, dedupe_key FROM notifications WHERE user_id = ${userId} AND type = 'concierge_task_update' ORDER BY created_at`);
-  return r.rows as Array<{ type: string; data: any; dedupe_key: string }>;
+async function noteCount() {
+  const r = await db.execute(sql`SELECT count(*)::int AS n FROM notifications WHERE user_id IN (${traveler}, ${expert})`);
+  return (r.rows[0] as any).n as number;
 }
 async function booking(id: string, tripId: string, serviceId: string, status: string) {
   await db.execute(sql`
@@ -84,9 +97,12 @@ before(async () => {
   const { runMigrations } = await import("../migrations/run-migrations");
   await runMigrations();
   await db.execute(sql`
+    INSERT INTO users (id, email, password, auth_provider, first_name, last_name, role, handle) VALUES
+      (${traveler}, ${`${traveler}@t.test`}, ${scryptHash(PASSWORD)}, 'email', 'Cn', 'Traveler', 'traveler', ${`t${RUN}`}),
+      (${expert}, ${`${expert}@t.test`}, ${scryptHash(PASSWORD)}, 'email', 'Cn', 'Expert', 'local_expert', ${`e${RUN}`})
+  `);
+  await db.execute(sql`
     INSERT INTO users (id, email, first_name, last_name, role, handle) VALUES
-      (${traveler}, ${`${traveler}@t.test`}, 'Cn', 'Traveler', 'traveler', ${`t${RUN}`}),
-      (${expert}, ${`${expert}@t.test`}, 'Cn', 'Expert', 'local_expert', ${`e${RUN}`}),
       (${other}, ${`${other}@t.test`}, 'Cn', 'Other', 'traveler', ${`o${RUN}`}),
       (${admin}, ${`${admin}@t.test`}, 'Cn', 'Admin', 'admin', ${`a${RUN}`})
   `);
@@ -255,18 +271,19 @@ describe("CN-1e concierge tasks", () => {
     assert.equal(w.status, 403);
   });
 
-  test("E7 notifications to the counterpart, deduped, no email", async () => {
-    const outboxBefore = await db.execute(sql`SELECT count(*)::int AS n FROM email_outbox WHERE to_email IN (${`${traveler}@t.test`}, ${`${expert}@t.test`})`);
+  test("E7 no notification row and no email are written", async () => {
+    const outbox = async () =>
+      ((await db.execute(sql`SELECT count(*)::int AS n FROM email_outbox WHERE to_email IN (${`${traveler}@t.test`}, ${`${expert}@t.test`})`)).rows[0] as any).n as number;
+    const notesBefore = await noteCount();
+    const outboxBefore = await outbox();
     const id = await okTask(bConfirmed, kindErrand);
-    await transitionConciergeTask(id, traveler, "traveler_ok");
     await transitionConciergeTask(id, expert, "done");
-    const toExpert = (await notes(expert)).filter((n) => n.data?.taskId === id);
-    const toTraveler = (await notes(traveler)).filter((n) => n.data?.taskId === id);
-    assert.deepEqual(toExpert.map((n) => n.data.toState).sort(), ["requested", "traveler_ok"]);
-    assert.deepEqual(toTraveler.map((n) => n.data.toState), ["done"]);
-    assert.equal(toExpert.every((n) => n.dedupe_key.startsWith(`concierge-task:${id}:`)), true);
-    const outboxAfter = await db.execute(sql`SELECT count(*)::int AS n FROM email_outbox WHERE to_email IN (${`${traveler}@t.test`}, ${`${expert}@t.test`})`);
-    assert.equal((outboxAfter.rows[0] as any).n, (outboxBefore.rows[0] as any).n);
+    const w = await newTask(bConfirmed, kindErrand, expert);
+    await transitionConciergeTask((w.body as any).id, traveler, "withdrawn");
+    assert.equal(await noteCount(), notesBefore, "no notification rows");
+    assert.equal(await outbox(), outboxBefore, "no email outbox rows");
+    const src = fs.readFileSync(path.join(ROOT, "server/services/concierge-task-log.service.ts"), "utf8");
+    assert.doesNotMatch(src, /createNotification/);
   });
 
   test("E8 migration 430 applies twice; no DEFAULT, no CHECK", async () => {
@@ -307,5 +324,86 @@ describe("CN-1e concierge tasks", () => {
       "the five mutations (the sixth route is the GET read)",
     );
     assert.ok(mine.every((m: any) => m.expectedBoundary === "resource-owner" && m.expectedAuth === "required"));
+  });
+});
+
+describe("CN-1e through the real routes", () => {
+  const tripH = `${P}-trip-h`;
+  const tripHEnded = `${P}-trip-h-ended`;
+  const bH = `${P}-b-h`;
+  const bHEnded = `${P}-b-h-ended`;
+  let server: http.Server;
+  let base = "";
+  let travelerCookie = "";
+  let expertCookie = "";
+
+  async function signIn(email: string): Promise<string> {
+    const res = await fetch(`${base}/api/auth/login`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, password: PASSWORD }),
+    });
+    assert.equal(res.status, 200, await res.clone().text());
+    return res.headers.get("set-cookie")!.split(";")[0];
+  }
+  async function post(pathname: string, cookie: string, body: unknown = {}) {
+    const res = await fetch(`${base}${pathname}`, { method: "POST", headers: { "content-type": "application/json", cookie }, body: JSON.stringify(body) });
+    return { status: res.status, json: await res.json().catch(() => null) };
+  }
+
+  before(async () => {
+    const { getSession } = await import("../replit_integrations/auth/replitAuth");
+    const { setupEmailAuth } = await import("../replit_integrations/auth/emailAuth");
+    const { default: routes } = await import("../routes/concierge-task-log.routes");
+    const app = express();
+    app.use(express.json());
+    app.use(getSession());
+    app.use(passport.initialize());
+    app.use(passport.session());
+    passport.serializeUser((user: any, cb) => cb(null, user));
+    passport.deserializeUser((user: any, cb) => cb(null, user));
+    setupEmailAuth(app);
+    app.use(routes);
+    server = http.createServer(app);
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    base = `http://127.0.0.1:${(server.address() as any).port}`;
+    await db.execute(sql`
+      INSERT INTO trips (id, user_id, title, destination, start_date, end_date, timezone) VALUES
+        (${tripH}, ${traveler}, 'Http', 'Kyoto', '2027-09-01', '2027-09-05', 'Asia/Tokyo'),
+        (${tripHEnded}, ${traveler}, 'Http ended', 'Kyoto', '2027-10-01', '2027-10-05', 'Asia/Tokyo')
+    `);
+    await booking(bH, tripH, svc, "confirmed");
+    await booking(bHEnded, tripHEnded, svc, "confirmed");
+    await grantConciergeAdvisorOnAccept({ tripId: tripH, localExpertId: expert });
+    await grantConciergeAdvisorOnAccept({ tripId: tripHEnded, localExpertId: expert });
+    travelerCookie = await signIn(`${traveler}@t.test`);
+    expertCookie = await signIn(`${expert}@t.test`);
+  });
+
+  after(async () => {
+    await new Promise<void>((r) => server.close(() => r()));
+    await db.execute(sql`DELETE FROM service_bookings WHERE id IN (${bH}, ${bHEnded})`);
+    await db.execute(sql`DELETE FROM trip_expert_advisors WHERE trip_id IN (${tripH}, ${tripHEnded})`);
+    await db.execute(sql`DELETE FROM trips WHERE id IN (${tripH}, ${tripHEnded})`);
+  });
+
+  test("H1 traveler-ok by the expert → 403 concierge_task_owner_only", async () => {
+    const created = await post(`/api/concierge/bookings/${bH}/tasks`, travelerCookie, { taskKindId: kindErrand, title: "Dinner for two" });
+    assert.equal(created.status, 201, JSON.stringify(created.json));
+    const r = await post(`/api/concierge/tasks/${created.json.id}/traveler-ok`, expertCookie);
+    assert.equal(r.status, 403);
+    assert.deepEqual(r.json, { code: "concierge_task_owner_only" });
+    assert.equal(await state(created.json.id), "requested");
+    const anon = await fetch(`${base}/api/concierge/tasks/${created.json.id}/traveler-ok`, { method: "POST" });
+    assert.equal(anon.status, 401);
+  });
+
+  test("H2 done after access_until → 403 concierge_access_ended", async () => {
+    const created = await post(`/api/concierge/bookings/${bHEnded}/tasks`, travelerCookie, { taskKindId: kindErrand, title: "Dinner for two" });
+    assert.equal(created.status, 201, JSON.stringify(created.json));
+    assert.equal((await post(`/api/concierge/tasks/${created.json.id}/traveler-ok`, travelerCookie)).status, 200);
+    await endConciergeAdvisorAccess(tripHEnded, expert, new Date(Date.now() - 1000));
+    const r = await post(`/api/concierge/tasks/${created.json.id}/done`, expertCookie);
+    assert.equal(r.status, 403);
+    assert.deepEqual(r.json, { code: "concierge_access_ended" });
+    assert.equal(await state(created.json.id), "traveler_ok");
   });
 });

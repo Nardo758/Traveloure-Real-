@@ -88,6 +88,3 @@ export const conciergeTaskDoneBodySchema = z
 export const conciergeTaskNoteBodySchema = z.object({ note: z.string().trim().max(2000).optional() }).strict();
 
 export const conciergeTaskEmptyBodySchema = z.object({}).strict();
-
-/** The notification type the counterpart gets on every transition. No email outbox lists it. */
-export const CONCIERGE_TASK_NOTIFICATION_TYPE = "concierge_task_update";
