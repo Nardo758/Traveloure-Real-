@@ -33,6 +33,20 @@ const RUN = crypto.randomUUID().slice(0, 8);
 const traveler = `cn1d-${RUN}-trav`;
 const expert = `cn1d-${RUN}-exp`;
 const tripDst = `cn1d-${RUN}-dst`;
+
+// The access-is-live trip ends 30 days after today in its own zone, so the window is always open
+// whenever the suite runs. A fixed date expired on 2026-11-02 at 05:00Z and turned this red; the
+// DST-crossing expectations live only in the pure conciergeAccessUntil test above.
+const LIVE_TRIP_TZ = "America/New_York";
+function calendarDayIn(tz: string, offsetDays: number): string {
+  const [y, m, d] = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" })
+    .format(new Date())
+    .split("-")
+    .map(Number);
+  return new Date(Date.UTC(y, m - 1, d + offsetDays)).toISOString().slice(0, 10);
+}
+const liveTripStart = calendarDayIn(LIVE_TRIP_TZ, 28);
+const liveTripEnd = calendarDayIn(LIVE_TRIP_TZ, 30);
 const tripHandoff = `cn1d-${RUN}-ho`;
 const serviceId = `cn1d-${RUN}-svc`;
 
@@ -122,7 +136,7 @@ before(async () => {
   `);
   await db.execute(sql`
     INSERT INTO trips (id, user_id, title, destination, start_date, end_date, timezone) VALUES
-      (${tripDst}, ${traveler}, 'DST', 'Kyoto', '2026-10-30', '2026-11-01', 'America/New_York'),
+      (${tripDst}, ${traveler}, 'Live', 'Kyoto', ${liveTripStart}, ${liveTripEnd}, ${LIVE_TRIP_TZ}),
       (${tripHandoff}, ${traveler}, 'Handoff', 'Kyoto', '2027-06-01', '2027-06-03', 'America/New_York')
   `);
   await db.execute(sql`
@@ -168,7 +182,8 @@ test("accept sets source concierge and access_until at the end of the last day",
   const row = await advisor(tripDst);
   assert.equal(row?.status, "accepted");
   assert.equal(row?.source, "concierge");
-  assert.equal(new Date(row!.access_until!).toISOString(), "2026-11-02T05:00:00.000Z");
+  assert.equal(new Date(row!.access_until!).toISOString(), conciergeAccessUntil(liveTripEnd, LIVE_TRIP_TZ)!.toISOString());
+  assert.ok(new Date(row!.access_until!).getTime() > Date.now(), "the window is open now");
   assert.equal(await isTripAdvisor(tripDst, expert), true);
 });
 
