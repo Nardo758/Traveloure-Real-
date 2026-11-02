@@ -282,6 +282,7 @@ import adminMarketsRoutes from "./routes/admin-markets.routes";
 import adminPlaceCoordsRoutes from "./routes/admin-place-coords.routes";
 import experienceThemesRoutes from "./routes/experience-themes.routes";
 import conciergeTaskKindRoutes from "./routes/concierge-task-kinds.routes";
+import conciergeTaskLogRoutes from "./routes/concierge-task-log.routes";
 import {
   admitConciergeListingWrite,
   commitConciergeTasks,
@@ -1179,6 +1180,8 @@ export async function registerRoutes(
 
   // Concierge routes - pay-per-use Concierge layer (intent log; Phase 5 adds router + quote)
   app.use(conciergeRoutes);
+  // CN-1e: the concierge task log (traveler OKs, the assigned expert resolves inside the access window).
+  app.use(conciergeTaskLogRoutes);
 
   // Phase 5.2: upsell engine surfaces (cart + discover-location + discover-date).
   // Calls into server/services/upsell-engine.service.ts which enforces the
