@@ -13,6 +13,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import React from "react";
 import { renderToString } from "react-dom/server";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { airportLegLine, airportLegModes, listingFitsParty, showsAirportLeg } from "@shared/airport-leg";
 import { LegRow } from "../../plan/LegRow";
@@ -53,7 +54,10 @@ describe("airport leg", () => {
       modes: airportLegModes({ platformCarFits: true }),
       driversHref: "/discover?category=private_transportation",
     };
-    const owner = renderToString(React.createElement(Router as any, { ssrPath: "/" }, React.createElement(LegRow, { ...props, canBook: true })));
+    // Row P-1c: the mode is explicit ("open").
+    const qc = new QueryClient();
+    qc.setQueryData(["/api/public/signup-mode"], { mode: "open" });
+    const owner = renderToString(React.createElement(QueryClientProvider, { client: qc }, React.createElement(Router as any, { ssrPath: "/" }, React.createElement(LegRow, { ...props, canBook: true }))));
     assert.match(owner, /data-testid="slip-leg-airport-arrival"/);
     assert.match(text(owner), /KIX → Hotel Kanra/);
     assert.ok(text(owner).indexOf("Private car") < text(owner).indexOf("Train"));

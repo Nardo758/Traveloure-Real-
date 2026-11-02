@@ -36,6 +36,7 @@
  * is why the Ask-AI card is mounted with `isExpertViewer={false}`, a fact about this page rather
  * than a narrowing of the drawer's own rule.
  */
+import { useSignupMode } from "@/lib/signup-mode";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { ExternalLink, MessageCircle, Undo2, ShoppingBag } from "lucide-react";
@@ -279,12 +280,14 @@ export function TripCardRail({ trip, isOwner, itemCount }: TripCardRailProps) {
     enabled: isOwner && !!trip.id,
     staleTime: 60_000,
   });
+  const waitlist = useSignupMode().mode === "waitlist";
   if (!isOwner) return null;
   const advisor = advisorData?.advisor ?? null;
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 items-start" data-testid="trip-card-rail">
       <BookingAgentCard tripId={trip.id} />
-      <YourExpertCard trip={trip} advisor={advisor} />
+      {/* Row P-1c: waitlist mode — no advisor card (a paid handoff). */}
+      {waitlist ? null : <YourExpertCard trip={trip} advisor={advisor} />}
       {/* 3 · ASK AI — the SAME drawer the slip mounts (L16 lane 4, ledger
           `2026-09-17-l16-lane4-postfinal`), in the Suggestion card's slot, with the suggestion
           panel — which draws nothing unless the expert has actually posted one — directly beneath

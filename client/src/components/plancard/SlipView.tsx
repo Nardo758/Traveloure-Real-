@@ -14,6 +14,8 @@
  *    (FU-9C-1): every shown leg renders between its two stops through `renderLegBetween`
  *    (`slipLegBetween`, step 9c D5), so no leg loses its render.
  */
+import { SaveToPlanButton } from "@/components/plan/SaveToPlanButton";
+import { useSignupMode } from "@/lib/signup-mode";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 // Ruling 5 (ledger `2026-10-08-conformance-slip-phase0`): the slip's token layer, imported here only.
 import "@/styles/slip-tokens.css";
@@ -890,6 +892,7 @@ function SlipDayItem({
   const sheetControls = a.bookingPath ? bookingControls(a.bookingPath) : { primaryBook: true, bookForMe: true };
   // Ledger `2026-10-18-traveler-doors-hidden`: "Book this for me" is drawn only while `handoff_booking` is on.
   const { handoffBooking } = useTravelerDoors();
+  const slipWaitlist = useSignupMode().mode === "waitlist";
   useEffect(() => {
     if (detailsRequest > 0) setSheetOpen(true);
   }, [detailsRequest]);
@@ -992,9 +995,14 @@ function SlipDayItem({
                   affiliate item the stay's "Book" (S1-d-3b) or the partner's agent button — then "Book this for
                   me" second. On a concierge item "Book this for me" is the only control; on `none`, nothing. */}
               {sheetControls.primaryBook && a.bookingPath === "platform" && a.providerServiceId ? (
+                // Row P-1c: waitlist mode — the platform item's Book is "Save to plan" (it is already on the plan).
+                slipWaitlist ? (
+                  <SaveToPlanButton testId={`item-sheet-save-to-plan-${a.id}`} />
+                ) : (
                 <Button size="sm" asChild data-testid={`item-sheet-book-${a.id}`}>
                   <Link href={serviceDetailHref(a.providerServiceId, tripId)}>Book</Link>
                 </Button>
+                )
               ) : null}
               {sheetControls.primaryBook && stayBook ? <StayBookButton tripId={tripId} itemId={a.id} hotelName={a.name} /> : null}
               {showsStayCancel({ isOwner, read: stayRead }) ? <StayCancelButton tripId={tripId} itemId={a.id} hotelName={a.name} /> : null}

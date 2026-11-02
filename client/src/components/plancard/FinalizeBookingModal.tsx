@@ -31,6 +31,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useSignupMode } from "@/lib/signup-mode";
+import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 import {
   runBulkRouteToCheckout,
   selectBulkCheckoutItems,
@@ -72,6 +74,8 @@ export function FinalizeBookingModal({
   const { eventConcierge: conciergeShown } = useTravelerDoors();
   // Row P-7: the "Travel expert" lane is absent (never greyed) when no expert is live in the city.
   const expertsAvailable = useExpertAvailability({ city: trip.destination });
+  // Row P-1c: in waitlist mode both lanes collapse to one "Save to plan" card that returns to the slip — no prices.
+  const waitlist = useSignupMode().mode === "waitlist";
   const [, setLocation] = useLocation();
   const [lane, setLane] = useState<Lane>("myself");
   const [submitting, setSubmitting] = useState(false);
@@ -173,6 +177,26 @@ export function FinalizeBookingModal({
     // Ledger `2026-10-18-traveler-doors-hidden`: the Concierge lane opens the old concierge, off by default.
     ...(conciergeShown ? [{ id: "concierge" as Lane, label: "Concierge", blurb: "Ask about full-service help", icon: Sparkles }] : []),
   ];
+
+  if (waitlist) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-lg" data-testid="finalize-modal">
+          <DialogHeader>
+            <DialogTitle className="sr-only">{WAITLIST_COPY.saveToPlan}</DialogTitle>
+          </DialogHeader>
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            data-testid="finalize-option-save-to-plan"
+            className="w-full rounded-lg border border-primary bg-primary/5 p-3 text-left font-medium"
+          >
+            {WAITLIST_COPY.saveToPlan}
+          </button>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

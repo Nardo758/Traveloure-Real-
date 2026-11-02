@@ -7,6 +7,7 @@
  * place shows "from <source> · <checked date>", or "Not checked yet" with the official site. No request
  * action, no fee line.
  */
+import { useSignupMode } from "@/lib/signup-mode";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -43,7 +44,8 @@ export function CatalogueResultRow({
   timeZone: string | null;
   onAdd: (item: Record<string, unknown>) => void;
 }) {
-  const label = catalogueActionLabel(result);
+  const waitlist = useSignupMode().mode === "waitlist";
+  const label = catalogueActionLabel(result, { waitlist });
   const price = result.kind === "partner_viator" ? viatorPriceLine(result.livePrice, timeZone) : null;
   return (
     <li className="flex items-start justify-between gap-3 py-2.5" data-testid={`catalogue-result-${result.id}`}>
@@ -88,7 +90,7 @@ export function CatalogueResultRow({
         )}
       </div>
       <div className="shrink-0" data-testid={`catalogue-action-${result.id}`}>
-        {result.action.type === "book" ? (
+        {result.action.type === "book" && !waitlist ? (
           <Button asChild size="sm" className="h-8 text-xs">
             <Link href={result.action.href}>{label}</Link>
           </Button>

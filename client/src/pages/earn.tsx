@@ -29,6 +29,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useSignupMode } from "@/lib/signup-mode";
 import { earnKeepSentence, KEEP_RATES_ENDPOINT, type PublicKeepRates } from "@/lib/fee-keep-copy";
 import { ReadyMadeCalculator } from "@/components/earn/ReadyMadeCalculator";
 import { marketHasReadyMade, usableRate } from "@/lib/ready-made-calculator";
@@ -262,7 +263,7 @@ export default function EarnPage() {
   // LW-1g: the Ready-Made calculator shows only with a usable rate from the fee resolver AND Ready-Made Trips on
   // sale in the launch market ("hide it in markets without Ready-Made Trips"). Either answer missing ⇒ hidden.
   const readyMadeRate = usableRate(keepRates?.readyMadePlatformRate);
-  const { data: signupMode } = useQuery<{ launchMarketSlug: string | null }>({ queryKey: ["/api/public/signup-mode"], staleTime: 60_000 });
+  const signupMode = useSignupMode().data;
   const { data: readyMadeFeed } = useQuery<{ listings: { market?: string | null }[] }>({ queryKey: ["/api/ready-made"], staleTime: 60_000 });
   const showReadyMadeCalculator =
     readyMadeRate !== null &&

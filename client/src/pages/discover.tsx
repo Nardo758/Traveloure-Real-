@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { needHelpBody } from "@/lib/discover-need-help";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useSignupMode } from "@/lib/signup-mode";
+import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { createComparison as createComparisonRequest } from "@/lib/create-comparison";
 import { useToast } from "@/hooks/use-toast";
@@ -469,6 +471,9 @@ function ServiceCard({
   // with the matching intent — `#dates` for a stay (the date-range picker), `#book` / `#quote`
   // otherwise. `null` = the resolver offers no booking verb: Message only, no buy, no add.
   const actionLabel = offeringActionLabel(service.buyAction);
+  // Row P-1c: in waitlist mode the book becomes "Save to plan" and runs the add path; the separate add button is
+  // then not drawn, so the card has one action.
+  const saveMode = useSignupMode().mode === "waitlist" && !!onAddToCart;
   const messageOnly = offeringActionIsMessageOnly(service.buyAction);
   const actionHref = actionLabel ? buildStorefrontActionHref(detailHref, actionLabel, null) : detailHref;
   const rating = parseFloat(service.averageRating || "0") || 0;
@@ -623,7 +628,7 @@ function ServiceCard({
               className="text-[9.5px] uppercase tracking-wider text-[color:var(--earn-teal-ink)] mb-1.5"
               style={{ fontFamily: EARN_MONO }}
             >
-              {messageOnly ? "Not open for booking" : "Book on Traveloure"}
+              {messageOnly ? "Not open for booking" : saveMode ? WAITLIST_COPY.saveToPlan : "Book on Traveloure"}
             </div>
             <div className="grid grid-cols-2 gap-2">
               {messageOnly ? (
@@ -649,13 +654,14 @@ function ServiceCard({
                 <Button
                   size="sm"
                   className="bg-[var(--earn-teal)] hover:bg-[var(--earn-teal)] text-white border border-[var(--earn-teal)]"
-                  onClick={() => navigateTo(actionHref)}
+                  onClick={() => (saveMode ? onAddToCart?.(service.id) : navigateTo(actionHref))}
+                  disabled={saveMode && (isAddingToCart || isAdded)}
                   data-testid={`button-service-action-${service.id}`}
                 >
-                  {actionLabel}
+                  {saveMode ? WAITLIST_COPY.saveToPlan : actionLabel}
                 </Button>
               )}
-              {onAddToCart && !messageOnly && (
+              {onAddToCart && !messageOnly && !saveMode && (
                 <Button
                   size="sm"
                   className={cn(

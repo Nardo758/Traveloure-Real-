@@ -31,6 +31,7 @@ import { useExpertAvailability } from "@/lib/expert-availability";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import type { BentoCompactActionState } from "@/lib/bento-action-state";
 import { tileActionLabel } from "@/lib/bento-action-state";
+import { useSignupMode } from "@/lib/signup-mode";
 
 export interface RecommendationCandidate {
   offeringId: string;
@@ -139,7 +140,9 @@ export function CityFeedCardRecommendation({
     density === "compact"
       ? compactActionState === "affiliate"
       : candidate.sourceType === "affiliate";
-  const bookLabel = tileActionLabel("recommendation", { bookable: true, affiliate: isAffiliate }) ?? "";
+  const waitlist = useSignupMode().mode === "waitlist";
+  const saveMode = waitlist && !isAffiliate && !!onBook;
+  const bookLabel = tileActionLabel("recommendation", { bookable: true, affiliate: isAffiliate, waitlist }) ?? "";
   const bookStyle = {
     background: isAffiliate ? "var(--earn-gold-ink)" : "var(--earn-teal)",
     color: "#fff",
@@ -171,6 +174,17 @@ export function CityFeedCardRecommendation({
   const { photoUrl, loading } = useGemPhoto(`rec-${position}-${name}`, name, city, null);
 
   const addLabel = tileActionLabel("recommendation", { bookable: false, scheduledDate }) ?? "";
+  // Row P-1c (waitlist mode): a Traveloure book becomes "Save to plan" and runs the add-to-plan path; the separate
+  // add button is then not drawn, so the card has one action. A partner's book link is not a purchase and stays.
+  const addItem = () =>
+    onAdd?.({
+      title: name,
+      description: candidate.tagline,
+      city,
+      type: "recommendation",
+      scheduledDate,
+    });
+  const book = () => (saveMode ? addItem() : onBook?.(candidate));
 
   const photoArea = (
     <div
@@ -233,32 +247,34 @@ export function CityFeedCardRecommendation({
             style={bookStyle}
             onClick={(e) => {
               e.stopPropagation();
-              onBook(candidate);
+              book();
             }}
             data-testid={`btn-book-rec-${position}`}
           >
             {bookLabel}
           </Button>
         )}
-        <Button
-          size="sm"
-          className="h-7 text-xs px-3"
-          style={{ background: "var(--earn-navy)", color: "#fff", border: "none" }}
-          onClick={(e) => {
-            e.stopPropagation();
-            onAdd?.({
-              title: name,
-              description: candidate.tagline,
-              city,
-              type: "recommendation",
-              scheduledDate,
-            });
-          }}
-          data-testid={`btn-add-rec-${position}`}
-        >
-          <Plus className="w-3 h-3 mr-1" />
-          {addLabel}
-        </Button>
+        {!saveMode && (
+          <Button
+            size="sm"
+            className="h-7 text-xs px-3"
+            style={{ background: "var(--earn-navy)", color: "#fff", border: "none" }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onAdd?.({
+                title: name,
+                description: candidate.tagline,
+                city,
+                type: "recommendation",
+                scheduledDate,
+              });
+            }}
+            data-testid={`btn-add-rec-${position}`}
+          >
+            <Plus className="w-3 h-3 mr-1" />
+            {addLabel}
+          </Button>
+        )}
         {expertAvailable && (
           <Button
             size="sm"
@@ -315,29 +331,31 @@ export function CityFeedCardRecommendation({
                   <Button
                     size="sm"
                     style={bookStyle}
-                    onClick={() => onBook(candidate)}
+                    onClick={book}
                     data-testid={`modal-book-rec-${position}`}
                   >
                     {bookLabel}
                   </Button>
                 )}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() =>
-                    onAdd?.({
-                      title: name,
-                      description: candidate.tagline,
-                      city,
-                      type: "recommendation",
-                      scheduledDate,
-                    })
-                  }
-                  data-testid={`modal-add-rec-${position}`}
-                >
-                  <Plus className="w-3 h-3 mr-1" />
-                  {addLabel}
-                </Button>
+                {!saveMode && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      onAdd?.({
+                        title: name,
+                        description: candidate.tagline,
+                        city,
+                        type: "recommendation",
+                        scheduledDate,
+                      })
+                    }
+                    data-testid={`modal-add-rec-${position}`}
+                  >
+                    <Plus className="w-3 h-3 mr-1" />
+                    {addLabel}
+                  </Button>
+                )}
               </div>
             </div>
           </DialogContent>
@@ -412,7 +430,7 @@ export function CityFeedCardRecommendation({
                 style={bookStyle}
                 onClick={(e) => {
                   e.stopPropagation();
-                  onBook(candidate);
+                  book();
                 }}
                 data-testid={`btn-book-rec-${position}`}
                 data-bento-primary-action=""
@@ -482,29 +500,31 @@ export function CityFeedCardRecommendation({
                   <Button
                     size="sm"
                     style={bookStyle}
-                    onClick={() => onBook(candidate)}
+                    onClick={book}
                     data-testid={`modal-book-rec-${position}`}
                   >
                     {bookLabel}
                   </Button>
                 )}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() =>
-                    onAdd?.({
-                      title: name,
-                      description: candidate.tagline,
-                      city,
-                      type: "recommendation",
-                      scheduledDate,
-                    })
-                  }
-                  data-testid={`modal-add-rec-${position}`}
-                >
-                  <Plus className="w-3 h-3 mr-1" />
-                  {addLabel}
-                </Button>
+                {!saveMode && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      onAdd?.({
+                        title: name,
+                        description: candidate.tagline,
+                        city,
+                        type: "recommendation",
+                        scheduledDate,
+                      })
+                    }
+                    data-testid={`modal-add-rec-${position}`}
+                  >
+                    <Plus className="w-3 h-3 mr-1" />
+                    {addLabel}
+                  </Button>
+                )}
               </div>
             </div>
           </DialogContent>

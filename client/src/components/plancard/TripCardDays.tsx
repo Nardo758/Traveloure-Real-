@@ -20,6 +20,8 @@
  * (a past day carries ✓); provenance sits in a card; the re-check banners take the gold wash. Same
  * rows, same testids, same derivations — only the look changes.
  */
+import { useSignupMode } from "@/lib/signup-mode";
+import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 import { PlanRowLookProvider } from "@/components/plan/row-look";
 import { routedLegLine } from "@shared/routing-engine";
 import { TRAVEL_TIME_NOT_CHECKED_LINE, bridgeLegLabel, routedLegBetween } from "@/lib/slip-legs";
@@ -270,6 +272,8 @@ function NowLine({ now }: { now: Date }) {
 }
 
 export function TripCardDays(props: TripCardDaysProps) {
+  // Row P-1c: waitlist mode — items read "Saved to plan" and there is no Leave-by.
+  const waitlist = useSignupMode().mode === "waitlist";
   const { tripId, days, timeZone } = props;
   // §3.14–3.15 (ledger `2026-10-18-teaser-copy-events`): the teaser view and the "Add drive and walk
   // times" tap on the Trip Card.
@@ -548,7 +552,8 @@ export function TripCardDays(props: TripCardDaysProps) {
                   timeZone={timeZone}
                   mode="read"
                   role="traveler"
-                  bookingState={slipItemBookingLine(a)}
+                  // Row P-1c: waitlist mode — every item reads "Saved to plan", never a booked or price state.
+                  bookingState={waitlist ? WAITLIST_COPY.savedToPlan : slipItemBookingLine(a)}
                   expertNote={a.expertNote ? { note: a.expertNote, author: props.advisorName } : null}
                   photo={isToday ? photoOf(a.id) : null}
                   navigateHref={navigateHref({ name: a.name, lat: a.lat ?? null, lng: a.lng ?? null }, props.destination)}
@@ -557,7 +562,7 @@ export function TripCardDays(props: TripCardDaysProps) {
                   upsell={upsellFor(a.id)}
                 />
                 {/* 9b-c (LB1–LB9): today's leave-by for this stop, derived at read from the ONE core (never stored). */}
-                {isToday && upNext ? <LeaveByLine row={upNext.leaveByRows.find((r) => r.stopId === a.id) ?? null} rows={upNext.leaveByRows} nowMinute={upNext.nowMinute} stopName={a.name} stopId={a.id} /> : null}
+                {isToday && upNext && !waitlist ? <LeaveByLine row={upNext.leaveByRows.find((r) => r.stopId === a.id) ?? null} rows={upNext.leaveByRows} nowMinute={upNext.nowMinute} stopName={a.name} stopId={a.id} /> : null}
                 {idx < acts.length - 1 && (cardSlotLeg(legs, acts, idx) || cardSlotNotChecked(d, acts, idx)) ? (
                   <p className="ml-6 pl-3 pt-1 text-xs font-medium text-muted-foreground" data-testid={`card-leg-ends-${(cardSlotLeg(legs, acts, idx)?.leg as any)?.id ?? `${a.id}-${acts[idx + 1].id}`}`}>
                     {cardLegEndsLabel(a.name, acts[idx + 1].name)}
@@ -592,7 +597,7 @@ export function TripCardDays(props: TripCardDaysProps) {
             {isToday && acts.length > 0 && upNext?.nowLineIndex === acts.length ? <NowLine now={now} /> : null}
             {/* 9b-c LB8 (ledger `2026-10-18-lb8-lb9-card-wiring`): today's flight departure, measured against its R-i
                 buffered time — the travel row's own title, then its leave-by line from the ONE core. */}
-            {isToday && upNext
+            {isToday && upNext && !waitlist
               ? (d.anchorStops ?? []).map((an) => (
                   <div key={an.id} className="pt-2" data-testid={`card-anchor-stop-${an.id}`}>
                     <p className="pl-2 text-sm font-semibold">{travelRowTitle("departure", props.destination) ?? an.name}</p>

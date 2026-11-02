@@ -39,10 +39,16 @@ const line: UpsellLine = {
 };
 const href = "/services?categoryKey=private_transportation&tripId=t1";
 
+/** Row P-1c: the mode is explicit ("open"). */
+function openModeClient(): QueryClient {
+  const qc = new QueryClient();
+  qc.setQueryData(["/api/public/signup-mode"], { mode: "open" });
+  return qc;
+}
 function render(upsell: { line: UpsellLine; href: string; onClick?: () => void } | null, look: "plain" | "board") {
   return renderToString(
     <Router ssrPath="/trip/t1">
-      <QueryClientProvider client={new QueryClient()}>
+      <QueryClientProvider client={openModeClient()}>
         <PlanRowLookProvider look={look}>
           <ItemRow item={{ id: "i1", name: "Fushimi Inari", time: "09:00" } as any} mode="read" role="traveler" upsell={upsell} />
         </PlanRowLookProvider>

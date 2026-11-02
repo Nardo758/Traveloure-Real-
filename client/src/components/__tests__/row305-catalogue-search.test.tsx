@@ -17,6 +17,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import React from "react";
 import { renderToString } from "react-dom/server";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import type { CatalogueResult, CatalogueSearchResponse } from "@shared/catalogue-search";
 import { CatalogueSearchView } from "../catalogue-search-results";
@@ -51,10 +52,15 @@ const results: CatalogueResult[] = [
 ];
 
 function render(data: CatalogueSearchResponse | undefined, status: "idle" | "loading" | "error" | "ready" = "ready"): string {
+  // Row P-1c: the mode is explicit ("open").
+  const qc = new QueryClient();
+  qc.setQueryData(["/api/public/signup-mode"], { mode: "open" });
   return renderToString(
-    <Router ssrPath="/discover/location/kyoto">
-      <CatalogueSearchView data={data} status={status} city="Kyoto" onAdd={() => {}} />
-    </Router>,
+    <QueryClientProvider client={qc}>
+      <Router ssrPath="/discover/location/kyoto">
+        <CatalogueSearchView data={data} status={status} city="Kyoto" onAdd={() => {}} />
+      </Router>
+    </QueryClientProvider>,
   );
 }
 const clean = (s: string) => s.replace(/<!-- -->/g, "").replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();

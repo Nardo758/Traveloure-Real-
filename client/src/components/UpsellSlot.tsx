@@ -16,6 +16,7 @@
 
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { useSignupMode } from "@/lib/signup-mode";
 import { Sparkles, ChevronRight, Plus, Loader2 } from "lucide-react";
 import { useEffect, useRef, Component, type ReactNode } from "react";
 import { apiRequest } from "@/lib/queryClient";
@@ -221,6 +222,7 @@ export function UpsellSlot({
 }: UpsellSlotProps) {
   const [, navigate] = useLocation();
   const slotDataFiredRef = useRef(false);
+  const waitlist = useSignupMode().mode === "waitlist";
 
   const { candidates, suppressed, isResolved, logClick } = useUpsellSlot(surface, {
     tripId,
@@ -301,6 +303,8 @@ export function UpsellSlot({
                       <div className="text-[10px] text-muted-foreground/70 italic truncate">{c.reason}</div>
                     )}
                   </div>
+                  {/* Row P-1c: waitlist mode hides the paid "Add" — not greyed. */}
+                  {!waitlist && (
                   <button
                     type="button"
                     onClick={() => {
@@ -318,6 +322,7 @@ export function UpsellSlot({
                     )}
                     Add
                   </button>
+                  )}
                 </div>
               );
             }
