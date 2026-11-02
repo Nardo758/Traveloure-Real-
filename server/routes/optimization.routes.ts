@@ -46,6 +46,8 @@ import type { CustomPinPlacement, ResolvedCustomPin } from "@shared/custom-locat
 import { loadLegCoverage, loadOptimizerFindings } from "../services/optimizer-lead.service";
 import Stripe from "stripe";
 import { getStripeSecretKey } from "../utils/stripe-key";
+import { waitlistPurchaseDecisionFor } from "../services/waitlist-purchase-gate";
+import { TRAVELER_WAITLIST, TRAVELER_WAITLIST_MESSAGE } from "@shared/launch-signup";
 
 const router = Router();
 
@@ -402,6 +404,12 @@ function withResolvedPin<T extends Record<string, unknown>>(
 router.post("/api/optimization-payments", isAuthenticated, requireVerifiedEmail("checkout"), async (req, res) => {
   try {
     const userId = getUserId(req)!;
+    // P-1s (ledger `2026-11-02-p1s-waitlist-purchase-gate`): in traveler waitlist mode nobody but an admin or a
+    // QA-domain account buys — refused before any read or Stripe call.
+    const waitlistGate = await waitlistPurchaseDecisionFor(userId);
+    if (!waitlistGate.allowed) {
+      return res.status(403).json({ code: TRAVELER_WAITLIST, message: TRAVELER_WAITLIST_MESSAGE });
+    }
     const { tripId, userExperienceId, comparisonContext } = req.body;
 
     // Require a concrete optimization target — cannot omit both
