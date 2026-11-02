@@ -378,7 +378,7 @@ export function SlipHeader({
   /** A one-day Moment's span ("evening" / "day"), for the window line (Moment board). */
   daySpan?: "evening" | "day" | null;
   /**
-   * The Moment board's line beside the "AI starting sketch" chip ("4 stops · around your
+   * The Moment board's line beside the "Quick draft" chip ("4 stops · around your
    * reservation"). Present only for a Moment with an anchor; otherwise the sketch keeps its sentence.
    */
   sketchLine?: string | null;
@@ -656,14 +656,14 @@ export function SlipHeader({
         // The Moment board: a chip and a line, in place of the sentence.
         <p className="flex flex-wrap items-center gap-2 text-[13px] text-[color:var(--slip-muted)]" data-testid="slip-ai-sketch-note">
           <span className="inline-flex items-center rounded-[var(--slip-radius-chip)] bg-[color:var(--slip-wash)] px-2.5 py-1 font-medium text-[color:var(--slip-navy)]">
-            AI starting sketch
+            Quick draft
           </span>
           <span>{sketchLine}</span>
         </p>
       ) : data.aiSketch === true ? (
         <p className="text-xs text-muted-foreground" data-testid="slip-ai-sketch-note">
           <Sparkles className="w-3 h-3 inline mr-1" />
-          This is an AI starting sketch — one version, without live prices. Optimize builds three
+          This is a Quick draft — one version, without live prices. Optimize builds three
           proposals around it, anchored to what you have already booked.
         </p>
       ) : null}

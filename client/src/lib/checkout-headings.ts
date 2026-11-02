@@ -13,7 +13,7 @@ const withPlan = (what: string, planName?: string | null) => {
 
 export const optimizeCheckoutHeading = (planName?: string | null) => withPlan("Pay for Optimize", planName);
 export const tripPassCheckoutHeading = (planName?: string | null) => withPlan("Pay for the Trip Pass", planName);
-export const aiTaskCheckoutHeading = (planName?: string | null) => withPlan("Pay for this AI task", planName);
+export const aiTaskCheckoutHeading = (planName?: string | null) => withPlan("Pay for this task", planName);
 export const COORDINATION_FEE_CHECKOUT_HEADING = "Pay the coordination fee";
 export const readyMadeCheckoutHeading = (tripTitle?: string | null) => withPlan("Pay for this ready-made trip", tripTitle);
 export const EXPERT_HELP_CHECKOUT_HEADING = "Pay for expert help";

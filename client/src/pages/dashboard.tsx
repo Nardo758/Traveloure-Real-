@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PLAN_ASSISTANT_COPY } from "@/lib/plan-assistant-copy";
 import { useTrips } from "@/hooks/use-trips";
 import { Link } from "wouter";
 import { Loader2, Plus, Sparkles } from "lucide-react";
@@ -232,7 +233,7 @@ export default function Dashboard() {
   );
 }
 
-/** The two start tiles: New plan (the IntakePanel door) · Start with AI (the sidebar's AI door). */
+/** The two start tiles: New plan (the IntakePanel door) · Start a plan (the sidebar's assistant door). */
 function StartTiles({ onNewPlan }: { onNewPlan: () => void }) {
   const tile = "rounded-[14px] px-4 py-3.5 text-left transition-colors hover:bg-[color:var(--earn-chip)] w-full";
   const tileStyle = { background: "var(--earn-card)", border: "1px solid var(--earn-border)" } as const;
@@ -250,7 +251,7 @@ function StartTiles({ onNewPlan }: { onNewPlan: () => void }) {
       <Link href="/ai-assistant" className={tile} style={tileStyle} data-testid="cta-start-with-ai">
         <div className="flex items-center gap-2 text-[13.5px] font-medium" style={{ color: "var(--earn-ink)" }}>
           <Sparkles className="w-4 h-4" style={{ color: "var(--earn-teal-ink)" }} />
-          Start with AI
+          {PLAN_ASSISTANT_COPY.startDoor}
         </div>
         <div className="text-[11.5px] mt-0.5" style={{ color: "var(--earn-muted)" }}>
           Describe it in a sentence.

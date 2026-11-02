@@ -6,7 +6,7 @@
  * per item row and names EXACTLY THREE values and no more:
  *
  *   `traveler` → "you added"
- *   `ai`       → "AI draft"
+ *   `ai`       → "Quick draft"
  *   `expert`   → "from your expert"
  *
  * THIS FILE IS THE ONE MAPPING (§18 rule 1). Every surface that draws the chip calls
@@ -29,7 +29,7 @@
  */
 
 /** The three ratified chip labels. Written here and nowhere else. */
-export type ItemOriginLabel = "you added" | "AI draft" | "from your expert";
+export type ItemOriginLabel = "you added" | "Quick draft" | "from your expert";
 
 /**
  * How the chip is tinted. `expert` alone carries the surface's existing teal expert accent (the
@@ -54,7 +54,7 @@ export interface ItemOriginChip {
  */
 const ORIGIN_CHIPS = new Map<string, ItemOriginChip>([
   ["traveler", { label: "you added", tone: "neutral" }],
-  ["ai", { label: "AI draft", tone: "neutral" }],
+  ["ai", { label: "Quick draft", tone: "neutral" }],
   ["expert", { label: "from your expert", tone: "expert" }],
 ]);
 
