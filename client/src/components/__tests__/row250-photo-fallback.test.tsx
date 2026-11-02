@@ -251,7 +251,7 @@ describe("Arashiyama wanted tile", () => {
     assert.ok(t.includes(ARASHIYAMA_PLAN_YOUR_DAY));
     // PS-4 (f): a button that opens the planner, not a bare /experiences link.
     assert.match(html, /<button[^>]*data-testid="link-arashiyama-plan-day"/);
-    assert.equal(html.includes('href="/experiences'), false);
+    assert.equal(html.includes("href="), false);
     assert.equal(t.includes(ARASHIYAMA_ITINERARY_EXPERT_LINK), false);
     assert.equal(t.includes(ARASHIYAMA_ITINERARY_PROVIDER_LINK), false);
     assert.equal(t, ARASHIYAMA_PLAN_YOUR_DAY);

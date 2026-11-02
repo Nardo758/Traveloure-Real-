@@ -64,6 +64,8 @@ import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { getPlatformFlag } from "../services/platform-flags";
 import { HANDOFF_BOOKING_OFF, HANDOFF_BOOKING_SETTING } from "@shared/traveler-doors";
+import { waitlistPurchaseDecisionFor } from "../services/waitlist-purchase-gate";
+import { TRAVELER_WAITLIST, TRAVELER_WAITLIST_MESSAGE } from "@shared/launch-signup";
 
 /** Ledger `2026-10-18-traveler-doors-hidden`: a NEW `book` ask or quote is refused with 410 while `handoff_booking` is off. */
 async function bookingHandoffOff(kind: string): Promise<boolean> {
@@ -196,6 +198,14 @@ router.post("/api/trips/:tripId/handoff/quote", isAuthenticated, async (req: any
 
 router.post("/api/trips/:tripId/handoff", isAuthenticated, async (req: any, res) => {
   const sessionUserId = getUserId(req);
+  if (sessionUserId) {
+    // P-1s (ledger `2026-11-02-p1s-waitlist-purchase-gate`): in traveler waitlist mode nobody but an admin or a
+    // QA-domain account buys — refused before any read or Stripe call.
+    const waitlistGate = await waitlistPurchaseDecisionFor(sessionUserId);
+    if (!waitlistGate.allowed) {
+      return res.status(403).json({ code: TRAVELER_WAITLIST, message: TRAVELER_WAITLIST_MESSAGE });
+    }
+  }
   if (sessionUserId && await refuseUnverifiedTravelerSender(res, sessionUserId)) return;
   const userId = await ownerOr404(req, res);
   if (!userId) return;

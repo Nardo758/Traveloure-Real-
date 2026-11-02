@@ -240,6 +240,8 @@ import { refuseIfComparisonApplyToCartDisabled } from "../config/comparison-appl
 import { lookupFlight } from "../services/flight-lookup/flight-lookup.service";
 import { isInternationalFlight } from "@shared/getting-there";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
+import { waitlistPurchaseDecisionFor } from "../services/waitlist-purchase-gate";
+import { TRAVELER_WAITLIST, TRAVELER_WAITLIST_MESSAGE } from "@shared/launch-signup";
 
 const router = Router();
 
@@ -4012,6 +4014,12 @@ router.post("/api/trips/:tripId/proposals/:id/discard", isAuthenticated, async (
 router.post("/api/trips/:tripId/proposals/:id/pay", isAuthenticated, requireVerifiedEmail("checkout"), async (req, res) => {
   try {
     const userId = getUserId(req)!;
+    // P-1s (ledger `2026-11-02-p1s-waitlist-purchase-gate`): in traveler waitlist mode nobody but an admin or a
+    // QA-domain account buys — refused before any read or Stripe call.
+    const waitlistGate = await waitlistPurchaseDecisionFor(userId);
+    if (!waitlistGate.allowed) {
+      return res.status(403).json({ code: TRAVELER_WAITLIST, message: TRAVELER_WAITLIST_MESSAGE });
+    }
     const { tripId, id } = req.params;
     // D-48 (decision-maker ruling 2026-09-16, AMENDED against the brief's recommendation; ledger
     // `2026-09-16-l16-rulings-d45-d50`): PAY is **OWNER-ONLY AT THE ROUTE**. The PaymentIntent is

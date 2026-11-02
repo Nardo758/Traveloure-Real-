@@ -27,6 +27,8 @@ import { createPaymentIntentPreservingKey } from "../services/stripe-intent-key"
 import { PLAN_KEYS, requirePlan } from "../services/plans.service";
 import { getActiveTripPass, grantTripPass } from "../services/trip-entitlement.service";
 import { tripPassRunsPerTrip } from "../config/trip-pass-runs.config";
+import { waitlistPurchaseDecisionFor } from "../services/waitlist-purchase-gate";
+import { TRAVELER_WAITLIST, TRAVELER_WAITLIST_MESSAGE } from "@shared/launch-signup";
 
 const router = Router();
 
@@ -75,6 +77,12 @@ router.get("/api/trips/:tripId/trip-pass", isAuthenticated, async (req, res) => 
 router.post("/api/trips/:tripId/trip-pass/purchase", isAuthenticated, requireVerifiedEmail("checkout"), async (req, res) => {
   try {
     const userId = getUserId(req)!;
+    // P-1s (ledger `2026-11-02-p1s-waitlist-purchase-gate`): in traveler waitlist mode nobody but an admin or a
+    // QA-domain account buys — refused before any read or Stripe call.
+    const waitlistGate = await waitlistPurchaseDecisionFor(userId);
+    if (!waitlistGate.allowed) {
+      return res.status(403).json({ code: TRAVELER_WAITLIST, message: TRAVELER_WAITLIST_MESSAGE });
+    }
     const { trip, error } = await ownedTrip(req.params.tripId, userId);
     if (error) return res.status(error).json({ message: error === 404 ? "Trip not found" : "Not your trip" });
 

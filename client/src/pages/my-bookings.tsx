@@ -72,6 +72,9 @@ import { TravelerQuotesPanel } from "@/components/quotes/TravelerQuotesPanel";
 import { myBookingsDefaultTab, myBookingsShowsEmptyState } from "@/lib/my-bookings-view";
 import { BundleComponentsPanel } from "@/components/bookings/BundleComponentsPanel";
 import { QaSessionPanel } from "@/components/live/QaSessionPanel";
+import { ConciergeTaskLogButton } from "@/components/concierge-task-log";
+import { isConfirmedConciergeBooking } from "@/lib/concierge-task-copy";
+import { firstNameOf } from "@/lib/concierge-hire-copy";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { formatStartWindow, formatHours, formatMinutes, formatTransportProvision } from "@/lib/service-good-to-know";
 import {
@@ -1212,6 +1215,18 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
             <BundleComponentsPanel bookingId={booking.id} audience="traveler" />
             {/* LD 54: a Q&A Session's Start / countdown / chat. Draws nothing unless the server says this booking is one. */}
             <QaSessionPanel bookingId={booking.id} />
+            {/* CN-1e-UI: the task log for a confirmed concierge hire. */}
+            {isConfirmedConciergeBooking(booking) && (
+              <div className="mt-2">
+                <ConciergeTaskLogButton
+                  bookingId={booking.id}
+                  tripId={booking.tripId}
+                  viewer="traveler"
+                  expertFirstName={firstNameOf(booking.provider?.displayName ?? null) ?? ""}
+                  listingServiceId={booking.service?.id ?? booking.serviceId}
+                />
+              </div>
+            )}
           </div>
           
           <div className="text-right">
