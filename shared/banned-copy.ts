@@ -171,6 +171,25 @@ export const SITE_NEVER_SAY: ReadonlyArray<{ words: string; re: RegExp }> = [
   { words: "coming soon", re: new RegExp(COMING_SOON.source, "i") },
   { words: "geisha", re: /\bgeishas?\b/i },
   { words: "maiko", re: /\bmaikos?\b/i },
+  // Row P-6 (ledger `2026-11-02-p6-banned-word-sweep`; Leon, Nov 2 §7): no ranking, superlative, crowd or "soon"
+  // claims, no "founding", no PayPal, no traveler fee line, no bare "Recommended". A "Recommended · <reason>" form
+  // passes — the reason is the " · " tail. "as soon as" is plain English, not a promise, and passes.
+  { words: "popular", re: /\bpopular\b/i },
+  { words: "best", re: /\bbest\b/i },
+  { words: "top pick/rated", re: /\btop[- ](?:picks?|rated|experts?|providers?|tips?|choices?|destinations?)\b/i },
+  { words: "most <superlative>", re: /\bmost[- ](?:popular|loved|visited|booked|rated|recommended|beautiful|famous|iconic)\b/i },
+  { words: "#1", re: /(?:^|\s)#1\b/ },
+  { words: "founding", re: /\bfounding\b/i },
+  { words: "paypal", re: /\bpaypal\b/i },
+  { words: "unlimited", re: /\bunlimited\b/i },
+  { words: "ranked by", re: /\branked by\b/i },
+  { words: "traveler fee", re: /\btravell?er (?:service )?fees?\b/i },
+  { words: "recommended", re: /\brecommended\b(?! ·)/i },
+  { words: "soon", re: /(?<!\bas )\bsoon\b(?! as\b)/i },
+  { words: "crowd", re: /\bcrowd(?:s|ed)?\b/i },
+  { words: "busy", re: /\bbusy\b/i },
+  { words: "quiet time", re: /\bquiet(?:er)? (?:times?|hours?|period)\b/i },
+  { words: "packed", re: /\bpacked\b/i },
 ];
 
 /** The site never-say phrases a text carries (their `words`), in list order; empty when it carries none. */

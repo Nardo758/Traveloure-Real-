@@ -98,7 +98,7 @@ function getSummaryStatusLabel(startDate: string, endDate: string, status?: stri
   if (now >= start && now <= end) return "Active";
   if (now < start) {
     const days = daysUntilDate(startDate);
-    return days <= 7 ? "Soon" : "Upcoming";
+    return days <= 7 ? "This week" : "Upcoming";
   }
   if (status) return status.charAt(0).toUpperCase() + status.slice(1);
   return "Planning";

@@ -135,7 +135,7 @@ const QUICK_CATEGORY_SLUGS = [
   "visa-assistance",
 ] as const;
 const SERVICE_SORT_OPTIONS = [
-  { value: "rating", label: "Top Rated" },
+  { value: "rating", label: "Rating" },
   { value: "reviews", label: "Most Reviews" },
   { value: "price_low", label: "Price: Low to High" },
   { value: "price_high", label: "Price: High to Low" },
@@ -1565,7 +1565,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
     maxPrice > 0 || 
     minRating > 0 ||
     locationFilter !== "";
-  const sortLabel = SERVICE_SORT_OPTIONS.find((option) => option.value === sortBy)?.label ?? "Top Rated";
+  const sortLabel = SERVICE_SORT_OPTIONS.find((option) => option.value === sortBy)?.label ?? "Rating";
 
   const totalPages = result ? Math.ceil(result.total / limit) : 0;
 

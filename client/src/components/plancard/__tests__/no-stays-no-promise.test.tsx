@@ -45,7 +45,7 @@ describe("no stays, no promise", () => {
   it("NS3 drafted with zero stays: the collapsed neighbourhoods line, no promise", () => {
     const html = render({ stage: "drafted", view: view([nb("chapinero"), nb("usaquen")]) });
     assert.match(html, /anchor-panel-collapsed-line/);
-    assert.match(text(html), /Best area for these days: Chapinero/);
+    assert.match(text(html), /Closest area to your days: Chapinero/);
     assert.ok(!text(html).includes(HOTELS_COMING_SOON));
   });
 });

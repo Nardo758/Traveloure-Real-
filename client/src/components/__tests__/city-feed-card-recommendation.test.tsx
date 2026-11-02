@@ -128,7 +128,7 @@ describe("honest disclosure labels", () => {
 
   it("engine picks carry the 'Recommended' label", () => {
     const html = render({ ...base, sourceType: "platform_provider" });
-    assert.ok(html.includes("Recommended"), "Recommended label missing");
+    assert.ok(html.includes("Picked for your days"), "Picked for your days label missing");
     assert.ok(!html.includes("Paid partner"), "affiliate marker shown on a platform pick");
   });
 
