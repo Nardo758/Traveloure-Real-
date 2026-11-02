@@ -17,7 +17,8 @@ export interface ComparisonBaselineItem {
   description?: string;
 }
 
-export type ComparisonPinnedAnchorType = "hotel" | "neighborhood" | "activity";
+/** OPT-B: "event" and "day" are pins on the plan's own items (OPT-A, ledger 2026-11-01-opt-a-event-day-anchors). */
+export type ComparisonPinnedAnchorType = "hotel" | "neighborhood" | "activity" | "event" | "day";
 
 export interface ComparisonPinnedAnchor {
   type: ComparisonPinnedAnchorType;

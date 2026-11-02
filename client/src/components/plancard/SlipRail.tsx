@@ -525,6 +525,8 @@ function BuildCard({
         // A stale list-pick id: no payment; the dialog reopens with a generic error and a refreshed list.
         confirmedPinnedAnchor.current = undefined;
         setPinRefusal({ reason: "stale_pin", pin: pinnedAnchor });
+        // OPT-B: an event or day pin the server cannot build around says why instead (still no payment).
+        if (outcome.detail) setPinRefusal({ reason: outcome.detail, pin: pinnedAnchor });
         setBuildAroundOpen(true);
         return;
       }
