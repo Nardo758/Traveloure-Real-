@@ -36,6 +36,7 @@ import {
   type CustomPinPlacement,
   type PinnedAnchorInvalidBody,
   type PinnedAnchorNotFoundBody,
+  type PinnedAnchorNotFoundDetail,
   type ResolvedCustomPin,
 } from "@shared/custom-location-pin";
 import {
@@ -45,6 +46,8 @@ import {
   type PinnedAnchorInput,
 } from "./anchor-candidates-map";
 import { signCustomPinPlacement, verifyCustomPinPlacement } from "./custom-pin-placement";
+// plan-anchors.service loads the db; imported lazily (as the catalog seam is) so this module stays importable without one.
+import type { PlanAnchorContext } from "./plan-anchors.service";
 import { geocodeAddressDetailed, type GeocodeDetailed } from "../utils/geocode";
 
 export interface PlaceCustomPinInput {
@@ -62,6 +65,8 @@ export interface PlaceCustomPinInput {
   activityStops?: NamedStop[];
   /** Test seam. Production calls `locateCatalogPinnedAnchor`. */
   catalogPinExists?: (pin: PinnedAnchorInput, stops: NamedStop[]) => Promise<boolean>;
+  /** Test seam (OPT-A). Production reads the trip's dates and items from the database. */
+  planAnchorContext?: (tripId: string) => Promise<PlanAnchorContext | null>;
 }
 
 export type PlaceCustomPinResult =
@@ -74,8 +79,12 @@ function refusal(reason: CustomLocationRefusalReason): PlaceCustomPinResult {
   return { ok: false, status: CUSTOM_LOCATION_UNPLACEABLE_STATUS, body: customLocationRefusalBody(reason) };
 }
 
-function notFound(): PlaceCustomPinResult {
-  return { ok: false, status: PINNED_ANCHOR_NOT_FOUND_STATUS, body: { error: PINNED_ANCHOR_NOT_FOUND } };
+function notFound(detail?: PinnedAnchorNotFoundDetail): PlaceCustomPinResult {
+  return {
+    ok: false,
+    status: PINNED_ANCHOR_NOT_FOUND_STATUS,
+    body: detail ? { error: PINNED_ANCHOR_NOT_FOUND, detail } : { error: PINNED_ANCHOR_NOT_FOUND },
+  };
 }
 
 function invalid(): PlaceCustomPinResult {
@@ -175,8 +184,39 @@ async function placeCustomPin(input: PlaceCustomPinInput): Promise<PlaceCustomPi
   };
 }
 
+function writeName(raw: unknown, name: string): void {
+  if (!raw || typeof raw !== "object") return;
+  (raw as { name?: string }).name = name;
+}
+
+/**
+ * OPT-A: an event or day pin resolves ONLY from the plan's own items — never a geocode, the catalog
+ * or a signed placement. The server writes the point (event: the item's; day: the centroid of that
+ * day's located stops) and the name onto the request so the later resolver reads them.
+ */
+async function placePlanAnchorPin(input: PlaceCustomPinInput, parsed: PinnedAnchorInput): Promise<PlaceCustomPinResult> {
+  clearCoords(input.rawPin);
+  const id = typeof parsed.id === "string" ? parsed.id.trim() : "";
+  if (!id) return invalid();
+  if (!input.tripId) return notFound();
+  const { loadPlanAnchorContext, resolveDayAnchor, resolveEventAnchor, tripDayCount } = await import("./plan-anchors.service");
+  const context = await (input.planAnchorContext ?? loadPlanAnchorContext)(input.tripId);
+  if (!context) return notFound();
+  const result =
+    parsed.type === "event"
+      ? resolveEventAnchor(context.items, id)
+      : resolveDayAnchor(context.items, id, tripDayCount(context.startDate, context.endDate));
+  if (!result.ok) return notFound(result.detail);
+  writeCoords(input.rawPin, result.lat, result.lng);
+  writeName(input.rawPin, result.name);
+  return { ok: true, resolved: null, placement: null };
+}
+
 export async function placeCustomPinBeforeCharge(input: PlaceCustomPinInput): Promise<PlaceCustomPinResult> {
   const parsed = parsePinnedAnchorInput(input.rawPin);
+  if (parsed && (parsed.type === "event" || parsed.type === "day")) {
+    return placePlanAnchorPin(input, parsed);
+  }
   if (parsed && nonCustomCatalogId(parsed)) {
     const stops = input.activityStops ?? [];
     const found = input.catalogPinExists

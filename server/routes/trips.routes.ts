@@ -1,3 +1,4 @@
+import { buildPlanAnchorCandidates, loadPlanAnchorContext } from "../services/plan-anchors.service";
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { admitItemCoordSource } from "@shared/item-coord-source";
 import { wallClockMinutes } from "@shared/leg-reachability";
@@ -285,6 +286,8 @@ interface TripAnchorCandidatesDependencies {
   getTrip: typeof storage.getTrip;
   loadTripInputs: typeof loadTripOptimizerInputs;
   rankAnchors: typeof loadRankedAnchors;
+  /** OPT-A: the plan's dates and items for the event/day candidates. */
+  loadPlanAnchors: typeof loadPlanAnchorContext;
 }
 
 /** P0-b item 10: "HH:MM" start + the item's own minutes → "HH:MM" end the same day, or null (never guessed). */
@@ -302,6 +305,7 @@ export function createTripAnchorCandidatesHandler(
     getTrip: storage.getTrip.bind(storage),
     loadTripInputs: loadTripOptimizerInputs,
     rankAnchors: loadRankedAnchors,
+    loadPlanAnchors: loadPlanAnchorContext,
   },
 ) {
   return async (req: any, res: any) => {
@@ -315,7 +319,9 @@ export function createTripAnchorCandidatesHandler(
       const inputs = await dependencies.loadTripInputs(trip.id);
       const stops = optimizerItemsToNamedStops(inputs.baselineItems);
       const ranked = await dependencies.rankAnchors(trip.destination, stops, { limit: 8 });
-      return res.json(ranked);
+      // OPT-A: event and day candidates, from the plan's own items only.
+      const planAnchors = buildPlanAnchorCandidates(await dependencies.loadPlanAnchors(trip.id), stops);
+      return res.json({ ...ranked, ...planAnchors });
     } catch (error) {
       console.error("Error loading trip anchor candidates:", error);
       return res.status(500).json({ message: "Failed to load anchor candidates" });
@@ -861,7 +867,12 @@ router.get("/api/itinerary-comparisons/:id/anchor-candidates", isAuthenticated, 
       }
       const stops = await buildAnchorStops(comparison);
       const ranked = await loadRankedAnchors(comparison.destination, stops, { limit: 8 });
-      res.json(ranked);
+      // OPT-A: event and day candidates exist only for a trip-backed comparison.
+      const planAnchors = buildPlanAnchorCandidates(
+        comparison.tripId ? await loadPlanAnchorContext(comparison.tripId) : null,
+        stops,
+      );
+      res.json({ ...ranked, ...planAnchors });
     } catch (error) {
       console.error("Error loading anchor candidates:", error);
       res.status(500).json({ message: "Failed to load anchor candidates" });
