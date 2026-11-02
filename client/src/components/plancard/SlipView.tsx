@@ -583,6 +583,7 @@ export function SlipHeader({
         eventCount={eventCount}
         timezone={(trip as any)?.timezone ?? null}
         daySpan={daySpan}
+        fromOccasionDraft={(trip as any)?.fromOccasionDraft === true}
       />
       {/* The header's anchor line ("Where you'll stay: …") is GONE (Main board, ledger
           `2026-10-08-slip-main-rail`): the board draws no such line — the anchor card IS the ask. */}

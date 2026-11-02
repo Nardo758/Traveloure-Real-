@@ -23,9 +23,26 @@ export function exactOperatingMarket(value: string | null | undefined): Operatin
   );
 }
 
-/** The page's preselect: `?destination=` first, then `?city=` (discover-location's links), each exact. */
+/**
+ * The trip queue's list (`?destinations=`, TripQueueIndicator): "Kyoto, Japan; Osaka, Japan", or a plain
+ * "Kyoto,Osaka". The FIRST entry is the city pre-picked, and only on an exact match (ruling 4); the rest are
+ * not carried — PlanEntry's own city chips are where another city is added. There is no multi-city plan model,
+ * so nothing here invents one (PS-4 (d), ledger `2026-11-02-ps4-entry-carry-forward`).
+ */
+export function firstQueuedMarket(value: string | null | undefined): OperatingMarket | null {
+  const raw = (value ?? "").trim();
+  if (!raw) return null;
+  const first = (raw.includes(";") ? raw.split(";") : raw.split(","))[0] ?? "";
+  return exactOperatingMarket(first);
+}
+
+/** The page's preselect: `?destination=` first, then `?city=` (discover-location's links), then the trip queue's first city, each exact. */
 export function preselectedMarket(params: URLSearchParams): OperatingMarket | null {
-  return exactOperatingMarket(params.get("destination")) ?? exactOperatingMarket(params.get("city"));
+  return (
+    exactOperatingMarket(params.get("destination")) ??
+    exactOperatingMarket(params.get("city")) ??
+    firstQueuedMarket(params.get("destinations"))
+  );
 }
 
 /**

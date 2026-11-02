@@ -100,6 +100,25 @@ export interface PlanEntrySource {
   seriesKey?: string;
   /** SH-1 Launch Q14.1: the anchor's series of shows — every show's local date, when two or more. */
   showDates?: readonly string[];
+  /**
+   * PS-4 (e), ledger `2026-11-02-ps4-entry-carry-forward`: dates and party a door already holds (the assistant
+   * panel's stated trip details). Dates seed only as a valid pair ("YYYY-MM-DD", end on or after start); the party
+   * seeds the details step's fields. Absent = not known, never invented.
+   */
+  startDate?: string;
+  endDate?: string;
+  adults?: number;
+  kids?: number;
+}
+
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** A door's dates, kept only as a valid ordered pair; otherwise none. */
+export function doorDates(source: Pick<PlanEntrySource, "startDate" | "endDate"> | null | undefined): { startDate: string; endDate: string } | null {
+  const a = source?.startDate?.slice(0, 10) ?? "";
+  const b = source?.endDate?.slice(0, 10) ?? "";
+  if (!DAY_RE.test(a) || !DAY_RE.test(b) || b < a) return null;
+  return { startDate: a, endDate: b };
 }
 
 export const DEFAULT_GROUP: OccasionPickerGroup = "trips";
@@ -298,7 +317,8 @@ export function initialPlanEntry(source: PlanEntrySource | null | undefined): { 
   const occasionSlug = (source.experienceSlug ?? source.carriedOccasionSlug)?.trim() || null;
   const explicitGroup = source.group && (OCCASION_GROUP_ORDER as readonly string[]).includes(source.group) ? source.group : null;
   const group = explicitGroup ?? state.group;
-  const withAnswers: PlanEntryState = { ...state, market: named, around: named ? "place" : null, occasionSlug, group };
+  const dates = doorDates(source);
+  const withAnswers: PlanEntryState = { ...state, market: named, around: named ? "place" : null, occasionSlug, group, ...(dates ?? {}) };
   // H-10: an experience and a city are already chosen, so the next step is dates and party.
   // A catalog slug on the page (`/experiences/:slug`) stays on the occasion step — "More specific"
   // is how that door is answered. An event anchor returned above and is never sent here.

@@ -18,7 +18,8 @@
  *   `?group=` opens on that group (an exact key of the five).
  * A city and a catalog occasion land on the occasion step. A city and a group, with no slug, land
  * on dates and party. The panel reports that pick upward so the nav pop-up can open on it.
- * `?destinations=&multiCity=true` (TripQueueIndicator) is ignored; recorded in FOLLOWUPS.md.
+ * `?destinations=&multiCity=true` (TripQueueIndicator) pre-picks its FIRST city on an exact match (PS-4 (d));
+ * the other queued cities are added through PlanEntry's own city chips — there is no multi-city plan model.
  */
 import { useMemo } from "react";
 import { Link, useSearch } from "wouter";

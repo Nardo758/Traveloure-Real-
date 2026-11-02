@@ -27,9 +27,10 @@ import { planningRouteForTrip, usePlanning } from "@/contexts/PlanningContext";
  *
  * "Continue in the planner" (ledger `2026-09-07-start-with-ai-door`, CONSOLE_AND_AI_CONCIERGE_BRIEF
  * §9) is a DOOR, not a mint: it opens the ONE plan modal through usePlanning().open with exactly
- * the fields this panel holds — `destination` and `experienceSlug`, both conditional so nothing
- * is invented (§13). Dates/travelers need no passing: the modal reads TripContext directly, and
- * the steps it skips none of will ask for whatever is still missing. `eventType` is deliberately
+ * the fields this panel holds — `destination`, `experienceSlug`, the dates (as a pair) and the
+ * party (`adults`/`kids`), each conditional so nothing is invented (§13). PlanEntry seeds them and
+ * the mint and occasion PATCH carry them (PS-4 (e), ledger `2026-11-02-ps4-entry-carry-forward`);
+ * anything still missing is asked on the plan itself. `eventType` is deliberately
  * NOT forwarded as `experienceType`: TripContext.eventType is an `eventTypeEnum` member
  * (`eventTypeForSlug` — vacation/birthday/proposal/…), while PlanningSource.experienceType is one
  * of the five FROZEN coarse keys the generator accepts (travel|wedding|corporate|event|retreat,
@@ -37,6 +38,31 @@ import { planningRouteForTrip, usePlanning } from "@/contexts/PlanningContext";
  * nothing rather than a wrong-vocabulary guess. A conversation already bound to a plan
  * (`tripId` set) opens THAT plan's slip instead of the modal.
  */
+/**
+ * PS-4 (e): the door the assistant opens — what the panel holds, each field only when known. Dates ride as a pair;
+ * the party as the pen's own `adults`/`kids`, never split out of a total.
+ */
+export function assistantDoor(context: {
+  destination?: string | null;
+  experienceSlug?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  adults?: number | null;
+  kids?: number | null;
+}): { destination?: string; experienceSlug?: string; startDate?: string; endDate?: string; adults?: number; kids?: number } {
+  const destination = context.destination?.trim() || null;
+  const count = (n: number | null | undefined) => (typeof n === "number" && Number.isInteger(n) && n >= 0 ? n : null);
+  const adults = count(context.adults);
+  const kids = count(context.kids);
+  return {
+    ...(destination ? { destination } : {}),
+    ...(context.experienceSlug ? { experienceSlug: context.experienceSlug } : {}),
+    ...(context.startDate && context.endDate ? { startDate: context.startDate, endDate: context.endDate } : {}),
+    ...(adults !== null ? { adults } : {}),
+    ...(kids !== null ? { kids } : {}),
+  };
+}
+
 export function AiPlannerDraftPanel({
   conversationId,
   extractionTrigger,
@@ -113,9 +139,10 @@ export function AiPlannerDraftPanel({
   const travelers = context.travelers ?? null;
   const eventType = context.eventType || null;
 
+  // PlanEntry asks only for the place before the plan exists; dates are asked on the plan, so they are not
+  // listed here (PS-4 (e)).
   const missing: string[] = [];
   if (!destination) missing.push("a destination");
-  if (!startDate || !endDate) missing.push("travel dates");
   const missingHint =
     !context.tripId && missing.length > 0
       ? `The planner will ask for ${missing.join(" and ")}.`
@@ -128,10 +155,7 @@ export function AiPlannerDraftPanel({
       navigate(planningRouteForTrip(context.tripId, context.endDate));
       return;
     }
-    openPlanner({
-      ...(destination ? { destination } : {}),
-      ...(context.experienceSlug ? { experienceSlug: context.experienceSlug } : {}),
-    });
+    openPlanner(assistantDoor(context));
   }
 
   return (
