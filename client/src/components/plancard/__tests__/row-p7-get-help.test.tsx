@@ -39,6 +39,7 @@ const EMPTY = read("client/src/components/plan/SlipEmptyStart.tsx");
 function client(available: boolean | null): QueryClient {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   qc.setQueryData(["/api/public/signup-mode"], { mode: "open" }); // Row P-1c: the mode is explicit ("open").
+  qc.setQueryData(["/api/trips", "t1", "capabilities"], { actions: { checkout: "yes" } }); // CAP-1: the bar reads the capabilities answer.
   if (available !== null) qc.setQueryData(["/api/expert-availability?city=Kyoto%2C%20Japan"], { available });
   return qc;
 }

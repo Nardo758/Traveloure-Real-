@@ -9,7 +9,7 @@ import { Map as MapIcon, MessageCircle, Share2, LifeBuoy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { openInMaps } from "@/lib/navigate";
 import { useExpertAvailability } from "@/lib/expert-availability";
-import { useSignupMode } from "@/lib/signup-mode";
+import { paidActionsShown, useTripCapabilities } from "@/lib/trip-capabilities";
 import { EXPERT_DOOR_COPY, bottomBarExpertSlot, getHelpHref } from "@/lib/expert-door-copy";
 
 interface AdvisorLite {
@@ -57,9 +57,11 @@ export function BottomActionBar({
   };
 
   const hasAcceptedAdvisor = advisor?.status === "accepted";
-  // Row P-1c: waitlist mode — the Trip Card offers no paid help door; messaging an accepted advisor stays.
-  const waitlist = useSignupMode().mode === "waitlist";
-  const expertSlot = bottomBarExpertSlot({ hasAcceptedAdvisor, expertsAvailable: expertsAvailable && !waitlist });
+  // Row P-1c / CAP-1: the paid help door is drawn only when the server's capabilities answer says this viewer can pay
+  // on this plan (`actions.checkout === "yes"`); messaging an accepted advisor stays.
+  const { data: caps } = useTripCapabilities(tripId);
+  const paidHidden = !paidActionsShown(caps);
+  const expertSlot = bottomBarExpertSlot({ hasAcceptedAdvisor, expertsAvailable: expertsAvailable && !paidHidden });
 
   return (
     // `fixed` (not `sticky`) — the ancestor page layout (DashboardLayout's <main>, out of

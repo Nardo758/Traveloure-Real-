@@ -12,6 +12,7 @@
 import { useSignupMode } from "@/lib/signup-mode";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { invalidateTripCapabilities } from "@/lib/trip-capabilities";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { paymentElementOptions, paymentElementWalletsToHide } from "@shared/saved-payment-method";
 import { WalletExpressCheckout } from "@/components/payment/wallet-express-checkout";
@@ -228,6 +229,7 @@ export function HandoffChooser(props: {
     if (!hold) return;
     try {
       await postJson(`/api/handoffs/${hold.requestId}/authorized`, {});
+      void invalidateTripCapabilities(qc, tripId);
       done("Ask sent", "The hold is in place. We're finding your local.");
     } catch (e: any) {
       toast({ variant: "destructive", title: "The hold isn't confirmed yet", description: e.message });

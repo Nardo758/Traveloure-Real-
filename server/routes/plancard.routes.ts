@@ -34,9 +34,7 @@ import { legRecheckDedupePrefix } from "@shared/leg-recheck";
 import { runRoutingRecheckOnOpen } from "../jobs/routingRecheck";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
-import { getTripRole } from "../utils/trip-role";
 import { itineraryItemNotMachineProtected } from "../services/itinerary-rebuild-guard";
-import { isTripAuthor } from "../utils/trip-authorship";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
 import { verifyTripOwnership } from "../utils/trip-ownership";
 import { logItemTransition } from "../services/item-transition-log.service";
@@ -48,8 +46,7 @@ import { getTripDestinations } from "../services/trip-destinations.service";
 import { planComparisonRef } from "@shared/trip-plan";
 import { countTripItineraryItems, isUntouchedAiDraft } from "../services/ai-draft-eligibility";
 import { travelTimeServiceEnabled } from "../config/travel-time.config";
-import { isManagingEaForTrip } from "../services/ea-plan-delegate.service";
-import { isTripPayer } from "../services/balance-payer.service";
+import { resolvePlancardViewer } from "../services/plancard-viewer.service";
 import { tripHasWriteAccessAdvisor } from "../utils/trip-advisor";
 import { departureAnchorStopsByDay } from "../services/routing/card-anchor-stops";
 import { planRole } from "../services/plan-option-sets.service";
@@ -790,40 +787,15 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     const { tripId } = req.params;
     const userId = getUserId(req)!;
 
-    const trip = await storage.getTrip(tripId);
-    if (!trip) {
-      return res.status(404).json({ error: "Trip not found" });
+    // CAP-1 (ledger `2026-11-03-cap1-trip-capabilities`): the viewer gate lives in ONE helper, shared with the
+    // capabilities read, and behaves exactly as the inline block it replaced (same order, same 404 / 403 bodies).
+    const viewer = await resolvePlancardViewer(tripId, userId);
+    if (!viewer.ok) {
+      return viewer.deny === 404
+        ? res.status(404).json({ error: "Trip not found" })
+        : res.status(403).json({ error: "Access denied" });
     }
-
-    let tripRole: string | null = await getTripRole(tripId, userId);
-
-    if (!tripRole) {
-      // Legacy fallback: check trip_expert_advisors for assigned experts
-      const assignment = await storage.getTripExpertAdvisoryAssignment(tripId, userId);
-      const isAssignedExpert = assignment && ['pending', 'accepted'].includes(assignment.status);
-      // Authoring mode (ready-made brief §2/§4): the trip's AUTHOR may render their own build.
-      // A PARALLEL named branch beside getTripRole — the helper itself is deliberately untouched
-      // (known pre-launch bypass, separate fix). getTripRole returns null for an author (no
-      // collaborator/advisor row), so without this branch authoring mode 403s its own itinerary.
-      const isAuthor = isAssignedExpert ? false : await isTripAuthor(tripId, userId);
-      // LD 52 (C): the executive assistant managing this plan under a LIVE accepted link. Rendered
-      // as "delegate" — it edits for the owner but is never shown as "your expert" and never gets
-      // the owner's pay/finalize controls (the slip decides that from this role).
-      const isManagingEa = isAssignedExpert || isAuthor ? false : await isManagingEaForTrip(tripId, userId);
-      // LD 42 D9 (ledger `2026-09-27-payer-reads-plancard`): a `payer`-role `trip_participants` row
-      // on THIS trip is half of the bookings section's audience (owner + payer), so it READS the
-      // plan the balance belongs to. The role test is the ONE `balance-payer.service.ts` comparison
-      // `canPayBalance` also uses (§18 rule 1). READ-ONLY: this arm lives on this read gate alone —
-      // no write rail, owner-tier read (guest roster / PII), trip pass or proposal rail admits it,
-      // and `authorizeTripLogistics` is untouched. Rendered as "payer" so the slip draws no tools.
-      const isPayer =
-        isAssignedExpert || isAuthor || isManagingEa ? false : await isTripPayer(tripId, userId);
-      if (!isAssignedExpert && !isAuthor && !isManagingEa && !isPayer) {
-        return res.status(403).json({ error: "Access denied" });
-      }
-      if (isManagingEa) tripRole = "delegate";
-      else if (isPayer) tripRole = "payer";
-    }
+    const { trip, tripRole } = viewer;
 
     // ── Thin caller (L3a): the assembly lives in the ONE TripPlan assembler ────────────────
     // The gate above is authoritative — the assembler does NOT authorize; the redaction level is

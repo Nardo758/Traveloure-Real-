@@ -353,6 +353,7 @@ import paymentMethodsRoutes from "./routes/payment-methods.routes";
 import pricingRoutes from "./routes/pricing.routes";
 import landingRoutes from "./routes/landing.routes";
 import tripPassRoutes from "./routes/trip-pass.routes";
+import tripCapabilitiesRoutes from "./routes/trip-capabilities.routes";
 import occasionsRoutes from "./routes/occasions.routes";
 import internalRoutes from "./routes/internal.routes";
 import botRoutes from "./routes/bot.routes";
@@ -1100,6 +1101,8 @@ export async function registerRoutes(
   app.use(landingRoutes);
   // Trip Pass purchase/status (ruling 2026-08-29-trip-pass).
   app.use(tripPassRoutes);
+  // CAP-1: the trip capabilities read, mounted beside the Trip Pass routes.
+  app.use(tripCapabilitiesRoutes);
 
   // Instagram API routes
   app.use("/api/instagram", instagramRoutes);

@@ -19,6 +19,7 @@
  * Every sentence comes from `@/lib/handoff-client`; every number from the server's own read.
  */
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { handoffApproveShown, invalidateTripCapabilities, useTripCapabilities } from "@/lib/trip-capabilities";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -91,6 +92,7 @@ export function useResolveSuggestion(tripId: string) {
       setBusy(null);
       void qc.invalidateQueries({ queryKey: expertSuggestionsQueryKey(tripId) });
       void qc.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      void invalidateTripCapabilities(qc, tripId);
     }
   };
   return { resolve, busy };
@@ -115,6 +117,7 @@ function useHandoffAct(tripId: string) {
         qc.refetchQueries({ queryKey: handoffQueryKey(tripId) }),
         qc.invalidateQueries({ queryKey: expertSuggestionsQueryKey(tripId) }),
         qc.refetchQueries({ queryKey: [`/api/trips/${tripId}/plancard`] }),
+        invalidateTripCapabilities(qc, tripId),
       ]).catch(() => {});
       setBusy(null);
     }
@@ -196,6 +199,9 @@ export function HandoffBanner({ tripId, isOwner, bookedInScope = null }: { tripI
   const board = usePlanRowLook() === "board";
   const askExpert = useAskExpert();
   const { data } = useHandoff(tripId, true);
+  // CAP-1: Approve / Request changes are drawn from the server's capabilities answer, never re-derived here.
+  const { data: caps } = useTripCapabilities(tripId);
+  const canApprove = handoffApproveShown(caps);
   const h = data?.handoff ?? null;
   const live = !!h && ["accepted", "delivered"].includes(h.status);
   const { data: sData } = useExpertSuggestions(tripId, live || h?.status === "approved");
@@ -342,7 +348,7 @@ export function HandoffBanner({ tripId, isOwner, bookedInScope = null }: { tripI
         </ul>
       ) : null}
 
-      {isOwner && h.status === "delivered" ? (
+      {canApprove ? (
         <div className="mt-2 space-y-2">
           <div className="flex flex-wrap gap-2">
             <Button size="sm" disabled={!!busy} onClick={() => act("approve", `/api/handoffs/${h.id}/approve`, {}, "Plan approved")} data-testid="handoff-approve">Approve</Button>
@@ -426,13 +432,15 @@ export function HandoffFooter({ tripId, isOwner }: { tripId: string; isOwner: bo
   const { data } = useHandoff(tripId, true);
   const { act, busy } = useHandoffAct(tripId);
   const [note, setNote] = useState("");
+  const { data: caps } = useTripCapabilities(tripId);
   const h: ClientHandoff | null = data?.handoff ?? null;
   if (!board || !isOwner || !h || !handoffHoldsPen(h)) return null;
   const who = handoffExpertLabel(h);
   const name = h.expertName?.trim() || "your local";
   const withdraw = withdrawLine(h);
   const roundsLeft = HANDOFF_CHANGE_ROUNDS_INCLUDED - (h.changeRounds ?? 0);
-  const delivered = h.status === "delivered";
+  // CAP-1: the delivered controls follow the server's capabilities answer (`actions.handoff === "approve"`).
+  const delivered = handoffApproveShown(caps);
   const onNavyQuiet =
     "inline-flex h-11 flex-1 items-center justify-center rounded-[var(--slip-radius-button)] border border-[color:var(--slip-on-navy-line)] px-4 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-60";
   return (

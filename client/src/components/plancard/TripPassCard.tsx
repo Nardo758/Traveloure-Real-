@@ -14,6 +14,7 @@
 import { DatesGate } from "@/components/plan/SlipAnchorPanels";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { invalidateTripCapabilities, tripPassCardView, useTripCapabilities } from "@/lib/trip-capabilities";
 import { Ticket, Loader2, Check } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
@@ -55,6 +56,10 @@ export function TripPassCard({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const statusKey = [`/api/trips/${tripId}/trip-pass`];
+  // CAP-1: offer / active / hidden come from the server's capabilities answer (`actions.tripPass`); the /trip-pass
+  // read stays for the price and the plan name the card prints.
+  const { data: caps } = useTripCapabilities(tripId);
+  const view = tripPassCardView(caps);
   const { data: status } = useQuery<TripPassStatus>({ queryKey: statusKey, enabled: !!tripId });
 
   const [sheet, setSheet] = useState<{ clientSecret: string; paymentIntentId: string; amount: number } | null>(null);
@@ -62,6 +67,7 @@ export function TripPassCard({
   const [confirming, setConfirming] = useState(false);
 
   if (!status) return null;
+  if (!view) return null;
 
   const priceLabel = `$${(status.priceCents / 100).toFixed(0)}`;
 
@@ -77,6 +83,7 @@ export function TripPassCard({
       if (res.status === 409) {
         toast({ title: "Already covered", description: body.message });
         void queryClient.invalidateQueries({ queryKey: statusKey });
+        void invalidateTripCapabilities(queryClient, tripId);
         return;
       }
       if (!res.ok) throw new Error(body.message || "Could not start the purchase");
@@ -101,6 +108,7 @@ export function TripPassCard({
       if (!res.ok) throw new Error(body.message || "Could not confirm the purchase");
       toast({ title: "Trip Pass active", description: PRICING_AND_LEGAL_TITLE_COPY.tripPassActivatedToast });
       void queryClient.invalidateQueries({ queryKey: statusKey });
+      void invalidateTripCapabilities(queryClient, tripId);
     } catch (e: any) {
       toast({ title: "Trip Pass", description: e?.message ?? "Confirm failed — support can verify the payment", variant: "destructive" });
     } finally {
@@ -109,7 +117,7 @@ export function TripPassCard({
     }
   };
 
-  if (status.active) {
+  if (view === "active") {
     return (
       <div className="space-y-2">
         <section

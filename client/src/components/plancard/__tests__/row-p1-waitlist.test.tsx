@@ -119,7 +119,7 @@ describe("P-1c — waitlist mode", () => {
     assert.ok(days.includes("isToday && upNext && !waitlist ? <LeaveByLine"));
     assert.ok(days.includes("isToday && upNext && !waitlist\n              ? (d.anchorStops ?? [])"));
     assert.ok(read("client/src/components/plancard/TripCardRail.tsx").includes("{waitlist ? null : <YourExpertCard trip={trip} advisor={advisor} />}"));
-    assert.ok(read("client/src/components/plancard/BottomActionBar.tsx").includes("expertsAvailable: expertsAvailable && !waitlist"));
+    assert.ok(read("client/src/components/plancard/BottomActionBar.tsx").includes("expertsAvailable: expertsAvailable && !paidHidden"), "CAP-1: the help door follows the capabilities answer");
     // Partner links are not purchases: the affiliate button is not gated.
     assert.ok(!read("client/src/components/plancard/AffiliateBookButton.tsx").includes("useSignupMode"));
   });

@@ -96,6 +96,15 @@ export async function countOpenSuggestions(tripId: string, expertId: string): Pr
   return Number((r.rows?.[0] as any)?.n ?? 0);
 }
 
+/** CAP-1: the traveler side's count — every expert's pending suggestions on this plan. Read-only. */
+export async function countPendingSuggestionsForTrip(tripId: string): Promise<number> {
+  const r = await db.execute(sql`
+    SELECT count(*)::int AS n FROM expert_suggestions
+    WHERE trip_id = ${tripId} AND status = 'pending'
+  `);
+  return Number((r.rows?.[0] as any)?.n ?? 0);
+}
+
 /** A handoff that ends takes its open suggestions with it (never left pending forever — §13). */
 export async function supersedeOpenSuggestions(tripId: string, expertId: string): Promise<number> {
   const r = await db.execute(sql`
