@@ -42,15 +42,6 @@
   "client/src/components/expert/ready-made-listing-panel.tsx": {
     "best": 1
   },
-  "client/src/components/insights-card.tsx": {
-    "best": 1
-  },
-  "client/src/components/logistics/budget-intelligence.tsx": {
-    "recommended": 2
-  },
-  "client/src/components/logistics/logistics-intelligence-panel.tsx": {
-    "recommended": 3
-  },
   "client/src/components/plan/GettingThereSheet.tsx": {
     "busy": 1
   },
@@ -63,23 +54,8 @@
   "client/src/components/provider/service-recommendations.tsx": {
     "recommended": 1
   },
-  "client/src/components/spontaneous-discovery.tsx": {
-    "recommended": 1
-  },
-  "client/src/components/travelpulse/AIRecommendationBadges.tsx": {
-    "best": 2
-  },
-  "client/src/components/travelpulse/DestinationCalendar.tsx": {
-    "best": 1
-  },
-  "client/src/components/travelpulse/ExperienceTemplates.tsx": {
-    "popular": 1,
-    "recommended": 1
-  },
   "client/src/components/travelpulse/TravelPulseCard.tsx": {
-    "best": 1,
-    "crowd": 1,
-    "top pick/rated": 1
+    "crowd": 1
   },
   "client/src/lib/comparison-context.ts": {
     "busy": 1
@@ -174,9 +150,6 @@
     "soon": 1,
     "verified": 2
   },
-  "client/src/pages/hidden-gems.tsx": {
-    "best": 1
-  },
   "client/src/pages/itinerary-comparison.tsx": {
     "best": 1,
     "packed": 1
@@ -215,9 +188,6 @@
   },
   "client/src/pages/ready-made-detail.tsx": {
     "best": 1
-  },
-  "client/src/pages/transportation-booking.tsx": {
-    "popular": 1
   },
   "client/src/pages/travel-experts.tsx": {
     "best": 3,
@@ -271,8 +241,6 @@
   "server/seeds/experience-template-tabs.seed.ts": {
     "best": 1,
     "crowd": 1,
-    "most <superlative>": 2,
-    "popular": 3,
     "quiet time": 1,
     "recommended": 3
   },

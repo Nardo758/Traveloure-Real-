@@ -25,7 +25,7 @@ export const AI_DRAFT_REFUSAL_STATUS = 409;
  * the draft's model tier is a cost decision and is never surfaced (LD 41 (c)).
  */
 export const AI_DRAFT_REFUSAL_MESSAGE =
-  "This plan already has items in it, so the free AI draft won't rebuild it. " +
+  "This plan already has items in it, so Quick draft won't rebuild it. " +
   "Optimize builds three proposals around what you already have.";
 
 export type AiDraftEligibility =

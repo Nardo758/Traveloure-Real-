@@ -232,7 +232,7 @@ export default function SharedTripPage() {
         <div className="mt-12 text-center border-t border-border pt-10">
           <h3 className="text-lg font-semibold text-foreground mb-2">Inspired by this trip?</h3>
           <p className="text-muted-foreground text-sm mb-5 max-w-sm mx-auto">
-            Create your own personalised plan with AI — tailored exactly to your style and budget.
+            Start your own plan — your dates, your pace, your budget.
           </p>
           <Link href="/experiences">
             <Button

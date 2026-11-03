@@ -24,7 +24,7 @@ export const HOW_IT_WORKS_STEPS: readonly HowItWorksStep[] = [
   },
   {
     n: "02",
-    title: "Sharpen it with AI",
+    title: "Sharpen it with Optimize",
     body: "Three versions around an anchor; re-time a day, fill a gap.",
     details: [
       "Three versions built around your anchor plans",

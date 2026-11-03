@@ -178,7 +178,7 @@ export function DestinationCalendar({ cityName, country }: DestinationCalendarPr
         {bestTimeToVisit && (
           <p className="text-xs text-muted-foreground mt-1">
             <Sparkles className="h-3 w-3 inline mr-1 text-primary" />
-            Best time: {bestTimeToVisit}
+            Season: {bestTimeToVisit}
           </p>
         )}
       </CardHeader>

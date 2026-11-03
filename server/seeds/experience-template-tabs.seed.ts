@@ -1121,7 +1121,7 @@ const anniversaryTabs: TabDef[] = [
         options: [
           { label: "Secluded/Private", value: "secluded" },
           { label: "Intimate", value: "intimate" },
-          { label: "Popular but Spacious", value: "popular" },
+          { label: "Spacious", value: "popular" },
           { label: "Tourist-Heavy", value: "tourist" },
         ]
       },
@@ -2205,7 +2205,6 @@ const travelUniversalFilters: UniversalFilterDef[] = [
     filterType: "single_select",
     icon: "ArrowUpDown",
     options: [
-      { label: "Most Popular", value: "popular" },
       { label: "Price: Low to High", value: "price_low" },
       { label: "Price: High to Low", value: "price_high" },
       { label: "Rating", value: "rating" },
@@ -3424,7 +3423,6 @@ const standardUniversalFilters: UniversalFilterDef[] = [
     filterType: "single_select",
     icon: "ArrowUpDown",
     options: [
-      { label: "Most Popular", value: "popular" },
       { label: "Price: Low to High", value: "price_low" },
       { label: "Price: High to Low", value: "price_high" },
       { label: "Highest Rated", value: "rating" },

@@ -405,7 +405,7 @@ export function BudgetIntelligence({
             <Card data-testid="card-tip-calculator">
               <CardHeader>
                 <CardTitle className="text-base">Regional Tip Calculator</CardTitle>
-                <CardDescription>Recommended tipping rates vary by location</CardDescription>
+                <CardDescription>Tipping customs vary by place</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
@@ -426,7 +426,7 @@ export function BudgetIntelligence({
 
                   <div className="p-4 rounded-lg bg-muted/50">
                     <div className="flex items-center justify-between">
-                      <span className="font-medium">Recommended Tip</span>
+                      <span className="font-medium">Customary tip</span>
                       <Badge variant="secondary" className="text-lg">
                         {tipRate}%
                       </Badge>

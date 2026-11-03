@@ -130,7 +130,7 @@ function getRecommendedTemplates(
       addedSlugs.add(template.slug);
       recommendations.push({
         template,
-        reason: `Popular in ${month ? monthNames[month] : "this season"}`,
+        reason: `In season in ${month ? monthNames[month] : "this season"}`,
       });
     }
   }
@@ -227,7 +227,7 @@ export function ExperienceTemplates({
       {recommendedTemplates.length > 0 && (
         <div>
           <h4 className="text-sm font-medium text-muted-foreground mb-3" data-testid="heading-recommended-templates">
-            Recommended for You
+            For your dates
           </h4>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {recommendedTemplates.map(({ template, reason }) => {

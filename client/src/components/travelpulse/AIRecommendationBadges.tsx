@@ -47,7 +47,7 @@ export function AIRecommendationBadges({
   if (bestTimeMatch) {
     badges.push({
       icon: Sun,
-      label: compact ? "" : "Best Time",
+      label: compact ? "" : "Season",
       tooltip: "Perfect timing to visit - excellent season",
       variant: "default",
       color: "bg-green-500/90 hover:bg-green-500 text-white",
@@ -116,7 +116,7 @@ export function AIRecommendationBadges({
           </TooltipTrigger>
           <TooltipContent side="top" className="max-w-xs">
             <div className="space-y-1">
-              <p className="font-medium">AI Match Score: {aiScore}%</p>
+              <p className="font-medium">Match score: {aiScore}%</p>
               {aiReasons.length > 0 && (
                 <ul className="text-xs space-y-0.5">
                   {aiReasons.slice(0, 3).map((reason, idx) => (
@@ -233,7 +233,7 @@ export function SeasonalInsightBanner({
           {bestTimeToVisit && (
             <p className="text-xs text-muted-foreground mt-1">
               <Sparkles className="h-3 w-3 inline mr-1" />
-              Best time: {bestTimeToVisit}
+              Season: {bestTimeToVisit}
             </p>
           )}
         </div>

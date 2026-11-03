@@ -2544,8 +2544,8 @@ export default function CartPage() {
                             </h4>
                             <p className="text-xs text-muted-foreground mt-1">
                               {cartIntent === "buy"
-                                ? "Optional: our AI can organize these into an itinerary with optimized alternatives. You don't need it to buy."
-                                : "Next: our AI organizes your selections into an itinerary with optimized alternatives. Trip details live in the strip above — edit anytime."}
+                                ? "Optional: Optimize lays these out as days with alternatives. You don't need it to buy."
+                                : "Next: Optimize lays your selections out as days with alternatives. Trip details live in the strip above — edit anytime."}
                             </p>
                           </div>
                         </div>
@@ -2611,7 +2611,7 @@ export default function CartPage() {
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <p className="text-sm text-muted-foreground">
-                        Our AI scanned your {cart?.items?.length || 0} items and found room for improvement. 
+                        We looked at your {cart?.items?.length || 0} items and found room to tighten the days. 
                         Unlock the full optimizer to get your personalised plan.
                       </p>
 
@@ -2722,13 +2722,13 @@ export default function CartPage() {
                 <div className="lg:col-span-1">
                   <Card className="sticky top-4">
                     <CardHeader>
-                      <CardTitle className="text-base">Full AI Optimization</CardTitle>
+                      <CardTitle className="text-base">Optimize</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <ul className="space-y-2 text-sm text-muted-foreground">
                         <li className="flex items-start gap-2">
                           <CheckCircle className="w-4 h-4 text-green-500 shrink-0 mt-0.5" />
-                          AI-sequenced day plans for minimum travel time
+                          Days ordered for the shortest distance between stops
                         </li>
                         <li className="flex items-start gap-2">
                           <CheckCircle className="w-4 h-4 text-green-500 shrink-0 mt-0.5" />
@@ -2917,7 +2917,7 @@ export default function CartPage() {
                       {optimizationResult.recommendations.length > 0 && (
                         <Card>
                           <CardHeader>
-                            <CardTitle>AI Recommendations</CardTitle>
+                            <CardTitle>Suggestions</CardTitle>
                           </CardHeader>
                           <CardContent>
                             <ul className="space-y-3">

@@ -305,7 +305,7 @@ export function IntakePanel({
                 <ArrowLeft className="w-3.5 h-3.5 mr-1" /> Back
               </Button>
               <DialogTitle>What kind of trip</DialogTitle>
-              <DialogDescription>Pick a shape, or let AI build it with you.</DialogDescription>
+              <DialogDescription>Pick a shape, or describe it and we'll draft it.</DialogDescription>
             </DialogHeader>
 
             <StepRail current={2} />
@@ -383,8 +383,8 @@ export function IntakePanel({
                   data-testid="button-intake-plan-with-ai"
                 >
                   <Sparkles className="w-5 h-5 text-primary" />
-                  <span className="text-sm font-semibold text-foreground">Plan it with AI</span>
-                  <span className="text-xs text-muted-foreground">Describe it in your words → AI planner</span>
+                  <span className="text-sm font-semibold text-foreground">Describe it</span>
+                  <span className="text-xs text-muted-foreground">In your words — we lay out the days</span>
                 </button>
               </div>
 

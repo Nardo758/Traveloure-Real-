@@ -2262,4 +2262,8 @@ export const MIGRATION_FILES = [
   // tables, no DEFAULT, no CHECK. Declared in shared/schema.ts. HELD until Leon approves the SQL.
   // Ledger 2026-11-01-cn1e-concierge-task-log.
   "430_cn1e_concierge_tasks.sql",
+  // 431 — P-8 content round 3: feed_rec_label 'Recommended' → 'Picked for your days', the
+  // template chip "Popular but Spacious" → "Spacious", and the "Most Popular" sort option removed.
+  // DML only. HELD until Leon approves the SQL. Ledger 2026-11-03-p8-content-round-3.
+  "431_content_round3_labels.sql",
 ] as const;

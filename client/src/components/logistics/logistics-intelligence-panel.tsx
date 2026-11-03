@@ -160,7 +160,7 @@ export function LogisticsIntelligencePanel({
       id: "itinerary",
       name: "Itinerary Optimization",
       icon: Route,
-      description: "AI-powered scheduling, energy balancing, weather contingencies, and route optimization",
+      description: "Scheduling, energy balancing, weather contingencies, and route optimization",
       relevanceScore: calculateModuleRelevance("itinerary"),
       recommended: durationDays > 3 || config.timingComplexity !== "low",
       features: ["Travel Time Analysis", "Energy Balancing", "Weather Alerts", "Route Optimization"]
@@ -312,7 +312,7 @@ export function LogisticsIntelligencePanel({
         <div>
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-medium">
-              {recommendedModules.length > 0 ? "Recommended Modules" : "Available Modules"}
+              {recommendedModules.length > 0 ? "For this trip" : "Available Modules"}
             </h3>
             <Button 
               variant="ghost" 
@@ -320,7 +320,7 @@ export function LogisticsIntelligencePanel({
               onClick={() => setShowAllModules(!showAllModules)}
               data-testid="button-toggle-modules"
             >
-              {showAllModules ? "Show Recommended" : "Show All"}
+              {showAllModules ? "Show for this trip" : "Show All"}
             </Button>
           </div>
           
@@ -349,7 +349,7 @@ export function LogisticsIntelligencePanel({
                           {module.recommended && (
                             <Badge variant="default" className="bg-green-600">
                               <CheckCircle className="w-3 h-3 mr-1" />
-                              Recommended
+                              For this trip
                             </Badge>
                           )}
                         </div>
@@ -379,7 +379,7 @@ export function LogisticsIntelligencePanel({
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-primary" />
-              AI Planning Insights
+              Planning insights
             </CardTitle>
           </CardHeader>
           <CardContent>

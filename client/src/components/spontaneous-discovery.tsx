@@ -470,7 +470,7 @@ export function SpontaneousDiscovery({
       {activeCity && (
         <CuratedContentSection
           destination={activeCity}
-          label="Recommended by Traveloure"
+          label="From Traveloure"
           className="mt-4"
         />
       )}

@@ -83,7 +83,7 @@ test("visa help has the two global lines and no Japan lock", () => {
   assert.equal(visa.includes("Instantly look up visa requirements for any country"), false);
   assert.equal(visa.includes("we're onboarding visa specialists"), false);
   assert.equal(visa.includes("Kyoto"), false);
-  assert.ok(visa.includes("Look up visa requirements for your destination instantly with AI"), "the SEO line is not the any-country claim");
+  assert.ok(visa.includes("Look up visa requirements for your destination instantly, then book"), "the SEO line is not the any-country claim");
 });
 
 test("press keeps executive assistants because the role and routes are live", () => {

@@ -71,13 +71,13 @@ export function VerifyRequestButton({
       if (data?.available === false) {
         const reason =
           data.reason === "verification_unavailable"
-            ? "AI verification isn't configured right now."
+            ? "Verification isn't available right now."
             : data.reason === "partner_page_unreachable"
               ? "Couldn't reach the partner's page to verify it."
               : "Couldn't verify this request right now.";
         toast({ title: "Not verified", description: reason, variant: "destructive" });
       } else {
-        toast({ title: "Verified", description: "The AI checked the partner page — review the result below." });
+        toast({ title: "Verified", description: "We checked the partner page — review the result below." });
       }
     },
     onError: (err: any) => {
@@ -106,7 +106,7 @@ export function VerifyRequestButton({
       ) : (
         <Sparkles className="w-3.5 h-3.5 mr-1.5" />
       )}
-      {hasVerification ? "Re-verify with AI" : "Verify with AI"}
+      {hasVerification ? "Re-check the page" : "Check the page"}
     </Button>
   );
 }

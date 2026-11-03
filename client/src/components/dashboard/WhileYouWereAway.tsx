@@ -85,7 +85,7 @@ function markerKey(userId: string): string {
 
 const ACTOR_LABEL: Record<string, string> = {
   expert: "Your expert",
-  agent: "Your AI agent",
+  agent: "Your assistant",
   checkout: "Checkout",
 };
 

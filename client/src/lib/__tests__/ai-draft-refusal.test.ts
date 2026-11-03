@@ -15,7 +15,7 @@ import { isSlipHasItemsRefusal, readSlipHasItemsRefusal, slipHref } from "../ai-
 
 const BODY = {
   error: "slip_has_items",
-  message: "This plan already has items in it, so the free AI draft won't rebuild it.",
+  message: "This plan already has items in it, so Quick draft won't rebuild it.",
   optimize: true,
   itemCount: 6,
   tripId: "trip-abc",
