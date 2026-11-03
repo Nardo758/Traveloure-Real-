@@ -1,4 +1,5 @@
 import { Switch, Route, Redirect, useLocation, useSearch } from "wouter";
+import { Ga4PageViews } from "@/components/Ga4PageViews";
 import { VerifyEmailReminderBanner } from "@/components/auth/VerifyEmailReminderBanner";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -1567,6 +1568,8 @@ function App() {
                     the same chooser via usePlanning(). */}
                 <PlanningProvider>
                   <Toaster />
+                  {/* TG-1: sanitised GA4 page views (no-op unless the tag is loaded). */}
+                  <Ga4PageViews />
                   <LocaleSync />
                   {/* RC-3: the ONE pen binder, above every shell (see pen-binder.tsx). */}
                   <PenBinder />

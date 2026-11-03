@@ -6,9 +6,12 @@ import "./index.css";
 // ja-JP browser). Resolution steps 2-4 run here; step 1 (account preference) lands in useLocale.
 import "@/lib/i18n";
 import { installMaintenanceFetchInterceptor } from "@/lib/maintenance";
+import { initGa4 } from "@/lib/ga4";
 // §8 phone delivery: catch the browser's Add to Home Screen offer before it is missed.
 import "@/lib/install-prompt";
 
 installMaintenanceFetchInterceptor();
+// TG-1: the GA4 tag — a no-op unless VITE_GA_MEASUREMENT_ID is set at build.
+initGa4();
 
 createRoot(document.getElementById("root")!).render(<App />);
