@@ -493,7 +493,7 @@ test("A14: Finalize's expert lane opens the HandoffChooser on 'book' and sends n
 
   await expect(page.getByTestId("finalize-modal")).toHaveCount(0, { timeout: 10_000 });
   await expect(page.getByTestId("handoff-chooser")).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByTestId("handoff-kind-book")).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByTestId("handoff-kind-polish")).toHaveAttribute("aria-checked", "true");
   // Nothing is sent by opening the chooser; its confirm is the request.
   await page.waitForTimeout(1_000);
   expect(expertRequests, "Finalize's expert lane must not POST /api/expert-requests").toEqual([]);
