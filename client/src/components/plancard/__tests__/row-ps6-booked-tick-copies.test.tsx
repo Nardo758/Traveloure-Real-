@@ -105,7 +105,9 @@ describe("PS-6 — booked tick and booking copies", () => {
 
     const days = read("client/src/components/plancard/TripCardDays.tsx");
     assert.ok(days.includes("bookingCopy={bookingCopyFor(a)}"));
-    assert.ok(days.includes("const bookingReads = useBookingCopyReads(tripId, !waitlist);"));
+    // The two reads run only when at least one stop is confirmed or later (decision-maker, Nov 3, 2026).
+    assert.ok(days.includes("const anyConfirmedStop = days.some((d) => (d.activities ?? []).some((a) => itemBookedTick(a)));"));
+    assert.ok(days.includes("const bookingReads = useBookingCopyReads(tripId, !waitlist && anyConfirmedStop);"));
     const block = read("client/src/components/plancard/BookingCopyBlock.tsx");
     assert.ok(block.includes('queryKey: ["/api/my-bookings"]'), "My Bookings' read");
     assert.ok(block.includes('queryKey: ["/api/affiliate-booking-requests/user", { tripId }]'), "the booking-agent card's read");
