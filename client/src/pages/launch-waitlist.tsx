@@ -14,6 +14,7 @@
 // (`marketingConsent` → launch_marketing_news). The news box is drawn while WAITLIST_MARKETING_BOX_ENABLED is on
 // and its words resolve for the market (row 294). It starts unticked. A market with no words posts
 // `marketingConsent: false`.
+import { trackEvent } from "@/lib/ga4";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSignupMode } from "@/lib/signup-mode";
@@ -214,6 +215,8 @@ function TravelerForm({ source, refCode, launchMarket }: { source: string | null
       setError(r.error ?? WAITLIST_EMAIL_ERROR);
       return;
     }
+    // TG-1: the traveler form's successful signup (the allowlist sends only market "kyoto").
+    trackEvent("waitlist_signup", { market });
     setStatus("done");
   }
 

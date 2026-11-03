@@ -90,6 +90,8 @@ export interface PlanEntryStart {
   /** Party the traveler typed on the details step. Absent = not answered, never 0. */
   adults?: number;
   kids?: number;
+  /** TG-1: the picker group the plan was started in (an analytics label; the mint does not read it). */
+  group?: OccasionPickerGroup;
 }
 
 export type PlanEntryStartOutcome = { ok: true } | { ok: false; message?: string };
@@ -276,6 +278,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
       ...(planEntryEventRow(state) ? { event: planEntryEventRow(state)! } : {}),
       view: planEntryView(state, pickedRow),
       occasionAsked: !doorOccasion.current || !!state.event,
+      group: state.group,
       ...party,
     });
     if (!out.ok) {

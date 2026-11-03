@@ -19,6 +19,7 @@
  * Auth: PlanEntry is open to guests. A guest's Start a plan writes the v2 sign-in record and lands on
  * the guest map; the record is replayed through the same start after sign-in.
  */
+import { trackEvent } from "@/lib/ga4";
 import {
   createContext,
   useCallback,
@@ -523,6 +524,8 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
       );
       if (!outcome.ok) return { ok: false, message: outcome.message };
       const tripId = outcome.tripId;
+      // TG-1: a plan was minted. Door and group only — no city, dates or party (the allowlist drops anything else).
+      trackEvent("plan_started", { ...(door ? { door } : {}), ...(start.group ? { group: start.group } : {}) });
 
       const party: { adults?: number; kids?: number } = {};
       if (start.adults !== undefined) party.adults = start.adults;

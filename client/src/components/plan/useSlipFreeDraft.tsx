@@ -18,6 +18,7 @@
  * `datesPanel` (renamed from `datesDialog`, Oct 8, 2026) is what the Empty board's card mounts; it holds the
  * inline panel.
  */
+import { trackEvent } from "@/lib/ga4";
 import { useEffect, useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -89,6 +90,8 @@ export function useSlipFreeDraft(trip: FreeDraftTripInput, tripId: string): Slip
     mutationFn: (dates) => runFreeDraft({ ...(trip as any), ...(dates ?? {}) }),
     onSuccess: (result) => {
       setFailure(null);
+      // TG-1: a successful free draft. No params.
+      trackEvent("quick_draft");
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/option-sets`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/where-to-stay`] });
