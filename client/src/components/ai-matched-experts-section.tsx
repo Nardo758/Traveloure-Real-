@@ -252,8 +252,8 @@ export function AIMatchedExpertsSection({
             </div>
             <h4 className="font-medium text-sm mb-1">Find Your Perfect Expert Match</h4>
             <p className="text-xs text-muted-foreground mb-3 max-w-sm mx-auto">
-              Our AI analyzes your {experienceType || "travel"} preferences for {destination} and matches you with 
-              local experts who best understand your needs.
+              We match your {experienceType || "travel"} preferences for {destination} with local experts
+              who know what you're after.
             </p>
             <div className="flex flex-wrap justify-center gap-1 mb-4">
               {["Destination expertise", "Style alignment", "Budget fit", "Availability"].map((factor, idx) => (

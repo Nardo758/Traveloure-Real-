@@ -625,7 +625,7 @@ export const FEED_CONFIG_DEFAULTS = {
   recCadence: 4,
   wantedSlotMax: 2,
   wantedSlotSpacing: 6,
-  recLabel: "Recommended",
+  recLabel: "Picked for your days",
   recAffiliateLabel: "Sponsored",
 } as const;
 

@@ -393,7 +393,7 @@ export function seasonGroup(rating: string | null | undefined): MonthSeason["gro
 }
 
 export const SEASON_GROUP_LABELS: Record<SeasonGroup, string> = {
-  best: "Best time",
+  best: "In season",
   good: "Good time",
   average: "Average",
   off: "Off season",

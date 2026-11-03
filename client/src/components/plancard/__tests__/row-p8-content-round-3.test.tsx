@@ -8,6 +8,8 @@
  *   T4 The experience-template seed carries no "Most Popular" / "Popular but Spacious".
  *   T5 ROUND3_AI_CEILING and the never-say baseline equal their pinned counts and sit below 159 / 133.
  *   T6 Off-limits: BuildAroundDialog still says "ranked by" (R198); the cart's fee line is still drawn.
+ *   T7 The new strings pass the AI check and the never-say list; the three server feed-label fallbacks read
+ *      "Picked for your days".
  *
  * Run: npx tsx --test client/src/components/plancard/__tests__/row-p8-content-round-3.test.tsx
  */
@@ -19,6 +21,7 @@ import { scanCode } from "../../../../../scripts/check-never-say-copy";
 import { AI_DRAFT_REFUSAL_MESSAGE } from "../../../../../server/services/ai-draft-eligibility.pure";
 import { MIGRATION_FILES } from "../../../../../server/migrations/migration-files";
 import { readSlipHasItemsRefusal } from "../../../lib/ai-draft-refusal";
+import { SEASON_GROUP_LABELS } from "@shared/events-calendar";
 
 const read = (p: string) => fs.readFileSync(p, "utf8");
 const stripComments = (src: string) =>
@@ -50,6 +53,7 @@ const SECTION_4C = [
   "client/src/pages/transportation-booking.tsx",
   "client/src/components/logistics/budget-intelligence.tsx",
   "client/src/components/logistics/logistics-intelligence-panel.tsx",
+  "client/src/components/travelpulse/CityGrid.tsx",
 ];
 
 /**
@@ -106,13 +110,13 @@ describe("P-8 — content round 3", () => {
   it("T5 both ratchets are pinned below their round-2 values", () => {
     const purge = read("client/src/components/plancard/__tests__/row-p2-ai-purge.test.tsx");
     const ceiling = Number(/const ROUND3_AI_CEILING = (\d+);/.exec(purge)?.[1]);
-    assert.equal(ceiling, 119);
+    assert.equal(ceiling, 117);
     assert.ok(ceiling < 159);
     const b = JSON.parse(read("scripts/never-say-baseline.json")) as Record<string, Record<string, number>>;
     const entries = Object.values(b).reduce((n, by) => n + Object.keys(by).length, 0);
     const hits = Object.values(b).reduce((n, by) => n + Object.values(by).reduce((a, c) => a + c, 0), 0);
     assert.equal(entries, 119);
-    assert.equal(hits, 322);
+    assert.equal(hits, 321);
     assert.ok(entries < 133);
   });
 
@@ -133,9 +137,22 @@ describe("P-8 — content round 3", () => {
       "Spacious",
       "Tipping customs vary by place",
       "For your dates",
+      "Draft a new trip",
+      "We match your travel preferences for Kyoto with local experts who know what you're after.",
+      "In season",
     ]) {
       assert.doesNotMatch(v, /\bAI\b/);
       assert.deepEqual(siteNeverSayHits(v), [], v);
+    }
+    // The three rows Leon added on Nov 3: the events group label, the city card's door, the expert-match lead.
+    assert.equal(SEASON_GROUP_LABELS.best, "In season");
+    assert.ok(read("client/src/components/travelpulse/CityGrid.tsx").includes("Draft a new trip"));
+    assert.ok(read("client/src/components/ai-matched-experts-section.tsx").includes("We match your {experienceType || \"travel\"} preferences for {destination} with local experts"));
+    // The three server fallbacks for the feed label read the P-6 default, never "Recommended".
+    for (const f of ["server/routes/content.routes.ts", "server/services/upsell-query.service.ts", "server/routes/upsell.routes.ts"]) {
+      const src = read(f);
+      assert.ok(/(recommendedLabel|recLabel): "Picked for your days",/.test(src), `${f} falls back to "Picked for your days"`);
+      assert.ok(!/(recommendedLabel|recLabel): "Recommended",/.test(src), `${f} has no "Recommended" fallback`);
     }
   });
 });

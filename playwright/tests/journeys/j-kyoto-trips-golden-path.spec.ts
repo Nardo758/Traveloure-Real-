@@ -322,7 +322,7 @@ test.describe("1 · entry and occasion", () => {
     await expect(testid(page, "slip-title")).toContainText("Kyoto", { timeout: 20_000 });
   });
 
-  test("§1 B8 — with a Kyoto plan bound, Destinations → Kyoto → 'Plan New Trip with AI' makes a NEW plan and drafts into it", async ({ page }) => {
+  test("§1 B8 — with a Kyoto plan bound, Destinations → Kyoto → 'Draft a new trip' makes a NEW plan and drafts into it", async ({ page }) => {
     // Production smoke test Sep 30, 2026 (ledger `2026-09-30-b1-new-plan-inherits-nothing`): this
     // door re-opened the bound plan's setup and sent the draft at the existing plan (409 "already
     // has items"). `city_grid` is an entry door: it mints its own plan.

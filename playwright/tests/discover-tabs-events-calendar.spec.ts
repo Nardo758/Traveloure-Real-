@@ -154,7 +154,7 @@ test.describe('/events — the year ahead (2026-10-06-events-calendar)', () => {
   test('P6 Where to go lists Kyoto only', async ({ page }) => {
     await openEvents(page);
     await expect(page.locator('[data-testid^="events-where-group-"]')).toHaveCount(1);
-    await expect(page.getByTestId('events-where-group-kyoto')).toHaveText(/Best time/i);
+    await expect(page.getByTestId('events-where-group-kyoto')).toHaveText(/In season/i);
     await expect(page.getByTestId('events-where-group-goa')).toHaveCount(0);
     await expect(page.getByTestId('events-city-all')).toHaveCount(0);
     await expect(page.getByTestId('events-where-scope-kyoto')).toContainText('Japan');
