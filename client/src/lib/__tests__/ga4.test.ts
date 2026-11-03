@@ -3,13 +3,17 @@
  *
  *   T1 env unset or malformed → no script, no dataLayer, no window.gtag
  *   T2 env set → consent default (regioned, all denied) → consent default (analytics granted, ads denied) → js → config
- *      (send_page_view:false, anonymize_ip:true); the script host is www.googletagmanager.com with the id URL-encoded
+ *      (send_page_view:false, anonymize_ip:true, page_location sanitised); the script host is www.googletagmanager.com
+ *      with the id URL-encoded
  *   T3 sanitizePath: tokens, ids, query and hash
  *   T4 routeTitle is a static map ("Other" otherwise); isTravelerSurface is false for the console prefixes and /api
- *   T5 trackPageView: nothing from /admin; /plans/<uuid> sends page_path "/plans/:id", page_title "Plan", no page_location
+ *   T5 trackPageView: nothing from /admin; /plans/<uuid> sends page_path "/plans/:id", page_title "Plan" and
+ *      page_location origin + "/plans/:id" (TG-1b)
  *   T6 trackEvent: unknown names send nothing; extra params and free-text values are dropped
  *   T7 lib/analytics.ts carries no GA call; no file in client/src calls gtag/dataLayer except lib/ga4.ts
- *   T8 lib/ga4.ts never names user_id, set_user_properties or page_location
+ *   T8 lib/ga4.ts never names user_id or set_user_properties
+ *   T9 (TG-1b) a page view from /invite/abc123TOKEN?ref=x#y sends page_location ending /invite/:token, and the raw
+ *      token, query and hash appear nowhere in the dataLayer
  *
  * A fake window/document stands in for the browser (no jsdom).
  *
@@ -32,10 +36,13 @@ import {
 
 const ID = "G-9MSEL3ZVKQ";
 const UUID = "3f2a1c9e-8b7d-4e6f-a1b2-c3d4e5f60718";
+const ORIGIN = "https://www.traveloure.com";
 
-function fakeBrowser() {
+function fakeBrowser(pathname = "/", search = "", hash = "") {
   const appended: any[] = [];
-  const win: { dataLayer?: unknown[]; gtag?: (...a: unknown[]) => void } = {};
+  const win: { dataLayer?: unknown[]; gtag?: (...a: unknown[]) => void; location?: Record<string, string> } = {
+    location: { origin: ORIGIN, pathname, search, hash, href: `${ORIGIN}${pathname}${search}${hash}` },
+  };
   const doc = { createElement: (tag: string) => ({ tag }), head: { appendChild: (el: any) => appended.push(el) } };
   return { win, doc, appended };
 }
@@ -74,7 +81,10 @@ describe("T2 the load order", () => {
     assert.equal((c[0][2] as any).region.length, 32);
     for (const r of ["GB", "CH", "IS", "LI", "NO", "DE", "FR"]) assert.ok((c[0][2] as any).region.includes(r), r);
     assert.deepEqual(c[1][2], { ad_storage: "denied", ad_user_data: "denied", ad_personalization: "denied", analytics_storage: "granted" });
-    assert.deepEqual(c[3][2], { send_page_view: false, anonymize_ip: true, allow_google_signals: false, allow_ad_personalization_signals: false });
+    assert.deepEqual(c[3][2], {
+      send_page_view: false, anonymize_ip: true, allow_google_signals: false, allow_ad_personalization_signals: false,
+      page_location: `${ORIGIN}/`,
+    });
     assert.equal(b.appended.length, 1);
     const src = new URL(b.appended[0].src);
     assert.equal(src.host, "www.googletagmanager.com");
@@ -122,7 +132,7 @@ describe("T4 titles and surfaces", () => {
 });
 
 describe("T5 page views", () => {
-  it("nothing from a console surface; a plan view is sanitised with a static title and no page_location", () => {
+  it("nothing from a console surface; a plan view is sanitised with a static title and a sanitised page_location", () => {
     const b = fakeBrowser();
     initGa4({ id: ID, win: b.win, doc: b.doc as any });
     trackPageView("/admin/anything");
@@ -131,8 +141,7 @@ describe("T5 page views", () => {
     trackPageView(`/plans/${UUID}`);
     const ev = events(b.win);
     assert.equal(ev.length, 1, "consecutive identical paths are sent once");
-    assert.deepEqual(ev[0], ["event", "page_view", { page_path: "/plans/:id", page_title: "Plan" }]);
-    assert.equal("page_location" in (ev[0][2] as object), false);
+    assert.deepEqual(ev[0], ["event", "page_view", { page_path: "/plans/:id", page_title: "Plan", page_location: `${ORIGIN}/plans/:id` }]);
   });
   it("before the tag loads, nothing is sent", () => {
     trackPageView("/kyoto");
@@ -142,7 +151,7 @@ describe("T5 page views", () => {
 
 describe("T6 events", () => {
   it("only the allowlist, only declared enum params", () => {
-    const b = fakeBrowser();
+    const b = fakeBrowser(`/plans/${UUID}`, "?x=1");
     initGa4({ id: ID, win: b.win, doc: b.doc as any });
     trackEvent("purchase", { value: 10 });
     assert.equal(events(b.win).length, 0);
@@ -151,12 +160,13 @@ describe("T6 events", () => {
     trackEvent("waitlist_signup", { market: "kyoto" });
     trackEvent("waitlist_signup", { market: "lisbon" });
     trackEvent("quick_draft", { destination: "Kyoto" });
+    const loc = `${ORIGIN}/plans/:id`;
     assert.deepEqual(events(b.win), [
-      ["event", "plan_started", { door: "hero", group: "moments" }],
-      ["event", "plan_started", { door: "hero" }],
-      ["event", "waitlist_signup", { market: "kyoto" }],
-      ["event", "waitlist_signup", {}],
-      ["event", "quick_draft", {}],
+      ["event", "plan_started", { door: "hero", group: "moments", page_location: loc }],
+      ["event", "plan_started", { door: "hero", page_location: loc }],
+      ["event", "waitlist_signup", { market: "kyoto", page_location: loc }],
+      ["event", "waitlist_signup", { page_location: loc }],
+      ["event", "quick_draft", { page_location: loc }],
     ]);
   });
 });
@@ -182,8 +192,26 @@ describe("T7 the GA module is the only GA caller", () => {
 });
 
 describe("T8 no identity or location fields", () => {
-  it("lib/ga4.ts never names user_id, set_user_properties or page_location", () => {
+  it("lib/ga4.ts never names user_id or set_user_properties", () => {
     const src = fs.readFileSync("client/src/lib/ga4.ts", "utf8");
-    for (const s of ["user_id", "set_user_properties", "page_location"]) assert.ok(!src.includes(s), s);
+    for (const s of ["user_id", "set_user_properties"]) assert.ok(!src.includes(s), s);
+  });
+});
+
+describe("T9 no raw URL reaches the dataLayer (TG-1b)", () => {
+  it("a page view from an invite link sends page_location ending /invite/:token and never the token", () => {
+    const TOKEN = "abc123TOKEN";
+    const b = fakeBrowser(`/invite/${TOKEN}`, "?ref=mail", "#rsvp");
+    initGa4({ id: ID, win: b.win, doc: b.doc as any });
+    trackPageView(`/invite/${TOKEN}`);
+    trackEvent("quick_draft");
+    const config = calls(b.win).find((c) => c[0] === "config")!;
+    assert.equal((config[2] as any).page_location, `${ORIGIN}/invite/:token`);
+    const pv = events(b.win).find((e) => e[1] === "page_view")!;
+    assert.ok(String((pv[2] as any).page_location).endsWith("/invite/:token"));
+    assert.equal((pv[2] as any).page_location, `${ORIGIN}/invite/:token`);
+    for (const e of events(b.win)) assert.equal((e[2] as any).page_location, `${ORIGIN}/invite/:token`, String(e[1]));
+    const dump = JSON.stringify(calls(b.win).map((c) => c.map((x) => (x instanceof Date ? "date" : x))));
+    for (const raw of [TOKEN, "ref=mail", "#rsvp", "?"]) assert.ok(!dump.includes(raw), raw);
   });
 });

@@ -6,6 +6,10 @@
  * untouched. Nothing here reads `document.title`, the full URL, a query string, a user id, an email, a
  * price or any plan content; invite and shared-trip tokens never leave the browser.
  *
+ * TG-1b: gtag fills `page_location` (the `dl` hit parameter) from the raw `document.location` unless told
+ * otherwise, so the config call and every page view and event set it to origin + sanitizePath(pathname) —
+ * no query, no hash, no token.
+ *
  * `VITE_GA_MEASUREMENT_ID` unset or malformed ⇒ no script tag, no dataLayer write, no `window.gtag`, no network.
  * Consent: every ad_* signal denied everywhere; analytics_storage denied by default in the EEA/UK/CH (plus
  * IS/LI/NO) and granted elsewhere. `grantAnalyticsConsent()` is for the consent banner (CB-1); nothing calls it yet.
@@ -108,10 +112,19 @@ export function allowedParams(name: string, params?: Record<string, unknown>): {
 
 // ── Browser calls (injectable for tests) ───────────────────────────────────────────────────────
 
-type Ga4Window = { dataLayer?: unknown[]; gtag?: (...args: unknown[]) => void };
+type Ga4Window = { dataLayer?: unknown[]; gtag?: (...args: unknown[]) => void; location?: { origin?: string; pathname?: string } };
 type Ga4Document = { createElement: (tag: string) => any; head: { appendChild: (el: any) => unknown } };
 
 let state: { win: Ga4Window; id: string } | null = null;
+
+/** Pure. The page_location GA sees: origin + the sanitised path; no query, no hash. */
+export function sanitizedLocation(origin: string | undefined, pathname: string): string {
+  return `${origin ?? ""}${sanitizePath(pathname)}`;
+}
+
+function currentLocation(win: Ga4Window, pathname?: string): string {
+  return sanitizedLocation(win.location?.origin, pathname ?? win.location?.pathname ?? "/");
+}
 let lastPath: string | null = null;
 let warned = false;
 
@@ -143,7 +156,13 @@ export function initGa4(opts: { id?: string; win?: Ga4Window; doc?: Ga4Document 
   s.src = `${GA4_SCRIPT_HOST}/gtag/js?id=${encodeURIComponent(id)}`;
   doc.head.appendChild(s);
   win.gtag("js", new Date());
-  win.gtag("config", id, { send_page_view: false, anonymize_ip: true, allow_google_signals: false, allow_ad_personalization_signals: false });
+  win.gtag("config", id, {
+    send_page_view: false,
+    anonymize_ip: true,
+    allow_google_signals: false,
+    allow_ad_personalization_signals: false,
+    page_location: currentLocation(win),
+  });
   state = { win, id };
   lastPath = null;
   return true;
@@ -155,7 +174,7 @@ export function trackPageView(pathname: string): void {
   const page_path = sanitizePath(pathname);
   if (page_path === lastPath) return;
   lastPath = page_path;
-  state.win.gtag?.("event", "page_view", { page_path, page_title: routeTitle(pathname) });
+  state.win.gtag?.("event", "page_view", { page_path, page_title: routeTitle(pathname), page_location: currentLocation(state.win, pathname) });
 }
 
 /** One of the three allowlisted events, with its declared enum params only. */
@@ -166,7 +185,7 @@ export function trackEvent(name: Ga4EventName | string, params?: Record<string, 
     console.warn(`[ga4] dropped ${r.ok ? `params ${r.dropped.join(", ")} on ${name}` : `unknown event ${name}`}`);
   }
   if (!state || !r.ok) return;
-  state.win.gtag?.("event", name, r.params);
+  state.win.gtag?.("event", name, { ...r.params, page_location: currentLocation(state.win) });
 }
 
 /** For the consent banner (CB-1). */
