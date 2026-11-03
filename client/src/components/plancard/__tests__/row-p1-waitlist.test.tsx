@@ -93,7 +93,7 @@ describe("P-1c — waitlist mode", () => {
     const rail = read("client/src/components/plancard/SlipRail.tsx");
     assert.match(rail, /\{isOwner && !optimizerWaitlist \? \(optimizerSlot \? createPortal\(optimizerBlock, optimizerSlot\) : optimizerBlock\) : null\}/);
     assert.match(rail, /checkoutReady > 0 && waitlist \?/);
-    assert.match(rail, /checkoutReady > 0 && !waitlist && slipFeeDisplay/);
+    assert.ok(!rail.includes("slip-traveler-fee-preview"), "no fee preview (removed outright by P-6)");
     assert.match(rail, /data-testid="slip-action-save-to-plan"/);
     assert.match(read("client/src/components/plan/HandoffChooser.tsx"), /if \(waitlist\) return null;\n\s+return \(\n\s+<div className="space-y-3" data-testid="handoff-hold-form">/);
     assert.match(read("client/src/components/plancard/AskAiDrawer.tsx"), /const visibility = waitlist \? \{ \.\.\.railVisibility, canApply: false \} : railVisibility;/);

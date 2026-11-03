@@ -119,7 +119,7 @@ const DEFAULT_HEADING: Record<UpsellSurface, string> = {
   plancard_ontrip: "Near you on this trip",
   cart: "Frequently booked together",
   checkout: "Add to your plan",
-  discover_location: "Recommended for you",
+  discover_location: "Near your stops",
   discover_date: "Available on your date",
 };
 

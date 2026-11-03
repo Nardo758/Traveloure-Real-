@@ -387,7 +387,7 @@ export default function ServiceProviders() {
                   <SelectValue placeholder="Sort by" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="rating">Top Rated</SelectItem>
+                  <SelectItem value="rating">Rating</SelectItem>
                   <SelectItem value="reviews">Most Reviews</SelectItem>
                   <SelectItem value="price_low">Price: Low to High</SelectItem>
                   <SelectItem value="price_high">Price: High to Low</SelectItem>

@@ -75,6 +75,17 @@ export const GEM_EXEMPTIONS: ReadonlyArray<{
   },
 ];
 
+/**
+ * Row P-6 (ledger `2026-11-02-p6-banned-word-sweep`): PayPal is an EARNER payout method. These earner-side payout
+ * files may name it; no traveler surface may (row-p6-banned-words T6 asserts no traveler page imports them).
+ */
+export const PAYPAL_ALLOWED: readonly RegExp[] = [/^client\/src\/lib\/payout-[^/]+\.ts$/, /^client\/src\/components\/payouts?\//];
+
+/** Baseline entries kept on purpose, printed on every run so they are never mistaken for debt to shrink. */
+export const BASELINE_NOTES: Readonly<Record<string, string>> = {
+  'client/src/components/plancard/BuildAroundDialog.tsx "ranked by"': "approved R198 (BUILD_AROUND_COPY.autoBody)",
+};
+
 const NEVER_SCANNED = [/^shared\/banned-copy\.ts$/, /(^|\/)__tests__\//, /\.test\.tsx?$/, /^scripts\//];
 const SKIP_ATTRIBUTES = new Set(["data-testid", "className", "key", "id", "href", "to", "src", "name", "type", "role", "aria-hidden"]);
 const LOWER_TOKEN = /^[a-z0-9_.\-:/#?=&]+$/;
@@ -148,6 +159,7 @@ export function scanCode(file: string, source: string): Hit[] {
     if (text !== null && text.trim() && !skippedLiteral(node) && !(!ts.isJsxText(node) && LOWER_TOKEN.test(text.trim()))) {
       for (const words of hitsIn(text)) {
         if (words === "licensed" && (isLegal || /licen/i.test(enclosingFieldName(node)))) continue;
+        if (words === "paypal" && PAYPAL_ALLOWED.some((re) => re.test(file))) continue;
         out.push({ file, line: sf.getLineAndCharacterOfPosition(node.getStart()).line + 1, words, text: text.trim().slice(0, 120) });
       }
     }
@@ -213,7 +225,7 @@ export function scopeFiles(): string[] {
     ...listFiles("client/src", (f) => /\.(ts|tsx|json)$/.test(f)),
     ...listFiles("server/services", (f) => /^server\/services\/[^/]*email[^/]*\.ts$/.test(f)),
   ]);
-  return [...files].filter((f) => !NEVER_SCANNED.some((re) => re.test(f))).sort();
+  return Array.from(files).filter((f) => !NEVER_SCANNED.some((re) => re.test(f))).sort();
 }
 
 export function scanFile(file: string, source: string): Hit[] {
@@ -272,11 +284,26 @@ function selfTest(): number {
     overBaseline({ a: { secret: 2, trending: 1 } }, { a: { secret: 1 } }).map((o) => `${o.words}:${o.now}/${o.allowed}`),
     ["secret:2/1", "trending:1/0"],
   );
+  // Row P-6: one positive fixture per new pattern, the reasoned "Recommended · …" and "as soon as" passing, and the
+  // earner payout allowlist for PayPal.
+  const p6 = (t: string) => scanCode("client/src/x.tsx", `const t = ${JSON.stringify(t)};`).map((h) => h.words);
+  const p6Cases: Array<[string, string]> = [
+    ["A popular spot", "popular"], ["The best area", "best"], ["Top-rated guides", "top pick/rated"],
+    ["Our most popular tour", "most <superlative>"], ["The #1 tour", "#1"], ["A founding member", "founding"],
+    ["Pay with PayPal", "paypal"], ["Unlimited tasks", "unlimited"], ["Hotels ranked by distance", "ranked by"],
+    ["Traveler service fee: $4", "traveler fee"], ["Recommended", "recommended"], ["Opening soon", "soon"],
+    ["Fewer crowds", "crowd"], ["A busy street", "busy"], ["Go at a quiet time", "quiet time"], ["A packed square", "packed"],
+  ];
+  for (const [text, words] of p6Cases) expect(`P-6 flags "${text}"`, p6(text).includes(words), true);
+  expect('P-6 passes "Recommended · <reason>"', p6("Recommended · shortest distance between stops"), []);
+  expect('P-6 passes "as soon as"', p6("We'll write as soon as it's ready"), []);
+  expect("P-6 PayPal on an earner payout file passes", scanCode("client/src/lib/payout-setup.ts", 'const t = "Your PayPal email";'), []);
+  expect("P-6 PayPal on a traveler page fails", scanCode("client/src/pages/cart.tsx", 'const t = "Pay with PayPal";').map((h) => h.words), ["paypal"]);
   if (failures.length) {
     console.error(`check-never-say-copy --self-test FAILED:\n  ${failures.join("\n  ")}`);
     return 1;
   }
-  console.log("check-never-say-copy --self-test: OK (10 fixtures)");
+  console.log("check-never-say-copy --self-test: OK (10 fixtures + 20 P-6 cases)");
   return 0;
 }
 
@@ -286,6 +313,7 @@ function main(): number {
   const hits = scopeFiles().flatMap((f) => scanFile(f, fs.readFileSync(path.join(ROOT, f), "utf8")));
   const current = countHits(hits);
   const baseline: Counts = fs.existsSync(BASELINE_PATH) ? JSON.parse(fs.readFileSync(BASELINE_PATH, "utf8")) : {};
+  for (const [entry, why] of Object.entries(BASELINE_NOTES)) console.log(`[check-never-say-copy] kept in the baseline: ${entry} — ${why}`);
   for (const g of GEM_EXEMPTIONS.filter((x) => !x.sourceUrl)) console.log(`[check-never-say-copy] exempt gem "${g.name}" (${g.id}) still has no source URL recorded`);
   if (args.includes("--update-baseline")) {
     const raised = overBaseline(current, baseline).filter((o) => o.allowed > 0 || Object.keys(baseline).length > 0);

@@ -38,6 +38,7 @@
  */
 import { useSignupMode } from "@/lib/signup-mode";
 import { useQuery } from "@tanstack/react-query";
+import { FINALIZE_AGENT_LANE_SHOWN } from "./FinalizeBookingModal";
 import { Link, useLocation } from "wouter";
 import { ExternalLink, MessageCircle, Undo2, ShoppingBag } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -285,7 +286,8 @@ export function TripCardRail({ trip, isOwner, itemCount }: TripCardRailProps) {
   const advisor = advisorData?.advisor ?? null;
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 items-start" data-testid="trip-card-rail">
-      <BookingAgentCard tripId={trip.id} />
+      {/* Row P-6: the booking-agent card is not drawn while the agent lane is parked (row 298). */}
+      {FINALIZE_AGENT_LANE_SHOWN ? <BookingAgentCard tripId={trip.id} /> : null}
       {/* Row P-1c: waitlist mode — no advisor card (a paid handoff). */}
       {waitlist ? null : <YourExpertCard trip={trip} advisor={advisor} />}
       {/* 3 · ASK AI — the SAME drawer the slip mounts (L16 lane 4, ledger

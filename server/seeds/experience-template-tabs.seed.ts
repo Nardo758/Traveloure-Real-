@@ -3705,7 +3705,7 @@ const boysTripTabs: TabDef[] = [
         filterType: "single_select",
         icon: "CreditCard",
         options: [
-          { label: "Venmo/PayPal Split", value: "peer" },
+          { label: "Venmo Split", value: "peer" },
           { label: "Organizer Collects", value: "organizer" },
           { label: "Splitwise/Payment App", value: "app" },
         ]
@@ -3814,7 +3814,7 @@ const girlsTripTabs: TabDef[] = [
         filterType: "single_select",
         icon: "CreditCard",
         options: [
-          { label: "Venmo/PayPal Split", value: "peer" },
+          { label: "Venmo Split", value: "peer" },
           { label: "Organizer Collects", value: "organizer" },
           { label: "Splitwise/Payment App", value: "app" },
         ]

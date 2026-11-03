@@ -58,7 +58,7 @@ export const DEFAULT_FEED_COMPOSITION_CONFIG: FeedCompositionConfig = {
   recCadence: 4,
   wantedSlotMax: 2,
   wantedSlotSpacing: 6,
-  recommendedLabel: "Recommended",
+  recommendedLabel: "Picked for your days",
   affiliateLabel: "Paid partner",
 };
 
