@@ -436,6 +436,7 @@ test.describe("Deprecated route redirects — browser smoke (Suite 7)", () => {
   // ── Public deprecated routes — assert final URL destination ──────────────
 
   test("/optimize → /concierge (with ?tier=ai)", async ({ page }) => {
+    test.skip(true, "retired by CN-1g; CN-1g-UI replaces the redirect");
     await assertRedirectsTo(page, "/optimize", "/concierge", "tier=ai");
   });
 
