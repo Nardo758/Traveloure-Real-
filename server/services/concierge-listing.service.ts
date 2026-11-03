@@ -1,10 +1,12 @@
 /**
  * CN-1a — concierge listing type and the tasks a listing picks.
  *
- * One admission, two callers (POST and PATCH /api/provider/services).
- * service_type "concierge" is already in serviceTypeEnum. The per-trip unit
- * is pricing_unit "per_trip". Reply hours reuse response_window_hours.
- * Neither column is backfilled. Existing rows keep the service_type they have.
+ * One admission. Callers: POST and PATCH /api/provider/services, and the two
+ * side creates (duplicate, from-template) when the new row's service type is
+ * concierge. service_type "concierge" is already in serviceTypeEnum. The
+ * per-trip unit is pricing_unit "per_trip". Reply hours reuse
+ * response_window_hours. Neither column is backfilled. Existing rows keep
+ * the service_type they have.
  *
  * Task kinds are an admin list. A listing may pick only an active kind.
  * Stays and transport cannot be saved as bookable (shared/concierge-tasks.ts).
@@ -133,6 +135,59 @@ export async function admitConciergeListingWrite(input: {
   }
 
   return { ok: true, tasks: writes };
+}
+
+/**
+ * CN-1h. A duplicate is a create. When the copy's service type is concierge,
+ * the source row's price unit and task picks go through the same admission
+ * as POST /api/provider/services before the copy is inserted. Any other type
+ * is not this admission's job.
+ */
+export async function admitDuplicatedConciergeListing(input: {
+  userId: string;
+  serviceId: string;
+  serviceType: string | null | undefined;
+  pricingUnit: string | null | undefined;
+}): Promise<ConciergeAdmit> {
+  if (input.serviceType !== "concierge") return { ok: true, tasks: null };
+  const tasks = await loadListingConciergeTasks(input.serviceId);
+  return admitConciergeListingWrite({
+    userId: input.userId,
+    body: {
+      conciergeTasks: tasks.map((task) => ({ taskKindKey: task.taskKindKey, cap: task.cap })),
+    },
+    storedServiceType: null,
+    nextServiceType: "concierge",
+    pricingUnitProvided: true,
+    nextPricingUnit: input.pricingUnit ?? null,
+    storedPricingUnit: null,
+  });
+}
+
+/**
+ * CN-1h. Creating from a template is a create. When the template's service
+ * type is concierge, the request body is admitted the same way as POST
+ * /api/provider/services (task picks and price unit) before the row exists.
+ * Any other template type skips this admission.
+ */
+export async function admitFromTemplateConciergeListing(input: {
+  userId: string;
+  serviceType: string | null | undefined;
+  body: unknown;
+}): Promise<ConciergeAdmit> {
+  if (input.serviceType !== "concierge") return { ok: true, tasks: null };
+  const record = asRecord(input.body);
+  const pricingUnitProvided = !!record && Object.prototype.hasOwnProperty.call(record, "pricingUnit");
+  const rawUnit = pricingUnitProvided ? record?.pricingUnit : null;
+  return admitConciergeListingWrite({
+    userId: input.userId,
+    body: input.body,
+    storedServiceType: null,
+    nextServiceType: "concierge",
+    pricingUnitProvided,
+    nextPricingUnit: typeof rawUnit === "string" ? rawUnit : null,
+    storedPricingUnit: null,
+  });
 }
 
 export async function commitConciergeTasks(serviceId: string, tasks: ConciergeTaskWrite[] | null): Promise<void> {
