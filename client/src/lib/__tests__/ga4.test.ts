@@ -12,8 +12,8 @@
  *   T6 trackEvent: unknown names send nothing; extra params and free-text values are dropped
  *   T7 lib/analytics.ts carries no GA call; no file in client/src calls gtag/dataLayer except lib/ga4.ts
  *   T8 lib/ga4.ts never names user_id or set_user_properties
- *   T9 (TG-1b) a page view from /invite/abc123TOKEN?ref=x#y sends page_location ending /invite/:token, and the raw
- *      token, query and hash appear nowhere in the dataLayer
+ *   T9 (TG-1b) a page view from /invite/abc123TOKEN?ref=x#y sends page_location ending /invite/:token; a same-origin
+ *      invite referrer is sent as origin + /invite/:token; the raw token, query and hash appear nowhere in the dataLayer
  *
  * A fake window/document stands in for the browser (no jsdom).
  *
@@ -202,6 +202,7 @@ describe("T9 no raw URL reaches the dataLayer (TG-1b)", () => {
   it("a page view from an invite link sends page_location ending /invite/:token and never the token", () => {
     const TOKEN = "abc123TOKEN";
     const b = fakeBrowser(`/invite/${TOKEN}`, "?ref=mail", "#rsvp");
+    (b.doc as any).referrer = `${ORIGIN}/invite/${TOKEN}?ref=mail#rsvp`;
     initGa4({ id: ID, win: b.win, doc: b.doc as any });
     trackPageView(`/invite/${TOKEN}`);
     trackEvent("quick_draft");
@@ -210,6 +211,7 @@ describe("T9 no raw URL reaches the dataLayer (TG-1b)", () => {
     const pv = events(b.win).find((e) => e[1] === "page_view")!;
     assert.ok(String((pv[2] as any).page_location).endsWith("/invite/:token"));
     assert.equal((pv[2] as any).page_location, `${ORIGIN}/invite/:token`);
+    assert.equal((pv[2] as any).page_referrer, `${ORIGIN}/invite/:token`, "a same-origin referrer is sanitised");
     for (const e of events(b.win)) assert.equal((e[2] as any).page_location, `${ORIGIN}/invite/:token`, String(e[1]));
     const dump = JSON.stringify(calls(b.win).map((c) => c.map((x) => (x instanceof Date ? "date" : x))));
     for (const raw of [TOKEN, "ref=mail", "#rsvp", "?"]) assert.ok(!dump.includes(raw), raw);
