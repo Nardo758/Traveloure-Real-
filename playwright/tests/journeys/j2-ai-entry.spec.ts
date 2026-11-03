@@ -90,6 +90,7 @@ test.afterAll(async () => {
 
 test.describe("J2 — AI Entry → catalog checkout (matrix-id: J2)", () => {
   test.describe.configure({ mode: "serial" });
+  test.skip(true, "retired by CN-1g; removed in CN-1g-UI");
 
   test("J2: concierge AI entry, then H5-guarded checkout of one catalog item", async ({ page }) => {
     test.setTimeout(120_000);
