@@ -268,10 +268,6 @@ test("contact, concierge, inbox answers, and message reads stay ungated", () => 
   assert.ok(!inbox.includes("requireVerifiedEmail"));
   assert.ok(!inbox.includes("assertTravelerMayContact"));
 
-  const concierge = read("server", "routes", "concierge.routes.ts");
-  assert.ok(!concierge.includes("requireVerifiedEmail(\"expert_contact\")"));
-  assert.ok(!concierge.includes("refuseUnverifiedTravelerContact"));
-
   const messages = read("server", "routes", "messages.ts");
   const afterSend = messages.slice(messages.indexOf('router.patch("/:messageId/read"'));
   assert.ok(!afterSend.includes("refuseUnverifiedTravelerContact"));

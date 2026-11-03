@@ -267,7 +267,8 @@ import { optimizerRunTollPlan, recordOptimizerRunToll } from "./services/fee-led
 import { coversAction } from "./services/trip-entitlement.service";
 import plancardRoutes from "./routes/plancard.routes";
 import optimizationRoutes from "./routes/optimization.routes";
-import conciergeRoutes from "./routes/concierge.routes";
+import travelerDoorsRoutes from "./routes/traveler-doors.routes";
+import { conciergeRetiredMiddleware } from "./routes/concierge-retired";
 import upsellRoutes from "./routes/upsell.routes";
 import tripsRoutes from "./routes/trips.routes";
 import advisorRoutes from "./routes/advisor.routes";
@@ -1178,8 +1179,10 @@ export async function registerRoutes(
   // Optimization routes - heuristic preview + payment-gated AI optimization
   app.use(optimizationRoutes);
 
-  // Concierge routes - pay-per-use Concierge layer (intent log; Phase 5 adds router + quote)
-  app.use(conciergeRoutes);
+  // CN-1g: the legacy /api/concierge/* funnel answers a permanent 410 (exact paths only); the
+  // traveler-doors read moved to its own module.
+  app.use(conciergeRetiredMiddleware);
+  app.use(travelerDoorsRoutes);
   // CN-1e: the concierge task log (traveler OKs, the assigned expert resolves inside the access window).
   app.use(conciergeTaskLogRoutes);
 

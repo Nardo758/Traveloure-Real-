@@ -1,12 +1,12 @@
-// Ledger `2026-10-18-traveler-doors-hidden`: CI fixture databases run with BOTH switched traveler doors OPEN —
-// `event_concierge` (the old done-for-you concierge) and `handoff_booking` ("Book this for me") — so the specs that
-// cover those flows keep covering them. Production keeps both off (a missing row reads off); an admin turns them on
+// Ledger `2026-10-18-traveler-doors-hidden`: CI fixture databases run with the switched traveler door
+// `handoff_booking` ("Book this for me") OPEN, so the specs that cover it keep covering it. `event_concierge` (the old
+// done-for-you concierge) is retired by CN-1g and no longer written. Production keeps both off (a missing row reads off); an admin turns them on
 // in /admin, audited — never a script.
 //
-// LOCAL DATABASES ONLY: it refuses any DATABASE_URL whose host is not localhost / 127.0.0.1 / ::1. It writes TWO
-// platform_settings rows and nothing else.
+// LOCAL DATABASES ONLY: it refuses any DATABASE_URL whose host is not localhost / 127.0.0.1 / ::1. It writes ONE
+// platform_settings row and nothing else.
 import { Pool } from "pg";
-import { EVENT_CONCIERGE_SETTING, HANDOFF_BOOKING_SETTING } from "../shared/traveler-doors";
+import { HANDOFF_BOOKING_SETTING } from "../shared/traveler-doors";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
@@ -23,7 +23,7 @@ async function main() {
     process.exit(1);
   }
   const pool = new Pool({ connectionString: url });
-  for (const key of [EVENT_CONCIERGE_SETTING, HANDOFF_BOOKING_SETTING]) {
+  for (const key of [HANDOFF_BOOKING_SETTING]) {
     await pool.query(
       `INSERT INTO platform_settings (setting_key, setting_value, description, updated_at)
        VALUES ($1, 'true', 'CI fixture database: switched traveler door open (scripts/ci-traveler-doors-on.ts)', NOW())

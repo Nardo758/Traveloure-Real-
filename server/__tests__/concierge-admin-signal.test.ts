@@ -36,7 +36,6 @@ import {
 } from "../utils/concierge-admin-notification";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const conciergeRoutesSrc = readFileSync(join(HERE, "../routes/concierge.routes.ts"), "utf8");
 const adminRoutesSrc = readFileSync(join(HERE, "../routes/admin.routes.ts"), "utf8");
 
 // ─── C2: tier views ──────────────────────────────────────────────────────────
@@ -140,15 +139,6 @@ describe("C3 — concierge admin_notifications payload", () => {
     assert.equal(conciergeTierLabel("expert"), "Destination");
     assert.equal(conciergeTierLabel("full"), "Full / Done-for-You");
   });
-
-  test("route wiring: notification fires on BOTH create paths, tier selection, and escalation", () => {
-    const calls = conciergeRoutesSrc.split("await notifyAdminsOfConciergeRequest(").length - 1;
-    assert.ok(calls >= 4, `expected >=4 notify call sites (requests, quote, PATCH, escalations); found ${calls}`);
-    assert.ok(
-      conciergeRoutesSrc.includes("buildConciergeAdminNotification(row, event, extraMetadata)"),
-      "the insert must use the shared payload builder these tests assert against"
-    );
-  });
 });
 
 // ─── C4: escalation allowlist (§19) + posture ────────────────────────────────
@@ -190,20 +180,5 @@ describe("C4 — POST /api/concierge/escalations body allowlist", () => {
   test("note over 2000 chars is rejected", () => {
     assert.equal(escalationRequestSchema.safeParse({ note: "a".repeat(2001) }).success, false);
     assert.equal(escalationRequestSchema.safeParse({ note: "a".repeat(2000) }).success, true);
-  });
-
-  test("route wiring: authenticated, session-derived identity, tier pinned, ownership-checked conversation", () => {
-    const start = conciergeRoutesSrc.indexOf('router.post("/api/concierge/escalations"');
-    assert.ok(start > -1, "escalations route must exist on the existing concierge router");
-    const block = conciergeRoutesSrc.slice(start, conciergeRoutesSrc.indexOf("router.get", start));
-    assert.ok(block.includes("isAuthenticated"), "escalations must require auth");
-    assert.ok(block.includes("escalationRequestSchema.parse(req.body)"), "body must go through the allowlist schema");
-    assert.ok(!block.includes("...req.body"), "no body spreading — §19");
-    assert.ok(block.includes('chosenTier: "ai"'), "tier is pinned server-side to 'ai'");
-    assert.ok(block.includes("getUserId(req)"), "identity comes from the session (§14)");
-    assert.ok(
-      block.includes("chatStorage.getConversation(body.conversationId, userId)"),
-      "conversation context must be ownership-verified before reaching the staff queue"
-    );
   });
 });
