@@ -13,6 +13,7 @@
  * Run: npx tsx --test client/src/components/plancard/__tests__/row-cap1-consumers.test.tsx
  */
 import { describe, it } from "node:test";
+import "../../__tests__/node-navigator";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
