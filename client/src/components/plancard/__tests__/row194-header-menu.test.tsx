@@ -6,7 +6,7 @@
  *      not header buttons, and keep their testids
  *   H3 the menu labels are the four held labels; the trigger's name is a placeholder
  *   H4 the phone dialog lives with the header, so it survives the menu closing
- *   H5 the Finalize chooser does not render the Booking agent lane; myself and expert stay; Concierge unchanged
+ *   H5 the Finalize chooser does not render the Booking agent lane; myself and expert stay; no Concierge lane (CN-1g-UI)
  *   H6 the mobile BottomActionBar and the slip's SlipPlanMenu still carry their Share entries
  *
  * Run: npx tsx --test client/src/components/plancard/__tests__/row194-header-menu.test.tsx
@@ -52,13 +52,15 @@ describe("row 194 header menu", () => {
     assert.match(btn, /\{onOpen \? null : <PhoneDeliveryDialog/);
   });
 
-  it("H5 Finalize: no Booking agent lane; myself and expert stay; Concierge unchanged", () => {
+  it("H5 Finalize: no Booking agent lane; myself and expert stay; no Concierge lane", () => {
     assert.equal(FINALIZE_AGENT_LANE_SHOWN, false);
     const modal = read("client/src/components/plancard/FinalizeBookingModal.tsx");
     assert.match(modal, /\.\.\.\(FINALIZE_AGENT_LANE_SHOWN\s*\?/);
     assert.match(modal, /data-testid="finalize-option-myself"/);
     assert.match(modal, /\{ id: "expert", label: "Travel expert"/);
-    assert.match(modal, /\.\.\.\(conciergeShown \? \[\{ id: "concierge"/);
+    // CN-1g-UI (sanctioned): the legacy Concierge lane is retired.
+    assert.doesNotMatch(modal, /id: "concierge"/);
+    assert.doesNotMatch(modal, /conciergeShown/);
   });
 
   it("H6 BottomActionBar and SlipPlanMenu unchanged", () => {

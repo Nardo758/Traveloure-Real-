@@ -64,12 +64,13 @@ const RULES = "lib/expert-request-review.ts";
  */
 const SURFACES: { file: string; sender: string }[] = [
   // R323 (step 7b): the template page LEFT this set — its expert surfaces now lead to the slip's
-  // ONE handoff chooser and the page sends no request of its own (pinned by W4 below).
+  // ONE handoff chooser and the page sends no request of its own (W4 retired with the concierge page, CN-1g-UI).
   // Ledger `2026-09-07-concierge-door` (L6): the concierge tier CARDS were retired when
   // `/concierge` became a door into the one plan modal, so the Destination Concierge surface
   // moved from `components/concierge/DeliveryOptions.tsx` (deleted) onto the page itself. The
   // sender kept its name and the invariant is unchanged — the file it lives in is what moved.
-  { file: "pages/concierge/index.tsx", sender: "sendExpertRequest" },
+  // CN-1g-UI (ledger `2026-11-03-cn1g-ui-retire-legacy-concierge`, sanctioned): the concierge page is deleted with the
+  // legacy funnel, so it leaves this set. No surface remains here; W1–W3 keep their shape for the next surface added.
 ];
 
 /**
@@ -194,33 +195,6 @@ describe("L19 — the send lives on the review sheet's button, not on the door",
     }
   });
 
-  it("W4 the doors OPEN the review and never call the sender themselves", () => {
-    // The concierge DOOR moved with ledger `2026-09-07-concierge-door`: the tier cards were
-    // retired and the tier choice IS the plan modal's finish, so the control that opens the
-    // review is the door's own finish handler. Same invariant, one surface along — the handler
-    // may open the review and may record the funnel's chosen tier, and may not send the lead.
-    const concierge = stripComments(readClient("pages/concierge/index.tsx"));
-    assert.ok(
-      /function handlePlanFinish\(/.test(concierge),
-      "the concierge door's finish handler is the door — an async door is a door that awaits a write",
-    );
-    assert.ok(
-      concierge.includes("setExpertFinish({ lead: next, plan })"),
-      "choosing the local-expert finish opens the review and nothing else",
-    );
-    for (const at of occurrences(concierge, "sendExpertRequest")) {
-      const lineStart = concierge.lastIndexOf("\n", at) + 1;
-      const lineEnd = concierge.indexOf("\n", at);
-      const line = concierge.slice(lineStart, lineEnd === -1 ? undefined : lineEnd);
-      if (DECLARATION.test(line)) continue;
-      assert.notEqual(
-        enclosingFunction(concierge, at),
-        "handlePlanFinish",
-        "the door must not call the sender",
-      );
-    }
-  });
-
   it("W5 the sheet itself writes nothing", () => {
     const src = stripComments(readClient(SHEET));
     for (const write of ["fetch(", "apiRequest(", "useMutation"]) {
@@ -246,22 +220,6 @@ describe("L19 — the send lives on the review sheet's button, not on the door",
     assert.ok(
       !src.includes("Intl.NumberFormat"),
       "the sheet formats no price — it renders the line its caller already shows",
-    );
-  });
-
-  it("W7 the concierge price the sheet shows is the surface's own single derivation", () => {
-    // Repaired, not deleted, by ledger `2026-09-07-concierge-door`: the tier CARD that used to
-    // render this line was retired with the three-tier chooser, so "the card renders it" is no
-    // longer a fact to pin. What survives — and is the reason the pin existed — is that the
-    // concierge surface derives the expert price EXACTLY ONCE and HANDS it to the sheet, so the
-    // review can never quote a number the surface does not stand behind (§18 rule 1).
-    const src = stripComments(readClient("pages/concierge/index.tsx"));
-    assert.ok(src.includes("function expertPriceLabel("), "the tier price is resolved once");
-    assert.ok(src.includes("priceLabel={expertPriceLabel("), "the sheet is handed that same line");
-    assert.equal(
-      occurrences(src, "Intl.NumberFormat").length,
-      1,
-      "one price formatter on the surface — a second is how the sheet and the surface disagree",
     );
   });
 
