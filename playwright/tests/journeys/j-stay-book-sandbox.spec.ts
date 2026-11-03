@@ -37,7 +37,7 @@ function serverRatesError(stayId: string): string {
  *   · It pays in Nuitée's SDK as a traveler would, typing LiteAPI's public SANDBOX test card into the SDK's own
  *     fields (no field is ours). Sandbox refused a book sent without the card step (run 38274998493, `failed`).
  *     The SDK returns to `/plans/:tripId/stays/:itemId/booked`, which posts book once; the test reads that answer.
- *   · Then the slip's existing booking line reads "booked · #<code>", and the immediate cancel clears it.
+ *   · Then the slip shows the booked tick (no reference — Row PS-6), and the immediate cancel clears it.
  *
  * Skipped unless LITEAPI_SANDBOX_E2E=1 (the job sets it only when the sandbox key is configured).
  */
@@ -282,7 +282,11 @@ test.describe("stay booking — LiteAPI sandbox book then immediate cancel", () 
       expect(booked.state, JSON.stringify(booked)).toBe("confirmed");
       expect(typeof booked.hotelConfirmationCode === "string" || booked.hotelConfirmationCode === null).toBe(true);
       await page.goto(`${BASE_URL}/plans/${tripId}`);
-      if (booked.hotelConfirmationCode) await expect(page.getByText(`booked · #${booked.hotelConfirmationCode}`).first()).toBeVisible();
+      // Row PS-6 (sanctioned, brief §7): the slip shows only a booked tick — no reference.
+      if (booked.hotelConfirmationCode) {
+        await expect(page.getByTestId(`slip-item-booked-${itemId}`).first()).toHaveAttribute("aria-label", "Booked");
+        await expect(page.getByText(`#${booked.hotelConfirmationCode}`)).toHaveCount(0);
+      }
     } finally {
       if (booked.state === "confirmed" || booked.state === "pending") {
         // Never sends acknowledgeCharges: CI does not consent to a charge on anyone's behalf.

@@ -21,7 +21,7 @@ import { SET_AS_STAY_LABEL } from "@shared/where-to-stay";
 import type { UpsellLine as UpsellLineDto } from "@shared/upsell-line";
 import { UpsellLine } from "./UpsellLine";
 import type { ReactNode } from "react";
-import { AlertTriangle, CheckCircle2, Circle, Clock, Lock, MoreHorizontal, Navigation } from "lucide-react";
+import { AlertTriangle, BadgeCheck, CheckCircle2, Circle, Clock, Lock, MoreHorizontal, Navigation } from "lucide-react";
 import { Link } from "wouter";
 import {
   DropdownMenu,
@@ -120,8 +120,15 @@ export interface ItemRowProps {
   timeZone?: string | null;
   mode: ItemRowMode;
   role: ItemRowRole;
-  /** The line a real booking says ("booked · #A1B2", "Payment failed — …"); null ⇒ nothing. */
+  /** The line a booking note says ("Payment didn't go through", "Under review — …"); null ⇒ nothing. */
   bookingState?: string | null;
+  /**
+   * Row PS-6 (Leon, Nov 2 §3): the slip's booked tick — an icon after the title, labelled "Booked", with no reference
+   * and no partner name. Distinct from the Trip Card's visited tick (a button before the title).
+   */
+  booked?: boolean;
+  /** Row PS-6: the Trip Card's booking copy for this stop. When present it is drawn in place of the booking line. */
+  bookingCopy?: ReactNode;
   /** Declared for step 7 (handoff); not drawn in step 1. */
   routing?: ItemRowRouting;
   expertNote?: { note: string; author: string | null; neighbourhood?: string | null; followUp?: ReactNode } | null;
@@ -226,6 +233,11 @@ export function ItemRow(props: ItemRowProps) {
       ) : (
         <span className="min-w-0 break-words" data-testid={`slip-item-name-${a.id}`}>{a.name}</span>
       )}
+      {props.booked ? (
+        <span role="img" aria-label="Booked" title="Booked" className="flex-shrink-0 mt-0.5 text-primary" data-testid={`slip-item-booked-${a.id}`}>
+          <BadgeCheck className="h-4 w-4" aria-hidden="true" />
+        </span>
+      ) : null}
     </p>
   );
 
@@ -275,7 +287,9 @@ export function ItemRow(props: ItemRowProps) {
       {closing ? <ClosingWarning id={a.id} closing={closing} /> : null}
       {timedEntry ? <ClosingWarning id={a.id} closing={timedEntry} testId={`slip-item-timed-entry-${a.id}`} /> : null}
       {props.lastEntryWaiting ? <LastEntryWaiting id={a.id} line={props.lastEntryWaiting} /> : null}
-      {props.bookingState ? (
+      {props.bookingCopy ? (
+        props.bookingCopy
+      ) : props.bookingState ? (
         <p className="mt-0.5 text-xs text-muted-foreground" data-testid={`slip-item-booking-${a.id}`}>
           {props.bookingState}
         </p>
@@ -488,6 +502,11 @@ function BoardItemRow(
         ) : (
           <span className={titleClass} data-testid={`slip-item-name-${a.id}`}>{title}</span>
         )}
+        {props.booked ? (
+          <span role="img" aria-label="Booked" title="Booked" className="flex-shrink-0 mt-0.5 text-[color:var(--slip-teal-ink)]" data-testid={`slip-item-booked-${a.id}`}>
+            <BadgeCheck className="h-4 w-4" aria-hidden="true" />
+          </span>
+        ) : null}
         {props.pen ? (
           <span
             className="ml-auto flex-shrink-0 rounded-md bg-[color:var(--slip-gold-wash)] px-1.5 py-0.5 text-[11px] font-semibold leading-tight text-[color:var(--slip-gold-ink)]"
@@ -562,16 +581,11 @@ function BoardItemRow(
       {closing ? <ClosingWarning id={a.id} closing={closing} /> : null}
       {timedEntry ? <ClosingWarning id={a.id} closing={timedEntry} testId={`slip-item-timed-entry-${a.id}`} /> : null}
       {props.lastEntryWaiting ? <LastEntryWaiting id={a.id} line={props.lastEntryWaiting} /> : null}
-      {props.bookingState ? (
-        // The Handoff board draws a booked stop as a teal pill; every other booking note stays a line.
-        <p
-          className={
-            /^booked\b/i.test(props.bookingState)
-              ? "self-start rounded-lg bg-[color:var(--slip-teal-wash)] px-2.5 py-1 text-xs font-semibold text-[color:var(--slip-teal-ink)]"
-              : "text-xs text-[color:var(--slip-muted)]"
-          }
-          data-testid={`slip-item-booking-${a.id}`}
-        >
+      {props.bookingCopy ? (
+        props.bookingCopy
+      ) : props.bookingState ? (
+        // Row PS-6: the booked pill is gone — a booked stop carries the tick after its title; a note stays a line.
+        <p className="text-xs text-[color:var(--slip-muted)]" data-testid={`slip-item-booking-${a.id}`}>
           {props.bookingState}
         </p>
       ) : null}

@@ -49,6 +49,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { format } from "date-fns";
 import { formatPlanBookingWindow, parseTripDate } from "@/lib/calendar-date";
+import { bookingConfirmedOrLater } from "@/lib/item-booking-state";
 import { useToast } from "@/hooks/use-toast";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -1056,10 +1057,14 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
                   Reviewed
                 </Badge>
               )}
-              <span className="text-sm text-muted-foreground">
-                {safeFormat(booking.createdAt, "MMM d, yyyy")
-                  ? `Booked on ${safeFormat(booking.createdAt, "MMM d, yyyy")}`
-                  : "Booked"}
+              {/* Row PS-6: "Booked on" only once the booking is confirmed or later; a pending booking shows its status
+                  word (the same rule as the slip's booked tick, `bookingConfirmedOrLater`). */}
+              <span className="text-sm text-muted-foreground" data-testid={`text-booked-on-${booking.id}`}>
+                {bookingConfirmedOrLater(actionStatus)
+                  ? safeFormat(booking.createdAt, "MMM d, yyyy")
+                    ? `Booked on ${safeFormat(booking.createdAt, "MMM d, yyyy")}`
+                    : "Booked"
+                  : status.label}
               </span>
             </div>
 
