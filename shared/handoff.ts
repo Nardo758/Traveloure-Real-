@@ -10,6 +10,13 @@
  */
 
 /** The chooser's three answers (§12 step 1). */
+/**
+ * CN-1g-UI H24 (HELD — pending Leon's wording comment on the PR): the handoff's 24 h line, said by the slip banner and
+ * by the traveler's notification. The concierge fallback it used to offer is retired, so it no longer names one.
+ * ONE spelling for both sites (ledger `2026-11-03-cn1g-ui-retire-legacy-concierge`).
+ */
+export const HANDOFF_FALLBACK_LINE = "No local has accepted yet. Keep waiting, or withdraw the ask.";
+
 export const HANDOFF_KINDS = ["polish", "book", "plan_all"] as const;
 export type HandoffKind = (typeof HANDOFF_KINDS)[number];
 

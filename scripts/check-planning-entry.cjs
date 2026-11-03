@@ -209,25 +209,8 @@ const REQUIRED_SOURCE_FIELDS = [
     forbid: ["experienceType"],
     why: "the AI door passes the draft's destination and occasion slug; eventType is a different vocabulary (§13)",
   },
-  // Ledger `2026-09-07-concierge-door` (L6, brief §2; CLAUDE.md Locked Decision 45 (2)). The
-  // concierge intent form is a DOOR: it asks for a destination and a type before anything else,
-  // so it passes both rather than letting the modal ask again. `experienceSlug` is the CATALOG's
-  // slug, resolved through `findOccasionByKey` against `GET /api/experience-types` — the form's
-  // own `eventType` list is the FEE vocabulary, and half of it (`vacation`, `anniversary`,
-  // `other`) resolves to no `experience_types` row at all, so an unresolvable answer passes
-  // NOTHING and the modal asks step 1 (Locked Decision 33 rule 2).
-  // `experienceType` is FORBIDDEN for the same reason it is on the AI door: PlanningSource's
-  // `experienceType` is one of five FROZEN coarse keys (ruling 2026-09-01-moment-key) and this
-  // form's values are a different vocabulary, so forwarding one would be a guess wearing a
-  // prefill's clothes (§13). The party size is deliberately NOT a PlanningSource field — it is a
-  // single stated total and rides in trip context as `travelers`, which is the one field that
-  // holds exactly that.
-  {
-    file: "client/src/pages/concierge/index.tsx",
-    require: ["destination", "experienceSlug"],
-    forbid: ["experienceType"],
-    why: "the concierge door holds the destination and the type the intent form just asked for",
-  },
+  // CN-1g-UI (ledger `2026-11-03-cn1g-ui-retire-legacy-concierge`): the /concierge intent-form door is deleted with
+  // its page; the route now redirects to the Local concierge filter.
   {
     file: "client/src/components/travelpulse/CityGrid.tsx",
     require: ["city", "country"],
@@ -643,7 +626,9 @@ function selfTest() {
   // The browse-door predicate is per-file and identical, so one fixture body stands in for every
   // listed door: `sbd(src)` gives every one of them the same source.
   const sbd = (src) => Object.fromEntries(SERVICES_BROWSE_DOORS.map((d) => [d.file, src]));
-  const CONCIERGE = "client/src/pages/concierge/index.tsx";
+  // CN-1g-UI: the concierge page is deleted. Its fixtures now ride the AI panel's door, which carries the same rule
+  // (require destination + experienceSlug, forbid experienceType).
+  const CONCIERGE = "client/src/components/ai-planner-draft-panel.tsx";
   const CITY_GRID = "client/src/components/travelpulse/CityGrid.tsx";
   const doorConcierge =
     'const { open: openPlanModal } = usePlanning();\n' +

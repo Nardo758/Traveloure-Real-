@@ -3,10 +3,10 @@
  *
  *   T1 each of the six legacy paths, signed out → 410 { code: "concierge_retired" } (through the running server)
  *   T2 the same six, signed in as a traveler → 410 (no auth runs first)
- *   T3 GET /api/traveler-doors → { eventConcierge: false, handoffBooking: <flag> } for handoff_booking "true" and
+ *   T3 GET /api/traveler-doors → { handoffBooking: <flag> } (no eventConcierge key, CN-1g-UI) for handoff_booking "true" and
  *      "false", with event_concierge set to "true" in the database
  *   T4 writing event_concierge through the admin settings PATCH ("true" and "false") leaves GET /api/traveler-doors
- *      at eventConcierge: false (brief amendment, Leon Nov 2, 2026: no admin refusal for the retired key)
+ *      with no eventConcierge key (brief amendment, Leon Nov 2, 2026: no admin refusal for the retired key)
  *   T5 the CN-1 task-kind and task-log routes still answer (not 410)
  *   T6 handoff_booking off still refuses a new `book` quote with 410 handoff_booking_off
  *   T7 source pin: server/routes/concierge.routes.ts does not exist; routes.ts has no conciergeRoutes import
@@ -29,7 +29,10 @@ import { registerAndSignIn } from "./fixtures/register-and-sign-in";
 import travelerDoorsRoutes from "../routes/traveler-doors.routes";
 import handoffRoutes from "../routes/handoff.routes";
 import { invalidatePlatformFlagCache } from "../services/platform-flags";
-import { EVENT_CONCIERGE_SETTING, HANDOFF_BOOKING_SETTING } from "@shared/traveler-doors";
+import { HANDOFF_BOOKING_SETTING } from "@shared/traveler-doors";
+
+/** The retired door's setting key (CN-1g-UI removed the shared constant). */
+const EVENT_CONCIERGE_SETTING = "event_concierge";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 const ROOT = path.resolve(import.meta.dirname, "../..");
@@ -150,17 +153,17 @@ test("T2 each legacy path, signed in as a traveler → 410, not 401/403", async 
   }
 });
 
-test("T3 GET /api/traveler-doors: eventConcierge is always false; handoffBooking follows its flag", async () => {
+test("T3 GET /api/traveler-doors: no eventConcierge key; handoffBooking follows its flag", async () => {
   await setValue(EVENT_CONCIERGE_SETTING, "true");
   for (const [flag, want] of [["true", true], ["false", false]] as const) {
     await setValue(HANDOFF_BOOKING_SETTING, flag);
     const res = await inProcess(travelerDoorsRoutes, "GET", "/api/traveler-doors");
     assert.equal(res.status, 200);
-    assert.deepEqual(res.body, { eventConcierge: false, handoffBooking: want }, flag);
+    assert.deepEqual(res.body, { handoffBooking: want }, flag);
   }
 });
 
-test("T4 writing event_concierge through the admin settings PATCH leaves eventConcierge false", async () => {
+test("T4 writing event_concierge through the admin settings PATCH puts no eventConcierge key in the doors read", async () => {
   // Brief amendment (Leon, Nov 2, 2026): no admin refusal for the retired key. The write is accepted like any other
   // setting; what matters is that nothing reads it.
   for (const value of ["true", "false", "true"]) {
@@ -168,7 +171,7 @@ test("T4 writing event_concierge through the admin settings PATCH leaves eventCo
     assert.ok(res.status < 400, JSON.stringify(res.body));
     const doors = await live("GET", "/api/traveler-doors");
     assert.equal(doors.status, 200);
-    assert.equal(doors.body?.eventConcierge, false, value);
+    assert.equal("eventConcierge" in (doors.body ?? {}), false, value);
   }
 });
 

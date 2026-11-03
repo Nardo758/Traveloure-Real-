@@ -4,7 +4,7 @@
  * Ratified mock: "Adopt the Optimization" → the Finalize modal
  * (artifact b39eedaa, thread c26f29e3). Opens AFTER a traveler adopts/finalizes their
  * optimized plan (SlipView `SlipActions`, on finalize success). It is a CHOOSER that hands
- * the finalized plan to one of four rails that already exist — no new backend:
+ * the finalized plan to one of three rails that already exist — no new backend:
  *
  *   • Book it myself   → bulk-route un-booked in_planning items to checkout, land on /cart.
  *   • Booking agent    → POST /api/affiliate-booking-requests per partner-bookable stop, by
@@ -12,7 +12,6 @@
  *                        server). Available only when the plan has partner-bookable stops.
  *   • Travel expert    → the ONE handoff chooser (R323, step 7b) with the unbooked stops ticked; the
  *                        request, its fee and its hold are the chooser's, never this modal's.
- *   • Concierge        → hand off to the concierge surface (/concierge), which owns the quote.
  *
  * Guarantees drawn in the mock and enforced here: choosing a person gives them ACCESS to the
  * finalized plan (R-C / the stationary-slip erratum — the slip never moves and nothing is copied;
@@ -39,17 +38,16 @@ import {
 } from "@/lib/slip-plan-actions";
 import type { PlanCardActivity } from "./plancard-types";
 import { useRouteRefusalToast } from "./use-route-refusal-toast";
-import { ShoppingCart, UserCheck, Sparkles, Handshake, Check } from "lucide-react";
-import { useTravelerDoors } from "@/hooks/use-traveler-doors";
+import { ShoppingCart, UserCheck, Handshake, Check } from "lucide-react";
 import { useExpertAvailability } from "@/lib/expert-availability";
 
 type FinalizeTrip = { id: string; destination: string | null; travelers: number | null };
-type Lane = "myself" | "agent" | "expert" | "concierge";
+type Lane = "myself" | "agent" | "expert";
 
 /**
  * Row 194 (R2 ruling, Nov 1, 2026): the chooser keeps "I book them myself" and "Travel expert"; the Booking
  * agent lane is hidden (not rendered) while row 298 is parked. Its submit path is kept for when 298 unparks.
- * The Concierge lane is unchanged (its own flag, off by default).
+ * The legacy Concierge lane is removed (CN-1g-UI).
  */
 export const FINALIZE_AGENT_LANE_SHOWN = false;
 
@@ -71,7 +69,6 @@ export function FinalizeBookingModal({
 }) {
   const { toast } = useToast();
   const { showBulkResult } = useRouteRefusalToast(trip.id);
-  const { eventConcierge: conciergeShown } = useTravelerDoors();
   // Row P-7: the "Travel expert" lane is absent (never greyed) when no expert is live in the city.
   const expertsAvailable = useExpertAvailability({ city: trip.destination });
   // Row P-1c: in waitlist mode both lanes collapse to one "Save to plan" card that returns to the slip — no prices.
@@ -146,10 +143,6 @@ export function FinalizeBookingModal({
         onOpenChange(false);
         // BP-1: an item whose path is `none` (a past day, an area, nothing bookable) is never ticked.
         openHandoffChooser({ kind: "book", itemIds: activities.filter((i) => !i.booking?.id && (i as any).bookingPath !== "none").map((i) => i.id) });
-      } else if (lane === "concierge") {
-        onOpenChange(false);
-        // The concierge surface owns the priced quote; hand it the intent (server derives price).
-        setLocation(`/concierge?intent=${encodeURIComponent("Book my finalized plan end-to-end")}`);
       }
     } catch (err: any) {
       toast({ variant: "destructive", title: "Something went wrong", description: err?.message || "Please try again" });
@@ -174,8 +167,6 @@ export function FinalizeBookingModal({
         ]
       : []),
     ...(expertsAvailable ? [expertLane] : []),
-    // Ledger `2026-10-18-traveler-doors-hidden`: the Concierge lane opens the old concierge, off by default.
-    ...(conciergeShown ? [{ id: "concierge" as Lane, label: "Concierge", blurb: "Ask about full-service help", icon: Sparkles }] : []),
   ];
 
   if (waitlist) {

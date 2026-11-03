@@ -19,9 +19,6 @@
   "client/src/components/build-formats/KyotoCulturalView.tsx": {
     "best": 1
   },
-  "client/src/components/concierge/DoneForYouCard.tsx": {
-    "recommended": 1
-  },
   "client/src/components/contact-form.tsx": {
     "soon": 1
   },
