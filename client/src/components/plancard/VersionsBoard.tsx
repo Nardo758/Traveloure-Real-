@@ -56,7 +56,7 @@ import {
   yourPlanSummary,
   versionTotalChips,
   versionTotals,
-  VERSION_RECOMMENDED_LABEL,
+  versionRecommendedLabel,
   runChargeLine,
   isBaselineVersion,
   versionAnchorIsStay,
@@ -354,7 +354,8 @@ export function VersionsBoard({
             const v = view.versions.find((x) => x.variantId === c.variantId);
             const chips = versionTotalChips(versionTotals(v?.days ?? []));
             // Held-batch-1 item 22: the server's strict winner by S1's tiebreak — never derived here.
-            const recommended = v?.recommended === true;
+            const recommendedLabel = versionRecommendedLabel(v);
+            const recommended = recommendedLabel !== null;
             return (
             <div
               key={c.variantId}
@@ -381,7 +382,7 @@ export function VersionsBoard({
                   ) : null}
                   {recommended ? (
                     <span className="rounded-full bg-[color:var(--slip-navy)] px-2.5 py-1 text-[11px] font-semibold text-white" data-testid={`versions-recommended-${c.label}`}>
-                      {VERSION_RECOMMENDED_LABEL}
+                      {recommendedLabel}
                     </span>
                   ) : null}
                 </div>

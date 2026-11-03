@@ -55,7 +55,7 @@ export function NeighborhoodCard({
         </div>
         {totalItems === 0 && (
           <p className="text-xs text-muted-foreground italic border-t pt-2">
-            Content coming soon for this neighborhood.
+            Nothing here yet.
           </p>
         )}
       </CardContent>

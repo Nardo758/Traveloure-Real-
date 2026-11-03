@@ -110,11 +110,7 @@ export function MarketplaceCard({
               New
             </Badge>
           )}
-          {item.isPopular && (
-            <Badge className="bg-sunset-500 dark:bg-sunset-600 text-white border-0 text-xs" data-testid={`badge-popular-${item.id}`}>
-              Popular
-            </Badge>
-          )}
+          {/* Row P-6: no "Popular" badge (no ranking claims). */}
           {discount && (
             <Badge className="bg-ocean-500 dark:bg-ocean-600 text-white border-0 text-xs" data-testid={`badge-discount-${item.id}`}>
               -{discount}%

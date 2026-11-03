@@ -188,8 +188,9 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
   const [pickDates, setPickDates] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [adults, setAdults] = useState("");
-  const [kids, setKids] = useState("");
+  const doorParty = (n: number | undefined) => (typeof n === "number" && Number.isInteger(n) && n >= 0 ? String(n) : "");
+  const [adults, setAdults] = useState(doorParty(source?.adults));
+  const [kids, setKids] = useState(doorParty(source?.kids));
   /** A group chip was pressed. The untouched default group is not a choice. */
   const [groupChosen, setGroupChosen] = useState(!!source?.group);
   /** Did the door hand us the occasion (funnel `occasionSource`)? */
@@ -206,8 +207,8 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
     setPickDates(false);
     setError(null);
     setStarting(false);
-    setAdults("");
-    setKids("");
+    setAdults(doorParty(source?.adults));
+    setKids(doorParty(source?.kids));
     setGroupChosen(!!source?.group);
     doorOccasion.current = !!seed.state.occasionSlug;
     autoStarted.current = false;

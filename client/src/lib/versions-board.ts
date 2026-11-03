@@ -326,8 +326,18 @@ export function yourPlanSummary(picked: number, totalDays: number): string {
   return `${picked} ${picked === 1 ? "day" : "days"} picked · ${fromDraft} from draft`;
 }
 
-/** Held-batch-1 item 22: the label on the one strictly-winning version (server-decided). */
-export const VERSION_RECOMMENDED_LABEL = "Recommended";
+/**
+ * Held-batch-1 item 22, as amended by Row P-6: the label on the one strictly-winning version (server-decided).
+ * A bare "Recommended" is not said. The server's one rule (`recommendedVersion`, shared/version-board.ts) picks
+ * the version with the least straight-line distance between consecutive stops on the most days, so that is the
+ * reason stated. A version the server did not mark gets no label.
+ */
+export const VERSION_RECOMMENDED_LABEL = "Recommended · shortest distance between stops";
+
+/** The badge for a version: the reasoned label when the server marked it, else nothing. */
+export function versionRecommendedLabel(version: { recommended?: boolean | null } | null | undefined): string | null {
+  return version?.recommended === true ? VERSION_RECOMMENDED_LABEL : null;
+}
 
 /**
  * Held-batch-1 item 23: what the run cost, said on the board's header. The server sends `charge` to

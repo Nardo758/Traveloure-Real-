@@ -43,7 +43,6 @@
  * with no public address gets a sentence, not a dead button; a card whose rows are all gated away
  * is not rendered at all.
  */
-import { helpArticlePath } from "@shared/help-article-slugs";
 import { conciergeAccessLine } from "@/lib/concierge-hire-copy";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
@@ -121,7 +120,6 @@ import {
 // S6/S7 — the Plan card's "Stops & timezone" row composes the header's OWN two lines; it derives
 // neither (§18 rule 1). Both arrive as props from `SlipView`, which resolves them once.
 import { slipPlanMetaLine } from "@/lib/slip-meta";
-import { travelerFeePreviewDisplay, type TravelerFeePreviewBlock } from "@/lib/traveler-fee-preview";
 // The row is a DOOR of the ONE planning modal (Locked Decision 33's opener), whose step 2 IS the
 // ordered stop-list editor (Locked Decision 34's one client writer) — never a second stop editor.
 import { usePlanning } from "@/contexts/PlanningContext";
@@ -1153,18 +1151,7 @@ export function FinishCard({
   // S12-4: the stops behind the reachability count, one per line with its day.
   const unreachableLines = freeLine ? unreachableStopLines(finishPreview?.findings) : [];
   const checkoutReady = countCheckoutReadyItems(activities);
-  // R144 (ledger `2026-09-27-service-fee-before-checkout`): the traveler service fee for THIS plan's
-  // staged lines, shown where the slip's checkout path starts. The amount is the server's
-  // (`GET /api/cart` → `travelerFeePreview.byTrip[tripId]`, the charge's own resolver); the ONE
-  // wording rule decides whether a line is drawn. Owner only — the cart is the session user's own.
-  // This line moves into the slip's bookings section when that section lands (map step 4).
-  // `staleTime: 0`: staging a row re-projects the cart server-side without touching this cache.
-  const cartForFee = useQuery<{ travelerFeePreview?: TravelerFeePreviewBlock }>({
-    queryKey: ["/api/cart"],
-    enabled: isOwner && !isPrimary && checkoutReady > 0,
-    staleTime: 0,
-  });
-  const slipFeeDisplay = travelerFeePreviewDisplay(cartForFee.data?.travelerFeePreview?.byTrip?.[trip.id]);
+  // Row P-6 (Leon, Nov 2 §7): no traveler fee line on the slip. The fee is disclosed at checkout.
 
   // R321 S11-1 (decision-maker, smoke 11): Reopen is ALWAYS offered to the owner of a finalized
   // plan, underway included — a traveler mid-trip may need to change the plan. It is owner-gated
@@ -1270,20 +1257,6 @@ export function FinishCard({
             <Link href="/cart" className="font-semibold text-[color:var(--slip-navy)] underline underline-offset-2" data-testid="slip-action-go-to-checkout">
               Go to checkout ({checkoutReady})
             </Link>
-            {slipFeeDisplay ? (
-              <span className="mt-0.5 block" data-testid="slip-traveler-fee-preview">
-                {slipFeeDisplay.label}:{" "}
-                {slipFeeDisplay.kind === "charged" ? (
-                  <span className="font-medium text-[color:var(--slip-ink)]">${slipFeeDisplay.amount.toFixed(2)}</span>
-                ) : (
-                  <span className="line-through">${slipFeeDisplay.wouldHaveBeen.toFixed(2)}</span>
-                )}{" "}
-                {slipFeeDisplay.note}{" "}
-                <Link href={helpArticlePath("trip-pass-and-fees")} className="underline underline-offset-2" data-testid="link-slip-fee-help">
-                  About this fee
-                </Link>
-              </span>
-            ) : null}
           </p>
         ) : null}
         <button type="button" className={`${primaryBtn} w-full flex-none`} onClick={refinalize} disabled={finalizeMutation.isPending} data-testid="slip-action-finalize-plan">
@@ -1372,20 +1345,6 @@ export function FinishCard({
           href="/cart"
           testId="slip-action-go-to-checkout"
         />
-      )}
-      {checkoutReady > 0 && slipFeeDisplay && (
-        <RailNote testId="slip-traveler-fee-preview">
-          {slipFeeDisplay.label}:{" "}
-          {slipFeeDisplay.kind === "charged" ? (
-            <span className="font-medium text-foreground">${slipFeeDisplay.amount.toFixed(2)}</span>
-          ) : (
-            <span className="line-through">${slipFeeDisplay.wouldHaveBeen.toFixed(2)}</span>
-          )}{" "}
-          {slipFeeDisplay.note}{" "}
-          <Link href={helpArticlePath("trip-pass-and-fees")} className="underline underline-offset-2" data-testid="link-slip-fee-help">
-            About this fee
-          </Link>
-        </RailNote>
       )}
       {chooser}
     </RailCard>

@@ -24,7 +24,6 @@ import {
   ARASHIYAMA_ITINERARY_PROVIDER_HREF,
   ARASHIYAMA_ITINERARY_PROVIDER_LINK,
   ARASHIYAMA_PLAN_YOUR_DAY,
-  ARASHIYAMA_PLAN_YOUR_DAY_HREF,
   isArashiyamaItineraryWanted,
 } from "../../lib/arashiyama-wanted-copy";
 
@@ -250,7 +249,9 @@ describe("Arashiyama wanted tile", () => {
     const html = render(<FeedWantedSlotCard item={item()} />, { id: "traveler", role: "user" });
     const t = assertQuiet(html, "user");
     assert.ok(t.includes(ARASHIYAMA_PLAN_YOUR_DAY));
-    assert.match(html, new RegExp(`href="${ARASHIYAMA_PLAN_YOUR_DAY_HREF.replace("?", "\\?")}"`));
+    // PS-4 (f): a button that opens the planner, not a bare /experiences link.
+    assert.match(html, /<button[^>]*data-testid="link-arashiyama-plan-day"/);
+    assert.equal(html.includes("href="), false);
     assert.equal(t.includes(ARASHIYAMA_ITINERARY_EXPERT_LINK), false);
     assert.equal(t.includes(ARASHIYAMA_ITINERARY_PROVIDER_LINK), false);
     assert.equal(t, ARASHIYAMA_PLAN_YOUR_DAY);

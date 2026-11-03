@@ -755,6 +755,18 @@ export async function assembleTripPlan(
   // compares (planContentHash, §18 rule 1), over the live rows before any snapshot overlay. Null
   // when there is no final — there is nothing to be out of date against (§13).
   const finalOutOfDate = latestFinal ? planContentHash(trip as any, items as any[]) !== latestFinal.contentHash : null;
+  // PS-4 (a), ledger `2026-11-02-ps4-entry-carry-forward`: was this plan drafted from a member's saved occasion?
+  // Read only while its dates are unconfirmed — that is the one case the slip asks "Keep {date}?". Present only
+  // when true (§13); a failed read says nothing.
+  let fromOccasionDraft = false;
+  if (!planDatesAreConfirmed((trip as any).datesConfirmedAt)) {
+    try {
+      const r = await db.execute(sql`SELECT 1 FROM occasion_drafts WHERE trip_id = ${tripId} LIMIT 1`);
+      fromOccasionDraft = (r.rows?.length ?? 0) > 0;
+    } catch {
+      fromOccasionDraft = false;
+    }
+  }
   // Only an explicit `render: "final"` (the Trip Card) gets the snapshot; the default is live.
   const renderingSnapshot = latestFinal != null && options.render === "final";
   if (renderingSnapshot) {
@@ -1426,6 +1438,7 @@ export async function assembleTripPlan(
         // publishing it would invite a second reader to re-answer the question (§18 rule 1).
         // `planDatesAreConfirmed` is that one answer.
         datesConfirmed: planDatesAreConfirmed((trip as any).datesConfirmedAt),
+        ...(fromOccasionDraft ? { fromOccasionDraft: true } : {}),
       },
       changeLog,
       metrics: metricsMap,

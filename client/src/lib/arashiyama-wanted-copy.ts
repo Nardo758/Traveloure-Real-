@@ -15,8 +15,15 @@ export const ARASHIYAMA_ITINERARY_PROVIDER_LINK =
 /** Signed-in travelers. Everyone else sees the two apply lines. */
 export const ARASHIYAMA_PLAN_YOUR_DAY = "Plan your day here";
 
-/** Existing Start-a-plan door. `?city=Kyoto` pre-picks Kyoto on an exact match. */
-export const ARASHIYAMA_PLAN_YOUR_DAY_HREF = "/experiences?city=Kyoto";
+/**
+ * PS-4 (f), ledger `2026-11-02-ps4-entry-carry-forward`: "Plan your day here" opens the one planner (the billboard
+ * door pattern) with Kyoto chosen and a new plan — no bare link. `local_city_itinerary` is an EXPERT offering key,
+ * not an `experience_types` slug, so the occasion is carried as the group a city day belongs to (`trips`), never as
+ * a slug the catalog does not carry. The card holds no saved place for the neighbourhood, so no pending item rides.
+ */
+export function arashiyamaPlanDaySource(): { door: "billboard"; city: string; country: string; destination: string; group: "trips"; newPlan: true } {
+  return { door: "billboard", city: "Kyoto", country: "Japan", destination: "Kyoto", group: "trips", newPlan: true };
+}
 
 /** Waitlist expert application (WL-B). */
 export const ARASHIYAMA_ITINERARY_EXPERT_HREF = WAITLIST_EXPERT_FORM_PATH;

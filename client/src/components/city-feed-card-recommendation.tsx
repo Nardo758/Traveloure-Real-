@@ -118,7 +118,7 @@ export function CityFeedCardRecommendation({
   scheduledDate,
   onAdd,
   onBook,
-  recommendedLabel = "Recommended",
+  recommendedLabel = "Picked for your days",
   affiliateLabel = "Paid partner",
   layout = "column",
   className,
@@ -360,7 +360,7 @@ export function CityFeedCardRecommendation({
         data-testid={`feed-card-rec-${position}`}
         role="link"
         tabIndex={0}
-        aria-label={`Why ${name} is recommended`}
+        aria-label={`Why we picked ${name}`}
         onClick={() => setInfoOpen(true)}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
@@ -523,7 +523,7 @@ export function CityFeedCardRecommendation({
       data-testid={`feed-card-rec-${position}`}
       role="link"
       tabIndex={0}
-      aria-label={`Why ${name} is recommended`}
+      aria-label={`Why we picked ${name}`}
       onClick={() => setInfoOpen(true)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {

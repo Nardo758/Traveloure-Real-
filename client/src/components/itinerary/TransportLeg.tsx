@@ -259,11 +259,7 @@ export function TransportLeg({
                         </div>
                       </div>
                     </div>
-                    {currentMode === leg.recommendedMode && (
-                      <Badge variant="secondary" className="text-xs h-5 px-1.5 shrink-0">
-                        Recommended
-                      </Badge>
-                    )}
+                    {/* Row P-6: no "Recommended" badge — recommendedMode is the engine's default mode, not a ranking. */}
                   </div>
                 </DropdownMenuItem>
 

@@ -67,7 +67,6 @@ test("L3 the ruled link sites carry their article", () => {
   const sites: Array<[string, string]> = [
     ["client/src/components/booking/StripeCheckout.tsx", "payment-didnt-go-through"],
     ["client/src/components/booking/CancelBookingDialog.tsx", "cancellations-and-refunds"],
-    ["client/src/components/plancard/SlipRail.tsx", "trip-pass-and-fees"],
     ["client/src/pages/cart.tsx", "trip-pass-and-fees"],
     ["client/src/pages/my-bookings.tsx", "disputes-and-under-review"],
   ];
