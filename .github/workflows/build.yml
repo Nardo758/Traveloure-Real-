@@ -3567,3 +3567,12 @@ jobs:
       - name: doc-band-keys-guard · Doc band-key citation guard
         if: ${{ !cancelled() }}
         run: node scripts/check-doc-band-keys.cjs
+      # ledger 2026-11-03-ti1-tests-after-top-level-await: the server suites run with --test-force-exit, so a
+      # test file that registers tests, awaits at top level, then registers more never runs the later ones
+      # (found on #1844: cn1-concierge-listing ran 3 of 8 in CI). Server scope only — client runs without the flag.
+      - name: tests-after-top-level-await-guard · Top-level-await predicate self-test
+        if: ${{ !cancelled() }}
+        run: node scripts/check-tests-after-top-level-await.cjs --self-test
+      - name: tests-after-top-level-await-guard · No server test registers tests after a top-level await
+        if: ${{ !cancelled() }}
+        run: node scripts/check-tests-after-top-level-await.cjs
