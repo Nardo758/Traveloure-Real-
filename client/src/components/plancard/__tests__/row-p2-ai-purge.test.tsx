@@ -49,8 +49,8 @@ const SWEPT = [
   "client/src/components/layout.tsx",
 ];
 
-/** Pinned at PR time (Nov 2, 2026; lowered 159 → 117 by P-8, Nov 3). Lower it when a round-3 row removes hits; never raise it. */
-const ROUND3_AI_CEILING = 117;
+/** Pinned at PR time (Nov 2, 2026; lowered 159 → 115 by P-8, Nov 3). Lower it when a round-3 row removes hits; never raise it. */
+const ROUND3_AI_CEILING = 115;
 
 describe("P-2 AI purge, round 2", () => {
   it("T1 the swept files carry no AI and no Claude outside comments", () => {

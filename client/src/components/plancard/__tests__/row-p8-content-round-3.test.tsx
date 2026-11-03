@@ -110,7 +110,7 @@ describe("P-8 — content round 3", () => {
   it("T5 both ratchets are pinned below their round-2 values", () => {
     const purge = read("client/src/components/plancard/__tests__/row-p2-ai-purge.test.tsx");
     const ceiling = Number(/const ROUND3_AI_CEILING = (\d+);/.exec(purge)?.[1]);
-    assert.equal(ceiling, 117);
+    assert.equal(ceiling, 115);
     assert.ok(ceiling < 159);
     const b = JSON.parse(read("scripts/never-say-baseline.json")) as Record<string, Record<string, number>>;
     const entries = Object.values(b).reduce((n, by) => n + Object.keys(by).length, 0);
@@ -140,6 +140,8 @@ describe("P-8 — content round 3", () => {
       "Draft a new trip",
       "We match your travel preferences for Kyoto with local experts who know what you're after.",
       "In season",
+      "Experts for this trip",
+      "Matched",
     ]) {
       assert.doesNotMatch(v, /\bAI\b/);
       assert.deepEqual(siteNeverSayHits(v), [], v);
@@ -147,7 +149,12 @@ describe("P-8 — content round 3", () => {
     // The three rows Leon added on Nov 3: the events group label, the city card's door, the expert-match lead.
     assert.equal(SEASON_GROUP_LABELS.best, "In season");
     assert.ok(read("client/src/components/travelpulse/CityGrid.tsx").includes("Draft a new trip"));
-    assert.ok(read("client/src/components/ai-matched-experts-section.tsx").includes("We match your {experienceType || \"travel\"} preferences for {destination} with local experts"));
+    const matched = read("client/src/components/ai-matched-experts-section.tsx");
+    assert.ok(matched.includes("We match your {experienceType || \"travel\"} preferences for {destination} with local experts"));
+    // :176 and :178, added the same day: the section heading and its badge.
+    assert.ok(matched.includes("<span>Experts for this trip</span>"));
+    assert.match(matched, />\s*Matched\s*<\/Badge>/);
+    assert.deepEqual(stripComments(matched).split("\n").filter((l) => /\bAI\b/.test(l)), [], "no AI left outside comments");
     // The three server fallbacks for the feed label read the P-6 default, never "Recommended".
     for (const f of ["server/routes/content.routes.ts", "server/services/upsell-query.service.ts", "server/routes/upsell.routes.ts"]) {
       const src = read(f);

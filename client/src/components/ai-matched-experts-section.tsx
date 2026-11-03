@@ -173,9 +173,9 @@ export function AIMatchedExpertsSection({
             <div className="p-1.5 rounded-lg bg-gradient-to-br from-purple-500 to-indigo-500">
               <Brain className="w-4 h-4 text-white" />
             </div>
-            <span>AI-Matched Experts</span>
+            <span>Experts for this trip</span>
             <Badge variant="secondary" className="bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-[10px]">
-              AI-scored
+              Matched
             </Badge>
           </CardTitle>
           {matchedExperts.length === 0 && !matchExpertsMutation.isPending && (
