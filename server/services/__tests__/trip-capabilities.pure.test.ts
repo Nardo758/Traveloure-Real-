@@ -2,7 +2,8 @@
  * CAP-1 — the pure capabilities derivation (ledger `2026-11-03-cap1-trip-capabilities`).
  *
  *   T1 a table of input rows → the WHOLE expected actions object, one row per case the brief names plus the rulings'
- *      rows (handoff never lowers checkout; the `handoff_booking` switch; the CN-1 concierge offer / in_progress / no).
+ *      rows (handoff never lowers checkout; the `handoff_booking` switch; the CN-1 concierge offer / in_progress / no;
+ *      the verified-email gate as "verify", which waitlist outranks).
  *   T2 `reasons` carries a machine code for every action.
  *   T3 no field in the output is an amount (no `*cents*` / `*price*` key; numbers only in runs and the suggestion count).
  *
@@ -20,7 +21,7 @@ type Partial2 = {
 
 function inputs(o: Partial2 = {}): CapabilityInputs {
   return {
-    viewer: { tripRole: "owner", isAssignedExpert: false, isAuthor: false, advisorSource: null, ownsTrip: true, canEdit: true, ...o.viewer },
+    viewer: { tripRole: "owner", isAssignedExpert: false, isAuthor: false, advisorSource: null, ownsTrip: true, canEdit: true, emailVerified: true, ...o.viewer },
     signup: { mode: "open", purchasesAllowed: true, ...o.signup },
     pass: o.pass ?? { active: false, runs: null },
     tripPassPlanAvailable: o.tripPassPlanAvailable ?? true,
@@ -29,6 +30,8 @@ function inputs(o: Partial2 = {}): CapabilityInputs {
     pendingSuggestions: o.pendingSuggestions ?? 0,
     handoffBookingOn: o.handoffBookingOn ?? true,
     concierge: o.concierge ?? null,
+    checkoutEmailDenied: o.checkoutEmailDenied ?? false,
+    handoffEmailDenied: o.handoffEmailDenied ?? false,
   };
 }
 const handoff = (kind: string, status: string) => ({ kind, status, scopeItemIds: ["i1"], onTripSupportOfferedAt: null, onTripSupportAcceptedAt: null });
@@ -106,6 +109,33 @@ export const T1_TABLE: Array<{ name: string; in: CapabilityInputs; actions: Trip
     actions: OWNER_OPEN,
   },
   {
+    name: "unverified owner · open (the verified-email gate is the only refusal)",
+    in: inputs({ viewer: { emailVerified: false }, checkoutEmailDenied: true, handoffEmailDenied: true }),
+    actions: { optimize: "verify", ask: "verify", handoff: "verify", handoffBook: "verify", checkout: "verify", tripPass: "verify", concierge: "verify" },
+  },
+  {
+    name: "unverified owner · waitlist (waitlist wins over verify)",
+    in: inputs({ viewer: { emailVerified: false }, signup: { mode: "waitlist", purchasesAllowed: false }, checkoutEmailDenied: true, handoffEmailDenied: true }),
+    actions: WAITLIST,
+  },
+  {
+    name: "unverified owner · active pass with runs · handoff_booking off · handoff delivered",
+    in: inputs({
+      viewer: { emailVerified: false },
+      checkoutEmailDenied: true,
+      handoffEmailDenied: true,
+      handoffBookingOn: false,
+      pass: { active: true, runs: { cap: 3, used: 0, left: 3 } },
+      handoff: handoff("polish", "delivered"),
+    }),
+    actions: { optimize: "verify", ask: "verify", handoff: "approve", handoffBook: "no", checkout: "verify", tripPass: "active", concierge: "verify" },
+  },
+  {
+    name: "unverified payer (the viewer's no wins over verify)",
+    in: inputs({ viewer: { tripRole: "payer", ownsTrip: false, canEdit: false, emailVerified: false }, checkoutEmailDenied: true, handoffEmailDenied: true }),
+    actions: NONE,
+  },
+  {
     name: "owner · Trip Pass plan unavailable · optimizer fee disabled",
     in: inputs({ tripPassPlanAvailable: false, optimizerFeeDisabled: true }),
     actions: { ...OWNER_OPEN, optimize: "no", tripPass: "no" },
@@ -136,6 +166,12 @@ describe("CAP-1 — deriveCapabilities", () => {
     assert.equal(deriveCapabilities(inputs({ concierge: { status: "confirmed", accessUntil: null } })).reasons.concierge, "concierge_confirmed");
     assert.equal(deriveCapabilities(inputs({ signup: { mode: "waitlist", purchasesAllowed: false } })).reasons.checkout, "waitlist");
     assert.equal(deriveCapabilities(inputs({ viewer: { tripRole: "payer", ownsTrip: false } })).reasons.checkout, "viewer_payer");
+    const unverified = deriveCapabilities(inputs({ viewer: { emailVerified: false }, checkoutEmailDenied: true, handoffEmailDenied: true }));
+    for (const k of TRIP_CAPABILITY_ACTION_KEYS) assert.equal(unverified.reasons[k], "email_unverified", k);
+    assert.equal(unverified.viewer.emailVerified, false);
+    // Another refusal that also applies outranks verify: a disabled fee row and an unavailable pass say "no".
+    const both = deriveCapabilities(inputs({ checkoutEmailDenied: true, optimizerFeeDisabled: true, tripPassPlanAvailable: false }));
+    assert.deepEqual([both.actions.optimize, both.actions.tripPass], ["no", "no"]);
   });
 
   it("T2 reasons are present for every action, as machine codes", () => {

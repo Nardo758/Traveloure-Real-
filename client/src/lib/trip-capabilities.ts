@@ -41,10 +41,14 @@ export function handoffApproveShown(caps: TripCapabilities | undefined): boolean
 /** TripPassCard: which face it draws — the offer, the active card, or nothing. */
 export function tripPassCardView(caps: TripCapabilities | undefined): "offer" | "active" | null {
   const a = caps?.actions.tripPass;
-  return a === "offer" || a === "active" ? a : null;
+  // "verify" is drawn as the offer: the purchase route's own verify prompt runs, exactly as before.
+  if (a === "offer" || a === "verify") return "offer";
+  return a === "active" ? "active" : null;
 }
 
 /** BottomActionBar: the paid help door is drawn only when this viewer can pay on the plan. */
 export function paidActionsShown(caps: TripCapabilities | undefined): boolean {
-  return caps?.actions.checkout === "yes";
+  // "verify" keeps the door: the existing verify prompt runs when it is used.
+  const a = caps?.actions.checkout;
+  return a === "yes" || a === "verify";
 }

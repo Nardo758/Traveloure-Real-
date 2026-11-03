@@ -3,10 +3,11 @@
  * and never reasons about money, kinds or roles itself"). PURE: no database, no clock, no Stripe. The route gathers the
  * inputs from the reads the enforcing routes already use; this module only restates their decisions.
  *
- * Every non-"no" action is backed by the gate that would also accept the action (cited per action below). Where a
- * route would refuse, the capability says no — never the other way round. The verified-email prompt in front of the
- * paid routes is a step the client already walks the traveler through; it is not modelled here (ruling 1: checkout
- * depends only on the signup gate and the viewer).
+ * Every allowed action is backed by the gate that would also accept the action (cited per action below). Where a
+ * route would refuse, the capability says no — never the other way round. The verified-email gate is modelled as its
+ * own value, "verify" (reason `email_unverified`), emitted only when it is the ONE refusal left: precedence is viewer
+ * "no" → waitlist → verify → the allowed value (decision-maker, Nov 3, 2026). A surface treats "verify" as it treats the
+ * allowed value today — the existing verify prompt runs.
  */
 import type { HandoffKind } from "@shared/handoff";
 import type {
@@ -27,7 +28,16 @@ export interface CapabilityInputs {
     ownsTrip: boolean;
     /** `authorizeTripLogistics(..., { requireWriteAccess: true })` let this viewer through. */
     canEdit: boolean;
+    /** `users.email_verified` is set. */
+    emailVerified: boolean;
   };
+  /**
+   * `requireVerifiedEmail("checkout")` would refuse this viewer (enforcement on and the email unverified) — the
+   * middleware in front of /api/checkout, the optimizer and proposal pay routes and the Trip Pass purchase.
+   */
+  checkoutEmailDenied: boolean;
+  /** `refuseUnverifiedTravelerSender` would refuse this viewer's handoff quote / ask. */
+  handoffEmailDenied: boolean;
   signup: { mode: "open" | "waitlist"; purchasesAllowed: boolean };
   pass: { active: boolean; runs: { cap: number; used: number; left: number } | null };
   /** The Trip Pass plan row is active with a positive price (the purchase route's 400 otherwise). */
@@ -92,6 +102,7 @@ export function deriveCapabilities(input: CapabilityInputs): TripCapabilities {
   if (!canPay) [actions.optimize, reasons.optimize] = ["no", viewerNo];
   else if (!allowed) [actions.optimize, reasons.optimize] = ["waitlist", "waitlist"];
   else if (input.optimizerFeeDisabled) [actions.optimize, reasons.optimize] = ["no", "optimizer_disabled"];
+  else if (input.checkoutEmailDenied) [actions.optimize, reasons.optimize] = ["verify", "email_unverified"];
   else if (input.pass.active && (input.pass.runs?.left ?? 0) > 0) [actions.optimize, reasons.optimize] = ["free", "pass_runs_left"];
   else [actions.optimize, reasons.optimize] = ["pay", input.pass.active ? "pass_runs_used" : "pay"];
 
@@ -99,6 +110,7 @@ export function deriveCapabilities(input: CapabilityInputs): TripCapabilities {
   // then `coversAction(ai_task)` (any active pass) → free.
   if (!canPay) [actions.ask, reasons.ask] = ["no", viewerNo];
   else if (!allowed) [actions.ask, reasons.ask] = ["waitlist", "waitlist"];
+  else if (input.checkoutEmailDenied) [actions.ask, reasons.ask] = ["verify", "email_unverified"];
   else if (input.pass.active) [actions.ask, reasons.ask] = ["free", "pass_active"];
   else [actions.ask, reasons.ask] = ["pay", "pay"];
 
@@ -112,18 +124,21 @@ export function deriveCapabilities(input: CapabilityInputs): TripCapabilities {
   else if (hStatus === "delivered") [actions.handoff, reasons.handoff] = ["approve", "handoff_delivered"];
   else if (hStatus && (HANDOFF_IN_PROGRESS_STATUSES as readonly string[]).includes(hStatus)) [actions.handoff, reasons.handoff] = ["in_progress", `handoff_${hStatus}`];
   else if (!allowed) [actions.handoff, reasons.handoff] = ["no", "waitlist"];
+  else if (input.handoffEmailDenied) [actions.handoff, reasons.handoff] = ["verify", "email_unverified"];
   else [actions.handoff, reasons.handoff] = ["offer", h ? `handoff_${hStatus ?? "ended"}` : "no_handoff"];
 
   // handoffBook — the same gate plus the `handoff_booking` switch: a NEW `book` ask or quote is refused with 410
   // `handoff_booking_off` while it is off (handoff.routes.ts bookingHandoffOff). polish / plan_all are unaffected.
-  if (actions.handoff !== "offer") [actions.handoffBook, reasons.handoffBook] = ["no", reasons.handoff];
+  if (actions.handoff !== "offer" && actions.handoff !== "verify") [actions.handoffBook, reasons.handoffBook] = ["no", reasons.handoff];
   else if (!input.handoffBookingOn) [actions.handoffBook, reasons.handoffBook] = ["no", "handoff_booking_off"];
+  else if (actions.handoff === "verify") [actions.handoffBook, reasons.handoffBook] = ["verify", "email_unverified"];
   else [actions.handoffBook, reasons.handoffBook] = ["offer", "handoff_booking_on"];
 
-  // checkout — mirrors POST /api/checkout (payments.routes.ts) and the P-1s gate: the signup gate and the viewer ONLY.
+  // checkout — mirrors POST /api/checkout (payments.routes.ts): the P-1s gate, the viewer and requireVerifiedEmail.
   // No handoff kind or status lowers it (ruling 1: no server gate blocks checkout during a handoff).
   if (!canPay) [actions.checkout, reasons.checkout] = ["no", viewerNo];
   else if (!allowed) [actions.checkout, reasons.checkout] = ["waitlist", "waitlist"];
+  else if (input.checkoutEmailDenied) [actions.checkout, reasons.checkout] = ["verify", "email_unverified"];
   else [actions.checkout, reasons.checkout] = ["yes", "purchases_allowed"];
 
   // tripPass — mirrors POST /api/trips/:tripId/trip-pass/purchase (trip-pass.routes.ts): owner by trips.user_id, the
@@ -132,6 +147,7 @@ export function deriveCapabilities(input: CapabilityInputs): TripCapabilities {
   else if (input.pass.active) [actions.tripPass, reasons.tripPass] = ["active", "pass_active"];
   else if (!allowed) [actions.tripPass, reasons.tripPass] = ["waitlist", "waitlist"];
   else if (!input.tripPassPlanAvailable) [actions.tripPass, reasons.tripPass] = ["no", "trip_pass_unavailable"];
+  else if (input.checkoutEmailDenied) [actions.tripPass, reasons.tripPass] = ["verify", "email_unverified"];
   else [actions.tripPass, reasons.tripPass] = ["offer", "no_pass"];
 
   // concierge — the CN-1 hire is the ordinary cart + checkout of a concierge listing (R796: requestOnlyListingRefusals
@@ -141,12 +157,13 @@ export function deriveCapabilities(input: CapabilityInputs): TripCapabilities {
   if (!canPay) [actions.concierge, reasons.concierge] = ["no", viewerNo];
   else if (cLive) [actions.concierge, reasons.concierge] = ["in_progress", `concierge_${c!.status ?? "unknown"}`];
   else if (!allowed) [actions.concierge, reasons.concierge] = ["no", "waitlist"];
+  else if (input.checkoutEmailDenied) [actions.concierge, reasons.concierge] = ["verify", "email_unverified"];
   else [actions.concierge, reasons.concierge] = ["offer", c ? `concierge_${c.status ?? "ended"}` : "no_concierge"];
 
   const kind = h?.kind && (KINDS as readonly string[]).includes(h.kind) ? (h.kind as HandoffKind) : null;
   const accessUntil = c?.accessUntil ? new Date(c.accessUntil as any) : null;
   return {
-    viewer: { role, canEdit: input.viewer.canEdit, canPay },
+    viewer: { role, canEdit: input.viewer.canEdit, canPay, emailVerified: input.viewer.emailVerified },
     signup: { mode: input.signup.mode, purchasesAllowed: allowed },
     pass: { active: input.pass.active, runs: input.pass.active ? input.pass.runs : null },
     handoff: {

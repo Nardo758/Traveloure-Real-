@@ -38,7 +38,7 @@ const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 function caps(actions: Partial<TripCapabilities["actions"]>): TripCapabilities {
   const a = { optimize: "no", ask: "no", handoff: "no", handoffBook: "no", checkout: "no", tripPass: "no", concierge: "no", ...actions } as TripCapabilities["actions"];
   return {
-    viewer: { role: "owner", canEdit: true, canPay: true },
+    viewer: { role: "owner", canEdit: true, canPay: true, emailVerified: true },
     signup: { mode: "open", purchasesAllowed: true },
     pass: { active: false, runs: null },
     handoff: { present: false, kind: null, status: null, scopeItemIds: [], pendingSuggestions: 0, onTripSupport: "none" },
@@ -51,7 +51,7 @@ function caps(actions: Partial<TripCapabilities["actions"]>): TripCapabilities {
 describe("CAP-1 — consumers", () => {
   it("T8 HandoffBanner shows Approve iff actions.handoff is 'approve'", () => {
     assert.equal(handoffApproveShown(caps({ handoff: "approve" })), true);
-    for (const h of ["in_progress", "offer", "no"] as const) assert.equal(handoffApproveShown(caps({ handoff: h })), false, h);
+    for (const h of ["in_progress", "offer", "verify", "no"] as const) assert.equal(handoffApproveShown(caps({ handoff: h })), false, h);
     assert.equal(handoffApproveShown(undefined), false, "no answer yet ⇒ no Approve");
     const src = read("client/src/components/plan/HandoffBanner.tsx");
     assert.ok(src.includes("const canApprove = handoffApproveShown(caps);"));
@@ -65,6 +65,7 @@ describe("CAP-1 — consumers", () => {
   it("T9 TripPassCard: offer / active / hidden by actions.tripPass", () => {
     assert.equal(tripPassCardView(caps({ tripPass: "offer" })), "offer");
     assert.equal(tripPassCardView(caps({ tripPass: "active" })), "active");
+    assert.equal(tripPassCardView(caps({ tripPass: "verify" })), "offer", "verify draws the offer; the purchase's verify prompt runs");
     for (const t of ["waitlist", "no"] as const) assert.equal(tripPassCardView(caps({ tripPass: t })), null, t);
     assert.equal(tripPassCardView(undefined), null);
     const src = read("client/src/components/plancard/TripPassCard.tsx");
@@ -79,6 +80,7 @@ describe("CAP-1 — consumers", () => {
 
   it("T10 BottomActionBar hides the paid help door unless actions.checkout is 'yes'", () => {
     assert.equal(paidActionsShown(caps({ checkout: "yes" })), true);
+    assert.equal(paidActionsShown(caps({ checkout: "verify" })), true, "verify keeps the door; the verify prompt runs");
     for (const c of ["waitlist", "no"] as const) assert.equal(paidActionsShown(caps({ checkout: c })), false, c);
     const bar = (checkout: TripCapabilities["actions"]["checkout"] | null) => {
       const qc = new QueryClient({ defaultOptions: { queries: { retry: false, enabled: false } } });

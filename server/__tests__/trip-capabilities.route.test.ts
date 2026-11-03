@@ -5,6 +5,8 @@
  *      gives the same users (both routes asked side by side, through the one extracted gate).
  *   T5 a granted pass → `pass.active` true and `actions.optimize` "free" while runs are left.
  *   T6 waitlist mode → `actions.checkout` "waitlist" for a traveler owner, "yes" for an admin owner.
+ *   T4b the verified-email gate: with enforcement on, an unverified owner reads "verify" (reason `email_unverified`);
+ *       once the email is verified, the same owner reads "yes".
  *
  * TRANSPORT: the REAL routers in a bare express app with a chosen session identity (the payer-reads-plancard shape).
  * DISPOSABLE DB ONLY. Every row is created here and removed in after().
@@ -101,7 +103,7 @@ test("T4 owner 200 with the whole shape; stranger 403; unknown 404 — the same 
   assert.equal(own.status, 200, JSON.stringify(own.body));
   assert.equal(own.cache, "private, no-store");
   assert.deepEqual(Object.keys(own.body).sort(), ["actions", "concierge", "handoff", "pass", "reasons", "signup", "viewer"]);
-  assert.deepEqual(own.body.viewer, { role: "owner", canEdit: true, canPay: true });
+  assert.deepEqual(own.body.viewer, { role: "owner", canEdit: true, canPay: true, emailVerified: false });
   assert.deepEqual(own.body.signup, { mode: "open", purchasesAllowed: true });
   assert.deepEqual(own.body.pass, { active: false, runs: null });
   assert.deepEqual(own.body.handoff, { present: false, kind: null, status: null, scopeItemIds: [], pendingSuggestions: 0, onTripSupport: "none" });
@@ -141,4 +143,27 @@ test("T6 waitlist: checkout waitlist for a traveler owner, yes for an admin owne
   const admin = await getAs(ids.admin, `/api/trips/${ids.adminTrip}/capabilities`);
   assert.equal(admin.body.signup.purchasesAllowed, true);
   assert.equal(admin.body.actions.checkout, "yes");
+});
+
+test("T4b the verified-email gate: verify for an unverified owner, yes once verified", async () => {
+  await setMode("open");
+  const prior = process.env.EMAIL_SENDS_ENABLED;
+  process.env.EMAIL_SENDS_ENABLED = "true";
+  try {
+    const before = await getAs(ids.owner, `/api/trips/${ids.trip}/capabilities`);
+    assert.equal(before.status, 200);
+    assert.equal(before.body.viewer.emailVerified, false);
+    assert.equal(before.body.actions.checkout, "verify");
+    assert.equal(before.body.reasons.checkout, "email_unverified");
+    assert.equal(before.body.actions.tripPass, "verify");
+    assert.equal(before.body.actions.handoff, "verify");
+    await db.execute(sql`UPDATE users SET email_verified = NOW() WHERE id = ${ids.owner}`);
+    const after = await getAs(ids.owner, `/api/trips/${ids.trip}/capabilities`);
+    assert.equal(after.body.viewer.emailVerified, true);
+    assert.equal(after.body.actions.checkout, "yes");
+  } finally {
+    if (prior === undefined) delete process.env.EMAIL_SENDS_ENABLED;
+    else process.env.EMAIL_SENDS_ENABLED = prior;
+    await db.execute(sql`UPDATE users SET email_verified = NULL WHERE id = ${ids.owner}`);
+  }
 });

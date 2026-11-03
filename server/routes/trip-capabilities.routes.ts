@@ -13,8 +13,10 @@ import { isAuthenticated } from "../replit_integrations/auth";
 import { getUserId } from "../utils/auth";
 import { db } from "../db";
 import { tripExpertAdvisors } from "@shared/schema";
+import { users } from "@shared/models/auth";
 import { resolvePlancardViewer } from "../services/plancard-viewer.service";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
+import { assertTravelerMayRequestExpert, decideVerifiedEmailAction, verifiedEmailActionsEnforced } from "../services/verified-email-action-gate";
 import { getTravelerSignupMode, getPlatformFlag } from "../services/platform-flags";
 import { waitlistPurchaseDecisionFor } from "../services/waitlist-purchase-gate";
 import { getActiveTripPass, tripPassRunsStatus } from "../services/trip-entitlement.service";
@@ -62,6 +64,24 @@ async function advisorSourceFor(tripId: string, userId: string): Promise<string 
   return row?.source ?? null;
 }
 
+/**
+ * The viewer's verified-email standing and the two gates that read it: `requireVerifiedEmail("checkout")` (the same
+ * pure decision, on the same column) and `refuseUnverifiedTravelerSender` (the same function the handoff routes call).
+ * The middleware lets a deleted or suspended account through to the route's own refusal, so it is not denied here.
+ */
+async function emailStanding(userId: string): Promise<{ emailVerified: boolean; checkoutEmailDenied: boolean; handoffEmailDenied: boolean }> {
+  const [u] = await db
+    .select({ emailVerified: users.emailVerified, isDeleted: users.isDeleted, isSuspended: users.isSuspended })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  const emailVerified = u?.emailVerified != null;
+  const checkoutEmailDenied =
+    !!u && !u.isDeleted && !u.isSuspended && decideVerifiedEmailAction({ enforced: verifiedEmailActionsEnforced(), emailVerified }) === "deny";
+  const handoffEmailDenied = (await assertTravelerMayRequestExpert(userId)) === "deny";
+  return { emailVerified, checkoutEmailDenied, handoffEmailDenied };
+}
+
 router.get("/api/trips/:tripId/capabilities", isAuthenticated, async (req, res) => {
   try {
     const { tripId } = req.params;
@@ -74,7 +94,7 @@ router.get("/api/trips/:tripId/capabilities", isAuthenticated, async (req, res) 
     }
     const { trip } = viewer;
 
-    const [advisorSource, writeDenied, mode, purchase, pass, runs, handoff, pendingSuggestions, handoffBookingOn, concierge] = await Promise.all([
+    const [advisorSource, writeDenied, mode, purchase, pass, runs, handoff, pendingSuggestions, handoffBookingOn, concierge, email] = await Promise.all([
       advisorSourceFor(tripId, userId),
       authorizeTripLogistics(tripId, userId, "GET /api/trips/:tripId/capabilities", { requireWriteAccess: true }),
       getTravelerSignupMode(),
@@ -85,6 +105,7 @@ router.get("/api/trips/:tripId/capabilities", isAuthenticated, async (req, res) 
       countPendingSuggestionsForTrip(tripId),
       getPlatformFlag(HANDOFF_BOOKING_SETTING, false),
       conciergeForTrip(tripId),
+      emailStanding(userId),
     ]);
 
     // A plan row that cannot be read is the purchase route's failure too — the offer is not made (§13).
@@ -112,7 +133,10 @@ router.get("/api/trips/:tripId/capabilities", isAuthenticated, async (req, res) 
         advisorSource,
         ownsTrip: (trip as any).userId === userId,
         canEdit: writeDenied === null,
+        emailVerified: email.emailVerified,
       },
+      checkoutEmailDenied: email.checkoutEmailDenied,
+      handoffEmailDenied: email.handoffEmailDenied,
       signup: { mode, purchasesAllowed: purchase.allowed },
       pass: { active: pass !== null, runs },
       tripPassPlanAvailable,
