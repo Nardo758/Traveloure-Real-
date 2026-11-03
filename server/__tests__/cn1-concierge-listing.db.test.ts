@@ -5,6 +5,7 @@
  * Run: npx tsx --test server/__tests__/cn1-concierge-listing.db.test.ts
  */
 import { test, before, after } from "node:test";
+import { Pool } from "pg";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -72,7 +73,6 @@ test("migration 426 does not rewrite listings or offering types", () => {
   assert.match(sql, /ON CONFLICT \(id\) DO NOTHING/);
 });
 
-const { Pool } = await import("pg");
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const tag = `cn1-${Date.now().toString(36)}`;
 const actors: RegisteredActor[] = [];
