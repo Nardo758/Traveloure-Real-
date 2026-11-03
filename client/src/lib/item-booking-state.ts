@@ -188,3 +188,48 @@ export function slipItemBookingLine(a: ItemBookingLike & { confirmationNumber?: 
   return null;
 }
 
+
+/**
+ * Row PS-6 (ledger `2026-11-02-ps6-booked-tick-copies-on-card`; Leon, Nov 2 §3): "The Trip Slip shows only a booked
+ * tick." The statuses a booking has REACHED CONFIRMATION in — the tick and My Bookings' "Booked on" date read this
+ * one list. `pending` (the accept/decline rail's birth state) and every not-booked status are absent: no tick, no
+ * booked date (LD 44 (e) — booked only with a confirmation in hand).
+ */
+export const CONFIRMED_OR_LATER_BOOKING_STATUSES = [
+  "confirmed",
+  "deposit_paid",
+  "in_progress",
+  "awaiting_acceptance",
+  "completion_declared",
+  "partially_completed",
+  "completed",
+] as const;
+
+export function bookingConfirmedOrLater(status: string | null | undefined): boolean {
+  return typeof status === "string" && (CONFIRMED_OR_LATER_BOOKING_STATUSES as readonly string[]).includes(status);
+}
+
+/**
+ * Does the slip draw the booked tick for this row? A linked booking: its state reads `booked` AND its status is
+ * confirmed or later. No linked booking: a `purchased` item that holds a confirmation number (a partner stay booked
+ * on the partner's rail writes its code there). Never for a pending booking (§13).
+ */
+export function itemBookedTick(a: ItemBookingLike & { confirmationNumber?: string | null }): boolean {
+  if (a.booking) {
+    if (itemBookingState(a) !== "booked") return false;
+    const raw = (a.booking as { status?: unknown }).status;
+    return bookingConfirmedOrLater(typeof raw === "string" ? raw : null);
+  }
+  if (a.endedBooking) return false;
+  return a.routingStatus === "purchased" && typeof a.confirmationNumber === "string" && a.confirmationNumber.trim().length > 0;
+}
+
+/**
+ * The slip's booking NOTE for a row that is not simply booked ("Payment didn't go through", "Under review …"). A
+ * booked row has no note on the slip — it carries the tick (`itemBookedTick`); its reference lives on the Trip
+ * Card's booking copy.
+ */
+export function slipItemBookingNote(a: ItemBookingLike): string | null {
+  const bookingState = itemBookingState(a);
+  return bookingState && bookingState !== "booked" ? ITEM_BOOKING_NOTES[bookingState] : null;
+}

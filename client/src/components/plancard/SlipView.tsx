@@ -43,8 +43,9 @@ import {
   effectiveRoutingStatus,
   isBookedActivity,
   itemBookingAction,
+  itemBookedTick,
   itemBookingState,
-  slipItemBookingLine,
+  slipItemBookingNote,
 } from "@/lib/item-booking-state";
 import { parseTripDate } from "@/lib/calendar-date";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -938,7 +939,10 @@ function SlipDayItem({
       timeEdit={timeEditable ? timeEdit : null}
       mode={canEditItems ? "edit" : "read"}
       role={isExpertViewer ? "expert" : "traveler"}
-      bookingState={slipItemBookingLine(a)}
+      // Row PS-6 (Leon, Nov 2 §3): the slip shows only a booked tick — no reference, no partner name. A row that is
+      // not simply booked keeps its note.
+      booked={itemBookedTick(a)}
+      bookingState={slipItemBookingNote(a)}
       anchor={
         anchorFrom
           ? { fromTool: anchorFrom }
@@ -986,7 +990,7 @@ function SlipDayItem({
         onAskLocal={menu?.onAskLocal ? () => { setSheetOpen(false); menu.onAskLocal!(); } : null}
         askLocalLabel={menu?.askLocalSaved ? ITEM_MENU_LABELS.seeQuestion : ITEM_MENU_LABELS.askLocal}
         navigateHref={navigateHref({ name: a.name, lat: a.lat ?? null, lng: a.lng ?? null }, city)}
-        bookingLine={slipItemBookingLine(a)}
+        bookingLine={slipItemBookingNote(a)}
         bookingAction={
           isOwner && itemBookingAction(a) ? (
             <ItemBookingActionLink tripId={tripId} activity={a} showNote={false} />

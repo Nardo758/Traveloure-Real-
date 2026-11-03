@@ -52,7 +52,9 @@ import { calendarDayOf } from "@shared/plan-timing";
 import type { FactView } from "@shared/content-facts";
 import type { FinalAirportLeg, FinalCardMeta } from "@shared/trip-card-final";
 import type { PlanCardActivity, PlanCardDay } from "./plancard-types";
-import { slipItemBookingLine } from "@/lib/item-booking-state";
+import { itemBookedTick, slipItemBookingLine } from "@/lib/item-booking-state";
+import { buildBookingCopy } from "@/lib/booking-copy";
+import { BookingCopyBlock, useBookingCopyReads } from "./BookingCopyBlock";
 import { getUpNextInfo, isStayActivity, nowHHMM, useLiveNow, useVisitedActivities } from "./plancard-temporal";
 import { legRuleClass } from "@/lib/leg-rule";
 import { travelRowTitle } from "@/components/plan/AnchorRow";
@@ -333,6 +335,18 @@ export function TripCardDays(props: TripCardDaysProps) {
   const photoOf = (id: string) => livePhotos[id] ?? stored[id] ?? null;
 
   // T-3 banner (R-ad): the job's recorded finding, read.
+  // Row PS-6 (Leon, Nov 2 §3): booking copies live on the Trip Card, one per stop, links only — from My Bookings'
+  // read and the booking-agent card's read (`useBookingCopyReads`), never a write. The two reads run only when at
+  // least one stop is confirmed or later (`itemBookedTick`, decision-maker Nov 3, 2026); otherwise a copy is built
+  // from what the plancard carries.
+  const anyConfirmedStop = days.some((d) => (d.activities ?? []).some((a) => itemBookedTick(a)));
+  const bookingReads = useBookingCopyReads(tripId, !waitlist && anyConfirmedStop);
+  const bookingCopyFor = (a: PlanCardActivity) => {
+    if (waitlist) return null;
+    const copy = buildBookingCopy(a, bookingReads);
+    return copy ? <BookingCopyBlock id={a.id} copy={copy} /> : null;
+  };
+
   const { data: recheck } = useQuery<{
     conflict: { findings: Finding[]; checkedAt: string | null } | null;
     // Step 9b (D5, ledger `2026-10-07-step9b-optimizer-and-rechecks`): changed or broken legs the
@@ -554,6 +568,7 @@ export function TripCardDays(props: TripCardDaysProps) {
                   role="traveler"
                   // Row P-1c: waitlist mode — every item reads "Saved to plan", never a booked or price state.
                   bookingState={waitlist ? WAITLIST_COPY.savedToPlan : slipItemBookingLine(a)}
+                  bookingCopy={bookingCopyFor(a)}
                   expertNote={a.expertNote ? { note: a.expertNote, author: props.advisorName } : null}
                   photo={isToday ? photoOf(a.id) : null}
                   navigateHref={navigateHref({ name: a.name, lat: a.lat ?? null, lng: a.lng ?? null }, props.destination)}
