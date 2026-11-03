@@ -62,6 +62,7 @@ import {
   HelpCircle,
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { parseApiErrorMessage } from "@/lib/api-error";
 import {
   answerRefusal,
   questionContext,
@@ -360,9 +361,203 @@ interface InboxHandoff {
   scopeItemIds: string[];
   feeCents: number | null;
   prepaid: boolean;
+  acceptedAt?: string | null;
+  deliveredAt?: string | null;
 }
 
-function HandoffsSection() {
+// ─── HO-1 (ledger `2026-11-03-ho1-expert-deliver-controls`): an ACCEPTED handoff stays on the expert's
+// screen until it is delivered or given up. Deliver only changes status — the expert is paid at the
+// traveler's Approve (handoff.service.ts), never here — and a server refusal is shown in its own words.
+// Copy is held for owner approval ("Wording approved — Leon" on the PR).
+export const HANDOFF_WORKING_COPY = {
+  heading: "In progress",
+  openPlan: "Open the plan",
+  cannotDo: "Can't do this",
+  deliver: "Deliver",
+  offerOnTripSupport: "Offer on-trip support",
+  deliveredWaiting: "Delivered · waiting for the traveler",
+  why: "Why?",
+  reasonWithdrew: "I'm withdrawing",
+  reasonUnbookable: "It can't be booked",
+  confirm: "Confirm",
+  deliveredTitle: "Delivered",
+  deliveredBody: "The traveler can approve it or ask for changes.",
+  refusedTitle: "Not yet",
+  recordedTitle: "Recorded",
+  recordedBody: "The traveler has been told and their fee is being returned.",
+} as const;
+
+export type CannotDoReason = "withdrew" | "unbookable";
+
+/** The reasons an expert may give. "It can't be booked" only applies where the handoff books something. */
+export function cannotDoReasons(kind: InboxHandoff["kind"]): CannotDoReason[] {
+  return kind === "book" || kind === "plan_all" ? ["withdrew", "unbookable"] : ["withdrew"];
+}
+
+export type HandoffActionResult = { ok: boolean; title: string; description?: string };
+
+/**
+ * Post Deliver or Can't do this, and say what happened. The list and the assigned trips are refetched
+ * either way. A refusal's sentence is the server's own `message`, never a paraphrase.
+ */
+export async function runHandoffWorkAction(
+  id: string,
+  action: { type: "deliver"; offerOnTripSupport: boolean } | { type: "cannot-book"; reason: CannotDoReason },
+  deps: { request: typeof apiRequest; invalidate: (key: string) => void },
+): Promise<HandoffActionResult> {
+  const copy = HANDOFF_WORKING_COPY;
+  let result: HandoffActionResult;
+  try {
+    if (action.type === "deliver") {
+      await deps.request("POST", `/api/handoffs/${id}/deliver`, { offerOnTripSupport: action.offerOnTripSupport });
+      result = { ok: true, title: copy.deliveredTitle, description: copy.deliveredBody };
+    } else {
+      await deps.request("POST", `/api/handoffs/${id}/cannot-book`, { reason: action.reason });
+      result = { ok: true, title: copy.recordedTitle, description: copy.recordedBody };
+    }
+  } catch (err) {
+    const status = err instanceof Error ? Number(err.message.match(/^(\d+):/)?.[1]) : NaN;
+    const message = parseApiErrorMessage(err, "");
+    result = status === 409
+      ? { ok: false, title: copy.refusedTitle, description: message || undefined }
+      : { ok: false, title: "That didn't go through", description: message || undefined };
+  }
+  deps.invalidate("/api/expert/handoffs");
+  deps.invalidate("/api/expert/assigned-trips");
+  return result;
+}
+
+function scopeLine(h: InboxHandoff): string {
+  return h.kind === "plan_all" ? "The whole plan" : `${h.scopeItemIds.length} stop${h.scopeItemIds.length === 1 ? "" : "s"}`;
+}
+
+export function WorkingHandoffCard(props: {
+  handoff: InboxHandoff;
+  pending: boolean;
+  offerOnTripSupport: boolean;
+  onOfferChange: (v: boolean) => void;
+  confirming: boolean;
+  reason: CannotDoReason | null;
+  onReasonChange: (r: CannotDoReason) => void;
+  onCannotDo: () => void;
+  onConfirm: () => void;
+  onDeliver: () => void;
+}) {
+  const { handoff: h } = props;
+  const copy = HANDOFF_WORKING_COPY;
+  const reasonLabel: Record<CannotDoReason, string> = { withdrew: copy.reasonWithdrew, unbookable: copy.reasonUnbookable };
+  return (
+    <Card className="border border-console-light" data-testid={`inbox-working-${h.id}`}>
+      <CardContent className="p-4 space-y-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="min-w-0">
+            <p className="font-medium text-console-darkest">{HANDOFF_KIND_LABEL[h.kind] ?? h.kind}</p>
+            <p className="text-xs text-console-mid">{scopeLine(h)}</p>
+            {h.status === "delivered" && (
+              <p className="text-xs text-console-mid mt-1" data-testid={`text-handoff-delivered-${h.id}`}>{copy.deliveredWaiting}</p>
+            )}
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            {h.status === "accepted" && (
+              <label className="flex items-center gap-2 text-sm text-console-darkest" data-testid={`label-handoff-support-${h.id}`}>
+                <input
+                  type="checkbox"
+                  checked={props.offerOnTripSupport}
+                  disabled={props.pending}
+                  onChange={(e) => props.onOfferChange(e.target.checked)}
+                  data-testid={`checkbox-handoff-support-${h.id}`}
+                />
+                {copy.offerOnTripSupport}
+              </label>
+            )}
+            <div className="flex gap-2 flex-wrap">
+              <Button size="sm" variant="outline" asChild data-testid={`button-handoff-open-${h.id}`}>
+                <Link href={`/expert/workspace/${h.tripId}`}>{copy.openPlan}</Link>
+              </Button>
+              {h.status === "accepted" && (
+                <>
+                  <Button size="sm" variant="ghost" disabled={props.pending} onClick={props.onCannotDo} data-testid={`button-handoff-cannot-${h.id}`}>
+                    {copy.cannotDo}
+                  </Button>
+                  <Button size="sm" disabled={props.pending} onClick={props.onDeliver} data-testid={`button-handoff-deliver-${h.id}`}>
+                    {copy.deliver}
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+        {h.status === "accepted" && props.confirming && (
+          <fieldset className="space-y-2 border-t border-console-light pt-3" data-testid={`form-handoff-cannot-${h.id}`}>
+            <legend className="text-sm font-medium text-console-darkest">{copy.why}</legend>
+            {cannotDoReasons(h.kind).map((r) => (
+              <label key={r} className="flex items-center gap-2 text-sm text-console-darkest">
+                <input
+                  type="radio"
+                  name={`handoff-cannot-${h.id}`}
+                  value={r}
+                  checked={props.reason === r}
+                  onChange={() => props.onReasonChange(r)}
+                  data-testid={`radio-handoff-cannot-${r}-${h.id}`}
+                />
+                {reasonLabel[r]}
+              </label>
+            ))}
+            <Button size="sm" variant="outline" disabled={props.pending || !props.reason} onClick={props.onConfirm} data-testid={`button-handoff-cannot-confirm-${h.id}`}>
+              {copy.confirm}
+            </Button>
+          </fieldset>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function WorkingHandoffs({ working }: { working: InboxHandoff[] }) {
+  const { toast } = useToast();
+  const [offer, setOffer] = useState<Record<string, boolean>>({});
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [reason, setReason] = useState<CannotDoReason | null>(null);
+  const act = useMutation({
+    mutationFn: (v: { id: string; action: Parameters<typeof runHandoffWorkAction>[1] }) =>
+      runHandoffWorkAction(v.id, v.action, { request: apiRequest, invalidate: (key) => queryClient.invalidateQueries({ queryKey: [key] }) }),
+    onSuccess: (r) => {
+      toast({ title: r.title, description: r.description, variant: r.ok ? undefined : "destructive" });
+      if (r.ok) {
+        setConfirming(null);
+        setReason(null);
+      }
+    },
+  });
+  if (working.length === 0) return null;
+  return (
+    <section data-testid="section-inbox-handoffs-working" className="mt-4">
+      <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide mb-2">{HANDOFF_WORKING_COPY.heading}</h2>
+      <div className="space-y-2">
+        {working.map((h) => (
+          <WorkingHandoffCard
+            key={h.id}
+            handoff={h}
+            pending={act.isPending}
+            offerOnTripSupport={offer[h.id] ?? false}
+            onOfferChange={(v) => setOffer((o) => ({ ...o, [h.id]: v }))}
+            confirming={confirming === h.id}
+            reason={confirming === h.id ? reason : null}
+            onReasonChange={setReason}
+            onCannotDo={() => {
+              setConfirming(h.id);
+              setReason(null);
+            }}
+            onConfirm={() => reason && act.mutate({ id: h.id, action: { type: "cannot-book", reason } })}
+            onDeliver={() => act.mutate({ id: h.id, action: { type: "deliver", offerOnTripSupport: offer[h.id] ?? false } })}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function HandoffsSection() {
   const { toast } = useToast();
   const { data, isLoading } = useQuery<{ proposed: InboxHandoff[]; working: InboxHandoff[] }>({ queryKey: ["/api/expert/handoffs"] });
   const answer = useMutation({
@@ -378,7 +573,9 @@ function HandoffsSection() {
     onError: (err: any) => toast({ title: "That didn't go through", description: err.message, variant: "destructive" }),
   });
   const proposed = data?.proposed ?? [];
+  const working = data?.working ?? [];
   return (
+    <>
     <section data-testid="section-inbox-handoffs">
       <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide mb-2">
         Handoffs to accept {proposed.length > 0 && `(${proposed.length})`}
@@ -395,7 +592,7 @@ function HandoffsSection() {
                 <div className="min-w-0">
                   <p className="font-medium text-console-darkest">{HANDOFF_KIND_LABEL[h.kind] ?? h.kind}</p>
                   <p className="text-xs text-console-mid">
-                    {h.kind === "plan_all" ? "The whole plan" : `${h.scopeItemIds.length} stop${h.scopeItemIds.length === 1 ? "" : "s"}`}
+                    {scopeLine(h)}
                     {h.prepaid ? " · included revision" : h.feeCents ? ` · fee $${(h.feeCents / 100).toFixed(2)}` : ""}
                   </p>
                 </div>
@@ -416,6 +613,8 @@ function HandoffsSection() {
         </div>
       )}
     </section>
+    <WorkingHandoffs working={working} />
+    </>
   );
 }
 
