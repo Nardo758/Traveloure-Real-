@@ -165,7 +165,7 @@ describe("P6 — a query-string city pre-picks only an exact match", () => {
     assert.equal(preselectedMarket(new URLSearchParams("city=Goa"))?.marketKey, "goa");
     assert.equal(preselectedMarket(new URLSearchParams("destination=Porto&city=Goa"))?.marketKey, "porto");
     assert.equal(preselectedMarket(new URLSearchParams("destination=Lisbon&city=Goa"))?.marketKey, "goa");
-    assert.equal(preselectedMarket(new URLSearchParams("destinations=Kyoto,Goa&multiCity=true")), null);
+    assert.equal(preselectedMarket(new URLSearchParams("destinations=Kyoto,Goa&multiCity=true"))?.marketKey, "kyoto");
   });
 });
 

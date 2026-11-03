@@ -103,6 +103,15 @@ export interface PlanningSource {
   pendingMapAdd?: PendingMapAdd;
   /** Re-plan context: the trip this entry belongs to. */
   tripId?: string;
+  /**
+   * PS-4 (e): dates and party the door already holds (the assistant panel). PlanEntry seeds them — dates only as a
+   * valid pair (`doorDates`), the party into the details step — and the mint and occasion PATCH carry them. Absent =
+   * not known; nothing is invented.
+   */
+  startDate?: string;
+  endDate?: string;
+  adults?: number;
+  kids?: number;
   /** Deep-open a branch. Since `2026-09-04-one-modal-many-doors` this narrows the FINISH to that
    *  one CTA; it does NOT skip the modal's steps (the pricing ladder rows use it). */
   branch?: PlanningBranch;
@@ -305,6 +314,11 @@ export function usePlanning(): PlanningApi {
   const ctx = useContext(PlanningContext);
   if (!ctx) throw new Error("usePlanning must be used within PlanningProvider");
   return ctx;
+}
+
+/** The planning API, or null outside the provider — for a tile that also renders in provider-less previews. */
+export function usePlanningOptional(): PlanningApi | null {
+  return useContext(PlanningContext);
 }
 
 /** Ruling 2 (derive-and-retire): trips.status is a DEAD field — trip phase derives
