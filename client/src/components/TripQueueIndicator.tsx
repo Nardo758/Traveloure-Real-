@@ -147,7 +147,7 @@ export function TripQueueIndicator() {
               data-testid="button-plan-multi-city-trip"
             >
               <Wand2 className="h-4 w-4 mr-2" />
-              Plan {queueCount > 1 ? "Multi-City" : ""} Trip with AI
+              Draft {queueCount > 1 ? "Multi-City" : ""} Trip
             </Button>
             <Button
               variant="outline"

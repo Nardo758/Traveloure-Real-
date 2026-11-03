@@ -39,7 +39,7 @@ export default function TransportationBookingPage() {
       <Tabs defaultValue="search" className="space-y-6">
         <TabsList>
           <TabsTrigger value="search" data-testid="tab-search">Search</TabsTrigger>
-          <TabsTrigger value="popular" data-testid="tab-popular">Popular Routes</TabsTrigger>
+          <TabsTrigger value="popular" data-testid="tab-popular">Routes</TabsTrigger>
         </TabsList>
 
         <TabsContent value="search" className="space-y-6">

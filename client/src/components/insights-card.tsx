@@ -46,7 +46,7 @@ export function InsightsCard({ insights }: InsightsCardProps) {
 
   if (insights?.aiBestTimeToVisit) {
     items.push({
-      title: "Best Time to Visit",
+      title: "When to go",
       value: insights.aiBestTimeToVisit,
       icon: INSIGHT_ICONS.bestTime,
     });
@@ -121,7 +121,7 @@ export function InsightsCard({ insights }: InsightsCardProps) {
   if (items.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        No AI insights available yet. This will populate as TravelPulse data becomes available.
+        Nothing here yet.
       </p>
     );
   }

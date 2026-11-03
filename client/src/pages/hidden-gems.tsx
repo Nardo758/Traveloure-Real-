@@ -158,7 +158,7 @@ export default function HiddenGemsPage() {
           <h1 className="text-3xl font-bold" data-testid="text-page-title">Local Picks</h1>
         </div>
         <p className="text-muted-foreground">
-          AI-discovered local places and authentic experiences that tourists rarely find
+          Local places and experiences that tourists rarely find
         </p>
       </div>
 
@@ -169,7 +169,7 @@ export default function HiddenGemsPage() {
             Discover New Destinations
           </CardTitle>
           <CardDescription>
-            Let AI scan a destination and uncover local picks across all categories
+            Scan a destination for local picks across all categories
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -331,7 +331,7 @@ export default function HiddenGemsPage() {
                     {gem.bestTimeToVisit && (
                       <div className="flex items-center gap-2 text-sm" data-testid={`section-best-time-${gem.id}`}>
                         <Clock className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-muted-foreground">Best time:</span>
+                        <span className="text-muted-foreground">Season:</span>
                         <span data-testid={`text-best-time-${gem.id}`}>{gem.bestTimeToVisit}</span>
                       </div>
                     )}

@@ -243,7 +243,7 @@ export default function VisaHelpPage() {
     <>
       <SEOHead
         title="Visa Help - Requirements & Expert Assistance"
-        description="Look up visa requirements for your destination instantly with AI, then book a visa expert to handle your application."
+        description="Look up visa requirements for your destination instantly, then book a visa expert to handle your application."
       />
 
       {/* Visa Booking Intake Modal */}
@@ -387,7 +387,7 @@ export default function VisaHelpPage() {
 
       <PageLayout
         width="content"
-        eyebrow="AI-Powered Visa Requirements"
+        eyebrow="Visa requirements"
         title="Visa Help & Expert Guidance"
         lead="Check what you need to enter the country you're visiting."
       >
@@ -495,7 +495,7 @@ export default function VisaHelpPage() {
                     onClick={handleForceRefresh}
                     disabled={requirementsMutation.isPending}
                     className={`${PAGE_LINK} flex items-center gap-1 text-xs disabled:opacity-50 transition-colors`}
-                    title="Force refresh from AI"
+                    title="Refresh"
                     data-testid="button-visa-refresh"
                   >
                     <RefreshCw className={`w-3 h-3 ${requirementsMutation.isPending ? "animate-spin" : ""}`} />
@@ -655,7 +655,7 @@ export default function VisaHelpPage() {
           <SectionTitle>How Visa Assistance Works</SectionTitle>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
-              { step: "1", title: "Look up requirements", desc: "Enter your passport and destination above. Our AI surfaces all requirements in seconds.", icon: Globe },
+              { step: "1", title: "Look up requirements", desc: "Enter your passport and destination above. We surface all requirements in seconds.", icon: Globe },
               { step: "2", title: "Book an expert", desc: "Select a visa specialist below. They handle document prep, form filling, and embassy appointments.", icon: Shield },
               { step: "3", title: "Travel confidently", desc: "Your expert keeps you updated until your visa is approved and you're ready to go.", icon: CheckCircle },
             ].map(({ step, title, desc, icon: Icon }) => (

@@ -303,7 +303,7 @@ export default function TripDetails() {
             <div className="flex-1 min-w-0">
               <p className="font-semibold text-sm">Your optimized plan is ready</p>
               <p className="text-xs opacity-90 mt-0.5">
-                AI Optimizer · just now
+                Optimize · just now
                 {optimizationDelta?.savings != null && optimizationDelta.savings > 0 && (
                   <> · saved <strong>${Math.round(optimizationDelta.savings)}</strong></>
                 )}
@@ -382,7 +382,7 @@ export default function TripDetails() {
                 </div>
                 <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">No Itinerary Yet</h3>
                 <p className="text-muted-foreground max-w-md mx-auto mb-6">
-                  Generate a personalized day-by-day plan for {trip.destination} using AI.
+                  Draft a day-by-day plan for {trip.destination}.
                 </p>
                 {/* Phase 3b (drift-audit §C row 5): the on-card "Generate My Itinerary"
                     (destructive generate) is removed — planning/generation lives on the slip,

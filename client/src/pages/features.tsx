@@ -31,9 +31,9 @@ function formatStat(n: number): string {
 
 const mainFeatures = [
   {
-    title: "AI-Powered Trip Planning",
+    title: "Trip planning",
     description:
-      "Our AI assistant creates personalized itineraries based on your preferences, travel style, and budget. Get recommendations in seconds, not hours.",
+      "A Quick draft lays out your days from what you tell us: your preferences, travel style, and budget.",
     icon: Bot,
     highlights: [
       "Instant itinerary generation",
@@ -132,7 +132,7 @@ export default function FeaturesPage() {
               Perfect Trip
             </h1>
             <p className="text-xl text-gray-300 max-w-2xl mx-auto mb-8">
-              From AI-powered planning to local expert connections, Traveloure
+              From planning tools to local expert connections, Traveloure
               gives you all the tools to create unforgettable travel experiences.
             </p>
             <div className="flex flex-wrap justify-center gap-4">

@@ -38,7 +38,7 @@ export default function HowItWorksPage() {
     <PageLayout
       width="content"
       title="How Traveloure Works"
-      lead="From an idea to a plan you can use, in four steps. Build it yourself, sharpen it with AI, or hand it to someone who lives there."
+      lead="From an idea to a plan you can use, in four steps. Build it yourself, sharpen it with Optimize, or hand it to someone who lives there."
       actions={
         <Button size="lg" className={PAGE_ACTION.primary} onClick={() => openSignInModal()} data-testid="button-get-started">
           Get Started <ArrowRight className="w-4 h-4 ml-2" />
@@ -97,7 +97,7 @@ export default function HowItWorksPage() {
       <section className="rounded-2xl border bg-card p-6 md:p-8" data-testid="section-what-it-costs">
         <SectionTitle className="mb-2">What it costs</SectionTitle>
         <p className="text-muted-foreground max-w-2xl">
-          Building a plan yourself is free. What an AI run or a Trip Pass costs, and the platform's fees, are on the
+          Building a plan yourself is free. What an Optimize run or a Trip Pass costs, and the platform's fees, are on the
           pricing page, read from our live fee settings. A local expert sets their own price on their listing.
         </p>
         <Link

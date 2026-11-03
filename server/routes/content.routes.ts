@@ -473,7 +473,7 @@ router.get("/api/status", (_req, res) => {
       recCadence: 4,
       wantedSlotMax: 2,
       wantedSlotSpacing: 6,
-      recommendedLabel: "Recommended",
+      recommendedLabel: "Picked for your days",
       affiliateLabel: "Paid partner",
     };
     try {

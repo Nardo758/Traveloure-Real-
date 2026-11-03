@@ -128,7 +128,7 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
 
   const handlePlanNow = () => {
     setDialogOpen(false);
-    // B8 (ledger `2026-09-30-b1-new-plan-inherits-nothing`): "Plan New Trip with AI" is a NEW plan —
+    // B8 (ledger `2026-09-30-b1-new-plan-inherits-nothing`): "Draft a new trip" is a NEW plan —
     // always, bound plan or not. It starts from empty context and mints its own row; continuing an
     // existing plan is the Trip Strip's explicit Edit/Continue, never this button.
     openPlanning({ door: "city_grid", city: city.cityName, country: city.country, newPlan: true });
@@ -308,7 +308,7 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
                     data-testid={`button-plan-now-${citySlug}`}
                   >
                     <Wand2 className="h-4 w-4 mr-2" />
-                    Plan New Trip with AI
+                    Draft a new trip
                   </Button>
 
                   {/* ── Multi-city queue ── */}

@@ -173,9 +173,9 @@ export function AIMatchedExpertsSection({
             <div className="p-1.5 rounded-lg bg-gradient-to-br from-purple-500 to-indigo-500">
               <Brain className="w-4 h-4 text-white" />
             </div>
-            <span>AI-Matched Experts</span>
+            <span>Experts for this trip</span>
             <Badge variant="secondary" className="bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-[10px]">
-              AI-scored
+              Matched
             </Badge>
           </CardTitle>
           {matchedExperts.length === 0 && !matchExpertsMutation.isPending && (
@@ -252,8 +252,8 @@ export function AIMatchedExpertsSection({
             </div>
             <h4 className="font-medium text-sm mb-1">Find Your Perfect Expert Match</h4>
             <p className="text-xs text-muted-foreground mb-3 max-w-sm mx-auto">
-              Our AI analyzes your {experienceType || "travel"} preferences for {destination} and matches you with 
-              local experts who best understand your needs.
+              We match your {experienceType || "travel"} preferences for {destination} with local experts
+              who know what you're after.
             </p>
             <div className="flex flex-wrap justify-center gap-1 mb-4">
               {["Destination expertise", "Style alignment", "Budget fit", "Availability"].map((factor, idx) => (

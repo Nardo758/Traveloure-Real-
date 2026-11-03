@@ -176,7 +176,7 @@ const languages = [
 const benefits = [
   { icon: Clock, text: "Set your own schedule" },
   { icon: Users, text: "Access to global travelers" },
-  { icon: Sparkles, text: "AI-powered planning tools" },
+  { icon: Sparkles, text: "Planning tools" },
 ];
 
 export default function TravelExpertsPage() {

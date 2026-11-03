@@ -20,7 +20,7 @@ export default function LandingPage() {
       <SEOHead
         title="Home"
         description={HOMEPAGE_META_DESCRIPTION}
-        keywords={["travel platform", "AI travel planning", "event planning", "vacation booking", "travel services"]}
+        keywords={["travel platform", "travel planning", "event planning", "vacation booking", "travel services"]}
         url="/"
       />
 

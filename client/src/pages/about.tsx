@@ -56,7 +56,7 @@ export default function AboutPage() {
             <li><strong>Local experts</strong> live where you're going and check the plan against what they know. They set their own offerings and prices.</li>
             <li><strong>Trip planners</strong> take the whole thing off your hands, from first draft to the last booking.</li>
             <li><strong>Service providers</strong> are the drivers, photographers, caterers, guides and venues you book through the plan, with the terms shown before you commit.</li>
-            <li><strong>AI</strong> does the legwork: it drafts, compares options by how they fit your plan, and keeps the schedule honest. It never has the last word on what's good; a local does.</li>
+            <li><strong>The platform</strong> does the legwork: it drafts, compares options by how they fit your plan, and keeps the schedule honest. It never has the last word on what's good; a local does.</li>
           </ul>
         </CompanySection>
 
