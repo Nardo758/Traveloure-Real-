@@ -37,6 +37,7 @@ import {
   HANDOFF_HOLD_RELEASE_MAX_ATTEMPTS,
   HANDOFF_HOLD_TRAVELER_COPY,
   HANDOFF_KINDS,
+  HANDOFF_FALLBACK_LINE,
   HANDOFF_LIVE_STATUSES,
   handoffHoldReleaseBackoffMs,
   WITHDRAWAL_FEE_BAND,
@@ -1530,7 +1531,7 @@ export async function runHandoffTimers(now: Date = new Date()): Promise<HandoffT
   `);
   for (const r of (fb.rows ?? []) as any[]) {
     out.fallbackOffered += 1;
-    await notify(r.user_id, r.trip_id, "handoff_fallback", "Still finding your local", "Our concierge can take this on now if you'd like.", { requestId: r.id });
+    await notify(r.user_id, r.trip_id, "handoff_fallback", "Still finding your local", HANDOFF_FALLBACK_LINE, { requestId: r.id });
   }
 
   // Claim the release BEFORE the Stripe call so accept (status = proposed) cannot capture it.

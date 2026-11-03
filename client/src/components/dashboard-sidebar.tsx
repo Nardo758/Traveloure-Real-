@@ -43,7 +43,7 @@ import {
 // plans rather than as a peer destination. The `/my-events` ROUTE stays live and keeps the fee-pay
 // rail: `coordination_states.trip_id` is nullable, so an engagement with no plan has no slip to
 // render on, and a redirect would delete it (and its unpaid fee) from the product instead of
-// folding it (§13). `/concierge`'s Done-for-you card still lands there.
+// folding it (§13). The legacy concierge that linked there is retired (CN-1g-UI).
 //
 // Traveler sidebar (9 entries): Home, My plans, Start a plan, Discover, Experts, Bookings,
 // Trip Cart, Inbox, Profile.

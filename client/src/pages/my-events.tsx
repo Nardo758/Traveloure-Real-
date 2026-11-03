@@ -14,12 +14,11 @@
  * the fee-pay rail, for the reason the ruling's own §13 requires: `coordination_states.trip_id` is
  * NULLABLE, so an engagement with no plan has no slip to render on. Redirecting this route away
  * would delete those engagements — and their unpaid fee — from the product rather than fold them,
- * so no redirect was added. `/concierge`'s Done-for-you card still lands here, which is how the
- * page stays reachable without a nav entry.
+ * so no redirect was added. The legacy concierge that linked here is retired (CN-1g-UI); the page is
+ * reached from the plan's Coordination card.
  */
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { DashboardLayout } from "@/components/dashboard-layout";
@@ -37,7 +36,6 @@ import { ON_SESSION_CLICK_NOTE, SAVED_APPLE_PAY_CLICK_NOTE, savedMethodConfirmsO
 // Coordination card, so one engagement reads the same on both surfaces (§18 rule 1). The fee RAIL
 // below — quote, /pay, /pay/confirm — is untouched by that lane.
 import { engagementFee, engagementStatusLabel, engagementTitle } from "@/lib/coordination-engagement";
-import { useTravelerDoors } from "@/hooks/use-traveler-doors";
 
 interface Engagement {
   id: string;
@@ -305,7 +303,6 @@ function EngagementCard({ engagement }: { engagement: Engagement }) {
 }
 
 export default function MyEvents() {
-  const { eventConcierge: conciergeShown } = useTravelerDoors();
   const { data: engagements, isLoading } = useQuery<Engagement[]>({
     queryKey: ["/api/coordination-states"],
   });
@@ -338,18 +335,6 @@ export default function MyEvents() {
                 <Crown className="w-6 h-6 text-muted-foreground" />
               </div>
               <h2 className="text-lg font-semibold text-foreground mb-1">No events yet</h2>
-              {/* Ledger `2026-10-18-traveler-doors-hidden`: the old concierge's door, off by default. */}
-              {conciergeShown ? (
-                <>
-                  <p className="text-muted-foreground max-w-md mx-auto mb-6">
-                    Planning a wedding, proposal, or milestone event? Our concierge can coordinate
-                    it end-to-end — vendors, timeline, and RSVPs.
-                  </p>
-                  <Link href="/concierge">
-                    <Button data-testid="button-start-event">Plan an event</Button>
-                  </Link>
-                </>
-              ) : null}
             </CardContent>
           </Card>
         )}

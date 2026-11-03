@@ -235,7 +235,6 @@ export const authNavConfig: AuthNavConfig[] = [
   // rendered nowhere — authNavItems has no render site) points at the default
   // surface so it can never resurrect a hub.
   { href: "/destinations", label: "Marketplace" },
-  { href: "/concierge", label: "Concierge", door: "eventConcierge" },
   { href: "/chat", label: "Expert Chat" },
 ];
 

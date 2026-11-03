@@ -166,9 +166,9 @@ jobs:
       - name: Assert journey spec files exist
         run: |
           missing=0
+          # CN-1g-UI: j2-ai-entry.spec.ts is deleted (its entry was the retired /api/concierge/quote).
           for f in \
-            "playwright/tests/journeys/j1-golden-path.spec.ts" \
-            "playwright/tests/journeys/j2-ai-entry.spec.ts"; do
+            "playwright/tests/journeys/j1-golden-path.spec.ts"; do
             if [ ! -f "$f" ]; then
               echo "::error::Journey spec not found: $f"
               missing=1

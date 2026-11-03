@@ -749,7 +749,7 @@ export type PenPrincipal = string | null | undefined;
  * HAND THE GUEST'S ANSWERS TO THE ACCOUNT, ONCE, AND ONLY INTO AN EMPTY SERVER PEN.
  *
  * There was no guest→user handoff for the pen before this lane — `SignInModal.migrateGuestCart`
- * moves `cart_items` and `claimGuestConcierge` claims a concierge request; neither touches
+ * moves `cart_items` (the guest concierge claim was retired with the legacy funnel, CN-1g-UI); it never touches
  * `trip_contexts`. So this is a new CALLER of the EXISTING `PUT /api/trip-context` rail and not a
  * new rail (no route, no schema, no column).
  *
