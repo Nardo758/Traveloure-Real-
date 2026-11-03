@@ -1,5 +1,6 @@
 import { Switch, Route, Redirect, useLocation, useSearch } from "wouter";
 import { Ga4PageViews } from "@/components/Ga4PageViews";
+import { AnalyticsConsentBanner } from "@/components/AnalyticsConsentBanner";
 import { VerifyEmailReminderBanner } from "@/components/auth/VerifyEmailReminderBanner";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -1570,6 +1571,8 @@ function App() {
                   <Toaster />
                   {/* TG-1: sanitised GA4 page views (no-op unless the tag is loaded). */}
                   <Ga4PageViews />
+                  {/* CB-1: the analytics consent banner (EEA/UK/CH time zones; nothing unless the tag is loaded). */}
+                  <AnalyticsConsentBanner />
                   <LocaleSync />
                   {/* RC-3: the ONE pen binder, above every shell (see pen-binder.tsx). */}
                   <PenBinder />

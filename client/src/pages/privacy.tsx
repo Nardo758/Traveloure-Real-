@@ -364,22 +364,22 @@ export default function PrivacyPolicyPage() {
           <section>
             <h2 className={`${PAGE_H2_CLASS} mb-4`} style={HEADING_STYLE}>11. Cookies and Tracking Technologies</h2>
             <p className="text-muted-foreground leading-relaxed mb-4">
-              We use only the cookies strictly necessary to operate the platform. We do not use third-party analytics, advertising, or cross-site tracking technologies.
+              We use cookies that are strictly necessary to operate the platform and, with your consent where the law requires it, Google Analytics to measure which pages are used. We do not use advertising or cross-site tracking technologies.
             </p>
 
-            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>11.1 Cookies We Use</h3>
+            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>11.1 Essential Cookies</h3>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
-              <li><strong>Essential cookies only:</strong> A session cookie that keeps you signed in and protects your account (authentication and security). These cookies are required for the platform to function and do not track you across other websites.</li>
+              <li><strong>Essential cookies:</strong> A session cookie that keeps you signed in and protects your account (authentication and security). These cookies are required for the platform to function and do not track you across other websites.</li>
             </ul>
 
-            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>11.2 No Third-Party Tracking</h3>
+            <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>11.2 Analytics</h3>
             <p className="text-muted-foreground leading-relaxed mb-6">
-              We do not use third-party analytics or advertising services such as Google Analytics or Facebook Pixel, and we do not set performance, functional, or marketing cookies. If we introduce any such technologies in the future, we will update this policy first and, where required by law, ask for your consent before they are activated.
+              We use Google Analytics 4 to count page views and three planning actions (joining the waitlist, starting a plan, requesting a quick draft). What is sent is the page path with identifiers and invitation tokens removed, the page's generic name, and the referring page on our own site with the same removals. No account identifier, email address, price, booking, or plan content is sent. IP addresses are anonymised, Google signals and advertising features are off, and no advertising cookies are set. In the European Economic Area, the United Kingdom and Switzerland, analytics cookies are off until you choose Allow on the banner; elsewhere they are on unless you choose No thanks. Your choice is stored on your device; clearing site data brings the banner back.
             </p>
 
             <h3 className="mb-3 text-[20px] font-semibold" style={HEADING_STYLE}>11.3 Managing Cookies</h3>
             <p className="text-muted-foreground leading-relaxed">
-              You can delete or block cookies through your browser settings. Note that blocking the essential session cookie will prevent you from staying signed in and may make parts of the platform unusable.
+              You can delete or block cookies through your browser settings. Note that blocking the essential session cookie will prevent you from staying signed in and may make parts of the platform unusable. To change your analytics choice, clear this site's data in your browser and choose again.
             </p>
           </section>
 

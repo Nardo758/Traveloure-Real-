@@ -213,6 +213,16 @@ export function grantAnalyticsConsent(): void {
   state?.win.gtag?.("consent", "update", { analytics_storage: "granted" });
 }
 
+/** For the consent banner (CB-1): the visitor chose No thanks. */
+export function denyAnalyticsConsent(): void {
+  state?.win.gtag?.("consent", "update", { analytics_storage: "denied" });
+}
+
+/** CB-1: is the tag loaded? The banner never shows when it is not. */
+export function isGa4Loaded(): boolean {
+  return state !== null;
+}
+
 /** Tests only: forget the loaded tag. */
 export function resetGa4ForTests(): void {
   state = null;
