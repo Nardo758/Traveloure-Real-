@@ -14,6 +14,8 @@
  *    (FU-9C-1): every shown leg renders between its two stops through `renderLegBetween`
  *    (`slipLegBetween`, step 9c D5), so no leg loses its render.
  */
+import { SaveToPlanButton } from "@/components/plan/SaveToPlanButton";
+import { useSignupMode } from "@/lib/signup-mode";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 // Ruling 5 (ledger `2026-10-08-conformance-slip-phase0`): the slip's token layer, imported here only.
 import "@/styles/slip-tokens.css";
@@ -41,8 +43,9 @@ import {
   effectiveRoutingStatus,
   isBookedActivity,
   itemBookingAction,
+  itemBookedTick,
   itemBookingState,
-  slipItemBookingLine,
+  slipItemBookingNote,
 } from "@/lib/item-booking-state";
 import { parseTripDate } from "@/lib/calendar-date";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -171,6 +174,8 @@ import { DayExpertHook } from "../plan/DayExpertHook";
 import { HandoffChooserHost } from "@/components/plan/HandoffChooser";
 import { HandoffBanner, HandoffFooter, SuggestionStrip, useExpertSuggestions, useHandoff } from "@/components/plan/HandoffBanner";
 import { handoffDayStat, handoffExpertLabel, handoffPenScope, openHandoffChooser } from "@/lib/handoff-client";
+import { useExpertAvailability } from "@/lib/expert-availability";
+import { EXPERT_DOOR_COPY, getHelpNoteShown } from "@/lib/expert-door-copy";
 import {
   resolveAddDayNumber,
   slipItemTools,
@@ -378,7 +383,7 @@ export function SlipHeader({
   /** A one-day Moment's span ("evening" / "day"), for the window line (Moment board). */
   daySpan?: "evening" | "day" | null;
   /**
-   * The Moment board's line beside the "AI starting sketch" chip ("4 stops · around your
+   * The Moment board's line beside the "Quick draft" chip ("4 stops · around your
    * reservation"). Present only for a Moment with an anchor; otherwise the sketch keeps its sentence.
    */
   sketchLine?: string | null;
@@ -581,6 +586,7 @@ export function SlipHeader({
         eventCount={eventCount}
         timezone={(trip as any)?.timezone ?? null}
         daySpan={daySpan}
+        fromOccasionDraft={(trip as any)?.fromOccasionDraft === true}
       />
       {/* The header's anchor line ("Where you'll stay: …") is GONE (Main board, ledger
           `2026-10-08-slip-main-rail`): the board draws no such line — the anchor card IS the ask. */}
@@ -656,14 +662,14 @@ export function SlipHeader({
         // The Moment board: a chip and a line, in place of the sentence.
         <p className="flex flex-wrap items-center gap-2 text-[13px] text-[color:var(--slip-muted)]" data-testid="slip-ai-sketch-note">
           <span className="inline-flex items-center rounded-[var(--slip-radius-chip)] bg-[color:var(--slip-wash)] px-2.5 py-1 font-medium text-[color:var(--slip-navy)]">
-            AI starting sketch
+            Quick draft
           </span>
           <span>{sketchLine}</span>
         </p>
       ) : data.aiSketch === true ? (
         <p className="text-xs text-muted-foreground" data-testid="slip-ai-sketch-note">
           <Sparkles className="w-3 h-3 inline mr-1" />
-          This is an AI starting sketch — one version, without live prices. Optimize builds three
+          This is a Quick draft — one version, without live prices. Optimize builds three
           proposals around it, anchored to what you have already booked.
         </p>
       ) : null}
@@ -888,6 +894,7 @@ function SlipDayItem({
   const sheetControls = a.bookingPath ? bookingControls(a.bookingPath) : { primaryBook: true, bookForMe: true };
   // Ledger `2026-10-18-traveler-doors-hidden`: "Book this for me" is drawn only while `handoff_booking` is on.
   const { handoffBooking } = useTravelerDoors();
+  const slipWaitlist = useSignupMode().mode === "waitlist";
   useEffect(() => {
     if (detailsRequest > 0) setSheetOpen(true);
   }, [detailsRequest]);
@@ -932,7 +939,10 @@ function SlipDayItem({
       timeEdit={timeEditable ? timeEdit : null}
       mode={canEditItems ? "edit" : "read"}
       role={isExpertViewer ? "expert" : "traveler"}
-      bookingState={slipItemBookingLine(a)}
+      // Row PS-6 (Leon, Nov 2 §3): the slip shows only a booked tick — no reference, no partner name. A row that is
+      // not simply booked keeps its note.
+      booked={itemBookedTick(a)}
+      bookingState={slipItemBookingNote(a)}
       anchor={
         anchorFrom
           ? { fromTool: anchorFrom }
@@ -980,7 +990,7 @@ function SlipDayItem({
         onAskLocal={menu?.onAskLocal ? () => { setSheetOpen(false); menu.onAskLocal!(); } : null}
         askLocalLabel={menu?.askLocalSaved ? ITEM_MENU_LABELS.seeQuestion : ITEM_MENU_LABELS.askLocal}
         navigateHref={navigateHref({ name: a.name, lat: a.lat ?? null, lng: a.lng ?? null }, city)}
-        bookingLine={slipItemBookingLine(a)}
+        bookingLine={slipItemBookingNote(a)}
         bookingAction={
           isOwner && itemBookingAction(a) ? (
             <ItemBookingActionLink tripId={tripId} activity={a} showNote={false} />
@@ -990,9 +1000,14 @@ function SlipDayItem({
                   affiliate item the stay's "Book" (S1-d-3b) or the partner's agent button — then "Book this for
                   me" second. On a concierge item "Book this for me" is the only control; on `none`, nothing. */}
               {sheetControls.primaryBook && a.bookingPath === "platform" && a.providerServiceId ? (
+                // Row P-1c: waitlist mode — the platform item's Book is "Save to plan" (it is already on the plan).
+                slipWaitlist ? (
+                  <SaveToPlanButton testId={`item-sheet-save-to-plan-${a.id}`} />
+                ) : (
                 <Button size="sm" asChild data-testid={`item-sheet-book-${a.id}`}>
                   <Link href={serviceDetailHref(a.providerServiceId, tripId)}>Book</Link>
                 </Button>
+                )
               ) : null}
               {sheetControls.primaryBook && stayBook ? <StayBookButton tripId={tripId} itemId={a.id} hotelName={a.name} /> : null}
               {showsStayCancel({ isOwner, read: stayRead }) ? <StayCancelButton tripId={tripId} itemId={a.id} hotelName={a.name} /> : null}
@@ -1626,6 +1641,8 @@ export function useSlipViewModel({
   const cardReady = data.trip ? tripCardBannerState({ ...primaryInputFromTrip(data.trip), finalVersion: data.trip.finalVersion }) === "ready" : false;
 
   const allActivities = useMemo(() => days.flatMap((d) => d.activities), [days]);
+  // Row P-7: the one expert-door gate for the drafted-slip note.
+  const slipExpertsAvailable = useExpertAvailability({ city: data?.trip?.destination ?? null });
   // The Handoff board: while an expert holds the pen, the stops in the request's scope carry the pen
   // mark and the day says how many are theirs. The SAME handoff read the banner makes (one cache).
   const { data: handoffRead } = useHandoff(tripId, isOwner || isExpertViewer);
@@ -2041,6 +2058,7 @@ export function useSlipViewModel({
     expertName,
     openPlanModal,
     hasAdvisor,
+    slipExpertsAvailable,
     expertDoorState,
     setExpertDoorState,
     expertDoorLive,
@@ -2139,6 +2157,7 @@ export function SlipView({
     expertName,
     openPlanModal,
     hasAdvisor,
+    slipExpertsAvailable,
     expertDoorState,
     setExpertDoorState,
     expertDoorLive,
@@ -2543,7 +2562,6 @@ export function SlipView({
             compareHref={data.lastComparisonId ? `/itinerary-comparison/${data.lastComparisonId}` : null}
             browse={mapBrowse}
             onBrowseChange={setMapBrowse}
-            showTravelMinutes={data.travelTimesShown === true}
             layout="split"
             planEmptyNote={planEmptyReason}
           />
@@ -2917,6 +2935,23 @@ export function SlipView({
             );
           })}
       </div>
+      {/* Row P-7: one note under the last day — a drafted plan with no advisor, while an expert is live. */}
+      {getHelpNoteShown({ isOwner, itemCount: allActivities.length, expertsAvailable: slipExpertsAvailable, hasAdvisor }) ? (
+        <div
+          className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] px-4 py-3"
+          data-testid="slip-get-help-note"
+        >
+          <span className="text-sm text-[color:var(--slip-ink)]">{EXPERT_DOOR_COPY.draftedNote}</span>
+          <button
+            type="button"
+            className="min-h-11 rounded-full border border-[color:var(--slip-line)] px-4 text-[13px] font-semibold text-[color:var(--slip-teal-ink)] hover:bg-[color:var(--slip-ground)]"
+            onClick={() => openHandoffChooser({})}
+            data-testid="slip-get-help-note-button"
+          >
+            {EXPERT_DOOR_COPY.getHelp}
+          </button>
+        </div>
+      ) : null}
       {/* The Handoff board's footer — "When <name> is done" — under the days it is about. */}
       {isOwner ? <HandoffFooter tripId={tripId} isOwner={isOwner} /> : null}
       </>

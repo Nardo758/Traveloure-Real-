@@ -126,7 +126,7 @@ export function WishlistSection() {
                 size="sm"
                 variant="outline"
                 className="h-6 px-2 text-[10px]"
-                onClick={() => planning.open({ city })}
+                onClick={() => planning.open({ city, newPlan: true })}
                 data-testid={`button-plan-city-${city}`}
               >
                 <CalendarPlus className="h-3 w-3 mr-1" />

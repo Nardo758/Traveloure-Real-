@@ -214,6 +214,8 @@ export const JOB_CADENCE: readonly JobCadence[] = [
   { job: "score-neighborhood-claims", expectedIntervalSec: 60 * 60, bucket: "hourly" },
   // Step 7b (R323): the handoff clocks — 24 h fallback, 48 h hold release (R-q), 7 d auto-approve (R-s).
   { job: "handoff-timers", expectedIntervalSec: 60 * 60, bucket: "hourly" },
+  // CN-1d: unaccepted concierge bookings past CONCIERGE_ACCEPT_HOURS decline through the owner path.
+  { job: "concierge-accept-timeout", expectedIntervalSec: 60 * 60, bucket: "hourly" },
   // Step 9b D6 (ledger `2026-10-07-step9b-optimizer-and-rechecks`): the day-of leg re-check — hourly,
   // acting only on plans whose local time is 06:00 on a trip day.
   { job: "routing-recheck", expectedIntervalSec: 60 * 60, bucket: "hourly" },
@@ -424,6 +426,12 @@ router.post("/internal/jobs/travelpulse-weekly", requireInternalSecret, async (_
 
 // Step 7b (R323): the handoff clocks. Every transition is an atomic conditional, so a re-run (or a
 // second runner) changes nothing twice.
+router.post("/internal/jobs/concierge-accept-timeout", requireInternalSecret, async (_req, res) => {
+  const { runConciergeAcceptTimeout } = await import("../services/concierge-accept-timeout.service");
+  const { status, body } = await runJob("concierge-accept-timeout", () => runConciergeAcceptTimeout());
+  res.status(status).json(body);
+});
+
 router.post("/internal/jobs/handoff-timers", requireInternalSecret, async (req, res) => {
   const { runHandoffTimers } = await import("../services/handoff.service");
   const { status, body } = await runJob("handoff-timers", () => runHandoffTimers());

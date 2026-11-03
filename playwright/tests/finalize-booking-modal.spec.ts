@@ -143,7 +143,7 @@ test.describe("Finalize booking chooser", () => {
     expect(afterFinalize.transition_types).toContain("plan_finalized");
     await expect(page.getByTestId("finalize-staged-unbooked-note")).toContainText("1 stop is in checkout but not booked yet");
     await expect(page.getByTestId("finalize-option-myself")).toHaveAttribute("aria-pressed", "true");
-    await expect(page.getByTestId("finalize-option-myself")).toContainText("Book it myself");
+    await expect(page.getByTestId("finalize-option-myself")).toContainText("I book them myself");
     // Row 194 (R2, Nov 1, 2026): the Booking agent lane is not rendered while row 298 is parked.
     await expect(page.getByTestId("finalize-option-agent")).toHaveCount(0);
     await expect(page.getByTestId("finalize-option-expert")).toContainText("Travel expert");

@@ -25,7 +25,6 @@ import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
 import { PlanCardUpsellSlot, usePlanCardUpsellLines } from "./PlanCardUpsellSlot";
 import { PlanCardHeader } from "./PlanCardHeader";
 import { tripCardEyebrow } from "@/lib/trip-card-eyebrow";
-import { ConciergeModule } from "./ConciergeModule";
 import { MapControlCenter, locatedCountLabel } from "./MapControlCenter";
 import { planMapAnchor } from "@/lib/map-scene";
 import { slipAdvisorName } from "@/lib/slip-rail";
@@ -98,7 +97,7 @@ function getSummaryStatusLabel(startDate: string, endDate: string, status?: stri
   if (now >= start && now <= end) return "Active";
   if (now < start) {
     const days = daysUntilDate(startDate);
-    return days <= 7 ? "Soon" : "Upcoming";
+    return days <= 7 ? "This week" : "Upcoming";
   }
   if (status) return status.charAt(0).toUpperCase() + status.slice(1);
   return "Planning";
@@ -345,11 +344,6 @@ function PlanCardSummary({
             </div>
           }
         />
-
-        {/* Concierge — front and center (redesign) */}
-        <div className="px-4 pt-3" onClick={(e) => e.stopPropagation()}>
-          <ConciergeModule destination={trip.destination} testId={`concierge-module-summary-${trip.id}`} />
-        </div>
 
         {/* Stats */}
         <div style={{ padding: "10px 14px" }}>
@@ -934,14 +928,6 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
           className="mx-3 sm:mx-5 mt-2.5"
         />
 
-        {/* Concierge — front and center for TRAVELERS; suppressed in the Workstation embed
-            (a hire-an-expert module shown to the expert is duplicate/contradictory chrome). */}
-        {!embedded && (
-          <div className="px-3 sm:px-5 pt-2.5">
-            <ConciergeModule destination={trip.destination} testId={`concierge-module-full-${trip.id}`} />
-          </div>
-        )}
-
         {/* View toggle suppressed in the Workstation embed — the builder has its own Map tab
             (same MapControlCenter), so the card stays in card view there. */}
         {/* THE VIEW BAR — Plan | Map, the Map label carrying "X of Y located" (ledger
@@ -1186,7 +1172,6 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
             // the ONE derivation (§18 rule 1). The card loads no option sets, so only the stay.
             anchor={planMapAnchor(days.flatMap((d) => d.activities ?? []))}
             readOnly
-            showTravelMinutes={(plancardData as any)?.travelTimesShown === true}
           />
         )}
 
@@ -1208,7 +1193,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               <MapPin className="w-3.5 h-3.5 mr-1" />
               Maps
             </Button>
-            {/* Concierge promoted to the front-and-center ConciergeModule above (redesign Phase 2) */}
+            {/* The legacy concierge module was retired by CN-1g-UI. */}
           </div>
         )}
 

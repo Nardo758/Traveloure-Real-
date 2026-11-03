@@ -38,6 +38,7 @@ const JOB_ROUTES = [
   "/internal/jobs/facts-recheck",
   "/internal/jobs/leg-google-coords",
   "/internal/jobs/routing-recheck",
+  "/internal/jobs/concierge-accept-timeout",
   "/internal/jobs/guest-data-retention",
 ];
 

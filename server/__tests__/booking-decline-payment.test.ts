@@ -281,10 +281,13 @@ test("the owner decline handler settles through this helper and does not cancel 
   const end = routes.indexOf('app.patch("/api/expert/bookings/:id/status"');
   assert.ok(start > 0 && end > start);
   const handler = routes.slice(start, end);
-  assert.match(handler, /settleBookingDeclinePayment\(/);
+  assert.match(handler, /applyOwnerDecline\(/);
   assert.equal(handler.includes("paymentIntents.cancel"), false);
-  assert.match(handler, /refundServiceBooking\(/);
-  assert.match(handler, /outcome === "release_failed"/);
+  const decline = fs.readFileSync("server/services/booking-owner-decline.service.ts", "utf8");
+  assert.match(decline, /settleBookingDeclinePayment\(/);
+  assert.match(decline, /refundServiceBooking\(/);
+  assert.match(decline, /outcome === "release_failed"/);
+  assert.equal(decline.includes("paymentIntents.cancel"), false);
   const helper = fs.readFileSync("server/services/booking-decline-payment.service.ts", "utf8");
   assert.equal(helper.includes("paymentIntents.cancel"), false);
   assert.match(helper, /booking-decline-cancel-/);

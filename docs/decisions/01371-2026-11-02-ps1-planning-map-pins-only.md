@@ -1,0 +1,1 @@
+| 2026-11-02-ps1-planning-map-pins-only | 2026-11-02 | [guarded: client/src/components/plancard/__tests__/row-ps1-pins-only.test.tsx] (PS-1 brief, Nov 2, 2026; GC-1; B8) | **R800 — PLANNING MAP DRAWS PINS AND THE STAY RING ONLY; NO LEG LINES, NO MINUTE LABELS (GC-1/B8).** | numeric citation R800; merged af143ab |

@@ -123,7 +123,7 @@ export default function HowItWorksPage() {
             Create your first trip and see how much of the planning we can take off your hands.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
-            <Button size="lg" className={PAGE_ACTION.primary} onClick={() => openPlanning()} data-testid="button-create-trip-cta">
+            <Button size="lg" className={PAGE_ACTION.primary} onClick={() => openPlanning({ newPlan: true })} data-testid="button-create-trip-cta">
               Create Your First Trip <ArrowRight className="w-4 h-4 ml-2" />
             </Button>
             {anyExpertAvailable && (

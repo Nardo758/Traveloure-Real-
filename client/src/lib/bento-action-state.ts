@@ -1,4 +1,5 @@
 import type { FeedItem } from "./feed-stream";
+import { WAITLIST_COPY } from "./waitlist-copy";
 import { addToPlanLabel, TILE_ACTION_COPY } from "./tile-action-copy";
 
 /**
@@ -69,6 +70,8 @@ export interface TileActionContext {
   affiliate?: boolean;
   /** The city has an expert who can take a question (expert, lead-expert). */
   canAsk?: boolean;
+  /** Row P-1c: traveler sign-up is waitlist-only — a Traveloure book reads "Save to plan" (the add-to-plan path). */
+  waitlist?: boolean;
 }
 
 export interface TileAction {
@@ -94,7 +97,8 @@ export function tileActionLabel(kind: FeedItem["kind"], ctx: TileActionContext =
       return ctx.bookable ? TILE_ACTION_COPY.checkAvailability : addToPlanLabel(ctx.scheduledDate);
     case "recommendation":
       if (!ctx.bookable) return addToPlanLabel(ctx.scheduledDate);
-      return ctx.affiliate ? TILE_ACTION_COPY.bookOnPartner : TILE_ACTION_COPY.bookNow;
+      if (ctx.affiliate) return TILE_ACTION_COPY.bookOnPartner;
+      return ctx.waitlist ? WAITLIST_COPY.saveToPlan : TILE_ACTION_COPY.bookNow;
     case "package":
       return TILE_ACTION_COPY.getThisTrip;
     case "expert":

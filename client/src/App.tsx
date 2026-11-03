@@ -132,8 +132,6 @@ const AdminReconciliation = lazy(() => import("@/pages/admin/reconciliation"));
 const AdminBookingDetail = lazy(() => import("@/pages/admin/booking-detail"));
 const AdminBookings = lazy(() => import("@/pages/admin/bookings"));
 const AdminFeedback = lazy(() => import("@/pages/admin/feedback"));
-const ConciergePage = lazy(() => import("@/pages/concierge"));
-import { EventConciergeRoute } from "@/components/concierge/EventConciergeRoute";
 const ResetPasswordPage = lazy(() => import("@/pages/reset-password"));
 const VerifyEmailPage = lazy(() => import("@/pages/verify-email"));
 const ExpertsPage = lazy(() => import("@/pages/experts"));
@@ -234,7 +232,6 @@ import { Button } from "@/components/ui/button";
 
 import { getRoleHomePath, userHasRequiredRole } from "@/lib/role-utils";
 import { useClaimGuestTrips } from "@/hooks/use-claim-guest-trips";
-import { useClaimGuestConcierge } from "@/hooks/use-claim-guest-concierge";
 import { captureAcquisitionRef } from "@/lib/acquisition";
 import { sanitizeReturnTo } from "@/lib/safe-return-to";
 import { decideLoginRoute } from "@/lib/login-route";
@@ -481,9 +478,8 @@ function DiscoverRedirect() {
 }
 
 function Router() {
-  // Automatically claim guest trips and concierge requests when user signs in
+  // Automatically claim guest trips when the user signs in
   useClaimGuestTrips();
-  useClaimGuestConcierge();
 
   return (
     <Suspense fallback={<PageLoader />}>
@@ -510,15 +506,13 @@ function Router() {
       <Route path="/architecture">
         {process.env.NODE_ENV === "development" ? <ArchitectureDiagram /> : <Redirect to="/" />}
       </Route>
+      {/* CN-1g-UI (ledger `2026-11-03-cn1g-ui-retire-legacy-concierge`): the legacy funnel is retired. /concierge (every
+          query variant) and /optimize land on the Local concierge filter (CN-1c). */}
       <Route path="/concierge">
-        <EventConciergeRoute>
-          <ConciergePage />
-        </EventConciergeRoute>
+        <Redirect to="/services?serviceType=concierge" />
       </Route>
       <Route path="/optimize">
-        <EventConciergeRoute>
-          <Redirect to="/concierge?tier=ai" />
-        </EventConciergeRoute>
+        <Redirect to="/services?serviceType=concierge" />
       </Route>
       <Route path="/login">
         <LoginRoute />

@@ -775,7 +775,7 @@ export default function ItineraryViewPage() {
             <p className="text-sm text-muted-foreground mb-3">
               Plan your own trip with Traveloure
             </p>
-            <Button onClick={() => openPlanning()} data-testid="button-plan-trip">
+            <Button onClick={() => openPlanning({ newPlan: true })} data-testid="button-plan-trip">
               Plan My Trip
             </Button>
           </div>

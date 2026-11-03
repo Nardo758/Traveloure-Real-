@@ -43,7 +43,7 @@
  * with no public address gets a sentence, not a dead button; a card whose rows are all gated away
  * is not rendered at all.
  */
-import { helpArticlePath } from "@shared/help-article-slugs";
+import { conciergeAccessLine } from "@/lib/concierge-hire-copy";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
@@ -75,6 +75,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { useSignupMode } from "@/lib/signup-mode";
+import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 import { apiRequest, queryClient as sharedQueryClient } from "@/lib/queryClient";
 import { optimizeCheckoutHeading } from "@/lib/checkout-headings";
 import { OPTIMIZE_UNAVAILABLE } from "@/lib/optimize-pay-copy";
@@ -120,7 +122,6 @@ import {
 // S6/S7 — the Plan card's "Stops & timezone" row composes the header's OWN two lines; it derives
 // neither (§18 rule 1). Both arrive as props from `SlipView`, which resolves them once.
 import { slipPlanMetaLine } from "@/lib/slip-meta";
-import { travelerFeePreviewDisplay, type TravelerFeePreviewBlock } from "@/lib/traveler-fee-preview";
 // The row is a DOOR of the ONE planning modal (Locked Decision 33's opener), whose step 2 IS the
 // ordered stop-list editor (Locked Decision 34's one client writer) — never a second stop editor.
 import { usePlanning } from "@/contexts/PlanningContext";
@@ -148,7 +149,7 @@ import type { PlanEvent } from "@/lib/slip-events";
 import type { SlipTrip } from "./SlipView";
 import { DatesGate, type PlanWindow } from "@/components/plan/SlipAnchorPanels";
 import { BuildAroundDialog } from "./BuildAroundDialog";
-import { FinalizeBookingModal } from "./FinalizeBookingModal";
+import { FINALIZE_COPY, FinalizeBookingModal } from "./FinalizeBookingModal";
 import { PhoneDeliveryDialog } from "./PhoneDeliveryDialog";
 import { useReopenMutation } from "./use-reopen-mutation";
 import { openHandoffChooser } from "@/lib/handoff-client";
@@ -313,7 +314,7 @@ export function useSlipAiAction(tripId: string, activities: PlanCardActivity[]):
 }
 
 /**
- * The "Draft it with AI" row and its mutation, lifted VERBATIM out of `BuildCard` (step 8b-1) so the
+ * The "Quick draft" row and its mutation, lifted VERBATIM out of `BuildCard` (step 8b-1) so the
  * map layout can render the same row. `BuildCard` still decides WHEN it shows (owner, empty plan).
  */
 export function SlipDraftAiRow({ trip, tripId }: { trip: SlipTrip; tripId: string }) {
@@ -337,10 +338,10 @@ export function SlipDraftAiRow({ trip, tripId }: { trip: SlipTrip; tripId: strin
 
   return (
         <>
-          <DatesGate trip={trip} action="Draft it with AI" testId="slip-draft-dates-gate">
+          <DatesGate trip={trip} action="Quick draft" testId="slip-draft-dates-gate">
             {(guard) => (
               <RailRow
-                label="Draft it with AI"
+                label="Quick draft"
                 meta="empty plan"
                 icon={<Sparkles className="w-3.5 h-3.5" />}
                 onClick={() => guard((dates) => draft.mutate(dates))}
@@ -525,6 +526,8 @@ function BuildCard({
         // A stale list-pick id: no payment; the dialog reopens with a generic error and a refreshed list.
         confirmedPinnedAnchor.current = undefined;
         setPinRefusal({ reason: "stale_pin", pin: pinnedAnchor });
+        // OPT-B: an event or day pin the server cannot build around says why instead (still no payment).
+        if (outcome.detail) setPinRefusal({ reason: outcome.detail, pin: pinnedAnchor });
         setBuildAroundOpen(true);
         return;
       }
@@ -610,6 +613,7 @@ function BuildCard({
   // chooser's own rule (`chooserHasExperts` behind the city's `expert_hook_cities` switch, read once
   // through `useExpertAvailability`). Loading, an error or a "no" hide it; nothing takes its place.
   const expertsAvailable = useExpertAvailability({ city: trip.destination });
+  const optimizerWaitlist = useSignupMode().mode === "waitlist";
   const optimizerBlock = (
         <>
           {/* Surface step 4 (spec §8): the ONE optimizer card — findings, the realised delta after a
@@ -683,7 +687,8 @@ function BuildCard({
           slip's slot (a portal: the state stays here, the card moves). Main board (ledger
           `2026-10-08-slip-main-rail`): the rail is gone, so this component draws nothing of its own
           — the card, the Trip Pass offer and the two dialogs are all it mounts. */}
-      {isOwner ? (optimizerSlot ? createPortal(optimizerBlock, optimizerSlot) : optimizerBlock) : null}
+      {/* Row P-1c: waitlist mode hides Optimize (a paid action) and the Trip Pass offer under it — not greyed. */}
+      {isOwner && !optimizerWaitlist ? (optimizerSlot ? createPortal(optimizerBlock, optimizerSlot) : optimizerBlock) : null}
       <BuildAroundDialog
         open={buildAroundOpen}
         tripId={trip.id}
@@ -796,7 +801,13 @@ function ExpertCard({
   expertState,
   otherAdvisorsLine,
   messageControl = null,
+  conciergeLine = null,
 }: {
+  /**
+   * CN-1d-UI: a concierge advisor's access window (or that it has ended), from `conciergeAccessLine`. Null for a
+   * handoff advisor, whose card is exactly as before.
+   */
+  conciergeLine?: { kind: "active" | "ended"; text: string } | null;
   /** The ONE "Message <name>" control (`ExpertMessageRow`), owner only. */
   messageControl?: React.ReactNode;
   /**
@@ -843,6 +854,14 @@ function ExpertCard({
                 data-testid="slip-rail-expert-standing"
               >
                 {standing}
+              </p>
+            )}
+            {conciergeLine && (
+              <p
+                className="text-[11px] leading-snug text-muted-foreground break-words"
+                data-testid={conciergeLine.kind === "ended" ? "slip-rail-expert-concierge-ended" : "slip-rail-expert-concierge-access"}
+              >
+                {conciergeLine.text}
               </p>
             )}
           </div>
@@ -1114,6 +1133,11 @@ export function FinishCard({
 }) {
   const finalizeMutation = useFinalizeMutation(trip.id);
   const reopenMutation = useReopenMutation(trip.id);
+  // Row P-1c: in waitlist mode the checkout path becomes "Save to plan" — every staged row is already on the plan, so
+  // the press says so — and the fee preview is not drawn.
+  const waitlist = useSignupMode().mode === "waitlist";
+  const { toast: finishToast } = useToast();
+  const savedToPlan = () => finishToast({ title: WAITLIST_COPY.savedToPlan });
   const [finalizeModalOpen, setFinalizeModalOpen] = useState(false);
   // §8 phone delivery (ledger `2026-10-17-phone-delivery-calendar`): once Finalize has made a NEW
   // final, "Get your Trip Card on your phone" follows the booking chooser. The dialog closes
@@ -1136,18 +1160,7 @@ export function FinishCard({
   // S12-4: the stops behind the reachability count, one per line with its day.
   const unreachableLines = freeLine ? unreachableStopLines(finishPreview?.findings) : [];
   const checkoutReady = countCheckoutReadyItems(activities);
-  // R144 (ledger `2026-09-27-service-fee-before-checkout`): the traveler service fee for THIS plan's
-  // staged lines, shown where the slip's checkout path starts. The amount is the server's
-  // (`GET /api/cart` → `travelerFeePreview.byTrip[tripId]`, the charge's own resolver); the ONE
-  // wording rule decides whether a line is drawn. Owner only — the cart is the session user's own.
-  // This line moves into the slip's bookings section when that section lands (map step 4).
-  // `staleTime: 0`: staging a row re-projects the cart server-side without touching this cache.
-  const cartForFee = useQuery<{ travelerFeePreview?: TravelerFeePreviewBlock }>({
-    queryKey: ["/api/cart"],
-    enabled: isOwner && !isPrimary && checkoutReady > 0,
-    staleTime: 0,
-  });
-  const slipFeeDisplay = travelerFeePreviewDisplay(cartForFee.data?.travelerFeePreview?.byTrip?.[trip.id]);
+  // Row P-6 (Leon, Nov 2 §7): no traveler fee line on the slip. The fee is disclosed at checkout.
 
   // R321 S11-1 (decision-maker, smoke 11): Reopen is ALWAYS offered to the owner of a finalized
   // plan, underway included — a traveler mid-trip may need to change the plan. It is owner-gated
@@ -1223,6 +1236,10 @@ export function FinishCard({
           <Link href={`/trip/${trip.id}`} className={offerRefinal ? quietBtn : primaryBtn} data-testid="slip-action-view-trip-card">
             View as Trip card
           </Link>
+          {/* Row PS-5: a way back into the chooser — the plan is already final, so it opens without re-posting. */}
+          <button type="button" className={quietBtn} onClick={() => setFinalizeModalOpen(true)} data-testid="slip-action-change-booking">
+            {FINALIZE_COPY.changeBooking}
+          </button>
           {showReopen ? (
             <button type="button" className={quietBtn} onClick={() => reopenMutation.mutate()} disabled={reopenMutation.isPending} data-testid="slip-action-reopen">
               Back to planning
@@ -1248,25 +1265,17 @@ export function FinishCard({
             ) : null}
           </p>
         ) : null}
-        {checkoutReady > 0 ? (
+        {checkoutReady > 0 && waitlist ? (
+          <p className="text-xs text-[color:var(--slip-muted)]">
+            <button type="button" onClick={savedToPlan} className="font-semibold text-[color:var(--slip-navy)] underline underline-offset-2" data-testid="slip-action-save-to-plan">
+              {WAITLIST_COPY.saveToPlan}
+            </button>
+          </p>
+        ) : checkoutReady > 0 ? (
           <p className="text-xs text-[color:var(--slip-muted)]">
             <Link href="/cart" className="font-semibold text-[color:var(--slip-navy)] underline underline-offset-2" data-testid="slip-action-go-to-checkout">
               Go to checkout ({checkoutReady})
             </Link>
-            {slipFeeDisplay ? (
-              <span className="mt-0.5 block" data-testid="slip-traveler-fee-preview">
-                {slipFeeDisplay.label}:{" "}
-                {slipFeeDisplay.kind === "charged" ? (
-                  <span className="font-medium text-[color:var(--slip-ink)]">${slipFeeDisplay.amount.toFixed(2)}</span>
-                ) : (
-                  <span className="line-through">${slipFeeDisplay.wouldHaveBeen.toFixed(2)}</span>
-                )}{" "}
-                {slipFeeDisplay.note}{" "}
-                <Link href={helpArticlePath("trip-pass-and-fees")} className="underline underline-offset-2" data-testid="link-slip-fee-help">
-                  About this fee
-                </Link>
-              </span>
-            ) : null}
           </p>
         ) : null}
         <button type="button" className={`${primaryBtn} w-full flex-none`} onClick={refinalize} disabled={finalizeMutation.isPending} data-testid="slip-action-finalize-plan">
@@ -1297,6 +1306,12 @@ export function FinishCard({
             testId="slip-action-refinalize"
           />
         )}
+        <RailRow
+          label={FINALIZE_COPY.changeBooking}
+          icon={<CheckCircle2 className="w-3.5 h-3.5" />}
+          onClick={() => setFinalizeModalOpen(true)}
+          testId="slip-action-change-booking"
+        />
         <RailRow
           label="View as Trip card"
           meta="read-only"
@@ -1348,28 +1363,21 @@ export function FinishCard({
         testId="slip-action-finalize-plan"
       />
 
-      {checkoutReady > 0 && (
+      {checkoutReady > 0 && waitlist ? (
+        <RailRow
+          label={WAITLIST_COPY.saveToPlan}
+          icon={<ShoppingCart className="w-3.5 h-3.5" />}
+          onClick={savedToPlan}
+          testId="slip-action-save-to-plan"
+        />
+      ) : checkoutReady > 0 ? (
         <RailRow
           label={`Go to checkout (${checkoutReady})`}
           icon={<ShoppingCart className="w-3.5 h-3.5" />}
           href="/cart"
           testId="slip-action-go-to-checkout"
         />
-      )}
-      {checkoutReady > 0 && slipFeeDisplay && (
-        <RailNote testId="slip-traveler-fee-preview">
-          {slipFeeDisplay.label}:{" "}
-          {slipFeeDisplay.kind === "charged" ? (
-            <span className="font-medium text-foreground">${slipFeeDisplay.amount.toFixed(2)}</span>
-          ) : (
-            <span className="line-through">${slipFeeDisplay.wouldHaveBeen.toFixed(2)}</span>
-          )}{" "}
-          {slipFeeDisplay.note}{" "}
-          <Link href={helpArticlePath("trip-pass-and-fees")} className="underline underline-offset-2" data-testid="link-slip-fee-help">
-            About this fee
-          </Link>
-        </RailNote>
-      )}
+      ) : null}
       {chooser}
     </RailCard>
   );
@@ -1459,6 +1467,7 @@ export function SlipRail({
         expertState={expertState}
         otherAdvisorsLine={otherAdvisorsLine}
         messageControl={isOwner ? <ExpertMessageRow trip={trip} tripId={tripId} expertState={expertState} /> : null}
+        conciergeLine={isOwner ? conciergeAccessLine(advisor, trip, new Date()) : null}
       />
       <PlanCard
         tripId={tripId}

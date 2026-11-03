@@ -145,9 +145,15 @@ function assertRouteDoesNotRedirect(src: string, routePath: string, note = "") {
 test.describe("Deprecated route redirects — static analysis (Suite 7)", () => {
   // ── Public / general redirects ──────────────────────────────────────────
 
-  test("/optimize → /concierge?tier=ai", () => {
-    assertRouteRedirect(readApp(), "/optimize", "/concierge?tier=ai");
-    console.log("[deprecated-route-redirects] PASS /optimize → /concierge?tier=ai");
+  // CN-1g-UI ruling (i): both legacy entries land on the Local concierge filter (CN-1c).
+  test("/optimize → /services?serviceType=concierge", () => {
+    assertRouteRedirect(readApp(), "/optimize", "/services?serviceType=concierge");
+    console.log("[deprecated-route-redirects] PASS /optimize → /services?serviceType=concierge");
+  });
+
+  test("/concierge → /services?serviceType=concierge", () => {
+    assertRouteRedirect(readApp(), "/concierge", "/services?serviceType=concierge");
+    console.log("[deprecated-route-redirects] PASS /concierge → /services?serviceType=concierge");
   });
 
   test("/service-providers → /services", () => {
@@ -435,8 +441,12 @@ test.describe("Deprecated route redirects — browser smoke (Suite 7)", () => {
 
   // ── Public deprecated routes — assert final URL destination ──────────────
 
-  test("/optimize → /concierge (with ?tier=ai)", async ({ page }) => {
-    await assertRedirectsTo(page, "/optimize", "/concierge", "tier=ai");
+  test("/optimize → /services (serviceType=concierge)", async ({ page }) => {
+    await assertRedirectsTo(page, "/optimize", "/services", "serviceType=concierge");
+  });
+
+  test("/concierge → /services (serviceType=concierge)", async ({ page }) => {
+    await assertRedirectsTo(page, "/concierge?tier=ai", "/services", "serviceType=concierge");
   });
 
   test("/service-providers → /services", async ({ page }) => {

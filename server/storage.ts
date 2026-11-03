@@ -11,7 +11,8 @@ import { dispatchBookingEvent } from "./automations/bookings/runtime";
 import { dispatchMessagingEvent } from "./automations/messaging/runtime";
 import { sql } from "drizzle-orm";
 import { guardedDeleteProviderService } from "./services/service-delete-guard";
-import { availableAtFor } from "./config/earnings-hold.config";
+import { availableAtFor, conciergeAvailableAt } from "./config/earnings-hold.config";
+import { conciergeAccessUntil } from "@shared/concierge-access";
 import { isTripAdvisor, isTripAdvisorWithWriteAccess } from "./utils/trip-advisor";
 // THE ONE AUTHOR of `trip_expert_advisors` (ledger `2026-09-04-advisor-row-one-author`,
 // CLAUDE.md Locked Decision 32 CORRECTION, §18 rule 1). `createTripExpertAdvisor` below is a
@@ -255,6 +256,12 @@ import {
 // applied to notifications), keyed by `dedupeKey` against notifications.dedupe_key's partial
 // UNIQUE index (ON CONFLICT DO NOTHING) so a crash-retry of the SAME transition never inserts a
 // duplicate row. `dedupeKey` should be shaped `booking:<id>:<event>` (e.g. `booking:<id>:accepted`).
+/** CN-1d: a write that belongs to a status transition, run on the transition's own transaction. */
+export type BookingStatusInTransaction = (
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  updated: ServiceBooking,
+) => Promise<void>;
+
 export interface BookingStatusNotification {
   userId: string;
   type: string;
@@ -570,7 +577,7 @@ export interface IStorage {
    */
   createServiceBookingAtomic(booking: InsertServiceBooking): Promise<ServiceBooking>;
 
-  updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[], notify?: BookingStatusNotification | BookingStatusNotification[], payoutSnapshot?: Record<string, unknown> | null): Promise<ServiceBooking | undefined>;
+  updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[], notify?: BookingStatusNotification | BookingStatusNotification[], payoutSnapshot?: Record<string, unknown> | null, inTransaction?: BookingStatusInTransaction): Promise<ServiceBooking | undefined>;
 
   mintCompletionEarningsForBooking(booking: ServiceBooking, outerTx?: unknown): Promise<boolean>;
 
@@ -3794,9 +3801,9 @@ export class DatabaseStorage implements IStorage {
    * promote. The `vendor_availability_slots.booked_count` taken at claim time was destroyed for
    * good, with no code path to give it back.
    */
-  async updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[], notify?: BookingStatusNotification, payoutSnapshot?: Record<string, unknown> | null): Promise<ServiceBooking | undefined> {
+  async updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[], notify?: BookingStatusNotification, payoutSnapshot?: Record<string, unknown> | null, inTransaction?: BookingStatusInTransaction): Promise<ServiceBooking | undefined> {
     const action = () =>
-      this.updateServiceBookingStatusAction(id, status, reason, expectedFromStatuses, notify, payoutSnapshot);
+      this.updateServiceBookingStatusAction(id, status, reason, expectedFromStatuses, notify, payoutSnapshot, inTransaction);
     if (status === "confirmed" && notify?.type === "booking_confirmed") {
       return dispatchBookingEvent(
         "bookings.provider-acceptance-follow-on",
@@ -3818,7 +3825,7 @@ export class DatabaseStorage implements IStorage {
     return action();
   }
 
-  private async updateServiceBookingStatusAction(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[], notify?: BookingStatusNotification, payoutSnapshot?: Record<string, unknown> | null): Promise<ServiceBooking | undefined> {
+  private async updateServiceBookingStatusAction(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[], notify?: BookingStatusNotification, payoutSnapshot?: Record<string, unknown> | null, inTransaction?: BookingStatusInTransaction): Promise<ServiceBooking | undefined> {
     // Read prior status before applying any update so side-effects are idempotent.
     const prior = await this.getServiceBooking(id);
     if (!prior) return undefined;
@@ -3890,6 +3897,11 @@ export class DatabaseStorage implements IStorage {
         .where(guard)
         .returning();
       if (!u) return undefined;
+
+      // CN-1d: a write that is PART of this transition (the concierge accept's advisor grant) runs
+      // here, on this transaction. If it throws, the flip rolls back with it and the error reaches
+      // the caller — the transition never commits without it.
+      if (inTransaction) await inTransaction(tx, u);
 
       // A transition to "completed" is a MONEY event: the status flip and the earnings mint must
       // commit or roll back as ONE transaction (task 1091 review). If the mint fails, the booking
@@ -3990,6 +4002,33 @@ export class DatabaseStorage implements IStorage {
     }
 
     return updated;
+  }
+
+  /**
+   * CN-1f: the available-at for a concierge booking's earnings, or null for any other booking (the caller then keeps the
+   * ordinary declaration anchor). A concierge booking with no trip, or a trip end that does not resolve, anchors on the
+   * declaration and says so in one log line — never a NULL available_at.
+   */
+  private async conciergeEarningAvailableAt(booking: ServiceBooking, declaredAnchor: Date | undefined): Promise<Date | null> {
+    if (!booking.serviceId) return null;
+    const service = await this.getProviderServiceById(booking.serviceId);
+    if (service?.serviceType !== "concierge") return null;
+    let tripEnd: Date | null = null;
+    if (booking.tripId) {
+      const [trip] = await db
+        .select({ endDate: trips.endDate, timezone: trips.timezone })
+        .from(trips)
+        .where(eq(trips.id, booking.tripId))
+        .limit(1);
+      if (trip) tripEnd = conciergeAccessUntil(trip.endDate as any, trip.timezone);
+    }
+    if (!tripEnd) {
+      logger.warn(
+        { bookingId: booking.id, tripId: booking.tripId ?? null },
+        "[mintCompletionEarnings] concierge booking has no resolvable trip end — hold anchored on the completion declaration",
+      );
+    }
+    return conciergeAvailableAt(tripEnd, declaredAnchor);
   }
 
   /**
@@ -4122,7 +4161,11 @@ export class DatabaseStorage implements IStorage {
     // artifact acceptance, a property checkout, an admin dispute-reject on an undeclared row) keeps
     // today's `now` anchor verbatim — `availableAtFor`'s existing `from` parameter, nothing new.
     const declaredAnchor = booking.completionDeclaredAt ? new Date(booking.completionDeclaredAt) : undefined;
-    const availableAt = availableAtFor('service_booking', declaredAnchor); // escrow P2: per-surface clearance window (config)
+    // CN-1f (ledger `2026-11-02-cn1f-concierge-payout-hold`): a CONCIERGE booking's earnings are held until the trip
+    // ends — the later of the trip's end (trip zone) and the declaration, plus CONCIERGE_HOLD_DAYS (unset = the
+    // bookings default). Every other booking keeps the declaration anchor exactly as above.
+    const conciergeAvailable = await this.conciergeEarningAvailableAt(booking, declaredAnchor);
+    const availableAt = conciergeAvailable ?? availableAtFor('service_booking', declaredAnchor); // escrow P2: per-surface clearance window (config)
     // RACE-PROOF + ATOMIC (task 1091 review): the DB is the guard, not a SELECT. Each ledger
     // effect is an INSERT ... ON CONFLICT DO NOTHING against migration 203's partial unique
     // indexes, so under concurrent callers (traveler confirm vs scheduler vs reconciliation)

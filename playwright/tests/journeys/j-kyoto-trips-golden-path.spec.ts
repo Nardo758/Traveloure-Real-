@@ -959,7 +959,7 @@ test.describe("4 · free draft around the set", () => {
     if (view.neighborhoods.every((n: any) => n.hotels.length === 0)) {
       const line = testid(page, "anchor-panel-collapsed-line");
       await expect(line).toBeVisible({ timeout: 20_000 });
-      await expect(line).toContainText(`Best area for these days: ${view.neighborhoods[0].name}`);
+      await expect(line).toContainText(`Closest area to your days: ${view.neighborhoods[0].name}`);
       await expect(testid(page, "where-to-stay-panel")).toHaveCount(0);
     } else {
       await expect(testid(page, "where-to-stay-panel")).toBeVisible({ timeout: 20_000 });

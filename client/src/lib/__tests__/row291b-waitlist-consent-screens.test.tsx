@@ -131,7 +131,8 @@ describe("W1 — box 2 renders only behind the gate", () => {
   it("no network call decides the box", () => {
     const code = stripComments(PAGE);
     assert.doesNotMatch(code, /TEXT_VERSION_ROUTE|useMarketingTextVersion|consent-text-version/);
-    assert.equal(count(code, "useQuery<"), 3, "only the page's existing three reads (signup mode, live markets, experts)");
+    assert.equal(count(code, "useQuery<"), 2, "only the page's existing reads (live markets, experts) plus useSignupMode()");
+    assert.equal(count(code, "useSignupMode()"), 1, "the signup mode is read through the one hook");
   });
   it("both forms use the one shared component and pass their role", () => {
     assert.equal(count(PAGE, "<ConsentBoxes\n"), 2);

@@ -20,6 +20,7 @@ import {
   type NamedStop,
   type PinnedAnchorInput,
 } from "./anchor-candidates-map";
+import { dayAnchorId, eventAnchorId } from "./plan-anchors.service";
 
 export type { NamedStop, PinnedAnchorInput } from "./anchor-candidates-map";
 export {
@@ -107,6 +108,23 @@ export async function resolvePinnedAnchor(
   input: PinnedAnchorInput,
   stops: NamedStop[],
 ): Promise<AnchorScore | null> {
+  // OPT-A: an event or day pin was resolved from the plan's own items by `placeCustomPinBeforeCharge`,
+  // which wrote the point and the name onto the request (and cleared them on a miss). Never the
+  // catalog, never a geocode.
+  if (input.type === "event" || input.type === "day") {
+    const id = typeof input.id === "string" ? input.id.trim() : "";
+    const lat = typeof input.lat === "number" && Number.isFinite(input.lat) ? input.lat : null;
+    const lng = typeof input.lng === "number" && Number.isFinite(input.lng) ? input.lng : null;
+    if (!id || lat == null || lng == null) return null;
+    const anchorId = input.type === "event" ? eventAnchorId(id) : dayAnchorId(id);
+    const name =
+      input.type === "day"
+        ? `Day ${parseInt(id, 10)}`
+        : typeof input.name === "string" && input.name.trim()
+          ? input.name.trim()
+          : (stops.find((s) => s.id === id)?.name ?? "Event");
+    return scoreAnchor({ id: anchorId, type: input.type, name, lat, lng }, stops);
+  }
   // A catalog id is server-derived or it is nothing. Client lat/lng is not a fallback.
   if (nonCustomCatalogId(input)) {
     const candidate = await locateCatalogPinnedAnchor(input, stops);

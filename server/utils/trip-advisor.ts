@@ -37,8 +37,19 @@
  * Do NOT add a status here without deciding what access it should confer.
  */
 import { db } from "../db";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { tripExpertAdvisors } from "@shared/schema";
+
+/**
+ * Migration 429. NULL access_until is no expiry. Access ends once now is later
+ * than access_until (`now > access_until`). The equal instant still has access.
+ */
+function advisorAccessStillOpen() {
+  return or(
+    isNull(tripExpertAdvisors.accessUntil),
+    sql`${tripExpertAdvisors.accessUntil} >= NOW()`,
+  );
+}
 
 /**
  * Advisor statuses that GRANT per-trip READ access. Closed allow-list — see file header.
@@ -106,6 +117,7 @@ export async function isTripAdvisor(
         eq(tripExpertAdvisors.tripId, tripId),
         eq(tripExpertAdvisors.localExpertId, userId),
         inArray(tripExpertAdvisors.status, [...TRIP_ADVISOR_READ_ACCESS_STATUSES]),
+        advisorAccessStillOpen(),
       ),
     )
     .limit(1);
@@ -131,6 +143,7 @@ export async function isTripAdvisorWithWriteAccess(
         eq(tripExpertAdvisors.tripId, tripId),
         eq(tripExpertAdvisors.localExpertId, userId),
         inArray(tripExpertAdvisors.status, [...TRIP_ADVISOR_WRITE_ACCESS_STATUSES]),
+        advisorAccessStillOpen(),
       ),
     )
     .limit(1);
@@ -152,6 +165,7 @@ export async function tripHasWriteAccessAdvisor(tripId: string | undefined | nul
       and(
         eq(tripExpertAdvisors.tripId, tripId),
         inArray(tripExpertAdvisors.status, [...TRIP_ADVISOR_WRITE_ACCESS_STATUSES]),
+        advisorAccessStillOpen(),
       ),
     )
     .limit(1);

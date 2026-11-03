@@ -1,6 +1,7 @@
 import { anchorWallClockString } from "@shared/anchor-time";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { seedFromPen, seedFromTripRow, type EditWindowSeed } from "@/lib/edit-window-seed";
 import { ArrowDown, ArrowUp, Calendar, Clock, MapPin, Minus, Plus, X } from "lucide-react";
 import {
   Dialog,
@@ -349,6 +350,9 @@ export function PlanModal({
   const [adults, setAdults] = useState("");
   const [kids, setKids] = useState("");
   const [partyTouched, setPartyTouched] = useState(false);
+  /** Row PS-3: what When/Who were last seeded with, and whether the plan row has seeded them this open. */
+  const whenWhoSeed = useRef<EditWindowSeed>({ startDate: "", endDate: "", adults: "", kids: "" });
+  const rowSeeded = useRef(false);
   /**
    * STEP 4's SECOND QUESTION (migration 284). Which of the two is on screen is the occasion row's
    * own answer — see `asksBudgetApprover` / `asksAccessibilityNote`. `""` = the traveler stated
@@ -458,14 +462,17 @@ export function PlanModal({
     setStops(seededStops);
     setStopsTouched(false);
     stopsReadOk.current = false;
-    setStartDate(ctx.startDate || "");
-    setEndDate(ctx.endDate || "");
     // A real stored count seeds a stepper; NO stored count leaves it EMPTY. Never a default of 2 —
-    // a number the traveler never typed must not become one they appear to have stated. `travelers`
-    // deliberately does NOT seed `adults`: splitting one number into "N adults, 0 kids" would
-    // invent a composition nobody gave (§13). It is preserved on save instead, see `commitPlan`.
-    setAdults(typeof ctx.adults === "number" && ctx.adults > 0 ? String(ctx.adults) : "");
-    setKids(typeof ctx.kids === "number" && ctx.kids > 0 ? String(ctx.kids) : "");
+    // a number the traveler never typed must not become one they appear to have stated. This is the
+    // pen's answer; the bound plan's own ROW replaces it when it arrives (Row PS-3, `seedFromTripRow`
+    // in the effect below), and only there may a stated total open Who as "N adults, 0 kids" (D17).
+    const penSeed = seedFromPen(ctx);
+    setStartDate(penSeed.startDate);
+    setEndDate(penSeed.endDate);
+    setAdults(penSeed.adults);
+    setKids(penSeed.kids);
+    whenWhoSeed.current = penSeed;
+    rowSeeded.current = false;
     setPartyTouched(false);
     // Step 4's second question, seeded from the pen exactly like the party pair. `null` is the pen's
     // CLEARED marker and reads back as "" — the same empty the traveler left, never a stale value.
@@ -592,6 +599,13 @@ export function PlanModal({
   const contextTripId = source?.newPlan ? "" : ctx.tripId ?? "";
   const { data: boundTrip } = useQuery<{
     destination?: string | null;
+    // Row PS-3: the When/Who seed reads these off the same row (see `seedFromTripRow`).
+    startDate?: string | null;
+    endDate?: string | null;
+    datesConfirmedAt?: string | null;
+    adults?: number | null;
+    kids?: number | null;
+    numberOfTravelers?: number | null;
     destinations?: Array<{
       name?: string | null;
       city?: string | null;
@@ -601,8 +615,30 @@ export function PlanModal({
     }> | null;
   }>({
     queryKey: ["/api/trips", contextTripId],
-    enabled: open && stopsMany && contextTripId !== "",
+    // Row PS-3: read for every bound plan, not only a many-stops one — When and Who seed from it.
+    enabled: open && contextTripId !== "",
   });
+
+  /**
+   * WHEN AND WHO OPEN WITH THE PLAN ROW'S ANSWERS (Row PS-3, audit D1–D3, D17). Once per open, when
+   * the row arrives. A field the traveler has already changed since the window opened is left as
+   * they typed it — only a field still showing the pen's seed is replaced.
+   */
+  useEffect(() => {
+    if (!open || !boundTrip || rowSeeded.current) return;
+    rowSeeded.current = true;
+    const was = whenWhoSeed.current;
+    const fromRow = seedFromTripRow(boundTrip, ctx);
+    // Functional updates: this effect can run in the same commit as the open seed above, so the
+    // render-time values are stale — the updater sees the value actually queued.
+    const take = (seeded: string, next: string) => (cur: string) => (cur === seeded ? next : cur);
+    setStartDate(take(was.startDate, fromRow.startDate));
+    setEndDate(take(was.endDate, fromRow.endDate));
+    setAdults(take(was.adults, fromRow.adults));
+    setKids(take(was.kids, fromRow.kids));
+    whenWhoSeed.current = fromRow;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, boundTrip]);
 
   useEffect(() => {
     if (!open || !stopsMany || !boundTrip) return;

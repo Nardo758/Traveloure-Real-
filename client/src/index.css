@@ -507,6 +507,19 @@
   background: color-mix(in srgb, var(--earn-green) 14%, transparent);
 }
 
+/* OPT-B: an event anchor takes the activity tone; a day anchor a neutral one. */
+.itinerary-comparison-page.review-board .review-anchor--event {
+  color: var(--earn-green-ink);
+  border-color: var(--earn-green);
+  background: color-mix(in srgb, var(--earn-green) 14%, transparent);
+}
+
+.itinerary-comparison-page.review-board .review-anchor--day {
+  color: var(--earn-ink);
+  border-color: var(--earn-border);
+  background: var(--earn-chip);
+}
+
 .itinerary-comparison-page.review-board .review-chip--save {
   color: var(--earn-green-ink);
   border-color: var(--earn-green);

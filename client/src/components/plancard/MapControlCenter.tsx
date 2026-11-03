@@ -4,8 +4,8 @@
  * RENDERERS:
  *
  *   · PLAN LAYER: the selected day's stops numbered in day order (located stops only — an area stop
- *     is listed under "Not on the map yet", never guessed onto the map), straight connectors in day
- *     order (routed legs with their minutes only when the travel-time service is on), the anchor
+ *     is listed under "Not on the map yet", never guessed onto the map), no lines between them and
+ *     no minutes (row PS-1, GC-1/B8 — legs are read in Getting around and the leg rows), the anchor
  *     marker always visible, neighbourhoods named as labelled pins while the AnchorPanel is open. Day chips above; a
  *     bottom sheet of the day's stops below, selection synced both ways.
  *   · BROWSE LAYER (toggle): listings and partner places around the plan with their own coordinates,
@@ -28,7 +28,6 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { type PlanCardActivity, type PlanCardDay } from "./plancard-types";
-import { getModeColor } from "@/lib/transport-modes";
 import { openDayInMaps, addDayToCalendar } from "./day-map-actions";
 import {
   anchorIsGoogleDerived,
@@ -64,7 +63,6 @@ import {
 } from "@/lib/browse-supply";
 import { SceneMapGoogle } from "./map/SceneMapGoogle";
 import { SceneMapLeaflet } from "./map/SceneMapLeaflet";
-import type { SceneLeg } from "./map/scene-legs";
 import { usePlanRowLook } from "@/components/plan/row-look";
 import { AddChecksNotice, type AddedStop } from "./AddChecksNotice";
 import { MAP_COMPARE_LINK_LABEL, mapDayChipLabel, mapMovedLine, mapSheetTitle } from "@/lib/map-days";
@@ -134,8 +132,6 @@ export interface MapControlCenterProps {
   /** Controlled Browse layer (e.g. "Find a host" opens it filtered to a category). */
   browse?: { open: boolean; categoryKey: string | null } | null;
   onBrowseChange?: (next: { open: boolean; categoryKey: string | null }) => void;
-  /** Routed legs and their minutes — only when the travel-time service is on (R-h). */
-  showTravelMinutes?: boolean;
   /** Controlled version toggle ("draft" or a version key) — the board keeps the map on its column. */
   versionKey?: string;
   onVersionChange?: (key: string) => void;
@@ -182,7 +178,6 @@ export function MapControlCenter({
   versions = null,
   browse: browseControlled = null,
   onBrowseChange,
-  showTravelMinutes = false,
   versionKey: versionKeyControlled,
   onVersionChange,
   compareHref = null,
@@ -326,27 +321,7 @@ export function MapControlCenter({
   });
   const dayDiff = version && dayNumber != null ? version.days.find((d) => d.dayNumber === dayNumber) ?? null : null;
 
-  // Routed legs (and their minutes) only when the travel-time service is on; otherwise the scene's
-  // straight connector is the only line, and no minute is drawn (R-h).
-  const legs: SceneLeg[] = useMemo(() => {
-    if (!showTravelMinutes || version || !day?.transports?.length) return [];
-    const located = (day.activities ?? []).filter(isLocated);
-    return day.transports
-      .map((tr, i) => {
-        const from = located.find((a) => a.location === tr.from || a.name === tr.fromName) ?? located[i];
-        const to = located.find((a) => a.location === tr.to || a.name === tr.toName) ?? located[i + 1];
-        if (!from || !to) return null;
-        const mode = tr.userSelectedMode ?? tr.recommendedMode ?? tr.mode;
-        return {
-          id: tr.id,
-          from: { lat: from.lat!, lng: from.lng! },
-          to: { lat: to.lat!, lng: to.lng! },
-          color: getModeColor(mode),
-          durationLabel: tr.duration ? `${tr.duration}m` : null,
-        };
-      })
-      .filter((l): l is SceneLeg => !!l);
-  }, [showTravelMinutes, version, day]);
+  // Row PS-1 (GC-1, B8): the map draws no leg lines and no minute labels; legs are read in Getting around and the leg rows.
 
   // GC-1 (ledger `2026-10-17-gc1-google-coords`; R-d as amended): the Leaflet fallback is not a Google map, so
   // it draws a day only when every located stop's point is non-Google. NULL is Google, and no writer stamps a
@@ -515,7 +490,6 @@ export function MapControlCenter({
               selectedId={selectedId}
               onSelect={setSelectedId}
               onSelectBrowse={(id) => setSelectedBrowseId(browsePlaces.find((b) => b.id === id) ? `${browsePlaces.find((b) => b.id === id)!.kind}:${id}` : null)}
-              legs={legs}
             />
           ) : leafletMapAllowed ? (
             <SceneMapLeaflet

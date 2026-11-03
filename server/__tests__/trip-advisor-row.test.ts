@@ -20,9 +20,10 @@
  *       two cannot drift (§18 rule 1 applied to the rule itself) — proven by deriving the SQL's
  *       answer for every (stored, incoming) pair and comparing it to the predicate's.
  *   A5  the ONE author is the only non-test server file that inserts the row, it accepts a
- *       transaction handle, and its conflict arm touches ONLY `status` and `message` — a
- *       `workspace_status`, `assigned_at` or plan-approval column in the `set` block would
- *       silently reset a delivered workspace or a recorded assignment time.
+ *       transaction handle, and its conflict arm touches `status`, `message`, `source` and
+ *       `accessUntil` — a `workspace_status`, `assigned_at` or plan-approval column in the
+ *       `set` block would silently reset a delivered workspace or a recorded assignment time.
+ *       source and access_until update only when the incoming source is concierge.
  *
  * Pure: the precedence half imports a dependency-free module (no `db`, no schema); the
  * one-author half is a source-text assertion. No DB, no session, no network.
@@ -227,16 +228,17 @@ describe("A5 — the ONE author, and the union of what it writes", () => {
     }
   });
 
-  it("the CONFLICT arm touches ONLY status and message", () => {
+  it("the CONFLICT arm touches status, message, source and accessUntil", () => {
     const setBlock = authorSource.match(/\.onConflictDoUpdate\(\{[\s\S]*?set:\s*\{([\s\S]*?)\n      \},/);
     assert.ok(setBlock, "could not locate the conflict `set` block");
     const keys = [...setBlock![1].matchAll(/^\s{8}(\w+):/gm)].map((m) => m[1]).sort();
     assert.deepEqual(
       keys,
-      ["message", "status"],
+      ["accessUntil", "message", "source", "status"],
       "workspace_status, assigned_at, expert_response and the plan-approval columns are insert-only here: " +
         "updating them on conflict would reset a delivered workspace or a recorded assignment time",
     );
+    assert.match(setBlock![1], /excluded\.source = 'concierge'/);
   });
 
   it("it accepts a transaction handle, so a caller inside a transaction writes inside it", () => {

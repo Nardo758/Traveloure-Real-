@@ -138,6 +138,11 @@ function functionBody(src: string, declaration: string): string {
  * pin is about the control existing and pointing where it did, never about which file holds it.
  */
 const ALLOWED_ADDITIONS = {
+  "slip-action-save-to-plan": "P-1c: waitlist Save to plan row",
+  "slip-action-change-booking": "PS-5: Change how you book, the finished state's way back into the chooser",
+  // Row P-7 (ledger `2026-11-02-p7-get-help-with-this-plan`): the drafted-plan Get-help note and its button.
+  "slip-get-help-note": "P-7: the drafted-plan Get-help note under the last day",
+  "slip-get-help-note-button": "P-7: the drafted-plan Get-help note under the last day",
   // TC-5a (ledger `2026-10-12-tc5a-trip-card-entry`): the owner's ⋯ menu entry to the Trip Card,
   // after Share link, on any plan that has ever been finalized (`tripCardHasFinal(finalVersion)`).
   "slip-menu-trip-card": "TC-5a — the owner's menu link to /trip/:id on an ever-finalized plan",
@@ -216,7 +221,6 @@ const ALLOWED_ADDITIONS = {
   // server's own `travelerFeePreview` on `GET /api/cart` — the same per-line basis the charge uses
   // (R148). It carries NO handler — it is a sentence, not an action — and renders only when there is
   // something ready for checkout and the server answered with a figure (§13: no answer, no number).
-  "slip-traveler-fee-preview": "R144 — the service fee stated before checkout (no handler)",
   // Smoke 9 S9-4 (ledger `2026-10-04-smoke9-fixes`): the optimizer LEADS the page (§8) — the rail
   // renders its OptimizerLead into this slot directly under the tools tray at every width (a portal;
   // its state stays in the rail). It carries no handler of its own.

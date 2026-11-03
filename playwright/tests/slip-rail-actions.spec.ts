@@ -238,7 +238,7 @@ test("A5: the ONE AI action follows the item count, and stops before the externa
   await expect(draft).toBeEnabled();
   // Main-rail (sanctioned placement edit): the empty plan's AI action is the Empty board's draft card
   // button — the board's own words — rather than the rail row whose meta read "empty plan".
-  await expect(draft).toContainText("Draft it with AI");
+  await expect(draft).toContainText("Quick draft");
   // Smoke 9 S9-4: the optimizer card still leads the page, but on an undrafted plan it says "Draft
   // first" and its CTA is disabled — never "this draft already works".
   await expect(page.getByTestId("optimizer-lead-draft-first")).toHaveText("Draft first — Optimize works on a drafted plan");
@@ -379,13 +379,8 @@ test("A10: Finalize writes a version and opens the chooser; then View as Trip ca
   for (const tab of ["tab-itinerary", "tab-bookings", "tab-logistics"]) {
     await expect(page.getByTestId(tab)).toHaveCount(0);
   }
-  // The right rail renders for the owner, with the booking-agent card in its ruled vocabulary.
-  // §13: this plan has no affiliate booking requests, so the card SAYS SO rather than drawing a
-  // stage strip for stages nobody is in — and it never claims a copilot exists.
+  // The right rail renders for the owner. The booking-agent card is removed while the agent lane is parked (P-6).
   await expect(page.getByTestId("trip-card-rail")).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByTestId("trip-card-rail-booking-agent")).toBeVisible();
-  await expect(page.getByTestId("trip-card-booking-agent-empty")).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByTestId("trip-card-booking-agent-list")).toHaveCount(0);
   // No advisor on this plan ⇒ the Expert card says so; the hire picker stays on the slip (D16).
   await expect(page.getByTestId("trip-card-expert-none")).toBeVisible();
   // §13: the Purchases drawer renders because the payload ANSWERED (an empty booking list), and
@@ -498,7 +493,7 @@ test("A14: Finalize's expert lane opens the HandoffChooser on 'book' and sends n
 
   await expect(page.getByTestId("finalize-modal")).toHaveCount(0, { timeout: 10_000 });
   await expect(page.getByTestId("handoff-chooser")).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByTestId("handoff-kind-book")).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByTestId("handoff-kind-polish")).toHaveAttribute("aria-checked", "true");
   // Nothing is sent by opening the chooser; its confirm is the request.
   await page.waitForTimeout(1_000);
   expect(expertRequests, "Finalize's expert lane must not POST /api/expert-requests").toEqual([]);

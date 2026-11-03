@@ -15,6 +15,7 @@
 import type { CatalogueResult } from "@shared/catalogue-search";
 import { MARKET_TIMEZONES } from "@shared/market-today";
 import { ADD_TO_PLAN_LABEL } from "./plan-vocabulary";
+import { WAITLIST_COPY } from "./waitlist-copy";
 import { exactOperatingMarket } from "./experiences-entry";
 
 export const CATALOGUE_RESULT_COPY = {
@@ -35,10 +36,11 @@ export const CATALOGUE_RESULT_COPY = {
 } as const;
 
 /** The one action label for a result. Never a request, never a fee. */
-export function catalogueActionLabel(result: Pick<CatalogueResult, "kind" | "action">): string {
+export function catalogueActionLabel(result: Pick<CatalogueResult, "kind" | "action">, opts: { waitlist?: boolean } = {}): string {
   switch (result.action.type) {
     case "book":
-      return CATALOGUE_RESULT_COPY.book;
+      // Row P-1c: in waitlist mode a Traveloure book is "Save to plan" (the add-to-plan path).
+      return opts.waitlist ? WAITLIST_COPY.saveToPlan : CATALOGUE_RESULT_COPY.book;
     case "book_on_site":
       return result.kind === "partner_viator" ? CATALOGUE_RESULT_COPY.bookOnViator : CATALOGUE_RESULT_COPY.bookOnOfficialSite;
     case "add_to_plan":

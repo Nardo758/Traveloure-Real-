@@ -34,6 +34,31 @@ Object.assign(env, {
   DATABASE_URL: "postgresql://skip:skip@127.0.0.1:1/skip",
 });
 const q = (name) => `"${name.replaceAll('"', '""')}"`;
+
+// Gap: LIKE preserves key definitions but invents their constraint/index names.
+// Restore the source names only inside an owned empty verification schema.
+function keyConstraintRenames(expected, actual, ownedSchema) {
+  if (!/^automation_msg_[a-f0-9]{16}$/.test(ownedSchema)) throw new Error("Owned fixture schema required");
+  const signature = ({ table_name, kind, definition }) => JSON.stringify([table_name, kind, definition]);
+  const groups = new Map();
+  for (const row of actual) {
+    const key = signature(row);
+    groups.set(key, [...(groups.get(key) ?? []), row]);
+  }
+  const pairs = expected.map((row) => {
+    const match = groups.get(signature(row))?.shift();
+    if (!match) throw new Error("Fixture key definition differs from source");
+    return [row, match];
+  });
+  if ([...groups.values()].some((rows) => rows.length)) throw new Error("Unexpected fixture key constraint");
+  // Two phases avoid collisions with another copied index's generated name.
+  const temporary = (i) => `msg_key_${ownedSchema.slice(-16)}_${i}`;
+  return [
+    ...pairs.map(([, row], i) => `ALTER TABLE ${q(ownedSchema)}.${q(row.table_name)} RENAME CONSTRAINT ${q(row.name)} TO ${q(temporary(i))}`),
+    ...pairs.map(([row], i) => `ALTER TABLE ${q(ownedSchema)}.${q(row.table_name)} RENAME CONSTRAINT ${q(temporary(i))} TO ${q(row.name)}`),
+  ];
+}
+
 const schema = `automation_msg_${crypto.randomBytes(8).toString("hex")}`;
 let pool;
 let schemaCreated = false;
@@ -172,6 +197,15 @@ try {
       JOIN pg_namespace dstn ON dstn.oid=dst.relnamespace
       WHERE con.contype='f' AND srcn.nspname='public'
     `);
+    const keyQuery = `
+      SELECT src.relname AS table_name, con.conname AS name,
+        con.contype AS kind, pg_get_constraintdef(con.oid) AS definition
+      FROM pg_constraint con
+      JOIN pg_class src ON src.oid=con.conrelid
+      JOIN pg_namespace ns ON ns.oid=src.relnamespace
+      WHERE con.contype IN ('p','u') AND ns.nspname=$1
+      ORDER BY src.relname, con.conname`;
+    const sourceKeys = await pool.query(keyQuery, ["public"]);
     if (!tables.rows.length || foreignKeys.rows.some((fk) => fk.target_schema !== "public")) {
       throw new Error("Refusing unsupported or empty fixture schema");
     }
@@ -201,8 +235,16 @@ try {
     try {
       await client.query("BEGIN");
       await client.query(statements.join(";\n"));
+      const copiedKeys = await client.query(keyQuery, [schema]);
+      const renames = keyConstraintRenames(sourceKeys.rows, copiedKeys.rows, schema);
+      if (renames.length) await client.query(renames.join(";\n"));
+      const restoredKeys = await client.query(keyQuery, [schema]);
+      if (JSON.stringify(restoredKeys.rows) !== JSON.stringify(sourceKeys.rows)) {
+        throw new Error("Fixture key names or definitions differ from source");
+      }
       await client.query("COMMIT");
       schemaCreated = true;
+      console.log(`ISOLATED_KEY_CONSTRAINTS_PRESERVED=true count=${restoredKeys.rowCount}`);
     } catch (error) {
       await client.query("ROLLBACK");
       throw error;

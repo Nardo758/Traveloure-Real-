@@ -9,6 +9,7 @@
  *
  * Mounted ONCE per slip through `HandoffChooserHost`, which listens for `openHandoffChooser`.
  */
+import { useSignupMode } from "@/lib/signup-mode";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
@@ -59,6 +60,7 @@ async function postJson(url: string, body: unknown) {
 }
 
 export function HoldForm({ amountCents, onHeld, line, cta }: { amountCents: number; onHeld: () => void; line?: string; cta?: string }) {
+  const waitlist = useSignupMode().mode === "waitlist";
   const stripe = useStripe();
   const elements = useElements();
   const confirmingRef = useRef(false);
@@ -104,6 +106,8 @@ export function HoldForm({ amountCents, onHeld, line, cta }: { amountCents: numb
     }
   };
   const walletOptions = paymentElementOptions(hideWallets);
+  // Row P-1c: waitlist mode hides the hold (a paid action) — not greyed. The server refuses it too (P-1s).
+  if (waitlist) return null;
   return (
     <div className="space-y-3" data-testid="handoff-hold-form">
       {/* Link stays off here (Smoke 13 #8): the Express button would be a second confirm beside

@@ -37,6 +37,7 @@ import {
   HANDOFF_HOLD_RELEASE_MAX_ATTEMPTS,
   HANDOFF_HOLD_TRAVELER_COPY,
   HANDOFF_KINDS,
+  HANDOFF_FALLBACK_LINE,
   HANDOFF_LIVE_STATUSES,
   handoffHoldReleaseBackoffMs,
   WITHDRAWAL_FEE_BAND,
@@ -389,7 +390,7 @@ async function proposeTo(requestId: string, expertId: string, routabilityOverrid
   const tripId = (r.rows?.[0] as any)?.trip_id as string | undefined;
   if (!tripId) return;
   const { upsertTripAdvisorRow, getTripLabel } = await import("./booking-actions.service");
-  await upsertTripAdvisorRow({ tripId, localExpertId: expertId, status: "pending", message: null, ...(routabilityOverride ? { routabilityOverride } : {}) }).catch((err) =>
+  await upsertTripAdvisorRow({ tripId, localExpertId: expertId, status: "pending", message: null, source: "handoff", ...(routabilityOverride ? { routabilityOverride } : {}) }).catch((err) =>
     console.error("[handoff] read grant failed (non-fatal):", err),
   );
   const label = await getTripLabel(tripId).catch(() => "a trip");
@@ -558,7 +559,7 @@ export async function acceptHandoff(requestId: string, expertId: string): Promis
   }
   const { upsertTripAdvisorRow } = await import("./booking-actions.service");
   if (row.tripId) {
-    await upsertTripAdvisorRow({ tripId: row.tripId, localExpertId: expertId, status: "accepted", message: null });
+    await upsertTripAdvisorRow({ tripId: row.tripId, localExpertId: expertId, status: "accepted", message: null, source: "handoff" });
     await flipScope(row.tripId, scopeIds(row), "in_planning", "with_expert", "expert", expertId);
     await notify(row.userId, row.tripId, "handoff_accepted", "Your local accepted", "Their changes will arrive as suggestions on your plan.", { requestId });
   }
@@ -1530,7 +1531,7 @@ export async function runHandoffTimers(now: Date = new Date()): Promise<HandoffT
   `);
   for (const r of (fb.rows ?? []) as any[]) {
     out.fallbackOffered += 1;
-    await notify(r.user_id, r.trip_id, "handoff_fallback", "Still finding your local", "Our concierge can take this on now if you'd like.", { requestId: r.id });
+    await notify(r.user_id, r.trip_id, "handoff_fallback", "Still finding your local", HANDOFF_FALLBACK_LINE, { requestId: r.id });
   }
 
   // Claim the release BEFORE the Stripe call so accept (status = proposed) cannot capture it.

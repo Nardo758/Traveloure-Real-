@@ -50,6 +50,7 @@ import { useState } from "react";
 import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import { useParams, useLocation, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { useSignupMode } from "@/lib/signup-mode";
 import { queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { LanguageMenu } from "@/components/language-menu";
@@ -233,7 +234,7 @@ export default function ReadyMadeDetailPage() {
   const isPreview = data?.preview === true;
   // LW-1d: while traveler sign-up is waitlist-only, the buy button becomes the launch market's waitlist, carrying
   // only the raw code the visitor arrived with (the server decides any credit). Unread mode ⇒ buy as usual.
-  const { data: signupMode } = useQuery<SignupModeRead>({ queryKey: ["/api/public/signup-mode"], retry: false });
+  const signupMode = useSignupMode().data as SignupModeRead | undefined;
   // One class string for the buy CTA and its waitlist-mode stand-in, so the two cannot drift apart.
   const buyCtaClass =
     "w-full min-h-[46px] rounded-[8px] bg-[#f34d6e] hover:bg-[#f34d6e]/90 border border-[#f34d6e] text-white font-bold text-[12px] shadow-[0_5px_14px_rgba(243,77,110,0.18)] gap-2";

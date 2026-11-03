@@ -1,4 +1,5 @@
 import { Link, useLocation } from "wouter";
+import { PLAN_ASSISTANT_COPY } from "@/lib/plan-assistant-copy";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { useUnreadMessageCount } from "@/hooks/use-message-read";
@@ -42,9 +43,9 @@ import {
 // plans rather than as a peer destination. The `/my-events` ROUTE stays live and keeps the fee-pay
 // rail: `coordination_states.trip_id` is nullable, so an engagement with no plan has no slip to
 // render on, and a redirect would delete it (and its unpaid fee) from the product instead of
-// folding it (§13). `/concierge`'s Done-for-you card still lands there.
+// folding it (§13). The legacy concierge that linked there is retired (CN-1g-UI).
 //
-// Traveler sidebar (9 entries): Home, My plans, Start with AI, Discover, Experts, Bookings,
+// Traveler sidebar (9 entries): Home, My plans, Start a plan, Discover, Experts, Bookings,
 // Trip Cart, Inbox, Profile.
 const menuGroups = [
   {
@@ -53,7 +54,7 @@ const menuGroups = [
       { title: "Home", href: "/dashboard", icon: Home },
       { title: "My Plans", href: "/my-trips", icon: Calendar },
       // Ledger `2026-09-07-start-with-ai-door` (brief §9): the label names the DOOR, not the tool.
-      { title: "Start with AI", href: "/ai-assistant", icon: Bot },
+      { title: PLAN_ASSISTANT_COPY.startDoor, href: "/ai-assistant", icon: Bot },
     ],
   },
   {

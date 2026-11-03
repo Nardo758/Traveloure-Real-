@@ -533,6 +533,15 @@ export const tripExpertAdvisors = pgTable("trip_expert_advisors", {
   planApprovalStatus: varchar("plan_approval_status", { length: 20 }),
   planApprovedAt: timestamp("plan_approved_at"),
   planReviewNote: text("plan_review_note"),
+  // Migration 429. text, NO column DEFAULT, NO CHECK (publish-trap). The app
+  // writes 'handoff' or 'concierge'. Existing rows are backfilled to 'handoff'
+  // by the migration's UPDATE. NULL on a row the writer has not labeled yet is
+  // not an expiry and is not a concierge engagement.
+  source: text("source"),
+  // NULL = no expiry. A concierge accept sets the first instant of the day
+  // after the trip's last day, in the trip's zone. Access ends once now is
+  // later than this instant.
+  accessUntil: timestamp("access_until", { withTimezone: true }),
 }, (table) => ({
   uniqueTripExpert: uniqueIndex("trip_expert_advisors_trip_expert_unique").on(table.tripId, table.localExpertId),
 }));
@@ -1706,6 +1715,48 @@ export const providerServiceConciergeTasks = pgTable("provider_service_concierge
   serviceKindKey: uniqueIndex("provider_service_concierge_tasks_service_kind_key").on(table.serviceId, table.taskKindId),
   serviceIdx: index("idx_provider_service_concierge_tasks_service_id").on(table.serviceId),
 }));
+
+// CN-1e (migration 430): the concierge task log. A task belongs to one concierge engagement (a
+// service_bookings row whose listing is service_type 'concierge'). State values live in
+// shared/concierge-task-log.ts. No amount or payment column. No DEFAULT, no CHECK: the app sets
+// ids and timestamps. Indexes declared so publish does not drop them.
+export const conciergeTasks = pgTable("concierge_tasks", {
+  id: varchar("id").primaryKey(),
+  serviceBookingId: varchar("service_booking_id").notNull().references(() => serviceBookings.id, { onDelete: "cascade" }),
+  taskKindId: varchar("task_kind_id").notNull().references(() => conciergeTaskKinds.id, { onDelete: "restrict" }),
+  title: varchar("title", { length: 200 }).notNull(),
+  note: text("note"),
+  linkUrl: text("link_url"),
+  state: varchar("state", { length: 20 }).notNull(),
+  requestedBy: varchar("requested_by").notNull().references(() => users.id),
+  requestedAt: timestamp("requested_at", { withTimezone: true }).notNull(),
+  travelerOkAt: timestamp("traveler_ok_at", { withTimezone: true }),
+  travelerOkBy: varchar("traveler_ok_by"),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  resolvedBy: varchar("resolved_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+}, (table) => ({
+  bookingCreatedIdx: index("idx_concierge_tasks_booking_created").on(table.serviceBookingId, table.createdAt),
+  bookingKindStateIdx: index("idx_concierge_tasks_booking_kind_state").on(table.serviceBookingId, table.taskKindId, table.state),
+}));
+export type ConciergeTask = typeof conciergeTasks.$inferSelect;
+
+// CN-1e (migration 430): one row per concierge task state change, written in the same
+// transaction as the change. Append-only.
+export const conciergeTaskEvents = pgTable("concierge_task_events", {
+  id: varchar("id").primaryKey(),
+  taskId: varchar("task_id").notNull().references(() => conciergeTasks.id, { onDelete: "cascade" }),
+  serviceBookingId: varchar("service_booking_id").notNull(),
+  fromState: varchar("from_state", { length: 20 }),
+  toState: varchar("to_state", { length: 20 }).notNull(),
+  actorType: varchar("actor_type", { length: 20 }).notNull(),
+  actorId: varchar("actor_id"),
+  note: text("note"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+}, (table) => ({
+  taskCreatedIdx: index("idx_concierge_task_events_task_created").on(table.taskId, table.createdAt),
+}));
+export type ConciergeTaskEvent = typeof conciergeTaskEvents.$inferSelect;
 
 // === Bundle components (Product Builder §17, migration 151 — ratified join-table decision) ===
 // A bundle IS a provider_services row (product_shape='bundle') so the F2 approval queue,

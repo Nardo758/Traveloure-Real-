@@ -20,6 +20,8 @@ import { eventCountLabel } from "@/lib/plan-vocabulary";
 import { planDatesAreConfirmed, planDayCountLabel, type PlanDatesConfirmedAt } from "@shared/plan-dates";
 import { slipZoneAbbrev } from "@/lib/slip-zone-label";
 import { SetPlanDates } from "./SetPlanDates";
+import { KeepOccasionDate } from "./KeepOccasionDate";
+import { showsKeepDate } from "@/lib/occasion-draft-copy";
 
 /** The Empty board's subline when nobody has chosen the plan's dates (canvas note s12). */
 export const SLIP_DATES_NOT_SET = "Dates not set yet";
@@ -48,6 +50,11 @@ export interface SlipHeaderMetaProps {
    * "Nov 13 – Nov 13, 2026 · 1 day". Absent ⇒ the window line is unchanged.
    */
   daySpan?: "evening" | "day" | null;
+  /**
+   * PS-4 (a): the plan was drafted from the member's saved occasion (plancard `trip.fromOccasionDraft`). With
+   * unconfirmed dates the owner's chip reads "Keep {date}?" (one tap confirms) beside "Change".
+   */
+  fromOccasionDraft?: boolean;
 }
 
 export function SlipHeaderMeta({
@@ -62,6 +69,7 @@ export function SlipHeaderMeta({
   eventCount,
   timezone = null,
   daySpan = null,
+  fromOccasionDraft = false,
 }: SlipHeaderMetaProps) {
   const start = parseTripDate(startDate);
   const end = parseTripDate(endDate);
@@ -129,14 +137,18 @@ export function SlipHeaderMeta({
         </p>
         {isOwner ? (
           <div className="flex flex-wrap gap-2" data-testid="slip-meta-chips">
-            <SetPlanDates
-              tripId={tripId}
-              startDate={startDate}
-              endDate={endDate}
-              datesConfirmedAt={datesConfirmed}
-              isOwner={isOwner}
-              onSetDates={onSetDates}
-            />
+            {showsKeepDate({ isOwner, fromOccasionDraft, datesUnset, startDate, endDate }) ? (
+              <KeepOccasionDate tripId={tripId} startDate={startDate} endDate={endDate} onChange={onSetDates} />
+            ) : (
+              <SetPlanDates
+                tripId={tripId}
+                startDate={startDate}
+                endDate={endDate}
+                datesConfirmedAt={datesConfirmed}
+                isOwner={isOwner}
+                onSetDates={onSetDates}
+              />
+            )}
             {askParty}
           </div>
         ) : null}

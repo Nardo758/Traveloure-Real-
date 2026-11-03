@@ -2,7 +2,7 @@
  * The two switched traveler doors on the server (ledger `2026-10-18-traveler-doors-hidden`).
  *
  *   TD1 GET /api/traveler-doors: a missing row, "false" or any value but "true" reads off; "true" reads on; the body
- *       carries exactly { eventConcierge, handoffBooking }
+ *       carries exactly { handoffBooking } (the event_concierge door is retired, CN-1g-UI — its stored row reads nothing)
  *   TD2 handoff_booking off ⇒ a NEW `book` ask and a `book` quote are 410 `handoff_booking_off`, and nothing is written
  *   TD3 handoff_booking off ⇒ the `polish` kind is unaffected (its quote answers, never 410)
  *   TD4 handoff_booking on ⇒ a `book` quote answers, never 410
@@ -29,10 +29,12 @@ if (process.env.JOURNEY_DB_WRITES_OK !== "1" && !["localhost", "127.0.0.1", "::1
 }
 
 const { db, pool } = await import("../db");
-const conciergeRoutes = (await import("../routes/concierge.routes")).default;
+const conciergeRoutes = (await import("../routes/traveler-doors.routes")).default;
 const handoffRoutes = (await import("../routes/handoff.routes")).default;
 const { invalidatePlatformFlagCache } = await import("../services/platform-flags");
-const { EVENT_CONCIERGE_SETTING, HANDOFF_BOOKING_SETTING } = await import("@shared/traveler-doors");
+const { HANDOFF_BOOKING_SETTING } = await import("@shared/traveler-doors");
+/** The retired door's setting key, written by TD1 to prove nothing reads it (CN-1g-UI removed the constant). */
+const EVENT_CONCIERGE_SETTING = "event_concierge";
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const OWNER = `td-${RUN}-owner`;
@@ -103,10 +105,10 @@ after(async () => {
 
 test("TD1 GET /api/traveler-doors reads each switch off unless it is exactly 'true'", async () => {
   for (const [concierge, booking, want] of [
-    [null, null, { eventConcierge: false, handoffBooking: false }],
-    ["true", "false", { eventConcierge: true, handoffBooking: false }],
-    ["yes", "true", { eventConcierge: false, handoffBooking: true }],
-    ["TRUE", "", { eventConcierge: false, handoffBooking: false }],
+    [null, null, { handoffBooking: false }],
+    ["true", "false", { handoffBooking: false }],
+    ["yes", "true", { handoffBooking: true }],
+    ["TRUE", "", { handoffBooking: false }],
   ] as const) {
     await setValue(EVENT_CONCIERGE_SETTING, concierge);
     await setValue(HANDOFF_BOOKING_SETTING, booking);

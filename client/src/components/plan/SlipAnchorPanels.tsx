@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { writePlanAnswersToContext } from "@/lib/trip-context";
 import { PLAN_PARTY_ASK, planDatesGateLine } from "@shared/plan-dates";
 
 export interface PlanWindow {
@@ -74,6 +75,8 @@ export function InlineDatesPanel({
     try {
       // ONLY the two dates: the stamp is the server's (§19); market and zone are re-derived there.
       await apiRequest("PATCH", `/api/trips/${tripId}`, { startDate: start, endDate: end });
+      // Row PS-3 (audit D3): the pen carries the dates the row now holds, so the edit window agrees.
+      writePlanAnswersToContext(tripId, { startDate: start, endDate: end });
       invalidatePlan(tripId);
       onSaved?.({ startDate: start, endDate: end });
     } catch (e: any) {
@@ -229,6 +232,11 @@ export function InlineWhoPanel({
     setError(null);
     try {
       await apiRequest("PATCH", `/api/trips/${tripId}/occasion`, body);
+      // Row PS-3 (audit D3): the pen carries the party the row now holds, for the keys this save sent.
+      const party: { adults?: number | null; kids?: number | null } = {};
+      if ("adults" in body) party.adults = body.adults as number | null;
+      if ("kids" in body) party.kids = body.kids as number | null;
+      writePlanAnswersToContext(tripId, party);
       invalidatePlan(tripId);
       onSaved?.();
     } catch (e: any) {

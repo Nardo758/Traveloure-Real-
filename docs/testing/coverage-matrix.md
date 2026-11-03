@@ -49,7 +49,7 @@ Wave key (brief §7): W1 = Journey Wave 1, build now · W2 = post SLIP phase 4 �
 ## 4. Checkout + payment (`payments.routes.ts:274`, `StripeCheckout.tsx:90`)
 | Action | Claim |
 |---|---|
-| Pay 4242 → booking row, item purchased + log SAME transaction, projection gone, server-computed amount = fee_bands resolution | J1.7, J2 |
+| Pay 4242 → booking row, item purchased + log SAME transaction, projection gone, server-computed amount = fee_bands resolution | J1.7 (the AI-entry journey was deleted by CN-1g-UI) |
 | Declined card | F-pay-1 → deferred:post-wave-1 |
 | 3DS test card (3 handling points: client branch, /booking/confirmation redirect-back, webhook) | F-pay-2 → deferred:post-wave-1 |
 | Double-submit idempotency | F-pay-3 → deferred:post-wave-1; EX: server/__tests__/booking-confirm-payment-idempotency.test.ts |
@@ -68,11 +68,11 @@ Wave key (brief §7): W1 = Journey Wave 1, build now · W2 = post SLIP phase 4 �
 | Expert handoff CTA (discover.tsx:1085) | F-disc-3 → deferred:slip-phase-4 |
 | Amadeus-fed POI/safety rows | n/a:ruling-34 (surfaces render empty; cleanup = project tasks #1040/#1041) |
 
-## 6. AI entry (`/concierge`)
+## 6. AI entry (`/concierge` — retired by CN-1g / CN-1g-UI; the route redirects to the Local concierge filter)
 | Action | Claim |
 |---|---|
-| Generate draft → trip + items in_planning, providerServiceId linkage (H5 guard) | J2 |
-| Continue → checkout of one item | J2 |
+| Generate draft → trip + items in_planning, providerServiceId linkage (H5 guard) | n/a:cn1g-ui (the /concierge entry and its journey are retired) |
+| Continue → checkout of one item | n/a:cn1g-ui (the /concierge entry and its journey are retired) |
 | Coordination fee (server-computed, idempotency key; coordination_states.tripId at creation; GET-by-trip) | J10 → deferred:slip-phase-4 (lane-3 fix proven in-journey) |
 
 ## 7. Expert workspace

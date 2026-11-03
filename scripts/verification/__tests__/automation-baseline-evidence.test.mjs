@@ -6,9 +6,48 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { serializeEvidence, redact } from "../automation-baseline-reporter.mjs";
+import vm from "node:vm";
 
 const require = createRequire(import.meta.url);
 const runner = require("../../automation/golden-baseline.cjs");
+
+// Exercise the exact pure planner without importing the CLI's database entry.
+const ts = require("typescript");
+const gateSource = fs.readFileSync("scripts/verification/run-messaging-gate.mjs", "utf8");
+const gateAst = ts.createSourceFile("gate.mjs", gateSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+const planner = gateAst.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "keyConstraintRenames");
+assert.ok(planner);
+const renameKeys = vm.runInNewContext(`(${planner.getText(gateAst)})`, {
+  q: (name) => `"${name.replaceAll('"', '""')}"`,
+});
+const ownedSchema = "automation_msg_0123456789abcdef";
+const key = (name, definition = "UNIQUE (email)") => ({ table_name: "users", name, kind: "u", definition });
+
+test("copied unique keys regain source names in two collision-safe phases", () => {
+  const sql = renameKeys([key("users_email_unique")], [key("users_email_key")], ownedSchema);
+  assert.equal(sql.length, 2);
+  assert.match(sql[0], /"users_email_key" TO "msg_key_0123456789abcdef_0"$/);
+  assert.match(sql[1], /"msg_key_0123456789abcdef_0" TO "users_email_unique"$/);
+  assert.ok(sql.every((statement) => statement.startsWith(`ALTER TABLE "${ownedSchema}"."users" RENAME CONSTRAINT `)));
+});
+
+test("key restoration fails closed on changed or extra uniqueness and unowned schema", () => {
+  assert.throws(() => renameKeys([key("expected")], [key("copy", "UNIQUE (handle)")], ownedSchema), /differs/);
+  assert.throws(() => renameKeys([], [key("extra")], ownedSchema), /Unexpected/);
+  assert.throws(() => renameKeys([key("expected")], [], ownedSchema), /differs/);
+  assert.throws(() => renameKeys([], [], "public"), /Owned/);
+});
+
+test("primary keys, duplicate definitions and quoted names remain one-to-one", () => {
+  const source = [{ ...key('a"b', "PRIMARY KEY (id)"), kind: "p" }, key("first"), key("second")];
+  const copied = [{ ...key("users_pkey", "PRIMARY KEY (id)"), kind: "p" }, key("users_email_key"), key("users_email_key1")];
+  const sql = renameKeys(source, copied, ownedSchema);
+  assert.equal(sql.length, 6);
+  assert.match(sql[3], /TO "a""b"$/);
+  assert.equal(sql.filter((s) => /TO "first"$/.test(s)).length, 1);
+  assert.equal(sql.filter((s) => /TO "second"$/.test(s)).length, 1);
+  assert.doesNotMatch(sql.join(";"), /DROP|ADD CONSTRAINT|DISABLE|public\./);
+});
 
 test("structured evidence retains nested rows, timestamps, counts and types", () => {
   const document = {

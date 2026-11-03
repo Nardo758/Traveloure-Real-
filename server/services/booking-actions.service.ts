@@ -620,6 +620,9 @@ export async function listTripExpertAdvisors(tripId: string): Promise<any[]> {
   const result = await db.execute(sql`
     SELECT
       tea.id as advisor_id, tea.status, tea.message, tea.expert_response, tea.assigned_at,
+      -- CN-1d-UI: how the advisor joined (migration 429: 'handoff' | 'concierge') and, for a concierge
+      -- engagement, when its plan access ends. Mapped to accessUntil (ISO or null) below.
+      tea.source, tea.access_until,
       lef.id as expert_form_id, lef.first_name, lef.last_name,
       lef.bio, lef.specialties, lef.destinations, lef.hourly_rate,
       u.profile_image_url,
@@ -642,11 +645,17 @@ export async function listTripExpertAdvisors(tripId: string): Promise<any[]> {
       -- or Connect has lapsed is a real hire and stays.
       AND ${publicExpertSql(sql`lef.status`, sql`u.email`, sql`u.is_test`)}
     GROUP BY tea.id, tea.status, tea.message, tea.expert_response, tea.assigned_at,
+             tea.source, tea.access_until,
              lef.id, lef.first_name, lef.last_name, lef.bio, lef.specialties,
              lef.destinations, lef.hourly_rate, u.profile_image_url, u.handle
     ORDER BY tea.assigned_at DESC
   `);
-  return (result.rows ?? []) as any[];
+  // NULL access_until = no expiry (a handoff row, or a pre-429 row); it is published as null, never
+  // a guessed date (§13).
+  return ((result.rows ?? []) as any[]).map(({ access_until, ...row }) => ({
+    ...row,
+    accessUntil: access_until ? new Date(access_until).toISOString() : null,
+  }));
 }
 
 export async function getExistingAdvisorRecord(tripId: string): Promise<{ id: string; status: string } | null> {
@@ -796,6 +805,15 @@ export interface UpsertTripAdvisorRowInput {
    * No other caller passes it.
    */
   routabilityOverride?: { adminId: string };
+  /**
+   * Migration 429. Omitted ⇒ 'handoff' on insert, matching the backfill. The SQL
+   * column has no DEFAULT. A conflict writes 'concierge' over whatever is stored
+   * and sets access_until; a handoff write never replaces a concierge source and
+   * never clears access_until.
+   */
+  source?: "handoff" | "concierge";
+  /** Set with source 'concierge'. Null leaves the column null on insert. */
+  accessUntil?: Date | null;
 }
 
 /** `db`, or the handle drizzle hands a `db.transaction(...)` callback. */
@@ -877,6 +895,8 @@ export async function upsertTripAdvisorRow(
       workspaceStatus: "draft",
       message: input.message ?? null,
       assignedAt: new Date(),
+      source: input.source ?? "handoff",
+      accessUntil: input.accessUntil ?? null,
     })
     .onConflictDoUpdate({
       target: [tripExpertAdvisors.tripId, tripExpertAdvisors.localExpertId],
@@ -885,6 +905,11 @@ export async function upsertTripAdvisorRow(
           `CASE WHEN (${incomingRank}) > (${storedRank}) THEN excluded.status ELSE trip_expert_advisors.status END`,
         ),
         message: sql.raw("COALESCE(trip_expert_advisors.message, excluded.message)"),
+        // A concierge accept labels the row and sets its window. A handoff write
+        // does not replace that label and does not clear the window. Status still
+        // follows the rank ladder above and never downgrades.
+        source: sql`CASE WHEN excluded.source = 'concierge' THEN excluded.source ELSE trip_expert_advisors.source END`,
+        accessUntil: sql`CASE WHEN excluded.source = 'concierge' THEN excluded.access_until ELSE trip_expert_advisors.access_until END`,
       },
     })
     .returning({

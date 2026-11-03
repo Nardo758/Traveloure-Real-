@@ -54,6 +54,7 @@ import {
   type FundamentalsShape,
 } from "./service-fundamentals";
 import { QA_SESSION_OFFERING_KEY } from "./live-availability";
+import { CN1_COPY } from "./cn1-copy";
 
 // ─── Vocabularies ────────────────────────────────────────────────────────────────────────────
 
@@ -68,6 +69,7 @@ export type BuyActionKind =
   | "book"
   | "request_to_book"
   | "request_quote"
+  | "hire"
   | "plan_with"
   | "buy_ready_made"
   | "agent_rail"
@@ -167,6 +169,8 @@ export interface BuyActionRow {
   categoryKey?: string | null;
   /** `provider_services.expert_offering_type_key` — `ask_me_anything` names a Q&A Session. */
   offeringTypeKey?: string | null;
+  /** `provider_services.service_type` — `concierge` is hired for one trip (CN-1d). Absent ⇒ not concierge. */
+  serviceType?: string | null;
   /**
    * The listing takes a DEPOSIT at checkout — a BOOLEAN the server derived from the listing's own
    * deposit config through `resolveDepositPlan`. No amount ever reaches this module (§14).
@@ -426,6 +430,19 @@ function resolveBuyActionTable(row: BuyActionRow, buyer: BuyActionBuyer): BuyAct
 
   // ── Listing rows (10–13) ───────────────────────────────────────────────────────────────────
   const planAsks: BuyAsk[] = [...signInAsk(buyer), ...whichPlanAsk(buyer)];
+
+  // 9b · CONCIERGE (CN-1d-UI; ledger `2026-11-01-cn1d-ui-server-reads`): a concierge listing is HIRED
+  //      for one trip, never booked tripless. Checked before every generic listing row so it never
+  //      reads "Book" or "Request to book". It is charged at checkout like any service line (and
+  //      refunded in full on decline or timeout), so it lands on `checkout`. A trip is required: the
+  //      plan question is asked unless a chip already names one.
+  if (row.serviceType === "concierge") {
+    return {
+      primary: { kind: "hire", label: CN1_COPY.hireCta },
+      ask: [...signInAsk(buyer), ...(buyer.chipTripId ? [] : (["which_plan"] as BuyAsk[]))],
+      landing: { store: "checkout", timed: false, placeAnchored: false, forksFinal: false },
+    };
+  }
 
   // 10 · info-only listing: nothing to book, but it can still be planned around.
   if (row.bookability === "info_only") {

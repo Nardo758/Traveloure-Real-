@@ -86,6 +86,9 @@ import { threadChatPath } from "@/lib/earner-address";
 import { SellerCompletionPanel } from "@/components/bookings/SellerCompletionPanel";
 import { BundleComponentsPanel } from "@/components/bookings/BundleComponentsPanel";
 import { QaSessionPanel } from "@/components/live/QaSessionPanel";
+import { ConciergeTaskLogButton } from "@/components/concierge-task-log";
+import { isConfirmedConciergeBooking } from "@/lib/concierge-task-copy";
+import { firstNameOf } from "@/lib/concierge-hire-copy";
 
 // ─── Shared shapes ──────────────────────────────────────────────────────────
 
@@ -1223,6 +1226,7 @@ function VisaStatusDialog({
 }
 
 function HistorySection() {
+  const { user } = useAuth();
   const [visaDialogOpen, setVisaDialogOpen] = useState(false);
   const [selectedVisaBooking, setSelectedVisaBooking] = useState<InboxBooking | null>(null);
   const [planBooking, setPlanBooking] = useState<InboxBooking | null>(null);
@@ -1431,6 +1435,16 @@ function HistorySection() {
                             <ListChecks className="w-3 h-3 mr-1" />
                             Trip Plan
                           </Button>
+                        )}
+                        {/* CN-1e-UI: the task log for a confirmed concierge hire (GET /api/expert/bookings carries service). */}
+                        {isConfirmedConciergeBooking(booking) && (
+                          <ConciergeTaskLogButton
+                            bookingId={booking.id}
+                            tripId={booking.tripId ?? null}
+                            viewer="expert"
+                            expertFirstName={firstNameOf(user?.firstName ?? null) ?? ""}
+                            listingServiceId={booking.service?.id ?? booking.serviceId ?? null}
+                          />
                         )}
                       </div>
                     </div>

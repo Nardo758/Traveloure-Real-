@@ -208,7 +208,7 @@ start_stub "ok" "200"
 run_due_script "2026-09-20T09:00:00Z" ""
 stop_stub
 t6_ok=0
-t6_expected="checkout-sweep itinerary-generation-sweep email-outbox earnings-release booking-auto-completion score-neighborhood-claims handoff-timers routing-recheck stripe-reconciliation availability-materialization travelpulse-weekly facts-recheck leg-google-coords content-expiry-census waitlist-retention liteapi-sync official-refresh liteapi-booking-sync guest-data-retention"
+t6_expected="checkout-sweep itinerary-generation-sweep email-outbox earnings-release booking-auto-completion score-neighborhood-claims handoff-timers routing-recheck concierge-accept-timeout stripe-reconciliation availability-materialization travelpulse-weekly facts-recheck leg-google-coords content-expiry-census waitlist-retention liteapi-sync official-refresh liteapi-booking-sync guest-data-retention"
 if [[ "$RUN_EXIT" -eq 0 ]] && [[ "$(posted_routes "$RUN_OUT")" == "$t6_expected" ]]; then
   t6_ok=1
 fi
@@ -221,7 +221,7 @@ start_stub "ok" "200"
 run_due_script "2026-09-20T03:15:00Z" ""
 stop_stub
 t7_ok=0
-t7_expected="checkout-sweep itinerary-generation-sweep email-outbox earnings-release booking-auto-completion score-neighborhood-claims handoff-timers routing-recheck"
+t7_expected="checkout-sweep itinerary-generation-sweep email-outbox earnings-release booking-auto-completion score-neighborhood-claims handoff-timers routing-recheck concierge-accept-timeout"
 if [[ "$RUN_EXIT" -eq 0 ]] && [[ "$(posted_routes "$RUN_OUT")" == "$t7_expected" ]]; then
   t7_ok=1
 fi
@@ -234,7 +234,7 @@ start_stub "ok" "200"
 run_due_script "2026-09-20T04:00:00Z" ""
 stop_stub
 t8_ok=0
-t8_expected="checkout-sweep itinerary-generation-sweep email-outbox earnings-release booking-auto-completion score-neighborhood-claims handoff-timers routing-recheck booking-expiry"
+t8_expected="checkout-sweep itinerary-generation-sweep email-outbox earnings-release booking-auto-completion score-neighborhood-claims handoff-timers routing-recheck concierge-accept-timeout booking-expiry"
 if [[ "$RUN_EXIT" -eq 0 ]] && [[ "$(posted_routes "$RUN_OUT")" == "$t8_expected" ]]; then
   t8_ok=1
 fi
@@ -247,7 +247,7 @@ start_stub "ok" "200"
 run_due_script "2026-09-20T06:00:00Z" ""
 stop_stub
 t9_ok=0
-t9_expected="checkout-sweep itinerary-generation-sweep email-outbox earnings-release booking-auto-completion score-neighborhood-claims handoff-timers routing-recheck travelpayouts-report-poll"
+t9_expected="checkout-sweep itinerary-generation-sweep email-outbox earnings-release booking-auto-completion score-neighborhood-claims handoff-timers routing-recheck concierge-accept-timeout travelpayouts-report-poll"
 if [[ "$RUN_EXIT" -eq 0 ]] && [[ "$(posted_routes "$RUN_OUT")" == "$t9_expected" ]]; then
   t9_ok=1
 fi

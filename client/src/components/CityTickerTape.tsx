@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useSignupMode } from "@/lib/signup-mode";
 import { usePlanning } from "@/contexts/PlanningContext";
 import { launchCityName, tickerButton, type PublicTickerItem } from "@shared/ticker";
 import { TickerRibbon } from "./ticker-ribbon";
@@ -23,7 +24,7 @@ interface SignupModeAnswer {
 
 export function CityTickerTape() {
   const { open: openPlanning } = usePlanning();
-  const signup = useQuery<SignupModeAnswer>({ queryKey: ["/api/public/signup-mode"], staleTime: 30_000 });
+  const signup = useSignupMode() as { data: SignupModeAnswer | undefined };
   const slug = signup.data?.launchMarketSlug ?? null;
   const cityName = launchCityName(slug);
   const ticker = useQuery<{ items: PublicTickerItem[]; betaCities?: string[] }>({
@@ -38,7 +39,7 @@ export function CityTickerTape() {
       cityName={cityName}
       betaCities={ticker.data.betaCities ?? []}
       button={tickerButton(signup.data?.mode, slug, cityName)}
-      onPlan={(city) => openPlanning({ city })}
+      onPlan={(city) => openPlanning({ city, newPlan: true })}
     />
   );
 }

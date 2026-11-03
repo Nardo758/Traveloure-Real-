@@ -19,13 +19,14 @@ import type { WantedSlotData } from "@/lib/feed-composition";
 import { buildWantedSlotSignupHref } from "@/lib/wanted-slot-link";
 import { trackRecruitmentClick } from "@/lib/analytics";
 import { useAuth } from "@/hooks/use-auth";
+import { usePlanningOptional } from "@/contexts/PlanningContext";
 import {
   ARASHIYAMA_ITINERARY_EXPERT_HREF,
   ARASHIYAMA_ITINERARY_EXPERT_LINK,
   ARASHIYAMA_ITINERARY_PROVIDER_HREF,
   ARASHIYAMA_ITINERARY_PROVIDER_LINK,
   ARASHIYAMA_PLAN_YOUR_DAY,
-  ARASHIYAMA_PLAN_YOUR_DAY_HREF,
+  arashiyamaPlanDaySource,
   arashiyamaShowsApplyLinks,
   isArashiyamaItineraryWanted,
 } from "@/lib/arashiyama-wanted-copy";
@@ -36,6 +37,7 @@ import {
 // (~200px, descriptive copy at line-clamp-2), so full and compact render the same.
 export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" | "compact" }) {
   const { user } = useAuth();
+  const planning = usePlanningOptional();
   const {
     offeringLabel,
     offeringKey,
@@ -85,15 +87,16 @@ export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" 
               </a>
             </div>
           ) : (
-            <a
-              href={ARASHIYAMA_PLAN_YOUR_DAY_HREF}
-              className="text-[13px] font-semibold hover:underline"
+            <button
+              type="button"
+              onClick={() => planning?.open(arashiyamaPlanDaySource())}
+              className="text-left text-[13px] font-semibold hover:underline"
               style={{ color: "var(--earn-ink)" }}
               data-testid="link-arashiyama-plan-day"
               data-bento-primary-action=""
             >
               {ARASHIYAMA_PLAN_YOUR_DAY}
-            </a>
+            </button>
           )
         ) : (
           <p className="line-clamp-2 text-[13px] font-semibold" style={{ color: "var(--earn-ink)" }}>

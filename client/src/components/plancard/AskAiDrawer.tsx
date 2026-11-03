@@ -48,6 +48,7 @@
 import { useState } from "react";
 import { Loader2, Sparkles, Ticket } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSignupMode } from "@/lib/signup-mode";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -159,7 +160,10 @@ export function AskAiDrawer({
         : "error"
       : "pending";
 
-  const visibility = askAiRailVisibility({ isOwner, isExpertViewer, logRead });
+  // Row P-1c: waitlist mode hides the paid apply ("Pay for this task" and its pay path) — not greyed.
+  const waitlist = useSignupMode().mode === "waitlist";
+  const railVisibility = askAiRailVisibility({ isOwner, isExpertViewer, logRead });
+  const visibility = waitlist ? { ...railVisibility, canApply: false } : railVisibility;
 
   const ask = useMutation({
     mutationFn: async (text: string) => {
@@ -467,7 +471,7 @@ export function AskAiDrawer({
         className="font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
         style={{ fontFamily: EARN_MONO }}
       >
-        Ask AI
+        {ASK_AI_COPY.eyebrow}
       </p>
 
       <Button

@@ -4,15 +4,14 @@
  * Ratified mock: "Adopt the Optimization" → the Finalize modal
  * (artifact b39eedaa, thread c26f29e3). Opens AFTER a traveler adopts/finalizes their
  * optimized plan (SlipView `SlipActions`, on finalize success). It is a CHOOSER that hands
- * the finalized plan to one of four rails that already exist — no new backend:
+ * the finalized plan to one of three rails that already exist — no new backend:
  *
- *   • Book it myself   → bulk-route un-booked in_planning items to checkout, land on /cart.
+ *   • I book them myself → bulk-route un-booked in_planning PLATFORM items to checkout, land on /cart (PS-5).
  *   • Booking agent    → POST /api/affiliate-booking-requests per partner-bookable stop, by
  *                        opaque bookingToken only (§16 — the affiliate URL never leaves the
  *                        server). Available only when the plan has partner-bookable stops.
  *   • Travel expert    → the ONE handoff chooser (R323, step 7b) with the unbooked stops ticked; the
  *                        request, its fee and its hold are the chooser's, never this modal's.
- *   • Concierge        → hand off to the concierge surface (/concierge), which owns the quote.
  *
  * Guarantees drawn in the mock and enforced here: choosing a person gives them ACCESS to the
  * finalized plan (R-C / the stationary-slip erratum — the slip never moves and nothing is copied;
@@ -31,24 +30,35 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useSignupMode } from "@/lib/signup-mode";
+import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 import {
   runBulkRouteToCheckout,
-  selectBulkCheckoutItems,
+  splitBulkCheckoutByPath,
 } from "@/lib/slip-plan-actions";
 import type { PlanCardActivity } from "./plancard-types";
 import { useRouteRefusalToast } from "./use-route-refusal-toast";
-import { ShoppingCart, UserCheck, Sparkles, Handshake, Check } from "lucide-react";
-import { useTravelerDoors } from "@/hooks/use-traveler-doors";
+import { ShoppingCart, UserCheck, Handshake, Check } from "lucide-react";
+import { useExpertAvailability } from "@/lib/expert-availability";
 
 type FinalizeTrip = { id: string; destination: string | null; travelers: number | null };
-type Lane = "myself" | "agent" | "expert" | "concierge";
+type Lane = "myself" | "agent" | "expert";
 
 /**
  * Row 194 (R2 ruling, Nov 1, 2026): the chooser keeps "I book them myself" and "Travel expert"; the Booking
  * agent lane is hidden (not rendered) while row 298 is parked. Its submit path is kept for when 298 unparks.
- * The Concierge lane is unchanged (its own flag, off by default).
+ * The legacy Concierge lane is removed (CN-1g-UI).
  */
 export const FINALIZE_AGENT_LANE_SHOWN = false;
+
+/**
+ * Row PS-5 (ledger `2026-11-02-ps5-finalize-chooser-link-only-expert-plans`): the finished state's way back into
+ * this chooser, and the note listing the stops the traveler books themselves (they are never routed to checkout).
+ */
+export const FINALIZE_COPY = {
+  changeBooking: "Change how you book",
+  selfBookNote: "You book these yourself:",
+} as const;
 
 /** Partner-bookable stops carry an opaque §16 bookingToken on `affiliateBooking` (never a URL). */
 function affiliateStops(activities: PlanCardActivity[]) {
@@ -68,14 +78,19 @@ export function FinalizeBookingModal({
 }) {
   const { toast } = useToast();
   const { showBulkResult } = useRouteRefusalToast(trip.id);
-  const { eventConcierge: conciergeShown } = useTravelerDoors();
+  // Row P-7: the "Travel expert" lane is absent (never greyed) when no expert is live in the city.
+  const expertsAvailable = useExpertAvailability({ city: trip.destination });
+  // Row P-1c: in waitlist mode both lanes collapse to one "Save to plan" card that returns to the slip — no prices.
+  const waitlist = useSignupMode().mode === "waitlist";
   const [, setLocation] = useLocation();
   const [lane, setLane] = useState<Lane>("myself");
   const [submitting, setSubmitting] = useState(false);
 
   const bookableStops = affiliateStops(activities);
   const agentAvailable = bookableStops.length > 0;
-  const checkoutCount = selectBulkCheckoutItems(activities).length;
+  // Row PS-5: only platform items go to checkout; the rest are listed as the traveler's own to book.
+  const { platform: platformItems, selfBook: selfBookItems } = splitBulkCheckoutByPath(activities as any[]);
+  const checkoutCount = platformItems.length;
   // Folded pre-gate (adopt-finalize-conform row 13): the old separate "Finalize without booking?"
   // dialog's fact, stated inline here instead. Same predicate SlipView's gate used — items staged
   // to checkout but not yet booked. §13: rendered only when the count is real and non-zero.
@@ -87,7 +102,7 @@ export function FinalizeBookingModal({
     try {
       if (lane === "myself") {
         const result = await runBulkRouteToCheckout({
-          items: activities,
+          items: platformItems,
           postRoute: (itemId) =>
             apiRequest("POST", `/api/trips/${trip.id}/items/${itemId}/route`, { to: "ready_for_checkout" }),
           invalidate: () => {
@@ -102,7 +117,8 @@ export function FinalizeBookingModal({
         // Ledger 2026-09-24-cart-two-paths: a finalized plan is done PLANNING — land on the
         // payment step (a buying cart), not the optimize-first cart view. Nothing staged ⇒ stay
         // here with the message rather than land on a cart that holds none of it.
-        if (result.succeeded > 0 || result.attempted === 0) setLocation(BUY_NOW_CART_PATH);
+        // Row PS-5: nothing platform-bookable ⇒ no cart; the modal closes back to the slip.
+        if (result.succeeded > 0) setLocation(BUY_NOW_CART_PATH);
       } else if (lane === "agent") {
         // §16: one request per partner stop, by opaque bookingToken — never a URL, never a price.
         let ok = 0;
@@ -138,11 +154,9 @@ export function FinalizeBookingModal({
         // stop not yet booked ticked. The chooser quotes, holds and sends; this modal sends nothing.
         onOpenChange(false);
         // BP-1: an item whose path is `none` (a past day, an area, nothing bookable) is never ticked.
-        openHandoffChooser({ kind: "book", itemIds: activities.filter((i) => !i.booking?.id && (i as any).bookingPath !== "none").map((i) => i.id) });
-      } else if (lane === "concierge") {
-        onOpenChange(false);
-        // The concierge surface owns the priced quote; hand it the intent (server derives price).
-        setLocation(`/concierge?intent=${encodeURIComponent("Book my finalized plan end-to-end")}`);
+        // Row PS-5 (CN-1: experts plan; local concierges execute bookings): the expert lane opens the chooser on
+        // "Polish my plan" — never `book`. "Book these for me" stays inside the chooser while handoff_booking is on.
+        openHandoffChooser({ kind: "polish", itemIds: activities.filter((i) => !i.booking?.id && (i as any).bookingPath !== "none").map((i) => i.id) });
       }
     } catch (err: any) {
       toast({ variant: "destructive", title: "Something went wrong", description: err?.message || "Please try again" });
@@ -151,7 +165,9 @@ export function FinalizeBookingModal({
     }
   }
 
-  const people: Array<{ id: Lane; label: string; blurb: string; icon: typeof UserCheck; disabled?: boolean; disabledNote?: string }> = [
+  type LaneOption = { id: Lane; label: string; blurb: string; icon: typeof UserCheck; disabled?: boolean; disabledNote?: string };
+  const expertLane: LaneOption = { id: "expert", label: "Travel expert", blurb: "Reviews and refines — you book at checkout", icon: UserCheck };
+  const people: LaneOption[] = [
     // Row 194 (R2): the Booking agent lane is not rendered while row 298 is parked (`FINALIZE_AGENT_LANE_SHOWN`).
     ...(FINALIZE_AGENT_LANE_SHOWN
       ? [
@@ -164,10 +180,28 @@ export function FinalizeBookingModal({
           },
         ]
       : []),
-    { id: "expert", label: "Travel expert", blurb: "Reviews and refines — you book at checkout", icon: UserCheck },
-    // Ledger `2026-10-18-traveler-doors-hidden`: the Concierge lane opens the old concierge, off by default.
-    ...(conciergeShown ? [{ id: "concierge" as Lane, label: "Concierge", blurb: "Ask about full-service help", icon: Sparkles }] : []),
+    ...(expertsAvailable ? [expertLane] : []),
   ];
+
+  if (waitlist) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-lg" data-testid="finalize-modal">
+          <DialogHeader>
+            <DialogTitle className="sr-only">{WAITLIST_COPY.saveToPlan}</DialogTitle>
+          </DialogHeader>
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            data-testid="finalize-option-save-to-plan"
+            className="w-full rounded-lg border border-primary bg-primary/5 p-3 text-left font-medium"
+          >
+            {WAITLIST_COPY.saveToPlan}
+          </button>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -181,7 +215,7 @@ export function FinalizeBookingModal({
         </DialogHeader>
 
         <div className="space-y-3">
-          {/* Book it myself */}
+          {/* I book them myself */}
           <button
             type="button"
             onClick={() => setLane("myself")}
@@ -197,7 +231,7 @@ export function FinalizeBookingModal({
               </span>
               <div className="min-w-0">
                 <div className="flex items-center gap-2 font-medium">
-                  <ShoppingCart className="h-4 w-4 text-muted-foreground" /> Book it myself
+                  <ShoppingCart className="h-4 w-4 text-muted-foreground" /> I book them myself
                 </div>
                 <p className="text-sm text-muted-foreground">
                   Book each stop in-platform at your own pace — add to cart and check out when ready. Nothing handed off.
@@ -246,6 +280,12 @@ export function FinalizeBookingModal({
           })}
         </div>
 
+        {/* Row PS-5: the stops not on the platform are the traveler's own to book — listed, never routed. */}
+        {selfBookItems.length > 0 && (
+          <p className="text-[12px] text-muted-foreground" data-testid="finalize-self-book-note">
+            {FINALIZE_COPY.selfBookNote} {selfBookItems.map((i: any) => i.name).filter(Boolean).join(", ")}
+          </p>
+        )}
         {stagedUnbookedCount > 0 && (
           <p className="text-[12px] text-muted-foreground" data-testid="finalize-staged-unbooked-note">
             {stagedUnbookedCount} stop{stagedUnbookedCount === 1 ? " is" : "s are"} in checkout but not booked yet —

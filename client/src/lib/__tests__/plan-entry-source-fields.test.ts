@@ -86,9 +86,9 @@ describe("S1 — chat passes the trip its thread is about, and only when there i
 describe("S3/S4 — the storefront passes nothing; the single-city ticker passes its city", () => {
   it("S4 — the ticker passes the launch market's city, and only that", () => {
     const src = read(TICKER);
-    assert.ok(src.includes("onPlan={(city) => openPlanning({ city })}"), "the ticker door passes its one city");
+    assert.ok(src.includes("onPlan={(city) => openPlanning({ city, newPlan: true })}"), "the ticker door passes its one city");
     assert.ok(src.includes("launchCityName(slug)"), "the city comes from the launch_market_slug setting");
-    assert.ok(src.includes('queryKey: ["/api/public/signup-mode"]'), "the slug is read from the public setting");
+    assert.ok(src.includes("useSignupMode()"), "the slug is read from the public setting");
   });
 
   it("S4 — nothing on the ribbon counts or lists the operating markets", () => {

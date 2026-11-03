@@ -628,7 +628,6 @@ export default function ExpertsPage() {
                     <SelectValue placeholder="Sort by" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="recommended">Recommended</SelectItem>
                     <SelectItem value="rating">Highest Rated</SelectItem>
                     <SelectItem value="reviews">Most Reviews</SelectItem>
                     <SelectItem value="price-low">Price: Low to High</SelectItem>
@@ -777,7 +776,7 @@ export default function ExpertsPage() {
                 className="hidden sm:block text-[12px] text-[color:var(--earn-muted)] whitespace-nowrap"
                 style={{ fontFamily: EARN_MONO }}
               >
-                {sortedExperts.length} {sortedExperts.length === 1 ? "match" : "matches"} · recommended
+                {sortedExperts.length} {sortedExperts.length === 1 ? "match" : "matches"}
               </p>
             </div>
           )}
@@ -981,7 +980,7 @@ export default function ExpertsPage() {
           },
           local_expert: {
             heading: "Are You a Local Expert?",
-            body: "Share your city knowledge, earn money, and help travelers discover the best of your destination. Join our growing community of local guides.",
+            body: "Share your city knowledge, earn money, and help travelers get to know your destination. Join our growing community of local guides.",
             cta: "Become a Local Expert",
             href: "/become-expert?type=local_expert",
           },

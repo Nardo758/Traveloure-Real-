@@ -83,6 +83,8 @@ export interface ListingBuyRow {
   /** `provider_services.category_id` — resolved to its `category_key` here, one batched query. */
   categoryId?: string | null;
   expertOfferingTypeKey?: string | null;
+  /** `provider_services.service_type` — `concierge` resolves to the hire row (CN-1d-UI). */
+  serviceType?: string | null;
   depositEnabled?: boolean | null;
   depositType?: string | null;
   depositPercentage?: number | null;
@@ -95,6 +97,7 @@ export interface ListingBuyFactsSource {
   pricingUnit?: string | null;
   categoryId?: string | null;
   expertOfferingTypeKey?: string | null;
+  serviceType?: string | null;
   depositEnabled?: boolean | null;
   depositType?: string | null;
   depositPercentage?: number | null;
@@ -112,6 +115,7 @@ export function listingBuyFacts(row: ListingBuyFactsSource): Pick<
   | "pricingUnit"
   | "categoryId"
   | "expertOfferingTypeKey"
+  | "serviceType"
   | "depositEnabled"
   | "depositType"
   | "depositPercentage"
@@ -122,6 +126,7 @@ export function listingBuyFacts(row: ListingBuyFactsSource): Pick<
     pricingUnit: row.pricingUnit ?? null,
     categoryId: row.categoryId ?? null,
     expertOfferingTypeKey: row.expertOfferingTypeKey ?? null,
+    serviceType: row.serviceType ?? null,
     depositEnabled: row.depositEnabled ?? null,
     depositType: row.depositType ?? null,
     depositPercentage: row.depositPercentage ?? null,
@@ -303,6 +308,7 @@ export async function buildListingBuyActions(
           pricingUnit: row.pricingUnit ?? null,
           categoryKey: row.categoryId ? (categoryKeyById.get(row.categoryId) ?? null) : null,
           offeringTypeKey: row.expertOfferingTypeKey ?? null,
+          serviceType: row.serviceType ?? null,
           takesDeposit: listingTakesDeposit(row),
         },
         buyer,
@@ -444,7 +450,26 @@ type RequestOnlyListingFacts = {
   userId?: string | null;
   priceType?: string | null;
   bookingMode?: string | null;
+  /** `provider_services.service_type` — a `concierge` listing is exempt from the request refusal (below). */
+  serviceType?: string | null;
 };
+
+/**
+ * LOCKED DECISION 49, AMENDED FOR CONCIERGE (Architect ruling, Nov 2, 2026; ledger
+ * `2026-11-02-cn1d-concierge-checkout`): "a concierge hire is charged at checkout and awaits the
+ * expert's acceptance; refunded in full on decline or timeout (Leon, Nov 1 2:56 PM ET)". So a
+ * concierge listing is NOT refused as a request-only cart line — the acceptance it needs happens
+ * AFTER the charge (checkout promotes it to `pending`, the expert accepts or declines). Only the
+ * `listing_requires_request` reason is exempted, and not for a custom-quote price: a concierge
+ * listing its owner HID stays not bookable, and a quoted one is still never charged at a list price.
+ */
+function conciergeHireExempt(listing: RequestOnlyListingFacts, refusal: RequestOnlyRefusal): boolean {
+  return (
+    listing.serviceType === "concierge" &&
+    refusal.reason === "listing_requires_request" &&
+    listing.priceType !== "custom_quote"
+  );
+}
 
 /**
  * The batch form every rail calls: listing id → its refusal, for exactly the listings that have
@@ -467,7 +492,7 @@ export async function requestOnlyListingRefusals(
   const flags = await loadOwnerInstantBookingFlags(needFlag.map((l) => l.userId));
   for (const l of present) {
     const refusal = listingRequiresRequest(l, l.userId ? flags.get(l.userId) : undefined);
-    if (refusal) out.set(l.id, refusal);
+    if (refusal && !conciergeHireExempt(l, refusal)) out.set(l.id, refusal);
   }
   return out;
 }

@@ -1,14 +1,16 @@
 /**
  * CLAUDE.md §18, item 3 — sticky bottom action bar (mobile viewports only). "Message
- * [expert]" only when an ACCEPTED advisor exists (the audit's realistic no-advisor case
- * falls back to "Get help" → the existing concierge entry point, never a dead button).
+ * [expert]" only when an ACCEPTED advisor exists. With none, row P-7's "Get help with this plan"
+ * shows only while an expert is live in the city (`/api/expert-availability`); otherwise nothing.
  * Buttons are ≥44px (min-h-11) with safe-area inset padding.
  */
 import { Link } from "wouter";
 import { Map as MapIcon, MessageCircle, Share2, LifeBuoy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { openInMaps } from "@/lib/navigate";
-import { useTravelerDoors } from "@/hooks/use-traveler-doors";
+import { useExpertAvailability } from "@/lib/expert-availability";
+import { useSignupMode } from "@/lib/signup-mode";
+import { EXPERT_DOOR_COPY, bottomBarExpertSlot, getHelpHref } from "@/lib/expert-door-copy";
 
 interface AdvisorLite {
   status: "pending" | "accepted" | "rejected";
@@ -29,7 +31,8 @@ export function BottomActionBar({
   onShare,
 }: BottomActionBarProps & { advisor?: AdvisorLite | null; onShare?: () => void }) {
   const { toast } = useToast();
-  const { eventConcierge: conciergeShown } = useTravelerDoors();
+  // Row P-7: the one expert-door gate (`/api/expert-availability`), never the old concierge switch.
+  const expertsAvailable = useExpertAvailability({ city: destination });
 
   const handleMaps = () => {
     if (!destination) return;
@@ -54,6 +57,9 @@ export function BottomActionBar({
   };
 
   const hasAcceptedAdvisor = advisor?.status === "accepted";
+  // Row P-1c: waitlist mode — the Trip Card offers no paid help door; messaging an accepted advisor stays.
+  const waitlist = useSignupMode().mode === "waitlist";
+  const expertSlot = bottomBarExpertSlot({ hasAcceptedAdvisor, expertsAvailable: expertsAvailable && !waitlist });
 
   return (
     // `fixed` (not `sticky`) — the ancestor page layout (DashboardLayout's <main>, out of
@@ -86,17 +92,17 @@ export function BottomActionBar({
           <MessageCircle className="w-[18px] h-[18px]" />
           {advisor?.first_name ? `Message ${advisor.first_name}` : "Message expert"}
         </Link>
-      ) : !conciergeShown ? null : (
-        // Ledger `2026-10-18-traveler-doors-hidden`: "Get help" opens the old concierge, off by default.
+      ) : expertSlot === "help" ? (
+        // Row P-7: the help door opens the slip's one HandoffChooser (the card has no chooser host).
         <Link
-          href="/concierge"
+          href={getHelpHref(tripId)}
           className="flex-1 min-h-11 flex flex-col items-center justify-center gap-0.5 rounded-lg text-[10.5px] font-bold bg-primary/10 text-primary transition-colors"
           data-testid={`button-bottombar-help-${tripId}`}
         >
           <LifeBuoy className="w-[18px] h-[18px]" />
-          Get help
+          {EXPERT_DOOR_COPY.getHelp}
         </Link>
-      )}
+      ) : null}
 
       <button
         type="button"

@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { needHelpBody } from "@/lib/discover-need-help";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useSignupMode } from "@/lib/signup-mode";
+import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { createComparison as createComparisonRequest } from "@/lib/create-comparison";
 import { useToast } from "@/hooks/use-toast";
@@ -135,7 +137,7 @@ const QUICK_CATEGORY_SLUGS = [
   "visa-assistance",
 ] as const;
 const SERVICE_SORT_OPTIONS = [
-  { value: "rating", label: "Top Rated" },
+  { value: "rating", label: "Rating" },
   { value: "reviews", label: "Most Reviews" },
   { value: "price_low", label: "Price: Low to High" },
   { value: "price_high", label: "Price: High to Low" },
@@ -469,6 +471,9 @@ function ServiceCard({
   // with the matching intent — `#dates` for a stay (the date-range picker), `#book` / `#quote`
   // otherwise. `null` = the resolver offers no booking verb: Message only, no buy, no add.
   const actionLabel = offeringActionLabel(service.buyAction);
+  // Row P-1c: in waitlist mode the book becomes "Save to plan" and runs the add path; the separate add button is
+  // then not drawn, so the card has one action.
+  const saveMode = useSignupMode().mode === "waitlist" && !!onAddToCart;
   const messageOnly = offeringActionIsMessageOnly(service.buyAction);
   const actionHref = actionLabel ? buildStorefrontActionHref(detailHref, actionLabel, null) : detailHref;
   const rating = parseFloat(service.averageRating || "0") || 0;
@@ -623,7 +628,7 @@ function ServiceCard({
               className="text-[9.5px] uppercase tracking-wider text-[color:var(--earn-teal-ink)] mb-1.5"
               style={{ fontFamily: EARN_MONO }}
             >
-              {messageOnly ? "Not open for booking" : "Book on Traveloure"}
+              {messageOnly ? "Not open for booking" : saveMode ? WAITLIST_COPY.saveToPlan : "Book on Traveloure"}
             </div>
             <div className="grid grid-cols-2 gap-2">
               {messageOnly ? (
@@ -649,13 +654,14 @@ function ServiceCard({
                 <Button
                   size="sm"
                   className="bg-[var(--earn-teal)] hover:bg-[var(--earn-teal)] text-white border border-[var(--earn-teal)]"
-                  onClick={() => navigateTo(actionHref)}
+                  onClick={() => (saveMode ? onAddToCart?.(service.id) : navigateTo(actionHref))}
+                  disabled={saveMode && (isAddingToCart || isAdded)}
                   data-testid={`button-service-action-${service.id}`}
                 >
-                  {actionLabel}
+                  {saveMode ? WAITLIST_COPY.saveToPlan : actionLabel}
                 </Button>
               )}
-              {onAddToCart && !messageOnly && (
+              {onAddToCart && !messageOnly && !saveMode && (
                 <Button
                   size="sm"
                   className={cn(
@@ -1499,7 +1505,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
       return;
     }
     if (!user) {
-      toast({ title: "Please sign in", description: "Sign in to use AI comparison" });
+      toast({ title: "Please sign in", description: "Sign in to compare plans" });
       return;
     }
     // §13 honest-or-absent: this page has no destination the user actually told us — no
@@ -1565,7 +1571,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
     maxPrice > 0 || 
     minRating > 0 ||
     locationFilter !== "";
-  const sortLabel = SERVICE_SORT_OPTIONS.find((option) => option.value === sortBy)?.label ?? "Top Rated";
+  const sortLabel = SERVICE_SORT_OPTIONS.find((option) => option.value === sortBy)?.label ?? "Rating";
 
   const totalPages = result ? Math.ceil(result.total / limit) : 0;
 
@@ -1579,7 +1585,7 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
     <>
       <SEOHead
         title={SURFACE_META[surface].seoTitle}
-        description="Browse expert services, curated trip packages, and get AI-powered recommendations for your next adventure. Find travel planners, venues, and unique experiences."
+        description="Browse expert services, curated trip packages, and compare options for your days. Find travel planners, venues, and unique experiences."
         keywords={["discover travel", "travel services", "trip packages", "vacation planning", "experience marketplace"]}
         url={SURFACE_META[surface].url}
       />

@@ -123,7 +123,7 @@ describe("AnchorPanel", () => {
     const v = view([nb("gion", { oneLiner: { text: "Lantern-lit lanes", source: "registry" } }), nb("arashiyama")]);
     const html = render({ view: v });
     assert.match(html, /data-testid="anchor-panel-collapsed"/);
-    assert.match(text(html), /Best area for these days: Gion · Lantern-lit lanes/);
+    assert.match(text(html), /Closest area to your days: Gion · Lantern-lit lanes/);
     assert.match(html, /where-to-stay-skip/);
     assert.doesNotMatch(html, /Arashiyama|coming-soon|where-to-stay-panel/);
   });
@@ -145,7 +145,7 @@ describe("AnchorPanel", () => {
     assert.equal(anchorPanelMode([]), "unranked");
     assert.equal(anchorPanelMode([{ hotels: [] }, { hotels: [] }]), "collapsed");
     assert.equal(anchorPanelMode([{ hotels: [] }, { hotels: [1] }]), "options");
-    assert.equal(collapsedStayLine({ name: "Gion", oneLiner: null }), "Best area for these days: Gion");
+    assert.equal(collapsedStayLine({ name: "Gion", oneLiner: null }), "Closest area to your days: Gion");
   });
 
   it("P8 the tray chooser: the three answers always, the full ranking when there is one", () => {

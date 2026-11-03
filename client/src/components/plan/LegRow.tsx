@@ -17,6 +17,8 @@
  * route built server-side, §16). A platform private car opens the platform's own drivers browse.
  * No travel minutes or distance are shown (A8 off).
  */
+import { SaveToPlanButton } from "@/components/plan/SaveToPlanButton";
+import { useSignupMode } from "@/lib/signup-mode";
 import { useEffect, useState } from "react";
 import { Bike, Car, CheckCircle2, Clock, Footprints, TrainFront, Trash2 } from "lucide-react";
 import { NO_TRANSIT_DRIVE_NOTE, TRANSIT_API_UNCOVERED_NOTE, routedLegLine, type RouteAnswer, type RoutingMode } from "@shared/routing-engine";
@@ -442,6 +444,7 @@ function NotCheckedLegRow({ fromId, toId }: NotCheckedLegRowProps) {
 }
 
 function AirportLegRow({ direction, stayName, airport, modes, canBook, driversHref, onRequest, busy = false, routedMinutes }: AirportLegRowProps) {
+  const waitlist = useSignupMode().mode === "waitlist";
   const minutes = typeof routedMinutes === "number" && routedMinutes > 0 ? Math.round(routedMinutes) : null;
   return (
     <div className={`px-3 py-2 ${legRuleClass(minutes != null)} ml-4 space-y-1`} data-testid={`slip-leg-airport-${direction}`}>
@@ -454,7 +457,10 @@ function AirportLegRow({ direction, stayName, airport, modes, canBook, driversHr
         {modes.map((m) => (
           <span key={m} className="inline-flex items-center gap-1 text-xs" data-testid={`slip-leg-mode-${direction}-${m}`}>
             <span className="rounded border border-border px-1.5 py-0.5">{AIRPORT_LEG_MODE_LABEL[m]}</span>
-            {canBook ? (
+            {canBook && waitlist ? (
+              // Row P-1c: waitlist mode — the leg's Book is "Save to plan" (the leg is already on the plan).
+              <SaveToPlanButton testId={`slip-leg-save-to-plan-${direction}-${m}`} className="underline underline-offset-2" />
+            ) : canBook ? (
               m === "private_car" ? (
                 driversHref ? (
                   <Link href={driversHref} className="underline underline-offset-2" data-testid={`slip-leg-book-${direction}-${m}`}>

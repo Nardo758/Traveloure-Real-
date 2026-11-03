@@ -151,6 +151,14 @@ test("SC2 the migration is data only", () => {
 test("SC3 the never-say checker finds nothing left in the seed paths", () => {
   const seedFiles = scopeFiles().filter((f) => /^server\/(data\/|seeds\/|seed-[^/]+\.ts$)/.test(f));
   assert.ok(seedFiles.length > 10, "the seed paths are in scope");
+  // The 17 phrases SH-1 ruled on, frozen here rather than read from the shared list. P-6 (ledger
+  // `2026-11-02-p6-banned-word-sweep`) added patterns whose seed-copy hits are baselined for the round-3 seed-copy
+  // sweep (P-6 brief §4c) and held by scripts/never-say-baseline.json; this test keeps the seed paths clean of SH-1's.
+  const SH1_PHRASES = new Set([
+    "vetted", "verified", "certified", "licensed", "authenticated", "hidden gem(s)", "secret", "insider",
+    "no hidden fees", "no markup", "trending", "geisha spotting", "TREND <n>", "geisha sightings", "coming soon",
+    "geisha", "maiko",
+  ]);
   const hits = seedFiles.flatMap((f) => scanFile(f, fs.readFileSync(path.join(ROOT, f), "utf8")));
-  assert.deepEqual(hits.map((h) => `${h.file}:${h.line} ${h.words}`), []);
+  assert.deepEqual(hits.filter((h) => SH1_PHRASES.has(h.words)).map((h) => `${h.file}:${h.line} ${h.words}`), []);
 });

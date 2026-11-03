@@ -11,6 +11,7 @@
  * reach production.
  */
 
+import { PLAN_ASSISTANT_COPY } from "@/lib/plan-assistant-copy";
 import type { PlanningSource } from "@/contexts/PlanningContext";
 import { OCCASION_GROUP_LABELS, OCCASION_GROUP_ORDER } from "@shared/experience-group";
 import type { TravelerDoors } from "@shared/traveler-doors";
@@ -205,7 +206,7 @@ export const navGroupsConfig: NavGroupConfig[] = [
         title: "TOOLS",
         i18nKey: "sections.tools",
         items: [
-          { name: "AI Planner", i18nKey: "links.aiPlanPlanner", href: "/ai-assistant", description: "Instant AI-powered itineraries", requiresAuth: true },
+          { name: PLAN_ASSISTANT_COPY.navName, i18nKey: "links.aiPlanPlanner", href: "/ai-assistant", description: PLAN_ASSISTANT_COPY.navDescription, requiresAuth: true },
           { name: "Visa Help", i18nKey: "links.visaHelp", href: "/visa-help", description: "Visa requirements & expert help" },
         ],
       },
@@ -234,7 +235,6 @@ export const authNavConfig: AuthNavConfig[] = [
   // rendered nowhere — authNavItems has no render site) points at the default
   // surface so it can never resurrect a hub.
   { href: "/destinations", label: "Marketplace" },
-  { href: "/concierge", label: "Concierge", door: "eventConcierge" },
   { href: "/chat", label: "Expert Chat" },
 ];
 

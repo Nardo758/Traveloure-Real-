@@ -41,6 +41,9 @@ import {
   normalizeGeneratedEstimatedCost,
 } from "../utils/generated-itinerary";
 import { resolveOccasionTemplate } from "./occasion-templates";
+import { writePlanPenOccasion } from "./plan-pen-occasion.service";
+import { storage } from "../storage";
+import { eventTypeForSlug } from "@shared/occasions";
 import { computeDueOccurrence, OCCASION_LEAD_DAYS, parseDateUTC, toDateKey, type DueOccurrence } from "./occasion-schedule";
 import { isActivePlus } from "./plan-membership.service";
 import { enqueueEmail } from "./email-outbox.service";
@@ -383,7 +386,29 @@ async function buildDraftSlip(input: {
     },
   });
 
+  await stampDraftOccasion(input.userId, snapshot.trip.id, template.key);
   return snapshot.trip.id;
+}
+
+/**
+ * PS-4 (a), ledger `2026-11-02-ps4-entry-carry-forward`: the drafted plan's pen carries the occasion's catalog slug,
+ * written through the ONE pen writer (`writePlanPenOccasion`). The template key names the slug with hyphens for
+ * underscores ("date_night" → "date-night"), and it is written ONLY when the catalog carries that exact slug — a
+ * key the catalog does not carry writes nothing (§13), never a nearest occasion. `dates_confirmed_at` stays NULL:
+ * the member gave the day, not the plan's span. A failed write never fails the draft (§15b).
+ */
+export async function stampDraftOccasion(userId: string, tripId: string, templateKey: string): Promise<string | null> {
+  try {
+    const candidate = templateKey.trim().toLowerCase().replace(/_/g, "-");
+    if (!candidate) return null;
+    const row = await storage.getExperienceTypeBySlug(candidate);
+    if (!row) return null;
+    await writePlanPenOccasion(userId, tripId, { experienceSlug: row.slug, experienceType: row.name, eventType: eventTypeForSlug(row.slug) });
+    return row.slug;
+  } catch (err) {
+    console.warn(`${TAG} occasion slug not stamped on ${tripId}:`, err);
+    return null;
+  }
 }
 
 /** Send the one reminder email for a freshly generated draft and stamp notified_at atomically. */

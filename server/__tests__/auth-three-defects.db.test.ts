@@ -36,6 +36,7 @@ const { emailVerificationTokens } = await import("../../shared/models/auth");
 const { emailOutbox } = await import("../../shared/schema");
 const { REGISTRATION_NEUTRAL_CODE, REGISTRATION_NEUTRAL_MESSAGE } = await import("../../shared/registration-neutral");
 const { sql } = await import("drizzle-orm");
+const { invalidatePlatformFlagCache } = await import("../services/platform-flags");
 
 const DISPOSABLE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0", ""]);
 async function assertDisposableDb(): Promise<void> {
@@ -244,6 +245,8 @@ describe("AUTH-1 Finding B: reset links", () => {
 describe("AUTH-1 fix 3b: neutral registration", () => {
   let app3: http.Server;
   let base3 = "";
+  const signupModeKey = "traveler_signup_mode";
+  let modeFixture: { table: string; previous: string | null; publicDigest: string | null } | undefined;
   const emails: string[] = [];
   const PASSWORD = "longenough-pass1";
   const origTransaction = (db as any).transaction;
@@ -299,6 +302,26 @@ describe("AUTH-1 fix 3b: neutral registration", () => {
   before(async () => {
     assert.equal(process.env.NODE_ENV, "test");
     await assertDisposableDb();
+    const identity = await pool.query("SELECT current_schema() AS schema, current_database() AS database");
+    const { schema, database } = identity.rows[0];
+    const ownedSchema = typeof schema === "string" && /^automation_msg_[a-f0-9]{16}$/.test(schema);
+    // The existing GitHub job owns its local postgres service's public schema.
+    // A workspace/shared public schema is never an eligible fixture target.
+    const url = new URL(process.env.DATABASE_URL!);
+    const ownedCiDatabase = process.env.GITHUB_ACTIONS === "true" && process.env.CI === "true"
+      && ["localhost", "127.0.0.1", "::1", "[::1]"].includes(url.hostname)
+      && url.pathname === "/traveloure" && database === "traveloure" && schema === "public";
+    assert.ok(ownedSchema || ownedCiDatabase, "Signup setup requires an owned messaging schema or the dedicated GitHub postgres service");
+    const table = `"${schema}"."platform_settings"`;
+    const previous = await pool.query(`SELECT setting_value FROM ${table} WHERE setting_key = $1`, [signupModeKey]);
+    const publicBefore = ownedSchema
+      ? await pool.query("SELECT md5(row_to_json(s)::text) AS digest FROM public.platform_settings s WHERE setting_key = $1", [signupModeKey])
+      : null;
+    modeFixture = { table, previous: previous.rows[0]?.setting_value ?? null, publicDigest: publicBefore?.rows[0]?.digest ?? null };
+    await pool.query(`INSERT INTO ${table} (setting_key, setting_value) VALUES ($1, $2)
+      ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value`, [signupModeKey, "open"]);
+    invalidatePlatformFlagCache(signupModeKey);
+    console.log("[auth-fixture] owned signup mode configured: 1");
     (crypto as any).scrypt = (...args: unknown[]) => { scryptCalls += 1; return (origScrypt as any)(...args); };
     const app = express();
     app.use(express.json());
@@ -317,15 +340,32 @@ describe("AUTH-1 fix 3b: neutral registration", () => {
   afterEach(() => { (db as any).transaction = origTransaction; });
   after(async () => {
     (crypto as any).scrypt = origScrypt;
-    await new Promise<void>(r => app3?.close(() => r()));
-    // Let the fire-and-forget verification/welcome work settle before deleting what it touches.
-    await new Promise((r) => setTimeout(r, 300));
-    const rows = emails.length ? await db.select({ id: users.id }).from(users).where(inArray(users.email, emails)) : [];
-    for (const { id } of rows) {
-      await db.delete(emailOutbox).where(sql`${emailOutbox.metadata}->>'signupAccountId' = ${id}`);
-      await db.delete(emailVerificationTokens).where(eq(emailVerificationTokens.userId, id));
-      await pool.query(`DELETE FROM sessions WHERE sess::text LIKE $1`, [`%${id}%`]);
-      await db.delete(users).where(eq(users.id, id));
+    try {
+      if (app3) await new Promise<void>(r => app3.close(() => r()));
+      // Let the fire-and-forget verification/welcome work settle before deleting what it touches.
+      await new Promise((r) => setTimeout(r, 300));
+      const rows = emails.length ? await db.select({ id: users.id }).from(users).where(inArray(users.email, emails)) : [];
+      for (const { id } of rows) {
+        await db.delete(emailOutbox).where(sql`${emailOutbox.metadata}->>'signupAccountId' = ${id}`);
+        await db.delete(emailVerificationTokens).where(eq(emailVerificationTokens.userId, id));
+        await pool.query(`DELETE FROM sessions WHERE sess::text LIKE $1`, [`%${id}%`]);
+        await db.delete(users).where(eq(users.id, id));
+      }
+    } finally {
+      if (modeFixture) {
+        if (modeFixture.previous === null) {
+          await pool.query(`DELETE FROM ${modeFixture.table} WHERE setting_key = $1`, [signupModeKey]);
+        } else {
+          await pool.query(`UPDATE ${modeFixture.table} SET setting_value = $2 WHERE setting_key = $1`, [signupModeKey, modeFixture.previous]);
+        }
+        invalidatePlatformFlagCache(signupModeKey);
+        if (modeFixture.table !== '"public"."platform_settings"') {
+          const publicAfter = await pool.query("SELECT md5(row_to_json(s)::text) AS digest FROM public.platform_settings s WHERE setting_key = $1", [signupModeKey]);
+          assert.equal(publicAfter.rows[0]?.digest ?? null, modeFixture.publicDigest, "Shared signup setting must remain unchanged");
+          console.log("[auth-fixture] shared signup setting unchanged: 1");
+        }
+        console.log("[auth-fixture] owned signup mode restored: 1");
+      }
     }
   });
 

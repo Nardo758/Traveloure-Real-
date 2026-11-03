@@ -832,7 +832,7 @@ export default function ItineraryComparisonPage() {
       .filter(Boolean)
       .join(", ");
     const notesWithContext = chipLabels
-      ? `${expertNotes ? `${expertNotes}\n\n` : ""}[Traveler feedback on the AI plan: ${chipLabels}]`
+      ? `${expertNotes ? `${expertNotes}\n\n` : ""}[Traveler feedback on the draft: ${chipLabels}]`
       : expertNotes;
     expertBookingMutation.mutate({
       tripId: data?.comparison?.tripId || undefined,
