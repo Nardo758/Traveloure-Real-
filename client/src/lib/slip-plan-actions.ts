@@ -35,6 +35,23 @@ export function selectBulkCheckoutItems<T extends RoutableItemLike>(items: T[]):
 }
 
 /**
+ * Row PS-5 (ledger `2026-11-02-ps5-finalize-chooser-link-only-expert-plans`; R-LINK, CN-1): the "I book them myself"
+ * bulk route sends ONLY items whose booking path is `platform` — the ones the checkout can charge. Every other
+ * un-booked `in_planning` item (a partner link, a concierge task, nothing bookable) is the traveler's to book
+ * themselves and is listed, never routed. The path is the server's own answer on the item (`bookingPath`,
+ * `shared/booking-path.ts`); an item that carries none is not routed (§13: an unknown path is not a platform one).
+ */
+export function splitBulkCheckoutByPath<T extends RoutableItemLike & { bookingPath?: string | null }>(
+  items: T[],
+): { platform: T[]; selfBook: T[] } {
+  const candidates = selectBulkCheckoutItems(items);
+  return {
+    platform: candidates.filter((i) => i.bookingPath === "platform"),
+    selfBook: candidates.filter((i) => i.bookingPath !== "platform"),
+  };
+}
+
+/**
  * Booking-on-behalf option A (ledger `2026-09-24-approve-and-book`): the items an owner can BUY
  * on the platform in one step after approving an expert's plan — the bulk-checkout rows that name
  * a platform listing (`providerServiceId`). A free-text row or a partner-grounded row has nothing

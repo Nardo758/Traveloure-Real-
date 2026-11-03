@@ -139,6 +139,7 @@ function functionBody(src: string, declaration: string): string {
  */
 const ALLOWED_ADDITIONS = {
   "slip-action-save-to-plan": "P-1c: waitlist Save to plan row",
+  "slip-action-change-booking": "PS-5: Change how you book, the finished state's way back into the chooser",
   // Row P-7 (ledger `2026-11-02-p7-get-help-with-this-plan`): the drafted-plan Get-help note and its button.
   "slip-get-help-note": "P-7: the drafted-plan Get-help note under the last day",
   "slip-get-help-note-button": "P-7: the drafted-plan Get-help note under the last day",

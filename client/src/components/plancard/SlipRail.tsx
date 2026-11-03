@@ -149,7 +149,7 @@ import type { PlanEvent } from "@/lib/slip-events";
 import type { SlipTrip } from "./SlipView";
 import { DatesGate, type PlanWindow } from "@/components/plan/SlipAnchorPanels";
 import { BuildAroundDialog } from "./BuildAroundDialog";
-import { FinalizeBookingModal } from "./FinalizeBookingModal";
+import { FINALIZE_COPY, FinalizeBookingModal } from "./FinalizeBookingModal";
 import { PhoneDeliveryDialog } from "./PhoneDeliveryDialog";
 import { useReopenMutation } from "./use-reopen-mutation";
 import { openHandoffChooser } from "@/lib/handoff-client";
@@ -1236,6 +1236,10 @@ export function FinishCard({
           <Link href={`/trip/${trip.id}`} className={offerRefinal ? quietBtn : primaryBtn} data-testid="slip-action-view-trip-card">
             View as Trip card
           </Link>
+          {/* Row PS-5: a way back into the chooser — the plan is already final, so it opens without re-posting. */}
+          <button type="button" className={quietBtn} onClick={() => setFinalizeModalOpen(true)} data-testid="slip-action-change-booking">
+            {FINALIZE_COPY.changeBooking}
+          </button>
           {showReopen ? (
             <button type="button" className={quietBtn} onClick={() => reopenMutation.mutate()} disabled={reopenMutation.isPending} data-testid="slip-action-reopen">
               Back to planning
@@ -1302,6 +1306,12 @@ export function FinishCard({
             testId="slip-action-refinalize"
           />
         )}
+        <RailRow
+          label={FINALIZE_COPY.changeBooking}
+          icon={<CheckCircle2 className="w-3.5 h-3.5" />}
+          onClick={() => setFinalizeModalOpen(true)}
+          testId="slip-action-change-booking"
+        />
         <RailRow
           label="View as Trip card"
           meta="read-only"
