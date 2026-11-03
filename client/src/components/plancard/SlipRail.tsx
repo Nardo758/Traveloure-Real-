@@ -75,6 +75,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { useSignupMode } from "@/lib/signup-mode";
+import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 import { apiRequest, queryClient as sharedQueryClient } from "@/lib/queryClient";
 import { optimizeCheckoutHeading } from "@/lib/checkout-headings";
 import { OPTIMIZE_UNAVAILABLE } from "@/lib/optimize-pay-copy";
@@ -611,6 +613,7 @@ function BuildCard({
   // chooser's own rule (`chooserHasExperts` behind the city's `expert_hook_cities` switch, read once
   // through `useExpertAvailability`). Loading, an error or a "no" hide it; nothing takes its place.
   const expertsAvailable = useExpertAvailability({ city: trip.destination });
+  const optimizerWaitlist = useSignupMode().mode === "waitlist";
   const optimizerBlock = (
         <>
           {/* Surface step 4 (spec §8): the ONE optimizer card — findings, the realised delta after a
@@ -684,7 +687,8 @@ function BuildCard({
           slip's slot (a portal: the state stays here, the card moves). Main board (ledger
           `2026-10-08-slip-main-rail`): the rail is gone, so this component draws nothing of its own
           — the card, the Trip Pass offer and the two dialogs are all it mounts. */}
-      {isOwner ? (optimizerSlot ? createPortal(optimizerBlock, optimizerSlot) : optimizerBlock) : null}
+      {/* Row P-1c: waitlist mode hides Optimize (a paid action) and the Trip Pass offer under it — not greyed. */}
+      {isOwner && !optimizerWaitlist ? (optimizerSlot ? createPortal(optimizerBlock, optimizerSlot) : optimizerBlock) : null}
       <BuildAroundDialog
         open={buildAroundOpen}
         tripId={trip.id}
@@ -1129,6 +1133,11 @@ export function FinishCard({
 }) {
   const finalizeMutation = useFinalizeMutation(trip.id);
   const reopenMutation = useReopenMutation(trip.id);
+  // Row P-1c: in waitlist mode the checkout path becomes "Save to plan" — every staged row is already on the plan, so
+  // the press says so — and the fee preview is not drawn.
+  const waitlist = useSignupMode().mode === "waitlist";
+  const { toast: finishToast } = useToast();
+  const savedToPlan = () => finishToast({ title: WAITLIST_COPY.savedToPlan });
   const [finalizeModalOpen, setFinalizeModalOpen] = useState(false);
   // §8 phone delivery (ledger `2026-10-17-phone-delivery-calendar`): once Finalize has made a NEW
   // final, "Get your Trip Card on your phone" follows the booking chooser. The dialog closes
@@ -1252,7 +1261,13 @@ export function FinishCard({
             ) : null}
           </p>
         ) : null}
-        {checkoutReady > 0 ? (
+        {checkoutReady > 0 && waitlist ? (
+          <p className="text-xs text-[color:var(--slip-muted)]">
+            <button type="button" onClick={savedToPlan} className="font-semibold text-[color:var(--slip-navy)] underline underline-offset-2" data-testid="slip-action-save-to-plan">
+              {WAITLIST_COPY.saveToPlan}
+            </button>
+          </p>
+        ) : checkoutReady > 0 ? (
           <p className="text-xs text-[color:var(--slip-muted)]">
             <Link href="/cart" className="font-semibold text-[color:var(--slip-navy)] underline underline-offset-2" data-testid="slip-action-go-to-checkout">
               Go to checkout ({checkoutReady})
@@ -1338,14 +1353,21 @@ export function FinishCard({
         testId="slip-action-finalize-plan"
       />
 
-      {checkoutReady > 0 && (
+      {checkoutReady > 0 && waitlist ? (
+        <RailRow
+          label={WAITLIST_COPY.saveToPlan}
+          icon={<ShoppingCart className="w-3.5 h-3.5" />}
+          onClick={savedToPlan}
+          testId="slip-action-save-to-plan"
+        />
+      ) : checkoutReady > 0 ? (
         <RailRow
           label={`Go to checkout (${checkoutReady})`}
           icon={<ShoppingCart className="w-3.5 h-3.5" />}
           href="/cart"
           testId="slip-action-go-to-checkout"
         />
-      )}
+      ) : null}
       {chooser}
     </RailCard>
   );

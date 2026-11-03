@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation, useRoute } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSignupMode } from "@/lib/signup-mode";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, MessageCircle } from "lucide-react";
 import { SEOHead } from "@/components/seo-head";
@@ -238,7 +239,7 @@ function SeriesDoors({ doors }: { doors: BlogPlanDoor[] }) {
  * Marketing's F1 blog CTA copy, word for word.
  */
 function LaunchWaitlistCta({ post }: { post: PublicBlogPost }) {
-  const { data: signup } = useQuery<SignupModeView>({ queryKey: ["/api/public/signup-mode"], retry: false });
+  const signup = useSignupMode().data as SignupModeView | undefined;
   const href = blogWaitlistHref(post, signup);
   if (!href) return null;
   return (

@@ -16,6 +16,7 @@
 // `marketingConsent: false`.
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSignupMode } from "@/lib/signup-mode";
 import { Link } from "wouter";
 import { useScrollToHash } from "@/lib/use-hash-scroll";
 import { Button } from "@/components/ui/button";
@@ -457,7 +458,7 @@ export function kyotoExpertsSectionVisible(data: unknown, isSuccess: boolean): b
 
 export default function LaunchWaitlistPage() {
   useScrollToHash();
-  const { data: signup } = useQuery<SignupModeView>({ queryKey: ["/api/public/signup-mode"], retry: false });
+  const signup = useSignupMode().data as SignupModeView | undefined;
   const { data: liveMarkets } = useQuery<{ marketKeys?: string[] }>({ queryKey: [LIVE_MARKETS_ROUTE], retry: false });
   const liveMarketKeys = Array.isArray(liveMarkets?.marketKeys) ? liveMarkets.marketKeys : [];
   const { data: kyotoExperts, isSuccess: kyotoExpertsLoaded } = useQuery<unknown>({

@@ -43,6 +43,7 @@ function render(
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, enabled: false } },
   });
+  queryClient.setQueryData(["/api/public/signup-mode"], { mode: "open" }); // Row P-1c: the mode is explicit ("open").
   // SH-1 item 11: the Ask CTA draws only on the server's settled "yes" for the card's city. A test
   // that wants the CTA seeds that answer into the cache under the hook's own query key.
   if (opts.expertAvailable) {

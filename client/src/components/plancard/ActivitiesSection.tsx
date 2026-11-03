@@ -1,3 +1,5 @@
+import { SaveToPlanButton } from "@/components/plan/SaveToPlanButton";
+import { useSignupMode } from "@/lib/signup-mode";
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
@@ -412,6 +414,7 @@ export function RoutingActions({
 }) {
   const { toast } = useToast();
   const { showRefusal } = useRouteRefusalToast(tripId);
+  const waitlist = useSignupMode().mode === "waitlist";
 
   const mutation = useMutation({
     mutationFn: async (to: RoutingStatus) =>
@@ -482,6 +485,10 @@ export function RoutingActions({
         />
         {/* The projection row this state implies already exists (W2) — a persistent link, not a
             one-shot toast, so it stays correct across reloads/remounts (§13). */}
+        {/* Row P-1c: waitlist mode — "Go to checkout" is "Save to plan" (the item is already on the plan). */}
+        {waitlist ? (
+          <SaveToPlanButton testId={`button-save-to-plan-${itemId}`} className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full text-primary hover:underline" />
+        ) : (
         <Link
           href="/cart"
           className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full text-primary hover:underline"
@@ -489,6 +496,7 @@ export function RoutingActions({
         >
           <ShoppingCart className="w-3 h-3" /> Go to checkout
         </Link>
+        )}
       </>
     );
   }
@@ -505,6 +513,9 @@ export function RoutingActions({
           testId={`button-route-send-expert-${itemId}`}
         />
       )}
+      {waitlist ? (
+        <SaveToPlanButton testId={`button-save-to-plan-${itemId}`} className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full text-primary hover:underline" />
+      ) : (
       <RoutingActionButton
         icon={ShoppingCart}
         label="Add to checkout"
@@ -512,6 +523,7 @@ export function RoutingActions({
         onClick={() => mutation.mutate("ready_for_checkout")}
         testId={`button-route-add-checkout-${itemId}`}
       />
+      )}
     </>
   );
 }

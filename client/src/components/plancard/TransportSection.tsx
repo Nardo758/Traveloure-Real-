@@ -1,3 +1,5 @@
+import { SaveToPlanButton } from "@/components/plan/SaveToPlanButton";
+import { useSignupMode } from "@/lib/signup-mode";
 import { Clock, Route, ExternalLink, ChevronDown, ChevronUp, ShoppingCart, Star, Send } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -245,6 +247,7 @@ function BookViaAgentButton({
 // agent-rail booking affordance for its own per-leg display — same component, no forked logic.
 export function LegBookingPanel({ legId, fromName, toName }: { legId: string; fromName?: string; toName?: string }) {
   const [open, setOpen] = useState(false);
+  const waitlist = useSignupMode().mode === "waitlist";
   const { toast } = useToast();
 
   const { data, isLoading } = useQuery<{ legId: string; options: any[] }>({
@@ -273,6 +276,14 @@ export function LegBookingPanel({ legId, fromName, toName }: { legId: string; fr
     },
   });
 
+  // Row P-1c: waitlist mode — the leg's booking options become one "Save to plan" (the leg is already on the plan).
+  if (waitlist) {
+    return (
+      <div className="mt-2" data-testid={`leg-booking-panel-${legId}`}>
+        <SaveToPlanButton testId={`leg-save-to-plan-${legId}`} />
+      </div>
+    );
+  }
   return (
     <div className="mt-2" data-testid={`leg-booking-panel-${legId}`}>
       <button

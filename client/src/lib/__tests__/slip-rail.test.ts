@@ -309,6 +309,8 @@ describe("slip rail — four cards, and every rail kept a home", () => {
       "slip-action-refinalize",
       // Main-rail (ruling 3): "Send feedback" in the ⋯ plan menu — the SAME post-draft tap.
       "slip-action-feedback",
+      // P-1c: waitlist Save to plan row.
+      "slip-action-save-to-plan",
     ]);
     for (const testid of shipped) {
       assert.ok(
