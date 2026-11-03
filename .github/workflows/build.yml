@@ -3111,6 +3111,9 @@ jobs:
         run: npx tsx --test server/services/__tests__/landing-hero.test.ts client/src/components/__tests__/landing-hero-representative.test.tsx client/src/components/__tests__/landing-events-strip.test.tsx client/src/hooks/__tests__/use-rotation.test.ts
       - name: client/src/components/plancard/__tests__ (all)
         run: npx tsx --test client/src/components/plancard/__tests__/*.test.ts*
+      # HO-1: expert-page render tests (react-dom/server, no jsdom), same harness as above.
+      - name: client/src/pages/expert/__tests__ (all)
+        run: npx tsx --test client/src/pages/expert/__tests__/*.test.ts*
 
   # ---------------------------------------------------------------------------
   # 2026-09-15-orphans-t1-t3-green-directories — T-1/T-2/T-3 of the orphan plan
