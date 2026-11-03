@@ -29,7 +29,7 @@ if (process.env.JOURNEY_DB_WRITES_OK !== "1" && !["localhost", "127.0.0.1", "::1
 }
 
 const { db, pool } = await import("../db");
-const conciergeRoutes = (await import("../routes/concierge.routes")).default;
+const conciergeRoutes = (await import("../routes/traveler-doors.routes")).default;
 const handoffRoutes = (await import("../routes/handoff.routes")).default;
 const { invalidatePlatformFlagCache } = await import("../services/platform-flags");
 const { EVENT_CONCIERGE_SETTING, HANDOFF_BOOKING_SETTING } = await import("@shared/traveler-doors");
@@ -104,7 +104,7 @@ after(async () => {
 test("TD1 GET /api/traveler-doors reads each switch off unless it is exactly 'true'", async () => {
   for (const [concierge, booking, want] of [
     [null, null, { eventConcierge: false, handoffBooking: false }],
-    ["true", "false", { eventConcierge: true, handoffBooking: false }],
+    ["true", "false", { eventConcierge: false, handoffBooking: false }],
     ["yes", "true", { eventConcierge: false, handoffBooking: true }],
     ["TRUE", "", { eventConcierge: false, handoffBooking: false }],
   ] as const) {

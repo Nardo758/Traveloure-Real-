@@ -2,7 +2,7 @@
  * Two traveler doors behind switches, both off by default (ledger `2026-10-18-traveler-doors-hidden`; decision-maker,
  * Oct 18, 2026, CS-3 Step 0). Hide only: no row is changed, and nothing that already exists stops working.
  *
- *   event_concierge — the old done-for-you concierge: /concierge (every ?tier= variant), the /optimize redirect into it,
+ *   event_concierge — retired by CN-1g (the server no longer reads it). The old done-for-you concierge: /concierge (every ?tier= variant), the /optimize redirect into it,
  *                     and the doors that lead there. /my-events stays reachable for existing engagements and its
  *                     "Pay coordination fee" is untouched.
  *   handoff_booking — "Book this for me" / "Book these for me" (the handoff's `book` kind) and the after-a-failed-handoff

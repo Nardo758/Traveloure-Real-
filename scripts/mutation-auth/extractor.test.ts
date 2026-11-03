@@ -403,8 +403,9 @@ test("current mounted graph parity includes auth helpers and shared api paths", 
   // 744 / 736: POST /api/me/selection-profile/reset (row 306).
   // 745 / 737: POST /internal/jobs/concierge-accept-timeout (CN-1d).
   // 750 / 742: POST /api/concierge/bookings/:bookingId/tasks and the four /api/concierge/tasks/:taskId transitions (CN-1e).
-  assert.equal(result.mutations.length, 750);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 742);
+  // 750 / 742 → 745 / 737: the five legacy /api/concierge writes (requests, quote, PATCH requests/:id, requests/:id/claim, escalations) retired to one 410 middleware (CN-1g).
+  assert.equal(result.mutations.length, 745);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 737);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -421,7 +422,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // 736: POST /api/me/selection-profile/reset (row 306).
   // 737: POST /internal/jobs/concierge-accept-timeout (CN-1d).
   // 742: POST /api/concierge/bookings/:bookingId/tasks and the four /api/concierge/tasks/:taskId transitions (CN-1e).
-  assert.equal(endpointRows.length, 742);
+  // 742 → 737: the five legacy /api/concierge writes (requests, quote, PATCH requests/:id, requests/:id/claim, escalations) retired to one 410 middleware (CN-1g).
+  assert.equal(endpointRows.length, 737);
   // 709 / 701 (ledger `2026-10-18-fd4-share-projection`): the shadowed quick-start twin is deleted; unique paths stay 701.
   // 710 / 702 (ledger `2026-10-19-fb1-free-retime`): + POST /api/trips/:tripId/retime-fixes/:itemId/apply.
   // 712 / 704 (ledger `2026-10-18-cs1-source-signoff`): the sign-off and photo-block POSTs.
@@ -450,8 +452,9 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // 744 / 736: POST /api/me/selection-profile/reset (row 306).
   // 745 / 737: POST /internal/jobs/concierge-accept-timeout (CN-1d).
   // 750 / 742: POST /api/concierge/bookings/:bookingId/tasks and the four /api/concierge/tasks/:taskId transitions (CN-1e).
-  assert.equal(manifest.rawRegistrationCount, 750);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 742);
+  // 750 / 742 → 745 / 737: the five legacy /api/concierge writes (requests, quote, PATCH requests/:id, requests/:id/claim, escalations) retired to one 410 middleware (CN-1g).
+  assert.equal(manifest.rawRegistrationCount, 745);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 737);
   // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R274): user-data,
   // session-self; the owner/delegate check runs in the service before any write.
   // + POST /api/admin/content-sources/:id/public-ok (ledger `2026-10-03-official-facts-public-ok`, R278):
@@ -514,7 +517,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // user-data 251 → 252 (row 306): POST /api/me/selection-profile/reset.
   // other 252 → 253 (CN-1d): POST /internal/jobs/concierge-accept-timeout.
   // other 253 → 258 (CN-1e): POST /api/concierge/bookings/:bookingId/tasks and the four /api/concierge/tasks/:taskId transitions (CN-1e).
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 201, "user-data": 252, other: 258 });
+  // other 258 → 253 (CN-1g): the five legacy /api/concierge writes (requests, quote, PATCH requests/:id, requests/:id/claim, escalations) retired to one 410 middleware (CN-1g).
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 201, "user-data": 252, other: 253 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
@@ -573,7 +577,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
     // public-or-system 56 → 57 (CN-1d): POST /internal/jobs/concierge-accept-timeout.
     // resource-owner 103 → 108 (CN-1e): POST /api/concierge/bookings/:bookingId/tasks and the four /api/concierge/tasks/:taskId transitions (CN-1e); the service
     // resolves the booking and admits only its traveler or, for the expert's moves, its assigned expert.
-    "admin-role": 201, "session-self": 369, "resource-owner": 108,
+    // session-self 369 → 367, resource-owner 108 → 105 (CN-1g): the five legacy /api/concierge writes (requests, quote, PATCH requests/:id, requests/:id/claim, escalations) retired to one 410 middleware (CN-1g).
+    "admin-role": 201, "session-self": 367, "resource-owner": 105,
     signature: 7, "public-or-system": 57, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
