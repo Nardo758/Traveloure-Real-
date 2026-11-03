@@ -12,6 +12,8 @@
  *   T6 trackEvent: unknown names send nothing; extra params and free-text values are dropped
  *   T7 lib/analytics.ts carries no GA call; no file in client/src calls gtag/dataLayer except lib/ga4.ts
  *   T8 lib/ga4.ts never names user_id or set_user_properties
+ *   T10 (CB-1) grantAnalyticsConsent / denyAnalyticsConsent push exactly one consent update after init, nothing before
+ *   T11 (CB-1) the T2 init call order is unchanged: CB-1 added no consent default
  *   T9 (TG-1b) a page view from /invite/abc123TOKEN?ref=x#y sends page_location ending /invite/:token; a same-origin
  *      invite referrer is sent as origin + /invite/:token; the raw token, query and hash appear nowhere in the dataLayer
  *
@@ -25,6 +27,9 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   GA4_DENIED_REGIONS,
+  denyAnalyticsConsent,
+  grantAnalyticsConsent,
+  isGa4Loaded,
   initGa4,
   isTravelerSurface,
   resetGa4ForTests,
@@ -215,5 +220,36 @@ describe("T9 no raw URL reaches the dataLayer (TG-1b)", () => {
     for (const e of events(b.win)) assert.equal((e[2] as any).page_location, `${ORIGIN}/invite/:token`, String(e[1]));
     const dump = JSON.stringify(calls(b.win).map((c) => c.map((x) => (x instanceof Date ? "date" : x))));
     for (const raw of [TOKEN, "ref=mail", "#rsvp", "?"]) assert.ok(!dump.includes(raw), raw);
+  });
+});
+
+describe("T10 consent updates (CB-1)", () => {
+  it("grant and deny each push exactly one consent update after init, and nothing before", () => {
+    const pre = fakeBrowser();
+    grantAnalyticsConsent();
+    denyAnalyticsConsent();
+    assert.equal(isGa4Loaded(), false);
+    assert.equal(pre.win.dataLayer, undefined);
+    const b = fakeBrowser();
+    initGa4({ id: ID, win: b.win, doc: b.doc as any });
+    assert.equal(isGa4Loaded(), true);
+    const before = calls(b.win).length;
+    grantAnalyticsConsent();
+    assert.deepEqual(calls(b.win).slice(before), [["consent", "update", { analytics_storage: "granted" }]]);
+    denyAnalyticsConsent();
+    assert.deepEqual(calls(b.win).slice(before + 1), [["consent", "update", { analytics_storage: "denied" }]]);
+  });
+});
+
+describe("T11 the init order is unchanged (CB-1)", () => {
+  it("still exactly consent default, consent default, js, config", () => {
+    const b = fakeBrowser();
+    initGa4({ id: ID, win: b.win, doc: b.doc as any });
+    assert.deepEqual(calls(b.win).map((x) => [x[0], x[1] instanceof Date ? "date" : x[1]]), [
+      ["consent", "default"],
+      ["consent", "default"],
+      ["js", "date"],
+      ["config", ID],
+    ]);
   });
 });
