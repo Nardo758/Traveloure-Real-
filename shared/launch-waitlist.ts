@@ -12,7 +12,7 @@ import { OPERATING_MARKETS } from "./operating-markets";
 export const WAITLIST_ROLES = ["traveler", "provider", "expert"] as const;
 
 /** WL-B: where a refused expert sign-up is sent — the expert form on the launch waitlist page (Leon, Oct 30, 2026). */
-export const WAITLIST_EXPERT_FORM_PATH = "/kyoto#experts";
+export const WAITLIST_EXPERT_FORM_PATH = "/waitlist/kyoto#experts";
 
 /** WL-B: the `source` a provider sign-up's waitlist row carries (set by the server, never by a body). */
 export const WAITLIST_PROVIDER_SIGNUP_SOURCE = "provider_signup";
@@ -118,6 +118,9 @@ export const waitlistJoinBodySchema = z
     serviceType: z.enum(SERVICE_TYPE_KEYS).optional(),
     ref: z.string().max(40).optional(),
     market: z.string().trim().toLowerCase().max(64).optional(),
+    // WAIT-1: one sign-up for one or more markets (1–8 operating keys). `market` above is still accepted for older
+    // clients and means [market].
+    markets: z.array(z.string().trim().toLowerCase().max(64)).min(1).max(8).optional(),
     // LC-1b: the optional free-text answer to "Planning somewhere else? Tell us where." Stored on `area`.
     otherCity: z.string().trim().max(120).optional(),
     // WL-B: the expert form's fields. "City you know best" is the existing `market` picker (Leon, Oct 30, 2026: no
@@ -143,7 +146,7 @@ export const waitlistJoinBodySchema = z
       }
     } else if (role === "expert") {
       if (!b.contactName) ctx.addIssue({ code: "custom", path: ["contactName"], message: "required" });
-      if (!b.market) ctx.addIssue({ code: "custom", path: ["market"], message: "required" });
+      if (!b.market && !(b.markets && b.markets.length)) ctx.addIssue({ code: "custom", path: ["market"], message: "required" });
       for (const k of travelerFields) {
         if (b[k] !== undefined) ctx.addIssue({ code: "custom", path: [k], message: "traveler field" });
       }
@@ -252,6 +255,25 @@ export function waitlistCityName(marketKey: string): string | null {
  * The market a submission is for: absent ⇒ the launch market; an operating-market key ⇒ that market; anything else
  * ⇒ `unknown` (the route answers 400 UNKNOWN_MARKET). One city per submission.
  */
+/**
+ * WAIT-1: the markets a join names — `markets` when sent, else `[market]`, else the launch market — each an
+ * `OPERATING_MARKETS` key, repeats dropped. One unknown key refuses the whole join (400 `UNKNOWN_MARKET`).
+ */
+export function resolveWaitlistMarkets(
+  markets: readonly string[] | undefined,
+  market: string | undefined,
+  launchMarketSlug: string,
+): { ok: true; markets: string[] } | { ok: false; code: typeof WAITLIST_UNKNOWN_MARKET } {
+  const asked = markets && markets.length ? markets : [market ?? ""];
+  const out: string[] = [];
+  for (const raw of asked) {
+    const one = resolveWaitlistMarket(raw, launchMarketSlug);
+    if (!one.ok) return one;
+    if (!out.includes(one.market)) out.push(one.market);
+  }
+  return { ok: true, markets: out };
+}
+
 export function resolveWaitlistMarket(
   raw: string | undefined,
   launchMarketSlug: string,

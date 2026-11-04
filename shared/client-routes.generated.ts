@@ -252,4 +252,6 @@ export const CLIENT_ROUTES: readonly string[] = [
   "/vendors",
   "/verify-email",
   "/visa-help",
+  "/waitlist",
+  "/waitlist/:market",
 ];

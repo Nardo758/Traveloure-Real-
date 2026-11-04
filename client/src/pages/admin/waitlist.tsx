@@ -20,6 +20,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Download } from "lucide-react";
 import { WaitlistMarketOpenedCard } from "@/components/admin/WaitlistMarketOpenedCard";
+import { LIVE_MARKETS_ROUTE } from "@shared/live-markets";
+import { statusSettingsFrom } from "@/lib/waitlist-markets";
 import {
   WAITLIST_MARKET_OPTIONS, WAITLIST_SEARCH_MIN_CHARS, WAITLIST_SERVICE_TYPES, WAITLIST_TRIP_TYPES, waitlistCityName,
 } from "@shared/launch-waitlist";
@@ -196,6 +198,8 @@ export default function AdminWaitlist() {
   const [filter, setFilter] = useState("");
   const qs = filter ? `?market=${encodeURIComponent(filter)}` : "";
   const { data, isLoading, isError } = useQuery<WaitlistCounts>({ queryKey: [`/api/admin/waitlist${qs}`] });
+  // WAIT-1: the market-opened card labels each market with its status from settings.
+  const { data: liveMarkets } = useQuery<unknown>({ queryKey: [LIVE_MARKETS_ROUTE], retry: false });
   const market = data?.marketSlug ? ` — ${waitlistCityName(data.marketSlug) ?? data.marketSlug}` : filter === "all" ? " — all cities" : "";
   const exportHref = (role: "traveler" | "provider") => `/api/admin/waitlist/export?role=${role}${filter ? `&market=${encodeURIComponent(filter)}` : ""}`;
   return (
@@ -268,7 +272,7 @@ export default function AdminWaitlist() {
                 />
               </CardContent>
             </Card>
-            <WaitlistMarketOpenedCard />
+            <WaitlistMarketOpenedCard statusSettings={statusSettingsFrom(liveMarkets)} />
             <WaitlistSearch />
           </>
         )}

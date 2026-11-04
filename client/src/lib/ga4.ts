@@ -64,6 +64,7 @@ export function sanitizePath(pathname: string): string {
 export const ROUTE_TITLE_RULES: ReadonlyArray<{ test: RegExp; title: string }> = [
   { test: /^\/$/, title: "Landing" },
   { test: /^\/kyoto$/, title: "Waitlist" },
+  { test: /^\/waitlist(\/[^/]+)?$/, title: "Waitlist" },
   { test: /^\/discover(\/|$|-)/, title: "Discover" },
   { test: /^\/plans\/[^/]+\/compare\/[^/]+$/, title: "Versions" },
   { test: /^\/itinerary-comparison\/[^/]+$/, title: "Versions" },

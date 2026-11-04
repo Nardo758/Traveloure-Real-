@@ -34,7 +34,14 @@ import {
   type TravelerSignupMode,
 } from "@shared/launch-signup";
 import { WELCOME_VERIFICATION_WINDOW_SETTING, parseWelcomeVerificationWindowDays } from "@shared/welcome-verification";
-import { BETA_MARKET_SLUGS_SETTING, betaMarketSlugs } from "@shared/ticker";
+import {
+  BETA_MARKET_SLUGS_SETTING,
+  LIVE_MARKET_SLUGS_SETTING,
+  MARKET_LAUNCH_DATES_SETTING,
+  betaMarketSlugs,
+  liveMarketSlugs,
+  marketLaunchDates,
+} from "@shared/ticker";
 import { EXPERT_HOOK_CITIES_SETTING, expertHookCities } from "@shared/expert-hook";
 import { BLOG_FOOTER_MIN_PUBLISHED_SETTING, parseBlogFooterMinPublished } from "@shared/blog-footer";
 
@@ -127,6 +134,32 @@ export async function getBetaMarketSlugs(): Promise<string[]> {
   } catch (err) {
     console.error(`[platform-flags] read failed for ${BETA_MARKET_SLUGS_SETTING}, using the launch market:`, err);
     return betaMarketSlugs(null, launch);
+  }
+}
+
+/**
+ * WAIT-1: the LIVE market keys (`live_market_slugs`). The row is seeded later (migration 432); an absent row, an
+ * invalid value or a read error is [] — no market is called live until an admin lists it.
+ */
+export async function getLiveMarketSlugs(): Promise<string[]> {
+  try {
+    return liveMarketSlugs(await getSettingValue(LIVE_MARKET_SLUGS_SETTING));
+  } catch (err) {
+    console.error(`[platform-flags] read failed for ${LIVE_MARKET_SLUGS_SETTING}, using none:`, err);
+    return [];
+  }
+}
+
+/**
+ * WAIT-1: each market's launch month (`market_launch_dates`, key → "YYYY-MM"). An absent row, an invalid value or a
+ * read error is {} — no "Opening {month}" is shown unless an admin set one.
+ */
+export async function getMarketLaunchDates(): Promise<Record<string, string>> {
+  try {
+    return marketLaunchDates(await getSettingValue(MARKET_LAUNCH_DATES_SETTING));
+  } catch (err) {
+    console.error(`[platform-flags] read failed for ${MARKET_LAUNCH_DATES_SETTING}, using none:`, err);
+    return {};
   }
 }
 

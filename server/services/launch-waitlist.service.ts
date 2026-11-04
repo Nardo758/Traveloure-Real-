@@ -134,6 +134,35 @@ export async function joinWaitlist(
   marketSlug: string,
   credit: WaitlistCredit | null = null,
 ): Promise<{ inserted: boolean }> {
+  return db.transaction((tx) => upsertWaitlistRow(tx, body, marketSlug, credit));
+}
+
+/**
+ * WAIT-1 (ledger `2026-11-04-wait1-all-markets`): one sign-up for one or more markets — ONE row per (email, market),
+ * each upserted and given its own consent rows exactly as a single-market join, all inside ONE transaction (a failure
+ * writes none of them). Returns which markets were newly inserted.
+ */
+export async function joinWaitlistMarkets(
+  body: Omit<WaitlistJoinBody, "homepage" | "ref" | "market" | "markets">,
+  marketSlugs: readonly string[],
+  credit: WaitlistCredit | null = null,
+): Promise<Array<{ marketSlug: string; inserted: boolean }>> {
+  return db.transaction(async (tx) => {
+    const out: Array<{ marketSlug: string; inserted: boolean }> = [];
+    for (const marketSlug of marketSlugs) {
+      const { inserted } = await upsertWaitlistRow(tx, body, marketSlug, credit);
+      out.push({ marketSlug, inserted });
+    }
+    return out;
+  });
+}
+
+async function upsertWaitlistRow(
+  tx: any,
+  body: Omit<WaitlistJoinBody, "homepage" | "ref">,
+  marketSlug: string,
+  credit: WaitlistCredit | null,
+): Promise<{ inserted: boolean }> {
   const email = normalizeWaitlistEmail(body.email);
   const role = body.role ?? "traveler";
   const traveler = role === "traveler";
@@ -159,7 +188,7 @@ export async function joinWaitlist(
   // `created_at` is written only on insert. A repeat sets `updated_at` and leaves `created_at`, so the two
   // are equal only when this statement born the row. That is the invite's once-per-sign-up gate (S-22).
   // Consent rows are written in the SAME transaction as the upsert. An unticked box writes nothing.
-  return db.transaction(async (tx) => {
+  {
     const consentVersion = consent ? await ensureConsentText(marketSlug, tx) : null;
     const marketingVersion = marketingConsent ? await marketingTextVersion(tx) : null;
     const written = await tx.execute(sql`
@@ -208,7 +237,7 @@ export async function joinWaitlist(
     const created = row?.created_at ? new Date(row.created_at).getTime() : NaN;
     const updated = row?.updated_at ? new Date(row.updated_at).getTime() : NaN;
     return { inserted: Number.isFinite(created) && created === updated };
-  });
+  }
 }
 
 /**

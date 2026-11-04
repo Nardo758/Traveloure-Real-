@@ -1,6 +1,7 @@
 import React from "react";
 import { AdminLayout } from "@/components/admin-layout";
 import { SlowQueryWidget } from "@/components/admin/SlowQueryWidget";
+import { MarketStatusSettingsCard } from "@/components/admin/MarketStatusSettingsCard";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -354,6 +355,9 @@ export default function AdminSystem() {
                   data-testid="switch-traveler-signup-open"
                 />
               </div>
+
+              {/* WAIT-1: the marquee market, the live list and launch months, beside the sign-up switch. */}
+              <MarketStatusSettingsCard />
 
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
