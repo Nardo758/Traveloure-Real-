@@ -160,6 +160,8 @@ export default function Experiences({ occasionSlug: routeSlug = null }: { occasi
       ...(market ? { city: market.cityName, country: market.country } : {}),
       ...(routeSlug ? { experienceSlug: routeSlug } : {}),
       ...(group ? { group } : {}),
+      // OCC-1: `?group=` also filters the occasion step to that group (an unknown value sets nothing).
+      ...(group ? { onlyGroup: group } : {}),
     };
   }, [searchString, routeSlug]);
 

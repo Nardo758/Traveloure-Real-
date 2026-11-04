@@ -179,6 +179,7 @@ export const CLIENT_ROUTES: readonly string[] = [
   "/local-experts",
   "/local-experts/:id",
   "/login",
+  "/marketplace",
   "/my-bookings",
   "/my-events",
   "/my-itinerary/:id",
@@ -199,6 +200,7 @@ export const CLIENT_ROUTES: readonly string[] = [
   "/pricing",
   "/privacy",
   "/profile",
+  "/proposals",
   "/provider-status",
   "/provider/analytics",
   "/provider/availability",
@@ -254,4 +256,5 @@ export const CLIENT_ROUTES: readonly string[] = [
   "/visa-help",
   "/waitlist",
   "/waitlist/:market",
+  "/weddings",
 ];

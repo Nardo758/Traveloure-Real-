@@ -133,6 +133,9 @@ export const navGroupsConfig: NavGroupConfig[] = [
     //    aliases like "By Date"/"Global Calendar" or "By Location"/"TravelPulse").
     name: "Marketplace",
     i18nKey: "groups.marketplace",
+    // OCC-1 (ledger `2026-11-04-occ1-occasion-entries`; Leon, Nov 3: "/marketplace gets fixed or removed from the nav"):
+    // the trigger is a real link to the default browse surface; the dropdown keeps its children.
+    href: "/destinations",
     sections: [
       {
         title: "BROWSE",
@@ -231,10 +234,6 @@ export const navGroupsConfig: NavGroupConfig[] = [
 
 export const authNavConfig: AuthNavConfig[] = [
   { href: "/dashboard", label: "My Plans" },
-  // Un-group (Aug 23): "Marketplace" is dropdown-only; this flat entry (currently
-  // rendered nowhere — authNavItems has no render site) points at the default
-  // surface so it can never resurrect a hub.
-  { href: "/destinations", label: "Marketplace" },
   { href: "/chat", label: "Expert Chat" },
 ];
 

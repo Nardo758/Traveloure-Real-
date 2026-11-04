@@ -350,6 +350,24 @@ test.describe("Deprecated route redirects — static analysis (Suite 7)", () => 
     console.log("[deprecated-route-redirects] PASS /credits-billing → /dashboard");
   });
 
+  // OCC-1 (ledger `2026-11-04-occ1-occasion-entries`).
+  test("/weddings → /experiences/wedding", () => {
+    assertRouteRedirect(readApp(), "/weddings", "/experiences/wedding");
+    console.log("[deprecated-route-redirects] PASS /weddings → /experiences/wedding");
+  });
+
+  // OCC-1 (ledger `2026-11-04-occ1-occasion-entries`).
+  test("/proposals → /experiences/proposal", () => {
+    assertRouteRedirect(readApp(), "/proposals", "/experiences/proposal");
+    console.log("[deprecated-route-redirects] PASS /proposals → /experiences/proposal");
+  });
+
+  // OCC-1 (ledger `2026-11-04-occ1-occasion-entries`).
+  test("/marketplace → /destinations", () => {
+    assertRouteRedirect(readApp(), "/marketplace", "/destinations");
+    console.log("[deprecated-route-redirects] PASS /marketplace → /destinations");
+  });
+
   test("/checkout → /cart", () => {
     assertRouteRedirect(readApp(), "/checkout", "/cart");
     console.log("[deprecated-route-redirects] PASS /checkout → /cart");
@@ -475,6 +493,18 @@ test.describe("Deprecated route redirects — browser smoke (Suite 7)", () => {
 
   test("/explore → /destinations", async ({ page }) => {
     await assertRedirectsTo(page, "/explore", "/destinations");
+  });
+
+  test("/weddings → /experiences/wedding", async ({ page }) => {
+    await assertRedirectsTo(page, "/weddings", "/experiences/wedding");
+  });
+
+  test("/proposals → /experiences/proposal", async ({ page }) => {
+    await assertRedirectsTo(page, "/proposals", "/experiences/proposal");
+  });
+
+  test("/marketplace → /destinations", async ({ page }) => {
+    await assertRedirectsTo(page, "/marketplace", "/destinations");
   });
 
   test("/browse → /destinations", async ({ page }) => {

@@ -1472,6 +1472,17 @@ function Router() {
       <Route path="/help-me-decide">
         <Redirect to="/destinations" />
       </Route>
+      {/* OCC-1 (ledger `2026-11-04-occ1-occasion-entries`): the occasion vanity paths open the generic flow with the
+          occasion set (catalog slugs `wedding`, `proposal`); /marketplace goes to the destinations browse. */}
+      <Route path="/weddings">
+        <Redirect to="/experiences/wedding" />
+      </Route>
+      <Route path="/proposals">
+        <Redirect to="/experiences/proposal" />
+      </Route>
+      <Route path="/marketplace">
+        <Redirect to="/destinations" />
+      </Route>
       <Route path="/explore">
         <Redirect to="/destinations" />
       </Route>

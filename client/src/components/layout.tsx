@@ -321,7 +321,34 @@ function DesktopDropdown({
       onFocusCapture={handleFocusIn}
       onBlurCapture={handleFocusOut}
     >
-      {/* TEST 1+5: aria-expanded + aria-haspopup + aria-controls for keyboard/SR */}
+      {/* OCC-1 (ledger `2026-11-04-occ1-occasion-entries`): a group with its own href is a real link (crawlable,
+          opens in a new tab) and still opens its dropdown on hover, focus, Space or ArrowDown; Enter follows the
+          link. The one-open-menu rule (QA F6) is unchanged — it lives in `setOpenMenu`. */}
+      {item.href ? (
+        <Link
+          href={item.href}
+          ref={triggerRef as unknown as React.Ref<HTMLAnchorElement>}
+          className={cn(
+            "flex items-center text-[12.5px] font-medium tracking-[.05em] transition-colors px-3 py-2 rounded-md whitespace-nowrap",
+            isActive ? CHROME_LINK_ACTIVE : CHROME_LINK_REST,
+            FOCUS_RING
+          )}
+          style={{ fontFamily: CHROME_MONO }}
+          aria-current={isActive ? "true" : undefined}
+          aria-expanded={isOpen}
+          aria-haspopup="true"
+          aria-controls={dropdownId}
+          onKeyDown={(e: React.KeyboardEvent<HTMLAnchorElement>) => {
+            if (e.key === "Enter") return;
+            handleKeyDown(e as unknown as React.KeyboardEvent<HTMLButtonElement>);
+          }}
+          data-testid={`button-nav-dropdown-${slugify(item.name)}`}
+        >
+          {tr(item.shortI18nKey ?? item.i18nKey, item.shortName ?? item.name)}
+          <ChevronDown className={cn("ml-1 w-4 h-4 transition-transform text-[color:var(--earn-faint)]", isOpen && "rotate-180")} aria-hidden="true" />
+        </Link>
+      ) : (
+      // TEST 1+5: aria-expanded + aria-haspopup + aria-controls for keyboard/SR
       <button
         ref={triggerRef}
         className={cn(
@@ -344,6 +371,7 @@ function DesktopDropdown({
         {tr(item.shortI18nKey ?? item.i18nKey, item.shortName ?? item.name)}
         <ChevronDown className={cn("ml-1 w-4 h-4 transition-transform text-[color:var(--earn-faint)]", isOpen && "rotate-180")} aria-hidden="true" />
       </button>
+      )}
 
       <AnimatePresence>
         {isOpen && (

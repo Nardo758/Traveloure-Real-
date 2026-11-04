@@ -84,6 +84,12 @@ export interface PlanEntrySource {
   /** A starting group (the nav's `?group=`, already an exact key) — E3 ruling 3. */
   group?: OccasionPickerGroup;
   /**
+   * OCC-1 (ledger `2026-11-04-occ1-occasion-entries`; Leon, Nov 3: "/experiences?group= filters the content"): the
+   * occasion step shows only this group — its chip and, under "More specific", its occasions. Set only by the
+   * /experiences page from its own `?group=` (an exact key; anything else sets nothing, so nothing is filtered).
+   */
+  onlyGroup?: OccasionPickerGroup;
+  /**
    * A catalog slug carried from the inline panel in React state (H-10). Not `experienceSlug`:
    * that field is written to the pen when the pop-up opens (C6). This one is never stored.
    */
@@ -565,4 +571,15 @@ export function planEntryEventRow(state: PlanEntryState): { title: string; event
     startTime: state.event.startTime,
     location: state.event.venue,
   };
+}
+
+/**
+ * OCC-1: the group chips the occasion step draws. With `onlyGroup` set to a group the catalog carries, only that
+ * group; otherwise every available group (an unknown or absent filter filters nothing — today's behaviour).
+ */
+export function shownOccasionGroups(
+  available: readonly OccasionPickerGroup[],
+  onlyGroup: OccasionPickerGroup | null | undefined,
+): OccasionPickerGroup[] {
+  return onlyGroup && available.includes(onlyGroup) ? [onlyGroup] : [...available];
 }
