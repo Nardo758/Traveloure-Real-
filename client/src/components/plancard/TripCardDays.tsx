@@ -20,7 +20,7 @@
  * (a past day carries ✓); provenance sits in a card; the re-check banners take the gold wash. Same
  * rows, same testids, same derivations — only the look changes.
  */
-import { useSignupMode } from "@/lib/signup-mode";
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 import { PlanRowLookProvider } from "@/components/plan/row-look";
 import { routedLegLine } from "@shared/routing-engine";
@@ -275,7 +275,7 @@ function NowLine({ now }: { now: Date }) {
 
 export function TripCardDays(props: TripCardDaysProps) {
   // Row P-1c: waitlist mode — items read "Saved to plan" and there is no Leave-by.
-  const waitlist = useSignupMode().mode === "waitlist";
+  const waitlist = !useBookingActionsShown();
   const { tripId, days, timeZone } = props;
   // §3.14–3.15 (ledger `2026-10-18-teaser-copy-events`): the teaser view and the "Add drive and walk
   // times" tap on the Trip Card.

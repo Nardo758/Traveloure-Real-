@@ -1,4 +1,5 @@
 import { Link, useLocation } from "wouter";
+import { useTravelerSignupShown } from "@/lib/signup-mode";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import {
@@ -54,6 +55,7 @@ function getAvatarFallback(user: { firstName?: string | null; email?: string | n
 
 export function UserMenu() {
   const { user, isLoading, logout } = useAuth();
+  const travelerSignupShown = useTravelerSignupShown();
   const { openSignInModal } = useSignInModal();
   const [location] = useLocation();
 
@@ -87,13 +89,16 @@ export function UserMenu() {
         >
           Login
         </Button>
-        <Button
-          className="bg-primary hover:bg-primary/90 text-white rounded-full px-4"
-          onClick={() => openSignInModal()}
-          data-testid="button-sign-up"
-        >
-          Sign Up
-        </Button>
+        {/* A-7 (Lane 2): traveler sign-up is offered only in open mode (`useTravelerSignupShown`). */}
+        {travelerSignupShown && (
+          <Button
+            className="bg-primary hover:bg-primary/90 text-white rounded-full px-4"
+            onClick={() => openSignInModal()}
+            data-testid="button-sign-up"
+          >
+            Sign Up
+          </Button>
+        )}
       </div>
     );
   }

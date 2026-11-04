@@ -38,6 +38,7 @@ const CITY = "Kyoto";
 function render(node: React.ReactNode, opts: { expertAvailable?: boolean } = {}): string {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   qc.setQueryData(["/api/auth/user"], { id: "u", role: "user" });
+  qc.setQueryData(["/api/public/signup-mode"], { mode: "open" }); // Lane 2: booking labels show in open mode only.
   if (opts.expertAvailable) qc.setQueryData([expertAvailabilityUrl({ city: CITY })], { available: true });
   return renderToString(
     <QueryClientProvider client={qc}>

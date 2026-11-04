@@ -9,7 +9,7 @@
  *
  * Mounted ONCE per slip through `HandoffChooserHost`, which listens for `openHandoffChooser`.
  */
-import { useSignupMode } from "@/lib/signup-mode";
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { invalidateTripCapabilities } from "@/lib/trip-capabilities";
@@ -61,7 +61,7 @@ async function postJson(url: string, body: unknown) {
 }
 
 export function HoldForm({ amountCents, onHeld, line, cta }: { amountCents: number; onHeld: () => void; line?: string; cta?: string }) {
-  const waitlist = useSignupMode().mode === "waitlist";
+  const waitlist = !useBookingActionsShown();
   const stripe = useStripe();
   const elements = useElements();
   const confirmingRef = useRef(false);

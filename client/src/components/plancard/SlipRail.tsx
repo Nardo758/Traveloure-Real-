@@ -75,7 +75,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
-import { useSignupMode } from "@/lib/signup-mode";
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 import { apiRequest, queryClient as sharedQueryClient } from "@/lib/queryClient";
 import { optimizeCheckoutHeading } from "@/lib/checkout-headings";
@@ -613,7 +613,7 @@ function BuildCard({
   // chooser's own rule (`chooserHasExperts` behind the city's `expert_hook_cities` switch, read once
   // through `useExpertAvailability`). Loading, an error or a "no" hide it; nothing takes its place.
   const expertsAvailable = useExpertAvailability({ city: trip.destination });
-  const optimizerWaitlist = useSignupMode().mode === "waitlist";
+  const optimizerWaitlist = !useBookingActionsShown();
   const optimizerBlock = (
         <>
           {/* Surface step 4 (spec §8): the ONE optimizer card — findings, the realised delta after a
@@ -1135,7 +1135,7 @@ export function FinishCard({
   const reopenMutation = useReopenMutation(trip.id);
   // Row P-1c: in waitlist mode the checkout path becomes "Save to plan" — every staged row is already on the plan, so
   // the press says so — and the fee preview is not drawn.
-  const waitlist = useSignupMode().mode === "waitlist";
+  const waitlist = !useBookingActionsShown();
   const { toast: finishToast } = useToast();
   const savedToPlan = () => finishToast({ title: WAITLIST_COPY.savedToPlan });
   const [finalizeModalOpen, setFinalizeModalOpen] = useState(false);

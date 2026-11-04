@@ -55,6 +55,26 @@ export function useSignupMode(): { mode: SignupMode; data: SignupModeAnswer | un
 }
 
 /**
+ * Lane 2 (ledger `2026-11-05-lane2-mode-read`; briefs A-3 / K-10 / A-28): the ONE rule every booking, purchase and
+ * availability action on a traveler surface is drawn behind. In waitlist mode — for every viewer, signed in or not —
+ * those actions and the copy that supports them are HIDDEN, never relabelled. Fail-closed: an unread mode hides them.
+ * Seller and admin consoles are not traveler surfaces and do not read it.
+ */
+export function bookingActionsShown(mode: SignupMode): boolean {
+  return mode === "open";
+}
+
+/** The hook form of `bookingActionsShown` — the one read a component makes. */
+export function useBookingActionsShown(): boolean {
+  return bookingActionsShown(useSignupMode().mode);
+}
+
+/** A-7: traveler sign-up is offered only in open mode (provider and expert sign-up are not traveler paths). */
+export function useTravelerSignupShown(): boolean {
+  return useSignupMode().mode === "open";
+}
+
+/**
  * GATE-1 (ledger `2026-11-03-gate1-partner1`; Leon, Nov 3: "the waitlist is the only gate for travelers, with no
  * traveler sign-in wall"): on a PUBLIC browse surface, a signed-out viewer in waitlist mode gets "Save to plan" —
  * a toast, no dialog, no sign-in modal. Signed-in viewers, and every viewer in open mode, keep today's path.

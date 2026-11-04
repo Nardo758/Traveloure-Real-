@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -189,6 +190,8 @@ function CuratedCard({
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const isAffiliate = !!item.affiliate_url;
+  // Lane 2 (A-3): no Book / checkout control in waitlist mode — the card keeps its add.
+  const bookingShown = useBookingActionsShown();
 
   // Unified affiliate redirect — always routes through platform intermediary for ALL affiliate items.
   // Server resolves the authoritative URL and records an affiliate_clicks row before returning it.
@@ -367,7 +370,7 @@ function CuratedCard({
               <Plus className="w-3 h-3 mr-1" />
               {ADD_TO_PLAN_LABEL}
             </Button>
-            {isAffiliate ? (
+            {!bookingShown ? null : isAffiliate ? (
               // ALL affiliate items route through platform intermediary — click recorded server-side
               <Button
                 size="sm"

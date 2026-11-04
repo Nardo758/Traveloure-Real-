@@ -36,7 +36,7 @@
  * is why the Ask-AI card is mounted with `isExpertViewer={false}`, a fact about this page rather
  * than a narrowing of the drawer's own rule.
  */
-import { useSignupMode } from "@/lib/signup-mode";
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import { useQuery } from "@tanstack/react-query";
 import { FINALIZE_AGENT_LANE_SHOWN } from "./FinalizeBookingModal";
 import { Link, useLocation } from "wouter";
@@ -281,7 +281,7 @@ export function TripCardRail({ trip, isOwner, itemCount }: TripCardRailProps) {
     enabled: isOwner && !!trip.id,
     staleTime: 60_000,
   });
-  const waitlist = useSignupMode().mode === "waitlist";
+  const waitlist = !useBookingActionsShown();
   if (!isOwner) return null;
   const advisor = advisorData?.advisor ?? null;
   return (

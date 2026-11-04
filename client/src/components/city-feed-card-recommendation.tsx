@@ -31,7 +31,7 @@ import { useExpertAvailability } from "@/lib/expert-availability";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import type { BentoCompactActionState } from "@/lib/bento-action-state";
 import { tileActionLabel } from "@/lib/bento-action-state";
-import { useSignupMode } from "@/lib/signup-mode";
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import { useBrowseSaveToPlan } from "@/lib/browse-save";
 
 export interface RecommendationCandidate {
@@ -144,8 +144,10 @@ export function CityFeedCardRecommendation({
     density === "compact"
       ? compactActionState === "affiliate"
       : candidate.sourceType === "affiliate";
-  const waitlist = useSignupMode().mode === "waitlist";
-  const saveMode = waitlist && !isAffiliate && !!onBook;
+  // Lane 2 (A-28): in waitlist mode no book action is drawn — a partner's book link included; the card's one action is
+  // the add (`bookingActionsShown`, the shared rule).
+  const waitlist = !useBookingActionsShown();
+  const saveMode = waitlist && !!onBook;
   const bookLabel = tileActionLabel("recommendation", { bookable: true, affiliate: isAffiliate, waitlist }) ?? "";
   const bookStyle = {
     background: isAffiliate ? "var(--earn-gold-ink)" : "var(--earn-teal)",

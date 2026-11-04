@@ -16,7 +16,7 @@
 
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { useSignupMode } from "@/lib/signup-mode";
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import { Sparkles, ChevronRight, Plus, Loader2 } from "lucide-react";
 import { useEffect, useRef, Component, type ReactNode } from "react";
 import { apiRequest } from "@/lib/queryClient";
@@ -222,7 +222,7 @@ export function UpsellSlot({
 }: UpsellSlotProps) {
   const [, navigate] = useLocation();
   const slotDataFiredRef = useRef(false);
-  const waitlist = useSignupMode().mode === "waitlist";
+  const waitlist = !useBookingActionsShown();
 
   const { candidates, suppressed, isResolved, logClick } = useUpsellSlot(surface, {
     tripId,
