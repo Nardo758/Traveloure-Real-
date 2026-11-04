@@ -32,6 +32,7 @@ import { Fragment, useState, type ReactNode } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { useSignupMode } from "@/lib/signup-mode";
 import { Sparkles } from "lucide-react";
 import { useRotation } from "@/hooks/use-rotation";
 import { getCityDiscoverHref } from "@/lib/city-discover-route";
@@ -219,12 +220,15 @@ const TILE_GROUND = { background: "var(--landing-tile-ground)" };
  */
 function useBillboardCopy() {
   const { t } = useTranslation("nav");
+  // COPY-1 row 6a (ledger `2026-11-04-copy1-exp-qa-swaps`): in waitlist mode the third slot promises no booking —
+  // it carries no label (the slot keeps its place). The mode reads fail-closed (anything but "open" is waitlist).
+  const { mode } = useSignupMode();
   return {
     slotLabels: [
       t("hero.billboard.slotLocalExpert", "Local expert").toUpperCase(),
       // SH-1 item 1: slot 2 carries no "hidden gem" claim — its eyebrow is the market's city (`slotLabel`).
       null,
-      t("hero.billboard.slotBookOnTraveloure", "Book on Traveloure").toUpperCase(),
+      mode === "open" ? t("hero.billboard.slotBookOnTraveloure", "Book on Traveloure").toUpperCase() : null,
     ] as const,
     startThisPlan: t("hero.startAPlan", "Start a plan"),
     // The handle is substituted here as well, so the label is right before i18n initialises.
@@ -250,7 +254,8 @@ function BillboardCardFrame({
   photo?: ReactNode;
   representativeCity?: string;
   badge?: ReactNode;
-  label: string;
+  /** Null ⇒ the slot shows no label; its line keeps its height so the layout holds. */
+  label: string | null;
   headline: string;
   actions: ReactNode;
   credit?: ReactNode;
@@ -270,8 +275,8 @@ function BillboardCardFrame({
       <TileShade />
       {representativeCity && <RepresentativePhotoLabel cityName={representativeCity} besideBadge={!!badge} />}
       {badge}
-      <span className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85" style={{ fontFamily: EARN_MONO }} data-testid={`hero-billboard-label-${tileKey}`}>
-        {label}
+      <span className="relative z-10 mb-1 text-[9px] font-medium uppercase tracking-[0.1em] opacity-85" style={{ fontFamily: EARN_MONO }} data-testid={`hero-billboard-label-${tileKey}`} aria-hidden={label === null ? true : undefined}>
+        {label ?? "\u00a0"}
       </span>
       <b className={`relative z-10 font-semibold leading-tight ${large ? "text-[20px]" : "text-[15px]"}`} style={{ fontFamily: FRAUNCES }} data-testid={titleTestId}>
         {headline}
@@ -299,7 +304,7 @@ function CuratedTileCard({
   const copy = useBillboardCopy();
   if (!market) return null;
   if (slotIndex < 0 || slotIndex > 2) throw new Error(`Unknown billboard slot ${slotIndex}`);
-  const slotLabel = slotIndex === 1 ? market.cityName.toUpperCase() : copy.slotLabels[slotIndex as 0 | 2]!;
+  const slotLabel = slotIndex === 1 ? market.cityName.toUpperCase() : copy.slotLabels[slotIndex as 0 | 2];
   return (
     <BillboardCardFrame
       tileKey={tile.key}
@@ -626,7 +631,7 @@ export function LandingHeroContent({
           <p className="mb-[18px] mt-3 max-w-[500px] text-[17px]" style={{ color: "color-mix(in srgb, var(--earn-ink) 85%, var(--earn-ground))" }}>
             {t(
               "hero.subhead",
-              "Tell us the occasion and the city. We build the plan around it, and someone who lives there does the rest.",
+              "Tell us the occasion and the city. We build the plan around it.",
             )}
           </p>
 

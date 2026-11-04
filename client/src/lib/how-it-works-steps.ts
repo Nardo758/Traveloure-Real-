@@ -68,3 +68,11 @@ export const HOME_HOW_IT_WORKS_STEPS: readonly HomeHowItWorksStep[] = [
   { n: "2", title: "Plan" },
   { n: "3", title: "Hand off or book" },
 ];
+
+/**
+ * COPY-1 row 6b (ledger `2026-11-04-copy1-exp-qa-swaps`): in waitlist mode the strip promises no hand-off or booking,
+ * so step 3 is not shown — the strip reads "1 Pick → 2 Plan". Open mode shows all three, unchanged.
+ */
+export function homeHowItWorksSteps(mode: "waitlist" | "open"): readonly HomeHowItWorksStep[] {
+  return mode === "open" ? HOME_HOW_IT_WORKS_STEPS : HOME_HOW_IT_WORKS_STEPS.filter((s) => s.n !== "3");
+}

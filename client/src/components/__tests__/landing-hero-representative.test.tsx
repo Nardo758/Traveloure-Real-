@@ -58,6 +58,8 @@ function render(
   // render needs a query client; the answer is seeded yes, as the hero rendered before.
   const queryClient = new QueryClient();
   queryClient.setQueryData([expertAvailabilityUrl("any")], { available: true });
+  // COPY-1 row 6a: the third slot's "Book on Traveloure" label shows in open mode only; these pins are open mode.
+  queryClient.setQueryData(["/api/public/signup-mode"], { mode: "open", launchMarketSlug: "kyoto" });
   return renderToString(
     <QueryClientProvider client={queryClient}>
       <Router ssrPath="/">

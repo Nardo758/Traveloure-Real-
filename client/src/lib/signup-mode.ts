@@ -21,6 +21,18 @@ export type SignupMode = "waitlist" | "open";
 export interface SignupModeAnswer {
   mode?: SignupMode | string | null;
   launchMarketSlug?: string | null;
+  /** COPY-1 §4k: the launch market has an approved, non-test expert. Absent ⇒ false (the lines stay omitted). */
+  expertsLive?: boolean | null;
+}
+
+/** COPY-1 §4k, pure: local-expert lines show only on an explicit `true` (unread or absent ⇒ omitted). */
+export function expertsLiveFrom(data: SignupModeAnswer | null | undefined): boolean {
+  return data?.expertsLive === true;
+}
+
+/** The hook: whether the local-expert lines may show. */
+export function useExpertsLive(): boolean {
+  return expertsLiveFrom(useSignupMode().data);
 }
 
 export const SIGNUP_MODE_QUERY_KEY = ["/api/public/signup-mode"] as const;

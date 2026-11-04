@@ -415,15 +415,16 @@ describe("S11 — the public signup-mode read", () => {
     await layer.route.stack[0].handle({}, res);
     return res;
   }
-  it("answers exactly { mode, launchMarketSlug }, never cached", async () => {
+  // COPY-1 §4k: the answer gains `expertsLive` (no expert in these fixtures ⇒ false).
+  it("answers exactly { mode, launchMarketSlug, expertsLive }, never cached", async () => {
     const res = await readSignupMode();
-    assert.deepEqual(res.body, { mode: "waitlist", launchMarketSlug: "kyoto" });
+    assert.deepEqual(res.body, { mode: "waitlist", launchMarketSlug: "kyoto", expertsLive: false });
     assert.equal(res.headers["Cache-Control"], "no-store");
   });
   it("reads open mode and an unset market honestly", async () => {
     settings = { new_user_registration_enabled: "true", traveler_signup_mode: "open" };
     invalidatePlatformFlagCache();
     const res = await readSignupMode();
-    assert.deepEqual(res.body, { mode: "open", launchMarketSlug: null });
+    assert.deepEqual(res.body, { mode: "open", launchMarketSlug: null, expertsLive: false });
   });
 });

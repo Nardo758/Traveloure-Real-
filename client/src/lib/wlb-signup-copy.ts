@@ -27,7 +27,7 @@ export const WLB_SIGNUP_COPY = {
   expertName: "Your name",
   expertEmail: "Email",
   // Leon, Oct 30, 2026: Marketing's label for the existing market picker (no new column).
-  expertCity: "City you know best",
+  expertCity: "City you know",
   expertLanguages: "Languages (optional)",
   expertLink: "Link to your work (optional)",
   expertSubmit: "Send application",

@@ -14,6 +14,7 @@ import { usePlanning } from "@/contexts/PlanningContext";
 import { HOW_IT_WORKS_STEPS } from "@/lib/how-it-works-steps";
 import { PageLayout, SectionTitle, PAGE_ACTION } from "@/components/company/company-page";
 import { useExpertAvailability } from "@/lib/expert-availability";
+import { useExpertsLive } from "@/lib/signup-mode";
 
 const STEP_ICONS = [ClipboardList, Sparkles, UserCheck, PartyPopper];
 
@@ -33,12 +34,19 @@ export default function HowItWorksPage() {
   // SH-1 item 11 (Q11.3): this page's expert CTA names no city, so it draws only when any live
   // market has an expert to ask.
   const anyExpertAvailable = useExpertAvailability("any");
+  const expertsLive = useExpertsLive();
   
   return (
     <PageLayout
       width="content"
       title="How Traveloure Works"
-      lead="From an idea to a plan you can use, in four steps. Build it yourself, sharpen it with Optimize, or hand it to someone who lives there."
+      // COPY-1 §4k: the "someone who lives there" sentence shows only once the launch market has an approved expert;
+      // otherwise it is omitted (never replaced).
+      lead={
+        expertsLive
+          ? "From an idea to a plan you can use, in four steps. Build it yourself, sharpen it with Optimize, or hand it to someone who lives there."
+          : "From an idea to a plan you can use, in four steps."
+      }
       actions={
         <Button size="lg" className={PAGE_ACTION.primary} onClick={() => openSignInModal()} data-testid="button-get-started">
           Get Started <ArrowRight className="w-4 h-4 ml-2" />

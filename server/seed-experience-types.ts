@@ -41,7 +41,7 @@ const coreExperienceTypes = [
   { 
     name: "Proposal", 
     slug: "proposal", 
-    description: "Plan the perfect proposal with the right setting and ambiance",
+    description: "Plan the proposal: the place, the moment, the dinner after.",
     icon: "Diamond",
     color: "#8B5CF6",
     sortOrder: 3,
