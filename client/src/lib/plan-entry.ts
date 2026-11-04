@@ -452,9 +452,14 @@ export function startsStraightAway(state: PlanEntryState, catalogSlugs: readonly
   return !!state.market && !state.event && !!state.occasionSlug && catalogSlugs.includes(state.occasionSlug);
 }
 
-/** The occasion the plan is minted with: "More specific" if chosen, else the group's default. */
-export function chosenOccasionSlug(state: PlanEntryState): string {
-  return state.occasionSlug || OCCASION_GROUP_DEFAULT_SLUG[state.group];
+/**
+ * The occasion the plan is minted with: "More specific" (or a door's or event's) if chosen, else the default of a group
+ * the traveler (or the door) chose. A-8 (ruling, Nov 5, 2026: "no invented occasion"): nothing picked ⇒ null — the
+ * plan stores no occasion and takes the neutral title.
+ */
+export function chosenOccasionSlug(state: Pick<PlanEntryState, "occasionSlug" | "group">, groupChosen: boolean): string | null {
+  if (state.occasionSlug) return state.occasionSlug;
+  return groupChosen ? OCCASION_GROUP_DEFAULT_SLUG[state.group] : null;
 }
 
 /**

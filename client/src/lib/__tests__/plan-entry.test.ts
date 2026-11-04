@@ -85,9 +85,11 @@ test("E3: each group's default slug sits in that group (seeded switches)", () =>
 
 test("E4: More specific overrides the group's default", () => {
   const s = { ...emptyPlanEntry(), market: kyoto };
-  assert.equal(chosenOccasionSlug(s), "travel");
-  assert.equal(chosenOccasionSlug({ ...s, group: "moments" }), "date-night");
-  assert.equal(chosenOccasionSlug({ ...s, occasionSlug: "golf-trip" }), "golf-trip");
+  assert.equal(chosenOccasionSlug(s, true), "travel");
+  assert.equal(chosenOccasionSlug({ ...s, group: "moments" }, true), "date-night");
+  assert.equal(chosenOccasionSlug({ ...s, occasionSlug: "golf-trip" }, false), "golf-trip");
+  // A-8: no chip, no "More specific", no event and no door group ⇒ no occasion at all.
+  assert.equal(chosenOccasionSlug(s, false), null);
   assert.equal(canStartPlan(emptyPlanEntry()), false);
   assert.equal(canStartPlan(s), true, "a city is enough — dates stay optional");
 });
@@ -194,12 +196,12 @@ test("H-08: choosing the event's own group keeps the door occasion; a one-day da
   assert.equal(one.endDate, "2026-10-25");
   assert.equal(one.group, "moments");
   const kept = { ...one, ...choosePlanEntryGroup(one, "moments") };
-  assert.equal(chosenOccasionSlug(kept), "show", "the moments group keeps the door's show, not Date Night");
+  assert.equal(chosenOccasionSlug(kept, true), "show", "the moments group keeps the door's show, not Date Night");
   const other = { ...one, ...choosePlanEntryGroup(one, "trips") };
   assert.equal(other.occasionSlug, null);
-  assert.equal(chosenOccasionSlug(other), "travel", "a different group uses that group's default");
+  assert.equal(chosenOccasionSlug(other, true), "travel", "a different group uses that group's default");
   const plain = { ...emptyPlanEntry(), group: "moments" as const };
-  assert.equal(chosenOccasionSlug({ ...plain, ...choosePlanEntryGroup(plain, "moments") }), "date-night");
+  assert.equal(chosenOccasionSlug({ ...plain, ...choosePlanEntryGroup(plain, "moments") }, true), "date-night");
   const panel = readFileSync("client/src/components/plan/PlanEntry.tsx", "utf8");
   const occasion = panel.slice(panel.indexOf('aria-label="Occasion"'));
   assert.match(occasion, /choosePlanEntryGroup\(s, key\)/);
