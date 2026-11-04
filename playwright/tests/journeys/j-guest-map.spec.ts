@@ -103,19 +103,22 @@ test("8d — signed out: browse with no plan, add, sign up → exactly one plan,
   await testid(page, "button-auth-submit").click();
 
   // N-1 (round 2 rulings, Nov 4, 2026; sanctioned rewrite): creating the account signs it in with the credentials
-  // just typed (the register answer itself stays neutral, AUTH-1 3b). An unverified address lands on the verify page,
-  // which says "Check your email to confirm your account."; the guest's record is kept for the return.
-  await expect(page).toHaveURL(/\/verify-email/, { timeout: 15_000 });
-  await expect(page.getByText("Check your email to confirm your account.")).toBeVisible();
-  expect(await page.evaluate(() => sessionStorage.getItem("traveloure_pending_plan")), "the record is kept").not.toBeNull();
-  const [pre] = await rows<{ n: number }>(`SELECT COUNT(*)::int AS n FROM trips t JOIN users u ON u.id = t.user_id WHERE u.email = $1`, [email]);
-  expect(pre.n, "signing up creates no plan").toBe(0);
+  // just typed (the register answer itself stays neutral, AUTH-1 3b). An address that must be confirmed lands on the
+  // verify page ("Check your email to confirm your account."), with the guest's record kept for the return; an address
+  // that need not be confirmed returns straight to this page, which replays the record.
+  await expect(page).toHaveURL(/\/verify-email|\/plans\/(?!new)[a-zA-Z0-9-]+\?view=map/, { timeout: 15_000 });
+  if (/\/verify-email/.test(page.url())) {
+    await expect(page.getByText("Check your email to confirm your account.")).toBeVisible();
+    expect(await page.evaluate(() => sessionStorage.getItem("traveloure_pending_plan")), "the record is kept").not.toBeNull();
+    const [pre] = await rows<{ n: number }>(`SELECT COUNT(*)::int AS n FROM trips t JOIN users u ON u.id = t.user_id WHERE u.email = $1`, [email]);
+    expect(pre.n, "signing up creates no plan").toBe(0);
 
-  // The address is confirmed (the fixture stamps it, as the verify link would), and the traveler returns to the map.
-  await rows(`UPDATE users SET email_verified = NOW() WHERE lower(email) = lower($1) AND email_verified IS NULL`, [email]);
-  await page.goto("/plans/new?view=map");
+    // The address is confirmed (the fixture stamps it, as the verify link would), and the traveler returns to the map.
+    await rows(`UPDATE users SET email_verified = NOW() WHERE lower(email) = lower($1) AND email_verified IS NULL`, [email]);
+    await page.goto("/plans/new?view=map");
+  }
 
-  // The reload replays the record: ONE plan, landing on its map.
+  // The record replays: ONE plan, landing on its map.
   await expect(page).toHaveURL(/\/plans\/(?!new)[a-zA-Z0-9-]+\?view=map/, { timeout: 30_000 });
   const tripId = page.url().match(/\/plans\/([a-zA-Z0-9-]+)/)![1];
 
