@@ -45,6 +45,7 @@ import { expertFacetValues, expertSearchMatches } from "@/lib/expert-search";
 // One-source nav-icon map (ruling 2026-08-25-nav-icons) — the masthead tile reads it
 // rather than restating the role→glyph mapping; keyed by the nav leaf `name`.
 import { NAV_LEAF_ICONS } from "@/components/layout";
+import { useLaunchMarket } from "@/lib/signup-mode";
 import {
   EARN_MONO,
   HEADING_STYLE,
@@ -124,6 +125,7 @@ const roleLabels: Record<string, string> = {
   event_planner: "Event Planners",
 };
 export default function ExpertsPage() {
+  const launchMarket = useLaunchMarket();
   const [location, navigate] = useLocation();
   const searchString = useSearch();
 
@@ -816,16 +818,21 @@ export default function ExpertsPage() {
               <div className="w-16 h-16 rounded-full bg-[color:var(--earn-chip)] flex items-center justify-center">
                 <Search className="w-8 h-8 text-[color:var(--earn-faint)]" />
               </div>
-              <h3 className="text-lg font-semibold" style={HEADING_STYLE} data-testid="experts-empty-heading">
-                No Kyoto experts are listed yet. Know Kyoto well? Apply to plan trips for travelers.
-              </h3>
-              <Link
-                href="/become-expert?type=local_expert"
-                className={`px-4 py-2 text-sm ${PAGE_LINK}`}
-                data-testid="button-apply-kyoto-expert"
-              >
-                Apply as a Kyoto expert
-              </Link>
+              {/* CITY-1: the marquee market's name, from settings — never a typed city. */}
+              {launchMarket && (
+                <>
+                  <h3 className="text-lg font-semibold" style={HEADING_STYLE} data-testid="experts-empty-heading">
+                    No {launchMarket.cityName} experts are listed yet. Know {launchMarket.cityName} well? Apply to plan trips for travelers.
+                  </h3>
+                  <Link
+                    href="/become-expert?type=local_expert"
+                    className={`px-4 py-2 text-sm ${PAGE_LINK}`}
+                    data-testid="button-apply-kyoto-expert"
+                  >
+                    Apply as a {launchMarket.cityName} expert
+                  </Link>
+                </>
+              )}
               {selectedRole === "event_planner" && (
                 <Link
                   href={buildRoleHref("travel_expert")}

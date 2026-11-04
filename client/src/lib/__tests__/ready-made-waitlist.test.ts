@@ -7,7 +7,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { arrivalRef, readyMadeWaitlistHref, READY_MADE_WAITLIST_LABEL } from "../ready-made-waitlist";
+import { arrivalRef, readyMadeWaitlistHref, readyMadeWaitlistLabel } from "../ready-made-waitlist";
 
 const waitlist = { mode: "waitlist" as const, launchMarketSlug: "kyoto" };
 
@@ -16,7 +16,8 @@ test("RW1 — waitlist mode shows the waitlist; open or unread mode shows no wai
   assert.equal(readyMadeWaitlistHref({ mode: "open", launchMarketSlug: "kyoto" }, "abc123"), null);
   assert.equal(readyMadeWaitlistHref(null, "abc123"), null);
   assert.equal(readyMadeWaitlistHref(undefined, null), null);
-  assert.equal(READY_MADE_WAITLIST_LABEL, "Join the Kyoto waitlist");
+  // CITY-1: the city is the launch market from settings, never typed.
+  assert.equal(readyMadeWaitlistLabel("kyoto"), "Join the Kyoto waitlist");
 });
 
 test("RW2 — only a well-formed code rides along, and no market is guessed", () => {

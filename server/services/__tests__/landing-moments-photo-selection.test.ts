@@ -20,9 +20,9 @@ describe("landing Moment photo selection", () => {
     }
   });
 
-  it("keeps the wedding and honeymoon photo assignments intentionally swapped", () => {
-    assert.equal(selectMomentPhotos("wedding", []).photos[0]?.url, "/images/moments/goa-honeymoon.jpg");
-    assert.equal(selectMomentPhotos("honeymoon", []).photos[0]?.url, "/images/moments/kyoto-wedding.jpg");
+  it("each moment's photo matches its own city (CITY-1: the Goa honeymoon shows Goa, the Kyoto wedding Kyoto)", () => {
+    assert.equal(selectMomentPhotos("wedding", []).photos[0]?.url, "/images/moments/kyoto-wedding.jpg");
+    assert.equal(selectMomentPhotos("honeymoon", []).photos[0]?.url, "/images/moments/goa-honeymoon.jpg");
   });
 
   it("uses the proposal-specific night image for the Proposal Moment", () => {

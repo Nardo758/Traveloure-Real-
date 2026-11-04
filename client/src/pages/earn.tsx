@@ -29,7 +29,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useSignupMode } from "@/lib/signup-mode";
+import { useLaunchMarket, useSignupMode } from "@/lib/signup-mode";
 import { earnKeepSentence, KEEP_RATES_ENDPOINT, type PublicKeepRates } from "@/lib/fee-keep-copy";
 import { ReadyMadeCalculator } from "@/components/earn/ReadyMadeCalculator";
 import { marketHasReadyMade, usableRate } from "@/lib/ready-made-calculator";
@@ -264,6 +264,7 @@ export default function EarnPage() {
   // sale in the launch market ("hide it in markets without Ready-Made Trips"). Either answer missing ⇒ hidden.
   const readyMadeRate = usableRate(keepRates?.readyMadePlatformRate);
   const signupMode = useSignupMode().data;
+  const launchMarket = useLaunchMarket();
   const { data: readyMadeFeed } = useQuery<{ listings: { market?: string | null }[] }>({ queryKey: ["/api/ready-made"], staleTime: 60_000 });
   const showReadyMadeCalculator =
     readyMadeRate !== null &&
@@ -347,7 +348,8 @@ export default function EarnPage() {
   return (
     <Layout>
       <PageLayout
-        title="Get paid for what you already know about Kyoto"
+        // CITY-1: the marquee market's name from settings, never a typed city (empty until it is known).
+        title={launchMarket ? `Get paid for what you already know about ${launchMarket.cityName}` : ""}
         titleTestId="earn-hero-title"
         testId="earn-hero"
         lead={

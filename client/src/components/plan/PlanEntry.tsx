@@ -27,6 +27,10 @@ import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { OccasionPicker } from "@/components/plan/OccasionPicker";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
+import { Link } from "wouter";
+import { MARKET_STATUS_COPY, marketIsOpen, marketPickerOrder, marketStatusLabel } from "@shared/ticker";
+import { useMarketStatusSettings } from "@/lib/signup-mode";
+import { waitlistMarketPath } from "@/lib/waitlist-markets";
 import {
   OCCASION_GROUP_LABELS,
   OCCASION_GROUP_ORDER,
@@ -60,6 +64,7 @@ import {
   thisWeekend,
   typedCity,
   withEvent,
+  withMarqueeCity,
   withNight,
   type ExperiencesPick,
   type PlanAround,
@@ -102,7 +107,7 @@ export interface PlanEntryStart {
   group?: OccasionPickerGroup;
 }
 
-export type PlanEntryStartOutcome = { ok: true } | { ok: false; message?: string };
+export type PlanEntryStartOutcome = { ok: true } | { ok: false; message?: string; waitlistMarket?: string };
 
 interface Props {
   open: boolean;
@@ -173,6 +178,20 @@ function Chip({ active, onClick, testId, children }: { active: boolean; onClick:
   );
 }
 
+/** CITY-1: a non-open market's chip — a link to its waitlist, never a selection. */
+function WaitlistChip({ marketKey, testId, children }: { marketKey: string; testId: string; children: React.ReactNode }) {
+  return (
+    <Link
+      href={waitlistMarketPath(marketKey)}
+      data-testid={testId}
+      className={chip}
+      style={{ background: "#fff", borderColor: "var(--earn-line, #E8E8E2)", color: "var(--earn-navy, #1A1A18)" }}
+    >
+      {children}
+    </Link>
+  );
+}
+
 /** The pop-up container: the panel in a Dialog. */
 export function PlanEntry({ open, onOpenChange, source, onStart, onStepChange }: Props & { onStepChange?: (step: PlanEntryStep) => void }) {
   return (
@@ -193,7 +212,13 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
     // Inline, Step 1 opens on "A place": the page's map and cards ARE its first question.
     return inline && s.state.around === null ? { ...s, state: { ...s.state, around: "place" as const } } : s;
   }, [source, inline]);
-  const [state, setState] = useState<PlanEntryState>(seed.state);
+  // CITY-1 (ledger `2026-11-04-city1-marquee-defaults`): the marquee is first and pre-selected; a market that is not
+  // open (neither the marquee nor live) links to its waitlist. Until the answer loads every market is selectable —
+  // the trip mint refuses a non-open market on the server either way.
+  const { settings: marketSettings, loaded: marketSettingsLoaded } = useMarketStatusSettings();
+  const isOpenMarket = (key: string) => !marketSettingsLoaded || marketIsOpen(key, marketSettings);
+  const marquee = marketSettingsLoaded ? marketSettings.launch : null;
+  const [state, setState] = useState<PlanEntryState>(() => withMarqueeCity(seed.state, marquee));
   const [step, setStep] = useState<PlanEntryStep>(seed.step);
   useEffect(() => {
     if (active) onStepChange?.(step);
@@ -203,6 +228,8 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
   const [pickDates, setPickDates] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** CITY-1: the server refused the market (409 market_not_open) — show its waitlist link. */
+  const [waitlistMarket, setWaitlistMarket] = useState<string | null>(null);
   const doorParty = (n: number | undefined) => (typeof n === "number" && Number.isInteger(n) && n >= 0 ? String(n) : "");
   const [adults, setAdults] = useState(doorParty(source?.adults));
   const [kids, setKids] = useState(doorParty(source?.kids));
@@ -215,7 +242,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
   // A new door is a new start: reset to what IT holds.
   useEffect(() => {
     if (!open) return;
-    setState(seed.state);
+    setState(withMarqueeCity(seed.state, marquee));
     setStep(seed.step);
     setTyped("");
     setMoreSpecific(false);
@@ -227,7 +254,14 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
     setGroupChosen(!!source?.group);
     doorOccasion.current = !!seed.state.occasionSlug;
     autoStarted.current = false;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, seed]);
+  // CITY-1: when the market answer arrives after the panel opened, the marquee is pre-selected then — unless a city
+  // is already held (a door's, or the traveler's own pick).
+  useEffect(() => {
+    if (!active || !marquee) return;
+    setState((s) => withMarqueeCity(s, marquee));
+  }, [active, marquee]);
 
   const { data: occasions, isLoading: occasionsLoading } = useQuery<ExperienceType[]>({
     queryKey: ["/api/experience-types"],
@@ -272,6 +306,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
     if (!canStartPlan(state) || starting || !state.market) return;
     setStarting(true);
     setError(null);
+    setWaitlistMarket(null);
     const m = state.market;
     const fields = partyFields(pickedRow);
     const party: { adults?: number; kids?: number } = {};
@@ -297,7 +332,8 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
     });
     if (!out.ok) {
       setStarting(false);
-      if (out.message) setError(out.message);
+      if (out.waitlistMarket) setWaitlistMarket(out.waitlistMarket);
+      else if (out.message) setError(out.message);
     }
   };
 
@@ -308,7 +344,8 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
     // H-10: a carried experience stops on dates and party. Auto-start would skip that question,
     // and it would also mint a carried slug the moment the catalog loads.
     if (source?.askDatesAndParty) return;
-    if (startsStraightAway(state, occasionRows.map((o) => o.slug))) {
+    // CITY-1: only a city the DOOR held may start a plan straight away — never the pre-selected marquee.
+    if (startsStraightAway(seed.state, occasionRows.map((o) => o.slug))) {
       autoStarted.current = true;
       void start();
     }
@@ -346,7 +383,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
     else setStep("occasion");
   };
 
-  const typedResult = typedCity(typed);
+  const typedResult = typedCity(typed, isOpenMarket);
 
   const goAround = (a: PlanAround) => {
     setState((s) => ({ ...s, around: a }));
@@ -366,11 +403,20 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
       <div data-testid="plan-entry-place-picker">{placePicker(state.market?.marketKey ?? null, pickMarket)}</div>
     ) : (
     <div className="flex flex-wrap gap-2" role="group" aria-label="Cities">
-      {OPERATING_MARKETS.filter((m) => !only || only.includes(m.marketKey)).map((m) => (
-        <Chip key={m.marketKey} active={state.market?.marketKey === m.marketKey} onClick={() => pickMarket(m.marketKey)} testId={`plan-entry-city-${m.marketKey}`}>
-          {m.cityName}
-        </Chip>
-      ))}
+      {(marketSettingsLoaded ? marketPickerOrder(marketSettings) : OPERATING_MARKETS.map((m) => m.marketKey))
+        .map((key) => OPERATING_MARKETS.find((m) => m.marketKey === key)!)
+        .filter((m) => !only || only.includes(m.marketKey))
+        .map((m) =>
+          isOpenMarket(m.marketKey) ? (
+            <Chip key={m.marketKey} active={state.market?.marketKey === m.marketKey} onClick={() => pickMarket(m.marketKey)} testId={`plan-entry-city-${m.marketKey}`}>
+              {m.cityName}
+            </Chip>
+          ) : (
+            <WaitlistChip key={m.marketKey} marketKey={m.marketKey} testId={`plan-entry-city-${m.marketKey}`}>
+              {`${m.cityName} · ${marketStatusLabel(m.marketKey, marketSettings)}`}
+            </WaitlistChip>
+          ),
+        )}
     </div>
   );
 
@@ -469,6 +515,11 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
                     <Chip active={false} onClick={() => pickMarket(typedResult.market.marketKey)} testId="plan-entry-city-typed">
                       {typedResult.market.cityName}
                     </Chip>
+                  )}
+                  {typedResult && "waitlist" in typedResult && (
+                    <WaitlistChip marketKey={typedResult.waitlist.marketKey} testId="plan-entry-city-typed-waitlist">
+                      {`${typedResult.waitlist.cityName} · ${marketStatusLabel(typedResult.waitlist.marketKey, marketSettings)}`}
+                    </WaitlistChip>
                   )}
                   {typedResult && "notYet" in typedResult && (
                     <div className="space-y-2" data-testid="plan-entry-not-yet">
@@ -625,6 +676,11 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
             </div>
           )}
 
+          {waitlistMarket && (
+            <Link href={waitlistMarketPath(waitlistMarket)} className="text-[14px] underline" style={{ color: "var(--coral-text)" }} data-testid="plan-entry-waitlist-link">
+              {MARKET_STATUS_COPY.waitlist}
+            </Link>
+          )}
           {error && (
             <p className="text-[14px]" role="alert" style={{ color: "var(--coral-text)" }} data-testid="plan-entry-error">{error}</p>
           )}

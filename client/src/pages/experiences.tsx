@@ -22,7 +22,10 @@
  * the other queued cities are added through PlanEntry's own city chips — there is no multi-city plan model.
  */
 import { useMemo } from "react";
-import { Link, useSearch } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
+import { marketIsOpen, marketPickerOrder, marketStatusLabel } from "@shared/ticker";
+import { useMarketStatusSettings } from "@/lib/signup-mode";
+import { waitlistMarketPath } from "@/lib/waitlist-markets";
 import { EXPERIENCES_PAGE_DESCRIPTION, OPERATING_MARKETS } from "@shared/operating-markets";
 import { PageLayout, PAGE_ACTION } from "@/components/company/company-page";
 import { SEOHead } from "@/components/seo-head";
@@ -41,6 +44,15 @@ import { CityTileFace } from "@/components/city-tile-face";
 
 /** The page's Place picker: the world map with eight pins, then the eight city cards. */
 function PlacePicker({ picked, pick }: { picked: string | null; pick: (marketKey: string) => void }) {
+  // CITY-1 (ledger `2026-11-04-city1-marquee-defaults`): the marquee first, each city with its status; a city that
+  // is not open (neither the marquee nor live) goes to its waitlist instead of being picked.
+  const { settings, loaded } = useMarketStatusSettings();
+  const [, setLocation] = useLocation();
+  const isOpen = (key: string) => !loaded || marketIsOpen(key, settings);
+  const choose = (key: string) => (isOpen(key) ? pick(key) : setLocation(waitlistMarketPath(key)));
+  const ordered = (loaded ? marketPickerOrder(settings) : OPERATING_MARKETS.map((m) => m.marketKey)).map(
+    (key) => OPERATING_MARKETS.find((m) => m.marketKey === key)!,
+  );
   return (
     <div className="space-y-4" data-testid="experiences-where">
       <figure>
@@ -59,7 +71,7 @@ function PlacePicker({ picked, pick }: { picked: string | null; pick: (marketKey
               <button
                 key={m.marketKey}
                 type="button"
-                onClick={() => pick(m.marketKey)}
+                onClick={() => choose(m.marketKey)}
                 aria-label={`${m.cityName}, ${m.country}`}
                 aria-pressed={on}
                 className={`absolute h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow ${
@@ -77,9 +89,40 @@ function PlacePicker({ picked, pick }: { picked: string | null; pick: (marketKey
       </figure>
 
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-        {OPERATING_MARKETS.map((m) => {
+        {ordered.map((m) => {
           const on = m.marketKey === picked;
           const photo = cityPhotoFor(m.marketKey);
+          const open = isOpen(m.marketKey);
+          const face = (
+            <>
+              {/* Ruling 3 (8a): only Kyoto and Bogotá have photos. The other cities use the
+                  painted typographic ground — never stock, never AI, never a Google photo.
+                  A photo that fails to load uses that same ground (row 250). */}
+              <CityTileFace cityName={m.cityName} photo={photo} />
+              <span className="px-2.5 py-2">
+                <span className="block text-sm font-semibold text-foreground">{m.cityName}</span>
+                <span className="block text-xs text-muted-foreground">{m.country}</span>
+                {loaded && (
+                  <span className="block text-xs text-muted-foreground" data-testid={`city-card-status-${m.marketKey}`}>
+                    {marketStatusLabel(m.marketKey, settings)}
+                  </span>
+                )}
+              </span>
+            </>
+          );
+          if (!open) {
+            return (
+              <Link
+                key={m.marketKey}
+                href={waitlistMarketPath(m.marketKey)}
+                className="flex flex-col overflow-hidden rounded-xl border border-border text-left transition-colors hover:bg-muted"
+                data-testid={`city-card-${m.marketKey}`}
+                data-photo={photo ? "credited" : "none"}
+              >
+                {face}
+              </Link>
+            );
+          }
           return (
             <button
               key={m.marketKey}
@@ -92,14 +135,7 @@ function PlacePicker({ picked, pick }: { picked: string | null; pick: (marketKey
               data-testid={`city-card-${m.marketKey}`}
               data-photo={photo ? "credited" : "none"}
             >
-              {/* Ruling 3 (8a): only Kyoto and Bogotá have photos. The other cities use the
-                  painted typographic ground — never stock, never AI, never a Google photo.
-                  A photo that fails to load uses that same ground (row 250). */}
-              <CityTileFace cityName={m.cityName} photo={photo} />
-              <span className="px-2.5 py-2">
-                <span className="block text-sm font-semibold text-foreground">{m.cityName}</span>
-                <span className="block text-xs text-muted-foreground">{m.country}</span>
-              </span>
+              {face}
             </button>
           );
         })}

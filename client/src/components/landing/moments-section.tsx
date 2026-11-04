@@ -23,6 +23,8 @@ import { SectionHeader, OpenSection } from "./section-header";
 import { useRotation } from "@/hooks/use-rotation";
 import { usePlanning } from "@/contexts/PlanningContext";
 import { START_PLAN_LABEL } from "@/lib/plan-vocabulary";
+import { MARKET_STATUS_COPY } from "@shared/ticker";
+import { waitlistMarketPath } from "@/lib/waitlist-markets";
 
 const FRAUNCES = "'Fraunces', Georgia, serif";
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
@@ -48,6 +50,9 @@ interface LiveMoment {
   experienceSlug: string | null;
   photos: MomentPhoto[];
   builder: { handle: string; reviews: number } | null;
+  /** CITY-1: the moment's market, and whether its CTA starts a plan or links to that market's waitlist. */
+  market?: string | null;
+  cta?: "plan" | "waitlist";
 }
 interface MomentsPayload { moments: LiveMoment[]; roster: { key: string; label: string }[] }
 
@@ -249,6 +254,17 @@ export function MomentsSection() {
               ))}
             </ul>
             <div className="mt-auto flex flex-wrap items-center gap-3.5 pt-2">
+              {moment.cta === "waitlist" && moment.market ? (
+                <Link
+                  href={waitlistMarketPath(moment.market)}
+                  className="inline-flex items-center rounded-[8px] px-3.5 py-2 text-[13px] font-semibold text-white"
+                  style={{ background: "var(--coral-fill)" }}
+                  data-testid="moment-cta-waitlist"
+                  onClick={() => postEvent(moment.key, "cta", active)}
+                >
+                  {MARKET_STATUS_COPY.waitlist}
+                </Link>
+              ) : (
               <Link href={PLAN_START_HREF}
                 className="inline-flex items-center rounded-[8px] px-3.5 py-2 text-[13px] font-semibold text-white"
                 style={{ background: "var(--coral-fill)" }}
@@ -266,6 +282,7 @@ export function MomentsSection() {
               >
                 {START_PLAN_LABEL}
               </Link>
+              )}
             </div>
           </div>
         </div>

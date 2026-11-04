@@ -68,8 +68,8 @@ import { resolveFormat } from "@/lib/build-formats/registry";
 import { refreshPlanLists } from "@/lib/plan-lists";
 import { getAcquisitionRef } from "@/lib/acquisition";
 import {
-  READY_MADE_WAITLIST_LABEL,
   arrivalRef,
+  readyMadeWaitlistLabel,
   readyMadeWaitlistHref,
   type SignupModeRead,
 } from "@/lib/ready-made-waitlist";
@@ -656,7 +656,7 @@ export default function ReadyMadeDetailPage() {
                   size="lg"
                   className={buyCtaClass}
                 >
-                  <a href={waitlistHref} data-testid="button-rm-waitlist">{READY_MADE_WAITLIST_LABEL}</a>
+                  <a href={waitlistHref} data-testid="button-rm-waitlist">{readyMadeWaitlistLabel(signupMode?.launchMarketSlug)}</a>
                 </Button>
               ) : (
                 <Button

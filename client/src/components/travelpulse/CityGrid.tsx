@@ -44,6 +44,10 @@ import { useTripQueue, QueuedCity } from "@/contexts/TripQueueContext";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { usePlanning } from "@/contexts/PlanningContext";
+import { marketKeyForCityName } from "@shared/live-markets";
+import { MARKET_STATUS_COPY, marketIsOpen, marketStatusLabel } from "@shared/ticker";
+import { useMarketStatusSettings } from "@/lib/signup-mode";
+import { waitlistMarketPath } from "@/lib/waitlist-markets";
 
 interface TravelPulseCity {
   id: string;
@@ -117,7 +121,6 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  const priceChange = parseFloat(city.priceChange || "0");
   const vibeTags = Array.isArray(city.vibeTags) ? city.vibeTags : [];
   const inQueue = isInQueue(city.id);
 
@@ -195,8 +198,14 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
     }
   };
 
-  const isHot = city.trendingScore > 70;
   const citySlug = city.cityName.toLowerCase().replace(/\s+/g, "-");
+  // CITY-1 (ledger `2026-11-04-city1-marquee-defaults`): the "Hot" and price-% popularity chips are gone; each card
+  // shows its market's status, and a market that is not open (neither the marquee nor live) links to its waitlist.
+  // The city stays listed — non-open cities never disappear.
+  const { settings: marketSettings, loaded: marketSettingsLoaded } = useMarketStatusSettings();
+  const marketKey = marketKeyForCityName(city.cityName);
+  const statusLabel = marketKey && marketSettingsLoaded ? marketStatusLabel(marketKey, marketSettings) : null;
+  const waitlistOnly = !!marketKey && marketSettingsLoaded && !marketIsOpen(marketKey, marketSettings);
 
   return (
     <>
@@ -206,20 +215,19 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
         country={city.country}
         imageUrl={city.imageUrl}
         score={city.pulseScore}
-        isHot={isHot}
+        statusLabel={statusLabel}
         activeTravelers={city.activeTravelers}
         alertCount={city.totalAlerts}
         inTrip={inQueue}
         vibeTags={vibeTags}
         avgPrice={city.avgHotelPrice}
-        priceChangePct={Math.round(priceChange)}
         crowdLevel={city.crowdLevel}
         dealAlert={city.dealAlert}
         trendingSpots={city.totalTrendingSpots}
         hiddenGems={city.totalHiddenGems}
-        primaryLabel="Take me Here"
-        onPrimary={() => setDialogOpen(true)}
-        onCardClick={onClick}
+        primaryLabel={waitlistOnly ? MARKET_STATUS_COPY.waitlist : "Take me Here"}
+        onPrimary={() => (waitlistOnly && marketKey ? navigate(waitlistMarketPath(marketKey)) : setDialogOpen(true))}
+        onCardClick={waitlistOnly && marketKey ? () => navigate(waitlistMarketPath(marketKey)) : onClick}
         primaryTestId={`button-plan-now-${citySlug}`}
         testId={`card-city-${citySlug}`}
       />
