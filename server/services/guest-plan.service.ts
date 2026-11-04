@@ -16,7 +16,7 @@
  *   · retention — unclaimed guest plans whose last change is older than GUEST_PLAN_RETENTION_DAYS are deleted
  *               (items cascade); unset ⇒ disabled, deletes nothing (ruling 6).
  */
-import { createHash } from "node:crypto";
+import crypto, { createHash } from "node:crypto";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
@@ -37,6 +37,49 @@ import { GUEST_PLAN_RETENTION_BATCH, GUEST_SESSION_ID_MAX_LENGTH, guestPlanReten
 export const GUEST_SESSION_HEADER = "x-guest-session";
 
 /** SHA-256 hex of a well-formed guest-session id, else null (missing, too long, or odd characters). */
+/**
+ * A-10 (ledger `2026-11-05-lane6-guest-cookie`; ruling, Nov 5, 2026): an httpOnly cookie the server mints is the guest's
+ * PRIMARY identity. The `X-Guest-Session` id (the browser's localStorage) is the FALLBACK, used only when the client says
+ * its cookies are off (`X-Guest-Cookies: off`). A cleared cookie therefore means a NEW guest — the localStorage id does
+ * not bring the old plan back — and there is no recovery screen. Only the SHA-256 of whichever id answers is stored.
+ */
+export const GUEST_SESSION_COOKIE = "traveloure_guest";
+export const GUEST_COOKIES_OFF_HEADER = "x-guest-cookies";
+
+/** A named cookie's value from a raw `Cookie` header, or null. */
+export function readCookie(header: string | null | undefined, name: string): string | null {
+  if (!header) return null;
+  for (const part of header.split(";")) {
+    const i = part.indexOf("=");
+    if (i < 0) continue;
+    if (part.slice(0, i).trim() !== name) continue;
+    try {
+      return decodeURIComponent(part.slice(i + 1).trim());
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+export type GuestSessionResolution =
+  | { id: string; source: "cookie" | "header" }
+  | { id: string; source: "new" };
+
+/**
+ * Which id names this guest: the cookie when it holds a well-formed id; else the header id when the client's cookies
+ * are off; else a NEW id (the caller sets the cookie). `mintNew: false` (the claim) answers null instead of minting.
+ */
+export function resolveGuestSessionId(
+  input: { cookie: string | null; header: string | null | undefined; cookiesOff: boolean },
+  opts: { mintNew: boolean; mint?: () => string } = { mintNew: true },
+): GuestSessionResolution | null {
+  if (hashGuestSession(input.cookie)) return { id: input.cookie!.trim(), source: "cookie" };
+  if (input.cookiesOff && hashGuestSession(input.header)) return { id: String(input.header).trim(), source: "header" };
+  if (!opts.mintNew) return null;
+  return { id: (opts.mint ?? (() => crypto.randomUUID()))(), source: "new" };
+}
+
 export function hashGuestSession(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const id = raw.trim();

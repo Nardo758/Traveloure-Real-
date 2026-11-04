@@ -9,17 +9,29 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+/**
+ * A-10 (ledger `2026-11-05-lane6-guest-cookie`): the guest plan's identity is an httpOnly cookie the server sets; the
+ * localStorage id below is its fallback, which the server reads only when this header says the browser's cookies are off.
+ */
+export function guestCookieHeaders(cookieEnabled: boolean | undefined): Record<string, string> {
+  return cookieEnabled === false ? { "X-Guest-Cookies": "off" } : {};
+}
+
 function buildHeaders(base: Record<string, string> = {}): Record<string, string> {
+  const withCookieFlag = {
+    ...base,
+    ...guestCookieHeaders(typeof navigator !== "undefined" ? navigator.cookieEnabled : undefined),
+  };
   try {
     let guestId = localStorage.getItem("traveloure_guest_session");
     if (!guestId) {
       guestId = crypto.randomUUID();
       localStorage.setItem("traveloure_guest_session", guestId);
     }
-    return { ...base, "X-Guest-Session": guestId };
+    return { ...withCookieFlag, "X-Guest-Session": guestId };
   } catch {
   }
-  return base;
+  return withCookieFlag;
 }
 
 export async function apiRequest(

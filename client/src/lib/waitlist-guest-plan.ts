@@ -251,15 +251,16 @@ export function _resetGuestClaimMemo(): void {
 }
 
 async function claimGuestPlansOnce(): Promise<string[]> {
+  // A-10 (ledger `2026-11-05-lane6-guest-cookie`): the guest cookie rides the request and names the guest; the
+  // localStorage id is sent too, and the server reads it only when this browser's cookies are off.
   let guestSessionId: string | null = null;
   try {
     guestSessionId = localStorage.getItem(GUEST_SESSION_STORAGE_KEY);
   } catch {
-    return [];
+    guestSessionId = null;
   }
-  if (!guestSessionId) return [];
   try {
-    const res = await apiRequest("POST", "/api/guest-plans/claim", { guestSessionId });
+    const res = await apiRequest("POST", "/api/guest-plans/claim", guestSessionId ? { guestSessionId } : {});
     const out = (await res.json()) as { tripIds?: string[] };
     queryClient.removeQueries({ queryKey: GUEST_PLAN_QUERY_KEY });
     const ids = Array.isArray(out.tripIds) ? out.tripIds.filter((id) => typeof id === "string" && id) : [];

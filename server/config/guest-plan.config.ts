@@ -13,6 +13,15 @@ export const GUEST_PLAN_LIMITS = {
 /** The longest guest-session id accepted in `X-Guest-Session` (the client mints a UUID). */
 export const GUEST_SESSION_ID_MAX_LENGTH = 128;
 
+/**
+ * A-10 (ledger `2026-11-05-lane6-guest-cookie`): the guest cookie's lifetime, refreshed on every guest request — the
+ * retention window when one is set (a plan idle longer is deleted anyway), else 30 days.
+ */
+export const GUEST_SESSION_COOKIE_DEFAULT_DAYS = 30;
+export function guestSessionCookieMaxAgeMs(env: NodeJS.ProcessEnv = process.env): number {
+  return (guestPlanRetentionDays(env) ?? GUEST_SESSION_COOKIE_DEFAULT_DAYS) * 24 * 60 * 60 * 1000;
+}
+
 /** Per retention pass, at most this many guest plans are deleted (the rest wait for the next pass). */
 export const GUEST_PLAN_RETENTION_BATCH = 500;
 
