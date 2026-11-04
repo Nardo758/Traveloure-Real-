@@ -6,13 +6,15 @@
 import { useToast } from "@/hooks/use-toast";
 import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 
-export function SaveToPlanButton({ testId, className }: { testId: string; className?: string }) {
+export function SaveToPlanButton({ testId, className, onSave }: { testId: string; className?: string; onSave?: () => void }) {
   const { toast } = useToast();
   return (
     <button
       type="button"
       className={className ?? "inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-semibold"}
-      onClick={() => toast({ title: WAITLIST_COPY.savedToPlan })}
+      // GATE-1B: a browse save passes `onSave`, which writes to the guest plan and toasts on the server's answer.
+      // Without it the item is already on the plan (P-1c) and the press only says so.
+      onClick={() => (onSave ? onSave() : toast({ title: WAITLIST_COPY.savedToPlan }))}
       data-testid={testId}
     >
       {WAITLIST_COPY.saveToPlan}

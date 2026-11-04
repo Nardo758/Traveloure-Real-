@@ -118,7 +118,10 @@ describe("GATE-1 + PARTNER-1", () => {
     wrapped({ title: "x" });
     assert.equal(dialogOpened, 0, "no dialog in waitlist mode for a signed-out viewer");
     const browseSave = read("client/src/lib/browse-save.ts");
-    assert.match(browseSave, /return \(\) => toast\(\{ title: WAITLIST_COPY\.savedToPlan \}\);/);
+    // GATE-1B (G-2, sanctioned edit): the press writes to the guest plan and toasts "Saved to plan" only on the
+    // server's confirmation — never a bare toast (the bug G-2 names).
+    assert.match(browseSave, /saveToGuestPlan\(body, .*\)\.then\(\s*\(\) => toast\(\{ title: WAITLIST_COPY\.savedToPlan \}\),/);
+    assert.doesNotMatch(browseSave, /return \(\) => toast\(\{ title: WAITLIST_COPY\.savedToPlan \}\);/);
     // "Sign In Required" is never reached in waitlist mode: the dialog returns before it, and the page's add path
     // and SaveToggle never open it / the sign-in modal.
     const dialog = read("client/src/components/add-to-experience-dialog.tsx");

@@ -32,6 +32,7 @@ import { runFactsRecheck } from "../jobs/factsRecheck";
 import { contentExpiryCensusCrashed, contentExpiryCensusReportedFailure, runContentExpiryCensus } from "../jobs/contentExpiryCensus";
 import { runWaitlistRetention } from "../jobs/waitlistRetention";
 import { runGuestDataRetention } from "../jobs/guestDataRetention";
+import { runGuestPlanRetention } from "../services/guest-plan.service";
 import { runOfficialRefresh } from "../jobs/officialRefresh";
 import { runLiteapiSync } from "../jobs/liteapiSync";
 import { runLiteapiBookingSync } from "../jobs/liteapiBookingSync";
@@ -241,6 +242,9 @@ export const JOB_CADENCE: readonly JobCadence[] = [
   { job: "waitlist-retention", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
   // Row 210. Posted daily. Unset N answers `unset` and erases nothing; a due pass erases and audits the count.
   { job: "guest-data-retention", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
+  // GATE-1B (ledger `2026-11-04-gate1b-guest-plan`): posted daily. GUEST_PLAN_RETENTION_DAYS unset answers `disabled`
+  // and deletes nothing; set, it deletes unclaimed guest plans idle past N days (items cascade).
+  { job: "guest-plan-retention", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
   // S1-d-1 (ledger `2026-10-10-s1-d1-liteapi`): LiteAPI static content, Kyoto only, incremental.
   { job: "liteapi-sync", expectedIntervalSec: 24 * 60 * 60, bucket: "daily" },
   // SS-1b (ledger `2026-10-10-ss1b-official-refresh`): posted daily; reads only targets that are DUE on their
@@ -493,6 +497,12 @@ router.post("/internal/jobs/guest-data-retention", requireInternalSecret, async 
     () => runGuestDataRetention(),
     (r) => r?.status === "error",
   );
+  res.status(status).json(body);
+});
+
+// GATE-1B: the daily guest plan retention pass. Disabled (unset N) is a success that deleted nothing.
+router.post("/internal/jobs/guest-plan-retention", requireInternalSecret, async (_req, res) => {
+  const { status, body } = await runJob("guest-plan-retention", () => runGuestPlanRetention(), (r) => r?.status === "error");
   res.status(status).json(body);
 });
 

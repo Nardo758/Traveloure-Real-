@@ -140,7 +140,10 @@ test("T4 catalog search and catalog item read: Fever description only when revie
 
 test("T8 migration 432: registered, additive, guarded, and the brief's §8 statements", () => {
   const file = "432_waitlist_markets_and_partner_editorial.sql";
-  assert.equal(MIGRATION_FILES[MIGRATION_FILES.length - 1], file, "registered last");
+  // Registered directly after 431. A later migration is appended after it, so the pin reads its place, not "last".
+  const at = MIGRATION_FILES.indexOf(file);
+  assert.ok(at > 0, "registered");
+  assert.equal(MIGRATION_FILES[at - 1], "431_content_round3_labels.sql", "registered directly after 431");
   const sql = read(`server/migrations/${file}`);
   const statements = sql
     .split("\n")

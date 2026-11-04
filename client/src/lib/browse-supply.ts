@@ -241,6 +241,8 @@ export function placesInTab(places: readonly BrowsePlace[], tab: BrowseTabKey, c
   const def = BROWSE_TABS.find((t) => t.key === tab)!;
   return places.filter((p) => {
     if (p.kind === "candidate") return true;
+    // GATE-1B: a gem or event is in exactly its own tab, and in none while "Find a host" narrows to a category.
+    if (p.kind === "gem" || p.kind === "event") return !categoryKey && p.tabKey === tab;
     if (p.kind === "listing") {
       const key = p.categoryKey ?? null;
       if (!key) return false;
@@ -311,6 +313,10 @@ export function hostRows(rows: ReadonlyArray<any> | null | undefined): Array<{ i
 /** The ONE add body for a Browse place onto a day of the plan (LD 39's rail). */
 export function browseAddBody(place: BrowsePlace, dayNumber: number): Record<string, unknown> {
   const located = place.lat != null && place.lng != null;
+  if (place.kind === "gem" || place.kind === "event") {
+    // GATE-1B: a city-page gem or event carries no listing or partner link; it adds by its own name.
+    return { title: place.name, itemType: "activity", dayNumber, locationName: place.name };
+  }
   if (place.kind === "listing") {
     // R323 (R322 carry-over): a listing placed from its OWN coordinates carries them, so the stop is
     // located and can have a leg; an unlocated listing still adds, unlocated (§13 — never a guess).
@@ -332,3 +338,46 @@ export function browseAddBody(place: BrowsePlace, dayNumber: number): Record<str
     ...(located ? { latitude: String(place.lat), longitude: String(place.lng) } : {}),
   };
 }
+
+// ── GATE-1B (ledger `2026-11-04-gate1b-guest-plan`; architect ruling 2): the city page's own gems and events as a tab
+// source, and empty tabs hidden. ─────────────────────────────────────────────────────────────────────────────────────
+
+/** A gem's tab from its place type, by the city page's own category rule (`gemCategory`): eat ⇒ Dining, stay ⇒ Hotels. */
+export function gemTabKey(category: string): BrowseTabKey {
+  if (category === "eat") return "dining";
+  if (category === "stay") return "hotels";
+  return "activities";
+}
+
+/**
+ * The city payload's gems and events as browse places. Gems are the payload's visible (moderated) gems; an event is
+ * included only when its description is our reviewed editorial text (PARTNER-1: `description` is published only once
+ * `editorial_reviewed_at` is set). Neither carries a point in the public payload, so both list "not on the map".
+ */
+export function cityContentPlaces(
+  payload: { gems?: { data?: unknown } | null; events?: { data?: { events?: unknown } | null } | null } | null | undefined,
+  gemCategoryOf: (placeType: string | null | undefined) => string,
+): BrowsePlace[] {
+  const gems = Array.isArray(payload?.gems?.data) ? (payload!.gems!.data as any[]) : [];
+  const events = Array.isArray(payload?.events?.data?.events) ? (payload!.events!.data!.events as any[]) : [];
+  const out: BrowsePlace[] = [];
+  for (const g of gems) {
+    const name = typeof g?.placeName === "string" ? g.placeName.trim() : "";
+    if (!g?.id || !name) continue;
+    out.push({ id: String(g.id), kind: "gem", name, lat: null, lng: null, category: typeof g.placeType === "string" ? g.placeType : null, tabKey: gemTabKey(gemCategoryOf(g.placeType)) });
+  }
+  for (const e of events) {
+    const name = typeof e?.title === "string" ? e.title.trim() : typeof e?.name === "string" ? e.name.trim() : "";
+    const reviewed = typeof e?.description === "string" && e.description.trim() !== "";
+    if (!e?.id || !name || !reviewed) continue;
+    out.push({ id: String(e.id), kind: "event", name, lat: null, lng: null, category: null, tabKey: "activities" });
+  }
+  return out;
+}
+
+/** Ruling 2: the tabs that have at least one place. Until every read has answered, every tab shows (no flicker). */
+export function visibleBrowseTabs(places: readonly BrowsePlace[], loaded: boolean): BrowseTab[] {
+  if (!loaded) return [...BROWSE_TABS];
+  return BROWSE_TABS.filter((t) => placesInTab(places, t.key).some((p) => p.kind !== "candidate"));
+}
+

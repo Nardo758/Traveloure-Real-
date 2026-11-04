@@ -42,8 +42,9 @@ import {
 import { MAP_FALLBACK_NOTICE, useMapRenderer } from "@/lib/map-renderer";
 import { everyLocatedPointNonGoogle } from "@shared/item-coord-source";
 import {
-  BROWSE_TABS,
   addedItemFor,
+  cityContentPlaces,
+  visibleBrowseTabs,
   applyBudget,
   browseAddBody,
   browseTabForCategory,
@@ -75,6 +76,7 @@ import { viatorAddBody } from "@shared/viator-item";
 import { useSignupMode } from "@/lib/signup-mode";
 import { useTripCapabilities } from "@/lib/trip-capabilities";
 import { SaveToPlanButton } from "@/components/plan/SaveToPlanButton";
+import { gemCategory } from "@/lib/feed-stream";
 
 const MAPS_API_KEY = MAPS_BROWSER_KEY;
 
@@ -166,7 +168,15 @@ export interface MapControlCenterProps {
    * `/api/geocode` stays closed to guests; "Add to plan" hands the place back (`onAdd`) instead of
    * posting. The member path is untouched when this is absent.
    */
-  guest?: { center: { lat: number; lng: number } | null; onAdd: (place: BrowsePlace) => void } | null;
+  guest?: {
+    center: { lat: number; lng: number } | null;
+    onAdd: (place: BrowsePlace) => void;
+    /**
+     * GATE-1B (ledger `2026-11-04-gate1b-guest-plan`): a waitlist guest WITH a server-side plan — the day chips and
+     * the plan's stops show, and Save to plan writes through `onAdd` (the page toasts on the server's answer).
+     */
+    withPlan?: boolean;
+  } | null;
 }
 
 export function MapControlCenter({
@@ -231,6 +241,19 @@ export function MapControlCenter({
   );
   const listingsUrl = `/api/services?location=${encodeURIComponent(city)}`;
   const { data: listings } = useQuery<any[]>({ queryKey: [listingsUrl], enabled: browseOn && !!city });
+  // GATE-1B (ruling 2): the city page's own gems and reviewed events are a tab source too — the same public payload
+  // the city page reads (moderated gems; events only with our reviewed editorial text).
+  const { data: cityPayload } = useQuery<any>({
+    queryKey: ["/api/discover/location", city, "map-browse"],
+    enabled: browseOn && !!city,
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const res = await fetch(`/api/discover/location/${encodeURIComponent(city)}`);
+      if (!res.ok) throw new Error("Failed to fetch city content");
+      return res.json();
+    },
+  });
+  const cityPlaces = useMemo(() => cityContentPlaces(cityPayload, gemCategory), [cityPayload]);
   const partnerUrl = `/api/affiliate/products?city=${encodeURIComponent(city)}&limit=100`;
   const { data: partner } = useQuery<{ products?: any[] }>({ queryKey: [partnerUrl], enabled: browseOn && !!city });
   const { data: experts } = useQuery<any[]>({
@@ -257,22 +280,34 @@ export function MapControlCenter({
   }, [browseState.categoryKey]);
   const [search, setSearch] = useState("");
   const [budgetText, setBudgetText] = useState("");
-  const budgetMax = budgetText.trim() === "" ? null : Number(budgetText);
+  // GATE-1B (ruling 2): the Budget filter is a priced control, so it is drawn only where purchases are on sale — the
+  // public mode for a guest, the plan's capabilities for a member. Unknown ⇒ hidden (fail closed).
+  const { mode: signupMode } = useSignupMode();
+  const { data: caps } = useTripCapabilities(guest ? null : tripId, !guest && browseOn);
+  const budgetShown = guest ? signupMode === "open" : caps?.signup.mode === "open";
+  const budgetMax = !budgetShown || budgetText.trim() === "" ? null : Number(budgetText);
+  const allSupply = useMemo(
+    () => (browseOn ? [...listingPlaces(listings, categoryKeyById), ...partnerPlaces(partner?.products), ...cityPlaces] : []),
+    [browseOn, listings, categoryKeyById, partner, cityPlaces],
+  );
+  const suppliesLoaded = listings !== undefined && partner !== undefined && cityPayload !== undefined;
+  // Ruling 2: a tab with nothing in it is not drawn. The shown tab follows to the first one that has places.
+  const shownTabs = useMemo(() => visibleBrowseTabs(allSupply, suppliesLoaded), [allSupply, suppliesLoaded]);
+  useEffect(() => {
+    if (!browseState.categoryKey && shownTabs.length > 0 && !shownTabs.some((t) => t.key === tab)) setTab(shownTabs[0].key);
+  }, [shownTabs, tab, browseState.categoryKey]);
   const supply = useMemo(() => {
     if (!browseOn) return { shown: [] as BrowsePlace[], byQuote: 0, noUsdPrice: 0 };
-    const all = [...listingPlaces(listings, categoryKeyById), ...partnerPlaces(partner?.products)];
-    return applyBudget(searchPlaces(placesInTab(all, tab, browseState.categoryKey), search), budgetMax);
-  }, [browseOn, listings, categoryKeyById, partner, tab, browseState.categoryKey, search, budgetMax]);
+    return applyBudget(searchPlaces(placesInTab(allSupply, tab, browseState.categoryKey), search), budgetMax);
+  }, [browseOn, allSupply, tab, browseState.categoryKey, search, budgetMax]);
   const browsePlaces: BrowsePlace[] = useMemo(() => [...candidatePlaces, ...supply.shown], [candidatePlaces, supply.shown]);
   // GATE-1 (ledger `2026-11-03-gate1-partner1`): the commission line only where purchases are on sale. A plan reads its
   // capabilities (CAP-1); the guest map has no plan, so it reads the public mode — and a guest in waitlist mode saves.
-  const { mode: signupMode } = useSignupMode();
-  const { data: caps } = useTripCapabilities(guest ? null : tripId, !guest && browseOn);
   const purchasesAllowed = guest ? signupMode === "open" : caps?.signup.purchasesAllowed === true;
   const guestSavesToPlan = !!guest && signupMode === "waitlist";
   const browseEmpty = browseTabEmptyShown({
     browseOn,
-    loaded: listings !== undefined && partner !== undefined,
+    loaded: suppliesLoaded,
     count: browsePlaces.length,
     city,
   });
@@ -420,7 +455,7 @@ export function MapControlCenter({
       <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-border" data-testid={`map-toolbar-${tripId}`}>
         <div className="flex flex-wrap gap-1" data-testid={`map-day-selector-${tripId}`}>
           {/* Step 8d: a guest has no plan, so no days (the board's `showDayChips: member`). */}
-          {guest ? null : days.map((d, i) => (
+          {guest && !guest.withPlan ? null : days.map((d, i) => (
             <button
               key={i}
               type="button"
@@ -651,12 +686,17 @@ export function MapControlCenter({
           <div className="space-y-2 border-t border-border pt-2" data-testid="map-browse-panel">
             {browseOn ? (
               <div className="space-y-2" data-testid="map-browse-controls">
+                {/* GATE-1B (ruling 2): real <button>s carrying role="tab" inside a tablist, each controlling the one
+                    tabpanel below; a tab with nothing in it is not drawn. */}
                 <div className="flex flex-wrap gap-1" role="tablist" aria-label="Browse" data-testid="map-browse-tabs">
-                  {BROWSE_TABS.map((t) => (
+                  {shownTabs.map((t) => (
                     <button
                       key={t.key}
                       type="button"
                       role="tab"
+                      id={`map-browse-tab-${t.key}`}
+                      aria-controls="map-browse-tabpanel"
+                      tabIndex={tab === t.key ? 0 : -1}
                       aria-selected={tab === t.key}
                       onClick={() => {
                         setTab(t.key);
@@ -679,6 +719,7 @@ export function MapControlCenter({
                     className="min-w-0 flex-1 rounded-md border border-border bg-card px-2 py-1 text-xs"
                     data-testid="map-browse-search"
                   />
+                  {budgetShown ? (
                   <label className="flex items-center gap-1 text-xs text-muted-foreground">
                     Budget up to $
                     <input
@@ -692,6 +733,7 @@ export function MapControlCenter({
                       data-testid="map-browse-budget"
                     />
                   </label>
+                  ) : null}
                 </div>
                 {budgetMax != null && (supply.byQuote > 0 || supply.noUsdPrice > 0) ? (
                   <p className="text-[11px] text-muted-foreground" data-testid="map-browse-budget-left-out">
@@ -718,7 +760,11 @@ export function MapControlCenter({
                 <p className="text-sm font-semibold">{selectedBrowse.name}</p>
                 <p className="text-xs text-muted-foreground">
                   {[
-                    selectedBrowse.kind === "listing" ? "Traveloure listing" : selectedBrowse.kind === "candidate" ? null : "Partner place",
+                    selectedBrowse.kind === "listing"
+                      ? "Traveloure listing"
+                      : selectedBrowse.kind === "partner"
+                        ? "Partner place"
+                        : null,
                     selectedBrowse.category,
                     selectedBrowse.priceLabel,
                   ]
@@ -729,7 +775,7 @@ export function MapControlCenter({
                 {(() => {
                   if (guestSavesToPlan) {
                     // GATE-1: in waitlist mode the guest's add is "Save to plan" — no sign-in hand-off.
-                    return <SaveToPlanButton testId="map-browse-add" />;
+                    return <SaveToPlanButton testId="map-browse-add" onSave={() => guest!.onAdd(selectedBrowse)} />;
                   }
                   if (guest) {
                     // Step 8d: the guest's one add is handed back — the page carries it through sign-in.
@@ -774,6 +820,12 @@ export function MapControlCenter({
                 })()}
               </div>
             ) : null}
+            <div
+              role={browseOn ? "tabpanel" : undefined}
+              id={browseOn ? "map-browse-tabpanel" : undefined}
+              aria-labelledby={browseOn && shownTabs.some((t) => t.key === tab) ? `map-browse-tab-${tab}` : undefined}
+              data-testid="map-browse-tabpanel"
+            >
             {browseEmpty ? (
               <p className="px-2 py-1 text-xs text-muted-foreground" data-testid="map-browse-empty">
                 {BROWSE_EMPTY_COPY.tab(city)}
@@ -795,6 +847,7 @@ export function MapControlCenter({
                 </li>
               ))}
             </ul>
+            </div>
             {browseOn && !guest && tab === "activities" && city ? <ViatorLiveRow city={city} tripId={tripId} dayNumber={dayNumber ?? 1} purchasesAllowed={purchasesAllowed} /> : null}
             {browseOn && hosts.length ? (
               <div data-testid="map-browse-hosts">

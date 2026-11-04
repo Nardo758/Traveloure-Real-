@@ -15,6 +15,7 @@ import { ProviderLayout } from "@/components/provider/provider-layout";
 import { EALayout } from "@/components/ea-layout";
 import { PlanPageShell } from "@/components/plan-page-shell";
 import { useAuth } from "@/hooks/use-auth";
+import { claimGuestPlans } from "@/lib/waitlist-guest-plan";
 import { PenBinder } from "@/components/pen-binder";
 import { useLocale } from "@/hooks/use-locale";
 import { TripQueueProvider } from "@/contexts/TripQueueContext";
@@ -1562,6 +1563,10 @@ function GuestCartMigrator() {
             }
           })
           .catch((err) => console.warn("[cart] Guest cart migration failed", err));
+        // GATE-1B (ledger 2026-11-04-gate1b-guest-plan): the session's guest plans become the account's, as-is.
+        void claimGuestPlans().then((ids) => {
+          if (ids.length > 0) qc.invalidateQueries({ queryKey: ["/api/trips"] });
+        });
       }
     }
     wasAuthenticated.current = isNowAuth;

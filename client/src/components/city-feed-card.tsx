@@ -595,7 +595,7 @@ export function EventSheetBody({ data, action }: { data: any; action?: MoreInfoS
     {/* GATE-1: the drawer's one action row. */}
     {action ? (
       action.saveToPlan ? (
-        <SaveToPlanButton testId={`btn-save-event-sheet-${data.id}`} className="self-start inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-semibold" />
+        <SaveToPlanButton testId={`btn-save-event-sheet-${data.id}`} onSave={action.onAdd} className="self-start inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-semibold" />
       ) : action.onAdd ? (
         <Button size="sm" className="self-start h-8 text-xs px-3" style={ADD_BTN_STYLE} onClick={action.onAdd} data-testid={`btn-add-event-sheet-${data.id}`}>
           <Plus className="w-3 h-3 mr-1" />
