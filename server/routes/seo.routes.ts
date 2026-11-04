@@ -26,6 +26,8 @@ import { PUBLISHED_HELP_ARTICLE_SLUGS, helpArticlePath } from "@shared/help-arti
 import { EXPERIENCES_PAGE_DESCRIPTION } from "@shared/operating-markets";
 import { blogIndexRobots, blogPostRobots, publishedBlogSitemapEntries } from "../services/blog-seo.service";
 import { SITE_ORIGIN, buildSitemapXml, routeHeadTags, sitemapUrlsFor } from "../utils/seo-output";
+import { placesMarketFor, placesPath, placesRedirectTarget } from "@shared/places-path";
+import { getLaunchMarketSlug } from "../services/platform-flags";
 
 const router = Router();
 
@@ -43,8 +45,7 @@ const STATIC_ROUTES = [
   "/discover",
   "/experts",
   "/experiences",
-  // CMS-1: the reviewed-places page (formerly /hidden-gems, which redirects).
-  "/places",
+  // C-4: the reviewed-places pages are `/places/{city}` (sitemap below); `/places` itself is a redirect.
   "/pricing",
   "/about",
   "/contact",
@@ -94,10 +95,15 @@ async function buildSitemap(): Promise<string> {
     // only once at least one is published — an empty index is never offered to a crawler.
     publishedBlogSitemapEntries(),
   ]);
+  // C-4: one `/places/{city}` per operating market with at least one reviewed place — never an empty page.
+  const placesRoutes = await import("../services/gem-discovery.service")
+    .then(({ gemDiscoveryService }) => gemDiscoveryService.getDestinationsWithGems())
+    .then((rows) => Array.from(new Set(rows.map((r) => placesMarketFor(r.destination.split(",")[0])?.marketKey).filter((k): k is string => !!k))).map(placesPath))
+    .catch(() => [] as string[]);
 
   return buildSitemapXml(
     sitemapUrlsFor({
-      staticRoutes: STATIC_ROUTES,
+      staticRoutes: [...STATIC_ROUTES, ...placesRoutes],
       services,
       readyMade,
       storefronts,
@@ -106,10 +112,29 @@ async function buildSitemap(): Promise<string> {
   );
 }
 
-// CMS-1 (ledger `2026-11-04-cms1-launch-screens`): /hidden-gems moved to /places — a permanent redirect, query kept.
-router.get("/hidden-gems", (req, res) => {
-  const i = req.originalUrl.indexOf("?");
-  res.redirect(301, `/places${i >= 0 ? req.originalUrl.slice(i) : ""}`);
+// C-4 / A-16 (ledger `2026-11-05-lane4-places`): `/places/{city}` is the canonical page. `/places`, `/places?city=` and
+// `/hidden-gems` (CMS-1's old address) are permanent redirects to it; no city ⇒ the launch market's page.
+async function redirectToPlaces(req: any, res: any) {
+  const city = typeof req.query.city === "string" ? req.query.city : null;
+  const launch = await getLaunchMarketSlug().catch(() => null);
+  res.redirect(301, placesRedirectTarget(city, launch));
+}
+router.get("/hidden-gems", redirectToPlaces);
+router.get("/places", redirectToPlaces);
+
+// A-16: a city that is not an operating market is not found — the SPA shell with a 404 status (its NotFound page renders),
+// never a 200 for a page that does not exist. A known city falls through to the SPA.
+router.get("/places/:city", async (req, res, next) => {
+  if (placesMarketFor(req.params.city)) return next();
+  try {
+    const templatePath = resolveTemplatePath();
+    if (!templatePath) return res.status(404).type("text/plain").send("Not found");
+    const template = await transformDevHtml(req.originalUrl, fs.readFileSync(templatePath, "utf-8"));
+    return res.status(404).set({ "Content-Type": "text/html" }).end(template);
+  } catch (err) {
+    console.error("[seo] /places not-found shell failed:", err);
+    return res.status(404).type("text/plain").send("Not found");
+  }
 });
 
 router.get("/sitemap.xml", async (_req, res) => {

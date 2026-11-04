@@ -216,6 +216,17 @@ const StayBookedPage = lazy(() => import("@/pages/stay-booked"));
 // comparisons, led by plan-fit. Parameterised, so NOT in role-routes-config.ts.
 const PlanComparePage = lazy(() => import("@/pages/plan-compare"));
 const HiddenGemsPage = lazy(() => import("@/pages/hidden-gems"));
+/** C-4: an in-app `/places` (or `/hidden-gems`) link lands on the named or launch market's `/places/{city}`. */
+function PlacesRedirect() {
+  const launch = useLaunchMarket();
+  let city: string | null = null;
+  try {
+    city = new URLSearchParams(window.location.search).get("city");
+  } catch {
+    city = null;
+  }
+  return <Redirect to={placesRedirectTarget(city, launch?.slug ?? null)} replace />;
+}
 const TransportationBookingPage = lazy(() => import("@/pages/transportation-booking"));
 const PrivacyPolicyPage = lazy(() => import("@/pages/privacy"));
 const TermsOfServicePage = lazy(() => import("@/pages/terms"));
@@ -243,6 +254,8 @@ import { emailVerificationHoldRequired, isEmailVerificationHoldPath } from "@/li
 import { applicationStatusQuery } from "@/lib/application-status-query";
 import { accessDeniedCopy, type ApplicationPhase } from "@shared/application-status";
 import { EMAIL_SIGN_IN_REQUIRED_MESSAGE } from "@shared/email-sign-in-required";
+import { placesRedirectTarget } from "@shared/places-path";
+import { useLaunchMarket } from "@/lib/signup-mode";
 import { PaymentMethodSetupGate } from "@/components/payment/PaymentMethodSetupGate";
 
 // Fallback shown while a lazily-loaded route chunk is being fetched.
@@ -776,11 +789,16 @@ function Router() {
       </Route>
       {/* CMS-1 (ledger `2026-11-04-cms1-launch-screens`): the page lives at /places — reviewed places only (the
           server's `publicGemWhere`); /hidden-gems redirects for bookmark continuity. */}
+      {/* C-4 / A-16 (ledger `2026-11-05-lane4-places`): /places/{city} is the canonical page; /places and /hidden-gems go
+          to it (the server answers both with a 301 on a full load; these cover an in-app link). */}
+      <Route path="/places/:city">
+        {(params: any) => <Layout><HiddenGemsPage city={params.city} /></Layout>}
+      </Route>
       <Route path="/places">
-        <Layout><HiddenGemsPage /></Layout>
+        <PlacesRedirect />
       </Route>
       <Route path="/hidden-gems">
-        <Redirect to="/places" />
+        <PlacesRedirect />
       </Route>
       <Route path="/quick-start">
         <Redirect to="/destinations" />
