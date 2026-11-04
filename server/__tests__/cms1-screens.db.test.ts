@@ -207,7 +207,8 @@ test("T3 the stock fallback's credit, or nothing", () => {
 test("T5 /hidden-gems redirects to /places; discovery reads return reviewed rows only", async () => {
   const r = await call(seoRouter, null, "GET", "/hidden-gems?city=Kyoto");
   assert.equal(r.status, 301);
-  assert.equal(r.location, "/places?city=Kyoto");
+  // A-16 (ledger `2026-11-05-lane4-places`): the canonical address is /places/{city}.
+  assert.equal(r.location, "/places/kyoto");
 
   const byDest = await gemDiscoveryService.getGemsForDestination(DEST);
   assert.deepEqual(byDest.gems.map((g: any) => g.id), [ids.gemOk]);

@@ -1,3 +1,4 @@
+import { placesChips } from "@shared/places-path";
 import { db } from "../db";
 import { hideBlockedGemImage, photoBlockedFor, photoBlocks } from "./place-photo-blocks.service";
 import { isBannedPhotoUrl } from "@shared/banned-photos";
@@ -80,6 +81,15 @@ interface DiscoveryResult {
  */
 export function publicGemWhere() {
   return eq(aiDiscoveredGems.verifiedByExpert, true);
+}
+
+/**
+ * C-4 (ledger `2026-11-05-lane4-places`): a city's rows — the stored destination is the city name, or "City, Country".
+ * Case-insensitive; never a prefix of another city's name.
+ */
+export function destinationMatches(city: string) {
+  const c = city.trim().split(",")[0].trim().toLowerCase();
+  return sql`(lower(${aiDiscoveredGems.destination}) = ${c} OR lower(${aiDiscoveredGems.destination}) LIKE ${c + ",%"})`;
 }
 
 class GemDiscoveryService {
@@ -355,7 +365,7 @@ Focus on authenticity and specificity. Avoid generic tourist attractions.`;
     // CMS-1 (ledger `2026-11-04-cms1-launch-screens`): /places shows reviewed rows only (`publicGemWhere`).
     const where = and(
       publicGemWhere(),
-      eq(aiDiscoveredGems.destination, destination),
+      destinationMatches(destination),
       options?.category ? eq(aiDiscoveredGems.category, options.category) : undefined,
     );
     const gems = await db.select()
@@ -410,11 +420,16 @@ Focus on authenticity and specificity. Avoid generic tourist attractions.`;
       .limit(limit);
   }
 
-  async getAvailableCategories(): Promise<{ value: DiscoveryCategory; label: string }[]> {
-    return discoveryCategories.map(cat => ({
-      value: cat,
-      label: CATEGORY_LABELS[cat]
-    }));
+  /**
+   * A-20 / C-5 (ledger `2026-11-05-lane4-places`): the chips a page shows — only categories with at least one reviewed
+   * item (for the city, when one is named), labelled and ordered by the approved chip set (`placesChips`).
+   */
+  async getAvailableCategories(destination?: string | null): Promise<{ value: string; label: string }[]> {
+    const rows = await db
+      .selectDistinct({ category: aiDiscoveredGems.category })
+      .from(aiDiscoveredGems)
+      .where(and(publicGemWhere(), destination ? destinationMatches(destination) : undefined));
+    return placesChips(rows.map((r) => r.category).filter((c): c is string => typeof c === "string"));
   }
 
   async getDestinationsWithGems(): Promise<{ destination: string; gemCount: number }[]> {

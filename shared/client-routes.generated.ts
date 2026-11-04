@@ -190,6 +190,7 @@ export const CLIENT_ROUTES: readonly string[] = [
   "/partner-with-us",
   "/payment",
   "/places",
+  "/places/:city",
   "/plans/:tripId",
   "/plans/:tripId/compare/:setId",
   "/plans/:tripId/guests",

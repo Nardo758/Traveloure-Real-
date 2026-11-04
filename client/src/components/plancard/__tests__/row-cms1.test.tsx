@@ -63,8 +63,9 @@ describe("CMS-1 — client", () => {
 
   it("T5 /places route, /hidden-gems redirect, the heading", () => {
     const app = read("client/src/App.tsx");
-    assert.match(app, /<Route path="\/places">\s*<Layout><HiddenGemsPage \/><\/Layout>\s*<\/Route>/);
-    assert.match(app, /<Route path="\/hidden-gems">\s*<Redirect to="\/places" \/>\s*<\/Route>/);
+    // A-16 (ledger `2026-11-05-lane4-places`): the page is /places/{city}; /places and /hidden-gems go to it.
+    assert.match(app, /<Route path="\/places\/:city">\s*\{\(params: any\) => <Layout><HiddenGemsPage city=\{params\.city\} \/><\/Layout>\}/);
+    assert.match(app, /<Route path="\/hidden-gems">\s*<PlacesRedirect \/>\s*<\/Route>/);
     assert.equal(PLACES_HEADING("Kyoto"), "Places to explore in Kyoto");
     assert.ok(read("shared/client-routes.generated.ts").includes('"/places"'));
     assert.match(read("server/routes/seo.routes.ts"), /"\/places",/);

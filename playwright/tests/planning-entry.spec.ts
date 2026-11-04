@@ -53,7 +53,10 @@ async function registerUser(page: Page) {
 async function startPlanIn(page: Page, marketKey: string, occasionSlug?: string) {
   await page.getByTestId("plan-entry-around-place").click();
   await page.getByTestId(`plan-entry-city-${marketKey}`).click();
-  if (occasionSlug) {
+  // A-8 (ledger `2026-11-05-lane3-occasion`): "travel" is the Trips chip pressed — an occasion is stored only when picked.
+  if (occasionSlug === "travel") {
+    await page.getByTestId("plan-entry-group-trips").click();
+  } else if (occasionSlug) {
     await page.getByTestId("plan-entry-more-specific").click();
     await page.getByTestId("occasion-see-all").click();
     await page.getByTestId(`option-occasion-${occasionSlug}`).click();
@@ -88,7 +91,8 @@ test.describe("Single planning entry — PlanEntry", () => {
     await expect(page.getByTestId("guest-map-answers")).toContainText("Kyoto");
     const record = JSON.parse((await page.evaluate(() => sessionStorage.getItem("traveloure_pending_plan"))) ?? "null");
     expect(record?.branch).toBe("myself");
-    expect(record.source.experienceSlug).toBe("travel");
+    // A-8 (ledger `2026-11-05-lane3-occasion`): nothing was picked, so no occasion is carried — never the trips default.
+    expect(record.source.experienceSlug ?? null).toBeNull();
     expect(record.expiresAt - record.savedAt).toBe(60 * 60 * 1000);
   });
 
@@ -335,7 +339,8 @@ test.describe("Single planning entry — authed", () => {
   test("the edit window under a many-stop trip offers stops and no accessibility note", async ({ page }) => {
     await registerUser(page);
     await openEntryFromHero(page);
-    await startPlanIn(page, "kyoto");
+    // A-8: the trip occasion is picked (the Trips chip), not left as a default.
+    await startPlanIn(page, "kyoto", "travel");
     await expect(page).toHaveURL(/\/plans\/[0-9a-f-]{36}/, { timeout: 15_000 });
     await page.getByTestId("slip-meta-stops-edit").click();
     await expect(page.getByTestId("plan-modal")).toBeVisible({ timeout: 10_000 });

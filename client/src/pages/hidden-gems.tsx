@@ -1,5 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
+import NotFound from "@/pages/not-found";
+import { placesMarketFor, placesPath } from "@shared/places-path";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -65,24 +68,23 @@ interface Category {
 }
 
 /**
- * CMS-1 (ledger `2026-11-04-cms1-launch-screens`): the page lives at /places and lists reviewed places only (the server's
- * `publicGemWhere` — an expert-verified row; AI-only rows never show). HELD for Leon: the heading wording.
+ * CMS-1 (ledger `2026-11-04-cms1-launch-screens`): the page lists reviewed places only (the server's `publicGemWhere` — an
+ * expert-verified row; AI-only rows never show). C-4 (ledger `2026-11-05-lane4-places`): it lives at `/places/{city}`.
+ * HELD for Leon: the heading wording.
  */
 export const PLACES_HEADING = (city: string) => `Places to explore in ${city}`;
 
-export default function HiddenGemsPage() {
-  // CMS-1: /places?city=Kyoto opens on that city (the heading names it).
-  const [searchDestination, setSearchDestination] = useState(() => {
-    try {
-      return new URLSearchParams(typeof window !== "undefined" ? window.location.search : "").get("city")?.trim() ?? "";
-    } catch {
-      return "";
-    }
-  });
+export default function HiddenGemsPage({ city }: { city?: string }) {
+  // C-4 / A-16: the city is the path's (`/places/{city}`); a city that is not an operating market is not found.
+  const market = placesMarketFor(city);
+  const [, navigate] = useLocation();
+  const searchDestination = market?.cityName ?? "";
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
+  // A-20 / C-5: only the categories this city has reviewed places in, labelled and ordered by the approved chip set.
   const { data: categoriesData, isLoading: categoriesLoading } = useQuery<{ categories: Category[] }>({
-    queryKey: ["/api/discovery/categories"],
+    queryKey: [`/api/discovery/categories?destination=${encodeURIComponent(searchDestination)}`],
+    enabled: !!market,
   });
 
   const gemsQueryParams = new URLSearchParams();
@@ -93,6 +95,7 @@ export default function HiddenGemsPage() {
 
   const { data: gemsData, isLoading: gemsLoading, error: gemsError } = useQuery<{ gems: DiscoveredGem[]; total: number }>({
     queryKey: [gemsQueryUrl],
+    enabled: !!market,
   });
 
   const { data: destinationsData } = useQuery<{ destinations: { destination: string; gemCount: number }[] }>({
@@ -118,31 +121,34 @@ export default function HiddenGemsPage() {
     }
   };
 
+  if (!market) return <NotFound />;
+  // C-4: a destination button goes to that city's own page; a destination that names no market is not offered.
+  const destinationMarkets = destinations
+    .map((d) => ({ d, m: placesMarketFor(d.destination.split(",")[0]) }))
+    .filter((x): x is { d: (typeof destinations)[number]; m: NonNullable<ReturnType<typeof placesMarketFor>> } => !!x.m);
+
   return (
     <div className="container mx-auto py-8 px-4 space-y-8" data-testid="hidden-gems-page">
       <div className="space-y-2">
         <div className="flex items-center gap-2">
           <Gem className="h-8 w-8 text-primary" />
           <h1 className="text-3xl font-bold" data-testid="text-page-title">
-            {searchDestination ? PLACES_HEADING(searchDestination) : "Local Picks"}
+            {PLACES_HEADING(searchDestination)}
           </h1>
         </div>
-        <p className="text-muted-foreground">
-          Local places and experiences that tourists rarely find
-        </p>
       </div>
 
       {/* CMS-1: the AI scan card is gone — its output (AI-only rows) can never show on /places. */}
-      {destinations.length > 0 && (
+      {destinationMarkets.length > 0 && (
         <div className="space-y-2">
           <h3 className="text-sm font-medium text-muted-foreground">Explore Destinations</h3>
           <div className="flex flex-wrap gap-2">
-            {destinations.map((d) => (
+            {destinationMarkets.map(({ d, m }) => (
               <Button
                 key={d.destination}
-                variant={searchDestination === d.destination ? "default" : "outline"}
+                variant={m.marketKey === market.marketKey ? "default" : "outline"}
                 size="sm"
-                onClick={() => setSearchDestination(searchDestination === d.destination ? "" : d.destination)}
+                onClick={() => navigate(placesPath(m.marketKey))}
                 data-testid={`button-destination-${d.destination}`}
               >
                 <MapPin className="h-3 w-3 mr-1" />
