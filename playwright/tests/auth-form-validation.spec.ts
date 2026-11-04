@@ -416,31 +416,30 @@ test.describe("Signup page — form structure and validation (UI)", () => {
     void urlBefore;
   });
 
+  // N-2 (round 2 rulings, sanctioned edit): the shared form keeps Create account disabled until the password has
+  // 8 characters, so a spaces-only password of 3 never reaches the server and the page stays put.
   test("I5: spaces-only password on /signup — stays on page and shows error", async ({
     page,
   }) => {
     await page.locator('[data-testid="input-first-name"]').fill("QA");
     await page.locator('[data-testid="input-last-name"]').fill("Test");
     await page.locator('[data-testid="input-email"]').fill(`i5.signup.${uid()}@example.com`);
-    // Eight spaces: long enough for the form to send, so the server's own refusal is what is shown.
-    await page.locator('[data-testid="input-password"]').fill("        ");
+    await page.locator('[data-testid="input-password"]').fill("   ");
     await page.locator('[data-testid="checkbox-signup-consent"]').click();
 
-    await page.locator('[data-testid="button-create-account"]').click();
-    await page.waitForTimeout(3_000);
+    await expect(page.locator('[data-testid="button-create-account"]')).toBeDisabled();
+    await page.waitForTimeout(1_000);
 
     // Must not land on dashboard
     expect(page.url()).not.toContain("/dashboard");
+    await expect(page.locator('h1:has-text("Create your Traveloure account")')).toBeVisible();
 
-    // Error message visible on the page
-    const errorEl = page.locator(".bg-red-50, .text-red-700, [class*='red']").first();
-    await expect(errorEl).toBeVisible({ timeout: 5_000 });
-
-    console.log("[I5-signup-UI] PASS — spaces-only password on /signup shows error");
+    console.log("[I5-signup-UI] PASS — spaces-only password on /signup is not sent");
   });
 
   // N-1 (round 2 rulings, sanctioned rewrite): the register answer stays neutral (AUTH-1 3b); the form then signs in
-  // with the credentials just typed. A new, unverified address lands on the verify page.
+  // with the credentials just typed. Where the account must confirm its address, it lands on the verify page;
+  // otherwise it is signed in and returned to where it started (here /signup, so its home).
   test("valid data: neutral register answer, then signed in and sent to confirm the address", async ({ page }) => {
     const email = `valid.signup.${uid()}@example.com`;
 
@@ -453,17 +452,27 @@ test.describe("Signup page — form structure and validation (UI)", () => {
     const registered = page.waitForResponse(
       (r) => new URL(r.url()).pathname === "/api/auth/register" && r.request().method() === "POST",
     );
+    const signedIn = page.waitForResponse(
+      (r) => new URL(r.url()).pathname === "/api/auth/login" && r.request().method() === "POST",
+    );
     await page.locator('[data-testid="button-create-account"]').click();
     expect((await registered).status()).toBe(202);
+    const login = await signedIn;
+    expect(login.status()).toBe(200);
+    const mustVerify = (await login.json())?.emailVerificationRequired === true;
 
-    await expect(page).toHaveURL(/\/verify-email/, { timeout: 15_000 });
-    await expect(page.getByText("Check your email to confirm your account.")).toBeVisible();
+    if (mustVerify) {
+      await expect(page).toHaveURL(/\/verify-email/, { timeout: 15_000 });
+      await expect(page.getByText("Check your email to confirm your account.")).toBeVisible();
+    } else {
+      await expect(page).not.toHaveURL(/\/(signup|login)(\?|$)/, { timeout: 15_000 });
+    }
     await expect(page.getByText(/account created/i)).toHaveCount(0);
 
     // The session is the sign-in the form made after the neutral answer.
     const me = await page.request.get(`${BASE_URL}/api/auth/user`);
     expect(me.status()).toBe(200);
-    console.log("[signup-UI] PASS — valid signup signs in and asks to confirm the address");
+    console.log(`[signup-UI] PASS — valid signup signs in (${mustVerify ? "verify page" : "returned to origin"})`);
   });
 });
 

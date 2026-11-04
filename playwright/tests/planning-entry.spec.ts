@@ -203,7 +203,11 @@ test.describe("/experiences is the start state, and no route auto-opens (walkthr
     await expect(page.getByTestId("city-card-kyoto")).toHaveAttribute("aria-pressed", "true", { timeout: 15_000 });
     await expect(start).toBeEnabled();
     await expect(page.getByTestId("city-card-porto")).toHaveAttribute("href", "/waitlist/porto");
+    // E-2 (round 2 rulings, Nov 4, 2026; ledger `2026-11-04-round2-exp-qa`; sanctioned edit): on the page a city card
+    // only selects the city and stays in view; Continue then asks the occasion.
     await page.getByTestId("city-card-kyoto").click();
+    await expect(page.getByTestId("city-card-kyoto")).toHaveAttribute("aria-pressed", "true");
+    await start.click();
     await expect(page.getByTestId("plan-entry-step-occasion")).toBeVisible();
     await expect(page.getByTestId("plan-entry-group-trips")).toHaveAttribute("aria-pressed", "false");
     await expect(start).toBeEnabled();
@@ -213,6 +217,8 @@ test.describe("/experiences is the start state, and no route auto-opens (walkthr
   test("Start a plan opens no pop-up: signed out, it lands on the guest map with the city", async ({ page }) => {
     await page.goto(`${BASE_URL}/experiences`, { waitUntil: "domcontentloaded" });
     await page.getByTestId("map-pin-kyoto").click({ timeout: 15_000 });
+    // E-2: picking the city does not advance on the page; Continue asks the occasion.
+    await page.getByTestId("button-plan-entry-start").click();
     await page.getByTestId("plan-entry-group-hosted_events").click();
     await page.getByTestId("button-plan-entry-start").click();
     await expect(page).toHaveURL(/\/plans\/new\?view=map$/, { timeout: 10_000 });

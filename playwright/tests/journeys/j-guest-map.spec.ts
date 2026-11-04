@@ -55,6 +55,9 @@ test("8d — signed out: browse with no plan, add, sign up → exactly one plan,
   //    `2026-10-09-e3-experiences-inline`; sanctioned rewrite of :55-59): no pop-up, no When, no Who. ──
   await page.goto("/experiences");
   await testid(page, "city-card-kyoto").click({ timeout: 20_000 });
+  // E-2 (round 2 rulings, Nov 4, 2026; ledger `2026-11-04-round2-exp-qa`; sanctioned edit): the city card only
+  // selects the city; Continue asks the occasion.
+  await testid(page, "button-plan-entry-start").click();
   await testid(page, "plan-entry-group-trips").click();
   await testid(page, "button-plan-entry-start").click();
   await expect(testid(page, "plan-modal"), "the start page opens no planning modal").toHaveCount(0);
@@ -163,6 +166,9 @@ test("8d — social sign-in from the guest map asks to come back to this page", 
 
   await page.goto("/experiences");
   await testid(page, "city-card-kyoto").click({ timeout: 20_000 });
+  // E-2 (round 2 rulings, Nov 4, 2026; ledger `2026-11-04-round2-exp-qa`; sanctioned edit): the city card only
+  // selects the city; Continue asks the occasion.
+  await testid(page, "button-plan-entry-start").click();
   await testid(page, "plan-entry-group-trips").click();
   await testid(page, "button-plan-entry-start").click();
   await expect(page).toHaveURL(/\/plans\/new\?view=map$/, { timeout: 15_000 });

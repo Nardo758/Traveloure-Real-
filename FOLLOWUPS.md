@@ -1259,3 +1259,10 @@ A second offering label carries "perfect" (`expert_offering_types.perfect_day`).
 
 N-1's sentence "Check your email to confirm your account." replaced the English verify-page body only. The Japanese
 locale keeps its earlier body (no approved translation).
+
+### FU-R2-8 — the server accepts a spaces-only password
+
+`registerSchema` (`server/replit_integrations/auth/emailAuth.ts:81`) checks length only, so eight spaces register
+and sign in. This was already true on `main`; the earlier `/signup` form never sent such a password because its
+3-space test case was below the length minimum. The shared sign-up form (N-2) does not trim or refuse it either.
+Whether a whitespace-only password is refused, and by which layer, needs a ruling.

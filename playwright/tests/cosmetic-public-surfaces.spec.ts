@@ -84,15 +84,21 @@ test.describe('Lane A — header', () => {
 test.describe('Lane B — mobile planner', () => {
   // Step 8b-2 (D5, item 20 — sanctioned edit, ruling 12): `/experiences/<slug>` now renders the START
   // PAGE with that occasion picked, not the template planner. At 390px the page fits the phone (no
-  // horizontal scroll), the occasion arrives picked, and there is no desktop PanelGroup at all.
+  // horizontal scroll), the occasion arrives carried, and there is no desktop PanelGroup at all.
+  const OCCASION_NAMES: Record<string, RegExp> = { wedding: /wedding/i, travel: /travel/i, 'date-night': /date night/i };
   for (const slug of ['wedding', 'travel', 'date-night']) {
     test(`B1 /experiences/${slug} @390px: the start page, occasion picked, no horizontal scroll`, async ({ page }) => {
       await page.setViewportSize(MOBILE);
       await settle(page, `/experiences/${slug}`);
       await expect(page.getByRole('heading', { name: /Plan around…/i })).toBeVisible({ timeout: 15_000 });
+      // E-2 (round 2 rulings, Nov 4, 2026; ledger `2026-11-04-round2-exp-qa`; sanctioned edit): the city card only
+      // selects the city, and Continue skips the occasion the door already named — it opens on dates and party,
+      // with the occasion carried in the summary.
       await page.getByTestId('city-card-kyoto').click();
-      await page.getByTestId('plan-entry-more-specific').click();
-      await expect(page.getByTestId(`option-occasion-${slug}`)).toHaveAttribute('aria-pressed', 'true', { timeout: 15_000 });
+      await page.getByTestId('button-plan-entry-start').click();
+      await expect(page.getByTestId('plan-entry-step-details')).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId('plan-entry-step-occasion')).toHaveCount(0);
+      await expect(page.getByTestId('plan-entry-summary')).toContainText(OCCASION_NAMES[slug]);
       expect(await page.locator('[data-panel-group]').count()).toBe(0);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       expect(overflow).toBeLessThanOrEqual(1);
