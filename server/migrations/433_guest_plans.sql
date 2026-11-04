@@ -1,8 +1,6 @@
 -- 433_guest_plans.sql
 -- GATE-1B (ledger 2026-11-04-gate1b-guest-plan): a server-side guest plan in waitlist mode.
--- SQL supplied by the architect and approved by Leon in the session ruling (Nov 4, 2026); the PR comment
--- "Migration 433 SQL approved — Leon" is still required on the PR (check-migration-approval).
--- Two deltas from that text, both for the PR to confirm:
+-- SQL as given in the architect's GATE-1B rulings (Nov 4, 2026). Two deltas from that text, both stated on the PR:
 --   1. guest_claimed_at is `timestamp` (without time zone), matching trips.created_at, as the ruling instructs
 --      ("confirm the timestamp type matches trips.created_at (swap to match if not)").
 --   2. IF NOT EXISTS on every statement: both columns and both indexes are declared in shared/schema.ts, so the
