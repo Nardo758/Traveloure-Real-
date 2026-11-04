@@ -72,6 +72,7 @@ import {
   type PlanEntrySource,
   type PlanEntryState,
   type PlanEntryStep,
+  shownOccasionGroups,
 } from "@/lib/plan-entry";
 
 const MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
@@ -285,7 +286,8 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
   const pickedSlug = chosenOccasionSlug(state);
   const pickedRow = occasionRows.find((o) => o.slug === pickedSlug) ?? null;
   const { groups } = useMemo(() => groupOccasions(occasionRows), [occasionRows]);
-  const shownGroups = groups.length > 0 ? groups.map((g) => g.key) : [...OCCASION_GROUP_ORDER];
+  // OCC-1: /experiences?group= shows only that group (`shownOccasionGroups`); any other door shows all.
+  const shownGroups = shownOccasionGroups(groups.length > 0 ? groups.map((g) => g.key) : [...OCCASION_GROUP_ORDER], source?.onlyGroup);
 
   // A door-named occasion selects its own group once the catalog is in.
   useEffect(() => {
@@ -666,6 +668,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
                   loading={occasionsLoading}
                   value={state.occasionSlug ?? ""}
                   initialGroup={state.group}
+                  onlyGroup={shownGroups.length === 1 && source?.onlyGroup ? source.onlyGroup : null}
                   onPick={(slug) => {
                     setGroupChosen(true);
                     const row = occasionRows.find((o) => o.slug === slug);

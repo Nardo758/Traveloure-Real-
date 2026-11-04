@@ -36,12 +36,17 @@ interface Props<T extends OccasionPickerRow> {
   onPick: (slug: string) => void;
   /** A group tab to open on (the nav's `?group=`, already an exact key). Absent ⇒ none, as before. */
   initialGroup?: OccasionPickerGroup | null;
+  /** OCC-1: /experiences?group= — only this group's chip and occasions; no "See all". */
+  onlyGroup?: OccasionPickerGroup | null;
 }
 
 type View = { kind: "group"; key: OccasionPickerGroup } | { kind: "all" } | { kind: "none" };
 
-export function OccasionPicker<T extends OccasionPickerRow>({ occasions, loading, value, onPick, initialGroup = null }: Props<T>) {
-  const { groups } = useMemo(() => groupOccasions(occasions), [occasions]);
+export function OccasionPicker<T extends OccasionPickerRow>({ occasions, loading, value, onPick, initialGroup = null, onlyGroup = null }: Props<T>) {
+  const { groups: allGroups } = useMemo(() => groupOccasions(occasions), [occasions]);
+  // OCC-1: a page filtered to one group lists only that group (a group the catalog does not carry filters nothing).
+  const filtered = !!onlyGroup && allGroups.some((g) => g.key === onlyGroup);
+  const groups = filtered ? allGroups.filter((g) => g.key === onlyGroup) : allGroups;
   const pickedRow = useMemo(() => (occasions ?? []).find((o) => o.slug === value) ?? null, [occasions, value]);
   const [view, setView] = useState<View>(() => (initialGroup ? { kind: "group", key: initialGroup } : { kind: "none" }));
   const [query, setQuery] = useState("");
@@ -96,15 +101,17 @@ export function OccasionPicker<T extends OccasionPickerRow>({ occasions, loading
             </button>
           );
         })}
-        <button
-          type="button"
-          aria-pressed={view.kind === "all"}
-          onClick={() => setView({ kind: "all" })}
-          className={chip(view.kind === "all")}
-          data-testid="occasion-see-all"
-        >
-          See all occasions
-        </button>
+        {filtered ? null : (
+          <button
+            type="button"
+            aria-pressed={view.kind === "all"}
+            onClick={() => setView({ kind: "all" })}
+            className={chip(view.kind === "all")}
+            data-testid="occasion-see-all"
+          >
+            See all occasions
+          </button>
+        )}
       </div>
 
       {view.kind === "all" && (
