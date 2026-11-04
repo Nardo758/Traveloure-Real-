@@ -22,11 +22,12 @@ import { PlanningProvider } from "../../contexts/PlanningContext";
 import ExpertsPage from "../../pages/experts";
 import ProvidersDirectoryPage from "../../pages/providers-directory";
 import { kyotoExpertsSectionVisible } from "../../pages/launch-waitlist";
-import { kyotoPageEvents } from "../../components/landing/events-strip";
+import { marketPageEvents } from "../../components/landing/events-strip";
 import { formatSourceAmount, partnerActivityPriceLabel } from "../partner-price";
 import { priceMatches } from "../tile-price";
 import { queryClient as appQueryClient } from "../queryClient";
 import type { CityEventCard } from "@shared/city-events";
+import { LIVE_MARKETS_ROUTE } from "@shared/live-markets";
 
 (globalThis as any).React = React;
 
@@ -52,6 +53,8 @@ function client() {
       },
     },
   });
+  // CITY-1: the empty states name the marquee market from the live-markets answer, so the fixture states it.
+  qc.setQueryData([LIVE_MARKETS_ROUTE], { marketKeys: ["kyoto"], launch: "kyoto", live: [], beta: ["kyoto"], dates: {} });
   clients.push(qc);
   return qc;
 }
@@ -230,6 +233,7 @@ describe("Kyoto event strip", () => {
       { id: "out", marketKey: "kyoto", outsideCity: true, title: "Max Richter Live" },
       { id: "else", marketKey: "mumbai", outsideCity: false, title: "Elsewhere" },
     ] as CityEventCard[];
-    assert.deepEqual(kyotoPageEvents(cards).map((c) => c.id), ["in"]);
+    assert.deepEqual(marketPageEvents(cards, "kyoto").map((c) => c.id), ["in"]);
+    assert.deepEqual(marketPageEvents(cards, null), [], "CITY-1: no marquee ⇒ no events");
   });
 });

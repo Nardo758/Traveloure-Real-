@@ -14,7 +14,6 @@ import { bandInSeason } from "@/lib/season-band";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CITY_EVENT_VERTICALS } from "@shared/city-events";
-import { OPERATING_MARKETS } from "@shared/operating-markets";
 import {
   bandMatches,
   bandsInPeriod,
@@ -35,6 +34,7 @@ import {
   type PeriodKind,
 } from "@shared/events-calendar";
 import { usePlanning } from "@/contexts/PlanningContext";
+import { useLaunchMarket } from "@/lib/signup-mode";
 import { MonthGrid, MONO } from "./MonthGrid";
 import { WhatsOn } from "./WhatsOn";
 import { WhereToGo } from "./WhereToGo";
@@ -82,8 +82,10 @@ export function EventsCalendar() {
   const [day, setDay] = useState<string | null>(null);
   const [weekStart, setWeekStart] = useState<string | null>(null);
   const [kind, setKind] = useState<KindFilter>("all");
-  // LC-1b: /events shows Kyoto only. The upcoming API stays multi-city.
-  const city = "kyoto";
+  // LC-1b: /events shows the marquee market only (CITY-1: from settings, never a typed city). The upcoming API
+  // stays multi-city. No marquee yet ⇒ no market's events.
+  const launch = useLaunchMarket();
+  const city = launch?.slug ?? "";
   const [vibe, setVibe] = useState("all");
   const [showGrid, setShowGrid] = useState(false);
   const today = viewerToday();
@@ -332,7 +334,7 @@ export function EventsCalendar() {
               nextId={next?.id ?? null}
               bands={periodBands}
               monthName={monthName}
-              cityLabel={OPERATING_MARKETS.find((m) => m.marketKey === city)?.cityName ?? "Kyoto"}
+              cityLabel={launch?.cityName ?? ""}
               showBack={selKind !== "month"}
               onBack={() => {
                 setDay(null);
@@ -348,7 +350,7 @@ export function EventsCalendar() {
       {data && (
         <WhereToGo
           monthName={monthName}
-          rows={whereToGo(data.places.filter((p) => p.marketKey === "kyoto"), ym, events, vibe)}
+          rows={whereToGo(data.places.filter((p) => p.marketKey === city), ym, events, vibe)}
           vibe={vibe}
           onVibe={setVibe}
         />

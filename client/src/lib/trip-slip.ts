@@ -48,6 +48,7 @@
 
 // TYPE-ONLY, and therefore erased: the "no top-level imports" rule above is about runtime imports.
 import type { TripMintEntry } from "@shared/slip-funnel-events";
+import { MARKET_STATUS_COPY } from "@shared/ticker";
 
 /** The traveler-owned mint door. One endpoint, named once. */
 export const TRIP_MINT_ENDPOINT = "/api/trips";
@@ -75,7 +76,8 @@ export type SlipRefusalReason =
   | "dates_missing"
   | "dates_inverted"
   | "mint_failed"
-  | "mint_returned_no_id";
+  | "mint_returned_no_id"
+  | "market_not_open";
 
 /** The traveler-facing sentence for each refusal. Held here so the ladder and the template
  *  page say the same thing about the same missing answer. */
@@ -85,12 +87,39 @@ export const SLIP_REFUSAL_MESSAGES: Record<SlipRefusalReason, string> = {
   dates_inverted: "The end date can't be before the start date.",
   mint_failed: "Couldn't create the trip. Please try again.",
   mint_returned_no_id: "Couldn't create the trip. Please try again.",
+  // CITY-1: no new sentence — the market's waitlist link carries WAIT-1's label.
+  market_not_open: MARKET_STATUS_COPY.waitlist,
 };
 
 export interface SlipRefusal {
   ok: false;
   reason: SlipRefusalReason;
   message: string;
+  /** CITY-1: on `market_not_open`, the market whose waitlist the traveler is sent to. */
+  market?: string;
+}
+
+/**
+ * CITY-1 (ledger `2026-11-04-city1-marquee-defaults`): a `409 market_not_open` read from an apiRequest error
+ * ("409: {json}"). `market` is the operating market that is not open, or null when the destination is no operating
+ * market at all. Anything else ⇒ null.
+ */
+export function marketNotOpenFrom(err: unknown): { market: string | null } | null {
+  const msg = err instanceof Error ? err.message : typeof err === "string" ? err : "";
+  const m = /^409:\s*([\s\S]*)$/.exec(msg);
+  if (!m) return null;
+  try {
+    const body = JSON.parse(m[1]);
+    if (body?.code !== "market_not_open") return null;
+    return { market: typeof body.market === "string" ? body.market : null };
+  } catch {
+    return null;
+  }
+}
+
+/** The existing "not planning there" sentence (PlanEntry's typed-city line), for a city outside the operating markets. */
+export function notPlanningInLine(city: string): string {
+  return `We're not planning in ${city} yet.`;
 }
 
 /** The body `POST /api/trips` is given. `insertTripSchema` omits `timezone` and `marketSlug`
@@ -221,6 +250,10 @@ export async function mintTripSlip(
   try {
     trip = await post(buildTripMintBody(basics));
   } catch (err: any) {
+    const notOpen = marketNotOpenFrom(err);
+    if (notOpen?.market) return { ...refuse("market_not_open"), market: notOpen.market };
+    // A city outside the operating markets: the existing "not planning there" sentence, never a waitlist link.
+    if (notOpen) return refuse("market_not_open", notPlanningInLine(basics.destination?.split(",")[0].trim() || basics.destination || ""));
     return refuse("mint_failed", err?.message || SLIP_REFUSAL_MESSAGES.mint_failed);
   }
   // A mint that answers without an id has not produced a slip. Saying otherwise would send an

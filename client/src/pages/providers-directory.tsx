@@ -37,6 +37,7 @@ import { useAskExpert } from "@/lib/use-ask-expert";
 // One-source nav-icon map (ruling 2026-08-25-nav-icons) — the masthead tile (ShoppingBag)
 // reads it, never a restated glyph.
 import { NAV_LEAF_ICONS } from "@/components/layout";
+import { useLaunchMarket } from "@/lib/signup-mode";
 import { PlanEntryCta } from "@/components/planning/plan-entry-cta";
 import {
   EARN_MONO,
@@ -251,6 +252,7 @@ function ProviderCardSkeleton() {
 }
 
 export default function ProvidersDirectoryPage() {
+  const launchMarket = useLaunchMarket();
   const [searchQuery, setSearchQuery] = useState("");
 
   const { data: providers, isLoading, isError } = useQuery<ProviderStorefrontListing[]>({
@@ -397,14 +399,19 @@ export default function ProvidersDirectoryPage() {
         ) : (providers ?? []).length === 0 ? (
           <div className="rounded-xl border bg-[var(--earn-card)] px-6 py-16 text-center" data-testid="providers-empty">
             <Store className="mx-auto mb-3 h-8 w-8 text-[color:var(--earn-muted)]" />
-            <h2 className="text-lg font-semibold" style={HEADING_STYLE} data-testid="providers-empty-heading">No Kyoto businesses are listed yet. Run a tour, venue or service in Kyoto? Apply to list it.</h2>
-            <Link
-              href="/become-provider"
-              className="mt-4 inline-flex text-sm font-semibold underline"
-              data-testid="button-apply-kyoto-provider"
-            >
-              Apply as a Kyoto provider
-            </Link>
+            {/* CITY-1: the marquee market's name, from settings — never a typed city. */}
+            {launchMarket && (
+              <>
+                <h2 className="text-lg font-semibold" style={HEADING_STYLE} data-testid="providers-empty-heading">No {launchMarket.cityName} businesses are listed yet. Run a tour, venue or service in {launchMarket.cityName}? Apply to list it.</h2>
+                <Link
+                  href="/become-provider"
+                  className="mt-4 inline-flex text-sm font-semibold underline"
+                  data-testid="button-apply-kyoto-provider"
+                >
+                  Apply as a {launchMarket.cityName} provider
+                </Link>
+              </>
+            )}
           </div>
         ) : filtered.length === 0 ? (
           <div className="rounded-xl border bg-[var(--earn-card)] px-6 py-16 text-center" data-testid="providers-no-results">

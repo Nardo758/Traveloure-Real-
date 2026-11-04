@@ -16,11 +16,13 @@ const HEADLINE = "Get paid for what you already know about Kyoto";
 
 test("M-05: the /earn headline is the Kyoto sentence and the rate line is below it", () => {
   const earn = readFileSync("client/src/pages/earn.tsx", "utf8");
-  assert.ok(earn.includes(`title="${HEADLINE}"`), "exact headline");
+  // CITY-1: the headline names the marquee market from settings (`useLaunchMarket`), never a typed city.
+  const HEADLINE_SRC = "`Get paid for what you already know about ${launchMarket.cityName}`";
+  assert.ok(earn.includes(HEADLINE_SRC), "exact headline, city from settings");
   assert.equal(earn.includes('title="Get paid for what you already know"'), false);
   const expert = readFileSync("client/src/pages/travel-experts.tsx", "utf8");
   assert.equal(expert.includes(HEADLINE), false, "/become-expert keeps its own heading");
-  const titleAt = earn.indexOf(`title="${HEADLINE}"`);
+  const titleAt = earn.indexOf(HEADLINE_SRC);
   const roleAt = earn.indexOf("Which of these is you?", titleAt);
   const keepAt = earn.indexOf("earn-keep-sentence", titleAt);
   assert.ok(titleAt >= 0 && roleAt > titleAt);
@@ -31,6 +33,7 @@ test("M-06: the home strip's seed lists no Mumbai, and the strip keeps Kyoto onl
   const seed = readFileSync("server/seeds/city-events.manual.ts", "utf8");
   assert.equal(/city:\s*"Mumbai"/.test(seed), false);
   const strip = readFileSync("client/src/components/landing/events-strip.tsx", "utf8");
-  assert.match(strip, /kyotoPageEvents\(payload\.events\)/);
-  assert.match(strip, /e\.marketKey === "kyoto" && e\.outsideCity !== true/);
+  // CITY-1: the strip keeps the marquee market only, named by settings rather than a typed key.
+  assert.match(strip, /marketPageEvents\(payload\.events, market\)/);
+  assert.match(strip, /e\.marketKey === market && e\.outsideCity !== true/);
 });

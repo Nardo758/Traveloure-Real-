@@ -44,6 +44,10 @@ import {
 import { sortByFeaturedAdjusted } from "./featured-sort";
 import type { ListingServiceType } from "@shared/service-type-query";
 import { logger } from "../infrastructure/logger";
+import { marketIsOpen } from "@shared/ticker";
+import { OPERATING_MARKETS } from "@shared/operating-markets";
+import { getLaunchMarketSlug, getLiveMarketSlugs } from "./platform-flags";
+import { resolveMarketSlug } from "./trend-engine/operating-markets";
 
 /**
  * ── FP-1 / B4 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1) ─────────────────────────────────
@@ -181,6 +185,32 @@ export interface LocationViewPayload {
    * bookable listing. `trendContext` is the T4.4 render-time headline (never stored on a row).
    */
   externalStubs: SectionResult<ExternalStubsSection>;
+  /**
+   * CITY-1 (ledger `2026-11-04-city1-marquee-defaults`): the operating market this city belongs to, or null.
+   * `marketOpen:false` = an operating market that is neither the marquee nor live: the payload is REDUCED to the city
+   * header — every feed section is empty — and the page shows the status, the waitlist and the apply links only.
+   */
+  market: string | null;
+  marketOpen: boolean;
+}
+
+/** CITY-1: the reduced payload for an operating market that is not open (no gems, events, listings or stubs). */
+export function closedMarketLocationView(market: string, cityName: string, country: string | null): LocationViewPayload {
+  const empty = <T,>(data: T): SectionResult<T> => ({ data, error: null });
+  return {
+    city: cityName,
+    country,
+    generatedAt: new Date().toISOString(),
+    hero: empty(null),
+    recommendations: empty([]),
+    events: empty({ events: [], total: 0, page: 1, totalPages: 0, city: null }),
+    neighborhoods: empty([]),
+    gems: empty([]),
+    services: empty([]),
+    externalStubs: empty({ trendContext: null, stubs: [] }),
+    market,
+    marketOpen: false,
+  };
 }
 
 /** One published external stub (a DMO guide) + its located child places. */
@@ -310,6 +340,17 @@ class LocationViewService {
     // is left unchanged ⇒ honestly empty (§13). Done before the cache key so all
     // casings of one city share a cache entry.
     cityName = (await resolveCanonicalCity(cityName)) ?? cityName;
+
+    // CITY-1: an operating market that is not open gets the reduced payload, never its feed. Read before the cache,
+    // so a market an admin opens shows its feed on the next read (the reduced payload is not cached).
+    const market = resolveMarketSlug(cityName);
+    if (market) {
+      const [launch, live] = await Promise.all([getLaunchMarketSlug(), getLiveMarketSlugs()]);
+      if (!marketIsOpen(market, { launch, live, beta: [], dates: {} })) {
+        const m = OPERATING_MARKETS.find((x) => x.marketKey === market)!;
+        return closedMarketLocationView(market, m.cityName, country ?? m.country);
+      }
+    }
 
     // v4: payload shape change — neighborhoods now carry localExpert (Feed v2 F8).
     // v5: payload shape change — adds externalStubs (Trailhead T4.3 published scraped stubs).
@@ -787,6 +828,8 @@ class LocationViewService {
       gems,
       services,
       externalStubs,
+      market,
+      marketOpen: true,
     };
 
     locationViewCache.set(cacheKey, { payload, expiresAt: Date.now() + 5 * 60 * 1000 });

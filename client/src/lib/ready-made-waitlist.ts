@@ -8,14 +8,22 @@
 // the URL. When the mode is open, or the mode cannot be read, the page buys as it always has (the server's purchase
 // gate refuses a waitlist-mode purchase on its own).
 
+import { MARKET_STATUS_COPY, TICKER_WAITLIST_BUTTON, launchCityName } from "@shared/ticker";
+
 /** What GET /api/public/signup-mode answers: exactly `{ mode, launchMarketSlug }` (decision-maker, Oct 16, 2026). */
 export interface SignupModeRead {
   mode: "waitlist" | "open";
   launchMarketSlug: string | null;
 }
 
-/** F4's waitlist-mode button label, word for word. */
-export const READY_MADE_WAITLIST_LABEL = "Join the Kyoto waitlist";
+/**
+ * F4's waitlist-mode button label, word for word — "Join the {City} waitlist" with the launch market's name (CITY-1:
+ * from settings, never a typed city). A slug that names no operating market reads WAIT-1's "Join the waitlist".
+ */
+export function readyMadeWaitlistLabel(launchMarketSlug: string | null | undefined): string {
+  const city = launchCityName(launchMarketSlug);
+  return city ? TICKER_WAITLIST_BUTTON(city) : MARKET_STATUS_COPY.waitlist;
+}
 
 const REF_SHAPE = /^[a-z0-9]{1,12}$/;
 const SLUG_SHAPE = /^[a-z0-9-]{1,64}$/;

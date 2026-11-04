@@ -1,6 +1,6 @@
 [
   {
-    "key": "wedding",
+    "key": "honeymoon",
     "file": "goa-honeymoon.jpg",
     "place": "Goa at sunset",
     "title": "Silhouettes of bride and groom hugging at sunset",
@@ -55,7 +55,7 @@
     "source": "https://www.pexels.com/photo/woman-sitting-and-man-lying-down-on-wall-by-river-19196622/"
   },
   {
-    "key": "honeymoon",
+    "key": "wedding",
     "file": "kyoto-wedding.jpg",
     "place": "Kyoto after dark",
     "title": "Couple strolling in Kyoto's nighttime alley",

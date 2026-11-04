@@ -22,11 +22,12 @@ export const WAITLIST_SIGNUP_ROW_COPY = {
 /** The traveler/provider join button when more than one market is ticked (HELD). */
 export const WAITLIST_JOIN_ANY = "Join the list";
 
-/** "Join the list" for several markets, else the existing "Join the {City} list". */
+/** "Join the list" for several markets (or none named), else the existing "Join the {City} list". */
 export function waitlistJoinButtonLabel(markets: readonly string[]): string {
   if (markets.length > 1) return WAITLIST_JOIN_ANY;
   const city = markets[0] ? waitlistCityName(markets[0]) : null;
-  return `Join the ${city ?? "Kyoto"} list`;
+  // CITY-1: no named market ⇒ the approved generic "Join the list", never a typed city.
+  return city ? `Join the ${city} list` : WAITLIST_JOIN_ANY;
 }
 
 /** The page for one market's waitlist. */

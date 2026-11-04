@@ -31,10 +31,19 @@ export const MARKET_DISPLAY_ORDER = [
   "jaipur",
 ] as const;
 
-/** The operating markets in display order. A key with no operating market is dropped, never invented. */
-export function marketsInDisplayOrder(markets: readonly OperatingMarket[] = OPERATING_MARKETS): OperatingMarket[] {
+/**
+ * The operating markets in display order. A key with no operating market is dropped, never invented. CITY-1 (ledger
+ * `2026-11-04-city1-marquee-defaults`): given the marquee market (`launch`, from the public live-markets answer), it
+ * leads the list; with none, the copy's order stands.
+ */
+export function marketsInDisplayOrder(
+  markets: readonly OperatingMarket[] = OPERATING_MARKETS,
+  launch: string | null = null,
+): OperatingMarket[] {
   const byKey = new Map(markets.map((m) => [m.marketKey, m]));
-  return MARKET_DISPLAY_ORDER.map((k) => byKey.get(k)).filter((m): m is OperatingMarket => Boolean(m));
+  const ordered = MARKET_DISPLAY_ORDER.map((k) => byKey.get(k)).filter((m): m is OperatingMarket => Boolean(m));
+  const lead = launch ? ordered.find((m) => m.marketKey === launch) : undefined;
+  return lead ? [lead, ...ordered.filter((m) => m !== lead)] : ordered;
 }
 
 /** "Kyoto, Edinburgh, …, Goa and Jaipur". */

@@ -20,6 +20,8 @@ import { formatTripDates } from "@/lib/trip-dates";
 import { browserLocale } from "@/lib/browser-locale";
 import { eventTypeForSlug } from "@shared/occasions";
 import type { ExperienceType, InsertTrip } from "@shared/schema";
+import { OPERATING_MARKETS } from "@shared/operating-markets";
+import { useLaunchMarket } from "@/lib/signup-mode";
 
 /**
  * The slug→eventType map and the "unrecognized slug ⇒ other" rule MOVED to `shared/occasions.ts`
@@ -109,6 +111,10 @@ export function IntakePanel({
   city?: string;
   country?: string;
 }) {
+  // CITY-1: the placeholder names the marquee market from settings, never a typed city.
+  const launch = useLaunchMarket();
+  const launchCountry = launch ? OPERATING_MARKETS.find((m) => m.marketKey === launch.slug)?.country : undefined;
+  const launchPlaceholder = launch ? (launchCountry ? `${launch.cityName}, ${launchCountry}` : launch.cityName) : "";
   const [, navigate] = useLocation();
   // The destination this door arrived holding, or "" when it held none. `city` alone stands on its
   // own; `country` only qualifies a city (a bare country is not a destination this panel can use,
@@ -241,7 +247,7 @@ export function IntakePanel({
                   id="intake-destination"
                   value={destination}
                   onChange={(e) => setDestination(e.target.value)}
-                  placeholder="Kyoto, Japan"
+                  placeholder={launchPlaceholder}
                   data-testid="input-intake-destination"
                 />
               </div>

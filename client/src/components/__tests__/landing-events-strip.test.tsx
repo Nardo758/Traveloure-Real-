@@ -54,7 +54,7 @@ function payload(n: number, over: (i: number) => Partial<CityEventCard> = () => 
 function render(p: CityEventsPayload | null): string {
   return renderToString(
     <Router ssrPath="/">
-      <EventsStripContent payload={p} onPlanAround={() => {}} />
+      <EventsStripContent payload={p} market="kyoto" onPlanAround={() => {}} />
     </Router>,
   ).replace(/<!--.*?-->/g, "");
 }

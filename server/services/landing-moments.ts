@@ -13,6 +13,9 @@
  */
 import { sql } from "drizzle-orm";
 import { db } from "../db";
+import { marketIsOpen } from "@shared/ticker";
+import { getLaunchMarketSlug, getLiveMarketSlugs } from "./platform-flags";
+import { resolveMarketSlug } from "./trend-engine/operating-markets";
 
 export interface MomentConfig {
   key: string;
@@ -171,7 +174,7 @@ export const MOMENTS: MomentConfig[] = [
 
 export const MOMENT_KEYS: readonly string[] = MOMENTS.map((m) => m.key);
 
-/** LC-1: the home wedding tile (a Kyoto wedding over a Goa sunset photo) is not in the live set. */
+/** LC-1: the home wedding tile is not in the live set (CITY-1 gave it the Kyoto photo; it stays hidden). */
 const HIDDEN_HOME_MOMENT_KEYS = new Set(["wedding"]);
 
 export function homeMomentConfigs(): MomentConfig[] {
@@ -227,20 +230,34 @@ export interface LiveMoment {
   experienceSlug: string | null;
   photos: MomentPhoto[];
   builder: { handle: string; reviews: number } | null;
+  /** CITY-1: the moment's operating market key (null when its city is not one). */
+  market: string | null;
+  /**
+   * CITY-1 (ledger `2026-11-04-city1-marquee-defaults`): "plan" when the moment's market runs the full planner (the
+   * marquee or a live market), else "waitlist" — the CTA then links to /waitlist/:market. The copy is unchanged.
+   */
+  cta: "plan" | "waitlist";
+}
+
+/** CITY-1, pure: the CTA a moment in `market` gets. A city that is no operating market keeps "plan". */
+export function momentCta(market: string | null, launch: string | null, live: readonly string[]): "plan" | "waitlist" {
+  if (!market) return "plan";
+  return marketIsOpen(market, { launch, live, beta: [], dates: {} }) ? "plan" : "waitlist";
 }
 
 const REPRESENTATIVE_PHOTOS: Record<
   string,
   Pick<MomentPhoto, "url" | "place" | "source" | "handle" | "credit" | "license" | "sourceUrl">
 > = {
+  // CITY-1: the hidden Kyoto wedding moment takes the Kyoto photo; the Goa honeymoon (below) takes the Goa one.
   wedding: {
-    url: "/images/moments/goa-honeymoon.jpg",
-    place: "Goa at sunset",
+    url: "/images/moments/kyoto-wedding.jpg",
+    place: "Kyoto after dark",
     source: "representative",
     handle: null,
-    credit: "Lucksborn Sangma",
+    credit: "Julien",
     license: "Pexels license",
-    sourceUrl: "https://www.pexels.com/photo/silhouettes-of-bride-and-groom-hugging-at-sunset-5026140/",
+    sourceUrl: "https://www.pexels.com/photo/couple-strolling-in-kyoto-s-nighttime-alley-34576557/",
   },
   proposal: {
     url: "/images/moments/proposal-after-dark.jpg",
@@ -279,13 +296,13 @@ const REPRESENTATIVE_PHOTOS: Record<
     sourceUrl: "https://www.pexels.com/photo/woman-sitting-and-man-lying-down-on-wall-by-river-19196622/",
   },
   honeymoon: {
-    url: "/images/moments/kyoto-wedding.jpg",
-    place: "Kyoto after dark",
+    url: "/images/moments/goa-honeymoon.jpg",
+    place: "Goa at sunset",
     source: "representative",
     handle: null,
-    credit: "Julien",
+    credit: "Lucksborn Sangma",
     license: "Pexels license",
-    sourceUrl: "https://www.pexels.com/photo/couple-strolling-in-kyoto-s-nighttime-alley-34576557/",
+    sourceUrl: "https://www.pexels.com/photo/silhouettes-of-bride-and-groom-hugging-at-sunset-5026140/",
   },
   milestone_birthday: {
     url: "/images/moments/mumbai-birthday.jpg",
@@ -379,6 +396,7 @@ async function attributedPhotosForMoment(
 /** Real attributed photos win; otherwise each configured moment uses its honest representative fallback. */
 export async function resolveLandingMoments(): Promise<LiveMoment[]> {
   const live: LiveMoment[] = [];
+  const [launch, liveMarkets] = await Promise.all([getLaunchMarketSlug(), getLiveMarketSlugs()]);
   for (const m of homeMomentConfigs()) {
     const attributed = await attributedPhotosForMoment(m.city, m.key);
     const selected = selectMomentPhotos(m.key, attributed.photos, attributed.builder);
@@ -394,6 +412,8 @@ export async function resolveLandingMoments(): Promise<LiveMoment[]> {
       experienceSlug: m.experienceSlug,
       photos: resolvedPhotos,
       builder: selected.builder,
+      market: resolveMarketSlug(m.city),
+      cta: momentCta(resolveMarketSlug(m.city), launch, liveMarkets),
     });
   }
   return live;

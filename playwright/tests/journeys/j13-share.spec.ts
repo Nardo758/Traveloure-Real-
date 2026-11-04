@@ -153,7 +153,7 @@ test.describe("J13 — Trip share (owner → public read-only view)", () => {
   test("public share PAGE renders read-only: inert status pill, day/activity testids, NO routing controls, NO log footer", async ({ browser, page }) => {
     const owner = page.request;
     await registerUser(owner, "j13-ui-owner", "J13", "UiOwner");
-    const tripId = await createTrip(owner, "J13 UI Shared Plan", "Lisbon, Portugal");
+    const tripId = await createTrip(owner, "J13 UI Shared Plan", "Kyoto, Japan");
     await expectSlipDraftFailure(page, tripId);
     await createItem(owner, tripId, "J13 Shared Stop", 1);
 

@@ -446,6 +446,16 @@ export function browseDatesFromPen(
   return { startDate, endDate };
 }
 
+/**
+ * CITY-1 (ledger `2026-11-04-city1-marquee-defaults`): the marquee market is the default city wherever a city is
+ * picked. A state that holds no city takes the marquee; a held city (a door's, or the traveler's) is kept.
+ */
+export function withMarqueeCity(state: PlanEntryState, marquee: string | null | undefined): PlanEntryState {
+  if (state.market || !marquee) return state;
+  const m = OPERATING_MARKETS.find((x) => x.marketKey === marquee);
+  return m ? { ...state, market: m } : state;
+}
+
 /** Start a plan needs a city; nothing else (dates are optional — E1 placeholder window). */
 export function canStartPlan(state: PlanEntryState): boolean {
   return !!state.market;
@@ -526,12 +536,18 @@ export function suggestedMarketsFor(typed: string): OperatingMarket[] {
   return sameCountry.length > 0 ? sameCountry : [...OPERATING_MARKETS];
 }
 
-/** The typed-city check: an exact operating market, or "not yet" with suggestions. */
-export function typedCity(typed: string): { market: OperatingMarket } | { notYet: string; suggestions: OperatingMarket[] } | null {
+/**
+ * The typed-city check: an exact operating market, or "not yet" with suggestions. CITY-1: an operating market that
+ * is not open (`isOpen` false) returns `{ waitlist }` — the picker links to its waitlist instead of saying "not yet".
+ */
+export function typedCity(
+  typed: string,
+  isOpen: (marketKey: string) => boolean = () => true,
+): { market: OperatingMarket } | { waitlist: OperatingMarket } | { notYet: string; suggestions: OperatingMarket[] } | null {
   const t = typed.trim();
   if (!t) return null;
   const market = exactOperatingMarket(t);
-  if (market) return { market };
+  if (market) return isOpen(market.marketKey) ? { market } : { waitlist: market };
   return { notYet: t.split(",")[0].trim(), suggestions: suggestedMarketsFor(t) };
 }
 

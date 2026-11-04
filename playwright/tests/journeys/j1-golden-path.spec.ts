@@ -80,7 +80,8 @@ async function registerActor(request: APIRequestContext, label: string): Promise
 
 async function createTrip(request: APIRequestContext, title: string): Promise<any> {
   const res = await request.post(`${BASE_URL}/api/trips`, {
-    data: { title, destination: "San Francisco", startDate: "2026-09-01", endDate: "2026-09-05" },
+    // CITY-1: POST /api/trips mints only in an open market (the marquee).
+    data: { title, destination: "Kyoto, Japan", startDate: "2026-09-01", endDate: "2026-09-05" },
   });
   expect(res.status(), `create trip failed (${res.status()}): ${await res.text()}`).toBe(201);
   return res.json();
@@ -498,7 +499,7 @@ test.describe("J1 — Golden Path (self-serve checkout, no expert)", () => {
         tripId,
         optimizationPaymentId: payBody.paymentIntentId,
         title: "J1.3 comparison",
-        destination: "San Francisco",
+        destination: "Kyoto, Japan",
         startDate: "2026-09-01",
         endDate: "2026-09-05",
       },

@@ -32,6 +32,7 @@ import { isShowSeries } from "@shared/event-page";
 import { EventRow } from "@/components/events/EventRow";
 import LANDING_PHOTO_ATTRIBUTION from "../../../public/images/landing/ATTRIBUTION.json";
 import { SectionHeader, OpenSection } from "./section-header";
+import { useLaunchMarket } from "@/lib/signup-mode";
 
 
 /** The occasion "Plan around it" pre-sets — seeded by the experience-types seeder (the one slug, `EVENT_OCCASION_SLUG`). */
@@ -173,29 +174,34 @@ export function CityEventCards({
 }
 
 /**
- * Kyoto pages show dated events in the Kyoto market that are not outside the city.
- * `outsideCity` is the existing distance rule (SH-1 item 4 / `eventPlacement`).
+ * The marquee market's pages show dated events in that market that are not outside the city (CITY-1: the market is
+ * the marquee from settings, never a typed city). `outsideCity` is the existing distance rule (SH-1 item 4 /
+ * `eventPlacement`). No market ⇒ no events.
  */
-export function kyotoPageEvents(events: readonly CityEventCard[]): CityEventCard[] {
-  return events.filter((e) => e.marketKey === "kyoto" && e.outsideCity !== true);
+export function marketPageEvents(events: readonly CityEventCard[], market: string | null | undefined): CityEventCard[] {
+  if (!market) return [];
+  return events.filter((e) => e.marketKey === market && e.outsideCity !== true);
 }
 
-/** Pure: whether the strip renders, and which cards — absent below the threshold of Kyoto events. */
-export function stripCards(payload: CityEventsPayload | undefined | null): CityEventCard[] | null {
+/** Pure: whether the strip renders, and which cards — absent below the threshold of the marquee's events. */
+export function stripCards(payload: CityEventsPayload | undefined | null, market: string | null | undefined): CityEventCard[] | null {
   if (!payload) return null;
-  const events = kyotoPageEvents(payload.events);
+  const events = marketPageEvents(payload.events, market);
   if (!showCityEventsStrip(events.length)) return null;
   return events.slice(0, CITY_EVENTS_STRIP_MAX);
 }
 
 export function EventsStripContent({
   payload,
+  market,
   onPlanAround,
 }: {
   payload: CityEventsPayload | undefined | null;
+  /** CITY-1: the marquee market (`useLaunchMarket`). */
+  market: string | null | undefined;
   onPlanAround: (s: PlanningSource) => void;
 }) {
-  const cards = stripCards(payload);
+  const cards = stripCards(payload, market);
   if (!cards) return null;
   return (
     <OpenSection testId="section-city-events">
@@ -211,6 +217,7 @@ export function EventsStripContent({
 
 export function EventsStrip({ onPlanAround }: { onPlanAround: (s: PlanningSource) => void }) {
   const { data } = useQuery<CityEventsPayload>({ queryKey: ["/api/city-events/upcoming"] });
-  return <EventsStripContent payload={data} onPlanAround={onPlanAround} />;
+  const launch = useLaunchMarket();
+  return <EventsStripContent payload={data} market={launch?.slug ?? null} onPlanAround={onPlanAround} />;
 }
 
