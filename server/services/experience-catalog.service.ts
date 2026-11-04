@@ -1,3 +1,4 @@
+import { reviewedEditorialDescription } from "./partner-editorial";
 import { db } from "../db";
 import { 
   activityCache, 
@@ -472,7 +473,8 @@ class ExperienceCatalogService {
       provider: e.provider || "fever",
       externalId: e.eventId,
       title: e.title,
-      description: e.description,
+      // PARTNER-1 (ledger `2026-11-03-gate1-partner1`): our reviewed editorial text only, never Fever's description.
+      description: reviewedEditorialDescription(e),
       imageUrl: e.imageUrl,
       // SH-1 Q7.2/Q7.4: no Fever amount reaches a traveler — the partner shows the current price.
       price: null,
@@ -888,7 +890,8 @@ class ExperienceCatalogService {
           provider: event.provider || "fever",
           externalId: event.eventId,
           title: event.title,
-          description: event.description,
+          // PARTNER-1: our reviewed editorial text only, never Fever's description.
+          description: reviewedEditorialDescription(event),
           imageUrl: event.imageUrl,
           // SH-1 Q7.2/Q7.4: no Fever amount reaches a traveler.
           price: null,

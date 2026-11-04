@@ -4,6 +4,7 @@
  *   T4 the Fever projection never carries Fever's description, short description or highlights; our editorial
  *      description appears only once `editorial_reviewed_at` is set. The same rule for the activities and hotels the
  *      recommendation service returns (`toEditorialPartnerRow`).
+ *      Catalog search and the catalog item read (experience-catalog.service.ts) follow the same rule (DB-backed rows).
  *   T8 migration 432 is registered, its ALTERs are ADD COLUMN IF NOT EXISTS, its UPDATE matches only the old text, and
  *      its statements are the brief's §8 text; the eight columns are declared in shared/schema.ts.
  *
@@ -19,6 +20,8 @@ import { toPublicFeverEvents } from "../fever-public";
 import { reviewedEditorialDescription, toEditorialPartnerRow } from "../partner-editorial";
 import type { FeverEvent } from "../fever.service";
 import { MIGRATION_FILES } from "../../migrations/migration-files";
+import crypto from "node:crypto";
+import { sql } from "drizzle-orm";
 
 const ROOT = process.cwd();
 const read = (p: string) => readFileSync(path.join(ROOT, p), "utf8");
@@ -97,6 +100,42 @@ test("T4 activities and hotels: the recommendation rows carry the reviewed edito
   const rec = read("server/services/recommendation.service.ts");
   assert.match(rec, /hotels: enhancedHotels\.map\(\(h\) => toEditorialPartnerRow\(h\)\)/);
   assert.match(rec, /activities: enhancedActivities\.map\(\(a\) => toEditorialPartnerRow\(a\)\)/);
+});
+
+test("T4 catalog search and catalog item read: Fever description only when reviewed", async (t) => {
+  if (!process.env.DATABASE_URL) {
+    t.skip("needs DATABASE_URL (disposable database)");
+    return;
+  }
+  const host = new URL(process.env.DATABASE_URL).hostname.toLowerCase();
+  if (process.env.JOURNEY_DB_WRITES_OK !== "1" && !["localhost", "127.0.0.1", "::1", ""].includes(host)) {
+    throw new Error("refusing to write fixtures to a non-disposable database");
+  }
+  const { db } = await import("../../db");
+  const { experienceCatalogService } = await import("../experience-catalog.service");
+  const run = crypto.randomUUID().slice(0, 8);
+  const city = `Editorialtown ${run}`;
+  const ids = { reviewed: `pe-${run}-r`, unreviewed: `pe-${run}-u` };
+  const insert = (id: string, reviewedAt: Date | null) => db.execute(sql`
+    INSERT INTO fever_event_cache (id, event_id, title, description, short_description, category, city, city_code, country, booking_url, expires_at, editorial_description, editorial_reviewed_at)
+    VALUES (${id}, ${id}, ${`Concert ${id}`}, 'SUPPLIER CATALOG TEXT', 'SUPPLIER CATALOG SHORT', 'music', ${city}, 'EDT', 'Nowhere',
+            'https://partner.example.test/x', NOW() + interval '1 day', 'Our catalog words.', ${reviewedAt})`);
+  try {
+    await insert(ids.reviewed, new Date("2026-11-01T00:00:00Z"));
+    await insert(ids.unreviewed, null);
+    const found = await (experienceCatalogService as any).searchEvents({ destination: city, providers: ["fever"] }, 10, 0);
+    const byId = new Map<string, any>(found.map((e: any) => [e.id, e]));
+    assert.equal(byId.get(ids.reviewed)?.description, "Our catalog words.");
+    assert.equal(byId.get(ids.unreviewed)?.description, null, "unreviewed ⇒ no description");
+    assert.ok(!JSON.stringify(found).includes("SUPPLIER CATALOG"), "catalog search carries no Fever text");
+    const one = await experienceCatalogService.getCatalogItem(ids.unreviewed, "event");
+    assert.equal(one?.description, null);
+    assert.ok(!JSON.stringify(one).includes("SUPPLIER CATALOG"));
+    const two = await experienceCatalogService.getCatalogItem(ids.reviewed, "event");
+    assert.equal(two?.description, "Our catalog words.");
+  } finally {
+    await db.execute(sql`DELETE FROM fever_event_cache WHERE id IN (${ids.reviewed}, ${ids.unreviewed})`).catch(() => {});
+  }
 });
 
 test("T8 migration 432: registered, additive, guarded, and the brief's §8 statements", () => {
