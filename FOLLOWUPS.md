@@ -1266,3 +1266,31 @@ locale keeps its earlier body (no approved translation).
 and sign in. This was already true on `main`; the earlier `/signup` form never sent such a password because its
 3-space test case was below the length minimum. The shared sign-up form (N-2) does not trim or refuse it either.
 Whether a whitespace-only password is refused, and by which layer, needs a ruling.
+
+## From Lane 1 — the guest save rail (ledger `2026-11-05-lane1-guest-save-rail`)
+
+### FU-L1-1 — A-6: verification gates switch off with email sends (blocker on the SIGNUP_MODE flip)
+
+`server/services/verified-email-action-gate.ts:56-58` sets `enforced = emailSendsEnabled()` and `:68` allows every
+gated action (checkout, booking, contact, payout) while `EMAIL_SENDS_ENABLED` is false. Ruling (Nov 5, 2026): no change
+now. **Must be decoupled before SIGNUP_MODE flips to open** — a blocker on that flip, not a calendar date.
+
+### FU-L1-2 — browse cards with no source row cannot be saved by a guest
+
+A-1 refuses a save that names no row. Three card kinds name none: the recommendation card (an offering category,
+`city-feed-card-recommendation.tsx:184`, no `sourceContentId`), and the catalogue search's `checked_place` and
+`official_site` results (`catalogue-search.service.ts:107`, `:122`). In waitlist mode a guest's press answers the
+approved save-failed sentence. Whether those cards should draw no save action for a guest is a CAP-2 question.
+
+### FU-L1-3 — migration 436 and the cart's convert rail
+
+`itinerary_items_trip_content_uidx` makes a second item with the same content link on a plan impossible. The cart
+materializer (`cart-projection.service.ts:911`) catches the failure and retries the line later; the convert rail
+(`:1033`) rolls its transaction back. Both are reached only when a plan already holds that content, which the cart's
+own one-line-per-content rule makes rare. Watch for `cart-projection: failed to materialize` with a 23505.
+
+### FU-L1-4 — guest item points carry no source stamp
+
+Points copied from a gem, Fever event, partner hotel/activity or affiliate product are stored with `coord_source` NULL,
+which GC-1 reads as Google. None of these is a Google point. Stamping a non-Google value needs a ruling (GC-1 admits
+only the two Google values today). Relates to A-32 item 3.

@@ -1564,7 +1564,8 @@ function GuestCartMigrator() {
           })
           .catch((err) => console.warn("[cart] Guest cart migration failed", err));
         // GATE-1B (ledger 2026-11-04-gate1b-guest-plan): the session's guest plans become the account's, as-is.
-        void claimGuestPlans().then((ids) => {
+        // A-37: one claim request per sign-in (the plan page reuses this one).
+        void claimGuestPlans((user as any)?.id ?? null).then((ids) => {
           if (ids.length > 0) qc.invalidateQueries({ queryKey: ["/api/trips"] });
         });
       }

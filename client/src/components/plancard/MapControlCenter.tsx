@@ -842,7 +842,7 @@ export function MapControlCenter({
                   >
                     <span className="inline-block h-2.5 w-2.5 rounded-full border-2 border-teal-500" aria-hidden="true" />
                     <span className="flex-1 truncate">{b.name}</span>
-                    {b.lat == null ? <span className="text-[10px] text-muted-foreground">not on the map</span> : null}
+                    {b.lat == null && b.located !== true ? <span className="text-[10px] text-muted-foreground">not on the map</span> : null}
                   </button>
                 </li>
               ))}

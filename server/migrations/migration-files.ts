@@ -2279,4 +2279,13 @@ export const MIGRATION_FILES = [
   // local_perfect_day display_name; experience_types travel description). DATA ONLY. Per the round 2 rulings
   // (Nov 4, 2026). Ledger 2026-11-04-round2-exp-qa.
   "434_round2_copy_values.sql",
+  // 435 — Lane 1 A-5: dedupe live guest plans per session (keep the earliest, move items, delete the rest) and a unique
+  // partial index on trips.guest_session_hash, declared in shared/schema.ts. Ledger 2026-11-05-lane1-guest-save-rail.
+  "435_guest_plan_one_per_session.sql",
+  // 436 — Lane 1 A-11: unique index on itinerary_items (trip_id, content_type, content_id) WHERE content_id IS NOT NULL,
+  // declared in shared/schema.ts. Index only. Ledger 2026-11-05-lane1-guest-save-rail.
+  "436_itinerary_item_one_per_source.sql",
+  // 437 — Lane 1 A-18: editorial OSM coordinates on four Kyoto gems that have no point. DATA ONLY. Ledger
+  // 2026-11-05-lane1-guest-save-rail.
+  "437_kyoto_gem_coordinates.sql",
 ] as const;

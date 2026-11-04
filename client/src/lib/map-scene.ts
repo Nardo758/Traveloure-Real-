@@ -65,6 +65,8 @@ export interface BrowsePlace {
   partnerText?: string;
   /** GATE-1B (ruling 2): a city-page gem or event names the one tab it belongs to (never matched by words). */
   tabKey?: import("@/lib/browse-supply").BrowseTabKey;
+  /** A-33: a city-page gem or event that has a point, though the public payload does not carry it (never "not on the map"). */
+  located?: boolean;
   /** Step 8b-2: how the row answers the Budget filter (`browse-supply.ts` `BrowseBudget`). */
   budget?: import("@/lib/browse-supply").BrowseBudget;
 }

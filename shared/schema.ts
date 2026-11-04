@@ -313,6 +313,8 @@ export const trips = pgTable("trips", {
   // keeps them (publish-trap rule).
   index("trips_guest_session_hash_idx").on(table.guestSessionHash).where(sql`guest_session_hash IS NOT NULL`),
   index("trips_guest_retention_idx").on(table.updatedAt).where(sql`guest_session_hash IS NOT NULL AND guest_claimed_at IS NULL`),
+  // Migration 435 (A-5, ledger 2026-11-05-lane1-guest-save-rail): at most one live guest plan per guest session.
+  uniqueIndex("trips_guest_session_live_uidx").on(table.guestSessionHash).where(sql`guest_session_hash IS NOT NULL AND guest_claimed_at IS NULL`),
   // Migration 133: partial index used by ready-made trip authoring queries (author_id IS NOT NULL).
   // Declared here — drizzle push drops indexes absent from this file on publish.
   index("idx_trips_author_id").on(table.authorId).where(sql`author_id IS NOT NULL`),
@@ -6376,6 +6378,11 @@ export const itineraryItems = pgTable("itinerary_items", {
   // stamped migration never recreates it. `contentId` gets NO index — it is a soft reference
   // nothing looks an item up by; the item is always reached through its trip.
   itineraryItemsCustomVenueIdx: index("idx_itinerary_items_custom_venue_id").on(table.customVenueId),
+  // Migration 436 (A-11, ledger 2026-11-05-lane1-guest-save-rail): one item per source content row on a plan; a double
+  // submit answers the existing row. Declared here so the deploy push keeps it (publish-trap rule).
+  itineraryItemsTripContentUidx: uniqueIndex("itinerary_items_trip_content_uidx")
+    .on(table.tripId, table.contentType, table.contentId)
+    .where(sql`content_id IS NOT NULL`),
 }));
 
 // Temporal Anchors - Fixed time commitments that constrain all other scheduling

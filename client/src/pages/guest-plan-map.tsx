@@ -41,6 +41,8 @@ import {
   guestSaveErrorMessage,
   saveToGuestPlan,
   guestBodyForPlace,
+  guestBodyForPendingAdd,
+  guestSavedMessage,
   guestPlanDays,
   takeClaimedGuestPlanId,
   updateGuestPlan,
@@ -106,6 +108,8 @@ function GuestPlanMapSignIn() {
  */
 function SignedInLanding() {
   const [, setLocation] = useLocation();
+  const { user } = useAuth();
+  const userId = (user as any)?.id ?? null;
   useEffect(() => {
     let live = true;
     const open = (id: string | null | undefined) => {
@@ -113,11 +117,12 @@ function SignedInLanding() {
     };
     const stored = takeClaimedGuestPlanId();
     if (stored) open(stored);
-    else void claimGuestPlans().then((ids) => open(ids[0] ?? takeClaimedGuestPlanId()));
+    // A-37: the sign-in's one claim (the app watcher's), never a second request.
+    else void claimGuestPlans(userId).then((ids) => open(ids[0] ?? takeClaimedGuestPlanId()));
     return () => {
       live = false;
     };
-  }, [setLocation]);
+  }, [setLocation, userId]);
   const creating = pendingPlanRecordTakenThisLoad() || hasPendingPlanRecord();
   return (
       <div className="mx-auto max-w-xl px-4 py-16 text-center" data-testid={creating ? "guest-map-creating" : "guest-map-no-record"}>
@@ -259,8 +264,10 @@ function WaitlistGuestPlan() {
       .then(async () => {
         takePendingPlanRecord();
         // A door's one pending add (a listing or partner place) is saved onto the new plan.
-        if (record.pendingAdd?.title) {
-          await saveToGuestPlan({ title: record.pendingAdd.title, dayNumber: record.pendingAdd.dayNumber ?? 1 }, destination).catch(() => undefined);
+        // A-19: the pending add is replayed whole — its kind and source id — so it saves with its own point.
+        const pending = guestBodyForPendingAdd(record.pendingAdd);
+        if (pending) {
+          await saveToGuestPlan(pending, destination).catch(() => undefined);
         }
       })
       .catch(() => setCreateFailed(true))
@@ -307,9 +314,10 @@ function WaitlistGuestPlan() {
   const dayNumber = days[selectedDay]?.dayNum ?? 1;
 
   const onSave = (place: BrowsePlace) => {
-    if (place.kind === "candidate") return;
-    saveToGuestPlan(guestBodyForPlace(place, dayNumber), plan.destination).then(
-      () => toast({ title: WAITLIST_COPY.savedToPlan }),
+    const body = guestBodyForPlace(place, dayNumber);
+    if (!body) return;
+    saveToGuestPlan(body, plan.destination).then(
+      (result) => toast({ title: guestSavedMessage(result) }),
       (err) => toast({ variant: "destructive", title: guestSaveErrorMessage(err) }),
     );
   };

@@ -7,11 +7,11 @@
  * (`saveToGuestPlan`), and "Saved to plan" is toasted only after the server confirms it. A refusal toasts the
  * approved failure (or rate-limit) sentence; nothing is said to have been saved.
  */
+import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { browseSavesToPlan, useSignupMode } from "./signup-mode";
-import { WAITLIST_COPY } from "./waitlist-copy";
-import { guestItemFromFeedItem, guestSaveErrorMessage, saveToGuestPlan } from "./waitlist-guest-plan";
+import { cityFromPath, guestItemFromFeedItem, guestSavedMessage, guestSaveErrorMessage, resolveSaveCity, saveToGuestPlan } from "./waitlist-guest-plan";
 
 export function useBrowseSaveToPlan(): {
   saveToPlan: boolean;
@@ -24,6 +24,7 @@ export function useBrowseSaveToPlan(): {
   const { mode } = useSignupMode();
   const { user, isLoading } = useAuth();
   const { toast } = useToast();
+  const [pathname] = useLocation();
   // While the session read is in flight the viewer is not yet known to be signed in; the mode alone decides.
   const saveToPlan = browseSavesToPlan(mode, !isLoading && !!user);
   return {
@@ -31,13 +32,17 @@ export function useBrowseSaveToPlan(): {
     wrapAdd: (onAdd) => {
       if (!saveToPlan) return onAdd;
       return (item) => {
+        // A-1: the card names its source row, or nothing is sent (no "Saved" on nothing).
         const body = guestItemFromFeedItem(item);
-        if (!body) {
+        // A-2: the city a first save starts the plan in — the route's, then the page's (the card's own `city`, which it
+        // puts on the payload), then the item's own. None ⇒ nothing is sent.
+        const city = resolveSaveCity(cityFromPath(pathname), (item as any)?.city ?? null, (item as any)?.itemCity ?? null);
+        if (!body || !city) {
           toast({ variant: "destructive", title: guestSaveErrorMessage(null) });
           return;
         }
-        saveToGuestPlan(body, (item as any)?.city ?? null).then(
-          () => toast({ title: WAITLIST_COPY.savedToPlan }),
+        saveToGuestPlan(body, city).then(
+          (result) => toast({ title: guestSavedMessage(result) }),
           (err) => toast({ variant: "destructive", title: guestSaveErrorMessage(err) }),
         );
       };
