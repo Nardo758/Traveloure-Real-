@@ -36,11 +36,11 @@ import { strictRateLimiter } from "../infrastructure/rate-limiter";
 import { getAdminRole, recordAdminAudit } from "../services/admin-query.service";
 import { getLaunchMarketSlug } from "../services/platform-flags";
 import {
-  WAITLIST_CSV_COLUMNS, confirmWaitlistUnsubscribe, deleteWaitlistRow, enqueueMarketOpened, joinWaitlist,
+  WAITLIST_CSV_COLUMNS, confirmWaitlistUnsubscribe, deleteWaitlistRow, enqueueMarketOpened, joinWaitlistMarkets,
   revokeWaitlistUnsubscribe, searchWaitlistByEmail, waitlistCounts, waitlistExportRows,
 } from "../services/launch-waitlist.service";
 import {
-  WAITLIST_EMAIL_ERROR, WAITLIST_SEARCH_MIN_CHARS, WAITLIST_UNKNOWN_MARKET, resolveWaitlistMarket, waitlistCityName,
+  WAITLIST_EMAIL_ERROR, WAITLIST_SEARCH_MIN_CHARS, WAITLIST_UNKNOWN_MARKET, resolveWaitlistMarkets, waitlistCityName,
   waitlistJoinBodySchema, waitlistMarketOpenedBodySchema, waitlistUnsubscribeBodySchema,
 } from "@shared/launch-waitlist";
 import { logger } from "../infrastructure/logger";
@@ -56,29 +56,31 @@ router.post("/api/waitlist", strictRateLimiter, async (req, res) => {
   if (typeof raw.homepage === "string" && raw.homepage.trim() !== "") return res.json({ ok: true });
   const parsed = waitlistJoinBodySchema.safeParse(raw);
   if (!parsed.success) return res.status(400).json({ error: WAITLIST_EMAIL_ERROR });
-  const { homepage: _honeypot, ref, market, ...body } = parsed.data;
+  const { homepage: _honeypot, ref, market, markets, ...body } = parsed.data;
   try {
     const launchMarketSlug = await getLaunchMarketSlug();
     if (!launchMarketSlug) return res.status(503).json({ error: "The waitlist is not open right now." });
-    const resolved = resolveWaitlistMarket(market, launchMarketSlug);
+    // WAIT-1: one or more markets; a single `market` (older clients) is [market].
+    const resolved = resolveWaitlistMarkets(markets, market, launchMarketSlug);
     if (!resolved.ok) return res.status(400).json({ error: "Please choose a city from the list.", code: WAITLIST_UNKNOWN_MARKET });
-    const marketSlug = resolved.market;
     // LW-1d: credit comes only from the short link the visitor arrived through, resolved here from its raw code; a
     // refusal (made-up, expired, someone else's trip, the visitor's own link) is logged and the sign-up goes on.
     const referral = await resolveWaitlistReferral({ ref: ref ?? null, viewerUserId: getUserId(req) ?? null });
     const credit = referral.credited
       ? { referrerUserId: referral.referrerUserId, shortLinkCode: referral.shortLinkCode }
       : null;
-    const { inserted } = await joinWaitlist(body, marketSlug, credit);
-    await notifyWaitlistProviderApply({
-      inserted,
-      role: body.role ?? "traveler",
-      marketSlug,
-      email: body.email,
-      contactName: body.contactName ?? null,
-      businessName: body.businessName ?? null,
-      serviceType: body.serviceType ?? null,
-    });
+    const joined = await joinWaitlistMarkets(body, resolved.markets, credit);
+    for (const { marketSlug, inserted } of joined) {
+      await notifyWaitlistProviderApply({
+        inserted,
+        role: body.role ?? "traveler",
+        marketSlug,
+        email: body.email,
+        contactName: body.contactName ?? null,
+        businessName: body.businessName ?? null,
+        serviceType: body.serviceType ?? null,
+      });
+    }
     return res.json({ ok: true });
   } catch (err: any) {
     // Never log the address (no email in logs).

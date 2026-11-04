@@ -10,7 +10,7 @@
  *   G6  website and languages are optional; venue is a category
  *   G8  the expert refusal carries reason, the exact message and applyPath = WAITLIST_EXPERT_FORM_PATH
  *   G9  a provider or traveler answer never carries applyPath or the expert message
- *   G10 WAITLIST_EXPERT_FORM_PATH is "/kyoto#experts" and WAITLIST_ROLES has "expert"
+ *   G10 WAITLIST_EXPERT_FORM_PATH is "/waitlist/kyoto#experts" and WAITLIST_ROLES has "expert"
  *   G12 the waitlist body: an expert needs contactName and a market ("City you know best" is the market picker) and
  *       may not send traveler or provider fields;
  *       traveler and provider bodies validate as before
@@ -145,7 +145,7 @@ describe("WL-B decision", () => {
   });
 
   it("G10 the form path and the role", () => {
-    assert.equal(WAITLIST_EXPERT_FORM_PATH, "/kyoto#experts");
+    assert.equal(WAITLIST_EXPERT_FORM_PATH, "/waitlist/kyoto#experts");
     assert.ok((WAITLIST_ROLES as readonly string[]).includes("expert"));
     assert.deepEqual([...WAITLIST_MARKET_OPENED_ROLES], ["traveler", "provider"], "no market-opened email is sent to experts");
     assert.equal(supplyRefusalRedirect(EXPERT_APPLY_NOW), WAITLIST_EXPERT_FORM_PATH);

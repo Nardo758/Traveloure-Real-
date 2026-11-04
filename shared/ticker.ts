@@ -184,3 +184,132 @@ export function tickerButton(mode: string | null | undefined, launchMarketSlug: 
   if (mode === "open") return { kind: "plan", label: TICKER_OPEN_BUTTON, city: cityName };
   return { kind: "waitlist", label: TICKER_WAITLIST_BUTTON(cityName), href: `/${launchMarketSlug}` };
 }
+
+// ── WAIT-1 (ledger `2026-11-04-wait1-all-markets`): market status from settings ──────────────────────────────
+/**
+ * Which operating markets are LIVE (`platform_settings.live_market_slugs`, a JSON array of market keys). Absent,
+ * unreadable or empty ⇒ none: no market is live until an admin says so. The marquee market is NOT live by being
+ * the marquee — it is Beta (above) until listed here.
+ */
+export const LIVE_MARKET_SLUGS_SETTING = "live_market_slugs";
+/** A market's launch month (`platform_settings.market_launch_dates`, a JSON object of market key → "YYYY-MM"). */
+export const MARKET_LAUNCH_DATES_SETTING = "market_launch_dates";
+
+/** The refusal for a live list an admin tries to save, or null when valid (same shape as the beta list). */
+export function liveMarketSlugsRefusal(value: unknown): string | null {
+  const refusal = betaMarketSlugsRefusal(value);
+  return refusal ? refusal.replace(BETA_MARKET_SLUGS_SETTING, LIVE_MARKET_SLUGS_SETTING) : null;
+}
+
+/** The live market keys, in stored order. Absent, unreadable or empty ⇒ [] (never a guessed market). */
+export function liveMarketSlugs(stored: string | null | undefined): string[] {
+  if (typeof stored !== "string") return [];
+  try {
+    const parsed = JSON.parse(stored);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((k, i): k is string =>
+      typeof k === "string" && parsed.indexOf(k) === i && OPERATING_MARKETS.some((m) => m.marketKey === k));
+  } catch {
+    return [];
+  }
+}
+
+const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/** The refusal for launch dates an admin tries to save, or null when valid: an object of operating key → "YYYY-MM". */
+export function marketLaunchDatesRefusal(value: unknown): string | null {
+  let parsed: unknown;
+  try {
+    parsed = typeof value === "string" ? JSON.parse(value) : null;
+  } catch {
+    return `${MARKET_LAUNCH_DATES_SETTING} must be a JSON object of market key to YYYY-MM`;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return `${MARKET_LAUNCH_DATES_SETTING} must be a JSON object of market key to YYYY-MM`;
+  }
+  for (const [key, month] of Object.entries(parsed as Record<string, unknown>)) {
+    if (!OPERATING_MARKETS.some((m) => m.marketKey === key)) return `unknown market: ${key}`;
+    if (typeof month !== "string" || !MONTH_RE.test(month)) return `${key}: the launch date must be YYYY-MM`;
+  }
+  return null;
+}
+
+/** The launch months by market key. Absent, unreadable or not an object ⇒ {}; a bad entry is dropped, not guessed. */
+export function marketLaunchDates(stored: string | null | undefined): Record<string, string> {
+  if (typeof stored !== "string") return {};
+  try {
+    const parsed = JSON.parse(stored);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const out: Record<string, string> = {};
+    for (const [key, month] of Object.entries(parsed as Record<string, unknown>)) {
+      if (OPERATING_MARKETS.some((m) => m.marketKey === key) && typeof month === "string" && MONTH_RE.test(month)) out[key] = month;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+export type MarketStatus = "live" | "beta" | "opening" | "waitlist";
+
+export interface MarketStatusSettings {
+  /** The marquee market (`launch_market_slug`), or null. */
+  launch: string | null;
+  live: readonly string[];
+  beta: readonly string[];
+  dates: Readonly<Record<string, string>>;
+}
+
+/** ONE answer to "what is this market's status": live, else beta, else opening (a launch month is set), else waitlist. */
+export function marketStatus(slug: string, s: MarketStatusSettings): MarketStatus {
+  if (s.live.includes(slug)) return "live";
+  if (s.beta.includes(slug)) return "beta";
+  if (s.dates[slug]) return "opening";
+  return "waitlist";
+}
+
+/**
+ * The status labels (Marketing row 14). HELD for "Wording approved — Leon". Never the word "coming"; a launch
+ * month is shown only when an admin set one.
+ */
+export const MARKET_STATUS_COPY = {
+  live: "Live",
+  beta: "Beta",
+  opening: (monthYear: string) => `Opening ${monthYear}`,
+  waitlist: "Join the waitlist",
+} as const;
+
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+/** "2027-03" → "March 2027"; anything else ⇒ null. */
+export function monthYearLabel(month: string | null | undefined): string | null {
+  const m = MONTH_RE.exec(month ?? "");
+  if (!m) return null;
+  return `${MONTH_NAMES[Number(month!.slice(5, 7)) - 1]} ${month!.slice(0, 4)}`;
+}
+
+/** The label for a market's status. */
+export function marketStatusLabel(slug: string, s: MarketStatusSettings): string {
+  const status = marketStatus(slug, s);
+  if (status === "opening") {
+    const label = monthYearLabel(s.dates[slug]);
+    return label ? MARKET_STATUS_COPY.opening(label) : MARKET_STATUS_COPY.waitlist;
+  }
+  return MARKET_STATUS_COPY[status];
+}
+
+/**
+ * The hero pill for the marquee market (HELD): "Now live in {city}" when it is live, else "Now in beta in {city}".
+ * No marquee market ⇒ no pill (null).
+ */
+export const HERO_PILL_COPY = {
+  live: (city: string) => `Now live in ${city}`,
+  beta: (city: string) => `Now in beta in ${city}`,
+  elsewhere: "Planning a trip somewhere else? See all markets",
+} as const;
+
+export function heroMarketPill(s: MarketStatusSettings): string | null {
+  const city = launchCityName(s.launch);
+  if (!city || !s.launch) return null;
+  return s.live.includes(s.launch) ? HERO_PILL_COPY.live(city) : HERO_PILL_COPY.beta(city);
+}

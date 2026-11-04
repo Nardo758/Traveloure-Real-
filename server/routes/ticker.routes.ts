@@ -16,7 +16,7 @@ import { Router } from "express";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { getUserId } from "../utils/auth";
 import { getAdminRole } from "../services/admin-query.service";
-import { getBetaMarketSlugs, getLaunchMarketSlug } from "../services/platform-flags";
+import { getBetaMarketSlugs, getLaunchMarketSlug, getLiveMarketSlugs, getMarketLaunchDates } from "../services/platform-flags";
 import { betaCityNames } from "@shared/ticker";
 import { logger } from "../infrastructure/logger";
 import {
@@ -53,18 +53,33 @@ router.get("/api/public/ticker", async (req, res) => {
 
 // SH-1 item 3: the live market keys (`beta_market_slugs`), for the homepage rail. Cached in-process ~60 s; a failed read
 // answers an empty list, which hides the rail rather than guessing.
+// WAIT-1: the same answer also carries the market-status settings — `{ launch, live, beta, dates }` — so every surface
+// labels a market from ONE read. `marketKeys` stays for older readers.
 const LIVE_MARKETS_CACHE_MS = 60_000;
-let liveMarketsCache: { at: number; marketKeys: string[] } | null = null;
+type LiveMarketsAnswer = {
+  marketKeys: string[];
+  launch: string | null;
+  live: string[];
+  beta: string[];
+  dates: Record<string, string>;
+};
+let liveMarketsCache: { at: number; answer: LiveMarketsAnswer } | null = null;
 router.get(LIVE_MARKETS_ROUTE, async (_req, res) => {
   try {
     if (!liveMarketsCache || Date.now() - liveMarketsCache.at > LIVE_MARKETS_CACHE_MS) {
-      liveMarketsCache = { at: Date.now(), marketKeys: await getBetaMarketSlugs() };
+      const [beta, launch, live, dates] = await Promise.all([
+        getBetaMarketSlugs(),
+        getLaunchMarketSlug(),
+        getLiveMarketSlugs(),
+        getMarketLaunchDates(),
+      ]);
+      liveMarketsCache = { at: Date.now(), answer: { marketKeys: beta, launch, live, beta, dates } };
     }
     res.set("Cache-Control", `public, max-age=${Math.floor(LIVE_MARKETS_CACHE_MS / 1000)}`);
-    return res.json({ marketKeys: liveMarketsCache.marketKeys });
+    return res.json(liveMarketsCache.answer);
   } catch (err: any) {
     logger.error(`[live-markets] read failed: ${err?.code ?? err?.message ?? "unknown"}`);
-    return res.json({ marketKeys: [] });
+    return res.json({ marketKeys: [], launch: null, live: [], beta: [], dates: {} });
   }
 });
 

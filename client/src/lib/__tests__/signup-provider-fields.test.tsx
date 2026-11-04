@@ -8,7 +8,7 @@
  *   S3  the traveler intent draws no provider field and no WL-B words
  *   S4  the register body carries `supplyRole` and `provider` under the WL-B server contract's names
  *   S5  no PayPal or traveler-fee text on either page
- *   S6/S7/S9  the expert refusal draws the server's message and ONE "Apply Now" link to applyPath ("/kyoto#experts")
+ *   S6/S7/S9  the expert refusal draws the server's message and ONE "Apply Now" link to applyPath ("/waitlist/kyoto#experts")
  *   S8  a provider or traveler answer draws no refusal
  *   S10 /kyoto has section#experts holding form-expert-waitlist
  *   S11 the expert body: role expert with contactName, email and the picked market ("City you know best" is the
@@ -110,7 +110,7 @@ describe("WL-B screen: provider sign-up", () => {
 describe("WL-B screen: the expert refusal", () => {
   it("S6/S7/S9 the server's message and one Apply Now link to applyPath", () => {
     const refusal = expertRefusalFrom(403, { allowed: false, reason: EXPERT_APPLY_NOW, message: EXPERT_APPLY_NOW_MESSAGE, applyPath: WAITLIST_EXPERT_FORM_PATH });
-    assert.deepEqual(refusal, { message: EXPERT_APPLY_NOW_MESSAGE, applyPath: "/kyoto#experts" });
+    assert.deepEqual(refusal, { message: EXPERT_APPLY_NOW_MESSAGE, applyPath: "/waitlist/kyoto#experts" });
     assert.ok(WAITLIST_EXPERT_FORM_PATH.length > 0);
     assert.equal(WLB_SIGNUP_COPY.applyNow, "Apply Now");
     const block = SIGNUP_SRC.slice(SIGNUP_SRC.indexOf("if (expertRefusal) {"), SIGNUP_SRC.indexOf("const providerKeep"));

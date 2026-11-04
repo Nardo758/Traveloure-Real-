@@ -1,4 +1,5 @@
 import { Switch, Route, Redirect, useLocation, useSearch } from "wouter";
+import { kyotoWaitlistTarget } from "@/lib/waitlist-markets";
 import { Ga4PageViews } from "@/components/Ga4PageViews";
 import { AnalyticsConsentBanner } from "@/components/AnalyticsConsentBanner";
 import { VerifyEmailReminderBanner } from "@/components/auth/VerifyEmailReminderBanner";
@@ -469,6 +470,14 @@ const DISCOVER_TAB_ROUTES: Record<string, string> = {
   services: "/services",
 };
 
+function KyotoWaitlistRedirect() {
+  const [, setLocation] = useLocation();
+  useEffect(() => {
+    setLocation(kyotoWaitlistTarget(window.location.search, window.location.hash), { replace: true });
+  }, [setLocation]);
+  return null;
+}
+
 function DiscoverRedirect() {
   const search = useSearch();
   const params = new URLSearchParams(search);
@@ -695,8 +704,17 @@ function Router() {
       </Route>
       {/* LW-1c: the launch market's waitlist (launch_market_slug = kyoto). Where the sign-up switch sends a
           blocked traveler (?blocked=1) and where the blog CTA points (?source=blog&ref=<post>). */}
-      <Route path="/kyoto">
+      {/* WAIT-1: one waitlist for every operating market. `/waitlist` is the marquee market's page
+          (launch_market_slug), `/waitlist/:market` any operating market's; `/kyoto` keeps working as a redirect
+          that carries its query and hash (`/kyoto#experts`, `?blocked=1`). */}
+      <Route path="/waitlist">
         <Layout><LaunchWaitlistPage /></Layout>
+      </Route>
+      <Route path="/waitlist/:market">
+        <Layout><LaunchWaitlistPage /></Layout>
+      </Route>
+      <Route path="/kyoto">
+        <KyotoWaitlistRedirect />
       </Route>
       {/* 291b: the waitlist unsubscribe page (?token=…). Public. GET confirms; only the button's POST revokes. */}
       <Route path="/unsubscribe">
