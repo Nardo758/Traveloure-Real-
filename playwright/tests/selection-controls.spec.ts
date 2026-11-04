@@ -42,7 +42,8 @@ test.describe('Selection controls (P462) — the /experiences/<slug> start page'
 
   test('a slug that is not an occasion picks nothing; the trip group stays the default', async ({ page }) => {
     await gotoSlug(page, 'photo');
-    await expect(page.getByTestId('plan-entry-group-trips')).toHaveAttribute('aria-pressed', 'true', { timeout: 15_000 });
+    // ENTRY-1 (g): the default group is not drawn as chosen until the traveler picks one.
+    await expect(page.getByTestId('plan-entry-group-trips')).toHaveAttribute('aria-pressed', 'false', { timeout: 15_000 });
     await page.getByTestId('plan-entry-more-specific').click();
     await expect(page.getByTestId('occasion-picker')).toBeVisible();
     await expect(page.locator('[data-testid^="option-occasion-"][aria-pressed="true"]')).toHaveCount(0);

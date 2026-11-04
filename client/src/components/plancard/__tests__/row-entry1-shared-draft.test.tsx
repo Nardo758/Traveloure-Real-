@@ -6,7 +6,7 @@
  *   T3 planTitle: "Proposal in Kyoto" with an occasion, "Kyoto trip" without — and the mint body uses it
  *   T4 every date/city writer also refreshes the slip header's trip read ([api.trips.get.path, id])
  *   T5 a city page carries its city (the pop-up opens at the occasion step); /about carries nothing ("around")
- *   T6 PlanEntry: no group chip is drawn chosen until one is picked; the footer reads the held label
+ *   T6 PlanEntry: no group chip is drawn chosen until one is picked (or a door carried the group or an occasion); the footer reads the held label
  *   T7 the pop-up's URL: ?start=1 (+ &step=), other params kept; the provider pushes, removes and reads it
  *   T8 a neighbourhood with id + slug homes its wanted tile in its own section; the tile names its neighbourhood
  *   T9 every Start-a-plan control on the landing page and in the nav/footer is a real <a href> link
@@ -152,6 +152,10 @@ describe("T6 the group chips and the footer", () => {
     assert.doesNotMatch(fresh, /aria-pressed="true"[^>]*data-testid="plan-entry-group-/, "the default group is not drawn as chosen");
     const chosen = renderPanel({ city: "Kyoto", country: "Japan", group: "trips", experienceSlug: "vacation", newPlan: true });
     assert.match(chosen, /aria-pressed="true"[^>]*data-testid="plan-entry-group-trips"/);
+    const carried = renderPanel({ city: "Kyoto", country: "Japan", experienceSlug: "vacation", newPlan: true });
+    if (/data-testid="plan-entry-group-/.test(carried)) {
+      assert.match(carried, /aria-pressed="true"[^>]*data-testid="plan-entry-group-/, "a door's occasion counts as chosen");
+    }
     assert.equal(PLAN_ENTRY_CONTINUE, "Continue");
     assert.match(fresh, new RegExp(`data-testid="button-plan-entry-start"[^>]*>${PLAN_ENTRY_CONTINUE}<`));
     const panel = src("client/src/components/plan/PlanEntry.tsx");

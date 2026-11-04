@@ -593,7 +593,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
                 {shownGroups.map((key: OccasionPickerGroup) => (
                   <Chip
                     key={key}
-                    active={(groupChosen || !!source?.group) && state.group === key && !(moreSpecific && state.occasionSlug)}
+                    active={(groupChosen || !!source?.group || !!state.occasionSlug) && state.group === key && !(moreSpecific && state.occasionSlug)}
                     onClick={() => {
                       setGroupChosen(true);
                       setState((s) => ({ ...s, ...choosePlanEntryGroup(s, key) }));
