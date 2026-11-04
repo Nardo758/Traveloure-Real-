@@ -99,12 +99,13 @@ export function tileActionLabel(kind: FeedItem["kind"], ctx: TileActionContext =
     // The hotel tile's click adds the stay to the plan, so it says so (architect, #1810).
     case "supply-hotel":
       return add;
+    // Lane 2 (A-28): in waitlist mode no tile says Book or Check availability — the tile's action is the add.
     case "vendor-service":
-      return ctx.bookable ? TILE_ACTION_COPY.checkAvailability : add;
+      return ctx.bookable && !ctx.waitlist ? TILE_ACTION_COPY.checkAvailability : add;
     case "recommendation":
       if (!ctx.bookable) return add;
-      if (ctx.affiliate) return TILE_ACTION_COPY.bookOnPartner;
-      return ctx.waitlist ? WAITLIST_COPY.saveToPlan : TILE_ACTION_COPY.bookNow;
+      if (ctx.waitlist) return WAITLIST_COPY.saveToPlan;
+      return ctx.affiliate ? TILE_ACTION_COPY.bookOnPartner : TILE_ACTION_COPY.bookNow;
     case "package":
       return TILE_ACTION_COPY.getThisTrip;
     case "expert":

@@ -29,7 +29,6 @@ import { WAITLIST_COPY } from "../../../lib/waitlist-copy";
 import { signupModeFrom } from "../../../lib/signup-mode";
 import { tileActionLabel } from "../../../lib/bento-action-state";
 import { catalogueActionLabel } from "../../../lib/catalogue-search-copy";
-import { TILE_ACTION_COPY } from "../../../lib/tile-action-copy";
 import { STAY_HERE_LABEL } from "../../../lib/stay-card";
 import { SignInModalProvider } from "../../../contexts/SignInModalContext";
 import { CityFeedCardRecommendation } from "../../city-feed-card-recommendation";
@@ -80,7 +79,7 @@ describe("P-1c — waitlist mode", () => {
 
   it("T3 waitlist: the recommendation's book reads 'Save to plan' and runs the add path", () => {
     assert.equal(tileActionLabel("recommendation", { bookable: true, waitlist: true }), "Save to plan");
-    assert.equal(tileActionLabel("recommendation", { bookable: true, affiliate: true, waitlist: true }), TILE_ACTION_COPY.bookOnPartner);
+    assert.equal(tileActionLabel("recommendation", { bookable: true, affiliate: true, waitlist: true }), "Save to plan"); // Lane 2 (A-3): no partner booking in waitlist mode.
     const html = renderRec(null); // no answer ⇒ waitlist
     assert.match(html, /data-testid="btn-book-rec-0"[^>]*>Save to plan</);
     assert.doesNotMatch(html, /data-testid="btn-add-rec-0"/, "one action, not two");

@@ -16,6 +16,7 @@
  * `scripts/check-planning-entry.cjs` (its `PlanEntryCta` must pass this earner's `returnTo`), so
  * the page renders that one button and passes it through `planEntry`.
  */
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import type { ReactNode } from "react";
 import { Link } from "wouter";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -190,8 +191,12 @@ function usePanelActions(props: StorefrontBookingPanelProps) {
 export function StorefrontBookingPanel(props: StorefrontBookingPanelProps) {
   const { earner, isProvider, isOwnStorefront, acceptsPlanShares, services, away, plan, planEntry, servicesAnchorId } = props;
   const { share, openConversation } = usePanelActions(props);
+  // Lane 2 (A-3 / A-28): a provider's panel is booking from top to bottom (Book directly, prices, Check availability,
+  // the fee line), so in waitlist mode it is not drawn at all — hidden, never relabelled (`bookingActionsShown`).
+  const bookingShown = useBookingActionsShown();
   const kind: PanelKind = resolvePanelKind({ isProvider, isOwnStorefront, acceptsPlanShares, ownedTrip: plan.ownedTrip, standing: plan.standing });
   if (kind === "hidden") return null;
+  if (kind === "provider" && !bookingShown) return null;
 
   const firstName = earner.name.split(" ")[0] || earner.name;
   const lowest = lowestListedPrice(services);
@@ -398,8 +403,11 @@ export function StorefrontBookingPanel(props: StorefrontBookingPanelProps) {
 export function StorefrontBookingBar(props: StorefrontBookingPanelProps & { panelAnchorId: string }) {
   const { earner, isProvider, isOwnStorefront, acceptsPlanShares, services, plan, servicesAnchorId, panelAnchorId } = props;
   const { share, openConversation } = usePanelActions(props);
+  const bookingShown = useBookingActionsShown();
   const kind = resolvePanelKind({ isProvider, isOwnStorefront, acceptsPlanShares, ownedTrip: plan.ownedTrip, standing: plan.standing });
   if (kind === "hidden") return null;
+  // Lane 2 (A-28): no Check availability in waitlist mode.
+  if (kind === "provider" && !bookingShown) return null;
   const firstName = earner.name.split(" ")[0] || earner.name;
   const lowest = lowestListedPrice(services);
   const bookable = services.filter((s) => s.bookingMode !== "hidden");

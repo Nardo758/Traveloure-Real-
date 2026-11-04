@@ -111,6 +111,7 @@ import {
   coordinateCoverage,
   type ProposalPreview,
 } from "@/lib/slip-proposal-preview";
+import { useBookingActionsShown } from "@/lib/signup-mode";
 
 interface VariantItem {
   id: string;
@@ -754,6 +755,7 @@ export default function ItineraryComparisonPage() {
   const userId = user?.id || 'guest';
   const userEmail = user?.email || undefined;
   const { toast } = useToast();
+  const bookingShown = useBookingActionsShown();
   const [, setLocation] = useLocation();
   const searchStr = useSearch();
   const searchParams = new URLSearchParams(searchStr);
@@ -2627,7 +2629,7 @@ export default function ItineraryComparisonPage() {
                                           <><Ticket className="h-2.5 w-2.5 mr-1" />Fever</>
                                         )}
                                       </Badge>
-                                    ) : (
+                                    ) : bookingShown && (
                                       <Badge className="bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 text-xs">
                                         <Check className="h-2.5 w-2.5 mr-1" />Book on Traveloure
                                       </Badge>

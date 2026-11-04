@@ -15,6 +15,7 @@
  * grammar on the --earn-* palette, and the same "New" vs. real-rating rule as RatingLine on
  * the storefront page — reviewCount === 0 is always "New", never a fabricated average.
  */
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import { useState } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -61,6 +62,8 @@ const FIND_HELP_RAIL: Array<
 ];
 
 function ProviderCard({ provider }: { provider: ProviderStorefrontListing }) {
+  // Lane 2 (A-3): "Instant booking" is booking copy — not drawn in waitlist mode.
+  const bookingShown = useBookingActionsShown();
   const askExpert = useAskExpert();
   const rating = formatProviderRating(provider.averageRating, provider.reviewCount);
   const { title, runBy } = providerCardTitle(provider);
@@ -132,7 +135,7 @@ function ProviderCard({ provider }: { provider: ProviderStorefrontListing }) {
               {provider.location}
             </span>
           )}
-          {provider.instantBooking && (
+          {bookingShown && provider.instantBooking && (
             <span className="inline-flex items-center gap-1 rounded-full bg-[var(--earn-teal-wash)] px-2.5 py-0.5 text-[11.5px] text-[color:var(--earn-teal-ink)]" data-testid={`chip-provider-instant-${provider.handle}`}>
               <Zap className="h-3 w-3" aria-hidden="true" />
               Instant booking

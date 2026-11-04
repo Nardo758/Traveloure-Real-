@@ -85,7 +85,7 @@ describe("T2 waitlist mode hides the booking promises", () => {
 
   it("the billboard's third slot has no label in waitlist mode, and keeps its line", () => {
     const hero = src("client/src/components/landing/landing-hero.tsx");
-    assert.match(hero, /mode === "open" \? t\("hero\.billboard\.slotBookOnTraveloure", "Book on Traveloure"\)\.toUpperCase\(\) : null/);
+    assert.match(hero, /bookingShown \? t\("hero\.billboard\.slotBookOnTraveloure", "Book on Traveloure"\)\.toUpperCase\(\) : null/);
     assert.match(hero, /\{label \?\? "\\u00a0"\}/, "an absent label keeps the line's height");
   });
 });

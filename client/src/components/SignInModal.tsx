@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTravelerSignupShown } from "@/lib/signup-mode";
 import { useTranslation } from "react-i18next";
 import {
   Dialog,
@@ -54,6 +55,8 @@ export function SignInModal({
   intent,
 }: SignInModalProps) {
   const { t } = useTranslation("auth");
+  // A-7 (Lane 2): a traveler is not offered sign-up in waitlist mode; a supply sign-up (provider / expert) still is.
+  const travelerSignupShown = useTravelerSignupShown() || intent === "supply";
   // Ruling 60 Phase A: the sign-in title/description are OVERRIDABLE by the caller (a
   // context-specific prompt like "Sign in to save this trip"). Only the DEFAULTS are chrome and
   // therefore translated — a caller-supplied string is passed through untouched, because the
@@ -435,7 +438,8 @@ export function SignInModal({
                   </button>
                 </>
               ) : mode === "signin" ? (
-                <>
+                // A-7 (Lane 2): no traveler sign-up offer in waitlist mode (`useTravelerSignupShown`).
+                !travelerSignupShown ? null : <>
                   {t("modal.noAccount")}{" "}
                   <button
                     type="button"

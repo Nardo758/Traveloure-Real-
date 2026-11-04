@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { needHelpBody } from "@/lib/discover-need-help";
 import { readyMadeShelfState, READY_MADE_SHELF_COPY } from "@/lib/ready-made-shelf-state";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useSignupMode } from "@/lib/signup-mode";
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { createComparison as createComparisonRequest } from "@/lib/create-comparison";
@@ -474,7 +474,11 @@ function ServiceCard({
   const actionLabel = offeringActionLabel(service.buyAction);
   // Row P-1c: in waitlist mode the book becomes "Save to plan" and runs the add path; the separate add button is
   // then not drawn, so the card has one action.
-  const saveMode = useSignupMode().mode === "waitlist" && !!onAddToCart;
+  // Lane 2 (A-3 / A-28): the shared rule. In waitlist mode with no add path there is no booking action at all (hidden,
+  // never relabelled).
+  const bookingShown = useBookingActionsShown();
+  const saveMode = !bookingShown && !!onAddToCart;
+  const bookHidden = !bookingShown && !saveMode;
   const messageOnly = offeringActionIsMessageOnly(service.buyAction);
   const actionHref = actionLabel ? buildStorefrontActionHref(detailHref, actionLabel, null) : detailHref;
   const rating = parseFloat(service.averageRating || "0") || 0;
@@ -629,7 +633,7 @@ function ServiceCard({
               className="text-[9.5px] uppercase tracking-wider text-[color:var(--earn-teal-ink)] mb-1.5"
               style={{ fontFamily: EARN_MONO }}
             >
-              {messageOnly ? "Not open for booking" : saveMode ? WAITLIST_COPY.saveToPlan : "Book on Traveloure"}
+              {messageOnly ? "Not open for booking" : saveMode ? WAITLIST_COPY.saveToPlan : bookHidden ? null : "Book on Traveloure"}
             </div>
             <div className="grid grid-cols-2 gap-2">
               {messageOnly ? (
@@ -651,7 +655,7 @@ function ServiceCard({
                     Message
                   </Button>
                 ) : null
-              ) : (
+              ) : bookHidden ? null : (
                 <Button
                   size="sm"
                   className="bg-[var(--earn-teal)] hover:bg-[var(--earn-teal)] text-white border border-[var(--earn-teal)]"

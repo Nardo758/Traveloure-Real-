@@ -30,7 +30,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useSignupMode } from "@/lib/signup-mode";
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 import {
   runBulkRouteToCheckout,
@@ -81,7 +81,7 @@ export function FinalizeBookingModal({
   // Row P-7: the "Travel expert" lane is absent (never greyed) when no expert is live in the city.
   const expertsAvailable = useExpertAvailability({ city: trip.destination });
   // Row P-1c: in waitlist mode both lanes collapse to one "Save to plan" card that returns to the slip — no prices.
-  const waitlist = useSignupMode().mode === "waitlist";
+  const waitlist = !useBookingActionsShown();
   const [, setLocation] = useLocation();
   const [lane, setLane] = useState<Lane>("myself");
   const [submitting, setSubmitting] = useState(false);
