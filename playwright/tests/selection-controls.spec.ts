@@ -30,13 +30,15 @@ test.describe('Selection controls (P462) — the /experiences/<slug> start page'
   // E3 (ledger `2026-10-09-e3-experiences-inline`; sanctioned rewrite of :25-69): the page mounts PlanEntry
   // inline. A deep link with a city and an occasion lands on Step 2 with Start a plan ready — one click,
   // and a visit writes nothing. The occasion grid is PlanEntry's "More specific".
+  // E-2 (round 2 rulings, Nov 4, 2026; ledger `2026-11-04-round2-exp-qa`; sanctioned edit): a door that names its
+  // occasion never re-asks it. wedding?destination=Kyoto now opens on dates and party with the choice and the city
+  // carried, and the occasion step is not shown.
   test('wedding?destination=Kyoto: the occasion and the city arrive picked; Start a plan is ready', async ({ page }) => {
     await gotoSlug(page, 'wedding');
-    await expect(page.getByTestId('plan-entry-step-occasion')).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByTestId('plan-entry-group-hosted_events')).toHaveAttribute('aria-pressed', 'true', { timeout: 15_000 });
+    await expect(page.getByTestId('plan-entry-step-details')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('plan-entry-step-occasion')).toHaveCount(0);
+    await expect(page.getByTestId('plan-entry-summary')).toContainText(/Wedding/i);
     await expect(page.getByTestId('plan-entry-summary')).toContainText('Kyoto');
-    await page.getByTestId('plan-entry-more-specific').click();
-    await expect(page.getByTestId('option-occasion-wedding')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('button-plan-entry-start')).toBeEnabled();
   });
 
@@ -50,11 +52,16 @@ test.describe('Selection controls (P462) — the /experiences/<slug> start page'
   });
 
   test('a group narrows the picker; See all restores every occasion', async ({ page }) => {
-    await gotoSlug(page, 'travel', null);
+    // E-2: a city card only selects the city; Continue asks the occasion. `photo` is not an occasion, so the
+    // occasion question is asked (a named occasion would skip it).
+    await gotoSlug(page, 'photo', null);
     await page.getByTestId('city-card-kyoto').click({ timeout: 15_000 });
+    await expect(page.getByTestId('city-card-kyoto')).toHaveAttribute('aria-pressed', 'true');
+    await page.getByTestId('button-plan-entry-start').click();
     await page.getByTestId('plan-entry-more-specific').click();
     await expect(page.getByTestId('option-occasion-travel')).toBeVisible({ timeout: 15_000 });
-    await page.getByTestId('occasion-group-hosted_events').click();
+    // K-3 (round 2): "More specific" no longer repeats the group chips; the picker follows the step's own group.
+    await page.getByTestId('plan-entry-group-hosted_events').click();
     await expect(page.getByTestId('option-occasion-wedding')).toBeVisible();
     await expect(page.getByTestId('option-occasion-travel')).toHaveCount(0);
     await page.getByTestId('occasion-see-all').click();
@@ -74,9 +81,10 @@ test.describe('Selection controls (P462) — the /experiences/<slug> start page'
     page.on('request', (r) => {
       if (r.method() === 'POST' && /\/api\/trips(\?|$)/.test(new URL(r.url()).pathname)) writes.push(`${r.method()} ${r.url()}`);
     });
-    await gotoSlug(page, 'travel');
+    // E-2: `travel` now opens on dates and party, so the picker is reached from a slug that is not an occasion.
+    await gotoSlug(page, 'photo');
     await page.getByTestId('plan-entry-more-specific').click({ timeout: 15_000 });
-    await page.getByTestId('occasion-group-moments').click();
+    await page.getByTestId('plan-entry-group-hosted_events').click();
     await page.getByTestId('occasion-see-all').click();
     await page.getByTestId('occasion-search').fill('wed');
     await page.getByTestId('button-plan-entry-back').click();

@@ -56,6 +56,8 @@ export interface PendingPlanRecord {
     destination?: string | null;
     /** SH-1 Launch Q14.3: the event's `city_events.source_id`, so the replayed mint can refuse it once it has ended. */
     eventSourceId?: string | null;
+    /** E-1/E-5/E-8: what the traveler chose, in words (`planEntryChoiceLabel`) — the banner's and title's lead. */
+    choiceLabel?: string | null;
   };
   /** 8d: the guest map's one pending add, if the guest pressed Add (v2 only). */
   pendingAdd?: PendingMapAdd | null;

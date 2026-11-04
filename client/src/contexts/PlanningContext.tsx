@@ -536,6 +536,7 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
             country: start.country,
             destination: start.destination,
             ...(start.eventSourceId ? { eventSourceId: start.eventSourceId } : {}),
+            ...(start.occasionName ? { choiceLabel: start.occasionName } : {}),
           },
           ...(from?.pendingMapAdd ? { pendingAdd: from.pendingMapAdd } : {}),
         });

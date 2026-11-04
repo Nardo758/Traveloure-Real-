@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useState } from "react";
-import { TRAVELER_WAITLIST, normalizeSignupIntent, normalizeSupplyRole, waitlistBlockedPath } from "@shared/launch-signup";
+import { TRAVELER_WAITLIST, normalizeSignupIntent, normalizeSupplyRole } from "@shared/launch-signup";
 import { WAITLIST_SERVICE_TYPES } from "@shared/launch-waitlist";
 import { KEEP_RATES_ENDPOINT, type PublicKeepRates } from "@/lib/fee-keep-copy";
 import {
@@ -16,6 +16,16 @@ import { supplySignupContinuation } from "@shared/supply-entry";
 import { sanitizeReturnTo } from "@/lib/safe-return-to";
 import { authFailureMessage, readAuthResponse } from "@/lib/auth-response";
 import { useTranslation } from "react-i18next";
+import { getRoleHomePath } from "@/lib/role-utils";
+import {
+  EMPTY_SIGNUP_DRAFT,
+  SignupFields,
+  signInAfterSignup,
+  signupDraftReady,
+  takeSignupReturnTo,
+  useWaitlistSignupGate,
+  type SignupDraft,
+} from "@/components/auth/SignupForm";
 
 export function SignupPage() {
   const { t } = useTranslation("auth");
@@ -51,22 +61,12 @@ export function SignupPage() {
     return () => { cancelled = true; };
   }, [isProvider]);
 
-  // LW-1b: in waitlist mode a traveler has nothing to sign up for here — go to the launch market's waitlist.
-  useEffect(() => {
-    if (supplyContinuation.kind !== "account" || intent === "supply" || showQaCode) return;
-    let cancelled = false;
-    fetch("/api/public/signup-mode", { credentials: "include" })
-      .then((r) => readAuthResponse(r))
-      .then((read) => {
-        if (cancelled || read.kind !== "json" || !read.ok || read.data.mode !== "waitlist") return;
-        const slug = typeof read.data.launchMarketSlug === "string" ? read.data.launchMarketSlug : null;
-        window.location.replace(waitlistBlockedPath(slug));
-      })
-      .catch(() => { /* the server still refuses on submit */ });
-    return () => { cancelled = true; };
-  }, [intent, showQaCode, supplyContinuation]);
+  // N-3 (round 2): in waitlist mode a traveler has nothing to sign up for here — the shared gate sends them to the
+  // launch market's waitlist before the form renders (supply and QA sign-ups are exempt; the server still refuses).
+  const signupGate = useWaitlistSignupGate(supplyContinuation.kind === "account", intent === "supply" || showQaCode);
 
-  const [form, setForm] = useState({ name: "", email: "", password: "" });
+  // N-2 (round 2): the shared form's fields — the same as the home modal's.
+  const [draft, setDraft] = useState<SignupDraft>(EMPTY_SIGNUP_DRAFT);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -76,20 +76,16 @@ export function SignupPage() {
     setLoading(true);
     setError("");
     try {
-      // Split "Full name" into firstName / lastName for the server schema
-      const nameParts = form.name.trim().split(/\s+/);
-      const firstName = nameParts[0] || "";
-      const lastName = nameParts.slice(1).join(" ") || "";
-
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          firstName,
-          lastName,
-          email: form.email,
-          password: form.password,
+          firstName: draft.firstName,
+          lastName: draft.lastName,
+          email: draft.email,
+          password: draft.password,
+          consent: draft.consent,
           refToken,
           source,
           ...(intent === "supply" ? { intent } : {}),
@@ -102,10 +98,21 @@ export function SignupPage() {
         }),
       });
       const read = await readAuthResponse(res);
-      // Ledger `2026-10-23-drop-check-email`: the 202 still signs nobody in. The
-      // check-email screen is not shown. Sign-in is the next step.
+      // N-1 (round 2): the register answer stays neutral (AUTH-1 3b); the page then signs in with the credentials just
+      // typed and returns to the origin (`?returnTo=`, else home). An address to confirm goes to the verify page. A
+      // sign-in that fails goes to /login, as before.
       if (read.kind === "json" && isRegistrationNeutral(res.status, read.data)) {
-        window.location.assign("/login");
+        const origin = sanitizeReturnTo(params.get("returnTo") ?? undefined) ?? null;
+        const after = await signInAfterSignup(draft.email, draft.password, origin);
+        if (after.kind === "not_signed_in") {
+          window.location.assign("/login");
+          return;
+        }
+        if (after.kind === "verify") {
+          window.location.assign("/verify-email");
+          return;
+        }
+        window.location.assign(takeSignupReturnTo() ?? origin ?? getRoleHomePath(after.data.user?.role ?? "user"));
         return;
       }
       // WL-B: an expert is told to apply on the waitlist — the server's message and its form, nothing else.
@@ -166,47 +173,9 @@ export function SignupPage() {
         )}
 
         <div className="space-y-4">
-          <div>
-            <label className="text-sm font-medium text-gray-700 block mb-1">
-              {t("fields.fullName")}
-            </label>
-            <input
-              data-testid="input-name"
-              type="text"
-              value={form.name}
-              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-              placeholder={t("fields.namePlaceholder")}
-            />
-          </div>
-
-          <div>
-            <label className="text-sm font-medium text-gray-700 block mb-1">
-              {isProvider ? WLB_SIGNUP_COPY.email : t("fields.email")}
-            </label>
-            <input
-              data-testid="input-email"
-              type="email"
-              value={form.email}
-              onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-              placeholder={t("fields.signupEmailPlaceholder")}
-            />
-          </div>
-
-          <div>
-            <label className="text-sm font-medium text-gray-700 block mb-1">
-              {t("fields.password")}
-            </label>
-            <input
-              data-testid="input-password"
-              type="password"
-              value={form.password}
-              onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-              placeholder={t("fields.passwordPlaceholderSignup")}
-            />
-          </div>
+          {signupGate === "form" ? <SignupFields draft={draft} onChange={setDraft} /> : (
+            <p className="text-sm text-gray-500" data-testid="signup-gate-checking" aria-busy="true" />
+          )}
 
           {isProvider && (
             <div className="space-y-4" data-testid="signup-provider-fields">
@@ -267,7 +236,7 @@ export function SignupPage() {
           <button
             data-testid="button-create-account"
             onClick={handleSubmit}
-            disabled={loading || (isProvider && !providerSignupReady(provider, form.email))}
+            disabled={loading || signupGate !== "form" || !signupDraftReady(draft) || (isProvider && !providerSignupReady(provider, draft.email))}
             className="w-full bg-gray-900 text-white rounded-lg py-2.5 text-sm font-semibold hover:bg-gray-700 disabled:opacity-50 transition-colors"
           >
             {loading ? t("signupPage.creating") : t("signupPage.createAccount")}

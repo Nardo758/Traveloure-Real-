@@ -21,7 +21,7 @@
  * `?destinations=&multiCity=true` (TripQueueIndicator) pre-picks its FIRST city on an exact match (PS-4 (d));
  * the other queued cities are added through PlanEntry's own city chips — there is no multi-city plan model.
  */
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { marketIsOpen, marketPickerOrder, marketStatusLabel } from "@shared/ticker";
 import { useMarketStatusSettings } from "@/lib/signup-mode";
@@ -44,6 +44,8 @@ import { CityTileFace } from "@/components/city-tile-face";
 
 /** The page's Place picker: the world map with eight pins, then the eight city cards. */
 function PlacePicker({ picked, pick }: { picked: string | null; pick: (marketKey: string) => void }) {
+  // C-2 (round 2): a photo that failed to load shows the painted ground, which already names the city.
+  const [failedPhotos, setFailedPhotos] = useState<ReadonlySet<string>>(() => new Set());
   // CITY-1 (ledger `2026-11-04-city1-marquee-defaults`): the marquee first, each city with its status; a city that
   // is not open (neither the marquee nor live) goes to its waitlist instead of being picked.
   const { settings, loaded } = useMarketStatusSettings();
@@ -98,9 +100,16 @@ function PlacePicker({ picked, pick }: { picked: string | null; pick: (marketKey
               {/* Ruling 3 (8a): only Kyoto and Bogotá have photos. The other cities use the
                   painted typographic ground — never stock, never AI, never a Google photo.
                   A photo that fails to load uses that same ground (row 250). */}
-              <CityTileFace cityName={m.cityName} photo={photo} />
+              <CityTileFace
+                cityName={m.cityName}
+                photo={photo}
+                onPhotoError={() => setFailedPhotos((prev) => new Set(prev).add(m.marketKey))}
+              />
               <span className="px-2.5 py-2">
-                <span className="block text-sm font-semibold text-foreground">{m.cityName}</span>
+                {/* C-2 (round 2): the painted ground already names the city, so the caption names it only under a photo. */}
+                {photo && !failedPhotos.has(m.marketKey) ? (
+                  <span className="block text-sm font-semibold text-foreground">{m.cityName}</span>
+                ) : null}
                 <span className="block text-xs text-muted-foreground">{m.country}</span>
                 {loaded && (
                   <span className="block text-xs text-muted-foreground" data-testid={`city-card-status-${m.marketKey}`}>

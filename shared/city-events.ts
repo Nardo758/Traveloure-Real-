@@ -39,8 +39,8 @@ export type CityEventSource = (typeof CITY_EVENT_SOURCES)[number];
 
 /** The window the strip and the /events block read, in days from now. */
 export const CITY_EVENTS_WINDOW_DAYS = 180;
-/** Below this many events in the window the strip is not rendered at all. */
-export const CITY_EVENTS_STRIP_MIN = 3;
+/** Below this many events in the window the strip is not rendered at all (round 2 ruling, Nov 4, 2026: one is enough). */
+export const CITY_EVENTS_STRIP_MIN = 1;
 /** The strip shows at most this many cards. */
 export const CITY_EVENTS_STRIP_MAX = 4;
 

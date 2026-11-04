@@ -15,7 +15,7 @@
  * Supply routes and supply accounts skip it (`supplyPaymentGateSkipped`).
  * That includes `/earn` and the sign-in return to `/become-expert?type=local_expert`.
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { AddCardDialog } from "@/components/payment/AddCardDialog";
 import { Button } from "@/components/ui/button";
@@ -58,14 +58,35 @@ export function PaymentMethodSetupGate() {
   });
 
   if (mode !== "prompt") return null;
-
-  const dismiss = () => {
+  return <PaymentMethodPromptBar onDismiss={() => {
     writePaymentMethodPromptDismissed();
     setDismissed(true);
-  };
+  }} />;
+}
 
+/** The CSS variable the bar publishes its height on; the dashboard sidebar's footer pads by it (N-4). */
+export const PAYMENT_PROMPT_OFFSET_VAR = "--payment-prompt-offset";
+
+function PaymentMethodPromptBar({ onDismiss }: { onDismiss: () => void }) {
+  // N-4 (round 2): the bar is fixed to the bottom of the window. It publishes its own height on the root element, and
+  // the dashboard sidebar's footer pads by it, so the sidebar's Logout stays above the bar and reachable.
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    const root = typeof document !== "undefined" ? document.documentElement : null;
+    if (!el || !root) return;
+    const publish = () => root.style.setProperty(PAYMENT_PROMPT_OFFSET_VAR, `${el.offsetHeight}px`);
+    publish();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(publish) : null;
+    ro?.observe(el);
+    return () => {
+      ro?.disconnect();
+      root.style.removeProperty(PAYMENT_PROMPT_OFFSET_VAR);
+    };
+  }, []);
   return (
     <div
+      ref={ref}
       className="fixed inset-x-0 bottom-0 z-40 border-t bg-background px-4 py-3 shadow-lg"
       data-testid="payment-method-setup-prompt"
       role="region"
@@ -79,7 +100,7 @@ export function PaymentMethodSetupGate() {
         <Button
           type="button"
           variant="ghost"
-          onClick={dismiss}
+          onClick={onDismiss}
           data-testid="button-dismiss-payment-method-setup"
         >
           {PAYMENT_METHOD_PROMPT_DISMISS}

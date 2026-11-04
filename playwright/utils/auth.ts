@@ -246,6 +246,7 @@ export async function registerAndSignIn(
       password: account.password,
       firstName: account.firstName ?? 'Test',
       lastName: account.lastName ?? 'Actor',
+      consent: true,
       ...(account.extra ?? {}),
     },
   });

@@ -55,6 +55,9 @@ test("8d — signed out: browse with no plan, add, sign up → exactly one plan,
   //    `2026-10-09-e3-experiences-inline`; sanctioned rewrite of :55-59): no pop-up, no When, no Who. ──
   await page.goto("/experiences");
   await testid(page, "city-card-kyoto").click({ timeout: 20_000 });
+  // E-2 (round 2 rulings, Nov 4, 2026; ledger `2026-11-04-round2-exp-qa`; sanctioned edit): the city card only
+  // selects the city; Continue asks the occasion.
+  await testid(page, "button-plan-entry-start").click();
   await testid(page, "plan-entry-group-trips").click();
   await testid(page, "button-plan-entry-start").click();
   await expect(testid(page, "plan-modal"), "the start page opens no planning modal").toHaveCount(0);
@@ -96,27 +99,26 @@ test("8d — signed out: browse with no plan, add, sign up → exactly one plan,
   await testid(page, "input-last-name").fill("Mapper");
   await testid(page, "input-email").fill(email);
   await testid(page, "input-password").fill("Journey!Pass123");
-  await testid(page, "checkbox-signup-terms").click();
-  await testid(page, "checkbox-signup-privacy").click();
+  await testid(page, "checkbox-signup-consent").click();
   await testid(page, "button-auth-submit").click();
 
-  // AUTH-1 fix 3b (ledger `2026-10-16-auth1-3b-neutral-registration`): signing up
-  // signs nobody in. Ledger `2026-10-23-drop-check-email` drops the check-email
-  // screen, so the same window is already the sign-in form. The guest's record
-  // and return path stay for that sign-in. The address is left unverified.
-  await expect(testid(page, "link-switch-signup")).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByText("Check your email")).toHaveCount(0);
-  await expect(page).toHaveURL(/\/plans\/new\?view=map$/);
-  expect(await page.evaluate(() => sessionStorage.getItem("traveloure_pending_plan")), "the record is kept").not.toBeNull();
-  const [pre] = await rows<{ n: number }>(`SELECT COUNT(*)::int AS n FROM trips t JOIN users u ON u.id = t.user_id WHERE u.email = $1`, [email]);
-  expect(pre.n, "signing up creates no plan").toBe(0);
+  // N-1 (round 2 rulings, Nov 4, 2026; sanctioned rewrite): creating the account signs it in with the credentials
+  // just typed (the register answer itself stays neutral, AUTH-1 3b). An address that must be confirmed lands on the
+  // verify page ("Check your email to confirm your account."), with the guest's record kept for the return; an address
+  // that need not be confirmed returns straight to this page, which replays the record.
+  await expect(page).toHaveURL(/\/verify-email|\/plans\/(?!new)[a-zA-Z0-9-]+\?view=map/, { timeout: 15_000 });
+  if (/\/verify-email/.test(page.url())) {
+    await expect(page.getByText("Check your email to confirm your account.")).toBeVisible();
+    expect(await page.evaluate(() => sessionStorage.getItem("traveloure_pending_plan")), "the record is kept").not.toBeNull();
+    const [pre] = await rows<{ n: number }>(`SELECT COUNT(*)::int AS n FROM trips t JOIN users u ON u.id = t.user_id WHERE u.email = $1`, [email]);
+    expect(pre.n, "signing up creates no plan").toBe(0);
 
-  // Then sign in, in the same window.
-  await testid(page, "input-email").fill(email);
-  await testid(page, "input-password").fill("Journey!Pass123");
-  await testid(page, "button-auth-submit").click();
+    // The address is confirmed (the fixture stamps it, as the verify link would), and the traveler returns to the map.
+    await rows(`UPDATE users SET email_verified = NOW() WHERE lower(email) = lower($1) AND email_verified IS NULL`, [email]);
+    await page.goto("/plans/new?view=map");
+  }
 
-  // The reload replays the record: ONE plan, landing on its map.
+  // The record replays: ONE plan, landing on its map.
   await expect(page).toHaveURL(/\/plans\/(?!new)[a-zA-Z0-9-]+\?view=map/, { timeout: 30_000 });
   const tripId = page.url().match(/\/plans\/([a-zA-Z0-9-]+)/)![1];
 
@@ -167,6 +169,9 @@ test("8d — social sign-in from the guest map asks to come back to this page", 
 
   await page.goto("/experiences");
   await testid(page, "city-card-kyoto").click({ timeout: 20_000 });
+  // E-2 (round 2 rulings, Nov 4, 2026; ledger `2026-11-04-round2-exp-qa`; sanctioned edit): the city card only
+  // selects the city; Continue asks the occasion.
+  await testid(page, "button-plan-entry-start").click();
   await testid(page, "plan-entry-group-trips").click();
   await testid(page, "button-plan-entry-start").click();
   await expect(page).toHaveURL(/\/plans\/new\?view=map$/, { timeout: 15_000 });

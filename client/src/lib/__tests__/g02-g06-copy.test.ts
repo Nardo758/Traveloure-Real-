@@ -13,8 +13,9 @@ const read = (path: string) => readFileSync(path, "utf8");
 const CLOSED_DAYS = "Plan Kyoto trips that work on the day: catch the closed days, last entries and crowds before you go, with local experts as they join.";
 
 test("G06 homepage meta is the generic sentence and the Kyoto page carries only its own", () => {
-  assert.equal(HOMEPAGE_META_DESCRIPTION, "Plan any trip or occasion with local experts and trusted providers, all in one place.");
-  assert.equal(KYOTO_CITY_DESCRIPTION, "Plan your Kyoto days with local experts and trusted providers.");
+  // K-6 (round 2 rulings, sanctioned edit): the same replacement in both sentences.
+  assert.equal(HOMEPAGE_META_DESCRIPTION, "Plan any trip or occasion around reviewed places and what's on, all in one place.");
+  assert.equal(KYOTO_CITY_DESCRIPTION, "Plan your Kyoto days around reviewed places and what's on.");
   assert.equal(isKyotoCity("Kyoto"), true);
   assert.equal(isKyotoCity(" kyoto "), true);
   assert.equal(isKyotoCity("Osaka"), false);

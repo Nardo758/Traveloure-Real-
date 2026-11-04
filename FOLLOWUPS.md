@@ -1233,3 +1233,36 @@ server-verified gates the member add rail uses.
 The local build has no Maps browser key, so the map renders the Leaflet fallback (a list, per GC-1) and the
 Google renderer's first paint could not be observed. Filed as not proven (architect ruling 2: no blind fix);
 it needs a browser run against a build with the production Maps key.
+
+---
+
+## From round 2 EXP-QA (ledger `2026-11-04-round2-exp-qa`)
+
+### FU-R2-1 — C-3 (city page event cards: no drawer; titles read like listings) — not proven
+
+The ruling was to reproduce against production data before fixing. This session cannot reach production, and the
+local database has no Fever events (the city page's event cards are Fever rows). The drawer wiring exists
+(`city-feed-card.tsx` `CityFeedCardEvent` → `cardLinkProps` → `MoreInfoSheet`), so whether it fails on production cards,
+and which titles need our own words, needs a production read or a browser run on production.
+
+### FU-R2-2 — O-1 (no wedding option under /experiences?group=hosted_events) — not proven
+
+A row is "hosted" when its `roles_needed` includes `venue` (`shared/experience-group.ts`). Whether production's wedding
+row carries it was not read. The second half of O-1 (no Kyoto event in that tab) is addressed by the upcoming-events
+ruling (events under way included, marquee first, limit after order).
+
+### FU-R2-4 — "Single Perfect Day Design" (expert offering `perfect_day`)
+
+A second offering label carries "perfect" (`expert_offering_types.perfect_day`). K-1 named only "Local Perfect Day".
+
+### FU-R2-6 — the Japanese verify page
+
+N-1's sentence "Check your email to confirm your account." replaced the English verify-page body only. The Japanese
+locale keeps its earlier body (no approved translation).
+
+### FU-R2-8 — the server accepts a spaces-only password
+
+`registerSchema` (`server/replit_integrations/auth/emailAuth.ts:81`) checks length only, so eight spaces register
+and sign in. This was already true on `main`; the earlier `/signup` form never sent such a password because its
+3-space test case was below the length minimum. The shared sign-up form (N-2) does not trim or refuse it either.
+Whether a whitespace-only password is refused, and by which layer, needs a ruling.

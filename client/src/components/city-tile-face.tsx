@@ -14,11 +14,14 @@ export function CityTileFace({
   cityName,
   photo,
   failed = false,
+  onPhotoError,
 }: {
   cityName: string;
   photo: CityPhoto | null;
   /** Test and parent override. A load error inside this face also flips the fallback. */
   failed?: boolean;
+  /** C-2: told when the photo fails to load, so a caption that names the city only under a photo can follow. */
+  onPhotoError?: () => void;
 }) {
   const [errored, setErrored] = useState(false);
   const showPhoto = Boolean(photo) && !failed && !errored;
@@ -48,7 +51,10 @@ export function CityTileFace({
         alt={cityName}
         className="h-full w-full object-cover"
         loading="lazy"
-        onError={() => setErrored(true)}
+        onError={() => {
+          setErrored(true);
+          onPhotoError?.();
+        }}
       />
       <span className="absolute bottom-0 right-0 bg-black/55 px-1 text-[9px] text-white">{photo!.credit}</span>
     </div>

@@ -27,7 +27,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { OccasionPicker } from "@/components/plan/OccasionPicker";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { MARKET_STATUS_COPY, marketIsOpen, marketPickerOrder, marketStatusLabel } from "@shared/ticker";
 import { useMarketStatusSettings } from "@/lib/signup-mode";
 import { notPlanningInLine } from "@/lib/trip-slip";
@@ -51,8 +51,9 @@ import {
   canStartPlan,
   choosePlanEntryGroup,
   chosenOccasionSlug,
-  eventsByMonth,
+  eventPickerGroups,
   eventsOverlapping,
+  planEntryChoiceLabel,
   initialPlanEntry,
   nextMonth,
   nightPickerOptions,
@@ -94,7 +95,11 @@ export interface PlanEntryStart {
   endDate?: string;
   occasionSlug: string;
   occasionId?: string;
-  /** ENTRY-1: the chosen occasion's catalog name, for the plan's composed title. */
+  /**
+   * E-1/E-5/E-8 (round 2 ruling, Nov 4, 2026): what the traveler chose, in words (`planEntryChoiceLabel`) — the event's
+   * title, a "More specific" occasion's name, or the chosen group's label. The plan's title and banner lead with it.
+   * Never a group's default occasion.
+   */
   occasionName?: string;
   event?: { title: string; eventDate: string; startTime: string | null; location: string };
   /** SH-1 Launch Q14.3: the `city_events.source_id` the plan is built around — the server refuses an ended one. */
@@ -228,6 +233,9 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
   const [typed, setTyped] = useState("");
   const [moreSpecific, setMoreSpecific] = useState(false);
   const [pickDates, setPickDates] = useState(false);
+  /** E-7: the "A date" step's "What's on" list is open. */
+  const [whatsOn, setWhatsOn] = useState(false);
+  const [, setLocation] = useLocation();
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** CITY-1: the server refused the market (409 market_not_open) — show its waitlist link. */
@@ -249,6 +257,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
     setTyped("");
     setMoreSpecific(false);
     setPickDates(false);
+    setWhatsOn(false);
     setError(null);
     setStarting(false);
     setAdults(doorParty(source?.adults));
@@ -285,6 +294,14 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
   const occasionRows = occasions ?? [];
   const pickedSlug = chosenOccasionSlug(state);
   const pickedRow = occasionRows.find((o) => o.slug === pickedSlug) ?? null;
+  // E-1/E-5/E-8: the traveler's own choice in words. An event's carried "show" slug and a group's default are never
+  // shown — only a door-named or "More specific" occasion is (`state.occasionSlug` without an event).
+  const specificRow = state.occasionSlug && !state.event ? occasionRows.find((o) => o.slug === state.occasionSlug) ?? null : null;
+  const choiceLabel = planEntryChoiceLabel({
+    eventTitle: state.event?.title ?? null,
+    specificOccasionName: specificRow?.name ?? null,
+    groupLabel: OCCASION_GROUP_LABELS[state.group],
+  });
   const { groups } = useMemo(() => groupOccasions(occasionRows), [occasionRows]);
   // OCC-1: /experiences?group= shows only that group (`shownOccasionGroups`); any other door shows all.
   const shownGroups = shownOccasionGroups(groups.length > 0 ? groups.map((g) => g.key) : [...OCCASION_GROUP_ORDER], source?.onlyGroup);
@@ -297,6 +314,8 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
     if (!row) {
       doorOccasion.current = false;
       setState((s) => ({ ...s, occasionSlug: null }));
+      // E-2: the door's occasion did not resolve, so it was never known — ask it.
+      if (!state.event && !source?.group) setStep((st) => (st === "details" ? "occasion" : st));
       return;
     }
     // SH-1 Q16.1: around an event the group follows the nights; the carried event slug does not move it.
@@ -321,12 +340,12 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
       destination: planEntryDestination(m),
       city: m.cityName,
       country: m.country,
-      // SH-1 Q15.3: the start no earlier than the market's today — the server applies the same clamp at mint.
+      // E-1: the chosen dates (an event's own run) carry verbatim.
       ...(planEntryMintDates(state) ?? {}),
       occasionSlug: pickedSlug,
       ...(state.event?.eventSourceId ? { eventSourceId: state.event.eventSourceId } : {}),
       ...(pickedRow?.id ? { occasionId: pickedRow.id } : {}),
-      ...(pickedRow?.name ? { occasionName: pickedRow.name } : {}),
+      occasionName: choiceLabel,
       ...(planEntryEventRow(state) ? { event: planEntryEventRow(state)! } : {}),
       view: planEntryView(state, pickedRow),
       occasionAsked: !doorOccasion.current || !!state.event,
@@ -374,9 +393,10 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
   const pickMarket = (key: string) => {
     const m = OPERATING_MARKETS.find((x) => x.marketKey === key) ?? null;
     setState((s) => ({ ...s, market: m, event: s.around === "date" ? null : s.event, night: null }));
-    if (!m || state.around === "date") return;
+    // E-2: on the page the city cards stay in view and show the pick; Continue moves on.
+    if (!m || state.around === "date" || inline) return;
     if (state.event) {
-      setStep("occasion");
+      setStep("details");
       return;
     }
     const specificSlug = !!(source?.experienceSlug || source?.carriedOccasionSlug || state.occasionSlug);
@@ -384,6 +404,13 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
     // A route slug stays on the occasion step. A chosen group (and the pop-up's carry) asks dates and party.
     if (source?.askDatesAndParty || (chosenGroup && !specificSlug)) setStep("details");
     else setStep("occasion");
+  };
+
+  /** E-2: Step 1 → the next question. A known occasion (an event, a door's, a chosen group) goes to the party. */
+  const advanceFromAround = () => {
+    if (!state.market) return;
+    const known = !!state.event || !!state.occasionSlug || !!source?.group || groupChosen || !!source?.askDatesAndParty;
+    setStep(known ? "details" : "occasion");
   };
 
   const typedResult = typedCity(typed, isOpenMarket);
@@ -394,11 +421,8 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
   };
 
   const title = step === "around" ? "Plan around…" : step === "details" ? PLAN_DATES_SET_CTA : "What's the occasion?";
-  const experienceLabel = state.occasionSlug
-    ? (pickedRow?.name ?? null)
-    : source?.group || groupChosen || source?.askDatesAndParty
-      ? OCCASION_GROUP_LABELS[state.group]
-      : null;
+  // Step 1's carried line: shown only once something was chosen, in the traveler's words (E-1).
+  const experienceLabel = state.occasionSlug || source?.group || groupChosen || source?.askDatesAndParty ? choiceLabel : null;
   const straight = starting && step !== "occasion";
 
   const cityChips = (only?: readonly string[]) =>
@@ -431,6 +455,11 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
       testIdPrefix="plan-entry-event"
       selectTestId={`plan-entry-event-${e.id}`}
       onSelect={() => {
+        // E-6: an event in a market that is not open goes to that market's waitlist, never into a plan the mint refuses.
+        if (e.marketKey && !isOpenMarket(e.marketKey)) {
+          setLocation(waitlistMarketPath(e.marketKey));
+          return;
+        }
         // SH-1 Q14.1: a series of shows (sibling rows on one series_key) offers its shows; Q16.2: the pick carries "show".
         setState((s) =>
           withSeriesShows(
@@ -452,12 +481,17 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
             events,
           ),
         );
-        setStep("occasion");
+        // E-2: the event carries its occasion — never asked again; the next step is the party (and the night).
+        setStep("details");
       }}
       firstDate={e.firstDate}
       countdown={countdownLabel(e.daysUntil)}
       title={e.series ?? e.title}
-      lines={[{ text: `${e.city} · ${rangeLabel(e.firstDate, e.lastDate)}`, tone: "muted" }]}
+      lines={[
+        { text: `${e.city} · ${rangeLabel(e.firstDate, e.lastDate)}`, tone: "muted" },
+        // E-6: every row says its market's status (Live / Beta / Opening {Month yyyy} / Join the waitlist).
+        ...(e.marketKey && marketSettingsLoaded ? [{ text: marketStatusLabel(e.marketKey, marketSettings), tone: "muted" as const }] : []),
+      ]}
     />
   );
 
@@ -541,7 +575,23 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
                     <Chip active={false} onClick={() => { setPickDates(false); setState((s) => ({ ...s, ...thisWeekend(new Date()), event: null, night: null })); }} testId="plan-entry-date-weekend">This weekend</Chip>
                     <Chip active={false} onClick={() => { setPickDates(false); setState((s) => ({ ...s, ...nextMonth(new Date()), event: null, night: null })); }} testId="plan-entry-date-next-month">Next month</Chip>
                     <Chip active={pickDates} onClick={() => setPickDates(true)} testId="plan-entry-date-pick">Pick dates</Chip>
+                    {/* E-7 (round 2 rulings): the same event list as "An event". */}
+                    <Chip active={whatsOn} onClick={() => setWhatsOn((v) => !v)} testId="plan-entry-date-whats-on">What's on</Chip>
                   </div>
+                  {whatsOn && !(state.startDate && state.endDate) && (
+                    <div className="space-y-4" data-testid="plan-entry-date-whats-on-list">
+                      {events.length === 0 ? (
+                        <p className="text-[14px]" style={{ color: "#7A7A72" }}>No upcoming events listed right now.</p>
+                      ) : (
+                        eventPickerGroups(events, marquee).map((g) => (
+                          <div key={g.key} className="space-y-2">
+                            <p className="text-[11px] uppercase tracking-[0.12em]" style={{ fontFamily: MONO, color: "#7A7A72" }}>{monthLabel(g.month)}</p>
+                            {g.events.map(eventButton)}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
                   {pickDates && (
                     <div className="flex flex-wrap items-center gap-2">
                       <input type="date" aria-label="Start date" value={state.startDate ?? ""} onChange={(e) => setState((s) => ({ ...s, startDate: e.target.value || null, endDate: s.endDate && e.target.value && s.endDate < e.target.value ? e.target.value : s.endDate }))} className="rounded-md border px-2 py-1.5 text-[14px]" data-testid="plan-entry-date-start" />
@@ -571,8 +621,8 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
                   {events.length === 0 ? (
                     <p className="text-[14px]" style={{ color: "#7A7A72" }}>No upcoming events listed right now.</p>
                   ) : (
-                    eventsByMonth(events).map((g) => (
-                      <div key={g.month} className="space-y-2">
+                    eventPickerGroups(events, marquee).map((g) => (
+                      <div key={g.key} className="space-y-2">
                         <p className="text-[11px] uppercase tracking-[0.12em]" style={{ fontFamily: MONO, color: "#7A7A72" }}>{monthLabel(g.month)}</p>
                         {g.events.map(eventButton)}
                       </div>
@@ -584,10 +634,24 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
           ) : step === "details" ? (
             <div className="space-y-4" data-testid="plan-entry-step-details">
               <p className="text-[14px]" style={{ color: "#7A7A72" }} data-testid="plan-entry-summary">
-                {experienceLabel && <span data-testid="plan-entry-carried-group">{experienceLabel}</span>}
-                {experienceLabel && state.market?.cityName ? " · " : null}
+                {/* E-1: the traveler's choice leads (the event, a picked occasion, or the group) — never a default. */}
+                <span data-testid="plan-entry-carried-group">{choiceLabel}</span>
+                {state.market?.cityName ? " · " : null}
                 {state.market?.cityName}
               </p>
+              {nightOptions && (
+                <div className="space-y-2">
+                  <p className="text-[13px] font-semibold" style={{ color: "var(--earn-navy, #1A1A18)" }}>Which night?</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Chip active={!state.night} onClick={() => setState((s) => withNight(s, null))} testId="plan-entry-night-all">All of it</Chip>
+                    {nightOptions.map((d) => (
+                      <Chip key={d} active={state.night === d} onClick={() => setState((s) => withNight(s, d))} testId={`plan-entry-night-${d}`}>
+                        {dayLabel(d)}
+                      </Chip>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="space-y-2">
                 <div className="flex flex-wrap gap-2">
                   <Chip active={false} onClick={() => setState((s) => ({ ...s, ...thisWeekend(new Date()) }))} testId="plan-entry-date-weekend">This weekend</Chip>
@@ -668,6 +732,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
                   loading={occasionsLoading}
                   value={state.occasionSlug ?? ""}
                   initialGroup={state.group}
+                  followGroup={state.group}
                   onlyGroup={shownGroups.length === 1 && source?.onlyGroup ? source.onlyGroup : null}
                   onPick={(slug) => {
                     setGroupChosen(true);
@@ -710,7 +775,8 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
             {(inline || step === "occasion" || step === "details" || (state.market && state.occasionSlug)) && (
               <button
                 type="button"
-                onClick={() => void start()}
+                // E-2: on Step 1, Continue moves to the next question — never a plan minted on an occasion nobody chose.
+                onClick={() => (step === "around" ? advanceFromAround() : void start())}
                 disabled={!canStartPlan(state) || starting}
                 className="rounded-full px-5 py-2.5 text-[15px] font-semibold text-white disabled:opacity-50"
                 style={{ background: "var(--coral-fill)" }}

@@ -319,21 +319,21 @@ test("W12 — email register stores a supply sign-up's source tag, normalized; a
   const r1 = await fetch(`${BASE_URL}/api/auth/register`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email: supplyEmail, password: PASSWORD, firstName: "Lw", lastName: "One", ...SUPPLY_PROVIDER_SIGNUP_EXTRA, signupSource: " Contact_Form " }),
+    body: JSON.stringify({ email: supplyEmail, password: PASSWORD, firstName: "Lw", lastName: "One", consent: true, ...SUPPLY_PROVIDER_SIGNUP_EXTRA, signupSource: " Contact_Form " }),
   });
   assert.equal(r1.status, 202, await r1.text()); // AUTH-1 fix 3b: the neutral answer
   const oddEmail = W_EMAIL("w12-odd");
   const r2 = await fetch(`${BASE_URL}/api/auth/register`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email: oddEmail, password: PASSWORD, firstName: "Lw", lastName: "One", ...SUPPLY_PROVIDER_SIGNUP_EXTRA, signupSource: "made-up-tag" }),
+    body: JSON.stringify({ email: oddEmail, password: PASSWORD, firstName: "Lw", lastName: "One", consent: true, ...SUPPLY_PROVIDER_SIGNUP_EXTRA, signupSource: "made-up-tag" }),
   });
   assert.equal(r2.status, 202, await r2.text()); // AUTH-1 fix 3b: the neutral answer
   const travelerEmail = W_EMAIL("w12-traveler");
   const r3 = await fetch(`${BASE_URL}/api/auth/register`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email: travelerEmail, password: PASSWORD, firstName: "Lw", lastName: "One", signupSource: "ig_dm" }),
+    body: JSON.stringify({ email: travelerEmail, password: PASSWORD, firstName: "Lw", lastName: "One", consent: true, signupSource: "ig_dm" }),
   });
   assert.equal(r3.status, 202, await r3.text()); // AUTH-1 fix 3b: the neutral answer
   const rows = await pool.query(`SELECT email, signup_source FROM users WHERE email = ANY($1::text[])`, [[supplyEmail, oddEmail, travelerEmail]]);

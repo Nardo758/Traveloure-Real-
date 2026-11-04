@@ -2275,4 +2275,8 @@ export const MIGRATION_FILES = [
   // declared in shared/schema.ts. SQL per the architect's GATE-1B rulings (Nov 4, 2026). Ledger
   // 2026-11-04-gate1b-guest-plan.
   "433_guest_plans.sql",
+  // 434 — round 2 COPY K-1/K-3: two data UPDATEs keyed on the exact current text (expert_offering_types
+  // local_perfect_day display_name; experience_types travel description). DATA ONLY. Per the round 2 rulings
+  // (Nov 4, 2026). Ledger 2026-11-04-round2-exp-qa.
+  "434_round2_copy_values.sql",
 ] as const;

@@ -101,8 +101,7 @@ test('D5: guest add-to-plan, then sign up — does the item survive?', async ({ 
   await testid(page, 'input-last-name').fill('TGuest').catch(() => {});
   await testid(page, 'input-email').fill(guestEmail).catch(() => {});
   await testid(page, 'input-password').fill(E2E_PASSWORD).catch(() => {});
-  await testid(page, 'checkbox-signup-terms').click({ timeout: 3000 }).catch(() => {});
-  await testid(page, 'checkbox-signup-privacy').click({ timeout: 3000 }).catch(() => {});
+  await testid(page, 'checkbox-signup-consent').click({ timeout: 3000 }).catch(() => {});
   await shot(page, 'D5', '03', 'signin-modal-signup-filled');
   await testid(page, 'button-auth-submit').click().catch(() => {});
   await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});

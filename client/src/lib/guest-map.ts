@@ -54,19 +54,26 @@ function parseDay(iso: string | null | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-/** "Thu 12 – Mon 16 Nov" (one month) or "Thu 30 Oct – Mon 3 Nov"; one day alone if only one was given. */
+/**
+ * E-1 (round 2 ruling, Nov 4, 2026): the full range WITH its year. "Fri 9 – Mon 12 Apr 2027" (one month),
+ * "Thu 30 Oct – Mon 2 Nov 2026" (one year), "Wed 30 Dec 2026 – Fri 1 Jan 2027" (two years); one day — or a start and
+ * end on the same day — is that day alone ("Wed 4 Nov 2026"), never "Wed 4 – Wed 4 Nov".
+ */
 export function guestDateRange(startDate: string | null | undefined, endDate: string | null | undefined): string | null {
   const s = parseDay(startDate);
   const e = parseDay(endDate);
   const day = (d: Date) => `${WEEKDAYS[d.getUTCDay()]} ${d.getUTCDate()}`;
   const mon = (d: Date) => MONTHS[d.getUTCMonth()];
-  if (s && e) {
-    return s.getUTCMonth() === e.getUTCMonth() && s.getUTCFullYear() === e.getUTCFullYear()
-      ? `${day(s)} – ${day(e)} ${mon(e)}`
-      : `${day(s)} ${mon(s)} – ${day(e)} ${mon(e)}`;
+  const year = (d: Date) => String(d.getUTCFullYear());
+  const full = (d: Date) => `${day(d)} ${mon(d)} ${year(d)}`;
+  if (s && e && s.getTime() !== e.getTime()) {
+    if (s.getUTCFullYear() !== e.getUTCFullYear()) return `${full(s)} – ${full(e)}`;
+    return s.getUTCMonth() === e.getUTCMonth()
+      ? `${day(s)} – ${day(e)} ${mon(e)} ${year(e)}`
+      : `${day(s)} ${mon(s)} – ${day(e)} ${mon(e)} ${year(e)}`;
   }
   const one = s ?? e;
-  return one ? `${day(one)} ${mon(one)}` : null;
+  return one ? full(one) : null;
 }
 
 /** The party as stated, or null when the guest gave none (never a default). */
@@ -84,9 +91,9 @@ export function guestPartyCount(answers: Pick<DraftAnswers, "adults" | "kids"> |
 }
 
 /**
- * "Proposal, Kyoto, Thu 12 – Mon 16 Nov and 2 travelers" — only the parts the guest gave. Null when none.
- * ENTRY-1: the occasion leads when the guest chose one; its name is the catalog's (resolved by the caller
- * from `answers.occasionSlug`), never a slug turned into words here.
+ * "A trip, Kyoto, Fri 9 – Mon 12 Apr 2027 and 2 travelers" — only the parts the guest gave. Null when none.
+ * E-1/E-5/E-8 (round 2 ruling): the lead is what the traveler CHOSE — the record's `choiceLabel` (the event's title,
+ * a picked occasion, or the group's label), passed by the caller; never a group's default occasion, never a slug.
  */
 export function guestAnswersLine(
   answers: DraftAnswers | null | undefined,
@@ -107,4 +114,28 @@ export function guestAnswersLine(
 export function guestGateDescription(answersLine: string | null, gate: GuestGateKind): string {
   const kept = answersLine ? `${answersLine}. ${GUEST_ANSWERS_KEPT}` : null;
   return [kept, guestGateNext(gate)].filter(Boolean).join(" ");
+}
+
+/**
+ * E-1 (round 2 ruling): the guest plan's banner — the plan's title (composed from the traveler's choice and the city at
+ * creation, `planTitle`), the full date range with its year once dates are confirmed, and the party when stated.
+ */
+export function guestPlanBanner(input: {
+  title: string | null | undefined;
+  startDate: string | null | undefined;
+  endDate: string | null | undefined;
+  datesConfirmed: boolean;
+  adults: number | null | undefined;
+  kids: number | null | undefined;
+}): string | null {
+  const title = input.title?.trim() || null;
+  const dates = input.datesConfirmed ? guestDateRange(input.startDate, input.endDate) : null;
+  const party = guestPartyCount({
+    adults: input.adults != null ? String(input.adults) : "",
+    kids: input.kids != null ? String(input.kids) : "",
+  });
+  const head = [title, dates].filter(Boolean).join(", ");
+  const partyText = party != null ? `${party} ${party === 1 ? "traveler" : "travelers"}` : null;
+  const line = head && partyText ? `${head} and ${partyText}` : head || partyText;
+  return line || null;
 }

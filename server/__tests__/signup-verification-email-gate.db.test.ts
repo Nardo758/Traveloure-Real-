@@ -105,7 +105,7 @@ describe("signup verification email follows EMAIL_SENDS_ENABLED", () => {
     const res = await fetch(`${base}/api/auth/register`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email, password: PASSWORD, firstName: "Ada", lastName: "Gate" }),
+      body: JSON.stringify({ email, password: PASSWORD, firstName: "Ada", lastName: "Gate", consent: true }),
     });
     const text = await res.text();
     return { status: res.status, text, body: JSON.parse(text) as { code?: string; message?: string } };

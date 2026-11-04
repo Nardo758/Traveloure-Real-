@@ -87,7 +87,9 @@ describe("WL-B screen: provider sign-up", () => {
     const html = await renderSignup("");
     assert.equal(html.includes("signup-provider-fields"), false);
     assert.equal(html.includes(WLB_SIGNUP_COPY.finishProfileLater), false);
-    assert.doesNotMatch(html, /data-testid="button-create-account"[^>]*disabled=""/);
+    // N-2/N-3 (round 2, sanctioned edit): the shared form's button stays disabled until every field and the one
+    // consent box are answered (and, for a traveler, until the waitlist check has answered).
+    assert.match(html, /data-testid="button-create-account"[^>]*disabled=""/);
   });
 
   it("S4 the body matches the server contract", () => {

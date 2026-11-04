@@ -406,16 +406,17 @@ export interface WhereToGoRow {
   season: MonthSeason | null;
   /** Dated events in this city in the month. */
   eventCount: number;
-  /** "16-22°C · High crowds" — rated months only, and only the parts the row states. */
+  /** "16-22°C" — rated months only, and only the parts the row states. K-4 (round 2): no crowd level. */
   facts: string | null;
+  /** The earliest start date ("YYYY-MM-DD") among this city's events in the month, or null when it has none. */
+  firstEventDate: string | null;
 }
 
-const GROUP_RANK: Record<SeasonGroup, number> = { best: 0, good: 1, average: 2, unrated: 3, off: 4 };
-
 /**
- * "Where to go" for one month: every operating market, best first. A market with no season row
- * for the month is "Not rated yet" and is never dropped (ruling E6). The vibe filter narrows
- * destinations only; it never filters events.
+ * "Where to go" for one month: every operating market. K-4/K-5 (round 2 rulings, Nov 4, 2026): ordered by start
+ * date — the city whose first event in the month starts soonest comes first; a city with no dated event that month
+ * follows, in its listed order. A market with no season row for the month is still listed ("Not rated yet", ruling E6).
+ * The vibe filter narrows destinations only; it never filters events.
  */
 export function whereToGo(
   places: readonly CalendarPlace[],
@@ -430,17 +431,24 @@ export function whereToGo(
     .filter((p) => vibe === "all" || p.vibeTags.some((t) => t.toLowerCase() === vibe.toLowerCase()))
     .map((place, i) => {
       const season = place.seasons[month] ?? null;
-      const eventCount = events.filter((e) => e.marketKey === place.marketKey && overlaps(e, from, to)).length;
-      const facts = season
-        ? [season.averageTemp, season.crowdLevel ? `${season.crowdLevel} crowds` : null].filter(Boolean).join(" · ") || null
-        : null;
-      return { row: { place, group: season ? season.group : ("unrated" as SeasonGroup), season, eventCount, facts }, i };
+      const inMonth = events.filter((e) => e.marketKey === place.marketKey && overlaps(e, from, to));
+      const firstEventDate = inMonth.length > 0 ? inMonth.map((e) => e.firstDate).sort()[0] : null;
+      const facts = season ? season.averageTemp || null : null;
+      const row: WhereToGoRow = {
+        place,
+        group: season ? season.group : ("unrated" as SeasonGroup),
+        season,
+        eventCount: inMonth.length,
+        facts,
+        firstEventDate,
+      };
+      return { row, i };
     })
     .sort((a, b) => {
-      const g = GROUP_RANK[a.row.group] - GROUP_RANK[b.row.group];
-      if (g !== 0) return g;
-      // Among the unrated, a city with dated events this month comes first.
-      if (a.row.group === "unrated" && (a.row.eventCount > 0) !== (b.row.eventCount > 0)) return a.row.eventCount > 0 ? -1 : 1;
+      const da = a.row.firstEventDate;
+      const db = b.row.firstEventDate;
+      if (da && db && da !== db) return da < db ? -1 : 1;
+      if (!!da !== !!db) return da ? -1 : 1;
       return a.i - b.i;
     })
     .map((x) => x.row);

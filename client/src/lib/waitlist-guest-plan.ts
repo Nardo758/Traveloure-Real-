@@ -10,6 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { GUEST_PLAN_COPY } from "@shared/guest-plan-copy";
 import { mapDayChips } from "@/lib/map-days";
+import { planTitle } from "@/lib/trip-slip";
 import type { BrowsePlace } from "@/lib/map-scene";
 import type { PlanCardDay } from "@/components/plancard/plancard-types";
 
@@ -47,6 +48,8 @@ export interface GuestPlanView {
 
 export interface GuestPlanCreateInput {
   destination: string;
+  /** E-1: the plan's title, composed by `planTitle` from the traveler's choice and the city. */
+  title?: string;
   startDate?: string;
   endDate?: string;
   adults?: number;
@@ -122,7 +125,8 @@ export async function saveToGuestPlan(body: GuestItemBody, destination: string |
   if (!plan) {
     const city = (destination ?? "").trim();
     if (!city) throw new Error("400: no destination");
-    plan = await createGuestPlan({ destination: city });
+    // A plan born from a city-page save has no chosen occasion: the city's own title ("Kyoto trip").
+    plan = await createGuestPlan({ destination: city, title: planTitle({ city: city.split(",")[0].trim() }) });
   }
   await apiRequest("POST", "/api/guest-plans/current/items", body);
   await queryClient.invalidateQueries({ queryKey: GUEST_PLAN_QUERY_KEY });

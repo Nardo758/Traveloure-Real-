@@ -211,8 +211,7 @@ test.describe("Deep UI QA loops", () => {
         await page.getByTestId("link-switch-signup").click();
         await expect(page.getByTestId("input-first-name")).toBeVisible();
         await expect(page.getByTestId("input-last-name")).toBeVisible();
-        await expect(page.getByTestId("checkbox-signup-terms")).toBeVisible();
-        await expect(page.getByTestId("checkbox-signup-privacy")).toBeVisible();
+        await expect(page.getByTestId("checkbox-signup-consent")).toBeVisible();
         surfaceAudits.push(await auditSurface(
           page,
           "sign-in-modal-signup",
@@ -220,7 +219,7 @@ test.describe("Deep UI QA loops", () => {
         ));
 
         await page.goto("/signup", { waitUntil: "domcontentloaded" });
-        await expect(page.getByTestId("input-name")).toBeVisible();
+        await expect(page.getByTestId("input-first-name")).toBeVisible();
         await page.getByTestId("button-create-account").press("Enter");
         expect(new URL(page.url()).pathname).toBe("/signup");
         surfaceAudits.push(await auditSurface(

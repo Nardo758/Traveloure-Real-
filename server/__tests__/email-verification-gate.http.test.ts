@@ -179,7 +179,7 @@ describe("held sign-in", () => {
 
   it("a supply sign-up can sign in and open the product", async () => {
     const reg = await request(server, "POST", "/api/auth/register", {
-      body: { email, password, firstName: "Supply", lastName: "Scout", ...SUPPLY_PROVIDER_SIGNUP_EXTRA },
+      body: { email, password, firstName: "Supply", lastName: "Scout", consent: true, ...SUPPLY_PROVIDER_SIGNUP_EXTRA },
     });
     assert.equal(reg.status, 202);
     assert.equal(reg.data.code, REGISTRATION_NEUTRAL_CODE);
@@ -453,7 +453,7 @@ describe("traveler sign-up", () => {
     invalidatePlatformFlagCache(TRAVELER_SIGNUP_MODE_SETTING);
     const waitEmail = `s09-wait-${tag}@t.test`;
     const refused = await request(server, "POST", "/api/auth/register", {
-      body: { email: waitEmail, password: `wait-${tag}-ok`, firstName: "Wait", lastName: "List" },
+      body: { email: waitEmail, password: `wait-${tag}-ok`, firstName: "Wait", lastName: "List", consent: true },
     });
     assert.equal(refused.status, 403);
     assert.equal(refused.data.code, TRAVELER_WAITLIST);
@@ -467,7 +467,7 @@ describe("traveler sign-up", () => {
     const openEmail = `s09-open-${tag}@t.test`;
     const password = `open-${tag}-ok`;
     const created = await request(server, "POST", "/api/auth/register", {
-      body: { email: openEmail, password, firstName: "Open", lastName: "Mode" },
+      body: { email: openEmail, password, firstName: "Open", lastName: "Mode", consent: true },
     });
     assert.equal(created.status, 202);
     const [row] = await db.select({ id: users.id, emailVerified: users.emailVerified }).from(users).where(eq(users.email, openEmail));

@@ -54,7 +54,8 @@ test("E1: where each door opens", () => {
   assert.equal(city.step, "occasion");
   assert.equal(city.state.market?.cityName, "Kyoto");
   const ev = initialPlanEntry({ city: "Kyoto", country: "Japan", experienceSlug: "show", anchor: anchor("2026-10-09", "2026-10-11") });
-  assert.equal(ev.step, "occasion");
+  // E-2 (round 2 rulings, sanctioned edit): an event's occasion is known — the next step is dates and party.
+  assert.equal(ev.step, "details");
   assert.equal(ev.state.startDate, "2026-10-09");
   assert.equal(ev.state.endDate, "2026-10-11");
   assert.equal(ev.state.event?.title, "Japanese Grand Prix");
@@ -150,11 +151,12 @@ test("E9: a starting group (?group=) seeds the group, an exact key only (E3 ruli
   assert.equal(initialPlanEntry({ group: "celebrations" }).state.group, "celebrations");
   assert.equal(initialPlanEntry({ group: "nope" as any }).state.group, "trips", "an unknown key is never a group");
   const deep = initialPlanEntry({ city: "Kyoto", experienceSlug: "wedding", group: "hosted_events" });
-  assert.equal(deep.step, "occasion", "a city and an occasion land on Step 2");
+  // E-2 (round 2 rulings, sanctioned edit): a known occasion is never re-asked.
+  assert.equal(deep.step, "details", "a city and an occasion go to dates and party");
   assert.equal(deep.state.group, "hosted_events");
 });
 
-test("E9: the night picker and the mint dates read the market's today", () => {
+test("E9: the night picker reads the market's today; the mint dates carry verbatim (E-1)", () => {
   // 2027-03-10 23:30 UTC is already 2027-03-11 in Kyoto.
   const now = new Date("2027-03-10T23:30:00Z");
   const ev = (a: string, b: string, over: Record<string, unknown> = {}) => ({ title: "X", city: "Kyoto", country: "Japan", venue: "V", firstDate: a, lastDate: b, startTime: null, ...over });
@@ -173,10 +175,11 @@ test("E9: the night picker and the mint dates read the market's today", () => {
   // No market ⇒ no picker.
   assert.equal(nightPickerOptions({ event: run.event, market: null }, now), null);
   // The mint dates: the start moves to the market's today; UTC today with no market.
-  assert.deepEqual(planEntryMintDates({ startDate: "2027-03-08", endDate: "2027-03-20", market: run.market }, now), { startDate: "2027-03-11", endDate: "2027-03-20" });
-  assert.deepEqual(planEntryMintDates({ startDate: "2027-03-08", endDate: "2027-03-20", market: null }, now), { startDate: "2027-03-10", endDate: "2027-03-20" });
-  assert.deepEqual(planEntryMintDates({ startDate: "2027-04-01", endDate: "2027-04-02", market: run.market }, now), { startDate: "2027-04-01", endDate: "2027-04-02" });
-  assert.equal(planEntryMintDates({ startDate: null, endDate: null, market: null }, now), null);
+  // E-1 (round 2 rulings, sanctioned edit): the mint dates carry verbatim — the start is never moved to today.
+  assert.deepEqual(planEntryMintDates({ startDate: "2027-03-08", endDate: "2027-03-20", market: run.market }), { startDate: "2027-03-08", endDate: "2027-03-20" });
+  assert.deepEqual(planEntryMintDates({ startDate: "2027-03-08", endDate: "2027-03-20", market: null }), { startDate: "2027-03-08", endDate: "2027-03-20" });
+  assert.deepEqual(planEntryMintDates({ startDate: "2027-04-01", endDate: "2027-04-02", market: run.market }), { startDate: "2027-04-01", endDate: "2027-04-02" });
+  assert.equal(planEntryMintDates({ startDate: null, endDate: null, market: null }), null);
 });
 
 test("H-08: choosing the event's own group keeps the door occasion; a one-day date stays", () => {

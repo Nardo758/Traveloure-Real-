@@ -45,6 +45,9 @@ test("8b-2 — start page → modal → the map opens on Browse with the trip's 
   // ── The start page: one of the eight cities and the trip group, then Start a plan ─────────────
   await page.goto("/experiences");
   await testid(page, "city-card-kyoto").click({ timeout: 20_000 });
+  // E-2 (round 2 rulings, Nov 4, 2026; ledger `2026-11-04-round2-exp-qa`; sanctioned edit): the city card only
+  // selects the city; Continue asks the occasion.
+  await testid(page, "button-plan-entry-start").click();
   await testid(page, "plan-entry-group-trips").click();
   await testid(page, "button-plan-entry-start").click();
   // E3 (ledger `2026-10-09-e3-experiences-inline`; sanctioned rewrite of :46-50): PlanEntry inline's

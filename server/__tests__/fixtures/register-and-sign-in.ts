@@ -74,6 +74,7 @@ export async function registerAndSignIn(options: RegisterAndSignInOptions): Prom
       password,
       firstName: options.firstName ?? "Test",
       lastName: options.lastName ?? "Actor",
+      consent: true,
       ...(options.extra ?? {}),
     }),
   });

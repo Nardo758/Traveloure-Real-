@@ -129,7 +129,7 @@ function mockRes() {
 async function register(extra: Record<string, unknown> = {}) {
   const res = mockRes();
   await handlers["POST /api/auth/register"](
-    { body: { email: "new-traveler@traveloure-qa.test", password: "longenough1", firstName: "N", lastName: "T", ...extra }, session: {} },
+    { body: { email: "new-traveler@traveloure-qa.test", password: "longenough1", firstName: "N", lastName: "T", consent: true, ...extra }, session: {} },
     res,
   );
   return res;

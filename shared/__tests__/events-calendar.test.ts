@@ -146,7 +146,9 @@ describe("events calendar rules", () => {
     assert.equal(dayMarks([ten], "2026-10")[0].longRun, false, "ten days is not a long run");
   });
 
-  it("K8 Where to go: every market, unrated said, best first, vibe narrows places only", () => {
+  // K-4/K-5 (round 2 rulings, sanctioned edit): ordered by start date (a city's first event in the month), cities
+  // with no event after in listed order; no crowd level in the facts.
+  it("K8 Where to go: every market, unrated said, by start date, no crowd level, vibe narrows places only", () => {
     const place = (marketKey: string, city: string, seasons: CalendarPlace["seasons"], vibeTags: string[] = []): CalendarPlace => ({
       marketKey, city, country: "X", vibeTags, seasons,
     });
@@ -159,10 +161,12 @@ describe("events calendar rules", () => {
     ];
     const events = [ev("g", "2026-10-20", "2026-10-20", { marketKey: "bogota", city: "Bogotá" })];
     const rows = whereToGo(places, "2026-10", events, "all");
-    assert.deepEqual(rows.map((r) => r.place.marketKey), ["kyoto", "edinburgh", "bogota", "goa", "porto"]);
+    assert.deepEqual(rows.map((r) => r.place.marketKey), ["bogota", "goa", "kyoto", "edinburgh", "porto"]);
+    assert.equal(rows[0].firstEventDate, "2026-10-20");
+    assert.equal(rows[1].firstEventDate, null);
     assert.equal(rows.find((r) => r.place.marketKey === "goa")!.group, "unrated", "no row = not rated, never dropped");
-    assert.equal(rows.find((r) => r.place.marketKey === "kyoto")!.facts, "16-22°C · High crowds");
-    assert.equal(rows.find((r) => r.place.marketKey === "edinburgh")!.facts, "Medium crowds");
+    assert.equal(rows.find((r) => r.place.marketKey === "kyoto")!.facts, "16-22°C");
+    assert.equal(rows.find((r) => r.place.marketKey === "edinburgh")!.facts, null);
     assert.equal(rows.find((r) => r.place.marketKey === "goa")!.facts, null);
     assert.equal(rows.find((r) => r.place.marketKey === "bogota")!.eventCount, 1);
     assert.deepEqual(whereToGo(places, "2026-10", events, "foodie").map((r) => r.place.marketKey), ["kyoto"]);

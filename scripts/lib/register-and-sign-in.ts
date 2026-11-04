@@ -43,6 +43,7 @@ export async function registerAndSignIn(
     password: account.password,
     firstName: account.firstName ?? "Verify",
     lastName: account.lastName ?? "Script",
+    consent: true,
   };
   let reg = await req("POST", "/api/auth/register", body);
   if (reg.status === 429) {

@@ -86,14 +86,16 @@ after(async () => {
   await pool.end();
 });
 
-test("V1 an event under way is in the calendar and reads On now; upcoming still leaves it out", async () => {
+// Round 2 ruling (Nov 4, 2026; ledger 2026-11-04-round2-exp-qa): upcoming now lists an event that ends today or later,
+// so an event under way is IN the strip's read too (sanctioned edit of this pin).
+test("V1 an event under way is in the calendar and reads On now; upcoming lists it too", async () => {
   const cal = await loadEventsCalendar(now);
   const e = cal.events.find((x) => x.id === ids.underway);
   assert.ok(e, "under way is listed");
   assert.ok(e!.daysUntil < 0);
   assert.equal(countdownLabel(e!.daysUntil), "On now");
   const upcoming = await listUpcomingCityEvents(now, 500);
-  assert.ok(!upcoming.events.some((x) => x.id === ids.underway), "the strip's read is unchanged");
+  assert.ok(upcoming.events.some((x) => x.id === ids.underway), "an event under way is upcoming (ends today or later)");
   assert.ok(upcoming.events.some((x) => x.id === ids.future), "and still returns what starts later");
   assert.ok(cal.events.some((x) => x.id === ids.future));
 });

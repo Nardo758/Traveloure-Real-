@@ -392,7 +392,7 @@ describe("signup, reset, and session regression", () => {
   });
 
   it("a new address and a duplicate address get the same neutral signup, then the password signs in", async () => {
-    const body = { email, password, firstName: "Enum", lastName: "Test" };
+    const body = { email, password, firstName: "Enum", lastName: "Test", consent: true };
     const first = await request(server, "POST", "/api/auth/register", { body });
     assert.equal(first.status, 202);
     assert.equal(first.data.code, REGISTRATION_NEUTRAL_CODE);

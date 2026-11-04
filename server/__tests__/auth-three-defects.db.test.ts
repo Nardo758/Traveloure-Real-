@@ -262,7 +262,7 @@ describe("AUTH-1 fix 3b: neutral registration", () => {
     const res = await fetch(`${base3}/api/auth/register`, {
       method: "POST",
       headers: { "content-type": "application/json", ...(cookie ? { cookie } : {}) },
-      body: JSON.stringify({ email, password: PASSWORD, firstName: "Neutral", lastName: "Fixture" }),
+      body: JSON.stringify({ email, password: PASSWORD, firstName: "Neutral", lastName: "Fixture", consent: true }),
     });
     const text = await res.text();
     return { status: res.status, text, body: JSON.parse(text), setCookie: res.headers.get("set-cookie") };
@@ -396,7 +396,7 @@ describe("AUTH-1 fix 3b: neutral registration", () => {
 
     const dup = await fetch(`${base3}/api/auth/register`, {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: email.toUpperCase(), password: "a-different-pass9", firstName: "Other", lastName: "Name" }),
+      body: JSON.stringify({ email: email.toUpperCase(), password: "a-different-pass9", firstName: "Other", lastName: "Name", consent: true }),
     });
     assert.equal(dup.status, 202);
     await new Promise((r) => setTimeout(r, 200));

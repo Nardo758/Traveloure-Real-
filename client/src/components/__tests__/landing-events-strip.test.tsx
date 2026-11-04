@@ -1,8 +1,9 @@
 /**
  * "Coming up in our cities" render rules (ledger `2026-09-28-city-events`).
  *
- * S1 absent below three events — nothing rendered, no heading, no placeholder.
- * S2 present at three, every value from the payload: tag, countdown, city · neighbourhood, venue.
+ * S1 absent at zero events — nothing rendered, no heading, no placeholder (round 2: one event is enough).
+ * S2 present at one or more, every value from the payload: tag, countdown, city · neighbourhood, venue; the heading
+ *    names the marquee city ("What's on in Kyoto", round 2 rulings).
  * S3 a NULL neighbourhood is omitted, never "undefined" or a guess.
  * S4 "Plan around it" passes occasion `show`, the market, the event as the anchor, and its funnel
  *    door (`event_strip` on landing, `events_page` on /events — slip-funnel-events.md §3.1).
@@ -54,22 +55,23 @@ function payload(n: number, over: (i: number) => Partial<CityEventCard> = () => 
 function render(p: CityEventsPayload | null): string {
   return renderToString(
     <Router ssrPath="/">
-      <EventsStripContent payload={p} market="kyoto" onPlanAround={() => {}} />
+      <EventsStripContent payload={p} market="kyoto" cityName="Kyoto" onPlanAround={() => {}} />
     </Router>,
   ).replace(/<!--.*?-->/g, "");
 }
 
 describe("city events strip", () => {
-  it("S1 absent below three events", () => {
+  // Round 2 rulings (sanctioned edit): the strip shows at one marquee event, hidden at zero.
+  it("S1 absent at zero events", () => {
     assert.equal(render(null), "");
     assert.equal(render(payload(0)), "");
-    assert.equal(render(payload(2)), "");
+    assert.ok(render(payload(1)).includes('data-testid="section-city-events"'), "one event is enough");
   });
 
   it("S2 present at three, every value from the payload", () => {
     const html = render(payload(3));
     assert.ok(html.includes('data-testid="section-city-events"'));
-    assert.ok(html.includes("Coming up in our cities"));
+    assert.ok(html.includes("What&#x27;s on in Kyoto") || html.includes("What's on in Kyoto"));
     assert.ok(html.includes("Next 180 days"));
     assert.ok(html.includes('href="/events"'));
     assert.ok(html.includes("Festival · 3 nights"));

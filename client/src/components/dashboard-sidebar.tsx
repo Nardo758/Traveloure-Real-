@@ -167,7 +167,11 @@ export function DashboardSidebar() {
         ))}
       </SidebarContent>
 
-      <SidebarFooter className="px-3.5 py-3 group-data-[collapsible=icon]:px-1.5" style={{ borderTop: "1px solid var(--console-line)" }}>
+      {/* N-4 (round 2): the footer pads by the payment prompt's height while that bar is shown, so Logout stays above it. */}
+      <SidebarFooter
+        className="px-3.5 pt-3 group-data-[collapsible=icon]:px-1.5"
+        style={{ borderTop: "1px solid var(--console-line)", paddingBottom: "calc(0.75rem + var(--payment-prompt-offset, 0px))" }}
+      >
         {user && (
           <div className="flex items-center gap-2.5 mb-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:mb-0">
             <div

@@ -18,6 +18,8 @@
  */
 import { and, asc, eq, gte, isNull, lte, sql } from "drizzle-orm";
 import { db } from "../db";
+import { getLaunchMarketSlug } from "./platform-flags";
+import { marketToday } from "@shared/market-today";
 import { cityEvents, cityNeighborhoods, type InsertCityEvent, type CityEvent } from "@shared/schema";
 import {
   CITY_EVENTS_WINDOW_DAYS,
@@ -429,13 +431,25 @@ export function toCityEventCard(row: CityEvent, neighbourhood: string | null, no
   };
 }
 
-/** Renderable events starting from now through the window, soonest first. */
+/**
+ * Renderable events through the window: every event whose last local day is today or later in its own market (an
+ * event already under way is listed — round 2 ruling, Nov 4, 2026), the marquee market's events first, then by start;
+ * the limit is applied after that order, so the marquee is never cut by a busier market.
+ */
 export async function listUpcomingCityEvents(now: Date = new Date(), limit = 24): Promise<CityEventsPayload> {
   const end = new Date(now.getTime() + CITY_EVENTS_WINDOW_DAYS * 86_400_000);
+  // A coarse SQL bound (a day of slack for every time zone); the exact "ends today or later" test is per market below.
+  const since = new Date(now.getTime() - 86_400_000);
   const rows = await db
     .select()
     .from(cityEvents)
-    .where(and(gte(cityEvents.startsAt, now), lte(cityEvents.startsAt, end), isNull(cityEvents.withdrawnAt)))
+    .where(
+      and(
+        sql`COALESCE(${cityEvents.endsAt}, ${cityEvents.startsAt}) >= ${since}`,
+        lte(cityEvents.startsAt, end),
+        isNull(cityEvents.withdrawnAt),
+      ),
+    )
     .orderBy(asc(cityEvents.startsAt));
   const renderable = rows.filter((r) => isRenderableCityEvent(r));
   const thresholdKm = await loadOutsideCityThresholdKm();
@@ -445,11 +459,25 @@ export async function listUpcomingCityEvents(now: Date = new Date(), limit = 24)
     const hoods = await db.select({ id: cityNeighborhoods.id, name: cityNeighborhoods.name }).from(cityNeighborhoods);
     for (const h of hoods) if (hoodIds.includes(h.id)) names.set(h.id, h.name);
   }
-  return {
-    windowDays: CITY_EVENTS_WINDOW_DAYS,
-    total: renderable.length,
-    events: renderable
-      .slice(0, limit)
-      .map((r) => toCityEventCard(r, r.neighbourhoodId ? names.get(r.neighbourhoodId) ?? null : null, now, thresholdKm)),
-  };
+  const marquee = await getLaunchMarketSlug();
+  const cards = orderUpcomingCards(
+    renderable.map((r) => toCityEventCard(r, r.neighbourhoodId ? names.get(r.neighbourhoodId) ?? null : null, now, thresholdKm)),
+    marquee,
+    now,
+  );
+  return { windowDays: CITY_EVENTS_WINDOW_DAYS, total: cards.length, events: cards.slice(0, limit) };
+}
+
+/** Pure: keep cards whose last local day is today or later in their market; marquee first, then by start. */
+export function orderUpcomingCards<T extends { marketKey: string | null; firstDate: string; lastDate: string; startsAt?: string }>(
+  cards: readonly T[],
+  marquee: string | null,
+  now: Date,
+): T[] {
+  const live = cards.filter((c) => c.lastDate >= marketToday(c.marketKey, now));
+  const rank = (c: T) => (marquee && c.marketKey === marquee ? 0 : 1);
+  return live
+    .map((c, i) => ({ c, i }))
+    .sort((a, b) => rank(a.c) - rank(b.c) || a.i - b.i)
+    .map((x) => x.c);
 }
