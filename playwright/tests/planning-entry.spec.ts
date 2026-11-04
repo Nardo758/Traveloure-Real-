@@ -109,10 +109,12 @@ test.describe("Single planning entry — PlanEntry", () => {
     await page.getByTestId("plan-entry-around-date").click();
     await page.getByTestId("plan-entry-date-next-month").click();
     await expect(page.getByTestId("plan-entry-whats-on")).toBeVisible();
-    await page.getByTestId("plan-entry-city-porto").click();
+    // CITY-1: only an open market (the marquee) is picked; Porto, not open, links to its waitlist.
+    await expect(page.getByTestId("plan-entry-city-porto")).toHaveAttribute("href", "/waitlist/porto");
+    await page.getByTestId("plan-entry-city-kyoto").click();
     await page.getByTestId("button-plan-entry-next").click();
     await expect(page.getByTestId("plan-entry-step-occasion")).toBeVisible();
-    await expect(page.getByTestId("plan-entry-summary")).toContainText("Porto");
+    await expect(page.getByTestId("plan-entry-summary")).toContainText("Kyoto");
   });
 
   for (const entry of [
@@ -187,7 +189,7 @@ test.describe("/experiences is the start state, and no route auto-opens (walkthr
   // E3 (ledger `2026-10-09-e3-experiences-inline`; sanctioned rewrite of :183-223): /experiences mounts
   // PlanEntry INLINE — Step 1 opens on "A place" with the page's map and cards, a city moves to the
   // occasion, and Start a plan is the one action. There is no Continue and no pop-up over the page.
-  test("/experiences loads with nothing open, and Start a plan waits for a city", async ({ page }) => {
+  test("/experiences loads with nothing open, and the marquee city is pre-selected", async ({ page }) => {
     await page.goto(`${BASE_URL}/experiences`, { waitUntil: "domcontentloaded" });
     await expect(page.getByRole("heading", { name: /Plan around…/i })).toBeVisible({
       timeout: 15_000,
@@ -197,7 +199,10 @@ test.describe("/experiences is the start state, and no route auto-opens (walkthr
     await expect(page.getByTestId("plan-entry-inline")).toBeVisible();
     await expect(page.getByTestId("experiences-map-credit")).toHaveText("Map: Natural Earth");
     const start = page.getByTestId("button-plan-entry-start");
-    await expect(start).toBeDisabled();
+    // CITY-1: the marquee is the default city, pre-selected; a non-open city's card goes to its waitlist.
+    await expect(page.getByTestId("city-card-kyoto")).toHaveAttribute("aria-pressed", "true", { timeout: 15_000 });
+    await expect(start).toBeEnabled();
+    await expect(page.getByTestId("city-card-porto")).toHaveAttribute("href", "/waitlist/porto");
     await page.getByTestId("city-card-kyoto").click();
     await expect(page.getByTestId("plan-entry-step-occasion")).toBeVisible();
     await expect(page.getByTestId("plan-entry-group-trips")).toHaveAttribute("aria-pressed", "false");
@@ -221,7 +226,9 @@ test.describe("/experiences is the start state, and no route auto-opens (walkthr
     await expect(page.getByTestId("plan-entry-summary")).toContainText("Porto", { timeout: 15_000 });
     await page.goto(`${BASE_URL}/experiences?destination=Lisbon`, { waitUntil: "domcontentloaded" });
     await expect(page.getByTestId("city-card-porto")).toBeVisible({ timeout: 15_000 });
-    await expect(page.locator('[data-testid^="city-card-"][aria-pressed="true"]')).toHaveCount(0);
+    // CITY-1: no exact match ⇒ nothing from the URL; the marquee is the default city.
+    await expect(page.getByTestId("city-card-kyoto")).toHaveAttribute("aria-pressed", "true", { timeout: 15_000 });
+    await expect(page.locator('[data-testid^="city-card-"][aria-pressed="true"]')).toHaveCount(1);
   });
 
   // E3: Start a plan stays in view at phone width (a sticky footer on the inline mount).

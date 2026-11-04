@@ -1610,6 +1610,20 @@ async function doorRows(tripId: string, type: string): Promise<DoorRow[]> {
   );
 }
 
+/**
+ * CITY-1 (ledger `2026-11-04-city1-marquee-defaults`): a traveler can no longer START a plan in a market that is not
+ * open, so the "no expert in this market" journeys run on an EXISTING Jaipur plan — one started before the gate,
+ * which the gate leaves untouched. It is minted in the marquee and moved to Jaipur directly, as such a plan stands.
+ */
+async function existingJaipurPlan(ctx: Page["request"], title: string): Promise<string> {
+  const tripId = await createTrip(ctx, title);
+  await rows(
+    `UPDATE trips SET destination = 'Jaipur, India', market_slug = 'jaipur', timezone = 'Asia/Kolkata' WHERE id = $1`,
+    [tripId],
+  );
+  return tripId;
+}
+
 test.describe("7 · a local expert checks the plan", () => {
   test("§7 expert door — a plan from PlanEntry opens the expert door's help card", async ({ page }) => {
     // E2 (rulings 1–2): the pop-up has no build chooser; a `local` start continues on the plan's expert
@@ -1648,7 +1662,7 @@ test.describe("7 · a local expert checks the plan", () => {
 
   test("§7 expert door — a market with no expert says so, naming the city, and records the interest", async ({ page }) => {
     await signedInTraveler(page, "door-empty");
-    const tripId = await createTrip(page.request, "Jaipur door", "Jaipur, India");
+    const tripId = await existingJaipurPlan(page.request, "Jaipur door");
     await createItem(page.request, tripId, "Amber Fort", 1);
     await page.goto(`/plans/${tripId}?help=expert`);
     await expect(testid(page, "expert-door-card")).toBeVisible({ timeout: 20_000 });
@@ -1672,7 +1686,7 @@ test.describe("7 · a local expert checks the plan", () => {
   test("§7 R-r — with no local live in the city, ⋯ Ask a local about this records the item and the question, charging nothing", async ({ page }) => {
     // Surface step 1 (ledger `2026-10-03-surface-step1-item-row`).
     await signedInTraveler(page, "ask-local");
-    const tripId = await createTrip(page.request, "Jaipur ask", "Jaipur, India");
+    const tripId = await existingJaipurPlan(page.request, "Jaipur ask");
     const itemId = await createItem(page.request, tripId, "Amber Fort", 1);
     await page.goto(`/plans/${tripId}`);
     await testid(page, `item-menu-${itemId}`).click();
