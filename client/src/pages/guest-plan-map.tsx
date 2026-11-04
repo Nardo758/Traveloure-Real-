@@ -13,8 +13,8 @@
  * Unprotected by design; `/plans/:tripId` stays protected. Nothing is stored for a guest on the server
  * (G2), and nothing here writes the cart.
  */
-import { useMemo, useState } from "react";
-import { Link } from "wouter";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import type { ExperienceType } from "@shared/schema";
 import { Loader2 } from "lucide-react";
@@ -30,7 +30,24 @@ import {
   peekPendingPlanRecord,
   pendingPlanRecordTakenThisLoad,
   setPendingMapAdd,
+  takePendingPlanRecord,
+  type PendingPlanRecord,
 } from "@/lib/pending-plan-record";
+import { useSignupMode } from "@/lib/signup-mode";
+import { WAITLIST_COPY } from "@/lib/waitlist-copy";
+import {
+  claimGuestPlans,
+  createGuestPlan,
+  guestSaveErrorMessage,
+  saveToGuestPlan,
+  guestBodyForPlace,
+  guestPlanDays,
+  takeClaimedGuestPlanId,
+  updateGuestPlan,
+  useGuestPlan,
+} from "@/lib/waitlist-guest-plan";
+import { GUEST_PLAN_COPY, guestPlanKeptLine } from "@shared/guest-plan-copy";
+import { InlineDatesPanel, InlineWhoPanel } from "@/components/plan/SlipAnchorPanels";
 import {
   GUEST_GATE_DISMISS,
   GUEST_GATE_TITLE,
@@ -50,9 +67,15 @@ const GUEST_DAYS = mapDayChips([], null);
 
 export default function GuestPlanMapPage() {
   const { user, isLoading } = useAuth();
-  const { toast } = useToast();
-  const { openSignInModal } = useSignInModal();
-  const [selectedDay, setSelectedDay] = useState(0);
+  const { mode } = useSignupMode();
+  // GATE-1B (ledger `2026-11-04-gate1b-guest-plan`): in waitlist mode a signed-out visitor gets a server-side plan
+  // here — no sign-in wall. Open mode keeps the sign-in path below, unchanged.
+  if (!isLoading && !user && mode === "waitlist") return <WaitlistGuestPlan />;
+  return <GuestPlanMapSignIn />;
+}
+
+function GuestPlanMapSignIn() {
+  const { user, isLoading } = useAuth();
   // Read once per mount; the add rewrites the record, and the page re-reads it when it needs to.
   const record = useMemo(() => (user ? null : peekPendingPlanRecord()), [user]);
   // ENTRY-1: the occasion's catalog name for the answers line — the same list PlanEntry reads.
@@ -73,8 +96,32 @@ export default function GuestPlanMapPage() {
   // Signed in: the planning provider is replaying the record — the plan is being created and the
   // finish will land on its map. With no record at all there is nothing to create (§13).
   if (user) {
-    const creating = pendingPlanRecordTakenThisLoad() || hasPendingPlanRecord();
-    return (
+    return <SignedInLanding />;
+  }
+
+  return <GuestPlanMapRecord record={record} occasionRows={occasionRows} />;
+}
+
+/**
+ * Signed in on /plans/new. GATE-1B: a guest plan this sign-in claimed opens on its own map (ruling 5); otherwise the
+ * planning provider is replaying the sign-in record, or there is nothing here (§13), exactly as before.
+ */
+function SignedInLanding() {
+  const [, setLocation] = useLocation();
+  useEffect(() => {
+    let live = true;
+    const open = (id: string | null | undefined) => {
+      if (live && id) setLocation(`/plans/${encodeURIComponent(id)}?view=map`);
+    };
+    const stored = takeClaimedGuestPlanId();
+    if (stored) open(stored);
+    else void claimGuestPlans().then((ids) => open(ids[0] ?? takeClaimedGuestPlanId()));
+    return () => {
+      live = false;
+    };
+  }, [setLocation]);
+  const creating = pendingPlanRecordTakenThisLoad() || hasPendingPlanRecord();
+  return (
       <div className="mx-auto max-w-xl px-4 py-16 text-center" data-testid={creating ? "guest-map-creating" : "guest-map-no-record"}>
         {creating ? (
           <p className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
@@ -89,9 +136,13 @@ export default function GuestPlanMapPage() {
           </p>
         )}
       </div>
-    );
-  }
+  );
+}
 
+function GuestPlanMapRecord({ record, occasionRows }: { record: PendingPlanRecord | null; occasionRows: ExperienceType[] | undefined }) {
+  const { toast } = useToast();
+  const { openSignInModal } = useSignInModal();
+  const [selectedDay, setSelectedDay] = useState(0);
   // Signed out with no record: no answers to show, and none are invented.
   if (!record) {
     return (
@@ -168,6 +219,163 @@ export default function GuestPlanMapPage() {
         <Button onClick={() => openGate({ kind: "start" })} data-testid="button-guest-map-start">
           {GUEST_MAP_START_LABEL}
         </Button>
+      </div>
+    </div>
+  );
+}
+
+// ── GATE-1B: the waitlist guest's server-side plan ───────────────────────────────────────────────────────────────
+
+function WaitlistGuestPlan() {
+  const { toast } = useToast();
+  const [selectedDay, setSelectedDay] = useState(0);
+  // A fresh PlanEntry finish leaves its answers in the sign-in record: they become a NEW guest plan, once, and the
+  // record is then consumed (so a later sign-in claims this plan instead of minting a second one).
+  const recordRef = useRef<PendingPlanRecord | null>(peekPendingPlanRecord());
+  const startedRef = useRef(false);
+  const [creating, setCreating] = useState(() => !!recordRef.current);
+  const [createFailed, setCreateFailed] = useState(false);
+  const planQ = useGuestPlan(!creating);
+
+  useEffect(() => {
+    const record = recordRef.current;
+    if (!record || startedRef.current) return;
+    startedRef.current = true;
+    const a = record.answers;
+    const destination = guestDestination(a, record.source);
+    if (!destination) {
+      setCreating(false);
+      return;
+    }
+    const int = (v: string | undefined) => (/^\d+$/.test((v ?? "").trim()) ? Number(v) : undefined);
+    const dated = /^\d{4}-\d{2}-\d{2}$/.test(a?.startDate ?? "") && /^\d{4}-\d{2}-\d{2}$/.test(a?.endDate ?? "");
+    const adults = int(a?.adults);
+    const kids = int(a?.kids);
+    createGuestPlan({
+      destination,
+      ...(dated ? { startDate: a.startDate, endDate: a.endDate } : {}),
+      ...(adults !== undefined && adults > 0 ? { adults } : {}),
+      ...(kids !== undefined ? { kids } : {}),
+      ...(a?.occasionSlug ? { occasionSlug: a.occasionSlug } : {}),
+    })
+      .then(async () => {
+        takePendingPlanRecord();
+        // A door's one pending add (a listing or partner place) is saved onto the new plan.
+        if (record.pendingAdd?.title) {
+          await saveToGuestPlan({ title: record.pendingAdd.title, dayNumber: record.pendingAdd.dayNumber ?? 1 }, destination).catch(() => undefined);
+        }
+      })
+      .catch(() => setCreateFailed(true))
+      .finally(() => setCreating(false));
+  }, []);
+
+  if (creating || planQ.isLoading) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center" data-testid="guest-plan-loading">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
+      </div>
+    );
+  }
+
+  const view = planQ.data ?? null;
+  if (!view) {
+    return (
+      <div className="mx-auto max-w-xl px-4 py-16 text-center" data-testid="guest-map-no-record">
+        {createFailed ? (
+          <p className="text-sm text-destructive" role="alert" data-testid="guest-plan-create-failed">
+            {GUEST_PLAN_COPY.saveFailed}
+          </p>
+        ) : null}
+        <p className="text-sm text-muted-foreground">
+          <Link href="/experiences" className="underline" data-testid="link-guest-map-start">
+            Start a plan
+          </Link>
+        </p>
+      </div>
+    );
+  }
+
+  const { plan } = view;
+  const days = guestPlanDays(view);
+  const answersLine = guestAnswersLine(
+    {
+      stops: [plan.destination],
+      startDate: plan.datesConfirmed ? plan.startDate : "",
+      endDate: plan.datesConfirmed ? plan.endDate : "",
+      adults: plan.adults != null ? String(plan.adults) : "",
+      kids: plan.kids != null ? String(plan.kids) : "",
+    } as any,
+    plan.destination,
+  );
+  const dayNumber = days[selectedDay]?.dayNum ?? 1;
+
+  const onSave = (place: BrowsePlace) => {
+    if (place.kind === "candidate") return;
+    saveToGuestPlan(guestBodyForPlace(place, dayNumber), plan.destination).then(
+      () => toast({ title: WAITLIST_COPY.savedToPlan }),
+      (err) => toast({ variant: "destructive", title: guestSaveErrorMessage(err) }),
+    );
+  };
+
+  return (
+    <div className="mx-auto max-w-6xl px-4 py-6 space-y-4" data-testid="guest-plan">
+      <div className="rounded-lg border border-border bg-card p-4 space-y-2" data-testid="guest-plan-banner">
+        {answersLine ? (
+          <h1 className="text-lg font-semibold" data-testid="guest-map-answers">
+            {answersLine}
+          </h1>
+        ) : null}
+        <p className="text-xs text-muted-foreground" data-testid="guest-plan-kept">
+          {guestPlanKeptLine(view.retentionDays)}
+        </p>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <InlineDatesPanel
+          key={`${plan.startDate}:${plan.endDate}`}
+          tripId={plan.id}
+          startDate={plan.startDate}
+          endDate={plan.endDate}
+          testId="guest-plan-dates"
+          submit={async (d) => {
+            await updateGuestPlan({ startDate: d.startDate, endDate: d.endDate });
+          }}
+        />
+        <InlineWhoPanel
+          tripId={plan.id}
+          current={{ adults: plan.adults, kids: plan.kids } as any}
+          submit={async (party) => {
+            await updateGuestPlan(party);
+          }}
+        />
+      </div>
+
+      {view.items.length === 0 ? (
+        <div className="rounded-lg border border-border bg-card p-4" data-testid="guest-plan-empty">
+          <p className="text-sm font-semibold">{GUEST_PLAN_COPY.emptyTitle}</p>
+          <p className="text-sm text-muted-foreground">{GUEST_PLAN_COPY.emptyBody}</p>
+        </div>
+      ) : (
+        <ol className="rounded-lg border border-border bg-card p-4 space-y-1" data-testid="guest-plan-items">
+          {view.items.map((it) => (
+            <li key={it.id} className="flex items-center gap-2 text-sm" data-testid={`guest-plan-item-${it.id}`}>
+              <span className="text-xs text-muted-foreground tabular-nums">{`Day ${it.dayNumber}`}</span>
+              <span className="truncate">{it.title}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      <div className="rounded-lg border border-border bg-card" data-testid="guest-map-canvas">
+        <MapControlCenter
+          tripId={plan.id}
+          tripDestination={plan.destination}
+          days={days}
+          selectedDay={Math.min(selectedDay, Math.max(0, days.length - 1))}
+          onSelectDay={setSelectedDay}
+          layout="split"
+          guest={{ center: guestMapCenter(plan.destination), onAdd: onSave, withPlan: true }}
+        />
       </div>
     </div>
   );

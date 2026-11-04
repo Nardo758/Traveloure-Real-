@@ -1,0 +1,342 @@
+/**
+ * GATE-1B — THE SERVER-SIDE GUEST PLAN (ledger `2026-11-04-gate1b-guest-plan`; Leon chose GATE-1 option B, Nov 4,
+ * 2026; architect rulings 1–7, Nov 4, 2026; migration 433).
+ *
+ * In waitlist mode a signed-out visitor has a plan: an ordinary `trips` row with `user_id` NULL and
+ * `guest_session_hash` = SHA-256 hex of the browser's `X-Guest-Session` id. The raw id is never stored, logged or
+ * returned. This module is the ONE writer of `guest_session_hash` / `guest_claimed_at`.
+ *
+ *   · create  — one per call (rate-limited at the route), market gate as at the trip mint (no account ⇒ no bypass);
+ *   · read    — the session's latest unclaimed plan and its items; another session's plan is "none" (one 404);
+ *   · save    — an allowlisted item body (title, type, day, place name, point) — never a listing or partner id,
+ *               never an origin, never a money field (§19); the plan's `updated_at` moves (retention, ruling 3);
+ *   · update  — dates and party only, through `storage.updateTrip` (stamps `dates_confirmed_at`, LD 30);
+ *   · claim   — on sign-in: `user_id` set, `guest_claimed_at` stamped, hash cleared, owner collaborator row written;
+ *               as-is, no merge (ruling 5), one atomic conditional (§15);
+ *   · retention — unclaimed guest plans whose last change is older than GUEST_PLAN_RETENTION_DAYS are deleted
+ *               (items cascade); unset ⇒ disabled, deletes nothing (ruling 6).
+ */
+import { createHash } from "node:crypto";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { z } from "zod";
+import { db } from "../db";
+import { itineraryItems, travelPulseHiddenGems, tripCollaborators, trips, type Trip } from "@shared/schema";
+import { visibleGemCondition } from "./gem-visibility";
+import { eventTypeForSlug } from "@shared/occasions";
+import { partyTotal } from "@shared/plan-vocabulary";
+import { storage } from "../storage";
+import { logger } from "../infrastructure/logger";
+import { decideMarketOpen, type MarketOpenDecision } from "./market-open-gate";
+import { getLaunchMarketSlug, getLiveMarketSlugs } from "./platform-flags";
+import { resolveMarketSlug } from "./trend-engine/operating-markets";
+import { placeholderMintDay } from "./trip-placeholder-dates";
+import { GUEST_PLAN_RETENTION_BATCH, GUEST_SESSION_ID_MAX_LENGTH, guestPlanRetentionDays } from "../config/guest-plan.config";
+
+export const GUEST_SESSION_HEADER = "x-guest-session";
+
+/** SHA-256 hex of a well-formed guest-session id, else null (missing, too long, or odd characters). */
+export function hashGuestSession(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const id = raw.trim();
+  if (id.length < 8 || id.length > GUEST_SESSION_ID_MAX_LENGTH || !/^[A-Za-z0-9-]+$/.test(id)) return null;
+  return createHash("sha256").update(id, "utf8").digest("hex");
+}
+
+const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const partyCount = z.number().int().min(0).max(99);
+
+/** §19: the create body — a pick of planning answers, `.strict()`. Dates both or neither. */
+export const guestPlanCreateBody = z
+  .object({
+    destination: z.string().trim().min(1).max(255),
+    startDate: isoDay.optional(),
+    endDate: isoDay.optional(),
+    adults: partyCount.optional(),
+    kids: partyCount.optional(),
+    occasionSlug: z.string().trim().min(1).max(64).optional(),
+  })
+  .strict()
+  .refine((b) => (b.startDate === undefined) === (b.endDate === undefined), { message: "startDate and endDate go together" })
+  .refine((b) => !b.startDate || !b.endDate || b.endDate >= b.startDate, { message: "End date must be on or after start date" });
+
+/** §19: the update body — dates and party only. */
+export const guestPlanUpdateBody = z
+  .object({
+    startDate: isoDay.optional(),
+    endDate: isoDay.optional(),
+    adults: partyCount.nullable().optional(),
+    kids: partyCount.nullable().optional(),
+  })
+  .strict()
+  .refine((b) => (b.startDate === undefined) === (b.endDate === undefined), { message: "startDate and endDate go together" })
+  .refine((b) => !b.startDate || !b.endDate || b.endDate >= b.startDate, { message: "End date must be on or after start date" })
+  .refine((b) => Object.keys(b).length > 0, { message: "Nothing to update" });
+
+const coord = z.union([z.string(), z.number()]).transform((v) => String(v)).refine((v) => /^-?\d{1,3}(\.\d+)?$/.test(v));
+
+/** §19: the save body — what the item says, never a link, origin, status or amount. Coordinates both or neither. */
+export const guestPlanItemBody = z
+  .object({
+    title: z.string().trim().min(1).max(255),
+    description: z.string().max(2000).optional(),
+    itemType: z.enum(["activity", "meal", "accommodation", "free_time"]).optional(),
+    dayNumber: z.number().int().min(1).max(60).optional(),
+    locationName: z.string().trim().max(255).optional(),
+    latitude: coord.optional(),
+    longitude: coord.optional(),
+    /** A city-page gem: its name and point are read from the visible gem row, never from the body. */
+    gemId: z.string().trim().min(1).max(64).optional(),
+  })
+  .strict()
+  .refine((b) => (b.latitude === undefined) === (b.longitude === undefined), { message: "latitude and longitude go together" });
+
+export type GuestPlanView = {
+  plan: {
+    id: string;
+    title: string | null;
+    destination: string;
+    startDate: string;
+    endDate: string;
+    datesConfirmed: boolean;
+    adults: number | null;
+    kids: number | null;
+    numberOfTravelers: number | null;
+    eventType: string | null;
+    updatedAt: string | null;
+  };
+  items: Array<{
+    id: string;
+    title: string;
+    description: string | null;
+    itemType: string | null;
+    dayNumber: number;
+    locationName: string | null;
+    latitude: string | null;
+    longitude: string | null;
+  }>;
+  retentionDays: number | null;
+};
+
+/** The market gate for a guest: the mint's own pure decision, with no account (so no admin/QA bypass). */
+export async function guestMarketDecision(destination: string): Promise<MarketOpenDecision> {
+  const market = resolveMarketSlug(destination);
+  const [launch, live] = await Promise.all([getLaunchMarketSlug(), getLiveMarketSlugs()]);
+  return decideMarketOpen({ market, launch, live, user: null, qaDomain: undefined });
+}
+
+async function currentGuestTrip(hash: string): Promise<Trip | null> {
+  const [row] = await db
+    .select()
+    .from(trips)
+    .where(and(eq(trips.guestSessionHash, hash), isNull(trips.userId), isNull(trips.guestClaimedAt)))
+    .orderBy(desc(trips.createdAt))
+    .limit(1);
+  return row ?? null;
+}
+
+function viewOf(trip: Trip, items: Array<typeof itineraryItems.$inferSelect>): GuestPlanView {
+  return {
+    plan: {
+      id: trip.id,
+      title: trip.title ?? null,
+      destination: trip.destination,
+      startDate: String(trip.startDate),
+      endDate: String(trip.endDate),
+      datesConfirmed: trip.datesConfirmedAt != null,
+      adults: trip.adults ?? null,
+      kids: trip.kids ?? null,
+      numberOfTravelers: trip.numberOfTravelers ?? null,
+      eventType: trip.eventType ?? null,
+      updatedAt: trip.updatedAt ? new Date(trip.updatedAt).toISOString() : null,
+    },
+    items: items.map((i) => ({
+      id: i.id,
+      title: i.title,
+      description: i.description ?? null,
+      itemType: i.itemType ?? null,
+      dayNumber: i.dayNumber,
+      locationName: i.locationName ?? null,
+      latitude: i.latitude ?? null,
+      longitude: i.longitude ?? null,
+    })),
+    retentionDays: guestPlanRetentionDays(),
+  };
+}
+
+export async function readGuestPlan(hash: string): Promise<GuestPlanView | null> {
+  const trip = await currentGuestTrip(hash);
+  if (!trip) return null;
+  const items = await db
+    .select()
+    .from(itineraryItems)
+    .where(eq(itineraryItems.tripId, trip.id))
+    .orderBy(asc(itineraryItems.dayNumber), asc(itineraryItems.createdAt), asc(itineraryItems.id));
+  return viewOf(trip, items);
+}
+
+export type GuestCreateOutcome =
+  | { ok: true; view: GuestPlanView }
+  | { ok: false; code: "market_not_open"; market: string | null }
+  | { ok: false; code: "unknown_occasion" };
+
+export async function createGuestPlan(hash: string, body: z.infer<typeof guestPlanCreateBody>): Promise<GuestCreateOutcome> {
+  const gate = await guestMarketDecision(body.destination);
+  if (!gate.allowed) return { ok: false, code: "market_not_open", market: gate.market };
+  let eventType: string | undefined;
+  if (body.occasionSlug) {
+    const row = await storage.getExperienceTypeBySlug(body.occasionSlug);
+    if (!row) return { ok: false, code: "unknown_occasion" };
+    eventType = eventTypeForSlug(row.slug);
+  }
+  const datesChosenByTraveler = !!(body.startDate && body.endDate);
+  const day = datesChosenByTraveler ? null : placeholderMintDay(body.destination);
+  const total = body.adults !== undefined ? partyTotal(body.adults, body.kids ?? null) : undefined;
+  const trip = await storage.createTrip(
+    {
+      destination: body.destination,
+      startDate: (body.startDate ?? day) as any,
+      endDate: (body.endDate ?? day) as any,
+      ...(body.adults !== undefined ? { adults: body.adults } : {}),
+      ...(body.kids !== undefined ? { kids: body.kids } : {}),
+      ...(total !== undefined ? { numberOfTravelers: total } : {}),
+      ...(eventType ? { eventType } : {}),
+      // The ONE write of the guest owner column (migration 433). `userId` stays NULL: no account owns this row.
+      guestSessionHash: hash,
+      userId: null,
+    } as any,
+    { datesChosenByTraveler },
+  );
+  return { ok: true, view: viewOf(trip, []) };
+}
+
+export async function updateGuestPlan(hash: string, body: z.infer<typeof guestPlanUpdateBody>): Promise<GuestPlanView | null> {
+  const trip = await currentGuestTrip(hash);
+  if (!trip) return null;
+  const patch: Record<string, unknown> = {};
+  if (body.startDate && body.endDate) {
+    patch.startDate = body.startDate;
+    patch.endDate = body.endDate;
+  }
+  if (body.adults !== undefined) patch.adults = body.adults;
+  if (body.kids !== undefined) patch.kids = body.kids;
+  if (body.adults !== undefined || body.kids !== undefined) {
+    const adults = body.adults !== undefined ? body.adults : trip.adults ?? null;
+    const kids = body.kids !== undefined ? body.kids : trip.kids ?? null;
+    const total = adults != null ? partyTotal(adults, kids) : undefined;
+    patch.numberOfTravelers = total ?? null;
+  }
+  // The re-date stamp, market and zone derivations ride the ONE writer (LD 30, R-4).
+  await storage.updateTrip(trip.id, patch as any);
+  return readGuestPlan(hash);
+}
+
+export type GuestSaveOutcome = { ok: true; itemId: string } | { ok: false; code: "no_plan" | "unknown_gem" };
+
+export async function saveGuestPlanItem(hash: string, body: z.infer<typeof guestPlanItemBody>): Promise<GuestSaveOutcome> {
+  const trip = await currentGuestTrip(hash);
+  if (!trip) return { ok: false, code: "no_plan" };
+  let fields = { ...body };
+  if (body.gemId) {
+    // The gem's own row answers its name, area and point (the public teaser carries no coordinates by ruling).
+    const [gem] = await db
+      .select({
+        placeName: travelPulseHiddenGems.placeName,
+        neighborhood: travelPulseHiddenGems.neighborhood,
+        latitude: travelPulseHiddenGems.latitude,
+        longitude: travelPulseHiddenGems.longitude,
+      })
+      .from(travelPulseHiddenGems)
+      .where(and(eq(travelPulseHiddenGems.id, body.gemId), visibleGemCondition()))
+      .limit(1);
+    if (!gem) return { ok: false, code: "unknown_gem" };
+    const located = gem.latitude != null && gem.longitude != null;
+    fields = {
+      ...fields,
+      title: gem.placeName || body.title,
+      locationName: gem.placeName || body.locationName,
+      latitude: located ? String(gem.latitude) : undefined,
+      longitude: located ? String(gem.longitude) : undefined,
+    };
+  }
+  body = fields;
+  const item = await storage.createItineraryItem({
+    tripId: trip.id,
+    title: body.title,
+    description: body.description ?? null,
+    itemType: body.itemType ?? "activity",
+    dayNumber: body.dayNumber ?? 1,
+    status: "planned",
+    origin: "traveler",
+    ...(body.locationName ? { locationName: body.locationName } : {}),
+    ...(body.latitude !== undefined && body.longitude !== undefined ? { latitude: body.latitude, longitude: body.longitude } : {}),
+  } as any);
+  // Ruling 3: retention counts from the plan's last change.
+  await db.update(trips).set({ updatedAt: new Date() }).where(eq(trips.id, trip.id));
+  return { ok: true, itemId: item.id };
+}
+
+/**
+ * Ruling 5: on sign-in every unclaimed guest plan of this session becomes the account's, as-is. One atomic
+ * conditional — a second claim, or a concurrent one, matches nothing (§15). The owner collaborator row the READ
+ * resolver needs is written in the same transaction (the mint writes it the same way, storage.createTrip).
+ */
+export async function claimGuestPlans(hash: string, userId: string): Promise<string[]> {
+  return db.transaction(async (tx) => {
+    const claimed = await tx
+      .update(trips)
+      .set({ userId, guestClaimedAt: new Date(), guestSessionHash: null, updatedAt: new Date() })
+      .where(and(eq(trips.guestSessionHash, hash), isNull(trips.userId), isNull(trips.guestClaimedAt)))
+      .returning({ id: trips.id, createdAt: trips.createdAt });
+    for (const row of claimed) {
+      await tx.insert(tripCollaborators).values({ tripId: row.id, userId, role: "owner" }).onConflictDoNothing();
+    }
+    return claimed
+      .sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime())
+      .map((r) => r.id);
+  });
+}
+
+export const GUEST_PLAN_RETENTION_DISABLED_LOG = "guest plan retention is disabled (GUEST_PLAN_RETENTION_DAYS unset); deleted nothing";
+
+export type GuestPlanRetentionResult =
+  | { status: "disabled"; deleted: 0; log: string }
+  | { status: "ok"; deleted: number; retentionDays: number; more: boolean }
+  | { status: "error"; deleted: 0; error: string };
+
+/** Ruling 6: logged once at boot by the routes module. */
+export function logGuestPlanRetentionBootState(): void {
+  const days = guestPlanRetentionDays();
+  if (days == null) logger.info({ job: "guest-plan-retention" }, GUEST_PLAN_RETENTION_DISABLED_LOG);
+  else logger.info({ job: "guest-plan-retention", retentionDays: days }, "guest plan retention enabled");
+}
+
+/** The retention pass (internal-jobs rail). Unclaimed guest plans idle past N days are deleted; items cascade. */
+export async function runGuestPlanRetention(now: Date = new Date()): Promise<GuestPlanRetentionResult> {
+  const days = guestPlanRetentionDays();
+  if (days == null) {
+    logger.info({ job: "guest-plan-retention" }, GUEST_PLAN_RETENTION_DISABLED_LOG);
+    return { status: "disabled", deleted: 0, log: GUEST_PLAN_RETENTION_DISABLED_LOG };
+  }
+  const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+  try {
+    const deleted = await db.execute(sql`
+      DELETE FROM trips
+      WHERE id IN (
+        SELECT id FROM trips
+        WHERE guest_session_hash IS NOT NULL
+          AND guest_claimed_at IS NULL
+          AND user_id IS NULL
+          AND COALESCE(updated_at, created_at) < ${cutoff}
+        ORDER BY updated_at ASC NULLS FIRST
+        LIMIT ${GUEST_PLAN_RETENTION_BATCH}
+      )
+      RETURNING id
+    `);
+    const count = (deleted as any).rows?.length ?? (deleted as any).rowCount ?? 0;
+    logger.info({ job: "guest-plan-retention", deleted: count, retentionDays: days }, "guest plan retention pass");
+    return { status: "ok", deleted: count, retentionDays: days, more: count >= GUEST_PLAN_RETENTION_BATCH };
+  } catch (err: any) {
+    logger.error({ job: "guest-plan-retention", code: err?.code }, "guest plan retention pass failed");
+    return { status: "error", deleted: 0, error: String(err?.code ?? "error") };
+  }
+}

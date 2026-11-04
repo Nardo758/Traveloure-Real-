@@ -54,6 +54,7 @@ export function InlineDatesPanel({
   onSaved,
   onCancel,
   testId = "slip-dates-panel",
+  submit,
 }: {
   tripId: string;
   startDate?: string | Date | null;
@@ -63,6 +64,8 @@ export function InlineDatesPanel({
   onSaved?: (dates: PlanWindow) => void;
   onCancel?: () => void;
   testId?: string;
+  /** GATE-1B: the guest plan saves through its own rail (PATCH /api/guest-plans/current); the slip omits this. */
+  submit?: (dates: PlanWindow) => Promise<void>;
 }) {
   const [start, setStart] = useState(() => dayOf(startDate));
   const [end, setEnd] = useState(() => dayOf(endDate));
@@ -75,11 +78,15 @@ export function InlineDatesPanel({
     setSaving(true);
     setError(null);
     try {
-      // ONLY the two dates: the stamp is the server's (§19); market and zone are re-derived there.
-      await apiRequest("PATCH", `/api/trips/${tripId}`, { startDate: start, endDate: end });
-      // Row PS-3 (audit D3): the pen carries the dates the row now holds, so the edit window agrees.
-      writePlanAnswersToContext(tripId, { startDate: start, endDate: end });
-      invalidatePlan(tripId);
+      if (submit) {
+        await submit({ startDate: start, endDate: end });
+      } else {
+        // ONLY the two dates: the stamp is the server's (§19); market and zone are re-derived there.
+        await apiRequest("PATCH", `/api/trips/${tripId}`, { startDate: start, endDate: end });
+        // Row PS-3 (audit D3): the pen carries the dates the row now holds, so the edit window agrees.
+        writePlanAnswersToContext(tripId, { startDate: start, endDate: end });
+        invalidatePlan(tripId);
+      }
       onSaved?.({ startDate: start, endDate: end });
     } catch (e: any) {
       setError(e?.message || "Couldn't save your dates");
@@ -207,11 +214,17 @@ export function InlineWhoPanel({
   current,
   onSaved,
   onCancel,
+  submit,
 }: {
   tripId: string;
   current: PartyAnswers;
   onSaved?: () => void;
   onCancel?: () => void;
+  /**
+   * GATE-1B: the guest plan saves adults and children through its own rail and has no pet columns, so with
+   * `submit` the pets fieldset is not drawn and no pet answer is sent.
+   */
+  submit?: (party: { adults?: number | null; kids?: number | null }) => Promise<void>;
 }) {
   const s = (v: number | string | null | undefined) => (v == null ? "" : String(v));
   const [adults, setAdults] = useState(s(current.adults));
@@ -226,20 +239,24 @@ export function InlineWhoPanel({
     setPetKind(s(current.petKind));
     setPetCount(s(current.petCount));
   }, [current.adults, current.kids, current.petKind, current.petCount]);
-  const body = partyPanelBody({ adults, kids, petKind, petCount });
+  const body = partyPanelBody(submit ? { adults, kids, petKind: "", petCount: "" } : { adults, kids, petKind, petCount });
 
   const save = async () => {
     if (!body || saving) return;
     setSaving(true);
     setError(null);
     try {
-      await apiRequest("PATCH", `/api/trips/${tripId}/occasion`, body);
       // Row PS-3 (audit D3): the pen carries the party the row now holds, for the keys this save sent.
       const party: { adults?: number | null; kids?: number | null } = {};
       if ("adults" in body) party.adults = body.adults as number | null;
       if ("kids" in body) party.kids = body.kids as number | null;
-      writePlanAnswersToContext(tripId, party);
-      invalidatePlan(tripId);
+      if (submit) {
+        await submit(party);
+      } else {
+        await apiRequest("PATCH", `/api/trips/${tripId}/occasion`, body);
+        writePlanAnswersToContext(tripId, party);
+        invalidatePlan(tripId);
+      }
       onSaved?.();
     } catch (e: any) {
       setError(e?.message || "Couldn't save who's coming");
@@ -261,6 +278,7 @@ export function InlineWhoPanel({
           <Input id="slip-who-kids" type="number" min={0} inputMode="numeric" value={kids} onChange={(e) => setKids(e.target.value)} data-testid="input-slip-who-kids" />
         </div>
       </div>
+      {submit ? null : (
       <fieldset className="space-y-1">
         <legend className="text-sm">Bringing a pet?</legend>
         <div className="grid grid-cols-2 gap-3">
@@ -277,6 +295,7 @@ export function InlineWhoPanel({
           Service animals aren't pets and aren't counted here.
         </p>
       </fieldset>
+      )}
       {error ? (
         <p role="alert" className="text-xs text-destructive" data-testid="slip-who-error">
           {error}

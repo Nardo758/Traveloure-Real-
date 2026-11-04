@@ -183,6 +183,7 @@ import messagesRouter from "./routes/messages";
 import conversationsRoutes from "./routes/conversations.routes";
 import serviceQuotesRoutes from "./routes/service-quotes.routes";
 import pushRoutes from "./routes/push.routes";
+import guestPlansRoutes from "./routes/guest-plans.routes";
 import liveHelpRoutes from "./routes/live-help.routes";
 import planOptionSetsRoutes from "./routes/plan-option-sets.routes";
 import { expertRequestSentProperties } from "./services/expert-door.service";
@@ -1130,6 +1131,8 @@ export async function registerRoutes(
   // server-derived total (§14/§15). Declares full `/api/...` paths; mounted without a prefix.
   app.use(serviceQuotesRoutes);
   app.use(pushRoutes);
+  // GATE-1B (ledger 2026-11-04-gate1b-guest-plan): the waitlist-mode guest plan rails.
+  app.use(guestPlansRoutes);
   app.use(liveHelpRoutes);
   // Track A step A3 (ledger `2026-09-29-a3-option-sets`): comparisons on the plan and M8's promote.
   app.use(planOptionSetsRoutes);

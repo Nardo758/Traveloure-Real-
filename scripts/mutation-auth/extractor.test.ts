@@ -405,8 +405,10 @@ test("current mounted graph parity includes auth helpers and shared api paths", 
   // 750 / 742: POST /api/concierge/bookings/:bookingId/tasks and the four /api/concierge/tasks/:taskId transitions (CN-1e).
   // 750 / 742 → 745 / 737: the five legacy /api/concierge writes (requests, quote, PATCH requests/:id, requests/:id/claim, escalations) retired to one 410 middleware (CN-1g).
   // 746 / 738 (CMS-1, ledger `2026-11-04-cms1-launch-screens`): PATCH /api/admin/partner-items/:table/:id.
-  assert.equal(result.mutations.length, 746);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 738);
+  // 751 / 743 (GATE-1B, ledger `2026-11-04-gate1b-guest-plan`): POST /api/guest-plans, PATCH /api/guest-plans/current,
+  // POST /api/guest-plans/current/items, POST /api/guest-plans/claim and POST /internal/jobs/guest-plan-retention.
+  assert.equal(result.mutations.length, 751);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 743);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -425,7 +427,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // 742: POST /api/concierge/bookings/:bookingId/tasks and the four /api/concierge/tasks/:taskId transitions (CN-1e).
   // 742 → 737: the five legacy /api/concierge writes (requests, quote, PATCH requests/:id, requests/:id/claim, escalations) retired to one 410 middleware (CN-1g).
   // 738 (CMS-1, ledger `2026-11-04-cms1-launch-screens`): PATCH /api/admin/partner-items/:table/:id.
-  assert.equal(endpointRows.length, 738);
+  // 743 (GATE-1B, ledger `2026-11-04-gate1b-guest-plan`): the four /api/guest-plans writes and the retention job.
+  assert.equal(endpointRows.length, 743);
   // 709 / 701 (ledger `2026-10-18-fd4-share-projection`): the shadowed quick-start twin is deleted; unique paths stay 701.
   // 710 / 702 (ledger `2026-10-19-fb1-free-retime`): + POST /api/trips/:tripId/retime-fixes/:itemId/apply.
   // 712 / 704 (ledger `2026-10-18-cs1-source-signoff`): the sign-off and photo-block POSTs.
@@ -456,8 +459,10 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // 750 / 742: POST /api/concierge/bookings/:bookingId/tasks and the four /api/concierge/tasks/:taskId transitions (CN-1e).
   // 750 / 742 → 745 / 737: the five legacy /api/concierge writes (requests, quote, PATCH requests/:id, requests/:id/claim, escalations) retired to one 410 middleware (CN-1g).
   // 746 / 738 (CMS-1, ledger `2026-11-04-cms1-launch-screens`): PATCH /api/admin/partner-items/:table/:id.
-  assert.equal(manifest.rawRegistrationCount, 746);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 738);
+  // 751 / 743 (GATE-1B, ledger `2026-11-04-gate1b-guest-plan`): POST /api/guest-plans, PATCH /api/guest-plans/current,
+  // POST /api/guest-plans/current/items, POST /api/guest-plans/claim and POST /internal/jobs/guest-plan-retention.
+  assert.equal(manifest.rawRegistrationCount, 751);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 743);
   // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R274): user-data,
   // session-self; the owner/delegate check runs in the service before any write.
   // + POST /api/admin/content-sources/:id/public-ok (ledger `2026-10-03-official-facts-public-ok`, R278):
@@ -522,7 +527,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // other 253 → 258 (CN-1e): POST /api/concierge/bookings/:bookingId/tasks and the four /api/concierge/tasks/:taskId transitions (CN-1e).
   // other 258 → 253 (CN-1g): the five legacy /api/concierge writes (requests, quote, PATCH requests/:id, requests/:id/claim, escalations) retired to one 410 middleware (CN-1g).
   // admin 201 → 202 (CMS-1, ledger `2026-11-04-cms1-launch-screens`): PATCH /api/admin/partner-items/:table/:id.
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 202, "user-data": 252, other: 253 });
+  // other 253 → 258 (GATE-1B): the four /api/guest-plans writes and POST /internal/jobs/guest-plan-retention.
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 202, "user-data": 252, other: 258 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
@@ -583,8 +589,12 @@ test("generated user-facing inventory contains one row per unique endpoint and s
     // resolves the booking and admits only its traveler or, for the expert's moves, its assigned expert.
     // session-self 369 → 367, resource-owner 108 → 105 (CN-1g): the five legacy /api/concierge writes (requests, quote, PATCH requests/:id, requests/:id/claim, escalations) retired to one 410 middleware (CN-1g).
     // admin-role 201 → 202 (CMS-1, ledger `2026-11-04-cms1-launch-screens`): PATCH /api/admin/partner-items/:table/:id.
-    "admin-role": 202, "session-self": 367, "resource-owner": 105,
-    signature: 7, "public-or-system": 57, unknown: 0,
+    // session-self 367 → 368 (GATE-1B): POST /api/guest-plans/claim (isAuthenticated, the account from the session).
+    // public-or-system 57 → 61 (GATE-1B): POST /api/guest-plans, PATCH /api/guest-plans/current and
+    // POST /api/guest-plans/current/items — refused to a signed-in caller and keyed on the X-Guest-Session hash, which
+    // the heuristic does not see — and POST /internal/jobs/guest-plan-retention, the internal-secret trigger.
+    "admin-role": 202, "session-self": 368, "resource-owner": 105,
+    signature: 7, "public-or-system": 61, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
     `${mutation.method} ${mutation.effectivePath}`, mutation,

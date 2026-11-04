@@ -300,9 +300,19 @@ export const trips = pgTable("trips", {
   // The reader-side derivation lives ONCE in `shared/plan-dates.ts` (§18 rule 1) — the predicate
   // and every label. Do not re-answer "are these dates real?" on a surface.
   datesConfirmedAt: timestamp("dates_confirmed_at"),
+  // GATE-1B (migration 433, ledger `2026-11-04-gate1b-guest-plan`): a GUEST plan in waitlist mode. A guest row has
+  // `user_id` NULL and `guest_session_hash` = SHA-256 hex of the browser's `X-Guest-Session` id (the raw id is never
+  // stored). Sign-in claims it: `user_id` set, `guest_claimed_at` stamped, the hash cleared. Written ONLY by
+  // `server/services/guest-plan.service.ts`; omitted from `insertTripSchema` (§19). Nullable, no default.
+  guestSessionHash: varchar("guest_session_hash", { length: 64 }),
+  guestClaimedAt: timestamp("guest_claimed_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
+  // GATE-1B (migration 433): the guest plan lookup and the retention pass's scan. Declared here so the deploy push
+  // keeps them (publish-trap rule).
+  index("trips_guest_session_hash_idx").on(table.guestSessionHash).where(sql`guest_session_hash IS NOT NULL`),
+  index("trips_guest_retention_idx").on(table.updatedAt).where(sql`guest_session_hash IS NOT NULL AND guest_claimed_at IS NULL`),
   // Migration 133: partial index used by ready-made trip authoring queries (author_id IS NOT NULL).
   // Declared here — drizzle push drops indexes absent from this file on publish.
   index("idx_trips_author_id").on(table.authorId).where(sql`author_id IS NOT NULL`),
@@ -2938,6 +2948,9 @@ export const generatedItinerariesRelations = relations(generatedItineraries, ({ 
 export const insertTripSchema = createInsertSchema(trips).omit({
   id: true,
   userId: true,
+  // GATE-1B (migration 433): guest ownership is server-written only (guest-plan.service.ts).
+  guestSessionHash: true,
+  guestClaimedAt: true,
   createdAt: true,
   updatedAt: true,
   // 2A.3 / R8: market_slug is SERVER-DERIVED from destination in storage.createTrip (never

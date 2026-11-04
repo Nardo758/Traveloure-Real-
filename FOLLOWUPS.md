@@ -1208,3 +1208,28 @@ Each Maps caller's daily cap is a deployment secret (`MAPS_*_DAILY_CAP`) with a 
 (`@shared/maps-billing`); changing one means the secrets panel. Step 9c D6 reports the effective values on
 `/api/health` (`mapsCaps`), read-only. Architect ruling (Oct 7, 2026): caps should be editable on the admin
 fees/switches screen like the fee bands, so a change needs no secrets edit and no deploy.
+
+---
+
+## From GATE-1B (ledger `2026-11-04-gate1b-guest-plan`)
+
+### FU-G1B-1 — Most Kyoto gems carry no point
+
+A gem saved to a guest plan takes the gem row's own latitude/longitude (the public teaser carries none by
+ruling). Only gems with a stored point land on the map; the rest show in "Not on the map yet". On a database
+built from the migrations, 6 of 22 visible Kyoto gems have a point. Production's count was not read. Filling
+gem points is a content/data lane, not this row.
+
+### FU-G1B-2 — Events and listings saved by a guest carry no link
+
+The guest save body is a `.strict()` allowlist of title, type, day, place name and point (plus a gem id the
+server resolves). A saved listing or partner place keeps its name and point but not its `provider_service_id` /
+`affiliate_product_id`, and an event keeps its name only. In waitlist mode nothing is bookable, so nothing is
+lost today; when purchases open, a claimed guest plan's items will need the links re-admitted through the same
+server-verified gates the member add rail uses.
+
+### FU-G1B-3 — The map's "blank at first render" was not reproduced
+
+The local build has no Maps browser key, so the map renders the Leaflet fallback (a list, per GC-1) and the
+Google renderer's first paint could not be observed. Filed as not proven (architect ruling 2: no blind fix);
+it needs a browser run against a build with the production Maps key.

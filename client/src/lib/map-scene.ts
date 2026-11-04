@@ -53,7 +53,7 @@ export interface MapVersion {
 export interface BrowsePlace {
   id: string;
   /** `candidate` (R322): a result the Workstation's open Add-panel drawer published. */
-  kind: "listing" | "partner" | "candidate";
+  kind: "listing" | "partner" | "candidate" | "gem" | "event";
   name: string;
   lat: number | null;
   lng: number | null;
@@ -63,6 +63,8 @@ export interface BrowsePlace {
   categoryKey?: string | null;
   /** Step 8b-2: a partner place's lower-cased category text (tabs match it through the word list). */
   partnerText?: string;
+  /** GATE-1B (ruling 2): a city-page gem or event names the one tab it belongs to (never matched by words). */
+  tabKey?: import("@/lib/browse-supply").BrowseTabKey;
   /** Step 8b-2: how the row answers the Budget filter (`browse-supply.ts` `BrowseBudget`). */
   budget?: import("@/lib/browse-supply").BrowseBudget;
 }
