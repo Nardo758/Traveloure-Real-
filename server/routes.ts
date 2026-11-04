@@ -271,6 +271,7 @@ import travelerDoorsRoutes from "./routes/traveler-doors.routes";
 import { conciergeRetiredMiddleware } from "./routes/concierge-retired";
 import upsellRoutes from "./routes/upsell.routes";
 import tripsRoutes from "./routes/trips.routes";
+import { marketOpenDecisionFor } from "./services/market-open-gate";
 import advisorRoutes from "./routes/advisor.routes";
 import demandRoutes from "./routes/demand.routes";
 import providerListingHealthRoutes from "./routes/provider-listing-health.routes";
@@ -1517,6 +1518,13 @@ export async function registerRoutes(
       }
       if (sanitizedInput.budget && parseFloat(sanitizedInput.budget) < 0) {
         return res.status(400).json({ message: "Budget must be a positive number" });
+      }
+
+      // CITY-1 (ledger `2026-11-04-city1-marquee-defaults`): only an OPEN market — the marquee or a live one — runs the
+      // full planner. Refused before any write; admin and QA-domain accounts pass (market-open-gate.ts).
+      const marketGate = await marketOpenDecisionFor(actorUserId, sanitizedInput.destination);
+      if (!marketGate.allowed) {
+        return res.status(409).json({ code: marketGate.code, market: marketGate.market });
       }
 
       // MINT SITE 1 of 10 — THE TRAVELER'S OWN DOOR (migration 302, ledger

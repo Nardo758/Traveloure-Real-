@@ -11,6 +11,9 @@
  */
 import { useContext } from "react";
 import { QueryClient, QueryClientContext, useQuery } from "@tanstack/react-query";
+import { LIVE_MARKETS_ROUTE } from "@shared/live-markets";
+import { launchCityName, type MarketStatusSettings } from "@shared/ticker";
+import { statusSettingsFrom } from "./waitlist-markets";
 
 export type SignupMode = "waitlist" | "open";
 
@@ -47,4 +50,39 @@ export function useSignupMode(): { mode: SignupMode; data: SignupModeAnswer | un
  */
 export function browseSavesToPlan(mode: SignupMode, signedIn: boolean): boolean {
   return mode === "waitlist" && !signedIn;
+}
+
+// ── CITY-1 (ledger `2026-11-04-city1-marquee-defaults`): the marquee market and market status, from ONE read ─────
+/**
+ * The public live-markets answer (`GET /api/public/live-markets`, WAIT-1): the marquee (`launch`), live, beta and
+ * launch months. `loaded` is false until it answers; a picker treats every market as selectable until then (the
+ * server refuses a non-open market at the trip mint on its own — the client only reflects that).
+ */
+export function useMarketStatusSettings(): { settings: MarketStatusSettings; loaded: boolean; settled: boolean } {
+  const client = useContext(QueryClientContext);
+  const q = useQuery<unknown>(
+    { queryKey: [LIVE_MARKETS_ROUTE], retry: false, staleTime: 60_000, enabled: !!client },
+    client ?? NO_PROVIDER_CLIENT,
+  );
+  // `settled`: the read has answered or failed (a failed read is the honest empty — nothing is open).
+  return { settings: statusSettingsFrom(q.data), loaded: q.data !== undefined, settled: !q.isLoading };
+}
+
+/**
+ * The marquee market — the default city wherever a city is picked — from the live-markets answer, else the
+ * signup-mode answer's `launchMarketSlug`. Null until either names an operating market: a caller then shows no
+ * city rather than a typed one.
+ */
+export function useLaunchMarket(): { slug: string; cityName: string } | null {
+  const { settings } = useMarketStatusSettings();
+  const { data } = useSignupMode();
+  const slug = settings.launch ?? data?.launchMarketSlug ?? null;
+  const cityName = launchCityName(slug);
+  return slug && cityName ? { slug, cityName } : null;
+}
+
+/** CITY-1, pure: the marquee for a settings answer, else null. */
+export function launchMarketFrom(settings: MarketStatusSettings): { slug: string; cityName: string } | null {
+  const cityName = launchCityName(settings.launch);
+  return settings.launch && cityName ? { slug: settings.launch, cityName } : null;
 }

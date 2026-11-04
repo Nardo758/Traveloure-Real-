@@ -9,6 +9,9 @@ import { PRICE_OPTIONS, extractTilePrice, priceMatches } from "@/lib/tile-price"
 import { useRef, useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { resolveCoverPhoto, type CoverPhotoCredit } from "@/lib/cover-photo";
 import { useParams, useSearch, useLocation, Link } from "wouter";
+import { OPERATING_MARKETS } from "@shared/operating-markets";
+import { useMarketStatusSettings } from "@/lib/signup-mode";
+import { ClosedMarketCityView } from "@/components/waitlist/WaitlistMarkets";
 import { ServiceTypeFilter } from "@/components/service-type-filter";
 import { SERVICE_TYPE_FILTER_PARAM, emptyConciergeLine, readFailureMessage, serviceTypeFromUrl, withServiceType } from "@/lib/service-type-filter";
 import { trackCityView } from "@/hooks/use-recently-viewed";
@@ -93,7 +96,11 @@ interface LocationViewPayload {
   services?: SectionResult<any[]>;
   // Trailhead T4.3: published scraped/DMO stubs for this market + render-time trend headline.
   externalStubs?: SectionResult<{ trendContext: string | null; stubs: any[] }>;
+  /** CITY-1: the operating market, and whether it is open (the marquee or live). Closed ⇒ the reduced page. */
+  market?: string | null;
+  marketOpen?: boolean;
 }
+
 
 interface CityMediaResponse {
   hero: any | null;
@@ -1484,6 +1491,7 @@ export default function DiscoverLocationPage() {
     retry: false,
   });
 
+  const { settings: marketStatusSettings } = useMarketStatusSettings();
   const { data, isLoading, error } = useQuery<LocationViewPayload>({
     queryKey: ["/api/discover/location", city, country, serviceType],
     queryFn: async () => {
@@ -1895,6 +1903,16 @@ export default function DiscoverLocationPage() {
             <AlertDescription>No city specified.</AlertDescription>
           </Alert>
         </div>
+      </BrowseShell>
+    );
+  }
+
+  // CITY-1: one branch — a closed operating market renders the reduced page, never the feed.
+  if (data && data.marketOpen === false && data.market) {
+    const closedCity = OPERATING_MARKETS.find((m) => m.marketKey === data.market)?.cityName ?? data.city;
+    return (
+      <BrowseShell>
+        <ClosedMarketCityView market={data.market} cityName={closedCity} settings={marketStatusSettings} />
       </BrowseShell>
     );
   }

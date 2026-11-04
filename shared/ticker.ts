@@ -299,6 +299,29 @@ export function marketStatusLabel(slug: string, s: MarketStatusSettings): string
 }
 
 /**
+ * CITY-1 (ledger `2026-11-04-city1-marquee-defaults`; Leon, Nov 3: "only the marquee market runs the full planner"):
+ * a market is OPEN — it runs the full planner — when it is the marquee (`launch`) or an admin listed it as live. Beta
+ * alone does not open a market. ONE predicate, read by the server's trip-mint refusal and every picker (§18 rule 1).
+ */
+export function marketIsOpen(slug: string | null | undefined, s: MarketStatusSettings): boolean {
+  if (!slug) return false;
+  return s.launch === slug || s.live.includes(slug);
+}
+
+/**
+ * CITY-1: the order every city picker shows: the marquee first, then live and beta markets, then the rest, each group
+ * in `OPERATING_MARKETS` order. Only operating markets are returned.
+ */
+export function marketPickerOrder(s: MarketStatusSettings): string[] {
+  const keys = OPERATING_MARKETS.map((m) => m.marketKey);
+  const rank = (k: string) => (k === s.launch ? 0 : s.live.includes(k) || s.beta.includes(k) ? 1 : 2);
+  return keys
+    .map((k, i) => ({ k, i }))
+    .sort((a, b) => rank(a.k) - rank(b.k) || a.i - b.i)
+    .map(({ k }) => k);
+}
+
+/**
  * The hero pill for the marquee market (HELD): "Now live in {city}" when it is live, else "Now in beta in {city}".
  * No marquee market ⇒ no pill (null).
  */

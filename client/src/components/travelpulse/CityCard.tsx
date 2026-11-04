@@ -1,4 +1,4 @@
-import { MapPin, Zap, TrendingUp, TrendingDown, Users, Bell, Check, Sparkles, Gem, MessageCircle, Info, Calendar } from "lucide-react";
+import { MapPin, Users, Bell, Check, Sparkles, Gem, MessageCircle, Info, Calendar } from "lucide-react";
 import { Link } from "wouter";
 import { optimizeUnsplashUrl, unsplashResponsiveProps } from "@/lib/unsplash";
 import { isReferencePhoto } from "@/lib/photo-provenance";
@@ -15,7 +15,7 @@ import { useExpertAvailability } from "@/lib/expert-availability";
  * dark values — so the card themes automatically.
  *
  * Two variants:
- *   - "pulse":  city grid — pulse score, Hot when isHot, travelers, price, crowds, deal, gems
+ *   - "pulse":  city grid — pulse score, the market's status (CITY-1), travelers, price, crowds, deal, gems
  *   - "season": By-Date view — season score /10, ideal-month, event/package/expert counts
  */
 
@@ -43,8 +43,12 @@ export interface CityCardProps {
   score?: number | null;
 
   // top-left photo badges
-  isHot?: boolean;
-  trendLabel?: string | null; // season: "Ideal month" / "Good month"; pulse shows "Hot" when isHot
+  /**
+   * CITY-1 (ledger `2026-11-04-city1-marquee-defaults`): pulse shows the market's status label (Live / Beta /
+   * Opening {Month yyyy} / Join the waitlist) here. The popularity "Hot" chip and the price-change % are removed.
+   */
+  statusLabel?: string | null;
+  trendLabel?: string | null; // season: "Ideal month" / "Good month"
   activeTravelers?: number | null;
   alertCount?: number | null;
   inTrip?: boolean;
@@ -57,7 +61,6 @@ export interface CityCardProps {
 
   // pulse economics
   avgPrice?: string | null;
-  priceChangePct?: number | null; // negative = cheaper (green)
   crowdLevel?: string | null;
   dealAlert?: string | null;
   trendingSpots?: number | null;
@@ -89,8 +92,8 @@ function crowdClasses(level: string): string {
 
 export function CityCard(props: CityCardProps) {
   const {
-    variant, cityName, country, imageUrl, score, isHot, trendLabel, activeTravelers,
-    alertCount, inTrip, highlight, bestTime, temp, vibeTags = [], avgPrice, priceChangePct,
+    variant, cityName, country, imageUrl, score, statusLabel, trendLabel, activeTravelers,
+    alertCount, inTrip, highlight, bestTime, temp, vibeTags = [], avgPrice,
     crowdLevel, dealAlert, trendingSpots, hiddenGems, eventsCount = 0, packagesCount = 0,
     expertsCount = 0, primaryLabel, onPrimary, secondaryLabel, onSecondary, onAsk,
     experiences = [], onCardClick, primaryTestId, testId,
@@ -152,7 +155,6 @@ export function CityCard(props: CityCardProps) {
     );
   }
 
-  const priceDown = typeof priceChangePct === "number" && priceChangePct < 0;
   // No zero where the source has no value (footer-pages ruling, Sep 28, 2026): a stat renders only
   // when it is a finite number greater than 0; otherwise the element is omitted — never "0", never
   // a placeholder dash (§13).
@@ -214,8 +216,8 @@ export function CityCard(props: CityCardProps) {
         {/* top-left badges */}
         <div className="absolute top-2.5 left-2.5 flex flex-wrap gap-1.5">
           {variant === "pulse" ? (
-            isHot ? (
-              <span className="px-2 py-0.5 rounded-md bg-[var(--earn-coral-ink)] text-white text-[11px] font-bold flex items-center gap-1"><Zap className="w-3 h-3 fill-white" />Hot</span>
+            statusLabel ? (
+              <span className="px-2 py-0.5 rounded-md bg-white/95 text-[var(--earn-navy)] text-[11px] font-bold" data-testid={testId ? `${testId}-status` : undefined}>{statusLabel}</span>
             ) : null
           ) : (
             trendLabel && <span className="px-2 py-0.5 rounded-md bg-white/95 text-[var(--earn-gold-ink)] text-[11px] font-bold">☀️ {trendLabel}</span>
@@ -260,11 +262,6 @@ export function CityCard(props: CityCardProps) {
             {showAvgPrice && (
               <span className="text-[15px] font-bold text-[var(--earn-navy)] tabular-nums flex items-center gap-1">
                 ${avgPrice}<span className="text-[11px] font-medium text-[var(--earn-muted)]">/night</span>
-                {typeof priceChangePct === "number" && Number.isFinite(priceChangePct) && priceChangePct !== 0 && (
-                  <span className={`text-[11px] font-semibold flex items-center ${priceDown ? "text-[var(--earn-green-ink)]" : "text-[var(--earn-coral-ink)]"}`}>
-                    {priceDown ? <TrendingDown className="w-3 h-3" /> : <TrendingUp className="w-3 h-3" />}{Math.abs(priceChangePct)}%
-                  </span>
-                )}
               </span>
             )}
             {crowdLevel && <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full capitalize ${crowdClasses(crowdLevel)}`}>{crowdLevel}</span>}

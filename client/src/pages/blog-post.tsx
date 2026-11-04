@@ -12,6 +12,7 @@ import { conversationChatPath, startConversation } from "@/lib/earner-address";
 import { usePlanning } from "@/contexts/PlanningContext";
 import { planAroundSource } from "@/components/landing/events-strip";
 import { blogWaitlistHref, type SignupModeView } from "@/lib/launch-waitlist-view";
+import { TICKER_WAITLIST_BUTTON, launchCityName } from "@shared/ticker";
 import type { BlogReactionKind } from "@shared/blog";
 import { useExpertAvailability } from "@/lib/expert-availability";
 import {
@@ -241,14 +242,16 @@ function SeriesDoors({ doors }: { doors: BlogPlanDoor[] }) {
 function LaunchWaitlistCta({ post }: { post: PublicBlogPost }) {
   const signup = useSignupMode().data as SignupModeView | undefined;
   const href = blogWaitlistHref(post, signup);
-  if (!href) return null;
+  // CITY-1: the launch market's name from settings, never a typed city; none ⇒ no CTA.
+  const city = launchCityName(signup?.launchMarketSlug);
+  if (!href || !city) return null;
   return (
     <aside className="mt-10 rounded-xl border p-6" data-testid="cta-blog-waitlist">
       <p className="font-medium">
-        Planning Kyoto around the days that don't work is what Traveloure is being built for, with local experts as they join.
+        Planning {city} around the days that don't work is what Traveloure is being built for, with local experts as they join.
       </p>
       <Button asChild className="mt-4">
-        <Link href={href} data-testid="link-blog-waitlist">Join the Kyoto waitlist</Link>
+        <Link href={href} data-testid="link-blog-waitlist">{TICKER_WAITLIST_BUTTON(city)}</Link>
       </Button>
     </aside>
   );

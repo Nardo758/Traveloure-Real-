@@ -563,7 +563,11 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
         undefined,
         { datesOptional: true },
       );
-      if (!outcome.ok) return { ok: false, message: outcome.message };
+      if (!outcome.ok) {
+        // CITY-1: a market that is not open is answered with its waitlist link, not an error sentence.
+        if (outcome.reason === "market_not_open" && outcome.market) return { ok: false, waitlistMarket: outcome.market };
+        return { ok: false, message: outcome.message };
+      }
       const tripId = outcome.tripId;
       // TG-1: a plan was minted. Door and group only — no city, dates or party (the allowlist drops anything else).
       trackEvent("plan_started", { ...(door ? { door } : {}), ...(start.group ? { group: start.group } : {}) });

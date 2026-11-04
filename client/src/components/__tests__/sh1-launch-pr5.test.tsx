@@ -72,7 +72,7 @@ describe("SH-1 Launch PR 5", () => {
     assert.ok(html.includes("In 22 days"));
     assert.ok(html.includes("APR"), "More row DateBlock");
     const cards: CityEventCard[] = [1, 2, 3].map((i) => ({ ...event({ id: `c${i}`, daysUntil: 10 + i }) }));
-    const strip = renderToString(<Router ssrPath="/"><EventsStripContent payload={{ windowDays: 180, total: 3, events: cards }} onPlanAround={() => {}} /></Router>);
+    const strip = renderToString(<Router ssrPath="/"><EventsStripContent payload={{ windowDays: 180, total: 3, events: cards }} market="kyoto" onPlanAround={() => {}} /></Router>);
     for (const i of [1, 2, 3]) {
       assert.ok(strip.includes(`data-testid="city-event-date-c${i}"`), `strip card ${i} DateBlock`);
       assert.ok(strip.includes(`data-testid="city-event-countdown-c${i}"`), `strip card ${i} countdown`);
