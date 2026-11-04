@@ -59,6 +59,8 @@ import { injectIntoHead } from "../utils/html-head";
 import { SITE_ORIGIN } from "@shared/site-origin";
 import { hideBlockedListingImages, visibleListingImage } from "../services/place-photo-blocks.service";
 
+import { publicCoverImageUrl, publicProfileText } from "../services/public-record-screen";
+
 const router = Router();
 
 const isAuthenticated = (req: any, res: any, next: any) => {
@@ -340,6 +342,9 @@ const storefrontPrefsPatchSchema = z.object({
   // storefront's own intro line (users.bio, the column the public storefront read already
   // serves). Owner-authored profile prose; not an amount/identity/rate field.
   bio: z.string().trim().max(2000).nullable().optional(),
+  // CMS-1 (ledger `2026-11-04-cms1-launch-screens`): a new cover is public only with the owner's photo-rights tick,
+  // stored beside it as `coverPhotoRightsAt` in this same jsonb key (no new column).
+  photoRightsTicked: z.boolean().optional(),
 }).strict();
 
 router.patch("/api/me/storefront", isAuthenticated, async (req: any, res) => {
@@ -357,11 +362,24 @@ router.patch("/api/me/storefront", isAuthenticated, async (req: any, res) => {
     // rendering paths (emails, PDFs, exports) may not — sanitize before persisting.
     if (typeof patch.bio === "string") patch.bio = sanitizeInput(patch.bio);
 
+    // CMS-1: the bio is screened on save (refused with the hits), and a new cover needs the rights tick.
+    {
+      const { profileTextScreen, PUBLIC_RECORD_SCREEN_COPY } = await import("../services/public-record-screen");
+      const screen = profileTextScreen({ bio: patch.bio ?? null });
+      if (!screen.ok) return res.status(422).json(screen.refusal);
+      if (typeof patch.coverImageUrl === "string" && patch.photoRightsTicked !== true) {
+        return res.status(422).json({ code: "photo_rights", message: PUBLIC_RECORD_SCREEN_COPY.coverPhotoRights });
+      }
+    }
+    const coverRightsAt = typeof patch.coverImageUrl === "string" ? new Date().toISOString() : null;
+
     // The ONE locked writer (`user-preferences-writer.ts`) — see the settings route above.
     const nextStorefront = await updateUserPreferences(userId, (current) => {
       const merged = {
         ...(current.storefront ?? {}),
-        ...(patch.coverImageUrl !== undefined ? { coverImageUrl: patch.coverImageUrl } : {}),
+        ...(patch.coverImageUrl !== undefined
+          ? { coverImageUrl: patch.coverImageUrl, coverPhotoRightsAt: coverRightsAt }
+          : {}),
       };
       return {
         preferences: { ...current, storefront: merged },
@@ -939,7 +957,8 @@ async function loadStorefrontFromOwner(
     isExpertRole(owner.role) ? isExpertHireable(owner.id) : Promise.resolve(false),
   ]);
   const gemsSharedCount = gemsSharedRows[0]?.count ?? 0;
-  const coverImageUrl = ((owner.preferences as any)?.storefront?.coverImageUrl as string | undefined) ?? null;
+  // CMS-1: the cover is public only once its owner confirmed the rights (`publicCoverImageUrl`).
+  const coverImageUrl = publicCoverImageUrl((owner.preferences as any)?.storefront);
   const memberSince = owner.createdAt ? owner.createdAt.toISOString() : null;
 
   // Vacation mode (§ above): non-null vacationUntil AND in the future = away. Business-level
@@ -974,7 +993,8 @@ async function loadStorefrontFromOwner(
       // which resolves the recipient server-side and returns no user id at all. Do not re-add an
       // id here — `scripts/check-public-user-id.cjs` fails if you do.
       name: [owner.firstName, owner.lastName].filter(Boolean).join(" ") || "Traveloure earner",
-      bio: owner.bio ?? expertProfile?.formBio ?? null,
+      // CMS-1: profile text is public only while it passes the public-record screen (`publicProfileText`).
+      bio: publicProfileText(owner.bio ?? expertProfile?.formBio ?? null),
       profileImageUrl: owner.profileImageUrl ?? null,
       role: owner.role,
       handle: owner.handle,
@@ -1005,7 +1025,7 @@ async function loadStorefrontFromOwner(
       // the same three facts the /providers card shows so the card and the page it opens agree.
       // The provider's own form declarations, trimmed; NULL = not stated, and the page falls back
       // to the person's name and shows no type (§13). An expert storefront carries none of them.
-      businessName: isProviderRole(owner.role) ? ownerForm?.businessName?.trim() || null : null,
+      businessName: isProviderRole(owner.role) ? publicProfileText(ownerForm?.businessName?.trim() || null) : null,
       businessType: isProviderRole(owner.role) ? ownerForm?.businessType?.trim() || null : null,
       businessVerified: isProviderRole(owner.role)
         ? isBusinessVerificationStatus(ownerForm?.businessVerificationStatus)
@@ -1019,7 +1039,7 @@ async function loadStorefrontFromOwner(
       languages: Array.isArray(expertProfile?.languages) ? expertProfile.languages : [],
       neighborhoods: Array.isArray(expertProfile?.neighborhoods) ? expertProfile.neighborhoods : [],
       localSpecialties: Array.isArray(expertProfile?.localSpecialties) ? expertProfile.localSpecialties : [],
-      headline: expertProfile?.headline ?? null,
+      headline: publicProfileText(expertProfile?.headline ?? null),
     },
     services: resolvedServices,
     readyMade,
@@ -1200,12 +1220,12 @@ async function loadProviderStorefrontDirectory() {
   return Promise.all(rows.map(async (row) => {
     const form = formByOwner.get(row.id);
     const listings = listingsByOwner.get(row.id) ?? [];
-    const businessName = form?.businessName?.trim() || null;
+    const businessName = publicProfileText(form?.businessName?.trim() || null);
     const category = form?.businessType?.trim() || null;
     return {
       name: [row.firstName, row.lastName].filter(Boolean).join(" ") || "Traveloure provider",
       handle: row.handle,
-      bio: row.bio ?? null,
+      bio: publicProfileText(row.bio ?? null),
       profileImageUrl: row.profileImageUrl ?? null,
       serviceCount: Number(row.serviceCount),
       averageRating: ratings.get(row.id)?.averageRating ?? null,

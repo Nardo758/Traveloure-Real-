@@ -213,7 +213,8 @@ describe("R151 — the admin item-kind label treats a CLOSED (cancelled/refunded
   it("K1: the approve snapshot never counts a refunded or cancelled item as included", async () => {
     const srv = await getServer();
     const cookie = await loginCookie(srv, emailOf(adminId));
-    const res = await httpRequest(srv, "POST", `/api/admin/ready-made/${listingId}/approve`, { body: {}, cookie });
+    // FIXTURE EDIT (CMS-1 brief §4a, ledger `2026-11-04-cms1-launch-screens`): approval now needs the admin's photo-rights tick.
+    const res = await httpRequest(srv, "POST", `/api/admin/ready-made/${listingId}/approve`, { body: { photoRightsTicked: true }, cookie });
     assert.equal(res.status, 200, JSON.stringify(res.data));
     const byKind = res.data.listing.insideCounts.byKind;
     assert.equal(byKind.included, 1, `only the CONFIRMED booking is bought — got ${JSON.stringify(byKind)}`);

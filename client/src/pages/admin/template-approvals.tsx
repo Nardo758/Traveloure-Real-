@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, XCircle } from "lucide-react";
+import { PHOTO_RIGHTS_CONFIRMED_LABEL } from "@/lib/cms-console-copy";
 
 /** A live (approved + active) store listing, as returned by the public feed. */
 interface LiveReadyMade {
@@ -56,8 +57,30 @@ export default function TemplateApprovals() {
   const rmInvalidate = () =>
     queryClient.invalidateQueries({ queryKey: ["/api/admin/ready-made/pending"] });
 
+  // CMS-1 (ledger `2026-11-04-cms1-launch-screens`): the server screens the listing's text and requires the admin's
+  // photo-rights tick; a refusal's words are shown on the card they belong to.
+  const [rmTicks, setRmTicks] = useState<Record<string, boolean>>({});
+  const [rmRefusals, setRmRefusals] = useState<Record<string, { message: string; hits?: string[] }>>({});
   const rmApproveMutation = useMutation({
-    mutationFn: (id: string) => apiRequest("POST", `/api/admin/ready-made/${id}/approve`, {}),
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/admin/ready-made/${id}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ photoRightsTicked: rmTicks[id] === true }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (res.status === 422) {
+        setRmRefusals((r) => ({ ...r, [id]: { message: String(body?.message ?? ""), hits: Array.isArray(body?.hits) ? body.hits : undefined } }));
+        throw new Error(String(body?.message ?? "Refused"));
+      }
+      if (!res.ok) throw new Error(String(body?.message ?? `Failed (${res.status})`));
+      setRmRefusals((r) => {
+        const { [id]: _drop, ...rest } = r;
+        return rest;
+      });
+      return body;
+    },
     onSuccess: () => { toast({ title: "Store listing approved" }); rmInvalidate(); },
     onError: (e: any) => toast({ title: "Approve failed", description: e.message, variant: "destructive" }),
   });
@@ -146,6 +169,21 @@ export default function TemplateApprovals() {
                   onChange={(e) => setRmReasons((r) => ({ ...r, [l.id]: e.target.value }))}
                   data-testid={`rm-reject-reason-${l.id}`}
                 />
+                <label className="flex items-center gap-2 text-sm" htmlFor={`rm-photo-rights-${l.id}`}>
+                  <input
+                    id={`rm-photo-rights-${l.id}`}
+                    type="checkbox"
+                    checked={rmTicks[l.id] === true}
+                    onChange={(e) => setRmTicks((t) => ({ ...t, [l.id]: e.target.checked }))}
+                    data-testid={`checkbox-rm-photo-rights-${l.id}`}
+                  />
+                  {PHOTO_RIGHTS_CONFIRMED_LABEL}
+                </label>
+                {rmRefusals[l.id] ? (
+                  <p className="text-sm text-destructive" data-testid={`rm-refusal-${l.id}`}>
+                    {rmRefusals[l.id].message}
+                  </p>
+                ) : null}
                 <div className="flex gap-2">
                   <Button
                     onClick={() => rmApproveMutation.mutate(l.id)}

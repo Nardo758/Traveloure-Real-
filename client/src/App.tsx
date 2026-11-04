@@ -773,11 +773,13 @@ function Router() {
       <Route path="/spontaneous">
         <Redirect to="/destinations" />
       </Route>
-      {/* /hidden-gems kept: unique AI-powered discovery of authentic local experiences with
-          category-based filtering (local food secrets, hidden viewpoints, etc.) — not present
-          inside /discover. */}
-      <Route path="/hidden-gems">
+      {/* CMS-1 (ledger `2026-11-04-cms1-launch-screens`): the page lives at /places — reviewed places only (the
+          server's `publicGemWhere`); /hidden-gems redirects for bookmark continuity. */}
+      <Route path="/places">
         <Layout><HiddenGemsPage /></Layout>
+      </Route>
+      <Route path="/hidden-gems">
+        <Redirect to="/places" />
       </Route>
       <Route path="/quick-start">
         <Redirect to="/destinations" />

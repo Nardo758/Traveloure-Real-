@@ -43,6 +43,8 @@ const STATIC_ROUTES = [
   "/discover",
   "/experts",
   "/experiences",
+  // CMS-1: the reviewed-places page (formerly /hidden-gems, which redirects).
+  "/places",
   "/pricing",
   "/about",
   "/contact",
@@ -103,6 +105,12 @@ async function buildSitemap(): Promise<string> {
     }),
   );
 }
+
+// CMS-1 (ledger `2026-11-04-cms1-launch-screens`): /hidden-gems moved to /places — a permanent redirect, query kept.
+router.get("/hidden-gems", (req, res) => {
+  const i = req.originalUrl.indexOf("?");
+  res.redirect(301, `/places${i >= 0 ? req.originalUrl.slice(i) : ""}`);
+});
 
 router.get("/sitemap.xml", async (_req, res) => {
   try {

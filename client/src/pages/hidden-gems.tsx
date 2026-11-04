@@ -1,10 +1,8 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { useQuery } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { 
@@ -14,7 +12,6 @@ import {
   Star, 
   Lightbulb, 
   Search, 
-  Sparkles,
   UtensilsCrossed,
   Mountain,
   Compass,
@@ -28,7 +25,6 @@ import {
   Eye,
   Bookmark
 } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
 
 const CATEGORY_ICONS: Record<string, any> = {
   local_food_secrets: UtensilsCrossed,
@@ -68,11 +64,22 @@ interface Category {
   label: string;
 }
 
+/**
+ * CMS-1 (ledger `2026-11-04-cms1-launch-screens`): the page lives at /places and lists reviewed places only (the server's
+ * `publicGemWhere` — an expert-verified row; AI-only rows never show). HELD for Leon: the heading wording.
+ */
+export const PLACES_HEADING = (city: string) => `Places to explore in ${city}`;
+
 export default function HiddenGemsPage() {
-  const { toast } = useToast();
-  const [searchDestination, setSearchDestination] = useState("");
+  // CMS-1: /places?city=Kyoto opens on that city (the heading names it).
+  const [searchDestination, setSearchDestination] = useState(() => {
+    try {
+      return new URLSearchParams(typeof window !== "undefined" ? window.location.search : "").get("city")?.trim() ?? "";
+    } catch {
+      return "";
+    }
+  });
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [discoverDestination, setDiscoverDestination] = useState("");
 
   const { data: categoriesData, isLoading: categoriesLoading } = useQuery<{ categories: Category[] }>({
     queryKey: ["/api/discovery/categories"],
@@ -92,48 +99,9 @@ export default function HiddenGemsPage() {
     queryKey: ["/api/discovery/destinations"],
   });
 
-  const discoverMutation = useMutation({
-    mutationFn: async (destination: string) => {
-      return apiRequest("POST", "/api/discovery/scan", { destination });
-    },
-    onSuccess: (data: any) => {
-      toast({
-        title: "Discovery Complete",
-        description: data.message || `Discovered ${data.totalGems} local picks!`,
-      });
-      queryClient.invalidateQueries({ 
-        predicate: (query) => {
-          const key = query.queryKey[0];
-          return typeof key === "string" && key.startsWith("/api/discovery/gems");
-        }
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/discovery/destinations"] });
-      setDiscoverDestination("");
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Discovery Failed",
-        description: error.message || "Failed to discover local picks",
-        variant: "destructive",
-      });
-    },
-  });
-
   const categories = categoriesData?.categories || [];
   const gems = gemsData?.gems || [];
   const destinations = destinationsData?.destinations || [];
-
-  const handleDiscover = () => {
-    if (!discoverDestination.trim()) {
-      toast({
-        title: "Enter a destination",
-        description: "Please enter a city or destination to discover local picks",
-        variant: "destructive",
-      });
-      return;
-    }
-    discoverMutation.mutate(discoverDestination.trim());
-  };
 
   const getCategoryIcon = (category: string) => {
     const Icon = CATEGORY_ICONS[category] || Gem;
@@ -155,59 +123,16 @@ export default function HiddenGemsPage() {
       <div className="space-y-2">
         <div className="flex items-center gap-2">
           <Gem className="h-8 w-8 text-primary" />
-          <h1 className="text-3xl font-bold" data-testid="text-page-title">Local Picks</h1>
+          <h1 className="text-3xl font-bold" data-testid="text-page-title">
+            {searchDestination ? PLACES_HEADING(searchDestination) : "Local Picks"}
+          </h1>
         </div>
         <p className="text-muted-foreground">
           Local places and experiences that tourists rarely find
         </p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5" />
-            Discover New Destinations
-          </CardTitle>
-          <CardDescription>
-            Scan a destination for local picks across all categories
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-2">
-            <Input
-              placeholder="Enter a city (e.g., Barcelona, Tokyo, Lisbon...)"
-              value={discoverDestination}
-              onChange={(e) => setDiscoverDestination(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleDiscover()}
-              className="flex-1"
-              data-testid="input-discover-destination"
-            />
-            <Button 
-              onClick={handleDiscover} 
-              disabled={discoverMutation.isPending}
-              data-testid="button-discover"
-            >
-              {discoverMutation.isPending ? (
-                <>
-                  <Sparkles className="h-4 w-4 mr-2 animate-pulse" />
-                  Discovering...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  Discover Gems
-                </>
-              )}
-            </Button>
-          </div>
-          {discoverMutation.isPending && (
-            <p className="text-sm text-muted-foreground mt-2">
-              Researching local places... This may take a moment.
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
+      {/* CMS-1: the AI scan card is gone — its output (AI-only rows) can never show on /places. */}
       {destinations.length > 0 && (
         <div className="space-y-2">
           <h3 className="text-sm font-medium text-muted-foreground">Explore Destinations</h3>
@@ -271,12 +196,7 @@ export default function HiddenGemsPage() {
             <Card data-testid="card-gems-empty">
               <CardContent className="py-12 text-center">
                 <Gem className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium mb-2" data-testid="text-empty-title">No local picks yet</h3>
-                <p className="text-muted-foreground mb-4" data-testid="text-empty-message">
-                  {searchDestination 
-                    ? `No gems found for ${searchDestination}. Try discovering new ones!`
-                    : "Start by discovering gems for a destination above"}
-                </p>
+                <h3 className="text-lg font-medium" data-testid="text-empty-title">Nothing here yet.</h3>
               </CardContent>
             </Card>
           ) : (

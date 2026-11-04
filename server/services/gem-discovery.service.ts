@@ -71,6 +71,17 @@ interface DiscoveryResult {
   confidenceScore: number;
 }
 
+/**
+ * CMS-1 (ledger `2026-11-04-cms1-launch-screens`; Leon, Nov 3: traveler-facing records are admin-reviewed only): the
+ * ONE predicate for a discovery gem a traveler may see on /places. `ai_discovered_gems` has no status and no hidden_at
+ * column (shared/schema.ts `aiDiscoveredGems`); every row is AI-born (`source_model`), and the only review it carries is
+ * `verified_by_expert`. So a row is public only once an expert verified it — an AI-only row (and a row only a traveler
+ * marked, `verified_by_user`) never shows.
+ */
+export function publicGemWhere() {
+  return eq(aiDiscoveredGems.verifiedByExpert, true);
+}
+
 class GemDiscoveryService {
   private discoveryLogger = logger.child({ service: "gem-discovery" });
 
@@ -341,28 +352,22 @@ Focus on authenticity and specificity. Avoid generic tourist attractions.`;
       offset?: number;
     }
   ): Promise<{ gems: any[]; total: number }> {
-    let query = db.select()
+    // CMS-1 (ledger `2026-11-04-cms1-launch-screens`): /places shows reviewed rows only (`publicGemWhere`).
+    const where = and(
+      publicGemWhere(),
+      eq(aiDiscoveredGems.destination, destination),
+      options?.category ? eq(aiDiscoveredGems.category, options.category) : undefined,
+    );
+    const gems = await db.select()
       .from(aiDiscoveredGems)
-      .where(eq(aiDiscoveredGems.destination, destination))
-      .$dynamic();
-
-    if (options?.category) {
-      query = query.where(
-        and(
-          eq(aiDiscoveredGems.destination, destination),
-          eq(aiDiscoveredGems.category, options.category)
-        )
-      );
-    }
-
-    const gems = await query
+      .where(where)
       .orderBy(desc(aiDiscoveredGems.saveCount), desc(aiDiscoveredGems.viewCount))
       .limit(options?.limit || 50)
       .offset(options?.offset || 0);
 
     const [{ count }] = await db.select({ count: sql<number>`count(*)` })
       .from(aiDiscoveredGems)
-      .where(eq(aiDiscoveredGems.destination, destination));
+      .where(where);
 
     // CS-1 item 1: a gem of a place under a no_photos block shows no image (hidden, never deleted).
     const blocks = await photoBlocks();
@@ -374,26 +379,18 @@ Focus on authenticity and specificity. Avoid generic tourist attractions.`;
     limit?: number;
     offset?: number;
   }): Promise<{ gems: any[]; total: number }> {
-    let baseQuery = db.select().from(aiDiscoveredGems).$dynamic();
-
-    if (options?.category) {
-      baseQuery = baseQuery.where(eq(aiDiscoveredGems.category, options.category));
-    }
-
-    const gems = await baseQuery
+    // CMS-1: reviewed rows only, as above.
+    const where = and(publicGemWhere(), options?.category ? eq(aiDiscoveredGems.category, options.category) : undefined);
+    const gems = await db.select()
+      .from(aiDiscoveredGems)
+      .where(where)
       .orderBy(desc(aiDiscoveredGems.saveCount), desc(aiDiscoveredGems.viewCount))
       .limit(options?.limit || 50)
       .offset(options?.offset || 0);
 
-    let countQuery = db.select({ count: sql<number>`count(*)` })
+    const [{ count }] = await db.select({ count: sql<number>`count(*)` })
       .from(aiDiscoveredGems)
-      .$dynamic();
-
-    if (options?.category) {
-      countQuery = countQuery.where(eq(aiDiscoveredGems.category, options.category));
-    }
-
-    const [{ count }] = await countQuery;
+      .where(where);
 
     // CS-1 item 1: a gem of a place under a no_photos block shows no image (hidden, never deleted).
     const blocks = await photoBlocks();
@@ -426,6 +423,7 @@ Focus on authenticity and specificity. Avoid generic tourist attractions.`;
       gemCount: sql<number>`count(*)::int`
     })
       .from(aiDiscoveredGems)
+      .where(publicGemWhere())
       .groupBy(aiDiscoveredGems.destination)
       .orderBy(desc(sql`count(*)`));
 

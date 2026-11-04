@@ -531,6 +531,8 @@ export default function LaunchWaitlistPage() {
   const launchMarket =
     signup?.launchMarketSlug && waitlistCityName(signup.launchMarketSlug) ? signup.launchMarketSlug : WAITLIST_MARKET_OPTIONS[0].key;
   const pageMarket = waitlistPageMarket(params?.market, launchMarket) ?? launchMarket;
+  // CMS-1: the two "closed days" lines name the marquee market from its own key, never a literal.
+  const marqueeCity = waitlistCityName(launchMarket) ?? launchMarket;
 
   if (pageMarket !== launchMarket) {
     return (
@@ -548,7 +550,7 @@ export default function LaunchWaitlistPage() {
     <div className="mx-auto max-w-2xl px-4 py-12" data-testid="page-launch-waitlist">
       <SEOHead
         title="Kyoto Trip Planning with Local Experts"
-        description="Closed days, last entry, crowds: plan Kyoto around the days that don't work. Join the Kyoto list."
+        description={`Closed days, last entry, timed tickets: plan ${marqueeCity} around the days that don't work. Join the ${marqueeCity} list.`}
         ogTitle="Kyoto's autumn, planned to work on the day."
         url={waitlistMarketPath(launchMarket)}
       />
@@ -567,7 +569,7 @@ export default function LaunchWaitlistPage() {
           Kyoto's autumn, planned to work on the day.
         </h1>
         <p className="mt-4 text-lg text-muted-foreground">
-          Closed days, last entry, crowds. Most Kyoto plans break on a detail you can't see from home. Traveloure is bringing local experts to catch the days that don't work, before you fly.
+          Closed days, last entry, timed tickets. Most {marqueeCity} plans break on a detail you can't see from home. Traveloure is bringing local experts to catch the days that don't work, before you fly.
         </p>
         <div className="mt-6">
           <Button asChild size="lg">
@@ -585,14 +587,14 @@ export default function LaunchWaitlistPage() {
 
       <section className="mt-12" data-testid="section-waitlist-why">
         <h2 className="text-2xl font-semibold">Why Kyoto days go wrong</h2>
-        <p className="mt-3">Autumn is when Kyoto is most loved, and when small details sink a day:</p>
+        <p className="mt-3">In autumn, small details can sink a Kyoto day:</p>
         <ul className="mt-3 list-disc space-y-2 pl-5">
           <li><strong>Gates close on their own schedule.</strong> Hours change with the season, and some places shut earlier than you'd guess.</li>
           <li><strong>Last entry comes before closing.</strong> Getting there "before it closes" can still mean getting there too late.</li>
           <li><strong>Some days just don't run.</strong> Seasonal services skip dates, and some depend on the weather on the day.</li>
-          <li><strong>The crowds pick the hour.</strong> The same spot can be a different place an hour later.</li>
+          <li><strong>Some entries are timed.</strong> A few places sell tickets for a set slot, and a missed slot can't be used later.</li>
         </ul>
-        <p className="mt-3">None of this is hard on its own. Put it together across a few packed days and one mistake costs you an afternoon.</p>
+        <p className="mt-3">None of this is hard on its own. Put it together across a few full days and one mistake costs you an afternoon.</p>
       </section>
 
       {showKyotoExperts && (

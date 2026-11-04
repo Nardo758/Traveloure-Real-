@@ -5272,11 +5272,15 @@ ${bannedCopyPromptLine()}`;
         // Unsplash → Pexels fallback chain via media aggregator services
         const { unsplashService } = await import("./services/unsplash.service");
         const { pexelsService } = await import("./services/pexels.service");
+        // CMS-1 (ledger `2026-11-04-cms1-launch-screens`): a stock photo is returned only WITH its credit (photographer,
+        // source, licence, link — `stockPhotoCredit`); a photo the provider gave no photographer for is not returned.
+        const { stockPhotoCredit } = await import("./services/stock-photo-credit");
         // Try Unsplash first
         try {
           const unsplashPhotos = await unsplashService.getCityPhotos(`${q} ${city}`, "", 1);
-          if (unsplashPhotos[0]?.url) {
-            return res.json({ photoUrl: unsplashPhotos[0].url });
+          const credit = unsplashPhotos[0]?.url ? stockPhotoCredit(unsplashPhotos[0]) : null;
+          if (unsplashPhotos[0]?.url && credit) {
+            return res.json({ photoUrl: unsplashPhotos[0].url, credit });
           }
         } catch {
           // fall through to Pexels
@@ -5284,8 +5288,8 @@ ${bannedCopyPromptLine()}`;
         // Pexels fallback
         try {
           const pexelsPhotos = await pexelsService.searchPhotos(`${q} ${city}`, { perPage: 1, orientation: "landscape" });
-          const photoUrl = pexelsPhotos[0]?.url ?? null;
-          return res.json({ photoUrl });
+          const credit = pexelsPhotos[0]?.url ? stockPhotoCredit(pexelsPhotos[0]) : null;
+          return res.json(pexelsPhotos[0]?.url && credit ? { photoUrl: pexelsPhotos[0].url, credit } : { photoUrl: null });
         } catch {
           // Both photo providers failed — return a valid empty result rather than a 500.
           return res.json({ photoUrl: null });
@@ -6000,6 +6004,14 @@ ${bannedCopyPromptLine()}`;
         }
       } catch (e: any) {
         return res.status(400).json({ message: e.message });
+      }
+
+      // CMS-1 (ledger `2026-11-04-cms1-launch-screens`): profile text reaches public pages, so it is screened on
+      // save with the public-record list — refused with the hits, never trimmed.
+      {
+        const { profileTextScreen } = await import("./services/public-record-screen");
+        const screen = profileTextScreen({ bio, headline, displayName });
+        if (!screen.ok) return res.status(422).json(screen.refusal);
       }
 
       // users row: identity + the bio the public /api/experts listing reads.

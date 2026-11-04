@@ -157,11 +157,6 @@
   "client/src/pages/itinerary-view.tsx": {
     "packed": 1
   },
-  "client/src/pages/launch-waitlist.tsx": {
-    "crowd": 3,
-    "most <superlative>": 1,
-    "packed": 1
-  },
   "client/src/pages/pricing.tsx": {
     "best": 1
   },

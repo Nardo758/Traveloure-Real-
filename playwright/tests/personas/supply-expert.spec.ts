@@ -65,7 +65,7 @@ const UNSPLASH_META = {
   profileUrl: "https://unsplash.com/@fixture?utm_source=traveloure",
 };
 
-async function adminApprove(path: string): Promise<number> {
+async function adminApprove(path: string, data?: Record<string, unknown>): Promise<number> {
   const adminCtx = await pwRequest.newContext({ baseURL: BASE_URL });
   const loginRes = await adminCtx.post(`${BASE_URL}/api/auth/login`, {
     data: { email: CI_ADMIN_EMAIL, password: CI_ADMIN_PASSWORD },
@@ -74,7 +74,7 @@ async function adminApprove(path: string): Promise<number> {
     await adminCtx.dispose();
     return loginRes.status();
   }
-  const res = await adminCtx.post(`${BASE_URL}${path}`);
+  const res = await adminCtx.post(`${BASE_URL}${path}`, data ? { data } : undefined);
   const status = res.status();
   await adminCtx.dispose();
   return status;
@@ -344,7 +344,8 @@ test.describe("supply-expert — Kyoto trip planner (ready-made)", () => {
       });
     }
 
-    const approveStatus = await adminApprove(`/api/admin/ready-made/${listingId}/approve`);
+    // CMS-1 (ledger `2026-11-04-cms1-launch-screens`): the admin confirms the cover photo's rights on approval.
+    const approveStatus = await adminApprove(`/api/admin/ready-made/${listingId}/approve`, { photoRightsTicked: true });
     const [finalListing] = await rows<{ status: string; active: boolean; price_cents: number; title: string }>(
       `SELECT status, active, price_cents, title FROM ready_made_trips WHERE id = $1`,
       [listingId],

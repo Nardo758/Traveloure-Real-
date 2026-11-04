@@ -129,7 +129,8 @@ test("S1: account settings save, read back, and merge a partial notifications pa
 });
 
 test("S2: storefront cover and bio save and read back on the public storefront", async () => {
-  const saved = await call("PATCH", "/api/me/storefront", { coverImageUrl: COVER, bio: "Kyoto tea mornings." });
+  // FIXTURE EDIT (CMS-1 brief §4b, ledger `2026-11-04-cms1-launch-screens`): a new cover now needs the owner's rights tick.
+  const saved = await call("PATCH", "/api/me/storefront", { coverImageUrl: COVER, bio: "Kyoto tea mornings.", photoRightsTicked: true });
   assert.equal(saved.status, 200, saved.text);
 
   const shown = await call("GET", `/api/storefront/${HANDLE}`, undefined, false);
@@ -162,7 +163,8 @@ test("S3: travel preferences save, read back and clear the budget with null", as
 
 test("S4: the three writers never clobber each other's key in users.preferences", async () => {
   // Write each namespace once more, in a different order from S1–S3, then read every one back.
-  assert.equal((await call("PATCH", "/api/me/storefront", { coverImageUrl: COVER })).status, 200);
+  // FIXTURE EDIT (CMS-1 brief §4b): the rights tick rides the cover, as above.
+  assert.equal((await call("PATCH", "/api/me/storefront", { coverImageUrl: COVER, photoRightsTicked: true })).status, 200);
   assert.equal((await call("PATCH", "/api/me/travel-preferences", { travelStyles: ["Nature"] })).status, 200);
   assert.equal((await call("PATCH", "/api/me/preferences", { timezone: "Asia/Osaka" })).status, 200);
 
@@ -211,7 +213,8 @@ test("S6: saves fired at the same moment to the three routes all survive (ledger
     const style = round % 2 === 0 ? "Culture" : "Nature";
     const timezone = round % 2 === 0 ? "Asia/Tokyo" : "Asia/Osaka";
     const results = await Promise.all([
-      call("PATCH", "/api/me/storefront", { coverImageUrl: cover }),
+      // FIXTURE EDIT (CMS-1 brief §4b): the rights tick rides the cover.
+      call("PATCH", "/api/me/storefront", { coverImageUrl: cover, photoRightsTicked: true }),
       call("PATCH", "/api/me/travel-preferences", { travelStyles: [style] }),
       call("PATCH", "/api/me/preferences", { timezone }),
     ]);

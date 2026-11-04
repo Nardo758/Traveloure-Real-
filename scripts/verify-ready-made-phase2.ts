@@ -308,7 +308,7 @@ async function main() {
     const rejectNoReason = await admin.req("POST", `/api/admin/ready-made/${listingId}/reject`, {});
     check("reject without a reason refused", rejectNoReason.status === 400, `got ${rejectNoReason.status}`);
 
-    const approved = await admin.req("POST", `/api/admin/ready-made/${listingId}/approve`, {});
+    const approved = await admin.req("POST", `/api/admin/ready-made/${listingId}/approve`, { photoRightsTicked: true });
     check("admin approve → 'approved'", approved.status === 200 && approved.json?.listing?.status === "approved",
       `${approved.status}`);
     const snap = approved.json?.listing?.insideCounts;
@@ -317,7 +317,7 @@ async function main() {
       JSON.stringify(snap));
     check("reviewer stamped", !!approved.json?.listing?.reviewedBy && !!approved.json?.listing?.reviewedAt);
 
-    const dupApprove = await admin.req("POST", `/api/admin/ready-made/${listingId}/approve`, {});
+    const dupApprove = await admin.req("POST", `/api/admin/ready-made/${listingId}/approve`, { photoRightsTicked: true });
     check("double-approve → 409 (atomic conditional, §15)", dupApprove.status === 409, `got ${dupApprove.status}`);
 
     const feedAfter = await author.req("GET", "/api/ready-made");

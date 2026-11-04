@@ -880,6 +880,8 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
     const pendingCard = page.locator(`text=${buildTitle}`);
     const found = await appears(pendingCard, 5000);
     if (found) {
+      // CMS-1 (ledger `2026-11-04-cms1-launch-screens`): approval needs the admin's photo-rights tick.
+      await page.locator('[data-testid^="checkbox-rm-photo-rights-"]').first().check().catch(() => {});
       const approveBtn = page.locator('button', { hasText: /approve/i }).first();
       await approveBtn.click().catch(() => {});
       await page.waitForTimeout(1000);
