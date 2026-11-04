@@ -975,7 +975,11 @@ export async function fillPlanEntryToStart(
   await city.click().catch(() => {});
   await testid(page, 'button-plan-entry-next').click().catch(() => {});
 
-  if (opts.occasionSlug && opts.occasionSlug !== 'travel') {
+  // A-8 (ledger `2026-11-05-lane3-occasion`): an occasion is stored only when one is picked, so "travel" is the Trips
+  // chip pressed, never a default left in place.
+  if (opts.occasionSlug === 'travel') {
+    await testid(page, 'plan-entry-group-trips').click().catch(() => {});
+  } else if (opts.occasionSlug) {
     await testid(page, 'plan-entry-more-specific').click().catch(() => {});
     const seeAll = testid(page, 'occasion-see-all');
     if (await appears(seeAll, 1500)) await seeAll.click().catch(() => {});

@@ -93,7 +93,8 @@ export interface PlanEntryStart {
   /** Both or neither; present only when a date or an event pick chose them (real dates). */
   startDate?: string;
   endDate?: string;
-  occasionSlug: string;
+  /** A-8: null when nothing was picked — the plan stores no occasion. */
+  occasionSlug: string | null;
   occasionId?: string;
   /**
    * E-1/E-5/E-8 (round 2 ruling, Nov 4, 2026): what the traveler chose, in words (`planEntryChoiceLabel`) — the event's
@@ -292,7 +293,8 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
   }, [state.event, events]);
 
   const occasionRows = occasions ?? [];
-  const pickedSlug = chosenOccasionSlug(state);
+  // A-8: nothing picked (no chip, no "More specific", no event, no door group) ⇒ no occasion.
+  const pickedSlug = chosenOccasionSlug(state, !!source?.group || groupChosen);
   const pickedRow = occasionRows.find((o) => o.slug === pickedSlug) ?? null;
   // E-1/E-5/E-8: the traveler's own choice in words. An event's carried "show" slug and a group's default are never
   // shown — only a door-named or "More specific" occasion is (`state.occasionSlug` without an event).
@@ -345,7 +347,8 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
       occasionSlug: pickedSlug,
       ...(state.event?.eventSourceId ? { eventSourceId: state.event.eventSourceId } : {}),
       ...(pickedRow?.id ? { occasionId: pickedRow.id } : {}),
-      occasionName: choiceLabel,
+      // A-8 / A-34: the title names an occasion only when one was picked; otherwise it is neutral.
+      ...(pickedSlug ? { occasionName: choiceLabel } : {}),
       ...(planEntryEventRow(state) ? { event: planEntryEventRow(state)! } : {}),
       view: planEntryView(state, pickedRow),
       occasionAsked: !doorOccasion.current || !!state.event,

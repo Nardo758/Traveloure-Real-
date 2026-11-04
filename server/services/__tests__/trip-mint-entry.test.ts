@@ -88,7 +88,9 @@ describe("E1 — trip_created carries the door the traveler came through", () =>
     assert.deepEqual(entry, { door: "city_grid", occasionSource: "none" });
     const parsed = tripClientBodySchema.parse(tripBody) as Record<string, unknown>;
     assert.equal("entry" in parsed, false);
-    assert.deepEqual(Object.keys(tripBody).sort(), ["destination", "endDate", "startDate", "title"]);
+    // A-8 (ledger `2026-11-05-lane3-occasion`): the mint states `eventType: null` so the column default never answers.
+    assert.deepEqual(Object.keys(tripBody).sort(), ["destination", "endDate", "eventType", "startDate", "title"]);
+    assert.equal((parsed as any).eventType, null, "the trip schema admits the null");
 
     // …and a client that names nothing sends no `entry` key at all (§13).
     assert.equal("entry" in buildTripMintBody({ ...TRIP }), false);

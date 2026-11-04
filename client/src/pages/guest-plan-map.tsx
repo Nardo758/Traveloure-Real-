@@ -14,7 +14,7 @@
  * (G2), and nothing here writes the cart.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation } from "wouter";
+import { useLocation } from "wouter";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
@@ -33,6 +33,10 @@ import {
 } from "@/lib/pending-plan-record";
 import { useSignupMode } from "@/lib/signup-mode";
 import { planTitle } from "@/lib/trip-slip";
+import { PlansNewStart } from "@/components/plan/PlansNewStart";
+import { startForCity } from "@/lib/plans-new-start";
+import { planEntryDestination } from "@/lib/plan-entry";
+import { usePlanning } from "@/contexts/PlanningContext";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 import {
@@ -107,6 +111,7 @@ function GuestPlanMapSignIn() {
  * planning provider is replaying the sign-in record, or there is nothing here (§13), exactly as before.
  */
 function SignedInLanding() {
+  const planning = usePlanning();
   const [, setLocation] = useLocation();
   const { user } = useAuth();
   const userId = (user as any)?.id ?? null;
@@ -131,31 +136,31 @@ function SignedInLanding() {
             <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Creating your plan…
           </p>
         ) : (
-          <p className="text-sm text-muted-foreground">
-            There is no plan waiting here.{" "}
-            <Link href="/experiences" className="underline" data-testid="link-guest-map-start">
-              Start a plan
-            </Link>
-          </p>
+          // A-23: a real empty state — the city pick runs the planning provider's ONE start (the member's mint).
+          <PlansNewStart onPick={(m) => planning.start(startForCity(m))} />
         )}
       </div>
   );
 }
 
-function GuestPlanMapRecord({ record }: { record: PendingPlanRecord | null }) {
+function GuestPlanMapRecord({ record: initialRecord }: { record: PendingPlanRecord | null }) {
   const { toast } = useToast();
   const { openSignInModal } = useSignInModal();
+  const planning = usePlanning();
   const [selectedDay, setSelectedDay] = useState(0);
-  // Signed out with no record: no answers to show, and none are invented.
+  const [record, setRecord] = useState(initialRecord);
+  // Signed out with no record: no answers to show, and none are invented. A-23: the city pick writes the sign-in record
+  // through the ONE start, and this page then shows it.
   if (!record) {
     return (
-      <div className="mx-auto max-w-xl px-4 py-16 text-center" data-testid="guest-map-no-record">
-        <p className="text-sm text-muted-foreground">
-          Your answers are not here any more.{" "}
-          <Link href="/experiences" className="underline" data-testid="link-guest-map-start">
-            Start a plan
-          </Link>
-        </p>
+      <div data-testid="guest-map-no-record">
+        <PlansNewStart
+          onPick={async (m) => {
+            const out = await planning.start(startForCity(m));
+            setRecord(peekPendingPlanRecord());
+            return out;
+          }}
+        />
       </div>
     );
   }
@@ -255,7 +260,12 @@ function WaitlistGuestPlan() {
     createGuestPlan({
       destination,
       // E-1: the plan's title is composed from the traveler's choice and the city (`planTitle`).
-      title: planTitle({ city: destination.split(",")[0].trim(), occasionName: record.source.choiceLabel ?? null }),
+      // A-34: no occasion ⇒ the neutral "{City}, {date range}" (the city alone when no dates were chosen).
+      title: planTitle({
+        city: destination.split(",")[0].trim(),
+        occasionName: a?.occasionSlug || record.source.experienceSlug ? record.source.choiceLabel ?? null : null,
+        ...(dated ? { startDate: a.startDate, endDate: a.endDate } : {}),
+      }),
       ...(dated ? { startDate: a.startDate, endDate: a.endDate } : {}),
       ...(adults !== undefined && adults > 0 ? { adults } : {}),
       ...(kids !== undefined ? { kids } : {}),
@@ -285,17 +295,27 @@ function WaitlistGuestPlan() {
   const view = planQ.data ?? null;
   if (!view) {
     return (
-      <div className="mx-auto max-w-xl px-4 py-16 text-center" data-testid="guest-map-no-record">
-        {createFailed ? (
-          <p className="text-sm text-destructive" role="alert" data-testid="guest-plan-create-failed">
-            {GUEST_PLAN_COPY.saveFailed}
-          </p>
-        ) : null}
-        <p className="text-sm text-muted-foreground">
-          <Link href="/experiences" className="underline" data-testid="link-guest-map-start">
-            Start a plan
-          </Link>
-        </p>
+      <div data-testid="guest-map-no-record">
+        {/* A-23: the city pick makes the guest's server-side plan (city only); the plan then asks dates and party. */}
+        <PlansNewStart
+          onPick={async (m) => {
+            setCreateFailed(false);
+            try {
+              const destination = planEntryDestination(m);
+              await createGuestPlan({ destination, title: planTitle({ city: m.cityName }) });
+              return { ok: true };
+            } catch {
+              setCreateFailed(true);
+              return { ok: false };
+            }
+          }}
+        >
+          {createFailed ? (
+            <p className="text-sm text-destructive" role="alert" data-testid="guest-plan-create-failed">
+              {GUEST_PLAN_COPY.saveFailed}
+            </p>
+          ) : null}
+        </PlansNewStart>
       </div>
     );
   }

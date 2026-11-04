@@ -301,10 +301,12 @@ describe("S7 — the mint body carries only what the traveler stated", () => {
     assert.equal(outcome.ok, true);
     assert.equal(bodies.length, 1);
     assert.deepEqual(bodies[0], {
-      title: "Kyoto trip",
+      // A-34: no occasion ⇒ the neutral "{City}, {date range}"; A-8: the mint states no occasion.
+      title: "Kyoto, Thu 1 – Thu 8 Oct 2026",
       destination: "Kyoto, Japan",
       startDate: "2026-10-01",
       endDate: "2026-10-08",
+      eventType: null,
     });
     // Server-derived facts (Locked Decision 30) are never client-sent.
     assert.equal("timezone" in bodies[0], false);
@@ -318,8 +320,8 @@ describe("S7 — the mint body carries only what the traveler stated", () => {
 
   it("keeps a traveler-authored title and derives one only when there is none", () => {
     assert.equal(buildTripMintBody({ ...GOOD, title: "Anniversary" }).title, "Anniversary");
-    assert.equal(buildTripMintBody({ ...GOOD, title: "   " }).title, "Kyoto trip");
-    assert.equal(buildTripMintBody(GOOD).title, "Kyoto trip");
+    assert.equal(buildTripMintBody({ ...GOOD, title: "   " }).title, "Kyoto, Thu 1 – Thu 8 Oct 2026");
+    assert.equal(buildTripMintBody(GOOD).title, "Kyoto, Thu 1 – Thu 8 Oct 2026");
   });
 });
 

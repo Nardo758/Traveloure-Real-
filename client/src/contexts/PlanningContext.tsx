@@ -38,7 +38,8 @@ import { getTripContext, releasePendingEventsPen, switchTripContext, updateTripC
 import { mintTripSlip } from "@/lib/trip-slip";
 import { finishForBranch, isPlanDoor, type PlanDoor } from "@shared/slip-funnel-events";
 import { eventTypeForSlug } from "@shared/occasions";
-import { OCCASION_GROUP_DEFAULT_SLUG, type OccasionPickerGroup } from "@shared/experience-group";
+import { OCCASION_SAVE_FAILED, sendWithRetry } from "@/lib/occasion-save";
+import { type OccasionPickerGroup } from "@shared/experience-group";
 import { travelersForSave } from "@shared/plan-vocabulary";
 import type { ExperiencesPick } from "@/lib/plan-entry";
 import { planEntryMintBasics, planEntryUrlRequested, withPlanEntryUrl } from "@/lib/plan-entry";
@@ -578,19 +579,22 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
       if (start.kids !== undefined) party.kids = start.kids;
       // Row PS-3 (audit D1): keep what the server SAVED for the party, so the pen can carry it below.
       let savedParty: { adults?: number | null; kids?: number | null } = {};
-      await apiRequest("PATCH", `/api/trips/${tripId}/occasion`, {
-        experienceSlug: start.occasionSlug,
-        eventType: eventTypeForSlug(start.occasionSlug),
+      // A-8: a plan nobody picked an occasion for is sent none — the mint stored none, and nothing here invents one.
+      const occasionBody = {
+        ...(start.occasionSlug ? { experienceSlug: start.occasionSlug, eventType: eventTypeForSlug(start.occasionSlug) } : {}),
         ...party,
-      })
-        .then(async (res) => {
-          const body = (await res.json().catch(() => null)) as { adults?: number | null; kids?: number | null } | null;
+      };
+      if (Object.keys(occasionBody).length > 0) {
+        // A-9: awaited, retried with backoff, and said out loud when every try fails — never a titled plan with a
+        // silently missing occasion.
+        const saved = await sendWithRetry(() => apiRequest("PATCH", `/api/trips/${tripId}/occasion`, occasionBody));
+        if (saved.ok) {
+          const body = (await saved.value.json().catch(() => null)) as { adults?: number | null; kids?: number | null } | null;
           if (body) savedParty = { adults: body.adults, kids: body.kids };
-        })
-        .catch((err) => {
-          // eslint-disable-next-line no-console
-          console.warn("[plan-entry] occasion not saved on the new plan:", err?.message);
-        });
+        } else {
+          toast({ variant: "destructive", title: OCCASION_SAVE_FAILED });
+        }
+      }
 
       // The new plan becomes the bound plan, with its occasion, BEFORE the traveler lands on it — the
       // same identity switch the old finish made — so every surface (the edit window included) reads
@@ -600,7 +604,7 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
         destination: start.destination,
         ...(start.startDate && start.endDate ? { startDate: start.startDate, endDate: start.endDate } : {}),
       });
-      updateTripContext({ experienceSlug: start.occasionSlug, eventType: eventTypeForSlug(start.occasionSlug) });
+      if (start.occasionSlug) updateTripContext({ experienceSlug: start.occasionSlug, eventType: eventTypeForSlug(start.occasionSlug) });
       // The switch above cleared the previous plan's party; the new plan's own saved answer goes in.
       writePlanAnswersToContext(tripId, savedParty);
 
@@ -655,7 +659,7 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
         destination: start.destination,
         ...(start.startDate ? { startDate: start.startDate } : {}),
         ...(start.endDate ? { endDate: start.endDate } : {}),
-        occasionSlug: start.occasionSlug,
+        ...(start.occasionSlug ? { occasionSlug: start.occasionSlug } : {}),
       };
       // THE DOOR'S OWN FINISH (see `PlanningSource.onFinish`): the concierge's routed lead and the
       // "start a new plan, then add this" doors run after the plan exists (E2 ruling 2).
@@ -771,7 +775,7 @@ function entryAnswers(start: PlanEntryStart): DraftAnswers {
     mainMomentTime: "",
     mainMomentDate: "",
     events: start.event ? [{ title: start.event.title, eventDate: start.event.eventDate, startTime: start.event.startTime, location: start.event.location }] : [],
-    occasionSlug: start.occasionSlug,
+    occasionSlug: start.occasionSlug ?? "",
   };
 }
 
@@ -781,7 +785,8 @@ function entryStartFromRecord(record: PendingPlanRecord): PlanEntryStart | null 
   const destination = (a.stops?.[0] ?? record.source.destination ?? "").trim();
   if (!destination) return null;
   const [cityPart, ...rest] = destination.split(",");
-  const occasionSlug = (a.occasionSlug || record.source.experienceSlug || OCCASION_GROUP_DEFAULT_SLUG.trips).trim();
+  // A-8: a record with no occasion replays with none — never the trips group's default.
+  const occasionSlug = (a.occasionSlug || record.source.experienceSlug || "").trim() || null;
   const ev = a.events?.[0];
   // The record carries no catalog row to group by; a replayed start lands where the guest already was — the map.
   const view = "map" as const;
@@ -795,6 +800,7 @@ function entryStartFromRecord(record: PendingPlanRecord): PlanEntryStart | null 
     ...(adults !== undefined ? { adults } : {}),
     ...(kids !== undefined ? { kids } : {}),
     occasionSlug,
+    ...(occasionSlug && record.source.choiceLabel ? { occasionName: record.source.choiceLabel } : {}),
     ...(ev ? { event: { title: ev.title, eventDate: ev.eventDate ?? a.startDate, startTime: ev.startTime ?? null, location: ev.location ?? "" } } : {}),
     ...(record.source.eventSourceId ? { eventSourceId: record.source.eventSourceId } : {}),
     view,
