@@ -68,6 +68,19 @@ describe("CMS-1 — client", () => {
     assert.equal(PLACES_HEADING("Kyoto"), "Places to explore in Kyoto");
     assert.ok(read("shared/client-routes.generated.ts").includes('"/places"'));
     assert.match(read("server/routes/seo.routes.ts"), /"\/places",/);
+    // The AI scan card is gone (its output can never show here), and an empty list says the approved line.
+    const page = read("client/src/pages/hidden-gems.tsx");
+    assert.doesNotMatch(page, /\/api\/discovery\/scan|button-discover|input-discover-destination|Discover Gems/);
+    assert.match(page, /data-testid="text-empty-title">Nothing here yet\.<\/h3>/);
+  });
+
+  it("the launch-waitlist page carries none of the five never-say phrases", () => {
+    const page = read("client/src/pages/launch-waitlist.tsx");
+    for (const phrase of [/\bcrowds?\b/i, /most loved/i, /\bpacked\b/i]) assert.doesNotMatch(page, phrase);
+    assert.ok(page.includes("Closed days, last entry, timed tickets: plan Kyoto around the days that don't work."));
+    assert.ok(page.includes("In autumn, small details can sink a Kyoto day:"));
+    assert.ok(page.includes("<strong>Some entries are timed.</strong> A few places sell tickets for a set slot, and a missed slot can't be used later."));
+    assert.ok(page.includes("Put it together across a few full days and one mistake costs you an afternoon."));
   });
 
   it("T1/T2/T6 the consoles send the tick and reach the editor routes", () => {
