@@ -15,7 +15,7 @@
  * no credit rather than a guessed one. The `imageAttribution` field this module used to read was
  * written by nothing (no column exists) and is removed (§18c).
  */
-export type CoverPhotoCredit = { name: string; url: string } | null;
+export type CoverPhotoCredit = { name: string; url: string; licenseUrl?: string } | null;
 
 /**
  * Curated hero images for popular cities — used when no gem photo is available.
@@ -53,20 +53,41 @@ export function isUnsplashCdnUrl(url: string | null | undefined): boolean {
   }
 }
 
-/** The credit for a gem photo: Unsplash for an Unsplash CDN photo, otherwise none (never a guess). */
-export function gemPhotoCredit(imageUrl: string | null | undefined): CoverPhotoCredit {
+/**
+ * CMS-1 (ledger `2026-11-04-cms1-launch-screens`): a gem's STORED credit, as migration 420 writes it —
+ * "<author> / Wikimedia Commons, <licence>. Source: <file page> License: <licence page>". The name keeps the author,
+ * the source and the licence name; the link is the file page (which carries the licence and the author); the licence
+ * page rides along. A stored credit with no link is not a CC BY-SA credit and yields null (never a guessed link).
+ */
+export function storedImageCredit(imageCredit: string | null | undefined): CoverPhotoCredit {
+  const text = typeof imageCredit === "string" ? imageCredit.trim() : "";
+  if (!text) return null;
+  const source = /\bSource:\s*(https:\/\/\S+)/i.exec(text)?.[1] ?? /(https:\/\/\S+)/.exec(text)?.[1] ?? null;
+  if (!source) return null;
+  const license = /\bLicense:\s*(https:\/\/\S+)/i.exec(text)?.[1];
+  const name = text.replace(/\s*\bSource:[\s\S]*$/i, "").replace(/[.\s]+$/, "").trim() || text;
+  return { name, url: source, ...(license ? { licenseUrl: license } : {}) };
+}
+
+/**
+ * The credit for a gem photo: the gem's own stored credit when it has one (CMS-1), else Unsplash for an Unsplash CDN
+ * photo, otherwise none (never a guess).
+ */
+export function gemPhotoCredit(imageUrl: string | null | undefined, imageCredit?: string | null): CoverPhotoCredit {
+  const stored = storedImageCredit(imageCredit);
+  if (stored) return stored;
   return isUnsplashCdnUrl(imageUrl) ? CURATED_HERO_CREDIT : null;
 }
 
 export function resolveCoverPhoto(
-  gems: ReadonlyArray<{ imageUrl?: string | null; gemScore?: number | null }>,
+  gems: ReadonlyArray<{ imageUrl?: string | null; gemScore?: number | null; imageCredit?: string | null }>,
   city: string,
 ): { url: string | null; credit: CoverPhotoCredit } {
   const topGem = [...gems]
     .filter((g) => !!g.imageUrl)
     .sort((a, b) => (b.gemScore ?? 0) - (a.gemScore ?? 0))[0];
   if (topGem) {
-    return { url: topGem.imageUrl as string, credit: gemPhotoCredit(topGem.imageUrl) };
+    return { url: topGem.imageUrl as string, credit: gemPhotoCredit(topGem.imageUrl, topGem.imageCredit) };
   }
   const curated = CURATED_HERO_IMAGES[city.toLowerCase()];
   if (curated) return { url: curated, credit: CURATED_HERO_CREDIT };

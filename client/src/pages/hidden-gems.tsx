@@ -68,9 +68,22 @@ interface Category {
   label: string;
 }
 
+/**
+ * CMS-1 (ledger `2026-11-04-cms1-launch-screens`): the page lives at /places and lists reviewed places only (the server's
+ * `publicGemWhere` — an expert-verified row; AI-only rows never show). HELD for Leon: the heading wording.
+ */
+export const PLACES_HEADING = (city: string) => `Places to explore in ${city}`;
+
 export default function HiddenGemsPage() {
   const { toast } = useToast();
-  const [searchDestination, setSearchDestination] = useState("");
+  // CMS-1: /places?city=Kyoto opens on that city (the heading names it).
+  const [searchDestination, setSearchDestination] = useState(() => {
+    try {
+      return new URLSearchParams(typeof window !== "undefined" ? window.location.search : "").get("city")?.trim() ?? "";
+    } catch {
+      return "";
+    }
+  });
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [discoverDestination, setDiscoverDestination] = useState("");
 
@@ -155,7 +168,9 @@ export default function HiddenGemsPage() {
       <div className="space-y-2">
         <div className="flex items-center gap-2">
           <Gem className="h-8 w-8 text-primary" />
-          <h1 className="text-3xl font-bold" data-testid="text-page-title">Local Picks</h1>
+          <h1 className="text-3xl font-bold" data-testid="text-page-title">
+            {searchDestination ? PLACES_HEADING(searchDestination) : "Local Picks"}
+          </h1>
         </div>
         <p className="text-muted-foreground">
           Local places and experiences that tourists rarely find

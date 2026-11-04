@@ -129,7 +129,7 @@ async function main() {
     const qRow = (pending.json?.pending ?? []).find((p: any) => p.id === listingId);
     check("listing in the admin queue with build coverage", !!qRow && qRow.item_count === 4 && qRow.days_with_items === 3,
       JSON.stringify({ items: qRow?.item_count, days: qRow?.days_with_items }));
-    const approved = await admin.req("POST", `/api/admin/ready-made/${listingId}/approve`, {});
+    const approved = await admin.req("POST", `/api/admin/ready-made/${listingId}/approve`, { photoRightsTicked: true });
     check("admin approve", approved.status === 200 && approved.json?.listing?.status === "approved", `${approved.status}`);
 
     console.log("\n━━ 4: shelf + detail (anonymous shopper) ━━");

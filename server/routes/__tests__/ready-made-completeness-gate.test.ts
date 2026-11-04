@@ -47,12 +47,12 @@ function getPostHandler(router: any, path: string): (req: any, res: any) => Prom
   return layer.route.stack.at(-1).handle;
 }
 
-function makeReq(userId: string, listingId = LISTING_ID) {
+function makeReq(userId: string, listingId = LISTING_ID, body: Record<string, unknown> = {}) {
   return {
     user: { id: userId },
     isAuthenticated: () => true,
     params: { id: listingId },
-    body: {},
+    body,
     ip: "127.0.0.1",
     get: () => null,
   };
@@ -190,7 +190,9 @@ describe("Ready-Made completeness gate", () => {
     (db as any).insert = () => ({ values: () => Promise.resolve({}) });
 
     const { captured, res } = makeRes();
-    await approveHandler(makeReq(ADMIN.id), res);
+    // FIXTURE EDIT (CMS-1 brief §4a, ledger `2026-11-04-cms1-launch-screens`): approval now needs the admin's
+    // photo-rights tick; the completeness gate still runs first and is unchanged.
+    await approveHandler(makeReq(ADMIN.id, LISTING_ID, { photoRightsTicked: true }), res);
 
     assert.equal(captured.status, 200);
     assert.equal(captured.body?.success, true);

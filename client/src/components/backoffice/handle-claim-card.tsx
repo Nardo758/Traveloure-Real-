@@ -13,6 +13,7 @@ import { Link2, Copy, ExternalLink } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useClaimHandle } from "@/hooks/use-claim-handle";
 import { clearPendingHandle } from "@/lib/pending-handle";
+import { COVER_PHOTO_RIGHTS_LABEL } from "@/lib/cms-console-copy";
 
 export function HandleClaimCard({ currentHandle }: { currentHandle?: string | null }) {
   const { user } = useAuth() as {
@@ -40,6 +41,8 @@ export function HandleClaimCard({ currentHandle }: { currentHandle?: string | nu
   // no migration). Gradient fallback renders on the storefront when unset.
   const existingCover = user?.preferences?.storefront?.coverImageUrl ?? "";
   const [coverImageUrl, setCoverImageUrl] = useState(existingCover);
+  // CMS-1 (ledger `2026-11-04-cms1-launch-screens`): a new cover is public only with the owner's rights tick.
+  const [coverRightsTicked, setCoverRightsTicked] = useState(false);
 
   // Ruling 112 Q9: bio, edited beside the handle (rides PATCH /api/me/storefront).
   const [bio, setBio] = useState(user?.bio ?? "");
@@ -68,7 +71,11 @@ export function HandleClaimCard({ currentHandle }: { currentHandle?: string | nu
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ coverImageUrl: next.trim().length > 0 ? next.trim() : null }),
+        body: JSON.stringify(
+          next.trim().length > 0
+            ? { coverImageUrl: next.trim(), photoRightsTicked: coverRightsTicked }
+            : { coverImageUrl: null },
+        ),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.message ?? `Failed (${res.status})`);
@@ -172,12 +179,22 @@ export function HandleClaimCard({ currentHandle }: { currentHandle?: string | nu
             <Button
               variant="outline"
               onClick={() => coverMutation.mutate(coverImageUrl)}
-              disabled={coverMutation.isPending}
+              disabled={coverMutation.isPending || (coverImageUrl.trim().length > 0 && !coverRightsTicked)}
               data-testid="button-save-cover-image"
             >
               {coverMutation.isPending ? "Saving…" : "Save"}
             </Button>
           </div>
+          <label className="flex items-center gap-2 text-xs" htmlFor="input-cover-photo-rights">
+            <input
+              id="input-cover-photo-rights"
+              type="checkbox"
+              checked={coverRightsTicked}
+              onChange={(e) => setCoverRightsTicked(e.target.checked)}
+              data-testid="checkbox-cover-photo-rights"
+            />
+            {COVER_PHOTO_RIGHTS_LABEL}
+          </label>
           <p className="text-xs text-muted-foreground">
             Shown as the banner at the top of your storefront. Leave blank to use the default gradient.
           </p>

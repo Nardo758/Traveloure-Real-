@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Calendar, ExternalLink, Info, MapPin, Plus, Star, CheckCircle2, Wifi, Waves, Globe, Tag, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useGemPhoto } from "@/hooks/use-gem-photo";
+import { useGemPhoto, type StockPhotoCredit } from "@/hooks/use-gem-photo";
 import { useToast } from "@/hooks/use-toast";
 import { getOrCreateGuestSessionId } from "@/lib/guest-session";
 import { gemCategory, type MatchSuggestion } from "@/lib/feed-stream";
@@ -174,13 +174,31 @@ function gemAreaName(gem: any): string | null {
   return typeof v === "string" && v.trim().length > 0 ? v : null;
 }
 
-/** CC BY-SA credit. Absent (including a CC0 photo) renders nothing. */
-function GemImageCredit({ gem, photoUrl }: { gem: any; photoUrl: string | null }) {
+/**
+ * CC BY-SA credit. Absent (including a CC0 photo) renders nothing. CMS-1 (ledger `2026-11-04-cms1-launch-screens`): a
+ * stock fallback photo renders its own credit here — the photographer (linked to the photo page) and the source (linked
+ * to its licence) — and the record's stored credit wins when both exist.
+ */
+export function GemImageCredit({ gem, photoUrl, stockCredit = null }: { gem: any; photoUrl: string | null; stockCredit?: StockPhotoCredit | null }) {
   const credit = typeof gem?.imageCredit === "string" ? gem.imageCredit.trim() : "";
-  if (!credit || !photoUrl) return null;
+  if (!photoUrl) return null;
+  if (credit) {
+    return (
+      <p className="text-[10px] leading-snug text-muted-foreground" data-testid={`gem-image-credit-${gem.id}`}>
+        {credit}
+      </p>
+    );
+  }
+  if (!stockCredit) return null;
   return (
-    <p className="text-[10px] leading-snug text-muted-foreground" data-testid={`gem-image-credit-${gem.id}`}>
-      {credit}
+    <p className="text-[10px] leading-snug text-muted-foreground" data-testid={`gem-stock-credit-${gem.id}`}>
+      <a href={stockCredit.link} target="_blank" rel="noopener noreferrer" className="underline">
+        {stockCredit.name}
+      </a>
+      {" · "}
+      <a href={stockCredit.licenseUrl} target="_blank" rel="noopener noreferrer" className="underline">
+        {stockCredit.source}
+      </a>
     </p>
   );
 }
@@ -958,7 +976,7 @@ export function CityFeedCardGem({
   const expertAvailable = useExpertAvailability({ city });
   // An official source with no stored image is text-only. A stock search would invent a photo.
   const textOnly = !gem.imageUrl && typeof gem.sourceUrl === "string" && gem.sourceUrl.length > 0;
-  const { photoUrl, loading } = useGemPhoto(gem.id, gem.placeName, city, gem.imageUrl, { allowFetch: !textOnly });
+  const { photoUrl, loading, credit: stockCredit } = useGemPhoto(gem.id, gem.placeName, city, gem.imageUrl, { allowFetch: !textOnly });
   useEffect(() => {
     setImgFailed(false);
     setImgLoaded(false);
@@ -1079,7 +1097,7 @@ export function CityFeedCardGem({
       {!compact && !isRow && bodyText && (
         <p className="text-[12px] text-muted-foreground line-clamp-2">{bodyText}</p>
       )}
-      {!compact && <GemImageCredit gem={gem} photoUrl={showGemPhoto ? photoUrl : null} />}
+      {!compact && <GemImageCredit gem={gem} photoUrl={showGemPhoto ? photoUrl : null} stockCredit={stockCredit} />}
       {!compact && <GemOfficialFacts gem={gem} />}
 
       {/* Row layout body copy */}
@@ -1261,7 +1279,7 @@ export function CityFeedCardGem({
             <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">
               {gem.placeName}
             </h3>
-            <GemImageCredit gem={gem} photoUrl={showGemPhoto ? photoUrl : null} />
+            <GemImageCredit gem={gem} photoUrl={showGemPhoto ? photoUrl : null} stockCredit={stockCredit} />
             <GemOfficialFacts gem={gem} />
             <CompactMetaLine text={metaText} testid={`gem-facts-${gem.id}`} />
             {/* C1 (cosmetic-public-surfaces dispatch): the compact action row had no `flex-wrap`

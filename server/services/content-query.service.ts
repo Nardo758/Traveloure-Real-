@@ -674,9 +674,11 @@ export async function insertTouristPlacesSearch(values: Record<string, any>): Pr
 
 export async function getAiDiscoveredGemById(id: string): Promise<any | null> {
   const { aiDiscoveredGems } = await import("@shared/schema");
+  const { publicGemWhere } = await import("./gem-discovery.service");
+  // CMS-1 (ledger `2026-11-04-cms1-launch-screens`): an unreviewed (AI-only) gem is the same 404 as a missing one.
   const [gem] = await db.select()
     .from(aiDiscoveredGems)
-    .where(eq(aiDiscoveredGems.id, id))
+    .where(and(eq(aiDiscoveredGems.id, id), publicGemWhere()))
     .limit(1);
   if (!gem) return null;
   // CS-1 item 1: no image of a place under a no_photos block.

@@ -29,6 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PartnerEditorialPanel } from "@/components/admin/PartnerEditorialPanel";
 import {
   Search,
   Plus,
@@ -312,6 +313,10 @@ export default function AdminAffiliatePartners() {
             <TabsTrigger value="reconciliation" data-testid="tab-reconciliation">
               <Scale className="h-4 w-4 mr-2" />
               Reconciliation
+            </TabsTrigger>
+            {/* CMS-1: our own reviewed descriptions for cached partner items (migration 432's columns). */}
+            <TabsTrigger value="editorial" data-testid="tab-editorial">
+              Editorial
             </TabsTrigger>
           </TabsList>
 
@@ -601,6 +606,10 @@ export default function AdminAffiliatePartners() {
           {/* ─── Reconciliation Tab ─── */}
           <TabsContent value="reconciliation">
             <ReconciliationPanel />
+          </TabsContent>
+
+          <TabsContent value="editorial">
+            <PartnerEditorialPanel />
           </TabsContent>
         </Tabs>
 

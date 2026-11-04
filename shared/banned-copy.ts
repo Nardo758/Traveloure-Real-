@@ -265,6 +265,27 @@ export const SURFACE_COPY_REFUSALS: readonly { words: string; source: string }[]
   { words: "fee or earnings amount", source: FEE_OR_EARNINGS_AMOUNT },
 ];
 
+/**
+ * CMS-1 (ledger `2026-11-04-cms1-launch-screens`; Leon, Nov 3: traveler-facing text comes only from admin-reviewed
+ * records, so the banned-word screen applies before anything goes public). The SCOPE a public record's text is screened
+ * with — a ready-made listing at approval, an earner's profile text and a partner item's editorial description: the
+ * SITE list in full plus the Gion terms the site list leaves to the blog ("geiko", "back alley"). Every pattern is
+ * taken from an existing list; nothing is spelled again and there is no second list.
+ */
+export const PUBLIC_PROFILE_NEVER_SAY: ReadonlyArray<{ words: string; re: RegExp }> = [
+  ...SITE_NEVER_SAY,
+  ...SURFACE_COPY_REFUSALS.filter((e) => e.words === "geiko" || e.words === "back alley").map((e) => ({
+    words: e.words,
+    re: new RegExp(e.source, "i"),
+  })),
+];
+
+/** The public-record never-say phrases the given texts carry (their `words`, de-duplicated, in list order). */
+export function publicRecordNeverSayHits(...texts: ReadonlyArray<string | null | undefined>): string[] {
+  const t = texts.filter((x) => typeof x === "string" && x.trim()).join("\n");
+  return PUBLIC_PROFILE_NEVER_SAY.filter((e) => e.re.test(t)).map((e) => e.words);
+}
+
 function refusalPattern(source: string, flags: string): RegExp {
   return new RegExp(source, flags);
 }

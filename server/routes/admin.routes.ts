@@ -19,6 +19,7 @@ import { resolveConciergeTierView } from "../utils/concierge-tier-filter";
 import { pgTextArray } from "../services/upsell-query.service";
 import { sanitizeText, sanitizeStringFields } from "../utils/text-sanitizer";
 import { listingBannedWording } from "../services/listing-banned-wording";
+import { readyMadeApprovalScreen } from "../services/public-record-screen";
 import { withQueryTimer } from '../utils/queryTimer';
 import { DISPUTE_REJECT_FROM_STATUSES } from '../utils/booking-from-states';
 import { parsePagination } from '../utils/pagination';
@@ -1428,6 +1429,8 @@ router.post("/api/admin/ready-made/:id/approve", isAuthenticated, async (req, re
         sourceTripId: readyMadeTrips.sourceTripId,
         title: readyMadeTrips.title,
         planType: readyMadeTrips.planType,
+        planTypeCustom: readyMadeTrips.planTypeCustom,
+        bestSeason: readyMadeTrips.bestSeason,
         heroImageUrl: readyMadeTrips.heroImageUrl,
         heroImageMeta: readyMadeTrips.heroImageMeta,
         priceCents: readyMadeTrips.priceCents,
@@ -1443,10 +1446,21 @@ router.post("/api/admin/ready-made/:id/approve", isAuthenticated, async (req, re
       return res.status(409).json({ message: "Only submitted listings can be approved" });
     }
 
+
     const missing = await assertReadyMadeComplete(listing);
     if (missing.length > 0) {
       return res.status(400).json({ message: "Not ready to approve", missing });
     }
+
+    // CMS-1 (ledger `2026-11-04-cms1-launch-screens`): nothing goes public unscreened. The listing's own text and every
+    // day's item text are screened with the public-record list, and the admin confirms the cover photo's rights; the
+    // reject path is unchanged.
+    const dayText = await db
+      .select({ title: itineraryItems.title, description: itineraryItems.description, expertNote: itineraryItems.expertNote })
+      .from(itineraryItems)
+      .where(eq(itineraryItems.tripId, listing.sourceTripId));
+    const screen = readyMadeApprovalScreen({ listing, dayText, body: req.body });
+    if (!screen.ok) return res.status(422).json(screen.refusal);
 
     // insideCounts from the REAL build (never fabricated, §13): distinct days, total items,
     // and the per-type breakdown the store card renders as "what's inside".
@@ -1518,6 +1532,62 @@ router.post("/api/admin/ready-made/:id/approve", isAuthenticated, async (req, re
   } catch (err: any) {
     console.error("Admin ready-made approve error:", err);
     res.status(500).json({ message: "Failed to approve listing" });
+  }
+});
+
+// CMS-1 (ledger `2026-11-04-cms1-launch-screens`): PARTNER-1's editorial editor. GET lists cached partner items with
+// their editorial text; PATCH writes our own description and stamps it reviewed, only after the public-record screen
+// (422 banned_copy with the hits). The table is one of the four migration 432 gave the columns to. Rides the blanket
+// /api/admin guard (§2) and the explicit admin check the sibling handlers carry.
+router.get("/api/admin/partner-items", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+  try {
+    const { isPartnerItemTable, listPartnerItems } = await import("../services/partner-editorial-admin.service");
+    const table = req.query.table;
+    if (!isPartnerItemTable(table)) return res.status(400).json({ message: "Unknown table" });
+    const reviewed = req.query.reviewed === "yes" || req.query.reviewed === "no" ? req.query.reviewed : null;
+    const items = await listPartnerItems({
+      table,
+      city: typeof req.query.city === "string" ? req.query.city.trim() : null,
+      source: typeof req.query.source === "string" ? req.query.source.trim() : null,
+      reviewed,
+    });
+    res.json({ items });
+  } catch (err: any) {
+    console.error("Admin partner items list error:", err);
+    res.status(500).json({ message: "Failed to list partner items" });
+  }
+});
+
+router.patch("/api/admin/partner-items/:table/:id", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+  try {
+    const { isPartnerItemTable, reviewPartnerItem } = await import("../services/partner-editorial-admin.service");
+    if (!isPartnerItemTable(req.params.table)) return res.status(400).json({ message: "Unknown table" });
+    const body = req.body ?? {};
+    const keys = Object.keys(body);
+    if (keys.some((k) => k !== "editorialDescription")) return res.status(400).json({ message: "Only editorialDescription may be sent" });
+    const out = await reviewPartnerItem(req.params.table, req.params.id, body.editorialDescription);
+    if (!out.ok) {
+      if (out.status === 422) return res.status(422).json(out.refusal);
+      return res.status(out.status).json({ message: out.message });
+    }
+    await recordAdminAudit({
+      actorId: user.id,
+      actorRole: user.role,
+      action: "partner_item_editorial_review",
+      resourceType: req.params.table,
+      resourceId: req.params.id,
+      metadata: { length: out.editorialDescription.length },
+      ipAddress: req.ip ?? null,
+      userAgent: req.get("user-agent") ?? null,
+    });
+    res.json(out);
+  } catch (err: any) {
+    console.error("Admin partner item review error:", err);
+    res.status(500).json({ message: "Failed to save the description" });
   }
 });
 

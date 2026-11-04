@@ -115,8 +115,10 @@ describe("P-8 — content round 3", () => {
     const b = JSON.parse(read("scripts/never-say-baseline.json")) as Record<string, Record<string, number>>;
     const entries = Object.values(b).reduce((n, by) => n + Object.keys(by).length, 0);
     const hits = Object.values(b).reduce((n, by) => n + Object.values(by).reduce((a, c) => a + c, 0), 0);
-    assert.equal(entries, 119);
-    assert.equal(hits, 321);
+    // TEST EDIT (CMS-1 brief §4g, ledger `2026-11-04-cms1-launch-screens` — SANCTION REQUESTED, not in §7): the
+    // launch-waitlist.tsx block (3 entries, 5 hits) is removed from the baseline, so the pin moves 119 → 116 and 321 → 316.
+    assert.equal(entries, 116);
+    assert.equal(hits, 316);
     assert.ok(entries < 133);
   });
 
