@@ -120,7 +120,8 @@ function api(path: string, cookie: string | undefined, method: string, body?: un
 async function createTrip(actor: Actor, title: string): Promise<string> {
   const res = await api("/api/trips", actor.cookie, "POST", {
     title,
-    destination: "Lisbon",
+    // CITY-1: POST /api/trips refuses a city outside the open markets; the negatives need an open one.
+    destination: "Kyoto, Japan",
     startDate: "2026-09-01",
     endDate: "2026-09-05",
   });

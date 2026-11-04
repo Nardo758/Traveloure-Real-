@@ -1,8 +1,8 @@
 /**
  * CITY-1 (ledger `2026-11-04-city1-marquee-defaults`): only the marquee market (or a live one) runs the full planner.
  *
- *   T1 POST /api/trips for Porto (not open) → 409 { code: "market_not_open", market: "porto" }; for the marquee → 201;
- *      an admin minting Porto → 201. The decision itself (pure + DB) is proven in-process as well.
+ *   T1 POST /api/trips for Porto (not open) → 409 { code: "market_not_open", market: "porto" }; Paris (no operating
+ *      market) → 409 with market null; for the marquee → 201; an admin minting Porto → 201. The decision itself (pure + DB) is proven in-process as well.
  *   T4 the location view of a non-open operating market is the reduced payload: marketOpen:false and empty gems,
  *      events, listings, neighbourhoods and stubs; the marquee's view says marketOpen:true.
  *   T5 landing moments: a moment whose city is not open has cta "waitlist" and its market; the honeymoon moment's
@@ -102,7 +102,7 @@ after(async () => {
   }
 });
 
-test("T1 — the decision: Porto is refused, the marquee passes, an admin passes, a non-market city is not this gate's", async () => {
+test("T1 — the decision: Porto and a non-market city are refused, the marquee passes, an admin passes", async () => {
   const base = { launch: "kyoto", live: [] as string[], qaDomain: undefined };
   assert.deepEqual(decideMarketOpen({ ...base, market: "porto", user: { role: "user", email: "a@b.test" } }), {
     allowed: false,
@@ -113,7 +113,9 @@ test("T1 — the decision: Porto is refused, the marquee passes, an admin passes
   assert.deepEqual(decideMarketOpen({ ...base, market: "porto", user: { role: "admin" } }), { allowed: true });
   assert.deepEqual(decideMarketOpen({ ...base, market: "porto", user: { email: "x@qa.test" }, qaDomain: "qa.test" }), { allowed: true });
   assert.deepEqual(decideMarketOpen({ ...base, market: "porto", live: ["porto"], user: { role: "user" } }), { allowed: true }, "a live market is open");
-  assert.deepEqual(decideMarketOpen({ ...base, market: null, user: { role: "user" } }), { allowed: true });
+  // Leon, Nov 4 (#1882): a destination outside the operating markets is refused too, with market null.
+  assert.deepEqual(decideMarketOpen({ ...base, market: null, user: { role: "user" } }), { allowed: false, code: MARKET_NOT_OPEN, market: null });
+  assert.deepEqual(decideMarketOpen({ ...base, market: null, user: { role: "admin" } }), { allowed: true }, "admin bypass");
 
   // DB-backed: the settings and the user's role come from the database.
   const [u] = (await db.execute(sql`
@@ -122,11 +124,12 @@ test("T1 — the decision: Porto is refused, the marquee passes, an admin passes
   userIds.push(u.id);
   assert.deepEqual(await marketOpenDecisionFor(u.id, "Porto, Portugal"), { allowed: false, code: MARKET_NOT_OPEN, market: "porto" });
   assert.deepEqual(await marketOpenDecisionFor(u.id, "Kyoto, Japan"), { allowed: true });
+  assert.deepEqual(await marketOpenDecisionFor(u.id, "Paris, France"), { allowed: false, code: MARKET_NOT_OPEN, market: null });
   await db.execute(sql`UPDATE users SET role = 'admin' WHERE id = ${u.id}`);
   assert.deepEqual(await marketOpenDecisionFor(u.id, "Porto, Portugal"), { allowed: true }, "admin bypass");
 });
 
-test("T1 — POST /api/trips: Porto 409 market_not_open, the marquee 201, an admin 201", async (t) => {
+test("T1 — POST /api/trips: Porto 409 market_not_open, Paris 409 (market null), the marquee 201, an admin 201", async (t) => {
   if (!serverUp) {
     t.skip(`no server on ${BASE_URL}`);
     return;
@@ -138,6 +141,10 @@ test("T1 — POST /api/trips: Porto 409 market_not_open, the marquee 201, an adm
   assert.deepEqual(refused.json, { code: "market_not_open", market: "porto" });
   const none = await db.execute(sql`SELECT id FROM trips WHERE user_id = ${traveler.id} AND destination = 'Porto, Portugal'`);
   assert.equal(none.rows.length, 0, "nothing is written before the refusal");
+
+  const paris = await mint(traveler.cookie, "Paris, France");
+  assert.equal(paris.status, 409, paris.text);
+  assert.deepEqual(paris.json, { code: "market_not_open", market: null }, "a city outside the operating markets");
 
   const ok = await mint(traveler.cookie, "Kyoto, Japan");
   assert.equal(ok.status, 201, ok.text);

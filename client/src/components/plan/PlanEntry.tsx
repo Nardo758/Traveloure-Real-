@@ -30,6 +30,7 @@ import { OPERATING_MARKETS } from "@shared/operating-markets";
 import { Link } from "wouter";
 import { MARKET_STATUS_COPY, marketIsOpen, marketPickerOrder, marketStatusLabel } from "@shared/ticker";
 import { useMarketStatusSettings } from "@/lib/signup-mode";
+import { notPlanningInLine } from "@/lib/trip-slip";
 import { waitlistMarketPath } from "@/lib/waitlist-markets";
 import {
   OCCASION_GROUP_LABELS,
@@ -524,7 +525,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
                   {typedResult && "notYet" in typedResult && (
                     <div className="space-y-2" data-testid="plan-entry-not-yet">
                       <p className="text-[14px]" style={{ color: "#7A7A72" }}>
-                        We're not planning in {typedResult.notYet} yet. Try one of these:
+                        {notPlanningInLine(typedResult.notYet)} Try one of these:
                       </p>
                       {cityChips(typedResult.suggestions.map((m) => m.marketKey))}
                     </div>

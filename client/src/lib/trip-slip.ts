@@ -100,19 +100,26 @@ export interface SlipRefusal {
 }
 
 /**
- * CITY-1 (ledger `2026-11-04-city1-marquee-defaults`): the market a `409 market_not_open` names, read from an
- * apiRequest error ("409: {json}"), else null.
+ * CITY-1 (ledger `2026-11-04-city1-marquee-defaults`): a `409 market_not_open` read from an apiRequest error
+ * ("409: {json}"). `market` is the operating market that is not open, or null when the destination is no operating
+ * market at all. Anything else ⇒ null.
  */
-export function marketNotOpenFrom(err: unknown): string | null {
+export function marketNotOpenFrom(err: unknown): { market: string | null } | null {
   const msg = err instanceof Error ? err.message : typeof err === "string" ? err : "";
   const m = /^409:\s*([\s\S]*)$/.exec(msg);
   if (!m) return null;
   try {
     const body = JSON.parse(m[1]);
-    return body?.code === "market_not_open" && typeof body.market === "string" ? body.market : null;
+    if (body?.code !== "market_not_open") return null;
+    return { market: typeof body.market === "string" ? body.market : null };
   } catch {
     return null;
   }
+}
+
+/** The existing "not planning there" sentence (PlanEntry's typed-city line), for a city outside the operating markets. */
+export function notPlanningInLine(city: string): string {
+  return `We're not planning in ${city} yet.`;
 }
 
 /** The body `POST /api/trips` is given. `insertTripSchema` omits `timezone` and `marketSlug`
@@ -243,8 +250,10 @@ export async function mintTripSlip(
   try {
     trip = await post(buildTripMintBody(basics));
   } catch (err: any) {
-    const market = marketNotOpenFrom(err);
-    if (market) return { ...refuse("market_not_open"), market };
+    const notOpen = marketNotOpenFrom(err);
+    if (notOpen?.market) return { ...refuse("market_not_open"), market: notOpen.market };
+    // A city outside the operating markets: the existing "not planning there" sentence, never a waitlist link.
+    if (notOpen) return refuse("market_not_open", notPlanningInLine(basics.destination?.split(",")[0].trim() || basics.destination || ""));
     return refuse("mint_failed", err?.message || SLIP_REFUSAL_MESSAGES.mint_failed);
   }
   // A mint that answers without an id has not produced a slip. Saying otherwise would send an

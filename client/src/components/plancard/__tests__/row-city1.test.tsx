@@ -32,6 +32,7 @@ import { ClosedMarketCityView } from "@/components/waitlist/WaitlistMarkets";
 import { dealsForMarkets } from "@/lib/deals-markets";
 import { marketsInDisplayOrder } from "@/lib/company-facts";
 import { readyMadeWaitlistLabel } from "@/lib/ready-made-waitlist";
+import { WAITLIST_JOIN_ANY, waitlistJoinButtonLabel } from "@/lib/waitlist-markets";
 
 (globalThis as any).React = React;
 
@@ -112,10 +113,15 @@ describe("T2 the city picker", () => {
 
   it("the server's 409 market_not_open maps to the waitlist, with WAIT-1's label", async () => {
     const err = new Error(`409: ${JSON.stringify({ code: "market_not_open", market: "porto" })}`);
-    assert.equal(marketNotOpenFrom(err), "porto");
+    assert.deepEqual(marketNotOpenFrom(err), { market: "porto" });
     assert.equal(marketNotOpenFrom(new Error("409: {\"code\":\"event_ended\"}")), null);
     const out = await mintTripSlip({ destination: "Porto, Portugal" } as any, async () => { throw err; }, { datesOptional: true });
     assert.deepEqual(out, { ok: false, reason: "market_not_open", message: MARKET_STATUS_COPY.waitlist, market: "porto" });
+    // A city outside the operating markets (market null): the existing "not planning there" sentence, no waitlist.
+    const paris = new Error(`409: ${JSON.stringify({ code: "market_not_open", market: null })}`);
+    assert.deepEqual(marketNotOpenFrom(paris), { market: null });
+    const outParis = await mintTripSlip({ destination: "Paris, France" } as any, async () => { throw paris; }, { datesOptional: true });
+    assert.deepEqual(outParis, { ok: false, reason: "market_not_open", message: "We're not planning in Paris yet." });
     assert.match(src("client/src/contexts/PlanningContext.tsx"), /outcome\.reason === "market_not_open" && outcome\.market\) return \{ ok: false, waitlistMarket: outcome\.market \}/);
     assert.match(src("client/src/components/plan/PlanEntry.tsx"), /data-testid="plan-entry-waitlist-link"/);
   });
@@ -191,6 +197,7 @@ describe("T6 no typed Kyoto in the §4h files", () => {
     "client/src/pages/blog-post.tsx",
     "client/src/components/intake-panel.tsx",
     "client/src/lib/company-facts.ts",
+    "client/src/lib/waitlist-markets.ts",
   ];
   const code = (text: string) =>
     text
@@ -210,6 +217,9 @@ describe("T6 no typed Kyoto in the §4h files", () => {
     assert.equal(readyMadeWaitlistLabel(null), MARKET_STATUS_COPY.waitlist);
     assert.equal(marketsInDisplayOrder(undefined, "goa")[0].marketKey, "goa");
     assert.equal(marketsInDisplayOrder()[0].marketKey, "kyoto", "the copy's order without a marquee");
+    assert.equal(waitlistJoinButtonLabel([]), WAITLIST_JOIN_ANY, "no named market ⇒ the approved generic label");
+    assert.equal(WAITLIST_JOIN_ANY, "Join the list");
+    assert.equal(waitlistJoinButtonLabel(["porto"]), "Join the Porto list");
   });
 });
 
