@@ -18,7 +18,7 @@ import { trackEvent } from "@/lib/ga4";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSignupMode } from "@/lib/signup-mode";
-import { Link } from "wouter";
+import { Link, useParams } from "wouter";
 import { useScrollToHash } from "@/lib/use-hash-scroll";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,6 +53,9 @@ import { arrivalRef } from "@/lib/ready-made-waitlist";
 import { getAcquisitionRef } from "@/lib/acquisition";
 import { WLB_SIGNUP_COPY } from "@/lib/wlb-signup-copy";
 import { ExpertWaitlistForm } from "@/components/waitlist/ExpertWaitlistForm";
+import { OtherMarketWaitlistHeader, WaitlistMarketChips, WaitlistSignupRowLive } from "@/components/waitlist/WaitlistMarkets";
+import { WAITLIST_SIGNUP_ROW_COPY, statusSettingsFrom, waitlistJoinButtonLabel, waitlistMarketPath, waitlistPageMarket } from "@/lib/waitlist-markets";
+import type { MarketStatusSettings } from "@shared/ticker";
 
 /** The waitlist's "offer services" door uses the same continuation as the homepage join line. */
 function offerServicesHref(): string {
@@ -94,12 +97,25 @@ export function Honeypot({ value, onChange, id }: { value: string; onChange: (v:
   );
 }
 
-function ConsentTick({ id, market, checked, onChange }: { id: string; market: string; checked: boolean; onChange: (v: boolean) => void }) {
+function ConsentTick({
+  id,
+  market,
+  alsoMarkets = [],
+  checked,
+  onChange,
+}: {
+  id: string;
+  market: string;
+  alsoMarkets?: readonly string[];
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  // WAIT-1: the tick covers each market it names — one per-market line each, unchanged words (consent stays per city).
   return (
     <div className="flex items-start gap-2">
       <Checkbox id={id} checked={checked} onCheckedChange={(v) => onChange(v === true)} data-testid={`checkbox-${id}`} />
       <div className="text-sm leading-snug">
-        <Label htmlFor={id} className="font-normal" data-testid={`label-${id}`}>{waitlistConsentLine(market)}</Label>{" "}
+        <Label htmlFor={id} className="font-normal" data-testid={`label-${id}`}>{waitlistConsentLine(market)}{alsoMarkets.map((m) => ` ${waitlistConsentLine(m)}`).join("")}</Label>{" "}
         {WAITLIST_CONSENT_PRIVACY_LINK.before}
         <Link href={WAITLIST_CONSENT_PRIVACY_LINK.href} className="underline">{WAITLIST_CONSENT_PRIVACY_LINK.label}</Link>
         {WAITLIST_CONSENT_PRIVACY_LINK.after}
@@ -132,6 +148,7 @@ function MarketingTick({ id, line, checked, onChange }: { id: string; line: stri
 export function ConsentBoxes({
   role,
   market,
+  markets,
   consent,
   onConsent,
   marketingConsent,
@@ -140,6 +157,8 @@ export function ConsentBoxes({
 }: {
   role: WaitlistRole;
   market: string;
+  /** WAIT-1: every market the sign-up names; absent ⇒ [market]. */
+  markets?: readonly string[];
   consent: boolean;
   onConsent: (v: boolean) => void;
   marketingConsent: boolean;
@@ -147,10 +166,11 @@ export function ConsentBoxes({
   marketingOpen: boolean;
 }) {
   const prefix = role === "traveler" ? "waitlist" : role;
+  const alsoMarkets = (markets ?? []).filter((m) => m !== market);
   const line = marketingOpen ? waitlistMarketingConsentLine(market) : null;
   return (
     <div className="space-y-3" data-testid={`consent-boxes-${role}`}>
-      <ConsentTick id={`${prefix}-consent`} market={market} checked={consent} onChange={onConsent} />
+      <ConsentTick id={`${prefix}-consent`} market={market} alsoMarkets={alsoMarkets} checked={consent} onChange={onConsent} />
       {line !== null && (
         <MarketingTick id={`${prefix}-marketing-consent`} line={line} checked={marketingConsent} onChange={onMarketingConsent} />
       )}
@@ -171,8 +191,26 @@ function ElsewhereField({ id, value, onChange }: { id: string; value: string; on
   );
 }
 
-function TravelerForm({ source, refCode, launchMarket }: { source: string | null; refCode: string | null; launchMarket: string }) {
-  const market = launchMarket;
+/** "You're on the Kyoto waitlist." — the traveler's done line, naming every city joined (HELD for more than one). */
+export function waitlistTravelerDone(markets: readonly string[]): string {
+  const names = markets.map((m) => waitlistCityName(m) ?? m);
+  const joined = names.length <= 1 ? names[0] ?? "Kyoto" : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return `You're on the ${joined} waitlist. Thanks for telling us about your trip. If you ticked the box, we'll email you when Traveloure opens for ${joined}.`;
+}
+
+function TravelerForm({
+  source,
+  refCode,
+  launchMarket,
+  settings,
+}: {
+  source: string | null;
+  refCode: string | null;
+  launchMarket: string;
+  settings: MarketStatusSettings;
+}) {
+  const [markets, setMarkets] = useState<string[]>([launchMarket]);
+  const market = markets[0] ?? launchMarket;
   const [email, setEmail] = useState("");
   const [consent, setConsent] = useState(false);
   const [marketingConsent, setMarketingConsent] = useState(false);
@@ -199,7 +237,7 @@ function TravelerForm({ source, refCode, launchMarket }: { source: string | null
     const r = await postWaitlist({
       role: "traveler",
       email: email.trim(),
-      market,
+      markets,
       consent,
       marketingConsent: marketingOpen && marketingConsent,
       ...(source ? { source } : {}),
@@ -216,14 +254,14 @@ function TravelerForm({ source, refCode, launchMarket }: { source: string | null
       return;
     }
     // TG-1: the traveler form's successful signup (the allowlist sends only market "kyoto").
-    trackEvent("waitlist_signup", { market });
+    trackEvent("waitlist_signup", { market: markets.includes("kyoto") ? "kyoto" : market });
     setStatus("done");
   }
 
   if (status === "done") {
     return (
       <p className="mt-6 rounded-lg border p-4" role="status" data-testid="text-waitlist-done">
-        You're on the Kyoto waitlist. Thanks for telling us about your trip. If you ticked the box, we'll email you when Traveloure opens for Kyoto.
+        {waitlistTravelerDone(markets)}
       </p>
     );
   }
@@ -247,10 +285,12 @@ function TravelerForm({ source, refCode, launchMarket }: { source: string | null
           <p role="alert" className="text-sm text-destructive" data-testid="text-waitlist-error">{error}</p>
         )}
       </div>
+      <WaitlistMarketChips idPrefix="waitlist" selected={markets} onChange={setMarkets} settings={settings} />
       <Honeypot id="waitlist-homepage" value={homepage} onChange={setHomepage} />
       <ConsentBoxes
         role="traveler"
         market={market}
+        markets={markets}
         consent={consent}
         onConsent={setConsent}
         marketingConsent={marketingConsent}
@@ -310,7 +350,7 @@ function TravelerForm({ source, refCode, launchMarket }: { source: string | null
       </div>
       <ElsewhereField id="waitlist-city" value={otherCity} onChange={setOtherCity} />
       <Button type="submit" disabled={status === "sending"} data-testid="button-waitlist-join">
-        Join the Kyoto list
+        {waitlistJoinButtonLabel(markets)}
       </Button>
     </form>
   );
@@ -321,13 +361,16 @@ function ProviderForm({
   refCode,
   launchMarket,
   liveMarketKeys,
+  settings,
 }: {
   source: string | null;
   refCode: string | null;
   launchMarket: string;
   liveMarketKeys: readonly string[];
+  settings: MarketStatusSettings;
 }) {
-  const market = launchMarket;
+  const [markets, setMarkets] = useState<string[]>([launchMarket]);
+  const market = markets[0] ?? launchMarket;
   const [contactName, setContactName] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [email, setEmail] = useState("");
@@ -352,7 +395,7 @@ function ProviderForm({
     const r = await postWaitlist({
       role: "provider",
       email: email.trim(),
-      market,
+      markets,
       consent,
       marketingConsent: marketingOpen && marketingConsent,
       contactName: contactName.trim(),
@@ -436,10 +479,12 @@ function ProviderForm({
           ))}
         </div>
       </fieldset>
+      <WaitlistMarketChips idPrefix="provider" selected={markets} onChange={setMarkets} settings={settings} />
       <Honeypot id="provider-homepage" value={homepage} onChange={setHomepage} />
       <ConsentBoxes
         role="provider"
         market={market}
+        markets={markets}
         consent={consent}
         onConsent={setConsent}
         marketingConsent={marketingConsent}
@@ -461,9 +506,13 @@ export function kyotoExpertsSectionVisible(data: unknown, isSuccess: boolean): b
 
 export default function LaunchWaitlistPage() {
   useScrollToHash();
+  // WAIT-1: `/waitlist` is the marquee market's page; `/waitlist/:market` is that market's (an unknown key falls back
+  // to the marquee, never a guessed city).
+  const params = useParams<{ market?: string }>();
   const signup = useSignupMode().data as SignupModeView | undefined;
   const { data: liveMarkets } = useQuery<{ marketKeys?: string[] }>({ queryKey: [LIVE_MARKETS_ROUTE], retry: false });
   const liveMarketKeys = Array.isArray(liveMarkets?.marketKeys) ? liveMarkets.marketKeys : [];
+  const settings = statusSettingsFrom(liveMarkets);
   const { data: kyotoExperts, isSuccess: kyotoExpertsLoaded } = useQuery<unknown>({
     queryKey: ["/api/experts", "kyoto-public"],
     queryFn: async () => {
@@ -481,6 +530,19 @@ export default function LaunchWaitlistPage() {
   // LW-2: the picker's default is the launch market (Kyoto); until the setting has loaded, the first operating market.
   const launchMarket =
     signup?.launchMarketSlug && waitlistCityName(signup.launchMarketSlug) ? signup.launchMarketSlug : WAITLIST_MARKET_OPTIONS[0].key;
+  const pageMarket = waitlistPageMarket(params?.market, launchMarket) ?? launchMarket;
+
+  if (pageMarket !== launchMarket) {
+    return (
+      <OtherMarketWaitlistPage
+        market={pageMarket}
+        source={source}
+        refCode={refCode}
+        settings={settings}
+        liveMarketKeys={liveMarketKeys}
+      />
+    );
+  }
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-12" data-testid="page-launch-waitlist">
@@ -488,7 +550,7 @@ export default function LaunchWaitlistPage() {
         title="Kyoto Trip Planning with Local Experts"
         description="Closed days, last entry, crowds: plan Kyoto around the days that don't work. Join the Kyoto list."
         ogTitle="Kyoto's autumn, planned to work on the day."
-        url="/kyoto"
+        url={waitlistMarketPath(launchMarket)}
       />
 
       {blocked && (
@@ -518,6 +580,8 @@ export default function LaunchWaitlistPage() {
           <a href="#experts" className="underline" data-testid="link-waitlist-experts">{WLB_SIGNUP_COPY.expertHeading} →</a>
         </p>
       </header>
+
+      <WaitlistSignupRowLive market={launchMarket} cityName={waitlistCityName(launchMarket) ?? launchMarket} />
 
       <section className="mt-12" data-testid="section-waitlist-why">
         <h2 className="text-2xl font-semibold">Why Kyoto days go wrong</h2>
@@ -549,7 +613,7 @@ export default function LaunchWaitlistPage() {
         <p className="mt-3 text-muted-foreground">
           Traveloure starts in Kyoto. Join the waitlist and tell us about your trip, so it's shaped around trips like yours.
         </p>
-        <TravelerForm key={launchMarket} source={source} refCode={refCode} launchMarket={launchMarket} />
+        <TravelerForm key={launchMarket} source={source} refCode={refCode} launchMarket={launchMarket} settings={settings} />
       </section>
 
       <section id="providers" className="mt-12 scroll-mt-20 rounded-xl border p-4 sm:p-6" data-testid="section-waitlist-providers">
@@ -559,7 +623,7 @@ export default function LaunchWaitlistPage() {
             Plan your Kyoto trip with local experts and businesses.
           </p>
         )}
-        <ProviderForm key={launchMarket} source={source} refCode={refCode} launchMarket={launchMarket} liveMarketKeys={liveMarketKeys} />
+        <ProviderForm key={launchMarket} source={source} refCode={refCode} launchMarket={launchMarket} liveMarketKeys={liveMarketKeys} settings={settings} />
         <p className="mt-6 text-sm">
           <Link href={offerServicesHref()} className="underline" data-testid="link-waitlist-offer-services">Offer my services in Kyoto</Link>
         </p>
@@ -568,6 +632,44 @@ export default function LaunchWaitlistPage() {
       <section id="experts" className="mt-12 scroll-mt-20 rounded-xl border p-4 sm:p-6" data-testid="section-waitlist-experts">
         <h2 className="text-xl font-semibold">{WLB_SIGNUP_COPY.expertHeading}</h2>
         <ExpertWaitlistForm key={launchMarket} source={source} launchMarket={launchMarket} />
+      </section>
+    </div>
+  );
+}
+
+/**
+ * WAIT-1: the waitlist for a market that is not the marquee. The city, its status from settings and the sign-up row,
+ * then the same three forms with this market pre-ticked. No listings and no sample items: nothing about the city is
+ * claimed beyond its status.
+ */
+export function OtherMarketWaitlistPage({
+  market,
+  source,
+  refCode,
+  settings,
+  liveMarketKeys,
+}: {
+  market: string;
+  source: string | null;
+  refCode: string | null;
+  settings: MarketStatusSettings;
+  liveMarketKeys: readonly string[];
+}) {
+  const cityName = waitlistCityName(market) ?? market;
+  return (
+    <div className="mx-auto max-w-2xl px-4 py-12" data-testid="page-launch-waitlist">
+      <OtherMarketWaitlistHeader market={market} cityName={cityName} settings={settings} />
+      <section id="join" className="mt-12 scroll-mt-20 rounded-xl border p-6" data-testid="section-waitlist-join">
+        <h2 className="text-2xl font-semibold">{WAITLIST_SIGNUP_ROW_COPY.travelersHeading}</h2>
+        <TravelerForm key={market} source={source} refCode={refCode} launchMarket={market} settings={settings} />
+      </section>
+      <section id="providers" className="mt-12 scroll-mt-20 rounded-xl border p-4 sm:p-6" data-testid="section-waitlist-providers">
+        <h2 className="text-xl font-semibold">{WAITLIST_SIGNUP_ROW_COPY.providersHeading}</h2>
+        <ProviderForm key={market} source={source} refCode={refCode} launchMarket={market} liveMarketKeys={liveMarketKeys} settings={settings} />
+      </section>
+      <section id="experts" className="mt-12 scroll-mt-20 rounded-xl border p-4 sm:p-6" data-testid="section-waitlist-experts">
+        <h2 className="text-xl font-semibold">{WLB_SIGNUP_COPY.expertHeading}</h2>
+        <ExpertWaitlistForm key={market} source={source} launchMarket={market} />
       </section>
     </div>
   );

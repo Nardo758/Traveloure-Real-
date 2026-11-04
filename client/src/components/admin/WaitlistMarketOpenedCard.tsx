@@ -6,6 +6,7 @@
 // "queued". The result shows both numbers the server returns, `enqueued` and `skipped`, even when 0; a repeat run
 // shows its repeats as skipped (ruling 4 — no separate warning). One POST per confirm.
 import { useMemo, useState } from "react";
+import { marketStatusLabel, type MarketStatusSettings } from "@shared/ticker";
 import { apiRequest } from "@/lib/queryClient";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
@@ -82,7 +83,16 @@ export function marketOpenedRunner(post: Poster = apiRequest) {
   };
 }
 
-export function WaitlistMarketOpenedCard({ post = apiRequest }: { post?: Poster }) {
+const NO_STATUS: MarketStatusSettings = { launch: null, live: [], beta: [], dates: {} };
+
+/** WAIT-1: each market is listed with its status label; the mount passes the public status answer. */
+export function WaitlistMarketOpenedCard({
+  post = apiRequest,
+  statusSettings = NO_STATUS,
+}: {
+  post?: Poster;
+  statusSettings?: MarketStatusSettings;
+}) {
   const [market, setMarket] = useState("");
   const [role, setRole] = useState<WaitlistRole | "">("");
   const [confirming, setConfirming] = useState(false);
@@ -118,7 +128,7 @@ export function WaitlistMarketOpenedCard({ post = apiRequest }: { post?: Poster 
           >
             <option value="">—</option>
             {WAITLIST_MARKET_OPTIONS.map((m) => (
-              <option key={m.key} value={m.key}>{m.city}</option>
+              <option key={m.key} value={m.key}>{`${m.city} · ${marketStatusLabel(m.key, statusSettings)}`}</option>
             ))}
           </select>
           <select

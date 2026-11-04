@@ -24,6 +24,9 @@
  * "Start a plan" calls the SAME handler the old hero used — the onPlanTrip prop opens the ONE
  * planning entry (`usePlanning().open`).
  */
+import { LIVE_MARKETS_ROUTE } from "@shared/live-markets";
+import { HERO_PILL_COPY, heroMarketPill } from "@shared/ticker";
+import { statusSettingsFrom } from "@/lib/waitlist-markets";
 import { PLAN_START_HREF, planStartClick } from "@/lib/plan-entry";
 import { Fragment, useState, type ReactNode } from "react";
 import { Link } from "wouter";
@@ -561,7 +564,12 @@ export function LandingHeroContent({
   });
   const wanted = wantedSlots[wantedIndex] ?? null;
 
-  const marketNames = OPERATING_MARKETS.filter((m) => m.marketKey === "kyoto");
+  // WAIT-1: the marquee market and its status come from settings (`launch_market_slug`, the live and beta lists),
+  // never a hard-coded city. Until the answer arrives the pill and the ticker draw nothing (§13).
+  const { data: liveMarkets } = useQuery<unknown>({ queryKey: [LIVE_MARKETS_ROUTE], retry: false });
+  const marketSettings = statusSettingsFrom(liveMarkets);
+  const heroPill = heroMarketPill(marketSettings);
+  const marketNames = OPERATING_MARKETS.filter((m) => m.marketKey === marketSettings.launch);
   const tiles = resolveBillboardTiles();
 
   const tickerParts = hero?.city
@@ -584,19 +592,31 @@ export function LandingHeroContent({
         {/* Left: pitch + CTAs. H1 (ledger `2026-10-08-h1-home-copy`): the typed search and its dev
             note are gone — search moves to the nav in its own lane. */}
         <div>
-          <span
-            className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.12em]"
-            style={{
-              fontFamily: EARN_MONO,
-              color: "var(--earn-teal-ink)",
-              background: "var(--earn-teal-wash)",
-              borderColor: "color-mix(in srgb, var(--earn-teal) 35%, transparent)",
-            }}
-            data-testid="hero-beta-pill"
-          >
-            <i className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--earn-green)" }} />
-            Now in beta in Kyoto
-          </span>
+          {heroPill && (
+            <span
+              className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.12em]"
+              style={{
+                fontFamily: EARN_MONO,
+                color: "var(--earn-teal-ink)",
+                background: "var(--earn-teal-wash)",
+                borderColor: "color-mix(in srgb, var(--earn-teal) 35%, transparent)",
+              }}
+              data-testid="hero-beta-pill"
+            >
+              <i className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--earn-green)" }} />
+              {heroPill}
+            </span>
+          )}
+          {heroPill && (
+            <Link
+              href="/destinations"
+              className="ml-2 text-[12px] underline"
+              style={{ color: "var(--earn-teal-ink)" }}
+              data-testid="link-hero-all-markets"
+            >
+              {HERO_PILL_COPY.elsewhere}
+            </Link>
+          )}
           <h1
             className="mt-3 text-[40px] font-semibold leading-[1.03] tracking-[-0.015em] sm:text-[54px]"
             style={{ fontFamily: FRAUNCES, color: "var(--earn-navy)" }}

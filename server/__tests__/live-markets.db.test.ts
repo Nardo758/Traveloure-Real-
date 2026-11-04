@@ -4,7 +4,7 @@
  *
  *   LV1 with no stored list it is the launch market alone (one city ⇒ the homepage rail stays hidden)
  *   LV2 a stored list is answered as stored
- *   LV3 the answer carries only `marketKeys`, and is cached briefly (Cache-Control) — a reset re-reads it
+ *   LV3 the answer carries `marketKeys` and (WAIT-1) the status settings, and is cached briefly (Cache-Control) — a reset re-reads it
  *
  * DISPOSABLE DB ONLY: both settings are restored to what they were.
  */
@@ -72,23 +72,23 @@ after(async () => {
 test("LV1 no stored list ⇒ the launch market alone", async () => {
   await setValue(LAUNCH_MARKET_SLUG_SETTING, "kyoto");
   await setValue(BETA_MARKET_SLUGS_SETTING, null);
-  assert.deepEqual((await call()).body, { marketKeys: ["kyoto"] });
+  assert.deepEqual((await call()).body.marketKeys, ["kyoto"]);
 });
 
 test("LV2 a stored list is answered as stored", async () => {
   await setValue(LAUNCH_MARKET_SLUG_SETTING, "kyoto");
   await setValue(BETA_MARKET_SLUGS_SETTING, JSON.stringify(["kyoto", "porto"]));
-  assert.deepEqual((await call()).body, { marketKeys: ["kyoto", "porto"] });
+  assert.deepEqual((await call()).body.marketKeys, ["kyoto", "porto"]);
 });
 
 test("LV3 only marketKeys, cached briefly, and a reset re-reads", async () => {
   await setValue(BETA_MARKET_SLUGS_SETTING, JSON.stringify(["kyoto", "goa"]));
   const first = await call();
-  assert.deepEqual(Object.keys(first.body), ["marketKeys"]);
+  assert.deepEqual(Object.keys(first.body), ["marketKeys", "launch", "live", "beta", "dates"], "WAIT-1: the status settings ride the same answer");
   assert.match(first.headers["Cache-Control"], /max-age=60/);
   await db.execute(sql`UPDATE platform_settings SET setting_value = ${JSON.stringify(["kyoto"])} WHERE setting_key = ${BETA_MARKET_SLUGS_SETTING}`);
   invalidatePlatformFlagCache(BETA_MARKET_SLUGS_SETTING);
-  assert.deepEqual((await call()).body, { marketKeys: ["kyoto", "goa"] }, "served from the cache within the window");
+  assert.deepEqual((await call()).body.marketKeys, ["kyoto", "goa"], "served from the cache within the window");
   tickerModule.resetLiveMarketsCache();
-  assert.deepEqual((await call()).body, { marketKeys: ["kyoto"] });
+  assert.deepEqual((await call()).body.marketKeys, ["kyoto"]);
 });

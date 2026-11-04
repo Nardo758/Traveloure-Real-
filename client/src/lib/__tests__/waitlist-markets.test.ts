@@ -109,7 +109,8 @@ describe("M5 — the other city is an optional note, and the sign-up stays one m
   it("posts one market and an optional otherCity, with one consent box", () => {
     assert.equal((PAGE.match(/<select id=\{id\}/g) ?? []).length, 0, "no city select");
     assert.doesNotMatch(PAGE, /<select[^>]*multiple/);
-    assert.equal((PAGE.match(/\n      market,\n/g) ?? []).length, 2, "each form posts the launch market");
+    // WAIT-1 (§7, sanctioned): each form posts its markets list (the page's market pre-ticked), not one `market`.
+    assert.equal((PAGE.match(/\n      markets,\n/g) ?? []).length, 2, "each form posts its markets");
     assert.equal((PAGE.match(/otherCity: otherCity\.trim\(\)/g) ?? []).length, 2);
     // 291b (ruling 2): exactly two boxes per form, through ONE shared component carrying the role.
     assert.equal((PAGE.match(/<ConsentBoxes\n/g) ?? []).length, 2, "each form draws the shared consent boxes once");

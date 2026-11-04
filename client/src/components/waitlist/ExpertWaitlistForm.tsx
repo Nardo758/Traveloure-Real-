@@ -17,13 +17,17 @@ import {
   type ExpertApplicationDraft,
 } from "@/lib/wlb-signup-copy";
 import { ConsentBoxes, EMAIL_SHAPE, Honeypot, marketingBoxOpen, postWaitlist } from "@/pages/launch-waitlist";
+import { LIVE_MARKETS_ROUTE } from "@shared/live-markets";
+import { WaitlistMarketChips } from "@/components/waitlist/WaitlistMarkets";
+import { statusSettingsFrom } from "@/lib/waitlist-markets";
 
 type Status = "idle" | "sending" | "done" | "error";
 
 /** The section's form, with the keep rate read from the server (admin config). */
 export function ExpertWaitlistForm({ source, launchMarket }: { source: string | null; launchMarket: string }) {
   const { data } = useQuery<PublicKeepRates>({ queryKey: [KEEP_RATES_ENDPOINT], retry: false });
-  return <ExpertForm source={source} launchMarket={launchMarket} keepRates={data ?? null} />;
+  const { data: liveMarkets } = useQuery<unknown>({ queryKey: [LIVE_MARKETS_ROUTE], retry: false });
+  return <ExpertForm source={source} launchMarket={launchMarket} keepRates={data ?? null} statusAnswer={liveMarkets} />;
 }
 
 /**
@@ -31,10 +35,23 @@ export function ExpertWaitlistForm({ source, launchMarket }: { source: string | 
  * sign-up is sent. Posts role "expert" to the same `/api/waitlist`. The keep rate is the server's (admin config); an
  * unreadable rate leaves that sentence out.
  */
-export function ExpertForm({ source, launchMarket, keepRates }: { source: string | null; launchMarket: string; keepRates: PublicKeepRates | null }) {
+export function ExpertForm({
+  source,
+  launchMarket,
+  keepRates,
+  statusAnswer,
+}: {
+  source: string | null;
+  launchMarket: string;
+  keepRates: PublicKeepRates | null;
+  statusAnswer?: unknown;
+}) {
   const [draft, setDraft] = useState<ExpertApplicationDraft>(EMPTY_EXPERT_DRAFT);
   // The consent words and the subline follow the picked city; before a pick, the launch market's.
   const market = draft.market || launchMarket;
+  // WAIT-1: "City you know best" stays the one select; the chips add any other markets to join for.
+  const [extraMarkets, setExtraMarkets] = useState<string[]>([]);
+  const markets = [market, ...extraMarkets.filter((m) => m !== market)];
   const [consent, setConsent] = useState(false);
   const [marketingConsent, setMarketingConsent] = useState(false);
   const marketingOpen = marketingBoxOpen(market);
@@ -55,6 +72,7 @@ export function ExpertForm({ source, launchMarket, keepRates }: { source: string
     setError(null);
     const r = await postWaitlist({
       ...expertApplicationBody(draft),
+      ...(markets.length > 1 ? { markets } : {}),
       consent,
       marketingConsent: marketingOpen && marketingConsent,
       ...(source ? { source } : {}),
@@ -119,10 +137,17 @@ export function ExpertForm({ source, launchMarket, keepRates }: { source: string
         <Label htmlFor="expert-link">{WLB_SIGNUP_COPY.expertLink}</Label>
         <Input id="expert-link" type="url" maxLength={200} value={draft.link} onChange={set("link")} data-testid="input-expert-link" />
       </div>
+      <WaitlistMarketChips
+        idPrefix="expert"
+        selected={markets}
+        onChange={(next) => setExtraMarkets(next.filter((m) => m !== market))}
+        settings={statusSettingsFrom(statusAnswer)}
+      />
       <Honeypot id="expert-homepage" value={homepage} onChange={setHomepage} />
       <ConsentBoxes
         role="expert"
         market={market}
+        markets={markets}
         consent={consent}
         onConsent={setConsent}
         marketingConsent={marketingConsent}

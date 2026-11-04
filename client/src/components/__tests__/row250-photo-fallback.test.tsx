@@ -173,7 +173,7 @@ describe("Arashiyama wanted tile", () => {
     assert.equal(ARASHIYAMA_ITINERARY_EXPERT_LINK, "Know Arashiyama well? Apply now as a local expert.");
     assert.equal(ARASHIYAMA_ITINERARY_PROVIDER_LINK, "Run a business in Arashiyama? Sign up as a provider.");
     assert.equal(ARASHIYAMA_PLAN_YOUR_DAY, "Plan your day here");
-    assert.equal(ARASHIYAMA_ITINERARY_EXPERT_HREF, "/kyoto#experts");
+    assert.equal(ARASHIYAMA_ITINERARY_EXPERT_HREF, "/waitlist/kyoto#experts");
     assert.equal(ARASHIYAMA_ITINERARY_PROVIDER_HREF, "/signup?intent=supply&supplyRole=provider");
     assert.equal(t.includes(RETIRED), false, label);
     assert.equal(/wanted here/i.test(t), false, label);

@@ -36,7 +36,7 @@ test("F1 the Arashiyama business line goes to provider sign-up; the expert line 
   assert.equal(ARASHIYAMA_ITINERARY_PROVIDER_LINK, "Run a business in Arashiyama? Sign up as a provider.");
   assert.equal(ARASHIYAMA_ITINERARY_PROVIDER_HREF, "/signup?intent=supply&supplyRole=provider");
   assert.equal(ARASHIYAMA_ITINERARY_EXPERT_LINK, "Know Arashiyama well? Apply now as a local expert.");
-  assert.equal(ARASHIYAMA_ITINERARY_EXPERT_HREF, "/kyoto#experts");
+  assert.equal(ARASHIYAMA_ITINERARY_EXPERT_HREF, "/waitlist/kyoto#experts");
   assert.equal("WAITLIST_PROVIDER_FORM_PATH" in waitlist, false, "the waitlist provider path has no importer left");
 });
 
