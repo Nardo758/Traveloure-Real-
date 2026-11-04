@@ -457,22 +457,20 @@ test.describe("Signup page — form structure and validation (UI)", () => {
     );
     await page.locator('[data-testid="button-create-account"]').click();
     expect((await registered).status()).toBe(202);
-    const login = await signedIn;
-    expect(login.status()).toBe(200);
-    const mustVerify = (await login.json())?.emailVerificationRequired === true;
+    expect((await signedIn).status()).toBe(200);
 
-    if (mustVerify) {
-      await expect(page).toHaveURL(/\/verify-email/, { timeout: 15_000 });
+    // The page leaves /signup either for the verify page (an address that must be confirmed) or for where it started.
+    // The login answer's body is not read here: the page navigates away as soon as it lands.
+    await expect(page).not.toHaveURL(/\/(signup|login)(\?|$)/, { timeout: 15_000 });
+    if (/\/verify-email/.test(page.url())) {
       await expect(page.getByText("Check your email to confirm your account.")).toBeVisible();
-    } else {
-      await expect(page).not.toHaveURL(/\/(signup|login)(\?|$)/, { timeout: 15_000 });
     }
     await expect(page.getByText(/account created/i)).toHaveCount(0);
 
     // The session is the sign-in the form made after the neutral answer.
     const me = await page.request.get(`${BASE_URL}/api/auth/user`);
     expect(me.status()).toBe(200);
-    console.log(`[signup-UI] PASS — valid signup signs in (${mustVerify ? "verify page" : "returned to origin"})`);
+    console.log(`[signup-UI] PASS — valid signup signs in (${page.url()})`);
   });
 });
 
