@@ -20,6 +20,7 @@
  *
  * This component owns the data; the renderers only draw. It fabricates no coordinate (§13).
  */
+import { nextTabKey } from "@/lib/roving-tabs";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Layers, MapPin, MessageSquare, Plus } from "lucide-react";
@@ -688,7 +689,21 @@ export function MapControlCenter({
               <div className="space-y-2" data-testid="map-browse-controls">
                 {/* GATE-1B (ruling 2): real <button>s carrying role="tab" inside a tablist, each controlling the one
                     tabpanel below; a tab with nothing in it is not drawn. */}
-                <div className="flex flex-wrap gap-1" role="tablist" aria-label="Browse" data-testid="map-browse-tabs">
+                {/* A-24: arrow keys, Home and End move between the tabs (the roving tabIndex keeps one in the tab order). */}
+                <div
+                  className="flex flex-wrap gap-1"
+                  role="tablist"
+                  aria-label="Browse"
+                  data-testid="map-browse-tabs"
+                  onKeyDown={(e) => {
+                    const next = nextTabKey(shownTabs.map((x) => x.key), tab, e.key);
+                    if (!next) return;
+                    e.preventDefault();
+                    setTab(next);
+                    if (browseState.categoryKey) setBrowse({ open: true, categoryKey: null });
+                    document.getElementById(`map-browse-tab-${next}`)?.focus();
+                  }}
+                >
                   {shownTabs.map((t) => (
                     <button
                       key={t.key}

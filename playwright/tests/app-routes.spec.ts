@@ -58,7 +58,9 @@ const SEGMENT_PLACEHOLDERS: Record<string, string> = {
   handle: 'kansai-bizlang',
   token: 'preview-token',
   slug: 'tokyo',
-  city: 'tokyo',
+  // A-16 (ledger `2026-11-05-lane4-places`): `/places/:city` answers not-found for a city that is not an operating
+  // market, so the sample is one (Kyoto). `/discover/location/:city` serves it too.
+  city: 'kyoto',
   clientId: '1',
   tripId: '1',
   contentType: 'blog',

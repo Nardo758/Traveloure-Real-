@@ -8731,10 +8731,12 @@ router.post("/api/discovery/scan", isAuthenticated, requireAdmin, async (req, re
 
   // Get available categories
 
-router.get("/api/discovery/categories", async (_req, res) => {
+router.get("/api/discovery/categories", async (req, res) => {
     try {
       const { gemDiscoveryService } = await import("../services/gem-discovery.service");
-      const categories = await gemDiscoveryService.getAvailableCategories();
+      // A-20: with ?destination=, only the categories that city has reviewed items in.
+      const destination = typeof req.query.destination === "string" ? req.query.destination.trim().slice(0, 120) : "";
+      const categories = await gemDiscoveryService.getAvailableCategories(destination || null);
       res.json({ categories });
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get categories", error: error.message });
