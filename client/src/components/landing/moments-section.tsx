@@ -15,6 +15,8 @@
  * reads "Start a plan" on the coral fill; the "built by @handle" byline and the "Planning your own?"
  * note are gone. Photo credits — an expert's @handle among them — stay, because they credit a photo.
  */
+import { PLAN_START_HREF, planStartClick } from "@/lib/plan-entry";
+import { Link } from "wouter";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { SectionHeader, OpenSection } from "./section-header";
@@ -247,12 +249,11 @@ export function MomentsSection() {
               ))}
             </ul>
             <div className="mt-auto flex flex-wrap items-center gap-3.5 pt-2">
-              <button
-                type="button"
+              <Link href={PLAN_START_HREF}
                 className="inline-flex items-center rounded-[8px] px-3.5 py-2 text-[13px] font-semibold text-white"
                 style={{ background: "var(--coral-fill)" }}
                 data-testid="moment-cta"
-                onClick={() => {
+                onClick={planStartClick(() => {
                   postEvent(moment.key, "cta", active);
                   open({
                     door: "moment",
@@ -261,10 +262,10 @@ export function MomentsSection() {
                     experienceSlug: moment.experienceSlug ?? undefined,
                     momentKey: moment.key,
                   });
-                }}
+                })}
               >
                 {START_PLAN_LABEL}
-              </button>
+              </Link>
             </div>
           </div>
         </div>

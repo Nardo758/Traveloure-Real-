@@ -16,6 +16,7 @@
  * Returns ok/failed; it never throws into the save that called it, and a failure is the caller's to
  * show — the modal stays open and says the city was not changed rather than closing as if it were.
  */
+import { api } from "@shared/routes";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { renameStopAt, seedStops } from "@/lib/plan-stops";
 import { savePlanStops } from "@/lib/plan-stops-writer";
@@ -44,6 +45,7 @@ export async function changeBoundPlanCity(tripId: string, city: string): Promise
     }
     void queryClient.invalidateQueries({ queryKey: ["/api/trips"] });
     void queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId] });
+    void queryClient.invalidateQueries({ queryKey: [api.trips.get.path, tripId] }); // ENTRY-1: the slip header's trip read
     void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
     return { ok: true };
   } catch (err: any) {

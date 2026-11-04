@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -82,6 +82,10 @@ export function WeddingAnchorPresets({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [customEventDate, setCustomEventDate] = useState(eventDate || "");
+  // ENTRY-1: the plan's date can arrive after mount (dates set on the slip) — follow it.
+  useEffect(() => {
+    setCustomEventDate(eventDate || "");
+  }, [eventDate]);
   const [generated, setGenerated] = useState(false);
 
   const { data: presets } = useQuery<PresetsResponse>({
@@ -105,6 +109,8 @@ export function WeddingAnchorPresets({
         description: `Created ${data.anchorsCreated} anchors and ${data.boundariesCreated} day boundaries.`,
       });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/anchors`] });
+      // ENTRY-1: the slip reads anchors through the plancard — refresh it so they show without a reload.
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
       onPresetsGenerated?.();
     },
     onError: (error: Error) => {

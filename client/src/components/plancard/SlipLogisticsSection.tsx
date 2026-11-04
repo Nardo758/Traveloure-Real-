@@ -274,11 +274,25 @@ export function SlipAnchorsTool({ tripId, planEvents }: { tripId: string; planEv
               /* F-1: startDate is already a "YYYY-MM-DD" DATE value — round-tripping it
                  through `new Date().toISOString()` re-reads it as UTC midnight and can slice
                  back the PREVIOUS day. calendarDateToIso keeps the calendar day it was given. */
-              eventDate={calendarDateToIso(trip?.startDate)}
+              eventDate={reservationEventDate(trip)}
             />
           )}
     </div>
   );
+}
+
+
+/**
+ * ENTRY-1: the Reservation panel's event date. A placeholder window nobody chose is not a date to
+ * book against (§13), so while the plan's dates are unconfirmed the field starts empty.
+ */
+export function reservationEventDate(
+  trip: { startDate?: string | Date | null; datesConfirmed?: boolean; datesConfirmedAt?: unknown } | null | undefined,
+): string {
+  if (!trip) return "";
+  const unconfirmed =
+    trip.datesConfirmed === false || ("datesConfirmedAt" in trip && trip.datesConfirmedAt == null);
+  return unconfirmed ? "" : calendarDateToIso(trip.startDate as any);
 }
 
 /** Guests & invites — the ONE guest manager, for the plan's event (gates unchanged). */

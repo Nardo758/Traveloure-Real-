@@ -63,6 +63,8 @@ export interface SlipBasics {
   endDate?: string | null;
   /** Optional traveler-authored title; a destination-derived one is used when absent. */
   title?: string | null;
+  /** ENTRY-1: the chosen occasion's catalog name, for the composed title (`planTitle`). */
+  occasionName?: string | null;
   /** E1 (ledger `2026-09-28-a0-slice-spec`): the door facts for the `trip_created` funnel row.
    *  Event-only — the server admits it by its own `.strict()` pick and stores it on no trip. */
   entry?: TripMintEntry | null;
@@ -150,6 +152,16 @@ export function checkSlipPrecondition(basics: SlipBasics, opts: SlipMintOptions 
 }
 
 /**
+ * ENTRY-1: the ONE composer for a plan's default title. "{Occasion} in {City}" when an occasion is
+ * known, else the existing "{City} trip". No other copy.
+ */
+export function planTitle(input: { city: string; occasionName?: string | null }): string {
+  const city = input.city.trim();
+  const occasion = input.occasionName?.trim();
+  return occasion ? `${occasion} in ${city}` : `${city} trip`;
+}
+
+/**
  * The one place basics become a mint body. Only reachable once `checkSlipPrecondition` has
  * passed, so every field below is a value the traveler actually stated.
  */
@@ -159,7 +171,7 @@ export function buildTripMintBody(basics: SlipBasics): TripMintBody {
   const startDate = (basics.startDate ?? "").trim();
   const endDate = (basics.endDate ?? "").trim();
   const body: TripMintBody = {
-    title: stated || `${destination.split(",")[0].trim()} trip`,
+    title: stated || planTitle({ city: destination.split(",")[0].trim(), occasionName: basics.occasionName }),
     destination,
     // Both or neither (`checkSlipPrecondition`); neither ⇒ the keys are OMITTED, never "".
     ...(startDate && endDate ? { startDate, endDate } : {}),

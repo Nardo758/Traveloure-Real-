@@ -103,7 +103,7 @@ describe("landing hero billboard", () => {
     for (const tile of BILLBOARD_TILES) {
       assert.ok(html.includes(tile.headline), `${tile.key} retains its original headline`);
       for (const line of tile.lines) assert.ok(!html.includes(line), `${tile.key} has no extra itinerary/details in the compact template`);
-      const actionTag = html.match(new RegExp(`<button[^>]+data-testid="hero-billboard-start-${tile.key}"[^>]*>Start a plan</button>`));
+      const actionTag = html.match(new RegExp(`<a[^>]+data-testid="hero-billboard-start-${tile.key}"[^>]*>Start a plan</a>`));
       assert.ok(actionTag, `${tile.key} has one planning action`);
       assert.ok(html.includes(tile.imagePath), `${tile.key} retains its credited photo`);
       assert.ok(html.includes(`hero-billboard-label-${tile.key}`), `${tile.key} has its slot label`);
@@ -112,7 +112,7 @@ describe("landing hero billboard", () => {
     assert.ok(!html.includes("HIDDEN GEM"), "SH-1 item 1: no hidden-gem claim on the gem slot");
     assert.ok(html.includes("BOOK ON TRAVELOURE"));
     assert.ok(!html.includes("<details"), "no expandable details on the template");
-    const startButtons = html.match(/<button[^>]+data-testid="hero-billboard-start-[^"]+"[^>]*>/g) ?? [];
+    const startButtons = html.match(/<a[^>]+data-testid="hero-billboard-start-[^"]+"[^>]*>/g) ?? [];
     assert.equal(startButtons.length, 3, "one planning action per curated tile");
     for (const tag of startButtons) assert.ok(tag.includes("background:var(--coral-fill)"), "each curated plan action uses the compact primary treatment");
     assert.ok(!html.includes("Plan with"));
@@ -279,7 +279,7 @@ describe("landing hero billboard", () => {
     assert.equal((html.match(/Representative photo · Kyoto/g) ?? []).length, 2);
     assert.ok(html.includes('data-testid="hero-billboard-label-early-start">KYOTO'), "SH-1 item 1: the gem slot's eyebrow is its city");
     assert.ok(html.includes('data-testid="hero-billboard-label-date-night">BOOK ON TRAVELOURE'));
-    assert.equal((html.match(/data-testid="hero-billboard-start-[^"]+"[^>]*>Start a plan<\/button>/g) ?? []).length, 2);
+    assert.equal((html.match(/data-testid="hero-billboard-start-[^"]+"[^>]*>Start a plan<\/a>/g) ?? []).length, 2);
     assert.ok(!html.includes("Plan details"));
   });
 
@@ -356,7 +356,7 @@ describe("landing hero billboard", () => {
     assert.ok(html.includes("LOCAL EXPERT · KYOTO"));
     assert.ok(!html.includes("HIDDEN GEM"), "SH-1 item 1: no hidden-gem claim on the gem slot");
     assert.ok(html.includes("BOOK ON TRAVELOURE"));
-    assert.equal((html.match(/data-testid="hero-billboard-start-[^"]+"[^>]*>Start a plan<\/button>/g) ?? []).length, 3);
+    assert.equal((html.match(/data-testid="hero-billboard-start-[^"]+"[^>]*>Start a plan<\/a>/g) ?? []).length, 3);
     assert.ok(!html.includes("Plan with"));
   });
 });

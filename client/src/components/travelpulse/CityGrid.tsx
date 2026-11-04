@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { api } from "@shared/routes";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { savePlanStops } from "@/lib/plan-stops-writer";
@@ -150,6 +151,7 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
         const result = await savePlanStops(tripId, next);
         if (result.ok) {
           void queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId] });
+          void queryClient.invalidateQueries({ queryKey: [api.trips.get.path, tripId] }); // ENTRY-1: the slip header's trip read
           void queryClient.invalidateQueries({ queryKey: ["/api/trips"] });
           toast({ title: `Added ${city.cityName} to your plan` });
         } else {
