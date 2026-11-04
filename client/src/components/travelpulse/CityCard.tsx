@@ -83,13 +83,6 @@ export interface CityCardProps {
   testId?: string;
 }
 
-function crowdClasses(level: string): string {
-  const l = level.toLowerCase();
-  if (l.includes("low")) return "text-[var(--earn-green-ink)] bg-[color:var(--earn-teal-wash)]";
-  if (l.includes("high") || l.includes("very")) return "text-[var(--earn-coral-ink)] bg-[color:var(--earn-coral-bg)]";
-  return "text-[var(--earn-gold-ink)] bg-[color:var(--earn-gold-wash)]";
-}
-
 export function CityCard(props: CityCardProps) {
   const {
     variant, cityName, country, imageUrl, score, statusLabel, trendLabel, activeTravelers,
@@ -105,8 +98,8 @@ export function CityCard(props: CityCardProps) {
   // trend pill, city name, one honest meta line. Score/crowd/experts render only when
   // present (§13); everything else of the full card is deliberately absent.
   if (props.density === "compact") {
+    // K-7: no crowd claim on the tile.
     const compactMeta = [
-      crowdLevel ? `${crowdLevel} crowd` : null,
       expertsCount > 0 ? `${expertsCount} ${expertsCount === 1 ? "expert" : "experts"}` : null,
     ].filter(Boolean);
     return (
@@ -257,14 +250,14 @@ export function CityCard(props: CityCardProps) {
           </div>
         )}
 
-        {variant === "pulse" && (showAvgPrice || crowdLevel) && (
+        {/* K-7: no crowd-level pill — the price line only. */}
+        {variant === "pulse" && showAvgPrice && (
           <div className="flex items-center justify-between gap-2 mb-2.5">
             {showAvgPrice && (
               <span className="text-[15px] font-bold text-[var(--earn-navy)] tabular-nums flex items-center gap-1">
                 ${avgPrice}<span className="text-[11px] font-medium text-[var(--earn-muted)]">/night</span>
               </span>
             )}
-            {crowdLevel && <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full capitalize ${crowdClasses(crowdLevel)}`}>{crowdLevel}</span>}
           </div>
         )}
 

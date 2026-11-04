@@ -48,7 +48,7 @@ export function AIRecommendationBadges({
     badges.push({
       icon: Sun,
       label: compact ? "" : "Season",
-      tooltip: "Perfect timing to visit - excellent season",
+      tooltip: "Season",
       variant: "default",
       color: "bg-green-500/90 hover:bg-green-500 text-white",
     });

@@ -290,7 +290,6 @@ export default function LandingMockups() {
                 <div className="flex flex-col md:flex-row items-center justify-center gap-4">
                   <div className="flex items-center gap-3 text-white">
                     <Bot className="w-6 h-6 text-primary" />
-                    <span className="font-medium">Plan with AI</span>
                   </div>
                   <div className="hidden md:block w-px h-8 bg-white/30" />
                   <div className="text-white/60">or</div>

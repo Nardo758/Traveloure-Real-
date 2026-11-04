@@ -1,14 +1,12 @@
 {
   "client/src/components/EnhancedPlanningModal.tsx": {
-    "packed": 1
+    "packed": 1,
+    "perfect": 1
   },
   "client/src/components/ServiceForm.tsx": {
     "best": 1,
     "recommended": 2,
     "verified": 2
-  },
-  "client/src/components/ai-matched-experts-section.tsx": {
-    "best": 1
   },
   "client/src/components/backoffice/SetupChecklistCard.tsx": {
     "verified": 3
@@ -29,10 +27,6 @@
     "crowd": 1
   },
   "client/src/components/destination-calendar.tsx": {
-    "best": 2,
-    "crowd": 1
-  },
-  "client/src/components/events/WhereToGo.tsx": {
     "best": 1,
     "crowd": 1
   },
@@ -69,8 +63,8 @@
   "client/src/lib/role-routes-config.ts": {
     "verified": 1
   },
-  "client/src/lib/wlb-signup-copy.ts": {
-    "best": 1
+  "client/src/locales/en/auth.json": {
+    "perfect": 1
   },
   "client/src/pages/admin/analytics.tsx": {
     "coming soon": 1,
@@ -102,9 +96,6 @@
     "coming soon": 1,
     "soon": 1
   },
-  "client/src/pages/ai-assistant.tsx": {
-    "best": 1
-  },
   "client/src/pages/deals.tsx": {
     "top pick/rated": 1
   },
@@ -122,6 +113,7 @@
   },
   "client/src/pages/expert/analytics.tsx": {
     "coming soon": 1,
+    "perfect": 1,
     "popular": 1,
     "soon": 1,
     "top pick/rated": 1
@@ -157,8 +149,8 @@
   "client/src/pages/itinerary-view.tsx": {
     "packed": 1
   },
-  "client/src/pages/pricing.tsx": {
-    "best": 1
+  "client/src/pages/landing-mockups.tsx": {
+    "perfect": 1
   },
   "client/src/pages/profile.tsx": {
     "quiet time": 1
@@ -181,9 +173,6 @@
   "client/src/pages/providers-directory.tsx": {
     "most <superlative>": 1
   },
-  "client/src/pages/ready-made-detail.tsx": {
-    "best": 1
-  },
   "client/src/pages/travel-experts.tsx": {
     "best": 3,
     "popular": 1,
@@ -198,7 +187,8 @@
   },
   "server/data/hidden-gems.json": {
     "best": 4,
-    "crowd": 35
+    "crowd": 35,
+    "perfect": 8
   },
   "server/data/iata-airports.json": {
     "best": 1
@@ -210,14 +200,17 @@
     "best": 6,
     "busy": 3,
     "crowd": 14,
+    "perfect": 25,
     "popular": 2
   },
   "server/seed-expert-services.ts": {
-    "crowd": 1
+    "crowd": 1,
+    "perfect": 2
   },
   "server/seeds/beta-data-extended.ts": {
     "best": 23,
     "most <superlative>": 1,
+    "perfect": 11,
     "recommended": 3
   },
   "server/seeds/beta-launch-data.ts": {
@@ -225,7 +218,8 @@
   },
   "server/seeds/beta-reviews-bookings.ts": {
     "best": 10,
-    "crowd": 2
+    "crowd": 2,
+    "perfect": 7
   },
   "server/seeds/city-neighborhoods.seed.ts": {
     "best": 1
@@ -236,6 +230,7 @@
   "server/seeds/experience-template-tabs.seed.ts": {
     "best": 1,
     "crowd": 1,
+    "perfect": 1,
     "quiet time": 1,
     "recommended": 3
   },
@@ -246,20 +241,23 @@
   },
   "server/seeds/phase-4-kyoto-fill.seed.ts": {
     "best": 1,
-    "crowd": 3
+    "crowd": 3,
+    "perfect": 1
   },
   "server/seeds/phase-4b-kyoto-city-intelligence.seed.ts": {
     "best": 2,
     "crowd": 2
   },
   "server/seeds/phase-d-kyoto-vendors.seed.ts": {
-    "best": 1
+    "best": 1,
+    "perfect": 2
   },
   "server/seeds/popular-cities-content.seed.ts": {
     "best": 23,
     "crowd": 16,
     "most <superlative>": 2,
-    "packed": 3
+    "packed": 3,
+    "perfect": 6
   },
   "server/seeds/role-scoped-templates.seed.ts": {
     "best": 2

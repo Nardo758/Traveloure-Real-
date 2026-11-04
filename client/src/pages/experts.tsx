@@ -452,7 +452,11 @@ export default function ExpertsPage() {
                     ? "Work with a Trip Planner"
                     : selectedRole === "event_planner"
                     ? "Plan Your Event"
-                    : "Find Your Perfect Local Expert"}
+                    : // K-8 ("Wording approved — Leon": "Find a local expert in Kyoto"): the marquee city, read from data
+                      // (CITY-1 — never typed); with no marquee known the city is left out.
+                      launchMarket
+                      ? `Find a local expert in ${launchMarket.cityName}`
+                      : "Find a local expert"}
                 </PageTitle>
                 <p className="text-sm text-[color:var(--earn-muted)] mt-1 max-w-[60ch]">
                   {selectedRole === "travel_expert"

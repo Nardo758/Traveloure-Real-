@@ -156,7 +156,11 @@ export function scanCode(file: string, source: string): Hit[] {
     if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) text = node.text;
     else if (ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) text = node.text;
     else if (ts.isJsxText(node)) text = node.text;
-    if (text !== null && text.trim() && !skippedLiteral(node) && !(!ts.isJsxText(node) && LOWER_TOKEN.test(text.trim()))) {
+    // K-7 (ledger `2026-11-05-lane5-copy`): a one-word lower-case STRING is usually a key, so it is skipped — but a
+    // template piece that carries a space is part of a composed sentence (`crowd ${band}`, `${level} crowd`), so it is
+    // read. A piece with no space (`slip-day-busy-${id}`, a test id or class) is still a token.
+    const fragment = (ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) && /\s/.test(text ?? "");
+    if (text !== null && text.trim() && !skippedLiteral(node) && !(!ts.isJsxText(node) && !fragment && LOWER_TOKEN.test(text.trim()))) {
       for (const words of hitsIn(text)) {
         if (words === "licensed" && (isLegal || /licen/i.test(enclosingFieldName(node)))) continue;
         if (words === "paypal" && PAYPAL_ALLOWED.some((re) => re.test(file))) continue;

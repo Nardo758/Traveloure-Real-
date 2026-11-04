@@ -113,13 +113,20 @@ describe("P-8 — content round 3", () => {
     assert.equal(ceiling, 115);
     assert.ok(ceiling < 159);
     const b = JSON.parse(read("scripts/never-say-baseline.json")) as Record<string, Record<string, number>>;
-    const entries = Object.values(b).reduce((n, by) => n + Object.keys(by).length, 0);
-    const hits = Object.values(b).reduce((n, by) => n + Object.values(by).reduce((a, c) => a + c, 0), 0);
+    // TEST EDIT (Lane 5, ledger `2026-11-05-lane5-copy`; K-8 ruling: "add 'perfect' to the never-say vocabulary"): the
+    // word's existing hits are recorded debt of their own, counted apart so the older vocabulary's pin stays exact.
+    const older = Object.values(b).map((by) => Object.entries(by).filter(([w]) => w !== "perfect"));
+    const entries = older.reduce((n, by) => n + by.length, 0);
+    const hits = older.reduce((n, by) => n + by.reduce((a, [, c]) => a + c, 0), 0);
     // TEST EDIT (CMS-1 brief §4g, ledger `2026-11-04-cms1-launch-screens` — SANCTION REQUESTED, not in §7): the
     // launch-waitlist.tsx block (3 entries, 5 hits) is removed from the baseline, so the pin moves 119 → 116 and 321 → 316.
-    assert.equal(entries, 116);
-    assert.equal(hits, 316);
+    // Lane 5 (K-7, K-8) removed 7 entries and 8 hits: 116 → 109 and 316 → 308.
+    assert.equal(entries, 109);
+    assert.equal(hits, 308);
     assert.ok(entries < 133);
+    const perfect = Object.values(b).filter((by) => "perfect" in by);
+    assert.equal(perfect.length, 13, "files with a recorded 'perfect' hit");
+    assert.equal(perfect.reduce((n, by) => n + by.perfect, 0), 67, "recorded 'perfect' hits");
   });
 
   it("T6 the off-limits lines are untouched", () => {

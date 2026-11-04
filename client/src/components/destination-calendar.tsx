@@ -163,7 +163,7 @@ export function DestinationCalendar({ initialCountry, compact = false }: Destina
         {!selectedCountry ? (
           <div className="text-center py-8 text-muted-foreground">
             <MapPin className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-            <p>Select a country to see the best times to visit</p>
+            <p>Select a country to see times to visit</p>
           </div>
         ) : loadingEvents || loadingSeasons ? (
           <div className="space-y-4">

@@ -58,6 +58,9 @@
  * Node built-ins only — no npm ci needed. Self-test: --self-test
  */
 const fs = require("fs");
+
+// N-7 (ledger `2026-11-05-lane5-copy`): a CRLF checkout reads exactly as an LF one — line endings are normalised at read.
+const readText = (p) => fs.readFileSync(p, "utf8").replace(/\r\n?/g, "\n");
 const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -70,7 +73,7 @@ const WORKFLOW_DIR = path.join(ROOT, ".github", "workflows");
  */
 function extractRunCommands(yamlText) {
   const out = [];
-  const lines = yamlText.split("\n");
+  const lines = yamlText.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
     const m = lines[i].match(/^(\s*)(?:-\s+)?run:\s*(.*)$/);
     if (!m) continue;
@@ -96,7 +99,7 @@ function collectWorkflowText(dir) {
   return fs
     .readdirSync(dir)
     .filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"))
-    .map((f) => extractRunCommands(fs.readFileSync(path.join(dir, f), "utf8")))
+    .map((f) => extractRunCommands(readText(path.join(dir, f))))
     .join("\n");
 }
 
@@ -227,7 +230,7 @@ function parseLedger(text) {
   const ids = [];
   const allIds = [];
   const malformed = [];
-  for (const line of text.split("\n")) {
+  for (const line of text.split(/\r?\n/)) {
     const any = line.match(ROW_ANY_RE);
     if (any) allIds.push(any[1]);
     // Table rows: | <id> | <date> | [tag] | ...
@@ -297,7 +300,7 @@ function readLaneLocalRows(ledgerText) {
   const out = {};
   const m = ledgerText.match(/^## Lane-local R numbering[^\n]*\n([\s\S]*?)(?=^## |(?![\s\S]))/m);
   if (!m) return out;
-  for (const line of m[1].split("\n")) {
+  for (const line of m[1].split(/\r?\n/)) {
     const row = line.match(/^- `([^`]+)` — (.+)$/);
     if (row) out[row[1]] = row[2].trim();
   }
@@ -336,7 +339,7 @@ function lintRNumbers(ledgerText, exempt = readLaneLocalRows(ledgerText)) {
   const frozen = new Set();
   const cited = new Map(); // n -> [row ids]
   const unassigned = []; // row ids still carrying the R? placeholder
-  for (const line of ledgerText.split("\n")) {
+  for (const line of ledgerText.split(/\r?\n/)) {
     const prefix = line.match(ROW_ID_PREFIX_RE);
     if (!prefix) continue;
     const id = prefix[1];
@@ -374,7 +377,7 @@ function lintRNumbers(ledgerText, exempt = readLaneLocalRows(ledgerText)) {
   // The list is only honest while it matches the ledger: a listed row that is gone, or no longer
   // opens with an R heading, is a stale exemption and fails.
   const headed = new Set();
-  for (const line of ledgerText.split("\n")) {
+  for (const line of ledgerText.split(/\r?\n/)) {
     const prefix = line.match(ROW_ID_PREFIX_RE);
     if (prefix && /^\*\*R(\d+|\?) —/.test(rowCells(line)[3] ?? "")) headed.add(prefix[1]);
   }
@@ -657,18 +660,18 @@ const reachable = new Set(
   wired.inventory({
     tests,
     workflowCommands: wired.workflowCommands(),
-    packageScripts: JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).scripts || {},
+    packageScripts: JSON.parse(readText(path.join(ROOT, "package.json"))).scripts || {},
   }).reachable,
 );
 const workflowFiles = fs.readdirSync(WORKFLOW_DIR).filter((f) => /\.ya?ml$/.test(f));
 const jobIds = workflowFiles.flatMap((f) => {
-  const text = fs.readFileSync(path.join(WORKFLOW_DIR, f), "utf8");
+  const text = readText(path.join(WORKFLOW_DIR, f));
   const jobs = text.split(/^jobs:\s*$/m)[1] || "";
   return [...jobs.matchAll(/^ {2}([A-Za-z0-9_-]+):\s*$/gm)].map((m) => m[1]);
 });
 const configs = [...new Set([...workflowText.matchAll(/(?:--config|-c)[ =](\S+)/g)].map((m) => m[1]))]
   .filter((c) => fs.existsSync(path.join(ROOT, c)))
-  .map((c) => ({ file: c, text: fs.readFileSync(path.join(ROOT, c), "utf8") }));
+  .map((c) => ({ file: c, text: readText(path.join(ROOT, c)) }));
 const { failures, warnings, notes, laneLocal, checked } = lintLedger({ ledgerText, workflowText, requireAssigned, tests, reachable, workflowFiles, jobIds, configs });
 
 for (const n of notes) console.warn(`NOTE  ${n}`);

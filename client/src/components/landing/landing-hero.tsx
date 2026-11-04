@@ -579,12 +579,8 @@ export function LandingHeroContent({
   const marketNames = OPERATING_MARKETS.filter((m) => m.marketKey === marketSettings.launch);
   const tiles = resolveBillboardTiles();
 
-  const tickerParts = hero?.city
-    ? [
-        hero.city,
-        hero.crowd ? `crowd ${hero.crowd}` : null,
-      ].filter(Boolean)
-    : [];
+  // K-7: the ticker names the city; no crowd claim.
+  const tickerParts = hero?.city ? [hero.city] : [];
 
   return (
     <section
