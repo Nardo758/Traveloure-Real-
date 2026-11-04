@@ -141,6 +141,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/lane1-guest-save.db.test.ts
       - name: Lane 3 occasion — no invented occasion, slug kept through guest plan and claim, occasion PATCH stores it (node:test)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/lane3-occasion.db.test.ts
+      - name: Lane 4 places — /places redirects and not-found, per-city chips, city match (node:test)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/lane4-places.db.test.ts
       - name: Round 2 — upcoming events end today or later, marquee first, limit after order (node:test)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/round2-upcoming-order.test.ts
       - name: Round 2 N-2 — sign-up without consent is refused; consent recorded only when true (node:test)
