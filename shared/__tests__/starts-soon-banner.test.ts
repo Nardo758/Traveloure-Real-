@@ -5,7 +5,7 @@
  *   S1  placeholder window (dates_confirmed_at NULL ⇒ datesConfirmed false): no banner, even inside 48 h
  *   S2  past start (underway, or already over): no "starts soon"
  *   S3  real dates, start ahead inside the window: the banner
- *   S4  a final version still reads "ready", whatever the dates (the ready arm is unchanged)
+ *   S4  a final version reads "ready" once the dates are chosen; an unconfirmed window shows no banner (GATE-1)
  *
  * Run: npx tsx --test shared/__tests__/starts-soon-banner.test.ts
  */
@@ -36,6 +36,10 @@ test("S3 future: real dates with the start ahead inside the window show the bann
   assert.equal(tripCardBannerState({ ...ahead, datesConfirmed: true, finalVersion: null }), "finalize_now");
 });
 
-test("S4 the ready arm is unchanged", () => {
-  assert.equal(tripCardBannerState({ ...ahead, datesConfirmed: false, finalVersion: 2 }), "ready");
+// SANCTIONED TEST EDIT (GATE-1 + PARTNER-1 brief §7, ledger `2026-11-03-gate1-partner1`): this pinned the banner on an
+// unconfirmed trip ("ready" with datesConfirmed false). The Trip Card banner now waits for dates — `tripCardIsPrimary`
+// is false while datesConfirmed is false (brief §4f) — so that case is null; the ready arm still holds with chosen dates.
+test("S4 the ready arm holds with chosen dates; an unconfirmed window has no banner", () => {
+  assert.equal(tripCardBannerState({ ...ahead, datesConfirmed: true, finalVersion: 2 }), "ready");
+  assert.equal(tripCardBannerState({ ...ahead, datesConfirmed: false, finalVersion: 2 }), null);
 });

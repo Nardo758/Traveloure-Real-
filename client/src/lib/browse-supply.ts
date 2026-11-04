@@ -116,6 +116,29 @@ export const PARTNER_PRICE_LINK_LABEL = "See current price";
 /** Said beside it, because the partner link earns us a commission. */
 export const PARTNER_COMMISSION_NOTE = "Traveloure earns a commission on this booking";
 
+/**
+ * GATE-1 (ledger `2026-11-03-gate1-partner1`): the commission line is said only where a partner link is usable AND
+ * purchases are on sale. In waitlist mode purchases are refused, so there is no booking and nothing to disclose.
+ * Public pages pass the public mode (`useSignupMode().mode === "open"`); a plan's map passes its capabilities'
+ * `signup.purchasesAllowed`.
+ */
+export const BROWSE_EMPTY_COPY = {
+  /** GATE-1: a browse tab whose filtered list is empty. HELD for Leon (brief §6). */
+  tab: (city: string) => `Nothing here yet for ${city}.`,
+} as const;
+
+/**
+ * GATE-1: a browse tab draws its empty state only once both reads have answered, the filtered list is empty and the
+ * city is known — never sample rows, and never while the reads are still in flight.
+ */
+export function browseTabEmptyShown(input: { browseOn: boolean; loaded: boolean; count: number; city: string | null | undefined }): boolean {
+  return input.browseOn && input.loaded && input.count === 0 && !!input.city?.trim();
+}
+
+export function partnerCommissionShown(linkUsable: boolean, purchasesAllowed: boolean): boolean {
+  return linkUsable && purchasesAllowed;
+}
+
 // ── VD-1: LIVE VIATOR ROW (ledger `2026-10-18-viator-direct-live`) ───────────────────────────────
 
 export const VIATOR_LIVE_HEADING = "Viator · live";

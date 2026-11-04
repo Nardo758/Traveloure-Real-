@@ -8,6 +8,8 @@
  * action, no fee line.
  */
 import { useSignupMode } from "@/lib/signup-mode";
+import { useBrowseSaveToPlan } from "@/lib/browse-save";
+import { partnerCommissionShown } from "@/lib/browse-supply";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -38,14 +40,17 @@ function useDebounced(value: string, ms: number): string {
 export function CatalogueResultRow({
   result,
   timeZone,
-  onAdd,
+  onAdd: onAddProp,
 }: {
   result: CatalogueResult;
   timeZone: string | null;
   onAdd: (item: Record<string, unknown>) => void;
 }) {
   const waitlist = useSignupMode().mode === "waitlist";
-  const label = catalogueActionLabel(result, { waitlist });
+  // GATE-1: waitlist + signed out ⇒ the add press is "Save to plan" (a toast, no dialog, no sign-in wall).
+  const browseSave = useBrowseSaveToPlan();
+  const onAdd = browseSave.wrapAdd(onAddProp) ?? onAddProp;
+  const label = catalogueActionLabel(result, { waitlist, signedOut: browseSave.saveToPlan });
   const price = result.kind === "partner_viator" ? viatorPriceLine(result.livePrice, timeZone) : null;
   return (
     <li className="flex items-start justify-between gap-3 py-2.5" data-testid={`catalogue-result-${result.id}`}>
@@ -61,7 +66,8 @@ export function CatalogueResultRow({
             {price}
           </p>
         )}
-        {result.kind === "partner_viator" && (
+        {/* GATE-1: the commission line only where the partner link works and purchases are on sale. */}
+        {result.kind === "partner_viator" && partnerCommissionShown(result.action.type === "book_on_site" && !!result.action.href, !waitlist) && (
           <p className="text-[11px] text-muted-foreground m-0" data-testid={`catalogue-commission-${result.id}`}>
             {CATALOGUE_RESULT_COPY.commission}
           </p>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { needHelpBody } from "@/lib/discover-need-help";
+import { readyMadeShelfState, READY_MADE_SHELF_COPY } from "@/lib/ready-made-shelf-state";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useSignupMode } from "@/lib/signup-mode";
 import { WAITLIST_COPY } from "@/lib/waitlist-copy";
@@ -1239,11 +1240,21 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
   // listing's declared theme (plan_type — required at submit, closed vocabulary); the author
   // type demotes to a card badge. This unfiltered feed stays mounted as the source of the chip
   // rail's REAL per-theme counts.
-  const { data: readyMadeShelfData } = useQuery<{ listings: ReadyMadeShelfListing[] }>({
+  const {
+    data: readyMadeShelfData,
+    isLoading: readyMadeShelfLoading,
+    isError: readyMadeShelfError,
+  } = useQuery<{ listings: ReadyMadeShelfListing[] }>({
     queryKey: ["/api/ready-made"],
     staleTime: 60_000,
   });
   const readyMadeShelf = readyMadeShelfData?.listings;
+  // GATE-1: the shelf's loading / error / empty branches (`readyMadeShelfState`, the one rule).
+  const readyMadeState = readyMadeShelfState({
+    isLoading: readyMadeShelfLoading,
+    isError: readyMadeShelfError,
+    listings: readyMadeShelfData ? readyMadeShelf ?? [] : undefined,
+  });
 
   // One theme selected → the server-validated filter. Vocabulary keys ride ?planType=; an
   // expert-minted theme (ledger 2026-08-22-expert-minted-themes) rides ?customLabel= — the
@@ -2090,6 +2101,21 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                     the shelf is empty — never an empty aisle.
                      D3 naming: ready_made_trips = "Ready-Made Trips" (the purchasable ready-made
                      products); the author-type sections become subheadings under that one banner. */}
+                {readyMadeState === "loading" ? (
+                  <div className="mb-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid="ready-made-loading" aria-busy="true">
+                    {[0, 1, 2].map((i) => (
+                      <div key={i} className="h-48 rounded-xl bg-muted animate-pulse" />
+                    ))}
+                  </div>
+                ) : readyMadeState === "error" ? (
+                  <p className="mb-10 text-sm text-muted-foreground" data-testid="ready-made-error">
+                    {READY_MADE_SHELF_COPY.error}
+                  </p>
+                ) : readyMadeState === "empty" ? (
+                  <p className="mb-10 text-sm text-muted-foreground" data-testid="ready-made-empty">
+                    {READY_MADE_SHELF_COPY.empty}
+                  </p>
+                ) : null}
                 {readyMadeShelf && readyMadeShelf.length > 0 && (
                   <div className="mb-10">
                     {/* Theme chip rail (ledger 2026-08-22-ready-made-themes): only themes with

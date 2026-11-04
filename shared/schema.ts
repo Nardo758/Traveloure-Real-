@@ -4467,6 +4467,10 @@ export const hotelCache = pgTable("hotel_cache", {
   mainImageUrl: text("main_image_url"),
   fetchedAt: timestamp("fetched_at"),
   contentUpdatedAt: timestamp("content_updated_at"),
+  // PARTNER-1 (migration 432, ledger `2026-11-03-gate1-partner1`): our own reviewed description — the only text a
+  // traveler reads about this row, once editorial_reviewed_at is set. Nullable, no default; the supplier's text is never shown.
+  editorialDescription: text("editorial_description"),
+  editorialReviewedAt: timestamp("editorial_reviewed_at"),
 }, (table) => ({
   // 365: empty at creation (provider_hotel_id is born NULL; NULLs never collide). The sync's upsert key.
   providerHotelUniq: uniqueIndex("uq_hotel_cache_provider_hotel").on(table.provider, table.providerHotelId),
@@ -4523,6 +4527,10 @@ export const activityCache = pgTable("activity_cache", {
   rawData: jsonb("raw_data").default({}),
   lastUpdated: timestamp("last_updated").defaultNow(),
   expiresAt: timestamp("expires_at").notNull(),
+  // PARTNER-1 (migration 432, ledger `2026-11-03-gate1-partner1`): our own reviewed description — the only text a
+  // traveler reads about this row, once editorial_reviewed_at is set. Nullable, no default; the supplier's text is never shown.
+  editorialDescription: text("editorial_description"),
+  editorialReviewedAt: timestamp("editorial_reviewed_at"),
 });
 
 // flight_cache RETIRED by migration 176 (writerless since the Amadeus drop, ruling 34;
@@ -4615,6 +4623,10 @@ export const feverEventCache = pgTable("fever_event_cache", {
   rawData: jsonb("raw_data").default({}),
   lastUpdated: timestamp("last_updated").defaultNow(),
   expiresAt: timestamp("expires_at").notNull(),
+  // PARTNER-1 (migration 432, ledger `2026-11-03-gate1-partner1`): our own reviewed description — the only text a
+  // traveler reads about this row, once editorial_reviewed_at is set. Nullable, no default; the supplier's text is never shown.
+  editorialDescription: text("editorial_description"),
+  editorialReviewedAt: timestamp("editorial_reviewed_at"),
 }, (table) => [
   // Migration 221: unique index on event_id for cache-hit lookups.
   // The column.unique() was removed above — declaring here with the migration's exact index
@@ -7188,6 +7200,10 @@ export const affiliateProducts = pgTable("affiliate_products", {
   source: varchar("source", { length: 30 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  // PARTNER-1 (migration 432, ledger `2026-11-03-gate1-partner1`): our own reviewed description — the only text a
+  // traveler reads about this row, once editorial_reviewed_at is set. Nullable, no default; the supplier's text is never shown.
+  editorialDescription: text("editorial_description"),
+  editorialReviewedAt: timestamp("editorial_reviewed_at"),
 });
 
 // Affiliate scrape jobs table - tracks scraping operations

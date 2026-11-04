@@ -32,6 +32,7 @@ import { useAskExpert } from "@/lib/use-ask-expert";
 import type { BentoCompactActionState } from "@/lib/bento-action-state";
 import { tileActionLabel } from "@/lib/bento-action-state";
 import { useSignupMode } from "@/lib/signup-mode";
+import { useBrowseSaveToPlan } from "@/lib/browse-save";
 
 export interface RecommendationCandidate {
   offeringId: string;
@@ -117,7 +118,7 @@ export function CityFeedCardRecommendation({
   city,
   position,
   scheduledDate,
-  onAdd,
+  onAdd: onAddProp,
   onBook,
   recommendedLabel = "Picked for your days",
   affiliateLabel = "Paid partner",
@@ -128,6 +129,9 @@ export function CityFeedCardRecommendation({
   compactActionState,
 }: CityFeedCardRecommendationProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
+  // GATE-1: waitlist + signed out ⇒ the add press is "Save to plan" (a toast, no dialog, no sign-in wall).
+  const browseSave = useBrowseSaveToPlan();
+  const onAdd = browseSave.wrapAdd(onAddProp);
   // Why-recommended disclosure modal — opened by the CARD itself (family
   // grammar: the card is the link; no "More info" text link).
   const [infoOpen, setInfoOpen] = useState(false);
@@ -173,7 +177,7 @@ export function CityFeedCardRecommendation({
   // so look one up by display name + city, with the category emoji fallback.
   const { photoUrl, loading } = useGemPhoto(`rec-${position}-${name}`, name, city, null);
 
-  const addLabel = tileActionLabel("recommendation", { bookable: false, scheduledDate }) ?? "";
+  const addLabel = tileActionLabel("recommendation", { bookable: false, scheduledDate, saveToPlan: browseSave.saveToPlan }) ?? "";
   // Row P-1c (waitlist mode): a Traveloure book becomes "Save to plan" and runs the add-to-plan path; the separate
   // add button is then not drawn, so the card has one action. A partner's book link is not a purchase and stays.
   const addItem = () =>

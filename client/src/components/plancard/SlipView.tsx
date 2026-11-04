@@ -1456,7 +1456,13 @@ function SlipEventGroupBlock({
 /** Primary-surface inputs read straight off the DTO — same helper the server-side rule (R-F)
  *  uses, so client and scheduler agree on when Trip Card becomes primary. */
 function primaryInputFromTrip(trip: SlipTrip | undefined) {
-  return { finalizedAt: trip?.finalizedAt ?? null, startDate: trip?.startDate ?? null, endDate: trip?.endDate ?? null };
+  return {
+    finalizedAt: trip?.finalizedAt ?? null,
+    startDate: trip?.startDate ?? null,
+    endDate: trip?.endDate ?? null,
+    // GATE-1: an unconfirmed window never makes the Trip Card primary (`tripCardIsPrimary`).
+    datesConfirmed: planDatesAreConfirmed(trip?.datesConfirmed ?? null),
+  };
 }
 
 // ── TripCardPrimaryBanner ─────────────────────────────────────────────────────────────
@@ -1485,6 +1491,8 @@ function TripCardPrimaryBanner({ trip }: { trip: SlipTrip }) {
     finalVersion: trip.finalVersion,
     datesConfirmed: planDatesAreConfirmed(trip.datesConfirmed ?? null),
   });
+  // GATE-1: no state ⇒ no banner (it used to fall through to "ready" with no final behind it).
+  if (state === null) return null;
   if (state === "finalize_now") {
     return (
       <Card className="border-amber-300 bg-amber-50 dark:bg-amber-950/20" data-testid="slip-trip-card-finalize-now">

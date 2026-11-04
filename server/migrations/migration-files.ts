@@ -2266,4 +2266,9 @@ export const MIGRATION_FILES = [
   // template chip "Popular but Spacious" → "Spacious", and the "Most Popular" sort option removed.
   // DML only. HELD until Leon approves the SQL. Ledger 2026-11-03-p8-content-round-3.
   "431_content_round3_labels.sql",
+  // 432 — GATE-1 + PARTNER-1: WAIT-1's two platform_settings rows (live_market_slugs, market_launch_dates), the
+  // editorial_description / editorial_reviewed_at columns on fever_event_cache, activity_cache, hotel_cache and
+  // affiliate_products (declared in shared/schema.ts), and the proposal description copy. HELD until Leon approves
+  // the SQL. Ledger 2026-11-03-gate1-partner1.
+  "432_waitlist_markets_and_partner_editorial.sql",
 ] as const;

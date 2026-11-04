@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
+import { browseSavesToPlan, useSignupMode } from "@/lib/signup-mode";
+import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 import { queryClient } from "@/lib/queryClient";
 import { useSearch } from "wouter";
 import { addItemFit } from "@/lib/trip-target";
@@ -155,6 +157,19 @@ export function AddToExperienceDialog({
     // addToTripMutation.mutate is stable; directFired guards a repeat.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, isAuthenticated, item, resolution, openPlans]);
+
+  // GATE-1 (ledger `2026-11-03-gate1-partner1`): in waitlist mode a signed-out viewer never meets the sign-in wall.
+  // The browse cards already turn the press into "Save to plan"; a host that still opens this dialog gets the same
+  // toast and the dialog closes, so "Sign In Required" is never drawn in waitlist mode.
+  const { mode: signupMode } = useSignupMode();
+  const waitlistSave = browseSavesToPlan(signupMode, isAuthenticated);
+  useEffect(() => {
+    if (!open || !waitlistSave) return;
+    toast({ title: WAITLIST_COPY.savedToPlan });
+    onOpenChange(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, waitlistSave]);
+  if (waitlistSave) return null;
 
   if (!isAuthenticated) {
     return (

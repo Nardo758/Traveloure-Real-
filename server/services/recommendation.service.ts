@@ -47,6 +47,7 @@ import {
 } from "@shared/schema";
 import { eq, and, sql, gte, lte, desc, asc, or, ilike, inArray } from "drizzle-orm";
 import { sanitizePartnerCardCopy } from "@shared/banned-copy";
+import { toEditorialPartnerRow } from "./partner-editorial";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Section 1: Destination Content Recommendation types
@@ -504,9 +505,10 @@ class RecommendationService {
       .sort((a, b) => b.aiScore - a.aiScore)
       .slice(0, limit);
 
+    // PARTNER-1: a traveler reads our reviewed editorial description only — never the supplier's text.
     return {
-      hotels: enhancedHotels,
-      activities: enhancedActivities,
+      hotels: enhancedHotels.map((h) => toEditorialPartnerRow(h)) as unknown as EnhancedHotel[],
+      activities: enhancedActivities.map((a) => toEditorialPartnerRow(a)) as unknown as typeof enhancedActivities,
       seasonalInsight,
       bestTimeToVisit: cityIntelligence?.aiBestTimeToVisit || null,
       totalHotels: hotels.length,

@@ -54,10 +54,14 @@ after(async () => {
 
 test("FP1: the projection is an allowlist — no pricing, Free, URL, coordinates or street", async () => {
   const [p] = await toPublicFeverEvents([fixture({ isFree: true, pricing: { currency: "USD", minPrice: 0 } })]);
+  // SANCTIONED TEST EDIT (GATE-1 + PARTNER-1 brief §7, ledger `2026-11-03-gate1-partner1`): the key list pinned
+  // `shortDescription` and the raw Fever description. PARTNER-1 publishes our reviewed editorial text only, so
+  // `shortDescription` is gone and `description` is null for an event with no reviewed row.
   assert.deepEqual(Object.keys(p).sort(), [
     "areaName", "bookingToken", "category", "date", "description", "endDate", "id", "imageUrl", "isSoldOut",
-    "osmCredit", "partnerName", "priceSource", "provider", "shortDescription", "subcategory", "title", "venueName",
+    "osmCredit", "partnerName", "priceSource", "provider", "subcategory", "title", "venueName",
   ].sort());
+  assert.equal(p.description, null, "no reviewed editorial row ⇒ no description, never Fever's");
   const json = JSON.stringify(p);
   for (const banned of ["pricing", "priceRange", "minPrice", "isFree", "Free", "currency", "bookingUrl", "affiliateUrl", "partner.example.test", "coordinates", "rating", "1 Test Street", "venueAddress"]) {
     assert.ok(!json.includes(banned), `projection carries "${banned}"`);

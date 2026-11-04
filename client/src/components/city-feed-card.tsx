@@ -14,7 +14,11 @@ import { composeGemFactLine } from "@shared/gem-fact-line";
 import { useExpertAvailability } from "@/lib/expert-availability";
 import { isPartnerPriced, openPartnerPrice, partnerActivityPriceLabel } from "@/lib/partner-price";
 import { feverCardPlace, partnerDisplayName } from "@/lib/fever-card-place";
-import { PARTNER_COMMISSION_NOTE, PARTNER_PRICE_LINK_LABEL } from "@/lib/browse-supply";
+import { PARTNER_COMMISSION_NOTE, PARTNER_PRICE_LINK_LABEL, partnerCommissionShown } from "@/lib/browse-supply";
+import { useBrowseSaveToPlan } from "@/lib/browse-save";
+import { useSignupMode } from "@/lib/signup-mode";
+import { WAITLIST_COPY } from "@/lib/waitlist-copy";
+import { SaveToPlanButton } from "@/components/plan/SaveToPlanButton";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import type { BentoCompactActionState } from "@/lib/bento-action-state";
 import { isReferencePhoto } from "@/lib/photo-provenance";
@@ -535,6 +539,11 @@ interface MoreInfoSheetProps {
   /** #330: when set, the sheet offers Save. The compact tile's one primary action is not
    *  Save, so Save lives here, on the detail path its tap opens. */
   saveItem?: SaveItemBody | null;
+  /**
+   * GATE-1 (ledger `2026-11-03-gate1-partner1`): the event drawer's one action. `saveToPlan` draws "Save to plan"
+   * (waitlist + signed out); otherwise `onAdd` is the card's own add path under the card's own label.
+   */
+  action?: { saveToPlan: boolean; label: string; onAdd?: () => void } | null;
 }
 
 // C3 / R4 (cosmetic-public-surfaces dispatch): at desktop widths the details sheet opened as a
@@ -554,7 +563,113 @@ export function useIsDesktopPanel(): boolean {
   return isDesktop;
 }
 
-function MoreInfoSheet({ open, onClose, cardType, data, saveItem }: MoreInfoSheetProps) {
+/**
+ * The event drawer's body (GATE-1 + PARTNER-1, ledger `2026-11-03-gate1-partner1`): one action row, the About block only
+ * for our reviewed text, and the commission line only where the partner link works and purchases are on sale.
+ * Exported so it renders outside the sheet's portal in tests.
+ */
+export function EventSheetBody({ data, action }: { data: any; action?: MoreInfoSheetProps["action"] }) {
+  const purchasesAllowed = useSignupMode().mode === "open";
+  const partnerPlace = feverCardPlace(data);
+  const partnerName = partnerDisplayName(data.partnerName);
+  return (
+  <div className="flex flex-col gap-4 pt-2">
+    {/* GATE-1: the drawer's one action row. */}
+    {action ? (
+      action.saveToPlan ? (
+        <SaveToPlanButton testId={`btn-save-event-sheet-${data.id}`} className="self-start inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-semibold" />
+      ) : action.onAdd ? (
+        <Button size="sm" className="self-start h-8 text-xs px-3" style={ADD_BTN_STYLE} onClick={action.onAdd} data-testid={`btn-add-event-sheet-${data.id}`}>
+          <Plus className="w-3 h-3 mr-1" />
+          {action.label}
+        </Button>
+      ) : null
+    ) : null}
+
+    {/* PARTNER-1: the description is our own reviewed text only (the server sends nothing else); no text ⇒ no
+        "About" heading, never a placeholder. */}
+    {typeof data.description === "string" && data.description.trim() ? (
+      <div data-testid={`event-about-${data.id}`}>
+        <p className="text-[13px] font-semibold text-foreground mb-1">About</p>
+        <p className="text-[13px] text-muted-foreground leading-relaxed">{data.description}</p>
+      </div>
+    ) : null}
+
+    {Array.isArray(data.highlights) && data.highlights.length > 0 && (
+      <div>
+        <p className="text-[13px] font-semibold text-foreground mb-1.5">Highlights</p>
+        <ul className="flex flex-col gap-1">
+          {(data.highlights as string[]).map((h, i) => (
+            <li key={i} className="flex items-start gap-1.5 text-[13px] text-muted-foreground">
+              <span className="text-amber-500 mt-0.5">•</span>
+              {h}
+            </li>
+          ))}
+        </ul>
+      </div>
+    )}
+
+    {partnerName && (
+      <p className="text-[13px] text-foreground break-words" data-testid="event-partner-name">{partnerName}</p>
+    )}
+
+    {partnerPlace ? (
+      (partnerPlace.label || partnerPlace.credit) && (
+        <div>
+          <p className="text-[13px] font-semibold text-foreground mb-1">Area</p>
+          {partnerPlace.label && (
+            <p className="text-[13px] text-foreground" data-testid="event-area">{partnerPlace.label}</p>
+          )}
+          {partnerPlace.credit && (
+            <p className="text-[11px] text-muted-foreground mt-1" data-testid="event-osm-credit">{partnerPlace.credit}</p>
+          )}
+        </div>
+      )
+    ) : (data.venueName || data.venueAddress) && (
+      <div>
+        <p className="text-[13px] font-semibold text-foreground mb-1">Venue</p>
+        {data.venueName && <p className="text-[13px] text-foreground">{data.venueName}</p>}
+        {data.venueAddress && (
+          <a
+            href={`https://maps.google.com/?q=${encodeURIComponent(data.venueAddress)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-start gap-1.5 text-[13px] text-blue-600 hover:underline mt-0.5"
+            data-testid="link-event-venue"
+          >
+            <MapPin className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+            {data.venueAddress}
+          </a>
+        )}
+      </div>
+    )}
+
+    {partnerCommissionShown(typeof data.bookingToken === "string" && !!data.bookingToken, purchasesAllowed) ? (
+      <p className="text-[13px] text-muted-foreground break-words" data-testid="event-partner-commission">{PARTNER_COMMISSION_NOTE}</p>
+    ) : null}
+
+    {data.tips && (
+      <div className="bg-amber-50 rounded-lg px-3 py-2.5">
+        <p className="text-[12px] font-semibold text-amber-700 mb-0.5">Tips</p>
+        <p className="text-[13px] text-amber-800 leading-relaxed">{data.tips}</p>
+      </div>
+    )}
+
+    {(data.category || data.subcategory) && (
+      <div className="flex gap-2">
+        {data.category && (
+          <span className="text-[11px] bg-muted rounded-full px-2.5 py-0.5 text-muted-foreground capitalize">{data.category}</span>
+        )}
+        {data.subcategory && (
+          <span className="text-[11px] bg-muted rounded-full px-2.5 py-0.5 text-muted-foreground capitalize">{data.subcategory}</span>
+        )}
+      </div>
+    )}
+  </div>
+  );
+}
+
+function MoreInfoSheet({ open, onClose, cardType, data, saveItem, action }: MoreInfoSheetProps) {
   const isDesktopPanel = useIsDesktopPanel();
   // Thin gem detail (2026-08-29 Replit-audit ruling 3): the sheet renders the
   // ruled TEASER set only. Address, the locals-vs-tourists popularity ratio,
@@ -619,91 +734,7 @@ function MoreInfoSheet({ open, onClose, cardType, data, saveItem }: MoreInfoShee
     </div>
   );
 
-  const renderEventContent = () => {
-    const partnerPlace = feverCardPlace(data);
-    const partnerName = partnerDisplayName(data.partnerName);
-    return (
-    <div className="flex flex-col gap-4 pt-2">
-      {(data.description || data.shortDescription) && (
-        <div>
-          <p className="text-[13px] font-semibold text-foreground mb-1">About</p>
-          <p className="text-[13px] text-muted-foreground leading-relaxed">{data.description || data.shortDescription}</p>
-        </div>
-      )}
-
-      {Array.isArray(data.highlights) && data.highlights.length > 0 && (
-        <div>
-          <p className="text-[13px] font-semibold text-foreground mb-1.5">Highlights</p>
-          <ul className="flex flex-col gap-1">
-            {(data.highlights as string[]).map((h, i) => (
-              <li key={i} className="flex items-start gap-1.5 text-[13px] text-muted-foreground">
-                <span className="text-amber-500 mt-0.5">•</span>
-                {h}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {partnerName && (
-        <p className="text-[13px] text-foreground break-words" data-testid="event-partner-name">{partnerName}</p>
-      )}
-
-      {partnerPlace ? (
-        (partnerPlace.label || partnerPlace.credit) && (
-          <div>
-            <p className="text-[13px] font-semibold text-foreground mb-1">Area</p>
-            {partnerPlace.label && (
-              <p className="text-[13px] text-foreground" data-testid="event-area">{partnerPlace.label}</p>
-            )}
-            {partnerPlace.credit && (
-              <p className="text-[11px] text-muted-foreground mt-1" data-testid="event-osm-credit">{partnerPlace.credit}</p>
-            )}
-          </div>
-        )
-      ) : (data.venueName || data.venueAddress) && (
-        <div>
-          <p className="text-[13px] font-semibold text-foreground mb-1">Venue</p>
-          {data.venueName && <p className="text-[13px] text-foreground">{data.venueName}</p>}
-          {data.venueAddress && (
-            <a
-              href={`https://maps.google.com/?q=${encodeURIComponent(data.venueAddress)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-start gap-1.5 text-[13px] text-blue-600 hover:underline mt-0.5"
-              data-testid="link-event-venue"
-            >
-              <MapPin className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-              {data.venueAddress}
-            </a>
-          )}
-        </div>
-      )}
-
-      {typeof data.bookingToken === "string" && data.bookingToken ? (
-        <p className="text-[13px] text-muted-foreground break-words" data-testid="event-partner-commission">{PARTNER_COMMISSION_NOTE}</p>
-      ) : null}
-
-      {data.tips && (
-        <div className="bg-amber-50 rounded-lg px-3 py-2.5">
-          <p className="text-[12px] font-semibold text-amber-700 mb-0.5">Tips</p>
-          <p className="text-[13px] text-amber-800 leading-relaxed">{data.tips}</p>
-        </div>
-      )}
-
-      {(data.category || data.subcategory) && (
-        <div className="flex gap-2">
-          {data.category && (
-            <span className="text-[11px] bg-muted rounded-full px-2.5 py-0.5 text-muted-foreground capitalize">{data.category}</span>
-          )}
-          {data.subcategory && (
-            <span className="text-[11px] bg-muted rounded-full px-2.5 py-0.5 text-muted-foreground capitalize">{data.subcategory}</span>
-          )}
-        </div>
-      )}
-    </div>
-    );
-  };
+  const renderEventContent = () => <EventSheetBody data={data} action={action} />;
 
   const renderVendorServiceContent = () => (
     <div className="flex flex-col gap-4 pt-2">
@@ -907,7 +938,7 @@ export function CityFeedCardGem({
   city,
   scheduledDate,
   bookability,
-  onAdd,
+  onAdd: onAddProp,
   compact = false,
   layout = "column",
   className,
@@ -916,6 +947,9 @@ export function CityFeedCardGem({
   density = "full",
   compactActionState: _compactActionState,
 }: CityFeedCardGemProps) {
+  // GATE-1: waitlist + signed out ⇒ the add press is "Save to plan" (a toast, no dialog, no sign-in wall).
+  const browseSave = useBrowseSaveToPlan();
+  const onAdd = browseSave.wrapAdd(onAddProp);
   const [imgLoaded, setImgLoaded] = useState(false);
   const [imgFailed, setImgFailed] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -966,7 +1000,7 @@ export function CityFeedCardGem({
     platformPath;
   const typeMeta = gemTypeMeta(gem.placeType);
 
-  const addLabel = tileActionLabel("loose-gem", { scheduledDate }) ?? "";
+  const addLabel = tileActionLabel("loose-gem", { scheduledDate, saveToPlan: browseSave.saveToPlan }) ?? "";
   const { srcSet, sizes } = buildSrcSet(photoUrl);
 
   const isRow = layout === "row";
@@ -1301,7 +1335,10 @@ interface CityFeedCardEventProps {
   compactActionState?: BentoCompactActionState;
 }
 
-export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className, cardPosition, density = "full", compactActionState: _compactActionState }: CityFeedCardEventProps) {
+export function CityFeedCardEvent({ event, city, scheduledDate, onAdd: onAddProp, className, cardPosition, density = "full", compactActionState: _compactActionState }: CityFeedCardEventProps) {
+  // GATE-1: waitlist + signed out ⇒ the add press is "Save to plan" (a toast, no dialog, no sign-in wall).
+  const browseSave = useBrowseSaveToPlan();
+  const onAdd = browseSave.wrapAdd(onAddProp);
   const [imgLoaded, setImgLoaded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const askExpert = useAskExpert();
@@ -1337,7 +1374,23 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
     actionVariant: "affiliate",
     href: "/experiences",
   };
-  const addLabel = tileActionLabel("event", { scheduledDate }) ?? "";
+  const addLabel = tileActionLabel("event", { scheduledDate, saveToPlan: browseSave.saveToPlan }) ?? "";
+  const purchasesAllowed = useSignupMode().mode === "open";
+  const sheetAction = {
+    saveToPlan: browseSave.saveToPlan,
+    label: addLabel,
+    onAdd: onAdd
+      ? () =>
+          onAdd({
+            title: eventName,
+            city,
+            type: "event",
+            scheduledDate,
+            sourceImpressionId: getImpIdEvt(),
+            sourceContentId: String(event.id ?? event.eventId ?? ""),
+          })
+      : undefined,
+  };
   const { srcSet, sizes } = buildSrcSet(photoUrl);
 
   // Price chip
@@ -1430,12 +1483,12 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
                 {addLabel}
               </Button>
             </div>
-            {priceToken && (
+            {partnerCommissionShown(!!priceToken, purchasesAllowed) && (
               <p className="text-[11px] text-muted-foreground break-words" data-testid={`event-partner-commission-${event.id}`}>{PARTNER_COMMISSION_NOTE}</p>
             )}
           </div>
         </div>
-        <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="event" data={event} />
+        <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="event" data={event} action={sheetAction} />
       </>
     );
   }
@@ -1483,9 +1536,10 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
           )}
 
           {/* 2-line description */}
-          {(event.description || event.shortDescription) && (
+          {/* PARTNER-1: reviewed text only — the server no longer sends a supplier's short description. */}
+          {event.description && (
             <p className="text-[12px] text-muted-foreground line-clamp-2" data-testid={`event-description-${event.id}`}>
-              {event.description || event.shortDescription}
+              {event.description}
             </p>
           )}
 
@@ -1565,13 +1619,13 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd, className
               </Button>
             )}
           </div>
-          {priceToken && (
+          {partnerCommissionShown(!!priceToken, purchasesAllowed) && (
             <p className="text-[11px] text-muted-foreground break-words" data-testid={`event-partner-commission-${event.id}`}>{PARTNER_COMMISSION_NOTE}</p>
           )}
           {priceOpenFailed && <p className="text-[11px] text-destructive">Couldn't open the partner's page. Try again in a moment.</p>}
         </div>
       </div>
-      <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="event" data={event} />
+      <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="event" data={event} action={sheetAction} />
     </>
   );
 }
@@ -1621,7 +1675,10 @@ interface CityFeedCardVendorServiceProps {
   compactActionState?: BentoCompactActionState;
 }
 
-export function CityFeedCardVendorService({ service, city, className, cardPosition, scheduledDate, onAdd, density = "full", compactActionState }: CityFeedCardVendorServiceProps) {
+export function CityFeedCardVendorService({ service, city, className, cardPosition, scheduledDate, onAdd: onAddProp, density = "full", compactActionState }: CityFeedCardVendorServiceProps) {
+  // GATE-1: waitlist + signed out ⇒ the add press is "Save to plan" (a toast, no dialog, no sign-in wall).
+  const browseSave = useBrowseSaveToPlan();
+  const onAdd = browseSave.wrapAdd(onAddProp);
   const [imgLoaded, setImgLoaded] = useState(false);
   const askExpert = useAskExpert();
   // SH-1 item 11: Ask draws only when the server says this city has an expert to ask.
@@ -1767,7 +1824,7 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
                   data-bento-primary-action=""
                 >
                   <Plus className="w-3 h-3 mr-1" />
-                  {tileActionLabel("vendor-service", { bookable: false, scheduledDate })}
+                  {tileActionLabel("vendor-service", { bookable: false, scheduledDate, saveToPlan: browseSave.saveToPlan })}
                 </Button>
               ) : null}
             </div>
@@ -1893,7 +1950,7 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
                 data-testid={`btn-add-svc-${service.id}`}
               >
                 <Plus className="w-3 h-3 mr-1" />
-                Add to trip
+                {browseSave.saveToPlan ? WAITLIST_COPY.saveToPlan : "Add to trip"}
               </Button>
             )}
             {externalUrl && (
@@ -1954,7 +2011,10 @@ interface CityFeedCardSupplyProps {
   compactActionState?: BentoCompactActionState;
 }
 
-export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, className, cardPosition, density = "full", compactActionState: _compactActionState }: CityFeedCardSupplyProps) {
+export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd: onAddProp, className, cardPosition, density = "full", compactActionState: _compactActionState }: CityFeedCardSupplyProps) {
+  // GATE-1: waitlist + signed out ⇒ the add press is "Save to plan" (a toast, no dialog, no sign-in wall).
+  const browseSave = useBrowseSaveToPlan();
+  const onAdd = browseSave.wrapAdd(onAddProp);
   const isActivity = kind === "supply-activity";
   const cleanedName = typeof item.name === "string" && isActivity ? stripPartnerCardPhrase(item.name) : item.name;
   const cleanedTitle = typeof item.title === "string" && isActivity ? stripPartnerCardPhrase(item.title) : item.title;
@@ -2001,7 +2061,7 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd, cla
     city,
   });
 
-  const addLabel = tileActionLabel(isHotel ? "supply-hotel" : "supply-activity", { scheduledDate }) ?? "";
+  const addLabel = tileActionLabel(isHotel ? "supply-hotel" : "supply-activity", { scheduledDate, saveToPlan: browseSave.saveToPlan }) ?? "";
   const { srcSet, sizes } = buildSrcSet(photoUrl);
 
   // Partner amounts render in the source currency. No currency ⇒ "See current price", never a "$" prefix (LC-1).
