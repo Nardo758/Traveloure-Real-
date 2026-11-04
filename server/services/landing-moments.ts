@@ -69,10 +69,10 @@ export const MOMENTS: MomentConfig[] = [
     key: "proposal",
     label: "Proposal",
     eyebrow: "A proposal in Kyoto",
-    headline: "The spot, the photographer, the dinner after — the ring stays your secret.",
+    headline: "The spot, the photographer, the dinner after — planned privately.",
     pieces: [
       "A quiet lane in Gion, at the hour it empties.",
-      "A photographer out of sight; kaiseki booked for after.",
+      "A photographer out of sight; dinner planned for after.",
     ],
     experienceType: "event",
     experienceSlug: "proposal",

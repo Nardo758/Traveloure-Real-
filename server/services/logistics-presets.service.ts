@@ -177,7 +177,7 @@ const PROPOSAL_PRESETS: TemplatePresets = {
     },
     {
       anchorType: "photographer_arrival",
-      label: "Secret Photographer",
+      label: "Photographer",
       defaultBufferBefore: 30,
       defaultBufferAfter: 90,
       defaultTimeOfDay: "20:00",

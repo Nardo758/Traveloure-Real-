@@ -11,12 +11,16 @@
  */
 import { Fragment } from "react";
 import { Link } from "wouter";
-import { HOME_HOW_IT_WORKS_STEPS } from "@/lib/how-it-works-steps";
+import { homeHowItWorksSteps } from "@/lib/how-it-works-steps";
+import { useSignupMode } from "@/lib/signup-mode";
 
 const FRAUNCES = "'Fraunces', Georgia, serif";
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
 export function HowItWorks() {
+  // COPY-1 row 6b: waitlist mode (fail-closed) drops step 3 "Hand off or book".
+  const { mode } = useSignupMode();
+  const steps = homeHowItWorksSteps(mode);
   return (
     <section
       className="w-full border-y px-4"
@@ -31,7 +35,7 @@ export function HowItWorks() {
           How it works
         </span>
         <ol className="flex flex-wrap items-center gap-x-3 gap-y-2" data-testid="how-it-works-steps">
-          {HOME_HOW_IT_WORKS_STEPS.map((step, i) => (
+          {steps.map((step, i) => (
             <Fragment key={step.n}>
               {i > 0 && (
                 <li aria-hidden="true" className="text-[13px]" style={{ color: "var(--earn-faint)" }}>

@@ -21,13 +21,10 @@ const labelHits = allPresetAnchors()
   .filter((x) => x.hits.length > 0);
 
 describe("ENTRY-1s — preset labels and draft order", () => {
-  it(
-    "T3 every preset label passes the never-say list",
-    { todo: labelHits.length ? `waits for the copy PR: ${labelHits.map((x) => `${x.where} "${x.label}"`).join(", ")}` : false },
-    () => {
-      assert.deepEqual(labelHits, []);
-    },
-  );
+  // COPY-1 renamed "Secret Photographer" to "Photographer": the check is live.
+  it("T3 every preset label passes the never-say list", () => {
+    assert.deepEqual(labelHits, []);
+  });
 
   it("T3 a banned label never reaches a stop name; every preset description is clean", () => {
     for (const p of allPresetAnchors()) {
@@ -35,7 +32,8 @@ describe("ENTRY-1s — preset labels and draft order", () => {
       const name = presetAnchorLabel(p.anchor.anchorType, p.anchor.description);
       if (name !== null) assert.deepEqual(siteNeverSayHits(name), [], name);
     }
-    assert.equal(presetAnchorLabel("photographer_arrival", "Hidden photographer positioning"), null, "the banned label falls back");
+    // COPY-1: the preset label is now "Photographer" (no banned word), so its own stop name is used.
+    assert.equal(presetAnchorLabel("photographer_arrival", "Hidden photographer positioning"), "Photographer");
     assert.equal(presetAnchorLabel("photographer_arrival", "Photographer arrives for pre-ceremony shots"), "Photographer Arrival");
     assert.equal(presetAnchorLabel("photographer_arrival", "edited by the traveler"), null);
     assert.ok(PRESET_ANCHOR_TYPES.has("photographer_arrival") && PRESET_ANCHOR_TYPES.has("ceremony_time") && PRESET_ANCHOR_TYPES.has("dinner_reservation"));

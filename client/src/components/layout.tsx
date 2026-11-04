@@ -76,6 +76,7 @@ import { navGroupsConfig, authNavConfig, visibleFooterSections, activeNavGroupNa
 import { TripStrip } from "@/components/trip/trip-strip";
 import { CityTickerTape } from "@/components/CityTickerTape";
 import { showsTicker } from "@/lib/ticker-mount";
+import { useExpertsLive } from "@/lib/signup-mode";
 
 // ── Icon maps ─────────────────────────────────────────────────────────────────
 // ONE source object for the earn-grammar nav leaves (ruling 2026-08-25-nav-icons):
@@ -576,6 +577,7 @@ function DesktopDropdown({
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
+  const expertsLive = useExpertsLive();
   const { t } = useTranslation("nav");
   const { t: tCommon } = useTranslation("common");
   const { locale } = useLocale();
@@ -1104,9 +1106,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <div className="flex items-center mb-4" aria-hidden="true">
                 <TraveloureLogo mono className="h-8" />
               </div>
-              <p className="text-[color:var(--earn-muted)] text-sm mb-6 max-w-sm leading-relaxed">
-                {t("footer.tagline")}
-              </p>
+              {/* COPY-1 F1/§4k: the tagline promises a local; it shows only once the launch market has an approved
+                  expert. Otherwise it is omitted, never replaced. */}
+              {expertsLive && (
+                <p className="text-[color:var(--earn-muted)] text-sm mb-6 max-w-sm leading-relaxed" data-testid="footer-tagline">
+                  {t("footer.tagline")}
+                </p>
+              )}
               {/* TEST 3 — Social links: aria-label for icon-only anchors */}
               <div className="flex items-center gap-3">
                 <a
