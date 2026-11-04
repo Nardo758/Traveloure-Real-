@@ -19,6 +19,8 @@ export const GUEST_MAP_TRAY = "Browse freely. Your plan is created when you sign
 export const GUEST_MAP_START_LABEL = "Sign in to start";
 export const GUEST_GATE_TITLE = "Your plan is created when you sign in";
 export const GUEST_GATE_DISMISS = "Keep browsing";
+/** ENTRY-1 (copy row 11, approved by Marketing; HELD for "Wording approved — Leon"). */
+export const GUEST_ANSWERS_KEPT = "Your answers are kept.";
 
 export type GuestGateKind = { kind: "add"; name: string } | { kind: "start" };
 
@@ -81,12 +83,21 @@ export function guestPartyCount(answers: Pick<DraftAnswers, "adults" | "kids"> |
   return total > 0 ? total : null;
 }
 
-/** "Kyoto, Thu 12 – Mon 16 Nov and 2 travelers" — only the parts the guest gave. Null when none. */
-export function guestAnswersLine(answers: DraftAnswers | null | undefined, destination: string | null): string | null {
+/**
+ * "Proposal, Kyoto, Thu 12 – Mon 16 Nov and 2 travelers" — only the parts the guest gave. Null when none.
+ * ENTRY-1: the occasion leads when the guest chose one; its name is the catalog's (resolved by the caller
+ * from `answers.occasionSlug`), never a slug turned into words here.
+ */
+export function guestAnswersLine(
+  answers: DraftAnswers | null | undefined,
+  destination: string | null,
+  occasionName?: string | null,
+): string | null {
   const city = destination ? destination.split(",")[0].trim() : null;
   const dates = guestDateRange(answers?.startDate, answers?.endDate);
   const party = guestPartyCount(answers);
-  const head = [city, dates].filter(Boolean).join(", ");
+  const occasion = occasionName?.trim() || null;
+  const head = [occasion, city, dates].filter(Boolean).join(", ");
   const partyText = party != null ? `${party} ${party === 1 ? "traveler" : "travelers"}` : null;
   const line = head && partyText ? `${head} and ${partyText}` : head || partyText;
   return line || null;
@@ -94,6 +105,6 @@ export function guestAnswersLine(answers: DraftAnswers | null | undefined, desti
 
 /** The gate dialog's description: what is kept, then what happens next. */
 export function guestGateDescription(answersLine: string | null, gate: GuestGateKind): string {
-  const kept = answersLine ? `${answersLine} are kept from your answers.` : null;
+  const kept = answersLine ? `${answersLine}. ${GUEST_ANSWERS_KEPT}` : null;
   return [kept, guestGateNext(gate)].filter(Boolean).join(" ");
 }

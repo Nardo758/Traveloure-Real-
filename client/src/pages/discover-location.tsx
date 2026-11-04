@@ -1,4 +1,5 @@
 import { DISCOVER_HEADLINE_COPY } from "@shared/copy-2026-10-31";
+import { neighbourhoodHomeKey } from "@/lib/wanted-slot-link";
 import { heroEyebrowFragments } from "@/lib/hero-eyebrow";
 import { formatTripDates } from "@/lib/trip-dates";
 import { isKyotoCity, KYOTO_CITY_DESCRIPTION } from "@/lib/g02-g06-copy";
@@ -979,8 +980,7 @@ function FeedRenderer({
   // Arashiyama's bento. A recruitment panel is not organic ranking, so moving
   // it to the section it names is a correctness fix, not a re-rank; a slot
   // naming no rendered section stays where it fell.
-  const sectionKey = (nb: any): string | null =>
-    nb ? String(nb.slug ?? nb.id ?? nb.name ?? "") || null : null;
+  const sectionKey = (nb: any): string | null => neighbourhoodHomeKey(nb);
   const groupByKey = new Map<string, GroupSection>();
   for (const s of sections) {
     if (s.type === "group" && s.neighbourhood) {
@@ -1727,7 +1727,8 @@ export default function DiscoverLocationPage() {
       neighborhoodName: nbName,
       neighborhoodSlug: typeof nb.slug === "string" ? nb.slug : "",
       city,
-      neighborhoodId: String(nb.id ?? nb.slug ?? nbName),
+      // ENTRY-1: the same key the sections use (slug first), so the tile homes in its own section.
+      neighborhoodId: neighbourhoodHomeKey({ slug: nb.slug, id: nb.id, name: nbName }) ?? nbName,
     }];
   });
 

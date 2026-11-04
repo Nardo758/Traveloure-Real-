@@ -6,11 +6,21 @@
 
 import { WAITLIST_EXPERT_FORM_PATH } from "@shared/launch-waitlist";
 
-export const ARASHIYAMA_ITINERARY_EXPERT_LINK =
-  "Know Arashiyama well? Apply now as a local expert.";
+/**
+ * ENTRY-1: the same two cleared sentences, templated on the slot's own neighbourhood name, so the tile
+ * names the place it sits in. An empty name falls back to "Arashiyama", the only match today.
+ */
+export function itineraryExpertLink(neighborhood: string | null | undefined): string {
+  return `Know ${neighborhood?.trim() || "Arashiyama"} well? Apply now as a local expert.`;
+}
 
-export const ARASHIYAMA_ITINERARY_PROVIDER_LINK =
-  "Run a business in Arashiyama? Sign up as a provider.";
+export function itineraryProviderLink(neighborhood: string | null | undefined): string {
+  return `Run a business in ${neighborhood?.trim() || "Arashiyama"}? Sign up as a provider.`;
+}
+
+export const ARASHIYAMA_ITINERARY_EXPERT_LINK = itineraryExpertLink("Arashiyama");
+
+export const ARASHIYAMA_ITINERARY_PROVIDER_LINK = itineraryProviderLink("Arashiyama");
 
 /** Signed-in travelers. Everyone else sees the two apply lines. */
 export const ARASHIYAMA_PLAN_YOUR_DAY = "Plan your day here";

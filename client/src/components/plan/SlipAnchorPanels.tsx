@@ -13,6 +13,7 @@
  *                        through the existing pick-based occasion PATCH (§19). An empty field is never
  *                        sent as an answer (§13: unanswered is not "no pet", not "0 children").
  */
+import { api } from "@shared/routes";
 import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +37,7 @@ function dayOf(value: string | Date | null | undefined): string {
 function invalidatePlan(tripId: string) {
   void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
   void queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId] });
+  void queryClient.invalidateQueries({ queryKey: [api.trips.get.path, tripId] }); // ENTRY-1: the slip header's trip read
 }
 
 /** Pure. Can this window be saved? Both days, the end not before the start. */

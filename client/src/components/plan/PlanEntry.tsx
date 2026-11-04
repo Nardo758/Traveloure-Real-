@@ -71,6 +71,12 @@ import {
 const MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 const SERIF = "'Fraunces', Georgia, serif";
 
+/**
+ * ENTRY-1: the footer button's label. HELD for "Wording approved — Leon".
+ * The default group is not drawn as chosen until the traveler picks one; picking does not advance.
+ */
+export const PLAN_ENTRY_CONTINUE = "Continue";
+
 /** What Start a plan hands the provider — every value one the traveler chose or the door held. */
 export interface PlanEntryStart {
   destination: string;
@@ -81,6 +87,8 @@ export interface PlanEntryStart {
   endDate?: string;
   occasionSlug: string;
   occasionId?: string;
+  /** ENTRY-1: the chosen occasion's catalog name, for the plan's composed title. */
+  occasionName?: string;
   event?: { title: string; eventDate: string; startTime: string | null; location: string };
   /** SH-1 Launch Q14.3: the `city_events.source_id` the plan is built around — the server refuses an ended one. */
   eventSourceId?: string;
@@ -117,6 +125,8 @@ interface PanelProps {
    * them. The dialog does not report — a second panel must not clobber the page's pick.
    */
   onHeldChange?: (pick: ExperiencesPick | null) => void;
+  /** ENTRY-1: the pop-up reports its step so the provider can mirror it to the URL. */
+  onStepChange?: (step: PlanEntryStep) => void;
 }
 
 const AROUND: Array<{ key: PlanAround; label: string }> = [
@@ -164,18 +174,18 @@ function Chip({ active, onClick, testId, children }: { active: boolean; onClick:
 }
 
 /** The pop-up container: the panel in a Dialog. */
-export function PlanEntry({ open, onOpenChange, source, onStart }: Props) {
+export function PlanEntry({ open, onOpenChange, source, onStart, onStepChange }: Props & { onStepChange?: (step: PlanEntryStep) => void }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-[640px]" data-testid="plan-entry">
-        <PlanEntryPanel active={open} source={source} onStart={onStart} container="dialog" />
+        <PlanEntryPanel active={open} source={source} onStart={onStart} container="dialog" onStepChange={onStepChange} />
       </DialogContent>
     </Dialog>
   );
 }
 
 /** The steps and Start a plan, in either container. */
-export function PlanEntryPanel({ active, source, onStart, container, placePicker, onHeldChange }: PanelProps) {
+export function PlanEntryPanel({ active, source, onStart, container, placePicker, onHeldChange, onStepChange }: PanelProps) {
   const open = active;
   const inline = container === "page";
   const seed = useMemo(() => {
@@ -185,6 +195,9 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
   }, [source, inline]);
   const [state, setState] = useState<PlanEntryState>(seed.state);
   const [step, setStep] = useState<PlanEntryStep>(seed.step);
+  useEffect(() => {
+    if (active) onStepChange?.(step);
+  }, [active, step, onStepChange]);
   const [typed, setTyped] = useState("");
   const [moreSpecific, setMoreSpecific] = useState(false);
   const [pickDates, setPickDates] = useState(false);
@@ -275,6 +288,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
       occasionSlug: pickedSlug,
       ...(state.event?.eventSourceId ? { eventSourceId: state.event.eventSourceId } : {}),
       ...(pickedRow?.id ? { occasionId: pickedRow.id } : {}),
+      ...(pickedRow?.name ? { occasionName: pickedRow.name } : {}),
       ...(planEntryEventRow(state) ? { event: planEntryEventRow(state)! } : {}),
       view: planEntryView(state, pickedRow),
       occasionAsked: !doorOccasion.current || !!state.event,
@@ -579,7 +593,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
                 {shownGroups.map((key: OccasionPickerGroup) => (
                   <Chip
                     key={key}
-                    active={state.group === key && !(moreSpecific && state.occasionSlug)}
+                    active={(groupChosen || !!source?.group || !!state.occasionSlug) && state.group === key && !(moreSpecific && state.occasionSlug)}
                     onClick={() => {
                       setGroupChosen(true);
                       setState((s) => ({ ...s, ...choosePlanEntryGroup(s, key) }));
@@ -642,7 +656,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
                 style={{ background: "var(--coral-fill)" }}
                 data-testid="button-plan-entry-start"
               >
-                {starting ? "Starting…" : "Start a plan"}
+                {starting ? "Starting…" : PLAN_ENTRY_CONTINUE}
               </button>
             )}
           </div>

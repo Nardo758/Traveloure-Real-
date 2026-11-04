@@ -281,7 +281,8 @@ test.describe("1 · entry and occasion", () => {
     await openModalFromHero(page);
     await expect(testid(page, "plan-entry-step-around"), "a new plan starts from 'Plan around…'").toBeVisible();
     await pickDates(`${year}-11-11`, `${year}-11-15`);
-    await expect(testid(page, "plan-entry-group-trips")).toHaveAttribute("aria-pressed", "true");
+    // ENTRY-1 (g): the default group is not drawn as chosen until the traveler picks one.
+    await expect(testid(page, "plan-entry-group-trips")).toHaveAttribute("aria-pressed", "false");
     let travelId: string | null = null;
     const status = await actAndAwait(
       page,

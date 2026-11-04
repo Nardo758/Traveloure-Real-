@@ -69,9 +69,9 @@ test.describe("Single planning entry — PlanEntry", () => {
     for (const k of ["place", "date", "event"]) await expect(page.getByTestId(`plan-entry-around-${k}`)).toBeVisible();
     await page.getByTestId("plan-entry-around-place").click();
     await page.getByTestId("plan-entry-city-kyoto").click();
-    // Step 2: the five groups, "A trip" pre-selected.
+    // Step 2: the five groups; ENTRY-1 (g): none is drawn chosen until the traveler picks one.
     await expect(entry.getByRole("heading", { name: "What's the occasion?" })).toBeVisible();
-    await expect(page.getByTestId("plan-entry-group-trips")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("plan-entry-group-trips")).toHaveAttribute("aria-pressed", "false");
     for (const re of NEVER_BEFORE_THE_PLAN) await expect(entry.getByText(re)).toHaveCount(0);
     for (const id of ["plan-step-when", "plan-step-who", "input-etp-title", "button-etp-clear", "button-etp-save"]) {
       await expect(page.getByTestId(id)).toHaveCount(0);
@@ -200,7 +200,7 @@ test.describe("/experiences is the start state, and no route auto-opens (walkthr
     await expect(start).toBeDisabled();
     await page.getByTestId("city-card-kyoto").click();
     await expect(page.getByTestId("plan-entry-step-occasion")).toBeVisible();
-    await expect(page.getByTestId("plan-entry-group-trips")).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("plan-entry-group-trips")).toHaveAttribute("aria-pressed", "false");
     await expect(start).toBeEnabled();
   });
 

@@ -7,7 +7,7 @@ import { LanguageMenu } from "@/components/language-menu";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { usePlanning } from "@/contexts/PlanningContext";
-import { experiencesPopupSource } from "@/lib/plan-entry";
+import { cityPageSource, experiencesPopupSource, PLAN_START_HREF, planStartClick } from "@/lib/plan-entry";
 import { START_PLAN_LABEL } from "@/lib/plan-vocabulary";
 import { Button } from "@/components/ui/button";
 import { TraveloureLogo } from "@/components/ui/traveloure-logo";
@@ -600,9 +600,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const openNewPlan = () => {
     const path = location.split("?")[0].replace(/\/+$/, "") || "/";
     const onExperiences = path === "/experiences" || path.startsWith("/experiences/");
+    // ENTRY-1: a city page carries its city — the pop-up then opens at the occasion step.
+    const cityPage = onExperiences ? null : cityPageSource(path);
     openPlanning({
       newPlan: true,
       ...(onExperiences ? experiencesPopupSource(search, experiencesPick) : {}),
+      ...(cityPage ?? {}),
     });
   };
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -870,14 +873,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   wires it): it STARTS A NEW PLAN — `newPlan: true` opens PlanEntry even while a plan is
                   bound (a bare open would edit the bound plan). No door is recorded; `PLAN_DOORS` is a
                   closed list. The phone menu's and the footer's "Start a plan" do the same. */}
-              <Button
+              <Button asChild
                 size="sm"
                 className="hidden xl:inline-flex text-sm text-white bg-[color:var(--coral-fill)] hover:bg-[color:var(--coral-fill)]/90"
-                onClick={openNewPlan}
+                onClick={planStartClick(openNewPlan)}
                 data-testid="button-nav-start-plan"
-              >
+              ><Link href={PLAN_START_HREF}>
                 {START_PLAN_LABEL}
-              </Button>
+              </Link></Button>
 
               {/* TEST 3 + 9 — Hamburger: aria-label, aria-expanded, aria-controls; min 44×44px */}
               <div className="flex items-center xl:hidden">
@@ -927,16 +930,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   a signed-out visitor is most likely to want is not. Signed-out only — a signed-in
                   visitor's identity/logout stays where it already was, at the panel's foot. */}
               <div className="px-4 pt-3">
-                <Button
+                <Button asChild
                   className="w-full text-white bg-[color:var(--coral-fill)] hover:bg-[color:var(--coral-fill)]/90"
-                  onClick={() => {
+                  onClick={planStartClick(() => {
                     setIsMobileMenuOpen(false);
                     openNewPlan();
-                  }}
+                  })}
                   data-testid="button-mobile-start-plan"
-                >
+                ><Link href={PLAN_START_HREF}>
                   {START_PLAN_LABEL}
-                </Button>
+                </Link></Button>
               </div>
               {!user && (
                 <div className="px-4 pt-3">
@@ -1163,14 +1166,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     ) : (
                       <li key={`action-${link.action}`}>
                         {/* E2: "Start a plan" starts a NEW plan in PlanEntry, never the bound plan's edit window. */}
-                        <button
-                          type="button"
-                          onClick={openNewPlan}
+                        <Link href={PLAN_START_HREF}
+                          onClick={planStartClick(openNewPlan)}
                           className={cn("text-left transition-colors hover:text-[color:var(--earn-teal-ink)] hover:underline underline-offset-2", FOCUS_RING)}
                           data-testid="button-footer-start-plan"
                         >
                           {tr(link.i18nKey, link.label)}
-                        </button>
+                        </Link>
                       </li>
                     ),
                   )}

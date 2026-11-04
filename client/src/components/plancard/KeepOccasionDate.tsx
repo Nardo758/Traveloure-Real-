@@ -3,6 +3,7 @@
  * already holds through `PATCH /api/trips/:id` (the one re-date rail, which stamps `dates_confirmed_at`); "Change"
  * opens the normal dates panel. No panel opens on the one tap.
  */
+import { api } from "@shared/routes";
 import React, { useState } from "react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { OCCASION_DRAFT_COPY, keepDateBody, keepDateLabel } from "@/lib/occasion-draft-copy";
@@ -34,6 +35,7 @@ export function KeepOccasionDate({
       await apiRequest("PATCH", `/api/trips/${tripId}`, body);
       void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
       void queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId] });
+      void queryClient.invalidateQueries({ queryKey: [api.trips.get.path, tripId] }); // ENTRY-1: the slip header's trip read
       onKept?.();
     } finally {
       setBusy(false);

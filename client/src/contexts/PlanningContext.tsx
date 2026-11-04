@@ -41,6 +41,7 @@ import { eventTypeForSlug } from "@shared/occasions";
 import { OCCASION_GROUP_DEFAULT_SLUG, type OccasionPickerGroup } from "@shared/experience-group";
 import { travelersForSave } from "@shared/plan-vocabulary";
 import type { ExperiencesPick } from "@/lib/plan-entry";
+import { planEntryMintBasics, planEntryUrlRequested, withPlanEntryUrl } from "@/lib/plan-entry";
 // The ONE resolver of an earner's public path (LD 40) — read by D15's return-to below.
 import { earnerProfilePath } from "@/lib/earner-address";
 import { withPlanTripId } from "@/lib/experts-browse";
@@ -356,6 +357,11 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
     if (pendingGemRecovery) setModalOpen(true);
   }, [pendingGemRecovery]);
 
+  // ENTRY-1: the new-plan pop-up has a URL. Opening pushes `?start=1` (so Back closes it), closing
+  // removes it, and a link to `?start=1` opens it. What the pop-up does is unchanged.
+  const entryUrlPushed = useRef(false);
+  const suppressEntryPush = useRef(false);
+
   /**
    * Where a plan continues once it exists (E2 ruling 2): `ai` → the map with Draft it with AI started
    * (`?draft=ai`, which asks for dates first when they are unconfirmed — E1); `local` → back to the
@@ -418,6 +424,11 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
     const bound = !!(getTripContext().tripId || next?.tripId);
     if (!bound || next?.newPlan) {
       setEntryOpen(true);
+      if (!suppressEntryPush.current && typeof window !== "undefined" && !planEntryUrlRequested(window.location.search)) {
+        writeEntryUrl("push", true);
+        entryUrlPushed.current = true;
+      }
+      suppressEntryPush.current = false;
     } else {
       setModalOpen(true);
     }
@@ -434,7 +445,37 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
     }
     setModalOpen(false);
     setEntryOpen(false);
+    if (typeof window !== "undefined" && planEntryUrlRequested(window.location.search)) {
+      if (entryUrlPushed.current) window.history.back();
+      else writeEntryUrl("replace", false);
+    }
+    entryUrlPushed.current = false;
   }, [pendingGemRecovery, toast]);
+
+  const onEntryStep = useCallback(
+    (step: string) => {
+      if (typeof window !== "undefined" && planEntryUrlRequested(window.location.search)) writeEntryUrl("replace", true, step);
+    },
+    [],
+  );
+
+  // A link (or Forward) to `?start=1` opens the pop-up; Back to a URL without it closes it.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sync = () => {
+      if (planEntryUrlRequested(window.location.search)) {
+        suppressEntryPush.current = true;
+        open({ newPlan: true });
+      } else {
+        entryUrlPushed.current = false;
+        setEntryOpen(false);
+      }
+    };
+    if (planEntryUrlRequested(window.location.search)) sync();
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const retryPendingGem = useCallback(async (): Promise<PendingGemRetryOutcome> => {
     if (!pendingGemRecovery) return { ok: false, message: "There is no pending gem to retry." };
@@ -508,10 +549,10 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
       await releasePendingEventsPen();
       const door = isPlanDoor(from?.door) ? from!.door : undefined;
       const finish = finishForBranch(branch === "occasion" ? "myself" : branch);
+      const { datesConfirmed: _datesConfirmed, ...mintBasics } = planEntryMintBasics(start);
       const outcome = await mintTripSlip(
         {
-          destination: start.destination,
-          ...(start.startDate && start.endDate ? { startDate: start.startDate, endDate: start.endDate } : {}),
+          ...mintBasics,
           entry: {
             ...(door ? { door } : {}),
             occasionSource: start.occasionAsked ? "asked" : "door_prefilled",
@@ -683,6 +724,7 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
         onOpenChange={(v) => (v ? setEntryOpen(true) : close())}
         source={entryOpen ? source : null}
         onStart={(start) => startFromEntry(start, source)}
+        onStepChange={onEntryStep}
       />
 
       <PlanModal
@@ -698,6 +740,15 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
       />
     </PlanningContext.Provider>
   );
+}
+
+/** ENTRY-1: write the new-plan pop-up's URL state (`?start=1&step=`), keeping every other param. */
+function writeEntryUrl(mode: "push" | "replace", openFlag: boolean, step?: string | null): void {
+  if (typeof window === "undefined") return;
+  const next = withPlanEntryUrl(window.location.search, openFlag, step);
+  const url = `${window.location.pathname}${next}${window.location.hash}`;
+  if (mode === "push") window.history.pushState({ ...(window.history.state ?? {}), planEntry: true }, "", url);
+  else window.history.replaceState(window.history.state, "", url);
 }
 
 /** A PlanEntry start as the v2 sign-in record's answers (the guest map reads the same shape). */
