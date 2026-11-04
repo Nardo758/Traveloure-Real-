@@ -69,6 +69,9 @@
   "client/src/lib/role-routes-config.ts": {
     "verified": 1
   },
+  "client/src/lib/wlb-signup-copy.ts": {
+    "best": 1
+  },
   "client/src/pages/admin/analytics.tsx": {
     "coming soon": 1,
     "soon": 1,
