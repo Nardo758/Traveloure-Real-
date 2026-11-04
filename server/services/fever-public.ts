@@ -18,6 +18,7 @@ import { mintBookingTokens, type VaultedBooking } from "./affiliate-url-vault.se
 import { resolveFeverAreas, type FeverAreaDeps } from "./fever-area";
 import { approvedFeverPartnerName } from "./fever-partner-name";
 import type { FeverEvent } from "./fever.service";
+import { reviewedEditorialDescription, type EditorialFields } from "./partner-editorial";
 
 /** Every Fever event a traveler sees says where its price lives: with the partner. */
 export const FEVER_PRICE_SOURCE = "partner" as const;
@@ -27,8 +28,8 @@ export const FEVER_PROVIDER = "fever" as const;
 export interface PublicFeverEvent {
   id: string;
   title: string;
+  /** PARTNER-1: our own reviewed editorial text (`fever_event_cache.editorial_description`), or null — never Fever's. */
   description: string | null;
-  shortDescription: string | null;
   imageUrl: string | null;
   category: string | null;
   subcategory: string | null;
@@ -55,12 +56,13 @@ function project(
   e: FeverEvent,
   area: { areaName: string | null; osmCredit: string | null },
   partnerName: string | null,
+  editorial: EditorialFields | null,
 ): PublicFeverEvent {
   return {
     id: String(e.id),
     title: e.title,
-    description: str(e.description),
-    shortDescription: str(e.shortDescription),
+    // PARTNER-1: no description, short description or highlights from Fever — only our reviewed editorial text.
+    description: reviewedEditorialDescription(editorial),
     imageUrl: str(e.imageUrl),
     category: str(e.category),
     subcategory: str(e.subcategory),
@@ -86,17 +88,48 @@ async function shownPartnerName(deps: { partnerName?: string | null }): Promise<
   }
 }
 
+export type FeverEditorialLookup = (eventIds: readonly string[]) => Promise<Map<string, EditorialFields>>;
+
+/**
+ * PARTNER-1: our reviewed editorial text for these events, from `fever_event_cache` (migration 432). Only reviewed rows
+ * are read. A failed read is an empty map — no text is shown, never Fever's in its place (fails closed).
+ */
+export const loadFeverEditorial: FeverEditorialLookup = async (eventIds) => {
+  const out = new Map<string, EditorialFields>();
+  if (eventIds.length === 0) return out;
+  try {
+    const { db } = await import("../db");
+    const { feverEventCache } = await import("@shared/schema");
+    const { and, inArray, isNotNull } = await import("drizzle-orm");
+    const rows = await db
+      .select({
+        eventId: feverEventCache.eventId,
+        editorialDescription: feverEventCache.editorialDescription,
+        editorialReviewedAt: feverEventCache.editorialReviewedAt,
+      })
+      .from(feverEventCache)
+      .where(and(inArray(feverEventCache.eventId, [...eventIds]), isNotNull(feverEventCache.editorialReviewedAt)));
+    for (const r of rows) out.set(String(r.eventId), { editorialDescription: r.editorialDescription, editorialReviewedAt: r.editorialReviewedAt });
+  } catch {
+    return new Map();
+  }
+  return out;
+};
+
 /** Project Fever events for a traveler: allowlisted fields, no amount, no street, and the partner URL swapped for a token. */
 export async function toPublicFeverEvents(
   events: readonly FeverEvent[],
-  deps: FeverAreaDeps & { partnerName?: string | null } = {},
+  deps: FeverAreaDeps & { partnerName?: string | null; editorial?: FeverEditorialLookup } = {},
 ): Promise<PublicFeverEvent[]> {
   // #1607 drops a title that hits geisha, hidden gem(s), back alley, trending, or illuminations.
   // Those phrases are read from SURFACE_COPY_REFUSALS, not a second list.
   const kept = events.filter((e) => !feverTitleBlocked(e.title));
   const areas = await resolveFeverAreas(kept, deps);
   const partnerName = await shownPartnerName(deps);
-  const out = kept.map((e, i) => project(e, areas[i] ?? { areaName: null, osmCredit: null }, partnerName));
+  const editorial = await (deps.editorial ?? loadFeverEditorial)(kept.map((e) => String(e.id)));
+  const out = kept.map((e, i) =>
+    project(e, areas[i] ?? { areaName: null, osmCredit: null }, partnerName, editorial.get(String(e.id)) ?? null),
+  );
   const entries: VaultedBooking[] = [];
   const at: number[] = [];
   kept.forEach((e, i) => {
@@ -112,7 +145,10 @@ export async function toPublicFeverEvents(
   return out;
 }
 
-export async function toPublicFeverEvent(event: FeverEvent, deps: FeverAreaDeps = {}): Promise<PublicFeverEvent> {
+export async function toPublicFeverEvent(
+  event: FeverEvent,
+  deps: FeverAreaDeps & { partnerName?: string | null; editorial?: FeverEditorialLookup } = {},
+): Promise<PublicFeverEvent> {
   const [one] = await toPublicFeverEvents([event], deps);
   return one;
 }

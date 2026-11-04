@@ -38,3 +38,13 @@ export function useSignupMode(): { mode: SignupMode; data: SignupModeAnswer | un
   );
   return { mode: signupModeFrom(q.data), data: q.data, isLoading: q.isLoading };
 }
+
+/**
+ * GATE-1 (ledger `2026-11-03-gate1-partner1`; Leon, Nov 3: "the waitlist is the only gate for travelers, with no
+ * traveler sign-in wall"): on a PUBLIC browse surface, a signed-out viewer in waitlist mode gets "Save to plan" —
+ * a toast, no dialog, no sign-in modal. Signed-in viewers, and every viewer in open mode, keep today's path.
+ * Pure, so a card, the page and the dialog decide it once.
+ */
+export function browseSavesToPlan(mode: SignupMode, signedIn: boolean): boolean {
+  return mode === "waitlist" && !signedIn;
+}

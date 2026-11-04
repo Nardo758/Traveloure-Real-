@@ -54,6 +54,9 @@ import {
   searchPlaces,
   PARTNER_COMMISSION_NOTE,
   PARTNER_PRICE_LINK_LABEL,
+  BROWSE_EMPTY_COPY,
+  browseTabEmptyShown,
+  partnerCommissionShown,
   VIATOR_ATTRIBUTION_LINE,
   VIATOR_LINK_LABEL,
   VIATOR_LIVE_HEADING,
@@ -69,6 +72,9 @@ import { MAP_COMPARE_LINK_LABEL, mapDayChipLabel, mapMovedLine, mapSheetTitle } 
 import { Link } from "wouter";
 import { MAPS_BROWSER_KEY } from "@/lib/maps-browser-key";
 import { viatorAddBody } from "@shared/viator-item";
+import { useSignupMode } from "@/lib/signup-mode";
+import { useTripCapabilities } from "@/lib/trip-capabilities";
+import { SaveToPlanButton } from "@/components/plan/SaveToPlanButton";
 
 const MAPS_API_KEY = MAPS_BROWSER_KEY;
 
@@ -258,6 +264,18 @@ export function MapControlCenter({
     return applyBudget(searchPlaces(placesInTab(all, tab, browseState.categoryKey), search), budgetMax);
   }, [browseOn, listings, categoryKeyById, partner, tab, browseState.categoryKey, search, budgetMax]);
   const browsePlaces: BrowsePlace[] = useMemo(() => [...candidatePlaces, ...supply.shown], [candidatePlaces, supply.shown]);
+  // GATE-1 (ledger `2026-11-03-gate1-partner1`): the commission line only where purchases are on sale. A plan reads its
+  // capabilities (CAP-1); the guest map has no plan, so it reads the public mode — and a guest in waitlist mode saves.
+  const { mode: signupMode } = useSignupMode();
+  const { data: caps } = useTripCapabilities(guest ? null : tripId, !guest && browseOn);
+  const purchasesAllowed = guest ? signupMode === "open" : caps?.signup.purchasesAllowed === true;
+  const guestSavesToPlan = !!guest && signupMode === "waitlist";
+  const browseEmpty = browseTabEmptyShown({
+    browseOn,
+    loaded: listings !== undefined && partner !== undefined,
+    count: browsePlaces.length,
+    city,
+  });
   // What this plan already holds, by the listing / partner id each item names ("On day N · Remove").
   const planItems = useMemo(
     () =>
@@ -707,8 +725,12 @@ export function MapControlCenter({
                     .filter(Boolean)
                     .join(" · ")}
                 </p>
-                {selectedBrowse.kind === "partner" ? <PartnerPriceLink productId={selectedBrowse.id} /> : null}
+                {selectedBrowse.kind === "partner" ? <PartnerPriceLink productId={selectedBrowse.id} purchasesAllowed={purchasesAllowed} /> : null}
                 {(() => {
+                  if (guestSavesToPlan) {
+                    // GATE-1: in waitlist mode the guest's add is "Save to plan" — no sign-in hand-off.
+                    return <SaveToPlanButton testId="map-browse-add" />;
+                  }
                   if (guest) {
                     // Step 8d: the guest's one add is handed back — the page carries it through sign-in.
                     return (
@@ -752,6 +774,11 @@ export function MapControlCenter({
                 })()}
               </div>
             ) : null}
+            {browseEmpty ? (
+              <p className="px-2 py-1 text-xs text-muted-foreground" data-testid="map-browse-empty">
+                {BROWSE_EMPTY_COPY.tab(city)}
+              </p>
+            ) : null}
             <ul className="max-h-48 space-y-0.5 overflow-y-auto">
               {browsePlaces.map((b) => (
                 <li key={`${b.kind}:${b.id}`}>
@@ -768,7 +795,7 @@ export function MapControlCenter({
                 </li>
               ))}
             </ul>
-            {browseOn && !guest && tab === "activities" && city ? <ViatorLiveRow city={city} tripId={tripId} dayNumber={dayNumber ?? 1} /> : null}
+            {browseOn && !guest && tab === "activities" && city ? <ViatorLiveRow city={city} tripId={tripId} dayNumber={dayNumber ?? 1} purchasesAllowed={purchasesAllowed} /> : null}
             {browseOn && hosts.length ? (
               <div data-testid="map-browse-hosts">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Local hosts</p>
@@ -820,7 +847,7 @@ export function MapControlCenter({
  * page through the TRACKED redirect (`POST /api/content/affiliate-redirect` — it records the click and
  * resolves the link server-side, §16), and the commission is said out loud beside it.
  */
-function PartnerPriceLink({ productId }: { productId: string }) {
+function PartnerPriceLink({ productId, purchasesAllowed }: { productId: string; purchasesAllowed: boolean }) {
   const [failed, setFailed] = useState(false);
   const open = async () => {
     setFailed(false);
@@ -838,7 +865,9 @@ function PartnerPriceLink({ productId }: { productId: string }) {
       <button type="button" className="text-xs font-medium underline" onClick={open} data-testid="map-browse-partner-price-link">
         {PARTNER_PRICE_LINK_LABEL}
       </button>
-      <p className="text-[11px] text-muted-foreground" data-testid="map-browse-partner-commission">{PARTNER_COMMISSION_NOTE}</p>
+      {partnerCommissionShown(true, purchasesAllowed) ? (
+        <p className="text-[11px] text-muted-foreground" data-testid="map-browse-partner-commission">{PARTNER_COMMISSION_NOTE}</p>
+      ) : null}
       {failed ? <p className="text-[11px] text-destructive">Couldn't open the partner's page. Try again in a moment.</p> : null}
     </div>
   );
@@ -850,7 +879,7 @@ function PartnerPriceLink({ productId }: { productId: string }) {
  * and opens Viator's own product page (the API's link, with a campaign value); the open is recorded
  * (§16). No review text is shown. Renders nothing when the search is off or the city is not served.
  */
-function ViatorLiveRow({ city, tripId, dayNumber }: { city: string; tripId: string; dayNumber: number }) {
+function ViatorLiveRow({ city, tripId, dayNumber, purchasesAllowed }: { city: string; tripId: string; dayNumber: number; purchasesAllowed: boolean }) {
   const { toast } = useToast();
   const url = `/api/viator/live/products?destination=${encodeURIComponent(city)}&surface=browse&limit=10`;
   const { data } = useQuery<ViatorLiveResponse>({ queryKey: [url], staleTime: 0, gcTime: 0, refetchOnWindowFocus: false });
@@ -893,7 +922,9 @@ function ViatorLiveRow({ city, tripId, dayNumber }: { city: string; tripId: stri
                 {VIATOR_LINK_LABEL}
               </a>
             ) : null}
-            <p className="text-[11px] text-muted-foreground">{PARTNER_COMMISSION_NOTE}</p>
+            {partnerCommissionShown(!!r.url, purchasesAllowed) ? (
+              <p className="text-[11px] text-muted-foreground" data-testid="map-browse-viator-commission">{PARTNER_COMMISSION_NOTE}</p>
+            ) : null}
             <Button
               size="sm"
               variant="outline"

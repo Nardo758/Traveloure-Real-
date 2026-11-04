@@ -23,6 +23,12 @@ export interface TripCardPrimaryInput {
   endDate?: string | Date | null;
   /** Defaults to `new Date()` — pass explicitly for deterministic tests. */
   now?: Date;
+  /**
+   * GATE-1 (ledger `2026-11-03-gate1-partner1`): the plancard DTO's resolved boolean. `false` = nobody chose
+   * the window (LD 30, `dates_confirmed_at` NULL), so the date arms say nothing — a placeholder window starts
+   * "today" only because the columns demand a day. A caller that does not pass it states nothing about the dates.
+   */
+  datesConfirmed?: boolean;
 }
 
 function toDate(v: string | Date | null | undefined): Date | null {
@@ -40,6 +46,8 @@ function toDate(v: string | Date | null | undefined): Date | null {
  */
 export function tripCardIsPrimary(input: TripCardPrimaryInput): boolean {
   if (input.finalizedAt) return true;
+  // GATE-1: the Trip Card banner waits for dates — an unconfirmed window never makes the card primary.
+  if (input.datesConfirmed === false) return false;
 
   const now = input.now ?? new Date();
   const start = toDate(input.startDate);

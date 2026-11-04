@@ -5,7 +5,7 @@
  *
  * Saved state is read from the ONE list the shelf reads (`GET /api/saved-items`), matched by
  * `findSavedItem` — never a per-card flag that could disagree with the shelf. A signed-out viewer
- * is offered sign-in; nothing is saved on their behalf.
+ * is offered sign-in (open mode) or "Save to plan" (waitlist mode, GATE-1); nothing is saved on their behalf.
  */
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Heart, Loader2 } from "lucide-react";
@@ -16,6 +16,8 @@ import { useSignInModal } from "@/contexts/SignInModalContext";
 import { cn } from "@/lib/utils";
 import { findSavedItem, type SavedItemRow } from "@/lib/saved-items";
 import type { SaveItemBody } from "@shared/saved-items";
+import { browseSavesToPlan, useSignupMode } from "@/lib/signup-mode";
+import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 
 export function SaveToggle({
   item,
@@ -31,6 +33,10 @@ export function SaveToggle({
 }) {
   const { user } = useAuth();
   const { openSignInModal } = useSignInModal();
+  // GATE-1 (ledger `2026-11-03-gate1-partner1`): in waitlist mode a signed-out viewer is never sent to sign in —
+  // the press is "Save to plan" (a toast), as on every browse card.
+  const { mode } = useSignupMode();
+  const saveToPlan = browseSavesToPlan(mode, !!user);
   const { toast } = useToast();
   const { data: saved } = useQuery<SavedItemRow[]>({
     queryKey: ["/api/saved-items"],
@@ -70,7 +76,8 @@ export function SaveToggle({
         e.stopPropagation();
         e.preventDefault();
         if (!user) {
-          openSignInModal();
+          if (saveToPlan) toast({ title: WAITLIST_COPY.savedToPlan });
+          else openSignInModal();
           return;
         }
         toggle.mutate();
@@ -83,7 +90,7 @@ export function SaveToggle({
       ) : (
         <Heart className={cn("h-3.5 w-3.5", existing ? "fill-rose-500 text-rose-500" : "text-gray-600")} />
       )}
-      {showLabel && <span>{existing ? "Saved" : "Save"}</span>}
+      {showLabel && <span>{saveToPlan ? WAITLIST_COPY.saveToPlan : existing ? "Saved" : "Save"}</span>}
     </button>
   );
 }

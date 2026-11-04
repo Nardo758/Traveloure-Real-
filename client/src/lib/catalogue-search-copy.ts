@@ -36,7 +36,10 @@ export const CATALOGUE_RESULT_COPY = {
 } as const;
 
 /** The one action label for a result. Never a request, never a fee. */
-export function catalogueActionLabel(result: Pick<CatalogueResult, "kind" | "action">, opts: { waitlist?: boolean } = {}): string {
+export function catalogueActionLabel(
+  result: Pick<CatalogueResult, "kind" | "action">,
+  opts: { waitlist?: boolean; signedOut?: boolean } = {},
+): string {
   switch (result.action.type) {
     case "book":
       // Row P-1c: in waitlist mode a Traveloure book is "Save to plan" (the add-to-plan path).
@@ -44,7 +47,8 @@ export function catalogueActionLabel(result: Pick<CatalogueResult, "kind" | "act
     case "book_on_site":
       return result.kind === "partner_viator" ? CATALOGUE_RESULT_COPY.bookOnViator : CATALOGUE_RESULT_COPY.bookOnOfficialSite;
     case "add_to_plan":
-      return CATALOGUE_RESULT_COPY.addToPlan;
+      // GATE-1 (ledger `2026-11-03-gate1-partner1`): waitlist + signed out ⇒ "Save to plan" (a toast, no dialog).
+      return opts.waitlist && opts.signedOut ? WAITLIST_COPY.saveToPlan : CATALOGUE_RESULT_COPY.addToPlan;
   }
 }
 

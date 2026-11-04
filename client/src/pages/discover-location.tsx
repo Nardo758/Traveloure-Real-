@@ -21,6 +21,7 @@ import { buildServicesBrowseHref, SERVICES_BROWSE_THEME_PARAM } from "@/lib/serv
 import { DiscoverThemeFilter } from "@/components/discover-theme-filter";
 import { parseDiscoverThemeParam } from "@shared/experience-themes";
 import { AddToExperienceDialog } from "@/components/add-to-experience-dialog";
+import { useBrowseSaveToPlan } from "@/lib/browse-save";
 import { CatalogueSearchResults } from "@/components/catalogue-search-results";
 import { CATALOGUE_SEARCH_COPY } from "@shared/catalogue-search";
 import { Button } from "@/components/ui/button";
@@ -1450,10 +1451,13 @@ export default function DiscoverLocationPage() {
   const [addToExperienceOpen, setAddToExperienceOpen] = useState(false);
   const [addToExperienceItem, setAddToExperienceItem] = useState<any>(null);
 
-  const handleAdd = (item: any) => {
-    setAddToExperienceItem(item);
-    setAddToExperienceOpen(true);
-  };
+  // GATE-1 (ledger `2026-11-03-gate1-partner1`): waitlist + signed out ⇒ "Save to plan" — a toast, never the dialog.
+  const browseSave = useBrowseSaveToPlan();
+  const handleAdd =
+    browseSave.wrapAdd((item: any) => {
+      setAddToExperienceItem(item);
+      setAddToExperienceOpen(true);
+    }) ?? (() => {});
 
   // Feed-composition knobs — admin rows (platform_settings), code defaults.
   const { data: feedConfigData } = useQuery<FeedCompositionConfig>({

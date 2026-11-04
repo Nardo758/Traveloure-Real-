@@ -72,6 +72,11 @@ export interface TileActionContext {
   canAsk?: boolean;
   /** Row P-1c: traveler sign-up is waitlist-only — a Traveloure book reads "Save to plan" (the add-to-plan path). */
   waitlist?: boolean;
+  /**
+   * GATE-1 (ledger `2026-11-03-gate1-partner1`): waitlist mode and a signed-out viewer (`useBrowseSaveToPlan`) —
+   * every add-to-plan action reads "Save to plan" (Leon, Nov 3: "'Add to Plan' … become 'Save to plan'").
+   */
+  saveToPlan?: boolean;
 }
 
 export interface TileAction {
@@ -86,17 +91,18 @@ export interface TileAction {
  * external stub, which stays on its own card until row 304a.
  */
 export function tileActionLabel(kind: FeedItem["kind"], ctx: TileActionContext = {}): string | null {
+  const add = ctx.saveToPlan ? WAITLIST_COPY.saveToPlan : addToPlanLabel(ctx.scheduledDate);
   switch (kind) {
     case "loose-gem":
     case "event":
     case "supply-activity":
     // The hotel tile's click adds the stay to the plan, so it says so (architect, #1810).
     case "supply-hotel":
-      return addToPlanLabel(ctx.scheduledDate);
+      return add;
     case "vendor-service":
-      return ctx.bookable ? TILE_ACTION_COPY.checkAvailability : addToPlanLabel(ctx.scheduledDate);
+      return ctx.bookable ? TILE_ACTION_COPY.checkAvailability : add;
     case "recommendation":
-      if (!ctx.bookable) return addToPlanLabel(ctx.scheduledDate);
+      if (!ctx.bookable) return add;
       if (ctx.affiliate) return TILE_ACTION_COPY.bookOnPartner;
       return ctx.waitlist ? WAITLIST_COPY.saveToPlan : TILE_ACTION_COPY.bookNow;
     case "package":
