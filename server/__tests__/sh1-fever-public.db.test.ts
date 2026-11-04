@@ -58,8 +58,9 @@ test("FP1: the projection is an allowlist — no pricing, Free, URL, coordinates
   // `shortDescription` and the raw Fever description. PARTNER-1 publishes our reviewed editorial text only, so
   // `shortDescription` is gone and `description` is null for an event with no reviewed row.
   assert.deepEqual(Object.keys(p).sort(), [
+    // Lane 1 A-33 (ledger 2026-11-05-lane1-guest-save-rail; sanctioned edit): `located` — a boolean, never the point.
     "areaName", "bookingToken", "category", "date", "description", "endDate", "id", "imageUrl", "isSoldOut",
-    "osmCredit", "partnerName", "priceSource", "provider", "subcategory", "title", "venueName",
+    "located", "osmCredit", "partnerName", "priceSource", "provider", "subcategory", "title", "venueName",
   ].sort());
   assert.equal(p.description, null, "no reviewed editorial row ⇒ no description, never Fever's");
   const json = JSON.stringify(p);

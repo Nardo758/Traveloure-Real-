@@ -80,5 +80,7 @@ export function catalogueAddItem(result: CatalogueResult): Record<string, unknow
     type: result.kind === "hotel" ? "hotel" : "activity",
     ...(result.addToPlan.providerServiceId ? { providerServiceId: result.addToPlan.providerServiceId } : {}),
     ...(result.addToPlan.viatorProductCode ? { viatorProductCode: result.addToPlan.viatorProductCode } : {}),
+    // A-1: a partner hotel names its row, so a guest save can place it (the server re-reads `hotel_cache`).
+    ...(result.kind === "hotel" && result.id.startsWith("hotel:") ? { sourceContentId: result.id.slice("hotel:".length) } : {}),
   };
 }

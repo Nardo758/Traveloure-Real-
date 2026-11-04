@@ -41,6 +41,8 @@ export interface PublicFeverEvent {
   date: string | null;
   endDate: string | null;
   isSoldOut: boolean;
+  /** A-33: the event's venue has a point — a boolean, never the point. */
+  located: boolean;
   provider: typeof FEVER_PROVIDER;
   priceSource: typeof FEVER_PRICE_SOURCE;
   /** The approved partner's stored name. Null when none is approved or the name is blank. */
@@ -72,6 +74,7 @@ function project(
     date: str(e.dates?.startDate),
     endDate: str(e.dates?.endDate),
     isSoldOut: e.isSoldOut === true,
+    located: Number.isFinite(Number(e.venue?.coordinates?.lat)) && Number.isFinite(Number(e.venue?.coordinates?.lng)) && e.venue?.coordinates?.lat != null && e.venue?.coordinates?.lng != null,
     provider: FEVER_PROVIDER,
     priceSource: FEVER_PRICE_SOURCE,
     partnerName,

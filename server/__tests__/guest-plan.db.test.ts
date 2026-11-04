@@ -4,8 +4,10 @@
  *   G1  hashGuestSession: a well-formed id hashes to 64 hex chars; malformed / short / long / odd ids are refused.
  *   G2  create → read: the row is owner-less, carries the hash (never the raw id), dates confirmed only when given,
  *       and another session reads nothing.
- *   G3  save: an allowlisted item lands on the plan and moves `updated_at`; a gem save takes the gem row's own name;
- *       an unknown gem is refused; a session with no plan is refused.
+ *   G3  save: a gem save lands on the plan, takes the gem row's own name and moves `updated_at`; an unknown gem is
+ *       refused; a session with no plan is refused. (Lane 1 A-1, sanctioned edit: every save names its source, so the
+ *       title-only saves this file used are refused now; it seeds its own gem. Lane 1's own proofs are
+ *       lane1-guest-save.db.test.ts.)
  *   G4  update: dates stamp `dates_confirmed_at`; the party total is derived.
  *   G5  claim: user_id set, guest_claimed_at stamped, hash cleared, owner collaborator row written; a second claim
  *       claims nothing; the claimed plan is no longer the guest's.
@@ -22,7 +24,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
-import { itineraryItems, tripCollaborators, trips, users } from "@shared/schema";
+import { itineraryItems, travelPulseHiddenGems, tripCollaborators, trips, users } from "@shared/schema";
 import {
   claimGuestPlans,
   createGuestPlan,
@@ -43,7 +45,9 @@ function assertDisposableDb() {
 const tripIds = new Set<string>();
 const userIds: string[] = [];
 const sid = () => crypto.randomUUID();
-let kyotoGemId: string | null = null;
+const kyotoGemId = crypto.randomUUID();
+const otherGemId = crypto.randomUUID();
+const gemSave = (gemId: string = kyotoGemId) => ({ gemId } as any);
 
 async function seedUser(): Promise<string> {
   const id = `gate1b-user-${crypto.randomUUID()}`;
@@ -56,8 +60,10 @@ before(async () => {
   assertDisposableDb();
   await db.execute(sql`INSERT INTO platform_settings (setting_key, setting_value) VALUES ('launch_market_slug', 'kyoto')
     ON CONFLICT (setting_key) DO NOTHING`);
-  const gem = await db.execute(sql`SELECT id FROM travel_pulse_hidden_gems WHERE hidden_at IS NULL LIMIT 1`);
-  kyotoGemId = ((gem as any).rows?.[0]?.id as string | undefined) ?? null;
+  await db.insert(travelPulseHiddenGems).values([
+    { id: kyotoGemId, city: "Kyoto", placeName: `G1B Gem ${kyotoGemId.slice(0, 8)}` } as any,
+    { id: otherGemId, city: "Kyoto", placeName: `G1B Other Gem ${otherGemId.slice(0, 8)}` } as any,
+  ]);
 });
 
 after(async () => {
@@ -67,6 +73,7 @@ after(async () => {
     await db.delete(trips).where(inArray(trips.id, ids));
   }
   if (userIds.length) await db.delete(users).where(inArray(users.id, userIds));
+  await db.delete(travelPulseHiddenGems).where(inArray(travelPulseHiddenGems.id, [kyotoGemId, otherGemId]));
   delete process.env.GUEST_PLAN_RETENTION_DAYS;
 });
 
@@ -110,22 +117,20 @@ describe("GATE-1B guest plan", () => {
     const s = sid();
     const id = await newPlan(s);
     await db.update(trips).set({ updatedAt: new Date("2020-01-01T00:00:00Z") }).where(eq(trips.id, id));
-    const out = await saveGuestPlanItem(hashGuestSession(s)!, { title: "Philosopher's Path", latitude: "35.02", longitude: "135.79" } as any);
+    const out = await saveGuestPlanItem(hashGuestSession(s)!, { gemId: otherGemId } as any);
     assert.equal(out.ok, true);
     const [row] = await db.select().from(trips).where(eq(trips.id, id));
     assert.ok(new Date(row.updatedAt!).getFullYear() > 2020);
     const items = await db.select().from(itineraryItems).where(eq(itineraryItems.tripId, id));
     assert.equal(items.length, 1);
     assert.equal(items[0].origin, "traveler");
-    if (kyotoGemId) {
-      const g = await saveGuestPlanItem(hashGuestSession(s)!, { title: "typed by the client", gemId: kyotoGemId } as any);
-      assert.equal(g.ok, true);
-      const after = await db.select().from(itineraryItems).where(eq(itineraryItems.tripId, id));
-      assert.equal(after.length, 2);
-      assert.ok(!after.some((i) => i.title === "typed by the client"), "a gem save takes the gem row's name");
-    }
-    assert.deepEqual(await saveGuestPlanItem(hashGuestSession(s)!, { title: "x", gemId: "no-such-gem" } as any), { ok: false, code: "unknown_gem" });
-    assert.deepEqual(await saveGuestPlanItem(hashGuestSession(sid())!, { title: "x" } as any), { ok: false, code: "no_plan" });
+    const g = await saveGuestPlanItem(hashGuestSession(s)!, { title: "typed by the client", gemId: kyotoGemId } as any);
+    assert.equal(g.ok, true);
+    const after = await db.select().from(itineraryItems).where(eq(itineraryItems.tripId, id));
+    assert.equal(after.length, 2);
+    assert.ok(!after.some((i) => i.title === "typed by the client"), "a gem save takes the gem row's name");
+    assert.deepEqual(await saveGuestPlanItem(hashGuestSession(s)!, { gemId: "no-such-gem" } as any), { ok: false, code: "unknown_source" });
+    assert.deepEqual(await saveGuestPlanItem(hashGuestSession(sid())!, gemSave()), { ok: false, code: "no_plan" });
   });
 
   it("G4 updates dates and party", async () => {
@@ -141,7 +146,7 @@ describe("GATE-1B guest plan", () => {
   it("G5 claims a guest plan once, as-is", async () => {
     const s = sid();
     const id = await newPlan(s);
-    await saveGuestPlanItem(hashGuestSession(s)!, { title: "Nishiki Market" } as any);
+    await saveGuestPlanItem(hashGuestSession(s)!, gemSave());
     const userId = await seedUser();
     assert.deepEqual(await claimGuestPlans(hashGuestSession(s)!, userId), [id]);
     const [row] = await db.select().from(trips).where(eq(trips.id, id));
@@ -158,7 +163,7 @@ describe("GATE-1B guest plan", () => {
   it("G6 retention: disabled when unset; deletes only idle unclaimed guest plans when set", async () => {
     delete process.env.GUEST_PLAN_RETENTION_DAYS;
     const stale = await newPlan(sid());
-    await saveGuestPlanItem((await db.select().from(trips).where(eq(trips.id, stale)))[0].guestSessionHash!, { title: "x" } as any);
+    await saveGuestPlanItem((await db.select().from(trips).where(eq(trips.id, stale)))[0].guestSessionHash!, gemSave());
     await db.update(trips).set({ updatedAt: new Date("2020-01-01T00:00:00Z") }).where(eq(trips.id, stale));
     const off = await runGuestPlanRetention();
     assert.equal(off.status, "disabled");

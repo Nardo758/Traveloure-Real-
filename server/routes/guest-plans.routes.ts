@@ -83,7 +83,8 @@ router.post("/api/guest-plans", guestOnly, createPerSession, createPerIp, async 
   try {
     const out = await createGuestPlan(sessionHash(req)!, parsed.data);
     if (!out.ok) return res.status(409).json(out.code === "market_not_open" ? { code: out.code, market: out.market } : { code: out.code });
-    res.status(201).json(out.view);
+    // A-5: get-or-create — 201 for a new plan, 200 for the session's plan as it stands.
+    res.status(out.created ? 201 : 200).json(out.view);
   } catch {
     res.status(500).json({ code: "error" });
   }
@@ -117,8 +118,10 @@ router.post("/api/guest-plans/current/items", guestOnly, savesPerSession, async 
   if (!parsed.success) return res.status(400).json({ code: "invalid_body" });
   try {
     const out = await saveGuestPlanItem(sessionHash(req)!, parsed.data);
-    if (!out.ok) return res.status(out.code === "unknown_gem" ? 400 : 404).json({ code: out.code === "unknown_gem" ? "unknown_gem" : "not_found" });
-    res.status(201).json({ id: out.itemId });
+    // A-1: a source the server cannot find is a 400 — never a saved title with nothing behind it.
+    if (!out.ok) return res.status(out.code === "unknown_source" ? 400 : 404).json({ code: out.code === "unknown_source" ? "unknown_source" : "not_found" });
+    // A-11: a source the plan already holds answers its item (200), not a second one.
+    res.status(out.existing ? 200 : 201).json({ id: out.itemId, located: out.located, existing: out.existing });
   } catch {
     res.status(500).json({ code: "error" });
   }

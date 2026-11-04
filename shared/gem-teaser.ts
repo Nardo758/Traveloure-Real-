@@ -46,6 +46,8 @@ export const GEM_TEASER_KEYS = [
   "admission",
   "sourceUrl",
   "factCheckedOn",
+  // A-33 (ledger 2026-11-05-lane1-guest-save-rail): whether the gem has a point — a boolean, never the point.
+  "located",
 ] as const;
 
 export type GemTeaserKey = (typeof GEM_TEASER_KEYS)[number];
@@ -72,6 +74,8 @@ export interface GemTeaser {
   admission: string | null;
   sourceUrl: string | null;
   factCheckedOn: string | Date | null;
+  /** A-33: the gem row has a point (the map draws it); the point itself never leaves the server here. */
+  located: boolean;
 }
 
 /**
@@ -86,5 +90,6 @@ export function toGemTeaser(row: Record<string, unknown> & { curatedBy?: GemCura
     out[key] = key in source ? (source as Record<string, unknown>)[key] : null;
   }
   out.curatedBy = row.curatedBy ?? null;
+  out.located = row.latitude != null && row.longitude != null && row.latitude !== "" && row.longitude !== "";
   return out as unknown as GemTeaser;
 }

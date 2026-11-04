@@ -20,8 +20,10 @@ import { createHash } from "node:crypto";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
-import { itineraryItems, travelPulseHiddenGems, tripCollaborators, trips, type Trip } from "@shared/schema";
-import { visibleGemCondition } from "./gem-visibility";
+import { itineraryItems, tripCollaborators, trips, type Trip } from "@shared/schema";
+import { GUEST_ITEM_KINDS, resolveGuestItemSource, type GuestItemKind } from "./guest-item-source.service";
+import { stampItemSourceClass } from "@shared/content-tiers";
+import { enqueuePlanLegRecompute } from "./routing/plan-legs-queue";
 import { eventTypeForSlug } from "@shared/occasions";
 import { partyTotal } from "@shared/plan-vocabulary";
 import { storage } from "../storage";
@@ -74,23 +76,30 @@ export const guestPlanUpdateBody = z
   .refine((b) => !b.startDate || !b.endDate || b.endDate >= b.startDate, { message: "End date must be on or after start date" })
   .refine((b) => Object.keys(b).length > 0, { message: "Nothing to update" });
 
-const coord = z.union([z.string(), z.number()]).transform((v) => String(v)).refine((v) => /^-?\d{1,3}(\.\d+)?$/.test(v));
-
-/** §19: the save body — what the item says, never a link, origin, status or amount. Coordinates both or neither. */
+/**
+ * §19: the save body — what the traveler pressed: a KIND and the SOURCE ROW's id (A-1). The server reads the row for
+ * the item's name and point; the body carries no title the server keeps, no point, no link, origin, status or amount.
+ * `gemId` is the GATE-1B spelling of `{ kind: "gem", sourceId }` and is still admitted. A body naming no source is
+ * refused: nothing the server cannot place is ever saved.
+ */
 export const guestPlanItemBody = z
   .object({
-    title: z.string().trim().min(1).max(255),
-    description: z.string().max(2000).optional(),
-    itemType: z.enum(["activity", "meal", "accommodation", "free_time"]).optional(),
-    dayNumber: z.number().int().min(1).max(60).optional(),
-    locationName: z.string().trim().max(255).optional(),
-    latitude: coord.optional(),
-    longitude: coord.optional(),
-    /** A city-page gem: its name and point are read from the visible gem row, never from the body. */
+    kind: z.enum(GUEST_ITEM_KINDS).optional(),
+    sourceId: z.string().trim().min(1).max(200).optional(),
     gemId: z.string().trim().min(1).max(64).optional(),
+    /** Display only, while the request is in flight; the stored title is the source row's. */
+    title: z.string().trim().min(1).max(255).optional(),
+    description: z.string().max(2000).optional(),
+    dayNumber: z.number().int().min(1).max(60).optional(),
   })
   .strict()
-  .refine((b) => (b.latitude === undefined) === (b.longitude === undefined), { message: "latitude and longitude go together" });
+  .refine((b) => !!b.gemId || (!!b.kind && !!b.sourceId), { message: "A save names its source" })
+  .refine((b) => !(b.gemId && (b.kind || b.sourceId)), { message: "gemId or kind + sourceId, not both" });
+
+/** The kind and id a parsed save names (the `gemId` spelling folded in). */
+export function guestSaveSource(body: z.infer<typeof guestPlanItemBody>): { kind: GuestItemKind; sourceId: string } {
+  return body.gemId ? { kind: "gem", sourceId: body.gemId } : { kind: body.kind!, sourceId: body.sourceId! };
+}
 
 export type GuestPlanView = {
   plan: {
@@ -115,6 +124,7 @@ export type GuestPlanView = {
     locationName: string | null;
     latitude: string | null;
     longitude: string | null;
+    located: boolean;
   }>;
   retentionDays: number | null;
 };
@@ -160,6 +170,7 @@ function viewOf(trip: Trip, items: Array<typeof itineraryItems.$inferSelect>): G
       locationName: i.locationName ?? null,
       latitude: i.latitude ?? null,
       longitude: i.longitude ?? null,
+      located: i.latitude != null && i.longitude != null,
     })),
     retentionDays: guestPlanRetentionDays(),
   };
@@ -177,7 +188,7 @@ export async function readGuestPlan(hash: string): Promise<GuestPlanView | null>
 }
 
 export type GuestCreateOutcome =
-  | { ok: true; view: GuestPlanView }
+  | { ok: true; view: GuestPlanView; created: boolean }
   | { ok: false; code: "market_not_open"; market: string | null }
   | { ok: false; code: "unknown_occasion" };
 
@@ -190,10 +201,16 @@ export async function createGuestPlan(hash: string, body: z.infer<typeof guestPl
     if (!row) return { ok: false, code: "unknown_occasion" };
     eventType = eventTypeForSlug(row.slug);
   }
+  // A-5: get-or-create. A session has at most one live guest plan (migration 435's unique partial index); a second
+  // create — including one racing the first — answers that plan, as it stands.
+  const existing = await readGuestPlan(hash);
+  if (existing) return { ok: true, view: existing, created: false };
   const datesChosenByTraveler = !!(body.startDate && body.endDate);
   const day = datesChosenByTraveler ? null : placeholderMintDay(body.destination);
   const total = body.adults !== undefined ? partyTotal(body.adults, body.kids ?? null) : undefined;
-  const trip = await storage.createTrip(
+  let trip: Trip;
+  try {
+    trip = await storage.createTrip(
     {
       destination: body.destination,
       ...(body.title ? { title: body.title } : {}),
@@ -208,8 +225,22 @@ export async function createGuestPlan(hash: string, body: z.infer<typeof guestPl
       userId: null,
     } as any,
     { datesChosenByTraveler },
-  );
-  return { ok: true, view: viewOf(trip, []) };
+    );
+  } catch (err) {
+    // The concurrent create won the unique index: answer its plan.
+    if (isUniqueViolation(err)) {
+      const won = await readGuestPlan(hash);
+      if (won) return { ok: true, view: won, created: false };
+    }
+    throw err;
+  }
+  return { ok: true, view: viewOf(trip, []), created: true };
+}
+
+/** Postgres `unique_violation`, read through the driver's wrapper when there is one. */
+export function isUniqueViolation(err: unknown): boolean {
+  const e = err as { code?: unknown; cause?: { code?: unknown } } | null;
+  return e?.code === "23505" || e?.cause?.code === "23505";
 }
 
 export async function updateGuestPlan(hash: string, body: z.infer<typeof guestPlanUpdateBody>): Promise<GuestPlanView | null> {
@@ -233,49 +264,61 @@ export async function updateGuestPlan(hash: string, body: z.infer<typeof guestPl
   return readGuestPlan(hash);
 }
 
-export type GuestSaveOutcome = { ok: true; itemId: string } | { ok: false; code: "no_plan" | "unknown_gem" };
+export type GuestSaveOutcome =
+  | { ok: true; itemId: string; located: boolean; existing: boolean }
+  | { ok: false; code: "no_plan" | "unknown_source" };
 
+/**
+ * A-1 / A-11: save what the traveler pressed. The source row answers the item's name, point and link (A-1); a source
+ * the plan already holds answers the item it already has (A-11 — a double press is one item). The check-and-insert is
+ * serialized per plan (an advisory transaction lock), and migration 436's unique index on the content link is the
+ * database's own guarantee for content kinds.
+ */
 export async function saveGuestPlanItem(hash: string, body: z.infer<typeof guestPlanItemBody>): Promise<GuestSaveOutcome> {
   const trip = await currentGuestTrip(hash);
   if (!trip) return { ok: false, code: "no_plan" };
-  let fields = { ...body };
-  if (body.gemId) {
-    // The gem's own row answers its name, area and point (the public teaser carries no coordinates by ruling).
-    const [gem] = await db
-      .select({
-        placeName: travelPulseHiddenGems.placeName,
-        neighborhood: travelPulseHiddenGems.neighborhood,
-        latitude: travelPulseHiddenGems.latitude,
-        longitude: travelPulseHiddenGems.longitude,
-      })
-      .from(travelPulseHiddenGems)
-      .where(and(eq(travelPulseHiddenGems.id, body.gemId), visibleGemCondition()))
+  const { kind, sourceId } = guestSaveSource(body);
+  const source = await resolveGuestItemSource(kind, sourceId);
+  if (!source) return { ok: false, code: "unknown_source" };
+  const located = source.latitude != null && source.longitude != null;
+  const out = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"guest-plan-item:" + trip.id}))`);
+    const sameSource = source.contentType && source.contentId
+      ? and(eq(itineraryItems.contentType, source.contentType), eq(itineraryItems.contentId, source.contentId))
+      : source.providerServiceId
+        ? eq(itineraryItems.providerServiceId, source.providerServiceId)
+        : eq(itineraryItems.affiliateProductId, source.affiliateProductId!);
+    const [held] = await tx
+      .select({ id: itineraryItems.id })
+      .from(itineraryItems)
+      .where(and(eq(itineraryItems.tripId, trip.id), sameSource))
       .limit(1);
-    if (!gem) return { ok: false, code: "unknown_gem" };
-    const located = gem.latitude != null && gem.longitude != null;
-    fields = {
-      ...fields,
-      title: gem.placeName || body.title,
-      locationName: gem.placeName || body.locationName,
-      latitude: located ? String(gem.latitude) : undefined,
-      longitude: located ? String(gem.longitude) : undefined,
-    };
-  }
-  body = fields;
-  const item = await storage.createItineraryItem({
-    tripId: trip.id,
-    title: body.title,
-    description: body.description ?? null,
-    itemType: body.itemType ?? "activity",
-    dayNumber: body.dayNumber ?? 1,
-    status: "planned",
-    origin: "traveler",
-    ...(body.locationName ? { locationName: body.locationName } : {}),
-    ...(body.latitude !== undefined && body.longitude !== undefined ? { latitude: body.latitude, longitude: body.longitude } : {}),
-  } as any);
-  // Ruling 3: retention counts from the plan's last change.
-  await db.update(trips).set({ updatedAt: new Date() }).where(eq(trips.id, trip.id));
-  return { ok: true, itemId: item.id };
+    if (held) return { itemId: held.id, existing: true };
+    const [created] = await tx
+      .insert(itineraryItems)
+      .values(
+        stampItemSourceClass({
+          tripId: trip.id,
+          title: source.title,
+          description: body.description ?? null,
+          itemType: source.itemType ?? "activity",
+          dayNumber: body.dayNumber ?? 1,
+          status: "planned",
+          origin: "traveler",
+          ...(source.locationName ? { locationName: source.locationName } : {}),
+          ...(located ? { latitude: source.latitude, longitude: source.longitude } : {}),
+          ...(source.contentType && source.contentId ? { contentType: source.contentType, contentId: source.contentId } : {}),
+          ...(source.providerServiceId ? { providerServiceId: source.providerServiceId } : {}),
+          ...(source.affiliateProductId ? { affiliateProductId: source.affiliateProductId } : {}),
+        }) as any,
+      )
+      .returning({ id: itineraryItems.id });
+    // Ruling 3: retention counts from the plan's last change.
+    await tx.update(trips).set({ updatedAt: new Date() }).where(eq(trips.id, trip.id));
+    return { itemId: created.id, existing: false };
+  });
+  if (!out.existing) enqueuePlanLegRecompute(trip.id);
+  return { ok: true, itemId: out.itemId, located, existing: out.existing };
 }
 
 /**

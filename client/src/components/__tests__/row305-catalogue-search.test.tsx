@@ -150,7 +150,8 @@ describe("row 305 — catalogue search results", () => {
   it("K8 an added result keeps its link through the add dialog", () => {
     assert.deepEqual(catalogueAddItem(results[0]), { title: "Tea ceremony in Gion", type: "activity", providerServiceId: "s1" });
     assert.deepEqual(catalogueAddItem(results[6]), { title: "Arashiyama bamboo walk", type: "activity", viatorProductCode: "5010P1" });
-    assert.deepEqual(catalogueAddItem(results[7]), { title: "Hotel Kanra", type: "hotel" });
+    // Lane 1 A-1 (sanctioned edit): a partner hotel names its row, so a guest save can place it.
+    assert.deepEqual(catalogueAddItem(results[7]), { title: "Hotel Kanra", type: "hotel", sourceContentId: "h1" });
     const dialog = fs.readFileSync("client/src/components/add-to-experience-dialog.tsx", "utf8");
     assert.match(dialog, /typeof item\?\.providerServiceId === "string" \? \{ providerServiceId: item\.providerServiceId \}/);
     assert.match(dialog, /typeof item\?\.viatorProductCode === "string" \? \{ viatorProductCode: item\.viatorProductCode \}/);

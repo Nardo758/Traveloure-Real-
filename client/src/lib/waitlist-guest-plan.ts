@@ -9,6 +9,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { GUEST_PLAN_COPY } from "@shared/guest-plan-copy";
+import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 import { mapDayChips } from "@/lib/map-days";
 import { planTitle } from "@/lib/trip-slip";
 import type { BrowsePlace } from "@/lib/map-scene";
@@ -26,6 +27,8 @@ export interface GuestPlanItem {
   locationName: string | null;
   latitude: string | null;
   longitude: string | null;
+  /** A-18: the item has a point (the map draws it); false ⇒ listed as not on the map. */
+  located?: boolean;
 }
 
 export interface GuestPlanView {
@@ -57,15 +60,23 @@ export interface GuestPlanCreateInput {
   occasionSlug?: string;
 }
 
+/** A-1: what a guest save names — a kind and the source row's id. The server reads the name and point from the row. */
+export type GuestItemKind = "gem" | "event" | "listing" | "partner_product";
+
 export interface GuestItemBody {
-  title: string;
+  kind: GuestItemKind;
+  sourceId: string;
+  /** Display only; the stored title is the source row's. */
+  title?: string;
   description?: string;
-  itemType?: "activity" | "meal" | "accommodation" | "free_time";
   dayNumber?: number;
-  locationName?: string;
-  latitude?: string;
-  longitude?: string;
-  gemId?: string;
+}
+
+/** The server's answer to a save. */
+export interface GuestSaveResult {
+  id: string;
+  located: boolean;
+  existing: boolean;
 }
 
 /** `apiRequest` throws "<status>: <body>"; the status is all a caller needs. */
@@ -99,6 +110,7 @@ export function useGuestPlan(enabled: boolean) {
   });
 }
 
+/** A-5: the server get-or-creates — a second create (or one racing the first) answers the session's plan. */
 export async function createGuestPlan(input: GuestPlanCreateInput): Promise<GuestPlanView> {
   const view = (await (await apiRequest("POST", "/api/guest-plans", input)).json()) as GuestPlanView;
   queryClient.setQueryData(GUEST_PLAN_QUERY_KEY, view);
@@ -117,52 +129,125 @@ export async function updateGuestPlan(patch: {
 }
 
 /**
- * Save one item to the guest plan. With no plan yet, one is created for `destination` first (a save from the city
- * page before the plan page was ever opened). Resolves only after the server has the item; throws otherwise.
+ * A-2: the city a first save starts the plan in — the route's city, then the page's, then the item's own. None ⇒ null
+ * (the caller shows the save-failed sentence and sends nothing).
  */
-export async function saveToGuestPlan(body: GuestItemBody, destination: string | null | undefined): Promise<void> {
-  let plan = await fetchGuestPlan();
-  if (!plan) {
+export function resolveSaveCity(routeCity: string | null | undefined, pageCity: string | null | undefined, itemCity: string | null | undefined): string | null {
+  for (const c of [routeCity, pageCity, itemCity]) {
+    const v = typeof c === "string" ? c.trim() : "";
+    if (v) return v;
+  }
+  return null;
+}
+
+/** A-2: the city a browse route names (`/discover/location/:city`, `/places/:city`), decoded; otherwise null. */
+export function cityFromPath(pathname: string | null | undefined): string | null {
+  const m = /^\/(?:discover\/location|places)\/([^/?#]+)/.exec(pathname ?? "");
+  if (!m) return null;
+  try {
+    const city = decodeURIComponent(m[1]).trim();
+    return city || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Save one item to the guest plan. With no plan yet, one is started for `destination` first (a save from the city page
+ * before the plan page was ever opened); the server get-or-creates it (A-5), so two first saves land on ONE plan.
+ * Resolves only after the server has the item; throws otherwise.
+ */
+export async function saveToGuestPlan(body: GuestItemBody, destination: string | null | undefined): Promise<GuestSaveResult> {
+  const cached = queryClient.getQueryData<GuestPlanView | null>(GUEST_PLAN_QUERY_KEY);
+  if (!cached) {
     const city = (destination ?? "").trim();
     if (!city) throw new Error("400: no destination");
     // A plan born from a city-page save has no chosen occasion: the city's own title ("Kyoto trip").
-    plan = await createGuestPlan({ destination: city, title: planTitle({ city: city.split(",")[0].trim() }) });
+    await createGuestPlan({ destination: city, title: planTitle({ city: city.split(",")[0].trim() }) });
   }
-  await apiRequest("POST", "/api/guest-plans/current/items", body);
+  const res = await apiRequest("POST", "/api/guest-plans/current/items", body);
+  const out = (await res.json()) as GuestSaveResult;
   await queryClient.invalidateQueries({ queryKey: GUEST_PLAN_QUERY_KEY });
+  return out;
 }
 
-const ITEM_TYPES = new Set(["activity", "meal", "accommodation", "free_time"]);
+/** A-18: the toast for a confirmed save — the not-on-the-map hint when the place has no point. */
+export function guestSavedMessage(result: Pick<GuestSaveResult, "located">): string {
+  return result.located ? WAITLIST_COPY.savedToPlan : GUEST_PLAN_COPY.savedNotOnMap;
+}
 
 /**
- * A browse card's add payload → the guest save body. Gems name their row (`sourceContentId`) so the server reads the
- * name and point; everything else saves its own title. Card types outside the item vocabulary save as activities.
+ * A-1: a browse card's add payload → the guest save. A card names its source row (`sourceContentId`) and its kind;
+ * a card that names no row the server can place (a recommendation category, a search result with no row) is null.
+ *   gem → gem · event → event · service / providerServiceId → listing · hotel / activity (partner supply) → partner_product
  */
 export function guestItemFromFeedItem(item: any): GuestItemBody | null {
-  const title = typeof item?.title === "string" ? item.title.trim() : "";
-  if (!title) return null;
-  const type = item?.type === "hotel" ? "accommodation" : ITEM_TYPES.has(item?.type) ? item.type : "activity";
+  const title = typeof item?.title === "string" ? item.title.trim().slice(0, 255) : "";
+  const sourceId = typeof item?.sourceContentId === "string" ? item.sourceContentId.trim() : "";
+  const providerServiceId = typeof item?.providerServiceId === "string" ? item.providerServiceId.trim() : "";
+  const type = item?.type;
+  let kind: GuestItemKind | null = null;
+  let id = sourceId;
+  if (type === "gem") kind = "gem";
+  else if (type === "event") kind = "event";
+  else if (type === "service") kind = "listing";
+  else if (providerServiceId) {
+    kind = "listing";
+    id = providerServiceId;
+  } else if (type === "hotel" || type === "activity") kind = "partner_product";
+  if (!kind || !id) return null;
   return {
-    title: title.slice(0, 255),
+    kind,
+    sourceId: id.slice(0, 200),
+    ...(title ? { title } : {}),
     ...(typeof item?.description === "string" && item.description ? { description: item.description.slice(0, 2000) } : {}),
-    itemType: type,
-    ...(item?.type === "gem" && typeof item?.sourceContentId === "string" && item.sourceContentId ? { gemId: item.sourceContentId } : {}),
   };
 }
 
 let claimInFlight: Promise<string[]> | null = null;
+/** A-37: the sign-in this tab already claimed for, and what it claimed. One claim request per sign-in. */
+let claimedFor: { userId: string; ids: string[] } | null = null;
+const CLAIMED_FOR_STORAGE_KEY = "traveloure_guest_claimed_for";
 
 /**
- * Ruling 5, on sign-in (beside /api/cart/migrate): the session's guest plans become the account's. Two callers (the
- * app-level sign-in watcher and the plan page) share ONE request, so both see the same claimed ids.
+ * Ruling 5, on sign-in (beside /api/cart/migrate): the session's guest plans become the account's. A-37: ONE request
+ * per sign-in — the app-level watcher and the plan page share it (in flight), and a later call for the same account in
+ * this tab answers what was claimed without asking again. The endpoint is idempotent either way.
  */
-export function claimGuestPlans(): Promise<string[]> {
+export function claimGuestPlans(userId?: string | null): Promise<string[]> {
+  const who = userId ?? null;
+  if (who && claimedFor?.userId === who) return Promise.resolve(claimedFor.ids);
+  if (who && !claimedFor) {
+    try {
+      if (sessionStorage.getItem(CLAIMED_FOR_STORAGE_KEY) === who) return Promise.resolve([]);
+    } catch {
+      // No session storage: ask the server (idempotent).
+    }
+  }
   if (!claimInFlight) {
-    claimInFlight = claimGuestPlansOnce().finally(() => {
-      claimInFlight = null;
-    });
+    claimInFlight = claimGuestPlansOnce()
+      .then((ids) => {
+        if (who) {
+          claimedFor = { userId: who, ids };
+          try {
+            sessionStorage.setItem(CLAIMED_FOR_STORAGE_KEY, who);
+          } catch {
+            // Best effort: the module memo still holds for this page.
+          }
+        }
+        return ids;
+      })
+      .finally(() => {
+        claimInFlight = null;
+      });
   }
   return claimInFlight;
+}
+
+/** Tests: forget this tab's claim memo. */
+export function _resetGuestClaimMemo(): void {
+  claimedFor = null;
+  claimInFlight = null;
 }
 
 async function claimGuestPlansOnce(): Promise<string[]> {
@@ -204,16 +289,18 @@ export function takeClaimedGuestPlanId(): string | null {
   }
 }
 
-/** A browse place → the guest save body. A gem names its row (the server reads its name and point). */
-export function guestBodyForPlace(place: BrowsePlace, dayNumber: number): GuestItemBody {
-  if (place.kind === "gem") return { title: place.name, gemId: place.id, dayNumber };
-  const located = place.lat != null && place.lng != null;
-  return {
-    title: place.name,
-    dayNumber,
-    ...(place.kind === "event" ? {} : { locationName: place.name }),
-    ...(located ? { latitude: String(place.lat), longitude: String(place.lng) } : {}),
-  };
+/** A-1: a browse place → the guest save body. Every kind names its source row; the server reads its name and point. */
+export function guestBodyForPlace(place: BrowsePlace, dayNumber: number): GuestItemBody | null {
+  const kind: GuestItemKind | null =
+    place.kind === "gem" ? "gem" : place.kind === "event" ? "event" : place.kind === "listing" ? "listing" : place.kind === "partner" ? "partner_product" : null;
+  if (!kind || !place.id) return null;
+  return { kind, sourceId: place.id, title: place.name, dayNumber };
+}
+
+/** A-19: a door's pending add (`listing` | `partner`) → the guest save body, its source id carried intact. */
+export function guestBodyForPendingAdd(add: { kind: "listing" | "partner"; id: string; title: string; dayNumber?: number } | null | undefined): GuestItemBody | null {
+  if (!add?.id) return null;
+  return { kind: add.kind === "listing" ? "listing" : "partner_product", sourceId: add.id, title: add.title, dayNumber: add.dayNumber ?? 1 };
 }
 
 /** The plan's items as map days over the plan's window (stops carry their own points; none is guessed). */

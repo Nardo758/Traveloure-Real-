@@ -12,6 +12,8 @@ export const GUEST_PLAN_COPY = {
   emptyBody: "Add places from the Kyoto page or the map to start.",
   saveFailed: "Couldn't save that. Try again.",
   rateLimited: "You've added a lot in a short time. Give it a minute and try again.",
+  /** A-18 (Lane 1 wording, Nov 5, 2026): the save landed, but the place has no point on the map. */
+  savedNotOnMap: "Saved to your plan. We don't have this spot on the map yet.",
 } as const;
 
 /** The privacy line for a retention setting (null = unset). */

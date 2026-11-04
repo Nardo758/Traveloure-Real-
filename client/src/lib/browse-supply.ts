@@ -352,7 +352,8 @@ export function gemTabKey(category: string): BrowseTabKey {
 /**
  * The city payload's gems and events as browse places. Gems are the payload's visible (moderated) gems; an event is
  * included only when its description is our reviewed editorial text (PARTNER-1: `description` is published only once
- * `editorial_reviewed_at` is set). Neither carries a point in the public payload, so both list "not on the map".
+ * `editorial_reviewed_at` is set). Neither carries a point in the public payload; A-33: each carries `located`, so only an
+ * unlocated one lists "not on the map".
  */
 export function cityContentPlaces(
   payload: { gems?: { data?: unknown } | null; events?: { data?: { events?: unknown } | null } | null } | null | undefined,
@@ -364,13 +365,13 @@ export function cityContentPlaces(
   for (const g of gems) {
     const name = typeof g?.placeName === "string" ? g.placeName.trim() : "";
     if (!g?.id || !name) continue;
-    out.push({ id: String(g.id), kind: "gem", name, lat: null, lng: null, category: typeof g.placeType === "string" ? g.placeType : null, tabKey: gemTabKey(gemCategoryOf(g.placeType)) });
+    out.push({ id: String(g.id), kind: "gem", name, lat: null, lng: null, located: g.located === true, category: typeof g.placeType === "string" ? g.placeType : null, tabKey: gemTabKey(gemCategoryOf(g.placeType)) });
   }
   for (const e of events) {
     const name = typeof e?.title === "string" ? e.title.trim() : typeof e?.name === "string" ? e.name.trim() : "";
     const reviewed = typeof e?.description === "string" && e.description.trim() !== "";
     if (!e?.id || !name || !reviewed) continue;
-    out.push({ id: String(e.id), kind: "event", name, lat: null, lng: null, category: null, tabKey: "activities" });
+    out.push({ id: String(e.id), kind: "event", name, lat: null, lng: null, located: e.located === true, category: null, tabKey: "activities" });
   }
   return out;
 }

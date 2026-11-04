@@ -8457,7 +8457,23 @@ export class DatabaseStorage implements IStorage {
       (safeItem as any).contentType = VIATOR_ITEM_CONTENT_TYPE;
       (safeItem as any).contentId = opts.viatorProductCode;
     }
-    const [created] = await db.insert(itineraryItems).values(safeItem as any).returning();
+    // A-11 (migration 436): one item per source content row on a plan. A second add of the same content answers the
+    // item the plan already holds instead of failing on the unique index.
+    const [created] = await db.insert(itineraryItems).values(safeItem as any).onConflictDoNothing().returning();
+    if (!created && (safeItem as any).contentId) {
+      const [held] = await db
+        .select()
+        .from(itineraryItems)
+        .where(
+          and(
+            eq(itineraryItems.tripId, (safeItem as any).tripId),
+            eq(itineraryItems.contentType, (safeItem as any).contentType),
+            eq(itineraryItems.contentId, (safeItem as any).contentId),
+          ),
+        )
+        .limit(1);
+      if (held) return held;
+    }
     enqueuePlanLegRecompute(created?.tripId); // step 9a ruling 10 (ledger 2026-10-07-step9a-routing-engine)
     return created;
   }
