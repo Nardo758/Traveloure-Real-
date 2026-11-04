@@ -531,6 +531,8 @@ export default function LaunchWaitlistPage() {
   const launchMarket =
     signup?.launchMarketSlug && waitlistCityName(signup.launchMarketSlug) ? signup.launchMarketSlug : WAITLIST_MARKET_OPTIONS[0].key;
   const pageMarket = waitlistPageMarket(params?.market, launchMarket) ?? launchMarket;
+  // CMS-1: the two "closed days" lines name the marquee market from its own key, never a literal.
+  const marqueeCity = waitlistCityName(launchMarket) ?? launchMarket;
 
   if (pageMarket !== launchMarket) {
     return (
@@ -548,7 +550,7 @@ export default function LaunchWaitlistPage() {
     <div className="mx-auto max-w-2xl px-4 py-12" data-testid="page-launch-waitlist">
       <SEOHead
         title="Kyoto Trip Planning with Local Experts"
-        description="Closed days, last entry, timed tickets: plan Kyoto around the days that don't work. Join the Kyoto list."
+        description={`Closed days, last entry, timed tickets: plan ${marqueeCity} around the days that don't work. Join the ${marqueeCity} list.`}
         ogTitle="Kyoto's autumn, planned to work on the day."
         url={waitlistMarketPath(launchMarket)}
       />
@@ -567,7 +569,7 @@ export default function LaunchWaitlistPage() {
           Kyoto's autumn, planned to work on the day.
         </h1>
         <p className="mt-4 text-lg text-muted-foreground">
-          Closed days, last entry, timed tickets. Most Kyoto plans break on a detail you can't see from home. Traveloure is bringing local experts to catch the days that don't work, before you fly.
+          Closed days, last entry, timed tickets. Most {marqueeCity} plans break on a detail you can't see from home. Traveloure is bringing local experts to catch the days that don't work, before you fly.
         </p>
         <div className="mt-6">
           <Button asChild size="lg">

@@ -77,7 +77,10 @@ describe("CMS-1 — client", () => {
   it("the launch-waitlist page carries none of the five never-say phrases", () => {
     const page = read("client/src/pages/launch-waitlist.tsx");
     for (const phrase of [/\bcrowds?\b/i, /most loved/i, /\bpacked\b/i]) assert.doesNotMatch(page, phrase);
-    assert.ok(page.includes("Closed days, last entry, timed tickets: plan Kyoto around the days that don't work."));
+    // The marquee market's name comes from its key (WAIT-1), never a literal.
+    assert.ok(page.includes("const marqueeCity = waitlistCityName(launchMarket) ?? launchMarket;"));
+    assert.ok(page.includes("description={`Closed days, last entry, timed tickets: plan ${marqueeCity} around the days that don't work. Join the ${marqueeCity} list.`}"));
+    assert.ok(page.includes("Closed days, last entry, timed tickets. Most {marqueeCity} plans break on a detail"));
     assert.ok(page.includes("In autumn, small details can sink a Kyoto day:"));
     assert.ok(page.includes("<strong>Some entries are timed.</strong> A few places sell tickets for a set slot, and a missed slot can't be used later."));
     assert.ok(page.includes("Put it together across a few full days and one mistake costs you an afternoon."));
