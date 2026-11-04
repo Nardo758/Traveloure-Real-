@@ -18,7 +18,7 @@
  * No travel minutes or distance are shown (A8 off).
  */
 import { SaveToPlanButton } from "@/components/plan/SaveToPlanButton";
-import { useSignupMode } from "@/lib/signup-mode";
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import { useEffect, useState } from "react";
 import { Bike, Car, CheckCircle2, Clock, Footprints, TrainFront, Trash2 } from "lucide-react";
 import { NO_TRANSIT_DRIVE_NOTE, TRANSIT_API_UNCOVERED_NOTE, routedLegLine, type RouteAnswer, type RoutingMode } from "@shared/routing-engine";
@@ -444,7 +444,7 @@ function NotCheckedLegRow({ fromId, toId }: NotCheckedLegRowProps) {
 }
 
 function AirportLegRow({ direction, stayName, airport, modes, canBook, driversHref, onRequest, busy = false, routedMinutes }: AirportLegRowProps) {
-  const waitlist = useSignupMode().mode === "waitlist";
+  const waitlist = !useBookingActionsShown();
   const minutes = typeof routedMinutes === "number" && routedMinutes > 0 ? Math.round(routedMinutes) : null;
   return (
     <div className={`px-3 py-2 ${legRuleClass(minutes != null)} ml-4 space-y-1`} data-testid={`slip-leg-airport-${direction}`}>

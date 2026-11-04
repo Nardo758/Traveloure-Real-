@@ -1,5 +1,5 @@
 import { SaveToPlanButton } from "@/components/plan/SaveToPlanButton";
-import { useSignupMode } from "@/lib/signup-mode";
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import { Clock, Route, ExternalLink, ChevronDown, ChevronUp, ShoppingCart, Star, Send } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -247,7 +247,7 @@ function BookViaAgentButton({
 // agent-rail booking affordance for its own per-leg display — same component, no forked logic.
 export function LegBookingPanel({ legId, fromName, toName }: { legId: string; fromName?: string; toName?: string }) {
   const [open, setOpen] = useState(false);
-  const waitlist = useSignupMode().mode === "waitlist";
+  const waitlist = !useBookingActionsShown();
   const { toast } = useToast();
 
   const { data, isLoading } = useQuery<{ legId: string; options: any[] }>({

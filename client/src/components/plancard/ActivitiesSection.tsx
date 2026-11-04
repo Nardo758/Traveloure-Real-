@@ -1,5 +1,5 @@
 import { SaveToPlanButton } from "@/components/plan/SaveToPlanButton";
-import { useSignupMode } from "@/lib/signup-mode";
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
@@ -414,7 +414,7 @@ export function RoutingActions({
 }) {
   const { toast } = useToast();
   const { showRefusal } = useRouteRefusalToast(tripId);
-  const waitlist = useSignupMode().mode === "waitlist";
+  const waitlist = !useBookingActionsShown();
 
   const mutation = useMutation({
     mutationFn: async (to: RoutingStatus) =>

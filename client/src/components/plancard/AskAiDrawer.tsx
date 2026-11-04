@@ -48,7 +48,7 @@
 import { useState } from "react";
 import { Loader2, Sparkles, Ticket } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useSignupMode } from "@/lib/signup-mode";
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -161,7 +161,7 @@ export function AskAiDrawer({
       : "pending";
 
   // Row P-1c: waitlist mode hides the paid apply ("Pay for this task" and its pay path) — not greyed.
-  const waitlist = useSignupMode().mode === "waitlist";
+  const waitlist = !useBookingActionsShown();
   const railVisibility = askAiRailVisibility({ isOwner, isExpertViewer, logRead });
   const visibility = waitlist ? { ...railVisibility, canApply: false } : railVisibility;
 

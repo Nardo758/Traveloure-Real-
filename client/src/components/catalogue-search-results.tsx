@@ -7,7 +7,7 @@
  * place shows "from <source> · <checked date>", or "Not checked yet" with the official site. No request
  * action, no fee line.
  */
-import { useSignupMode } from "@/lib/signup-mode";
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import { useBrowseSaveToPlan } from "@/lib/browse-save";
 import { partnerCommissionShown } from "@/lib/browse-supply";
 import { useEffect, useState } from "react";
@@ -46,7 +46,7 @@ export function CatalogueResultRow({
   timeZone: string | null;
   onAdd: (item: Record<string, unknown>) => void;
 }) {
-  const waitlist = useSignupMode().mode === "waitlist";
+  const waitlist = !useBookingActionsShown();
   // GATE-1: waitlist + signed out ⇒ the add press is "Save to plan" (a toast, no dialog, no sign-in wall).
   const browseSave = useBrowseSaveToPlan();
   const onAdd = browseSave.wrapAdd(onAddProp) ?? onAddProp;

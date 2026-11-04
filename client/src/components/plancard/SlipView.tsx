@@ -15,7 +15,7 @@
  *    (`slipLegBetween`, step 9c D5), so no leg loses its render.
  */
 import { SaveToPlanButton } from "@/components/plan/SaveToPlanButton";
-import { useSignupMode } from "@/lib/signup-mode";
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 // Ruling 5 (ledger `2026-10-08-conformance-slip-phase0`): the slip's token layer, imported here only.
 import "@/styles/slip-tokens.css";
@@ -894,7 +894,7 @@ function SlipDayItem({
   const sheetControls = a.bookingPath ? bookingControls(a.bookingPath) : { primaryBook: true, bookForMe: true };
   // Ledger `2026-10-18-traveler-doors-hidden`: "Book this for me" is drawn only while `handoff_booking` is on.
   const { handoffBooking } = useTravelerDoors();
-  const slipWaitlist = useSignupMode().mode === "waitlist";
+  const slipWaitlist = !useBookingActionsShown();
   useEffect(() => {
     if (detailsRequest > 0) setSheetOpen(true);
   }, [detailsRequest]);

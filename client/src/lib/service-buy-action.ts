@@ -268,6 +268,24 @@ export function serviceDetailBuyRender(action: BuyAction | undefined | null): Se
   };
 }
 
+/**
+ * Lane 2 (ledger `2026-11-05-lane2-mode-read`; A-3 / A-28): the page's controls in waitlist mode. Book, request and hire
+ * are HIDDEN (never relabelled), with the copy that belongs to them — the ask steps, the refusal sentence about
+ * booking, the platform-charge claim. Add-to-plan stays: planning is open in waitlist mode. Pure.
+ */
+export function withoutBookingActions(render: ServiceDetailBuyRender): ServiceDetailBuyRender {
+  return {
+    ...render,
+    book: null,
+    request: null,
+    hire: null,
+    asks: [],
+    refusal: null,
+    noBuyControl: !render.add,
+    platformCharge: false,
+  };
+}
+
 // ─── The trust panel's heading and its one claim ──────────────────────────────────────────────
 
 /** The panel's words when the action really does land on a platform checkout. */

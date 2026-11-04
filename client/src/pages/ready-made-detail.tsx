@@ -50,7 +50,7 @@ import { useState } from "react";
 import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import { useParams, useLocation, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { useSignupMode } from "@/lib/signup-mode";
+import { useBookingActionsShown, useSignupMode } from "@/lib/signup-mode";
 import { queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { LanguageMenu } from "@/components/language-menu";
@@ -235,6 +235,9 @@ export default function ReadyMadeDetailPage() {
   // LW-1d: while traveler sign-up is waitlist-only, the buy button becomes the launch market's waitlist, carrying
   // only the raw code the visitor arrived with (the server decides any credit). Unread mode ⇒ buy as usual.
   const signupMode = useSignupMode().data as SignupModeRead | undefined;
+  // Lane 2 (A-3): in waitlist mode the purchase lines are hidden — what buying unlocks, the revision "after purchase",
+  // "pay once" and the bookings-are-separate notes. The plan's own content stays.
+  const purchaseCopyShown = useBookingActionsShown();
   // One class string for the buy CTA and its waitlist-mode stand-in, so the two cannot drift apart.
   const buyCtaClass =
     "w-full min-h-[46px] rounded-[8px] bg-[#f34d6e] hover:bg-[#f34d6e]/90 border border-[#f34d6e] text-white font-bold text-[12px] shadow-[0_5px_14px_rgba(243,77,110,0.18)] gap-2";
@@ -588,6 +591,7 @@ export default function ReadyMadeDetailPage() {
                   service booking are NEVER mixed in one checkout — this price is a digital product
                   against its own PaymentIntent, and every bookable thing the plan recommends is a
                   reservation bought at its own listing price. Nothing here may imply otherwise. */}
+              {purchaseCopyShown && (<>
               <div
                 className="flex items-start gap-[10px] mt-[18px] p-[14px] rounded-[9px] border border-[#e4e7ec] bg-[#fdf7ef] text-[#475467] text-[12px] leading-[1.45]"
                 data-testid="text-separate-bookings"
@@ -619,6 +623,7 @@ export default function ReadyMadeDetailPage() {
                   from your Trip Slip after purchase.
                 </p>
               </div>
+              </>)}
             </RmCard>
 
             {/* MP-2 return path: "I like this — show me everything this expert offers."
@@ -673,14 +678,14 @@ export default function ReadyMadeDetailPage() {
               <div className="grid gap-[11px] mt-[19px] pt-[17px] border-t border-[#e4e7ec] text-[#475467] text-[11px]">
                 <span className="flex items-center gap-2"><Pencil className="w-3.5 h-3.5 text-[#247d78]" aria-hidden="true" /> Edit every itinerary item</span>
                 <span className="flex items-center gap-2"><FileText className="w-3.5 h-3.5 text-[#247d78]" aria-hidden="true" /> Keep it in your Trip Slip</span>
-                <span className="flex items-center gap-2"><UserRound className="w-3.5 h-3.5 text-[#247d78]" aria-hidden="true" /> 1 revision from the expert after purchase</span>
-                <span className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-[#247d78]" aria-hidden="true" /> Pay once, keep the plan</span>
+                {purchaseCopyShown && <span className="flex items-center gap-2"><UserRound className="w-3.5 h-3.5 text-[#247d78]" aria-hidden="true" /> 1 revision from the expert after purchase</span>}
+                {purchaseCopyShown && <span className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-[#247d78]" aria-hidden="true" /> Pay once, keep the plan</span>}
                 {/* D-3: the included-with list must not end where a buyer would assume the rest is
                     included too. Bookings are their own purchase, on their own rail. */}
-                <span className="flex items-center gap-2" data-testid="text-buy-card-separate">
+                {purchaseCopyShown && <span className="flex items-center gap-2" data-testid="text-buy-card-separate">
                   <Wallet className="w-3.5 h-3.5 text-[#a67015]" aria-hidden="true" /> Stays, tours and
                   transport are booked separately, at their own price
-                </span>
+                </span>}
               </div>
               <Button
                 variant="outline"

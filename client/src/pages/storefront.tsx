@@ -46,6 +46,7 @@
  * No map renders on this surface (D5: place-anchored listings get a TEXT-only city chip, never a
  * tile), so no ODbL attribution is owed here.
  */
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import { useMemo, useState, type ReactNode } from "react";
 import { PROFILE_CONCIERGE_HEADING, profileListingSections } from "@/lib/service-type-filter";
 import { useQuery } from "@tanstack/react-query";
@@ -666,6 +667,8 @@ export default function StorefrontPage() {
   // storefront is not gated: contacting a provider is not an expert CTA.
   const storefrontLocation = data?.earner?.location?.trim() || null;
   const expertContactAvailable = useExpertAvailability(storefrontLocation ? { city: storefrontLocation } : "any");
+  // Lane 2 (A-3 / A-28): read before the early returns (hook order).
+  const bookingShown = useBookingActionsShown();
   const contactAvailable = isProviderRole(data?.earner?.role) || expertContactAvailable;
 
   if (isLoading) {
@@ -712,6 +715,9 @@ export default function StorefrontPage() {
   const { earner, away } = data;
   // B3 ruling 3: no request/book door for an expert who is not routable yet — read like vacation mode.
   const bookingClosed = earner.bookingOpen === false;
+  // Lane 2 (A-3 / A-28): in waitlist mode a listing card promises no booking — it reads like a closed storefront's
+  // ("View listing →", no buy button), the same words, nothing relabelled.
+  const noBooking = bookingClosed || !bookingShown;
   if (legacyId && earner.handle) {
     return <Redirect to={`/s/${earner.handle}${search ? `?${search}` : ""}`} />;
   }
@@ -840,7 +846,7 @@ export default function StorefrontPage() {
     // Vacation mode: the CTA stops promising "book" while the owner is away —
     // the listing itself stays visible and clickable (its detail page carries
     // the same honest away state and disables the actual booking action).
-    const cta = away || bookingClosed ? "View listing →" : s.pricingUnit === "per_night" ? "Check dates →" : "View & book →";
+    const cta = away || noBooking ? "View listing →" : s.pricingUnit === "per_night" ? "Check dates →" : "View & book →";
     const tripQuery = planContext.ownedTrip ? `?tripId=${encodeURIComponent(planContext.ownedTrip.id)}` : "";
     const serviceHref = `/services/${s.id}${tripQuery}`;
     // Vacation mode (the `ld23-buy-action-gap` note above): the server's `buyAction`
@@ -848,10 +854,10 @@ export default function StorefrontPage() {
     // withholds itself rather than promising "Book" on an away storefront (§13).
     // The label is mapped FROM the resolved action only (ledger
     // `2026-09-25-provider-action-buttons`): no listing column is read here.
-    const actionLabel = away || bookingClosed ? null : storefrontOfferingActionLabel(s.buyAction);
+    const actionLabel = away || noBooking ? null : storefrontOfferingActionLabel(s.buyAction);
     // The resolver offers NO booking verb (not live / provider hid the CTA): the
     // card offers Message about this listing, and no buy button at all.
-    const messageOnly = !away && !bookingClosed && offeringActionIsMessageOnly(s.buyAction);
+    const messageOnly = !away && !noBooking && offeringActionIsMessageOnly(s.buyAction);
     const nextAvailableText = offeringShowsNextAvailable(s.buyAction) ? formatNextAvailable(s.nextAvailable) : null;
     return (
       <StorefrontOfferingCard

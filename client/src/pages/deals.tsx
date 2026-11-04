@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -116,6 +117,8 @@ function DealCard({ deal, idx }: { deal: DealItem; idx: number }) {
   const colorClass = typeColors[deal.type] || "bg-gray-50 text-gray-700";
   const [imgFailed, setImgFailed] = useState(false);
   const resolvedImage = resolveImage(deal);
+  // Lane 2 (A-3 / K-10): no Book Now (and no "Unavailable" booking state) in waitlist mode.
+  const bookingShown = useBookingActionsShown();
 
   // §16: a deal's "Book" never opens a raw off-site affiliate link — it routes through the
   // in-platform booking-agent rail via the opaque bookingToken the feed shipped in place of
@@ -228,7 +231,7 @@ function DealCard({ deal, idx }: { deal: DealItem; idx: number }) {
                 <div className="text-xs text-[#9CA3AF]">{deal.providerLabel}</div>
               </div>
 
-              {deal.bookingToken ? (
+              {!bookingShown ? null : deal.bookingToken ? (
                 <Button
                   size="sm"
                   className="bg-primary hover:bg-primary/90 text-white shrink-0"

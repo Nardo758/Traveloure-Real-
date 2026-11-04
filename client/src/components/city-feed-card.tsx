@@ -17,7 +17,7 @@ import { feverCardPlace, partnerDisplayName } from "@/lib/fever-card-place";
 import { PARTNER_COMMISSION_NOTE, PARTNER_PRICE_LINK_LABEL, partnerCommissionShown } from "@/lib/browse-supply";
 import { useBrowseSaveToPlan } from "@/lib/browse-save";
 import { compactCredit } from "@/lib/gem-photo-credit";
-import { useSignupMode } from "@/lib/signup-mode";
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 import { SaveToPlanButton } from "@/components/plan/SaveToPlanButton";
 import { useAskExpert } from "@/lib/use-ask-expert";
@@ -435,6 +435,9 @@ const ADD_BTN_STYLE = { background: "var(--earn-navy)", color: "#fff", border: "
 // ─── Booking badge ─────────────────────────────────────────────────────────────
 
 function BookingBadge({ level }: { level: Bookability }) {
+  // Lane 2 (A-3): a booking badge is booking copy — not drawn in waitlist mode.
+  const shown = useBookingActionsShown();
+  if (!shown) return null;
   if (level === "native") {
     return (
       <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide bg-teal-50 text-teal-700 whitespace-nowrap">
@@ -467,6 +470,8 @@ function MatchedServiceStrip({
   id: string;
   city?: string;
 }) {
+  // Lane 2 (A-3): the strip's actions are bookings ("Book both", "Reserve") — not drawn in waitlist mode.
+  const bookingShown = useBookingActionsShown();
   const { toast } = useToast();
   const [requested, setRequested] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -506,6 +511,8 @@ function MatchedServiceStrip({
   }
 
   if (isExpertSuggestion && !expertAvailable) return null;
+  // A request ("notify me") and an expert door are not bookings; every other suggestion is.
+  if (!bookingShown && !isRequest && !isExpertSuggestion) return null;
 
   return (
     <div
@@ -605,7 +612,7 @@ export function useIsDesktopPanel(): boolean {
  * Exported so it renders outside the sheet's portal in tests.
  */
 export function EventSheetBody({ data, action }: { data: any; action?: MoreInfoSheetProps["action"] }) {
-  const purchasesAllowed = useSignupMode().mode === "open";
+  const purchasesAllowed = useBookingActionsShown();
   const partnerPlace = feverCardPlace(data);
   const partnerName = partnerDisplayName(data.partnerName);
   return (
@@ -982,6 +989,7 @@ export function CityFeedCardGem({
   compactActionState: _compactActionState,
 }: CityFeedCardGemProps) {
   // GATE-1: waitlist + signed out ⇒ the add press is "Save to plan" (a toast, no dialog, no sign-in wall).
+  const bookingShown = useBookingActionsShown();
   const browseSave = useBrowseSaveToPlan();
   const onAdd = browseSave.wrapAdd(onAddProp);
   const [imgLoaded, setImgLoaded] = useState(false);
@@ -1159,7 +1167,8 @@ export function CityFeedCardGem({
           the link (it opens the details sheet). */}
       {!compact && (
         <div className="flex gap-1.5 pt-0.5 flex-wrap items-center">
-          {resolvedBookability !== "info_only" && bookHref && (
+          {/* Lane 2 (A-3): no Book or Reserve in waitlist mode (`bookingActionsShown`). */}
+          {bookingShown && resolvedBookability !== "info_only" && bookHref && (
             <Button
               size="sm"
               className="h-7 text-xs px-3"
@@ -1409,7 +1418,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd: onAddProp
     href: "/experiences",
   };
   const addLabel = tileActionLabel("event", { scheduledDate, saveToPlan: browseSave.saveToPlan }) ?? "";
-  const purchasesAllowed = useSignupMode().mode === "open";
+  const purchasesAllowed = useBookingActionsShown();
   const sheetAction = {
     saveToPlan: browseSave.saveToPlan,
     label: addLabel,
@@ -1711,6 +1720,7 @@ interface CityFeedCardVendorServiceProps {
 
 export function CityFeedCardVendorService({ service, city, className, cardPosition, scheduledDate, onAdd: onAddProp, density = "full", compactActionState }: CityFeedCardVendorServiceProps) {
   // GATE-1: waitlist + signed out ⇒ the add press is "Save to plan" (a toast, no dialog, no sign-in wall).
+  const bookingShown = useBookingActionsShown();
   const browseSave = useBrowseSaveToPlan();
   const onAdd = browseSave.wrapAdd(onAddProp);
   const [imgLoaded, setImgLoaded] = useState(false);
@@ -1823,7 +1833,8 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
             <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">{service.serviceName}</h3>
             <CompactSourceMetaLine duration={durationLabel} source={source} testid={`svc-facts-${service.id}`} />
             <div className="flex gap-1.5 pt-0.5 flex-wrap items-center mt-auto">
-              {compactActionState === "platform" && resolvedBookability !== "info_only" ? (
+              {/* Lane 2 (A-28): in waitlist mode the compact tile's action is the add, never Check availability. */}
+              {bookingShown && compactActionState === "platform" && resolvedBookability !== "info_only" ? (
                 <Button
                   size="sm"
                   className="h-7 text-xs px-3"
@@ -1950,7 +1961,8 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
                 (teal), deeplink → "Reserve". The CTA always lands on the in-app service
                 detail page (date/time picker → cart → the audited /api/checkout rail);
                 it never hops off-site (§16). info_only shows no Book at all. */}
-            {resolvedBookability !== "info_only" && (
+            {/* Lane 2 (A-3): no Book or Reserve in waitlist mode (`bookingActionsShown`). */}
+            {bookingShown && resolvedBookability !== "info_only" && (
               <Button
                 size="sm"
                 className="h-7 text-xs px-3"

@@ -32,7 +32,7 @@ import { Fragment, useState, type ReactNode } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { useSignupMode } from "@/lib/signup-mode";
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import { Sparkles } from "lucide-react";
 import { useRotation } from "@/hooks/use-rotation";
 import { getCityDiscoverHref } from "@/lib/city-discover-route";
@@ -222,13 +222,13 @@ function useBillboardCopy() {
   const { t } = useTranslation("nav");
   // COPY-1 row 6a (ledger `2026-11-04-copy1-exp-qa-swaps`): in waitlist mode the third slot promises no booking —
   // it carries no label (the slot keeps its place). The mode reads fail-closed (anything but "open" is waitlist).
-  const { mode } = useSignupMode();
+  const bookingShown = useBookingActionsShown();
   return {
     slotLabels: [
       t("hero.billboard.slotLocalExpert", "Local expert").toUpperCase(),
       // SH-1 item 1: slot 2 carries no "hidden gem" claim — its eyebrow is the market's city (`slotLabel`).
       null,
-      mode === "open" ? t("hero.billboard.slotBookOnTraveloure", "Book on Traveloure").toUpperCase() : null,
+      bookingShown ? t("hero.billboard.slotBookOnTraveloure", "Book on Traveloure").toUpperCase() : null,
     ] as const,
     startThisPlan: t("hero.startAPlan", "Start a plan"),
     // The handle is substituted here as well, so the label is right before i18n initialises.
@@ -482,12 +482,14 @@ function BookableTileCard({
   slot: BillboardSlotThree;
 }) {
   const copy = useBillboardCopy();
+  // Lane 2 (A-3): in waitlist mode the tile draws no Book link and no price (the copy that supports a booking).
+  const bookingShown = useBookingActionsShown();
   const [listingPhotoFailed, setListingPhotoFailed] = useState(false);
   const [fallbackFailed, setFallbackFailed] = useState(false);
   const market = OPERATING_MARKETS.find((m) => m.marketKey === slot.marketKey);
   if (!market) return null;
   const usesListingPhoto = !!slot.listing.imageUrl && !listingPhotoFailed;
-  const price = derivePreviewPrice(slot.listing);
+  const price = bookingShown ? derivePreviewPrice(slot.listing) : null;
   return (
     <BillboardCardFrame
       tileKey={tile.key}
@@ -499,7 +501,7 @@ function BookableTileCard({
         !fallbackFailed && <TilePhoto src={tile.imagePath} onFail={() => setFallbackFailed(true)} />
       )}
       representativeCity={!usesListingPhoto && !fallbackFailed ? market.cityName : undefined}
-      badge={!price.hidden && (
+      badge={price && !price.hidden && (
         <span
           className="absolute right-2.5 top-2.5 z-10 rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[color:var(--landing-photo-badge-ink)]"
           data-testid={`hero-billboard-price-${tile.key}`}
@@ -509,7 +511,7 @@ function BookableTileCard({
       )}
       label={copy.slotLabels[2]}
       headline={slot.listing.title}
-      actions={<Link
+      actions={bookingShown && <Link
         href={`/services/${encodeURIComponent(slot.listing.id)}`}
         className="relative z-10 mt-2 inline-flex min-h-[36px] items-center self-start rounded-[7px] px-2.5 text-[12px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         style={{ background: "var(--coral-fill)" }}

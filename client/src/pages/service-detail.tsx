@@ -70,7 +70,8 @@ import { syncActiveTripToContext } from "@/lib/trip-selection";
 // `addLabel` is deliberately no longer imported, because the ADD button's words are the
 // descriptor's (§18 rule 1 — a second opinion about which verb to show is how the page came to
 // offer purchases the server refuses). `addedTitle` stays: a toast is not a buy button.
-import { serviceDetailBuyRender, serviceDetailTrustPanel } from "@/lib/service-buy-action";
+import { serviceDetailBuyRender, serviceDetailTrustPanel, withoutBookingActions } from "@/lib/service-buy-action";
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import { useTrips } from "@/hooks/use-trips";
 import { isActivePlan } from "@/lib/add-target";
 import { ConciergeHireDialog, ConciergeListingDetails, type ConciergeTaskView } from "@/components/concierge-hire";
@@ -590,6 +591,8 @@ export default function ServiceDetailPage() {
   // The add that is waiting on an answer. `null` = no question pending. `kind` says which of the
   // page's two plan writes (a service, or a room's night range) the answer belongs to.
   const [pendingAdd, setPendingAdd] = useState<{ kind: "service" | "room"; proceed: boolean; tripId: string } | null>(null);
+  // Lane 2 (A-3 / A-28): the shared rule, read with the page's other hooks (before any early return).
+  const bookingShown = useBookingActionsShown();
   // RC-2 (ledger 2026-09-24-rc2-add-to-plan): a signed-in member with no single target is asked
   // WHICH plan (or to start one) — never handed a trip-less cart row. A picked plan is bound as the
   // current plan, and the add then re-enters `beginAdd` once `targetTripId` IS that plan, so the
@@ -1273,7 +1276,7 @@ export default function ServiceDetailPage() {
   const responseWindowText = service.serviceType === "concierge" ? null : formatResponseWindow(service.responseWindowHours);
   const scopeStatementText = (service.scopeStatement ?? "").trim() || null;
   const hasGoodToKnow =
-    !!partySizeText || !!seatingText || hasLeadTime || hasChangeCutoff || !!startWindowText || !!weeklyPatternText || hasBuffer ||
+    !!partySizeText || !!seatingText || (bookingShown && hasLeadTime) || hasChangeCutoff || !!startWindowText || !!weeklyPatternText || hasBuffer ||
     !!whatToBringText || !!accessNotesText ||
     hasDurationMinutes || hasNeighborhoods || !!transportProvisionText || hasDeposit ||
     !!checkInOutText || hasHouseRules || showAmenities ||
@@ -1305,7 +1308,8 @@ export default function ServiceDetailPage() {
   // VACATION MODE IS STILL THE PAGE'S OWN FACT. `buildListingBuyActions` is called with
   // `isLive: true` for every approved+active listing, so the descriptor cannot say "this provider
   // is away" — the `isAway` disabling below stays exactly as it was, on top of the descriptor.
-  const buy = serviceDetailBuyRender(service.buyAction);
+  // Lane 2 (A-3 / A-28): in waitlist mode no book, request or hire control is drawn (`withoutBookingActions`).
+  const buy = bookingShown ? serviceDetailBuyRender(service.buyAction) : withoutBookingActions(serviceDetailBuyRender(service.buyAction));
   // CN-1d-UI: the hire's facts. The name is the owner's first name off the listing-addressed verification
   // read; a plan qualifies only with chosen dates (`hireEligiblePlan`) and while it is not past.
   const isConcierge = service.serviceType === "concierge";
@@ -1536,7 +1540,7 @@ export default function ServiceDetailPage() {
                         {startWindowText}
                       </GoodToKnowRow>
                     )}
-                    {hasLeadTime && (
+                    {bookingShown && hasLeadTime && (
                       <GoodToKnowRow icon={Clock} testId="text-lead-time">
                         Book at least {formatHours(service.leadTimeHours!)} ahead
                       </GoodToKnowRow>
@@ -2238,6 +2242,8 @@ export default function ServiceDetailPage() {
 
                 <Separator className="my-4 bg-[var(--earn-border)]" />
 
+                {/* Lane 2 (A-3 / A-28): no availability picker, cancellation terms or fee line in waitlist mode. */}
+                {bookingShown && (<>
                 {isRoom ? (
                   /* §17 Product Builder — PROPERTY rung: a room books a NIGHT RANGE. */
                   <div className="mb-1" data-testid="card-room-stay">
@@ -2505,6 +2511,7 @@ export default function ServiceDetailPage() {
                     A platform service fee is deducted from each booking; the provider receives the remainder.
                   </p>
                 </div>
+                </>)}
               </DetailCard>
             </div>
           </div>

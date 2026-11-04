@@ -8,7 +8,7 @@
  * nothing at all rather than a line that leaves out what the server sent.
  */
 import { Link } from "wouter";
-import { useSignupMode } from "@/lib/signup-mode";
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import type { UpsellLine as UpsellLineDto } from "@shared/upsell-line";
 
 /** Every string this component says. */
@@ -23,7 +23,7 @@ export function upsellLineVisible(line: Pick<UpsellLineDto, "title" | "socialPro
 /** `onClick` records the tap through the existing upsell click event (the caller passes it); no new tracking. */
 export function UpsellLine({ line, href, onClick }: { line: UpsellLineDto; href: string; onClick?: () => void }) {
   // Row P-1c: waitlist mode hides the paid add — not greyed.
-  const waitlist = useSignupMode().mode === "waitlist";
+  const waitlist = !useBookingActionsShown();
   if (waitlist || !upsellLineVisible(line)) return null;
   return (
     <p className="text-xs" data-testid={`item-upsell-line-${line.itemId}`}>
