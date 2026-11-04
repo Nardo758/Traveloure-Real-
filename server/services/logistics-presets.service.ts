@@ -14,6 +14,7 @@
 // throws unless `DATABASE_URL` is set, so the table could not be pinned by a DB-free unit test.
 // Same pattern and same reason as `server/services/pending-events.service.ts`'s lazy storage
 // import; the two write paths are already `async`, so nothing else changes.
+import { siteNeverSayHits } from "@shared/banned-copy";
 import type { InsertTemporalAnchor, InsertDayBoundary } from "@shared/schema";
 import { FLIGHT_BUFFER_MIN } from "@shared/getting-there";
 import { anchorWallClockMs, anchorWallClockString } from "@shared/anchor-time";
@@ -1128,6 +1129,33 @@ const TEMPLATE_PRESETS: Record<string, TemplatePresets> = {
 };
 
 /**
+ * ENTRY-1s (ledger `2026-11-03-entry1s-presets-and-draft-order`): every anchor a Reservation preset can write, so the
+ * plancard can show them as timed stops. One table (`TEMPLATE_PRESETS`) — read here, never restated (§18 rule 1).
+ */
+export function allPresetAnchors(): ReadonlyArray<{ template: string; anchor: AnchorPreset }> {
+  const out: Array<{ template: string; anchor: AnchorPreset }> = [];
+  for (const [template, presets] of Object.entries(TEMPLATE_PRESETS)) {
+    for (const anchor of presets.anchors) out.push({ template, anchor });
+  }
+  return out;
+}
+
+/** The anchor types a preset can write (the generator's `preset.anchorType` values). */
+export const PRESET_ANCHOR_TYPES: ReadonlySet<string> = new Set(allPresetAnchors().map((p) => p.anchor.anchorType));
+
+/**
+ * The label a traveler reads for a written preset anchor. The row carries the preset's `description` verbatim, so the
+ * (anchorType, description) pair names the exact preset; its label is used only when it passes the never-say list —
+ * otherwise, and for an anchor no preset wrote, null (the caller falls back to the row's own words).
+ */
+export function presetAnchorLabel(anchorType: string, description: string | null | undefined): string | null {
+  if (!description) return null;
+  const hit = allPresetAnchors().find((p) => p.anchor.anchorType === anchorType && p.anchor.description === description);
+  if (!hit) return null;
+  return siteNeverSayHits(hit.anchor.label).length === 0 ? hit.anchor.label : null;
+}
+
+/**
  * Get the preset anchors for a given experience type.
  * Returns the raw presets so the frontend can display them for customization.
  */
@@ -1171,6 +1199,14 @@ export async function generatePresetsForTrip(
   // Create temporal anchors — skip any anchor type already present
   for (const preset of presets.anchors) {
     if (existingAnchorTypes.has(preset.anchorType)) continue;
+    // ENTRY-1s: the words a preset writes onto the anchor row pass the site never-say list, or the anchor is not
+    // written (a banned description can't reach the plancard). The label is never written; the plancard reads it
+    // through `presetAnchorLabel`, which applies the same list.
+    const hits = siteNeverSayHits(preset.description);
+    if (hits.length) {
+      console.error(`[presets] anchor ${templateSlug}/${preset.anchorType} not written: never-say hit (${hits.join(", ")})`);
+      continue;
+    }
 
     // R318: the preset's day + time are the plan's wall-clock (`@shared/anchor-time`), built on the
     // plan's calendar with UTC day arithmetic — `setHours` stored it in the server's zone.

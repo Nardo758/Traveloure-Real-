@@ -4,6 +4,7 @@
  * Routes → this service (or storage) → db. No raw db calls in route handlers.
  */
 
+import { orderDraftItems } from "../utils/itinerary-time";
 import { hideBlockedGemImage, photoBlocks } from "./place-photo-blocks.service";
 import { affiliateProductNotPausedWhere, contentRegistryNotPausedWhere } from "./partner-pause.service";
 import { stampItemSourceClass } from "@shared/content-tiers";
@@ -536,10 +537,13 @@ export async function saveGeneratedItinerarySnapshot(
       itineraryItemRebuildDeletable(),
       itineraryItemNotPlanAnchor(),
     ));
-    const insertedRows = input.canonicalItems.length === 0
+    // ENTRY-1s: insert in (day, time) order so sortOrder follows the clock; untimed items keep model order after the
+    // timed ones of their day (`orderDraftItems`). The id mapping below reads the same ordered list.
+    const orderedItems = orderDraftItems(input.canonicalItems);
+    const insertedRows = orderedItems.length === 0
       ? []
       : await tx.insert(itineraryItems).values(
-        input.canonicalItems.map((activity, sortOrder) => stampItemSourceClass({
+        orderedItems.map((activity, sortOrder) => stampItemSourceClass({
           tripId,
           title: activity.title,
           description: activity.description,
@@ -559,7 +563,7 @@ export async function saveGeneratedItinerarySnapshot(
         }, { fromLocalInput: input.fromLocalInput === true }) as any),
       ).returning({ id: itineraryItems.id });
 
-    const insertedItems = input.canonicalItems.map((activity, index) => ({
+    const insertedItems = orderedItems.map((activity, index) => ({
       ...activity,
       id: insertedRows[index].id,
     }));

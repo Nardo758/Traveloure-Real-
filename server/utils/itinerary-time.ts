@@ -39,3 +39,23 @@ export function parseActivityTimeToMinutes(time: string | null | undefined): num
 
   return Number.POSITIVE_INFINITY;
 }
+
+/**
+ * ENTRY-1s (ledger `2026-11-03-entry1s-presets-and-draft-order`): the Quick draft's items in the order they are
+ * inserted — by day, then by time on that day. An item with no parseable time keeps the model's order AFTER the timed
+ * items of its day; a stable sort keeps ties in the model's order. Returns a new array; the input is not touched.
+ */
+export function orderDraftItems<T extends { dayNumber?: number | null; time?: string | null }>(items: readonly T[]): T[] {
+  const day = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : Number.POSITIVE_INFINITY);
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => {
+      const d = day(a.item.dayNumber) - day(b.item.dayNumber);
+      if (d !== 0 && !Number.isNaN(d)) return d;
+      const ta = parseActivityTimeToMinutes(a.item.time);
+      const tb = parseActivityTimeToMinutes(b.item.time);
+      if (ta !== tb) return ta === Number.POSITIVE_INFINITY ? 1 : tb === Number.POSITIVE_INFINITY ? -1 : ta - tb;
+      return a.index - b.index;
+    })
+    .map((x) => x.item);
+}
