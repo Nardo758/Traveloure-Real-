@@ -10,6 +10,8 @@
  * The /events "Coming up" block that shared these cards is retired (ledger
  * `2026-10-06-events-calendar`): /events lists "What's on" from its own calendar read.
  */
+import { PLAN_START_HREF, planStartClick } from "@/lib/plan-entry";
+import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
   CITY_EVENTS_STRIP_MAX,
@@ -139,15 +141,14 @@ function EventCard({
         ...(event.blurb ? [{ text: event.blurb, tone: "muted" as const }] : []),
       ]}
       actions={
-        <button
-          type="button"
-          onClick={() => onPlanAround(planAroundSource(event, door))}
+        <Link href={PLAN_START_HREF}
+          onClick={planStartClick(() => onPlanAround(planAroundSource(event, door)))}
           className="inline-flex min-h-[36px] items-center self-start rounded-[8px] border px-3 text-[13px] font-semibold"
           style={{ borderColor: "var(--earn-coral-ink)", color: "var(--earn-coral-ink)" }}
           data-testid={`city-event-plan-${event.id}`}
         >
           Plan around it
-        </button>
+        </Link>
       }
     />
   );

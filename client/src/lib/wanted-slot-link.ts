@@ -67,3 +67,15 @@ export function buildWantedSlotSignupHref(input: WantedSlotLinkInput): string {
   }
   return `/become-expert?${params.toString()}`;
 }
+
+/**
+ * ENTRY-1: the ONE key a neighbourhood's feed section and its wanted slot are matched on — the slug,
+ * else the id, else the name. Both sides read this, so a neighbourhood with an id AND a slug homes its
+ * wanted tile in its own section (the section keyed on the slug while the slot carried the id).
+ */
+export function neighbourhoodHomeKey(nb: { slug?: unknown; id?: unknown; name?: unknown } | null | undefined): string | null {
+  if (!nb) return null;
+  const v = nb.slug ?? nb.id ?? nb.name;
+  const key = v == null ? "" : String(v);
+  return key || null;
+}

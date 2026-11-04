@@ -24,6 +24,7 @@
  * "Start a plan" calls the SAME handler the old hero used — the onPlanTrip prop opens the ONE
  * planning entry (`usePlanning().open`).
  */
+import { PLAN_START_HREF, planStartClick } from "@/lib/plan-entry";
 import { Fragment, useState, type ReactNode } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -306,18 +307,17 @@ function CuratedTileCard({
       headline={tile.headline}
       credit={!photoFailed && <TileCredit tileKey={tile.key} credit={tile.credit} />}
       actions={
-        <button
-          type="button"
-          onClick={() => {
+        <Link href={PLAN_START_HREF}
+          onClick={planStartClick(() => {
             const source = billboardPlanSource(tile);
             if (source) onStartPlan(source);
-          }}
+          })}
           className="inline-flex min-h-[36px] items-center rounded-[7px] px-2.5 text-[12px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
           style={{ background: "var(--coral-fill)" }}
           data-testid={`hero-billboard-start-${tile.key}`}
         >
           {copy.startThisPlan}
-        </button>
+        </Link>
       }
     />
   );
@@ -367,12 +367,11 @@ function OverrideTileCard({
       titleTestId={`hero-billboard-listing-title-${tile.key}`}
       credit={!usesListingPhoto && !fallbackFailed && <TileCredit tileKey={tile.key} credit={tile.credit} />}
       actions={<>
-        <button
-          type="button"
-          onClick={() => {
+        <Link href={PLAN_START_HREF}
+          onClick={planStartClick(() => {
             const source = billboardOverridePlanSource(tile, override);
             if (source) onStartPlan(source);
-          }}
+          })}
           className="inline-flex min-h-[36px] items-center rounded-[7px] px-2.5 text-[12px] font-semibold text-white"
           style={{ background: "var(--coral-fill)" }}
           data-testid={`hero-billboard-plan-with-${tile.key}`}
@@ -383,7 +382,7 @@ function OverrideTileCard({
               {" · "}{price.text}{price.unit ? ` ${price.unit}` : ""}
             </span>
           )}
-        </button>
+        </Link>
         {storefront && (
           <Link
             href={storefront}
@@ -442,18 +441,17 @@ function GemTileCard({
       representativeCity={!usesGemPhoto && !fallbackFailed ? market.cityName : undefined}
       label={market.cityName.toUpperCase()}
       headline={slot.gem.name}
-      actions={<button
-        type="button"
-        onClick={() => {
+      actions={<Link href={PLAN_START_HREF}
+        onClick={planStartClick(() => {
           const source = billboardMarketSource(slot.marketKey, slot.gem);
           if (source) onStartPlan(source);
-        }}
+        })}
         className="relative z-10 mt-2 inline-flex min-h-[36px] items-center self-start rounded-[7px] px-2.5 text-[12px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         style={{ background: "var(--coral-fill)" }}
         data-testid={`hero-billboard-plan-gem-${tile.key}`}
       >
         {copy.planAroundGem}
-      </button>}
+      </Link>}
       credit={usesGemPhoto ? (
         <span className="relative z-10 mt-2 text-[9.5px] opacity-75" style={{ fontFamily: EARN_MONO }}>
           Photo: {slot.gem.image!.attribution}
@@ -615,16 +613,15 @@ export function LandingHeroContent({
 
           <div className="flex gap-2.5">
             {/* Coral 1 of 3 (ruled): the primary Plan-my-trip CTA. Same handler as ever. */}
-            <button
-              type="button"
-              onClick={onPlanTrip}
+            <Link href={PLAN_START_HREF}
+              onClick={planStartClick(onPlanTrip)}
               className="inline-flex items-center gap-2 rounded-[10px] px-[18px] py-3 text-[14px] font-semibold text-white"
               style={{ background: "var(--coral-fill)" }}
               data-testid="button-plan-trip"
             >
               <Sparkles className="h-4 w-4" />
               {t("hero.startAPlan", "Start a plan")}
-            </button>
+            </Link>
             {anyExpertAvailable && (
               <Link
                 href="/experts"

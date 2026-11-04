@@ -22,13 +22,13 @@ import { useAuth } from "@/hooks/use-auth";
 import { usePlanningOptional } from "@/contexts/PlanningContext";
 import {
   ARASHIYAMA_ITINERARY_EXPERT_HREF,
-  ARASHIYAMA_ITINERARY_EXPERT_LINK,
   ARASHIYAMA_ITINERARY_PROVIDER_HREF,
-  ARASHIYAMA_ITINERARY_PROVIDER_LINK,
   ARASHIYAMA_PLAN_YOUR_DAY,
   arashiyamaPlanDaySource,
   arashiyamaShowsApplyLinks,
   isArashiyamaItineraryWanted,
+  itineraryExpertLink,
+  itineraryProviderLink,
 } from "@/lib/arashiyama-wanted-copy";
 
 
@@ -74,7 +74,7 @@ export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" 
                 data-testid="link-arashiyama-expert-apply"
                 data-bento-primary-action=""
               >
-                {ARASHIYAMA_ITINERARY_EXPERT_LINK}
+                {itineraryExpertLink(neighborhoodName)}
               </a>
               <a
                 href={ARASHIYAMA_ITINERARY_PROVIDER_HREF}
@@ -83,7 +83,7 @@ export function FeedWantedSlotCard({ item }: { item: FeedItem; density?: "full" 
                 data-testid="link-arashiyama-provider-apply"
                 data-bento-primary-action=""
               >
-                {ARASHIYAMA_ITINERARY_PROVIDER_LINK}
+                {itineraryProviderLink(neighborhoodName)}
               </a>
             </div>
           ) : (

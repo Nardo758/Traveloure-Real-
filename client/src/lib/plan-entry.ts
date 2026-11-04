@@ -210,6 +210,26 @@ function wholeRun(e: PlanEntryEvent): { startDate: string; endDate: string } {
  * Pure. SH-1 Launch Q14.2/Q15.3: the dates a plan is minted with — the chosen dates, the start moved to the later of
  * itself and the market's today (`clampToMarketToday`; UTC today with no market). The server applies the same clamp.
  */
+/**
+ * ENTRY-1: what a PlanEntry start mints. Dates the entry carried reach the body — which is what makes
+ * the server stamp `dates_confirmed_at`, so the slip's "Set your dates" panel never asks again — and
+ * `datesConfirmed` names that fact. No dates ⇒ none sent and nothing confirmed (§13).
+ */
+export function planEntryMintBasics(start: {
+  destination: string;
+  startDate?: string;
+  endDate?: string;
+  occasionName?: string;
+}): { destination: string; startDate?: string; endDate?: string; occasionName?: string; datesConfirmed: boolean } {
+  const datesConfirmed = !!(start.startDate && start.endDate);
+  return {
+    destination: start.destination,
+    ...(datesConfirmed ? { startDate: start.startDate, endDate: start.endDate } : {}),
+    ...(start.occasionName ? { occasionName: start.occasionName } : {}),
+    datesConfirmed,
+  };
+}
+
 export function planEntryMintDates(state: Pick<PlanEntryState, "startDate" | "endDate" | "market">, now: Date = new Date()): { startDate: string; endDate: string } | null {
   if (!state.startDate || !state.endDate) return null;
   const startDate = clampToMarketToday(state.startDate, state.market?.marketKey ?? null, now);
@@ -288,6 +308,60 @@ export function experiencesPopupSource(
 }
 
 /** Where a door lands PlanEntry, and with what already answered. */
+/**
+ * ENTRY-1: a city page carries its city into a new plan. `/discover/location/:city` names one of the
+ * eight cities EXACTLY (ruling 4's match), or nothing is carried — never a nearest guess (§13).
+ */
+export function cityPageSource(path: string): { city: string; country: string } | null {
+  const m = /^\/discover\/location\/([^/?#]+)\/?$/.exec(path.split("?")[0]);
+  if (!m) return null;
+  let raw: string;
+  try {
+    raw = decodeURIComponent(m[1]);
+  } catch {
+    return null;
+  }
+  const market = exactOperatingMarket(raw.replace(/[-_+]/g, " "));
+  return market ? { city: market.cityName, country: market.country } : null;
+}
+
+/**
+ * ENTRY-1: the new-plan pop-up has a URL — `?start=1`, plus `&step=` while it is open — so Back closes
+ * it and a link opens it. Pure: the query string in, the query string out (other params kept).
+ */
+/** ENTRY-1: every Start-a-plan control is a real link to the pop-up's URL. */
+export const PLAN_START_HREF = "/?start=1";
+
+/**
+ * The click handler a Start-a-plan link keeps: a plain click opens the pop-up in place (the door's
+ * own handler, unchanged); a modified click (new tab/window) follows the href instead.
+ */
+export function planStartClick(handler: () => void) {
+  return (e: { preventDefault(): void; metaKey?: boolean; ctrlKey?: boolean; shiftKey?: boolean; altKey?: boolean; button?: number }) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || (e.button !== undefined && e.button !== 0)) return;
+    e.preventDefault();
+    handler();
+  };
+}
+
+export const PLAN_ENTRY_URL_STEPS = ["around", "occasion", "details"] as const;
+
+export function planEntryUrlRequested(search: string): boolean {
+  return new URLSearchParams(search.startsWith("?") ? search.slice(1) : search).get("start") === "1";
+}
+
+export function withPlanEntryUrl(search: string, open: boolean, step?: string | null): string {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  params.delete("start");
+  params.delete("step");
+  if (open) {
+    params.set("start", "1");
+    if (step && (PLAN_ENTRY_URL_STEPS as readonly string[]).includes(step)) params.set("step", step);
+  }
+  const out = params.toString();
+  return out ? `?${out}` : "";
+}
+
 export function initialPlanEntry(source: PlanEntrySource | null | undefined): { state: PlanEntryState; step: PlanEntryStep } {
   const state = emptyPlanEntry();
   if (!source) return { state, step: "around" };

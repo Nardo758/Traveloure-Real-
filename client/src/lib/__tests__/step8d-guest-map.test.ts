@@ -219,7 +219,7 @@ test("G5: the board's words; only what the guest answered", () => {
   assert.equal(guest.guestDateRange("2026-10-30", "2026-11-02"), "Fri 30 Oct – Mon 2 Nov");
   assert.equal(
     guest.guestGateDescription("Kyoto, Thu 12 – Mon 16 Nov and 2 travelers", { kind: "add", name: "Tea ceremony" }),
-    "Kyoto, Thu 12 – Mon 16 Nov and 2 travelers are kept from your answers. Tea ceremony is added as soon as you are in.",
+    "Kyoto, Thu 12 – Mon 16 Nov and 2 travelers. Your answers are kept. Tea ceremony is added as soon as you are in.",
   );
   assert.equal(guest.guestGateNext({ kind: "start" }), "Your empty plan opens here, on the map.");
   assert.equal(guest.GUEST_GATE_TITLE, "Your plan is created when you sign in");

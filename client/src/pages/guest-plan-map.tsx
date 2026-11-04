@@ -15,6 +15,8 @@
  */
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
+import type { ExperienceType } from "@shared/schema";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
@@ -53,6 +55,12 @@ export default function GuestPlanMapPage() {
   const [selectedDay, setSelectedDay] = useState(0);
   // Read once per mount; the add rewrites the record, and the page re-reads it when it needs to.
   const record = useMemo(() => (user ? null : peekPendingPlanRecord()), [user]);
+  // ENTRY-1: the occasion's catalog name for the answers line — the same list PlanEntry reads.
+  const { data: occasionRows } = useQuery<ExperienceType[]>({
+    queryKey: ["/api/experience-types"],
+    enabled: !!record?.answers?.occasionSlug,
+    staleTime: 5 * 60_000,
+  });
 
   if (isLoading) {
     return (
@@ -99,7 +107,10 @@ export default function GuestPlanMapPage() {
   }
 
   const destination = guestDestination(record.answers, record.source);
-  const answersLine = guestAnswersLine(record.answers, destination);
+  const occasionName = record.answers?.occasionSlug
+    ? occasionRows?.find((o) => o.slug === record.answers.occasionSlug)?.name ?? null
+    : null;
+  const answersLine = guestAnswersLine(record.answers, destination, occasionName);
   const center = guestMapCenter(destination);
 
   const openGate = (gate: GuestGateKind) =>
