@@ -1251,27 +1251,11 @@ A row is "hosted" when its `roles_needed` includes `venue` (`shared/experience-g
 row carries it was not read. The second half of O-1 (no Kyoto event in that tab) is addressed by the upcoming-events
 ruling (events under way included, marquee first, limit after order).
 
-### FU-R2-3 — "trusted providers" also in the homepage meta description
-
-K-6 named the city page subtitle only. The same phrase is in `HOMEPAGE_META_DESCRIPTION`
-(`client/src/lib/g02-g06-copy.ts`, also in `client/index.html`). Not changed: outside the row.
-
 ### FU-R2-4 — "Single Perfect Day Design" (expert offering `perfect_day`)
 
 A second offering label carries "perfect" (`expert_offering_types.perfect_day`). K-1 named only "Local Perfect Day".
-
-### FU-R2-5 — "By date" on /events "Where to go"
-
-K-5's approved replacement is "By date", but that list is ordered by the server's season rating for the month, and its
-rows are destinations, not dated items. The sentence now says the order is by date when it is not. Needs a wording or
-ordering decision.
 
 ### FU-R2-6 — the Japanese verify page
 
 N-1's sentence "Check your email to confirm your account." replaced the English verify-page body only. The Japanese
 locale keeps its earlier body (no approved translation).
-
-### FU-R2-7 — the server still stamps consent on every register
-
-N-2 makes the one consent box required on both sign-up forms. `POST /api/auth/register` stamps `terms_accepted_at` /
-`privacy_accepted_at` whatever the body says. Requiring the consent server-side is a separate auth change.

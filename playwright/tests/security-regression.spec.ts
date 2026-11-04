@@ -38,7 +38,7 @@ test.beforeAll(async ({ browser }) => {
 
   const email = `sec.reg.${TS}@traveloure-test.com`;
   await page.request.post(`${BASE}/api/auth/register`, {
-    data: { email, password: "SecReg!2026", firstName: "Sec", lastName: "Reg" },
+    data: { email, password: "SecReg!2026", firstName: "Sec", lastName: "Reg", consent: true },
   });
 
   const loginResp = await page.request.post(`${BASE}/api/auth/login`, {
@@ -118,7 +118,7 @@ test.describe("T3 — CSRF: GET logout blocked, SameSite=Lax on cookie", () => {
   test("login Set-Cookie includes SameSite=Lax and HttpOnly", async ({ page }) => {
     const email = `sec.csrf.${TS}@traveloure-test.com`;
     await page.request.post(`${BASE}/api/auth/register`, {
-      data: { email, password: "CsrfTest!2026", firstName: "C", lastName: "S" },
+      data: { email, password: "CsrfTest!2026", firstName: "C", lastName: "S", consent: true },
     });
     const resp = await page.request.post(`${BASE}/api/auth/login`, {
       data: { email, password: "CsrfTest!2026" },
@@ -263,7 +263,7 @@ test.describe("T8 — Rate limiting: middleware wired on auth endpoints", () => 
 
   test("X-RateLimit-Limit header present on /api/auth/register", async ({ page }) => {
     const resp = await page.request.post(`${BASE}/api/auth/register`, {
-      data: { email: `probe.t8b.${TS}@nope.test`, password: "WrongPw", firstName: "P", lastName: "Q" },
+      data: { email: `probe.t8b.${TS}@nope.test`, password: "WrongPw", firstName: "P", lastName: "Q", consent: true },
     });
     expect([202, 400, 429]).toContain(resp.status()); // AUTH-1 fix 3b: a valid sign-up is the neutral 202
     const limit = resp.headers()["x-ratelimit-limit"];

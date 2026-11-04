@@ -70,10 +70,7 @@ export function WhereToGo({
             {vibe !== "all" ? ` · ${titleCase(vibe)}` : ""}
           </span>
         </div>
-        <span className="text-[12.5px]" style={{ color: "var(--earn-muted)" }}>
-          {/* K-4/K-5 (round 2 rulings, Nov 4, 2026): "crowd levels" deleted; "Best season first" → "By date". */}
-          Recommendations based on weather and events. By date; a city we have not rated yet says so.
-        </span>
+{/* K-4/K-5 (round 2 rulings, Nov 4, 2026): the explanatory sentence is deleted; the list is ordered by start date. */}
       </div>
       <div className="flex flex-wrap gap-2">
         <Chip on={vibe === "all"} label="All destinations" onClick={() => onVibe("all")} testId="events-vibe-all" />

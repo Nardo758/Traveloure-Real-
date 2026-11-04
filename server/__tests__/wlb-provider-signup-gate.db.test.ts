@@ -48,7 +48,7 @@ setupEmailAuth({
 
 async function register(body: Record<string, unknown>) {
   const res: any = { statusCode: 200, body: undefined, status(c: number) { this.statusCode = c; return this; }, json(p: any) { this.body = p; return this; } };
-  await handlers["POST /api/auth/register"]({ body, session: {} }, res);
+  await handlers["POST /api/auth/register"]({ body: { consent: true, ...body }, session: {} }, res);
   return res;
 }
 

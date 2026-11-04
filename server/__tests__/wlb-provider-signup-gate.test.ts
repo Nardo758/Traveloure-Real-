@@ -103,7 +103,7 @@ setupEmailAuth({
 async function register(extra: Record<string, unknown> = {}) {
   const res: any = { statusCode: 200, body: undefined, status(c: number) { this.statusCode = c; return this; }, json(p: any) { this.body = p; return this; } };
   await handlers["POST /api/auth/register"](
-    { body: { email: "wlb-new@example.com", password: "longenough1", firstName: "Fixture", lastName: "Person", ...extra }, session: {} },
+    { body: { email: "wlb-new@example.com", password: "longenough1", firstName: "Fixture", lastName: "Person", consent: true, ...extra }, session: {} },
     res,
   );
   return res;

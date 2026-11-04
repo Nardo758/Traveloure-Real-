@@ -81,6 +81,10 @@ const registerSchema = z.object({
   password: z.string().min(8, "Password must be at least 8 characters").max(200, "Password is too long"),
   firstName: z.string().trim().min(1, "First name is required").max(100, "First name is too long"),
   lastName: z.string().trim().min(1, "Last name is required").max(100, "Last name is too long"),
+  // N-2 (round 2 rulings, Nov 4, 2026): the one consent box ("I agree to the Terms of Service and Privacy Policy") is
+  // required. Anything but `true` — absent, false, a string — is refused before any write, and the acceptance below is
+  // recorded only because this field said true.
+  consent: z.literal(true, { errorMap: () => ({ message: "You must agree to the Terms of Service and Privacy Policy" }) }),
   userType: z.enum(validUserTypes).optional().default("user"), // accepted but ignored server-side
   // LW-1b: what the sign-up is for. `supply` (offering services) passes the traveler waitlist; anything else is a
   // traveler. It grants no role — role upgrades still require an approved application form.
@@ -198,8 +202,8 @@ export function setupEmailAuth(app: Express): void {
               lastName,
               role: 'user' as const, // SECURITY: always 'user' — role upgrades require approved application
               authProvider: "email",
-              termsAcceptedAt: new Date(),
-              privacyAcceptedAt: new Date(),
+              // N-2: stamped only because the validated body said `consent: true` (the schema refuses anything else).
+              ...(validation.data.consent === true ? { termsAcceptedAt: new Date(), privacyAcceptedAt: new Date() } : {}),
               termsVersion: CURRENT_TERMS_VERSION,
               privacyVersion: CURRENT_PRIVACY_VERSION,
               // SH-1 item 12: an account created on the QA domain is a test account from birth. Any other

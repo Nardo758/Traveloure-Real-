@@ -126,6 +126,7 @@ export function SignInModal({
             lastName: signupDraft.lastName,
             email: signupDraft.email,
             password: signupDraft.password,
+            consent: signupDraft.consent,
             ...(intent === "supply" ? { intent } : {}),
             // LW-1d: the supply door's `?source=` tag, stored once on the new account by the server.
             ...(intent === "supply" && supplySourceTag(window.location.search)

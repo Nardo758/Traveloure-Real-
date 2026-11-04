@@ -85,6 +85,7 @@ export function SignupPage() {
           lastName: draft.lastName,
           email: draft.email,
           password: draft.password,
+          consent: draft.consent,
           refToken,
           source,
           ...(intent === "supply" ? { intent } : {}),

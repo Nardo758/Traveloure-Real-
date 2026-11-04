@@ -84,8 +84,8 @@ export const MOMENTS: MomentConfig[] = [
     eyebrow: "A golf trip in Scotland",
     headline: "Four rounds on the courses worth the trip, in the right order.",
     pieces: [
-      // K-2 (round 2 rulings, Nov 4, 2026): the "each at its best hour" clause is deleted.
-      "Tee times booked in sequence.",
+      // K-2 (round 2 rulings, Nov 4, 2026).
+      "Tee times in sequence.",
       "A driver runs the bags between links.",
     ],
     experienceType: "travel",

@@ -153,6 +153,7 @@ test.describe("B9 — trailing whitespace in email: schema rejection (API)", () 
       password: "ValidPass1!",
       firstName: "B9",
       lastName: "Test",
+      consent: true,
     });
 
     expect(status).toBe(400);
@@ -197,6 +198,7 @@ test.describe("B10 — leading whitespace in email: schema rejection (API)", () 
       password: "ValidPass1!",
       firstName: "B10",
       lastName: "Test",
+      consent: true,
     });
 
     expect(status).toBe(400);
@@ -247,6 +249,7 @@ test.describe("Schema regression — additional invalid inputs (API)", () => {
       password: "Short1!",
       firstName: "Short",
       lastName: "Pass",
+      consent: true,
     });
     expect(status).toBe(400);
     const errors: Array<{ path: string[] }> = body.errors ?? [];
@@ -262,6 +265,7 @@ test.describe("Schema regression — additional invalid inputs (API)", () => {
       password: "ValidPass1!",
       firstName: "",
       lastName: "Test",
+      consent: true,
     });
     expect(status).toBe(400);
   });
