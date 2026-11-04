@@ -213,7 +213,8 @@ test("S6: saves fired at the same moment to the three routes all survive (ledger
     const style = round % 2 === 0 ? "Culture" : "Nature";
     const timezone = round % 2 === 0 ? "Asia/Tokyo" : "Asia/Osaka";
     const results = await Promise.all([
-      call("PATCH", "/api/me/storefront", { coverImageUrl: cover }),
+      // FIXTURE EDIT (CMS-1 brief §4b): the rights tick rides the cover.
+      call("PATCH", "/api/me/storefront", { coverImageUrl: cover, photoRightsTicked: true }),
       call("PATCH", "/api/me/travel-preferences", { travelStyles: [style] }),
       call("PATCH", "/api/me/preferences", { timezone }),
     ]);
