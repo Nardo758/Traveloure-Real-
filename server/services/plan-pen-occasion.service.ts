@@ -8,8 +8,9 @@ import { PEN_OCCASION_KEYS } from "@shared/trip-context-occasion";
  * A trip-scoped `trip_contexts` row's occasion keys are changed HERE and nowhere else. The bulk pen
  * push (`PUT /api/trip-context?tripId=`) never contributes them — whatever a client sends — so a
  * read surface (opening a slip, reading a template page) cannot rewrite a plan's occasion by
- * accident. The only caller is `PATCH /api/trips/:tripId/occasion`, the plan modal's owner-gated,
- * pick-based occasion rail, which writes `trips.event_type` in the same request.
+ * accident. The callers are `PATCH /api/trips/:tripId/occasion`, the plan modal's owner-gated,
+ * pick-based occasion rail, which writes `trips.event_type` in the same request, and (A-4) the guest
+ * claim, which copies the claimed row's own `occasion_slug` into its new owner's pen.
  *
  * `occasion === null` clears the three keys (an explicit "no occasion"). Keys the caller does not
  * name are left as they are. The user is the session owner the route already verified.
@@ -18,6 +19,8 @@ export async function writePlanPenOccasion(
   userId: string,
   tripId: string,
   occasion: Partial<Record<(typeof PEN_OCCASION_KEYS)[number], string>> | null,
+  /** A-4: the guest claim writes inside its own transaction, after the row is the new owner's. */
+  executor: Pick<typeof db, "execute"> = db,
 ): Promise<void> {
   const next: Record<string, string> = {};
   if (occasion) {
@@ -31,7 +34,7 @@ export async function writePlanPenOccasion(
   if (replaced.length === 0) return;
   const json = JSON.stringify(next);
   const removeList = sql.raw(`ARRAY[${replaced.map((k) => `'${k}'`).join(", ")}]::text[]`);
-  await db.execute(sql`
+  await executor.execute(sql`
     INSERT INTO trip_contexts (user_id, trip_id, context, updated_at)
     VALUES (${userId}, ${tripId}, ${json}::jsonb, NOW())
     ON CONFLICT (user_id, trip_id) WHERE trip_id IS NOT NULL

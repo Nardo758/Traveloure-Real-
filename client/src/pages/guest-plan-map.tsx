@@ -255,7 +255,12 @@ function WaitlistGuestPlan() {
     createGuestPlan({
       destination,
       // E-1: the plan's title is composed from the traveler's choice and the city (`planTitle`).
-      title: planTitle({ city: destination.split(",")[0].trim(), occasionName: record.source.choiceLabel ?? null }),
+      // A-34: no occasion ⇒ the neutral "{City}, {date range}" (the city alone when no dates were chosen).
+      title: planTitle({
+        city: destination.split(",")[0].trim(),
+        occasionName: a?.occasionSlug || record.source.experienceSlug ? record.source.choiceLabel ?? null : null,
+        ...(dated ? { startDate: a.startDate, endDate: a.endDate } : {}),
+      }),
       ...(dated ? { startDate: a.startDate, endDate: a.endDate } : {}),
       ...(adults !== undefined && adults > 0 ? { adults } : {}),
       ...(kids !== undefined ? { kids } : {}),
