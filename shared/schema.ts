@@ -306,6 +306,10 @@ export const trips = pgTable("trips", {
   // `server/services/guest-plan.service.ts`; omitted from `insertTripSchema` (§19). Nullable, no default.
   guestSessionHash: varchar("guest_session_hash", { length: 64 }),
   guestClaimedAt: timestamp("guest_claimed_at"),
+  // A-35 (migration 438, ledger `2026-11-05-lane3-occasion`): the plan's FINE occasion, an `experience_types` slug the
+  // catalog resolved. NULL = no occasion was picked — never a default (A-8). Written by the occasion PATCH and the guest
+  // plan create, both after resolving the slug; omitted from `insertTripSchema` (§19). Nullable, no default, no CHECK.
+  occasionSlug: varchar("occasion_slug", { length: 64 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -2953,6 +2957,8 @@ export const insertTripSchema = createInsertSchema(trips).omit({
   // GATE-1B (migration 433): guest ownership is server-written only (guest-plan.service.ts).
   guestSessionHash: true,
   guestClaimedAt: true,
+  // A-35 (migration 438): server-written after the catalog resolves the slug; never a body field.
+  occasionSlug: true,
   createdAt: true,
   updatedAt: true,
   // 2A.3 / R8: market_slug is SERVER-DERIVED from destination in storage.createTrip (never

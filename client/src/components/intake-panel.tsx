@@ -19,6 +19,10 @@ import { parsePartyCountInput, travelersForSave } from "@/lib/plan-vocabulary";
 import { formatTripDates } from "@/lib/trip-dates";
 import { browserLocale } from "@/lib/browser-locale";
 import { eventTypeForSlug } from "@shared/occasions";
+import { planTitle } from "@/lib/trip-slip";
+import { OCCASION_SAVE_FAILED, sendWithRetry } from "@/lib/occasion-save";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import type { ExperienceType, InsertTrip } from "@shared/schema";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
 import { useLaunchMarket } from "@/lib/signup-mode";
@@ -139,6 +143,7 @@ export function IntakePanel({
   const [travelers, setTravelers] = useState("");
   const partyStated = travelersForSave(travelers);
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const { data: experienceTypes, isLoading: typesLoading } = useQuery<ExperienceType[]>({
     queryKey: ["/api/experience-types"],
@@ -196,8 +201,11 @@ export function IntakePanel({
 
   function handleCreate() {
     if (!selectedSlug) return;
+    const slug = selectedSlug;
+    const occasionName = experienceTypes?.find((t) => t.slug === slug)?.name ?? null;
     const payload: InsertTrip = {
-      title: `${destination.trim()} Trip`,
+      // A-34: one title rule for every create door (`planTitle`) — the picked occasion and the city.
+      title: planTitle({ city: destination.trim().split(",")[0].trim(), occasionName, startDate, endDate }),
       destination: destination.trim(),
       startDate,
       endDate,
@@ -216,7 +224,11 @@ export function IntakePanel({
     } as InsertTrip;
 
     createTrip.mutate(payload, {
-      onSuccess: (trip) => {
+      onSuccess: async (trip) => {
+        // A-35: the chip's fine occasion is saved on the plan through the one occasion rail (row slug + pen), awaited
+        // and retried (A-9); a final failure is said, and the traveler still lands on the plan.
+        const saved = await sendWithRetry(() => apiRequest("PATCH", `/api/trips/${trip.id}/occasion`, { experienceSlug: slug }));
+        if (!saved.ok) toast({ variant: "destructive", title: OCCASION_SAVE_FAILED });
         trackEvent("trip_created", {
           surface: "intake_panel",
           creation_method: "destination_intake",

@@ -20,11 +20,12 @@ import { createHash } from "node:crypto";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
-import { itineraryItems, tripCollaborators, trips, type Trip } from "@shared/schema";
+import { experienceTypes, itineraryItems, tripCollaborators, trips, type Trip } from "@shared/schema";
 import { GUEST_ITEM_KINDS, resolveGuestItemSource, type GuestItemKind } from "./guest-item-source.service";
 import { stampItemSourceClass } from "@shared/content-tiers";
 import { enqueuePlanLegRecompute } from "./routing/plan-legs-queue";
 import { eventTypeForSlug } from "@shared/occasions";
+import { writePlanPenOccasion } from "./plan-pen-occasion.service";
 import { partyTotal } from "@shared/plan-vocabulary";
 import { storage } from "../storage";
 import { logger } from "../infrastructure/logger";
@@ -195,11 +196,15 @@ export type GuestCreateOutcome =
 export async function createGuestPlan(hash: string, body: z.infer<typeof guestPlanCreateBody>): Promise<GuestCreateOutcome> {
   const gate = await guestMarketDecision(body.destination);
   if (!gate.allowed) return { ok: false, code: "market_not_open", market: gate.market };
-  let eventType: string | undefined;
+  // A-8 / A-35: a picked occasion is resolved and stored (coarse type + fine slug); none picked ⇒ both NULL, never the
+  // column's `vacation` default.
+  let eventType: string | null = null;
+  let occasionSlug: string | null = null;
   if (body.occasionSlug) {
     const row = await storage.getExperienceTypeBySlug(body.occasionSlug);
     if (!row) return { ok: false, code: "unknown_occasion" };
     eventType = eventTypeForSlug(row.slug);
+    occasionSlug = row.slug;
   }
   // A-5: get-or-create. A session has at most one live guest plan (migration 435's unique partial index); a second
   // create — including one racing the first — answers that plan, as it stands.
@@ -219,7 +224,8 @@ export async function createGuestPlan(hash: string, body: z.infer<typeof guestPl
       ...(body.adults !== undefined ? { adults: body.adults } : {}),
       ...(body.kids !== undefined ? { kids: body.kids } : {}),
       ...(total !== undefined ? { numberOfTravelers: total } : {}),
-      ...(eventType ? { eventType } : {}),
+      eventType,
+      occasionSlug,
       // The ONE write of the guest owner column (migration 433). `userId` stays NULL: no account owns this row.
       guestSessionHash: hash,
       userId: null,
@@ -332,9 +338,25 @@ export async function claimGuestPlans(hash: string, userId: string): Promise<str
       .update(trips)
       .set({ userId, guestClaimedAt: new Date(), guestSessionHash: null, updatedAt: new Date() })
       .where(and(eq(trips.guestSessionHash, hash), isNull(trips.userId), isNull(trips.guestClaimedAt)))
-      .returning({ id: trips.id, createdAt: trips.createdAt });
+      .returning({ id: trips.id, createdAt: trips.createdAt, occasionSlug: trips.occasionSlug, eventType: trips.eventType });
     for (const row of claimed) {
       await tx.insert(tripCollaborators).values({ tripId: row.id, userId, role: "owner" }).onConflictDoNothing();
+    }
+    // A-4 / A-35: the claimed plan keeps its fine occasion on the row, and its new owner's pen reads it — through the ONE
+    // pen-occasion writer, after the row is the owner's. A plan with no occasion writes nothing.
+    for (const row of claimed) {
+      if (!row.occasionSlug) continue;
+      const occasion = await tx.select({ name: experienceTypes.name }).from(experienceTypes).where(eq(experienceTypes.slug, row.occasionSlug)).limit(1);
+      await writePlanPenOccasion(
+        userId,
+        row.id,
+        {
+          experienceSlug: row.occasionSlug,
+          ...(occasion[0]?.name ? { experienceType: occasion[0].name } : {}),
+          ...(row.eventType ? { eventType: row.eventType } : {}),
+        },
+        tx,
+      );
     }
     return claimed
       .sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime())

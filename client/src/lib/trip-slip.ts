@@ -49,6 +49,7 @@
 // TYPE-ONLY, and therefore erased: the "no top-level imports" rule above is about runtime imports.
 import type { TripMintEntry } from "@shared/slip-funnel-events";
 import { MARKET_STATUS_COPY } from "@shared/ticker";
+import { guestDateRange } from "./guest-map";
 
 /** The traveler-owned mint door. One endpoint, named once. */
 export const TRIP_MINT_ENDPOINT = "/api/trips";
@@ -131,6 +132,12 @@ export interface TripMintBody {
    *  stores its placeholder window and certifies nothing. */
   startDate?: string;
   endDate?: string;
+  /**
+   * A-8 / A-34 (ruling, Nov 5, 2026: "no invented occasion"): always null on the mint. The column's
+   * `vacation` default would otherwise answer for a traveler who picked nothing; a picked occasion is
+   * written by the occasion PATCH that follows the mint.
+   */
+  eventType: null;
   /** Present only when the caller named at least one door fact (§13 — absent is omitted). */
   entry?: TripMintEntry;
 }
@@ -182,12 +189,21 @@ export function checkSlipPrecondition(basics: SlipBasics, opts: SlipMintOptions 
 
 /**
  * ENTRY-1: the ONE composer for a plan's default title. "{Occasion} in {City}" when an occasion is
- * known, else the existing "{City} trip". No other copy.
+ * known. A-34 (ruling, Nov 5, 2026: "{City}, {date range}"): with no occasion the title is neutral —
+ * the city and the chosen dates with their year (`guestDateRange`), or the city alone when no dates
+ * were chosen (a placeholder window is never written into a title). No other copy.
  */
-export function planTitle(input: { city: string; occasionName?: string | null }): string {
+export function planTitle(input: {
+  city: string;
+  occasionName?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+}): string {
   const city = input.city.trim();
   const occasion = input.occasionName?.trim();
-  return occasion ? `${occasion} in ${city}` : `${city} trip`;
+  if (occasion) return `${occasion} in ${city}`;
+  const range = input.startDate && input.endDate ? guestDateRange(input.startDate, input.endDate) : null;
+  return range ? `${city}, ${range}` : city;
 }
 
 /**
@@ -200,10 +216,17 @@ export function buildTripMintBody(basics: SlipBasics): TripMintBody {
   const startDate = (basics.startDate ?? "").trim();
   const endDate = (basics.endDate ?? "").trim();
   const body: TripMintBody = {
-    title: stated || planTitle({ city: destination.split(",")[0].trim(), occasionName: basics.occasionName }),
+    title:
+      stated ||
+      planTitle({
+        city: destination.split(",")[0].trim(),
+        occasionName: basics.occasionName,
+        ...(startDate && endDate ? { startDate, endDate } : {}),
+      }),
     destination,
     // Both or neither (`checkSlipPrecondition`); neither ⇒ the keys are OMITTED, never "".
     ...(startDate && endDate ? { startDate, endDate } : {}),
+    eventType: null,
   };
   const entry: TripMintEntry = {};
   if (basics.entry?.door) entry.door = basics.entry.door;

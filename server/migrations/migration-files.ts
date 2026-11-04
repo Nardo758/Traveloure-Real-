@@ -2288,4 +2288,6 @@ export const MIGRATION_FILES = [
   // 437 — Lane 1 A-18: editorial OSM coordinates on four Kyoto gems that have no point. DATA ONLY. Ledger
   // 2026-11-05-lane1-guest-save-rail.
   "437_kyoto_gem_coordinates.sql",
+  // A-35: the plan's fine occasion slug on trips (nullable, no default). Ledger 2026-11-05-lane3-occasion.
+  "438_trip_occasion_slug.sql",
 ] as const;

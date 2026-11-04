@@ -95,10 +95,11 @@ describe("T2 dates are asked once", () => {
 describe("T3 the plan title", () => {
   it("composes the occasion with the city; the mint uses it", () => {
     assert.equal(planTitle({ city: "Kyoto", occasionName: "Proposal" }), "Proposal in Kyoto");
-    assert.equal(planTitle({ city: "Kyoto" }), "Kyoto trip");
-    assert.equal(planTitle({ city: "Kyoto", occasionName: "  " }), "Kyoto trip");
+    // A-34: no occasion ⇒ "{City}, {date range}", or the city alone when no dates were chosen.
+    assert.equal(planTitle({ city: "Kyoto" }), "Kyoto");
+    assert.equal(planTitle({ city: "Kyoto", occasionName: "  " }), "Kyoto");
     assert.equal(buildTripMintBody({ destination: "Kyoto, Japan", startDate: "2026-11-12", endDate: "2026-11-16", occasionName: "Proposal" }).title, "Proposal in Kyoto");
-    assert.equal(buildTripMintBody({ destination: "Kyoto, Japan", startDate: "2026-11-12", endDate: "2026-11-16" }).title, "Kyoto trip");
+    assert.equal(buildTripMintBody({ destination: "Kyoto, Japan", startDate: "2026-11-12", endDate: "2026-11-16" }).title, "Kyoto, Thu 12 – Mon 16 Nov 2026");
     assert.equal(buildTripMintBody({ destination: "Kyoto, Japan", title: "Our anniversary", occasionName: "Proposal" } as any).title, "Our anniversary");
   });
 });

@@ -507,7 +507,8 @@ router.get(api.trips.get.path, async (req, res) => {
     // Ledger `2026-09-29-a1-trips-frame`: the plan's RECORDED fine occasion (the slug the plan modal
     // wrote into the owner's pen), behind exactly the gate above. NULL = not recorded (§13); the
     // client's one resolver (`resolveOccasionForPlan`) then falls through to its other attempts.
-    const occasionSlug = await readPlanPenOccasionSlug(trip.userId, trip.id);
+    // A-35 (migration 438): the slug stored on the plan row answers first; a plan from before 438 reads its pen.
+    const occasionSlug = trip.occasionSlug ?? (await readPlanPenOccasionSlug(trip.userId, trip.id));
 
     res.json({
       ...trip,
@@ -3688,10 +3689,14 @@ router.patch("/api/trips/:tripId/occasion", isAuthenticated, async (req, res) =>
       const slug = parsed.data.experienceSlug ?? null;
       if (slug === null) {
         penOccasion = null;
+        // A-35 (migration 438): an explicit "no occasion" clears the plan's stored slug too.
+        patch.occasionSlug = null;
       } else {
         const row = await storage.getExperienceTypeBySlug(slug);
         if (!row) return res.status(400).json({ message: "Unknown occasion" });
         if (patch.eventType === undefined) patch.eventType = eventTypeForSlug(row.slug);
+        // A-35 (migration 438): the resolved slug is stored on the plan, so a reader — and a claim — has it on the row.
+        patch.occasionSlug = row.slug;
         penOccasion = { experienceSlug: row.slug, experienceType: row.name, eventType: patch.eventType as string };
       }
     }
