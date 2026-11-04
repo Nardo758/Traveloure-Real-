@@ -10,6 +10,7 @@ import { useSearch, Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { takeSignupReturnTo } from "@/components/auth/SignupForm";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, AlertCircle, Loader2, Mail } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
@@ -64,7 +65,9 @@ export default function VerifyEmailPage() {
     };
   }, [token, queryClient]);
 
-  const homeHref = user?.role ? getRoleHomePath(user.role) : "/";
+  // N-1 (round 2): a confirmed account returns to where it signed up from (stored by the sign-up form), else home.
+  const [signupOrigin] = useState(() => (token ? takeSignupReturnTo() : null));
+  const homeHref = signupOrigin ?? (user?.role ? getRoleHomePath(user.role) : "/");
   const showHold = !token && !isLoading && emailVerificationHoldRequired(user);
   const email = typeof user?.email === "string" ? user.email : "";
 

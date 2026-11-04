@@ -191,14 +191,23 @@ export function stripCards(payload: CityEventsPayload | undefined | null, market
   return events.slice(0, CITY_EVENTS_STRIP_MAX);
 }
 
+/** E-7 (round 2 rulings, Nov 4, 2026): the strip's heading names the marquee city. */
+export function eventsStripTitle(cityName: string | null | undefined): string {
+  const city = (cityName ?? "").trim();
+  return city ? `What's on in ${city}` : "What's on";
+}
+
 export function EventsStripContent({
   payload,
   market,
+  cityName,
   onPlanAround,
 }: {
   payload: CityEventsPayload | undefined | null;
   /** CITY-1: the marquee market (`useLaunchMarket`). */
   market: string | null | undefined;
+  /** The marquee's city name, for the heading. */
+  cityName?: string | null;
   onPlanAround: (s: PlanningSource) => void;
 }) {
   const cards = stripCards(payload, market);
@@ -207,7 +216,7 @@ export function EventsStripContent({
     <OpenSection testId="section-city-events">
       <SectionHeader
         eyebrow={`Next ${payload!.windowDays} days`}
-        title="Coming up in our cities"
+        title={eventsStripTitle(cityName)}
         link={{ label: "All events →", href: "/events", testId: "link-all-events" }}
       />
       <CityEventCards events={cards} door="event_strip" onPlanAround={onPlanAround} />
@@ -218,6 +227,6 @@ export function EventsStripContent({
 export function EventsStrip({ onPlanAround }: { onPlanAround: (s: PlanningSource) => void }) {
   const { data } = useQuery<CityEventsPayload>({ queryKey: ["/api/city-events/upcoming"] });
   const launch = useLaunchMarket();
-  return <EventsStripContent payload={data} market={launch?.slug ?? null} onPlanAround={onPlanAround} />;
+  return <EventsStripContent payload={data} market={launch?.slug ?? null} cityName={launch?.cityName ?? null} onPlanAround={onPlanAround} />;
 }
 

@@ -87,7 +87,7 @@ describe("T4 assistant", () => {
     const { state } = initialPlanEntry({ city: "Kyoto", experienceSlug: "date-night", startDate: "2027-04-02", endDate: "2027-04-05" });
     assert.equal(state.startDate, "2027-04-02");
     assert.equal(state.endDate, "2027-04-05");
-    const mint = planEntryMintDates(state, new Date("2027-01-01T00:00:00Z"));
+    const mint = planEntryMintDates(state);
     assert.deepEqual(mint, { startDate: "2027-04-02", endDate: "2027-04-05" });
     assert.equal(initialPlanEntry({ city: "Kyoto" }).state.startDate, null);
   });

@@ -38,11 +38,16 @@ interface Props<T extends OccasionPickerRow> {
   initialGroup?: OccasionPickerGroup | null;
   /** OCC-1: /experiences?group= — only this group's chip and occasions; no "See all". */
   onlyGroup?: OccasionPickerGroup | null;
+  /**
+   * K-3 (round 2): the container already draws the group chips (PlanEntry's occasion step), so the picker does not
+   * repeat them (a group label twice). It lists this group's occasions, following the container's chip.
+   */
+  followGroup?: OccasionPickerGroup | null;
 }
 
 type View = { kind: "group"; key: OccasionPickerGroup } | { kind: "all" } | { kind: "none" };
 
-export function OccasionPicker<T extends OccasionPickerRow>({ occasions, loading, value, onPick, initialGroup = null, onlyGroup = null }: Props<T>) {
+export function OccasionPicker<T extends OccasionPickerRow>({ occasions, loading, value, onPick, initialGroup = null, onlyGroup = null, followGroup = null }: Props<T>) {
   const { groups: allGroups } = useMemo(() => groupOccasions(occasions), [occasions]);
   // OCC-1: a page filtered to one group lists only that group (a group the catalog does not carry filters nothing).
   const filtered = !!onlyGroup && allGroups.some((g) => g.key === onlyGroup);
@@ -71,9 +76,11 @@ export function OccasionPicker<T extends OccasionPickerRow>({ occasions, loading
     );
   }
 
+  // K-3: a followed group replaces the picker's own group choice (See all still works).
+  const groupView: OccasionPickerGroup | null = followGroup && view.kind !== "all" ? followGroup : view.kind === "group" ? view.key : null;
   const listed: T[] =
-    view.kind === "group"
-      ? groups.find((g) => g.key === view.key)?.rows ?? []
+    groupView
+      ? groups.find((g) => g.key === groupView)?.rows ?? []
       : view.kind === "all"
         ? searchOccasions(occasions, query)
         : [];
@@ -86,7 +93,7 @@ export function OccasionPicker<T extends OccasionPickerRow>({ occasions, loading
   return (
     <div className="space-y-3" data-testid="occasion-picker">
       <div className="flex flex-wrap gap-2" role="group" aria-label="Occasion groups">
-        {groups.map((g) => {
+        {(followGroup ? [] : groups).map((g) => {
           const active = view.kind === "group" && view.key === g.key;
           return (
             <button
@@ -126,7 +133,7 @@ export function OccasionPicker<T extends OccasionPickerRow>({ occasions, loading
         />
       )}
 
-      {view.kind !== "none" &&
+      {(view.kind !== "none" || !!groupView) &&
         (listed.length === 0 ? (
           <p className="text-sm text-muted-foreground" data-testid="occasion-search-empty">
             No occasion matches that search.

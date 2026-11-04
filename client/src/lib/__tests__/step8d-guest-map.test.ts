@@ -213,13 +213,13 @@ test("G4: a failure keeps the retry (the add, never the mint); a final outcome c
 });
 
 test("G5: the board's words; only what the guest answered", () => {
-  assert.equal(guest.guestAnswersLine(answers, "Kyoto"), "Kyoto, Thu 12 – Mon 16 Nov and 2 travelers");
-  assert.equal(guest.guestAnswersLine({ ...answers, adults: "", kids: "" }, "Kyoto"), "Kyoto, Thu 12 – Mon 16 Nov", "no party ⇒ none shown");
-  assert.equal(guest.guestAnswersLine({ ...answers, adults: "1" }, "Kyoto"), "Kyoto, Thu 12 – Mon 16 Nov and 1 traveler");
-  assert.equal(guest.guestDateRange("2026-10-30", "2026-11-02"), "Fri 30 Oct – Mon 2 Nov");
+  assert.equal(guest.guestAnswersLine(answers, "Kyoto"), "Kyoto, Thu 12 – Mon 16 Nov 2026 and 2 travelers");
+  assert.equal(guest.guestAnswersLine({ ...answers, adults: "", kids: "" }, "Kyoto"), "Kyoto, Thu 12 – Mon 16 Nov 2026", "no party ⇒ none shown");
+  assert.equal(guest.guestAnswersLine({ ...answers, adults: "1" }, "Kyoto"), "Kyoto, Thu 12 – Mon 16 Nov 2026 and 1 traveler");
+  assert.equal(guest.guestDateRange("2026-10-30", "2026-11-02"), "Fri 30 Oct – Mon 2 Nov 2026");
   assert.equal(
-    guest.guestGateDescription("Kyoto, Thu 12 – Mon 16 Nov and 2 travelers", { kind: "add", name: "Tea ceremony" }),
-    "Kyoto, Thu 12 – Mon 16 Nov and 2 travelers. Your answers are kept. Tea ceremony is added as soon as you are in.",
+    guest.guestGateDescription("Kyoto, Thu 12 – Mon 16 Nov 2026 and 2 travelers", { kind: "add", name: "Tea ceremony" }),
+    "Kyoto, Thu 12 – Mon 16 Nov 2026 and 2 travelers. Your answers are kept. Tea ceremony is added as soon as you are in.",
   );
   assert.equal(guest.guestGateNext({ kind: "start" }), "Your empty plan opens here, on the map.");
   assert.equal(guest.GUEST_GATE_TITLE, "Your plan is created when you sign in");

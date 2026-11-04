@@ -16,14 +16,18 @@ export type NewAccount = {
   lastName?: string;
 };
 
-/** POST /signup via the real form (Signup.tsx: input-name, input-email, input-password, button-create-account). */
+/**
+ * POST /signup via the real form — the shared sign-up form since round 2 N-2 (input-first-name, input-last-name,
+ * input-email, input-password, checkbox-signup-consent, button-create-account).
+ */
 export async function signupViaUi(page: Page, acc: NewAccount): Promise<void> {
   const password = acc.password ?? E2E_PASSWORD;
-  const fullName = `${acc.firstName ?? 'E2E'} ${acc.lastName ?? 'Runner'}`.trim();
   await page.goto('/signup');
-  await page.locator('[data-testid="input-name"]').fill(fullName);
+  await page.locator('[data-testid="input-first-name"]').fill(acc.firstName ?? 'E2E');
+  await page.locator('[data-testid="input-last-name"]').fill(acc.lastName ?? 'Runner');
   await page.locator('[data-testid="input-email"]').fill(acc.email);
   await page.locator('[data-testid="input-password"]').fill(password);
+  await page.locator('[data-testid="checkbox-signup-consent"]').click();
   // The account exists only if the register request says so (ledger
   // `2026-09-27-e2e-helpers-confirm-effect`): wait for it, then confirm the session is this account.
   const registered = page

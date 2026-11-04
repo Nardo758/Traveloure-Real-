@@ -35,12 +35,12 @@ import {
 } from "../city-events";
 
 describe("city events", () => {
-  it("E1 the strip is absent below three events and present at three", () => {
-    assert.equal(CITY_EVENTS_STRIP_MIN, 3);
+  // Round 2 ruling (Nov 4, 2026): the strip shows at one marquee event and is absent at none (sanctioned edit).
+  it("E1 the strip is absent at zero events and present at one", () => {
+    assert.equal(CITY_EVENTS_STRIP_MIN, 1);
     assert.equal(showCityEventsStrip(0), false);
-    assert.equal(showCityEventsStrip(2), false);
+    assert.equal(showCityEventsStrip(1), true);
     assert.equal(showCityEventsStrip(3), true);
-    assert.equal(showCityEventsStrip(4), true);
   });
 
   it("E2 nights and countdown are local calendar days, correct across a DST change", () => {

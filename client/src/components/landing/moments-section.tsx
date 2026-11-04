@@ -16,7 +16,7 @@
  * note are gone. Photo credits — an expert's @handle among them — stay, because they credit a photo.
  */
 import { PLAN_START_HREF, planStartClick } from "@/lib/plan-entry";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { SectionHeader, OpenSection } from "./section-header";
@@ -100,6 +100,25 @@ export function MomentsSection() {
   const auto = useRotation(moments.length, { intervalMs: 8000, paused: momentHover || pinned !== null });
   const active = pinned !== null && pinned < moments.length ? pinned : auto;
   const moment: LiveMoment | undefined = moments[active];
+  const [, setLocation] = useLocation();
+  /**
+   * E-3 (round 2 ruling, Nov 4, 2026): a live pill opens its moment's flow — the same door the card's CTA opens (a
+   * waitlist moment goes to its waitlist) — besides showing its card.
+   */
+  const openMoment = (m: LiveMoment, index: number) => {
+    postEvent(m.key, "cta", index);
+    if (m.cta === "waitlist" && m.market) {
+      setLocation(waitlistMarketPath(m.market));
+      return;
+    }
+    open({
+      door: "moment",
+      branch: "ai",
+      experienceType: m.experienceType,
+      experienceSlug: m.experienceSlug ?? undefined,
+      momentKey: m.key,
+    });
+  };
 
   // The photo slideshow within the active moment (one photo never ticks; dots hidden).
   const [photoHover, setPhotoHover] = useState(false);
@@ -324,6 +343,8 @@ export function MomentsSection() {
                 onClick={() => {
                   setPinned(liveIndex);
                   postEvent(r.key, "tab", liveIndex);
+                  const picked = moments[liveIndex];
+                  if (picked) openMoment(picked, liveIndex);
                 }}
                 className="rounded-full px-2.5 py-[5px] text-[11px] font-medium uppercase tracking-[0.06em]"
                 style={{

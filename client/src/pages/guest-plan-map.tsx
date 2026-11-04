@@ -15,8 +15,6 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
-import type { ExperienceType } from "@shared/schema";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
@@ -34,6 +32,8 @@ import {
   type PendingPlanRecord,
 } from "@/lib/pending-plan-record";
 import { useSignupMode } from "@/lib/signup-mode";
+import { planTitle } from "@/lib/trip-slip";
+import { useDocumentTitle } from "@/lib/use-document-title";
 import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 import {
   claimGuestPlans,
@@ -59,6 +59,7 @@ import {
   guestDestination,
   guestGateDescription,
   guestMapCenter,
+  guestPlanBanner,
   type GuestGateKind,
 } from "@/lib/guest-map";
 import type { BrowsePlace } from "@/lib/map-scene";
@@ -68,6 +69,9 @@ const GUEST_DAYS = mapDayChips([], null);
 export default function GuestPlanMapPage() {
   const { user, isLoading } = useAuth();
   const { mode } = useSignupMode();
+  // N-5 (round 2): the tab names the guest's plan once it is read; "Traveloure" until then — never the last page's title.
+  const guestPlanForTitle = useGuestPlan(!isLoading && !user && mode === "waitlist");
+  useDocumentTitle(guestPlanForTitle.data?.plan.title ?? null);
   // GATE-1B (ledger `2026-11-04-gate1b-guest-plan`): in waitlist mode a signed-out visitor gets a server-side plan
   // here — no sign-in wall. Open mode keeps the sign-in path below, unchanged.
   if (!isLoading && !user && mode === "waitlist") return <WaitlistGuestPlan />;
@@ -78,12 +82,6 @@ function GuestPlanMapSignIn() {
   const { user, isLoading } = useAuth();
   // Read once per mount; the add rewrites the record, and the page re-reads it when it needs to.
   const record = useMemo(() => (user ? null : peekPendingPlanRecord()), [user]);
-  // ENTRY-1: the occasion's catalog name for the answers line — the same list PlanEntry reads.
-  const { data: occasionRows } = useQuery<ExperienceType[]>({
-    queryKey: ["/api/experience-types"],
-    enabled: !!record?.answers?.occasionSlug,
-    staleTime: 5 * 60_000,
-  });
 
   if (isLoading) {
     return (
@@ -99,7 +97,7 @@ function GuestPlanMapSignIn() {
     return <SignedInLanding />;
   }
 
-  return <GuestPlanMapRecord record={record} occasionRows={occasionRows} />;
+  return <GuestPlanMapRecord record={record} />;
 }
 
 /**
@@ -139,7 +137,7 @@ function SignedInLanding() {
   );
 }
 
-function GuestPlanMapRecord({ record, occasionRows }: { record: PendingPlanRecord | null; occasionRows: ExperienceType[] | undefined }) {
+function GuestPlanMapRecord({ record }: { record: PendingPlanRecord | null }) {
   const { toast } = useToast();
   const { openSignInModal } = useSignInModal();
   const [selectedDay, setSelectedDay] = useState(0);
@@ -158,10 +156,8 @@ function GuestPlanMapRecord({ record, occasionRows }: { record: PendingPlanRecor
   }
 
   const destination = guestDestination(record.answers, record.source);
-  const occasionName = record.answers?.occasionSlug
-    ? occasionRows?.find((o) => o.slug === record.answers.occasionSlug)?.name ?? null
-    : null;
-  const answersLine = guestAnswersLine(record.answers, destination, occasionName);
+  // E-1/E-5/E-8: the lead is what the traveler chose (the record's choice label) — never the group's default occasion.
+  const answersLine = guestAnswersLine(record.answers, destination, record.source.choiceLabel ?? null);
   const center = guestMapCenter(destination);
 
   const openGate = (gate: GuestGateKind) =>
@@ -253,6 +249,8 @@ function WaitlistGuestPlan() {
     const kids = int(a?.kids);
     createGuestPlan({
       destination,
+      // E-1: the plan's title is composed from the traveler's choice and the city (`planTitle`).
+      title: planTitle({ city: destination.split(",")[0].trim(), occasionName: record.source.choiceLabel ?? null }),
       ...(dated ? { startDate: a.startDate, endDate: a.endDate } : {}),
       ...(adults !== undefined && adults > 0 ? { adults } : {}),
       ...(kids !== undefined ? { kids } : {}),
@@ -297,16 +295,15 @@ function WaitlistGuestPlan() {
 
   const { plan } = view;
   const days = guestPlanDays(view);
-  const answersLine = guestAnswersLine(
-    {
-      stops: [plan.destination],
-      startDate: plan.datesConfirmed ? plan.startDate : "",
-      endDate: plan.datesConfirmed ? plan.endDate : "",
-      adults: plan.adults != null ? String(plan.adults) : "",
-      kids: plan.kids != null ? String(plan.kids) : "",
-    } as any,
-    plan.destination,
-  );
+  // E-1: the banner composes from the title (the traveler's choice + city), the dates with their year, the party.
+  const answersLine = guestPlanBanner({
+    title: plan.title,
+    startDate: plan.startDate,
+    endDate: plan.endDate,
+    datesConfirmed: plan.datesConfirmed,
+    adults: plan.adults,
+    kids: plan.kids,
+  });
   const dayNumber = days[selectedDay]?.dayNum ?? 1;
 
   const onSave = (place: BrowsePlace) => {

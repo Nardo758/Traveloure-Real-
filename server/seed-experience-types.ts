@@ -7,7 +7,8 @@ const coreExperienceTypes = [
   { 
     name: "Travel", 
     slug: "travel", 
-    description: "Plan your perfect trip with activities, accommodations, and services",
+    // K-3 (round 2 rulings, Nov 4, 2026): "perfect" dropped; migration 434 moves an existing row the same way.
+    description: "Plan your trip with activities, accommodations, and services",
     icon: "Plane",
     color: "#3B82F6",
     sortOrder: 1,

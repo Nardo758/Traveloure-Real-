@@ -40,19 +40,21 @@ test("H-10: a chosen group and city open on dates and party, not on A trip", () 
   assert.equal(planEntry.initialPlanEntry({ group: "xyz" as "trips" }).state.group, "trips");
 });
 
-test("H-10: a catalog occasion deep link stays on the occasion step", () => {
+// E-2 (round 2 rulings, sanctioned edit): a known occasion is never re-asked — a door-named occasion and an event
+// anchor go to dates and party.
+test("H-10: a catalog occasion deep link goes to dates and party (E-2: never re-ask a known occasion)", () => {
   const wedding = planEntry.initialPlanEntry({
     city: "Kyoto",
     country: "Japan",
     experienceSlug: "wedding",
     group: "hosted_events",
   });
-  assert.equal(wedding.step, "occasion");
+  assert.equal(wedding.step, "details");
   assert.equal(wedding.state.occasionSlug, "wedding");
   assert.equal(wedding.state.group, "hosted_events");
 });
 
-test("H-10: an event anchor is not moved onto dates and party", () => {
+test("H-10: an event anchor goes to dates and party (E-2), keeping its own run", () => {
   const ev = planEntry.initialPlanEntry({
     city: "Kyoto",
     country: "Japan",
@@ -61,7 +63,7 @@ test("H-10: an event anchor is not moved onto dates and party", () => {
     askDatesAndParty: true,
     anchor: { title: "Japanese Grand Prix", firstDate: "2026-10-09", lastDate: "2026-10-11", startTime: "14:00", venue: "Suzuka Circuit" },
   });
-  assert.equal(ev.step, "occasion");
+  assert.equal(ev.step, "details");
   assert.equal(ev.state.event?.title, "Japanese Grand Prix");
   assert.equal(ev.state.startDate, "2026-10-09");
 });

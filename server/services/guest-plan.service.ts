@@ -49,6 +49,8 @@ const partyCount = z.number().int().min(0).max(99);
 export const guestPlanCreateBody = z
   .object({
     destination: z.string().trim().min(1).max(255),
+    /** E-1 (round 2): the client's `planTitle` — the traveler's choice and the city. Absent ⇒ the column default. */
+    title: z.string().trim().min(1).max(255).optional(),
     startDate: isoDay.optional(),
     endDate: isoDay.optional(),
     adults: partyCount.optional(),
@@ -194,6 +196,7 @@ export async function createGuestPlan(hash: string, body: z.infer<typeof guestPl
   const trip = await storage.createTrip(
     {
       destination: body.destination,
+      ...(body.title ? { title: body.title } : {}),
       startDate: (body.startDate ?? day) as any,
       endDate: (body.endDate ?? day) as any,
       ...(body.adults !== undefined ? { adults: body.adults } : {}),

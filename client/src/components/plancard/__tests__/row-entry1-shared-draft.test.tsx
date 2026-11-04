@@ -67,12 +67,12 @@ describe("T1 the occasion on the guest map", () => {
   it("leads with the occasion's name; with a city only the kept sentence is intact", () => {
     const line = guestAnswersLine(ANSWERS, "Kyoto, Japan", "Proposal");
     assert.ok(line?.startsWith("Proposal"), String(line));
-    assert.equal(line, "Proposal, Kyoto, Thu 12 – Mon 16 Nov and 2 travelers");
+    assert.equal(line, "Proposal, Kyoto, Thu 12 – Mon 16 Nov 2026 and 2 travelers");
     const cityOnly = guestAnswersLine({ ...ANSWERS, startDate: "", endDate: "", adults: "", occasionSlug: "" }, "Kyoto");
     assert.equal(cityOnly, "Kyoto");
     assert.equal(GUEST_ANSWERS_KEPT, "Your answers are kept.");
     assert.equal(guestGateDescription(cityOnly, { kind: "start" }), "Kyoto. Your answers are kept. Your empty plan opens here, on the map.");
-    assert.equal(guestAnswersLine(ANSWERS, "Kyoto"), "Kyoto, Thu 12 – Mon 16 Nov and 2 travelers", "no name passed ⇒ no occasion shown");
+    assert.equal(guestAnswersLine(ANSWERS, "Kyoto"), "Kyoto, Thu 12 – Mon 16 Nov 2026 and 2 travelers", "no name passed ⇒ no occasion shown");
   });
 });
 
@@ -150,12 +150,12 @@ describe("T6 the group chips and the footer", () => {
     const fresh = renderPanel({ city: "Kyoto", country: "Japan", newPlan: true });
     assert.match(fresh, /data-testid="plan-entry-group-trips"/);
     assert.doesNotMatch(fresh, /aria-pressed="true"[^>]*data-testid="plan-entry-group-/, "the default group is not drawn as chosen");
+    // E-2 (round 2 rulings, sanctioned edit): a door that already chose the occasion is not asked again — it opens on
+    // dates and party, with the choice named at the top.
     const chosen = renderPanel({ city: "Kyoto", country: "Japan", group: "trips", experienceSlug: "vacation", newPlan: true });
-    assert.match(chosen, /aria-pressed="true"[^>]*data-testid="plan-entry-group-trips"/);
-    const carried = renderPanel({ city: "Kyoto", country: "Japan", experienceSlug: "vacation", newPlan: true });
-    if (/data-testid="plan-entry-group-/.test(carried)) {
-      assert.match(carried, /aria-pressed="true"[^>]*data-testid="plan-entry-group-/, "a door's occasion counts as chosen");
-    }
+    assert.match(chosen, /data-testid="plan-entry-step-details"/);
+    assert.doesNotMatch(chosen, /data-testid="plan-entry-group-/);
+    assert.match(chosen, /data-testid="plan-entry-carried-group"/);
     assert.equal(PLAN_ENTRY_CONTINUE, "Continue");
     assert.match(fresh, new RegExp(`data-testid="button-plan-entry-start"[^>]*>${PLAN_ENTRY_CONTINUE}<`));
     const panel = src("client/src/components/plan/PlanEntry.tsx");

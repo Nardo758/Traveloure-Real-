@@ -71,7 +71,8 @@ export function WhereToGo({
           </span>
         </div>
         <span className="text-[12.5px]" style={{ color: "var(--earn-muted)" }}>
-          Recommendations based on weather, events and crowd levels. Best season first; a city we have not rated yet says so.
+          {/* K-4/K-5 (round 2 rulings, Nov 4, 2026): "crowd levels" deleted; "Best season first" → "By date". */}
+          Recommendations based on weather and events. By date; a city we have not rated yet says so.
         </span>
       </div>
       <div className="flex flex-wrap gap-2">

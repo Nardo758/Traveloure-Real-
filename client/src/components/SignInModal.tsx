@@ -10,8 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
-import { LogIn, Mail, Lock, User, Loader2 } from "lucide-react";
+import { LogIn, Mail, Lock, Loader2 } from "lucide-react";
 import { isRegistrationNeutral } from "@shared/registration-neutral";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -20,6 +19,15 @@ import { getRoleHomePath } from "@/lib/role-utils";
 import { sanitizeReturnTo } from "@/lib/safe-return-to";
 import { TRAVELER_WAITLIST, type SignupIntent } from "@shared/launch-signup";
 import { socialSignInHref, supplySourceTag } from "@/lib/social-sign-in";
+import {
+  EMPTY_SIGNUP_DRAFT,
+  SignupFields,
+  signInAfterSignup,
+  signupDraftReady,
+  takeSignupReturnTo,
+  useWaitlistSignupGate,
+  type SignupDraft,
+} from "@/components/auth/SignupForm";
 
 interface SignInModalProps {
   open: boolean;
@@ -57,8 +65,10 @@ export function SignInModal({
   const [resetSent, setResetSent] = useState(false);
   // AUTH-1 fix 3b: a sign-up gets the server's neutral answer — no session, so no guest claim, no navigation and
   // no "Account created". Guest state and the return destination wait for an actual sign-in.
-  const [acceptTerms, setAcceptTerms] = useState(false);
-  const [acceptPrivacy, setAcceptPrivacy] = useState(false);
+  // N-2 (round 2): the sign-up fields are the shared form's (one consent box), the same as /signup.
+  const [signupDraft, setSignupDraft] = useState<SignupDraft>(EMPTY_SIGNUP_DRAFT);
+  // N-3 (round 2): in waitlist mode a traveler is sent to the waitlist before the sign-up form renders.
+  const signupGate = useWaitlistSignupGate(open && mode === "signup", intent === "supply", () => onOpenChange(false));
   // TEST 10 — aria-live error: screen readers need an in-DOM alert, not just a toast
   const [authError, setAuthError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
@@ -96,7 +106,7 @@ export function SignInModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (mode === "signup" && (!acceptTerms || !acceptPrivacy)) {
+    if (mode === "signup" && !signupDraft.consent) {
       toast({
         title: "Please accept the agreements",
         description: "You must accept the Terms of Service and Privacy Policy to create an account.",
@@ -112,7 +122,10 @@ export function SignInModal({
       const body = mode === "signin"
         ? { email: formData.email, password: formData.password }
         : {
-            ...formData,
+            firstName: signupDraft.firstName,
+            lastName: signupDraft.lastName,
+            email: signupDraft.email,
+            password: signupDraft.password,
             ...(intent === "supply" ? { intent } : {}),
             // LW-1d: the supply door's `?source=` tag, stored once on the new account by the server.
             ...(intent === "supply" && supplySourceTag(window.location.search)
@@ -130,10 +143,34 @@ export function SignInModal({
       const read = await readAuthResponse(response);
       const genericError = t("signupPage.genericError");
 
-      // Ledger `2026-10-23-drop-check-email`: the 202 still signs nobody in.
-      // The check-email screen is not shown. The same window goes to sign-in.
+      // N-1 (round 2): the register answer stays neutral (AUTH-1 3b). The form then signs in with the credentials
+      // just typed and returns the person to where they came from; an address to confirm goes to the verify page.
+      // A sign-in that fails falls back to the sign-in screen, as before.
       if (mode === "signup" && read.kind === "json" && isRegistrationNeutral(response.status, read.data)) {
-        setMode("signin");
+        const sessionOrigin = sessionStorage.getItem("traveloure_return_to");
+        const origin =
+          sanitizeReturnTo(returnTo) ?? sanitizeReturnTo(sessionOrigin ?? undefined) ?? sanitizeReturnTo(`${window.location.pathname}${window.location.search}`) ?? null;
+        const after = await signInAfterSignup(signupDraft.email, signupDraft.password, origin);
+        if (after.kind === "not_signed_in") {
+          setFormData((f) => ({ ...f, email: signupDraft.email, password: "" }));
+          setMode("signin");
+          return;
+        }
+        if (sessionOrigin) sessionStorage.removeItem("traveloure_return_to");
+        if (after.kind === "verify") {
+          queryClient.setQueryData(["/api/auth/user"], {
+            ...(after.data.user ?? {}),
+            emailVerificationRequired: true,
+            nextStep: typeof after.data.nextStep === "string" ? after.data.nextStep : "verify_email",
+          });
+          onOpenChange(false);
+          window.location.href = "/verify-email";
+          return;
+        }
+        await migrateGuestCart();
+        queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+        onOpenChange(false);
+        window.location.href = takeSignupReturnTo() ?? origin ?? getRoleHomePath(after.data.user?.role ?? "user");
         return;
       }
 
@@ -282,41 +319,15 @@ export function SignInModal({
               </div>
             )}
 
-            {mode === "signup" && (
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="firstName">{t("fields.firstName")}</Label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="firstName"
-                      placeholder={t("fields.firstNamePlaceholder")}
-                      className="pl-9"
-                      value={formData.firstName}
-                      onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                      required
-                      data-testid="input-first-name"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="lastName">{t("fields.lastName")}</Label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="lastName"
-                      placeholder={t("fields.lastNamePlaceholder")}
-                      className="pl-9"
-                      value={formData.lastName}
-                      onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                      required
-                      data-testid="input-last-name"
-                    />
-                  </div>
-                </div>
+            {mode === "signup" && signupGate === "checking" ? (
+              <div className="flex justify-center py-6" data-testid="signup-gate-checking">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden="true" />
               </div>
-            )}
+            ) : null}
+            {mode === "signup" && signupGate === "form" ? <SignupFields draft={signupDraft} onChange={setSignupDraft} /> : null}
 
+            {mode !== "signup" && (
+            <>
             <div className="space-y-2">
               <Label htmlFor="email">{t("fields.email")}</Label>
               <div className="relative">
@@ -342,12 +353,12 @@ export function SignInModal({
                   <Input
                     id="password"
                     type="password"
-                    placeholder={mode === "signup" ? t("fields.passwordPlaceholderSignup") : t("fields.passwordPlaceholderSignin")}
+                    placeholder={t("fields.passwordPlaceholderSignin")}
                     className="pl-9"
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     required
-                    minLength={mode === "signup" ? 8 : 1}
+                    minLength={1}
                     data-testid="input-password"
                   />
                 </div>
@@ -363,49 +374,18 @@ export function SignInModal({
                 )}
               </div>
             )}
-
-            {mode === "signup" && (
-              <p className="text-sm text-muted-foreground" data-testid="text-signup-payment-step">{t("registered.paymentStep")}</p>
+            </>
             )}
 
-            {mode === "signup" && (
-              <div className="space-y-3 rounded-lg border p-3 bg-muted/30">
-                <div className="flex items-start gap-2.5">
-                  <Checkbox
-                    id="signup-terms"
-                    checked={acceptTerms}
-                    onCheckedChange={(checked) => setAcceptTerms(checked === true)}
-                    data-testid="checkbox-signup-terms"
-                  />
-                  <label htmlFor="signup-terms" className="text-xs leading-snug cursor-pointer">
-                    {t("consent.agreePrefix")}{" "}
-                    <a href="/terms" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium">
-                      {t("consent.terms")}
-                    </a>
-                  </label>
-                </div>
-                <div className="flex items-start gap-2.5">
-                  <Checkbox
-                    id="signup-privacy"
-                    checked={acceptPrivacy}
-                    onCheckedChange={(checked) => setAcceptPrivacy(checked === true)}
-                    data-testid="checkbox-signup-privacy"
-                  />
-                  <label htmlFor="signup-privacy" className="text-xs leading-snug cursor-pointer">
-                    {t("consent.agreePrefix")}{" "}
-                    <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-medium">
-                      {t("consent.privacy")}
-                    </a>
-                  </label>
-                </div>
-              </div>
+            {mode === "signup" && signupGate === "form" && (
+              <p className="text-sm text-muted-foreground" data-testid="text-signup-payment-step">{t("registered.paymentStep")}</p>
             )}
 
             <Button
               type="submit"
               className="w-full"
               size="lg"
-              disabled={isLoading || (mode === "signup" && (!acceptTerms || !acceptPrivacy))}
+              disabled={isLoading || (mode === "signup" && (signupGate !== "form" || !signupDraftReady(signupDraft)))}
               data-testid="button-auth-submit"
             >
               {isLoading ? (

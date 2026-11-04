@@ -27,7 +27,7 @@ import {
 } from "@shared/experience-group";
 import { cityEventPlanShape } from "@shared/city-events";
 import { isShowSeries, seriesShowDates, upcomingShowDates } from "@shared/event-page";
-import { clampToMarketToday, marketToday } from "@shared/market-today";
+import { marketToday } from "@shared/market-today";
 import { exactOperatingMarket, preselectedGroup, preselectedMarket } from "./experiences-entry";
 
 export type PlanAround = "place" | "date" | "event";
@@ -236,10 +236,41 @@ export function planEntryMintBasics(start: {
   };
 }
 
-export function planEntryMintDates(state: Pick<PlanEntryState, "startDate" | "endDate" | "market">, now: Date = new Date()): { startDate: string; endDate: string } | null {
+export function planEntryMintDates(state: Pick<PlanEntryState, "startDate" | "endDate" | "market">): { startDate: string; endDate: string } | null {
+  // E-1 (round 2 ruling, Nov 4, 2026): the chosen dates carry verbatim — an event's own start and end are never moved
+  // to today. Supersedes SH-1 Launch Q15.3's clamp here and at the mint.
   if (!state.startDate || !state.endDate) return null;
-  const startDate = clampToMarketToday(state.startDate, state.market?.marketKey ?? null, now);
-  return { startDate, endDate: state.endDate < startDate ? startDate : state.endDate };
+  return { startDate: state.startDate, endDate: state.endDate };
+}
+
+/**
+ * E-1/E-5/E-8 (round 2 ruling, Nov 4, 2026): the words a plan's banner and title use for what the traveler chose —
+ * the event's title when the plan is built around an event; otherwise the occasion the traveler picked under
+ * "More specific" (or the door named); otherwise the chosen group's label. A group's DEFAULT occasion is data only
+ * (what the mint sends) and is never displayed.
+ */
+export function planEntryChoiceLabel(input: {
+  eventTitle?: string | null;
+  specificOccasionName?: string | null;
+  groupLabel: string;
+}): string {
+  return input.eventTitle?.trim() || input.specificOccasionName?.trim() || input.groupLabel;
+}
+
+/**
+ * E-4 (round 2 ruling): the event picker lists the marquee market's events first, then every other market's, each
+ * part by start date and grouped by month. A month can therefore appear twice (once per part); the key says which.
+ */
+export function eventPickerGroups<T extends { firstDate: string; marketKey?: string | null }>(
+  events: readonly T[],
+  marquee: string | null | undefined,
+): Array<{ key: string; month: string; events: T[] }> {
+  const first = marquee ? events.filter((e) => e.marketKey === marquee) : [];
+  const rest = marquee ? events.filter((e) => e.marketKey !== marquee) : [...events];
+  return [
+    ...eventsByMonth(first).map((g) => ({ key: `marquee-${g.month}`, ...g })),
+    ...eventsByMonth(rest).map((g) => ({ key: `other-${g.month}`, ...g })),
+  ];
 }
 
 /**
@@ -389,7 +420,8 @@ export function initialPlanEntry(source: PlanEntrySource | null | undefined): { 
       // Q16: the door's slug is kept; the group follows the nights.
       source.experienceSlug ?? null,
     );
-    return { state: { ...next, around: "event" }, step: "occasion" };
+    // E-2 (round 2 ruling): the event's occasion is known, so it is never asked again — the next step is the party.
+    return { state: { ...next, around: "event" }, step: "details" };
   }
   const named = source.city
     ? exactOperatingMarket(source.country ? `${source.city}, ${source.country}` : source.city) ?? exactOperatingMarket(source.city)
@@ -404,7 +436,10 @@ export function initialPlanEntry(source: PlanEntrySource | null | undefined): { 
   // is how that door is answered. An event anchor returned above and is never sent here.
   const groupAndCity = !!named && !!explicitGroup && !source.experienceSlug && !source.carriedOccasionSlug;
   const carriedAndCity = !!named && !!source.askDatesAndParty && (!!explicitGroup || !!occasionSlug);
-  if (groupAndCity || carriedAndCity) return { state: withAnswers, step: "details" };
+  // E-2 (round 2 ruling): a door that names an occasion (`/experiences/proposal?destination=Kyoto`) has answered it —
+  // never re-asked. A slug the catalog does not carry is dropped by the panel, which then asks (§13).
+  const slugAndCity = !!named && !!occasionSlug;
+  if (groupAndCity || carriedAndCity || slugAndCity) return { state: withAnswers, step: "details" };
   return { state: withAnswers, step: named ? "occasion" : "around" };
 }
 

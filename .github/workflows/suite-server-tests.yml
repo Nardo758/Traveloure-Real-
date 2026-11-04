@@ -137,6 +137,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/guest-data-retention.db.test.ts
       - name: GATE-1B guest plan — create, save, dates/party, claim, retention, market gate (node:test)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/guest-plan.db.test.ts
+      - name: Round 2 — upcoming events end today or later, marquee first, limit after order (node:test)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/round2-upcoming-order.test.ts
       - name: S-22 waitlist apply path — live city invite once, held when EMAIL_SENDS_ENABLED is off (node:test)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/s22-waitlist-apply.db.test.ts
       - name: GH-1 Google hours never stored or read; outcome rows in whole cents (node:test)

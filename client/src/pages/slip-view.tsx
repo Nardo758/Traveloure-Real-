@@ -13,6 +13,7 @@ import { useSlipLegs } from "@/components/plan/useSlipLegs";
 import { ConciergeCard } from "@/components/marketplace/concierge-card";
 import { PLAN_LOAD_RATE_LIMITED, planLoadErrorKind, plancardRefetchInterval } from "@/lib/plancard-refetch";
 import { Button } from "@/components/ui/button";
+import { useDocumentTitle } from "@/lib/use-document-title";
 
 export default function SlipViewPage() {
   const { tripId } = useParams<{ tripId: string }>();
@@ -34,6 +35,8 @@ export default function SlipViewPage() {
   // Step 9a (ledger `2026-10-07-step9a-routing-engine`): routed legs between the slip's rows; step 9c
   // (`2026-10-07-step9c-leg-options`) — a routed leg opens its LegSheet, mounted once below.
   const renderLegBetween = useSlipLegs(data as any, tripId);
+  // N-5 (round 2): the tab names this plan, never the page before it.
+  useDocumentTitle(data?.trip?.title ?? null);
 
   if (isLoading) {
     return (

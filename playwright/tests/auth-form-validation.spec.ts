@@ -376,8 +376,11 @@ test.describe("Signup page — form structure and validation (UI)", () => {
     });
   });
 
+  // N-2 (round 2 rulings, sanctioned edit): /signup draws the shared form — the modal's fields and its one consent box.
   test("renders all required form fields", async ({ page }) => {
-    await expect(page.locator('[data-testid="input-name"]')).toBeVisible();
+    await expect(page.locator('[data-testid="input-first-name"]')).toBeVisible();
+    await expect(page.locator('[data-testid="input-last-name"]')).toBeVisible();
+    await expect(page.locator('[data-testid="checkbox-signup-consent"]')).toBeVisible();
     await expect(page.locator('[data-testid="input-email"]')).toBeVisible();
     await expect(page.locator('[data-testid="input-password"]')).toBeVisible();
     await expect(page.locator('[data-testid="button-create-account"]')).toBeVisible();
@@ -389,8 +392,9 @@ test.describe("Signup page — form structure and validation (UI)", () => {
   }) => {
     const urlBefore = page.url();
 
-    await page.locator('[data-testid="button-create-account"]').click();
-    await page.waitForTimeout(2_000);
+    // N-2: the button stays disabled until every field and the consent box are answered.
+    await expect(page.locator('[data-testid="button-create-account"]')).toBeDisabled();
+    await page.waitForTimeout(500);
 
     // Still on /signup (or at most the same page — not /dashboard)
     const urlAfter = page.url();
@@ -411,9 +415,12 @@ test.describe("Signup page — form structure and validation (UI)", () => {
   test("I5: spaces-only password on /signup — stays on page and shows error", async ({
     page,
   }) => {
-    await page.locator('[data-testid="input-name"]').fill("QA Test");
+    await page.locator('[data-testid="input-first-name"]').fill("QA");
+    await page.locator('[data-testid="input-last-name"]').fill("Test");
     await page.locator('[data-testid="input-email"]').fill(`i5.signup.${uid()}@example.com`);
-    await page.locator('[data-testid="input-password"]').fill("   ");
+    // Eight spaces: long enough for the form to send, so the server's own refusal is what is shown.
+    await page.locator('[data-testid="input-password"]').fill("        ");
+    await page.locator('[data-testid="checkbox-signup-consent"]').click();
 
     await page.locator('[data-testid="button-create-account"]').click();
     await page.waitForTimeout(3_000);
@@ -428,12 +435,16 @@ test.describe("Signup page — form structure and validation (UI)", () => {
     console.log("[I5-signup-UI] PASS — spaces-only password on /signup shows error");
   });
 
-  test("valid data shows the neutral result and signs nobody in (AUTH-1 fix 3b)", async ({ page }) => {
+  // N-1 (round 2 rulings, sanctioned rewrite): the register answer stays neutral (AUTH-1 3b); the form then signs in
+  // with the credentials just typed. A new, unverified address lands on the verify page.
+  test("valid data: neutral register answer, then signed in and sent to confirm the address", async ({ page }) => {
     const email = `valid.signup.${uid()}@example.com`;
 
-    await page.locator('[data-testid="input-name"]').fill("Valid User");
+    await page.locator('[data-testid="input-first-name"]').fill("Valid");
+    await page.locator('[data-testid="input-last-name"]').fill("User");
     await page.locator('[data-testid="input-email"]').fill(email);
     await page.locator('[data-testid="input-password"]').fill("ValidPass1!");
+    await page.locator('[data-testid="checkbox-signup-consent"]').click();
 
     const registered = page.waitForResponse(
       (r) => new URL(r.url()).pathname === "/api/auth/register" && r.request().method() === "POST",
@@ -441,17 +452,14 @@ test.describe("Signup page — form structure and validation (UI)", () => {
     await page.locator('[data-testid="button-create-account"]').click();
     expect((await registered).status()).toBe(202);
 
-    // The 202 still signs nobody in. The check-email screen is gone; /login is next.
-    await expect(page).toHaveURL(/\/login\/?$/, { timeout: 10_000 });
-    await expect(page.getByText("Check your email")).toHaveCount(0);
-    await expect(page.locator('[data-testid="signup-neutral-result"]')).toHaveCount(0);
-    expect(page.url()).not.toContain("/dashboard");
+    await expect(page).toHaveURL(/\/verify-email/, { timeout: 15_000 });
+    await expect(page.getByText("Check your email to confirm your account.")).toBeVisible();
     await expect(page.getByText(/account created/i)).toHaveCount(0);
 
-    // No session was created by registering.
+    // The session is the sign-in the form made after the neutral answer.
     const me = await page.request.get(`${BASE_URL}/api/auth/user`);
-    expect(me.status()).toBe(401);
-    console.log("[signup-UI] PASS — valid signup goes to sign-in, no session");
+    expect(me.status()).toBe(200);
+    console.log("[signup-UI] PASS — valid signup signs in and asks to confirm the address");
   });
 });
 
@@ -486,8 +494,7 @@ test.describe("SignInModal — structure and mode switching", () => {
       timeout: 5_000,
     });
     await expect(page.locator('[data-testid="input-last-name"]')).toBeVisible();
-    await expect(page.locator('[data-testid="checkbox-signup-terms"]')).toBeVisible();
-    await expect(page.locator('[data-testid="checkbox-signup-privacy"]')).toBeVisible();
+    await expect(page.locator('[data-testid="checkbox-signup-consent"]')).toBeVisible();
 
     console.log("[modal-UI] PASS — signup mode shows all expected fields");
   });

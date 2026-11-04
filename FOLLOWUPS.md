@@ -1233,3 +1233,45 @@ server-verified gates the member add rail uses.
 The local build has no Maps browser key, so the map renders the Leaflet fallback (a list, per GC-1) and the
 Google renderer's first paint could not be observed. Filed as not proven (architect ruling 2: no blind fix);
 it needs a browser run against a build with the production Maps key.
+
+---
+
+## From round 2 EXP-QA (ledger `2026-11-04-round2-exp-qa`)
+
+### FU-R2-1 — C-3 (city page event cards: no drawer; titles read like listings) — not proven
+
+The ruling was to reproduce against production data before fixing. This session cannot reach production, and the
+local database has no Fever events (the city page's event cards are Fever rows). The drawer wiring exists
+(`city-feed-card.tsx` `CityFeedCardEvent` → `cardLinkProps` → `MoreInfoSheet`), so whether it fails on production cards,
+and which titles need our own words, needs a production read or a browser run on production.
+
+### FU-R2-2 — O-1 (no wedding option under /experiences?group=hosted_events) — not proven
+
+A row is "hosted" when its `roles_needed` includes `venue` (`shared/experience-group.ts`). Whether production's wedding
+row carries it was not read. The second half of O-1 (no Kyoto event in that tab) is addressed by the upcoming-events
+ruling (events under way included, marquee first, limit after order).
+
+### FU-R2-3 — "trusted providers" also in the homepage meta description
+
+K-6 named the city page subtitle only. The same phrase is in `HOMEPAGE_META_DESCRIPTION`
+(`client/src/lib/g02-g06-copy.ts`, also in `client/index.html`). Not changed: outside the row.
+
+### FU-R2-4 — "Single Perfect Day Design" (expert offering `perfect_day`)
+
+A second offering label carries "perfect" (`expert_offering_types.perfect_day`). K-1 named only "Local Perfect Day".
+
+### FU-R2-5 — "By date" on /events "Where to go"
+
+K-5's approved replacement is "By date", but that list is ordered by the server's season rating for the month, and its
+rows are destinations, not dated items. The sentence now says the order is by date when it is not. Needs a wording or
+ordering decision.
+
+### FU-R2-6 — the Japanese verify page
+
+N-1's sentence "Check your email to confirm your account." replaced the English verify-page body only. The Japanese
+locale keeps its earlier body (no approved translation).
+
+### FU-R2-7 — the server still stamps consent on every register
+
+N-2 makes the one consent box required on both sign-up forms. `POST /api/auth/register` stamps `terms_accepted_at` /
+`privacy_accepted_at` whatever the body says. Requiring the consent server-side is a separate auth change.

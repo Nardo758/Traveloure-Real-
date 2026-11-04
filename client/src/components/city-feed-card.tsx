@@ -16,6 +16,7 @@ import { isPartnerPriced, openPartnerPrice, partnerActivityPriceLabel } from "@/
 import { feverCardPlace, partnerDisplayName } from "@/lib/fever-card-place";
 import { PARTNER_COMMISSION_NOTE, PARTNER_PRICE_LINK_LABEL, partnerCommissionShown } from "@/lib/browse-supply";
 import { useBrowseSaveToPlan } from "@/lib/browse-save";
+import { compactCredit } from "@/lib/gem-photo-credit";
 import { useSignupMode } from "@/lib/signup-mode";
 import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 import { SaveToPlanButton } from "@/components/plan/SaveToPlanButton";
@@ -179,15 +180,32 @@ function gemAreaName(gem: any): string | null {
  * stock fallback photo renders its own credit here — the photographer (linked to the photo page) and the source (linked
  * to its licence) — and the record's stored credit wins when both exist.
  */
+/** C-1 (round 2): one compact credit line — "Author / Site, Licence", linked; nothing when the credit is empty. */
+function CompactCreditLine({ credit, className, testId }: { credit: string; className: string; testId: string }) {
+  const compact = compactCredit(credit);
+  if (!compact) return null;
+  const link = (href: string | null, text: string) =>
+    href ? (
+      <a href={href} target="_blank" rel="noopener noreferrer" className="underline">
+        {text}
+      </a>
+    ) : (
+      text
+    );
+  return (
+    <p className={className} data-testid={testId}>
+      {link(compact.sourceUrl, compact.who)}
+      {compact.licence ? <>{", "}{link(compact.licenceUrl, compact.licence)}</> : null}
+    </p>
+  );
+}
+
 export function GemImageCredit({ gem, photoUrl, stockCredit = null }: { gem: any; photoUrl: string | null; stockCredit?: StockPhotoCredit | null }) {
   const credit = typeof gem?.imageCredit === "string" ? gem.imageCredit.trim() : "";
   if (!photoUrl) return null;
-  if (credit) {
-    return (
-      <p className="text-[10px] leading-snug text-muted-foreground" data-testid={`gem-image-credit-${gem.id}`}>
-        {credit}
-      </p>
-    );
+  // C-1 (round 2): the stored credit, compact — attribution and licence as links, no raw URL on the card.
+  if (compactCredit(credit)) {
+    return <CompactCreditLine credit={credit} className="text-[10px] leading-snug text-muted-foreground" testId={`gem-image-credit-${gem.id}`} />;
   }
   if (!stockCredit) return null;
   return (
@@ -744,9 +762,7 @@ function MoreInfoSheet({ open, onClose, cardType, data, saveItem, action }: More
         </div>
       )}
       {typeof data.imageCredit === "string" && data.imageCredit.trim() ? (
-        <p className="text-[12px] text-muted-foreground" data-testid={`gem-image-credit-sheet-${data.id}`}>
-          {data.imageCredit.trim()}
-        </p>
+        <CompactCreditLine credit={data.imageCredit.trim()} className="text-[12px] text-muted-foreground" testId={`gem-image-credit-sheet-${data.id}`} />
       ) : null}
       <GemOfficialFacts gem={data} />
     </div>
