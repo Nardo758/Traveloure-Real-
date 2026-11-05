@@ -1,5 +1,6 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import { checkMaintenanceResponse } from "@/lib/maintenance";
+import { GUEST_SESSION_STORAGE_KEY } from "./guest-session-key";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -23,10 +24,10 @@ function buildHeaders(base: Record<string, string> = {}): Record<string, string>
     ...guestCookieHeaders(typeof navigator !== "undefined" ? navigator.cookieEnabled : undefined),
   };
   try {
-    let guestId = localStorage.getItem("traveloure_guest_session");
+    let guestId = localStorage.getItem(GUEST_SESSION_STORAGE_KEY);
     if (!guestId) {
       guestId = crypto.randomUUID();
-      localStorage.setItem("traveloure_guest_session", guestId);
+      localStorage.setItem(GUEST_SESSION_STORAGE_KEY, guestId);
     }
     return { ...withCookieFlag, "X-Guest-Session": guestId };
   } catch {

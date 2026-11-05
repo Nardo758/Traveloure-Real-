@@ -16,7 +16,9 @@ import type { BrowsePlace } from "@/lib/map-scene";
 import type { PlanCardActivity, PlanCardDay } from "@/components/plancard/plancard-types";
 
 export const GUEST_PLAN_QUERY_KEY = ["/api/guest-plans/current"] as const;
-export const GUEST_SESSION_STORAGE_KEY = "traveloure_guest_session";
+// A-13: the key has one home; re-exported for this module's existing importers.
+export { GUEST_SESSION_STORAGE_KEY } from "./guest-session-key";
+import { GUEST_SESSION_STORAGE_KEY } from "./guest-session-key";
 
 export interface GuestPlanItem {
   id: string;

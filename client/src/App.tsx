@@ -28,6 +28,7 @@ import { ConsoleAwareLayout } from "@/components/console-aware-layout";
 import { useEffect, useRef, useState, lazy, Suspense } from "react";
 import { PageErrorBoundary } from "@/components/page-error-boundary";
 import { MaintenanceGate } from "@/components/maintenance-screen";
+import { GUEST_SESSION_STORAGE_KEY } from "@/lib/guest-session-key";
 
 const LandingPage = lazy(() => import("@/pages/landing"));
 const LandingMockups = lazy(() => import("@/pages/landing-mockups"));
@@ -1565,7 +1566,7 @@ function GuestCartMigrator() {
     if (emailVerificationHoldRequired(user)) return;
     const isNowAuth = !!user;
     if (!wasAuthenticated.current && isNowAuth) {
-      const guestSessionId = localStorage.getItem("traveloure_guest_session");
+      const guestSessionId = localStorage.getItem(GUEST_SESSION_STORAGE_KEY);
       if (guestSessionId) {
         fetch("/api/cart/migrate", {
           method: "POST",

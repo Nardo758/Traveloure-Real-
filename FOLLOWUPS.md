@@ -1294,3 +1294,36 @@ own one-line-per-content rule makes rare. Watch for `cart-projection: failed to 
 Points copied from a gem, Fever event, partner hotel/activity or affiliate product are stored with `coord_source` NULL,
 which GC-1 reads as Google. None of these is a Google point. Stamping a non-Google value needs a ruling (GC-1 admits
 only the two Google values today). Relates to A-32 item 3.
+
+### FU-L8-1 — the sign-in claim answers 400 on every signed-in load with no guest plan [next cleanup lane]
+
+`App.tsx` claims guest plans whenever a session appears. Since Lane 6 the client sends the claim without a stored id, and
+the server answers 400 when there is no guest cookie and cookies are on (`server/routes/guest-plans.routes.ts` claim;
+pinned by `lane6-guest-cookie.db.test.ts` C4). Nothing breaks, but every signed-in page load logs a failed request.
+**Ruled (Nov 5, 2026), for the next cleanup lane:** the client skips the claim when there is no guest cookie. The server
+answer (C4) is unchanged.
+
+### FU-L8-2 — two guest-session modules
+
+`client/src/lib/guest-session.ts` and `client/src/lib/guestSession.ts` are near copies. They differ in one place: the
+impression id lives in localStorage in the first and sessionStorage in the second. Both now import the one storage key
+(A-13). Merging them changes impression dedup and needs its own decision.
+
+### FU-L8-3 — the LD 51 booking-concierge handoff has no stays/transport filter
+
+CN-1 concierge tasks are links only for stays and transport (`shared/concierge-tasks.ts:26-38`). The older LD 51 path is
+separate and still live: buying a `booking_concierge` offering (`expertOfferingTypeKey`, not CN-1's `service_type
+'concierge'`) runs `createHandoffRequestsForBooking` (`server/services/concierge-handoff.service.ts:156`, called from
+`checkout-claim.service.ts:1186` and `payments.routes.ts:909`). It turns every unpurchased partner item on the plan into
+an `affiliate_booking_requests` row (`:229-236`, no category filter), so a partner hotel or transfer can reach a booking
+agent. **Ruled (Nov 5, 2026): a launch-checklist item that blocks open mode** — stays and transport are filtered out of
+the handoff into link tasks. Money path, human read, its own lane. Brief:
+`docs/planning/briefs/2026-11-05-ld51-handoff-stays-transport.md`.
+
+### FU-L8-4 — guest plan 66dd6016-8514-4e40-a7ec-38df4ab9abb3 is left to retention
+
+Lane 8 could not reach production (`https://www.traveloure.com/api/health` gave no answer from this environment, and
+the session holds no admin credentials). `GUEST_PLAN_RETENTION_DAYS=30` is set on production (boot log confirmed,
+Nov 5, 2026), so the daily `guest-plan-retention` job removes the plan once it has been idle 30 days. **Ruled: left to
+the job.** An admin can still remove it earlier with `DELETE /api/admin/guest-plans/66dd6016-8514-4e40-a7ec-38df4ab9abb3`
+(A-26; audit row `access_audit_logs.action = 'guest_plan_deleted'`).

@@ -29,6 +29,7 @@ import {
   useWaitlistSignupGate,
   type SignupDraft,
 } from "@/components/auth/SignupForm";
+import { GUEST_SESSION_STORAGE_KEY } from "@/lib/guest-session-key";
 
 interface SignInModalProps {
   open: boolean;
@@ -88,7 +89,7 @@ export function SignInModal({
 
   const migrateGuestCart = async () => {
     try {
-      const guestSessionId = localStorage.getItem("traveloure_guest_session");
+      const guestSessionId = localStorage.getItem(GUEST_SESSION_STORAGE_KEY);
       if (!guestSessionId) return;
       const res = await fetch("/api/cart/migrate", {
         method: "POST",

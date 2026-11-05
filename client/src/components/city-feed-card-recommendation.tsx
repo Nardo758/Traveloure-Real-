@@ -248,6 +248,7 @@ export function CityFeedCardRecommendation({
       <div className="flex gap-1.5 pt-0.5 flex-wrap">
         {onBook && (
           <Button
+            disabled={saveMode && browseSave.pending}
             size="sm"
             className="h-7 text-xs px-3"
             style={bookStyle}
@@ -262,6 +263,7 @@ export function CityFeedCardRecommendation({
         )}
         {!saveMode && (
           <Button
+            disabled={browseSave.pending}
             size="sm"
             className="h-7 text-xs px-3"
             style={{ background: "var(--earn-navy)", color: "#fff", border: "none" }}
@@ -335,6 +337,7 @@ export function CityFeedCardRecommendation({
               <div className="flex flex-wrap gap-2 pt-1">
                 {onBook && (
                   <Button
+                    disabled={saveMode && browseSave.pending}
                     size="sm"
                     style={bookStyle}
                     onClick={book}
@@ -345,6 +348,7 @@ export function CityFeedCardRecommendation({
                 )}
                 {!saveMode && (
                   <Button
+                    disabled={browseSave.pending}
                     size="sm"
                     variant="outline"
                     onClick={() =>
@@ -431,6 +435,7 @@ export function CityFeedCardRecommendation({
           <div className="flex flex-wrap gap-1.5 pt-0.5 items-center mt-auto min-w-0">
             {onBook && compactActionState !== "not-bookable" ? (
               <Button
+                disabled={saveMode && browseSave.pending}
                 size="sm"
                 className="h-7 text-xs px-3 flex-1 min-w-0 whitespace-nowrap"
                 style={bookStyle}
@@ -445,6 +450,7 @@ export function CityFeedCardRecommendation({
               </Button>
             ) : (
               <Button
+                disabled={browseSave.pending}
                 size="sm"
                 className="h-7 text-xs px-3 flex-1 min-w-0 whitespace-nowrap"
                 style={{ background: "var(--earn-navy)", color: "#fff", border: "none" }}
@@ -504,6 +510,7 @@ export function CityFeedCardRecommendation({
               <div className="flex flex-wrap gap-2 pt-1">
                 {onBook && (
                   <Button
+                    disabled={saveMode && browseSave.pending}
                     size="sm"
                     style={bookStyle}
                     onClick={book}
@@ -514,6 +521,7 @@ export function CityFeedCardRecommendation({
                 )}
                 {!saveMode && (
                   <Button
+                    disabled={browseSave.pending}
                     size="sm"
                     variant="outline"
                     onClick={() =>

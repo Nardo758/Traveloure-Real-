@@ -586,7 +586,7 @@ interface MoreInfoSheetProps {
    * GATE-1 (ledger `2026-11-03-gate1-partner1`): the event drawer's one action. `saveToPlan` draws "Save to plan"
    * (waitlist + signed out); otherwise `onAdd` is the card's own add path under the card's own label.
    */
-  action?: { saveToPlan: boolean; label: string; onAdd?: () => void } | null;
+  action?: { saveToPlan: boolean; label: string; onAdd?: () => void; disabled?: boolean } | null;
 }
 
 // C3 / R4 (cosmetic-public-surfaces dispatch): at desktop widths the details sheet opened as a
@@ -620,9 +620,9 @@ export function EventSheetBody({ data, action }: { data: any; action?: MoreInfoS
     {/* GATE-1: the drawer's one action row. */}
     {action ? (
       action.saveToPlan ? (
-        <SaveToPlanButton testId={`btn-save-event-sheet-${data.id}`} onSave={action.onAdd} className="self-start inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-semibold" />
+        <SaveToPlanButton testId={`btn-save-event-sheet-${data.id}`} onSave={action.onAdd} disabled={action.disabled} className="self-start inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-semibold" />
       ) : action.onAdd ? (
-        <Button size="sm" className="self-start h-8 text-xs px-3" style={ADD_BTN_STYLE} onClick={action.onAdd} data-testid={`btn-add-event-sheet-${data.id}`}>
+        <Button size="sm" className="self-start h-8 text-xs px-3" style={ADD_BTN_STYLE} onClick={action.onAdd} disabled={action.disabled} data-testid={`btn-add-event-sheet-${data.id}`}>
           <Plus className="w-3 h-3 mr-1" />
           {action.label}
         </Button>
@@ -1193,6 +1193,7 @@ export function CityFeedCardGem({
             </Button>
           )}
           <Button
+            disabled={browseSave.pending}
             size="sm"
             className="h-7 text-xs px-3"
             style={ADD_BTN_STYLE}
@@ -1313,6 +1314,7 @@ export function CityFeedCardGem({
                 edge. Fixed identically on all four compact-row copies in this file. */}
             <div className="flex gap-1.5 pt-0.5 flex-wrap items-center mt-auto">
               <Button
+                disabled={browseSave.pending}
                 size="sm"
                 className="h-7 text-xs px-3"
                 style={ADD_BTN_STYLE}
@@ -1421,6 +1423,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd: onAddProp
   const purchasesAllowed = useBookingActionsShown();
   const sheetAction = {
     saveToPlan: browseSave.saveToPlan,
+    disabled: browseSave.pending,
     label: addLabel,
     onAdd: onAdd
       ? () =>
@@ -1505,6 +1508,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd: onAddProp
             )}
             <div className="flex gap-1.5 pt-0.5 flex-wrap items-center mt-auto">
               <Button
+                disabled={browseSave.pending}
                 size="sm"
                 className="h-7 text-xs px-3"
                 style={ADD_BTN_STYLE}
@@ -1628,6 +1632,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd: onAddProp
               />
             )}
             <Button
+              disabled={browseSave.pending}
               size="sm"
               className="h-7 text-xs px-3"
               style={ADD_BTN_STYLE}
@@ -1850,6 +1855,7 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
                 </Button>
               ) : onAdd ? (
                 <Button
+                  disabled={browseSave.pending}
                   size="sm"
                   className="h-7 text-xs px-3"
                   style={ADD_BTN_STYLE}
@@ -1978,6 +1984,7 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
             )}
             {onAdd && (
               <Button
+                disabled={browseSave.pending}
                 size="sm"
                 className="h-7 text-xs px-3"
                 style={ADD_BTN_STYLE}
@@ -2191,6 +2198,7 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd: onA
             <CompactSourceMetaLine duration={compactDur} source={source} testid={`supply-facts-${item.id}`} />
             <div className="flex gap-1.5 pt-0.5 flex-wrap items-center mt-auto">
               <Button
+                disabled={browseSave.pending}
                 size="sm"
                 className="h-7 text-xs px-3"
                 style={ADD_BTN_STYLE}
@@ -2329,6 +2337,7 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd: onA
                 Add to trip is the primary action; the outbound partner link lives inside
                 the details sheet (opened by the card itself) as a small secondary action. */}
             <Button
+              disabled={browseSave.pending}
               size="sm"
               className="h-7 text-xs px-3"
               style={ADD_BTN_STYLE}
