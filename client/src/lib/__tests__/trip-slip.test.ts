@@ -307,8 +307,6 @@ describe("S7 — the mint body carries only what the traveler stated", () => {
       startDate: "2026-10-01",
       endDate: "2026-10-08",
       eventType: null,
-      // R3-4 (round 3 ruling; sanctioned edit): every door's plan starts at two adults.
-      adults: 2,
     });
     // Server-derived facts (Locked Decision 30) are never client-sent.
     assert.equal("timezone" in bodies[0], false);

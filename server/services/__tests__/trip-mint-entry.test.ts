@@ -89,8 +89,7 @@ describe("E1 — trip_created carries the door the traveler came through", () =>
     const parsed = tripClientBodySchema.parse(tripBody) as Record<string, unknown>;
     assert.equal("entry" in parsed, false);
     // A-8 (ledger `2026-11-05-lane3-occasion`): the mint states `eventType: null` so the column default never answers.
-    // R3-4 (round 3 ruling; sanctioned edit): the mint states the starting party, two adults.
-    assert.deepEqual(Object.keys(tripBody).sort(), ["adults", "destination", "endDate", "eventType", "startDate", "title"]);
+    assert.deepEqual(Object.keys(tripBody).sort(), ["destination", "endDate", "eventType", "startDate", "title"]);
     assert.equal((parsed as any).eventType, null, "the trip schema admits the null");
 
     // …and a client that names nothing sends no `entry` key at all (§13).

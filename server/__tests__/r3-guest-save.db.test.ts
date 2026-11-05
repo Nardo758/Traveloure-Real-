@@ -8,7 +8,7 @@
  *   R3  R3-3: an occasion door on an existing guest plan updates THAT plan in place — occasion slug, coarse type through
  *       the slug map, the door's dates and title — and keeps its items. Still one plan; a door with no occasion
  *       answers the plan as it stands.
- *   R4  R3-4: a plan whose party the door did not state starts at two adults; a stated party wins.
+ *   R4  R3-4: the two-adult default is SHOWN, never stored (LD 33) — an unstated party stays NULL; a stated one is kept.
  *
  * Disposable database only. Every row this file writes is removed in after().
  *
@@ -153,11 +153,10 @@ describe("Round 3 guest save rail", () => {
     assert.equal(plain.json.plan.title, "Wedding in Kyoto", "a door with no occasion answers the plan as it stands");
   });
 
-  it("R4 a party nobody stated starts at two adults", async () => {
+  it("R4 a party nobody stated is stored as NULL (the 2 is shown by the panel, never written)", async () => {
     const call = guest();
     const made = await call("POST", "/api/guest-plans", { destination: "Kyoto, Japan" });
-    assert.equal(made.json.plan.adults, 2);
-    assert.equal(made.json.plan.numberOfTravelers, 2);
+    assert.equal(made.json.plan.adults ?? null, null);
     const call2 = guest();
     const stated = await call2("POST", "/api/guest-plans", { destination: "Kyoto, Japan", adults: 1 });
     assert.equal(stated.json.plan.adults, 1);

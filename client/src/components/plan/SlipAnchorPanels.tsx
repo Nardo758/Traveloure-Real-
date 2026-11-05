@@ -228,7 +228,8 @@ export function InlineWhoPanel({
   submit?: (party: { adults?: number | null; kids?: number | null }) => Promise<void>;
 }) {
   const s = (v: number | string | null | undefined) => (v == null ? "" : String(v));
-  // R3-4 (round 3 ruling): a party nobody stated starts at two adults, so the panel opens filled and Save is ready.
+  // R3-4 (round 3 ruling): the panel opens at two adults when the plan states none, so Save is ready. Shown, not
+  // stored: nothing is written until the traveler saves (LD 33 — an untouched party is NULL).
   const [adults, setAdults] = useState(s(current.adults ?? DEFAULT_ADULTS));
   const [kids, setKids] = useState(s(current.kids));
   const [petKind, setPetKind] = useState(s(current.petKind));

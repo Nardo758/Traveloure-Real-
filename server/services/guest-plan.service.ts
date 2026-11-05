@@ -26,7 +26,7 @@ import { stampItemSourceClass } from "@shared/content-tiers";
 import { enqueuePlanLegRecompute } from "./routing/plan-legs-queue";
 import { eventTypeForSlug } from "@shared/occasions";
 import { writePlanPenOccasion } from "./plan-pen-occasion.service";
-import { DEFAULT_ADULTS, partyTotal } from "@shared/plan-vocabulary";
+import { partyTotal } from "@shared/plan-vocabulary";
 import { storage } from "../storage";
 import { logger } from "../infrastructure/logger";
 import { decideMarketOpen, type MarketOpenDecision } from "./market-open-gate";
@@ -268,9 +268,9 @@ export async function createGuestPlan(hash: string, body: z.infer<typeof guestPl
   }
   const datesChosenByTraveler = !!(body.startDate && body.endDate);
   const day = datesChosenByTraveler ? null : placeholderMintDay(body.destination);
-  // R3-4 (round 3 ruling, Nov 5, 2026): a party the door did not state is two adults (`DEFAULT_ADULTS`).
-  const adults = body.adults !== undefined ? body.adults : DEFAULT_ADULTS;
-  const total = partyTotal(adults, body.kids ?? null);
+  // R3-4 is a SHOWN default (the party panel opens at `DEFAULT_ADULTS`), never a stored one: LD 33 — an
+  // untouched party is NULL, never 2. The plan states a party only once the traveler saves one.
+  const total = body.adults !== undefined ? partyTotal(body.adults, body.kids ?? null) : undefined;
   let trip: Trip;
   try {
     trip = await storage.createTrip(
@@ -279,7 +279,7 @@ export async function createGuestPlan(hash: string, body: z.infer<typeof guestPl
       ...(body.title ? { title: body.title } : {}),
       startDate: (body.startDate ?? day) as any,
       endDate: (body.endDate ?? day) as any,
-      adults,
+      ...(body.adults !== undefined ? { adults: body.adults } : {}),
       ...(body.kids !== undefined ? { kids: body.kids } : {}),
       ...(total !== undefined ? { numberOfTravelers: total } : {}),
       eventType,
