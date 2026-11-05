@@ -1295,13 +1295,13 @@ Points copied from a gem, Fever event, partner hotel/activity or affiliate produ
 which GC-1 reads as Google. None of these is a Google point. Stamping a non-Google value needs a ruling (GC-1 admits
 only the two Google values today). Relates to A-32 item 3.
 
-### FU-L8-1 — the sign-in claim answers 400 on every signed-in load with no guest plan
+### FU-L8-1 — the sign-in claim answers 400 on every signed-in load with no guest plan [next cleanup lane]
 
 `App.tsx` claims guest plans whenever a session appears. Since Lane 6 the client sends the claim without a stored id, and
 the server answers 400 when there is no guest cookie and cookies are on (`server/routes/guest-plans.routes.ts` claim;
 pinned by `lane6-guest-cookie.db.test.ts` C4). Nothing breaks, but every signed-in page load logs a failed request.
-Answering "nothing to claim" with 200 `{ tripIds: [] }`, or skipping the call when no guest cookie was ever set, needs a
-ruling on C4.
+**Ruled (Nov 5, 2026), for the next cleanup lane:** the client skips the claim when there is no guest cookie. The server
+answer (C4) is unchanged.
 
 ### FU-L8-2 — two guest-session modules
 
@@ -1316,11 +1316,14 @@ separate and still live: buying a `booking_concierge` offering (`expertOfferingT
 'concierge'`) runs `createHandoffRequestsForBooking` (`server/services/concierge-handoff.service.ts:156`, called from
 `checkout-claim.service.ts:1186` and `payments.routes.ts:909`). It turns every unpurchased partner item on the plan into
 an `affiliate_booking_requests` row (`:229-236`, no category filter), so a partner hotel or transfer can reach a booking
-agent. A money path; not changed in Lane 8.
+agent. **Ruled (Nov 5, 2026): a launch-checklist item that blocks open mode** — stays and transport are filtered out of
+the handoff into link tasks. Money path, human read, its own lane. Brief:
+`docs/planning/briefs/2026-11-05-ld51-handoff-stays-transport.md`.
 
-### FU-L8-4 — guest plan 66dd6016-8514-4e40-a7ec-38df4ab9abb3 is still on production
+### FU-L8-4 — guest plan 66dd6016-8514-4e40-a7ec-38df4ab9abb3 is left to retention
 
 Lane 8 could not reach production (`https://www.traveloure.com/api/health` gave no answer from this environment, and
-the session holds no admin credentials). An admin can remove it with `DELETE /api/admin/guest-plans/66dd6016-8514-4e40-a7ec-38df4ab9abb3`
-(A-26); the audit row is `access_audit_logs.action = 'guest_plan_deleted'`. Retention will not remove it while
-`GUEST_PLAN_RETENTION_DAYS` is unset (`server/config/guest-plan.config.ts`).
+the session holds no admin credentials). `GUEST_PLAN_RETENTION_DAYS=30` is set on production (boot log confirmed,
+Nov 5, 2026), so the daily `guest-plan-retention` job removes the plan once it has been idle 30 days. **Ruled: left to
+the job.** An admin can still remove it earlier with `DELETE /api/admin/guest-plans/66dd6016-8514-4e40-a7ec-38df4ab9abb3`
+(A-26; audit row `access_audit_logs.action = 'guest_plan_deleted'`).
