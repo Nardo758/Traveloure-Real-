@@ -188,7 +188,7 @@
   "server/data/hidden-gems.json": {
     "best": 4,
     "crowd": 35,
-    "perfect": 8
+    "perfect": 4
   },
   "server/data/iata-airports.json": {
     "best": 1
@@ -257,7 +257,7 @@
     "crowd": 16,
     "most <superlative>": 2,
     "packed": 3,
-    "perfect": 6
+    "perfect": 4
   },
   "server/seeds/role-scoped-templates.seed.ts": {
     "best": 2

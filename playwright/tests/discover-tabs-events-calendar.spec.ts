@@ -184,14 +184,17 @@ test.describe('/events — the year ahead (2026-10-06-events-calendar)', () => {
     const pens = await page.evaluate(() => Object.keys(sessionStorage).map((k) => sessionStorage.getItem(k) ?? ''));
     const parsed = pens.map((v) => { try { return JSON.parse(v); } catch { return null; } }).filter((v) => v && typeof v === 'object');
     expect(parsed.some((v) => v.startDate || v.endDate || (Array.isArray(v.pendingEvents) && v.pendingEvents.length > 0))).toBe(false);
-    // On Start a plan (a guest here): the dates, the event and its source id are written. E-1 (round 2 rulings,
-    // Nov 4, 2026; ledger `2026-11-04-round2-exp-qa`; sanctioned edit): the event's dates carry verbatim — the start
-    // is the event's own first day even when it has already begun (the Q15.3 clamp to today is removed).
+    // On Start a plan (a guest here): the dates, the event and its source id are written. R3-14 (round 3 ruling, Nov 5,
+    // 2026; ledger `2026-11-05-r3-followups`; sanctioned edit, supersedes E-1's verbatim start): a plan never starts
+    // before today — the start is the later of the event's first day (yesterday here) and the market's today (Kyoto's
+    // calendar day, which can be a day ahead of the runner's), and the event's last day caps the end.
     await page.getByTestId('button-plan-entry-start').click();
     await expect.poll(async () => page.evaluate(() => sessionStorage.getItem('traveloure_pending_plan')), { timeout: 10_000 }).not.toBeNull();
     const record = await page.evaluate(() => JSON.parse(sessionStorage.getItem('traveloure_pending_plan') ?? 'null'));
-    expect(record?.answers?.startDate).toBe(plus(-1));
-    expect(record?.answers?.endDate).toBe(plus(1));
+    const kyotoToday = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const expectedStart = kyotoToday > plus(-1) ? kyotoToday : plus(-1);
+    expect(record?.answers?.startDate).toBe(expectedStart);
+    expect(record?.answers?.endDate).toBe(plus(1) < expectedStart ? expectedStart : plus(1));
     expect(JSON.stringify(record?.answers?.events ?? [])).toContain('Fixture underway');
     expect(record?.source?.eventSourceId).toBe('fixture-underway');
   });
