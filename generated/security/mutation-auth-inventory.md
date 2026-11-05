@@ -1,11 +1,11 @@
 # Mounted mutation authorization inventory
 
-Generated from `server/routes.ts`. **751** raw mounted mutation registrations and **743** unique METHOD+normalizedPath pairs were found.
+Generated from `server/routes.ts`. **752** raw mounted mutation registrations and **744** unique METHOD+normalizedPath pairs were found.
 
-The unique-pair count is **+197** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
+The unique-pair count is **+198** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
 
-Category totals: payments 31; admin 202; user-data 252; other 258.
-Boundary totals: admin-role 202; session-self 368; resource-owner 105; signature 7; public-or-system 61; unknown 0.
+Category totals: payments 31; admin 203; user-data 252; other 258.
+Boundary totals: admin-role 203; session-self 368; resource-owner 105; signature 7; public-or-system 61; unknown 0.
 
 | Method | Normalized path | Risk | Boundary | Ownership applicable | Expected ownership | Registrations | Fixture | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -106,6 +106,7 @@ Boundary totals: admin-role 202; session-self 368; resource-owner 105; signature
 | POST | `/api/admin/gem-candidates/:id/reject` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9382` | unknown | unknown |
 | POST | `/api/admin/gems/:id/verify` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9319` | unknown | unknown |
 | POST | `/api/admin/gems/backfill-photos` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:369` | unknown | unknown |
+| DELETE | `/api/admin/guest-plans/:tripId` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:10674` | unknown | unknown |
 | POST | `/api/admin/handoffs/:id/assign` | admin | admin-role | no | unknown | `server/routes/handoff.routes.ts:451` | unknown | unknown |
 | POST | `/api/admin/invoices` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:5345` | unknown | unknown |
 | PATCH | `/api/admin/invoices/:invoiceNumber/status` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:5409` | unknown | unknown |

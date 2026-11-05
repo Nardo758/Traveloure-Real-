@@ -34,6 +34,7 @@ import {
 import { useSignupMode } from "@/lib/signup-mode";
 import { planTitle } from "@/lib/trip-slip";
 import { PlansNewStart } from "@/components/plan/PlansNewStart";
+import { GuestPlanSlip } from "@/components/plan/GuestPlanSlip";
 import { startForCity } from "@/lib/plans-new-start";
 import { planEntryDestination } from "@/lib/plan-entry";
 import { usePlanning } from "@/contexts/PlanningContext";
@@ -381,14 +382,7 @@ function WaitlistGuestPlan() {
           <p className="text-sm text-muted-foreground">{GUEST_PLAN_COPY.emptyBody}</p>
         </div>
       ) : (
-        <ol className="rounded-lg border border-border bg-card p-4 space-y-1" data-testid="guest-plan-items">
-          {view.items.map((it) => (
-            <li key={it.id} className="flex items-center gap-2 text-sm" data-testid={`guest-plan-item-${it.id}`}>
-              <span className="text-xs text-muted-foreground tabular-nums">{`Day ${it.dayNumber}`}</span>
-              <span className="truncate">{it.title}</span>
-            </li>
-          ))}
-        </ol>
+        <GuestPlanSlip view={view} />
       )}
 
       <div className="rounded-lg border border-border bg-card" data-testid="guest-map-canvas">

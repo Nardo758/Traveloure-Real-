@@ -17,7 +17,7 @@
  *               (items cascade); unset ⇒ disabled, deletes nothing (ruling 6).
  */
 import crypto, { createHash } from "node:crypto";
-import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
 import { experienceTypes, itineraryItems, tripCollaborators, trips, type Trip } from "@shared/schema";
@@ -450,4 +450,18 @@ export async function runGuestPlanRetention(now: Date = new Date()): Promise<Gue
     logger.error({ job: "guest-plan-retention", code: err?.code }, "guest plan retention pass failed");
     return { status: "error", deleted: 0, error: String(err?.code ?? "error") };
   }
+}
+
+/**
+ * A-26 (ledger `2026-11-05-lane7-guest-slip`): an admin removes ONE guest test row by id. Only an UNCLAIMED guest plan
+ * matches — a guest session hash, no owner, never claimed — so a member's plan, or a guest plan someone has since
+ * claimed, is never deleted by this. One statement: the conditions are the guard (§15). Items cascade.
+ * Returns false when no such row exists (the route answers one 404 for absent and not-a-guest-plan alike, LD 40).
+ */
+export async function deleteUnclaimedGuestPlan(tripId: string): Promise<boolean> {
+  const deleted = await db
+    .delete(trips)
+    .where(and(eq(trips.id, tripId), isNotNull(trips.guestSessionHash), isNull(trips.userId), isNull(trips.guestClaimedAt)))
+    .returning({ id: trips.id });
+  return deleted.length > 0;
 }

@@ -10666,4 +10666,32 @@ router.post("/api/admin/trip-pass/issue", isAuthenticated, async (req, res) => {
   }
 });
 
+/**
+ * DELETE /api/admin/guest-plans/:tripId — A-26 (ledger `2026-11-05-lane7-guest-slip`): remove one guest TEST row.
+ * Only an unclaimed guest plan is deleted (`deleteUnclaimedGuestPlan`); a member's plan, a claimed plan and an unknown
+ * id are one 404. The action is written to the admin audit log.
+ */
+router.delete("/api/admin/guest-plans/:tripId", requireAdminLocal, async (req: any, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  const { tripId } = req.params;
+  try {
+    const { deleteUnclaimedGuestPlan } = await import("../services/guest-plan.service");
+    const deleted = await deleteUnclaimedGuestPlan(tripId);
+    if (!deleted) return res.status(404).json({ message: "No unclaimed guest plan with that id" });
+    const auditWarning = await recordAdminAudit({
+      actorId: user?.id ?? getUserId(req)!,
+      actorRole: user?.role ?? "admin",
+      action: "guest_plan_deleted",
+      resourceType: "trip",
+      resourceId: tripId,
+      ipAddress: req.ip ?? null,
+      userAgent: req.get?.("user-agent") ?? null,
+    });
+    return res.json({ deleted: true, tripId, ...(auditWarning ? { auditWarning } : {}) });
+  } catch (err: any) {
+    console.error("[admin/guest-plans] delete error:", err?.code ?? err?.message);
+    return res.status(500).json({ message: "Failed to delete the guest plan" });
+  }
+});
+
 export default router;

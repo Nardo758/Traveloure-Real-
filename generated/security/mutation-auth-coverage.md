@@ -4,13 +4,13 @@ Generated deterministically from `generated/security/mutation-auth-manifest.json
 
 ## Coverage summary
 
-- **Tested: 0/743**; remaining: **743**.
-- Admin: **0/202**; payments: **0/31**; user-data: **0/252**; other: **0/258**.
+- **Tested: 0/744**; remaining: **744**.
+- Admin: **0/203**; payments: **0/31**; user-data: **0/252**; other: **0/258**.
 
 ## Methodology and live evidence
 
 - Every unique `METHOD effectivePath` in the manifest receives exactly one tested/untested disposition; duplicate registrations are normalized to one reachable endpoint.
-- Evidence state: **evidence manifest SHA-256 is stale**; manifest SHA-256: `f6da98aa14583244803fd20175fe5adb7c9a88eb745960d1ddd9e91d7f2be2d7`; run timestamp: 2026-09-25T00:56:06.499Z.
+- Evidence state: **evidence manifest SHA-256 is stale**; manifest SHA-256: `afc031a826e54543628d1d16b8e8a857a3f3905f62cc0ac6e10c7aa656d1a5de`; run timestamp: 2026-09-25T00:56:06.499Z.
 - `admin`: **passed**, 146 exact endpoint keys, context `admin`.
 - `highrisk-unauthenticated`: **passed**, 236 exact endpoint keys, context `unauthenticated`.
 - `expert-provider-wrong-role`: **passed**, 54 exact endpoint keys, context `wrong-role`.
@@ -36,6 +36,7 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | DELETE /api/admin/content-placement-rules/:id | admin | admin-role | server/routes/admin.routes.ts:9458 | Not run: evidence manifest SHA-256 is stale. |
 | DELETE /api/admin/event-packages/:id | admin | admin-role | server/routes/admin.routes.ts:9723 | Not run: evidence manifest SHA-256 is stale. |
 | DELETE /api/admin/expert-offering-types/:key | admin | admin-role | server/routes/admin.routes.ts:8796 | Not run: evidence manifest SHA-256 is stale. |
+| DELETE /api/admin/guest-plans/:tripId | admin | admin-role | server/routes/admin.routes.ts:10674 | Not run: evidence manifest SHA-256 is stale. |
 | DELETE /api/admin/neighborhoods/:id/coverage-targets/:categoryKey | admin | admin-role | server/routes/admin.routes.ts:9895 | Not run: evidence manifest SHA-256 is stale. |
 | DELETE /api/admin/notifications/:id | admin | admin-role | server/routes.ts:13976 | Not run: evidence manifest SHA-256 is stale. |
 | DELETE /api/admin/service-offering-types/:key | admin | admin-role | server/routes/admin.routes.ts:8744 | Not run: evidence manifest SHA-256 is stale. |
