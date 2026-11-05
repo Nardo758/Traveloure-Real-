@@ -1,6 +1,8 @@
 /**
  * Round 3 follow-ups 2 (ledger `2026-11-05-r3-followups-2`) — the client rows.
  *
+ *   R3-18 (ruled) Build-around stays hidden in waitlist mode; Quick draft and the Trip Card banner read no mode; the
+ *         dashboard handover row follows the banner and waits for chosen dates.
  *   R3-19 /plans redirects to the plan list (/my-trips), and /plans/new and /plans/:id are untouched.
  *   R3-20 ONE preset row on every entry path; "This weekend" is the coming Sat–Sun (Thursday) or the rest of the
  *         weekend (Saturday), and it sets both dates — a mint with both dates confirms them.
@@ -94,6 +96,28 @@ describe("Round 3 follow-ups 2", () => {
     const page = read("client/src/pages/hidden-gems.tsx");
     assert.match(page, /<CityFeedCardGem [^>]*onAdd=\{onAdd\}/);
     assert.match(page, /<AddToExperienceDialog item=\{addItem\} open=\{addOpen\} onOpenChange=\{setAddOpen\} \/>/);
+  });
+
+  it("R3-18 the split: Build-around waits for open mode; Quick draft and the Trip Card banner read no mode", () => {
+    const rail = read("client/src/components/plancard/SlipRail.tsx");
+    // Build-around lives in the optimizer block, which waitlist mode hides (paid optimizer, P-1c).
+    assert.match(rail, /const optimizerWaitlist = !useBookingActionsShown\(\);/);
+    assert.match(rail, /\{isOwner && !optimizerWaitlist \? \(optimizerSlot \? createPortal\(optimizerBlock, optimizerSlot\) : optimizerBlock\) : null\}/);
+    const blockStart = rail.indexOf("const optimizerBlock");
+    assert.ok(blockStart > 0 && rail.indexOf("setBuildAroundOpen(true)", blockStart) > blockStart, "Build-around is inside the optimizer block");
+    // Quick draft: owner + empty plan only — both placements read no mode.
+    const draftRow = rail.slice(rail.indexOf("export function SlipDraftAiRow"), rail.indexOf("export function SlipDraftAiRow") + 3000);
+    assert.doesNotMatch(draftRow, /useBookingActionsShown|useSignupMode/);
+    const slip = read("client/src/components/plancard/SlipView.tsx");
+    assert.match(slip, /const emptyStartShown = isOwner && aiAction === "draft" && slipView === "list";/);
+    assert.match(slip, /\{isOwner && aiAction === "draft" \? \(\s*<div className="rounded-lg border border-border p-2" data-testid="map-band-ai">/);
+    assert.doesNotMatch(read("client/src/components/plan/SlipEmptyStart.tsx"), /useBookingActionsShown|useSignupMode/);
+    // The Trip Card banner: dates confirmed (GATE-1) and the R-F rule — no mode read.
+    assert.match(slip, /\{isPrimary && data\.trip && <TripCardPrimaryBanner trip=\{data\.trip\} \/>\}/);
+    const banner = slip.slice(slip.indexOf("function TripCardPrimaryBanner"), slip.indexOf("function TripCardPrimaryBanner") + 1500);
+    assert.doesNotMatch(banner, /useBookingActionsShown|useSignupMode|waitlist/i);
+    // The dashboard row follows the banner: chosen dates only.
+    assert.match(read("server/services/upcoming.service.ts"), /if \(!hasFinal && !trip\.finalizedAt && planDatesAreConfirmed\(trip\.datesConfirmedAt\)\) \{/);
   });
 
   it("R3-27 waitlist mode: Sign in to continue.", () => {

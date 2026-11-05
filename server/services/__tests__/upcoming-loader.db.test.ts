@@ -8,7 +8,8 @@
  * and dropped it when it mapped rows into `buildUpcomingRows`, so every plan read as a placeholder.
  *
  *   L1  a plan whose dates were CHOSEN carries no `datesConfirmed` key on its trip_start/handover rows
- *   L2  a plan whose dates were NOT chosen carries `datesConfirmed: false` on both
+ *   L2  a plan whose dates were NOT chosen carries `datesConfirmed: false` on its trip_start row, and has no
+ *       handover row (R3-18: the row follows the Trip Card banner, which waits for chosen dates)
  *
  * Deliberately refuses to run unless the caller explicitly opts into writes.
  */
@@ -56,11 +57,13 @@ run("upcoming loader passes trips.dates_confirmed_at to the builder (real DB)", 
 
     for (const kind of ["trip_start", "handover"]) {
       const chosen = of(chosenTrip, kind);
-      const placeholder = of(placeholderTrip, kind);
       assert.ok(chosen, `chosen plan has a ${kind} row`);
-      assert.ok(placeholder, `placeholder plan has a ${kind} row`);
       assert.equal("datesConfirmed" in chosen!, false, `L1: chosen plan's ${kind} row makes no placeholder claim`);
-      assert.equal(placeholder!.datesConfirmed, false, `L2: placeholder plan's ${kind} row says so`);
     }
+    const placeholderStart = of(placeholderTrip, "trip_start");
+    assert.ok(placeholderStart, "placeholder plan has a trip_start row");
+    assert.equal(placeholderStart!.datesConfirmed, false, "L2: placeholder plan's trip_start row says so");
+    // R3-18 (sanctioned edit): the handover row follows the Trip Card banner, which waits for chosen dates.
+    assert.equal(of(placeholderTrip, "handover"), undefined, "L2: no handover row on a placeholder window");
   });
 });

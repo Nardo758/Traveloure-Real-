@@ -33,8 +33,8 @@ function base(overrides: Partial<UpcomingInput> = {}): UpcomingInput {
   };
 }
 
-const kyoto = { id: "t-kyoto", title: "Your Kyoto wedding", destination: "Kyoto, Japan", startDate: "2026-10-02", timezone: "Asia/Tokyo", finalizedAt: null, finalVersion: 2 };
-const lisbon = { id: "t-lisbon", title: "My Trip", destination: "Lisbon, Portugal", startDate: "2026-11-14", timezone: null, finalizedAt: null, finalVersion: null };
+const kyoto = { id: "t-kyoto", title: "Your Kyoto wedding", destination: "Kyoto, Japan", startDate: "2026-10-02", timezone: "Asia/Tokyo", finalizedAt: null, finalVersion: 2, datesConfirmedAt: "2026-09-01T00:00:00Z" };
+const lisbon = { id: "t-lisbon", title: "My Trip", destination: "Lisbon, Portugal", startDate: "2026-11-14", timezone: null, finalizedAt: null, finalVersion: null, datesConfirmedAt: "2026-09-01T00:00:00Z" };
 
 test("U1: undated rows are omitted — no start, no event day, no service date, no cutoff", () => {
   const rows = buildUpcomingRows(base({
@@ -122,6 +122,7 @@ test("U6: the invite tally is omitted at zero invites, present otherwise; time c
   assert.match(e1.source, /no RSVP deadline column/);
 });
 
+// R3-18 (sanctioned edit): both fixtures state chosen dates — the handover row now waits for them (U10).
 test("U7: the handover is announced only for a plan with no final, from the ONE window", () => {
   const withFinal = buildUpcomingRows(base({ trips: [kyoto] }));
   assert.equal(withFinal.some((r) => r.kind === "handover"), false);
@@ -180,4 +181,10 @@ test("U9: item counts appear only when a plan holds items; the plan name prefers
   assert.equal(k.planName, "Your Kyoto wedding");
   assert.equal(l.planName, "Lisbon, Portugal"); // "My Trip" is the column default, not a name
   assert.equal(planNameOf({ title: "  ", destination: "Porto" }), "Porto");
+});
+
+test("U10 (R3-18): a placeholder window has no handover row — it follows the Trip Card banner", () => {
+  const rows = buildUpcomingRows(base({ trips: [{ ...lisbon, datesConfirmedAt: null }] }));
+  assert.equal(rows.some((r) => r.kind === "handover"), false);
+  assert.equal(rows.find((r) => r.kind === "trip_start")?.datesConfirmed, false, "the start row still says it is a placeholder");
 });

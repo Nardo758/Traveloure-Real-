@@ -286,7 +286,9 @@ export function buildUpcomingRows(input: UpcomingInput): UpcomingRow[] {
 
     // The handover is announced only while there is a takeover to come: a plan that already has
     // a final (or was explicitly finalized) has the Trip Card as primary already.
-    if (!hasFinal && !trip.finalizedAt) {
+    // R3-18 (round 3 ruling, Nov 5, 2026): the row follows the Trip Card banner, which waits for chosen dates
+    // (`tripCardIsPrimary`, GATE-1) — a placeholder window has no handover to announce, in every mode.
+    if (!hasFinal && !trip.finalizedAt && planDatesAreConfirmed(trip.datesConfirmedAt)) {
       const opens = handoverInstant(trip.startDate, trip.timezone);
       if (opens) {
         const handoverRow = {
