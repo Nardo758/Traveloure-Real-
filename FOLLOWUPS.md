@@ -1364,7 +1364,7 @@ temple, cafe…), which the approved C-5 chip set (`PLACES_CHIP_LABELS`, `shared
 come back once `travel_pulse_hidden_gems` carries a category the chip set names — a column or a mapping is a schema or
 copy decision, not made here.
 
-### FU-R3-5 — migrations 435, 436 and 437 (#1887) merged on a coding session's note, not Leon's comment
+### FU-R3-5 — migrations 435, 436 and 437 (#1887) merged on a coding session's note, not Leon's comment — **CLOSED** (Leon's comments on #1887: 435 founder comment: #1887 2026-11-05T23:29:58Z; 436 founder comment: #1887 2026-11-05T23:29:58Z; 437 founder comment: #1887 2026-11-05T23:30:00Z)
 
 The migration-approval check counts any comment by GitHub user Nardo758 that contains the citation sentence. Coding
 sessions post through that same account. On #1887 (Lane 1, merged Nov 4, 2026) the session's note listing the three
