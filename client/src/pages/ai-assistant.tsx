@@ -20,7 +20,6 @@ import {
   MessageSquare,
   Sparkles,
   Plane,
-  MapPin,
   Calendar,
   Pencil,
   Check,
@@ -268,7 +267,6 @@ export default function AIAssistant() {
 
   const suggestedPrompts = [
     { icon: Plane, text: "Plan a romantic getaway to Bali" },
-    { icon: MapPin, text: "Best destinations for a winter wedding" },
     { icon: Calendar, text: "Create an itinerary for Tokyo in spring" },
     { icon: Sparkles, text: "Surprise anniversary trip ideas" },
   ];

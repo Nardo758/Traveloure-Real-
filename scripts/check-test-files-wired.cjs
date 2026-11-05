@@ -111,6 +111,9 @@
  * Node built-ins only. Self-test: node scripts/check-test-files-wired.cjs --self-test
  */
 const fs = require("fs");
+
+// N-7 (ledger `2026-11-05-lane5-copy`): a CRLF checkout reads exactly as an LF one — line endings are normalised at read.
+const readText = (p) => fs.readFileSync(p, "utf8").replace(/\r\n?/g, "\n");
 const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
@@ -153,7 +156,7 @@ function collectTests(root = ROOT, roots = TEST_ROOTS) {
 
 function extractRunCommands(yamlText) {
   const commands = [];
-  const lines = yamlText.split("\n");
+  const lines = yamlText.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
     const match = lines[i].match(/^(\s*)(?:-\s+)?run:\s*(.*)$/);
     if (!match) continue;
@@ -194,7 +197,7 @@ function scriptLines(command) {
   const joined = command.replace(/\\[ \t]*\n[ \t]*/g, " ");
   const out = [];
   let heredoc = null;
-  for (const raw of joined.split("\n")) {
+  for (const raw of joined.split(/\r?\n/)) {
     const line = raw.trim();
     if (heredoc !== null) {
       if (line === heredoc) heredoc = null;
@@ -317,7 +320,7 @@ function literalPlaywrightConfig(configPath, root) {
   const relative = posix(configPath || "playwright.config.ts");
   const full = path.resolve(root, relative);
   if (!fs.existsSync(full)) return { testDir: "playwright/tests", testMatches: [] };
-  const source = fs.readFileSync(full, "utf8");
+  const source = readText(full);
   const configDir = path.dirname(relative);
   const dirMatch = source.match(/\btestDir\s*:\s*["']([^"']+)["']/);
   const testDir = dirMatch
@@ -431,9 +434,8 @@ function inventory({ root = ROOT, tests, workflowCommands, packageScripts, dirEx
  * sorted for readability and diff sanity).
  */
 function readBaseline(file = BASELINE_PATH) {
-  return fs
-    .readFileSync(file, "utf8")
-    .split("\n")
+  return readText(file)
+    .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line && !line.startsWith("#"));
 }
@@ -471,7 +473,7 @@ function ratchet({ tests, reachable, orphans, baseline }) {
 
 function workflowCommands(dir = WORKFLOW_DIR) {
   return walk(dir, (file) => /\.ya?ml$/.test(file))
-    .flatMap((file) => extractRunCommands(fs.readFileSync(path.join(dir, file), "utf8")));
+    .flatMap((file) => extractRunCommands(readText(path.join(dir, file))));
 }
 
 function selfTest() {
@@ -717,7 +719,7 @@ if (process.argv.includes("--self-test")) {
   process.exit(0);
 }
 
-const packageJson = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
+const packageJson = JSON.parse(readText(path.join(ROOT, "package.json")));
 const tests = collectTests();
 const result = inventory({
   tests,

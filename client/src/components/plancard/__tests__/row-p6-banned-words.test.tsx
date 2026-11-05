@@ -108,8 +108,10 @@ describe("P-6 — banned words", () => {
 
   it("T5 the baseline only shrank or held (134 entries, 344 hits at this PR)", () => {
     const b = JSON.parse(read("scripts/never-say-baseline.json")) as Record<string, Record<string, number>>;
-    const entries = Object.values(b).reduce((n, by) => n + Object.keys(by).length, 0);
-    const hits = Object.values(b).reduce((n, by) => n + Object.values(by).reduce((a, c) => a + c, 0), 0);
+    // Lane 5 (K-8): "perfect" joined the list later; its recorded debt is pinned in row-p8 T5, apart from this ratchet.
+    const older = Object.values(b).map((by) => Object.entries(by).filter(([w]) => w !== "perfect"));
+    const entries = older.reduce((n, by) => n + by.length, 0);
+    const hits = older.reduce((n, by) => n + by.reduce((a, [, c]) => a + c, 0), 0);
     assert.ok(entries <= 134, `entries ${entries}`);
     assert.ok(hits <= 344, `hits ${hits}`);
     for (const by of Object.values(b)) assert.ok(!("founding" in by), "founding has no baseline entry");

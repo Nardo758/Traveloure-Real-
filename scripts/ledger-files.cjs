@@ -12,6 +12,9 @@
  * Node built-ins only.
  */
 const fs = require("fs");
+
+// N-7 (ledger `2026-11-05-lane5-copy`): a CRLF checkout reads exactly as an LF one — line endings are normalised at read.
+const readText = (p) => fs.readFileSync(p, "utf8").replace(/\r\n?/g, "\n");
 const path = require("path");
 const { ROW_ID_PREFIX_RE } = require("./check-decision-guards.cjs");
 
@@ -71,7 +74,7 @@ function listPending(root = ROOT) {
 
 /** A decision file is exactly one LF-terminated line. */
 function readRowFile(abs) {
-  const text = fs.readFileSync(abs, "utf8");
+  const text = readText(abs);
   if (text.includes("\r")) return { ok: false, line: text, reason: "CR is not allowed" };
   if (!text.endsWith("\n") || text.slice(0, -1).includes("\n")) {
     return { ok: false, line: text.replace(/\n$/, ""), reason: "not exactly one line ending in a newline" };
@@ -88,7 +91,7 @@ function loadEntries(root = ROOT) {
 
 function readPreamble(root = ROOT) {
   const abs = path.join(root, PREAMBLE_REL);
-  return fs.existsSync(abs) ? fs.readFileSync(abs, "utf8") : "";
+  return fs.existsSync(abs) ? readText(abs) : "";
 }
 
 /** Row lines in file order, then the preamble (lane-local list and guard registry). */

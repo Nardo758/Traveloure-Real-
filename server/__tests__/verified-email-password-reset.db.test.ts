@@ -2,11 +2,9 @@
  * Row 101: a password reset needs a verified email while EMAIL_SENDS_ENABLED is
  * exactly "true". The flag is set in-process. No separate server step.
  *
- * Flag off (unset, "false", "TRUE"): an unverified account still receives a
- * reset token and a password_reset outbox row. Flag on: that account gets the
- * same neutral 200, no reset token, and a verification letter instead. A
- * pre-issued token for an unverified account is refused and left unused.
- * Verified accounts and unknown addresses keep today's answers.
+ * A-15 (ledger `2026-11-05-lane5-copy`; ruling, Nov 5, 2026) RETIRES the substitution: with the flag on or off, an
+ * unverified account gets the neutral 200, a reset token and a password_reset outbox row — never a verification letter —
+ * and its reset link is honoured. Verified accounts and unknown addresses keep today's answers.
  *
  * Grandfathering is not honored: a trip on the account (platform activity)
  * does not make a null users.email_verified count as verified.
@@ -192,7 +190,7 @@ describe("verified email required for password reset while sends are on", () => 
     assert.equal(types.filter((t) => t === "email_verification").length, 0);
   });
 
-  it("flag on: unverified forgot stays neutral, queues verification, and writes no reset token", async () => {
+  it("flag on: unverified forgot stays neutral and gets a reset link, never a verification letter (A-15)", async () => {
     setSends("true");
     const user = await account({ withTrip: true });
     const unknown = freshEmail("missing");
@@ -210,12 +208,10 @@ describe("verified email required for password reset while sends are on", () => 
       assert.deepEqual(res.body, { message: NEUTRAL });
     }
 
-    await waitFor(
-      async () => (await verifyTokens(user.id)).length === 1 && (await outboxTypes(user.email)).includes("email_verification"),
-      "verification letter for unverified account",
-    );
-    assert.equal((await unusedReset(user.id)).length, 0);
-    assert.equal((await outboxTypes(user.email)).filter((t) => t === "password_reset").length, 0);
+    await waitFor(async () => (await outboxTypes(user.email)).includes("password_reset"), "reset link for unverified account");
+    assert.equal((await unusedReset(user.id)).length, 1);
+    assert.equal((await verifyTokens(user.id)).length, 0, "no verification letter");
+    assert.deepEqual(await outboxTypes(user.email), ["password_reset"]);
 
     assert.equal((await unusedReset(oauth.id)).length, 0);
     assert.equal((await verifyTokens(oauth.id)).length, 0);
@@ -240,16 +236,16 @@ describe("verified email required for password reset while sends are on", () => 
     assert.notEqual(await passwordOf(user.id), "old-hash");
   });
 
-  it("flag on: reset-password refuses an unverified token and leaves it unused", async () => {
+  it("flag on: reset-password honours an unverified account's link (A-15)", async () => {
     setSends("true");
     const user = await account({ withTrip: true });
     const issued = await issuePasswordResetToken(user.id);
     const res = await post("/api/auth/reset-password", { token: issued.raw, newPassword: "longenough1" });
-    assert.equal(res.status, 400, res.text);
-    assert.deepEqual(res.body, { message: INVALID });
-    assert.equal((await unusedReset(user.id)).length, 1);
-    assert.equal(await passwordOf(user.id), "old-hash");
-    assert.equal(await peekPasswordResetTokenUser(issued.raw), user.id);
+    assert.equal(res.status, 200, res.text);
+    assert.equal((await unusedReset(user.id)).length, 0, "the link is spent");
+    assert.notEqual(await passwordOf(user.id), "old-hash");
+    const replay = await post("/api/auth/reset-password", { token: issued.raw, newPassword: "longenough2" });
+    assert.equal(replay.status, 400, "a spent link stays spent");
 
     const unknown = await post("/api/auth/reset-password", {
       token: crypto.randomBytes(32).toString("hex"),

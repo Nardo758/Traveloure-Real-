@@ -111,7 +111,7 @@ function getRecommendedTemplates(
       addedSlugs.add(template.slug);
       recommendations.push({
         template,
-        reason: `Perfect for ${vibe} vibes`,
+        reason: `For ${vibe} vibes`,
       });
     }
     if (recommendations.length >= 2) break;

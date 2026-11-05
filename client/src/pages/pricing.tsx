@@ -303,7 +303,7 @@ export default function PricingPage() {
     },
     {
       key: "trip-pass",
-      eyebrow: "BEST FOR ONE TRIP",
+      eyebrow: "FOR ONE TRIP",
       name: "Trip Pass",
       price: dollars(pricing.tripPass.priceCents),
       priceSuffix: "/ trip",

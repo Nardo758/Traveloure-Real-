@@ -176,6 +176,8 @@ export const SITE_NEVER_SAY: ReadonlyArray<{ words: string; re: RegExp }> = [
   // passes — the reason is the " · " tail. "as soon as" is plain English, not a promise, and passes.
   { words: "popular", re: /\bpopular\b/i },
   { words: "best", re: /\bbest\b/i },
+  // K-8 (ledger `2026-11-05-lane5-copy`; ruling, Nov 5, 2026): "perfect" is a superlative claim too.
+  { words: "perfect", re: /\bperfect(?:ly)?\b/i },
   { words: "top pick/rated", re: /\btop[- ](?:picks?|rated|experts?|providers?|tips?|choices?|destinations?)\b/i },
   { words: "most <superlative>", re: /\bmost[- ](?:popular|loved|visited|booked|rated|recommended|beautiful|famous|iconic)\b/i },
   { words: "#1", re: /(?:^|\s)#1\b/ },

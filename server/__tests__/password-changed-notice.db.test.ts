@@ -235,16 +235,17 @@ describe("password_changed notice after a successful reset (row 172 slice b)", (
     assert.equal((await notices()).length, before);
   });
 
-  it("PB4 an unverified account is refused while sends are on, and no row is created", async () => {
+  // A-15 (ledger `2026-11-05-lane5-copy`): the unverified refusal is retired — the emailed link is honoured, and the
+  // password_changed notice follows like any other reset.
+  it("PB4 an unverified account's link is honoured while sends are on, and one notice is queued", async () => {
     setSends("true");
     const user = await account({ verified: false });
     const issued = await issuePasswordResetToken(user.id);
     const res = await post("/api/auth/reset-password", { token: issued.raw, newPassword: "longenough1" });
-    assert.equal(res.status, 400, res.text);
-    assert.deepEqual(res.body, { message: INVALID });
-    assert.equal(await passwordOf(user.id), "old-hash");
-    assert.equal((await unusedReset(user.id)).length, 1);
-    assert.equal((await notices(user.email!)).length, 0);
+    assert.equal(res.status, 200, res.text);
+    assert.notEqual(await passwordOf(user.id), "old-hash");
+    assert.equal((await unusedReset(user.id)).length, 0);
+    assert.equal((await notices(user.email!)).length, 1);
   });
 
   it("PB5 the 200 body stays byte-identical when enqueueEmail throws", async () => {

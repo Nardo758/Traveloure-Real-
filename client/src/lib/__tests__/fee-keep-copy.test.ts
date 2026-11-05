@@ -24,16 +24,16 @@ test("K3: a rate with no usable answer gives no sentence for its half", () => {
   assert.equal(earnKeepSentence({ expertPlatformRate: null, providerPlatformRate: 0.1 }), "Providers keep 90% (10%).");
 });
 
-test("K4 (FE-2): a cohort rate carries the F3 clause, with the server's notice days", () => {
+test("K4 (FE-2, A-30): a cohort rate carries the approved clause — no lock is claimed", () => {
   assert.equal(
     earnKeepSentence({ expertPlatformRate: 0.15, providerPlatformRate: 0.1, expertCohort: { label: "beta", noticeDays: 30 } }),
-    "Experts and planners keep 85% of your planning fee: beta cohort rate, locked when you join, 30 days' written notice before any change. Providers keep 90% (10%).",
+    "Experts and planners keep 85% of your planning fee. Beta cohort rate. Rates are set per band and shown before you accept any job. Providers keep 90% (10%).",
   );
-  // No notice days from the server: the notice clause is left out, never a typed number.
   assert.equal(
     earnKeepSentence({ expertPlatformRate: 0.15, expertCohort: { label: "beta", noticeDays: null } }),
-    "Experts and planners keep 85% of your planning fee: beta cohort rate, locked when you join.",
+    "Experts and planners keep 85% of your planning fee. Beta cohort rate. Rates are set per band and shown before you accept any job.",
   );
+  assert.doesNotMatch(earnKeepSentence({ expertPlatformRate: 0.15, expertCohort: { label: "beta", noticeDays: 30 } }) ?? "", /locked/);
   // A cohort with no rate still gives no sentence.
   assert.equal(earnKeepSentence({ expertPlatformRate: null, expertCohort: { label: "beta", noticeDays: 30 } }), null);
 });

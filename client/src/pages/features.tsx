@@ -129,7 +129,7 @@ export default function FeaturesPage() {
             <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-6">
               Everything You Need for the
               <br />
-              Perfect Trip
+              Trip
             </h1>
             <p className="text-xl text-gray-300 max-w-2xl mx-auto mb-8">
               From planning tools to local expert connections, Traveloure
@@ -283,7 +283,7 @@ export default function FeaturesPage() {
             Ready to Experience These Features?
           </h2>
           <p className="text-xl text-white/90 mb-8 max-w-2xl mx-auto">
-            Start planning your perfect trip today. It's free to get started.
+            Start planning your trip today. It's free to get started.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
             <Link href="/discover">

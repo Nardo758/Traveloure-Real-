@@ -7,11 +7,9 @@
  * keeps the rest. A rate that is absent, not a number, or outside 0–1 gives NO sentence for its
  * half (§13), never a typed fallback (§8).
  *
- * Part F3's beta-cohort clause ("beta cohort rate, locked when you join, 30 days' written notice
- * before any change") rides the expert half only when the server says the expert rate IS a
- * cohort's (`expertCohort`, FE-2 ruling 6). The notice days are the server's
- * `expert_rate_change_notice_days`; when that is unset the notice clause is left out, never a
- * typed "30" (§8/§13).
+ * The cohort clause ("Beta cohort rate. Rates are set per band and shown before you accept any job." — A-30, which
+ * replaced Part F3's "locked when you join" claim) rides the expert half only when the server says the expert rate IS a
+ * cohort's (`expertCohort`, FE-2 ruling 6).
  */
 export const KEEP_RATES_ENDPOINT = "/api/fee-policies/keep-rates";
 
@@ -49,20 +47,20 @@ export function providerReviewKeepLine(rates: PublicKeepRates | null | undefined
   return `You keep ${100 - take}% of each booking`;
 }
 
-/** The F3 clause for a cohort rate, or null when the rate is not a cohort's. */
+/**
+ * The cohort clause for a cohort rate, or null when the rate is not a cohort's. A-30 (ledger `2026-11-05-lane5-copy`;
+ * "Wording approved — Leon", Nov 5, 2026): no lock is claimed — nothing locks a rate — so the clause says how rates
+ * are set: "Beta cohort rate. Rates are set per band and shown before you accept any job."
+ */
 export function expertCohortClause(rates: PublicKeepRates | null | undefined): string | null {
   const label = rates?.expertCohort?.label?.trim();
   if (!label) return null;
-  const days = rates?.expertCohort?.noticeDays;
-  const notice = typeof days === "number" && Number.isInteger(days) && days > 0
-    ? `, ${days} days' written notice before any change`
-    : "";
-  return `${label} cohort rate, locked when you join${notice}`;
+  return `${label.charAt(0).toUpperCase()}${label.slice(1)} cohort rate. Rates are set per band and shown before you accept any job`;
 }
 
 /**
- * "Experts and planners keep 85% of your planning fee: beta cohort rate, locked when you join,
- * 30 days' written notice before any change." — the clause only for a cohort rate — or null.
+ * "Experts and planners keep 85% of your planning fee. Beta cohort rate. Rates are set per band and shown before you
+ * accept any job." — the clause only for a cohort rate — or null.
  */
 export function expertKeepLine(rates: PublicKeepRates | null | undefined): string | null {
   const take = platformTakePercent(rates?.expertPlatformRate);
@@ -70,7 +68,7 @@ export function expertKeepLine(rates: PublicKeepRates | null | undefined): strin
   const clause = expertCohortClause(rates);
   return clause === null
     ? `Experts and planners keep ${100 - take}% of your planning fee.`
-    : `Experts and planners keep ${100 - take}% of your planning fee: ${clause}.`;
+    : `Experts and planners keep ${100 - take}% of your planning fee. ${clause}.`;
 }
 
 /** The /earn revenue-share line; each half is left out when its rate gave no answer. */

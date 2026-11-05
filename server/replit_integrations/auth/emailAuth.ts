@@ -27,7 +27,6 @@ import {
   RESET_TOKEN_TTL_MIN, issuePasswordResetToken, consumePasswordResetToken, hashAuthToken,
   peekPasswordResetTokenUser,
 } from "../../services/password-reset-tokens.service";
-import { isEmailVerifiedForUser, verifiedEmailActionsEnforced } from "../../services/verified-email-action-gate";
 import { verifyLoginCredential } from "../../services/login-credentials.service";
 import { verificationEmailRateLimiter } from "../../infrastructure/rate-limiter";
 import {
@@ -415,20 +414,10 @@ export function setupEmailAuth(app: Express): void {
       if (user && user.password) {
         // Skip OAuth-only accounts (no password set) — generating a reset for
         // them would be a no-op + signal that the email exists in another way.
-        // Row 101: while sends are on, an unverified address (users.email_verified
-        // only — grandfathering is not honored) gets a verification letter instead
-        // of a reset link. The HTTP answer stays the neutral 200 either way.
-        // The flag is read first so an off switch adds no extra query.
-        const holdForVerification =
-          verifiedEmailActionsEnforced() && !(await isEmailVerifiedForUser(user.id));
-        if (holdForVerification) {
-          const address = user.email;
-          if (address) {
-            issueEmailVerification(user.id, address, user.firstName ?? null).catch(() => {
-              console.error("[auth/forgot-password] verification email issue failed for user", user.id);
-            });
-          }
-        } else {
+        // A-15 (ledger `2026-11-05-lane5-copy`; ruling, Nov 5, 2026): forgot-password sends a password-reset link with a
+        // one-hour expiry — never a verification letter (Row 101's substitution is retired). The token is stored hashed
+        // and is never logged. The HTTP answer stays the neutral 200.
+        {
           const issued = await issuePasswordResetToken(user.id);
 
           const resetUrl = `${getAppBaseUrl()}/reset-password?token=${encodeURIComponent(issued.raw)}`;
@@ -482,18 +471,10 @@ export function setupEmailAuth(app: Express): void {
       const { token, newPassword } = validation.data;
       const hashedPassword = await hashPassword(newPassword);
       // Peek once before consume. Consume spends the token, and the account
-      // can no longer be read from it. The verified-email refusal reuses this read.
+      // can no longer be read from it (the password-changed notice reads it).
+      // A-15 (ledger `2026-11-05-lane5-copy`): the link forgot-password sends is honoured for every account it was sent
+      // to — holding it proves control of the address — so the Row 101 unverified refusal is retired with the letter.
       const accountId = await peekPasswordResetTokenUser(token);
-      // Row 101: while sends are on, a link whose account is unverified is the same
-      // invalid-link answer, and the token stays unused. Verified accounts fall
-      // through to consume.
-      if (verifiedEmailActionsEnforced()) {
-        if (accountId && !(await isEmailVerifiedForUser(accountId))) {
-          return res.status(400).json({
-            message: "This reset link is invalid or has expired. Please request a new one.",
-          });
-        }
-      }
       const resetApplied = await consumePasswordResetToken(token, hashedPassword);
       if (!resetApplied) {
         return res.status(400).json({

@@ -793,6 +793,13 @@ async function enqueueTransactionalEmail(input: {
   }
 }
 
+/**
+ * A-15 (ledger `2026-11-05-lane5-copy`; "Wording approved — Leon", Nov 5, 2026). The link's lifetime is the token's
+ * (`RESET_TOKEN_TTL_MIN` = 60), and the sentence states it; the token is never written to a log.
+ */
+export const PASSWORD_RESET_EMAIL_SUBJECT = "Reset your Traveloure password";
+export const PASSWORD_RESET_EMAIL_BODY = "Use this link to set a new password. It expires in 1 hour.";
+
 export async function sendPasswordResetEmail(params: PasswordResetParams): Promise<void> {
   return dispatchMessagingProducer(
     authPasswordResetEmailAutomation,
@@ -810,10 +817,7 @@ async function sendPasswordResetEmailAction(params: PasswordResetParams): Promis
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
       <h2 style="color: #FF385C; margin-bottom: 8px;">Reset your Traveloure password</h2>
       <p style="color: #374151;">${greeting}</p>
-      <p style="color: #374151;">
-        We received a request to reset your password. Click the button below to choose a new one.
-        This link expires in ${params.expiresInMinutes} minutes and can only be used once.
-      </p>
+      <p style="color: #374151;">${PASSWORD_RESET_EMAIL_BODY}</p>
       <p style="margin: 24px 0;">
         <a href="${params.resetUrl}"
            style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
@@ -837,7 +841,7 @@ async function sendPasswordResetEmailAction(params: PasswordResetParams): Promis
     ``,
     greeting,
     ``,
-    `We received a request to reset your password. This link expires in ${params.expiresInMinutes} minutes and can only be used once:`,
+    PASSWORD_RESET_EMAIL_BODY,
     ``,
     params.resetUrl,
     ``,
@@ -847,7 +851,7 @@ async function sendPasswordResetEmailAction(params: PasswordResetParams): Promis
   await enqueueTransactionalEmail({
     emailType: "password_reset",
     to: params.toEmail,
-    subject: "Reset your Traveloure password",
+    subject: PASSWORD_RESET_EMAIL_SUBJECT,
     text,
     html,
     authCritical: true,
