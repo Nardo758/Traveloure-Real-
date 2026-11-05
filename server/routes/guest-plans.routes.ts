@@ -16,6 +16,7 @@
  *
  * Limits live in `server/config/guest-plan.config.ts`; the 429 body carries the approved sentence.
  */
+import { logger } from "../infrastructure/logger";
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { getUserId } from "../utils/auth";
@@ -38,6 +39,7 @@ import {
   logGuestPlanRetentionBootState,
   readGuestPlan,
   saveGuestPlanItem,
+  type GuestSaveTimings,
   updateGuestPlan,
 } from "../services/guest-plan.service";
 
@@ -126,10 +128,11 @@ router.post("/api/guest-plans", guestOnly, createPerSession, createPerIp, async 
 router.get("/api/guest-plans/current", guestOnly, async (req, res) => {
   try {
     const view = await readGuestPlan(sessionHash(req)!);
-    if (!view) return res.status(404).json({ code: "not_found" });
     res.set("Cache-Control", "private, no-store");
-    res.json(view);
-  } catch {
+    // R3-1: "no plan yet" is an answer, not an error — 200 with null. A plan is made only by the get-or-create POST.
+    res.json(view ?? null);
+  } catch (err: any) {
+    logger.error({ route: "GET /api/guest-plans/current", code: err?.code, err: err?.message }, "guest plan read failed");
     res.status(500).json({ code: "error" });
   }
 });
@@ -138,10 +141,14 @@ router.patch("/api/guest-plans/current", guestOnly, async (req, res) => {
   const parsed = guestPlanUpdateBody.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ code: "invalid_body" });
   try {
+    const started = Date.now();
     const view = await updateGuestPlan(sessionHash(req)!, parsed.data);
+    // R3-1: the server's own time for the save, so a slow "Saving…" says whether the wait was here.
+    res.set("Server-Timing", `update;dur=${Date.now() - started}`);
     if (!view) return res.status(404).json({ code: "not_found" });
     res.json(view);
-  } catch {
+  } catch (err: any) {
+    logger.error({ route: "PATCH /api/guest-plans/current", code: err?.code, err: err?.message }, "guest plan update failed");
     res.status(500).json({ code: "error" });
   }
 });
@@ -150,12 +157,18 @@ router.post("/api/guest-plans/current/items", guestOnly, savesPerSession, async 
   const parsed = guestPlanItemBody.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ code: "invalid_body" });
   try {
-    const out = await saveGuestPlanItem(sessionHash(req)!, parsed.data);
+    const timings: GuestSaveTimings = { plan: 0, resolve: 0, write: 0, read: 0 };
+    const out = await saveGuestPlanItem(sessionHash(req)!, parsed.data, timings);
+    // R3-1: where the save spent its time (plan read, source resolve, write, read-back), in ms.
+    res.set("Server-Timing", Object.entries(timings).map(([k, v]) => `${k};dur=${v}`).join(", "));
     // A-1: a source the server cannot find is a 400 — never a saved title with nothing behind it.
     if (!out.ok) return res.status(out.code === "unknown_source" ? 400 : 404).json({ code: out.code === "unknown_source" ? "unknown_source" : "not_found" });
-    // A-11: a source the plan already holds answers its item (200), not a second one.
-    res.status(out.existing ? 200 : 201).json({ id: out.itemId, located: out.located, existing: out.existing });
-  } catch {
+    // R3-1 (round 3 ruling): a committed write answers 200 with its item — a new one and one the plan already held
+    // (A-11) alike; `existing` says which.
+    res.status(200).json({ id: out.itemId, located: out.located, existing: out.existing, item: out.item });
+  } catch (err: any) {
+    // R3-1: name the failure in the log (it was swallowed before, so a 500 said nothing about its cause).
+    logger.error({ route: "POST /api/guest-plans/current/items", code: err?.code, err: err?.message, stack: err?.stack }, "guest save failed");
     res.status(500).json({ code: "error" });
   }
 });

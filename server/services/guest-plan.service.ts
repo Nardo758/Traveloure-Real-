@@ -26,7 +26,7 @@ import { stampItemSourceClass } from "@shared/content-tiers";
 import { enqueuePlanLegRecompute } from "./routing/plan-legs-queue";
 import { eventTypeForSlug } from "@shared/occasions";
 import { writePlanPenOccasion } from "./plan-pen-occasion.service";
-import { partyTotal } from "@shared/plan-vocabulary";
+import { DEFAULT_ADULTS, partyTotal } from "@shared/plan-vocabulary";
 import { storage } from "../storage";
 import { logger } from "../infrastructure/logger";
 import { decideMarketOpen, type MarketOpenDecision } from "./market-open-gate";
@@ -250,12 +250,27 @@ export async function createGuestPlan(hash: string, body: z.infer<typeof guestPl
     occasionSlug = row.slug;
   }
   // A-5: get-or-create. A session has at most one live guest plan (migration 435's unique partial index); a second
-  // create — including one racing the first — answers that plan, as it stands.
+  // create — including one racing the first — answers that plan.
+  // R3-3 (round 3 ruling, Nov 5, 2026): an OCCASION door on an existing guest plan updates that plan in place — its
+  // occasion (slug + coarse type), the door's dates and its title — and keeps its items. Still one plan per browser:
+  // no new plan, no prompt. A create that names no occasion (a city-page save) answers the plan as it stands.
   const existing = await readGuestPlan(hash);
-  if (existing) return { ok: true, view: existing, created: false };
+  if (existing) {
+    if (!occasionSlug) return { ok: true, view: existing, created: false };
+    const patch: Record<string, unknown> = { occasionSlug, eventType };
+    if (body.title) patch.title = body.title;
+    if (body.startDate && body.endDate) {
+      patch.startDate = body.startDate;
+      patch.endDate = body.endDate;
+    }
+    await storage.updateTrip(existing.plan.id, patch as any);
+    return { ok: true, view: (await readGuestPlan(hash)) ?? existing, created: false };
+  }
   const datesChosenByTraveler = !!(body.startDate && body.endDate);
   const day = datesChosenByTraveler ? null : placeholderMintDay(body.destination);
-  const total = body.adults !== undefined ? partyTotal(body.adults, body.kids ?? null) : undefined;
+  // R3-4 (round 3 ruling, Nov 5, 2026): a party the door did not state is two adults (`DEFAULT_ADULTS`).
+  const adults = body.adults !== undefined ? body.adults : DEFAULT_ADULTS;
+  const total = partyTotal(adults, body.kids ?? null);
   let trip: Trip;
   try {
     trip = await storage.createTrip(
@@ -264,7 +279,7 @@ export async function createGuestPlan(hash: string, body: z.infer<typeof guestPl
       ...(body.title ? { title: body.title } : {}),
       startDate: (body.startDate ?? day) as any,
       endDate: (body.endDate ?? day) as any,
-      ...(body.adults !== undefined ? { adults: body.adults } : {}),
+      adults,
       ...(body.kids !== undefined ? { kids: body.kids } : {}),
       ...(total !== undefined ? { numberOfTravelers: total } : {}),
       eventType,
@@ -314,8 +329,11 @@ export async function updateGuestPlan(hash: string, body: z.infer<typeof guestPl
 }
 
 export type GuestSaveOutcome =
-  | { ok: true; itemId: string; located: boolean; existing: boolean }
+  | { ok: true; itemId: string; located: boolean; existing: boolean; item: GuestPlanView["items"][number] | null }
   | { ok: false; code: "no_plan" | "unknown_source" };
+
+/** R3-1: where a save spends its time, in ms — sent as `Server-Timing` so a slow save names its step. */
+export type GuestSaveTimings = { plan: number; resolve: number; write: number; read: number };
 
 /**
  * A-1 / A-11: save what the traveler pressed. The source row answers the item's name, point and link (A-1); a source
@@ -323,11 +341,24 @@ export type GuestSaveOutcome =
  * serialized per plan (an advisory transaction lock), and migration 436's unique index on the content link is the
  * database's own guarantee for content kinds.
  */
-export async function saveGuestPlanItem(hash: string, body: z.infer<typeof guestPlanItemBody>): Promise<GuestSaveOutcome> {
+export async function saveGuestPlanItem(
+  hash: string,
+  body: z.infer<typeof guestPlanItemBody>,
+  /** R3-1: filled in place with where the save spent its time (the route sends it as `Server-Timing`). */
+  timings: GuestSaveTimings = { plan: 0, resolve: 0, write: 0, read: 0 },
+): Promise<GuestSaveOutcome> {
+  let t = Date.now();
+  const lap = (k: keyof GuestSaveTimings) => {
+    const now = Date.now();
+    timings[k] = now - t;
+    t = now;
+  };
   const trip = await currentGuestTrip(hash);
+  lap("plan");
   if (!trip) return { ok: false, code: "no_plan" };
   const { kind, sourceId } = guestSaveSource(body);
   const source = await resolveGuestItemSource(kind, sourceId);
+  lap("resolve");
   if (!source) return { ok: false, code: "unknown_source" };
   const located = source.latitude != null && source.longitude != null;
   const out = await db.transaction(async (tx) => {
@@ -366,9 +397,27 @@ export async function saveGuestPlanItem(hash: string, body: z.infer<typeof guest
     await tx.update(trips).set({ updatedAt: new Date() }).where(eq(trips.id, trip.id));
     return { itemId: created.id, existing: false };
   });
-  if (!out.existing) enqueuePlanLegRecompute(trip.id);
-  return { ok: true, itemId: out.itemId, located, existing: out.existing };
+  lap("write");
+  // R3-1: the write has committed. Nothing after this line may turn it into an error: the leg recompute is queued
+  // best-effort, and the stored item is read back for the answer (a failed read answers the id alone).
+  if (!out.existing) {
+    try {
+      enqueuePlanLegRecompute(trip.id);
+    } catch (err: any) {
+      logger.warn({ tripId: trip.id, err: err?.message }, "guest save: leg recompute not queued (the save stands)");
+    }
+  }
+  let item: GuestPlanView["items"][number] | null = null;
+  try {
+    const [row] = await db.select().from(itineraryItems).where(eq(itineraryItems.id, out.itemId)).limit(1);
+    item = row ? viewOf(trip, [row]).items[0] ?? null : null;
+  } catch (err: any) {
+    logger.warn({ tripId: trip.id, err: err?.message }, "guest save: item read-back failed (the save stands)");
+  }
+  lap("read");
+  return { ok: true, itemId: out.itemId, located, existing: out.existing, item };
 }
+
 
 /**
  * Ruling 5: on sign-in every unclaimed guest plan of this session becomes the account's, as-is. One atomic

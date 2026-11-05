@@ -47,6 +47,7 @@
  */
 
 // TYPE-ONLY, and therefore erased: the "no top-level imports" rule above is about runtime imports.
+import { DEFAULT_ADULTS } from "@shared/plan-vocabulary";
 import type { TripMintEntry } from "@shared/slip-funnel-events";
 import { MARKET_STATUS_COPY } from "@shared/ticker";
 import { guestDateRange } from "./guest-map";
@@ -138,6 +139,8 @@ export interface TripMintBody {
    * written by the occasion PATCH that follows the mint.
    */
   eventType: null;
+  /** R3-4: the starting party — `DEFAULT_ADULTS` (2). */
+  adults: number;
   /** Present only when the caller named at least one door fact (§13 — absent is omitted). */
   entry?: TripMintEntry;
 }
@@ -248,6 +251,8 @@ export function buildTripMintBody(basics: SlipBasics): TripMintBody {
     // Both or neither (`checkSlipPrecondition`); neither ⇒ the keys are OMITTED, never "".
     ...(startDate && endDate ? { startDate, endDate } : {}),
     eventType: null,
+    // R3-4 (round 3 ruling, Nov 5, 2026): every door's plan starts at two adults; the plan page edits it.
+    adults: DEFAULT_ADULTS,
   };
   const entry: TripMintEntry = {};
   if (basics.entry?.door) entry.door = basics.entry.door;

@@ -56,6 +56,12 @@ export function travelersForSave(raw: string | number | undefined | null): numbe
 }
 
 /**
+ * R3-4 (round 3 ruling, Nov 5, 2026): a plan whose party nobody stated starts at two adults — every door and the plan
+ * page read this one number. A stated party (including one adult) always wins.
+ */
+export const DEFAULT_ADULTS = 2;
+
+/**
  * THE PARTY TOTAL — one derivation of "how many people is this plan for", never two
  * (ledger `2026-09-04-one-modal-many-doors`; CLAUDE.md Locked Decision 33).
  *

@@ -160,6 +160,7 @@ export function cityFromPath(pathname: string | null | undefined): string | null
  * Resolves only after the server has the item; throws otherwise.
  */
 export async function saveToGuestPlan(body: GuestItemBody, destination: string | null | undefined): Promise<GuestSaveResult> {
+  // R3-1: the plan is made only by the get-or-create POST — never a GET first; a session that already has one gets it back.
   const cached = queryClient.getQueryData<GuestPlanView | null>(GUEST_PLAN_QUERY_KEY);
   if (!cached) {
     const city = (destination ?? "").trim();
@@ -167,10 +168,14 @@ export async function saveToGuestPlan(body: GuestItemBody, destination: string |
     // A plan born from a city-page save has no chosen occasion: the city's own title ("Kyoto trip").
     await createGuestPlan({ destination: city, title: planTitle({ city: city.split(",")[0].trim() }) });
   }
-  const res = await apiRequest("POST", "/api/guest-plans/current/items", body);
-  const out = (await res.json()) as GuestSaveResult;
-  await queryClient.invalidateQueries({ queryKey: GUEST_PLAN_QUERY_KEY });
-  return out;
+  try {
+    const res = await apiRequest("POST", "/api/guest-plans/current/items", body);
+    return (await res.json()) as GuestSaveResult;
+  } finally {
+    // R3-1: "Your plan" follows the server on every answer — a refused save included — so the list never waits for a
+    // reload to show what the plan holds.
+    await queryClient.invalidateQueries({ queryKey: GUEST_PLAN_QUERY_KEY });
+  }
 }
 
 /** A-18: the toast for a confirmed save — the not-on-the-map hint when the place has no point. */

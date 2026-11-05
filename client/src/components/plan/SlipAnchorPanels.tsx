@@ -13,6 +13,7 @@
  *                        through the existing pick-based occasion PATCH (§19). An empty field is never
  *                        sent as an answer (§13: unanswered is not "no pet", not "0 children").
  */
+import { DEFAULT_ADULTS } from "@shared/plan-vocabulary";
 import { api } from "@shared/routes";
 import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
@@ -227,14 +228,15 @@ export function InlineWhoPanel({
   submit?: (party: { adults?: number | null; kids?: number | null }) => Promise<void>;
 }) {
   const s = (v: number | string | null | undefined) => (v == null ? "" : String(v));
-  const [adults, setAdults] = useState(s(current.adults));
+  // R3-4 (round 3 ruling): a party nobody stated starts at two adults, so the panel opens filled and Save is ready.
+  const [adults, setAdults] = useState(s(current.adults ?? DEFAULT_ADULTS));
   const [kids, setKids] = useState(s(current.kids));
   const [petKind, setPetKind] = useState(s(current.petKind));
   const [petCount, setPetCount] = useState(s(current.petCount));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    setAdults(s(current.adults));
+    setAdults(s(current.adults ?? DEFAULT_ADULTS));
     setKids(s(current.kids));
     setPetKind(s(current.petKind));
     setPetCount(s(current.petCount));
