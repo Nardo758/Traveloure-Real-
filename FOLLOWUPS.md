@@ -1403,5 +1403,4 @@ never from Google. A data row for Research Bot, not code.
 
 Phase 2 removed "Add to plan" from Viator results (ruling, Nov 5: Viator is not a PlanItemRef). The signed-in item create
 still admits a `viatorProductCode` body (`admitViatorAdd`, `server/routes.ts`) and the suggestion replay still stamps it.
-Retiring that path (and `viatorAddBody`) is its own small change once nothing reads Viator items it created; existing
-items keep working.
+Ruling (Nov 5): retired in CAP-2 Phase 3 with the PlanActions sweep; existing Viator items keep working.
