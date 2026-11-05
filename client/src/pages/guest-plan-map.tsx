@@ -276,7 +276,7 @@ function WaitlistGuestPlan() {
         takePendingPlanRecord();
         // A door's one pending add (a listing or partner place) is saved onto the new plan.
         // A-19: the pending add is replayed whole — its kind and source id — so it saves with its own point.
-        const pending = guestBodyForPendingAdd(record.pendingAdd);
+        const pending = guestBodyForPendingAdd(record.pendingAdd, destination.split(",")[0].trim());
         if (pending) {
           await saveToGuestPlan(pending, destination).catch(() => undefined);
         }
@@ -335,7 +335,7 @@ function WaitlistGuestPlan() {
   const dayNumber = days[selectedDay]?.dayNum ?? 1;
 
   const onSave = (place: BrowsePlace) => {
-    const body = guestBodyForPlace(place, dayNumber);
+    const body = guestBodyForPlace(place, dayNumber, plan.destination.split(",")[0].trim());
     if (!body) return;
     saveToGuestPlan(body, plan.destination).then(
       (result) => toast({ title: guestSavedMessage(result) }),

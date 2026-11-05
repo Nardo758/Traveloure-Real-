@@ -21,7 +21,8 @@ import { and, asc, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
 import { experienceTypes, itineraryItems, tripCollaborators, trips, type Trip } from "@shared/schema";
-import { GUEST_ITEM_KINDS, resolveGuestItemSource, type GuestItemKind } from "./guest-item-source.service";
+import { planMarkets, resolvePlanItemRef } from "./guest-item-source.service";
+import { parsePlanItemRef, planItemRefSchema, type PlanItemRef, type PlanItemRejectReason } from "@shared/plan-item-ref";
 import { stampItemSourceClass } from "@shared/content-tiers";
 import { enqueuePlanLegRecompute } from "./routing/plan-legs-queue";
 import { eventTypeForSlug } from "@shared/occasions";
@@ -121,29 +122,12 @@ export const guestPlanUpdateBody = z
   .refine((b) => Object.keys(b).length > 0, { message: "Nothing to update" });
 
 /**
- * §19: the save body — what the traveler pressed: a KIND and the SOURCE ROW's id (A-1). The server reads the row for
- * the item's name and point; the body carries no title the server keeps, no point, no link, origin, status or amount.
- * `gemId` is the GATE-1B spelling of `{ kind: "gem", sourceId }` and is still admitted. A body naming no source is
- * refused: nothing the server cannot place is ever saved.
+ * §19 / CAP-2 (ledger `2026-11-05-cap2-plan-item-ref`): the save body IS a PlanItemRef (`@shared/plan-item-ref`) — a
+ * kind, the source row's id, the city it was shown in and an optional placement. The server reads the row for the
+ * item's name, point and link; the body carries no title the server keeps, no point, no link, origin, status or
+ * amount. The GATE-1B `gemId` and Lane 1 `{ kind, sourceId }` spellings are retired with it.
  */
-export const guestPlanItemBody = z
-  .object({
-    kind: z.enum(GUEST_ITEM_KINDS).optional(),
-    sourceId: z.string().trim().min(1).max(200).optional(),
-    gemId: z.string().trim().min(1).max(64).optional(),
-    /** Display only, while the request is in flight; the stored title is the source row's. */
-    title: z.string().trim().min(1).max(255).optional(),
-    description: z.string().max(2000).optional(),
-    dayNumber: z.number().int().min(1).max(60).optional(),
-  })
-  .strict()
-  .refine((b) => !!b.gemId || (!!b.kind && !!b.sourceId), { message: "A save names its source" })
-  .refine((b) => !(b.gemId && (b.kind || b.sourceId)), { message: "gemId or kind + sourceId, not both" });
-
-/** The kind and id a parsed save names (the `gemId` spelling folded in). */
-export function guestSaveSource(body: z.infer<typeof guestPlanItemBody>): { kind: GuestItemKind; sourceId: string } {
-  return body.gemId ? { kind: "gem", sourceId: body.gemId } : { kind: body.kind!, sourceId: body.sourceId! };
-}
+export const guestPlanItemBody = planItemRefSchema;
 
 export type GuestPlanView = {
   plan: {
@@ -330,7 +314,7 @@ export async function updateGuestPlan(hash: string, body: z.infer<typeof guestPl
 
 export type GuestSaveOutcome =
   | { ok: true; itemId: string; located: boolean; existing: boolean; item: GuestPlanView["items"][number] | null }
-  | { ok: false; code: "no_plan" | "unknown_source" };
+  | { ok: false; code: "no_plan" | PlanItemRejectReason };
 
 /**
  * R3-17, pure: where an event lands on a plan — its own date, and that date's day number inside the plan's window
@@ -373,10 +357,14 @@ export async function saveGuestPlanItem(
   const trip = await currentGuestTrip(hash);
   lap("plan");
   if (!trip) return { ok: false, code: "no_plan" };
-  const { kind, sourceId } = guestSaveSource(body);
-  const source = await resolveGuestItemSource(kind, sourceId);
+  const parsedRef = parsePlanItemRef(body);
+  if (!parsedRef.ok) return { ok: false, code: parsedRef.reason };
+  const ref: PlanItemRef = parsedRef.ref;
+  const planDays = Math.round((Date.parse(`${String(trip.endDate).slice(0, 10)}T00:00:00Z`) - Date.parse(`${String(trip.startDate).slice(0, 10)}T00:00:00Z`)) / 86_400_000) + 1;
+  const resolved = await resolvePlanItemRef(ref, { markets: await planMarkets(trip.id), planDays: Number.isFinite(planDays) ? planDays : null });
   lap("resolve");
-  if (!source) return { ok: false, code: "unknown_source" };
+  if (!resolved.ok) return { ok: false, code: resolved.reason };
+  const source = resolved.source;
   const located = source.latitude != null && source.longitude != null;
   // R3-17: an event lands on its own day — `scheduled_date` is the event's date, and its day number is that day's place
   // in the plan's window. A day the window does not hold keeps the date and lands on day 1 (never a guessed day).
@@ -400,11 +388,13 @@ export async function saveGuestPlanItem(
         stampItemSourceClass({
           tripId: trip.id,
           title: source.title,
-          description: body.description ?? null,
+          description: null,
           itemType: source.itemType ?? "activity",
           // An event in the window lands on its own day, whatever day the card sent.
-          dayNumber: eventPlacement?.dayNumber ?? body.dayNumber ?? 1,
+          // A chosen day (`placement.day_number`, e.g. a day-filtered feed) otherwise; none ⇒ Day 1, no time.
+          dayNumber: eventPlacement?.dayNumber ?? ref.placement?.day_number ?? 1,
           ...(eventPlacement ? { scheduledDate: eventPlacement.scheduledDate } : {}),
+          ...(source.startTime ? { startTime: source.startTime } : {}),
           status: "planned",
           origin: "traveler",
           ...(source.locationName ? { locationName: source.locationName } : {}),

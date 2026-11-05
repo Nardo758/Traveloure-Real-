@@ -28,27 +28,30 @@ const read = (p: string) => readFileSync(resolve(process.cwd(), p), "utf8");
 describe("GATE-1B guest plan (client)", () => {
   // Lane 1 A-1 (ledger 2026-11-05-lane1-guest-save-rail; sanctioned edit): a save names its kind and source row; the
   // server reads the name and point. A card naming no row (a recommendation category) saves nothing.
+  // CAP-2 (ledger 2026-11-05-cap2-plan-item-ref; sanctioned edit): the body is a PlanItemRef — kind, the row's id, the
+  // city, and a chosen day only when the traveler chose one. `partner_product` split into its three kinds (ruling 8).
   it("C1 builds the guest save body from a card's add payload", () => {
     assert.deepEqual(guestItemFromFeedItem({ title: "Ginkaku-ji", type: "gem", sourceContentId: "kyoto-gem-ginkaku-ji", city: "Kyoto" }), {
       kind: "gem",
-      sourceId: "kyoto-gem-ginkaku-ji",
-      title: "Ginkaku-ji",
+      source_id: "kyoto-gem-ginkaku-ji",
+      city: "Kyoto",
     });
-    assert.equal(guestItemFromFeedItem({ title: "Ryokan", type: "hotel", sourceContentId: "h1" })?.kind, "partner_product");
-    assert.equal(guestItemFromFeedItem({ title: "Tour", type: "activity", sourceContentId: "a1" })?.kind, "partner_product");
-    assert.equal(guestItemFromFeedItem({ title: "F1", type: "event", sourceContentId: "e1" })?.kind, "event");
-    assert.equal(guestItemFromFeedItem({ title: "Tea", type: "service", sourceContentId: "s1" })?.kind, "listing");
-    assert.deepEqual(guestItemFromFeedItem({ title: "Tea", type: "activity", providerServiceId: "s2" }), { kind: "listing", sourceId: "s2", title: "Tea" });
-    assert.equal(guestItemFromFeedItem({ title: "Guided Tour", type: "recommendation" }), null, "a category is not a place");
-    assert.equal(guestItemFromFeedItem({ title: "Ginkaku-ji", type: "gem" }), null, "no source id ⇒ nothing");
+    assert.equal(guestItemFromFeedItem({ title: "Ryokan", type: "hotel", sourceContentId: "h1" }, "Kyoto")?.kind, "hotel");
+    assert.equal(guestItemFromFeedItem({ title: "Tour", type: "activity", sourceContentId: "a1" }, "Kyoto")?.kind, "activity");
+    assert.equal(guestItemFromFeedItem({ title: "F1", type: "event", sourceContentId: "e1" }, "Kyoto")?.kind, "event");
+    assert.equal(guestItemFromFeedItem({ title: "Tea", type: "service", sourceContentId: "s1" }, "Kyoto")?.kind, "listing");
+    assert.deepEqual(guestItemFromFeedItem({ title: "Tea", type: "activity", providerServiceId: "s2" }, "Kyoto"), { kind: "listing", source_id: "s2", city: "Kyoto" });
+    assert.equal(guestItemFromFeedItem({ title: "Guided Tour", type: "recommendation" }, "Kyoto"), null, "a category is not a place");
+    assert.equal(guestItemFromFeedItem({ title: "Ginkaku-ji", type: "gem" }, "Kyoto"), null, "no source id ⇒ nothing");
+    assert.equal(guestItemFromFeedItem({ title: "Ginkaku-ji", type: "gem", sourceContentId: "g" }), null, "no city ⇒ nothing");
   });
 
   it("C2 builds the save body from a map place", () => {
-    assert.deepEqual(guestBodyForPlace({ id: "g1", kind: "gem", name: "Tenryu-ji", lat: null, lng: null }, 2), { kind: "gem", sourceId: "g1", title: "Tenryu-ji", dayNumber: 2 });
-    assert.deepEqual(guestBodyForPlace({ id: "l1", kind: "listing", name: "Tea", lat: 35, lng: 135.7 }, 1), { kind: "listing", sourceId: "l1", title: "Tea", dayNumber: 1 });
-    assert.deepEqual(guestBodyForPlace({ id: "p1", kind: "partner", name: "Cafe", lat: 35, lng: 135.7 }, 1), { kind: "partner_product", sourceId: "p1", title: "Cafe", dayNumber: 1 });
-    assert.deepEqual(guestBodyForPlace({ id: "e1", kind: "event", name: "Gion Matsuri", lat: null, lng: null }, 1), { kind: "event", sourceId: "e1", title: "Gion Matsuri", dayNumber: 1 });
-    assert.equal(guestBodyForPlace({ id: "c1", kind: "candidate", name: "x", lat: null, lng: null }, 1), null);
+    assert.deepEqual(guestBodyForPlace({ id: "g1", kind: "gem", name: "Tenryu-ji", lat: null, lng: null }, 2, "Kyoto"), { kind: "gem", source_id: "g1", city: "Kyoto", placement: { day_number: 2 } });
+    assert.deepEqual(guestBodyForPlace({ id: "l1", kind: "listing", name: "Tea", lat: 35, lng: 135.7 }, 1, "Kyoto"), { kind: "listing", source_id: "l1", city: "Kyoto", placement: { day_number: 1 } });
+    assert.deepEqual(guestBodyForPlace({ id: "p1", kind: "partner", name: "Cafe", lat: 35, lng: 135.7 }, 1, "Kyoto"), { kind: "affiliate_product", source_id: "p1", city: "Kyoto", placement: { day_number: 1 } });
+    assert.deepEqual(guestBodyForPlace({ id: "e1", kind: "event", name: "Gion Matsuri", lat: null, lng: null }, 1, "Kyoto"), { kind: "event", source_id: "e1", city: "Kyoto", placement: { day_number: 1 } });
+    assert.equal(guestBodyForPlace({ id: "c1", kind: "candidate", name: "x", lat: null, lng: null }, 1, "Kyoto"), null);
   });
 
   it("C3 says the approved sentence for a failed save", () => {
@@ -105,7 +108,8 @@ describe("GATE-1B guest plan (client)", () => {
   it("C8 pins the sources", () => {
     const save = read("client/src/lib/browse-save.ts");
     // Lane 1 A-18 (sanctioned edit): the toast is said on the server's answer, with the hint when the place has no point.
-    assert.match(save, /saveToGuestPlan\(body, city\)\.then\(\s*\(result\) => toast\(\{ title: guestSavedMessage\(result\) \}\),/);
+    // CAP-2 (sanctioned edit): the save also carries the feed's chosen day.
+    assert.match(save, /saveToGuestPlan\(body, city, chosenDate\)\.then\(\s*\(result\) => toast\(\{ title: guestSavedMessage\(result\) \}\),/);
     const page = read("client/src/pages/guest-plan-map.tsx");
     assert.match(page, /if \(!isLoading && !user && mode === "waitlist"\) return <WaitlistGuestPlan \/>;/);
     const waitlistBody = page.slice(page.indexOf("function WaitlistGuestPlan()"));

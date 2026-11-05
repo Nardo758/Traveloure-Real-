@@ -97,8 +97,9 @@ test("A3 storage stamps the pair from the admitted code only; the row holds noth
 test("A4 a filed add carries the code; the replay stamps it", async () => {
   const svc = await import("../services/expert-suggestions.service");
   const src = await import("node:fs").then((fs) => fs.readFileSync("server/services/expert-suggestions.service.ts", "utf8"));
-  assert.match(src, /const \{ viatorProductCode, \.\.\.item \} = v/, "the replay port splits the code off the item");
+  // CAP-2 Phase 1 (sanctioned edit): the replay also splits off the PlanItemRef content link beside the code.
+  assert.match(src, /const \{ viatorProductCode, contentLink, \.\.\.item \} = v/, "the replay port splits the code off the item");
   assert.ok(typeof svc === "object");
   const routes = await import("node:fs").then((fs) => fs.readFileSync("server/routes.ts", "utf8"));
-  assert.match(routes, /payload: \{ item: viatorProductCode \? \{ \.\.\.itemData, viatorProductCode \} : itemData \}/);
+  assert.match(routes, /payload: \{ item: viatorProductCode \? \{ \.\.\.itemData, viatorProductCode \} : contentLink \? \{ \.\.\.itemData, contentLink \} : itemData \}/);
 });

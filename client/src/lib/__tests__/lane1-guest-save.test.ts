@@ -42,9 +42,10 @@ describe("Lane 1 guest save rail (client)", () => {
   });
 
   it("L3 replays a pending add whole", () => {
-    assert.deepEqual(guestBodyForPendingAdd({ kind: "listing", id: "s1", title: "Tea", dayNumber: 1 }), { kind: "listing", sourceId: "s1", title: "Tea", dayNumber: 1 });
-    assert.deepEqual(guestBodyForPendingAdd({ kind: "partner", id: "p1", title: "Cafe" }), { kind: "partner_product", sourceId: "p1", title: "Cafe", dayNumber: 1 });
-    assert.equal(guestBodyForPendingAdd(null), null);
+    // CAP-2 (sanctioned edit): the replay is a PlanItemRef; a partner place is an `affiliate_products` row.
+    assert.deepEqual(guestBodyForPendingAdd({ kind: "listing", id: "s1", title: "Tea", dayNumber: 1 }, "Kyoto"), { kind: "listing", source_id: "s1", city: "Kyoto", placement: { day_number: 1 } });
+    assert.deepEqual(guestBodyForPendingAdd({ kind: "partner", id: "p1", title: "Cafe" }, "Kyoto"), { kind: "affiliate_product", source_id: "p1", city: "Kyoto" });
+    assert.equal(guestBodyForPendingAdd(null, "Kyoto"), null);
     const page = read("client/src/pages/guest-plan-map.tsx");
     assert.doesNotMatch(page, /saveToGuestPlan\(\{ title: record\.pendingAdd\.title/, "the title-only replay is gone");
   });

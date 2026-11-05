@@ -8448,9 +8448,15 @@ export class DatabaseStorage implements IStorage {
   // caller that sets it at create time (see the schema comment).
   async createItineraryItem(
     item: InsertItineraryItem & { tripId: string },
-    opts: { fromLocalInput?: boolean; coordSource?: GoogleCoordSource; viatorProductCode?: string } = {},
+    opts: { fromLocalInput?: boolean; coordSource?: GoogleCoordSource; viatorProductCode?: string; contentLink?: { contentType: string; contentId: string } } = {},
   ): Promise<ItineraryItem> {
     const safeItem = withItemCoordSource(stampItemSourceClass(stripItineraryItemRoutingFields(item as Record<string, unknown>), opts), opts.coordSource);
+    // CAP-2 (ledger `2026-11-05-cap2-plan-item-ref`): the content pair a PlanItemRef resolved to, stamped HERE after the
+    // strip from the resolver's own answer — never from the body.
+    if (opts.contentLink && !opts.viatorProductCode) {
+      (safeItem as any).contentType = opts.contentLink.contentType;
+      (safeItem as any).contentId = opts.contentLink.contentId;
+    }
     // VD-1b (ledger `2026-10-18-viator-add-to-plan`): the content pair is stamped HERE, after the strip, from a
     // code the create rail admitted (`itineraryItemViatorLinkSchema`) — never from the body.
     if (opts.viatorProductCode) {

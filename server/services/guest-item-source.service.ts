@@ -1,53 +1,64 @@
 /**
- * A-1 (ledger `2026-11-05-lane1-guest-save-rail`): what a guest save names, read back from its own row.
+ * CAP-2 (ledger `2026-11-05-cap2-plan-item-ref`): the ONE resolver for a PlanItemRef (`@shared/plan-item-ref`), on both
+ * save rails — the guest save (`POST /api/guest-plans/current/items`) and the signed-in item create
+ * (`POST /api/trips/:tripId/itinerary-items`). Extended from Lane 1's guest resolver (A-1, ledger
+ * `2026-11-05-lane1-guest-save-rail`), not duplicated.
  *
- * A guest save carries a KIND and the SOURCE ROW's id — never a title, a point or a link the server keeps. The server
- * re-reads that row for the item's name and point and stamps the item's link back to it, so a save that names nothing
- * the server can find is refused (4xx) and "Saved to plan" never fires on nothing. The full contract is CAP-2 (after
- * round 3); this is its minimum.
+ * One function per kind, each re-reading its own row (ruling 8 — no first-match across tables):
+ *   · gem               → `travel_pulse_hidden_gems`; a hidden row is `source_withdrawn`. Link `gem` / gem id.
+ *   · event             → `fever_event_cache.event_id`, else Fever's own lookup of that id (R3-2). Link `event` / id.
+ *   · city_event        → `city_events.source_id` (one row only; a withdrawn row is `source_withdrawn`). Link
+ *                         `city_event` / source_id; its start lands as a placement (A-29).
+ *   · listing           → `provider_services` (approved, active, not a catalog ride); `provider_service_id`. Its point
+ *                         is the listing's own stored pin — except a property, whose public point is blurred, which
+ *                         saves unlocated (the browse map's own rule). R323's client-coordinate path is retired.
+ *   · affiliate_product → `affiliate_products` (active, not paused) ⇒ `affiliate_product_id`.
+ *   · hotel             → `hotel_cache` ⇒ link `hotel` / id.   · activity → `activity_cache` ⇒ link `activity` / id.
  *
- *   · gem              → `travel_pulse_hidden_gems` (visible rows only); content link `gem` / gem id.
- *   · event            → the Fever event id: `fever_event_cache.event_id`, else Fever's own lookup of that id (R3-2);
- *                        content link `event` / event id.
- *   · listing          → `provider_services` (approved, active, not a catalog ride); `provider_service_id`. No point:
- *                        a listing's exact pin belongs to its owner and a booked traveler (LD 22 as amended), and a
- *                        public read only ever carries an approximate one, which the browse map already treats as
- *                        unlocated.
- *   · partner_product  → `affiliate_products` (active) ⇒ `affiliate_product_id`; else a partner hotel
- *                        (`hotel_cache`) ⇒ content link `hotel`; else a partner activity (`activity_cache`) ⇒
- *                        content link `activity`.
+ * Refusals (`PLAN_ITEM_REJECT_REASONS`): no such row ⇒ `unknown_source`; a row taken down ⇒ `source_withdrawn`; a row
+ * (or the envelope's city) in an operating market the plan is not in ⇒ `city_mismatch`; a row with nothing to name the
+ * item by, or a chosen day the plan does not have ⇒ `unplaceable`. A city or row that names no operating market is not
+ * a mismatch (§13 — only a known, different market is).
  *
- * Coordinates are copied from the source row as stored, with no source stamp (`coord_source` NULL), exactly as gem
- * saves have done since GATE-1B. A row with no point saves unlocated, never a guessed or city-centre point (§13).
+ * Coordinates are copied from the source row as stored, with no source stamp (`coord_source` NULL), as gem saves have
+ * done since GATE-1B. A row with no point saves unlocated, never a guessed or city-centre point (§13). A client's
+ * coordinates are never read on this path.
  */
 import { marketToday } from "@shared/market-today";
-import { resolveMarketSlug } from "./trend-engine/operating-markets";
+import { MARKET_TIMEZONES, resolveMarketSlug } from "./trend-engine/operating-markets";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db";
-import { activityCache, affiliateProducts, feverEventCache, hotelCache, providerServices, travelPulseHiddenGems } from "@shared/schema";
-import { visibleGemCondition } from "./gem-visibility";
+import { activityCache, affiliateProducts, cityEvents, feverEventCache, hotelCache, providerServices, travelPulseHiddenGems, tripDestinations, trips } from "@shared/schema";
 import { notRideListingSql } from "./ride-listings";
+import { affiliateProductNotPausedWhere } from "./partner-pause.service";
+import type { PlanItemRef, PlanItemRejectReason } from "@shared/plan-item-ref";
 
-export const GUEST_ITEM_KINDS = ["gem", "event", "listing", "partner_product"] as const;
-export type GuestItemKind = (typeof GUEST_ITEM_KINDS)[number];
-
-export interface ResolvedGuestSource {
+export interface ResolvedPlanSource {
   title: string;
   locationName: string | null;
   latitude: string | null;
   longitude: string | null;
   itemType: "activity" | "accommodation" | null;
   /** Exactly one of these names the row the item came from. */
-  contentType: "gem" | "event" | "hotel" | "activity" | null;
+  contentType: "gem" | "event" | "city_event" | "hotel" | "activity" | null;
   contentId: string | null;
   providerServiceId: string | null;
   affiliateProductId: string | null;
+  /** The row's own city, for the market check. */
+  rowCity?: string | null;
   /**
    * R3-17: an event's own day, in its market's calendar (YYYY-MM-DD), from the event row's start. Absent for every other
    * kind and for an event with no stated start (§13 — never today, never a guess).
    */
   eventDate?: string | null;
+  /** A-29: a city event's wall-clock start ("HH:MM", market zone), only when the row says its time is known. */
+  startTime?: string | null;
 }
+
+
+type Resolved = { ok: true; source: ResolvedPlanSource } | { ok: false; reason: PlanItemRejectReason };
+const refuse = (reason: PlanItemRejectReason): Resolved => ({ ok: false, reason });
+const accept = (source: ResolvedPlanSource): Resolved => ({ ok: true, source });
 
 /** R3-17, pure: an instant → its calendar day in the market's own zone (UTC with no market). Null for no instant. */
 export function eventDayInMarket(start: Date | string | null | undefined, marketKey: string | null | undefined): string | null {
@@ -55,6 +66,19 @@ export function eventDayInMarket(start: Date | string | null | undefined, market
   const d = start instanceof Date ? start : new Date(start);
   if (Number.isNaN(d.getTime())) return null;
   return marketToday(marketKey, d);
+}
+
+/** A-29, pure: an instant → its "HH:MM" wall clock in the market's zone. Null for no instant or no market zone. */
+export function eventTimeInMarket(start: Date | string | null | undefined, marketKey: string | null | undefined): string | null {
+  if (start == null || start === "" || !marketKey) return null;
+  const tz = MARKET_TIMEZONES[marketKey];
+  if (!tz) return null;
+  const d = start instanceof Date ? start : new Date(start);
+  if (Number.isNaN(d.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(d);
+  const h = parts.find((p) => p.type === "hour")?.value;
+  const m = parts.find((p) => p.type === "minute")?.value;
+  return h && m ? `${h === "24" ? "00" : h}:${m}` : null;
 }
 
 const ID_MAX = 200;
@@ -72,19 +96,24 @@ function clean(name: unknown): string {
   return typeof name === "string" ? name.trim().slice(0, 255) : "";
 }
 
-function base(title: string, point: { latitude: string; longitude: string } | null): Omit<ResolvedGuestSource, "contentType" | "contentId" | "providerServiceId" | "affiliateProductId" | "itemType"> {
+function base(title: string, point: { latitude: string; longitude: string } | null): Pick<ResolvedPlanSource, "title" | "locationName" | "latitude" | "longitude"> {
   return { title, locationName: title, latitude: point?.latitude ?? null, longitude: point?.longitude ?? null };
 }
 
-async function gem(id: string): Promise<ResolvedGuestSource | null> {
+const NO_LINK = { contentType: null, contentId: null, providerServiceId: null, affiliateProductId: null } as const;
+
+async function gem(id: string): Promise<Resolved> {
   const [row] = await db
-    .select({ placeName: travelPulseHiddenGems.placeName, latitude: travelPulseHiddenGems.latitude, longitude: travelPulseHiddenGems.longitude })
+    .select({ placeName: travelPulseHiddenGems.placeName, city: travelPulseHiddenGems.city, latitude: travelPulseHiddenGems.latitude, longitude: travelPulseHiddenGems.longitude, hiddenAt: travelPulseHiddenGems.hiddenAt })
     .from(travelPulseHiddenGems)
-    .where(and(eq(travelPulseHiddenGems.id, id), visibleGemCondition()))
+    .where(eq(travelPulseHiddenGems.id, id))
     .limit(1);
-  const title = clean(row?.placeName);
-  if (!row || !title) return null;
-  return { ...base(title, pointOf(row.latitude, row.longitude)), itemType: "activity", contentType: "gem", contentId: id, providerServiceId: null, affiliateProductId: null };
+  if (!row) return refuse("unknown_source");
+  // The same flag the public reads keep a gem by (`visibleGemCondition`, hidden_at IS NULL).
+  if (row.hiddenAt != null) return refuse("source_withdrawn");
+  const title = clean(row.placeName);
+  if (!title) return refuse("unplaceable");
+  return accept({ ...base(title, pointOf(row.latitude, row.longitude)), itemType: "activity", ...NO_LINK, contentType: "gem", contentId: id, rowCity: row.city });
 }
 
 /**
@@ -104,7 +133,7 @@ export function setFeverEventLookupForTests(fn: FeverLookup | null): void {
   feverLookup = fn ?? liveFeverLookup;
 }
 
-async function event(id: string): Promise<ResolvedGuestSource | null> {
+async function event(id: string): Promise<Resolved> {
   // ONE id per kind (CAP-2 input): an event is named by its Fever event id — `fever_event_cache.event_id`, the same id
   // the public event payload carries as `id`. The cache answers first; a miss asks Fever for that same id.
   const [row] = await db
@@ -116,80 +145,167 @@ async function event(id: string): Promise<ResolvedGuestSource | null> {
   let venueName = clean(row?.venueName);
   let point = row ? pointOf(row.latitude, row.longitude) : null;
   let eventDate = row ? eventDayInMarket(row.startDate, resolveMarketSlug(row.city ?? "")) : null;
+  let rowCity: string | null = row?.city ?? null;
   if (!row || !title) {
     const live = await feverLookup(id).catch(() => null);
+    if (!live) return refuse("unknown_source");
     title = clean(live?.title);
-    if (!live || !title) return null;
+    if (!title) return refuse("unplaceable");
+    rowCity = clean((live as any).city?.name) || null;
     venueName = clean(live.venue?.name);
     point = pointOf(live.venue?.coordinates?.lat, live.venue?.coordinates?.lng);
     eventDate = eventDayInMarket((live as any).dates?.startDate ?? null, resolveMarketSlug((live as any).city?.name ?? ""));
   }
-  return {
+  return accept({
     ...base(title, point),
     locationName: venueName || title,
     itemType: "activity",
+    ...NO_LINK,
     contentType: "event",
     contentId: id,
-    providerServiceId: null,
-    affiliateProductId: null,
     eventDate,
-  };
+    rowCity,
+  });
 }
 
-async function listing(id: string): Promise<ResolvedGuestSource | null> {
+/** Ruling 9: a city event (migration 439's Kyoto rows among them) is named by its `source_id`; exactly one row answers. */
+async function cityEvent(id: string): Promise<Resolved> {
+  const rows = await db
+    .select({ title: cityEvents.title, city: cityEvents.city, venue: cityEvents.venue, venueLat: cityEvents.venueLat, venueLng: cityEvents.venueLng, startsAt: cityEvents.startsAt, startTimeKnown: cityEvents.startTimeKnown, withdrawnAt: cityEvents.withdrawnAt })
+    .from(cityEvents)
+    .where(eq(cityEvents.sourceId, id))
+    .limit(2);
+  // Two sources sharing one source_id is not a row we can name (ruling 8: no first match).
+  if (rows.length !== 1) return refuse("unknown_source");
+  const row = rows[0];
+  if (row.withdrawnAt != null) return refuse("source_withdrawn");
+  const title = clean(row.title);
+  if (!title) return refuse("unplaceable");
+  const market = resolveMarketSlug(row.city ?? "");
+  return accept({
+    ...base(title, pointOf(row.venueLat, row.venueLng)),
+    locationName: clean(row.venue) || title,
+    itemType: "activity",
+    ...NO_LINK,
+    contentType: "city_event",
+    contentId: id,
+    eventDate: eventDayInMarket(row.startsAt, market),
+    startTime: row.startTimeKnown === true ? eventTimeInMarket(row.startsAt, market) : null,
+    rowCity: row.city,
+  });
+}
+
+async function listing(id: string): Promise<Resolved> {
   const [row] = await db
-    .select({ serviceName: providerServices.serviceName })
+    .select({
+      serviceName: providerServices.serviceName,
+      city: providerServices.city,
+      latitude: providerServices.latitude,
+      longitude: providerServices.longitude,
+      productShape: providerServices.productShape,
+      status: providerServices.status,
+      approvalStatus: providerServices.approvalStatus,
+      notRide: sql<boolean>`${notRideListingSql(providerServices.id)}`,
+    })
     .from(providerServices)
-    .where(and(eq(providerServices.id, id), eq(providerServices.status, "active"), eq(providerServices.approvalStatus, "approved"), notRideListingSql(providerServices.id)))
+    .where(eq(providerServices.id, id))
     .limit(1);
-  const title = clean(row?.serviceName);
-  if (!row || !title) return null;
-  return { title, locationName: null, latitude: null, longitude: null, itemType: "activity", contentType: null, contentId: null, providerServiceId: id, affiliateProductId: null };
+  // A catalog ride is not a saveable listing (it lands only through the ride rail).
+  if (!row || row.notRide === false) return refuse("unknown_source");
+  if (row.status !== "active" || row.approvalStatus !== "approved") return refuse("source_withdrawn");
+  const title = clean(row.serviceName);
+  if (!title) return refuse("unplaceable");
+  // A property's public point is blurred (property-location-privacy); it saves unlocated, as the browse map shows it.
+  const property = row.productShape === "property" || row.productShape === "property_room";
+  const point = property ? null : pointOf(row.latitude, row.longitude);
+  return accept({ ...base(title, point), locationName: point ? title : null, itemType: "activity", ...NO_LINK, providerServiceId: id, rowCity: row.city });
 }
 
-async function partnerProduct(id: string): Promise<ResolvedGuestSource | null> {
-  const [aff] = await db
-    .select({ name: affiliateProducts.name, coordinates: affiliateProducts.coordinates })
+async function affiliateProduct(id: string): Promise<Resolved> {
+  const [row] = await db
+    .select({ name: affiliateProducts.name, city: affiliateProducts.city, coordinates: affiliateProducts.coordinates, isActive: affiliateProducts.isActive, live: sql<boolean>`${affiliateProductNotPausedWhere()}` })
     .from(affiliateProducts)
-    .where(and(eq(affiliateProducts.id, id), sql`coalesce(${affiliateProducts.isActive}, true) = true`))
+    .where(eq(affiliateProducts.id, id))
     .limit(1);
-  if (aff && clean(aff.name)) {
-    const c = aff.coordinates as { lat?: unknown; lng?: unknown } | null;
-    return { ...base(clean(aff.name), pointOf(c?.lat, c?.lng)), itemType: "activity", contentType: null, contentId: null, providerServiceId: null, affiliateProductId: id };
-  }
-  const [hotel] = await db
-    .select({ name: hotelCache.name, latitude: hotelCache.latitude, longitude: hotelCache.longitude })
+  if (!row) return refuse("unknown_source");
+  if (row.isActive === false || row.live === false) return refuse("source_withdrawn");
+  const title = clean(row.name);
+  if (!title) return refuse("unplaceable");
+  const c = row.coordinates as { lat?: unknown; lng?: unknown } | null;
+  return accept({ ...base(title, pointOf(c?.lat, c?.lng)), itemType: "activity", ...NO_LINK, affiliateProductId: id, rowCity: row.city });
+}
+
+async function hotel(id: string): Promise<Resolved> {
+  const [row] = await db
+    .select({ name: hotelCache.name, city: hotelCache.city, latitude: hotelCache.latitude, longitude: hotelCache.longitude })
     .from(hotelCache)
     .where(eq(hotelCache.id, id))
     .limit(1);
-  if (hotel && clean(hotel.name)) {
-    return { ...base(clean(hotel.name), pointOf(hotel.latitude, hotel.longitude)), itemType: "accommodation", contentType: "hotel", contentId: id, providerServiceId: null, affiliateProductId: null };
-  }
-  const [act] = await db
-    .select({ title: activityCache.title, latitude: activityCache.latitude, longitude: activityCache.longitude })
+  if (!row) return refuse("unknown_source");
+  const title = clean(row.name);
+  if (!title) return refuse("unplaceable");
+  return accept({ ...base(title, pointOf(row.latitude, row.longitude)), itemType: "accommodation", ...NO_LINK, contentType: "hotel", contentId: id, rowCity: row.city });
+}
+
+async function activity(id: string): Promise<Resolved> {
+  const [row] = await db
+    .select({ title: activityCache.title, city: activityCache.city, destination: activityCache.destination, latitude: activityCache.latitude, longitude: activityCache.longitude })
     .from(activityCache)
     .where(eq(activityCache.id, id))
     .limit(1);
-  if (act && clean(act.title)) {
-    return { ...base(clean(act.title), pointOf(act.latitude, act.longitude)), itemType: "activity", contentType: "activity", contentId: id, providerServiceId: null, affiliateProductId: null };
-  }
-  return null;
+  if (!row) return refuse("unknown_source");
+  const title = clean(row.title);
+  if (!title) return refuse("unplaceable");
+  return accept({ ...base(title, pointOf(row.latitude, row.longitude)), itemType: "activity", ...NO_LINK, contentType: "activity", contentId: id, rowCity: row.city ?? row.destination });
 }
 
-/** The source row a guest save names, or null when there is no such row (the route answers 4xx). */
-export async function resolveGuestItemSource(kind: GuestItemKind, sourceId: string): Promise<ResolvedGuestSource | null> {
-  const id = typeof sourceId === "string" ? sourceId.trim() : "";
-  if (!id || id.length > ID_MAX) return null;
-  switch (kind) {
-    case "gem":
-      return gem(id);
-    case "event":
-      return event(id);
-    case "listing":
-      return listing(id);
-    case "partner_product":
-      return partnerProduct(id);
-    default:
-      return null;
+/** The operating markets a plan is in: its own market, its destination and every ordered stop (LD 34). */
+export async function planMarkets(tripId: string): Promise<Set<string>> {
+  const out = new Set<string>();
+  const [trip] = await db.select({ marketSlug: trips.marketSlug, destination: trips.destination }).from(trips).where(eq(trips.id, tripId)).limit(1);
+  if (trip?.marketSlug) out.add(trip.marketSlug);
+  const d = resolveMarketSlug(trip?.destination ?? "");
+  if (d) out.add(d);
+  const stops = await db.select({ name: tripDestinations.name }).from(tripDestinations).where(eq(tripDestinations.tripId, tripId));
+  for (const s of stops) {
+    const m = resolveMarketSlug(s.name ?? "");
+    if (m) out.add(m);
   }
+  return out;
+}
+
+/** Pure: a known market the plan is not in. A city that names no operating market, or a plan in none, is no mismatch. */
+export function isCityMismatch(city: string | null | undefined, markets: ReadonlySet<string>): boolean {
+  if (markets.size === 0) return false;
+  const m = resolveMarketSlug(city ?? "");
+  return !!m && !markets.has(m);
+}
+
+/**
+ * The ONE resolver: a PlanItemRef → the row's identity, name, point and placement, or the reason it cannot be placed.
+ * `markets` is the plan's operating markets (`planMarkets`); `planDays` its length, for a chosen day.
+ */
+export async function resolvePlanItemRef(
+  ref: PlanItemRef,
+  ctx: { markets: ReadonlySet<string>; planDays?: number | null },
+): Promise<Resolved> {
+  const id = typeof ref.source_id === "string" ? ref.source_id.trim() : "";
+  if (!id || id.length > ID_MAX) return refuse("unknown_source");
+  // The envelope's own city first: a card shown in another market's page names that market.
+  if (isCityMismatch(ref.city, ctx.markets)) return refuse("city_mismatch");
+  const day = ref.placement?.day_number;
+  if (day != null && ctx.planDays != null && day > ctx.planDays) return refuse("unplaceable");
+  let out: Resolved;
+  switch (ref.kind) {
+    case "gem": out = await gem(id); break;
+    case "event": out = await event(id); break;
+    case "city_event": out = await cityEvent(id); break;
+    case "listing": out = await listing(id); break;
+    case "affiliate_product": out = await affiliateProduct(id); break;
+    case "hotel": out = await hotel(id); break;
+    case "activity": out = await activity(id); break;
+    default: return refuse("unknown_kind");
+  }
+  if (out.ok && isCityMismatch(out.source.rowCity, ctx.markets)) return refuse("city_mismatch");
+  return out;
 }

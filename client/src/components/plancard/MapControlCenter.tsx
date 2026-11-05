@@ -332,7 +332,7 @@ export function MapControlCenter({
   const [checked, setChecked] = useState<(AddedStop & { title: string }) | null>(null);
   const add = useMutation({
     mutationFn: async (place: BrowsePlace) =>
-      (await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, { ...browseAddBody(place, dayNumber ?? 1), addChecks: true })).json(),
+      (await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, { ...browseAddBody(place, dayNumber ?? 1, tripDestination), addChecks: true })).json(),
     onSuccess: (out: any, place) => {
       void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
       // R322: the Workstation reads the trip's item list directly; keep it in step with the add.

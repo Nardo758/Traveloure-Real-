@@ -155,6 +155,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/r3-guest-save.db.test.ts
       - name: Round 3 follow-ups 2 — listed events cached by id, an event saves onto its own day with a pin (node:test)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/r3-followups-2.db.test.ts
+      - name: CAP-2 Phase 1 — PlanItemRef per kind on the guest rail, server identity and point, forged point ignored, every reason code (node:test)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/cap2-phase1.db.test.ts
       - name: Migration 439 Kyoto events seed — seven factchecked rows, idempotent, all in Kyoto (node:test)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/kyoto-events-439.db.test.ts
       - name: Round 3 entry and city — recent plans order only; the occasion PATCH derives event_type from the slug (node:test)

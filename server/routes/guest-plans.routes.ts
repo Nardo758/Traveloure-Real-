@@ -16,6 +16,7 @@
  *
  * Limits live in `server/config/guest-plan.config.ts`; the 429 body carries the approved sentence.
  */
+import { parsePlanItemRef } from "@shared/plan-item-ref";
 import { logger } from "../infrastructure/logger";
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -154,15 +155,19 @@ router.patch("/api/guest-plans/current", guestOnly, async (req, res) => {
 });
 
 router.post("/api/guest-plans/current/items", guestOnly, savesPerSession, async (req, res) => {
+  // CAP-2: the body is a PlanItemRef; an unknown kind and a malformed envelope get their own reason codes.
+  const ref = parsePlanItemRef(req.body ?? {});
+  if (!ref.ok) return res.status(400).json({ code: ref.reason });
   const parsed = guestPlanItemBody.safeParse(req.body ?? {});
-  if (!parsed.success) return res.status(400).json({ code: "invalid_body" });
+  if (!parsed.success) return res.status(400).json({ code: "unplaceable" });
   try {
     const timings: GuestSaveTimings = { plan: 0, resolve: 0, write: 0, read: 0 };
     const out = await saveGuestPlanItem(sessionHash(req)!, parsed.data, timings);
     // R3-1: where the save spent its time (plan read, source resolve, write, read-back), in ms.
     res.set("Server-Timing", Object.entries(timings).map(([k, v]) => `${k};dur=${v}`).join(", "));
-    // A-1: a source the server cannot find is a 400 — never a saved title with nothing behind it.
-    if (!out.ok) return res.status(out.code === "unknown_source" ? 400 : 404).json({ code: out.code === "unknown_source" ? "unknown_source" : "not_found" });
+    // A-1 / CAP-2: a save the server cannot place is a 400 carrying its reason — never a saved title with nothing
+    // behind it. No plan yet is a 404.
+    if (!out.ok) return out.code === "no_plan" ? res.status(404).json({ code: "not_found" }) : res.status(400).json({ code: out.code });
     // R3-1 (round 3 ruling): a committed write answers 200 with its item — a new one and one the plan already held
     // (A-11) alike; `existing` says which.
     res.status(200).json({ id: out.itemId, located: out.located, existing: out.existing, item: out.item });

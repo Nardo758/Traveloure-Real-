@@ -121,7 +121,7 @@ describe("GATE-1 + PARTNER-1", () => {
     // GATE-1B (G-2, sanctioned edit): the press writes to the guest plan and toasts "Saved to plan" only on the
     // server's confirmation — never a bare toast (the bug G-2 names).
     // Lane 1 A-18 (sanctioned edit): the confirmed save's toast is "Saved to plan", or the not-on-the-map hint.
-    assert.match(browseSave, /saveToGuestPlan\(body, city\)\.then\(\s*\(result\) => toast\(\{ title: guestSavedMessage\(result\) \}\),/);
+    assert.match(browseSave, /saveToGuestPlan\(body, city, chosenDate\)\.then\(\s*\(result\) => toast\(\{ title: guestSavedMessage\(result\) \}\),/);
     assert.doesNotMatch(browseSave, /return \(\) => toast\(\{ title: WAITLIST_COPY\.savedToPlan \}\);/);
     // "Sign In Required" is never reached in waitlist mode: the dialog returns before it, and the page's add path
     // and SaveToggle never open it / the sign-in modal.

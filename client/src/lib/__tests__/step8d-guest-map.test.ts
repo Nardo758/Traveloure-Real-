@@ -132,7 +132,8 @@ test("G3: the add runs once — plan read first, listing re-read, ONE body on th
   assert.equal(body.providerServiceId, "s1");
   assert.equal(body.dayNumber, 1);
   assert.equal(body.title, "Tea ceremony", "built from the FRESH read, not what the guest's browser held");
-  assert.equal(body.latitude, "35.01");
+  // CAP-2 (ruling, Nov 5 — sanctioned edit): no coordinate is sent; the server takes the listing's point from its row.
+  assert.equal(body.latitude, undefined);
 
   // Already on the plan (a retry after a lost answer): nothing is posted.
   const calls2: Call[] = [];
