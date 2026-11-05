@@ -76,7 +76,9 @@ describe("Lane 4 places and plans/new", () => {
     assert.doesNotMatch(page, /"Local Picks"/);
     assert.doesNotMatch(page, /rarely find/);
     assert.match(page, /if \(!market\) return <NotFound \/>;/);
-    assert.match(page, /\/api\/discovery\/categories\?destination=/);
+    // FU-R3-1 (sanctioned edit): the page reads the city page's gems at /api/places/:city; ai_discovered_gems never.
+    assert.match(page, /\/api\/places\//);
+    assert.doesNotMatch(page, /\/api\/discovery\//);
     const mcc = read("client/src/components/plancard/MapControlCenter.tsx");
     assert.match(mcc, /const next = nextTabKey\(shownTabs\.map\(\(x\) => x\.key\), tab, e\.key\);/);
     const guest = read("client/src/pages/guest-plan-map.tsx");

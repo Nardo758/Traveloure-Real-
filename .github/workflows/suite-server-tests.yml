@@ -147,6 +147,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/lane4-places.db.test.ts
       - name: Lane 7 guest plan delete — admin only, unclaimed guest plans only, audit-logged (node:test)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/lane7-guest-plan-delete.db.test.ts
+      - name: FU-R3-1 — /places lists the city page's gems (travel_pulse_hidden_gems, not withdrawn) (node:test)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/fu-r3-places-gems.db.test.ts
       - name: Round 3 entry and city — recent plans order only; the occasion PATCH derives event_type from the slug (node:test)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/r3-entry-city.db.test.ts
       - name: Round 2 — upcoming events end today or later, marquee first, limit after order (node:test)

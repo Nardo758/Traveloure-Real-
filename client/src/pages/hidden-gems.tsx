@@ -1,131 +1,34 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useLocation } from "wouter";
 import NotFound from "@/pages/not-found";
-import { placesMarketFor, placesPath } from "@shared/places-path";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { placesMarketFor } from "@shared/places-path";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { 
-  Gem, 
-  MapPin, 
-  Clock, 
-  Star, 
-  Lightbulb, 
-  Search, 
-  UtensilsCrossed,
-  Mountain,
-  Compass,
-  PartyPopper,
-  Palette,
-  ShoppingBag,
-  Sunset,
-  Building,
-  TreePine,
-  Music,
-  Eye,
-  Bookmark
-} from "lucide-react";
-
-const CATEGORY_ICONS: Record<string, any> = {
-  local_food_secrets: UtensilsCrossed,
-  hidden_viewpoints: Mountain,
-  off_tourist_path: Compass,
-  seasonal_events: PartyPopper,
-  cultural_experiences: Palette,
-  secret_beaches: Sunset,
-  street_art: Palette,
-  local_markets: ShoppingBag,
-  sunset_spots: Sunset,
-  historic_gems: Building,
-  nature_escapes: TreePine,
-  nightlife_secrets: Music,
-};
-
-interface DiscoveredGem {
-  id: string;
-  destination: string;
-  country?: string;
-  category: string;
-  name: string;
-  description: string;
-  whySpecial?: string;
-  bestTimeToVisit?: string;
-  insiderTip?: string;
-  approximateLocation?: string;
-  priceRange?: string;
-  difficultyLevel?: string;
-  tags?: string[];
-  viewCount?: number;
-  saveCount?: number;
-}
-
-interface Category {
-  value: string;
-  label: string;
-}
+import { Gem } from "lucide-react";
+import { CityFeedCardGem } from "@/components/city-feed-card";
 
 /**
- * CMS-1 (ledger `2026-11-04-cms1-launch-screens`): the page lists reviewed places only (the server's `publicGemWhere` — an
- * expert-verified row; AI-only rows never show). C-4 (ledger `2026-11-05-lane4-places`): it lives at `/places/{city}`.
- * HELD for Leon: the heading wording.
+ * CMS-1 (ledger `2026-11-04-cms1-launch-screens`): the page lists reviewed places only. C-4 (ledger
+ * `2026-11-05-lane4-places`): it lives at `/places/{city}`. HELD for Leon: the heading wording.
+ *
+ * FU-R3-1 (ledger `2026-11-05-fu-r3-places-gems`; ruling, Nov 5, 2026): the gems are the city page's own — the one
+ * server read `listTravelerCityGems` (`travel_pulse_hidden_gems`, not withdrawn), served by `GET /api/places/:city`,
+ * drawn with the city page's gem card. `ai_discovered_gems` is never read by a public page, so its category chips and
+ * destination buttons are gone with it: those gems carry `place_type`, which the C-5 chip set does not name.
  */
 export const PLACES_HEADING = (city: string) => `Places to explore in ${city}`;
+
+type PlacesPayload = { city: string; open: boolean; gems: any[] };
 
 export default function HiddenGemsPage({ city }: { city?: string }) {
   // C-4 / A-16: the city is the path's (`/places/{city}`); a city that is not an operating market is not found.
   const market = placesMarketFor(city);
-  const [, navigate] = useLocation();
-  const searchDestination = market?.cityName ?? "";
-  const [selectedCategory, setSelectedCategory] = useState<string>("all");
-
-  // A-20 / C-5: only the categories this city has reviewed places in, labelled and ordered by the approved chip set.
-  const { data: categoriesData, isLoading: categoriesLoading } = useQuery<{ categories: Category[] }>({
-    queryKey: [`/api/discovery/categories?destination=${encodeURIComponent(searchDestination)}`],
+  const { data, isLoading, error } = useQuery<PlacesPayload>({
+    queryKey: [`/api/places/${encodeURIComponent(market?.marketKey ?? "")}`],
     enabled: !!market,
   });
-
-  const gemsQueryParams = new URLSearchParams();
-  if (searchDestination) gemsQueryParams.append("destination", searchDestination);
-  if (selectedCategory !== "all") gemsQueryParams.append("category", selectedCategory);
-  gemsQueryParams.append("limit", "50");
-  const gemsQueryUrl = `/api/discovery/gems?${gemsQueryParams.toString()}`;
-
-  const { data: gemsData, isLoading: gemsLoading, error: gemsError } = useQuery<{ gems: DiscoveredGem[]; total: number }>({
-    queryKey: [gemsQueryUrl],
-    enabled: !!market,
-  });
-
-  const { data: destinationsData } = useQuery<{ destinations: { destination: string; gemCount: number }[] }>({
-    queryKey: ["/api/discovery/destinations"],
-  });
-
-  const categories = categoriesData?.categories || [];
-  const gems = gemsData?.gems || [];
-  const destinations = destinationsData?.destinations || [];
-
-  const getCategoryIcon = (category: string) => {
-    const Icon = CATEGORY_ICONS[category] || Gem;
-    return <Icon className="h-4 w-4" />;
-  };
-
-  const getPriceColor = (price?: string) => {
-    switch (price) {
-      case "free": return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
-      case "budget": return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200";
-      case "moderate": return "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200";
-      case "expensive": return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200";
-      default: return "";
-    }
-  };
 
   if (!market) return <NotFound />;
-  // C-4: a destination button goes to that city's own page; a destination that names no market is not offered.
-  const destinationMarkets = destinations
-    .map((d) => ({ d, m: placesMarketFor(d.destination.split(",")[0]) }))
-    .filter((x): x is { d: (typeof destinations)[number]; m: NonNullable<ReturnType<typeof placesMarketFor>> } => !!x.m);
+  const gems = data?.gems ?? [];
 
   return (
     <div className="container mx-auto py-8 px-4 space-y-8" data-testid="hidden-gems-page">
@@ -133,162 +36,44 @@ export default function HiddenGemsPage({ city }: { city?: string }) {
         <div className="flex items-center gap-2">
           <Gem className="h-8 w-8 text-primary" />
           <h1 className="text-3xl font-bold" data-testid="text-page-title">
-            {PLACES_HEADING(searchDestination)}
+            {PLACES_HEADING(market.cityName)}
           </h1>
         </div>
       </div>
 
-      {/* CMS-1: the AI scan card is gone — its output (AI-only rows) can never show on /places. */}
-      {destinationMarkets.length > 0 && (
-        <div className="space-y-2">
-          <h3 className="text-sm font-medium text-muted-foreground">Explore Destinations</h3>
-          <div className="flex flex-wrap gap-2">
-            {destinationMarkets.map(({ d, m }) => (
-              <Button
-                key={d.destination}
-                variant={m.marketKey === market.marketKey ? "default" : "outline"}
-                size="sm"
-                onClick={() => navigate(placesPath(m.marketKey))}
-                data-testid={`button-destination-${d.destination}`}
-              >
-                <MapPin className="h-3 w-3 mr-1" />
-                {d.destination}
-                <Badge variant="secondary" className="ml-2" data-testid={`badge-gem-count-${d.destination}`}>{d.gemCount}</Badge>
-              </Button>
-            ))}
-          </div>
+      {error ? (
+        <Card data-testid="card-gems-error">
+          <CardContent className="py-12 text-center">
+            <div className="text-destructive mb-4" data-testid="text-error-title">Failed to load local picks</div>
+            <p className="text-muted-foreground" data-testid="text-error-message">Please try again later</p>
+          </CardContent>
+        </Card>
+      ) : isLoading ? (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <Card key={i}>
+              <CardContent className="pt-6 space-y-4">
+                <Skeleton className="h-6 w-3/4" />
+                <Skeleton className="h-20 w-full" />
+                <Skeleton className="h-4 w-1/2" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : gems.length === 0 ? (
+        <Card data-testid="card-gems-empty">
+          <CardContent className="py-12 text-center">
+            <Gem className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+            <h3 className="text-lg font-medium" data-testid="text-empty-title">Nothing here yet.</h3>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3" data-testid="places-gems">
+          {gems.map((gem) => (
+            <CityFeedCardGem key={gem.id} gem={gem} city={market.cityName} bookability={gem.bookability} />
+          ))}
         </div>
       )}
-
-      <Tabs value={selectedCategory} onValueChange={setSelectedCategory}>
-        <TabsList className="flex flex-wrap h-auto gap-1">
-          <TabsTrigger value="all" data-testid="tab-all">
-            <Gem className="h-4 w-4 mr-1" />
-            All
-          </TabsTrigger>
-          {categoriesLoading ? (
-            <Skeleton className="h-8 w-32" data-testid="skeleton-categories" />
-          ) : (
-            categories.map((cat) => (
-              <TabsTrigger key={cat.value} value={cat.value} data-testid={`tab-${cat.value}`}>
-                {getCategoryIcon(cat.value)}
-                <span className="ml-1">{cat.label}</span>
-              </TabsTrigger>
-            ))
-          )}
-        </TabsList>
-
-        <TabsContent value={selectedCategory} className="mt-6">
-          {gemsError ? (
-            <Card data-testid="card-gems-error">
-              <CardContent className="py-12 text-center">
-                <div className="text-destructive mb-4" data-testid="text-error-title">Failed to load local picks</div>
-                <p className="text-muted-foreground" data-testid="text-error-message">Please try again later</p>
-              </CardContent>
-            </Card>
-          ) : gemsLoading ? (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {[1, 2, 3, 4, 5, 6].map((i) => (
-                <Card key={i}>
-                  <CardContent className="pt-6 space-y-4">
-                    <Skeleton className="h-6 w-3/4" />
-                    <Skeleton className="h-20 w-full" />
-                    <Skeleton className="h-4 w-1/2" />
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          ) : gems.length === 0 ? (
-            <Card data-testid="card-gems-empty">
-              <CardContent className="py-12 text-center">
-                <Gem className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium" data-testid="text-empty-title">Nothing here yet.</h3>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {gems.map((gem) => (
-                <Card key={gem.id} className="hover-elevate" data-testid={`card-gem-${gem.id}`}>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        {getCategoryIcon(gem.category)}
-                        <Badge variant="secondary" className="text-xs" data-testid={`badge-category-${gem.id}`}>
-                          {categories.find(c => c.value === gem.category)?.label || gem.category}
-                        </Badge>
-                      </div>
-                      {gem.priceRange && (
-                        <Badge className={getPriceColor(gem.priceRange)} data-testid={`badge-price-${gem.id}`}>
-                          {gem.priceRange}
-                        </Badge>
-                      )}
-                    </div>
-                    <CardTitle className="text-lg mt-2" data-testid={`text-gem-name-${gem.id}`}>{gem.name}</CardTitle>
-                    {gem.approximateLocation && (
-                      <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                        <MapPin className="h-3 w-3" />
-                        {gem.approximateLocation}, {gem.destination}
-                      </div>
-                    )}
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <p className="text-sm text-muted-foreground" data-testid={`text-gem-description-${gem.id}`}>{gem.description}</p>
-                    
-                    {gem.whySpecial && (
-                      <div className="bg-primary/5 p-3 rounded-md" data-testid={`section-special-${gem.id}`}>
-                        <div className="flex items-center gap-1 text-xs font-medium text-primary mb-1">
-                          <Star className="h-3 w-3" />
-                          What makes it special
-                        </div>
-                        <p className="text-sm">{gem.whySpecial}</p>
-                      </div>
-                    )}
-                    
-                    {gem.insiderTip && (
-                      <div className="bg-amber-50 dark:bg-amber-900/20 p-3 rounded-md" data-testid={`section-tip-${gem.id}`}>
-                        <div className="flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-300 mb-1">
-                          <Lightbulb className="h-3 w-3" />
-                          Local Tip
-                        </div>
-                        <p className="text-sm">{gem.insiderTip}</p>
-                      </div>
-                    )}
-                    
-                    {gem.bestTimeToVisit && (
-                      <div className="flex items-center gap-2 text-sm" data-testid={`section-best-time-${gem.id}`}>
-                        <Clock className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-muted-foreground">Season:</span>
-                        <span data-testid={`text-best-time-${gem.id}`}>{gem.bestTimeToVisit}</span>
-                      </div>
-                    )}
-                    
-                    {gem.tags && gem.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1" data-testid={`section-tags-${gem.id}`}>
-                        {gem.tags.map((tag, i) => (
-                          <Badge key={i} variant="outline" className="text-xs" data-testid={`badge-tag-${gem.id}-${i}`}>
-                            {tag}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-                    
-                    <div className="flex items-center gap-4 pt-2 text-xs text-muted-foreground border-t" data-testid={`section-stats-${gem.id}`}>
-                      <div className="flex items-center gap-1" data-testid={`text-views-${gem.id}`}>
-                        <Eye className="h-3 w-3" />
-                        {gem.viewCount || 0} views
-                      </div>
-                      <div className="flex items-center gap-1" data-testid={`text-saves-${gem.id}`}>
-                        <Bookmark className="h-3 w-3" />
-                        {gem.saveCount || 0} saves
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
     </div>
   );
 }

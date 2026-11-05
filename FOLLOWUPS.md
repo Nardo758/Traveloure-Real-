@@ -1328,7 +1328,7 @@ Nov 5, 2026), so the daily `guest-plan-retention` job removes the plan once it h
 the job.** An admin can still remove it earlier with `DELETE /api/admin/guest-plans/66dd6016-8514-4e40-a7ec-38df4ab9abb3`
 (A-26; audit row `access_audit_logs.action = 'guest_plan_deleted'`).
 
-### FU-R3-1 — /places/{city} reads a different gem store from /discover/location (EXP-QA round 3, R3-10)
+### FU-R3-1 — /places/{city} reads a different gem store from /discover/location (EXP-QA round 3, R3-10) — **CLOSED by ledger `2026-11-05-fu-r3-places-gems`**
 
 `/places/kyoto` reads `ai_discovered_gems` WHERE `verified_by_expert = true` (`server/services/gem-discovery.service.ts:82`
 `publicGemWhere`, `:357-385` `getGemsForDestination`; CMS-1: reviewed places only). `/discover/location/Kyoto` reads
@@ -1337,11 +1337,15 @@ the job.** An admin can still remove it earlier with `DELETE /api/admin/guest-pl
 page is not a row the places page can read, and it would not pass CMS-1's gate if it were. Not changed in lane R3-2.
 **Needs a ruling:** which store and which gate `/places` should use. Pointing /places at `travel_pulse_hidden_gems`
 would put rows that no person reviewed on /places, unless it also requires `verified_at IS NOT NULL` (FD-2 ruling 3).
+**Closed (ruling, Nov 5, 2026):** `/places/{city}` reads the city page's own query and gate (`listTravelerCityGems`,
+`travel_pulse_hidden_gems` not withdrawn); `ai_discovered_gems` is never read by a public page (CMS-1).
 
-### FU-R3-2 — `show` and `retreats` have no event-type mapping (EXP-QA round 3, R3-13)
+### FU-R3-2 — `show` and `retreats` have no event-type mapping (EXP-QA round 3, R3-13) — **CLOSED: moved to the launch checklist**
 
 The event door's occasion slug `show` (`client/src/lib/plan-entry.ts:63`) and Group travel's default `retreats`
 (`shared/experience-group.ts:196`) are not in `OCCASION_SLUG_TO_EVENT_TYPE` (`shared/occasions.ts:40`), so
 `eventTypeForSlug` answers `other`. That is the rule's own answer for an unmapped slug, and it is why the bot saw
 `other` on the F1, /events and Group travel plans. A mapping chooses the plan's optimizer fee branch (BRANCH_MAP,
 `server/services/optimization-fee.service.ts`), so adding one is a money-path decision. Not made in lane R3-2.
+**Closed (ruling, Nov 5, 2026):** no mapping change; "other" stands. Moved to `docs/MARKET_LAUNCH_CHECKLIST.md` item 9,
+"Fee bands for event-led and group-travel plans" — a `fee_bands` row, read by a person, before open mode.
