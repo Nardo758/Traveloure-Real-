@@ -1,11 +1,11 @@
 # Mounted mutation authorization inventory
 
-Generated from `server/routes.ts`. **751** raw mounted mutation registrations and **743** unique METHOD+normalizedPath pairs were found.
+Generated from `server/routes.ts`. **752** raw mounted mutation registrations and **744** unique METHOD+normalizedPath pairs were found.
 
-The unique-pair count is **+197** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
+The unique-pair count is **+198** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
 
-Category totals: payments 31; admin 202; user-data 252; other 258.
-Boundary totals: admin-role 202; session-self 368; resource-owner 105; signature 7; public-or-system 61; unknown 0.
+Category totals: payments 31; admin 203; user-data 252; other 258.
+Boundary totals: admin-role 203; session-self 368; resource-owner 105; signature 7; public-or-system 61; unknown 0.
 
 | Method | Normalized path | Risk | Boundary | Ownership applicable | Expected ownership | Registrations | Fixture | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -106,6 +106,7 @@ Boundary totals: admin-role 202; session-self 368; resource-owner 105; signature
 | POST | `/api/admin/gem-candidates/:id/reject` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9382` | unknown | unknown |
 | POST | `/api/admin/gems/:id/verify` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:9319` | unknown | unknown |
 | POST | `/api/admin/gems/backfill-photos` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:369` | unknown | unknown |
+| DELETE | `/api/admin/guest-plans/:tripId` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:10674` | unknown | unknown |
 | POST | `/api/admin/handoffs/:id/assign` | admin | admin-role | no | unknown | `server/routes/handoff.routes.ts:451` | unknown | unknown |
 | POST | `/api/admin/invoices` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:5345` | unknown | unknown |
 | PATCH | `/api/admin/invoices/:invoiceNumber/status` | admin | admin-role | no | unknown | `server/routes/admin.routes.ts:5409` | unknown | unknown |
@@ -206,15 +207,15 @@ Boundary totals: admin-role 202; session-self 368; resource-owner 105; signature
 | POST | `/api/auth/accept-terms` | other | session-self | no | unknown | `server/replit_integrations/auth/routes.ts:164` | unknown | unknown |
 | DELETE | `/api/auth/account` | user-data | session-self | no | unknown | `server/replit_integrations/auth/routes.ts:220` | unknown | unknown |
 | POST | `/api/auth/apple/callback` | other | public-or-system | no | unknown | `server/replit_integrations/auth/appleAuth.ts:516` | unknown | unknown |
-| POST | `/api/auth/change-unverified-email` | other | public-or-system | no | unknown | `server/replit_integrations/auth/emailAuth.ts:555` | unknown | unknown |
-| POST | `/api/auth/forgot-password` | other | public-or-system | no | unknown | `server/replit_integrations/auth/emailAuth.ts:398` | unknown | unknown |
-| POST | `/api/auth/login` | other | session-self | no | unknown | `server/replit_integrations/auth/emailAuth.ts:285` | unknown | unknown |
-| POST | `/api/auth/logout` | other | public-or-system | no | unknown | `server/replit_integrations/auth/emailAuth.ts:605` | unknown | unknown |
-| POST | `/api/auth/register` | other | public-or-system | no | unknown | `server/replit_integrations/auth/emailAuth.ts:129` | unknown | unknown |
-| POST | `/api/auth/resend-verification` | other | public-or-system | no | unknown | `server/replit_integrations/auth/emailAuth.ts:528` | unknown | unknown |
-| POST | `/api/auth/reset-password` | other | public-or-system | no | unknown | `server/replit_integrations/auth/emailAuth.ts:472` | unknown | unknown |
-| POST | `/api/auth/send-verification` | other | public-or-system | no | unknown | `server/replit_integrations/auth/emailAuth.ts:538` | unknown | unknown |
-| POST | `/api/auth/verify-email` | other | public-or-system | no | unknown | `server/replit_integrations/auth/emailAuth.ts:581` | unknown | unknown |
+| POST | `/api/auth/change-unverified-email` | other | public-or-system | no | unknown | `server/replit_integrations/auth/emailAuth.ts:536` | unknown | unknown |
+| POST | `/api/auth/forgot-password` | other | public-or-system | no | unknown | `server/replit_integrations/auth/emailAuth.ts:397` | unknown | unknown |
+| POST | `/api/auth/login` | other | session-self | no | unknown | `server/replit_integrations/auth/emailAuth.ts:284` | unknown | unknown |
+| POST | `/api/auth/logout` | other | public-or-system | no | unknown | `server/replit_integrations/auth/emailAuth.ts:586` | unknown | unknown |
+| POST | `/api/auth/register` | other | public-or-system | no | unknown | `server/replit_integrations/auth/emailAuth.ts:128` | unknown | unknown |
+| POST | `/api/auth/resend-verification` | other | public-or-system | no | unknown | `server/replit_integrations/auth/emailAuth.ts:509` | unknown | unknown |
+| POST | `/api/auth/reset-password` | other | public-or-system | no | unknown | `server/replit_integrations/auth/emailAuth.ts:461` | unknown | unknown |
+| POST | `/api/auth/send-verification` | other | public-or-system | no | unknown | `server/replit_integrations/auth/emailAuth.ts:519` | unknown | unknown |
+| POST | `/api/auth/verify-email` | other | public-or-system | no | unknown | `server/replit_integrations/auth/emailAuth.ts:562` | unknown | unknown |
 | POST | `/api/blog/posts/:slug/reactions` | other | session-self | no | unknown | `server/routes/blog.routes.ts:231` | unknown | unknown |
 | DELETE | `/api/blog/posts/:slug/reactions/:kind` | other | session-self | no | unknown | `server/routes/blog.routes.ts:237` | unknown | unknown |
 | POST | `/api/bookings` | user-data | session-self | yes | unknown | `server/routes.ts:7766` | unknown | unknown |
