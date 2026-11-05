@@ -213,6 +213,38 @@ function wholeRun(e: PlanEntryEvent): { startDate: string; endDate: string } {
   return { startDate: e.firstDate, endDate: e.lastDate };
 }
 
+const addDaysIso = (iso: string, days: number) => new Date(Date.parse(`${iso}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+const spanDays = (start: string, end: string) => Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000) + 1;
+
+/** R3-14 (round 3 ruling, Nov 5, 2026): a plan around an event starts on its first day or today, whichever is later. */
+export const EVENT_PLAN_DEFAULT_DAYS = 3;
+/** R3-14: "All of it" is offered only when what is left of the event is this many days or fewer. */
+export const EVENT_ALL_OF_IT_MAX_DAYS = 14;
+
+/** Pure. R3-14: what is left of the event's run — from the later of its start and `today`, to its end. */
+export function eventRemainingRun(e: PlanEntryEvent, today: string): { startDate: string; endDate: string } {
+  const run = wholeRun(e);
+  const startDate = run.startDate < today ? today : run.startDate;
+  return { startDate, endDate: run.endDate < startDate ? startDate : run.endDate };
+}
+
+/**
+ * Pure. R3-14: the dates "Plan around it" starts with — `EVENT_PLAN_DEFAULT_DAYS` days from the later of today and the
+ * event's start, never past the event's end. A plan never starts before today; a three-day race is the race.
+ */
+export function eventDefaultSpan(e: PlanEntryEvent, today: string): { startDate: string; endDate: string } {
+  const r = eventRemainingRun(e, today);
+  const capped = addDaysIso(r.startDate, EVENT_PLAN_DEFAULT_DAYS - 1);
+  return { startDate: r.startDate, endDate: capped < r.endDate ? capped : r.endDate };
+}
+
+/** Pure. R3-14: the "All of it" dates, or null when what is left of the event is longer than `EVENT_ALL_OF_IT_MAX_DAYS`. */
+export function eventAllOfIt(e: PlanEntryEvent | null, today: string): { startDate: string; endDate: string } | null {
+  if (!e) return null;
+  const r = eventRemainingRun(e, today);
+  return spanDays(r.startDate, r.endDate) <= EVENT_ALL_OF_IT_MAX_DAYS ? r : null;
+}
+
 /**
  * Pure. SH-1 Launch Q14.2/Q15.3: the dates a plan is minted with — the chosen dates, the start moved to the later of
  * itself and the market's today (`clampToMarketToday`; UTC today with no market). The server applies the same clamp.
@@ -311,7 +343,8 @@ export function whatsOnEvents<T extends { firstDate: string; marketKey?: string 
 export function withEvent(state: PlanEntryState, e: PlanEntryEvent, occasionSlug: string | null = null, now: Date = new Date()): PlanEntryState {
   const market = eventMarket(e);
   const group = groupForEvent(e);
-  const run = wholeRun(e);
+  // R3-14: the default span (3 days from the later of today and the start, capped at the end), not the whole run.
+  const run = eventDefaultSpan(e, marketToday(market?.marketKey, now));
   const options = nightPickerOptions({ event: e, market }, now);
   // A one-night show in a series is one night (the brief). That night is the show the traveler
   // opened when it is still to come; otherwise the first show still to come. The trips group keeps the whole run.
@@ -330,12 +363,15 @@ export function withEvent(state: PlanEntryState, e: PlanEntryEvent, occasionSlug
   };
 }
 
-/** Choose (or clear) one night of a long event; the plan's dates follow it. */
-export function withNight(state: PlanEntryState, night: string | null): PlanEntryState {
+/**
+ * Choose one night of a long event, or (null) "All of it": the plan's dates follow. R3-14: "All of it" is what is left
+ * of the event from today, and only where it is offered (`eventAllOfIt`); otherwise the default span.
+ */
+export function withNight(state: PlanEntryState, night: string | null, now: Date = new Date()): PlanEntryState {
   if (!state.event) return state;
-  return night
-    ? { ...state, night, startDate: night, endDate: night }
-    : { ...state, night: null, ...wholeRun(state.event) };
+  if (night) return { ...state, night, startDate: night, endDate: night };
+  const today = marketToday(state.market?.marketKey, now);
+  return { ...state, night: null, ...(eventAllOfIt(state.event, today) ?? eventDefaultSpan(state.event, today)) };
 }
 
 /** What the inline /experiences panel reports upward. React state only — never storage. */

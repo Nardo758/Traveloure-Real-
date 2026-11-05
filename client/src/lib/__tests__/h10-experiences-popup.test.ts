@@ -61,11 +61,13 @@ test("H-10: an event anchor goes to dates and party (E-2), keeping its own run",
     experienceSlug: "show",
     group: "celebrations",
     askDatesAndParty: true,
-    anchor: { title: "Japanese Grand Prix", firstDate: "2026-10-09", lastDate: "2026-10-11", startTime: "14:00", venue: "Suzuka Circuit" },
+    anchor: { title: "Japanese Grand Prix", firstDate: "2027-10-09", lastDate: "2027-10-11", startTime: "14:00", venue: "Suzuka Circuit" },
   });
   assert.equal(ev.step, "details");
   assert.equal(ev.state.event?.title, "Japanese Grand Prix");
-  assert.equal(ev.state.startDate, "2026-10-09");
+  // R3-14 (sanctioned edit): fixture moved to 2027 so the race is still ahead; a three-day race yields the race.
+  assert.equal(ev.state.startDate, "2027-10-09");
+  assert.equal(ev.state.endDate, "2027-10-11");
 });
 
 test("H-10: the pop-up source carries the group and city and never the pen slug", () => {

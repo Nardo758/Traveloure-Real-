@@ -126,7 +126,9 @@ describe("P-8 — content round 3", () => {
     assert.ok(entries < 133);
     const perfect = Object.values(b).filter((by) => "perfect" in by);
     assert.equal(perfect.length, 13, "files with a recorded 'perfect' hit");
-    assert.equal(perfect.reduce((n, by) => n + by.perfect, 0), 67, "recorded 'perfect' hits");
+    // TEST EDIT (R3-15, ledger `2026-11-05-r3-followups`; sanctioned): migration 440 and the two seed sources drop six
+    // "perfect" hits from gem descriptions, so the recorded debt moves 67 → 61 (the files still hold why_locals_love_it hits).
+    assert.equal(perfect.reduce((n, by) => n + by.perfect, 0), 61, "recorded 'perfect' hits");
   });
 
   it("T6 the off-limits lines are untouched", () => {

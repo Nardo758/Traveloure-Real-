@@ -53,11 +53,11 @@ test("E1: where each door opens", () => {
   const city = initialPlanEntry({ city: "Kyoto", country: "Japan" });
   assert.equal(city.step, "occasion");
   assert.equal(city.state.market?.cityName, "Kyoto");
-  const ev = initialPlanEntry({ city: "Kyoto", country: "Japan", experienceSlug: "show", anchor: anchor("2026-10-09", "2026-10-11") });
+  const ev = initialPlanEntry({ city: "Kyoto", country: "Japan", experienceSlug: "show", anchor: anchor("2027-10-09", "2027-10-11") });
   // E-2 (round 2 rulings, sanctioned edit): an event's occasion is known — the next step is dates and party.
   assert.equal(ev.step, "details");
-  assert.equal(ev.state.startDate, "2026-10-09");
-  assert.equal(ev.state.endDate, "2026-10-11");
+  assert.equal(ev.state.startDate, "2027-10-09");
+  assert.equal(ev.state.endDate, "2027-10-11");
   assert.equal(ev.state.event?.title, "Japanese Grand Prix");
   assert.equal(ev.state.occasionSlug, "show", "the door's slug is kept; the group follows the nights (SH-1 Q16)");
   assert.equal(initialPlanEntry({ city: "Paris" }).step, "around", "an unserved city is not a pick");
@@ -96,19 +96,21 @@ test("E4: More specific overrides the group's default", () => {
 
 test("E5: an event sets its group by length; a long run asks which night", () => {
   const ev = (a: string, b: string) => ({ title: "X", city: "Kyoto", country: "Japan", venue: "V", firstDate: a, lastDate: b, startTime: null });
-  assert.equal(withEvent(emptyPlanEntry(), ev("2026-10-10", "2026-10-12")).group, "trips");
-  assert.equal(withEvent(emptyPlanEntry(), ev("2026-10-10", "2026-10-10")).group, "moments");
-  assert.equal(asksWhichNight(ev("2026-10-10", "2026-10-12")), false);
-  const long = ev("2026-10-14", "2026-11-05");
+  assert.equal(withEvent(emptyPlanEntry(), ev("2027-10-10", "2027-10-12")).group, "trips");
+  assert.equal(withEvent(emptyPlanEntry(), ev("2027-10-10", "2027-10-10")).group, "moments");
+  assert.equal(asksWhichNight(ev("2027-10-10", "2027-10-12")), false);
+  const long = ev("2027-10-14", "2027-11-05");
   assert.equal(asksWhichNight(long), true);
   assert.equal(eventNightDates(long).length, 23);
-  const s = withNight(withEvent(emptyPlanEntry(), long), "2026-10-20");
-  assert.equal(s.startDate, "2026-10-20");
-  assert.equal(s.endDate, "2026-10-20");
-  assert.equal(planEntryEventRow(s)?.eventDate, "2026-10-20", "the event row sits on the chosen night");
+  const s = withNight(withEvent(emptyPlanEntry(), long), "2027-10-20");
+  assert.equal(s.startDate, "2027-10-20");
+  assert.equal(s.endDate, "2027-10-20");
+  assert.equal(planEntryEventRow(s)?.eventDate, "2027-10-20", "the event row sits on the chosen night");
+  // R3-14 (round 3 ruling; sanctioned edit): a 23-day run is longer than EVENT_ALL_OF_IT_MAX_DAYS, so "All of it" is not
+  // offered and clearing the night returns the default span — 3 days from the start (fixtures moved to 2027, still ahead).
   const all = withNight(s, null);
-  assert.equal(all.startDate, "2026-10-14");
-  assert.equal(all.endDate, "2026-11-05");
+  assert.equal(all.startDate, "2027-10-14");
+  assert.equal(all.endDate, "2027-10-16");
 });
 
 test("E6: date quick picks and what's on", () => {
@@ -143,7 +145,7 @@ test("E8: landing view by group", () => {
   assert.equal(planEntryView({ ...base, group: "moments" }, null), "list");
   assert.equal(planEntryView({ ...base, group: "celebrations" }, null), "list");
   assert.equal(planEntryView({ ...base, group: "hosted_events" }, null), "list");
-  const multiDay = withEvent(base, { title: "X", city: "Kyoto", country: "Japan", venue: "V", firstDate: "2026-10-10", lastDate: "2026-10-12", startTime: null });
+  const multiDay = withEvent(base, { title: "X", city: "Kyoto", country: "Japan", venue: "V", firstDate: "2027-10-10", lastDate: "2027-10-12", startTime: null });
   assert.equal(planEntryView({ ...multiDay, group: "moments" }, null), "map", "a multi-day event opens the map");
   // A "More specific" occasion's own group decides.
   assert.equal(planEntryView({ ...base, group: "trips" }, { defaultStops: "one", defaultDuration: "day", defaultGuests: true }), "list");

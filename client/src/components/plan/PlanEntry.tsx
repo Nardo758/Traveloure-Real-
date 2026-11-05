@@ -42,9 +42,11 @@ import {
 import { countdownLabel, type CityEventCard, type CityEventsPayload } from "@shared/city-events";
 import { EventRow } from "@/components/events/EventRow";
 import { planAroundEventTitle } from "@/components/landing/events-strip";
+import { marketToday } from "@shared/market-today";
 import type { ExperienceType } from "@shared/schema";
 import { PLAN_DATES_SET_CTA, PLAN_PARTY_ASK } from "@shared/plan-dates";
 import { partyFields } from "@/lib/plan-steps";
+import { partyFieldShown } from "@/lib/party-default";
 import { travelersForSave } from "@/lib/plan-vocabulary";
 import {
   EVENT_OCCASION_SLUG,
@@ -58,6 +60,7 @@ import {
   initialPlanEntry,
   nextMonthScope,
   nightPickerOptions,
+  eventAllOfIt,
   withSeriesShows,
   planEntryDestination,
   planEntryMintDates,
@@ -249,6 +252,10 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
   const [waitlistMarket, setWaitlistMarket] = useState<string | null>(null);
   const doorParty = (n: number | undefined) => (typeof n === "number" && Number.isInteger(n) && n >= 0 ? String(n) : "");
   const [adults, setAdults] = useState(doorParty(source?.adults));
+  // R3-16 (round 3 ruling, Nov 5, 2026): the adults field SHOWS two when nobody has stated a party, and nothing is sent
+  // for it until the traveler types one (LD 33: an untouched party is stored NULL, never 2). `adults` holds only what
+  // the door passed or the traveler typed; `partyFieldShown` draws the default.
+  const [adultsEdited, setAdultsEdited] = useState(false);
   const [kids, setKids] = useState(doorParty(source?.kids));
   /** A group chip was pressed. The untouched default group is not a choice. */
   const [groupChosen, setGroupChosen] = useState(doorChoseGroup(source));
@@ -270,6 +277,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
     setStarting(false);
     setAdults(doorParty(source?.adults));
     setKids(doorParty(source?.kids));
+    setAdultsEdited(false);
     setGroupChosen(doorChoseGroup(source));
     doorOccasion.current = !!seed.state.occasionSlug;
     autoStarted.current = false;
@@ -507,6 +515,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
 
   // SH-1 Q14.1/Q14.2: the nights still to come in the market's today; no market ⇒ no picker.
   const nightOptions = nightPickerOptions(state);
+  const allOfIt = eventAllOfIt(state.event, marketToday(state.market?.marketKey));
   const heading = straight ? "Starting your plan…" : title;
   return (
     <>
@@ -654,7 +663,10 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
                 <div className="space-y-2">
                   <p className="text-[13px] font-semibold" style={{ color: "var(--earn-navy, #1A1A18)" }}>Which night?</p>
                   <div className="flex flex-wrap gap-2">
-                    <Chip active={!state.night} onClick={() => setState((s) => withNight(s, null))} testId="plan-entry-night-all">All of it</Chip>
+                    {/* R3-14: "All of it" only when what is left of the event is 14 days or fewer. */}
+                    {allOfIt && (
+                      <Chip active={!state.night && state.startDate === allOfIt.startDate && state.endDate === allOfIt.endDate} onClick={() => setState((s) => withNight(s, null))} testId="plan-entry-night-all">All of it</Chip>
+                    )}
                     {nightOptions.map((d) => (
                       <Chip key={d} active={state.night === d} onClick={() => setState((s) => withNight(s, d))} testId={`plan-entry-night-${d}`}>
                         {dayLabel(d)}
@@ -684,8 +696,13 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
                         type="number"
                         min={0}
                         inputMode="numeric"
-                        value={field.key === "adults" ? adults : kids}
-                        onChange={(e) => (field.key === "adults" ? setAdults : setKids)(e.target.value)}
+                        value={field.key === "adults" ? partyFieldShown(adults, adultsEdited) : kids}
+                        onChange={(e) => {
+                          if (field.key === "adults") {
+                            setAdultsEdited(true);
+                            setAdults(e.target.value);
+                          } else setKids(e.target.value);
+                        }}
                         className="w-24 rounded-md border px-2 py-1.5 text-[14px]"
                         style={{ borderColor: "var(--earn-line, #E8E8E2)" }}
                         data-testid={`plan-entry-party-${field.key}`}
@@ -708,7 +725,10 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
                 <div className="space-y-2">
                   <p className="text-[13px] font-semibold" style={{ color: "var(--earn-navy, #1A1A18)" }}>Which night?</p>
                   <div className="flex flex-wrap gap-2">
-                    <Chip active={!state.night} onClick={() => setState((s) => withNight(s, null))} testId="plan-entry-night-all">All of it</Chip>
+                    {/* R3-14: "All of it" only when what is left of the event is 14 days or fewer. */}
+                    {allOfIt && (
+                      <Chip active={!state.night && state.startDate === allOfIt.startDate && state.endDate === allOfIt.endDate} onClick={() => setState((s) => withNight(s, null))} testId="plan-entry-night-all">All of it</Chip>
+                    )}
                     {nightOptions.map((d) => (
                       <Chip key={d} active={state.night === d} onClick={() => setState((s) => withNight(s, d))} testId={`plan-entry-night-${d}`}>
                         {dayLabel(d)}

@@ -1349,3 +1349,17 @@ The event door's occasion slug `show` (`client/src/lib/plan-entry.ts:63`) and Gr
 `server/services/optimization-fee.service.ts`), so adding one is a money-path decision. Not made in lane R3-2.
 **Closed (ruling, Nov 5, 2026):** no mapping change; "other" stands. Moved to `docs/MARKET_LAUNCH_CHECKLIST.md` item 9,
 "Fee bands for event-led and group-travel plans" — a `fee_bands` row, read by a person, before open mode.
+
+### FU-R3-3 — the occasion chip on the plan header (polish) (EXP-QA round 3 follow-ups)
+
+The plan header does not draw the plan's occasion as a chip. Polish, not a defect: the occasion is stored on the plan
+(`trips.occasion_slug`, migration 438) and the title already names it when one was picked. Recorded by the round 3
+follow-ups ruling (Nov 5, 2026), not built.
+
+### FU-R3-4 — category chips return to /places when `travel_pulse_hidden_gems` carries categories (EXP-QA round 3 follow-ups)
+
+`/places/{city}` lost its category chips with FU-R3-1 (ledger `2026-11-05-fu-r3-places-gems`): the chips came from
+`ai_discovered_gems.category`, which no public page reads, and the city page's gems carry only `place_type` (attraction,
+temple, cafe…), which the approved C-5 chip set (`PLACES_CHIP_LABELS`, `shared/places-path.ts`) does not name. The chips
+come back once `travel_pulse_hidden_gems` carries a category the chip set names — a column or a mapping is a schema or
+copy decision, not made here.
