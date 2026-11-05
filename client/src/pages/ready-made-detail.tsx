@@ -525,7 +525,7 @@ export default function ReadyMadeDetailPage() {
                 <RmFact icon={MapPin} label="Destination" value={listing.market} />
                 <RmFact icon={CalendarDays} label="Planned length" value={`${listing.durationDays} day${listing.durationDays === 1 ? "" : "s"}`} />
                 <RmFact icon={Clock3} label="Start date" value="Flexible" />
-                {listing.bestSeason && <RmFact icon={Sun} label="Best season" value={listing.bestSeason} />}
+                {listing.bestSeason && <RmFact icon={Sun} label="Season" value={listing.bestSeason} />}
               </div>
               <div className="flex gap-[11px] mt-[19px] p-[14px] rounded-[9px] border border-dashed border-[#d0d5dd] bg-[#f8fafb]">
                 <LockKeyhole className="w-[17px] h-[17px] shrink-0 text-[#a67015]" aria-hidden="true" />

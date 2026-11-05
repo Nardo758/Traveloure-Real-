@@ -22,6 +22,9 @@
  * Node built-ins only.
  */
 const fs = require("fs");
+
+// N-7 (ledger `2026-11-05-lane5-copy`): a CRLF checkout reads exactly as an LF one — line endings are normalised at read.
+const readText = (p) => fs.readFileSync(p, "utf8").replace(/\r\n?/g, "\n");
 const path = require("path");
 const os = require("os");
 const { execFileSync } = require("child_process");
@@ -40,12 +43,12 @@ const UNION_LINE_RE = /^\s*docs\/DECISIONS\.md\s+merge=union\s*$/m;
 function lintShape(root, { knownDuplicates = KNOWN_DUPLICATE_IDS } = {}) {
   const problems = [];
   const attrsPath = path.join(root, ".gitattributes");
-  const attrs = fs.existsSync(attrsPath) ? fs.readFileSync(attrsPath, "utf8") : "";
+  const attrs = fs.existsSync(attrsPath) ? readText(attrsPath) : "";
   if (UNION_LINE_RE.test(attrs)) {
     problems.push(".gitattributes still declares docs/DECISIONS.md merge=union — GitHub ignores it; do not bring it back");
   }
   const preamble = readPreamble(root);
-  for (const line of preamble.split("\n")) {
+  for (const line of preamble.split(/\r?\n/)) {
     if (ROW_ID_PREFIX_RE.test(line)) {
       problems.push(`${PREAMBLE_REL} still contains a ledger row (${line.slice(0, 80)}) — add docs/decisions/pending/<id>.md instead`);
       break;
@@ -180,7 +183,7 @@ function selfTest() {
     const a = path.join(distinct.dir, "docs/decisions/pending/2026-08-21-lane-a.md");
     const b = path.join(distinct.dir, "docs/decisions/pending/2026-08-21-lane-b.md");
     if (!fs.existsSync(a) || !fs.existsSync(b)) problems.push("A: a pending file was dropped");
-    if (fs.readFileSync(path.join(distinct.dir, "docs/DECISIONS.md"), "utf8").includes("<<<<<<<")) {
+    if (readText(path.join(distinct.dir, "docs/DECISIONS.md")).includes("<<<<<<<")) {
       problems.push("A: the preamble picked up conflict markers");
     }
   } finally {

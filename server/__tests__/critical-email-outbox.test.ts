@@ -148,7 +148,8 @@ describe("critical senders enqueue one row", () => {
     assert.equal(stored[0].metadata.dedupeKey, "password_reset:abc123");
     assert.equal(stored[0].metadata.authCritical, true);
     assert.equal(stored[0].metadata.linkExpiresAt, expiresAt.toISOString());
-    assert.match(stored[0].html, /expires in 60 minutes/);
+    // A-15 (ledger `2026-11-05-lane5-copy`): the approved body states the one-hour lifetime.
+    assert.match(stored[0].html, /Use this link to set a new password\. It expires in 1 hour\./);
     assert.match(stored[0].html, /reset-password\?token=raw-token/);
   });
 

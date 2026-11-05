@@ -34,10 +34,13 @@ test("NS1 the site list catches every ruled phrase", () => {
     ["Coming soon", "coming soon"],
     ["A geisha district", "geisha"],
     ["Meet a maiko", "maiko"],
+    // Lane 5 (K-8, ledger `2026-11-05-lane5-copy`): "perfect" joins the list.
+    ["Find Your Perfect Local Expert", "perfect"],
+    ["The view is perfectly framed", "perfect"],
   ];
   for (const [text, words] of cases) assert.ok(siteNeverSayHits(text).includes(words), `${text} ⇒ ${words}`);
   assert.equal(containsSiteNeverSay("A quiet lane near the river"), false);
-  assert.equal(SITE_NEVER_SAY.length, 33);
+  assert.equal(SITE_NEVER_SAY.length, 34);
 });
 
 test("NS2 the draft rule and the expert-hook list are unchanged", () => {

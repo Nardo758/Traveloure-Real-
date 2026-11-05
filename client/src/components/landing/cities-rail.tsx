@@ -77,12 +77,8 @@ export function CitiesRail() {
         />
         {cities.map((c) => (
           <span key={c.cityName}>
-            {[
-              c.cityName,
-              c.crowdBand ? `crowd ${c.crowdBand}` : null,
-            ]
-              .filter(Boolean)
-              .join(" · ")}
+            {/* K-7: no crowd claim — the city name alone. */}
+            {c.cityName}
           </span>
         ))}
       </div>

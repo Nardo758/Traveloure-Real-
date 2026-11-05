@@ -210,7 +210,7 @@ export function AIMatchedExpertsSection({
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Sparkles className="w-4 h-4 animate-pulse text-purple-500" />
-              <span>Analyzing your trip details and finding the best expert matches...</span>
+              <span>Analyzing your trip details and finding expert matches...</span>
             </div>
             {[1, 2, 3].map((i) => (
               <Card key={i} className="animate-pulse">
@@ -250,7 +250,7 @@ export function AIMatchedExpertsSection({
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-purple-100 dark:bg-purple-900/30 mb-3">
               <Target className="w-6 h-6 text-purple-600 dark:text-purple-400" />
             </div>
-            <h4 className="font-medium text-sm mb-1">Find Your Perfect Expert Match</h4>
+            <h4 className="font-medium text-sm mb-1">Find Your Expert Match</h4>
             <p className="text-xs text-muted-foreground mb-3 max-w-sm mx-auto">
               We match your {experienceType || "travel"} preferences for {destination} with local experts
               who know what you're after.
