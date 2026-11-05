@@ -173,6 +173,28 @@ export function launchCityName(launchMarketSlug: string | null | undefined): str
 }
 
 /**
+ * E-7 (ruling, Nov 5, 2026): the ONE launch-market resolver. The first candidate that names an operating market wins
+ * (the settings read, then the signup-mode read). With `fallbackToMarquee`, an unresolved setting resolves to the
+ * marquee fallback — the first operating market, as `/places` already does (`shared/places-path.ts`) — so a listing
+ * surface (the landing strip, the date-step picker) is never emptied by a missing or unreadable setting. Without it,
+ * an unresolved setting is null: a surface that CLAIMS something about the market (a "Now live in …" pill) keeps
+ * showing nothing rather than a guessed city.
+ */
+export function resolveLaunchMarket(
+  candidates: ReadonlyArray<string | null | undefined>,
+  opts: { fallbackToMarquee: boolean },
+): { slug: string; cityName: string } | null {
+  for (const c of candidates) {
+    const slug = c?.trim().toLowerCase() || null;
+    const cityName = launchCityName(slug);
+    if (slug && cityName) return { slug, cityName };
+  }
+  if (!opts.fallbackToMarquee) return null;
+  const m = OPERATING_MARKETS[0];
+  return m ? { slug: m.marketKey, cityName: m.cityName } : null;
+}
+
+/**
  * The ribbon's right button follows the traveler sign-up switch (Part A item 6): in `waitlist` mode it goes to the
  * launch market's waitlist page; in `open` mode it starts planning in that city. An unknown mode is waitlist
  * (the switch reads fail-closed).

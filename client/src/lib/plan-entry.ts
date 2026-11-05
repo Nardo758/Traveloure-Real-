@@ -17,6 +17,7 @@
  * component (`components/plan/PlanEntry.tsx`) only draws these answers; the provider
  * (`contexts/PlanningContext.tsx`) mints them.
  */
+import { launchCityName } from "@shared/ticker";
 import { OPERATING_MARKETS, type OperatingMarket } from "@shared/operating-markets";
 import {
   OCCASION_GROUP_DEFAULT_SLUG,
@@ -258,19 +259,49 @@ export function planEntryChoiceLabel(input: {
 }
 
 /**
- * E-4 (round 2 ruling): the event picker lists the marquee market's events first, then every other market's, each
- * part by start date and grouped by month. A month can therefore appear twice (once per part); the key says which.
+ * E-7 (ruling, Nov 5, 2026): one event appears once. Events are the same when their name, city and start agree
+ * (trimmed, case-insensitive name and city; the start instant, else the first day). The first one listed is kept.
  */
-export function eventPickerGroups<T extends { firstDate: string; marketKey?: string | null }>(
+export function dedupeEvents<T extends { firstDate: string; title?: string | null; city?: string | null; startsAt?: string | null }>(
+  events: readonly T[],
+): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const e of events) {
+    const key = [(e.title ?? "").trim().toLowerCase(), (e.city ?? "").trim().toLowerCase(), e.startsAt ?? e.firstDate].join("|");
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(e);
+  }
+  return out;
+}
+
+/**
+ * E-7 (ruling, Nov 5, 2026): the ONE "What's on" set, read by the date-step picker AND the landing strip. Every
+ * event in the window, de-duplicated, outside-city events included (they carry their own label). The marquee
+ * market's events come first as one section, by start date; then every other city's, grouped by month. The landing
+ * strip draws the first cards of exactly this set (`whatsOnEvents`), so the two can never disagree.
+ */
+export function eventPickerGroups<T extends { firstDate: string; marketKey?: string | null; title?: string | null; city?: string | null; startsAt?: string | null }>(
   events: readonly T[],
   marquee: string | null | undefined,
-): Array<{ key: string; month: string; events: T[] }> {
-  const first = marquee ? events.filter((e) => e.marketKey === marquee) : [];
-  const rest = marquee ? events.filter((e) => e.marketKey !== marquee) : [...events];
+): Array<{ key: string; month: string | null; city: string | null; events: T[] }> {
+  const all = dedupeEvents(events);
+  const first = marquee ? all.filter((e) => e.marketKey === marquee) : [];
+  const rest = marquee ? all.filter((e) => e.marketKey !== marquee) : all;
+  const byStart = (a: T, b: T) => a.firstDate.localeCompare(b.firstDate);
   return [
-    ...eventsByMonth(first).map((g) => ({ key: `marquee-${g.month}`, ...g })),
-    ...eventsByMonth(rest).map((g) => ({ key: `other-${g.month}`, ...g })),
+    ...(first.length ? [{ key: `marquee-${marquee}`, month: null, city: launchCityName(marquee) ?? null, events: [...first].sort(byStart) }] : []),
+    ...eventsByMonth(rest).map((g) => ({ key: `other-${g.month}`, month: g.month, city: null, events: g.events })),
   ];
+}
+
+/** E-7: the "What's on" set flattened in its order — what the landing strip reads. */
+export function whatsOnEvents<T extends { firstDate: string; marketKey?: string | null; title?: string | null; city?: string | null; startsAt?: string | null }>(
+  events: readonly T[],
+  marquee: string | null | undefined,
+): T[] {
+  return eventPickerGroups(events, marquee).flatMap((g) => g.events);
 }
 
 /**

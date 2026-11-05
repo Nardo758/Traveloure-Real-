@@ -55,10 +55,11 @@ describe("round 2 EXP-QA", () => {
       ],
       "kyoto",
     );
-    assert.deepEqual(groups.map((g) => [g.key, g.events.map((e) => e.id)]), [
-      ["marquee-2027-04", ["k"]],
-      ["other-2026-11", ["p"]],
-      ["other-2026-12", ["g"]],
+    // E-7 (ruling, Nov 5, 2026; sanctioned edit): the marquee is ONE section headed by its city, then other cities by month.
+    assert.deepEqual(groups.map((g) => [g.key, g.city, g.month, g.events.map((e) => e.id)]), [
+      ["marquee-kyoto", "Kyoto", null, ["k"]],
+      ["other-2026-11", null, "2026-11", ["p"]],
+      ["other-2026-12", null, "2026-12", ["g"]],
     ]);
   });
 

@@ -10,7 +10,7 @@
  * The /events "Coming up" block that shared these cards is retired (ledger
  * `2026-10-06-events-calendar`): /events lists "What's on" from its own calendar read.
  */
-import { PLAN_START_HREF, planStartClick } from "@/lib/plan-entry";
+import { PLAN_START_HREF, planStartClick, whatsOnEvents } from "@/lib/plan-entry";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -32,7 +32,7 @@ import { isShowSeries } from "@shared/event-page";
 import { EventRow } from "@/components/events/EventRow";
 import LANDING_PHOTO_ATTRIBUTION from "../../../public/images/landing/ATTRIBUTION.json";
 import { SectionHeader, OpenSection } from "./section-header";
-import { useLaunchMarket } from "@/lib/signup-mode";
+import { useMarqueeMarket } from "@/lib/signup-mode";
 
 
 /** The occasion "Plan around it" pre-sets — seeded by the experience-types seeder (the one slug, `EVENT_OCCASION_SLUG`). */
@@ -174,21 +174,26 @@ export function CityEventCards({
 }
 
 /**
- * The marquee market's pages show dated events in that market that are not outside the city (CITY-1: the market is
- * the marquee from settings, never a typed city). `outsideCity` is the existing distance rule (SH-1 item 4 /
- * `eventPlacement`). No market ⇒ no events.
+ * E-7 (ruling, Nov 5, 2026): the strip's events are EXACTLY the date-step picker's set (`whatsOnEvents` over
+ * `eventPickerGroups`): every renderable event in the window, de-duplicated, the marquee market's first, outside-city
+ * events included with their own label (`venueCityLabel`). The marquee is never null (`useMarqueeMarket`), so an
+ * unresolved setting cannot empty the strip.
  */
-export function marketPageEvents(events: readonly CityEventCard[], market: string | null | undefined): CityEventCard[] {
-  if (!market) return [];
-  return events.filter((e) => e.marketKey === market && e.outsideCity !== true);
+export function stripEvents(events: readonly CityEventCard[], market: string | null | undefined): CityEventCard[] {
+  return whatsOnEvents(events, market);
 }
 
-/** Pure: whether the strip renders, and which cards — absent below the threshold of the marquee's events. */
+/** Pure: whether the strip renders, and which cards — the first CITY_EVENTS_STRIP_MAX of the picker's set. */
 export function stripCards(payload: CityEventsPayload | undefined | null, market: string | null | undefined): CityEventCard[] | null {
   if (!payload) return null;
-  const events = marketPageEvents(payload.events, market);
+  const events = stripEvents(payload.events, market);
   if (!showCityEventsStrip(events.length)) return null;
   return events.slice(0, CITY_EVENTS_STRIP_MAX);
+}
+
+/** E-7: the heading names the marquee city only when every card shown is in that market; otherwise "What's on". */
+export function stripHeadingCity(cards: readonly CityEventCard[], market: string | null | undefined, cityName: string | null | undefined): string | null {
+  return market && cards.length > 0 && cards.every((c) => c.marketKey === market) ? cityName ?? null : null;
 }
 
 /** E-7 (round 2 rulings, Nov 4, 2026): the strip's heading names the marquee city. */
@@ -204,7 +209,7 @@ export function EventsStripContent({
   onPlanAround,
 }: {
   payload: CityEventsPayload | undefined | null;
-  /** CITY-1: the marquee market (`useLaunchMarket`). */
+  /** CITY-1 / E-7: the marquee market (`useMarqueeMarket`, never null in the app). */
   market: string | null | undefined;
   /** The marquee's city name, for the heading. */
   cityName?: string | null;
@@ -216,7 +221,7 @@ export function EventsStripContent({
     <OpenSection testId="section-city-events">
       <SectionHeader
         eyebrow={`Next ${payload!.windowDays} days`}
-        title={eventsStripTitle(cityName)}
+        title={eventsStripTitle(stripHeadingCity(cards, market, cityName))}
         link={{ label: "All events →", href: "/events", testId: "link-all-events" }}
       />
       <CityEventCards events={cards} door="event_strip" onPlanAround={onPlanAround} />
@@ -226,7 +231,7 @@ export function EventsStripContent({
 
 export function EventsStrip({ onPlanAround }: { onPlanAround: (s: PlanningSource) => void }) {
   const { data } = useQuery<CityEventsPayload>({ queryKey: ["/api/city-events/upcoming"] });
-  const launch = useLaunchMarket();
-  return <EventsStripContent payload={data} market={launch?.slug ?? null} cityName={launch?.cityName ?? null} onPlanAround={onPlanAround} />;
+  const marquee = useMarqueeMarket();
+  return <EventsStripContent payload={data} market={marquee.slug} cityName={marquee.cityName} onPlanAround={onPlanAround} />;
 }
 

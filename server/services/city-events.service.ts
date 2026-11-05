@@ -19,6 +19,7 @@
 import { and, asc, eq, gte, isNull, lte, sql } from "drizzle-orm";
 import { db } from "../db";
 import { getLaunchMarketSlug } from "./platform-flags";
+import { resolveLaunchMarket } from "@shared/ticker";
 import { marketToday } from "@shared/market-today";
 import { cityEvents, cityNeighborhoods, type InsertCityEvent, type CityEvent } from "@shared/schema";
 import {
@@ -459,7 +460,9 @@ export async function listUpcomingCityEvents(now: Date = new Date(), limit = 24)
     const hoods = await db.select({ id: cityNeighborhoods.id, name: cityNeighborhoods.name }).from(cityNeighborhoods);
     for (const h of hoods) if (hoodIds.includes(h.id)) names.set(h.id, h.name);
   }
-  const marquee = await getLaunchMarketSlug();
+  // E-7 (ruling, Nov 5, 2026): the ONE resolver, with the marquee fallback — the order (and so the 24-card slice) is
+  // the one the strip and the picker read, even when the setting is unset.
+  const marquee = resolveLaunchMarket([await getLaunchMarketSlug()], { fallbackToMarquee: true })?.slug ?? null;
   const cards = orderUpcomingCards(
     renderable.map((r) => toCityEventCard(r, r.neighbourhoodId ? names.get(r.neighbourhoodId) ?? null : null, now, thresholdKm)),
     marquee,

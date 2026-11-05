@@ -29,11 +29,13 @@ test("M-05: the /earn headline is the Kyoto sentence and the rate line is below 
   assert.ok(keepAt > roleAt, "the keep-rate sentence is not in the headline block");
 });
 
-test("M-06: the home strip's seed lists no Mumbai, and the strip keeps Kyoto only", () => {
+test("M-06: the home strip's seed lists no Mumbai, and the strip reads the picker's set", () => {
   const seed = readFileSync("server/seeds/city-events.manual.ts", "utf8");
   assert.equal(/city:\s*"Mumbai"/.test(seed), false);
   const strip = readFileSync("client/src/components/landing/events-strip.tsx", "utf8");
-  // CITY-1: the strip keeps the marquee market only, named by settings rather than a typed key.
-  assert.match(strip, /marketPageEvents\(payload\.events, market\)/);
-  assert.match(strip, /e\.marketKey === market && e\.outsideCity !== true/);
+  // E-7 (ruling, Nov 5, 2026; sanctioned edit): the strip draws exactly the date-step picker's set — marquee first,
+  // outside-city events included — through the one shared function, and its market never resolves to nothing.
+  assert.match(strip, /return whatsOnEvents\(events, market\);/);
+  assert.match(strip, /const marquee = useMarqueeMarket\(\);/);
+  assert.doesNotMatch(strip, /outsideCity !== true/);
 });
