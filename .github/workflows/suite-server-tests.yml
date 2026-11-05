@@ -139,6 +139,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/guest-plan.db.test.ts
       - name: Lane 1 guest save rail — source kinds, unknown source refused, one item per source, one plan per session (node:test)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/lane1-guest-save.db.test.ts
+      - name: Lane 6 guest cookie — httpOnly cookie primary, header only when cookies are off, claim never mints (node:test)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/lane6-guest-cookie.db.test.ts
       - name: Lane 3 occasion — no invented occasion, slug kept through guest plan and claim, occasion PATCH stores it (node:test)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/lane3-occasion.db.test.ts
       - name: Lane 4 places — /places redirects and not-found, per-city chips, city match (node:test)

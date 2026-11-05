@@ -2,10 +2,11 @@
  * GATE-1B — the guest plan rails (ledger `2026-11-04-gate1b-guest-plan`; architect rulings 1–7, Nov 4, 2026).
  *
  * Waitlist mode only (open mode answers 404: the sign-in path is unchanged there), and only for a caller with no
- * session (a signed-in traveler uses the ordinary plan rails; a guest rail answers 409 `signed_in`). The guest is
- * named by the `X-Guest-Session` header the client already sends on every request (queryClient.ts); the server keeps
- * only its SHA-256 (guest-plan.service.ts). A missing or malformed header is 400. Every body is a `.strict()` pick
- * (§19). Another session's plan, or none, is ONE 404.
+ * session (a signed-in traveler uses the ordinary plan rails; a guest rail answers 409 `signed_in`). A-10 (ledger
+ * `2026-11-05-lane6-guest-cookie`): the guest is named by an httpOnly cookie the server mints on the first guest
+ * request; the `X-Guest-Session` header (queryClient.ts) names the guest only when the client says its cookies are off.
+ * The server keeps only the id's SHA-256 (guest-plan.service.ts). Every body is a `.strict()` pick (§19). Another
+ * session's plan, or none, is ONE 404.
  *
  *   POST  /api/guest-plans                 create (5 / session / day, 20 / IP / hour)
  *   GET   /api/guest-plans/current         the session's plan and its items
@@ -20,10 +21,14 @@ import { isAuthenticated } from "../replit_integrations/auth";
 import { getUserId } from "../utils/auth";
 import { createRateLimiter } from "../infrastructure/rate-limiter";
 import { getTravelerSignupMode } from "../services/platform-flags";
-import { GUEST_PLAN_LIMITS } from "../config/guest-plan.config";
+import { GUEST_PLAN_LIMITS, guestSessionCookieMaxAgeMs } from "../config/guest-plan.config";
 import { GUEST_PLAN_COPY } from "@shared/guest-plan-copy";
 import {
+  GUEST_COOKIES_OFF_HEADER,
+  GUEST_SESSION_COOKIE,
   GUEST_SESSION_HEADER,
+  readCookie,
+  resolveGuestSessionId,
   claimGuestPlans,
   createGuestPlan,
   guestPlanCreateBody,
@@ -41,8 +46,28 @@ const router = Router();
 // Ruling 6: the retention state is logged once, when the rails load at boot.
 logGuestPlanRetentionBootState();
 
+/**
+ * A-10 (ledger `2026-11-05-lane6-guest-cookie`): the guest is named by the httpOnly cookie, else — only when the client
+ * says its cookies are off — by the `X-Guest-Session` id. `guestOnly` resolves it once (minting a cookie for a new
+ * guest) and every later step reads the same answer.
+ */
+function cookiesOff(req: Request): boolean {
+  return (req.get(GUEST_COOKIES_OFF_HEADER) ?? "").trim().toLowerCase() === "off";
+}
+
 function sessionHash(req: Request): string | null {
-  return hashGuestSession(req.get(GUEST_SESSION_HEADER));
+  return ((req as any).guestSessionHash as string | undefined) ?? null;
+}
+
+/** Sets (or refreshes — a rolling lifetime) the guest cookie. httpOnly; never read by the page. */
+function setGuestCookie(res: Response, id: string) {
+  res.cookie(GUEST_SESSION_COOKIE, id, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production" && process.env.SESSION_COOKIE_INSECURE !== "1",
+    path: "/api/guest-plans",
+    maxAge: guestSessionCookieMaxAgeMs(),
+  });
 }
 
 const rateLimited = (_req: Request, res: Response) =>
@@ -70,7 +95,15 @@ async function guestOnly(req: Request, res: Response, next: NextFunction) {
   try {
     if ((await getTravelerSignupMode()) !== "waitlist") return res.status(404).json({ code: "not_found" });
     if (getUserId(req)) return res.status(409).json({ code: "signed_in" });
-    if (!sessionHash(req)) return res.status(400).json({ code: "guest_session_required" });
+    const who = resolveGuestSessionId({
+      cookie: readCookie(req.headers.cookie, GUEST_SESSION_COOKIE),
+      header: req.get(GUEST_SESSION_HEADER),
+      cookiesOff: cookiesOff(req),
+    });
+    const hash = who ? hashGuestSession(who.id) : null;
+    if (!who || !hash) return res.status(400).json({ code: "guest_session_required" });
+    (req as any).guestSessionHash = hash;
+    if (who.source !== "header") setGuestCookie(res, who.id);
     next();
   } catch {
     res.status(500).json({ code: "error" });
@@ -130,7 +163,16 @@ router.post("/api/guest-plans/current/items", guestOnly, savesPerSession, async 
 // Ruling 5, following POST /api/cart/migrate: the session account (§14), the guest id in the body.
 router.post("/api/guest-plans/claim", isAuthenticated, async (req, res) => {
   const userId = getUserId(req)!;
-  const hash = hashGuestSession(req.body?.guestSessionId);
+  // A-10: the cookie's guest, else (cookies off) the id the client names; a claim never mints one.
+  const who = resolveGuestSessionId(
+    {
+      cookie: readCookie(req.headers.cookie, GUEST_SESSION_COOKIE),
+      header: req.body?.guestSessionId ?? req.get(GUEST_SESSION_HEADER),
+      cookiesOff: cookiesOff(req),
+    },
+    { mintNew: false },
+  );
+  const hash = who ? hashGuestSession(who.id) : null;
   if (!hash) return res.status(400).json({ code: "guest_session_required" });
   try {
     const tripIds = await claimGuestPlans(hash, userId);
