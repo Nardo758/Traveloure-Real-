@@ -30,6 +30,7 @@ import crypto from "crypto";
 import { Router } from "express";
 import type { Response } from "express";
 import { storage } from "../storage";
+import { withOccasionLabels } from "../services/occasion-label.service";
 import { eventTypeForSlug } from "@shared/occasions";
 import { writePlanPenOccasion, readPlanPenOccasionSlug } from "../services/plan-pen-occasion.service";
 import { resortDayByTime } from "../services/day-order.service";
@@ -391,7 +392,8 @@ router.get(api.trips.list.path, isAuthenticated, async (req, res) => {
       () => storage.getTrips(userId, status),
       (req.user as any)?.claims?.role
     );
-    res.json(trips);
+    // R3-23: the ONE occasion label from `occasion_slug` (null stays null, A-8).
+    res.json(await withOccasionLabels(trips as any[]));
   });
 
 

@@ -233,7 +233,7 @@ describe("A — the call sites use the gate rather than reaching past it", () =>
       "SlipView must render its party label through a gated helper (partyLabelForOccasion, or one that delegates to it)",
     );
     for (const name of used) {
-      const call = new RegExp(`${name.replace("(", "\\(")}[\\s\\S]{0,320}?occasionResolved,\\s*\\)`);
+      const call = new RegExp(`${name.replace("(", "\\(")}[\\s\\S]{0,320}?occasionResolved,\\s*(?:\\{[^}]*\\},\\s*)?\\)`);
       assert.ok(call.test(slipViewSrc), `…and must pass the resolution signal into ${name})`);
     }
     if (slipViewSrc.includes("planHeaderCountLabel(")) {

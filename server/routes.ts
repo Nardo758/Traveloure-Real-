@@ -53,6 +53,7 @@ import { trackFunnelEvent } from "./utils/funnelTracker";
 import fs from "fs";
 import path from "path";
 import { storage, ExpertApplicationExistsError, stampItemSourceClass, type BookingStatusNotification, type BookingStatusInTransaction } from "./storage";
+import { withOccasionLabels } from "./services/occasion-label.service";
 import { claimFreeDraft, promoteFreeDraft, releaseFreeDraft, freeDraftRefusalBody, FREE_DRAFT_REFUSAL_STATUS } from "./services/free-draft-cap.service";
 import { isFreeDraftEligible } from "@shared/content-tiers";
 import { freeDraftGemContext } from "@shared/share-projection";
@@ -1442,7 +1443,8 @@ export async function registerRoutes(
     const userId = getUserId(req)!;
     const status = req.query.status as string | undefined;
     const trips = await storage.getTrips(userId, status);
-    res.json(trips);
+    // R3-23: the ONE occasion label from `occasion_slug` (null stays null, A-8).
+    res.json(await withOccasionLabels(trips as any[]));
   });
 
   // GET /api/trips/:id — handled by tripsRoutes (trips.routes.ts), which owns the canonical

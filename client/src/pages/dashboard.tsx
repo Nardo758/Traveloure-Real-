@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { welcomeBackLine } from "@/lib/display-name";
 import { PLAN_ASSISTANT_COPY } from "@/lib/plan-assistant-copy";
 import { useTrips } from "@/hooks/use-trips";
 import { Link } from "wouter";
@@ -146,7 +147,7 @@ export default function Dashboard() {
             style={{ fontFamily: FRAUNCES, color: "var(--earn-ink)" }}
             data-testid="text-welcome"
           >
-            Welcome back, {user?.firstName || "Traveler"}
+            {welcomeBackLine(user)}
           </h1>
           {greeting && (
             <div className="text-[14px] mt-1" style={{ color: "var(--earn-muted)" }} data-testid="text-greeting-sub">

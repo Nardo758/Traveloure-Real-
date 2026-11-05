@@ -37,6 +37,7 @@
  *        `bookVia: 'agent-rail'` so the CTA routes through the in-platform booking-agent rail.
  */
 
+import { occasionLabelForPlan } from "./occasion-label.service";
 import { resolvePlanBookingPaths, readFrozenBookingPaths } from "./booking-path.service";
 import type { BookingPath } from "@shared/booking-path";
 import { legIsRouted, routedFactsOf, selectPlanLegs } from "./routing/plan-legs";
@@ -755,6 +756,8 @@ export async function assembleTripPlan(
   // compares (planContentHash, §18 rule 1), over the live rows before any snapshot overlay. Null
   // when there is no final — there is nothing to be out of date against (§13).
   const finalOutOfDate = latestFinal ? planContentHash(trip as any, items as any[]) !== latestFinal.contentHash : null;
+  // R3-23: the plan header's occasion label — the catalog name for `trips.occasion_slug`.
+  const occasionLabel = await occasionLabelForPlan((trip as any).occasionSlug ?? null).catch(() => null);
   // PS-4 (a), ledger `2026-11-02-ps4-entry-carry-forward`: was this plan drafted from a member's saved occasion?
   // Read only while its dates are unconfirmed — that is the one case the slip asks "Keep {date}?". Present only
   // when true (§13); a failed read says nothing.
@@ -1438,6 +1441,8 @@ export async function assembleTripPlan(
         // publishing it would invite a second reader to re-answer the question (§18 rule 1).
         // `planDatesAreConfirmed` is that one answer.
         datesConfirmed: planDatesAreConfirmed((trip as any).datesConfirmedAt),
+        // R3-23: the ONE occasion label, from `occasion_slug` (null stays null, A-8).
+        occasionLabel,
         ...(fromOccasionDraft ? { fromOccasionDraft: true } : {}),
       },
       changeLog,

@@ -336,6 +336,12 @@ export interface WhereToStayView {
    */
   unranked?: "no_neighborhoods" | "no_located_items";
   /**
+   * R3-25 (ledger `2026-11-05-r3-followups-2`): how many of the plan's stops in its window carry a point — the same
+   * `fitItems` predicate the ranking reads (item coordinates, or an unexpired location fact). `0` ⇒ the panel draws no
+   * "Closest to your stops" card and no hotels, only the neighbourhood list. A count, never a point.
+   */
+  locatedStops?: number;
+  /**
    * S1 "one stay on the plan" (ledger `2026-10-09-s1-one-stay`; brief s1-one-stay.md). Present on an
    * eligible view. FREE: the top 3 hotels by straight line within the top neighbourhoods. ROUTED (the plan
    * passes `planGetsRoutedLegs`): the ONE stay Optimize's routed scoring picked, READ from `trips.stay_pick`

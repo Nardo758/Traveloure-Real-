@@ -26,6 +26,7 @@
  */
 import { PlacePhoto } from "./PlacePhoto";
 import { HAND_ADDED_STAY_LINE } from "@shared/where-to-stay";
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import { OSM_COORD_ATTRIBUTION } from "@shared/open-coords";
 import {
   GOOGLE_MAPS_ATTRIBUTION,
@@ -89,6 +90,16 @@ type Bind =
   | { kind: "skip" };
 
 export interface AnchorPanelViewProps {
+  /**
+   * R3-24 (A-3): whether booking actions are shown — `useBookingActionsShown()`, read once by the
+   * container. In waitlist mode "Stay here" and "See rates" are not drawn. Absent ⇒ shown.
+   */
+  bookingShown?: boolean;
+  /**
+   * R3-25: how many of the plan's stops (not the stay) carry a point. `0` ⇒ no "Closest to your stops"
+   * ranking and no hotel rows — the neighbourhood list only. Absent ⇒ not known here, drawn as before.
+   */
+  locatedStopCount?: number;
   /** S1-b: the plan this panel belongs to — a Traveloure stay's "See rooms" carries it to the listing page. */
   tripId?: string | null;
   /** `empty` before a draft exists; `drafted` once the server ranks neighbourhoods; `chooser` in the tray. */
@@ -203,7 +214,9 @@ export function StayPickCard({
   swapControl,
   stayRates,
   onSeeRates,
+  bookingShown = true,
 }: {
+  bookingShown?: boolean;
   view: WhereToStayView;
   /** S1-b: the plan a Traveloure stay's "See rooms" carries to its listing page. */
   tripId?: string | null;
@@ -304,7 +317,7 @@ export function StayPickCard({
                   </span>
                 );
               })()}
-              {canChoose ? (
+              {canChoose && bookingShown ? (
                 <button
                   type="button"
                   className="inline-flex min-h-[40px] shrink-0 items-center whitespace-nowrap rounded-[var(--slip-radius-button,10px)] bg-[color:var(--slip-primary,#C8443D)] px-4 text-sm font-semibold text-[color:var(--slip-primary-ink,#fff)] hover:brightness-95 disabled:opacity-60"
@@ -316,7 +329,7 @@ export function StayPickCard({
                 </button>
               ) : null}
             </span>
-            {h.kind === "liteapi" ? <StayRatesRow hotel={h} view={stayRates?.[h.id]} onSeeRates={onSeeRates} /> : null}
+            {bookingShown && h.kind === "liteapi" ? <StayRatesRow hotel={h} view={stayRates?.[h.id]} onSeeRates={onSeeRates} /> : null}
           </li>
         ))}
       </ul>
@@ -380,7 +393,12 @@ function RankedList({
   canChoose,
   busy,
   onStayHere,
+  bookingShown = true,
+  staysShown = true,
 }: {
+  bookingShown?: boolean;
+  /** R3-25: false until a stop has a point — the neighbourhoods are listed with no hotels. */
+  staysShown?: boolean;
   view: WhereToStayView;
   canChoose: boolean;
   busy: boolean;
@@ -389,7 +407,7 @@ function RankedList({
   // Item 2 (ledger `2026-10-10-no-stays-no-promise`): a market with ZERO rankable stays near any of these
   // neighbourhoods shows the neighbourhoods and no stays block at all — never "Hotels coming soon", which
   // promises supply nobody has scheduled (§13). The decision is the panel's own `anchorPanelMode`.
-  const showStays = anchorPanelMode(view.neighborhoods) === "options";
+  const showStays = staysShown && anchorPanelMode(view.neighborhoods) === "options";
   return (
         <ol className="space-y-3">
           {view.neighborhoods.map((n, i) => (
@@ -429,7 +447,7 @@ function RankedList({
                           </span>
                         ) : null}
                       </span>
-                      {canChoose ? (
+                      {canChoose && bookingShown ? (
                         <button
                           type="button"
                           className="text-xs font-semibold underline underline-offset-2 hover:text-foreground"
@@ -549,8 +567,8 @@ export function AnchorPanelView(props: AnchorPanelViewProps) {
             {ranked ? ANCHOR_PANEL_DRAFTED_SUBTITLE : ANCHOR_PANEL_OPTIONAL}
           </p>
         </div>
-        {view?.eligible ? <StayPickCard view={view} tripId={props.tripId} openedStayLink={props.openedStayLink} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} stayRates={props.stayRates} onSeeRates={props.onSeeRates} /> : null}
-        {ranked ? <RankedList view={view!} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} /> : null}
+        {view?.eligible && props.locatedStopCount !== 0 ? <StayPickCard view={view} tripId={props.tripId} openedStayLink={props.openedStayLink} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} stayRates={props.stayRates} onSeeRates={props.onSeeRates} bookingShown={props.bookingShown} /> : null}
+        {ranked ? <RankedList view={view!} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} bookingShown={props.bookingShown} staysShown={props.locatedStopCount !== 0} /> : null}
         {canChoose ? (
           <div className="space-y-2 border-t border-border pt-3">
             {ownOpen ? <OwnForm neighborhoods={view?.neighborhoods ?? []} busy={busy} onSave={(a) => props.onOwn?.(a)} /> : null}
@@ -660,7 +678,7 @@ export function AnchorPanelView(props: AnchorPanelViewProps) {
         </p>
       </div>
 
-      <StayPickCard view={view} tripId={props.tripId} openedStayLink={props.openedStayLink} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} swapControl={props.addPlacesControl} stayRates={props.stayRates} onSeeRates={props.onSeeRates} />
+      {props.locatedStopCount !== 0 ? <StayPickCard view={view} tripId={props.tripId} openedStayLink={props.openedStayLink} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} swapControl={props.addPlacesControl} stayRates={props.stayRates} onSeeRates={props.onSeeRates} bookingShown={props.bookingShown} /> : null}
 
       {mode === "unranked" ? (
         view.unranked === "no_located_items" ? (
@@ -673,13 +691,15 @@ export function AnchorPanelView(props: AnchorPanelViewProps) {
           </p>
         )
       ) : (
-        <RankedList view={view} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} />
+        <RankedList view={view} canChoose={canChoose} busy={busy} onStayHere={props.onStayHere} bookingShown={props.bookingShown} staysShown={props.locatedStopCount !== 0} />
       )}
 
       {canChoose ? (
         <div className="space-y-2 border-t border-border pt-3">
           {ownOpen ? <OwnForm neighborhoods={view.neighborhoods} busy={busy} onSave={(a) => props.onOwn?.(a)} /> : null}
           <div className="flex flex-wrap gap-3">
+            {/* R3-25: with no located stop the pick card (which carries this control) is not drawn. */}
+            {props.locatedStopCount === 0 ? props.addPlacesControl ?? null : null}
             {!ownOpen ? (
               <button type="button" className={link} onClick={() => setOwnOpen(true)} disabled={busy} data-testid="where-to-stay-own">
                 {ANCHOR_PANEL_SORTED}
@@ -748,6 +768,8 @@ export function AnchorPanel(
   // S1-d-2: "See rates" on a LiteAPI stay asks the server ONCE per tap (a live call, never stored). Any
   // failure reads as "Rates unavailable right now" — never an error toast.
   const [stayRates, setStayRates] = useState<Record<string, StayRatesView>>({});
+  // R3-24 (A-3): the ONE shared mode read — waitlist mode hides "Stay here" and "See rates".
+  const bookingShown = useBookingActionsShown();
   const seeRates = (h: StayHotel) => {
     setStayRates((m) => ({ ...m, [h.id]: { state: "loading" } }));
     void apiRequest("GET", `/api/trips/${tripId}/stays/${encodeURIComponent(h.id)}/rates`)
@@ -766,6 +788,7 @@ export function AnchorPanel(
   return (
     <AnchorPanelView
       {...props}
+      bookingShown={bookingShown}
       openedStayLink={openedLink?.stayLink ?? null}
       stayRates={stayRates}
       onSeeRates={seeRates}

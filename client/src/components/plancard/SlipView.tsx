@@ -451,7 +451,9 @@ export function SlipHeader({
   const [anchorPanel, setAnchorPanel] = useState<"dates" | "who" | null>(null);
   const start = safeDate(trip?.startDate);
   const end = safeDate(trip?.endDate);
-  const phase = derivePhase(start, end);
+  // R3-23: the phase badge (UPCOMING / ACTIVE / PAST) is a claim about real dates — shown only once
+  // the dates are set, never off the placeholder window an unconfirmed plan carries (LD 30).
+  const phase = (trip as any)?.datesConfirmed === true ? derivePhase(start, end) : null;
 
   return (
     <div className="space-y-1.5" data-testid="slip-header">
@@ -1841,6 +1843,9 @@ export function useSlipViewModel({
       lodgingSet={lodgingSet}
       stayFacts={currentStay ? data.placeFacts?.[currentStay.id] ?? null : null}
       canChoose={canEditItems}
+      // R3-25: the stay ranking needs at least one stop with a point (the server's own count, the
+      // predicate the ranking reads); until then the panel lists neighbourhoods only.
+      locatedStopCount={whereToStayQuery.data?.locatedStops}
       addPlacesControl={hasOpenLodgingSet ? null : <SlipAnchorCompareButton tripId={tripId} label={ANCHOR_PANEL_ADD_PLACES} variant={stage === "empty" ? "board" : "outline"} />}
       addFixedControl={
         <SlipAddItemControl tripId={tripId} dayNumber={1} userExperienceId={null} label={SLIP_ADD_DAY_LABEL} testId="slip-anchor-add-fixed" />
@@ -2031,6 +2036,7 @@ export function useSlipViewModel({
     occasion?.vocabulary ?? null,
     occasion?.defaultGuests ?? null,
     occasionResolved,
+    { adults: (data.trip as any)?.adults ?? null, kids: (data.trip as any)?.kids ?? null },
   );
 
   /**
@@ -2336,7 +2342,8 @@ export function SlipView({
             <AddLocalExpertButton onOpen={() => setExpertDoorState("open")} />
           ) : null
         }
-        occasionName={occasion?.name ?? null}
+        // R3-23: the ONE occasion label, from the plan's `occasion_slug` (null stays null, A-8).
+        occasionName={(data.trip as any)?.occasionLabel ?? null}
         menu={
           data.trip ? (
             <SlipPlanMenu trip={data.trip} tripId={tripId} isOwner={isOwner} canEditItems={canEditItems} />

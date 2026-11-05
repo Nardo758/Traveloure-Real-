@@ -81,6 +81,12 @@ describe("Lane 2 mode read", () => {
       ["client/src/pages/deals.tsx", /\{!bookingShown \? null : deal\.bookingToken \? \(/],
       ["client/src/pages/providers-directory.tsx", /\{bookingShown && provider\.instantBooking && \(/],
       ["client/src/components/curated-content-section.tsx", /\{!bookingShown \? null : isAffiliate \? \(/],
+      // R3-24 (A-3 regression): the plan's lodging panel — "Stay here" and "See rates".
+      ["client/src/components/plan/AnchorPanel.tsx", /const bookingShown = useBookingActionsShown\(\);/],
+      ["client/src/components/plan/AnchorPanel.tsx", /bookingShown=\{bookingShown\}/],
+      ["client/src/components/plan/AnchorPanel.tsx", /\{canChoose && bookingShown \? \([\s\S]{0,800}STAY_HERE_LABEL/],
+      ["client/src/components/plan/AnchorPanel.tsx", /\{canChoose && bookingShown \? \([\s\S]{0,800}Stay here/],
+      ["client/src/components/plan/AnchorPanel.tsx", /\{bookingShown && h\.kind === "liteapi" \? <StayRatesRow/],
     ];
     for (const [file, re] of pins) assert.match(read(file), re, file);
     // The P-1c reads on the plan surfaces are the shared rule now, not a second copy of it.

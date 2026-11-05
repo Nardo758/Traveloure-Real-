@@ -273,12 +273,28 @@ export function partyLabelForOccasion(
  * NO NEW COLUMN, and no second count anywhere: `invitedCount` is the SERVER's own `totals.invited`
  * off the roster the slip already reads.
  */
+/**
+ * R3-22 — the party as the traveler stated it: "2 adults" / "2 adults, 1 child". Reads the plan's
+ * own `adults`/`kids` columns. Returns "" when adults were never stated (§13) so the caller keeps
+ * its count label; children are named only when a positive count was stated.
+ */
+export function partyCompositionLabel(
+  adults: number | null | undefined,
+  kids: number | null | undefined,
+): string {
+  if (typeof adults !== "number" || !Number.isFinite(adults) || adults <= 0) return "";
+  const a = `${adults} ${adults === 1 ? "adult" : "adults"}`;
+  if (typeof kids !== "number" || !Number.isFinite(kids) || kids <= 0) return a;
+  return `${a}, ${kids} ${kids === 1 ? "child" : "children"}`;
+}
+
 export function planHeaderCountLabel(
   partyCount: number | null | undefined,
   invitedCount: number | null | undefined,
   vocabulary: string | null | undefined,
   hasGuestList: boolean | null | undefined,
   occasionResolved: boolean,
+  composition?: { adults?: number | null; kids?: number | null },
 ): string {
   const invited =
     typeof invitedCount === "number" && Number.isFinite(invitedCount) && invitedCount > 0
@@ -293,6 +309,8 @@ export function planHeaderCountLabel(
     return party ? `${party} traveling · ${invitedPart}` : invitedPart;
   }
 
+  const stated = partyCompositionLabel(composition?.adults, composition?.kids);
+  if (stated) return stated;
   return partyLabelForOccasion(partyCount, vocabulary, hasGuestList, occasionResolved);
 }
 

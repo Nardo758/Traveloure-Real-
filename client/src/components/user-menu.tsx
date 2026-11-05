@@ -1,4 +1,5 @@
 import { Link, useLocation } from "wouter";
+import { memberDisplayName } from "@/lib/display-name";
 import { useTravelerSignupShown } from "@/lib/signup-mode";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
@@ -42,9 +43,7 @@ function getRoleLabel(role: string): string {
 }
 
 function getDisplayName(user: { firstName?: string | null; email?: string | null }): string {
-  if (user.firstName?.trim()) return user.firstName.trim();
-  if (user.email) return user.email.split("@")[0];
-  return "User";
+  return memberDisplayName(user) ?? "User";
 }
 
 function getAvatarFallback(user: { firstName?: string | null; email?: string | null }): string {

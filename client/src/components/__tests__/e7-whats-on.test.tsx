@@ -101,7 +101,8 @@ describe("E-7 What's on", () => {
       [null, "2027-02", ["goa"]],
     ]);
     const pe = fs.readFileSync("client/src/components/plan/PlanEntry.tsx", "utf8");
-    assert.equal((pe.match(/eventPickerGroups\(events, whatsOnMarquee\)/g) ?? []).length, 2, "both picker lists");
+    // R3-20: the details step draws the same list (its "What's on" preset), so three lists read one grouping.
+    assert.equal((pe.match(/eventPickerGroups\(events, whatsOnMarquee\)/g) ?? []).length, 3, "every picker list");
     assert.match(pe, /const whatsOnMarquee = useMarqueeMarket\(\)\.slug;/);
     assert.equal(whatsOnEvents([F1], "kyoto")[0].id, "f1");
   });
