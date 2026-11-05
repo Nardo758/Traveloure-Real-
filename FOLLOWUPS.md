@@ -1363,3 +1363,17 @@ follow-ups ruling (Nov 5, 2026), not built.
 temple, cafe…), which the approved C-5 chip set (`PLACES_CHIP_LABELS`, `shared/places-path.ts`) does not name. The chips
 come back once `travel_pulse_hidden_gems` carries a category the chip set names — a column or a mapping is a schema or
 copy decision, not made here.
+
+### FU-R3-5 — migrations 435, 436 and 437 (#1887) merged on a coding session's note, not Leon's comment
+
+The migration-approval check counts any comment by GitHub user Nardo758 that contains the citation sentence. Coding
+sessions post through that same account. On #1887 (Lane 1, merged Nov 4, 2026) the session's note listing the three
+sentences Leon needed to post — "Needed from Leon, one comment per migration: …" — was the only comment in the thread
+containing them; the account's only other comment there is "Done". So the check passed on the session's own note, and
+435 (`guest_plan_one_per_session`), 436 (`itinerary_item_one_per_source`) and 437 (`kyoto_gem_coordinates`) merged with
+no approval comment from Leon in the H-29 form. The same session's notes on #1885, #1889, #1896 and #1900 also quoted the
+sentence; each of 433, 434, 438 and 439 also has a separate comment that is the sentence alone (no session footer).
+**Fixed going forward** (ledger `2026-11-05-r3-followups`): the gate refuses a comment carrying the Claude Code
+attribution footer, and the session's notes on all five PRs were edited to start with `[bot:` and no longer quote the
+sentence. **Needs Leon:** an approval (or not) of 435–437 in the H-29 form, on #1887 or here; the SQL is already on
+`main` and, once published, applied.
