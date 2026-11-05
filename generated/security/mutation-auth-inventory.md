@@ -403,10 +403,10 @@ Boundary totals: admin-role 203; session-self 368; resource-owner 105; signature
 | POST | `/api/generated-itineraries` | other | session-self | no | unknown | `server/routes/content.routes.ts:695` | unknown | unknown |
 | POST | `/api/geocode` | other | session-self | no | unknown | `server/routes/content.routes.ts:4580` | unknown | unknown |
 | POST | `/api/grok/match-experts` | other | session-self | no | unknown | `server/routes/content.routes.ts:4638` | unknown | unknown |
-| POST | `/api/guest-plans` | other | public-or-system | no | unknown | `server/routes/guest-plans.routes.ts:80` | unknown | unknown |
-| POST | `/api/guest-plans/claim` | other | session-self | no | unknown | `server/routes/guest-plans.routes.ts:131` | unknown | unknown |
-| PATCH | `/api/guest-plans/current` | other | public-or-system | no | unknown | `server/routes/guest-plans.routes.ts:104` | unknown | unknown |
-| POST | `/api/guest-plans/current/items` | other | public-or-system | no | unknown | `server/routes/guest-plans.routes.ts:116` | unknown | unknown |
+| POST | `/api/guest-plans` | other | public-or-system | no | unknown | `server/routes/guest-plans.routes.ts:113` | unknown | unknown |
+| POST | `/api/guest-plans/claim` | other | session-self | no | unknown | `server/routes/guest-plans.routes.ts:164` | unknown | unknown |
+| PATCH | `/api/guest-plans/current` | other | public-or-system | no | unknown | `server/routes/guest-plans.routes.ts:137` | unknown | unknown |
+| POST | `/api/guest-plans/current/items` | other | public-or-system | no | unknown | `server/routes/guest-plans.routes.ts:149` | unknown | unknown |
 | POST | `/api/handoffs/:id/accept` | other | session-self | no | unknown | `server/routes/handoff.routes.ts:400` | unknown | unknown |
 | POST | `/api/handoffs/:id/approve` | other | session-self | no | unknown | `server/routes/handoff.routes.ts:255` | unknown | unknown |
 | POST | `/api/handoffs/:id/authorized` | other | session-self | no | unknown | `server/routes/handoff.routes.ts:242` | unknown | unknown |

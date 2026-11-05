@@ -10,7 +10,7 @@ Generated deterministically from `generated/security/mutation-auth-manifest.json
 ## Methodology and live evidence
 
 - Every unique `METHOD effectivePath` in the manifest receives exactly one tested/untested disposition; duplicate registrations are normalized to one reachable endpoint.
-- Evidence state: **evidence manifest SHA-256 is stale**; manifest SHA-256: `5c873410fc25ed830a27a24c17427f34e6e1e91c3b92cc06d242f2b134516e26`; run timestamp: 2026-09-25T00:56:06.499Z.
+- Evidence state: **evidence manifest SHA-256 is stale**; manifest SHA-256: `afc031a826e54543628d1d16b8e8a857a3f3905f62cc0ac6e10c7aa656d1a5de`; run timestamp: 2026-09-25T00:56:06.499Z.
 - `admin`: **passed**, 146 exact endpoint keys, context `admin`.
 - `highrisk-unauthenticated`: **passed**, 236 exact endpoint keys, context `unauthenticated`.
 - `expert-provider-wrong-role`: **passed**, 54 exact endpoint keys, context `wrong-role`.
@@ -182,7 +182,7 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | PATCH /api/expert/service-listings/:id | user-data | session-self | server/routes.ts:6201 | Not run: evidence manifest SHA-256 is stale. |
 | PATCH /api/expert/services/:id/status | user-data | resource-owner | server/routes.ts:6736 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | PATCH /api/faqs/:id | other | session-self | server/routes/content.routes.ts:2265 | Other-category endpoint is intentionally outside the strict tested set. |
-| PATCH /api/guest-plans/current | other | public-or-system | server/routes/guest-plans.routes.ts:104 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| PATCH /api/guest-plans/current | other | public-or-system | server/routes/guest-plans.routes.ts:137 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | PATCH /api/itinerary-share/:token/acknowledge | other | resource-owner | server/routes/trips.routes.ts:2730 | Other-category endpoint is intentionally outside the strict tested set. |
 | PATCH /api/me/handle | user-data | resource-owner | server/routes/storefront.routes.ts:103 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | PATCH /api/me/home-city | user-data | session-self | server/routes/occasions.routes.ts:190 | Not run: evidence manifest SHA-256 is stale. |
@@ -487,9 +487,9 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/generated-itineraries | other | session-self | server/routes/content.routes.ts:695 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/geocode | other | session-self | server/routes/content.routes.ts:4580 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/grok/match-experts | other | session-self | server/routes/content.routes.ts:4638 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/guest-plans | other | public-or-system | server/routes/guest-plans.routes.ts:80 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/guest-plans/claim | other | session-self | server/routes/guest-plans.routes.ts:131 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/guest-plans/current/items | other | public-or-system | server/routes/guest-plans.routes.ts:116 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /api/guest-plans | other | public-or-system | server/routes/guest-plans.routes.ts:113 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /api/guest-plans/claim | other | session-self | server/routes/guest-plans.routes.ts:164 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/guest-plans/current/items | other | public-or-system | server/routes/guest-plans.routes.ts:149 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /api/handoffs/:id/accept | other | session-self | server/routes/handoff.routes.ts:400 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/handoffs/:id/approve | other | session-self | server/routes/handoff.routes.ts:255 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/handoffs/:id/authorized | other | session-self | server/routes/handoff.routes.ts:242 | Other-category endpoint is intentionally outside the strict tested set. |
