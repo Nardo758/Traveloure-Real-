@@ -64,7 +64,9 @@ describe("migration 439 Kyoto events", () => {
     for (const held of ["Arashiyama", "Shoren-in", "Miyako Odori", "Kobo", "Tenjin", "Okera", "Ebisu", "Setsubun", "plum"]) {
       assert.doesNotMatch(text.replace(/^--.*$/gm, ""), new RegExp(held, "i"), `${held} is held`);
     }
-    assert.match(fs.readFileSync("server/migrations/migration-files.ts", "utf8"), /"439_kyoto_events_seed\.sql",\n\] as const;/);
+    // Sanctioned edit (R3-15, ledger `2026-11-05-r3-followups`): 439 is registered, after 438 — not pinned as the last
+    // entry, which every later migration (440 first) would break.
+    assert.match(fs.readFileSync("server/migrations/migration-files.ts", "utf8"), /"438_trip_occasion_slug\.sql",[\s\S]*?"439_kyoto_events_seed\.sql",/);
   });
 
   it("K2 applied twice, seven rows once, all in Kyoto", async () => {
