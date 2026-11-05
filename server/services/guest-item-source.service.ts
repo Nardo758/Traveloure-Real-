@@ -7,7 +7,8 @@
  * round 3); this is its minimum.
  *
  *   · gem              → `travel_pulse_hidden_gems` (visible rows only); content link `gem` / gem id.
- *   · event            → `fever_event_cache` by Fever event id; content link `event` / event id.
+ *   · event            → the Fever event id: `fever_event_cache.event_id`, else Fever's own lookup of that id (R3-2);
+ *                        content link `event` / event id.
  *   · listing          → `provider_services` (approved, active, not a catalog ride); `provider_service_id`. No point:
  *                        a listing's exact pin belongs to its owner and a booked traveler (LD 22 as amended), and a
  *                        public read only ever carries an approximate one, which the browse map already treats as
@@ -71,17 +72,44 @@ async function gem(id: string): Promise<ResolvedGuestSource | null> {
   return { ...base(title, pointOf(row.latitude, row.longitude)), itemType: "activity", contentType: "gem", contentId: id, providerServiceId: null, affiliateProductId: null };
 }
 
+/**
+ * R3-2 (round 3): the live Fever lookup an event save falls back to when the cache holds no row for that id. The city
+ * page lists Fever's catalog live (`location-view.service.ts`), so an event shown there need not have been cached yet.
+ * Swappable for tests; a lookup that throws or finds nothing is "no such event".
+ */
+type FeverLookup = (eventId: string) => Promise<{ title?: string | null; venue?: { name?: string | null; coordinates?: { lat?: unknown; lng?: unknown } | null } | null } | null>;
+const liveFeverLookup: FeverLookup = async (eventId) => {
+  const { feverService } = await import("./fever.service");
+  // Only a live catalog answers: an unconfigured service would hand back a generated demo event for any id.
+  if (!feverService.isCatalogReady()) return null;
+  return (await feverService.getEventById(eventId)) as any;
+};
+let feverLookup: FeverLookup = liveFeverLookup;
+export function setFeverEventLookupForTests(fn: FeverLookup | null): void {
+  feverLookup = fn ?? liveFeverLookup;
+}
+
 async function event(id: string): Promise<ResolvedGuestSource | null> {
+  // ONE id per kind (CAP-2 input): an event is named by its Fever event id — `fever_event_cache.event_id`, the same id
+  // the public event payload carries as `id`. The cache answers first; a miss asks Fever for that same id.
   const [row] = await db
     .select({ title: feverEventCache.title, venueName: feverEventCache.venueName, latitude: feverEventCache.latitude, longitude: feverEventCache.longitude })
     .from(feverEventCache)
     .where(eq(feverEventCache.eventId, id))
     .limit(1);
-  const title = clean(row?.title);
-  if (!row || !title) return null;
+  let title = clean(row?.title);
+  let venueName = clean(row?.venueName);
+  let point = row ? pointOf(row.latitude, row.longitude) : null;
+  if (!row || !title) {
+    const live = await feverLookup(id).catch(() => null);
+    title = clean(live?.title);
+    if (!live || !title) return null;
+    venueName = clean(live.venue?.name);
+    point = pointOf(live.venue?.coordinates?.lat, live.venue?.coordinates?.lng);
+  }
   return {
-    ...base(title, pointOf(row.latitude, row.longitude)),
-    locationName: clean(row.venueName) || title,
+    ...base(title, point),
+    locationName: venueName || title,
     itemType: "activity",
     contentType: "event",
     contentId: id,

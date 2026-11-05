@@ -115,7 +115,9 @@ describe("Lane 6 guest cookie", () => {
     const off = await call("POST", "/api/guest-plans", { header, cookiesOff: true, body: { destination: "Kyoto, Japan" } });
     tripIds.add(off.json.plan.id);
     const cleared = await call("GET", "/api/guest-plans/current", { header });
-    assert.equal(cleared.status, 404, "no cookie, cookies on: a new guest with no plan");
+    // R3-1 (round 3 ruling; sanctioned edit): "no plan yet" answers 200 with null, never a 404.
+    assert.equal(cleared.status, 200, "no cookie, cookies on: a new guest");
+    assert.equal(cleared.json, null, "with no plan");
     const minted = cookieFrom(cleared.setCookie);
     assert.ok(minted && minted !== header, "a new cookie, never the header's id");
   });

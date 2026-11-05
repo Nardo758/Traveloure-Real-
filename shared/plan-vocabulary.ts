@@ -56,6 +56,13 @@ export function travelersForSave(raw: string | number | undefined | null): numbe
 }
 
 /**
+ * R3-4 (round 3 ruling, Nov 5, 2026): the party panel on every plan page opens at two adults when the plan states
+ * none, so Save is ready. It is a SHOWN default only (Locked Decision 33: an untouched party is stored NULL, never 2;
+ * ruling 38: a shown default and a chosen value are different facts). A stated party always wins.
+ */
+export const DEFAULT_ADULTS = 2;
+
+/**
  * THE PARTY TOTAL — one derivation of "how many people is this plan for", never two
  * (ledger `2026-09-04-one-modal-many-doors`; CLAUDE.md Locked Decision 33).
  *
