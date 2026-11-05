@@ -108,10 +108,21 @@ test.describe("Single planning entry — PlanEntry", () => {
     await expect(notYet.locator('[data-testid^="plan-entry-city-"]')).toHaveCount(8);
   });
 
-  test("a date: Next month shows what's on and the eight cities, then the occasion", async ({ page }) => {
+  test("a date: Next month scopes the picker, then what's on and the eight cities, then the occasion", async ({ page }) => {
     await openEntryFromHero(page);
     await page.getByTestId("plan-entry-around-date").click();
     await page.getByTestId("plan-entry-date-next-month").click();
+    // R3-8 (round 3 ruling; sanctioned edit): Next month opens the picker scoped to next month and sets no dates.
+    const now = new Date();
+    const first = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const last = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+    const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    await expect(page.getByTestId("plan-entry-date-start")).toHaveAttribute("min", ymd(first));
+    await expect(page.getByTestId("plan-entry-date-start")).toHaveAttribute("max", ymd(last));
+    await expect(page.getByTestId("plan-entry-date-start")).toHaveValue("");
+    await expect(page.getByTestId("plan-entry-whats-on")).toHaveCount(0);
+    await page.getByTestId("plan-entry-date-start").fill(ymd(first));
+    await page.getByTestId("plan-entry-date-end").fill(ymd(new Date(first.getFullYear(), first.getMonth(), 3)));
     await expect(page.getByTestId("plan-entry-whats-on")).toBeVisible();
     // CITY-1: only an open market (the marquee) is picked; Porto, not open, links to its waitlist.
     await expect(page.getByTestId("plan-entry-city-porto")).toHaveAttribute("href", "/waitlist/porto");

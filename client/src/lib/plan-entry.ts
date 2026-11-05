@@ -401,6 +401,18 @@ export function cityPageSource(path: string): { city: string; country: string } 
 export const PLAN_START_HREF = "/?start=1";
 
 /**
+ * R3-7 (round 3 ruling, Nov 5, 2026): where a landing moment pill goes — that occasion's own start page in the marquee
+ * city (`/experiences/proposal?destination=Kyoto`), never the start pop-up. Null when the moment names no catalog slug
+ * or no city is known, so the caller keeps the pop-up door for it.
+ */
+export function momentPillHref(slug: string | null | undefined, marqueeCity: string | null | undefined): string | null {
+  const s = (slug ?? "").trim();
+  const c = (marqueeCity ?? "").trim();
+  if (!s || !c) return null;
+  return `/experiences/${encodeURIComponent(s)}?destination=${encodeURIComponent(c)}`;
+}
+
+/**
  * The click handler a Start-a-plan link keeps: a plain click opens the pop-up in place (the door's
  * own handler, unchanged); a modified click (new tab/window) follows the href instead.
  */
@@ -465,7 +477,8 @@ export function initialPlanEntry(source: PlanEntrySource | null | undefined): { 
   // H-10: an experience and a city are already chosen, so the next step is dates and party.
   // A catalog slug on the page (`/experiences/:slug`) stays on the occasion step — "More specific"
   // is how that door is answered. An event anchor returned above and is never sent here.
-  const groupAndCity = !!named && !!explicitGroup && !source.experienceSlug && !source.carriedOccasionSlug;
+  // R3-6: a `?group=` filter (`onlyGroup`) is not an answer, so a city plus a filter still asks the occasion.
+  const groupAndCity = !!named && !!explicitGroup && doorChoseGroup(source) && !source.experienceSlug && !source.carriedOccasionSlug;
   const carriedAndCity = !!named && !!source.askDatesAndParty && (!!explicitGroup || !!occasionSlug);
   // E-2 (round 2 ruling): a door that names an occasion (`/experiences/proposal?destination=Kyoto`) has answered it —
   // never re-asked. A slug the catalog does not carry is dropped by the panel, which then asks (§13).
@@ -577,6 +590,15 @@ export function nextMonth(today: Date): { startDate: string; endDate: string } {
   return { startDate: ymd(first), endDate: ymd(last) };
 }
 
+/**
+ * R3-8 (round 3 ruling, Nov 5, 2026): "Next month" opens the date picker SCOPED to next month — the inputs' min and max —
+ * and sets no dates itself. The traveler picks the days; a month nobody narrowed is never stored as the trip's dates.
+ */
+export function nextMonthScope(today: Date): { min: string; max: string } {
+  const { startDate, endDate } = nextMonth(today);
+  return { min: startDate, max: endDate };
+}
+
 /** Events whose run overlaps [start, end] (inclusive), in date order. */
 export function eventsOverlapping<T extends { firstDate: string; lastDate: string }>(
   events: readonly T[],
@@ -648,6 +670,15 @@ export function planEntryEventRow(state: PlanEntryState): { title: string; event
  * OCC-1: the group chips the occasion step draws. With `onlyGroup` set to a group the catalog carries, only that
  * group; otherwise every available group (an unknown or absent filter filters nothing — today's behaviour).
  */
+/**
+ * R3-6 (round 3 ruling, Nov 5, 2026): did the DOOR choose the group? A door that names a group (`source.group`) chose it,
+ * except `/experiences?group=`, which also sets `onlyGroup`: there the group only FILTERS the occasion step (OCC-1), so
+ * the visitor still answers it — a hosted event offers the wedding instead of skipping straight to dates and party.
+ */
+export function doorChoseGroup(source: Pick<PlanEntrySource, "group" | "onlyGroup"> | null | undefined): boolean {
+  return !!source?.group && !source?.onlyGroup;
+}
+
 export function shownOccasionGroups(
   available: readonly OccasionPickerGroup[],
   onlyGroup: OccasionPickerGroup | null | undefined,

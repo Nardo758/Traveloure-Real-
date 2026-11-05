@@ -3,6 +3,7 @@ import { useImpressionTracker } from "@/hooks/use-impression-tracker";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { eventDrawerWhen } from "@/lib/event-drawer";
 import { Calendar, ExternalLink, Info, MapPin, Plus, Star, CheckCircle2, Wifi, Waves, Globe, Tag, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useGemPhoto, type StockPhotoCredit } from "@/hooks/use-gem-photo";
@@ -615,6 +616,7 @@ export function EventSheetBody({ data, action }: { data: any; action?: MoreInfoS
   const purchasesAllowed = useBookingActionsShown();
   const partnerPlace = feverCardPlace(data);
   const partnerName = partnerDisplayName(data.partnerName);
+  const when = eventDrawerWhen(data.date, data.endDate);
   return (
   <div className="flex flex-col gap-4 pt-2">
     {/* GATE-1: the drawer's one action row. */}
@@ -627,6 +629,20 @@ export function EventSheetBody({ data, action }: { data: any; action?: MoreInfoS
           {action.label}
         </Button>
       ) : null
+    ) : null}
+
+    {/* R3-9 (round 3 ruling): the image when the event has one. */}
+    {typeof data.imageUrl === "string" && data.imageUrl.trim() ? (
+      <img src={data.imageUrl} alt={typeof data.title === "string" ? data.title : ""} loading="lazy" className="w-full max-h-[220px] rounded-md object-cover" data-testid={`event-sheet-image-${data.id}`} />
+    ) : null}
+
+    {/* R3-9: the date always (when the event states one), the time when it is stated. */}
+    {when ? (
+      <div data-testid={`event-when-${data.id}`}>
+        <p className="text-[13px] font-semibold text-foreground mb-1">When</p>
+        <p className="text-[13px] text-foreground" data-testid={`event-when-date-${data.id}`}>{when.dateLine}</p>
+        {when.timeLine ? <p className="text-[13px] text-muted-foreground" data-testid={`event-when-time-${data.id}`}>{when.timeLine}</p> : null}
+      </div>
     ) : null}
 
     {/* PARTNER-1: the description is our own reviewed text only (the server sends nothing else); no text ⇒ no

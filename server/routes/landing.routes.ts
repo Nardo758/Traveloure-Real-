@@ -253,6 +253,22 @@ router.get("/api/landing/billboard-experts", async (_req, res) => {
   }
 });
 
+// R3-12 (ledger `2026-11-05-r3-entry-city`): the landing rail's occasions in order of their newest plan in the market.
+// Public, read-only, ORDER ONLY (no count, id or time). An unknown market or a failed read is an empty list, so the rail
+// draws nothing rather than a guessed order.
+router.get("/api/landing/recent-plans", async (req, res) => {
+  const { recentPlansMarket, listRecentPlanOccasions } = await import("../services/landing-recent-plans.service");
+  const market = recentPlansMarket(req.query.market);
+  res.set("Cache-Control", "public, max-age=300");
+  if (!market) return res.json({ occasions: [] });
+  try {
+    return res.json({ occasions: await listRecentPlanOccasions(market) });
+  } catch (e: any) {
+    console.error("[landing] recent-plans read failed (rail stays absent):", e?.message);
+    return res.json({ occasions: [] });
+  }
+});
+
 // "Coming up in our cities" (ledger `2026-09-28-city-events`): renderable city_events starting
 // in the next 180 days, soonest first, every display value derived server-side. Public, read-only.
 // On failure the page must show NOTHING rather than an error, so the error answer is an empty list.

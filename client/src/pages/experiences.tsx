@@ -90,6 +90,7 @@ function PlacePicker({ picked, pick }: { picked: string | null; pick: (marketKey
         </figcaption>
       </figure>
 
+      {/* R3-11: at phone width the Continue bar is sticky (E3), so each card keeps a bottom scroll margin above it. */}
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
         {ordered.map((m) => {
           const on = m.marketKey === picked;
@@ -124,7 +125,7 @@ function PlacePicker({ picked, pick }: { picked: string | null; pick: (marketKey
               <Link
                 key={m.marketKey}
                 href={waitlistMarketPath(m.marketKey)}
-                className="flex flex-col overflow-hidden rounded-xl border border-border text-left transition-colors hover:bg-muted"
+                className="flex flex-col overflow-hidden rounded-xl border border-border text-left transition-colors hover:bg-muted max-md:scroll-mb-24"
                 data-testid={`city-card-${m.marketKey}`}
                 data-photo={photo ? "credited" : "none"}
               >
@@ -138,7 +139,7 @@ function PlacePicker({ picked, pick }: { picked: string | null; pick: (marketKey
               type="button"
               onClick={() => pick(m.marketKey)}
               aria-pressed={on}
-              className={`flex flex-col overflow-hidden rounded-xl border text-left transition-colors ${
+              className={`flex flex-col overflow-hidden rounded-xl border text-left transition-colors max-md:scroll-mb-24 ${
                 on ? "border-primary ring-2 ring-primary" : "border-border hover:bg-muted"
               }`}
               data-testid={`city-card-${m.marketKey}`}
