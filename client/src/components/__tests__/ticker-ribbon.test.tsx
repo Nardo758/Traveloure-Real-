@@ -56,7 +56,9 @@ describe("the ticker ribbon", () => {
   it("R4 — each link appears once; the scrolling copies are hidden from assistive tech", () => {
     const html = render(<TickerRibbon items={ITEMS} cityName="Kyoto" button={tickerButton("waitlist", "kyoto", "Kyoto")} />);
     assert.equal((html.match(/href="\/signup\?intent=supply"/g) ?? []).length, 1);
-    assert.equal((html.match(/aria-hidden="true"/g) ?? []).filter(Boolean).length >= ITEMS.length * 2, true);
+    // R3-11 (sanctioned edit): the line that repeats the beta label is not scrolled, so the copies are of the rest.
+    const scrolled = ITEMS.filter((i) => i.text !== "Now in beta in Kyoto");
+    assert.equal((html.match(/aria-hidden="true"/g) ?? []).filter(Boolean).length >= scrolled.length * 2, true);
   });
 
   it("R5 — the label names the beta cities, never a count; an empty list falls back to the launch city", () => {

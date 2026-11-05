@@ -1,7 +1,7 @@
 /**
  * moments-slot.tsx — the position-2 section slot (Landing v2.5 L4).
  *
- * ONE fetch, ONE branch: the ExperiencesRail ("What people are planning") holds the slot while the
+ * ONE fetch, ONE branch: the ExperiencesRail ("Recent plans in {city}", R3-12) holds the slot while the
  * Moments resolver loads or if it has no displayable images; then MomentsSection renders in its
  * place. The loading state renders the rail — never a blank slot, never a flash of Moments.
  *

@@ -3694,7 +3694,9 @@ router.patch("/api/trips/:tripId/occasion", isAuthenticated, async (req, res) =>
       } else {
         const row = await storage.getExperienceTypeBySlug(slug);
         if (!row) return res.status(400).json({ message: "Unknown occasion" });
-        if (patch.eventType === undefined) patch.eventType = eventTypeForSlug(row.slug);
+        // R3-13 (round 3 ruling, Nov 5, 2026): the coarse type ALWAYS follows the stored slug through the one map
+        // (`eventTypeForSlug`; "other" only for a slug the map does not name) — a body's own eventType never overrides it.
+        patch.eventType = eventTypeForSlug(row.slug);
         // A-35 (migration 438): the resolved slug is stored on the plan, so a reader — and a claim — has it on the row.
         patch.occasionSlug = row.slug;
         penOccasion = { experienceSlug: row.slug, experienceType: row.name, eventType: patch.eventType as string };

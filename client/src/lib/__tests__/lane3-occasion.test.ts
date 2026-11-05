@@ -90,7 +90,9 @@ describe("Lane 3 occasion (client)", () => {
     assert.match(intake, /title: planTitle\(/);
     assert.doesNotMatch(intake, /\} Trip`/, "no second title rule");
     const entry = read("client/src/components/plan/PlanEntry.tsx");
-    assert.match(entry, /const pickedSlug = chosenOccasionSlug\(state, !!source\?\.group \|\| groupChosen\);/);
+    // R3-6 (sanctioned edit): `groupChosen` starts from `doorChoseGroup(source)`, so it alone carries the door's group.
+    assert.match(entry, /const pickedSlug = chosenOccasionSlug\(state, groupChosen\);/);
+    assert.match(entry, /useState\(doorChoseGroup\(source\)\)/);
     assert.match(entry, /\.\.\.\(pickedSlug \? \{ occasionName: choiceLabel \} : \{\}\)/);
   });
 });

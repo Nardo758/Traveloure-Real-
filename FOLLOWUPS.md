@@ -1327,3 +1327,21 @@ the session holds no admin credentials). `GUEST_PLAN_RETENTION_DAYS=30` is set o
 Nov 5, 2026), so the daily `guest-plan-retention` job removes the plan once it has been idle 30 days. **Ruled: left to
 the job.** An admin can still remove it earlier with `DELETE /api/admin/guest-plans/66dd6016-8514-4e40-a7ec-38df4ab9abb3`
 (A-26; audit row `access_audit_logs.action = 'guest_plan_deleted'`).
+
+### FU-R3-1 — /places/{city} reads a different gem store from /discover/location (EXP-QA round 3, R3-10)
+
+`/places/kyoto` reads `ai_discovered_gems` WHERE `verified_by_expert = true` (`server/services/gem-discovery.service.ts:82`
+`publicGemWhere`, `:357-385` `getGemsForDestination`; CMS-1: reviewed places only). `/discover/location/Kyoto` reads
+`travel_pulse_hidden_gems` WHERE `hidden_at IS NULL` (`server/services/location-view.service.ts:427-435`,
+`server/services/gem-visibility.ts:9`). They are two tables with two different review gates. A Kyoto gem on the city
+page is not a row the places page can read, and it would not pass CMS-1's gate if it were. Not changed in lane R3-2.
+**Needs a ruling:** which store and which gate `/places` should use. Pointing /places at `travel_pulse_hidden_gems`
+would put rows that no person reviewed on /places, unless it also requires `verified_at IS NOT NULL` (FD-2 ruling 3).
+
+### FU-R3-2 — `show` and `retreats` have no event-type mapping (EXP-QA round 3, R3-13)
+
+The event door's occasion slug `show` (`client/src/lib/plan-entry.ts:63`) and Group travel's default `retreats`
+(`shared/experience-group.ts:196`) are not in `OCCASION_SLUG_TO_EVENT_TYPE` (`shared/occasions.ts:40`), so
+`eventTypeForSlug` answers `other`. That is the rule's own answer for an unmapped slug, and it is why the bot saw
+`other` on the F1, /events and Group travel plans. A mapping chooses the plan's optimizer fee branch (BRANCH_MAP,
+`server/services/optimization-fee.service.ts`), so adding one is a money-path decision. Not made in lane R3-2.
