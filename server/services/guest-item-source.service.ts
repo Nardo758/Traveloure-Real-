@@ -307,5 +307,10 @@ export async function resolvePlanItemRef(
     default: return refuse("unknown_kind");
   }
   if (out.ok && isCityMismatch(out.source.rowCity, ctx.markets)) return refuse("city_mismatch");
+  // A-29 (CAP-2 Phase 2): an event's start is a PLACEMENT HINT from the card. The row's own start wins; the hint's day
+  // is used only when the row states none (a live Fever answer with no dates). It never sets a time.
+  if (out.ok && (ref.kind === "event" || ref.kind === "city_event") && !out.source.eventDate && ref.placement?.starts_at) {
+    out.source.eventDate = eventDayInMarket(ref.placement.starts_at, resolveMarketSlug(out.source.rowCity ?? ref.city));
+  }
   return out;
 }

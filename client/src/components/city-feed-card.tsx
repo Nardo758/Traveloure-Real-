@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { eventPlacementHints } from "@shared/plan-item-ref";
 import { useImpressionTracker } from "@/hooks/use-impression-tracker";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -1450,6 +1451,8 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd: onAddProp
             scheduledDate,
             sourceImpressionId: getImpIdEvt(),
             sourceContentId: String(event.id ?? event.eventId ?? ""),
+            // CAP-2 Phase 2 (A-29): the event's own start and end ride as placement hints.
+            ...eventPlacementHints(event),
           })
       : undefined,
   };
@@ -1537,6 +1540,8 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd: onAddProp
                     scheduledDate,
                     sourceImpressionId: getImpIdEvt(),
                     sourceContentId: String(event.id ?? event.eventId ?? ""),
+            // CAP-2 Phase 2 (A-29): the event's own start and end ride as placement hints.
+            ...eventPlacementHints(event),
                   });
                 }}
                 data-testid={`btn-add-event-${event.id}`}
@@ -1661,6 +1666,8 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd: onAddProp
                   scheduledDate,
                   sourceImpressionId: getImpIdEvt(),
                   sourceContentId: String(event.id ?? event.eventId ?? ""),
+            // CAP-2 Phase 2 (A-29): the event's own start and end ride as placement hints.
+            ...eventPlacementHints(event),
                 });
               }}
               data-testid={`btn-add-event-${event.id}`}
