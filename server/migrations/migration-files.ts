@@ -2290,4 +2290,6 @@ export const MIGRATION_FILES = [
   "437_kyoto_gem_coordinates.sql",
   // A-35: the plan's fine occasion slug on trips (nullable, no default). Ledger 2026-11-05-lane3-occasion.
   "438_trip_occasion_slug.sql",
+  // Kyoto events seed: seven factchecked city_events rows, data only, idempotent. Ledger 2026-11-05-kyoto-events-seed.
+  "439_kyoto_events_seed.sql",
 ] as const;
