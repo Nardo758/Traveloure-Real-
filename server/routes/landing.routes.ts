@@ -253,6 +253,22 @@ router.get("/api/landing/billboard-experts", async (_req, res) => {
   }
 });
 
+// FU-R3-1 (ledger `2026-11-05-fu-r3-places-gems`): `/places/{city}` lists the city page's own gems — the one
+// `listTravelerCityGems` read (travel_pulse_hidden_gems, not withdrawn). Public, read-only. A segment that names no
+// operating market is a 404; a failed read is a 500 the page says out loud, never an empty list presented as "none".
+router.get("/api/places/:city", async (req, res) => {
+  try {
+    const { listPlacesForMarket } = await import("../services/location-view.service");
+    const out = await listPlacesForMarket(String(req.params.city ?? "").slice(0, 120));
+    if (!out) return res.status(404).json({ message: "Not found" });
+    res.set("Cache-Control", "public, max-age=60");
+    return res.json(out);
+  } catch (e: any) {
+    console.error("[places] gems read failed:", e?.message);
+    return res.status(500).json({ message: "Couldn't load places" });
+  }
+});
+
 // R3-12 (ledger `2026-11-05-r3-entry-city`): the landing rail's occasions in order of their newest plan in the market.
 // Public, read-only, ORDER ONLY (no count, id or time). An unknown market or a failed read is an empty list, so the rail
 // draws nothing rather than a guessed order.

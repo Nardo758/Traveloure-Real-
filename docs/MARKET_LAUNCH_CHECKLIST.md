@@ -132,6 +132,11 @@ These are judgment calls the automation deliberately does not make.
    fired. A single stale-job report is not necessarily that: `post-internal-jobs.sh` warms the
    instance and retries a boot-window 404/503 (ledger `2026-09-20-jobs-cron-cold-start-retry`), so a
    report that survives ITS retry budget is the signal worth acting on.
+9. **Fee bands for event-led and group-travel plans — `fee_bands` row, human read, before open mode.** The event
+   door's occasion slug `show` and Group travel's default `retreats` have no event-type mapping, so their plans are
+   `event_type = 'other'`, which lands in the optimizer fee's default branch. "other" stands (ruling, Nov 5, 2026;
+   FU-R3-2). Before traveler sign-up opens, decide the fee for those plans as a `fee_bands` row with its admin
+   control (LD 8), and have a person read it.
 
 ## Explicitly NOT per-market
 

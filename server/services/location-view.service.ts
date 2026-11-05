@@ -46,6 +46,7 @@ import type { ListingServiceType } from "@shared/service-type-query";
 import { logger } from "../infrastructure/logger";
 import { marketIsOpen } from "@shared/ticker";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
+import { placesMarketFor } from "@shared/places-path";
 import { getLaunchMarketSlug, getLiveMarketSlugs } from "./platform-flags";
 import { resolveMarketSlug } from "./trend-engine/operating-markets";
 
@@ -100,6 +101,37 @@ function cityScopePredicate(cityName: string) {
 /** Resolved gem attribution — the expert behind `curated_by_expert_id`, or null.
  *  Canonical shape lives in @shared/gem-curated-by; re-exported for server callers. */
 export type { GemCuratedBy };
+
+/**
+ * FU-R3-1 (ledger `2026-11-05-fu-r3-places-gems`): THE traveler gem read for a city — the city page's gem section and
+ * `/places/{city}` both call this, so the two pages list the same gems. `travel_pulse_hidden_gems` for the city, kept
+ * only while not withdrawn (`visibleGemCondition`, `hidden_at IS NULL`), DESC by gemScore (fixed Aug 29 2026 — was
+ * ascending). CS-1 item 1: no image of a place under a no_photos block. Attribution (ruling 1), then the ruled TEASER
+ * projection (ruling 3) — deep fields never leave the server. Bookability is DERIVED (never stored) by the one resolver.
+ * `ai_discovered_gems` is never read by a public page (CMS-1).
+ */
+/**
+ * FU-R3-1: `/places/{city}`'s read. The same market rule as the city page (CITY-1: a market that is not open lists no
+ * gems), then the same `listTravelerCityGems`. Null = the segment names no operating market (the page answers not found).
+ */
+export async function listPlacesForMarket(segment: string): Promise<{ city: string; open: boolean; gems: Awaited<ReturnType<typeof listTravelerCityGems>> } | null> {
+  const m = placesMarketFor(segment);
+  if (!m) return null;
+  const [launch, live] = await Promise.all([getLaunchMarketSlug(), getLiveMarketSlugs()]);
+  if (!marketIsOpen(m.marketKey, { launch, live, beta: [], dates: {} })) return { city: m.cityName, open: false, gems: [] };
+  return { city: m.cityName, open: true, gems: await listTravelerCityGems(m.cityName) };
+}
+
+export async function listTravelerCityGems(cityName: string) {
+  const rows = await db
+    .select()
+    .from(travelPulseHiddenGems)
+    .where(and(eq(travelPulseHiddenGems.city, cityName), visibleGemCondition()))
+    .orderBy(desc(travelPulseHiddenGems.gemScore));
+  const blocks = await photoBlocks();
+  const attributed = await attachGemAttribution(rows.map((g) => hideBlockedGemImage(g, blocks)));
+  return attributed.map(toGemTeaser).map((gem) => ({ ...gem, bookability: resolveBookability(gem) }));
+}
 
 /**
  * Gem attribution (2026-08-29 Replit-audit ruling 1): reuse the EXISTING
@@ -548,21 +580,8 @@ class LocationViewService {
       });
     })();
 
-    // DB hidden gems for the city — all placeTypes, all neighborhoods.
-    // DESC by gemScore (fixed Aug 29 2026 — was ascending; see the bulk fetch above).
-    const gemsPromise = db
-      .select()
-      .from(travelPulseHiddenGems)
-      .where(and(eq(travelPulseHiddenGems.city, cityName), visibleGemCondition()))
-      .orderBy(desc(travelPulseHiddenGems.gemScore))
-      // CS-1 item 1: no image of a place under a no_photos block.
-      .then(async (rows) => { const blocks = await photoBlocks(); return rows.map((g) => hideBlockedGemImage(g, blocks)); })
-      // Attribution (ruling 1) attached, then the ruled TEASER projection
-      // (ruling 3) — deep fields never leave the server on this surface.
-      .then((rows) => attachGemAttribution(rows))
-      .then((rows) => rows.map(toGemTeaser))
-      // bookability is DERIVED (never stored) via the single shared resolver.
-      .then((rows) => rows.map((gem) => ({ ...gem, bookability: resolveBookability(gem) })));
+    // DB hidden gems for the city — the ONE traveler gem read, shared with /places/{city} (FU-R3-1).
+    const gemsPromise = listTravelerCityGems(cityName);
 
     // Active platform services for this city — joined with vendor form + category
     // so the frontend card can show website link and category label without extra queries.
