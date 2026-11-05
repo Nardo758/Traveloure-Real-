@@ -331,8 +331,9 @@ export function guestPlanDays(view: GuestPlanView): PlanCardDay[] {
 
 /**
  * A-22 (ledger `2026-11-05-lane7-guest-slip`): the guest plan's days as the Trip Slip draws them — every day of the
- * window (an empty one reads "0 stops", as on the slip), in day order, each with its machine date ONLY when the guest chose the dates (a placeholder window
- * is never read as a weekday, §13 — the heading is then the plan's own "Day N"). PURE.
+ * window in day order (an empty day reads "0 stops", as on the slip), each with its machine date ONLY when the guest
+ * chose the dates. A placeholder window is never read as a weekday (§13); the heading is then the plan's own "Day N".
+ * PURE.
  */
 export function guestSlipDays(view: GuestPlanView): Array<{ dayNum: number; dateIso: string | null; activities: PlanCardActivity[] }> {
   const days = guestPlanDays(view)
