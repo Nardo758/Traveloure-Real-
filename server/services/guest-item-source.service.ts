@@ -20,6 +20,8 @@
  * Coordinates are copied from the source row as stored, with no source stamp (`coord_source` NULL), exactly as gem
  * saves have done since GATE-1B. A row with no point saves unlocated, never a guessed or city-centre point (§13).
  */
+import { marketToday } from "@shared/market-today";
+import { resolveMarketSlug } from "./trend-engine/operating-markets";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { activityCache, affiliateProducts, feverEventCache, hotelCache, providerServices, travelPulseHiddenGems } from "@shared/schema";
@@ -40,6 +42,19 @@ export interface ResolvedGuestSource {
   contentId: string | null;
   providerServiceId: string | null;
   affiliateProductId: string | null;
+  /**
+   * R3-17: an event's own day, in its market's calendar (YYYY-MM-DD), from the event row's start. Absent for every other
+   * kind and for an event with no stated start (§13 — never today, never a guess).
+   */
+  eventDate?: string | null;
+}
+
+/** R3-17, pure: an instant → its calendar day in the market's own zone (UTC with no market). Null for no instant. */
+export function eventDayInMarket(start: Date | string | null | undefined, marketKey: string | null | undefined): string | null {
+  if (start == null || start === "") return null;
+  const d = start instanceof Date ? start : new Date(start);
+  if (Number.isNaN(d.getTime())) return null;
+  return marketToday(marketKey, d);
 }
 
 const ID_MAX = 200;
@@ -93,19 +108,21 @@ async function event(id: string): Promise<ResolvedGuestSource | null> {
   // ONE id per kind (CAP-2 input): an event is named by its Fever event id — `fever_event_cache.event_id`, the same id
   // the public event payload carries as `id`. The cache answers first; a miss asks Fever for that same id.
   const [row] = await db
-    .select({ title: feverEventCache.title, venueName: feverEventCache.venueName, latitude: feverEventCache.latitude, longitude: feverEventCache.longitude })
+    .select({ title: feverEventCache.title, venueName: feverEventCache.venueName, latitude: feverEventCache.latitude, longitude: feverEventCache.longitude, startDate: feverEventCache.startDate, city: feverEventCache.city })
     .from(feverEventCache)
     .where(eq(feverEventCache.eventId, id))
     .limit(1);
   let title = clean(row?.title);
   let venueName = clean(row?.venueName);
   let point = row ? pointOf(row.latitude, row.longitude) : null;
+  let eventDate = row ? eventDayInMarket(row.startDate, resolveMarketSlug(row.city ?? "")) : null;
   if (!row || !title) {
     const live = await feverLookup(id).catch(() => null);
     title = clean(live?.title);
     if (!live || !title) return null;
     venueName = clean(live.venue?.name);
     point = pointOf(live.venue?.coordinates?.lat, live.venue?.coordinates?.lng);
+    eventDate = eventDayInMarket((live as any).dates?.startDate ?? null, resolveMarketSlug((live as any).city?.name ?? ""));
   }
   return {
     ...base(title, point),
@@ -115,6 +132,7 @@ async function event(id: string): Promise<ResolvedGuestSource | null> {
     contentId: id,
     providerServiceId: null,
     affiliateProductId: null,
+    eventDate,
   };
 }
 

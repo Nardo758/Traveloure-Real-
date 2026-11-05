@@ -63,7 +63,8 @@ export function SignInModal({
   // therefore translated — a caller-supplied string is passed through untouched, because the
   // platform cannot translate copy it did not author.
   const title = titleProp ?? t("modal.titleSignInDefault");
-  const description = descriptionProp ?? t("modal.descSignInDefault");
+  // R3-27: in waitlist mode the default line offers no account creation (A-7) — "Sign in to continue." only.
+  const description = descriptionProp ?? t(travelerSignupShown ? "modal.descSignInDefault" : "modal.descSignInWaitlist");
   const [mode, setMode] = useState<"signin" | "signup" | "reset">("signin");
   const [isLoading, setIsLoading] = useState(false);
   const [resetSent, setResetSent] = useState(false);

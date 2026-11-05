@@ -644,9 +644,24 @@ class FeverService {
     // Returns null when credentials/catalog are missing or the HTTP call fails.
     const result = await this.fetchLiveEventsForCity(city.name);
     if (!result || result.events.length === 0) return 0;
+    return this.writeEventsToCache(city, result.events, { retireStale: true });
+  }
 
+  /**
+   * R3-17 (round 3, ledger `2026-11-05-r3-followups-2`): cache the live events a page already listed, so a save of one
+   * of them resolves its exact id (`fever_event_cache.event_id`, the public payload's `id`) with its venue point and its
+   * dates. Live catalog only — never a generated event — and best effort: a failed write leaves the page as it was.
+   */
+  public async cacheListedEvents(cityNameOrCode: string, events: readonly FeverEvent[]): Promise<number> {
+    if (!this.isCatalogReady() || events.length === 0) return 0;
+    const city = this.findCity(cityNameOrCode);
+    if (!city) return 0;
+    return this.writeEventsToCache(city, events, { retireStale: false });
+  }
+
+  /** The one cache writer: an `event_id` upsert per event (editorial columns untouched). */
+  private async writeEventsToCache(city: FeverCity, events: readonly FeverEvent[], opts: { retireStale: boolean }): Promise<number> {
     {
-      const { events } = result;
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
       let upserted = 0;
 
@@ -745,7 +760,7 @@ class FeverService {
       // now have an updated expiresAt; any remaining expired rows for the same
       // cityCode are no longer active and would otherwise linger until the cache
       // cleanup job (task #1190) removes them.
-      if (upserted > 0) {
+      if (opts.retireStale && upserted > 0) {
         try {
           await db
             .delete(feverEventCache)

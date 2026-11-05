@@ -443,6 +443,11 @@ class LocationViewService {
         sortBy: "date",
       });
       if (!result) return { events: [], total: 0, page: 1, totalPages: 0, city: null };
+      // R3-17: the live events this page lists are cached by their own id, so "Save to plan" on one resolves it (its
+      // venue point and dates). Best effort and never awaited by the page: a failed write changes nothing it shows.
+      void feverService.cacheListedEvents(cityName, result.events).catch((err: any) => {
+        logger.warn({ city: cityName, reason: err?.message ?? String(err) }, "[fever] listed-event cache write failed");
+      });
       // SH-1 Q7.4: the destination page never carries a Fever amount or partner URL.
       return { ...result, events: await toPublicFeverEvents(result.events) };
     })();

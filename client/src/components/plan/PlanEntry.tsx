@@ -190,6 +190,33 @@ function Chip({ active, onClick, testId, children }: { active: boolean; onClick:
   );
 }
 
+/**
+ * R3-20 (round 3, ledger `2026-11-05-r3-followups-2`): the ONE date-preset row — This weekend · Next month · Pick dates ·
+ * What's on — drawn by every entry path (the "A date" step and the dates-and-party step). "This weekend" is
+ * `thisWeekend` (the coming Saturday–Sunday; on a Saturday or Sunday the rest of that weekend), and it sets both dates.
+ */
+export const DATE_PRESET_LABELS = ["This weekend", "Next month", "Pick dates", "What's on"] as const;
+export function DatePresets(props: {
+  nextMonthActive: boolean;
+  pickActive: boolean;
+  whatsOnActive: boolean;
+  onWeekend: () => void;
+  onNextMonth: () => void;
+  onPick: () => void;
+  onWhatsOn: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2" data-testid="plan-entry-date-presets">
+      <Chip active={false} onClick={props.onWeekend} testId="plan-entry-date-weekend">{DATE_PRESET_LABELS[0]}</Chip>
+      {/* R3-8: opens the picker scoped to next month; the traveler picks the days. */}
+      <Chip active={props.nextMonthActive} onClick={props.onNextMonth} testId="plan-entry-date-next-month">{DATE_PRESET_LABELS[1]}</Chip>
+      <Chip active={props.pickActive} onClick={props.onPick} testId="plan-entry-date-pick">{DATE_PRESET_LABELS[2]}</Chip>
+      {/* E-7 (round 2 rulings): the same event list as "An event". */}
+      <Chip active={props.whatsOnActive} onClick={props.onWhatsOn} testId="plan-entry-date-whats-on">{DATE_PRESET_LABELS[3]}</Chip>
+    </div>
+  );
+}
+
 /** CITY-1: a non-open market's chip — a link to its waitlist, never a selection. */
 function WaitlistChip({ marketKey, testId, children }: { marketKey: string; testId: string; children: React.ReactNode }) {
   return (
@@ -296,7 +323,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
     staleTime: 5 * 60_000,
   });
   // SH-1 Q14.1: a series' show dates come from its sibling rows in the same upcoming list.
-  const needsEvents = open && (state.around === "date" || state.around === "event" || !!state.event?.seriesKey);
+  const needsEvents = open && (state.around === "date" || state.around === "event" || whatsOn || !!state.event?.seriesKey);
   const { data: eventsPayload } = useQuery<CityEventsPayload>({
     queryKey: ["/api/city-events/upcoming"],
     enabled: needsEvents,
@@ -590,14 +617,16 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
 
               {state.around === "date" && (
                 <div className="space-y-3">
-                  <div className="flex flex-wrap gap-2">
-                    <Chip active={false} onClick={() => { setPickDates(false); setDateScope(null); setState((s) => ({ ...s, ...thisWeekend(new Date()), event: null, night: null })); }} testId="plan-entry-date-weekend">This weekend</Chip>
-                    {/* R3-8: opens the picker scoped to next month; the traveler picks the days. */}
-                    <Chip active={pickDates && !!dateScope} onClick={() => { setPickDates(true); setDateScope(nextMonthScope(new Date())); }} testId="plan-entry-date-next-month">Next month</Chip>
-                    <Chip active={pickDates && !dateScope} onClick={() => { setPickDates(true); setDateScope(null); }} testId="plan-entry-date-pick">Pick dates</Chip>
-                    {/* E-7 (round 2 rulings): the same event list as "An event". */}
-                    <Chip active={whatsOn} onClick={() => setWhatsOn((v) => !v)} testId="plan-entry-date-whats-on">What's on</Chip>
-                  </div>
+                  {/* R3-20: the ONE preset row, the same component on every entry path. */}
+                  <DatePresets
+                    nextMonthActive={pickDates && !!dateScope}
+                    pickActive={pickDates && !dateScope}
+                    whatsOnActive={whatsOn}
+                    onWeekend={() => { setPickDates(false); setDateScope(null); setState((s) => ({ ...s, ...thisWeekend(new Date()), event: null, night: null })); }}
+                    onNextMonth={() => { setPickDates(true); setDateScope(nextMonthScope(new Date())); }}
+                    onPick={() => { setPickDates(true); setDateScope(null); }}
+                    onWhatsOn={() => setWhatsOn((v) => !v)}
+                  />
                   {whatsOn && !(state.startDate && state.endDate) && (
                     <div className="space-y-4" data-testid="plan-entry-date-whats-on-list">
                       {events.length === 0 ? (
@@ -676,10 +705,30 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
                 </div>
               )}
               <div className="space-y-2">
-                <div className="flex flex-wrap gap-2">
-                  <Chip active={false} onClick={() => { setDateScope(null); setState((s) => ({ ...s, ...thisWeekend(new Date()) })); }} testId="plan-entry-date-weekend">This weekend</Chip>
-                  <Chip active={!!dateScope} onClick={() => setDateScope(nextMonthScope(new Date()))} testId="plan-entry-date-next-month">Next month</Chip>
-                </div>
+                {/* R3-20: the same preset row as "A date"; here the picker is always open, so Pick dates only unscopes it. */}
+                <DatePresets
+                  nextMonthActive={!!dateScope}
+                  pickActive={false}
+                  whatsOnActive={whatsOn}
+                  onWeekend={() => { setDateScope(null); setState((s) => ({ ...s, ...thisWeekend(new Date()) })); }}
+                  onNextMonth={() => setDateScope(nextMonthScope(new Date()))}
+                  onPick={() => setDateScope(null)}
+                  onWhatsOn={() => setWhatsOn((v) => !v)}
+                />
+                {whatsOn && (
+                  <div className="space-y-4" data-testid="plan-entry-details-whats-on-list">
+                    {events.length === 0 ? (
+                      <p className="text-[14px]" style={{ color: "#7A7A72" }}>No upcoming events listed right now.</p>
+                    ) : (
+                      eventPickerGroups(events, whatsOnMarquee).map((g) => (
+                        <div key={g.key} className="space-y-2">
+                          <p className="text-[11px] uppercase tracking-[0.12em]" style={{ fontFamily: MONO, color: "#7A7A72" }}>{g.city ?? (g.month ? monthLabel(g.month) : "")}</p>
+                          {g.events.map(eventButton)}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
                 <div className="flex flex-wrap items-center gap-2">
                   <input type="date" aria-label="Start date" min={dateScope?.min} max={dateScope?.max} value={state.startDate ?? ""} onChange={(e) => setState((s) => ({ ...s, startDate: e.target.value || null, endDate: s.endDate && e.target.value && s.endDate < e.target.value ? e.target.value : s.endDate }))} className="rounded-md border px-2 py-1.5 text-[14px]" data-testid="plan-entry-date-start" />
                   <span aria-hidden>–</span>

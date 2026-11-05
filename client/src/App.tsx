@@ -893,6 +893,10 @@ function Router() {
       </Route>
       {/* Step 8d (ledger `2026-10-07-step8d-guest-map`): the GUEST map — unprotected, plan-less, Browse
           only. Registered BEFORE `/plans/:tripId`, which stays protected and would otherwise match "new". */}
+      {/* R3-19 (round 3, ledger `2026-11-05-r3-followups-2`): /plans is the plan list's address too — it goes to /my-trips. */}
+      <Route path="/plans">
+        <Redirect to="/my-trips" replace />
+      </Route>
       <Route path="/plans/new">
         <Layout><GuestPlanMapPage /></Layout>
       </Route>

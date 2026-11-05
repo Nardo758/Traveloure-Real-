@@ -133,6 +133,16 @@ function TripRow({ trip, viewMode, now }: { trip: any; viewMode: "grid" | "list"
                         {trip.trackingNumber}
                       </span>
                     )}
+                    {/* R3-23: the plan's occasion — the ONE label the server reads from
+                        `occasion_slug`. Null stays null (A-8): no occasion, no chip. */}
+                    {(trip as any).occasionLabel ? (
+                      <span
+                        className="flex-shrink-0 rounded border border-border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide text-muted-foreground"
+                        data-testid={`chip-plan-occasion-${trip.id}`}
+                      >
+                        {(trip as any).occasionLabel}
+                      </span>
+                    ) : null}
                     {trip.occasion && (
                       <span
                         className="flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold"

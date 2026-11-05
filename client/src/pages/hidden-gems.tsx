@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { AddToExperienceDialog } from "@/components/add-to-experience-dialog";
 import NotFound from "@/pages/not-found";
 import { placesMarketFor } from "@shared/places-path";
 import { Card, CardContent } from "@/components/ui/card";
@@ -26,6 +28,16 @@ export default function HiddenGemsPage({ city }: { city?: string }) {
     queryKey: [`/api/places/${encodeURIComponent(market?.marketKey ?? "")}`],
     enabled: !!market,
   });
+
+  // R3-26: a signed-in member's press opens the same add-to-plan dialog as the city page (`discover-location.tsx`
+  // `handleAdd`); the card's own `useBrowseSaveToPlan` still sends a waitlist guest's press to the guest save rail.
+  // Before this the card had no `onAdd`, so a signed-in press did nothing and said nothing.
+  const [addItem, setAddItem] = useState<any>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const onAdd = (item: any) => {
+    setAddItem(item);
+    setAddOpen(true);
+  };
 
   if (!market) return <NotFound />;
   const gems = data?.gems ?? [];
@@ -70,10 +82,11 @@ export default function HiddenGemsPage({ city }: { city?: string }) {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3" data-testid="places-gems">
           {gems.map((gem) => (
-            <CityFeedCardGem key={gem.id} gem={gem} city={market.cityName} bookability={gem.bookability} />
+            <CityFeedCardGem key={gem.id} gem={gem} city={market.cityName} bookability={gem.bookability} onAdd={onAdd} />
           ))}
         </div>
       )}
+      <AddToExperienceDialog item={addItem} open={addOpen} onOpenChange={setAddOpen} />
     </div>
   );
 }

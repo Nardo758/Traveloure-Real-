@@ -332,6 +332,23 @@ export type GuestSaveOutcome =
   | { ok: true; itemId: string; located: boolean; existing: boolean; item: GuestPlanView["items"][number] | null }
   | { ok: false; code: "no_plan" | "unknown_source" };
 
+/**
+ * R3-17, pure: where an event lands on a plan — its own date, and that date's day number inside the plan's window
+ * (null day number when the window does not hold it). No event date ⇒ null (the item keeps the ordinary day 1).
+ */
+export function guestEventPlacement(
+  eventDate: string | null,
+  planStart: string,
+  planEnd: string,
+): { scheduledDate: string; dayNumber: number | null } | null {
+  if (!eventDate || !/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) return null;
+  const start = planStart.slice(0, 10);
+  const end = planEnd.slice(0, 10);
+  if (eventDate < start || eventDate > end) return { scheduledDate: eventDate, dayNumber: null };
+  const day = Math.round((Date.parse(`${eventDate}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000) + 1;
+  return { scheduledDate: eventDate, dayNumber: day };
+}
+
 /** R3-1: where a save spends its time, in ms — sent as `Server-Timing` so a slow save names its step. */
 export type GuestSaveTimings = { plan: number; resolve: number; write: number; read: number };
 
@@ -361,6 +378,9 @@ export async function saveGuestPlanItem(
   lap("resolve");
   if (!source) return { ok: false, code: "unknown_source" };
   const located = source.latitude != null && source.longitude != null;
+  // R3-17: an event lands on its own day — `scheduled_date` is the event's date, and its day number is that day's place
+  // in the plan's window. A day the window does not hold keeps the date and lands on day 1 (never a guessed day).
+  const eventPlacement = guestEventPlacement(source.eventDate ?? null, String(trip.startDate), String(trip.endDate));
   const out = await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"guest-plan-item:" + trip.id}))`);
     const sameSource = source.contentType && source.contentId
@@ -382,7 +402,9 @@ export async function saveGuestPlanItem(
           title: source.title,
           description: body.description ?? null,
           itemType: source.itemType ?? "activity",
-          dayNumber: body.dayNumber ?? 1,
+          // An event in the window lands on its own day, whatever day the card sent.
+          dayNumber: eventPlacement?.dayNumber ?? body.dayNumber ?? 1,
+          ...(eventPlacement ? { scheduledDate: eventPlacement.scheduledDate } : {}),
           status: "planned",
           origin: "traveler",
           ...(source.locationName ? { locationName: source.locationName } : {}),

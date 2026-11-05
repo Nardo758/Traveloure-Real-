@@ -431,6 +431,8 @@ export async function loadWhereToStay(tripId: string, userId: string | null | un
     city,
     basis,
     hotelsAvailable: hotels.length > 0,
+    // R3-25: the stops with a point — the ranking and the stay card wait for at least one.
+    locatedStops: Array.from(byDay.values()).reduce((n, d) => n + d.points.length, 0),
     ...(ranked.length === 0 ? { unranked: neighborhoods.length === 0 ? ("no_neighborhoods" as const) : ("no_located_items" as const) } : {}),
     neighborhoods: distinguishingReasons(ranked).map((r, i) => ({
       slug: r.slug,

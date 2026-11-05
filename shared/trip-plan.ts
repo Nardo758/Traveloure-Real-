@@ -758,6 +758,8 @@ export interface TripPlanPlancardExtras {
      * `planDatesAreConfirmed` (`shared/plan-dates.ts`) answers once (§18 rule 1).
      */
     datesConfirmed?: boolean;
+    /** R3-23: the plan's occasion label — the catalog name for `trips.occasion_slug`; null = no occasion (A-8). */
+    occasionLabel?: string | null;
   };
   changeLog: TripPlanChange[];
   metrics: TripPlanMetrics;

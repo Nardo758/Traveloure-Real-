@@ -1350,7 +1350,7 @@ The event door's occasion slug `show` (`client/src/lib/plan-entry.ts:63`) and Gr
 **Closed (ruling, Nov 5, 2026):** no mapping change; "other" stands. Moved to `docs/MARKET_LAUNCH_CHECKLIST.md` item 9,
 "Fee bands for event-led and group-travel plans" — a `fee_bands` row, read by a person, before open mode.
 
-### FU-R3-3 — the occasion chip on the plan header (polish) (EXP-QA round 3 follow-ups)
+### FU-R3-3 — the occasion chip on the plan header (polish) (EXP-QA round 3 follow-ups) — **CLOSED by ledger `2026-11-05-r3-followups-2`** (R3-23: the header reads "Your plan · {occasion}" from `occasion_slug`)
 
 The plan header does not draw the plan's occasion as a chip. Polish, not a defect: the occasion is stored on the plan
 (`trips.occasion_slug`, migration 438) and the title already names it when one was picked. Recorded by the round 3
@@ -1377,3 +1377,17 @@ sentence; each of 433, 434, 438 and 439 also has a separate comment that is the 
 attribution footer, and the session's notes on all five PRs were edited to start with `[bot:` and no longer quote the
 sentence. **Needs Leon:** an approval (or not) of 435–437 in the H-29 form, on #1887 or here; the SQL is already on
 `main` and, once published, applied.
+
+### FU-R3-6 — Kyoto gems with no coordinates, for Research Bot (EXP-QA round 3 follow-ups 2, A-18)
+
+These Kyoto `travel_pulse_hidden_gems` rows have no latitude/longitude, so a save of one lands on the plan as "not on the
+map" (A-18). Read from a database built from the repo's seeds and migrations on Nov 5, 2026 — production may hold a
+different set; re-read it there before assigning. Each point comes from an open source with its attribution, never from
+Google (LD 21 / GC-1):
+
+Ginkaku-ji · Kagurazaka Ishikawa · Kibune · Kibune Shrine · Kishiwada · Kishiwada Cafe · Kurama-dera Temple · Nishiki
+Market alley stalls · Otagi Nenbutsu-ji · Pontocho evening walk · Sannenzaka & Ninenzaka · Tenryu-ji · Tetsugaku-no-Michi
+(Philosopher's Path) · Tofuku-ji Temple · Tofuku-ji Temple during autumn.
+
+"Kagurazaka Ishikawa" (a Tokyo restaurant) and the two "Kishiwada" rows (a city in Osaka Prefecture) look misfiled under
+Kyoto; a person decides whether they belong to the market before they are given a point.
