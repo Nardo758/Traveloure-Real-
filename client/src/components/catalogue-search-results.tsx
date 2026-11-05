@@ -107,7 +107,7 @@ export function CatalogueResultRow({
             </a>
           </Button>
         ) : (
-          <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => onAdd(catalogueAddItem(result))}>
+          <Button disabled={browseSave.pending} size="sm" variant="outline" className="h-8 text-xs" onClick={() => onAdd(catalogueAddItem(result))}>
             {label}
           </Button>
         )}

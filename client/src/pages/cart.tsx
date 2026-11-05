@@ -106,6 +106,7 @@ import {
   requestOnlyListingHref,
   type RequestOnlyReason,
 } from "@/lib/request-only-line";
+import { GUEST_SESSION_STORAGE_KEY } from "@/lib/guest-session-key";
 
 const SUPPORTED_CURRENCIES = [
   { code: "USD", label: "USD – US Dollar" },
@@ -911,7 +912,7 @@ export default function CartPage() {
   const { data: cart, isLoading } = useQuery<CartData>({
     queryKey: ["/api/cart"],
     queryFn: async () => {
-      const guestId = localStorage.getItem("traveloure_guest_session");
+      const guestId = localStorage.getItem(GUEST_SESSION_STORAGE_KEY);
       const headers: Record<string, string> = {};
       if (guestId) headers["X-Guest-Session"] = guestId;
       const res = await fetch("/api/cart", { credentials: "include", headers });

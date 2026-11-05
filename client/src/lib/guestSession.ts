@@ -1,4 +1,4 @@
-const GUEST_SESSION_KEY = "traveloure_guest_session";
+import { GUEST_SESSION_STORAGE_KEY as GUEST_SESSION_KEY } from "./guest-session-key";
 const IMPRESSION_SESSION_KEY = "traveloure_impression_session";
 
 export function getGuestSessionId(): string {
