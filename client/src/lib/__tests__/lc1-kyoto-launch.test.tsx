@@ -22,7 +22,7 @@ import { PlanningProvider } from "../../contexts/PlanningContext";
 import ExpertsPage from "../../pages/experts";
 import ProvidersDirectoryPage from "../../pages/providers-directory";
 import { kyotoExpertsSectionVisible } from "../../pages/launch-waitlist";
-import { marketPageEvents } from "../../components/landing/events-strip";
+import { stripEvents } from "../../components/landing/events-strip";
 import { formatSourceAmount, partnerActivityPriceLabel } from "../partner-price";
 import { priceMatches } from "../tile-price";
 import { queryClient as appQueryClient } from "../queryClient";
@@ -227,13 +227,15 @@ describe("LC4 partner currency", () => {
 });
 
 describe("Kyoto event strip", () => {
-  it("drops a dated event outside the Kyoto market", () => {
+  // E-7 (ruling, Nov 5, 2026; sanctioned edit): the strip keeps an outside-city event (it carries its own label), lists
+  // the marquee first and then other cities, and is never emptied by an unresolved market.
+  it("keeps an outside-city event and lists the marquee first", () => {
     const cards = [
-      { id: "in", marketKey: "kyoto", outsideCity: false, title: "In the city" },
-      { id: "out", marketKey: "kyoto", outsideCity: true, title: "Max Richter Live" },
-      { id: "else", marketKey: "mumbai", outsideCity: false, title: "Elsewhere" },
+      { id: "in", marketKey: "kyoto", outsideCity: false, title: "In the city", firstDate: "2026-12-01" },
+      { id: "out", marketKey: "kyoto", outsideCity: true, title: "Max Richter Live", firstDate: "2026-12-02" },
+      { id: "else", marketKey: "mumbai", outsideCity: false, title: "Elsewhere", firstDate: "2026-11-20" },
     ] as CityEventCard[];
-    assert.deepEqual(marketPageEvents(cards, "kyoto").map((c) => c.id), ["in"]);
-    assert.deepEqual(marketPageEvents(cards, null), [], "CITY-1: no marquee ⇒ no events");
+    assert.deepEqual(stripEvents(cards, "kyoto").map((c) => c.id), ["in", "out", "else"]);
+    assert.deepEqual(stripEvents(cards, null).map((c) => c.id), ["else", "in", "out"], "no marquee ⇒ every event, by date");
   });
 });

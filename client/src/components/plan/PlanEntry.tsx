@@ -29,7 +29,7 @@ import { OccasionPicker } from "@/components/plan/OccasionPicker";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
 import { Link, useLocation } from "wouter";
 import { MARKET_STATUS_COPY, marketIsOpen, marketPickerOrder, marketStatusLabel } from "@shared/ticker";
-import { useMarketStatusSettings } from "@/lib/signup-mode";
+import { useMarketStatusSettings, useMarqueeMarket } from "@/lib/signup-mode";
 import { notPlanningInLine } from "@/lib/trip-slip";
 import { waitlistMarketPath } from "@/lib/waitlist-markets";
 import {
@@ -226,6 +226,9 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
   const { settings: marketSettings, loaded: marketSettingsLoaded } = useMarketStatusSettings();
   const isOpenMarket = (key: string) => !marketSettingsLoaded || marketIsOpen(key, marketSettings);
   const marquee = marketSettingsLoaded ? marketSettings.launch : null;
+  // E-7 (ruling, Nov 5, 2026): the "What's on" list groups by the ONE launch-market resolver with the marquee fallback —
+  // the same market the landing strip reads — so an unresolved setting never empties or reorders it differently.
+  const whatsOnMarquee = useMarqueeMarket().slug;
   const [state, setState] = useState<PlanEntryState>(() => withMarqueeCity(seed.state, marquee));
   const [step, setStep] = useState<PlanEntryStep>(seed.step);
   useEffect(() => {
@@ -586,9 +589,9 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
                       {events.length === 0 ? (
                         <p className="text-[14px]" style={{ color: "#7A7A72" }}>No upcoming events listed right now.</p>
                       ) : (
-                        eventPickerGroups(events, marquee).map((g) => (
+                        eventPickerGroups(events, whatsOnMarquee).map((g) => (
                           <div key={g.key} className="space-y-2">
-                            <p className="text-[11px] uppercase tracking-[0.12em]" style={{ fontFamily: MONO, color: "#7A7A72" }}>{monthLabel(g.month)}</p>
+                            <p className="text-[11px] uppercase tracking-[0.12em]" style={{ fontFamily: MONO, color: "#7A7A72" }}>{g.city ?? (g.month ? monthLabel(g.month) : "")}</p>
                             {g.events.map(eventButton)}
                           </div>
                         ))
@@ -624,9 +627,9 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
                   {events.length === 0 ? (
                     <p className="text-[14px]" style={{ color: "#7A7A72" }}>No upcoming events listed right now.</p>
                   ) : (
-                    eventPickerGroups(events, marquee).map((g) => (
+                    eventPickerGroups(events, whatsOnMarquee).map((g) => (
                       <div key={g.key} className="space-y-2">
-                        <p className="text-[11px] uppercase tracking-[0.12em]" style={{ fontFamily: MONO, color: "#7A7A72" }}>{monthLabel(g.month)}</p>
+                        <p className="text-[11px] uppercase tracking-[0.12em]" style={{ fontFamily: MONO, color: "#7A7A72" }}>{g.city ?? (g.month ? monthLabel(g.month) : "")}</p>
                         {g.events.map(eventButton)}
                       </div>
                     ))

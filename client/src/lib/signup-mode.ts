@@ -12,7 +12,7 @@
 import { useContext } from "react";
 import { QueryClient, QueryClientContext, useQuery } from "@tanstack/react-query";
 import { LIVE_MARKETS_ROUTE } from "@shared/live-markets";
-import { launchCityName, type MarketStatusSettings } from "@shared/ticker";
+import { launchCityName, resolveLaunchMarket, type MarketStatusSettings } from "@shared/ticker";
 import { statusSettingsFrom } from "./waitlist-markets";
 
 export type SignupMode = "waitlist" | "open";
@@ -108,9 +108,17 @@ export function useMarketStatusSettings(): { settings: MarketStatusSettings; loa
 export function useLaunchMarket(): { slug: string; cityName: string } | null {
   const { settings } = useMarketStatusSettings();
   const { data } = useSignupMode();
-  const slug = settings.launch ?? data?.launchMarketSlug ?? null;
-  const cityName = launchCityName(slug);
-  return slug && cityName ? { slug, cityName } : null;
+  return resolveLaunchMarket([settings.launch, data?.launchMarketSlug], { fallbackToMarquee: false });
+}
+
+/**
+ * E-7 (ruling, Nov 5, 2026): the launch market for a LISTING surface — the same resolver, with the marquee fallback, so
+ * an unresolved setting never empties the landing strip or the date-step picker. Never null.
+ */
+export function useMarqueeMarket(): { slug: string; cityName: string } {
+  const { settings } = useMarketStatusSettings();
+  const { data } = useSignupMode();
+  return resolveLaunchMarket([settings.launch, data?.launchMarketSlug], { fallbackToMarquee: true })!;
 }
 
 /** CITY-1, pure: the marquee for a settings answer, else null. */

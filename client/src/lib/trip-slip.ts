@@ -187,6 +187,27 @@ export function checkSlipPrecondition(basics: SlipBasics, opts: SlipMintOptions 
   return null;
 }
 
+const escapeRegExp = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * E-7 (ruling, Nov 5, 2026): a title that already names the city at its start or end loses that name before it is
+ * composed into "{title} in {City}" — "Kyoto Autumn Light-up" → "Autumn Light-up", "Jazz Weekend, Kyoto" → "Jazz
+ * Weekend". Case-insensitive, whole words only; joining punctuation (",", ":", "-", "–", "—", "·", "|", "in") is taken with
+ * it. A title that is only the city stays as it is (never emptied). PURE.
+ */
+export function titleWithoutCity(title: string, city: string): string {
+  const t = title.trim();
+  const c = city.trim();
+  if (!c) return t;
+  const name = escapeRegExp(c);
+  const joiner = "[\\s,:;|·\\-–—]*";
+  const stripped = t
+    .replace(new RegExp(`^${name}(?![\\p{L}\\p{N}])${joiner}`, "iu"), "")
+    .replace(new RegExp(`${joiner}(?:\\bin\\s+)?\\(?(?<![\\p{L}\\p{N}])${name}\\)?$`, "iu"), "")
+    .trim();
+  return stripped || t;
+}
+
 /**
  * ENTRY-1: the ONE composer for a plan's default title. "{Occasion} in {City}" when an occasion is
  * known. A-34 (ruling, Nov 5, 2026: "{City}, {date range}"): with no occasion the title is neutral —
@@ -200,7 +221,7 @@ export function planTitle(input: {
   endDate?: string | null;
 }): string {
   const city = input.city.trim();
-  const occasion = input.occasionName?.trim();
+  const occasion = input.occasionName ? titleWithoutCity(input.occasionName, city) : "";
   if (occasion) return `${occasion} in ${city}`;
   const range = input.startDate && input.endDate ? guestDateRange(input.startDate, input.endDate) : null;
   return range ? `${city}, ${range}` : city;
