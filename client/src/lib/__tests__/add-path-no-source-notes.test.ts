@@ -77,7 +77,8 @@ test("AN3: the dialog writes no notes, and its one builder still serves both way
   assert.match(src, /const feedItemBody/);
   assert.match(src, /\.\.\.\(item\?\.scheduledDate \? \{ scheduledDate: item\.scheduledDate \} : \{\}\)/);
   assert.match(src, /startPlanThenAdd\(feedItemBody\(null\)\)/);
-  assert.match(src, /JSON\.stringify\(feedItemBody\(plan\.startDate\)\)/);
+  // CAP-2 (sanctioned edit): the builder also reads the chosen plan (its end date and city) for the PlanItemRef.
+  assert.match(src, /JSON\.stringify\(feedItemBody\(plan\.startDate, plan\)\)/);
 });
 
 test("AN4: no client source writes Added from or Source: into notes", () => {

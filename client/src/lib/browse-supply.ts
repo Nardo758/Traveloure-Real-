@@ -310,32 +310,26 @@ export function hostRows(rows: ReadonlyArray<any> | null | undefined): Array<{ i
   }));
 }
 
-/** The ONE add body for a Browse place onto a day of the plan (LD 39's rail). */
-export function browseAddBody(place: BrowsePlace, dayNumber: number): Record<string, unknown> {
-  const located = place.lat != null && place.lng != null;
-  if (place.kind === "gem" || place.kind === "event") {
-    // GATE-1B: a city-page gem or event carries no listing or partner link; it adds by its own name.
-    return { title: place.name, itemType: "activity", dayNumber, locationName: place.name };
-  }
-  if (place.kind === "listing") {
-    // R323 (R322 carry-over): a listing placed from its OWN coordinates carries them, so the stop is
-    // located and can have a leg; an unlocated listing still adds, unlocated (§13 — never a guess).
-    return {
-      title: place.name,
-      itemType: "activity",
-      providerServiceId: place.id,
-      dayNumber,
-      locationName: place.name,
-      ...(located ? { latitude: String(place.lat), longitude: String(place.lng) } : {}),
-    };
-  }
+/**
+ * The ONE add body for a Browse place onto a day of the plan (LD 39's rail).
+ *
+ * CAP-2 (ledger `2026-11-05-cap2-plan-item-ref`): the place sends its PlanItemRef (`ref`) and the server re-reads the
+ * row for the item's name, point and link. No coordinate is ever sent: R323's client-coordinate path for a map-added
+ * listing is retired — the listing's point is the `provider_services` row's own (a property's blurred point saves
+ * unlocated, as the browse map shows it). The title and link fields stay only as the plan item's display while the
+ * request is in flight and for a plan in no known city; the server overrides them from the row.
+ */
+export function browseAddBody(place: BrowsePlace, dayNumber: number, city?: string | null): Record<string, unknown> {
+  const c = (city ?? "").split(",")[0].trim();
+  const kind = place.kind === "gem" || place.kind === "event" || place.kind === "listing" ? place.kind : "affiliate_product";
+  const ref = c ? { kind, source_id: place.id, city: c, placement: { day_number: dayNumber } } : null;
   return {
     title: place.name,
     itemType: "activity",
-    affiliateProductId: place.id,
     dayNumber,
-    locationName: place.name,
-    ...(located ? { latitude: String(place.lat), longitude: String(place.lng) } : {}),
+    ...(place.kind === "listing" ? { providerServiceId: place.id } : {}),
+    ...(place.kind !== "listing" && place.kind !== "gem" && place.kind !== "event" ? { affiliateProductId: place.id } : {}),
+    ...(ref ? { ref } : {}),
   };
 }
 

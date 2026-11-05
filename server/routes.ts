@@ -13533,6 +13533,62 @@ ${bannedCopyPromptLine()}`;
       const viatorAdd = admitViatorAdd(req.body, itemData as Record<string, unknown>, viatorDirectEnabled());
       if (!viatorAdd.ok) return res.status(400).json({ message: viatorAdd.message });
       const viatorProductCode = viatorAdd.viatorProductCode;
+      // ── CAP-2 (ledger `2026-11-05-cap2-plan-item-ref`; rulings 3, 4, 8) ─────────────────────────────────────────
+      // A content save names a PlanItemRef (`ref`). The ONE resolver the guest rail uses re-reads the row for the item's
+      // name, point, link and placement; the body's title, coordinates and coordinate source are ignored for it. A
+      // legacy listing or partner link (`providerServiceId` / `affiliateProductId`) goes through the same resolver, so
+      // its point is the row's (R323's client-coordinate path is retired) and a withdrawn row is refused. A refusal is a
+      // 400 carrying its reason code. A typed item with no link is untouched.
+      const hasRef = Object.prototype.hasOwnProperty.call(req.body ?? {}, "ref");
+      const legacyLink = !hasRef && !viatorProductCode
+        ? (typeof itemData.providerServiceId === "string" && itemData.providerServiceId
+            ? { kind: "listing" as const, source_id: itemData.providerServiceId as string }
+            : typeof itemData.affiliateProductId === "string" && itemData.affiliateProductId
+              ? { kind: "affiliate_product" as const, source_id: itemData.affiliateProductId as string }
+              : null)
+        : null;
+      let contentLink: { contentType: string; contentId: string } | undefined;
+      let resolvedRef = false;
+      if (hasRef || legacyLink) {
+        if (viatorProductCode) return res.status(400).json({ code: "unplaceable", message: "Couldn't save that. Try again." });
+        const { parsePlanItemRef } = await import("@shared/plan-item-ref");
+        const { planMarkets, resolvePlanItemRef } = await import("./services/guest-item-source.service");
+        const tripRow = await storage.getTrip(tripId);
+        const parsedRef = hasRef ? parsePlanItemRef(req.body.ref) : { ok: true as const, ref: { ...legacyLink!, city: String(tripRow?.destination ?? "") } };
+        if (!parsedRef.ok) return res.status(400).json({ code: parsedRef.reason, message: "Couldn't save that. Try again." });
+        const planDays = tripRow
+          ? Math.round((Date.parse(`${String(tripRow.endDate).slice(0, 10)}T00:00:00Z`) - Date.parse(`${String(tripRow.startDate).slice(0, 10)}T00:00:00Z`)) / 86_400_000) + 1
+          : null;
+        const resolved = await resolvePlanItemRef(parsedRef.ref as any, { markets: await planMarkets(tripId), planDays: Number.isFinite(planDays as number) ? planDays : null });
+        if (!resolved.ok) return res.status(400).json({ code: resolved.reason, message: "Couldn't save that. Try again." });
+        const src = resolved.source;
+        resolvedRef = true;
+        // Ruling 4: the point is the row's, never the body's.
+        delete itemData.latitude;
+        delete itemData.longitude;
+        if (src.latitude != null && src.longitude != null) {
+          itemData.latitude = src.latitude;
+          itemData.longitude = src.longitude;
+        }
+        delete itemData.providerServiceId;
+        delete itemData.affiliateProductId;
+        if (src.providerServiceId) itemData.providerServiceId = src.providerServiceId;
+        if (src.affiliateProductId) itemData.affiliateProductId = src.affiliateProductId;
+        if (src.contentType && src.contentId) contentLink = { contentType: src.contentType, contentId: src.contentId };
+        if (hasRef) {
+          // The row names the item; the envelope places it.
+          itemData.title = src.title;
+          if (src.locationName) itemData.locationName = src.locationName;
+          else delete itemData.locationName;
+          if (src.itemType) itemData.itemType = src.itemType;
+          const { guestEventPlacement } = await import("./services/guest-plan.service");
+          const placement = tripRow ? guestEventPlacement(src.eventDate ?? null, String(tripRow.startDate), String(tripRow.endDate)) : null;
+          const chosenDay = (parsedRef.ref as any).placement?.day_number as number | undefined;
+          itemData.dayNumber = placement?.dayNumber ?? chosenDay ?? 1;
+          if (placement) itemData.scheduledDate = placement.scheduledDate;
+          if (src.startTime) itemData.startTime = src.startTime;
+        }
+      }
       // ── THE AUTHORING CONTRACT (decision-maker ruling 2026-09-15, punchlist D-4 option A;
       // ledger `2026-09-15-d4-item-kind-contract`) ────────────────────────────────────────────
       // A READY-MADE AUTHOR MAY NOT PUBLISH A PRICED ITEM THAT NAMES NO BOOKABLE THING. Checkout
@@ -13563,7 +13619,7 @@ ${bannedCopyPromptLine()}`;
         const { fileExpertSuggestion } = await import("./services/expert-suggestions.service");
         const suggestion = await fileExpertSuggestion({
           tripId, expertId: userId, kind: "add",
-          payload: { item: viatorProductCode ? { ...itemData, viatorProductCode } : itemData },
+          payload: { item: viatorProductCode ? { ...itemData, viatorProductCode } : contentLink ? { ...itemData, contentLink } : itemData },
         });
         return res.status(202).json({ suggested: true, suggestion });
       }
@@ -13576,8 +13632,10 @@ ${bannedCopyPromptLine()}`;
       // GC-1 (migration 387): the body may mark its coordinate as Google (`places` | `geocode_google`) and
       // nothing else; absent ⇒ NULL, which reads as Google.
       const item = gemWrite?.item ?? await storage.createItineraryItem(itemData, {
-        coordSource: viatorProductCode ? undefined : admitItemCoordSource(req.body),
+        // CAP-2: a resolved save's point is the row's — the body's coordinate source is not read for it.
+        coordSource: viatorProductCode || resolvedRef ? undefined : admitItemCoordSource(req.body),
         ...(viatorProductCode ? { viatorProductCode } : {}),
+        ...(contentLink ? { contentLink } : {}),
       });
       if (!gemWrite || gemWrite.created) {
         logItineraryChange(tripId, userName, `Added "${item.title}"`, "add", owned ? "owner" : "expert", item.id);

@@ -17,6 +17,7 @@
  *
  * Run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/lane1-guest-save.db.test.ts
  */
+import { parsePlanItemRef } from "@shared/plan-item-ref";
 import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -111,12 +112,12 @@ describe("Lane 1 guest save rail", () => {
     const h = hashGuestSession(s)!;
     const tripId = await newPlan(s);
     const saves: Array<[string, Record<string, unknown>]> = [
-      ["gem", { kind: "gem", sourceId: ids.gemLocated, title: "typed by the client" }],
-      ["event", { kind: "event", sourceId: ids.eventId }],
-      ["listing", { kind: "listing", sourceId: ids.listing }],
-      ["product", { kind: "partner_product", sourceId: ids.product }],
-      ["hotel", { kind: "partner_product", sourceId: ids.hotel }],
-      ["activity", { kind: "partner_product", sourceId: ids.activity }],
+      ["gem", { kind: "gem", source_id: ids.gemLocated, city: "Kyoto", title: "typed by the client" }],
+      ["event", { kind: "event", source_id: ids.eventId, city: "Kyoto" }],
+      ["listing", { kind: "listing", source_id: ids.listing, city: "Kyoto" }],
+      ["product", { kind: "affiliate_product", source_id: ids.product, city: "Kyoto" }],
+      ["hotel", { kind: "hotel", source_id: ids.hotel, city: "Kyoto" }],
+      ["activity", { kind: "activity", source_id: ids.activity, city: "Kyoto" }],
     ];
     for (const [, body] of saves) {
       const out = await saveGuestPlanItem(h, guestPlanItemBody.parse(body));
@@ -136,7 +137,9 @@ describe("Lane 1 guest save rail", () => {
     assert.ok(ev.latitude != null);
     const listing = by(`Lane1 Listing ${tag}`);
     assert.equal(listing.providerServiceId, ids.listing);
-    assert.equal(listing.latitude, null, "a listing's pin is never copied onto a guest item (LD 22)");
+    // CAP-2 (ruling, Nov 5, sanctioned): a listing's point is the `provider_services` row's own (R323's client-coordinate
+    // path retired); only a property's blurred public point saves unlocated.
+    assert.equal(listing.latitude, "35.0000000", "a listing saves at its own stored pin");
     const product = by(`Lane1 Product ${tag}`);
     assert.equal(product.affiliateProductId, ids.product);
     assert.equal(Number(product.latitude), 35.02);
@@ -155,27 +158,31 @@ describe("Lane 1 guest save rail", () => {
     const s = sid();
     const h = hashGuestSession(s)!;
     const tripId = await newPlan(s);
-    for (const kind of ["gem", "event", "listing", "partner_product"] as const) {
-      const out = await saveGuestPlanItem(h, guestPlanItemBody.parse({ kind, sourceId: `nope-${tag}` }));
+    // CAP-2 (sanctioned): `partner_product` split into its three kinds (ruling 8).
+    for (const kind of ["gem", "event", "listing", "affiliate_product", "hotel", "activity"] as const) {
+      const out = await saveGuestPlanItem(h, guestPlanItemBody.parse({ kind, source_id: `nope-${tag}`, city: "Kyoto" }));
       assert.deepEqual(out, { ok: false, code: "unknown_source" }, kind);
     }
     assert.equal((await items(tripId)).length, 0);
     assert.equal(guestPlanItemBody.safeParse({ title: "Philosopher's Path" }).success, false, "no source ⇒ refused");
-    assert.equal(guestPlanItemBody.safeParse({ kind: "gem", sourceId: ids.gemLocated, latitude: "1", longitude: "2" }).success, false, "no point in the body");
-    assert.equal(guestPlanItemBody.safeParse({ kind: "venue", sourceId: "x" }).success, false, "unknown kind");
+    // CAP-2 (sanctioned): a forged point is stripped from the envelope (ignored, never stored), and an unknown kind is
+    // answered `unknown_kind` by the contract's own parser.
+    const forged = guestPlanItemBody.parse({ kind: "gem", source_id: ids.gemLocated, city: "Kyoto", latitude: "1", longitude: "2" });
+    assert.equal("latitude" in forged || "longitude" in forged, false, "no point in the body");
+    assert.deepEqual(parsePlanItemRef({ kind: "venue", source_id: "x", city: "Kyoto" }), { ok: false, reason: "unknown_kind" }, "unknown kind");
   });
 
   it("L3 a second save of the same source answers the first item (sequential and concurrent)", async () => {
     const s = sid();
     const h = hashGuestSession(s)!;
     const tripId = await newPlan(s);
-    const body = guestPlanItemBody.parse({ kind: "gem", sourceId: ids.gemLocated });
+    const body = guestPlanItemBody.parse({ kind: "gem", source_id: ids.gemLocated, city: "Kyoto" });
     const first = await saveGuestPlanItem(h, body);
     const again = await saveGuestPlanItem(h, body);
     assert.equal(first.ok && again.ok, true);
     assert.equal((again as any).existing, true);
     assert.equal((again as any).itemId, (first as any).itemId);
-    const listingBody = guestPlanItemBody.parse({ kind: "listing", sourceId: ids.listing });
+    const listingBody = guestPlanItemBody.parse({ kind: "listing", source_id: ids.listing, city: "Kyoto" });
     const both = await Promise.all([saveGuestPlanItem(h, listingBody), saveGuestPlanItem(h, listingBody)]);
     assert.equal(new Set(both.map((o) => (o as any).itemId)).size, 1);
     assert.equal((await items(tripId)).length, 2);
@@ -229,8 +236,8 @@ describe("Lane 1 guest save rail", () => {
     const s = sid();
     const h = hashGuestSession(s)!;
     await newPlan(s);
-    const on = await saveGuestPlanItem(h, guestPlanItemBody.parse({ kind: "gem", sourceId: ids.gemLocated }));
-    const off = await saveGuestPlanItem(h, guestPlanItemBody.parse({ kind: "gem", sourceId: ids.gemUnlocated }));
+    const on = await saveGuestPlanItem(h, guestPlanItemBody.parse({ kind: "gem", source_id: ids.gemLocated, city: "Kyoto" }));
+    const off = await saveGuestPlanItem(h, guestPlanItemBody.parse({ kind: "gem", source_id: ids.gemUnlocated, city: "Kyoto" }));
     assert.equal((on as any).located, true);
     assert.equal((off as any).located, false);
     const view = await readGuestPlan(h);

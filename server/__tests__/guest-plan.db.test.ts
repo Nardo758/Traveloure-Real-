@@ -47,7 +47,7 @@ const userIds: string[] = [];
 const sid = () => crypto.randomUUID();
 const kyotoGemId = crypto.randomUUID();
 const otherGemId = crypto.randomUUID();
-const gemSave = (gemId: string = kyotoGemId) => ({ gemId } as any);
+const gemSave = (gemId: string = kyotoGemId) => ({ kind: "gem", source_id: gemId, city: "Kyoto" } as any);
 
 async function seedUser(): Promise<string> {
   const id = `gate1b-user-${crypto.randomUUID()}`;
@@ -117,19 +117,19 @@ describe("GATE-1B guest plan", () => {
     const s = sid();
     const id = await newPlan(s);
     await db.update(trips).set({ updatedAt: new Date("2020-01-01T00:00:00Z") }).where(eq(trips.id, id));
-    const out = await saveGuestPlanItem(hashGuestSession(s)!, { gemId: otherGemId } as any);
+    const out = await saveGuestPlanItem(hashGuestSession(s)!, { kind: "gem", source_id: otherGemId, city: "Kyoto" } as any);
     assert.equal(out.ok, true);
     const [row] = await db.select().from(trips).where(eq(trips.id, id));
     assert.ok(new Date(row.updatedAt!).getFullYear() > 2020);
     const items = await db.select().from(itineraryItems).where(eq(itineraryItems.tripId, id));
     assert.equal(items.length, 1);
     assert.equal(items[0].origin, "traveler");
-    const g = await saveGuestPlanItem(hashGuestSession(s)!, { title: "typed by the client", gemId: kyotoGemId } as any);
+    const g = await saveGuestPlanItem(hashGuestSession(s)!, { title: "typed by the client", kind: "gem", source_id: kyotoGemId, city: "Kyoto" } as any);
     assert.equal(g.ok, true);
     const after = await db.select().from(itineraryItems).where(eq(itineraryItems.tripId, id));
     assert.equal(after.length, 2);
     assert.ok(!after.some((i) => i.title === "typed by the client"), "a gem save takes the gem row's name");
-    assert.deepEqual(await saveGuestPlanItem(hashGuestSession(s)!, { gemId: "no-such-gem" } as any), { ok: false, code: "unknown_source" });
+    assert.deepEqual(await saveGuestPlanItem(hashGuestSession(s)!, { kind: "gem", source_id: "no-such-gem", city: "Kyoto" } as any), { ok: false, code: "unknown_source" });
     assert.deepEqual(await saveGuestPlanItem(hashGuestSession(sid())!, gemSave()), { ok: false, code: "no_plan" });
   });
 

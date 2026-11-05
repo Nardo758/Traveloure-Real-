@@ -6,6 +6,7 @@
  *
  * Not to be confused with `guest-plan.ts` (row 280b: an invited event guest's "Plan my day" button).
  */
+import { dayNumberForDate, planItemRefFromFeedItem, type PlanItemKind, type PlanItemRef } from "@shared/plan-item-ref";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { GUEST_PLAN_COPY } from "@shared/guest-plan-copy";
@@ -62,17 +63,11 @@ export interface GuestPlanCreateInput {
   occasionSlug?: string;
 }
 
-/** A-1: what a guest save names — a kind and the source row's id. The server reads the name and point from the row. */
-export type GuestItemKind = "gem" | "event" | "listing" | "partner_product";
-
-export interface GuestItemBody {
-  kind: GuestItemKind;
-  sourceId: string;
-  /** Display only; the stored title is the source row's. */
-  title?: string;
-  description?: string;
-  dayNumber?: number;
-}
+/**
+ * A-1 / CAP-2 (ledger `2026-11-05-cap2-plan-item-ref`): what a guest save names is a PlanItemRef — a kind, the source
+ * row's id, the city it was shown in, and an optional placement. The server reads the name and point from the row.
+ */
+export type GuestItemBody = PlanItemRef;
 
 /** The server's answer to a save. */
 export interface GuestSaveResult {
@@ -159,17 +154,27 @@ export function cityFromPath(pathname: string | null | undefined): string | null
  * before the plan page was ever opened); the server get-or-creates it (A-5), so two first saves land on ONE plan.
  * Resolves only after the server has the item; throws otherwise.
  */
-export async function saveToGuestPlan(body: GuestItemBody, destination: string | null | undefined): Promise<GuestSaveResult> {
+export async function saveToGuestPlan(
+  body: GuestItemBody,
+  destination: string | null | undefined,
+  /** CAP-2: the day a day-filtered feed was scoped to (YYYY-MM-DD) — the traveler's chosen day. */
+  chosenDate?: string | null,
+): Promise<GuestSaveResult> {
   // R3-1: the plan is made only by the get-or-create POST — never a GET first; a session that already has one gets it back.
-  const cached = queryClient.getQueryData<GuestPlanView | null>(GUEST_PLAN_QUERY_KEY);
-  if (!cached) {
+  let plan = queryClient.getQueryData<GuestPlanView | null>(GUEST_PLAN_QUERY_KEY) ?? null;
+  if (!plan) {
     const city = (destination ?? "").trim();
     if (!city) throw new Error("400: no destination");
     // A plan born from a city-page save has no chosen occasion: the city's own title ("Kyoto trip").
-    await createGuestPlan({ destination: city, title: planTitle({ city: city.split(",")[0].trim() }) });
+    plan = (await createGuestPlan({ destination: city, title: planTitle({ city: city.split(",")[0].trim() }) })) ?? null;
+  }
+  const ref: GuestItemBody = { ...body };
+  if (!ref.placement?.day_number && chosenDate && plan?.plan?.datesConfirmed) {
+    const day = guestChosenDay(chosenDate, plan.plan.startDate, plan.plan.endDate);
+    if (day) ref.placement = { ...(ref.placement ?? {}), day_number: day };
   }
   try {
-    const res = await apiRequest("POST", "/api/guest-plans/current/items", body);
+    const res = await apiRequest("POST", "/api/guest-plans/current/items", ref);
     return (await res.json()) as GuestSaveResult;
   } finally {
     // R3-1: "Your plan" follows the server on every answer — a refused save included — so the list never waits for a
@@ -178,37 +183,26 @@ export async function saveToGuestPlan(body: GuestItemBody, destination: string |
   }
 }
 
+/**
+ * CAP-2, pure: a feed's chosen day → its day number on a plan whose dates are set; null when the day is outside the
+ * plan's window (the save then lands on Day 1, never on a day the plan does not have).
+ */
+export function guestChosenDay(chosenDate: string, planStart: string, planEnd: string): number | null {
+  if (!chosenDate || chosenDate.slice(0, 10) > String(planEnd).slice(0, 10)) return null;
+  return dayNumberForDate(chosenDate, planStart);
+}
+
 /** A-18: the toast for a confirmed save — the not-on-the-map hint when the place has no point. */
 export function guestSavedMessage(result: Pick<GuestSaveResult, "located">): string {
   return result.located ? WAITLIST_COPY.savedToPlan : GUEST_PLAN_COPY.savedNotOnMap;
 }
 
 /**
- * A-1: a browse card's add payload → the guest save. A card names its source row (`sourceContentId`) and its kind;
- * a card that names no row the server can place (a recommendation category, a search result with no row) is null.
- *   gem → gem · event → event · service / providerServiceId → listing · hotel / activity (partner supply) → partner_product
+ * A-1 / CAP-2: a browse card's add payload → its PlanItemRef (`planItemRefFromFeedItem`, the ONE mapping). A card that
+ * names no row the server can place (a recommendation category, a search result with no row) is null.
  */
-export function guestItemFromFeedItem(item: any): GuestItemBody | null {
-  const title = typeof item?.title === "string" ? item.title.trim().slice(0, 255) : "";
-  const sourceId = typeof item?.sourceContentId === "string" ? item.sourceContentId.trim() : "";
-  const providerServiceId = typeof item?.providerServiceId === "string" ? item.providerServiceId.trim() : "";
-  const type = item?.type;
-  let kind: GuestItemKind | null = null;
-  let id = sourceId;
-  if (type === "gem") kind = "gem";
-  else if (type === "event") kind = "event";
-  else if (type === "service") kind = "listing";
-  else if (providerServiceId) {
-    kind = "listing";
-    id = providerServiceId;
-  } else if (type === "hotel" || type === "activity") kind = "partner_product";
-  if (!kind || !id) return null;
-  return {
-    kind,
-    sourceId: id.slice(0, 200),
-    ...(title ? { title } : {}),
-    ...(typeof item?.description === "string" && item.description ? { description: item.description.slice(0, 2000) } : {}),
-  };
+export function guestItemFromFeedItem(item: any, city?: string | null, dayNumber?: number | null): GuestItemBody | null {
+  return planItemRefFromFeedItem(item, city ?? (typeof item?.city === "string" ? item.city : null), dayNumber);
 }
 
 let claimInFlight: Promise<string[]> | null = null;
@@ -297,18 +291,31 @@ export function takeClaimedGuestPlanId(): string | null {
   }
 }
 
-/** A-1: a browse place → the guest save body. Every kind names its source row; the server reads its name and point. */
-export function guestBodyForPlace(place: BrowsePlace, dayNumber: number): GuestItemBody | null {
-  const kind: GuestItemKind | null =
-    place.kind === "gem" ? "gem" : place.kind === "event" ? "event" : place.kind === "listing" ? "listing" : place.kind === "partner" ? "partner_product" : null;
-  if (!kind || !place.id) return null;
-  return { kind, sourceId: place.id, title: place.name, dayNumber };
+/**
+ * A-1 / CAP-2: a browse place → its PlanItemRef. Every kind names its source row; the server reads its name and point.
+ * The map's day chip is the traveler's chosen day. A browse partner place is an `affiliate_products` row (ruling 8).
+ */
+export function guestBodyForPlace(place: BrowsePlace, dayNumber: number, city: string): GuestItemBody | null {
+  const kind: PlanItemKind | null =
+    place.kind === "gem" ? "gem" : place.kind === "event" ? "event" : place.kind === "listing" ? "listing" : place.kind === "partner" ? "affiliate_product" : null;
+  const c = (city ?? "").trim();
+  if (!kind || !place.id || !c) return null;
+  return { kind, source_id: place.id, city: c, placement: { day_number: dayNumber } };
 }
 
-/** A-19: a door's pending add (`listing` | `partner`) → the guest save body, its source id carried intact. */
-export function guestBodyForPendingAdd(add: { kind: "listing" | "partner"; id: string; title: string; dayNumber?: number } | null | undefined): GuestItemBody | null {
-  if (!add?.id) return null;
-  return { kind: add.kind === "listing" ? "listing" : "partner_product", sourceId: add.id, title: add.title, dayNumber: add.dayNumber ?? 1 };
+/** A-19 / CAP-2: a door's pending add (`listing` | `partner`) → its PlanItemRef, its source id carried intact. */
+export function guestBodyForPendingAdd(
+  add: { kind: "listing" | "partner"; id: string; title: string; dayNumber?: number } | null | undefined,
+  city: string,
+): GuestItemBody | null {
+  const c = (city ?? "").trim();
+  if (!add?.id || !c) return null;
+  return {
+    kind: add.kind === "listing" ? "listing" : "affiliate_product",
+    source_id: add.id,
+    city: c,
+    ...(add.dayNumber ? { placement: { day_number: add.dayNumber } } : {}),
+  };
 }
 
 /** The plan's items as map days over the plan's window (stops carry their own points; none is guessed). */

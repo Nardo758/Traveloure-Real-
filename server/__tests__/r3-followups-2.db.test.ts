@@ -143,7 +143,7 @@ describe("Round 3 follow-ups 2 — event save", () => {
     const call = guest();
     await call("POST", "/api/guest-plans", { destination: "Kyoto, Japan", startDate: "2026-11-07", endDate: "2026-11-09" });
     // The card sends what /discover sends: the event's id as `sourceId` and day 1.
-    const saved = await call("POST", "/api/guest-plans/current/items", { kind: "event", sourceId: id, dayNumber: 1 });
+    const saved = await call("POST", "/api/guest-plans/current/items", { kind: "event", source_id: id, city: "Kyoto", placement: { day_number: 1 } });
     assert.equal(saved.status, 200, JSON.stringify(saved.json));
     assert.equal(saved.json.located, true);
     const [row] = await db.select().from(itineraryItems).where(eq(itineraryItems.id, saved.json.id));
@@ -159,7 +159,7 @@ describe("Round 3 follow-ups 2 — event save", () => {
     setFeverEventLookupForTests(async () => null);
     const call = guest();
     await call("POST", "/api/guest-plans", { destination: "Kyoto, Japan" });
-    const refused = await call("POST", "/api/guest-plans/current/items", { kind: "event", sourceId: `${PREFIX}-nowhere`, dayNumber: 1 });
+    const refused = await call("POST", "/api/guest-plans/current/items", { kind: "event", source_id: `${PREFIX}-nowhere`, city: "Kyoto", placement: { day_number: 1 } });
     assert.equal(refused.status, 400);
     assert.equal(refused.json.code, "unknown_source");
   });

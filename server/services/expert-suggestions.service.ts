@@ -134,10 +134,14 @@ async function defaultPort(): Promise<SuggestionApplyPort> {
   return {
     // VD-1b: a filed Viator add carries its admitted code beside the item; the replay stamps it the same way.
     createItem: (v) => {
-      const { viatorProductCode, ...item } = v as Record<string, unknown>;
+      // CAP-2: a filed PlanItemRef add carries the content pair its resolve produced; the replay stamps it the same way.
+      const { viatorProductCode, contentLink, ...item } = v as Record<string, unknown>;
+      const link = contentLink && typeof (contentLink as any).contentType === "string" && typeof (contentLink as any).contentId === "string"
+        ? { contentLink: contentLink as { contentType: string; contentId: string } }
+        : {};
       return storage.createItineraryItem(
         item as any,
-        typeof viatorProductCode === "string" ? { viatorProductCode } : undefined,
+        typeof viatorProductCode === "string" ? { viatorProductCode } : Object.keys(link).length ? link : undefined,
       ) as any;
     },
     updateItem: (id, u) => storage.updateItineraryItem(id, u as any),

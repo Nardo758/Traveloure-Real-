@@ -96,13 +96,13 @@ describe("Round 3 guest save rail", () => {
     assert.equal(none.json, null);
     await call("POST", "/api/guest-plans", { destination: "Kyoto, Japan" });
     assert.ok(gemId, "a located Kyoto gem exists");
-    const first = await call("POST", "/api/guest-plans/current/items", { kind: "gem", sourceId: gemId, dayNumber: 1 });
+    const first = await call("POST", "/api/guest-plans/current/items", { kind: "gem", source_id: gemId, city: "Kyoto", placement: { day_number: 1 } });
     assert.equal(first.status, 200);
     assert.equal(first.json.existing, false);
     assert.equal(first.json.item.id, first.json.id, "the stored item comes back");
     assert.equal(first.json.item.dayNumber, 1);
     assert.match(first.timing ?? "", /plan;dur=\d+, resolve;dur=\d+, write;dur=\d+, read;dur=\d+/);
-    const again = await call("POST", "/api/guest-plans/current/items", { kind: "gem", sourceId: gemId, dayNumber: 1 });
+    const again = await call("POST", "/api/guest-plans/current/items", { kind: "gem", source_id: gemId, city: "Kyoto", placement: { day_number: 1 } });
     assert.equal(again.status, 200);
     assert.equal(again.json.existing, true);
     assert.equal(again.json.id, first.json.id);
@@ -119,11 +119,11 @@ describe("Round 3 guest save rail", () => {
     setFeverEventLookupForTests(async (id) =>
       id === liveId ? { title: "Yoga by the river", venue: { name: "Kamo riverbank", coordinates: { lat: 35.01, lng: 135.77 } } } : null,
     );
-    const saved = await call("POST", "/api/guest-plans/current/items", { kind: "event", sourceId: liveId, dayNumber: 1 });
+    const saved = await call("POST", "/api/guest-plans/current/items", { kind: "event", source_id: liveId, city: "Kyoto", placement: { day_number: 1 } });
     assert.equal(saved.status, 200);
     assert.equal(saved.json.item.title, "Yoga by the river");
     assert.equal(saved.json.located, true);
-    const refused = await call("POST", "/api/guest-plans/current/items", { kind: "event", sourceId: "r3-nowhere", dayNumber: 1 });
+    const refused = await call("POST", "/api/guest-plans/current/items", { kind: "event", source_id: "r3-nowhere", city: "Kyoto", placement: { day_number: 1 } });
     assert.equal(refused.status, 400);
     assert.equal(refused.json.code, "unknown_source");
   });
@@ -132,7 +132,7 @@ describe("Round 3 guest save rail", () => {
     const call = guest();
     const made = await call("POST", "/api/guest-plans", { destination: "Kyoto, Japan" });
     const planId = made.json.plan.id;
-    await call("POST", "/api/guest-plans/current/items", { kind: "gem", sourceId: gemId, dayNumber: 1 });
+    await call("POST", "/api/guest-plans/current/items", { kind: "gem", source_id: gemId, city: "Kyoto", placement: { day_number: 1 } });
     const door = await call("POST", "/api/guest-plans", {
       destination: "Kyoto, Japan",
       title: "Wedding in Kyoto",

@@ -15,9 +15,11 @@ import { browseSavesToPlan, useSignupMode } from "@/lib/signup-mode";
 import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 import { queryClient } from "@/lib/queryClient";
 import { useSearch } from "wouter";
-import { addItemFit } from "@/lib/trip-target";
+import { addItemFit, statedCity } from "@/lib/trip-target";
 import { useAddPlanResolution } from "@/hooks/use-open-plans";
 import { ADDED_TO_PLAN_TITLE } from "@/lib/plan-vocabulary";
+import { planItemRefFromFeedItem } from "@shared/plan-item-ref";
+import { GUEST_PLAN_COPY } from "@shared/guest-plan-copy";
 import { syncActiveTripToContext } from "@/lib/trip-selection";
 import { PlanPickerList, useStartPlanThenAdd, type PickablePlan } from "@/components/plan-picker";
 import {
@@ -64,7 +66,7 @@ export function AddToExperienceDialog({
   const directFired = useRef("");
 
   /** The plan-item body a feed item becomes on a chosen plan (dates known) or a new one (not yet). */
-  const feedItemBody = (tripStartDate?: string | null): Record<string, unknown> => {
+  const feedItemBody = (tripStartDate?: string | null, plan?: { destination?: string | null; endDate?: string | null } | null): Record<string, unknown> => {
     // dayNumber is 1-based relative to the plan's start date, when both dates are known.
     let dayNumber = 1;
     if (item?.scheduledDate && tripStartDate) {
@@ -73,6 +75,11 @@ export function AddToExperienceDialog({
       const diffDays = Math.round((itemDate.getTime() - tripStart.getTime()) / (1000 * 60 * 60 * 24));
       dayNumber = Math.max(1, diffDays + 1);
     }
+    // CAP-2 (ledger `2026-11-05-cap2-plan-item-ref`): a card that names its row sends its PlanItemRef, and the server
+    // re-reads that row for the item's name, point and link. A day-filtered feed's day is the chosen day — only when it
+    // falls inside the plan's dates; otherwise the item lands on Day 1.
+    const inWindow = !!(item?.scheduledDate && tripStartDate && (!plan?.endDate || String(item.scheduledDate) <= String(plan.endDate)));
+    const ref = planItemRefFromFeedItem(item, (item as any)?.city || statedCity(plan?.destination).split(",")[0].trim() || null, inWindow ? dayNumber : null);
     // Row 262: no provenance text in notes; the item's source is not written into it.
     return {
       title: item?.title,
@@ -85,6 +92,7 @@ export function AddToExperienceDialog({
       // re-checks both server-side (the listing gate; `admitViatorAdd`).
       ...(typeof item?.providerServiceId === "string" ? { providerServiceId: item.providerServiceId } : {}),
       ...(typeof item?.viatorProductCode === "string" ? { viatorProductCode: item.viatorProductCode } : {}),
+      ...(ref ? { ref } : {}),
     };
   };
 
@@ -95,7 +103,7 @@ export function AddToExperienceDialog({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(feedItemBody(plan.startDate)),
+        body: JSON.stringify(feedItemBody(plan.startDate, plan)),
       });
       if (!res.ok) throw new Error("Failed to add item");
       return res.json();
@@ -111,11 +119,8 @@ export function AddToExperienceDialog({
       onOpenChange(false);
     },
     onError: () => {
-      toast({
-        title: "Failed to add",
-        description: "Could not add this item. Please try again.",
-        variant: "destructive",
-      });
+      // CAP-2 ruling 3: a refused save says the approved sentence, nothing else.
+      toast({ title: GUEST_PLAN_COPY.saveFailed, variant: "destructive" });
     },
   });
 

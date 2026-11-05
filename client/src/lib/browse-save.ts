@@ -49,15 +49,18 @@ export function useBrowseSaveToPlan(): {
 
   const guestSave = (item: unknown) => {
     // A-1: the card names its source row, or nothing is sent (no "Saved" on nothing).
-    const body = guestItemFromFeedItem(item as any);
     // A-2: the city a first save starts the plan in — the route's, then the page's (the card's own `city`, which it
     // puts on the payload), then the item's own. None ⇒ nothing is sent.
     const city = resolveSaveCity(cityFromPath(pathname), (item as any)?.city ?? null, (item as any)?.itemCity ?? null);
+    // A-1 / CAP-2: the card's PlanItemRef, in that city.
+    const body = city ? guestItemFromFeedItem(item as any, city) : null;
     if (!body || !city) {
       toast({ variant: "destructive", title: guestSaveErrorMessage(null) });
       return;
     }
-    saveToGuestPlan(body, city).then(
+    // CAP-2 ruling: a day-filtered feed's day (the card's `scheduledDate`) is the traveler's chosen day.
+    const chosenDate = typeof (item as any)?.scheduledDate === "string" ? (item as any).scheduledDate : null;
+    saveToGuestPlan(body, city, chosenDate).then(
       (result) => toast({ title: guestSavedMessage(result) }),
       (err) => toast({ variant: "destructive", title: guestSaveErrorMessage(err) }),
     );

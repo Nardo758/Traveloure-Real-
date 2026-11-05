@@ -76,7 +76,8 @@ test("M1: an add from Browse goes to the shown day, through the one item rail's 
   const body = browseAddBody(place, 2) as Record<string, unknown>;
   assert.equal(body.dayNumber, 2);
   assert.equal(body.providerServiceId, "tea");
-  assert.equal(body.latitude, "35");
+  // CAP-2 (sanctioned edit): no coordinate is sent — the listing's point is the server's read of its own row.
+  assert.ok(!("latitude" in body));
 });
 
 test("M2: an unlocated item and a blurred listing produce no map mark", () => {
