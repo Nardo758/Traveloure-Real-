@@ -3,7 +3,7 @@
 -- UNIQUE (source, source_id) index `city_events_source_uniq`; ON CONFLICT DO NOTHING, so a rerun inserts nothing and a
 -- row already stored is never changed. Source of truth: the sheet "Kyoto gem coordinates 2026-11-04", tab "factcheck" —
 -- a row with a date line is confirmed and seeded; a blank row is held (not here).
--- Titles are ours (approved, Leon). venue_locality = 'Kyoto' on every row: the venues are in the city, so placement is
+-- Titles are ours. venue_locality = 'Kyoto' on every row: the venues are in the city, so placement is
 -- inside Kyoto (LD 59 — venue_locality names the town only when it is not the market city). The ward links through
 -- city_neighborhoods by slug where one matches exactly (Higashiyama); Minami (To-ji) and Sakyo (Eikando) have no Kyoto
 -- neighbourhood row, so those rows carry none. Dates are the days the source states, at Kyoto midnight; no time of day

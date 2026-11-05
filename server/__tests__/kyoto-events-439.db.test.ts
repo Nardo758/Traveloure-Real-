@@ -2,7 +2,7 @@
  * Migration 439 — the Kyoto events seed (ledger `2026-11-05-kyoto-events-seed`).
  *
  *   K1  The migration holds exactly the seven factchecked rows (one INSERT each, keyed on (source, source_id), ON CONFLICT
- *       DO NOTHING), with the approved titles; none of the eleven held rows is in it.
+ *       DO NOTHING), with our titles; none of the eleven held rows is in it.
  *   K2  Applied twice, it stores seven rows once: every row is in Kyoto (`venue_locality = 'Kyoto'`, never outside the
  *       city), the Higashiyama venues link the Higashiyama neighbourhood where one exists, and To-ji and Eikando link none.
  *   K3  The upcoming read lists them as in-city Kyoto events.
@@ -54,7 +54,7 @@ const applyFile = async () => {
 };
 
 describe("migration 439 Kyoto events", () => {
-  it("K1 the seven factchecked rows, idempotent inserts, approved titles, no held row", () => {
+  it("K1 the seven factchecked rows, idempotent inserts, our titles, no held row", () => {
     const text = fs.readFileSync(FILE, "utf8");
     assert.equal((text.match(/^INSERT INTO city_events /gm) ?? []).length, 7);
     assert.equal((text.match(/ON CONFLICT \(source, source_id\) DO NOTHING;/g) ?? []).length, 7);
