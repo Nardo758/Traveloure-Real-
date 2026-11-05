@@ -12,6 +12,7 @@ export function TickerRibbon({
   betaCities = [],
   button,
   onPlan,
+  showLabel = true,
 }: {
   items: PublicTickerItem[];
   cityName: string;
@@ -19,8 +20,15 @@ export function TickerRibbon({
   betaCities?: readonly string[];
   button: TickerButton;
   onPlan?: (city: string) => void;
+  /** R3-11: false on the landing page, whose hero pill already says the beta line (it renders once there). */
+  showLabel?: boolean;
 }) {
   if (items.length === 0) return null;
+  // R3-11 (round 3 ruling): the beta line is said once. A ticker line that only repeats the label (migration 384 seeds
+  // "Now in beta in Kyoto" as a line) is not scrolled beside it, and on the landing the hero pill says it instead.
+  const label = betaLabel(betaCities, cityName);
+  const lines = items.filter((item) => !label || item.text.trim().toLowerCase() !== label.toLowerCase());
+  if (!showLabel && lines.length === 0) return null;
   return (
     <div
       className="w-full bg-gradient-to-r from-[#FF6B6B] via-[#FF8E53] to-[#FF6B6B] text-white py-2.5 px-4 overflow-x-hidden"
@@ -30,17 +38,19 @@ export function TickerRibbon({
         <div className="flex items-center justify-between gap-3 text-sm">
           {/* LW-1f-b: on a phone the label wraps (never truncates a city name) and keeps at most ~45% of the row, so
               the lines still scroll beside a two- or three-city label. */}
+          {showLabel && (
           <div className="flex items-center gap-1.5 flex-shrink-0 min-w-0 max-w-[45%] sm:max-w-none">
             <Sparkles className="w-3.5 h-3.5 flex-shrink-0" />
             <span className="font-semibold leading-tight whitespace-normal sm:whitespace-nowrap" data-testid="text-ticker-label">
-              {betaLabel(betaCities, cityName)}
+              {label}
             </span>
           </div>
+          )}
 
           <div className="ticker-wrapper flex-1 min-w-0 mx-2">
             <div className="ticker-content-inline">
-              {[...items, ...items, ...items].map((item, index) => {
-                const copy = index >= items.length;
+              {[...lines, ...lines, ...lines].map((item, index) => {
+                const copy = index >= lines.length;
                 return (
                   <span
                     key={index}

@@ -14,7 +14,8 @@ export function SectionHeader({
   link,
   rightNote,
 }: {
-  eyebrow: string;
+  /** Optional: a section with no eyebrow draws none. */
+  eyebrow?: string;
   title: string;
   link?: { label: string; href: string; testId?: string };
   rightNote?: string;
@@ -22,12 +23,14 @@ export function SectionHeader({
   return (
     <div className="mb-[18px] flex items-baseline justify-between gap-4">
       <div>
-        <span
-          className="text-[10.5px] font-medium uppercase tracking-[0.12em]"
-          style={{ fontFamily: EARN_MONO, color: "var(--earn-coral-ink)" }}
-        >
-          {eyebrow}
-        </span>
+        {eyebrow ? (
+          <span
+            className="text-[10.5px] font-medium uppercase tracking-[0.12em]"
+            style={{ fontFamily: EARN_MONO, color: "var(--earn-coral-ink)" }}
+          >
+            {eyebrow}
+          </span>
+        ) : null}
         <h3
           className="mt-1 text-[22px] font-semibold sm:text-[26px]"
           style={{ fontFamily: FRAUNCES, color: "var(--earn-navy)" }}

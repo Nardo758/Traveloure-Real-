@@ -3,6 +3,8 @@ import { useSignupMode } from "@/lib/signup-mode";
 import { usePlanning } from "@/contexts/PlanningContext";
 import { launchCityName, tickerButton, type PublicTickerItem } from "@shared/ticker";
 import { TickerRibbon } from "./ticker-ribbon";
+import { useLocation } from "wouter";
+import { ribbonShowsBetaLabel } from "@shared/ticker";
 import "./CityTickerTape.css";
 
 export { TickerRibbon };
@@ -24,6 +26,7 @@ interface SignupModeAnswer {
 
 export function CityTickerTape() {
   const { open: openPlanning } = usePlanning();
+  const [location] = useLocation();
   const signup = useSignupMode() as { data: SignupModeAnswer | undefined };
   const slug = signup.data?.launchMarketSlug ?? null;
   const cityName = launchCityName(slug);
@@ -40,6 +43,7 @@ export function CityTickerTape() {
       betaCities={ticker.data.betaCities ?? []}
       button={tickerButton(signup.data?.mode, slug, cityName)}
       onPlan={(city) => openPlanning({ city, newPlan: true })}
+      showLabel={ribbonShowsBetaLabel(location)}
     />
   );
 }

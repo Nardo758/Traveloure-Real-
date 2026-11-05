@@ -70,6 +70,15 @@ export function betaMarketSlugs(stored: string | null | undefined, launchMarketS
   return launchMarketSlug && OPERATING_MARKETS.some((m) => m.marketKey === launchMarketSlug) ? [launchMarketSlug] : [];
 }
 
+/**
+ * R3-11 (round 3 ruling, Nov 5, 2026): "Now in beta in Kyoto" renders ONCE on the landing page — the hero pill says it
+ * there, so the ribbon drops its label on `/` and keeps it everywhere else.
+ */
+export function ribbonShowsBetaLabel(path: string): boolean {
+  const p = path.split(/[?#]/)[0];
+  return p !== "/" && p !== "";
+}
+
 /** City names for the beta keys, in order. */
 export function betaCityNames(slugs: readonly string[]): string[] {
   return slugs.map((k) => OPERATING_MARKETS.find((m) => m.marketKey === k)?.cityName).filter((n): n is string => !!n);

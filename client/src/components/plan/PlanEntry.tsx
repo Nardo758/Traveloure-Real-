@@ -51,11 +51,12 @@ import {
   canStartPlan,
   choosePlanEntryGroup,
   chosenOccasionSlug,
+  doorChoseGroup,
   eventPickerGroups,
   eventsOverlapping,
   planEntryChoiceLabel,
   initialPlanEntry,
-  nextMonth,
+  nextMonthScope,
   nightPickerOptions,
   withSeriesShows,
   planEntryDestination,
@@ -237,6 +238,8 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
   const [typed, setTyped] = useState("");
   const [moreSpecific, setMoreSpecific] = useState(false);
   const [pickDates, setPickDates] = useState(false);
+  // R3-8: "Next month" scopes the picker (min/max) and sets no dates; null = the picker is unscoped.
+  const [dateScope, setDateScope] = useState<{ min: string; max: string } | null>(null);
   /** E-7: the "A date" step's "What's on" list is open. */
   const [whatsOn, setWhatsOn] = useState(false);
   const [, setLocation] = useLocation();
@@ -248,7 +251,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
   const [adults, setAdults] = useState(doorParty(source?.adults));
   const [kids, setKids] = useState(doorParty(source?.kids));
   /** A group chip was pressed. The untouched default group is not a choice. */
-  const [groupChosen, setGroupChosen] = useState(!!source?.group);
+  const [groupChosen, setGroupChosen] = useState(doorChoseGroup(source));
   /** Did the door hand us the occasion (funnel `occasionSource`)? */
   const doorOccasion = useRef<boolean>(!!seed.state.occasionSlug);
   const autoStarted = useRef(false);
@@ -261,12 +264,13 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
     setTyped("");
     setMoreSpecific(false);
     setPickDates(false);
+    setDateScope(null);
     setWhatsOn(false);
     setError(null);
     setStarting(false);
     setAdults(doorParty(source?.adults));
     setKids(doorParty(source?.kids));
-    setGroupChosen(!!source?.group);
+    setGroupChosen(doorChoseGroup(source));
     doorOccasion.current = !!seed.state.occasionSlug;
     autoStarted.current = false;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -297,7 +301,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
 
   const occasionRows = occasions ?? [];
   // A-8: nothing picked (no chip, no "More specific", no event, no door group) ⇒ no occasion.
-  const pickedSlug = chosenOccasionSlug(state, !!source?.group || groupChosen);
+  const pickedSlug = chosenOccasionSlug(state, groupChosen);
   const pickedRow = occasionRows.find((o) => o.slug === pickedSlug) ?? null;
   // E-1/E-5/E-8: the traveler's own choice in words. An event's carried "show" slug and a group's default are never
   // shown — only a door-named or "More specific" occasion is (`state.occasionSlug` without an event).
@@ -320,7 +324,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
       doorOccasion.current = false;
       setState((s) => ({ ...s, occasionSlug: null }));
       // E-2: the door's occasion did not resolve, so it was never known — ask it.
-      if (!state.event && !source?.group) setStep((st) => (st === "details" ? "occasion" : st));
+      if (!state.event && !doorChoseGroup(source)) setStep((st) => (st === "details" ? "occasion" : st));
       return;
     }
     // SH-1 Q16.1: around an event the group follows the nights; the carried event slug does not move it.
@@ -383,14 +387,14 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
   // Inline only: the pick the nav pop-up reads. The dialog has no callback, so it cannot clobber this.
   useEffect(() => {
     if (!inline || !onHeldChange) return;
-    const chosenGroup = source?.group || groupChosen ? state.group : null;
+    const chosenGroup = groupChosen ? state.group : null;
     onHeldChange({
       city: state.market?.cityName ?? null,
       country: state.market?.country ?? null,
       group: chosenGroup,
       occasionSlug: state.occasionSlug,
     });
-  }, [inline, onHeldChange, source?.group, groupChosen, state.market, state.group, state.occasionSlug]);
+  }, [inline, onHeldChange, groupChosen, state.market, state.group, state.occasionSlug]);
   useEffect(() => {
     if (!inline || !onHeldChange) return;
     return () => onHeldChange(null);
@@ -406,7 +410,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
       return;
     }
     const specificSlug = !!(source?.experienceSlug || source?.carriedOccasionSlug || state.occasionSlug);
-    const chosenGroup = !!(source?.group || groupChosen);
+    const chosenGroup = groupChosen;
     // A route slug stays on the occasion step. A chosen group (and the pop-up's carry) asks dates and party.
     if (source?.askDatesAndParty || (chosenGroup && !specificSlug)) setStep("details");
     else setStep("occasion");
@@ -415,7 +419,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
   /** E-2: Step 1 → the next question. A known occasion (an event, a door's, a chosen group) goes to the party. */
   const advanceFromAround = () => {
     if (!state.market) return;
-    const known = !!state.event || !!state.occasionSlug || !!source?.group || groupChosen || !!source?.askDatesAndParty;
+    const known = !!state.event || !!state.occasionSlug || groupChosen || !!source?.askDatesAndParty;
     setStep(known ? "details" : "occasion");
   };
 
@@ -428,7 +432,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
 
   const title = step === "around" ? "Plan around…" : step === "details" ? PLAN_DATES_SET_CTA : "What's the occasion?";
   // Step 1's carried line: shown only once something was chosen, in the traveler's words (E-1).
-  const experienceLabel = state.occasionSlug || source?.group || groupChosen || source?.askDatesAndParty ? choiceLabel : null;
+  const experienceLabel = state.occasionSlug || groupChosen || source?.askDatesAndParty ? choiceLabel : null;
   const straight = starting && step !== "occasion";
 
   const cityChips = (only?: readonly string[]) =>
@@ -529,7 +533,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
 
           {straight ? null : step === "around" ? (
             <div className="space-y-4" data-testid="plan-entry-step-around">
-              {experienceLabel && (source?.group || groupChosen || state.occasionSlug) && (
+              {experienceLabel && (groupChosen || state.occasionSlug) && (
                 <p className="text-[14px] font-medium" style={{ color: "var(--earn-navy, #1A1A18)" }} data-testid="plan-entry-carried-group">
                   {experienceLabel}
                 </p>
@@ -578,9 +582,10 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
               {state.around === "date" && (
                 <div className="space-y-3">
                   <div className="flex flex-wrap gap-2">
-                    <Chip active={false} onClick={() => { setPickDates(false); setState((s) => ({ ...s, ...thisWeekend(new Date()), event: null, night: null })); }} testId="plan-entry-date-weekend">This weekend</Chip>
-                    <Chip active={false} onClick={() => { setPickDates(false); setState((s) => ({ ...s, ...nextMonth(new Date()), event: null, night: null })); }} testId="plan-entry-date-next-month">Next month</Chip>
-                    <Chip active={pickDates} onClick={() => setPickDates(true)} testId="plan-entry-date-pick">Pick dates</Chip>
+                    <Chip active={false} onClick={() => { setPickDates(false); setDateScope(null); setState((s) => ({ ...s, ...thisWeekend(new Date()), event: null, night: null })); }} testId="plan-entry-date-weekend">This weekend</Chip>
+                    {/* R3-8: opens the picker scoped to next month; the traveler picks the days. */}
+                    <Chip active={pickDates && !!dateScope} onClick={() => { setPickDates(true); setDateScope(nextMonthScope(new Date())); }} testId="plan-entry-date-next-month">Next month</Chip>
+                    <Chip active={pickDates && !dateScope} onClick={() => { setPickDates(true); setDateScope(null); }} testId="plan-entry-date-pick">Pick dates</Chip>
                     {/* E-7 (round 2 rulings): the same event list as "An event". */}
                     <Chip active={whatsOn} onClick={() => setWhatsOn((v) => !v)} testId="plan-entry-date-whats-on">What's on</Chip>
                   </div>
@@ -600,9 +605,9 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
                   )}
                   {pickDates && (
                     <div className="flex flex-wrap items-center gap-2">
-                      <input type="date" aria-label="Start date" value={state.startDate ?? ""} onChange={(e) => setState((s) => ({ ...s, startDate: e.target.value || null, endDate: s.endDate && e.target.value && s.endDate < e.target.value ? e.target.value : s.endDate }))} className="rounded-md border px-2 py-1.5 text-[14px]" data-testid="plan-entry-date-start" />
+                      <input type="date" aria-label="Start date" min={dateScope?.min} max={dateScope?.max} value={state.startDate ?? ""} onChange={(e) => setState((s) => ({ ...s, startDate: e.target.value || null, endDate: s.endDate && e.target.value && s.endDate < e.target.value ? e.target.value : s.endDate }))} className="rounded-md border px-2 py-1.5 text-[14px]" data-testid="plan-entry-date-start" />
                       <span aria-hidden>–</span>
-                      <input type="date" aria-label="End date" min={state.startDate ?? undefined} value={state.endDate ?? ""} onChange={(e) => setState((s) => ({ ...s, endDate: e.target.value || null }))} className="rounded-md border px-2 py-1.5 text-[14px]" data-testid="plan-entry-date-end" />
+                      <input type="date" aria-label="End date" min={state.startDate ?? dateScope?.min ?? undefined} max={dateScope?.max} value={state.endDate ?? ""} onChange={(e) => setState((s) => ({ ...s, endDate: e.target.value || null }))} className="rounded-md border px-2 py-1.5 text-[14px]" data-testid="plan-entry-date-end" />
                     </div>
                   )}
                   {state.startDate && state.endDate && (
@@ -660,13 +665,13 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
               )}
               <div className="space-y-2">
                 <div className="flex flex-wrap gap-2">
-                  <Chip active={false} onClick={() => setState((s) => ({ ...s, ...thisWeekend(new Date()) }))} testId="plan-entry-date-weekend">This weekend</Chip>
-                  <Chip active={false} onClick={() => setState((s) => ({ ...s, ...nextMonth(new Date()) }))} testId="plan-entry-date-next-month">Next month</Chip>
+                  <Chip active={false} onClick={() => { setDateScope(null); setState((s) => ({ ...s, ...thisWeekend(new Date()) })); }} testId="plan-entry-date-weekend">This weekend</Chip>
+                  <Chip active={!!dateScope} onClick={() => setDateScope(nextMonthScope(new Date()))} testId="plan-entry-date-next-month">Next month</Chip>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <input type="date" aria-label="Start date" value={state.startDate ?? ""} onChange={(e) => setState((s) => ({ ...s, startDate: e.target.value || null, endDate: s.endDate && e.target.value && s.endDate < e.target.value ? e.target.value : s.endDate }))} className="rounded-md border px-2 py-1.5 text-[14px]" data-testid="plan-entry-date-start" />
+                  <input type="date" aria-label="Start date" min={dateScope?.min} max={dateScope?.max} value={state.startDate ?? ""} onChange={(e) => setState((s) => ({ ...s, startDate: e.target.value || null, endDate: s.endDate && e.target.value && s.endDate < e.target.value ? e.target.value : s.endDate }))} className="rounded-md border px-2 py-1.5 text-[14px]" data-testid="plan-entry-date-start" />
                   <span aria-hidden>–</span>
-                  <input type="date" aria-label="End date" min={state.startDate ?? undefined} value={state.endDate ?? ""} onChange={(e) => setState((s) => ({ ...s, endDate: e.target.value || null }))} className="rounded-md border px-2 py-1.5 text-[14px]" data-testid="plan-entry-date-end" />
+                  <input type="date" aria-label="End date" min={state.startDate ?? dateScope?.min ?? undefined} max={dateScope?.max} value={state.endDate ?? ""} onChange={(e) => setState((s) => ({ ...s, endDate: e.target.value || null }))} className="rounded-md border px-2 py-1.5 text-[14px]" data-testid="plan-entry-date-end" />
                 </div>
               </div>
               <div className="space-y-2" data-testid="plan-entry-party">
@@ -717,7 +722,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
                 {shownGroups.map((key: OccasionPickerGroup) => (
                   <Chip
                     key={key}
-                    active={(groupChosen || !!source?.group || !!state.occasionSlug) && state.group === key && !(moreSpecific && state.occasionSlug)}
+                    active={(groupChosen || !!state.occasionSlug) && state.group === key && !(moreSpecific && state.occasionSlug)}
                     onClick={() => {
                       setGroupChosen(true);
                       setState((s) => ({ ...s, ...choosePlanEntryGroup(s, key) }));
@@ -765,7 +770,9 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
           <div
             className={
               inline
-                ? "sticky bottom-0 z-10 flex items-center justify-between gap-3 border-t bg-background py-3"
+                ? // R3-11 (round 3 ruling): sticky at phone width only (E3 ruling 1), so on a wider screen the bar sits after
+                  // the city cards and never covers the last row.
+                  "max-md:sticky bottom-0 z-10 flex items-center justify-between gap-3 border-t bg-background py-3"
                 : "flex items-center justify-between gap-3 border-t pt-3"
             }
             style={{ borderColor: "var(--earn-line, #E8E8E2)" }}

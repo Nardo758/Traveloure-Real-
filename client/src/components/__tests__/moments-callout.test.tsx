@@ -98,6 +98,8 @@ const REPRESENTATIVE_PAYLOAD = {
 function render(node: React.ReactElement, payload: unknown): string {
   const qc = new QueryClient({ defaultOptions: { queries: { enabled: false, retry: false } } });
   qc.setQueryData(["/api/landing/moments"], payload);
+  // R3-12 (sanctioned edit): the fallback rail draws only the occasions with a recent plan, so the slot test seeds one.
+  qc.setQueryData(["/api/landing/recent-plans?market=kyoto"], { occasions: ["proposal"] });
   return renderToString(
     <QueryClientProvider client={qc}>
       <Router ssrPath="/">

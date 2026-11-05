@@ -15,7 +15,8 @@
  * reads "Start a plan" on the coral fill; the "built by @handle" byline and the "Planning your own?"
  * note are gone. Photo credits — an expert's @handle among them — stay, because they credit a photo.
  */
-import { PLAN_START_HREF, planStartClick } from "@/lib/plan-entry";
+import { PLAN_START_HREF, momentPillHref, planStartClick } from "@/lib/plan-entry";
+import { useMarqueeMarket } from "@/lib/signup-mode";
 import { Link, useLocation } from "wouter";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -101,6 +102,7 @@ export function MomentsSection() {
   const active = pinned !== null && pinned < moments.length ? pinned : auto;
   const moment: LiveMoment | undefined = moments[active];
   const [, setLocation] = useLocation();
+  const marquee = useMarqueeMarket();
   /**
    * E-3 (round 2 ruling, Nov 4, 2026): a live pill opens its moment's flow — the same door the card's CTA opens (a
    * waitlist moment goes to its waitlist) — besides showing its card.
@@ -109,6 +111,12 @@ export function MomentsSection() {
     postEvent(m.key, "cta", index);
     if (m.cta === "waitlist" && m.market) {
       setLocation(waitlistMarketPath(m.market));
+      return;
+    }
+    // R3-7 (round 3 ruling): a pill opens its occasion's start page in the marquee city, not the start pop-up.
+    const href = momentPillHref(m.experienceSlug, marquee.cityName);
+    if (href) {
+      setLocation(href);
       return;
     }
     open({
