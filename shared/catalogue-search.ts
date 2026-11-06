@@ -34,7 +34,6 @@ export type CatalogueAction =
 export interface CatalogueAddToPlan {
   title: string;
   providerServiceId?: string;
-  viatorProductCode?: string;
   locationName?: string;
 }
 

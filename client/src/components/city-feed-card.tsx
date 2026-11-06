@@ -2,7 +2,9 @@ import React, { useEffect, useState } from "react";
 import { eventPlacementHints } from "@shared/plan-item-ref";
 import { useImpressionTracker } from "@/hooks/use-impression-tracker";
 import { useQuery } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { PlanActions } from "@/components/plan/PlanActions";
+import { feedSaveIntent } from "@/lib/plan-actions";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { eventDrawerWhen } from "@/lib/event-drawer";
 import { Calendar, ExternalLink, Info, MapPin, Plus, Star, CheckCircle2, Wifi, Waves, Globe, Tag, Clock } from "lucide-react";
@@ -21,12 +23,10 @@ import { useBrowseSaveToPlan } from "@/lib/browse-save";
 import { compactCredit } from "@/lib/gem-photo-credit";
 import { useBookingActionsShown } from "@/lib/signup-mode";
 import { WAITLIST_COPY } from "@/lib/waitlist-copy";
-import { SaveToPlanButton } from "@/components/plan/SaveToPlanButton";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import type { BentoCompactActionState } from "@/lib/bento-action-state";
 import { isReferencePhoto } from "@/lib/photo-provenance";
 import { ReferencePhotoChip } from "@/components/ui/reference-photo-chip";
-import { tileActionLabel } from "@/lib/bento-action-state";
 import { SaveToggle } from "@/components/SaveToggle";
 import { buildSaveItem } from "@/lib/saved-items";
 import type { SaveItemBody } from "@shared/saved-items";
@@ -588,7 +588,8 @@ interface MoreInfoSheetProps {
    * GATE-1 (ledger `2026-11-03-gate1-partner1`): the event drawer's one action. `saveToPlan` draws "Save to plan"
    * (waitlist + signed out); otherwise `onAdd` is the card's own add path under the card's own label.
    */
-  action?: { saveToPlan: boolean; label: string; onAdd?: () => void; disabled?: boolean } | null;
+  /** CAP-2 Phase 3: the drawer's save, rendered by PlanActions ("Save to plan" / "Saved to plan"). */
+  action?: { placeable: boolean; savedKey: string | null; onAdd?: () => void; disabled?: boolean; city?: string | null } | null;
 }
 
 // C3 / R4 (cosmetic-public-surfaces dispatch): at desktop widths the details sheet opened as a
@@ -621,15 +622,19 @@ export function EventSheetBody({ data, action }: { data: any; action?: MoreInfoS
   return (
   <div className="flex flex-col gap-4 pt-2">
     {/* GATE-1: the drawer's one action row. */}
-    {action ? (
-      action.saveToPlan ? (
-        <SaveToPlanButton testId={`btn-save-event-sheet-${data.id}`} onSave={action.onAdd} disabled={action.disabled} className="self-start inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-semibold" />
-      ) : action.onAdd ? (
-        <Button size="sm" className="self-start h-8 text-xs px-3" style={ADD_BTN_STYLE} onClick={action.onAdd} disabled={action.disabled} data-testid={`btn-add-event-sheet-${data.id}`}>
-          <Plus className="w-3 h-3 mr-1" />
-          {action.label}
-        </Button>
-      ) : null
+    {action && action.onAdd ? (
+      <PlanActions
+        site="bento"
+        city={action.city ?? null}
+        save={{
+          placeable: action.placeable,
+          savedKey: action.savedKey,
+          disabled: action.disabled,
+          testId: `btn-add-event-sheet-${data.id}`,
+          className: "self-start inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-semibold",
+          onClick: action.onAdd,
+        }}
+      />
     ) : null}
 
     {/* R3-9 (round 3 ruling): the image when the event has one. */}
@@ -1006,7 +1011,6 @@ export function CityFeedCardGem({
   compactActionState: _compactActionState,
 }: CityFeedCardGemProps) {
   // GATE-1: waitlist + signed out ⇒ the add press is "Save to plan" (a toast, no dialog, no sign-in wall).
-  const bookingShown = useBookingActionsShown();
   const browseSave = useBrowseSaveToPlan();
   const onAdd = browseSave.wrapAdd(onAddProp);
   const [imgLoaded, setImgLoaded] = useState(false);
@@ -1059,7 +1063,16 @@ export function CityFeedCardGem({
     platformPath;
   const typeMeta = gemTypeMeta(gem.placeType);
 
-  const addLabel = tileActionLabel("loose-gem", { scheduledDate, saveToPlan: browseSave.saveToPlan }) ?? "";
+  const gemAddPayload = () => ({
+    title: gem.placeName,
+    description: gem.description,
+    city,
+    type: "gem",
+    scheduledDate,
+    sourceImpressionId: getImpressionId(),
+    sourceContentId: gem.id,
+  });
+  const gemSave = feedSaveIntent({ type: "gem", sourceContentId: gem.id }, city);
   const { srcSet, sizes } = buildSrcSet(photoUrl);
 
   const isRow = layout === "row";
@@ -1184,15 +1197,19 @@ export function CityFeedCardGem({
           the link (it opens the details sheet). */}
       {!compact && (
         <div className="flex gap-1.5 pt-0.5 flex-wrap items-center">
-          {/* Lane 2 (A-3): no Book or Reserve in waitlist mode (`bookingActionsShown`). */}
-          {bookingShown && resolvedBookability !== "info_only" && bookHref && (
-            <Button
-              size="sm"
-              className="h-7 text-xs px-3"
-              style={BOOK_BTN_STYLE}
-              asChild
-              onClick={(e) => {
-                e.stopPropagation();
+          {/* CAP-2 Phase 3: Book (open mode only) and Save through PlanActions. The gem's book goes to a platform
+              listing whose booking mode the tile does not carry, so it says "Check availability". */}
+          <PlanActions
+            site="bento"
+            city={city}
+            order={["book", "save"]}
+            book={resolvedBookability !== "info_only" && bookHref ? {
+              variant: "availability",
+              href: bookHref,
+              testId: `btn-book-gem-${gem.id}`,
+              className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3"),
+              style: BOOK_BTN_STYLE,
+              onClick: () => {
                 const impId = getImpressionId();
                 fetch("/api/affiliates/track", {
                   method: "POST",
@@ -1200,37 +1217,18 @@ export function CityFeedCardGem({
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ partner: "discover", destination: city, contentType: "gem", contentId: String(gem.id), impressionId: impId }),
                 }).catch(() => {});
-              }}
-            >
-              {/* bookHref is always an in-platform path (§16 sanitization above) — no
-                  target=_blank / off-site hop remains on this CTA. */}
-              <a href={bookHref}>
-                {resolvedBookability === "deeplink" ? "Reserve" : "Book now"}
-              </a>
-            </Button>
-          )}
-          <Button
-            disabled={browseSave.pending}
-            size="sm"
-            className="h-7 text-xs px-3"
-            style={ADD_BTN_STYLE}
-            onClick={(e) => {
-              e.stopPropagation();
-              onAdd?.({
-                title: gem.placeName,
-                description: gem.description,
-                city,
-                type: "gem",
-                scheduledDate,
-                sourceImpressionId: getImpressionId(),
-                sourceContentId: gem.id,
-              });
+              },
+            } : null}
+            save={{
+              ...gemSave,
+              disabled: browseSave.pending,
+              testId: `btn-add-gem-${gem.id}`,
+              className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3"),
+              style: ADD_BTN_STYLE,
+              icon: <Plus className="w-3 h-3 mr-1" />,
+              onClick: () => onAdd?.(gemAddPayload()),
             }}
-            data-testid={`btn-add-gem-${gem.id}`}
-          >
-            <Plus className="w-3 h-3 mr-1" />
-            {addLabel}
-          </Button>
+          />
           {expertAvailable && (
             <Button
               size="sm"
@@ -1330,29 +1328,21 @@ export function CityFeedCardGem({
                 width the buttons overflowed the card and "Ask an expert" clipped at the right
                 edge. Fixed identically on all four compact-row copies in this file. */}
             <div className="flex gap-1.5 pt-0.5 flex-wrap items-center mt-auto">
-              <Button
-                disabled={browseSave.pending}
-                size="sm"
-                className="h-7 text-xs px-3"
-                style={ADD_BTN_STYLE}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onAdd?.({
-                    title: gem.placeName,
-                    description: gem.description,
-                    city,
-                    type: "gem",
-                    scheduledDate,
-                    sourceImpressionId: getImpressionId(),
-                    sourceContentId: gem.id,
-                  });
+              <PlanActions
+                site="bento"
+                city={city}
+                layout="primary"
+                primaryAttr=""
+                save={{
+                  ...gemSave,
+                  disabled: browseSave.pending,
+                  testId: `btn-add-gem-${gem.id}`,
+                  className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3"),
+                  style: ADD_BTN_STYLE,
+                  icon: <Plus className="w-3 h-3 mr-1" />,
+                  onClick: () => onAdd?.(gemAddPayload()),
                 }}
-                data-testid={`btn-add-gem-${gem.id}`}
-                data-bento-primary-action=""
-              >
-                <Plus className="w-3 h-3 mr-1" />
-                {addLabel}
-              </Button>
+              />
             </div>
           </div>
         </div>
@@ -1436,25 +1426,23 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd: onAddProp
     actionVariant: "affiliate",
     href: "/experiences",
   };
-  const addLabel = tileActionLabel("event", { scheduledDate, saveToPlan: browseSave.saveToPlan }) ?? "";
   const purchasesAllowed = useBookingActionsShown();
+  const eventAddPayload = () => ({
+    title: eventName,
+    city,
+    type: "event",
+    scheduledDate,
+    sourceImpressionId: getImpIdEvt(),
+    sourceContentId: String(event.id ?? event.eventId ?? ""),
+    // CAP-2 Phase 2 (A-29): the event's own start and end ride as placement hints.
+    ...eventPlacementHints(event),
+  });
+  const eventSave = feedSaveIntent({ type: "event", sourceContentId: String(event.id ?? event.eventId ?? "") }, city);
   const sheetAction = {
-    saveToPlan: browseSave.saveToPlan,
+    ...eventSave,
+    city,
     disabled: browseSave.pending,
-    label: addLabel,
-    onAdd: onAdd
-      ? () =>
-          onAdd({
-            title: eventName,
-            city,
-            type: "event",
-            scheduledDate,
-            sourceImpressionId: getImpIdEvt(),
-            sourceContentId: String(event.id ?? event.eventId ?? ""),
-            // CAP-2 Phase 2 (A-29): the event's own start and end ride as placement hints.
-            ...eventPlacementHints(event),
-          })
-      : undefined,
+    onAdd: onAdd ? () => onAdd(eventAddPayload()) : undefined,
   };
   const { srcSet, sizes } = buildSrcSet(photoUrl);
 
@@ -1526,30 +1514,21 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd: onAddProp
               <p className="text-[10px] text-muted-foreground break-words" data-testid={`event-osm-credit-${event.id}`}>{partnerPlace.credit}</p>
             )}
             <div className="flex gap-1.5 pt-0.5 flex-wrap items-center mt-auto">
-              <Button
-                disabled={browseSave.pending}
-                size="sm"
-                className="h-7 text-xs px-3"
-                style={ADD_BTN_STYLE}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onAdd?.({
-                    title: eventName,
-                    city,
-                    type: "event",
-                    scheduledDate,
-                    sourceImpressionId: getImpIdEvt(),
-                    sourceContentId: String(event.id ?? event.eventId ?? ""),
-            // CAP-2 Phase 2 (A-29): the event's own start and end ride as placement hints.
-            ...eventPlacementHints(event),
-                  });
+              <PlanActions
+                site="bento"
+                city={city}
+                layout="primary"
+                primaryAttr=""
+                save={{
+                  ...eventSave,
+                  disabled: browseSave.pending,
+                  testId: `btn-add-event-${event.id}`,
+                  className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3"),
+                  style: ADD_BTN_STYLE,
+                  icon: <Plus className="w-3 h-3 mr-1" />,
+                  onClick: () => onAdd?.(eventAddPayload()),
                 }}
-                data-testid={`btn-add-event-${event.id}`}
-                data-bento-primary-action=""
-              >
-                <Plus className="w-3 h-3 mr-1" />
-                {addLabel}
-              </Button>
+              />
             </div>
             {partnerCommissionShown(!!priceToken, purchasesAllowed) && (
               <p className="text-[11px] text-muted-foreground break-words" data-testid={`event-partner-commission-${event.id}`}>{PARTNER_COMMISSION_NOTE}</p>
@@ -1652,29 +1631,19 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd: onAddProp
                 onResult={(ok) => setPriceOpenFailed(!ok)}
               />
             )}
-            <Button
-              disabled={browseSave.pending}
-              size="sm"
-              className="h-7 text-xs px-3"
-              style={ADD_BTN_STYLE}
-              onClick={(e) => {
-                e.stopPropagation();
-                onAdd?.({
-                  title: eventName,
-                  city,
-                  type: "event",
-                  scheduledDate,
-                  sourceImpressionId: getImpIdEvt(),
-                  sourceContentId: String(event.id ?? event.eventId ?? ""),
-            // CAP-2 Phase 2 (A-29): the event's own start and end ride as placement hints.
-            ...eventPlacementHints(event),
-                });
+            <PlanActions
+              site="bento"
+              city={city}
+              save={{
+                ...eventSave,
+                disabled: browseSave.pending,
+                testId: `btn-add-event-${event.id}`,
+                className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3"),
+                style: ADD_BTN_STYLE,
+                icon: <Plus className="w-3 h-3 mr-1" />,
+                onClick: () => onAdd?.(eventAddPayload()),
               }}
-              data-testid={`btn-add-event-${event.id}`}
-            >
-              <Plus className="w-3 h-3 mr-1" />
-              {addLabel}
-            </Button>
+            />
             {expertAvailable && (
               <Button
                 size="sm"
@@ -1748,7 +1717,6 @@ interface CityFeedCardVendorServiceProps {
 
 export function CityFeedCardVendorService({ service, city, className, cardPosition, scheduledDate, onAdd: onAddProp, density = "full", compactActionState }: CityFeedCardVendorServiceProps) {
   // GATE-1: waitlist + signed out ⇒ the add press is "Save to plan" (a toast, no dialog, no sign-in wall).
-  const bookingShown = useBookingActionsShown();
   const browseSave = useBrowseSaveToPlan();
   const onAdd = browseSave.wrapAdd(onAddProp);
   const [imgLoaded, setImgLoaded] = useState(false);
@@ -1765,6 +1733,16 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
   );
 
   const externalUrl: string | null = service.vendorBookingLink || service.vendorWebsite || null;
+  const svcAddPayload = () => ({
+    title: service.serviceName,
+    description: service.shortDescription,
+    city,
+    type: "service",
+    scheduledDate,
+    sourceImpressionId: getImpIdVendor(),
+    sourceContentId: String(service.id),
+  });
+  const svcSave = feedSaveIntent({ type: "service", sourceContentId: String(service.id) }, city);
 
   // A vendor-service is a real provider_services row: it books in-app on
   // /services/:id through the audited /api/checkout rail, so its native booking
@@ -1861,46 +1839,29 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
             <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">{service.serviceName}</h3>
             <CompactSourceMetaLine duration={durationLabel} source={source} testid={`svc-facts-${service.id}`} />
             <div className="flex gap-1.5 pt-0.5 flex-wrap items-center mt-auto">
-              {/* Lane 2 (A-28): in waitlist mode the compact tile's action is the add, never Check availability. */}
-              {bookingShown && compactActionState === "platform" && resolvedBookability !== "info_only" ? (
-                <Button
-                  size="sm"
-                  className="h-7 text-xs px-3"
-                  style={BOOK_BTN_STYLE}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    window.location.href = `/services/${service.id}`;
-                  }}
-                  data-testid={`btn-book-svc-${service.id}`}
-                  data-bento-primary-action=""
-                >
-                  {tileActionLabel("vendor-service", { bookable: true })}
-                </Button>
-              ) : onAdd ? (
-                <Button
-                  disabled={browseSave.pending}
-                  size="sm"
-                  className="h-7 text-xs px-3"
-                  style={ADD_BTN_STYLE}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onAdd({
-                      title: service.serviceName,
-                      description: service.shortDescription,
-                      city,
-                      type: "service",
-                      scheduledDate,
-                      sourceImpressionId: getImpIdVendor(),
-                      sourceContentId: String(service.id),
-                    });
-                  }}
-                  data-testid={`btn-add-svc-${service.id}`}
-                  data-bento-primary-action=""
-                >
-                  <Plus className="w-3 h-3 mr-1" />
-                  {tileActionLabel("vendor-service", { bookable: false, scheduledDate, saveToPlan: browseSave.saveToPlan })}
-                </Button>
-              ) : null}
+              {/* CAP-2 Phase 3: one primary through PlanActions — Book (open mode, platform rail) else Save. */}
+              <PlanActions
+                site="bento"
+                city={city}
+                layout="primary"
+                primaryAttr=""
+                book={compactActionState === "platform" && resolvedBookability !== "info_only" ? {
+              variant: "availability",
+              testId: `btn-book-svc-${service.id}`,
+              className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3"),
+              style: BOOK_BTN_STYLE,
+              onClick: () => { window.location.href = `/services/${service.id}`; },
+                } : null}
+                save={onAdd ? {
+              ...svcSave,
+              disabled: browseSave.pending,
+              testId: `btn-add-svc-${service.id}`,
+              className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3"),
+              style: ADD_BTN_STYLE,
+              icon: <Plus className="w-3 h-3 mr-1" />,
+              onClick: () => onAdd?.(svcAddPayload()),
+                } : null}
+              />
             </div>
           </div>
         </div>
@@ -1990,45 +1951,28 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
                 (teal), deeplink → "Reserve". The CTA always lands on the in-app service
                 detail page (date/time picker → cart → the audited /api/checkout rail);
                 it never hops off-site (§16). info_only shows no Book at all. */}
-            {/* Lane 2 (A-3): no Book or Reserve in waitlist mode (`bookingActionsShown`). */}
-            {bookingShown && resolvedBookability !== "info_only" && (
-              <Button
-                size="sm"
-                className="h-7 text-xs px-3"
-                style={BOOK_BTN_STYLE}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  window.location.href = `/services/${service.id}`;
-                }}
-                data-testid={`btn-book-svc-${service.id}`}
-              >
-                {resolvedBookability === "deeplink" ? "Reserve" : "Book now"}
-              </Button>
-            )}
-            {onAdd && (
-              <Button
-                disabled={browseSave.pending}
-                size="sm"
-                className="h-7 text-xs px-3"
-                style={ADD_BTN_STYLE}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onAdd({
-                    title: service.serviceName,
-                    description: service.shortDescription,
-                    city,
-                    type: "service",
-                    scheduledDate,
-                    sourceImpressionId: getImpIdVendor(),
-                    sourceContentId: String(service.id),
-                  });
-                }}
-                data-testid={`btn-add-svc-${service.id}`}
-              >
-                <Plus className="w-3 h-3 mr-1" />
-                {browseSave.saveToPlan ? WAITLIST_COPY.saveToPlan : "Add to trip"}
-              </Button>
-            )}
+            {/* CAP-2 Phase 3: Book (open mode only) and Save through PlanActions. */}
+            <PlanActions
+              site="bento"
+              city={city}
+              order={["book", "save"]}
+              book={resolvedBookability !== "info_only" ? {
+              variant: "availability",
+              testId: `btn-book-svc-${service.id}`,
+              className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3"),
+              style: BOOK_BTN_STYLE,
+              onClick: () => { window.location.href = `/services/${service.id}`; },
+              } : null}
+              save={onAdd ? {
+              ...svcSave,
+              disabled: browseSave.pending,
+              testId: `btn-add-svc-${service.id}`,
+              className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3"),
+              style: ADD_BTN_STYLE,
+              icon: <Plus className="w-3 h-3 mr-1" />,
+              onClick: () => onAdd?.(svcAddPayload()),
+              } : null}
+            />
             {externalUrl && (
               <Button
                 size="sm"
@@ -2137,7 +2081,15 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd: onA
     city,
   });
 
-  const addLabel = tileActionLabel(isHotel ? "supply-hotel" : "supply-activity", { scheduledDate, saveToPlan: browseSave.saveToPlan }) ?? "";
+  const supplyAddPayload = () => ({
+    title: itemName,
+    city,
+    type: isHotel ? "hotel" : "activity",
+    scheduledDate,
+    sourceImpressionId: getImpIdSupply(),
+    sourceContentId: String(item.id ?? ""),
+  });
+  const supplySave = feedSaveIntent({ type: isHotel ? "hotel" : "activity", sourceContentId: String(item.id ?? "") }, city);
   const { srcSet, sizes } = buildSrcSet(photoUrl);
 
   // Partner amounts render in the source currency. No currency ⇒ "See current price", never a "$" prefix (LC-1).
@@ -2220,28 +2172,21 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd: onA
             <h3 className="font-semibold text-[15px] leading-tight truncate tracking-tight">{itemName}</h3>
             <CompactSourceMetaLine duration={compactDur} source={source} testid={`supply-facts-${item.id}`} />
             <div className="flex gap-1.5 pt-0.5 flex-wrap items-center mt-auto">
-              <Button
-                disabled={browseSave.pending}
-                size="sm"
-                className="h-7 text-xs px-3"
-                style={ADD_BTN_STYLE}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onAdd?.({
-                    title: itemName,
-                    city,
-                    type: isHotel ? "hotel" : "activity",
-                    scheduledDate,
-                    sourceImpressionId: getImpIdSupply(),
-                    sourceContentId: String(item.id ?? ""),
-                  });
+              <PlanActions
+                site="bento"
+                city={city}
+                layout="primary"
+                primaryAttr=""
+                save={{
+                  ...supplySave,
+                  disabled: browseSave.pending,
+                  testId: `btn-add-supply-${item.id}`,
+                  className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3"),
+                  style: ADD_BTN_STYLE,
+                  icon: <Plus className="w-3 h-3 mr-1" />,
+                  onClick: () => onAdd?.(supplyAddPayload()),
                 }}
-                data-testid={`btn-add-supply-${item.id}`}
-                data-bento-primary-action=""
-              >
-                <Plus className="w-3 h-3 mr-1" />
-                {addLabel}
-              </Button>
+              />
             </div>
           </div>
         </div>
@@ -2359,27 +2304,19 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd: onA
             {/* Keep bookings on-site (F6): no external "Book" button on the card face.
                 Add to trip is the primary action; the outbound partner link lives inside
                 the details sheet (opened by the card itself) as a small secondary action. */}
-            <Button
-              disabled={browseSave.pending}
-              size="sm"
-              className="h-7 text-xs px-3"
-              style={ADD_BTN_STYLE}
-              onClick={(e) => {
-                e.stopPropagation();
-                onAdd?.({
-                  title: itemName,
-                  city,
-                  type: isHotel ? "hotel" : "activity",
-                  scheduledDate,
-                  sourceImpressionId: getImpIdSupply(),
-                  sourceContentId: String(item.id ?? ""),
-                });
+            <PlanActions
+              site="bento"
+              city={city}
+              save={{
+                ...supplySave,
+                disabled: browseSave.pending,
+                testId: `btn-add-supply-${item.id}`,
+                className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3"),
+                style: ADD_BTN_STYLE,
+                icon: <Plus className="w-3 h-3 mr-1" />,
+                onClick: () => onAdd?.(supplyAddPayload()),
               }}
-              data-testid={`btn-add-supply-${item.id}`}
-            >
-              <Plus className="w-3 h-3 mr-1" />
-              {addLabel}
-            </Button>
+            />
             {expertAvailable && (
               <Button
                 size="sm"

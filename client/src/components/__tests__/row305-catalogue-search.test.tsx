@@ -2,8 +2,8 @@
  * Row 305 (CS-3 brief 8, D), client: the catalogue results under the city page's one search box.
  *
  *   K1 the city page's one box carries the approved placeholder and drives both the feed and the catalogue
- *   K2 every result draws exactly one action: Book (listing), Book on Viator / Book on the official site, Add to plan
- *   K3 hotels and checked places draw Add to plan only
+ *   K2 every result draws its PlanActions outputs (CAP-2 Phase 3)
+ *   K3 hotels draw Save to plan only; checked places draw nothing
  *   K4 a Viator result shows its attribution, the live price with its time, and the commission line; no rating,
  *      review or photo
  *   K5 a checked place shows its source and checked date; an expired one shows "Not checked yet" with the site
@@ -45,7 +45,7 @@ const results: CatalogueResult[] = [
     title: "Arashiyama bamboo walk",
     attribution: "Viator",
     action: { type: "book_on_site", site: "Viator", href: "https://www.viator.com/tours/x?campaign=traveloure_browse" },
-    addToPlan: { title: "Arashiyama bamboo walk", viatorProductCode: "5010P1" },
+    addToPlan: { title: "Arashiyama bamboo walk" },
     livePrice: { amount: 45, currency: "USD", asOf: "2026-11-01T05:05:00Z" },
   },
   { id: "hotel:h1", kind: "hotel", title: "Hotel Kanra", action: { type: "add_to_plan" }, addToPlan: { title: "Hotel Kanra", locationName: "Kyoto" } },
@@ -80,34 +80,36 @@ describe("row 305 — catalogue search results", () => {
     assert.equal(page.match(/data-testid="input-search"/g)?.length, 1, "one search box");
   });
 
-  it("K2 every result draws exactly one action, with its one label", () => {
+  // CAP-2 Phase 3 (sanctioned edit): a result's actions are PlanActions'. Open mode: a listing's Book is "Check
+  // availability" (its detail page holds the booking mode) beside "Save to plan"; a partner's or official site's own
+  // booking is "Book on partner"; More info is not drawn where the Book link already goes there; a result that names
+  // no row of ours (a checked place, an official site with no booking, a Viator product) offers no save.
+  it("K2 every result draws its PlanActions outputs, in open mode", () => {
     const html = render({ city: "Kyoto", query: "kyoto", results });
-    const ADD = CATALOGUE_RESULT_COPY.addToPlan;
-    const expected: Record<string, string> = {
-      "listing:s1": "Book",
-      "listing:s2": ADD,
-      "place:fushimi inari": ADD,
-      "place:gio-ji": ADD,
-      "official:jr_west": "Book on the official site",
-      "official:jr_central": ADD,
-      "viator:5010P1": "Book on Viator",
-      "hotel:h1": ADD,
+    const expected: Record<string, string[]> = {
+      "listing:s1": ["Check availability", "Save to plan"],
+      "listing:s2": ["Save to plan"],
+      "place:fushimi inari": [],
+      "place:gio-ji": [],
+      "official:jr_west": ["Book on partner"],
+      "official:jr_central": [],
+      "viator:5010P1": ["Book on partner"],
+      "hotel:h1": ["Save to plan"],
     };
-    for (const [id, label] of Object.entries(expected)) {
-      const block = actionBlock(html, id);
-      const controls = (block.match(/<a |<button /g) ?? []).length;
-      assert.equal(controls, 1, `${id} has one control`);
-      const actionHtml = block.slice(0, block.indexOf("</div>"));
-      assert.equal(clean(actionHtml), label, id);
+    for (const [id, labels] of Object.entries(expected)) {
+      const block = actionBlock(html, id).split("</li>")[0];
+      const got = Array.from(block.matchAll(/<(a|button)\b[^>]*>([\s\S]*?)<\/\1>/g)).map((m) => clean(m[2]));
+      assert.deepEqual(got, labels, id);
     }
     assert.match(actionBlock(html, "listing:s1"), /href="\/services\/s1"/);
     assert.match(actionBlock(html, "official:jr_west"), /href="https:\/\/www\.westjr\.co\.jp\/"/);
   });
 
-  it("K3 hotels and checked places draw Add to plan only", () => {
+  it("K3 hotels draw Save to plan only; checked places draw nothing", () => {
     const html = render({ city: "Kyoto", query: "kyoto", results });
-    for (const id of ["hotel:h1", "place:fushimi inari", "place:gio-ji"]) {
-      assert.doesNotMatch(actionBlock(html, id).split("</div>")[0], /href=/, `${id} is not a link`);
+    assert.doesNotMatch(actionBlock(html, "hotel:h1").split("</li>")[0], /href=/, "hotel:h1 is not a link");
+    for (const id of ["place:fushimi inari", "place:gio-ji"]) {
+      assert.doesNotMatch(actionBlock(html, id).split("</li>")[0], /<button|<a /, `${id} offers no action`);
     }
   });
 
@@ -149,11 +151,12 @@ describe("row 305 — catalogue search results", () => {
 
   it("K8 an added result keeps its link through the add dialog", () => {
     assert.deepEqual(catalogueAddItem(results[0]), { title: "Tea ceremony in Gion", type: "activity", providerServiceId: "s1" });
-    assert.deepEqual(catalogueAddItem(results[6]), { title: "Arashiyama bamboo walk", type: "activity", viatorProductCode: "5010P1" });
+    // CAP-2 Phase 3 (sanctioned, FU-CAP2-2): a Viator result carries no product code into an add.
+    assert.deepEqual(catalogueAddItem(results[6]), { title: "Arashiyama bamboo walk", type: "activity" });
     // Lane 1 A-1 (sanctioned edit): a partner hotel names its row, so a guest save can place it.
     assert.deepEqual(catalogueAddItem(results[7]), { title: "Hotel Kanra", type: "hotel", sourceContentId: "h1" });
     const dialog = fs.readFileSync("client/src/components/add-to-experience-dialog.tsx", "utf8");
     assert.match(dialog, /typeof item\?\.providerServiceId === "string" \? \{ providerServiceId: item\.providerServiceId \}/);
-    assert.match(dialog, /typeof item\?\.viatorProductCode === "string" \? \{ viatorProductCode: item\.viatorProductCode \}/);
+    assert.doesNotMatch(dialog, /viatorProductCode/, "CAP-2 Phase 3: the dialog sends no Viator code");
   });
 });

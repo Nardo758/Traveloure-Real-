@@ -17,6 +17,7 @@
  * a plain verb ("Book", "Request to book") or the card's "View & book"; a listing the resolver
  * says is not open for booking gets NO buy label at all (`null`) — the card offers Message only.
  */
+import { WAITLIST_COPY } from "./waitlist-copy";
 import type { BuyAction } from "@shared/buy-action";
 
 /** The label for a listing that cannot be classified and carries no resolved action. */
@@ -63,7 +64,8 @@ export function offeringActionLabel(buyAction: BuyAction | undefined): string | 
     }
   }
 
-  if (kind === "add_to_plan") return "Add to my plan";
+  // CAP-2 Phase 3 (ruling Nov 6, "one label for one action").
+  if (kind === "add_to_plan") return WAITLIST_COPY.saveToPlan;
 
   // Any other resolved shape (ready-made, advisor, partner) is not authored through this mapper.
   return OFFERING_ACTION_DEFAULT_LABEL;

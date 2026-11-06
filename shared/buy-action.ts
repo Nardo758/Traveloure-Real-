@@ -447,7 +447,7 @@ function resolveBuyActionTable(row: BuyActionRow, buyer: BuyActionBuyer): BuyAct
   // 10 · info-only listing: nothing to book, but it can still be planned around.
   if (row.bookability === "info_only") {
     return {
-      primary: { kind: "add_to_plan", label: "Add to plan" },
+      primary: { kind: "add_to_plan", label: "Save to plan" },
       secondary: MESSAGE,
       ask: planAsks,
       landing: landOnPlan(row, buyer),
@@ -467,7 +467,7 @@ function resolveBuyActionTable(row: BuyActionRow, buyer: BuyActionBuyer): BuyAct
   if (row.priceType === "custom_quote") {
     return {
       primary: { kind: "request_quote", label: "Request a quote" },
-      secondary: { kind: "add_to_plan", label: "Add to plan" },
+      secondary: { kind: "add_to_plan", label: "Save to plan" },
       ask: [...planAsks, "party"],
       landing: {
         store: "booking_request",
@@ -488,7 +488,7 @@ function resolveBuyActionTable(row: BuyActionRow, buyer: BuyActionBuyer): BuyAct
   if (requestMode || instantNoAvailability || instantNoPrice) {
     return {
       primary: { kind: "request_to_book", label: "Request to book" },
-      secondary: { kind: "add_to_plan", label: "Add to plan" },
+      secondary: { kind: "add_to_plan", label: "Save to plan" },
       ask: [...planAsks, "party"],
       landing: {
         store: "booking_request",
@@ -510,7 +510,7 @@ function resolveBuyActionTable(row: BuyActionRow, buyer: BuyActionBuyer): BuyAct
   if (row.bookingMode === "instant" && scheduled && row.hasPublishedAvailability === true) {
     return {
       primary: { kind: "book", label: "Book" },
-      secondary: { kind: "add_to_plan", label: "Add to plan" },
+      secondary: { kind: "add_to_plan", label: "Save to plan" },
       // A STAY picks a check-in -> check-out range, never a time slot.
       ask: [...planAsks, stay ? "dates" : "slot", "party"],
       landing: {
@@ -528,7 +528,7 @@ function resolveBuyActionTable(row: BuyActionRow, buyer: BuyActionBuyer): BuyAct
   if (row.bookingMode === "instant" && artifactOrAsync) {
     return {
       primary: { kind: "book", label: "Book" },
-      secondary: { kind: "add_to_plan", label: "Add to plan" },
+      secondary: { kind: "add_to_plan", label: "Save to plan" },
       ask: planAsks,
       landing: { store: "checkout", timed: false, placeAnchored: false, forksFinal: false },
     };
@@ -542,7 +542,7 @@ function resolveBuyActionTable(row: BuyActionRow, buyer: BuyActionBuyer): BuyAct
   //      `instant` scheduled listing whose availability the payload could not state; and an
   //      unclassifiable row (no delivery method and no product shape).
   return {
-    primary: { kind: "add_to_plan", label: "Add to plan" },
+    primary: { kind: "add_to_plan", label: "Save to plan" },
     secondary: MESSAGE,
     ask: planAsks,
     landing: landOnPlan(row, buyer),

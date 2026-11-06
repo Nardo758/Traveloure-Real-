@@ -80,7 +80,8 @@ test("8d — signed out: browse with no plan, add, sign up → exactly one plan,
   await testid(page, "map-browse-tab-activities").click();
   await testid(page, "map-browse-search").fill(listingName);
   await testid(page, `map-browse-row-listing-${listing.id}`).click({ timeout: 20_000 });
-  await expect(testid(page, "map-browse-add")).toContainText("Add to plan");
+  // CAP-2 Phase 3 (ruling Nov 6): one label for one action.
+  await expect(testid(page, "map-browse-add")).toContainText("Save to plan");
   await testid(page, "map-browse-add").click();
 
   // The gate: the board's copy, the guest's own answers, the place's name.

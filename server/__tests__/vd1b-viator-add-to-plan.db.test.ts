@@ -1,18 +1,17 @@
 /**
- * VD-1b — "Add to plan" on a live Viator card (ledger `2026-10-18-viator-add-to-plan`; decision-maker,
- * Oct 18, 2026): the item stores the title, Viator's product code and "Partner: Viator" only.
+ * VD-1b → CAP-2 Phase 3 (FU-CAP2-2; ruling, Nov 5, 2026: the Viator server add path is retired with the PlanActions
+ * sweep). Viator is not a PlanItemRef kind — it has no row of ours to re-read — so nothing new takes a Viator code.
  *
- *   A1 the card's body carries title, day, "Partner: Viator" and the code — no price, no description, no point
- *   A2 the rail's admission strips every Viator-content field, refuses a malformed code, and refuses the add
- *      while the live search is off; a body without the field is untouched
- *   A3 storage stamps content_type/content_id from the ADMITTED code only; a client-sent content pair is
- *      stripped as before; the stored row holds no price, no description beyond the marker, no coordinate
- *   A4 a filed (advisor) add carries the code and the replay stamps it the same way
+ *   A1 the add-body builder, the admission module and the shared Viator item module are gone
+ *   A2 the item-create rail refuses a body naming `viatorProductCode` (400 `unknown_kind`) before it parses the item
+ *   A3 storage takes no Viator option; a client-sent content pair is still stripped
+ *   A4 the suggestion replay drops a stray code and never stamps it
  *
  * DISPOSABLE DB ONLY. Run solo:
  *   DATABASE_URL=postgresql://postgres:postgres@localhost:5432/traveloure npx tsx --test --test-force-exit server/__tests__/vd1b-viator-add-to-plan.db.test.ts
  */
 import crypto from "node:crypto";
+import fs from "node:fs";
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { sql } from "drizzle-orm";
@@ -28,8 +27,6 @@ if (process.env.JOURNEY_DB_WRITES_OK !== "1" && !["localhost", "127.0.0.1", "::1
   throw new Error(`[vd1b] REFUSING to write fixtures to '${host}'.`);
 }
 
-const { viatorAddBody, itemViatorProductCode, VIATOR_ITEM_CONTENT_TYPE } = await import("@shared/viator-item");
-const { admitViatorAdd } = await import("../services/viator-item-admission");
 const { db, pool } = await import("../db");
 const { storage } = await import("../storage");
 
@@ -53,53 +50,33 @@ after(async () => {
   }
 });
 
-test("A1 the card body: title, day, marker and code — nothing of Viator's content", () => {
-  assert.deepEqual(viatorAddBody({ title: "Gion night walk", productCode: "5678KYO" }, 2), {
-    title: "Gion night walk",
-    itemType: "activity",
-    dayNumber: 2,
-    description: "Partner: Viator",
-    viatorProductCode: "5678KYO",
-  });
+test("A1 the Viator add modules are gone", () => {
+  assert.equal(fs.existsSync("server/services/viator-item-admission.ts"), false);
+  assert.equal(fs.existsSync("shared/viator-item.ts"), false);
+  for (const f of ["server/routes.ts", "server/storage.ts", "client/src/components/add-to-experience-dialog.tsx", "client/src/lib/catalogue-search-copy.ts"]) {
+    const src = fs.readFileSync(f, "utf8");
+    assert.doesNotMatch(src, /admitViatorAdd|viatorAddBody|itineraryItemViatorLinkSchema/, f);
+  }
 });
 
-test("A2 the admission strips Viator content, refuses a bad code, and is off with the live search", () => {
-  const item: Record<string, unknown> = {
-    title: "t", description: "Viator's own words", estimatedCost: "45.00", currency: "USD", latitude: "35", longitude: "135",
-    locationAddress: "x", googlePlaceId: "g", affiliateProductId: "a", providerServiceId: "p", notes: "n",
-  };
-  const r = admitViatorAdd({ viatorProductCode: "5678KYO" }, item, true);
-  assert.deepEqual(r, { ok: true, viatorProductCode: "5678KYO" });
-  assert.deepEqual(item, { title: "t", description: "Partner: Viator" });
-  assert.equal(admitViatorAdd({ viatorProductCode: "bad code; drop" }, {}, true).ok, false);
-  assert.deepEqual(admitViatorAdd({ viatorProductCode: "5678KYO" }, {}, false), { ok: false, message: "Viator is not available right now." });
-  const plain: Record<string, unknown> = { title: "Dinner", estimatedCost: "60" };
-  assert.deepEqual(admitViatorAdd({ title: "Dinner" }, plain, false), { ok: true, viatorProductCode: null });
-  assert.deepEqual(plain, { title: "Dinner", estimatedCost: "60" }, "a non-Viator add is untouched");
+test("A2 the create rail refuses a Viator body by name, before the item parse", () => {
+  const routes = fs.readFileSync("server/routes.ts", "utf8");
+  const i = routes.indexOf('hasOwnProperty.call(req.body ?? {}, "viatorProductCode")');
+  assert.ok(i > 0, "the refusal is on the rail");
+  assert.match(routes.slice(i, i + 200), /status\(400\)\.json\(\{ code: "unknown_kind"/);
+  assert.doesNotMatch(routes, /\.\.\.\(viatorProductCode \? \{ viatorProductCode \}/);
 });
 
-test("A3 storage stamps the pair from the admitted code only; the row holds nothing of Viator's", async () => {
-  const forged = await storage.createItineraryItem({ tripId: TRIP, title: "forged", itemType: "activity", dayNumber: 1, contentType: VIATOR_ITEM_CONTENT_TYPE, contentId: "FORGED" } as any);
-  assert.equal((forged as any).contentType ?? null, null, "a client content pair is still stripped");
-  const item = await storage.createItineraryItem(
-    { tripId: TRIP, title: "Gion night walk", itemType: "activity", dayNumber: 1, description: "Partner: Viator" } as any,
-    { viatorProductCode: "5678KYO" },
-  );
-  const [row] = (await db.execute(sql`SELECT * FROM itinerary_items WHERE id = ${item.id}`)).rows as any[];
-  assert.equal(row.content_type, VIATOR_ITEM_CONTENT_TYPE);
-  assert.equal(row.content_id, "5678KYO");
-  assert.equal(itemViatorProductCode({ contentType: row.content_type, contentId: row.content_id }), "5678KYO");
-  assert.equal(row.description, "Partner: Viator");
-  assert.equal(row.estimated_cost, null);
-  assert.equal(row.latitude, null);
+test("A3 storage stamps no Viator pair; a client content pair is still stripped", async () => {
+  const forged = await storage.createItineraryItem({ tripId: TRIP, title: "forged", itemType: "activity", dayNumber: 1, contentType: "viator_product", contentId: "FORGED" } as any);
+  const [row] = (await db.execute(sql`SELECT content_type, content_id FROM itinerary_items WHERE id = ${forged.id}`)).rows as any[];
+  assert.equal(row.content_type, null);
+  assert.equal(row.content_id, null);
+  assert.doesNotMatch(fs.readFileSync("server/storage.ts", "utf8"), /opts\.viatorProductCode/);
 });
 
-test("A4 a filed add carries the code; the replay stamps it", async () => {
-  const svc = await import("../services/expert-suggestions.service");
-  const src = await import("node:fs").then((fs) => fs.readFileSync("server/services/expert-suggestions.service.ts", "utf8"));
-  // CAP-2 Phase 1 (sanctioned edit): the replay also splits off the PlanItemRef content link beside the code.
-  assert.match(src, /const \{ viatorProductCode, contentLink, \.\.\.item \} = v/, "the replay port splits the code off the item");
-  assert.ok(typeof svc === "object");
-  const routes = await import("node:fs").then((fs) => fs.readFileSync("server/routes.ts", "utf8"));
-  assert.match(routes, /payload: \{ item: viatorProductCode \? \{ \.\.\.itemData, viatorProductCode \} : contentLink \? \{ \.\.\.itemData, contentLink \} : itemData \}/);
+test("A4 the replay drops a stray code and never stamps it", () => {
+  const src = fs.readFileSync("server/services/expert-suggestions.service.ts", "utf8");
+  assert.match(src, /const \{ viatorProductCode: _retired, contentLink, \.\.\.item \} = v/);
+  assert.doesNotMatch(src, /\{ viatorProductCode \} :/);
 });

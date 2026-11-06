@@ -46,6 +46,8 @@
  * No map renders on this surface (D5: place-anchored listings get a TEXT-only city chip, never a
  * tile), so no ODbL attribution is owed here.
  */
+import { PlanActions } from "@/components/plan/PlanActions";
+import { planActionFromBuyAction } from "@/lib/plan-actions";
 import { useBookingActionsShown } from "@/lib/signup-mode";
 import { useMemo, useState, type ReactNode } from "react";
 import { PROFILE_CONCIERGE_HEADING, profileListingSections } from "@/lib/service-type-filter";
@@ -324,6 +326,8 @@ function HeaderFigure({ value, label, testId }: { value: ReactNode; label: strin
  * gradient — the traveler brand red and the earn coral on one screen is the "two reds" the
  * console palette note in CLAUDE.md names.
  */
+const OFFERING_ACTION_CLASS = "w-full rounded-lg bg-[color:var(--earn-coral-ink)] px-3 py-2 text-[13px] font-semibold text-white transition-opacity hover:opacity-90";
+
 function StorefrontOfferingCard({
   href,
   testId,
@@ -345,7 +349,10 @@ function StorefrontOfferingCard({
   actionCharges,
   nextAvailableText,
   onMessage,
+  planAction = null,
 }: {
+  /** CAP-2 Phase 3: what the server buy action becomes in PlanActions (Book variant or Hire). */
+  planAction?: ReturnType<typeof planActionFromBuyAction>;
   href: string;
   testId: string;
   image: string | null;
@@ -418,10 +425,9 @@ function StorefrontOfferingCard({
   // seller's listing IS live and IS coming back, and one refusal reason standing for both facts
   // is how a surface starts saying the wrong one. Deciding that is ruling 9's author's call and
   // is deliberately NOT taken here.
-  const ctaLabel =
-    bookingMode === "request" ? "Request to book →"
-    : bookingMode === "hidden" ? "Enquire →"
-    : cta;
+  // CAP-2 Phase 3: the card's own text never says book — booking words are PlanActions' (the action button below).
+  // Without an action the card is only a link to its listing.
+  const ctaLabel = cta;
   // The new action button (below) is the ONE buy affordance for a row that carries one — the
   // old inline `ctaLabel` beside it duplicated the same decision in the card's own words and
   // could disagree with it outright (a custom-quote row read "Request to book →" here while the
@@ -523,18 +529,13 @@ function StorefrontOfferingCard({
             its own booking-intent hash rather than the plain detail-page href. */}
         {actionLabel && actionHref && (
           <div className="mt-2">
-            <button
-              type="button"
-              data-testid={`button-offering-action-${actionId ?? ""}`}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                navigate(actionHref);
-              }}
-              className="w-full rounded-lg bg-[color:var(--earn-coral-ink)] px-3 py-2 text-[13px] font-semibold text-white transition-opacity hover:opacity-90"
-            >
-              {actionLabel}
-            </button>
+            {/* CAP-2 Phase 3: PlanActions' Book (variant from the server buy action) or Hire, open mode only. */}
+            <PlanActions
+              site="storefrontOffering"
+              book={planAction?.output === "book" ? { variant: planAction.variant, onClick: () => navigate(actionHref), testId: `button-offering-action-${actionId ?? ""}`, className: OFFERING_ACTION_CLASS } : null}
+              hire={planAction?.output === "hire" ? { onClick: () => navigate(actionHref), testId: `button-offering-action-${actionId ?? ""}`, className: OFFERING_ACTION_CLASS } : null}
+              save={planAction?.output === "save" ? { placeable: true, savedKey: actionId ? `listing:${actionId}` : null, onClick: () => navigate(actionHref), testId: `button-offering-action-${actionId ?? ""}`, className: OFFERING_ACTION_CLASS } : null}
+            />
             {nextAvailableText && (
               <p
                 className="mt-1.5 text-center text-[11px] text-[color:var(--earn-muted)]"
@@ -846,7 +847,8 @@ export default function StorefrontPage() {
     // Vacation mode: the CTA stops promising "book" while the owner is away —
     // the listing itself stays visible and clickable (its detail page carries
     // the same honest away state and disables the actual booking action).
-    const cta = away || noBooking ? "View listing →" : s.pricingUnit === "per_night" ? "Check dates →" : "View & book →";
+    // CAP-2 Phase 3: the card text is a link to the listing; booking words are PlanActions' action button.
+    const cta = "View listing →";
     const tripQuery = planContext.ownedTrip ? `?tripId=${encodeURIComponent(planContext.ownedTrip.id)}` : "";
     const serviceHref = `/services/${s.id}${tripQuery}`;
     // Vacation mode (the `ld23-buy-action-gap` note above): the server's `buyAction`
@@ -881,6 +883,7 @@ export default function StorefrontPage() {
         actionLabel={actionLabel ?? undefined}
         actionHref={actionLabel ? buildStorefrontActionHref(serviceHref, actionLabel, s.nextAvailable) : undefined}
         actionCharges={actionLabel ? storefrontActionCharges(s.buyAction) : undefined}
+        planAction={actionLabel ? planActionFromBuyAction(s.buyAction ?? null) : null}
         nextAvailableText={actionLabel ? nextAvailableText : null}
         onMessage={
           messageOnly && contactAvailable

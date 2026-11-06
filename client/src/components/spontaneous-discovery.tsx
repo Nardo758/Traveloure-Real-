@@ -2,7 +2,8 @@ import { useState } from "react";
 import { CuratedContentSection } from "@/components/curated-content-section";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { PlanActions } from "@/components/plan/PlanActions";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -416,19 +417,21 @@ export function SpontaneousDiscovery({
                               </p>
                             </div>
                             
-                            <Button
-                              size="sm"
-                              // §16 (item ④): always route through the platform's own tracked rail
-                              // (/api/spontaneous/:id/book, which records the click and returns the
-                              // authoritative redirect server-side) — never a raw
-                              // window.open(opportunity.affiliateUrl) that bypasses tracking.
-                              onClick={() => bookMutation.mutate(opportunity.id)}
-                              disabled={bookMutation.isPending}
-                              data-testid={`button-book-${opportunity.id}`}
-                            >
-                              <ExternalLink className="h-3.5 w-3.5 mr-1" />
-                              Book
-                            </Button>
+                            {/* CAP-2 Phase 3 (Phase 0 correction, ruled Nov 6): PlanActions' Book "Book on partner", open
+                                mode only. §16 (item ④): the press goes through the platform's own tracked rail
+                                (/api/spontaneous/:id/book), never a raw window.open of the partner URL. */}
+                            <PlanActions
+                              site="discoverService"
+                              city={(opportunity as any).city ?? null}
+                              book={{
+                                variant: "partner",
+                                onClick: () => bookMutation.mutate(opportunity.id),
+                                disabled: bookMutation.isPending,
+                                testId: `button-book-${opportunity.id}`,
+                                className: buttonVariants({ size: "sm" }),
+                                icon: <ExternalLink className="h-3.5 w-3.5 mr-1" />,
+                              }}
+                            />
                           </div>
                         </CardContent>
                       </Card>

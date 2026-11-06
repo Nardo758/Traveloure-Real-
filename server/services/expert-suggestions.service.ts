@@ -132,17 +132,14 @@ async function defaultPort(): Promise<SuggestionApplyPort> {
   const { itineraryIntelligenceService } = await import("./itinerary-intelligence.service");
   const legs = await import("./trip-transport-legs.service");
   return {
-    // VD-1b: a filed Viator add carries its admitted code beside the item; the replay stamps it the same way.
     createItem: (v) => {
       // CAP-2: a filed PlanItemRef add carries the content pair its resolve produced; the replay stamps it the same way.
-      const { viatorProductCode, contentLink, ...item } = v as Record<string, unknown>;
+      // CAP-2 Phase 3 (FU-CAP2-2): the Viator code is no longer filed or replayed — a stray one is dropped, never stamped.
+      const { viatorProductCode: _retired, contentLink, ...item } = v as Record<string, unknown>;
       const link = contentLink && typeof (contentLink as any).contentType === "string" && typeof (contentLink as any).contentId === "string"
         ? { contentLink: contentLink as { contentType: string; contentId: string } }
         : {};
-      return storage.createItineraryItem(
-        item as any,
-        typeof viatorProductCode === "string" ? { viatorProductCode } : Object.keys(link).length ? link : undefined,
-      ) as any;
+      return storage.createItineraryItem(item as any, Object.keys(link).length ? link : undefined) as any;
     },
     updateItem: (id, u) => storage.updateItineraryItem(id, u as any),
     deleteItem: (id, actor) => storage.deleteItineraryItem(id, actor as any),

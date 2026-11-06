@@ -100,7 +100,7 @@ describe("service detail — the buy controls are the resolver's", () => {
     assert.equal(r.book?.kind, "book");
     assert.equal(r.book?.label, "Book");
     assert.equal(r.add?.kind, "add_to_plan");
-    assert.equal(r.add?.label, "Add to plan");
+    assert.equal(r.add?.label, "Save to plan") // CAP-2 Phase 3 (sanctioned edit; ruling Nov 6, "one label for one action"): the save reads "Save to plan".;
     assert.equal(r.request, null);
     assert.equal(r.refusal, null);
     assert.equal(r.noBuyControl, false);
@@ -116,7 +116,7 @@ describe("service detail — the buy controls are the resolver's", () => {
       assert.equal(r.request?.label, "Request to book");
       // Row 11 still keeps the plan add as its secondary — but it is the RESOLVER's label, and it
       // is never the checkout verb the page used to draw beside it.
-      assert.equal(r.add?.label, "Add to plan");
+      assert.equal(r.add?.label, "Save to plan") // CAP-2 Phase 3 (sanctioned edit; ruling Nov 6, "one label for one action"): the save reads "Save to plan".;
       assert.equal(r.noBuyControl, false);
     }
   });

@@ -18,7 +18,8 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { Info, Sparkles } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { PlanActions } from "@/components/plan/PlanActions";
 import {
   Dialog,
   DialogContent,
@@ -30,8 +31,6 @@ import { useGemPhoto } from "@/hooks/use-gem-photo";
 import { useExpertAvailability } from "@/lib/expert-availability";
 import { useAskExpert } from "@/lib/use-ask-expert";
 import type { BentoCompactActionState } from "@/lib/bento-action-state";
-import { tileActionLabel } from "@/lib/bento-action-state";
-import { useBookingActionsShown } from "@/lib/signup-mode";
 
 export interface RecommendationCandidate {
   offeringId: string;
@@ -142,9 +141,9 @@ export function CityFeedCardRecommendation({
       : candidate.sourceType === "affiliate";
   // Lane 2 (A-28): in waitlist mode no book action is drawn — a partner's book link included; the card's one action is
   // the add (`bookingActionsShown`, the shared rule).
-  const waitlist = !useBookingActionsShown();
-  const saveMode = waitlist && !!onBook;
-  const bookLabel = tileActionLabel("recommendation", { bookable: true, affiliate: isAffiliate, waitlist }) ?? "";
+  // CAP-2 Phase 3: Book (open mode) and the waitlist-mode "Browse {category}" render through PlanActions. The platform
+  // book lands on the category browse, not one listing, so it says "Check availability"; a partner's says "Book on partner".
+  const bookVariant = isAffiliate ? ("partner" as const) : ("availability" as const);
   const bookStyle = {
     background: isAffiliate ? "var(--earn-gold-ink)" : "var(--earn-teal)",
     color: "#fff",
@@ -180,6 +179,16 @@ export function CityFeedCardRecommendation({
   // Its action browses that category (`onBook` → the services browse filtered by `categoryKey`). In waitlist mode the
   // browse action waits for its approved label (CAP-2 Phase 3, PlanActions); until then the card draws no button there.
   const book = () => onBook?.(candidate);
+  const recActions = (opts: { testId: string; className?: string; primary?: boolean; bookable?: boolean }) => (
+    <PlanActions
+      site="recommendation"
+      city={city}
+      layout={opts.primary ? "primary" : "row"}
+      primaryAttr={opts.primary ? "" : undefined}
+      book={onBook && opts.bookable !== false ? { variant: bookVariant, testId: opts.testId, className: opts.className, style: bookStyle, onClick: book } : null}
+      browse={onBook ? { category: name, testId: opts.testId.replace("book-rec", "browse-rec"), className: opts.className, style: bookStyle, onClick: book } : null}
+    />
+  );
 
   const photoArea = (
     <div
@@ -235,20 +244,7 @@ export function CityFeedCardRecommendation({
       )}
 
       <div className="flex gap-1.5 pt-0.5 flex-wrap">
-        {onBook && !saveMode && (
-          <Button
-            size="sm"
-            className="h-7 text-xs px-3"
-            style={bookStyle}
-            onClick={(e) => {
-              e.stopPropagation();
-              book();
-            }}
-            data-testid={`btn-book-rec-${position}`}
-          >
-            {bookLabel}
-          </Button>
-        )}
+        {recActions({ testId: `btn-book-rec-${position}`, className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3") })}
         {expertAvailable && (
           <Button
             size="sm"
@@ -301,16 +297,7 @@ export function CityFeedCardRecommendation({
               )}
 
               <div className="flex flex-wrap gap-2 pt-1">
-                {onBook && !saveMode && (
-                  <Button
-                    size="sm"
-                    style={bookStyle}
-                    onClick={book}
-                    data-testid={`modal-book-rec-${position}`}
-                  >
-                    {bookLabel}
-                  </Button>
-                )}
+                {recActions({ testId: `modal-book-rec-${position}`, className: buttonVariants({ size: "sm" }) })}
               </div>
             </div>
           </DialogContent>
@@ -378,21 +365,7 @@ export function CityFeedCardRecommendation({
             </div>
           )}
           <div className="flex flex-wrap gap-1.5 pt-0.5 items-center mt-auto min-w-0">
-            {onBook && !saveMode && compactActionState !== "not-bookable" ? (
-              <Button
-                size="sm"
-                className="h-7 text-xs px-3 flex-1 min-w-0 whitespace-nowrap"
-                style={bookStyle}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  book();
-                }}
-                data-testid={`btn-book-rec-${position}`}
-                data-bento-primary-action=""
-              >
-                {bookLabel}
-              </Button>
-            ) : null}
+            {recActions({ testId: `btn-book-rec-${position}`, className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3 flex-1 min-w-0 whitespace-nowrap"), primary: true, bookable: compactActionState !== "not-bookable" })}
           </div>
         </div>
 
@@ -430,16 +403,7 @@ export function CityFeedCardRecommendation({
               )}
 
               <div className="flex flex-wrap gap-2 pt-1">
-                {onBook && !saveMode && (
-                  <Button
-                    size="sm"
-                    style={bookStyle}
-                    onClick={book}
-                    data-testid={`modal-book-rec-${position}`}
-                  >
-                    {bookLabel}
-                  </Button>
-                )}
+                {recActions({ testId: `modal-book-rec-${position}`, className: buttonVariants({ size: "sm" }) })}
               </div>
             </div>
           </DialogContent>

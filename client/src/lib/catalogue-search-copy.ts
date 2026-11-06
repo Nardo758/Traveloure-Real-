@@ -3,9 +3,8 @@
  *
  * Sources of every string:
  *   · placeholder, empty state — `CATALOGUE_SEARCH_COPY` (shared), approved by Leon, Oct 31, 2026, 8:51 PM ET.
- *   · "Book", "Book on Viator", "Book on the official site", "From [price] on Viator, as of [time]",
- *     "Not checked yet" — quoted in the row 305 brief (Claude session 2 doc / CS-3 brief 8).
- *   · "Add to plan" — `ADD_TO_PLAN_LABEL` (on main).
+ *   · "From [price] on Viator, as of [time]", "Not checked yet" — quoted in the row 305 brief (CS-3 brief 8).
+ *   · the result's actions (save / book / more info) are PlanActions' (CAP-2 Phase 3, `lib/plan-actions.ts`).
  *   · the Viator disclosure — "Traveloure may earn a commission on bookings made through this link" (sanctioned
  *     Nov 1, 2026): a disclosure only, never a rate or an amount.
  *   · "from <source> · <checked date>" — the public attribution the server already formats
@@ -14,15 +13,9 @@
  */
 import type { CatalogueResult } from "@shared/catalogue-search";
 import { MARKET_TIMEZONES } from "@shared/market-today";
-import { ADD_TO_PLAN_LABEL } from "./plan-vocabulary";
-import { WAITLIST_COPY } from "./waitlist-copy";
 import { exactOperatingMarket } from "./experiences-entry";
 
 export const CATALOGUE_RESULT_COPY = {
-  book: "Book",
-  bookOnViator: "Book on Viator",
-  bookOnOfficialSite: "Book on the official site",
-  addToPlan: ADD_TO_PLAN_LABEL,
   viatorPrice: (price: string, time: string) => `From ${price} on Viator, as of ${time}`,
   /** The Viator result's disclosure line: never a rate or an amount. */
   commission: "Traveloure may earn a commission on bookings made through this link",
@@ -34,23 +27,6 @@ export const CATALOGUE_RESULT_COPY = {
   /** Shown when the search fails. HELD for Leon. */
   searchFailed: "[HELD for Leon]",
 } as const;
-
-/** The one action label for a result. Never a request, never a fee. */
-export function catalogueActionLabel(
-  result: Pick<CatalogueResult, "kind" | "action">,
-  opts: { waitlist?: boolean; signedOut?: boolean } = {},
-): string {
-  switch (result.action.type) {
-    case "book":
-      // Row P-1c: in waitlist mode a Traveloure book is "Save to plan" (the add-to-plan path).
-      return opts.waitlist ? WAITLIST_COPY.saveToPlan : CATALOGUE_RESULT_COPY.book;
-    case "book_on_site":
-      return result.kind === "partner_viator" ? CATALOGUE_RESULT_COPY.bookOnViator : CATALOGUE_RESULT_COPY.bookOnOfficialSite;
-    case "add_to_plan":
-      // GATE-1 (ledger `2026-11-03-gate1-partner1`): waitlist + signed out ⇒ "Save to plan" (a toast, no dialog).
-      return opts.waitlist && opts.signedOut ? WAITLIST_COPY.saveToPlan : CATALOGUE_RESULT_COPY.addToPlan;
-  }
-}
 
 /** The city's time zone, for "as of [time]"; null for a city that is not an operating market. */
 export function catalogueTimeZone(city: string | null | undefined): string | null {
@@ -79,7 +55,6 @@ export function catalogueAddItem(result: CatalogueResult): Record<string, unknow
     title: result.addToPlan.title,
     type: result.kind === "hotel" ? "hotel" : "activity",
     ...(result.addToPlan.providerServiceId ? { providerServiceId: result.addToPlan.providerServiceId } : {}),
-    ...(result.addToPlan.viatorProductCode ? { viatorProductCode: result.addToPlan.viatorProductCode } : {}),
     // A-1: a partner hotel names its row, so a guest save can place it (the server re-reads `hotel_cache`).
     ...(result.kind === "hotel" && result.id.startsWith("hotel:") ? { sourceContentId: result.id.slice("hotel:".length) } : {}),
   };

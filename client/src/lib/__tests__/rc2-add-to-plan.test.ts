@@ -95,7 +95,10 @@ test("S1: the Discover grid no longer writes a trip-less server cart row", () =>
 
 test("S2: the Discover grid's label comes from the decision, and the guest toast is honest", () => {
   const src = code("pages/discover.tsx");
-  assert.match(src, /addLabelText=\{addButtonLabel\(addTarget\)\}/);
+  // CAP-2 Phase 3 (sanctioned edit): the card's save is PlanActions' "Save to plan" everywhere ("Add to plan" retired,
+  // ruling Nov 6); the decision still picks the add path, and the guest toast stays honest.
+  assert.match(src, /<PlanActions \{\.\.\.actionsProps\}/);
+  assert.match(src, /decideAddTarget\(/);
   assert.match(src, /GUEST_CART_SAVED_NOTE/);
   assert.doesNotMatch(src, /title: "Saved!"/);
 });

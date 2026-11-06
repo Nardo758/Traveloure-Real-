@@ -20,6 +20,7 @@
  *
  * This component owns the data; the renderers only draw. It fabricates no coordinate (§13).
  */
+import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 import { nextTabKey } from "@/lib/roving-tabs";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -148,7 +149,7 @@ export interface MapControlCenterProps {
   /**
    * R322 (step 7a, R-bh): the Workstation's open Add-panel drawer — its own already-filtered,
    * already-located results (`useMapCandidates`). Drawn as hollow browse markers and rows, with the
-   * SAME "Add to Day N" card the Browse layer uses; the add itself is the drawer's own handler
+   * SAME "Save to plan" card the Browse layer uses; the add itself is the drawer's own handler
    * (`onAddCandidate`), which posts the existing item route for the selected day. No second add rail.
    */
   candidates?: { sourceLabel: string | null; items: ReadonlyArray<{ id: string; title: string; lat: number; lng: number; price?: string | null }> } | null;
@@ -165,7 +166,7 @@ export interface MapControlCenterProps {
    * Step 8d (ledger `2026-10-07-step8d-guest-map`; brief item 24): the GUEST map — a signed-out visitor
    * with no plan. Browse only: always open, no day chips, no "Your plan" layer, no versions, no Remove;
    * the centre comes from the caller (the eight-market list — a centre, never a pin), because
-   * `/api/geocode` stays closed to guests; "Add to plan" hands the place back (`onAdd`) instead of
+   * `/api/geocode` stays closed to guests; "Save to plan" hands the place back (`onAdd`) instead of
    * posting. The member path is untouched when this is absent.
    */
   guest?: {
@@ -795,7 +796,7 @@ export function MapControlCenter({
                     // Step 8d: the guest's one add is handed back — the page carries it through sign-in.
                     return (
                       <Button size="sm" onClick={() => guest.onAdd(selectedBrowse)} data-testid="map-browse-add">
-                        <Plus className="mr-1 h-3.5 w-3.5" /> Add to plan
+                        <Plus className="mr-1 h-3.5 w-3.5" /> {WAITLIST_COPY.saveToPlan}
                       </Button>
                     );
                   }
@@ -803,7 +804,7 @@ export function MapControlCenter({
                   if (added) {
                     return (
                       <p className="flex items-center gap-2 text-xs" data-testid="map-browse-added">
-                        <span>On day {added.dayNum}</span>·
+                        <span>{WAITLIST_COPY.savedToPlan} · On day {added.dayNum}</span>·
                         <button
                           type="button"
                           className="underline"
@@ -828,7 +829,8 @@ export function MapControlCenter({
                       disabled={add.isPending}
                       data-testid="map-browse-add"
                     >
-                      <Plus className="mr-1 h-3.5 w-3.5" /> Add to day {dayNumber ?? 1}
+                      {/* CAP-2 Phase 3 (ruling Nov 6, "one label for one action"); the item still lands on this day. */}
+                      <Plus className="mr-1 h-3.5 w-3.5" /> {WAITLIST_COPY.saveToPlan}
                     </Button>
                   );
                 })()}
@@ -951,7 +953,7 @@ function ViatorLiveRow({ city, tripId, purchasesAllowed }: { city: string; tripI
   const { data } = useQuery<ViatorLiveResponse>({ queryKey: [url], staleTime: 0, gcTime: 0, refetchOnWindowFocus: false });
   const rows = viatorLiveCards(data);
   // CAP-2 Phase 2 (ruling, Nov 5, 2026): a Viator result is not a PlanItemRef — there is no row of ours to re-read — so
-  // it offers no "Add to plan". Its partner link ("View on Viator") is the more-info action; booking it is PlanActions'
+  // it offers no "Save to plan". Its partner link ("View on Viator") is the more-info action; booking it is PlanActions'
   // (Phase 3, open mode only).
   if (!rows.length) return null;
   const record = (productCode: string) => {

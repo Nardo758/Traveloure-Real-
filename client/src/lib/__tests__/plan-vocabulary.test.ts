@@ -92,8 +92,11 @@ describe("plan vocabulary", () => {
   // P4 — button and toast can never drift apart.
   it("P4: the button noun and the sentence noun are the same word", () => {
     assert.equal(PLAN_NOUN.toLowerCase(), PLAN_NOUN_LOWER);
-    assert.ok(ADD_TO_PLAN_LABEL.includes(PLAN_NOUN));
-    assert.ok(ADDED_TO_PLAN_TITLE.includes(PLAN_NOUN_LOWER));
+    // CAP-2 Phase 3 (sanctioned edit; ruling Nov 6, "one label for one action"): the save reads "Save to plan".
+    assert.ok(ADD_TO_PLAN_LABEL.toLowerCase().includes(PLAN_NOUN_LOWER));
+    assert.ok(ADDED_TO_PLAN_TITLE.toLowerCase().includes(PLAN_NOUN_LOWER));
+    assert.equal(ADD_TO_PLAN_LABEL, "Save to plan");
+    assert.equal(ADDED_TO_PLAN_TITLE, "Saved to plan");
   });
 });
 

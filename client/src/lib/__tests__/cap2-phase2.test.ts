@@ -26,7 +26,10 @@ describe("CAP-2 Phase 2 (client)", () => {
     // Only an event carries times.
     assert.deepEqual(planItemRefFromFeedItem({ type: "gem", sourceContentId: "g1", startsAt: "2026-12-11T09:00:00Z" }, "Kyoto"), { kind: "gem", source_id: "g1", city: "Kyoto" });
     const card = read("client/src/components/city-feed-card.tsx");
-    assert.equal((card.match(/sourceContentId: String\(event\.id \?\? event\.eventId \?\? ""\),\s*\/\/[^\n]*\n\s*\.\.\.eventPlacementHints\(event\),/g) ?? []).length, 3, "all three event card adds");
+    // CAP-2 Phase 3 (sanctioned edit): the three event adds share ONE payload builder (`eventAddPayload`), read by
+    // PlanActions on the compact card, the full card and the drawer.
+    assert.equal((card.match(/sourceContentId: String\(event\.id \?\? event\.eventId \?\? ""\),\s*\/\/[^\n]*\n\s*\.\.\.eventPlacementHints\(event\),/g) ?? []).length, 1, "the one event add payload");
+    assert.equal((card.match(/onAdd\?\.\(eventAddPayload\(\)\)|onAdd\(eventAddPayload\(\)\)/g) ?? []).length, 3, "all three event adds read it");
   });
 
   it("Q2 Plan around it lands the city event on the guest plan", () => {

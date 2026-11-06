@@ -1,6 +1,5 @@
 import type { FeedItem } from "./feed-stream";
-import { WAITLIST_COPY } from "./waitlist-copy";
-import { addToPlanLabel, TILE_ACTION_COPY } from "./tile-action-copy";
+import { TILE_ACTION_COPY } from "./tile-action-copy";
 
 /**
  * The compact Bento action grammar is intentionally decided from the composed
@@ -60,23 +59,10 @@ export function resolveBentoCompactActionState(item: FeedItem): BentoCompactActi
 
   return "not-bookable";
 }
-/** What a card knows that changes its one primary action. Booking paths are still decided by the card. */
+/** What a card knows that changes its one primary action. */
 export interface TileActionContext {
-  /** The feed is scoped to one day: the add label names it. */
-  scheduledDate?: string | null;
-  /** The card's book control is the one drawn (vendor-service, recommendation). */
-  bookable?: boolean;
-  /** The bookable control is a partner's (recommendation only; the partner path is unchanged). */
-  affiliate?: boolean;
   /** The city has an expert who can take a question (expert, lead-expert). */
   canAsk?: boolean;
-  /** Row P-1c: traveler sign-up is waitlist-only — a Traveloure book reads "Save to plan" (the add-to-plan path). */
-  waitlist?: boolean;
-  /**
-   * GATE-1 (ledger `2026-11-03-gate1-partner1`): waitlist mode and a signed-out viewer (`useBrowseSaveToPlan`) —
-   * every add-to-plan action reads "Save to plan" (Leon, Nov 3: "'Add to Plan' … become 'Save to plan'").
-   */
-  saveToPlan?: boolean;
 }
 
 export interface TileAction {
@@ -86,26 +72,20 @@ export interface TileAction {
 }
 
 /**
- * Row 302a: the label of a tile's one primary action, by kind. Returns null for a kind with no
- * primary action of its own (a neighbourhood container, a city separator) and for the partner
- * external stub, which stays on its own card until row 304a.
+ * Row 302a: the label of a tile's one primary action, by kind — for the kinds whose action is NOT PlanActions'. A save,
+ * book or hire is PlanActions' (CAP-2 Phase 3, `components/plan/PlanActions.tsx`), so the gem, event, supply,
+ * vendor-service and recommendation kinds answer null here. Null too for a kind with no primary action of its own (a
+ * neighbourhood container, a city separator) and for the partner external stub.
  */
 export function tileActionLabel(kind: FeedItem["kind"], ctx: TileActionContext = {}): string | null {
-  const add = ctx.saveToPlan ? WAITLIST_COPY.saveToPlan : addToPlanLabel(ctx.scheduledDate);
   switch (kind) {
     case "loose-gem":
     case "event":
     case "supply-activity":
-    // The hotel tile's click adds the stay to the plan, so it says so (architect, #1810).
     case "supply-hotel":
-      return add;
-    // Lane 2 (A-28): in waitlist mode no tile says Book or Check availability — the tile's action is the add.
     case "vendor-service":
-      return ctx.bookable && !ctx.waitlist ? TILE_ACTION_COPY.checkAvailability : add;
     case "recommendation":
-      if (!ctx.bookable) return add;
-      if (ctx.waitlist) return WAITLIST_COPY.saveToPlan;
-      return ctx.affiliate ? TILE_ACTION_COPY.bookOnPartner : TILE_ACTION_COPY.bookNow;
+      return null;
     case "package":
       return TILE_ACTION_COPY.getThisTrip;
     case "expert":
