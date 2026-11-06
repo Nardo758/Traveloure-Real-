@@ -425,6 +425,9 @@ export interface TripPlanActivity {
    */
   providerServiceId?: string;
   affiliateProductId?: string;
+  /** R4-5: the content row a saved gem / event / city event names (present only when set). */
+  contentType?: string;
+  contentId?: string;
 
   // ── Existing plancard contract fields (kept — live consumers read them) ────────────────
   /** Display type, via the plancard `mapItemType` mapping. */

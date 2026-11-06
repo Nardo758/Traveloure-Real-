@@ -1,4 +1,5 @@
 import { MapPin, Users, Bell, Check, Sparkles, Gem, MessageCircle, Info, Calendar } from "lucide-react";
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import { Link } from "wouter";
 import { optimizeUnsplashUrl, unsplashResponsiveProps } from "@/lib/unsplash";
 import { isReferencePhoto } from "@/lib/photo-provenance";
@@ -153,7 +154,9 @@ export function CityCard(props: CityCardProps) {
   // a placeholder dash (§13).
   const isPositive = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n) && n > 0;
   const avgPriceNum = avgPrice != null && avgPrice !== "" ? Number(avgPrice) : NaN;
-  const showAvgPrice = isPositive(avgPriceNum);
+  // R4-7 (round 4): a nightly price is booking copy — hidden in waitlist mode (Lane 2's shared rule, A-3).
+  const bookingShown = useBookingActionsShown();
+  const showAvgPrice = bookingShown && isPositive(avgPriceNum);
   const showScore = isPositive(score);
   const showGems = isPositive(hiddenGems);
   const countSegments = [
@@ -261,7 +264,8 @@ export function CityCard(props: CityCardProps) {
           </div>
         )}
 
-        {variant === "pulse" && dealAlert && (
+        {/* R4-7: a deal alert is price copy ("under $40/night") — hidden in waitlist mode with the price. */}
+        {variant === "pulse" && bookingShown && dealAlert && (
           <div className="flex items-start gap-2 rounded-xl px-2.5 py-2 mb-2.5 text-[11.5px] font-semibold text-[var(--earn-green-ink)] bg-[color:var(--earn-teal-wash)] border border-[color:var(--earn-border)]">
             💰<span className="line-clamp-2">{dealAlert}</span>
           </div>

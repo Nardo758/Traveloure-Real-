@@ -214,9 +214,10 @@ test("G4: a failure keeps the retry (the add, never the mint); a final outcome c
 });
 
 test("G5: the board's words; only what the guest answered", () => {
-  assert.equal(guest.guestAnswersLine(answers, "Kyoto"), "Kyoto, Thu 12 – Mon 16 Nov 2026 and 2 travelers");
+  // R4-4 (round 4, sanctioned edit): the party reads as stated, "2 adults" / "1 adult".
+  assert.equal(guest.guestAnswersLine(answers, "Kyoto"), "Kyoto, Thu 12 – Mon 16 Nov 2026 and 2 adults");
   assert.equal(guest.guestAnswersLine({ ...answers, adults: "", kids: "" }, "Kyoto"), "Kyoto, Thu 12 – Mon 16 Nov 2026", "no party ⇒ none shown");
-  assert.equal(guest.guestAnswersLine({ ...answers, adults: "1" }, "Kyoto"), "Kyoto, Thu 12 – Mon 16 Nov 2026 and 1 traveler");
+  assert.equal(guest.guestAnswersLine({ ...answers, adults: "1" }, "Kyoto"), "Kyoto, Thu 12 – Mon 16 Nov 2026 and 1 adult");
   assert.equal(guest.guestDateRange("2026-10-30", "2026-11-02"), "Fri 30 Oct – Mon 2 Nov 2026");
   assert.equal(
     guest.guestGateDescription("Kyoto, Thu 12 – Mon 16 Nov 2026 and 2 travelers", { kind: "add", name: "Tea ceremony" }),

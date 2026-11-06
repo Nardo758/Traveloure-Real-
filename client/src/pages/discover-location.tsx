@@ -863,6 +863,41 @@ function BentoGroup({
 /** A neighbourhood's nested gems as loose-gem tiles — the bento section is the
  *  ONE rendering per neighbourhood (Phase 2c), so its child gems join the run.
  *  Same top-4 exposure the legacy "IN {nb}" list had. */
+/** R4-10: the visible text a search matches on one tile's record. */
+export function searchHaystack(d: any): string {
+  const r = d ?? {};
+  return [
+    r.title, r.name, r.placeName, r.displayName, r.tagline, r.headline, r.description, r.category, r.categoryKey, r.placeType,
+    r.candidate?.displayName, r.candidate?.tagline, r.offeringLabel, r.neighborhoodName, r.serviceName, r.venueName,
+  ]
+    .filter((v) => typeof v === "string" && v)
+    .join(" ")
+    .toLowerCase();
+}
+
+/**
+ * R4-10 (round 4): the city page's search narrow, pure. Empty needle ⇒ the items unchanged. A neighbourhood section
+ * is matched by its own name, else narrowed to the nested gems / ready-made that match (dropped when none do).
+ */
+export function filterFeedBySearch(items: FeedItem[], searchNeedle: string): FeedItem[] {
+  return searchNeedle
+    ? items.flatMap((it): FeedItem[] => {
+        if (it.kind === "city-separator") return [it];
+        if (it.kind === "neighborhood") {
+          const d: any = it.data ?? {};
+          if (String(d.name ?? "").toLowerCase().includes(searchNeedle)) return [it];
+          const gems = ((d.gems ?? []) as any[]).filter((g) => searchHaystack(g).includes(searchNeedle));
+          const pkgs = ((d.packages ?? []) as any[]).filter((p) => searchHaystack(p).includes(searchNeedle));
+          const ready = d.readyMade ?? d.ready_made ?? d.readyMadeTrip ?? d.ready_made_trip ?? null;
+          const readyHit = ready && typeof ready === "object" && searchHaystack(ready).includes(searchNeedle);
+          if (gems.length === 0 && pkgs.length === 0 && !readyHit) return [];
+          return [{ ...it, data: { ...d, gems, packages: pkgs, readyMade: readyHit ? ready : undefined, ready_made: undefined, readyMadeTrip: undefined, ready_made_trip: undefined } }];
+        }
+        return searchHaystack(it.data).includes(searchNeedle) ? [it] : [];
+      })
+    : items;
+}
+
 function nestedGemItems(neighbourhood: any): FeedItem[] {
   return ((neighbourhood?.gems ?? []) as any[])
     .slice(0, 4)
@@ -1453,7 +1488,14 @@ export default function DiscoverLocationPage() {
   const [sortMode, setSortMode] = useState("recommended");
   // Free-text "what" search — a light, client-side narrow of the page (never a
   // trip write, never a new query param). Empty query = byte-identical to before.
-  const [searchQuery, setSearchQuery] = useState("");
+  // R4-9 (round 4): `/search?q=…` lands here with its query — the box starts with it.
+  const [searchQuery, setSearchQuery] = useState(() => {
+    try {
+      return typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("q")?.slice(0, 120) ?? "" : "";
+    } catch {
+      return "";
+    }
+  });
 
   const [addToExperienceOpen, setAddToExperienceOpen] = useState(false);
   const [addToExperienceItem, setAddToExperienceItem] = useState<any>(null);
@@ -1874,20 +1916,10 @@ export default function DiscoverLocationPage() {
   // keeps structural items (neighbourhood sections + separators) and narrows the
   // free-standing content cards by visible text. Never reorders, never mutates.
   const searchNeedle = searchQuery.trim().toLowerCase();
-  const visibleItems: FeedItem[] = searchNeedle
-    ? filteredItems.filter((it) => {
-        if (it.kind === "neighborhood" || it.kind === "city-separator") return true;
-        const d: any = it.data ?? {};
-        const hay = [
-          d.title, d.name, d.displayName, d.tagline, d.headline, d.category, d.categoryKey,
-          d.candidate?.displayName, d.candidate?.tagline, d.offeringLabel, d.neighborhoodName,
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-        return hay.includes(searchNeedle);
-      })
-    : filteredItems;
+  // R4-10 (round 4): a neighbourhood section is filtered too — its nested gems and ready-made are matched against the
+  // query (they are the section's tiles), and a section with no match drops out unless its own name matches. Before,
+  // every neighbourhood passed untouched, so "temple" and "tea" showed the same bento runs.
+  const visibleItems: FeedItem[] = filterFeedBySearch(filteredItems, searchNeedle);
 
   // ── Cover photo: highest-scored gem imageUrl → curated map → null (board #437) ──
   const coverPhoto = resolveCoverPhoto(allGems, city);

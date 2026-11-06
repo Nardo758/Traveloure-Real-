@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { START_PLAN_LABEL } from "@/lib/plan-vocabulary";
 import { api } from "@shared/routes";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -225,7 +226,9 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
         dealAlert={city.dealAlert}
         trendingSpots={city.totalTrendingSpots}
         hiddenGems={city.totalHiddenGems}
-        primaryLabel={waitlistOnly ? MARKET_STATUS_COPY.waitlist : "Take me Here"}
+        // R4-8 (round 4): "Take me Here" was never ratified in the ledger; an open market's tile says "Start a plan" like
+        // every other start door (`START_PLAN_LABEL`).
+        primaryLabel={waitlistOnly ? MARKET_STATUS_COPY.waitlist : START_PLAN_LABEL}
         onPrimary={() => (waitlistOnly && marketKey ? navigate(waitlistMarketPath(marketKey)) : setDialogOpen(true))}
         onCardClick={waitlistOnly && marketKey ? () => navigate(waitlistMarketPath(marketKey)) : onClick}
         primaryTestId={`button-plan-now-${citySlug}`}

@@ -238,6 +238,7 @@ export const CLIENT_ROUTES: readonly string[] = [
   "/reset-password",
   "/s/:handle",
   "/saved/shared/:token",
+  "/search",
   "/service-providers",
   "/services",
   "/services-provider",

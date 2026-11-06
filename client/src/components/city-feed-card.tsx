@@ -1427,17 +1427,22 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd: onAddProp
     href: "/experiences",
   };
   const purchasesAllowed = useBookingActionsShown();
+  // R4-1 (round 4): a card built from a `city_events` row names that row (`city_event` / its source id); the resolver
+  // re-reads it for the date, time and pin, so it sends no hints. A partner event names its Fever id, as before.
+  const isCityEvent = event.planKind === "city_event" && typeof event.sourceId === "string" && event.sourceId;
+  const eventRef = isCityEvent
+    ? { type: "city_event", sourceContentId: String(event.sourceId) }
+    : { type: "event", sourceContentId: String(event.id ?? event.eventId ?? "") };
   const eventAddPayload = () => ({
     title: eventName,
     city,
-    type: "event",
+    ...eventRef,
     scheduledDate,
     sourceImpressionId: getImpIdEvt(),
-    sourceContentId: String(event.id ?? event.eventId ?? ""),
-    // CAP-2 Phase 2 (A-29): the event's own start and end ride as placement hints.
-    ...eventPlacementHints(event),
+    // CAP-2 Phase 2 (A-29): a partner event's own start and end ride as placement hints.
+    ...(isCityEvent ? {} : eventPlacementHints(event)),
   });
-  const eventSave = feedSaveIntent({ type: "event", sourceContentId: String(event.id ?? event.eventId ?? "") }, city);
+  const eventSave = feedSaveIntent(eventRef, city);
   const sheetAction = {
     ...eventSave,
     city,

@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { MapPin, Calendar, CalendarDays, Users, ShoppingCart, Lock, Heart } from "lucide-react";
 import { useTripContext } from "@/lib/trip-context";
 import { planningRouteForTrip, usePlanning } from "@/contexts/PlanningContext";
-import { classify, eventCountLabel, partyCountLabel, partyCountOnly } from "@/lib/plan-vocabulary";
+import { classify, eventCountLabel, partyCountLabel, partyCountOnly, partyCompositionLabel } from "@/lib/plan-vocabulary";
 // Ledger 2026-09-04-which-event-picker: "the events of THIS plan" now has ONE definition, shared
 // with the picker that writes the link. The strip filtered inline before that module existed; two
 // copies of the same filter is the drift class §18 rule 1 names.
@@ -178,7 +178,12 @@ export function TripStrip() {
    * meta line uses — one answer to "what do we show while we do not know yet", §18 rule 1); the
    * class fallback is right only once the row's absence is a FINISHED fact.
    */
-  const partyLabel = !hasTravelers
+  // R4-4 (round 4; R3-22 completed): the party as the traveler stated it — "2 adults" / "2 adults, 1 child" — through
+  // the ONE helper, ahead of any count wording; the count labels below remain only where the pair was never stated.
+  const composition = partyCompositionLabel(ctx.adults, ctx.kids);
+  const partyLabel = composition
+    ? composition
+    : !hasTravelers
     ? ""
     : !occasionResolved
       ? partyCountOnly(ctx.travelers)

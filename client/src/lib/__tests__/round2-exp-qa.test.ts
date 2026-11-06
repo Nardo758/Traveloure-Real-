@@ -99,7 +99,7 @@ describe("round 2 EXP-QA", () => {
   it("R9 guest plan banner", () => {
     assert.equal(
       guestPlanBanner({ title: "A trip in Kyoto", startDate: "2027-04-09", endDate: "2027-04-12", datesConfirmed: true, adults: 2, kids: null }),
-      "A trip in Kyoto, Fri 9 – Mon 12 Apr 2027 and 2 travelers",
+      "A trip in Kyoto, Fri 9 – Mon 12 Apr 2027 and 2 adults",
     );
     assert.equal(
       guestPlanBanner({ title: "Kyoto trip", startDate: "2026-11-04", endDate: "2026-11-04", datesConfirmed: false, adults: null, kids: null }),

@@ -1431,3 +1431,9 @@ the resolver can re-read, so they now offer no save (before, a signed-in viewer 
 If those should be saveable, they need a PlanItemRef kind (a ruling), not a client-built item.
 Ruling (Nov 6): this stands; checked places get a kind when they get a row of their own.
 
+
+### FU-R4-11 — Kodai-ji's autumn evenings have no published start time (round 4)
+
+`city_events` row `kodaiji-autumn-night-2026` (migration 439) carries `start_time_known = false`, so "Plan around it"
+lands the item on its day with no time — correct for the row as stored. If kodaiji.com states the evening opening
+time, that is a data row for Research Bot (a timed `starts_at` and `start_time_known = true`), not code.

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import { useQuery } from "@tanstack/react-query";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { PlanActions } from "@/components/plan/PlanActions";
@@ -113,6 +114,7 @@ function DealCardSkeleton() {
 
 // Exported for the CAP-2 Phase 3 render proof (cap2-phase3.test.tsx P7).
 export function DealCard({ deal, idx }: { deal: DealItem; idx: number }) {
+  const bookingShown = useBookingActionsShown();
   const TypeIcon = typeIcons[deal.type] || Tag;
   const colorClass = typeColors[deal.type] || "bg-gray-50 text-gray-700";
   const [imgFailed, setImgFailed] = useState(false);
@@ -211,7 +213,8 @@ export function DealCard({ deal, idx }: { deal: DealItem; idx: number }) {
 
             <div className="mt-auto pt-2 flex items-center justify-between gap-2">
               <div>
-                {formattedPrice ? (
+                {/* R4-7 (round 4): a price is booking copy — none in waitlist mode (the shared rule). */}
+                {!bookingShown ? null : formattedPrice ? (
                   <div>
                     <span
                       className="text-lg font-bold text-primary"

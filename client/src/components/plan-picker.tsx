@@ -188,7 +188,7 @@ export function PlanPickerList({
           disabled={disabled || (selected !== "new" && !plans.some((row) => row.id === selected))}
           data-testid="button-plan-picker-confirm"
         >
-          {selected === "new" ? "New plan" : (mode?.confirmLabel ?? "Add to this plan")}
+          {selected === "new" ? "New plan" : (mode?.confirmLabel ?? "Save to this plan")}
         </Button>
       )}
     </div>

@@ -149,7 +149,7 @@ describe("T3 /destinations cards", () => {
 
   it("a non-open market's card goes to its waitlist; an open one keeps its link", () => {
     const grid = src("client/src/components/travelpulse/CityGrid.tsx");
-    assert.match(grid, /primaryLabel=\{waitlistOnly \? MARKET_STATUS_COPY\.waitlist : "Take me Here"\}/);
+    assert.match(grid, /primaryLabel=\{waitlistOnly \? MARKET_STATUS_COPY\.waitlist : START_PLAN_LABEL\}/);
     assert.match(grid, /onCardClick=\{waitlistOnly && marketKey \? \(\) => navigate\(waitlistMarketPath\(marketKey\)\) : onClick\}/);
     assert.match(grid, /statusLabel=\{statusLabel\}/);
   });

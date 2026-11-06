@@ -114,6 +114,26 @@ describe("Lane 2 mode read", () => {
     assert.deepEqual(offenders, [], "a booking label drawn without the shared mode read");
   });
 
+  // R4-7 (round 4): a price on a traveler tile is booking copy too — a file that draws a nightly / per-unit price
+  // suffix must read the shared rule. The unit helper and the seller console are named.
+  it("M7 a traveler file that draws a price suffix reads the shared rule", () => {
+    const PRICE = /(["'`>]\s*)(\/night|\/person|\/day|per night)(\s*["'`<])/;
+    const READS = /useBookingActionsShown|withoutBookingActions|<PlanActions\b|usePlanActionsVisible\(/;
+    const NAMED: Record<string, string> = {
+      "client/src/lib/price-unit.ts": "the unit-suffix helper; its callers are gated",
+      "client/src/pages/provider/property-create.tsx": "seller console, not a traveler surface",
+    };
+    const offenders: string[] = [];
+    for (const file of walk("client/src")) {
+      if (file.includes("__tests__") || NAMED[file]) continue;
+      const code = stripComments(read(file));
+      if (PRICE.test(code) && !READS.test(code)) offenders.push(file);
+    }
+    assert.deepEqual(offenders, [], "a tile price drawn without the shared mode read");
+    assert.match(read("client/src/components/travelpulse/CityCard.tsx"), /const showAvgPrice = bookingShown && isPositive\(avgPriceNum\);/);
+    assert.match(read("client/src/pages/deals.tsx"), /\{!bookingShown \? null : formattedPrice \? \(/);
+  });
+
   it("M6 traveler sign-up is hidden in waitlist mode", () => {
     const menu = read("client/src/components/user-menu.tsx");
     assert.match(menu, /const travelerSignupShown = useTravelerSignupShown\(\);/);

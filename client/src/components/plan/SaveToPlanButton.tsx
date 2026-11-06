@@ -5,9 +5,19 @@
  */
 import { useToast } from "@/hooks/use-toast";
 import { WAITLIST_COPY } from "@/lib/waitlist-copy";
+import { useRefSaved } from "@/lib/saved-refs";
 
-export function SaveToPlanButton({ testId, className, onSave, disabled }: { testId: string; className?: string; onSave?: () => void; disabled?: boolean }) {
+export function SaveToPlanButton({ testId, className, onSave, disabled, savedKey }: { testId: string; className?: string; onSave?: () => void; disabled?: boolean; savedKey?: string | null }) {
   const { toast } = useToast();
+  // R4-5 (round 4): a browse save whose row the server confirmed reads "Saved to plan", like every PlanActions site.
+  const saved = useRefSaved(savedKey ?? null);
+  if (saved) {
+    return (
+      <button type="button" disabled className={className ?? "inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-semibold"} data-testid={testId} data-saved="true">
+        {WAITLIST_COPY.savedToPlan}
+      </button>
+    );
+  }
   return (
     <button
       type="button"

@@ -1,4 +1,6 @@
 import { Switch, Route, Redirect, useLocation, useSearch } from "wouter";
+import { catalogueSearchRedirectTarget } from "@/lib/catalogue-search-route";
+import { useMarqueeMarket } from "@/lib/signup-mode";
 import { kyotoWaitlistTarget } from "@/lib/waitlist-markets";
 import { Ga4PageViews } from "@/components/Ga4PageViews";
 import { AnalyticsConsentBanner } from "@/components/AnalyticsConsentBanner";
@@ -485,6 +487,16 @@ const DISCOVER_TAB_ROUTES: Record<string, string> = {
   services: "/services",
 };
 
+function CatalogueSearchRedirect() {
+  const [, setLocation] = useLocation();
+  const search = useSearch();
+  const market = useMarqueeMarket();
+  useEffect(() => {
+    setLocation(catalogueSearchRedirectTarget(search, market.cityName), { replace: true });
+  }, [setLocation, search, market.cityName]);
+  return null;
+}
+
 function KyotoWaitlistRedirect() {
   const [, setLocation] = useLocation();
   useEffect(() => {
@@ -605,6 +617,9 @@ function Router() {
           SAME `BrowseShell` chooser L1 already gave `/experts`, `/cart` and
           `/discover/location/:city` (§18 rule 1 — the routes never decide their own chrome). A
           guest keeps the public `Layout`: public browse is a public surface. */}
+      <Route path="/search">
+        <CatalogueSearchRedirect />
+      </Route>
       <Route path="/destinations">
         <BrowseShell><DiscoverPage surface="travelpulse" /></BrowseShell>
       </Route>

@@ -28,7 +28,9 @@ describe("CAP-2 Phase 2 (client)", () => {
     const card = read("client/src/components/city-feed-card.tsx");
     // CAP-2 Phase 3 (sanctioned edit): the three event adds share ONE payload builder (`eventAddPayload`), read by
     // PlanActions on the compact card, the full card and the drawer.
-    assert.equal((card.match(/sourceContentId: String\(event\.id \?\? event\.eventId \?\? ""\),\s*\/\/[^\n]*\n\s*\.\.\.eventPlacementHints\(event\),/g) ?? []).length, 1, "the one event add payload");
+    // R4-1 (round 4, sanctioned edit): a partner event's hints ride as before; a city event's row is re-read by the
+    // resolver, so it sends none.
+    assert.equal((card.match(/\.\.\.\(isCityEvent \? \{\} : eventPlacementHints\(event\)\),/g) ?? []).length, 1, "the one event add payload");
     assert.equal((card.match(/onAdd\?\.\(eventAddPayload\(\)\)|onAdd\(eventAddPayload\(\)\)/g) ?? []).length, 3, "all three event adds read it");
   });
 

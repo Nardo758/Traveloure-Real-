@@ -17,6 +17,8 @@ import { approvedFeverPartnerName } from "./fever-partner-name";
 import { timezoneForMarket } from "./trend-engine/operating-markets";
 
 const CACHE_MS = 5 * 60 * 1000;
+/** R4-2: the one in-flight background partner refresh. */
+let refreshing: Promise<void> | null = null;
 const DEADLINE_MS = 8_000;
 
 export interface PartnerCalendarCity {
@@ -155,6 +157,22 @@ export async function loadDatedPartnerEvents(
   if (!d.catalogReady()) return [];
   const key = months[0] ?? "";
   if (!deps && cache && cache.key === key && d.nowMs() - cache.at < CACHE_MS) return cache.events;
+  // R4-2 (round 4): the request path never waits on the partner. With no warm cache the calendar answers now with the
+  // city events alone, and the partner list is fetched in the background for the next read (one refresh at a time).
+  // Injected deps (tests) keep the awaited path.
+  if (!deps) {
+    if (!refreshing) {
+      refreshing = collect(now, months, d)
+        .then(({ events, cacheable }) => {
+          if (cacheable) cache = { at: d.nowMs(), key, events };
+        })
+        .catch((err) => console.warn("[events-calendar] partner refresh failed", err))
+        .finally(() => {
+          refreshing = null;
+        });
+    }
+    return cache && cache.key === key ? cache.events : [];
+  }
   try {
     const { events, cacheable } = await collect(now, months, d);
     if (!deps && cacheable) cache = { at: d.nowMs(), key, events };
