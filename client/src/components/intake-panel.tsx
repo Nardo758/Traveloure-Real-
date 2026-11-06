@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, Loader2, Sparkles } from "lucide-react";
 import { usePlanning } from "@/contexts/PlanningContext";
+import { SLIP_REFUSAL_MESSAGES } from "@/lib/trip-slip";
 import { updateTripContextIdentitySafe } from "@/lib/trip-context";
 import { trackEvent } from "@/lib/analytics";
 import { parsePartyCountInput, travelersForSave } from "@/lib/plan-vocabulary";
@@ -224,7 +225,8 @@ export function IntakePanel({
         ...(partyStated !== undefined ? { travelers: partyStated } : {}),
       });
       if (!out.ok) {
-        toast({ variant: "destructive", title: out.message ?? "Couldn't start that plan. Try again." });
+        // The mint's own refusal sentence; none ⇒ the mint's existing failure copy (no new string).
+        toast({ variant: "destructive", title: out.message ?? SLIP_REFUSAL_MESSAGES.mint_failed });
         return;
       }
       trackEvent("trip_created", { surface: "intake_panel", creation_method: "destination_intake" });
