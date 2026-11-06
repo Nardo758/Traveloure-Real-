@@ -8,7 +8,7 @@ import {
   travelPulseHappeningNow,
 } from "@shared/schema";
 import { and, eq, ilike } from "drizzle-orm";
-import { happeningNowTitleHidden } from "@shared/kyoto-feed-cleanup";
+import { happeningNowTitleHidden, seededKyotoGemHiddenAt } from "@shared/kyoto-feed-cleanup";
 import { logger } from "./infrastructure";
 
 // Import JSON data directly so it gets bundled with the code
@@ -183,6 +183,9 @@ export async function seedTravelPulseData(): Promise<{ created: number }> {
           bestFor: gem.best_for,
           priceRange: gem.price_range,
           imageUrl: gem.image_url,
+          // FU-R3-6b: migrations 400 / 425 hid these on production before the seed ran there; on a fresh database the
+          // seed runs after them, so the same rules are applied as the row is inserted.
+          hiddenAt: seededKyotoGemHiddenAt(gem),
         });
         created++;
       }

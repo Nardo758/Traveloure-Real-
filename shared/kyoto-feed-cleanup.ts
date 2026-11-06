@@ -187,3 +187,23 @@ export function kyotoGemSeedOverlay(
   }
   return { hidden };
 }
+
+/**
+ * FU-R3-6b: the `hidden_at` a seeded Kyoto gem takes on insert, so a fresh database matches production's visible set.
+ * The boot seeder runs AFTER migrations, so on a new database migrations 400 and 425 found nothing to hide; this applies
+ * their rules to the row as it is inserted: 400's exact names (`KYOTO_GEMS_TO_HIDE`) and its Uchida rule (name,
+ * description or why-locals text), and 425's card (`KYOTO_GEMS_HIDDEN_BY_425`). Not Kyoto, or none of those ⇒ null.
+ */
+export function seededKyotoGemHiddenAt(gem: {
+  city?: string | null;
+  place_name?: string | null;
+  description?: string | null;
+  why_locals_love_it?: string | null;
+}): Date | null {
+  if ((gem.city ?? "").trim().toLowerCase() !== "kyoto") return null;
+  const name = gem.place_name ?? "";
+  if ((KYOTO_GEMS_TO_HIDE as readonly string[]).includes(name)) return new Date("2026-10-20T00:00:00Z");
+  if ([name, gem.description ?? "", gem.why_locals_love_it ?? ""].some((t) => /uchida/i.test(t))) return new Date("2026-10-20T00:00:00Z");
+  if ((KYOTO_GEMS_HIDDEN_BY_425 as readonly string[]).includes(name)) return new Date("2026-11-02T00:00:00Z");
+  return null;
+}

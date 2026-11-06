@@ -1449,7 +1449,12 @@ Kodai-ji, To-ji and Kaomise publish no times and stay date-only (ledger `2026-11
 lands the item on its day with no time — correct for the row as stored. If kodaiji.com states the evening opening
 time, that is a data row for Research Bot (a timed `starts_at` and `start_time_known = true`), not code.
 
-### FU-R3-6b — a seed-built database shows the Kyoto gems migration 400 hid (seed drift)
+### FU-R3-6b — a seed-built database shows the Kyoto gems migration 400 hid (seed drift) — CLOSED Nov 6
+
+**Closed:** the boot seeder now stamps `hidden_at` on insert (`seededKyotoGemHiddenAt`, `shared/kyoto-feed-cleanup.ts`;
+test `shared/__tests__/seed-kyoto-hide-list.test.ts`). Fresh database, booted: 14 Kyoto gems visible (22 before the
+fix), every one also visible on production; none of the 10 hidden rows appear on production. The remaining gap
+(production 21) is FU-R3-6c.
 
 `server/seed-travelpulse.ts` inserts `server/data/hidden-gems.json` at boot, after migrations run. It applies the
 happening-now hide list (`happeningNowTitleHidden`, line 205) but not `KYOTO_GEMS_TO_HIDE` (`shared/kyoto-feed-cleanup.ts`),
@@ -1457,3 +1462,10 @@ so on a fresh database migration 400 finds nothing to hide and its 28 gems are i
 environment). Production is correct: 400 ran over rows that already existed. Fix in code, not data: stamp `hidden_at` on
 insert for a name in `KYOTO_GEMS_TO_HIDE` (and `KYOTO_GEMS_HIDDEN_BY_425`), the way the happening-now seed does.
 
+### FU-R3-6c — seven visible production Kyoto gems that no seed or migration creates
+
+Production's Kyoto location feed shows 21 gems; a fresh database built from the repo shows 14 (all in production's 21).
+These seven exist on production only (rows from before migration 400, which updated them in place), so a fresh database
+cannot have them: Gion's old streets, Kiyomizu-dera back paths, Kurama Onsen, Kyoto Botanical Gardens, Omen, Otagi
+Nenbutsu-ji Temple, Yasaka Koshindo Temple. Closing the gap means adding their content to a seed (a content decision,
+with sources per LD 21), not a code fix. Decision-maker to rule.
