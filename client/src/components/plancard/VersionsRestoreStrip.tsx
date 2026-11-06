@@ -156,7 +156,7 @@ export function restoreStripShown(tripRole: string | null | undefined): boolean 
 export function VersionsRestoreStrip({ tripId, tripRole }: { tripId: string; tripRole?: string | null }) {
   const shownForRole = restoreStripShown(tripRole);
   const key = restorableKey(tripId);
-  const { data } = useQuery<unknown>({ queryKey: key, retry: false, staleTime: 15_000, enabled: shownForRole });
+  const { data, isError: readFailed, refetch: retryRead } = useQuery<unknown>({ queryKey: key, retry: false, staleTime: 15_000, enabled: shownForRole });
   const shown = restoreRowsToShow(readRestorable(data));
   const [previewDay, setPreviewDay] = useState<number | null>(null);
   const [notes, setNotes] = useState<Record<number, RestoreNoteKey>>({});
@@ -181,6 +181,22 @@ export function VersionsRestoreStrip({ tripId, tripRole }: { tripId: string; tri
   });
 
   if (!shownForRole) return null;
+  // PLAN-2 lane 4 (W12): a failed read used to be drawn exactly like "there is nothing to restore" — the strip
+  // simply vanished. It now says so, and retry re-reads only.
+  if (readFailed) {
+    return (
+      <section
+        className="rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] p-3 text-xs"
+        data-testid="versions-restore-strip-error"
+        role="alert"
+      >
+        <p className="text-[color:var(--slip-ink)]">We couldn't check for saved drafts just now.</p>
+        <button type="button" className="mt-1 underline" onClick={() => void retryRead()}>
+          Try again
+        </button>
+      </section>
+    );
+  }
   return (
     <VersionsRestoreView
       finalized={shown.finalized}

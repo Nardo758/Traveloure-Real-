@@ -149,6 +149,18 @@ export default function PlanVersionsPage() {
           ) : null
         }
         noRunCta={
+          <>
+          {leadData.previewLoading ? (
+            <p role="status" aria-live="polite" className="text-sm text-muted-foreground" data-testid="optimizer-lead-loading">
+              Checking this draft…
+            </p>
+          ) : leadData.previewFailed ? (
+            <p role="alert" className="text-sm text-destructive" data-testid="optimizer-lead-error">
+              <button type="button" className="underline" onClick={() => leadData.retryPreview()}>
+                We couldn't check this draft just now. Try again.
+              </button>
+            </p>
+          ) : null}
           <OptimizerLead
             drafted={(plan.data.days ?? []).some((d) => (d.activities ?? []).length > 0)}
             findings={leadData.findings}
@@ -160,6 +172,7 @@ export default function PlanVersionsPage() {
             testId="plan-versions-optimize"
             onClick={() => setLocation(optimizeHref)}
           />
+          </>
         }
       />
     </div>

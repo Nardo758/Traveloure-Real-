@@ -126,7 +126,7 @@ export function VersionsBoard({
   const { toast } = useToast();
   const isDesktop = useIsDesktop();
   const versionsKey = [`/api/trips/${tripId}/versions`];
-  const { data: view } = useQuery<VersionsBoardView>({ queryKey: versionsKey, retry: false, staleTime: 15_000 });
+  const { data: view, isLoading: boardLoading, isError: boardFailed, refetch: retryBoard } = useQuery<VersionsBoardView>({ queryKey: versionsKey, retry: false, staleTime: 15_000 });
   const { data: fee } = useQuery<{ feeCents?: number; currency?: string; coveredByTripPass?: boolean; aiDisabled?: boolean }>({
     // R321 S11-8: the SAME cache key the OptimizerLead's one data source reads.
     queryKey: ["/api/optimization-fee", { tripId }],
@@ -179,6 +179,29 @@ export function VersionsBoard({
     },
   });
 
+  // PLAN-2 lane 4 (W11): the board used to draw NOTHING while loading and on error — indistinguishable from
+  // "there is nothing here". Both are now stated, and retry re-reads only (it never mutates the plan).
+  if (boardLoading) {
+    return (
+      <section className="mb-6 space-y-4" data-testid="versions-board" data-board-state="loading" aria-busy="true">
+        <p role="status" aria-live="polite" className="text-sm text-muted-foreground" data-testid="versions-board-loading">
+          Reading your versions…
+        </p>
+      </section>
+    );
+  }
+  if (boardFailed) {
+    return (
+      <section className="mb-6 space-y-4" data-testid="versions-board" data-board-state="error">
+        <p role="alert" className="text-sm text-destructive" data-testid="versions-board-error">
+          We couldn't read your versions just now. Nothing on your plan changed.
+        </p>
+        <button type="button" className="text-sm underline" onClick={() => void retryBoard()} data-testid="versions-board-retry">
+          Try again
+        </button>
+      </section>
+    );
+  }
   if (!view) return null;
   // FB-1 step 3 ruling 4: no version cleared every problem — the draft's open issues and their fixes. No retry, no
   // apology, and no held version shown as if it passed.
