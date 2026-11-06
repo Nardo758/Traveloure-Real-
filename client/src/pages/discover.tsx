@@ -436,7 +436,8 @@ const tripCategories = [
 ];
 
 
-function ServiceCard({
+// Exported for the CAP-2 Phase 3 render proof (cap2-phase3.test.tsx P7).
+export function ServiceCard({
   service,
   category,
   onAddToCart,

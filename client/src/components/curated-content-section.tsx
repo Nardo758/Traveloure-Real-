@@ -190,7 +190,8 @@ function AddToTripDialog({
   );
 }
 
-function CuratedCard({
+// Exported for the CAP-2 Phase 3 render proof (cap2-phase3.test.tsx P7).
+export function CuratedCard({
   item,
   onAddToTrip,
 }: {

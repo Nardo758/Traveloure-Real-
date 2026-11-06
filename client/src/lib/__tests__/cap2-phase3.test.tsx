@@ -9,6 +9,8 @@
  *   P5 the GUARD: a traveler-facing file that draws a save / book / hire / more-info label without PlanActions fails.
  *      Label tables and the ruled-out surfaces are named, each with its reason; the list only shrinks.
  *   P6 every Phase 3 site renders through PlanActions, and the public guest-capabilities read carries no price.
+ *   P7 the sites a local build cannot reach with data (Discover service and result cards, curated content, Deals),
+ *      rendered in both modes: waitlist draws no Book; open draws the mode-honest Book; the save reads "Save to plan".
  *
  * Run: node --import ./client/src/lib/__tests__/lc1-css-register.mjs --import tsx --test client/src/lib/__tests__/cap2-phase3.test.tsx
  */
@@ -34,6 +36,11 @@ import {
 } from "../plan-actions";
 import { markRefSaved, resetSavedRefs, savedRefKey } from "../saved-refs";
 import { PlanActions } from "../../components/plan/PlanActions";
+import { UnifiedResultCard } from "../../components/unified-result-card";
+import { CuratedCard } from "../../components/curated-content-section";
+import { DealCard } from "../../pages/deals";
+import { ServiceCard } from "../../pages/discover";
+import { SignInModalProvider } from "../../contexts/SignInModalContext";
 
 (globalThis as any).React = React;
 
@@ -46,7 +53,9 @@ function render(node: React.ReactNode, mode: "waitlist" | "open", caps?: unknown
   if (caps) qc.setQueryData([guestCapabilitiesUrl("Kyoto")], caps);
   return renderToString(
     <QueryClientProvider client={qc}>
-      <Router ssrPath="/discover/location/kyoto">{node}</Router>
+      <Router ssrPath="/discover/location/kyoto">
+        <SignInModalProvider>{node}</SignInModalProvider>
+      </Router>
     </QueryClientProvider>,
   );
 }
@@ -199,6 +208,56 @@ describe("CAP-2 Phase 3 — PlanActions", () => {
     const body = route.slice(i, route.indexOf('router.get("/api/public/guest-capabilities"', i) + 400);
     assert.doesNotMatch(body, /price|fee|amount|cents/i, "the guest-capabilities read carries no price");
     assert.match(body, /hire = \(await expertAvailabilityForMarket\(key\)\)\.canAsk/);
+  });
+});
+
+describe("CAP-2 Phase 3 — the sites without local data, rendered in both modes (P7)", () => {
+  it("P7a the Discover service card: Book by booking mode in open mode only; the save reads Save to plan", () => {
+    const service: any = {
+      id: "svc-p7", serviceName: "Tea ceremony", price: "40", location: "Kyoto", deliveryMethod: "in_person",
+      buyAction: { primary: { kind: "request_to_book", label: "Request to book" }, landing: { store: "request" } },
+    };
+    const node = <ServiceCard service={service} onAddToCart={() => {}} />;
+    const wait = render(node, "waitlist");
+    assert.doesNotMatch(wait, /data-testid="button-service-action-svc-p7"/, "waitlist: no Book");
+    assert.match(wait, /data-testid="button-add-to-cart-svc-p7"[^>]*>Save to plan</);
+    const open = render(node, "open");
+    assert.match(open, /data-testid="button-service-action-svc-p7"[^>]*>Request to book</);
+    assert.match(open, /data-testid="button-add-to-cart-svc-p7"[^>]*>Save to plan</);
+    const hire: any = { ...service, id: "svc-hire", buyAction: { primary: { kind: "hire", label: "Hire for this trip" }, landing: { store: "hire" } } };
+    assert.doesNotMatch(render(<ServiceCard service={hire} />, "open"), /Hire for this trip/, "no area answer ⇒ no Hire");
+    assert.match(render(<ServiceCard service={hire} />, "open", { mode: "open", actions: { save: true, book: true, hire: true } }), />Hire for this trip</);
+  });
+
+  it("P7b the Discover search-result card: the agent request and a partner's booking in open mode only", () => {
+    const agent: any = { id: "r1", title: "Kaiseki dinner", source: "viator", isPartner: true, bookingToken: "tok" };
+    assert.doesNotMatch(render(<UnifiedResultCard result={agent} />, "waitlist"), /data-testid="button-view-r1"/);
+    assert.match(render(<UnifiedResultCard result={agent} />, "open"), /data-testid="button-view-r1"[^>]*>(<svg[\s\S]*?<\/svg>)?Request to book</);
+    const site: any = { id: "r2", title: "Kyoto museum", source: "local", isPartner: false, websiteUrl: "https://example.org" };
+    assert.match(render(<UnifiedResultCard result={site} />, "waitlist"), />View</, "a venue's own site keeps View in any mode");
+  });
+
+  it("P7c curated content: Book on partner / Book in open mode only; Save to plan when it names its partner product", () => {
+    const base: any = { id: "c1", sourceId: "s", type: "affiliate", contentCategory: "activity", title: "Tea", description: "", cover_image: null, price: null, price_display: null, source: "x", rating: null, city: "Kyoto", country: "Japan", duration: null, highlights: [], metadata: {}, tracking: { productId: "ap-1", partnerId: null, isAffiliateTracked: true } };
+    const aff = { ...base, affiliate_url: "https://partner.example" };
+    const wait = render(<CuratedCard item={aff} onAddToTrip={() => {}} />, "waitlist");
+    assert.doesNotMatch(wait, /button-book-via-traveloure-c1/);
+    assert.match(wait, /data-testid="button-add-trip-c1"[^>]*>(<svg[\s\S]*?<\/svg>)?Save to plan</);
+    assert.match(render(<CuratedCard item={aff} onAddToTrip={() => {}} />, "open"), /data-testid="button-book-via-traveloure-c1"[^>]*>(<svg[\s\S]*?<\/svg>)?Book on partner</);
+    const none = { ...base, affiliate_url: null, tracking: { productId: null, partnerId: null, isAffiliateTracked: false } };
+    const noneOpen = render(<CuratedCard item={none} onAddToTrip={() => {}} />, "open");
+    assert.doesNotMatch(noneOpen, /button-add-trip-c1/, "no partner product ⇒ not placeable ⇒ no save");
+    assert.match(noneOpen, /data-testid="button-book-now-c1"[^>]*>(<svg[\s\S]*?<\/svg>)?Book</);
+    const priced = { ...none, price: "30" };
+    assert.doesNotMatch(render(<CuratedCard item={priced} onAddToTrip={() => {}} />, "open"), /Not available yet|button-book-now-c1/, "no checkout ⇒ nothing, never a dead button");
+  });
+
+  it("P7d Deals: the booking-agent request in open mode only; no dead 'Unavailable'", () => {
+    const deal: any = { id: "d1", type: "hotel", title: "Ryokan", destination: "Kyoto", price: null, currency: "USD", rating: null, reviewCount: null, imageUrl: null, bookingToken: "tok", provider: "p", providerLabel: "Partner", featured: false };
+    assert.doesNotMatch(render(<DealCard deal={deal} idx={0} />, "waitlist"), /data-testid="button-book-d1"/);
+    assert.match(render(<DealCard deal={deal} idx={0} />, "open"), /data-testid="button-book-d1"[^>]*>Request to book</);
+    const tokenless = { ...deal, id: "d2", bookingToken: null };
+    assert.doesNotMatch(render(<DealCard deal={tokenless} idx={0} />, "open"), /Unavailable|button-book-d2/);
   });
 });
 
