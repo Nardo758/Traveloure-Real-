@@ -270,7 +270,12 @@ export function buildFeedStream(
       id: `expert-${e.id}`,
       data: e,
     })),
-    ...(events ?? []).slice(0, 4).map((e) => ({
+    // R4-1 (round 4): the city's own events (`planKind: "city_event"`) are all listed — the Events tab shows every
+    // city_events row the server sent; partner events keep their cap of four.
+    ...[
+      ...(events ?? []).filter((e) => e?.planKind === "city_event"),
+      ...(events ?? []).filter((e) => e?.planKind !== "city_event").slice(0, 4),
+    ].map((e) => ({
       kind: "event" as FeedItemKind,
       id: `event-${e.id ?? e.eventId ?? Math.random()}`,
       data: e,

@@ -264,7 +264,8 @@ export function CityCard(props: CityCardProps) {
           </div>
         )}
 
-        {variant === "pulse" && dealAlert && (
+        {/* R4-7: a deal alert is price copy ("under $40/night") — hidden in waitlist mode with the price. */}
+        {variant === "pulse" && bookingShown && dealAlert && (
           <div className="flex items-start gap-2 rounded-xl px-2.5 py-2 mb-2.5 text-[11.5px] font-semibold text-[var(--earn-green-ink)] bg-[color:var(--earn-teal-wash)] border border-[color:var(--earn-border)]">
             💰<span className="line-clamp-2">{dealAlert}</span>
           </div>

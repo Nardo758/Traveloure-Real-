@@ -32,6 +32,7 @@ import { SaveToPlanButton } from "../../components/plan/SaveToPlanButton";
 import { CityCard } from "../../components/travelpulse/CityCard";
 import { catalogueSearchRedirectTarget } from "../catalogue-search-route";
 import { filterFeedBySearch } from "../../pages/discover-location";
+import { buildFeedStream } from "../feed-stream";
 
 (globalThis as any).React = React;
 const ROOT = resolve(import.meta.dirname, "../../../..");
@@ -59,6 +60,13 @@ describe("Round 4 fixes", () => {
       source_id: "kodaiji-autumn-night-2026",
       city: "Kyoto",
     });
+    // The feed lists every city event the server sent (seven seeded Kyoto rows), partner events capped at four.
+    const own = Array.from({ length: 7 }, (_, i) => ({ id: `ce-k${i}`, planKind: "city_event", sourceId: `k${i}`, title: `Kyoto event ${i}` }));
+    const partner = Array.from({ length: 6 }, (_, i) => ({ id: `f${i}`, title: `Partner event ${i}` }));
+    const stream = buildFeedStream([], [], [], [...own, ...partner], [], [], [], "Kyoto");
+    const evs = stream.filter((x) => x.kind === "event").map((x) => (x.data as any).id);
+    assert.equal(evs.filter((id) => id.startsWith("ce-")).length, 7, "all seven city events");
+    assert.equal(evs.filter((id) => id.startsWith("f")).length, 4, "partner events keep their cap");
     // The location view: city events always; a Fever row only once it is in fever_event_cache.
     const view = read("server/services/location-view.service.ts");
     assert.match(view, /const own = await listCityEventsForLocation\(cityName\)/);
@@ -120,8 +128,9 @@ describe("Round 4 fixes", () => {
   });
 
   it("R4-7 a destination tile's nightly price shows in open mode only", () => {
-    const node = <CityCard variant="pulse" cityName="Kyoto" country="Japan" score={80} avgPrice="120" primaryLabel="Start a plan" testId="card-city-kyoto" />;
-    assert.doesNotMatch(render(node, "waitlist"), /\/night/, "waitlist: no price");
+    const node = <CityCard variant="pulse" cityName="Kyoto" country="Japan" score={80} avgPrice="120" dealAlert="Boutique hotels for under $40/night" primaryLabel="Start a plan" testId="card-city-kyoto" />;
+    assert.doesNotMatch(render(node, "waitlist"), /\/night|under \$40/, "waitlist: no price, no deal alert");
+    assert.match(render(node, "open"), /under \$40\/night/);
     assert.match(render(node, "open"), /\$(<!-- -->)?120<span[^>]*>\/night/);
   });
 
