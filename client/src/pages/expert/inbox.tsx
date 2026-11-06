@@ -368,7 +368,7 @@ interface InboxHandoff {
 // ─── HO-1 (ledger `2026-11-03-ho1-expert-deliver-controls`): an ACCEPTED handoff stays on the expert's
 // screen until it is delivered or given up. Deliver only changes status — the expert is paid at the
 // traveler's Approve (handoff.service.ts), never here — and a server refusal is shown in its own words.
-// Copy is held for owner approval ("Wording approved — Leon" on the PR).
+// Wording approved — Leon (Nov 6, 2026).
 export const HANDOFF_WORKING_COPY = {
   heading: "In progress",
   openPlan: "Open the plan",

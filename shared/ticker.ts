@@ -300,7 +300,7 @@ export function marketStatus(slug: string, s: MarketStatusSettings): MarketStatu
 }
 
 /**
- * The status labels (Marketing row 14). HELD for "Wording approved — Leon". Never the word "coming"; a launch
+ * The status labels (Marketing row 14). Wording approved — Leon (Nov 6, 2026). Never the word "coming"; a launch
  * month is shown only when an admin set one.
  */
 export const MARKET_STATUS_COPY = {
@@ -353,7 +353,7 @@ export function marketPickerOrder(s: MarketStatusSettings): string[] {
 }
 
 /**
- * The hero pill for the marquee market (HELD): "Now live in {city}" when it is live, else "Now in beta in {city}".
+ * The hero pill for the marquee market (wording approved — Leon, Nov 6, 2026): "Now live in {city}" when it is live, else "Now in beta in {city}".
  * No marquee market ⇒ no pill (null).
  */
 export const HERO_PILL_COPY = {

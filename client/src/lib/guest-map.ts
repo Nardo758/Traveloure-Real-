@@ -20,7 +20,7 @@ export const GUEST_MAP_TRAY = "Browse freely. Your plan is created when you sign
 export const GUEST_MAP_START_LABEL = "Sign in to start";
 export const GUEST_GATE_TITLE = "Your plan is created when you sign in";
 export const GUEST_GATE_DISMISS = "Keep browsing";
-/** ENTRY-1 (copy row 11, approved by Marketing; HELD for "Wording approved — Leon"). */
+/** ENTRY-1 (copy row 11, approved by Marketing; Wording approved — Leon, Nov 6, 2026). */
 export const GUEST_ANSWERS_KEPT = "Your answers are kept.";
 
 export type GuestGateKind = { kind: "add"; name: string } | { kind: "start" };
