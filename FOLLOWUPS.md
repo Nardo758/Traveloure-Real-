@@ -1378,7 +1378,14 @@ attribution footer, and the session's notes on all five PRs were edited to start
 sentence. **Needs Leon:** an approval (or not) of 435–437 in the H-29 form, on #1887 or here; the SQL is already on
 `main` and, once published, applied.
 
-### FU-R3-6 — Kyoto gems with no coordinates, for Research Bot (EXP-QA round 3 follow-ups 2, A-18)
+### FU-R3-6 — Kyoto gems with no coordinates, for Research Bot (EXP-QA round 3 follow-ups 2, A-18) — CLOSED (Nov 6, 2026)
+
+CLOSED: nothing is left for Research Bot. Migrations 437 and 441 placed every gem on this list that the production feed
+shows. The eight that remain unplaced (Nishiki Market alley stalls, Pontocho evening walk, Tetsugaku-no-Michi
+(Philosopher's Path), Otagi Nenbutsu-ji, Tofuku-ji Temple during autumn, Kagurazaka Ishikawa, Kishiwada, Kishiwada Cafe)
+were already hidden on production by migration 400 (ledger `2026-10-20-kyoto-feed-cleanup`, `KYOTO_GEMS_TO_HIDE`); the
+production Kyoto feed shows none of them (public read, Nov 6). This list was read from a seed-built database, where they
+come back visible — see FU-R3-6b. No migration 444 (decision-maker, Nov 6).
 
 These Kyoto `travel_pulse_hidden_gems` rows have no latitude/longitude, so a save of one lands on the plan as "not on the
 map" (A-18). Read from a database built from the repo's seeds and migrations on Nov 5, 2026 — production may hold a
@@ -1441,3 +1448,12 @@ Kodai-ji, To-ji and Kaomise publish no times and stay date-only (ledger `2026-11
 `city_events` row `kodaiji-autumn-night-2026` (migration 439) carries `start_time_known = false`, so "Plan around it"
 lands the item on its day with no time — correct for the row as stored. If kodaiji.com states the evening opening
 time, that is a data row for Research Bot (a timed `starts_at` and `start_time_known = true`), not code.
+
+### FU-R3-6b — a seed-built database shows the Kyoto gems migration 400 hid (seed drift)
+
+`server/seed-travelpulse.ts` inserts `server/data/hidden-gems.json` at boot, after migrations run. It applies the
+happening-now hide list (`happeningNowTitleHidden`, line 205) but not `KYOTO_GEMS_TO_HIDE` (`shared/kyoto-feed-cleanup.ts`),
+so on a fresh database migration 400 finds nothing to hide and its 28 gems are inserted visible (dev, CI and any new
+environment). Production is correct: 400 ran over rows that already existed. Fix in code, not data: stamp `hidden_at` on
+insert for a name in `KYOTO_GEMS_TO_HIDE` (and `KYOTO_GEMS_HIDDEN_BY_425`), the way the happening-now seed does.
+
