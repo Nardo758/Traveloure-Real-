@@ -101,7 +101,7 @@ describe("Round 3 follow-ups 2", () => {
   it("R3-18 the split: Build-around waits for open mode; Quick draft and the Trip Card banner read no mode", () => {
     const rail = read("client/src/components/plancard/SlipRail.tsx");
     // Build-around lives in the optimizer block, which waitlist mode hides (paid optimizer, P-1c).
-    assert.match(rail, /const optimizerWaitlist = !useBookingActionsShown\(\);/);
+    assert.match(rail, /const optimizerWaitlist = !useBookingActionsShown\(\) \|\| !optimizeShown\(caps\.data\);/);
     assert.match(rail, /\{isOwner && !optimizerWaitlist \? \(optimizerSlot \? createPortal\(optimizerBlock, optimizerSlot\) : optimizerBlock\) : null\}/);
     const blockStart = rail.indexOf("const optimizerBlock");
     assert.ok(blockStart > 0 && rail.indexOf("setBuildAroundOpen(true)", blockStart) > blockStart, "Build-around is inside the optimizer block");
@@ -112,7 +112,18 @@ describe("Round 3 follow-ups 2", () => {
     assert.match(slip, /const emptyStartShown = isOwner && aiAction === "draft" && slipView === "list";/);
     // PLAN-1 (sanctioned edit): the map band is the owner mode's slots (MapControlCenter draws the box).
     assert.match(slip, /quickDraft: isOwner && aiAction === "draft" \? <SlipDraftAiRow trip=\{data\.trip\} tripId=\{tripId\} \/> : null,/);
-    assert.doesNotMatch(read("client/src/components/plan/SlipEmptyStart.tsx"), /useBookingActionsShown|useSignupMode/);
+    const emptyStart = read("client/src/components/plan/SlipEmptyStart.tsx");
+    // Quick draft still reads no mode; only the handoff row uses HandoffChooser's waitlist gate.
+    const draftCard = emptyStart.slice(
+      emptyStart.indexOf('data-testid="slip-empty-draft-card"'),
+      emptyStart.indexOf('data-testid="slip-empty-browse"'),
+    );
+    assert.ok(draftCard.length > 50, "expected the empty-start draft card");
+    assert.doesNotMatch(draftCard, /useBookingActionsShown|useSignupMode|waitlist/);
+    assert.match(emptyStart, /const waitlist = !useBookingActionsShown\(\);/);
+    assert.match(emptyStart, /expertsAvailable && !waitlist \? \(/);
+    assert.match(emptyStart, /data-testid="slip-empty-handoff"/);
+    assert.doesNotMatch(emptyStart, /disabled=\{[^}]*waitlist/);
     // The Trip Card banner: dates confirmed (GATE-1) and the R-F rule — no mode read.
     assert.match(slip, /\{isPrimary && data\.trip && !guest && <TripCardPrimaryBanner trip=\{data\.trip\} \/>\}/);
     const banner = slip.slice(slip.indexOf("function TripCardPrimaryBanner"), slip.indexOf("function TripCardPrimaryBanner") + 1500);

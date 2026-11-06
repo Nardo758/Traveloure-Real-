@@ -27,6 +27,7 @@ import { anyLocalLive } from "@/lib/item-row-menu";
 import { openHandoffChooser } from "@/lib/handoff-client";
 import { EXPERT_DOOR_COPY } from "@/lib/expert-door-copy";
 import { useExpertAvailability } from "@/lib/expert-availability";
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import { useSlipFreeDraft, type FreeDraftTripInput } from "./useSlipFreeDraft";
 
 /** "Kyoto, Japan" → "Kyoto" — the same first-segment reading the map's Browse layer uses. */
@@ -72,6 +73,9 @@ export function SlipEmptyStart({
   // Row 223: the handoff door draws only while this city has an expert to hand to (the Finalize
   // chooser's rule, `useExpertAvailability`). Hidden, it leaves the one Browse door; nothing replaces it.
   const expertsAvailable = useExpertAvailability({ city: trip.destination });
+  // PLAN-2 lane 3 / D4: same gate as HandoffChooser — hide, never grey. A visible button would
+  // open a chooser that itself returns null in waitlist.
+  const waitlist = !useBookingActionsShown();
 
   return (
     <div className="space-y-3.5" data-testid="slip-empty-start">
@@ -117,7 +121,7 @@ export function SlipEmptyStart({
             <span className="text-[13px] text-[color:var(--slip-muted)]">{EMPTY_BROWSE_DETAIL}</span>
           </span>
         </button>
-        {expertsAvailable ? (
+        {expertsAvailable && !waitlist ? (
           <button
             type="button"
             className="flex min-h-[60px] w-full flex-wrap items-center gap-3.5 rounded-[14px] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] px-4 py-2 text-left hover:bg-[color:var(--slip-ground)]"

@@ -6,6 +6,7 @@
  *   C2 each of the four is read at its surface (slip Optimize, Ask AI, the card's task log, the chooser's book)
  *   C3 the waitlist handoff chooser is not drawn, and the quote endpoint refuses in waitlist mode
  *   C4 the expert door on the slip needs approved supply as well as an attached-advisor answer
+ *   C5 waitlist hides the empty-start "Hand it to a local…" button, never greys it
  *
  * Source-level where the surface is a React component; the pure readers are asserted as values.
  *
@@ -60,5 +61,13 @@ describe("PLAN-2 lane 3 — capability wiring", () => {
   it("C4 the slip's expert door needs approved supply", () => {
     const view = read("client/src/components/plancard/SlipView.tsx");
     assert.match(view, /const expertDoorLive = isOwner && slipAdvisorData !== undefined && !slipAdvisorData\?\.advisor && slipExpertsAvailable;/);
+  });
+
+  it("C5 waitlist hides the empty-start handoff door, never greys it", () => {
+    const empty = read("client/src/components/plan/SlipEmptyStart.tsx");
+    assert.match(empty, /const waitlist = !useBookingActionsShown\(\);/);
+    assert.match(empty, /expertsAvailable && !waitlist \? \(/);
+    assert.match(empty, /data-testid="slip-empty-handoff"/);
+    assert.doesNotMatch(empty, /disabled=\{[^}]*waitlist/);
   });
 });
