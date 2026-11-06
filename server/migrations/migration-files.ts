@@ -2298,4 +2298,7 @@ export const MIGRATION_FILES = [
   // 441 — A-18 follow-up: editorial OSM coordinates on fourteen more Kyoto gems that have no point (sheet rows 22–35).
   // DATA ONLY, idempotent. Ledger 2026-11-05-kyoto-gem-coordinates-441.
   "441_kyoto_gem_coordinates_2.sql",
+  // FU-CAP2-1: OSM venue points on the seven Kyoto events 439 seeded; fill-only-NULL, data only. Ledger
+  // 2026-11-06-kyoto-event-venue-points (LD 59 amended).
+  "442_kyoto_event_venue_points.sql",
 ] as const;

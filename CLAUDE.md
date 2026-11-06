@@ -2644,6 +2644,11 @@ This document captures architectural decisions to maintain consistency across co
     edit that sets `venue_lat/lng` by hand on a NULL-coordinate row only — the one writer after insert.
     Not Google Places, whose coordinates are plan-only with a 30-day cache
     (LD 57). "© OpenStreetMap contributors" is REQUIRED wherever such a coordinate renders.
+    **AMENDED — A DATA MIGRATION MAY FILL A SEEDED ROW'S MISSING VENUE POINT (decision-maker, Nov 6, 2026 —
+    ledger `2026-11-06-kyoto-event-venue-points`; migration 442; FOUNDER WORDING REVIEW on the PR).** Besides the
+    seeder's lookup and the admin edit, a registered data migration may set `venue_lat/lng` on a manual row whose
+    point is still NULL, keyed on (source, source_id), from an OpenStreetMap feature named beside each statement with
+    the ODbL attribution. A stored point is never changed, and nothing else on the row is touched.
 
 60. **A DRAFT CARRIES ITS OWN WHERE-TO-STAY RANKING AND ITS LOOKUP PROGRESS (smoke 5, Oct 3, 2026 —
     ledger `2026-10-03-smoke5-fixes`; migration 340, APPROVED by the decision-maker Oct 3, 2026).** Two additive nullable jsonb
