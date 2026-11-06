@@ -1432,7 +1432,11 @@ If those should be saveable, they need a PlanItemRef kind (a ruling), not a clie
 Ruling (Nov 6): this stands; checked places get a kind when they get a row of their own.
 
 
-### FU-R4-11 — Kodai-ji's autumn evenings have no published start time (round 4)
+### FU-R4-11 — Kodai-ji's autumn evenings have no published start time (round 4) — CLOSED by migration 443
+
+CLOSED (Nov 6, 2026): the factcheck tab answered it. Migration 443 fills the published times on four rows (Chion-in
+autumn 17:30–21:30, Eikando 17:30–20:30, Kiyomizu-dera close 21:30, Chion-in bell open 22:20), time of day only.
+Kodai-ji, To-ji and Kaomise publish no times and stay date-only (ledger `2026-11-06-kyoto-event-times`).
 
 `city_events` row `kodaiji-autumn-night-2026` (migration 439) carries `start_time_known = false`, so "Plan around it"
 lands the item on its day with no time — correct for the row as stored. If kodaiji.com states the evening opening

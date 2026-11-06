@@ -2301,4 +2301,7 @@ export const MIGRATION_FILES = [
   // FU-CAP2-1: OSM venue points on the seven Kyoto events 439 seeded; fill-only-NULL, data only. Ledger
   // 2026-11-06-kyoto-event-venue-points (LD 59 amended).
   "442_kyoto_event_venue_points.sql",
+  // FU-R4-11: published opening / closing times on four of 439's Kyoto events (factcheck tab); time of day only, date
+  // untouched, fill-only; data only. Ledger 2026-11-06-kyoto-event-times.
+  "443_kyoto_event_times.sql",
 ] as const;
