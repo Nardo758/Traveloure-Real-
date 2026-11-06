@@ -42,3 +42,13 @@ export function opensGuestMap(branch: LandingBranch | string, door: string | nul
  */
 export const DRAFT_AI_QUERY = "draft";
 export const DRAFT_AI_VALUE = "ai";
+
+/**
+ * PLAN-1 ruling 2 (ledger `2026-11-06-plan1-one-planner`): where a sign-in that claimed a guest plan lands — that plan on
+ * its map, the same surface the guest built it on. Every sign-in path (the app watcher). No plan claimed ⇒ null (the
+ * traveler stays where they are). Pure.
+ */
+export function claimLandingPath(claimedIds: readonly string[] | null | undefined): string | null {
+  const id = (claimedIds ?? []).find((x) => typeof x === "string" && x.trim());
+  return id ? `/plans/${encodeURIComponent(id)}?view=map` : null;
+}

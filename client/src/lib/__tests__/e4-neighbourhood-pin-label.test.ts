@@ -70,8 +70,9 @@ describe("audit E4: a neighbourhood is a labelled pin, never a shape", () => {
     }
     assert.match(mcc, /showAreas/);
     assert.match(mcc, /\bareas\b/);
-    assert.ok(slip.includes("areas={mapAreas}"));
-    assert.ok(slip.includes("showAreas={shading.show}"));
+    // PLAN-1 (sanctioned edit): the slip passes them in the owner map mode.
+    assert.ok(slip.includes("areas: mapAreas,"));
+    assert.ok(slip.includes("showAreas: shading.show,"));
   });
 
   it("N5 the show rule is unchanged", () => {

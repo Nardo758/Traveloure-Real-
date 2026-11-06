@@ -742,7 +742,7 @@ export default function ItineraryViewPage() {
                 days={planCardDays}
                 selectedDay={selectedDay}
                 onSelectDay={setSelectedDay}
-                readOnly
+                mode={{ kind: "owner", canEdit: false }}
               />
             )}
           </>

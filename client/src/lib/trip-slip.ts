@@ -67,6 +67,11 @@ export interface SlipBasics {
   title?: string | null;
   /** ENTRY-1: the chosen occasion's catalog name, for the composed title (`planTitle`). */
   occasionName?: string | null;
+  /**
+   * PLAN-1 (IntakePanel on the one mint): a party TOTAL the traveler typed (RC-12). Absent ⇒ not answered, and the
+   * plan stores no count; never a split into adults and kids (LD 33).
+   */
+  numberOfTravelers?: number | null;
   /** E1 (ledger `2026-09-28-a0-slice-spec`): the door facts for the `trip_created` funnel row.
    *  Event-only — the server admits it by its own `.strict()` pick and stores it on no trip. */
   entry?: TripMintEntry | null;
@@ -138,6 +143,8 @@ export interface TripMintBody {
    * written by the occasion PATCH that follows the mint.
    */
   eventType: null;
+  /** PLAN-1: a stated party total only (absent ⇒ omitted). */
+  numberOfTravelers?: number;
   /** Present only when the caller named at least one door fact (§13 — absent is omitted). */
   entry?: TripMintEntry;
 }
@@ -249,6 +256,9 @@ export function buildTripMintBody(basics: SlipBasics): TripMintBody {
     ...(startDate && endDate ? { startDate, endDate } : {}),
     eventType: null,
   };
+  if (typeof basics.numberOfTravelers === "number" && Number.isInteger(basics.numberOfTravelers) && basics.numberOfTravelers > 0) {
+    body.numberOfTravelers = basics.numberOfTravelers;
+  }
   const entry: TripMintEntry = {};
   if (basics.entry?.door) entry.door = basics.entry.door;
   if (basics.entry?.occasionSource) entry.occasionSource = basics.entry.occasionSource;

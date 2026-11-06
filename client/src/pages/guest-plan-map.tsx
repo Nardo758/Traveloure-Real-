@@ -213,7 +213,7 @@ function GuestPlanMapRecord({ record: initialRecord }: { record: PendingPlanReco
             selectedDay={selectedDay}
             onSelectDay={setSelectedDay}
             layout="split"
-            guest={{ center, onAdd }}
+            mode={{ kind: "guest", center, onSave: (place) => onAdd(place) }}
           />
         </div>
       ) : null}
@@ -400,7 +400,7 @@ function WaitlistGuestPlan() {
           selectedDay={Math.min(selectedDay, Math.max(0, days.length - 1))}
           onSelectDay={setSelectedDay}
           layout="split"
-          guest={{ center: guestMapCenter(plan.destination), onAdd: onSave, withPlan: true }}
+          mode={{ kind: "guest", center: guestMapCenter(plan.destination), onSave: (place) => onSave(place), withPlan: true }}
         />
       </div>
     </div>

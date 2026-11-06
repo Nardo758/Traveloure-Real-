@@ -138,17 +138,14 @@ test("E7: an unserved city — same country first, else all eight", () => {
   assert.equal(typedCity("   "), null);
 });
 
-test("E8: landing view by group", () => {
+test("E8 (PLAN-1 ruling 3): every new plan lands on the map, whatever the group or the event's span", () => {
   const base = { ...emptyPlanEntry(), market: kyoto };
-  assert.equal(planEntryView({ ...base, group: "trips" }, null), "map");
-  assert.equal(planEntryView({ ...base, group: "group_travel" }, null), "map");
-  assert.equal(planEntryView({ ...base, group: "moments" }, null), "list");
-  assert.equal(planEntryView({ ...base, group: "celebrations" }, null), "list");
-  assert.equal(planEntryView({ ...base, group: "hosted_events" }, null), "list");
-  const multiDay = withEvent(base, { title: "X", city: "Kyoto", country: "Japan", venue: "V", firstDate: "2027-10-10", lastDate: "2027-10-12", startTime: null });
-  assert.equal(planEntryView({ ...multiDay, group: "moments" }, null), "map", "a multi-day event opens the map");
-  // A "More specific" occasion's own group decides.
-  assert.equal(planEntryView({ ...base, group: "trips" }, { defaultStops: "one", defaultDuration: "day", defaultGuests: true }), "list");
+  for (const group of ["trips", "group_travel", "moments", "celebrations", "hosted_events"] as const) {
+    assert.equal(planEntryView({ ...base, group }, null), "map", group);
+  }
+  const oneDay = withEvent(base, { title: "X", city: "Kyoto", country: "Japan", venue: "V", firstDate: "2027-10-10", lastDate: "2027-10-10", startTime: null });
+  assert.equal(planEntryView({ ...oneDay, group: "moments" }, null), "map", "a one-day event opens the map too");
+  assert.equal(planEntryView({ ...base, group: "trips" }, { defaultStops: "one", defaultDuration: "day", defaultGuests: true }), "map");
 });
 
 test("E9: a starting group (?group=) seeds the group, an exact key only (E3 ruling 3)", () => {

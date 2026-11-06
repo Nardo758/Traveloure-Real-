@@ -1227,8 +1227,12 @@ function WorkstationCanvas({
           days={planDays}
           selectedDay={selectedDayIdx}
           onSelectDay={(i) => { const d = planDays[i]; if (d) onFocusDay(d.dayNum); }}
-          candidates={candidates.source ? { sourceLabel: candidates.sourceLabel, items: candidates.items } : null}
-          onAddCandidate={(id) => candidates.onAdd(id)}
+          mode={{
+            kind: "owner",
+            canEdit: true,
+            candidates: candidates.source ? { sourceLabel: candidates.sourceLabel, items: candidates.items } : null,
+            onAddCandidate: (id) => candidates.onAdd(id),
+          }}
         />
       )}
 

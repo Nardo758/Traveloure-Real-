@@ -2391,11 +2391,15 @@ export function SlipView({
               <SlipEmptyStart tripId={tripId} trip={data.trip as any} onBrowse={() => setSlipView("map")} />
             </div>
           ) : null}
-          <PlanCostStrip activities={allActivities} travelers={data.trip?.travelers ?? null} planEvents={planEvents} isOwner={isOwner} />
+          {/* PLAN-1 ruling: the cost strip, the tools tray and the where-to-stay panel are Days-view only — owner map view
+              is the header, the map band and the map (no layout change). */}
+          {slipView === "list" ? (
+            <PlanCostStrip activities={allActivities} travelers={data.trip?.travelers ?? null} planEvents={planEvents} isOwner={isOwner} />
+          ) : null}
           {/* ── SURFACE STEP 2 · THE TOOLS TRAY (ledger `2026-10-03-surface-step2-tools-tray`) ─────────
               The group manifest's tools for THIS plan, each opening the EXISTING component in a sheet;
               the logistics pieces the rail used to mount live here now. Owner only, as they were. */}
-          {isOwner && data.trip ? (
+          {isOwner && data.trip && slipView === "list" ? (
             <ToolsTray
               tripId={tripId}
               group={experienceGroup}
@@ -2555,31 +2559,31 @@ export function SlipView({
               map view the rail gives way to the map's Browse / Your plan rail, so exactly one of
               each renders per view. The save-payment prompt (two files) and the Trip Pass card
               (once, in SlipRail.tsx) are NOT mounted here. */}
-          <div className="grid gap-3 sm:grid-cols-2" data-testid="map-band">
-            {isOwner && aiAction === "draft" ? (
-              <div className="rounded-lg border border-border p-2" data-testid="map-band-ai">
-                <SlipDraftAiRow trip={data.trip} tripId={tripId} />
-              </div>
-            ) : null}
-            <FinishCard trip={data.trip} isOwner={isOwner} isPrimary={cardReady} activities={allActivities} />
-          </div>
+          {/* PLAN-1: the band is the owner map mode's slots — drawn by MapControlCenter in this same grid. */}
           <MapControlCenter
             tripId={tripId}
             tripDestination={data.trip.destination ?? ""}
             days={mapDays}
             selectedDay={Math.min(mapDay, Math.max(0, mapDays.length - 1))}
             onSelectDay={setMapDay}
-            expertTravelerNote={data.trip.expertTravelerNote}
-            readOnly={!canEditItems}
-            anchor={mapAnchor}
-            areas={mapAreas}
-            showAreas={shading.show}
-            versions={mapVersions}
-            compareHref={data.lastComparisonId ? `/itinerary-comparison/${data.lastComparisonId}` : null}
             browse={mapBrowse}
             onBrowseChange={setMapBrowse}
             layout="split"
             planEmptyNote={planEmptyReason}
+            mode={{
+              kind: "owner",
+              canEdit: canEditItems,
+              expertTravelerNote: data.trip.expertTravelerNote,
+              anchor: mapAnchor,
+              areas: mapAreas,
+              showAreas: shading.show,
+              versions: mapVersions,
+              compareHref: data.lastComparisonId ? `/itinerary-comparison/${data.lastComparisonId}` : null,
+              slots: {
+                quickDraft: isOwner && aiAction === "draft" ? <SlipDraftAiRow trip={data.trip} tripId={tripId} /> : null,
+                tripCardBanner: <FinishCard trip={data.trip} isOwner={isOwner} isPrimary={cardReady} activities={allActivities} />,
+              },
+            }}
           />
           {/* §13: unlocated items are NAMED, never guessed onto the map. */}
           {unlocatedActivities.length > 0 && (

@@ -36,9 +36,14 @@ export interface GuestPlanItem {
   /** R4b-5: the item's own day (`YYYY-MM-DD`) and wall-clock start ("17:30") when stored — an event's. */
   scheduledDate?: string | null;
   startTime?: string | null;
+  /** PLAN-1 (shared DTO): the stored wall-clock end. */
+  endTime?: string | null;
   /** R4b-3: the content row it was saved from — "Saved to plan" reads it. */
   contentType?: string | null;
   contentId?: string | null;
+  /** PLAN-1 (shared DTO): a listing or partner product the item names. */
+  providerServiceId?: string | null;
+  affiliateProductId?: string | null;
 }
 
 export interface GuestPlanView {
@@ -53,6 +58,8 @@ export interface GuestPlanView {
     kids: number | null;
     numberOfTravelers: number | null;
     eventType: string | null;
+    /** PLAN-1 (shared DTO): the plan's occasion in words, as the plancard sends it. */
+    occasionLabel?: string | null;
     updatedAt: string | null;
   };
   items: GuestPlanItem[];
@@ -343,7 +350,10 @@ export function guestPlanDays(view: GuestPlanView): PlanCardDay[] {
       status: "planned",
       // R4b-5: an event's stated start ("17:30") is drawn on its row; an untimed item stays "".
       time: it.startTime ?? "",
+      ...(it.endTime ? { endTime: it.endTime } : {}),
       location: it.locationName ?? "",
+      ...(it.providerServiceId ? { providerServiceId: it.providerServiceId } : {}),
+      ...(it.affiliateProductId ? { affiliateProductId: it.affiliateProductId } : {}),
       ...(Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : {}),
       cost: 0,
       comments: 0,

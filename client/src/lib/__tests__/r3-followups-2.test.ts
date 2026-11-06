@@ -110,7 +110,8 @@ describe("Round 3 follow-ups 2", () => {
     assert.doesNotMatch(draftRow, /useBookingActionsShown|useSignupMode/);
     const slip = read("client/src/components/plancard/SlipView.tsx");
     assert.match(slip, /const emptyStartShown = isOwner && aiAction === "draft" && slipView === "list";/);
-    assert.match(slip, /\{isOwner && aiAction === "draft" \? \(\s*<div className="rounded-lg border border-border p-2" data-testid="map-band-ai">/);
+    // PLAN-1 (sanctioned edit): the map band is the owner mode's slots (MapControlCenter draws the box).
+    assert.match(slip, /quickDraft: isOwner && aiAction === "draft" \? <SlipDraftAiRow trip=\{data\.trip\} tripId=\{tripId\} \/> : null,/);
     assert.doesNotMatch(read("client/src/components/plan/SlipEmptyStart.tsx"), /useBookingActionsShown|useSignupMode/);
     // The Trip Card banner: dates confirmed (GATE-1) and the R-F rule — no mode read.
     assert.match(slip, /\{isPrimary && data\.trip && <TripCardPrimaryBanner trip=\{data\.trip\} \/>\}/);

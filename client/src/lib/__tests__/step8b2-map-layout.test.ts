@@ -199,7 +199,9 @@ test("M8: the free-draft button is absent on a plan that holds anything", () => 
   assert.equal(slipBuildAiAction(0), "draft");
   for (const n of [1, 2, 10]) assert.equal(slipBuildAiAction(n), "optimize");
   const view = read("client/src/components/plancard/SlipView.tsx");
-  assert.match(view, /\{isOwner && aiAction === "draft" \? \(\s*<div[^>]*data-testid="map-band-ai">\s*<SlipDraftAiRow/);
+  // PLAN-1 (sanctioned edit): the band is the owner map mode's slots; MapControlCenter draws the "map-band-ai" box.
+  assert.match(view, /quickDraft: isOwner && aiAction === "draft" \? <SlipDraftAiRow trip=\{data\.trip\} tripId=\{tripId\} \/> : null,/);
+  assert.match(read("client/src/components/plancard/MapControlCenter.tsx"), /data-testid="map-band-ai">\s*\{slots\.quickDraft\}/);
 });
 
 test("M9: the sign-in record — an hour, read once, cleared BEFORE the plan is created", () => {

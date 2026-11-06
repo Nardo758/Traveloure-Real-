@@ -215,7 +215,7 @@ export function VersionsBoard({
               selectedDay={Math.min(mapDayIdx, Math.max(0, sortedDays.length - 1))}
               onSelectDay={setMapDayIdx}
               compact
-              readOnly
+              mode={{ kind: "owner", canEdit: false }}
             />
           </div>
         ) : null}
@@ -282,10 +282,7 @@ export function VersionsBoard({
         selectedDay={Math.min(mapDayIdx, Math.max(0, sortedDays.length - 1))}
         onSelectDay={setMapDayIdx}
         compact
-        readOnly
-        versions={mapVersions}
-        versionKey={mapVersion}
-        onVersionChange={setMapVersion}
+        mode={{ kind: "owner", canEdit: false, versions: mapVersions, versionKey: mapVersion, onVersionChange: setMapVersion }}
       />
     </div>
   );

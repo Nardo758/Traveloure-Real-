@@ -1170,11 +1170,14 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
             days={days}
             selectedDay={selectedDay}
             onSelectDay={setSelectedDay}
-            expertTravelerNote={plancardData?.trip?.expertTravelerNote}
             // R321 S11-6: the card's map draws the same stay anchor the slip's map does, through
             // the ONE derivation (§18 rule 1). The card loads no option sets, so only the stay.
-            anchor={planMapAnchor(days.flatMap((d) => d.activities ?? []))}
-            readOnly
+            mode={{
+              kind: "owner",
+              canEdit: false,
+              expertTravelerNote: plancardData?.trip?.expertTravelerNote,
+              anchor: planMapAnchor(days.flatMap((d) => d.activities ?? [])),
+            }}
           />
         )}
 

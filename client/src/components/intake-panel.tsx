@@ -12,18 +12,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, Loader2, Sparkles } from "lucide-react";
-import { useCreateTrip } from "@/hooks/use-trips";
+import { usePlanning } from "@/contexts/PlanningContext";
+import { SLIP_REFUSAL_MESSAGES } from "@/lib/trip-slip";
 import { updateTripContextIdentitySafe } from "@/lib/trip-context";
 import { trackEvent } from "@/lib/analytics";
 import { parsePartyCountInput, travelersForSave } from "@/lib/plan-vocabulary";
 import { formatTripDates } from "@/lib/trip-dates";
 import { browserLocale } from "@/lib/browser-locale";
 import { eventTypeForSlug } from "@shared/occasions";
-import { planTitle } from "@/lib/trip-slip";
-import { OCCASION_SAVE_FAILED, sendWithRetry } from "@/lib/occasion-save";
-import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { ExperienceType, InsertTrip } from "@shared/schema";
+import type { ExperienceType } from "@shared/schema";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
 import { useLaunchMarket } from "@/lib/signup-mode";
 
@@ -86,8 +84,8 @@ function StepRail({ current }: { current: 1 | 2 }) {
  *   2. shape — the platform's real experience types (GET /api/experience-types), plus a
  *      "Plan it with AI" option that hands the Step-1 fields to the AI planner via
  *      TripContext instead of creating a trip (R-D: no trip is persisted unless created).
- * A shape pick (not AI) creates via the ONE create rail (useCreateTrip → POST /api/trips →
- * storage.createTrip, R-B) and lands on the slip (/plans/:tripId).
+ * A shape pick (not AI) starts the plan through the ONE mint PlanEntry uses (`usePlanning().start` →
+ * `mintTripSlip`; PLAN-1 ruling 3) and lands on its map (/plans/:tripId?view=map).
  */
 export function IntakePanel({
   open,
@@ -150,7 +148,9 @@ export function IntakePanel({
     enabled: open && step === 2,
   });
 
-  const createTrip = useCreateTrip();
+  // PLAN-1: the one mint (PlanEntry's) — `usePlanning().start`.
+  const planning = usePlanning();
+  const [starting, setStarting] = useState(false);
   const [showAllTypes, setShowAllTypes] = useState(false);
 
   // Presentation split only — both halves come straight from the API response.
@@ -199,46 +199,44 @@ export function IntakePanel({
     navigate("/ai-assistant");
   }
 
-  function handleCreate() {
-    if (!selectedSlug) return;
+  /**
+   * PLAN-1 ruling 3 (ledger `2026-11-06-plan1-one-planner`): a shape pick starts the plan through the ONE mint
+   * PlanEntry uses (`usePlanning().start` → `mintTripSlip`), which also saves the occasion (A-35/A-9), binds the plan,
+   * and lands on its MAP. The panel's own `POST /api/trips` rail is retired. A-34's title rule and RC-12's party
+   * (only a typed total, never a split) hold.
+   */
+  async function handleCreate() {
+    if (!selectedSlug || starting) return;
     const slug = selectedSlug;
-    const occasionName = experienceTypes?.find((t) => t.slug === slug)?.name ?? null;
-    const payload: InsertTrip = {
-      // A-34: one title rule for every create door (`planTitle`) — the picked occasion and the city.
-      title: planTitle({ city: destination.trim().split(",")[0].trim(), occasionName, startDate, endDate }),
-      destination: destination.trim(),
-      startDate,
-      endDate,
-      // Locked Decision 42 (D11 interim) / ledger `2026-09-05-mint-market-slug-invariant`: this
-      // panel asks for ONE number — a party TOTAL — and a total is not a split. It used to send
-      // `adults: travelers, kids: 0`, which fabricated an answer to a question it never asked
-      // (Locked Decision 33: step 4 is always skippable, untouched ⇒ NULL, never a fabricated 2 or
-      // a fabricated 0). Only the stated total is sent; adults/kids stay NULL — "not captured", the
-      // honest answer (§13). The server does not need them here: it derives numberOfTravelers from
-      // `adults` ONLY when numberOfTravelers was omitted (server/routes.ts POST /api/trips), and
-      // this payload states it outright.
-      // RC-12: only a party the traveler typed; left off entirely otherwise, and the plan stores
-      // no count.
-      ...(partyStated !== undefined ? { numberOfTravelers: partyStated } : {}),
-      eventType: eventTypeForSlug(selectedSlug),
-    } as InsertTrip;
-
-    createTrip.mutate(payload, {
-      onSuccess: async (trip) => {
-        // A-35: the chip's fine occasion is saved on the plan through the one occasion rail (row slug + pen), awaited
-        // and retried (A-9); a final failure is said, and the traveler still lands on the plan.
-        const saved = await sendWithRetry(() => apiRequest("PATCH", `/api/trips/${trip.id}/occasion`, { experienceSlug: slug }));
-        if (!saved.ok) toast({ variant: "destructive", title: OCCASION_SAVE_FAILED });
-        trackEvent("trip_created", {
-          surface: "intake_panel",
-          creation_method: "destination_intake",
-        });
-        reset();
-        onOpenChange(false);
-        navigate(`/plans/${trip.id}`);
-      },
-    });
+    const occasionName = experienceTypes?.find((t) => t.slug === slug)?.name ?? undefined;
+    const dest = destination.trim();
+    const [cityPart, ...rest] = dest.split(",").map((x) => x.trim());
+    setStarting(true);
+    try {
+      const out = await planning.start({
+        destination: dest,
+        city: cityPart || dest,
+        country: rest.join(", "),
+        ...(startDate && endDate ? { startDate, endDate } : {}),
+        occasionSlug: slug,
+        ...(occasionName ? { occasionName } : {}),
+        view: "map",
+        occasionAsked: true,
+        ...(partyStated !== undefined ? { travelers: partyStated } : {}),
+      });
+      if (!out.ok) {
+        // The mint's own refusal sentence; none ⇒ the mint's existing failure copy (no new string).
+        toast({ variant: "destructive", title: out.message ?? SLIP_REFUSAL_MESSAGES.mint_failed });
+        return;
+      }
+      trackEvent("trip_created", { surface: "intake_panel", creation_method: "destination_intake" });
+      reset();
+      onOpenChange(false);
+    } finally {
+      setStarting(false);
+    }
   }
+
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -450,11 +448,11 @@ export function IntakePanel({
 
             <div className="flex justify-end pt-2">
               <Button
-                disabled={!selectedSlug || createTrip.isPending}
+                disabled={!selectedSlug || starting}
                 onClick={handleCreate}
                 data-testid="button-intake-create"
               >
-                {createTrip.isPending ? (
+                {starting ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> Creating…
                   </>
