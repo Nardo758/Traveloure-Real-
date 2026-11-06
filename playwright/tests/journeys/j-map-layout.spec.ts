@@ -81,7 +81,8 @@ test("8b-2 — start page → modal → the map opens on Browse with the trip's 
   await testid(page, "map-browse-tab-activities").click();
   await testid(page, "map-browse-search").fill(listingName);
   await testid(page, `map-browse-row-listing-${listing.id}`).click({ timeout: 20_000 });
-  await expect(testid(page, "map-browse-add")).toContainText("Add to day 2");
+  // CAP-2 Phase 3 (ruling Nov 6): the add reads Save to plan; the day pill still places it on day 2.
+  await expect(testid(page, "map-browse-add")).toContainText("Save to plan");
   const status = await actAndAwait(
     page,
     async () => {

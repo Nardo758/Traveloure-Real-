@@ -281,6 +281,8 @@ export function findWhichEventChoice(
  * fallback is the honest answer for a row with no name; "Add to Untitled event" is not.
  */
 export function whichEventCtaLabel(choice: WhichEventChoice | null | undefined): string {
-  const title = choice?.event?.title;
-  return title ? `Add to ${title}` : ADD_TO_PLAN_LABEL;
+  // CAP-2 Phase 3 (ruling Nov 6, "one label for one action"): the save reads "Save to plan" whichever event it targets;
+  // the chosen event is named by the picker itself, not by the button.
+  void choice;
+  return ADD_TO_PLAN_LABEL;
 }

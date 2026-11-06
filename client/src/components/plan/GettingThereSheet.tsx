@@ -2,12 +2,13 @@
  * "Getting there" (surface spec §5, R-j; step 2, ledger `2026-10-03-surface-step2-tools-tray`).
  *
  * Two blocks — the flight IN (day 1) and the flight OUT (the last day). Enter a flight number and a
- * date → the server's ONE lookup (`POST /api/trips/:tripId/flight-lookup`) → "Add to plan" writes a
+ * date → the server's ONE lookup (`POST /api/trips/:tripId/flight-lookup`) → "Save to plan" writes a
  * `flight_arrival` / `flight_departure` anchor through the EXISTING `POST /api/trips/:tripId/anchors`
  * (no second anchor writer). When the lookup is off, finds nothing, fails or is capped, the block
  * asks for the time instead — a flight we did not look up never gets an invented time (§13).
  * An added flight shows what it is and can be removed (the EXISTING `DELETE /api/anchors/:id`).
  */
+import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Loader2, Plane } from "lucide-react";
@@ -30,7 +31,8 @@ export const GETTING_THERE_WORDS = {
   flightNumber: "Flight number",
   date: "Date",
   lookUp: "Look up",
-  add: "Add to plan",
+  // CAP-2 Phase 3 (ruling Nov 6, "one label for one action").
+  add: WAITLIST_COPY.saveToPlan,
   remove: "Remove",
   manualPrompt: "We can't look this flight up right now — enter its time and we'll build around it.",
   notFound: "No flight with that number on that date. Check the number, or enter the time yourself.",

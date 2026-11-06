@@ -106,7 +106,8 @@ test('W1: an expert builds a 3-day Kyoto trip on the Workstation and submits it'
     // The map's own day pill: it draws every day of the build and sets the day "Add to day N" adds to.
     await page.getByTestId(`map-day-btn-${day}-${tripId}`).click();
     await page.getByTestId(candidateTestId).click();
-    await expect(page.getByTestId('map-browse-add')).toContainText(`Add to day ${day}`);
+    // CAP-2 Phase 3 (ruling Nov 6, "one label for one action"): the button reads Save to plan; the pill still picks the day.
+    await expect(page.getByTestId('map-browse-add')).toContainText('Save to plan');
     const posted = page.waitForResponse((r) => r.url().endsWith(`/api/trips/${tripId}/itinerary-items`) && r.request().method() === 'POST');
     await page.getByTestId('map-browse-add').click();
     expect((await posted).ok()).toBeTruthy();

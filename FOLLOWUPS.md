@@ -1412,7 +1412,10 @@ Phase 2 removed "Add to plan" from Viator results (ruling, Nov 5: Viator is not 
 still admits a `viatorProductCode` body (`admitViatorAdd`, `server/routes.ts`) and the suggestion replay still stamps it.
 Ruling (Nov 5): retired in CAP-2 Phase 3 with the PlanActions sweep; existing Viator items keep working.
 
-### FU-CAP2-3 — two traveler files with booking words and no caller (CAP-2 Phase 3)
+### FU-CAP2-3 — two traveler files with booking words and no caller (CAP-2 Phase 3) — CLOSED in CAP-2 Phase 3
+
+CLOSED (Nov 6, 2026; ruling: delete, §18c): `affiliate-transport-products.tsx` and `matchedServiceSuggestion` are deleted
+and their guard exemptions removed.
 
 `client/src/components/affiliate-transport-products.tsx` has no importer, and `matchedServiceSuggestion` in
 `client/src/lib/feed-stream.ts` has no caller (the gem matched-service query it fed is disabled). Both still hold
@@ -1426,4 +1429,5 @@ PlanActions draws Save only when the card can build a PlanItemRef (dispatch ruli
 A catalogue checked place, an official-site row with no booking, and a curated item with no partner product name no row
 the resolver can re-read, so they now offer no save (before, a signed-in viewer could add them as a title-only item).
 If those should be saveable, they need a PlanItemRef kind (a ruling), not a client-built item.
+Ruling (Nov 6): this stands; checked places get a kind when they get a row of their own.
 

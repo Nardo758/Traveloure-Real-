@@ -57,11 +57,16 @@ export function classify(experienceType?: string): VocabClass {
  * sentence ("Added to your plan"). One constant: if the decision-maker picks a different word,
  * this is the only line that changes.
  */
+import { WAITLIST_COPY } from "./waitlist-copy";
+
 export const PLAN_NOUN = "Plan" as const;
 export const PLAN_NOUN_LOWER = "plan" as const;
 
-/** Button label for an add that lands on the plan. */
-export const ADD_TO_PLAN_LABEL = `Add to ${PLAN_NOUN}`;
+/**
+ * Button label for an add that lands on the plan. CAP-2 Phase 3 (ruling Nov 6, "one label for one action"): "Add to
+ * plan" is retired — every save reads the approved "Save to plan" (`WAITLIST_COPY`), on every surface.
+ */
+export const ADD_TO_PLAN_LABEL = WAITLIST_COPY.saveToPlan;
 /** Button label for the trip-less / guest fallback, which genuinely is the cart. */
 export const ADD_TO_CART_LABEL = "Add to Cart";
 
@@ -73,8 +78,8 @@ export const ADD_TO_CART_LABEL = "Add to Cart";
  */
 export const START_PLAN_LABEL = `Start a ${PLAN_NOUN_LOWER}`;
 
-/** Toast title for a successful add that landed on the plan. */
-export const ADDED_TO_PLAN_TITLE = `Added to your ${PLAN_NOUN_LOWER}`;
+/** Toast title for a successful add that landed on the plan: "Saved to plan" (CAP-2 Phase 3, ruling Nov 6). */
+export const ADDED_TO_PLAN_TITLE = WAITLIST_COPY.savedToPlan;
 /** Toast title for the trip-less / guest fallback. */
 export const ADDED_TO_CART_TITLE = "Added to cart";
 

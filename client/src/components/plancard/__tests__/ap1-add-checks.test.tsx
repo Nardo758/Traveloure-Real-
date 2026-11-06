@@ -108,7 +108,8 @@ describe("AP-1 confirmation", () => {
     const html = renderToString(
       <AddChecksNotice tripId="t" added={{ itemId: "i", checks: { ...base, hours: { status: "checked", lines: ["Ginkaku-ji Temple · Day 2 · 17:10 starts after closing (5:00 PM)"] } } }} onDismiss={() => {}} />,
     );
-    assert.match(html, /Added to your plan/);
+    // CAP-2 Phase 3 (sanctioned edit; ruling Nov 6, "one label for one action"): the save reads "Save to plan".
+    assert.match(html, /Saved to plan/);
     assert.match(html, /Ginkaku-ji Temple · Day 2 · 17:10 starts after closing \(5:00 PM\)/);
     assert.equal(renderToString(<AddChecksNotice tripId="t" added={null} onDismiss={() => {}} />), "");
   });

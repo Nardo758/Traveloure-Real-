@@ -534,6 +534,7 @@ function StorefrontOfferingCard({
               site="storefrontOffering"
               book={planAction?.output === "book" ? { variant: planAction.variant, onClick: () => navigate(actionHref), testId: `button-offering-action-${actionId ?? ""}`, className: OFFERING_ACTION_CLASS } : null}
               hire={planAction?.output === "hire" ? { onClick: () => navigate(actionHref), testId: `button-offering-action-${actionId ?? ""}`, className: OFFERING_ACTION_CLASS } : null}
+              save={planAction?.output === "save" ? { placeable: true, savedKey: actionId ? `listing:${actionId}` : null, onClick: () => navigate(actionHref), testId: `button-offering-action-${actionId ?? ""}`, className: OFFERING_ACTION_CLASS } : null}
             />
             {nextAvailableText && (
               <p

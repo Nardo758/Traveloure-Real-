@@ -161,11 +161,7 @@ test.describe("Static assertion — no raw window.open(item.affiliate_url)", () 
       // Curated uses server-mediated redirect: POST /api/content/affiliate-redirect
       mutationCheck: "/api/content/affiliate-redirect",
     },
-    {
-      rel: "client/src/components/affiliate-transport-products.tsx",
-      // Transport uses the in-platform agent booking mutation
-      mutationCheck: "/api/affiliate-booking-requests",
-    },
+    // CAP-2 Phase 3 (§18c, FU-CAP2-3): affiliate-transport-products.tsx had no importer and is deleted.
   ];
 
   for (const { rel, hookCheck, mutationCheck } of COMPONENTS) {

@@ -167,13 +167,9 @@ describe("CAP-2 Phase 3 — PlanActions", () => {
       "client/src/components/plan/LegRow.tsx": "in-plan leg row, not a tile (ruling: in-plan surfaces stay)",
       "client/src/components/plancard/SlipView.tsx": "in-plan slip, not a tile (ruling: in-plan surfaces stay)",
       "client/src/components/plancard/TransportSection.tsx": "in-plan transport, not a tile (ruling: in-plan surfaces stay)",
-      "client/src/components/plancard/MapControlCenter.tsx": "the owner map's Browse add, outside the Phase 3 sites (listed on the label set)",
-      "client/src/components/plan/GettingThereSheet.tsx": "the Getting There flight add, outside the Phase 3 sites (listed on the label set)",
       "client/src/pages/plan-compare.tsx": "in-plan compare, not a tile",
       "client/src/lib/stay-booking.ts": "in-plan stay booking, not a tile",
       "client/src/components/travelpulse/CityCard.tsx": "a caller-passed season link, not a PlanActions output",
-      "client/src/components/affiliate-transport-products.tsx": "no importer (FOLLOWUPS FU-CAP2-3)",
-      "client/src/lib/feed-stream.ts": "matchedServiceSuggestion has no caller (FOLLOWUPS FU-CAP2-3)",
     };
     const offenders: string[] = [];
     for (const file of walk("client/src")) {

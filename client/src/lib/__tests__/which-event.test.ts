@@ -155,7 +155,8 @@ describe("W5 — an event that has told us nothing invents nothing", () => {
 
   it("W5d: the CTA falls back to the platform label rather than naming a nameless event", () => {
     const choices = whichEventChoices([CEREMONY, BARE]);
-    assert.equal(whichEventCtaLabel(findWhichEventChoice(choices, "ev-ceremony")), "Add to Ceremony");
+    // CAP-2 Phase 3 (sanctioned edit; ruling Nov 6, "one label for one action"): the save reads "Save to plan". The picker names the event; the button does not.
+    assert.equal(whichEventCtaLabel(findWhichEventChoice(choices, "ev-ceremony")), ADD_TO_PLAN_LABEL);
     assert.equal(whichEventCtaLabel(findWhichEventChoice(choices, "ev-bare")), ADD_TO_PLAN_LABEL);
     assert.equal(whichEventCtaLabel(findWhichEventChoice(choices, IMPLICIT_EVENT_GROUP_KEY)), ADD_TO_PLAN_LABEL);
     assert.equal(whichEventCtaLabel(null), ADD_TO_PLAN_LABEL);

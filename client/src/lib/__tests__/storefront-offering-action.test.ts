@@ -140,8 +140,9 @@ test("ride / bundle / in_person / artifact / async / unclassified verbs", () => 
   }
 });
 
-test("info-only / written-planning row (add_to_plan) reads 'Add to my plan'", () => {
-  assert.equal(offeringActionLabel(buyAction({ primary: { kind: "add_to_plan", label: "Add to plan" } })), "Add to my plan");
+test("info-only / written-planning row (add_to_plan) reads 'Save to plan'", () => {
+  // CAP-2 Phase 3 (sanctioned edit; ruling Nov 6, "one label for one action"): the save reads "Save to plan".
+  assert.equal(offeringActionLabel(buyAction({ primary: { kind: "add_to_plan", label: "Save to plan" } })), "Save to plan");
 });
 
 test("a ready-made or advisor row (buy_ready_made / plan_with) keeps 'View & book' — not authored by this lane", () => {
@@ -234,7 +235,7 @@ test("storefrontOfferingIntentHash: book/request-session -> #book, quote -> #quo
   assert.equal(storefrontOfferingIntentHash("Request a session"), "#book");
   assert.equal(storefrontOfferingIntentHash("Request a quote"), "#quote");
   assert.equal(storefrontOfferingIntentHash("Start a Q&A Session"), "");
-  assert.equal(storefrontOfferingIntentHash("Add to my plan"), "");
+  assert.equal(storefrontOfferingIntentHash("Save to plan"), "");
   assert.equal(storefrontOfferingIntentHash("View & book"), "");
 });
 
