@@ -1392,7 +1392,10 @@ Market alley stalls · Otagi Nenbutsu-ji · Pontocho evening walk · Sannenzaka 
 "Kagurazaka Ishikawa" (a Tokyo restaurant) and the two "Kishiwada" rows (a city in Osaka Prefecture) look misfiled under
 Kyoto; a person decides whether they belong to the market before they are given a point.
 
-### FU-CAP2-1 — the seeded Kyoto city events have no venue point (CAP-2 Phase 2)
+### FU-CAP2-1 — the seeded Kyoto city events have no venue point (CAP-2 Phase 2) — CLOSED by migration 442
+
+CLOSED (Nov 6, 2026): migration 442 fills the seven points from the sheet tab "Kyoto event venues", OpenStreetMap
+features with the ODbL attribution, fill-only-NULL (ledger `2026-11-06-kyoto-event-venue-points`).
 
 Migration 439's seven `city_events` rows (Kodai-ji, To-ji, Chion-in ×2, Eikando, Kiyomizu-dera, Minamiza) carry no
 `venue_lat`/`venue_lng`, so "Plan around it" lands each one on the plan as an item with no pin. The point comes only from
