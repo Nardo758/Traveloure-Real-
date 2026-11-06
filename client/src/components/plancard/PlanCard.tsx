@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { phaseShown } from "@shared/plan-dates";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
@@ -89,8 +90,10 @@ function formatMinutes(mins: number): string {
   return `${h}h ${m}m`;
 }
 
-function getSummaryStatusLabel(startDate: string, endDate: string, status?: string): string {
+function getSummaryStatusLabel(startDate: string, endDate: string, status?: string, datesConfirmed?: boolean | null): string {
   const now = new Date();
+  // R4-3: no "Upcoming" / "This week" / "Active" off a placeholder window — only once the dates are confirmed.
+  if (!phaseShown(datesConfirmed)) return status ? status.charAt(0).toUpperCase() + status.slice(1) : "Planning";
   const start = parseCalendarDate(startDate);
   const end = parseCalendarDate(endDate);
   if (!start || !end) return status ? status.charAt(0).toUpperCase() + status.slice(1) : "Planning";
@@ -281,7 +284,7 @@ function PlanCardSummary({
 
   const avatarColor = AVATAR_COLORS[index % AVATAR_COLORS.length];
   const daysTil = daysUntilDate(trip.startDate ?? new Date().toISOString());
-  const statusLabel = getSummaryStatusLabel(trip.startDate ?? "", trip.endDate ?? "");
+  const statusLabel = getSummaryStatusLabel(trip.startDate ?? "", trip.endDate ?? "", undefined, (trip as any).datesConfirmed);
   const gradient = getSummaryGradient(trip.startDate ?? "");
   const showCountdown = daysTil > 0;
   const tripTitle = trip.title || trip.destination;

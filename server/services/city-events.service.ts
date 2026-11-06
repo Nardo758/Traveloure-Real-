@@ -484,3 +484,59 @@ export function orderUpcomingCards<T extends { marketKey: string | null; firstDa
     .sort((a, b) => rank(a.c) - rank(b.c) || a.i - b.i)
     .map((x) => x.c);
 }
+
+/**
+ * R4-1 (round 4; CAP-2 follow-up): one market's upcoming city events in the shape the city page's Events cards read
+ * (the public Fever event shape, plus `planKind: "city_event"` and the row's `sourceId`, which the card saves as a
+ * `city_event` PlanItemRef — the resolver re-reads the row). Rendered ALWAYS: no partner key, no live call. Same window
+ * and renderability rule as the upcoming strip (`listUpcomingCityEvents`); soonest first; a withdrawn row is not listed.
+ */
+export async function listCityEventsForLocation(
+  cityName: string,
+  now: Date = new Date(),
+  limit = 24,
+): Promise<Array<Record<string, unknown>>> {
+  const market = getMarketByCityName(cityName);
+  if (!market) return [];
+  const end = new Date(now.getTime() + CITY_EVENTS_WINDOW_DAYS * 86_400_000);
+  const since = new Date(now.getTime() - 86_400_000);
+  const rows = await db
+    .select()
+    .from(cityEvents)
+    .where(
+      and(
+        sql`lower(${cityEvents.city}) = lower(${market.cityName})`,
+        sql`COALESCE(${cityEvents.endsAt}, ${cityEvents.startsAt}) >= ${since}`,
+        lte(cityEvents.startsAt, end),
+        isNull(cityEvents.withdrawnAt),
+      ),
+    )
+    .orderBy(asc(cityEvents.startsAt));
+  const today = localDate(now, timezoneForMarket(market.marketKey));
+  return rows
+    .filter((r) => isRenderableCityEvent(r))
+    .map((r) => ({ c: toCityEventCard(r, null, now), located: r.venueLat != null && r.venueLng != null }))
+    .filter(({ c }) => c.lastDate >= today)
+    .slice(0, limit)
+    .map(({ c, located }) => ({
+      id: `ce-${c.sourceId}`,
+      planKind: "city_event",
+      sourceId: c.sourceId,
+      title: c.title,
+      description: c.blurb ?? null,
+      imageUrl: c.imagePath ?? null,
+      category: c.vertical ?? null,
+      subcategory: null,
+      venueName: c.venue ?? null,
+      areaName: c.neighbourhood ?? null,
+      osmCredit: null,
+      date: c.firstDate,
+      endDate: c.lastDate !== c.firstDate ? c.lastDate : null,
+      startTime: c.startTime,
+      isSoldOut: false,
+      located,
+      provider: "city_events",
+      priceSource: null,
+      partnerName: null,
+    }));
+}

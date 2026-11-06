@@ -143,7 +143,8 @@ test("FP5: every traveler-reachable Fever route projects; the admin cache routes
   const tpBody = tp.slice(0, tp.indexOf("router."));
   assert.match(tpBody, /toPublicFeverEvents\(/);
   assert.ok(!/pricing: event\.pricing|bookingUrl: event\.|isFree: event\.isFree/.test(tpBody), "no amount, Free or URL on the TravelPulse merge");
-  assert.match(read("server/services/location-view.service.ts"), /events: await toPublicFeverEvents\(result\.events\)/);
+  // R4-1 (round 4, sanctioned edit): the location view projects only the cached, resolvable partner events.
+  assert.match(read("server/services/location-view.service.ts"), /partner = await toPublicFeverEvents\(resolvable\);/);
 });
 
 test("FP6: the experience catalog drops the Fever price and Free; a chosen band leaves events out", () => {

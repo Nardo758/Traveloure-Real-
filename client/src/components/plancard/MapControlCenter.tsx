@@ -20,6 +20,7 @@
  *
  * This component owns the data; the renderers only draw. It fabricates no coordinate (§13).
  */
+import { savedRefKey } from "@/lib/saved-refs";
 import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 import { nextTabKey } from "@/lib/roving-tabs";
 import { useEffect, useMemo, useState } from "react";
@@ -320,6 +321,8 @@ export function MapControlCenter({
           id: a.id,
           providerServiceId: a.providerServiceId ?? null,
           affiliateProductId: a.affiliateProductId ?? null,
+          contentType: (a as any).contentType ?? null,
+          contentId: (a as any).contentId ?? null,
           dayNum: d.dayNum,
         })),
       ),
@@ -790,7 +793,13 @@ export function MapControlCenter({
                 {(() => {
                   if (guestSavesToPlan) {
                     // GATE-1: in waitlist mode the guest's add is "Save to plan" — no sign-in hand-off.
-                    return <SaveToPlanButton testId="map-browse-add" onSave={() => guest!.onAdd(selectedBrowse)} />;
+                    return (
+                      <SaveToPlanButton
+                        testId="map-browse-add"
+                        onSave={() => guest!.onAdd(selectedBrowse)}
+                        savedKey={savedRefKey({ kind: selectedBrowse.kind === "partner" ? "affiliate_product" : selectedBrowse.kind, source_id: selectedBrowse.id })}
+                      />
+                    );
                   }
                   if (guest) {
                     // Step 8d: the guest's one add is handed back — the page carries it through sign-in.

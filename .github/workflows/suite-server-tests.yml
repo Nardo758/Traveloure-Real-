@@ -161,6 +161,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/cap2-phase2.db.test.ts
       - name: CAP-2 Phase 3 — the public guest-capabilities read is waitlist-aware, Hire needs an area expert, no price (node:test)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/cap2-phase3.db.test.ts
+      - name: Round 4 R4-1 — the city page lists its city_events rows with no partner key; a listed row saves as city_event with its day and pin (node:test)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/round4-events.db.test.ts
       - name: Migration 439 Kyoto events seed — seven factchecked rows, idempotent, all in Kyoto (node:test)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/kyoto-events-439.db.test.ts
       - name: Migration 442 Kyoto event venue points — seven OSM points, fill only a NULL point, rerun changes nothing, Plan around it lands the pin (node:test)

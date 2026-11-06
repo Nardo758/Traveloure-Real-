@@ -75,7 +75,7 @@ describe("Round 3 follow-ups 2", () => {
     assert.equal(occasionLabelFromSlug("not-in-catalog", names), null);
     const slip = read("client/src/components/plancard/SlipView.tsx");
     assert.match(slip, /occasionName=\{\(data\.trip as any\)\?\.occasionLabel \?\? null\}/);
-    assert.match(slip, /const phase = \(trip as any\)\?\.datesConfirmed === true \? derivePhase\(start, end\) : null;/);
+    assert.match(slip, /const phase = phaseShown\(datesConfirmed\) \? derivePhase\(start, end\) : null;/);
     assert.match(read("client/src/pages/my-trips.tsx"), /chip-plan-occasion-/);
     for (const f of ["server/routes.ts", "server/routes/trips.routes.ts"]) {
       assert.match(read(f), /res\.json\(await withOccasionLabels\(trips as any\[\]\)\);/, f);

@@ -10,6 +10,7 @@
  *     when one was stated — never "1 traveler" for a party nobody gave (§13);
  *   · the copy is the board's, word for word.
  */
+import { partyCompositionLabel } from "./plan-vocabulary";
 import type { DraftAnswers } from "@/lib/plan-resume";
 import { exactOperatingMarket } from "@/lib/experiences-entry";
 
@@ -102,10 +103,10 @@ export function guestAnswersLine(
 ): string | null {
   const city = destination ? destination.split(",")[0].trim() : null;
   const dates = guestDateRange(answers?.startDate, answers?.endDate);
-  const party = guestPartyCount(answers);
   const occasion = occasionName?.trim() || null;
   const head = [occasion, city, dates].filter(Boolean).join(", ");
-  const partyText = party != null ? `${party} ${party === 1 ? "traveler" : "travelers"}` : null;
+  // R4-4 (round 4; R3-22 completed): the party as stated — "2 adults" / "2 adults, 1 child" — from the ONE helper.
+  const partyText = partyCompositionLabel(intOrNull(answers?.adults), intOrNull(answers?.kids)) || null;
   const line = head && partyText ? `${head} and ${partyText}` : head || partyText;
   return line || null;
 }
@@ -130,12 +131,15 @@ export function guestPlanBanner(input: {
 }): string | null {
   const title = input.title?.trim() || null;
   const dates = input.datesConfirmed ? guestDateRange(input.startDate, input.endDate) : null;
-  const party = guestPartyCount({
-    adults: input.adults != null ? String(input.adults) : "",
-    kids: input.kids != null ? String(input.kids) : "",
-  });
   const head = [title, dates].filter(Boolean).join(", ");
-  const partyText = party != null ? `${party} ${party === 1 ? "traveler" : "travelers"}` : null;
+  // R4-4: the party as stated, from the ONE helper (adults null until Save ⇒ no party text, LD 33).
+  const partyText = partyCompositionLabel(input.adults, input.kids) || null;
   const line = head && partyText ? `${head} and ${partyText}` : head || partyText;
   return line || null;
+}
+
+/** A stated whole count, or null (an empty or unreadable answer is not a count). */
+function intOrNull(v: unknown): number | null {
+  const n = typeof v === "number" ? v : typeof v === "string" && v.trim() ? Number(v) : NaN;
+  return Number.isInteger(n) ? n : null;
 }

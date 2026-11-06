@@ -14,6 +14,7 @@
  *    (FU-9C-1): every shown leg renders between its two stops through `renderLegBetween`
  *    (`slipLegBetween`, step 9c D5), so no leg loses its render.
  */
+import { planEyebrowLabel, phaseShown } from "@shared/plan-dates";
 import { SaveToPlanButton } from "@/components/plan/SaveToPlanButton";
 import { useBookingActionsShown } from "@/lib/signup-mode";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -453,24 +454,24 @@ export function SlipHeader({
   const end = safeDate(trip?.endDate);
   // R3-23: the phase badge (UPCOMING / ACTIVE / PAST) is a claim about real dates — shown only once
   // the dates are set, never off the placeholder window an unconfirmed plan carries (LD 30).
-  const phase = (trip as any)?.datesConfirmed === true ? derivePhase(start, end) : null;
+  const datesConfirmed = (trip as any)?.datesConfirmed === true;
+  const phase = phaseShown(datesConfirmed) ? derivePhase(start, end) : null;
+  // R4-3: the eyebrow always draws — "Your plan · Proposal" until the dates are confirmed, then the occasion.
+  const eyebrow = planEyebrowLabel({ datesConfirmed, occasionName });
 
   return (
     <div className="space-y-1.5" data-testid="slip-header">
       {/* The Main board's top bar: the eyebrow on the left, the expert door and the ⋯ plan menu on
           the right — one row. */}
-      {expertControl || menu || occasionName ? (
+      {(
         <div className="flex items-center justify-between gap-2">
-          {occasionName ? (
-            <p
-              className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground"
-              data-testid="slip-occasion-name"
-            >
-              Your plan · {occasionName}
-            </p>
-          ) : (
-            <span />
-          )}
+          <p
+            className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground"
+            data-testid="slip-occasion-name"
+            data-dates-confirmed={datesConfirmed ? "true" : "false"}
+          >
+            {eyebrow}
+          </p>
           {expertControl || menu ? (
             <div className="flex items-center gap-1">
               {expertControl}
@@ -478,7 +479,7 @@ export function SlipHeader({
             </div>
           ) : null}
         </div>
-      ) : null}
+      )}
       <div className="flex items-center gap-2 flex-wrap">
         {/* ── NO SLIP NUMBER AND NO VERSION ON THE WORKING HEADER ─────────────────────────────
             Ledger `2026-09-06-slip-conformance`; the ratified `header()` artboard says it in one

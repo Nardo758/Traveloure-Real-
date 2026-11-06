@@ -24,7 +24,7 @@ import { notConciergePoolListingSql } from "./expert-routability";
 import { notTestOwnerListingSql } from "./test-account";
 import { publicListingOwnerSql } from "./public-listing-owner";
 import { notRideListingSql } from "./ride-listings";
-import { cityNeighborhoods, travelPulseHiddenGems, providerServices, serviceProviderForms, serviceCategories, expertNeighborhoods, users, dmoRawContent, dmoExtractedPlaces, travelPulseCalendarEvents } from "@shared/schema";
+import { cityNeighborhoods, travelPulseHiddenGems, providerServices, serviceProviderForms, serviceCategories, expertNeighborhoods, users, dmoRawContent, dmoExtractedPlaces, travelPulseCalendarEvents, feverEventCache } from "@shared/schema";
 import { eq, sql, and, or, isNull, ilike, inArray, notInArray, asc, desc, gte } from "drizzle-orm";
 import { travelPulseService } from "./travelpulse.service";
 import { feverService } from "./fever.service";
@@ -433,23 +433,43 @@ class LocationViewService {
       logger.warn({ city: cityName, reason: err?.message ?? String(err) }, "recommendations prefetch failed");
     });
 
-    // Events (Fever)
+    // Events — R4-1 (round 4): the city's own `city_events` rows ALWAYS (no partner key, no live call), then the partner's
+    // (Fever) events ONLY when the row is in `fever_event_cache` once this request's cache write has settled: the save
+    // resolver reads that cache, so a card the rail cannot resolve is never rendered (production answered
+    // `400 unknown_source` for a listed, uncached event). A failed partner read leaves the city events standing.
     const eventsPromise = (async () => {
-      const result = await feverService.searchEvents({
-        city: cityName,
-        startDate,
-        endDate,
-        limit,
-        sortBy: "date",
+      const { listCityEventsForLocation } = await import("./city-events.service");
+      const own = await listCityEventsForLocation(cityName).catch((err: any) => {
+        logger.warn({ city: cityName, reason: err?.message ?? String(err) }, "[city-events] location list failed");
+        return [] as Array<Record<string, unknown>>;
       });
-      if (!result) return { events: [], total: 0, page: 1, totalPages: 0, city: null };
-      // R3-17: the live events this page lists are cached by their own id, so "Save to plan" on one resolves it (its
-      // venue point and dates). Best effort and never awaited by the page: a failed write changes nothing it shows.
-      void feverService.cacheListedEvents(cityName, result.events).catch((err: any) => {
-        logger.warn({ city: cityName, reason: err?.message ?? String(err) }, "[fever] listed-event cache write failed");
-      });
-      // SH-1 Q7.4: the destination page never carries a Fever amount or partner URL.
-      return { ...result, events: await toPublicFeverEvents(result.events) };
+      let partner: Awaited<ReturnType<typeof toPublicFeverEvents>> = [];
+      try {
+        const result = await feverService.searchEvents({
+          city: cityName,
+          startDate,
+          endDate,
+          limit,
+          sortBy: "date",
+        });
+        if (result && result.events.length > 0) {
+          // R3-17: the listed events are cached by their own id. Awaited now, so the filter below sees this write.
+          await feverService.cacheListedEvents(cityName, result.events).catch((err: any) => {
+            logger.warn({ city: cityName, reason: err?.message ?? String(err) }, "[fever] listed-event cache write failed");
+          });
+          const ids = result.events.map((e) => String(e.id));
+          const cached = new Set(
+            (await db.select({ id: feverEventCache.eventId }).from(feverEventCache).where(inArray(feverEventCache.eventId, ids))).map((r) => r.id),
+          );
+          const resolvable = result.events.filter((e) => cached.has(String(e.id)));
+          // SH-1 Q7.4: the destination page never carries a Fever amount or partner URL.
+          partner = await toPublicFeverEvents(resolvable);
+        }
+      } catch (err: any) {
+        logger.warn({ city: cityName, reason: err?.message ?? String(err) }, "[fever] location events omitted");
+      }
+      const events = [...own, ...partner];
+      return { events, total: events.length, page: 1, totalPages: events.length ? 1 : 0, city: cityName };
     })();
 
     // Neighborhoods for this city — annotated with gem + service counts + top gems[]

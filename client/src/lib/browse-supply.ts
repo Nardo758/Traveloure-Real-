@@ -290,13 +290,22 @@ export function applyBudget(
   return { shown, byQuote, noUsdPrice };
 }
 
-/** The plan item this place was already added as, if any (by the listing / partner id it names). */
+/**
+ * The plan item this place was already added as, if any: a listing / partner by the id it names; a gem / event by the
+ * content row the save stamped (R4-5, round 4 — so the Activities tab reads "Saved to plan" like every other site).
+ */
 export function addedItemFor(
   place: BrowsePlace,
-  items: ReadonlyArray<{ id: string; providerServiceId?: string | null; affiliateProductId?: string | null; dayNum: number }>,
+  items: ReadonlyArray<{ id: string; providerServiceId?: string | null; affiliateProductId?: string | null; contentType?: string | null; contentId?: string | null; dayNum: number }>,
 ): { itemId: string; dayNum: number } | null {
   const hit = items.find((i) =>
-    place.kind === "listing" ? i.providerServiceId === place.id : place.kind === "partner" ? i.affiliateProductId === place.id : false,
+    place.kind === "listing"
+      ? i.providerServiceId === place.id
+      : place.kind === "partner"
+        ? i.affiliateProductId === place.id
+        : place.kind === "gem" || place.kind === "event"
+          ? i.contentType === place.kind && i.contentId === place.id
+          : false,
   );
   return hit ? { itemId: hit.id, dayNum: hit.dayNum } : null;
 }

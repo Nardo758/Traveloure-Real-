@@ -67,12 +67,12 @@ describe("T1 the occasion on the guest map", () => {
   it("leads with the occasion's name; with a city only the kept sentence is intact", () => {
     const line = guestAnswersLine(ANSWERS, "Kyoto, Japan", "Proposal");
     assert.ok(line?.startsWith("Proposal"), String(line));
-    assert.equal(line, "Proposal, Kyoto, Thu 12 – Mon 16 Nov 2026 and 2 travelers");
+    assert.equal(line, "Proposal, Kyoto, Thu 12 – Mon 16 Nov 2026 and 2 adults");
     const cityOnly = guestAnswersLine({ ...ANSWERS, startDate: "", endDate: "", adults: "", occasionSlug: "" }, "Kyoto");
     assert.equal(cityOnly, "Kyoto");
     assert.equal(GUEST_ANSWERS_KEPT, "Your answers are kept.");
     assert.equal(guestGateDescription(cityOnly, { kind: "start" }), "Kyoto. Your answers are kept. Your empty plan opens here, on the map.");
-    assert.equal(guestAnswersLine(ANSWERS, "Kyoto"), "Kyoto, Thu 12 – Mon 16 Nov 2026 and 2 travelers", "no name passed ⇒ no occasion shown");
+    assert.equal(guestAnswersLine(ANSWERS, "Kyoto"), "Kyoto, Thu 12 – Mon 16 Nov 2026 and 2 adults", "no name passed ⇒ no occasion shown");
   });
 });
 

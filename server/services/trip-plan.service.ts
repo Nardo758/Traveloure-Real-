@@ -1082,6 +1082,11 @@ export async function assembleTripPlan(
       ...((item as any).affiliateProductId
         ? { affiliateProductId: (item as any).affiliateProductId as string }
         : {}),
+      // R4-5 (round 4): the content row a saved gem / event / city event names (server-stamped by the resolver, read-only
+      // here), so the map's Browse rail can say "Saved to plan" for it. Present only when set.
+      ...((item as any).contentType && (item as any).contentId
+        ? { contentType: (item as any).contentType as string, contentId: (item as any).contentId as string }
+        : {}),
 
       // Item 2 Phase 2: the affiliate agent-booking CTA — PRESENT ONLY when the item was grounded
       // to an affiliate_bookable product and a token was minted above (§16/§13, present-only-when-

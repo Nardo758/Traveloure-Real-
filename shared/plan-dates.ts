@@ -186,3 +186,19 @@ export function planDatesGateLine(action: string): string {
 
 /** The question the slip asks about the party until it is answered (Lane E1; RC-12's ask, inline). */
 export const PLAN_PARTY_ASK = "Who's coming?";
+
+/**
+ * R4-3 (round 4; R3-23 completed): the slip's eyebrow. An unconfirmed plan is a proposal — "Your plan · Proposal" —
+ * whatever its occasion; a confirmed plan names its occasion ("Your plan · Wedding"), or reads "Your plan" alone.
+ * The phase badge (Upcoming / Active / Past) is shown only once the dates are confirmed (`phaseShown`).
+ */
+export function planEyebrowLabel(input: { datesConfirmed: boolean | null | undefined; occasionName?: string | null }): string {
+  if (input.datesConfirmed !== true) return "Your plan · Proposal";
+  const occ = typeof input.occasionName === "string" ? input.occasionName.trim() : "";
+  return occ ? `Your plan · ${occ}` : "Your plan";
+}
+
+/** R4-3: any "Upcoming" / days-away / phase claim needs confirmed dates (LD 30 — a placeholder window is no date). */
+export function phaseShown(datesConfirmed: boolean | null | undefined): boolean {
+  return datesConfirmed === true;
+}

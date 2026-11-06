@@ -1,4 +1,5 @@
 import { useToast } from "@/hooks/use-toast";
+import { phaseShown } from "@shared/plan-dates";
 import { useState } from "react";
 import { PhoneDeliveryButton, PhoneDeliveryDialog } from "./PhoneDeliveryDialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -12,7 +13,7 @@ import { tripCardEyebrow } from "@/lib/trip-card-eyebrow";
 import { parseCalendarDate } from "@/lib/calendar-date";
 import { slipZoneLine } from "@/lib/slip-meta";
 import { slipCalendarPath, slipPdfPath } from "@/lib/slip-rail";
-import { partyCountLabel } from "@/lib/plan-vocabulary";
+import { partyCountLabel, partyCompositionLabel } from "@/lib/plan-vocabulary";
 
 interface HeroSectionProps {
   trip: PlanCardTrip;
@@ -242,7 +243,10 @@ export function HeroSection({
   // date math — so the hero agrees with the summary card once a trip is underway.
   const now = new Date();
   const isActiveNow = !!(startDate && endDate && now >= startDate && now <= endDate);
-  const timeLabel = isActiveNow
+  // R4-3: a days-away / "Upcoming" / "Active" claim needs confirmed dates (LD 30); a placeholder window is "Planning".
+  const timeLabel = !phaseShown((trip as any)?.datesConfirmed)
+    ? "Planning"
+    : isActiveNow
     ? "Active"
     : daysUntil != null && daysUntil > 0
     ? (daysUntil <= 30 ? `${daysUntil}d away` : "Upcoming")
@@ -287,7 +291,9 @@ export function HeroSection({
       // minted before the party pair was captured, `1` is the uncaptured mask (migration 241 /
       // D3's held decision), and printing it would state a party nobody gave (§13) — the same
       // line the `> 1` travelers badge below already draws.
-      partyLabel={trip.numberOfTravelers > 1 ? partyCountLabel(trip.numberOfTravelers) : null}
+      // R4-4 (round 4): the party as stated ("2 adults" / "2 adults, 1 child") through the ONE helper; the bare count only
+      // where the pair was never captured.
+      partyLabel={partyCompositionLabel((trip as any).adults, (trip as any).kids) || (trip.numberOfTravelers > 1 ? partyCountLabel(trip.numberOfTravelers) : null)}
       expertName={advisorName}
       badges={
         <>
