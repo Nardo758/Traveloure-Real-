@@ -38,11 +38,13 @@ describe("row 194 header menu", () => {
     assert.equal((hero.match(/<PhoneDeliveryButton/g) ?? []).length, 1);
   });
 
-  it("H3 held labels", () => {
+  it("H3 menu labels; the trigger names itself (W6)", () => {
     assert.deepEqual(
       { ...TRIP_CARD_HEADER_MENU_COPY },
-      { calendar: "Add to calendar", pdf: "Download PDF", export: "Export", phone: "Send to my phone", trigger: "[HELD for Leon]" },
+      { calendar: "Add to calendar", pdf: "Download PDF", export: "Export", phone: "Send to my phone", trigger: "More actions" },
     );
+    // PLAN-2 lane 2: the trigger's accessible name is proposed wording, never a placeholder.
+    assert.doesNotMatch(TRIP_CARD_HEADER_MENU_COPY.trigger, /HELD/i);
     for (const k of ["calendar", "pdf", "export", "phone"]) assert.match(menu, new RegExp(`TRIP_CARD_HEADER_MENU_COPY\\.${k}`));
   });
 

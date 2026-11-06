@@ -73,7 +73,20 @@ describe("row 185 J5 on-trip map", () => {
     assert.match(lib, /export function dayNavigateHref/);
   });
 
-  it("M6 every new string is HELD", () => {
-    for (const v of Object.values(ON_TRIP_MAP_COPY)) assert.equal(v, "[HELD for Leon]");
+  it("M6 the map copy is the proposed wording, never a placeholder", () => {
+    // PLAN-2 lane 2 (DeepSeek report W1-W5): the five held placeholders are replaced. The strings are
+    // proposed text pending Leon's "Wording approved - Leon" on the PR, so this test pins the staged
+    // wording rather than "approved" text.
+    assert.deepEqual(
+      { ...ON_TRIP_MAP_COPY },
+      {
+        heading: "Where you are today",
+        layerStops: "Today's stops",
+        layerStay: "Where you're staying",
+        layerLeg: "This leg",
+        leaveBy: "Leave by",
+      },
+    );
+    for (const v of Object.values(ON_TRIP_MAP_COPY)) assert.doesNotMatch(String(v), /HELD/i);
   });
 });
