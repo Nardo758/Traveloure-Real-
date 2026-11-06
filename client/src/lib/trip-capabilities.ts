@@ -52,3 +52,31 @@ export function paidActionsShown(caps: TripCapabilities | undefined): boolean {
   const a = caps?.actions.checkout;
   return a === "yes" || a === "verify";
 }
+
+/**
+ * PLAN-2 lane 3 (DeepSeek report finding #2): the four actions the payload modelled and no surface read.
+ * Each reader is FAIL-CLOSED: no answer (loading), an error, or a "no"/"waitlist" answer hides the
+ * affordance. "verify" keeps it — the existing verify prompt runs on press, exactly as it always has.
+ */
+export function optimizeShown(caps: TripCapabilities | undefined): boolean {
+  const a = caps?.actions.optimize;
+  return a === "free" || a === "pay" || a === "verify";
+}
+
+/** AskAiDrawer: the ask door is drawn only when the payload would let this viewer ask. */
+export function askShown(caps: TripCapabilities | undefined): boolean {
+  const a = caps?.actions.ask;
+  return a === "free" || a === "pay" || a === "verify";
+}
+
+/** TripCardConciergeTasks: the task log is drawn only while a concierge engagement is live for this viewer. */
+export function conciergeShown(caps: TripCapabilities | undefined): boolean {
+  const a = caps?.actions.concierge;
+  return a === "offer" || a === "in_progress" || a === "verify";
+}
+
+/** HandoffChooser: "Book these for me" is drawn only when the handoff_booking switch offers it. */
+export function handoffBookShown(caps: TripCapabilities | undefined): boolean {
+  const a = caps?.actions.handoffBook;
+  return a === "offer" || a === "verify";
+}

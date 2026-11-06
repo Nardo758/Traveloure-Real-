@@ -156,6 +156,7 @@ import { openHandoffChooser } from "@/lib/handoff-client";
 import { useExpertAvailability } from "@/lib/expert-availability";
 import { SlipOrganizeEventsRow } from "./SlipLogisticsSection";
 import { TripPassCard } from "./TripPassCard";
+import { useTripCapabilities, optimizeShown } from "@/lib/trip-capabilities";
 
 // ── card + row chrome ─────────────────────────────────────────────────────────────────────────
 
@@ -613,7 +614,10 @@ function BuildCard({
   // chooser's own rule (`chooserHasExperts` behind the city's `expert_hook_cities` switch, read once
   // through `useExpertAvailability`). Loading, an error or a "no" hide it; nothing takes its place.
   const expertsAvailable = useExpertAvailability({ city: trip.destination });
-  const optimizerWaitlist = !useBookingActionsShown();
+  // PLAN-2 lane 3: the Optimize card is drawn only when CAP-1 would let this viewer run it. Loading, an
+  // error or a "no"/"waitlist" answer hides it (never greys it); the server still authorises the press.
+  const caps = useTripCapabilities(trip.id);
+  const optimizerWaitlist = !useBookingActionsShown() || !optimizeShown(caps.data);
   const optimizerBlock = (
         <>
           {/* Surface step 4 (spec §8): the ONE optimizer card — findings, the realised delta after a

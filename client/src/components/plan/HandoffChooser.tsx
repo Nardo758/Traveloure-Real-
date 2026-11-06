@@ -10,6 +10,7 @@
  * Mounted ONCE per slip through `HandoffChooserHost`, which listens for `openHandoffChooser`.
  */
 import { useBookingActionsShown } from "@/lib/signup-mode";
+import { useTripCapabilities, handoffBookShown } from "@/lib/trip-capabilities";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { invalidateTripCapabilities } from "@/lib/trip-capabilities";
@@ -162,7 +163,13 @@ export function HandoffChooser(props: {
   // Ledger `2026-10-18-traveler-doors-hidden`: "Book these for me" (the `book` kind) is offered only while
   // `handoff_booking` is on; a door that asked for it then opens with nothing chosen.
   const doors = useTravelerDoors();
-  const kinds = offeredHandoffKinds(HANDOFF_KINDS, doors);
+  // PLAN-2 lane 3: the "book" door is also gated on CAP-1's handoffBook — the payload's answer, not only the
+  // server's switch. A "no"/"waitlist" answer (or no answer yet) withdraws that one door; the others stand.
+  const caps = useTripCapabilities(tripId);
+  const kinds = offeredHandoffKinds(HANDOFF_KINDS, doors).filter((k) => k !== "book" || handoffBookShown(caps.data));
+  // PLAN-2 lane 3 / D4: in waitlist mode the chooser is NOT drawn — no quote, no confirm, no "choose one".
+  // Before this it quoted a price and offered confirm, and the 403 arrived only on press.
+  const waitlist = !useBookingActionsShown();
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [quote, setQuote] = useState<Quote | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
@@ -241,6 +248,8 @@ export function HandoffChooser(props: {
     for (const i of items) m.set(i.dayNum, [...(m.get(i.dayNum) ?? []), i]);
     return Array.from(m.entries());
   }, [items]);
+
+  if (waitlist) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
