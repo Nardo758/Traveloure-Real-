@@ -49,7 +49,7 @@ describe("PLAN-1 Phase 2 — the planner toggle", () => {
     const slip = read("client/src/components/plancard/SlipView.tsx");
     assert.match(slip, /onClick=\{\(\) => chooseView\("list"\)\}\s*aria-pressed=\{slipView === "list"\}/);
     assert.match(slip, /onClick=\{\(\) => chooseView\("map"\)\}\s*aria-pressed=\{slipView === "map"\}/);
-    assert.match(slip, /const chooseView = \(v: "list" \| "map"\) => \{\s*setSlipView\(v\);\s*void savePlanView\(v === "map" \? "map" : "days"\);/);
+    assert.match(slip, /const chooseView = \(v: "list" \| "map"\) => \{\s*setSlipView\(v\);\s*(?:\/\/[^\n]*\n\s*)?if \(!isGuest\) void savePlanView\(v === "map" \? "map" : "days"\);/);
     const pref = read("client/src/lib/plan-view-preference.ts");
     assert.match(pref, /apiRequest\("PATCH", ME_PREFERENCES_QUERY_KEY\[0\], \{ planView: view \}\)/);
     for (const f of ["client/src/lib/plan-view-preference.ts", "client/src/pages/slip-view.tsx", "shared/plan-view.ts"]) {

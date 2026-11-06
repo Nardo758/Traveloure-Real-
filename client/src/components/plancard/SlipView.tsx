@@ -191,6 +191,7 @@ import { MapControlCenter } from "./MapControlCenter";
 import { SavePaymentMethodPrompt } from "@/components/payment/SavePaymentMethodPrompt";
 import { mapDayChips } from "@/lib/map-days";
 import { newSlipViewId, useLocalTeaserShown } from "@/lib/slip-funnel-client";
+import type { BrowsePlace } from "@/lib/map-scene";
 import {
   EXPERT_NOTE_TINT,
   OPTIMIZED_TINT,
@@ -253,6 +254,20 @@ export interface SlipTrip {
   datesConfirmed?: boolean;
   /** PLAN-1 Phase 2: "map" when the plan was created from the map (it opens on Map). */
   opensOn?: "map" | null;
+}
+
+/**
+ * PLAN-1 Phase 3: what the guest page hands `SlipView` — the guest rail's three writes and the map's centre (a guest
+ * cannot geocode). The plan itself arrives on `data` (`guestSlipData`, client/src/lib/waitlist-guest-plan.ts).
+ */
+export interface SlipGuestMode {
+  /** The map's centre for the plan's city (the eight-market list — a centre, never a pin). */
+  center: { lat: number; lng: number } | null;
+  /** Save to plan from the map's Browse layer, through the guest rail. */
+  onSavePlace: (place: BrowsePlace, dayNumber: number) => void;
+  /** "Set your dates" / "Who's coming?" — the guest rail's update. */
+  submitDates: (d: { startDate: string; endDate: string }) => Promise<void>;
+  submitParty: (p: { adults: number | null; kids: number | null }) => Promise<void>;
 }
 
 export interface SlipData extends PlanCardData {
@@ -382,8 +397,11 @@ export function SlipHeader({
   expertControl,
   daySpan = null,
   sketchLine = null,
+  guest = null,
 }: {
   data: SlipData;
+  /** PLAN-1 Phase 3: on the guest page, "Set your dates" / "Who's coming?" write through the guest rail. */
+  guest?: SlipGuestMode | null;
   /** A one-day Moment's span ("evening" / "day"), for the window line (Moment board). */
   daySpan?: "evening" | "day" | null;
   /**
@@ -585,7 +603,7 @@ export function SlipHeader({
         startDate={trip?.startDate ?? null}
         endDate={trip?.endDate ?? null}
         datesConfirmed={(trip as any)?.datesConfirmed}
-        isOwner={isOwner}
+        isOwner={isOwner || !!guest}
         partyLabel={partyLabel}
         onAskParty={canAskParty ? () => setAnchorPanel("who") : undefined}
         onSetDates={() => setAnchorPanel("dates")}
@@ -601,6 +619,7 @@ export function SlipHeader({
           tripId={trip.id}
           startDate={trip.startDate}
           endDate={trip.endDate}
+          {...(guest ? { submit: (d: { startDate: string; endDate: string }) => guest.submitDates(d) } : {})}
           onSaved={() => setAnchorPanel(null)}
           onCancel={() => setAnchorPanel(null)}
         />
@@ -614,6 +633,7 @@ export function SlipHeader({
             petKind: (trip as any).petKind ?? null,
             petCount: (trip as any).petCount ?? null,
           }}
+          {...(guest ? { submit: (p: { adults?: number | null; kids?: number | null }) => guest.submitParty({ adults: p.adults ?? null, kids: p.kids ?? null }) } : {})}
           onSaved={() => setAnchorPanel(null)}
           onCancel={() => setAnchorPanel(null)}
         />
@@ -1546,23 +1566,30 @@ function TripCardPrimaryBanner({ trip }: { trip: SlipTrip }) {
  * block, so it cannot leave the file until those assertions are scoped (FOLLOWUPS.md).
  */
 export function useSlipViewModel({
-  tripId,
+  tripId: planId,
   data,
   highlightItemId,
   initialView = null,
+  guest = null,
 }: {
   tripId: string;
   data: SlipData;
   highlightItemId?: string | null;
   /** Step 8b-2: `?view=map` opens the map layout. No stored preference — the URL is the only input. */
   initialView?: "list" | "map" | null;
+  /** PLAN-1 Phase 3: the guest page's plan (see `SlipGuestMode`). */
+  guest?: SlipGuestMode | null;
 }) {
+  const isGuest = !!guest;
+  // PLAN-1 Phase 3: a guest's plan reads nothing from the member rails — every per-plan read and write below is keyed
+  // on `tripId`, which is empty for a guest, so each one stays off (the plan arrives whole on `data`).
+  const tripId = isGuest ? "" : planId;
   const days: PlanCardDay[] = data.days ?? [];
-  const isOwner = data.tripRole === "owner";
+  const isOwner = !isGuest && data.tripRole === "owner";
   // §3.14 (ledger `2026-10-18-teaser-copy-events`): the free plan's local teaser was seen on the slip.
   const [funnelViewId] = useState(newSlipViewId);
   useLocalTeaserShown(tripId, days, "slip", funnelViewId);
-  const isExpertViewer = data.tripRole === "expert";
+  const isExpertViewer = !isGuest && data.tripRole === "expert";
   // RC-5 (ledger `2026-09-25-rc345-active-plan`): opening YOUR plan makes it the active plan — the
   // one every "Add to plan" targets. ONE rule (`activateOpenedPlan`), shared with the Trip Card;
   // it waits for the pen to be bound to this viewer and leaves a pen already naming this plan alone.
@@ -1656,7 +1683,7 @@ export function useSlipViewModel({
 
   const allActivities = useMemo(() => days.flatMap((d) => d.activities), [days]);
   // Row P-7: the one expert-door gate for the drafted-slip note.
-  const slipExpertsAvailable = useExpertAvailability({ city: data?.trip?.destination ?? null });
+  const slipExpertsAvailable = useExpertAvailability({ city: isGuest ? null : data?.trip?.destination ?? null });
   // The Handoff board: while an expert holds the pen, the stops in the request's scope carry the pen
   // mark and the day says how many are theirs. The SAME handoff read the banner makes (one cache).
   const { data: handoffRead } = useHandoff(tripId, isOwner || isExpertViewer);
@@ -1676,7 +1703,8 @@ export function useSlipViewModel({
   // (Find a host, the empty board's Browse) is not a choice and is not saved.
   const chooseView = (v: "list" | "map") => {
     setSlipView(v);
-    void savePlanView(v === "map" ? "map" : "days");
+    // A guest has no account to remember it on (the view stays in the URL).
+    if (!isGuest) void savePlanView(v === "map" ? "map" : "days");
   };
   const [mapDay, setMapDay] = useState(0);
   // LD 43(d): "the plan holds bookable rows" = something staged for checkout, or already booked.
@@ -1744,7 +1772,7 @@ export function useSlipViewModel({
   // A3b (ledger `2026-09-29-a3b-option-sets-slip`): the plan's comparisons, with each option's
   // plan-fit derived by the server. Write = the item-tool holders and a §12 WRITE advisor; CHOOSE is
   // the owner's or delegate's alone (R129). Render rules only — the rails refuse on their own.
-  const optionSetsQuery = useOptionSets(tripId, true);
+  const optionSetsQuery = useOptionSets(tripId, !isGuest);
   const optionSets = optionSetsQuery.data?.sets ?? [];
   const anchorItemId = primaryAnchorItemId(optionSets);
   // Step 1: which tool fixed the primary anchor (`anchorFromTool`) — the set it came from.
@@ -1925,7 +1953,7 @@ export function useSlipViewModel({
   const mapCity = (data.trip?.destination ?? "").split(",")[0].trim();
   const { data: areaRows } = useQuery<{ data?: Array<{ slug: string; name: string; centroidLat: string; centroidLng: string }> }>({
     queryKey: [`/api/city-neighborhoods?city=${encodeURIComponent(mapCity)}`],
-    enabled: slipView === "map" && shading.show && !!mapCity,
+    enabled: !isGuest && slipView === "map" && shading.show && !!mapCity,
     staleTime: 10 * 60_000,
   });
   const mapAreas: MapArea[] = (areaRows?.data ?? [])
@@ -2069,12 +2097,16 @@ export function useSlipViewModel({
    */
   const partyUnstated = !!data.trip && data.trip.travelers == null;
   // Lane E1 (ruling 6): the ask is an INLINE panel in the header now — no modal, no pen sync.
-  const askParty = isOwner && partyUnstated && !!data.trip;
+  // PLAN-1 Phase 3: a guest is the owner of their own guest plan for these two questions (dates, party).
+  const askParty = (isOwner || isGuest) && partyUnstated && !!data.trip;
 
   const stopsLine = slipStopsLine(data.trip?.destination, data.destinations);
   const zoneLine = slipZoneLine(data.trip?.timezone);
 
   return {
+    isGuest,
+    guest,
+    planId,
     days,
     isOwner,
     isExpertViewer,
@@ -2155,14 +2187,22 @@ export function useSlipViewModel({
 }
 
 export function SlipView({
-  tripId,
+  tripId: planTripId,
   data,
   highlightItemId,
   initialView = null,
   renderLegBetween,
+  guest = null,
 }: {
   tripId: string;
   data: SlipData;
+  /**
+   * PLAN-1 Phase 3 (ledger `2026-11-06-plan1-phase3-one-planner`): the guest page's plan, drawn by THIS component —
+   * the guest and the owner see one component tree, and every difference is gated on this. A guest has no fee line, no
+   * booking control, no owner chip, and nothing here reads a member rail; its dates, party and saves go through the
+   * guest rail the page hands in.
+   */
+  guest?: SlipGuestMode | null;
   highlightItemId?: string | null;
   /** Step 8b-2: the layout `?view=map` asks for (D4's landing). */
   initialView?: "list" | "map" | null;
@@ -2251,7 +2291,9 @@ export function SlipView({
     occasion,
     occasionIsHidden,
     occasionResolved,
-  } = useSlipViewModel({ tripId, data, highlightItemId, initialView });
+  } = useSlipViewModel({ tripId: planTripId, data, highlightItemId, initialView, guest });
+  // A guest's plan reads no member rail: every per-plan read and control below takes this, empty for a guest.
+  const tripId = guest ? "" : planTripId;
   // Step 8b-2 (ruling 4): the map band reads the ONE AI action the rail reads.
   const aiAction = useSlipAiAction(tripId, allActivities);
   // FB-1 step 4: "Your plan, fixed" by tap — only for a viewer with the item tools, once a run exists.
@@ -2289,7 +2331,7 @@ export function SlipView({
       /* Ruling 7: one centered column, at most 680px wide, at every width; the map view keeps its
          wide layout (map view unchanged). */
       className={`${SLIP_SURFACE_CLASS} ${slipView === "map" ? "max-w-6xl" : "max-w-[680px]"} mx-auto space-y-5`}
-      data-testid={`slip-view-${tripId}`}
+      data-testid={`slip-view-${planTripId}`}
       /* A1: the group is an internal key (R127) — a data attribute for tests, never display text. */
       data-experience-group={occasionResolved ? experienceGroup : undefined}
     >
@@ -2298,7 +2340,7 @@ export function SlipView({
       <PlanRowLookProvider look="board">
       {/* R-F: Trip Card presented as the primary surface once the rule fires. The slip itself
           stays fully reachable below — this is a presentation flip, not a navigation away. */}
-      {isPrimary && data.trip && <TripCardPrimaryBanner trip={data.trip} />}
+      {isPrimary && data.trip && !guest && <TripCardPrimaryBanner trip={data.trip} />}
 
       {/* LD 43(d), mount 2: the finalize success / finished area, gated on the plan holding
           BOOKABLE rows — items staged for checkout, or bookings already made. A finished plan
@@ -2350,6 +2392,7 @@ export function SlipView({
         items={allActivities.map((a) => ({ id: a.id, title: a.name, dayNum: days.find((d) => d.activities.includes(a))?.dayNum ?? null }))}
       />
       <SlipHeader
+        guest={guest}
         expertControl={
           expertDoorLive && expertDoorState === "dismissed" ? (
             <AddLocalExpertButton onOpen={() => setExpertDoorState("open")} />
@@ -2358,7 +2401,7 @@ export function SlipView({
         // R3-23: the ONE occasion label, from the plan's `occasion_slug` (null stays null, A-8).
         occasionName={(data.trip as any)?.occasionLabel ?? null}
         menu={
-          data.trip ? (
+          data.trip && !guest ? (
             <SlipPlanMenu trip={data.trip} tripId={tripId} isOwner={isOwner} canEditItems={canEditItems} />
           ) : null
         }
@@ -2405,7 +2448,7 @@ export function SlipView({
           ) : null}
           {/* PLAN-1 ruling: the cost strip, the tools tray and the where-to-stay panel are Days-view only — owner map view
               is the header, the map band and the map (no layout change). */}
-          {slipView === "list" ? (
+          {slipView === "list" && !guest ? (
             <PlanCostStrip activities={allActivities} travelers={data.trip?.travelers ?? null} planEvents={planEvents} isOwner={isOwner} />
           ) : null}
           {/* ── SURFACE STEP 2 · THE TOOLS TRAY (ledger `2026-10-03-surface-step2-tools-tray`) ─────────
@@ -2497,6 +2540,16 @@ export function SlipView({
                 >
                   Days
                 </button>
+                {/* PLAN-1 Phase 3: Calendar holds its place on the toggle until its artifact lands (disabled; no view). */}
+                <button
+                  type="button"
+                  className="inline-flex h-9 items-center rounded-[var(--slip-radius-chip)] px-[18px] text-sm font-medium text-[color:var(--slip-muted)] disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled
+                  aria-pressed={false}
+                  data-testid="button-slip-view-calendar"
+                >
+                  Calendar
+                </button>
                 <button
                   type="button"
                   className={`inline-flex h-9 items-center rounded-[var(--slip-radius-chip)] px-[18px] text-sm ${slipView === "map" ? "bg-[color:var(--slip-card)] font-semibold text-[color:var(--slip-ink)]" : "font-medium text-[color:var(--slip-muted)]"} disabled:opacity-50 disabled:cursor-not-allowed`}
@@ -2573,7 +2626,7 @@ export function SlipView({
               (once, in SlipRail.tsx) are NOT mounted here. */}
           {/* PLAN-1: the band is the owner map mode's slots — drawn by MapControlCenter in this same grid. */}
           <MapControlCenter
-            tripId={tripId}
+            tripId={planTripId}
             tripDestination={data.trip.destination ?? ""}
             days={mapDays}
             selectedDay={Math.min(mapDay, Math.max(0, mapDays.length - 1))}
@@ -2582,7 +2635,8 @@ export function SlipView({
             onBrowseChange={setMapBrowse}
             layout="split"
             planEmptyNote={planEmptyReason}
-            mode={{
+            // PLAN-1 Phase 3: the same map, in the guest's mode on the guest page (Browse saves through the guest rail).
+            mode={guest ? { kind: "guest", center: guest.center, onSave: guest.onSavePlace, withPlan: true } : {
               kind: "owner",
               canEdit: canEditItems,
               expertTravelerNote: data.trip.expertTravelerNote,
@@ -2637,7 +2691,7 @@ export function SlipView({
       {/* ── THE PLAN PANEL (Main-rail) — what the rail still had to say, inside the column: the
           expert on the plan with the one message control, an engagement if there is one, and
           organize-into-events / the budget. Its Build half portals the optimizer card above. */}
-      {data.trip ? (
+      {data.trip && !guest ? (
         <SlipRail
           trip={data.trip}
           tripId={tripId}

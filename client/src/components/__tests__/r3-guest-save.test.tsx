@@ -41,7 +41,8 @@ describe("Round 3 guest save rail (client)", () => {
   });
 
   it("C3 the Trip Slip is drawn in place on the guest plan page", () => {
-    assert.match(fs.readFileSync("client/src/pages/guest-plan-map.tsx", "utf8"), /<GuestPlanSlip view=\{view\} \/>/);
+    // PLAN-1 Phase 3: the Trip Slip itself (SlipView in guest mode), not a copy of it.
+    assert.match(fs.readFileSync("client/src/pages/guest-plan-map.tsx", "utf8"), /<SlipView\s[\s\S]*?guest=\{\{/);
     const app = fs.readFileSync("client/src/App.tsx", "utf8");
     assert.equal((app.match(/<Route path="\/plans\/new[^"]*">/g) ?? []).length, 1, "one /plans/new route");
   });

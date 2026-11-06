@@ -121,7 +121,7 @@ describe("P-7 Get help with this plan", () => {
     );
     assert.match(SLIP, /\{EXPERT_DOOR_COPY\.draftedNote\}/);
     assert.match(SLIP, /onClick=\{\(\) => openHandoffChooser\(\{\}\)\}\s+data-testid="slip-get-help-note-button"/);
-    assert.match(SLIP, /const slipExpertsAvailable = useExpertAvailability\(\{ city: data\?\.trip\?\.destination \?\? null \}\);/);
+    assert.match(SLIP, /const slipExpertsAvailable = useExpertAvailability\(\{ city: isGuest \? null : data\?\.trip\?\.destination \?\? null \}\);/);
   });
 
   it("T6 Finalize: the expert lane only while an expert is live; the label unchanged", () => {

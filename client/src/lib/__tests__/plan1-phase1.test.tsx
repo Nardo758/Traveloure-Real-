@@ -47,7 +47,9 @@ const mounts = (src: string) => {
   const out: string[] = [];
   let i = src.indexOf("<MapControlCenter");
   while (i >= 0) {
-    out.push(src.slice(i, src.indexOf("/>", src.indexOf("mode={{", i)) + 2));
+    // PLAN-1 Phase 3: SlipView's mount opens its mode with a guest/owner ternary (`mode={guest ? {…} : {`).
+    const m = src.slice(i).search(/mode=\{(\{|guest \?)/);
+    out.push(src.slice(i, src.indexOf("/>", i + m) + 2));
     i = src.indexOf("<MapControlCenter", i + 1);
   }
   return out;
@@ -67,26 +69,29 @@ describe("PLAN-1 Phase 1", () => {
     for (const f of MOUNTS) {
       for (const m of mounts(read(f))) {
         n++;
-        assert.match(m, /mode=\{\{\s*kind: "(guest|owner)"/, `${f}: names its mode`);
+        // PLAN-1 Phase 3: SlipView's one map names both modes (guest page / owner page) in one ternary.
+        assert.match(m, /mode=\{(?:guest \? \{ kind: "guest"[^}]*\} : )?\{\s*kind: "(guest|owner)"/, `${f}: names its mode`);
         assert.doesNotMatch(m, /\bguest=\{|\breadOnly\b|\banchor=\{|\bversions=\{|\bcandidates=\{/, `${f}: no loose mode prop`);
       }
     }
-    assert.equal(n, 8, "the eight mounts");
+    assert.equal(n, 7, "the seven mounts (PLAN-1 Phase 3: the guest page's plan map is now SlipView's)");
     const guestPage = read("client/src/pages/guest-plan-map.tsx");
-    assert.equal((guestPage.match(/mode=\{\{ kind: "guest"/g) ?? []).length, 2, "the guest page's two maps are guest mode");
+    // PLAN-1 Phase 3: the guest page keeps one map of its own (before any plan); its plan's map is SlipView's, in guest mode.
+    assert.equal((guestPage.match(/mode=\{\{ kind: "guest"/g) ?? []).length, 1, "the guest page's own map is guest mode");
+    assert.match(read("client/src/components/plancard/SlipView.tsx"), /mode=\{guest \? \{ kind: "guest", center: guest\.center, onSave: guest\.onSavePlace, withPlan: true \} : \{/);
   });
 
   it("P2 owner map view: header, band, map — no tools tray, cost strip, Stay here or lodging ranking", () => {
     const slip = read("client/src/components/plancard/SlipView.tsx");
     assert.match(slip, /\{isOwner && data\.trip && slipView === "list" \? \(\s*<ToolsTray/);
-    assert.match(slip, /\{slipView === "list" \? \(\s*<PlanCostStrip/);
+    assert.match(slip, /\{slipView === "list" && !guest \? \(\s*<PlanCostStrip/); // PLAN-1 Phase 3: and never for a guest
     const mapStart = slip.indexOf('{slipView === "map" && data.trip ? (');
     const mapView = slip.slice(mapStart, slip.indexOf("      ) : (\n", mapStart));
     assert.ok(mapView.length > 200);
     for (const absent of ["ToolsTray", "PlanCostStrip", "renderAnchorPanel", "AnchorPanel", "StayBookButton", "WhereToStay"]) {
       assert.ok(!mapView.includes(absent), `map view draws no ${absent}`);
     }
-    assert.match(mapView, /mode=\{\{\s*kind: "owner",/);
+    assert.match(mapView, /mode=\{guest \? \{ kind: "guest"[^}]*\} : \{\s*kind: "owner",/); // PLAN-1 Phase 3
     assert.match(mapView, /quickDraft: isOwner && aiAction === "draft" \? <SlipDraftAiRow/);
     assert.match(mapView, /tripCardBanner: <FinishCard /);
     // "Stay here" and the ranking live only in AnchorPanel; the map planner itself never draws either.

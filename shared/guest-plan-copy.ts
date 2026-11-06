@@ -8,8 +8,8 @@ export const GUEST_PLAN_COPY = {
   keptForDays: (days: number) => `This plan is kept for ${days} days from your last change. Sign in to keep it.`,
   /** Privacy line when it is unset (the retention job is disabled). */
   keptUntilSignIn: "This plan is kept until you sign in or clear it.",
-  emptyTitle: "Nothing saved yet",
-  emptyBody: "Add places from the Kyoto page or the map to start.",
+  // PLAN-1 Phase 3: the empty-plan card ("Nothing saved yet") is retired with the guest page's own list; an empty
+  // guest plan reads as the Trip Slip's own empty state.
   saveFailed: "Couldn't save that. Try again.",
   rateLimited: "You've added a lot in a short time. Give it a minute and try again.",
   /** A-18 (Lane 1 wording, Nov 5, 2026): the save landed, but the place has no point on the map. */

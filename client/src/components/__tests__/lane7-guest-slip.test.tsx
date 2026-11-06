@@ -1,63 +1,73 @@
 /**
- * Lane 7 — A-22: a guest's plan is drawn as the Trip Slip (ledger `2026-11-05-lane7-guest-slip`).
+ * Lane 7 — A-22, as amended by PLAN-1 Phase 3 (ledger `2026-11-06-plan1-phase3-one-planner`): a guest's plan is drawn by
+ * THE Trip Slip — `SlipView` in guest mode — and the separate `GuestPlanSlip` is deleted (§18c).
  *
- *   G1  guestSlipDays: every day of the window in order (an empty day too), a machine date only when the guest chose the dates
- *   G2  rendered: the slip's own DayBlock heading and ItemRow rows; the first day open
- *   G3  rendered: no ⋯ menu, no booking line or action, no Navigate, no money anywhere
- *   G4  the guest page mounts GuestPlanSlip and no longer draws its own list
+ *   G1  guestSlipData: the guest plan in the slip's own shape — the trip's answers, the days, nothing member-only
+ *   G2  the guest page mounts SlipView with `guest`, and GuestPlanSlip is gone
+ *   G3  SlipView gates every owner-only surface on the guest mode (no fee line, no booking or plan rail, no ⋯ menu)
+ *   G4  a guest's slip reads no member rail: the per-plan reads key on an empty id
  *
- * Run: npx tsx --test client/src/components/__tests__/lane7-guest-slip.test.tsx
+ * Run: node --import ./client/src/lib/__tests__/lc1-css-register.mjs --import tsx --test client/src/components/__tests__/lane7-guest-slip.test.tsx
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import React from "react";
-import { renderToString } from "react-dom/server";
-import { GuestPlanSlip } from "../plan/GuestPlanSlip";
-import { guestSlipDays, type GuestPlanView } from "@/lib/waitlist-guest-plan";
-import { containsNeverSayCopy } from "@shared/banned-copy";
-
-(globalThis as any).React = React;
-const text = (html: string) => html.replace(/<!-- -->/g, "").replace(/<[^>]+>/g, " ").replace(/&#x27;/g, "'").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+import { guestSlipData, type GuestPlanView } from "@/lib/waitlist-guest-plan";
 
 const view = (datesConfirmed: boolean): GuestPlanView => ({
   plan: {
     id: "t1", title: "Kyoto", destination: "Kyoto, Japan", startDate: "2026-11-11", endDate: "2026-11-13", datesConfirmed,
-    adults: null, kids: null, numberOfTravelers: null, eventType: null, updatedAt: null,
+    adults: 2, kids: null, numberOfTravelers: null, eventType: null, updatedAt: null,
   },
   items: [
     { id: "b", title: "Nishiki Market", description: null, itemType: "activity", dayNumber: 2, locationName: "Nakagyo", latitude: "35.0", longitude: "135.7" },
     { id: "a", title: "Fushimi Inari", description: null, itemType: "activity", dayNumber: 1, locationName: "Fushimi", latitude: null, longitude: null },
   ],
   retentionDays: 30,
-});
+} as GuestPlanView);
 
-describe("Lane 7 guest slip", () => {
-  it("G1 days in order; a date only when the dates were chosen", () => {
-    assert.deepEqual(guestSlipDays(view(true)).map((d) => [d.dayNum, d.dateIso]), [[1, "2026-11-11"], [2, "2026-11-12"], [3, "2026-11-13"]]);
-    assert.deepEqual(guestSlipDays(view(false)).map((d) => [d.dayNum, d.dateIso]), [[1, null], [2, null], [3, null]]);
+const read = (p: string) => fs.readFileSync(p, "utf8");
+const SLIP = "client/src/components/plancard/SlipView.tsx";
+
+describe("Lane 7 guest slip (PLAN-1 Phase 3)", () => {
+  it("G1 guestSlipData carries the plan's answers and days, and no member-only fact", () => {
+    const d = guestSlipData(view(false)) as any;
+    assert.equal(d.trip.id, "t1");
+    assert.equal(d.trip.destination, "Kyoto, Japan");
+    assert.equal(d.trip.datesConfirmed, false, "placeholder dates stay placeholders");
+    assert.equal(d.trip.adults, 2);
+    assert.equal("kids" in d.trip, false, "an unstated answer is omitted, never 0");
+    assert.equal(d.trip.travelers, 2);
+    assert.equal(d.tripRole, undefined, "a guest has no member role");
+    const items = d.days.flatMap((x: any) => x.activities.map((a: any) => [x.dayNum, a.id]));
+    assert.deepEqual(items.sort(), [[1, "a"], [2, "b"]]);
+    const located = d.days.flatMap((x: any) => x.activities).find((a: any) => a.id === "b");
+    assert.equal(located.lat, 35.0);
+    assert.equal(guestSlipData(view(true)).trip?.datesConfirmed, true);
   });
 
-  it("G2 the slip's day heading and rows; the first day is open", () => {
-    const html = renderToString(<GuestPlanSlip view={view(true)} />);
-    const t = text(html);
-    assert.match(t, /Wed · Nov 11/);
-    assert.match(t, /Thu · Nov 12/);
-    assert.match(html, /data-testid="slip-item-a"/, "day 1's row is drawn by ItemRow");
-    assert.doesNotMatch(html, /data-testid="slip-item-b"/, "day 2 starts closed");
-    assert.match(text(renderToString(<GuestPlanSlip view={view(false)} />)), /Day 1/, "placeholder dates read as the plan's own Day N");
+  it("G2 the guest page mounts SlipView in guest mode; GuestPlanSlip is deleted", () => {
+    const page = read("client/src/pages/guest-plan-map.tsx");
+    assert.match(page, /<SlipView\s[\s\S]*?data=\{guestSlipData\(view\)\}[\s\S]*?guest=\{\{/);
+    assert.doesNotMatch(page, /GuestPlanSlip|InlineDatesPanel|InlineWhoPanel/);
+    assert.equal(fs.existsSync("client/src/components/plan/GuestPlanSlip.tsx"), false);
   });
 
-  it("G3 no menu, booking, navigate or money", () => {
-    const html = renderToString(<GuestPlanSlip view={view(true)} />);
-    assert.doesNotMatch(html, /slip-item-menu|slip-item-booking|slip-item-navigate|slip-item-booked/);
-    assert.doesNotMatch(text(html), /\$|¥|fee|Book|Checkout/i);
-    assert.equal(containsNeverSayCopy(text(html)), false);
+  it("G3 SlipView gates the owner-only surfaces on guest", () => {
+    const s = read(SLIP);
+    assert.match(s, /slipView === "list" && !guest \? \(\s*<PlanCostStrip/, "no fee/cost line for a guest");
+    assert.match(s, /data\.trip && !guest \? \(\s*<SlipRail/, "no plan rail (expert, engagements, Finish) for a guest");
+    assert.match(s, /isPrimary && data\.trip && !guest && <TripCardPrimaryBanner/);
+    assert.match(s, /menu=\{\s*data\.trip && !guest \?/, "no header ⋯ menu for a guest");
+    assert.match(s, /const isOwner = !isGuest && /);
+    assert.match(s, /mode=\{guest \? \{ kind: "guest"/, "the map is the guest's mode of the same MapControlCenter");
   });
 
-  it("G4 the guest page mounts the slip", () => {
-    const page = fs.readFileSync("client/src/pages/guest-plan-map.tsx", "utf8");
-    assert.match(page, /<GuestPlanSlip view=\{view\} \/>/);
-    assert.doesNotMatch(page, /`Day \$\{it\.dayNumber\}`/);
+  it("G4 a guest's slip reads no member rail", () => {
+    const s = read(SLIP);
+    assert.match(s, /const tripId = isGuest \? "" : planId;/);
+    assert.match(s, /const tripId = guest \? "" : planTripId;/);
+    assert.match(s, /if \(!isGuest\) void savePlanView\(/, "a guest's view is never saved to an account");
+    assert.match(s, /useOptionSets\(tripId, !isGuest\)/);
   });
 });
