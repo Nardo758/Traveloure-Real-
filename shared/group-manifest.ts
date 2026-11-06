@@ -106,6 +106,25 @@ export const TOOL_STATE: Readonly<Record<ToolKey, ToolState>> = {
   getting_back_late: SOON,
 };
 
+/**
+ * PLAN-2 C2 (ledger `2026-11-06-plan2-c2-manifest-order`): the order the coming-soon tools are built in —
+ * Budget, then Getting home, then the group package (Arrivals & split, Split activities, Who pays what), then
+ * Getting back late. Every key here is `coming_soon` in `TOOL_STATE` and draws nothing until its own lane
+ * flips it; this list orders the work, it does not render anything. Pinned by group-manifest.test.ts G6.
+ */
+export const COMING_SOON_BUILD_ORDER: readonly ToolKey[] = [
+  "budget",
+  "getting_home",
+  // the group package
+  "arrivals_split_groups",
+  "split_activities",
+  "who_pays_what",
+  "getting_back_late",
+];
+
+/** The group package inside `COMING_SOON_BUILD_ORDER` — built and shipped together. */
+export const GROUP_PACKAGE_TOOLS: readonly ToolKey[] = ["arrivals_split_groups", "split_activities", "who_pays_what"];
+
 /** The operator switches a tool may depend on, as `/api/health` reports them. Absent ⇒ off. */
 export type ToolFlags = Partial<Record<"FLIGHT_LOOKUP_ENABLED", boolean>> | null | undefined;
 

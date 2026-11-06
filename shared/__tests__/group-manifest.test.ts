@@ -5,10 +5,11 @@
  *   G3  Show / Festival is an overlay: the parent's eyebrow and threshold, its own question, +2 tools
  *   G4  travelItemKind (addendum): an AI row naming a transport hub AND a direction
  *   G5  absorbedTravelItemId: the first arrival / the last departure absorbs the placeholder
+ *   G6  PLAN-2 C2: the coming-soon build order — Budget → Getting home → the group package → Getting back late; all still coming soon
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { GROUP_MANIFEST, SHOW_FESTIVAL_OVERLAY, TOOL_LABEL, manifestFor } from "../group-manifest";
+import { COMING_SOON_BUILD_ORDER, GROUP_MANIFEST, GROUP_PACKAGE_TOOLS, SHOW_FESTIVAL_OVERLAY, TOOL_LABEL, TOOL_STATE, manifestFor, toolIsLive, type ToolKey } from "../group-manifest";
 
 test("G1: every group resolves; unknown → Trip", () => {
   assert.equal(manifestFor("trips").group, "trip");
@@ -78,4 +79,22 @@ test("G5: absorbedTravelItemId — first arrival, last departure, else none", ()
   assert.equal(absorbedTravelItemId(day, "arrival"), "a");
   assert.equal(absorbedTravelItemId(day, "departure"), "e");
   assert.equal(absorbedTravelItemId([{ id: "x", name: "Temple walk", origin: "ai" }], "arrival"), null);
+});
+
+test("G6: PLAN-2 C2 — the coming-soon build order, all still coming soon", () => {
+  assert.deepEqual(
+    COMING_SOON_BUILD_ORDER.map((k) => TOOL_LABEL[k]),
+    ["Budget", "Getting home", "Arrivals & split groups", "Split activities", "Who pays what", "Getting back late"],
+  );
+  assert.deepEqual(GROUP_PACKAGE_TOOLS, ["arrivals_split_groups", "split_activities", "who_pays_what"]);
+  const at = COMING_SOON_BUILD_ORDER.indexOf(GROUP_PACKAGE_TOOLS[0]);
+  assert.deepEqual(COMING_SOON_BUILD_ORDER.slice(at, at + 3), GROUP_PACKAGE_TOOLS, "the group package is contiguous");
+  for (const k of COMING_SOON_BUILD_ORDER) {
+    assert.deepEqual(TOOL_STATE[k], { kind: "coming_soon" }, `${k} is still coming soon`);
+    assert.equal(toolIsLive(k, { FLIGHT_LOOKUP_ENABLED: true }), false, `${k} draws nothing`);
+  }
+  // Every coming-soon tool is ordered — none is left out of the build order, none listed twice.
+  const soon = (Object.keys(TOOL_STATE) as ToolKey[]).filter((k) => TOOL_STATE[k].kind === "coming_soon");
+  assert.deepEqual([...soon].sort(), [...COMING_SOON_BUILD_ORDER].sort());
+  assert.equal(new Set(COMING_SOON_BUILD_ORDER).size, COMING_SOON_BUILD_ORDER.length);
 });
