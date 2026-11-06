@@ -363,20 +363,33 @@ export function guestPlanDays(view: GuestPlanView): PlanCardDay[] {
   return mapDayChips(Array.from(byDay.values()), { startDate: view.plan.startDate, endDate: view.plan.endDate });
 }
 
+
 /**
- * A-22 (ledger `2026-11-05-lane7-guest-slip`): the guest plan's days as the Trip Slip draws them — every day of the
- * window in day order (an empty day reads "0 stops", as on the slip), each with its machine date ONLY when the guest
- * chose the dates. A placeholder window is never read as a weekday (§13); the heading is then the plan's own "Day N".
- * PURE.
+ * PLAN-1 Phase 3 (ledger `2026-11-06-plan1-phase3-one-planner`): the guest's plan as the slip reads a plan — the guest
+ * page draws it with `SlipView` in guest mode (one component tree for the guest and the owner). The plan's own facts
+ * only: no role (the slip's guest mode gates every member surface), no change log, no metrics. PURE.
  */
-export function guestSlipDays(view: GuestPlanView): Array<{ dayNum: number; dateIso: string | null; activities: PlanCardActivity[] }> {
-  const days = guestPlanDays(view)
-    .map((d) => ({ dayNum: Number(d.dayNum), activities: d.activities as PlanCardActivity[] }))
-    .sort((a, b) => a.dayNum - b.dayNum);
-  const start = view.plan.datesConfirmed ? /^(\d{4})-(\d{2})-(\d{2})/.exec(view.plan.startDate ?? "") : null;
-  return days.map((d) => {
-    if (!start) return { ...d, dateIso: null };
-    const dt = new Date(Date.UTC(Number(start[1]), Number(start[2]) - 1, Number(start[3]) + d.dayNum - 1));
-    return { ...d, dateIso: dt.toISOString().slice(0, 10) };
-  });
+export function guestSlipData(view: GuestPlanView): import("@/components/plancard/SlipView").SlipData {
+  const { plan } = view;
+  const adults = plan.adults ?? null;
+  const kids = plan.kids ?? null;
+  return {
+    trip: {
+      id: plan.id,
+      title: plan.title,
+      destination: plan.destination,
+      startDate: plan.startDate,
+      endDate: plan.endDate,
+      travelers: plan.numberOfTravelers ?? (adults != null ? adults + (kids ?? 0) : null),
+      eventType: plan.eventType ?? null,
+      ...(adults != null ? { adults } : {}),
+      ...(kids != null ? { kids } : {}),
+      datesConfirmed: plan.datesConfirmed,
+      occasionLabel: plan.occasionLabel ?? null,
+    } as any,
+    days: guestPlanDays(view),
+    changeLog: [],
+    metrics: {},
+    stats: {},
+  } as any;
 }

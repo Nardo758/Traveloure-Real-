@@ -172,6 +172,8 @@ const ALLOWED_ADDITIONS = {
   // 1 · the two-column relayout and the merged view bar
   "slip-columns": "1 — the plan column (Main-rail: one centered column; the rail track is gone, ruling 7)",
   "slip-viewbar": "1 — the status counts and the List | Map toggle, merged into one row",
+  // PLAN-1 Phase 3 (ledger `2026-11-06-plan1-phase3-one-planner`): Calendar holds its place on the toggle, disabled.
+  "button-slip-view-calendar": "PLAN-1 Phase 3 — the Calendar segment, a disabled placeholder until its artifact lands",
   // 3 · the rail's Expert card
   "slip-rail-expert": "3 — the Expert card itself",
   "slip-rail-expert-name": "3 — the advisor's name",

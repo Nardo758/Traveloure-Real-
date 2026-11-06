@@ -84,9 +84,10 @@ describe("Lane 8 cleanup", () => {
   });
 
   it("L4 no planning tool on the guest plan; Optimize is dates-gated on the slip", () => {
-    for (const f of ["client/src/pages/guest-plan-map.tsx", "client/src/components/plan/GuestPlanSlip.tsx"]) {
-      assert.doesNotMatch(read(f), /ToolsTray|Optimi[sz]e|getting_home|AskAiDrawer|SlipRail/, f);
-    }
+    // PLAN-1 Phase 3: the guest page mounts SlipView in guest mode; its tray and rail are owner-only there.
+    assert.doesNotMatch(read("client/src/pages/guest-plan-map.tsx"), /ToolsTray|Optimi[sz]e|getting_home|AskAiDrawer|SlipRail/);
+    assert.match(read("client/src/components/plancard/SlipView.tsx"), /isOwner && data\.trip && slipView === "list" \? \(\s*<ToolsTray/);
+    assert.match(read("client/src/components/plancard/SlipView.tsx"), /data\.trip && !guest \? \(\s*<SlipRail/);
     assert.match(read("client/src/components/plancard/MapControlCenter.tsx"), /const showPlanRail = !guest && /);
     assert.match(read("client/src/components/plancard/SlipRail.tsx"), /<DatesGate trip=\{trip\} action="Optimize"/);
     assert.match(read("client/src/components/plan/ToolsTray.tsx"), /case "getting_home":[\s\S]*?return null;/);

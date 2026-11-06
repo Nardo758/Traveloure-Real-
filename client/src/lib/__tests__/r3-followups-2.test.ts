@@ -114,7 +114,7 @@ describe("Round 3 follow-ups 2", () => {
     assert.match(slip, /quickDraft: isOwner && aiAction === "draft" \? <SlipDraftAiRow trip=\{data\.trip\} tripId=\{tripId\} \/> : null,/);
     assert.doesNotMatch(read("client/src/components/plan/SlipEmptyStart.tsx"), /useBookingActionsShown|useSignupMode/);
     // The Trip Card banner: dates confirmed (GATE-1) and the R-F rule — no mode read.
-    assert.match(slip, /\{isPrimary && data\.trip && <TripCardPrimaryBanner trip=\{data\.trip\} \/>\}/);
+    assert.match(slip, /\{isPrimary && data\.trip && !guest && <TripCardPrimaryBanner trip=\{data\.trip\} \/>\}/);
     const banner = slip.slice(slip.indexOf("function TripCardPrimaryBanner"), slip.indexOf("function TripCardPrimaryBanner") + 1500);
     assert.doesNotMatch(banner, /useBookingActionsShown|useSignupMode|waitlist/i);
     // The dashboard row follows the banner: chosen dates only.

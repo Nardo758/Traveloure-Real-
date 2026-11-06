@@ -14,7 +14,7 @@
  * (G2), and nothing here writes the cart.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
@@ -34,7 +34,8 @@ import {
 import { useSignupMode } from "@/lib/signup-mode";
 import { planTitle } from "@/lib/trip-slip";
 import { PlansNewStart } from "@/components/plan/PlansNewStart";
-import { GuestPlanSlip } from "@/components/plan/GuestPlanSlip";
+import { SlipView } from "@/components/plancard/SlipView";
+import { planViewFromUrl } from "@shared/plan-view";
 import { startForCity } from "@/lib/plans-new-start";
 import { planEntryDestination } from "@/lib/plan-entry";
 import { usePlanning } from "@/contexts/PlanningContext";
@@ -48,13 +49,12 @@ import {
   guestBodyForPlace,
   guestBodyForPendingAdd,
   guestSavedMessage,
-  guestPlanDays,
+  guestSlipData,
   takeClaimedGuestPlanId,
   updateGuestPlan,
   useGuestPlan,
 } from "@/lib/waitlist-guest-plan";
 import { GUEST_PLAN_COPY, guestPlanKeptLine } from "@shared/guest-plan-copy";
-import { InlineDatesPanel, InlineWhoPanel } from "@/components/plan/SlipAnchorPanels";
 import {
   GUEST_GATE_DISMISS,
   GUEST_GATE_TITLE,
@@ -234,8 +234,8 @@ function GuestPlanMapRecord({ record: initialRecord }: { record: PendingPlanReco
 // ── GATE-1B: the waitlist guest's server-side plan ───────────────────────────────────────────────────────────────
 
 function WaitlistGuestPlan() {
+  const search = useSearch();
   const { toast } = useToast();
-  const [selectedDay, setSelectedDay] = useState(0);
   // A fresh PlanEntry finish leaves its answers in the sign-in record: they become a NEW guest plan, once, and the
   // record is then consumed (so a later sign-in claims this plan instead of minting a second one).
   const recordRef = useRef<PendingPlanRecord | null>(peekPendingPlanRecord());
@@ -329,7 +329,6 @@ function WaitlistGuestPlan() {
   }
 
   const { plan } = view;
-  const days = guestPlanDays(view);
   // E-1: the banner composes from the title (the traveler's choice + city), the dates with their year, the party.
   const answersLine = guestPlanBanner({
     title: plan.title,
@@ -339,9 +338,8 @@ function WaitlistGuestPlan() {
     adults: plan.adults,
     kids: plan.kids,
   });
-  const dayNumber = days[selectedDay]?.dayNum ?? 1;
-
-  const onSave = (place: BrowsePlace) => {
+  // The day chip the map showed when Save was pressed (the slip's own map passes it).
+  const onSave = (place: BrowsePlace, dayNumber: number) => {
     const body = guestBodyForPlace(place, dayNumber, plan.destination.split(",")[0].trim());
     if (!body) return;
     saveToGuestPlan(body, plan.destination).then(
@@ -363,46 +361,24 @@ function WaitlistGuestPlan() {
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <InlineDatesPanel
-          key={`${plan.startDate}:${plan.endDate}`}
-          tripId={plan.id}
-          startDate={plan.startDate}
-          endDate={plan.endDate}
-          testId="guest-plan-dates"
-          submit={async (d) => {
+      {/* PLAN-1 Phase 3 (ledger `2026-11-06-plan1-phase3-one-planner`): the guest's plan is drawn by THE slip, in guest
+          mode — the same component tree the owner sees, with the member surfaces gated off. Its dates, party and saves
+          go through the guest rail; the day list, the Days / Map toggle and the map are the slip's own. */}
+      <SlipView
+        tripId={plan.id}
+        data={guestSlipData(view)}
+        initialView={planViewFromUrl(search) === "map" ? "map" : "list"}
+        guest={{
+          center: guestMapCenter(plan.destination),
+          onSavePlace: (place, day) => onSave(place, day),
+          submitDates: async (d) => {
             await updateGuestPlan({ startDate: d.startDate, endDate: d.endDate });
-          }}
-        />
-        <InlineWhoPanel
-          tripId={plan.id}
-          current={{ adults: plan.adults, kids: plan.kids } as any}
-          submit={async (party) => {
-            await updateGuestPlan(party);
-          }}
-        />
-      </div>
-
-      {view.items.length === 0 ? (
-        <div className="rounded-lg border border-border bg-card p-4" data-testid="guest-plan-empty">
-          <p className="text-sm font-semibold">{GUEST_PLAN_COPY.emptyTitle}</p>
-          <p className="text-sm text-muted-foreground">{GUEST_PLAN_COPY.emptyBody}</p>
-        </div>
-      ) : (
-        <GuestPlanSlip view={view} />
-      )}
-
-      <div className="rounded-lg border border-border bg-card" data-testid="guest-map-canvas">
-        <MapControlCenter
-          tripId={plan.id}
-          tripDestination={plan.destination}
-          days={days}
-          selectedDay={Math.min(selectedDay, Math.max(0, days.length - 1))}
-          onSelectDay={setSelectedDay}
-          layout="split"
-          mode={{ kind: "guest", center: guestMapCenter(plan.destination), onSave: (place) => onSave(place), withPlan: true }}
-        />
-      </div>
+          },
+          submitParty: async (party) => {
+            await updateGuestPlan(party as any);
+          },
+        }}
+      />
     </div>
   );
 }
