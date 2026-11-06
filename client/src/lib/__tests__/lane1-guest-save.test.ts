@@ -78,13 +78,15 @@ describe("Lane 1 guest save rail (client)", () => {
   });
 
   it("L5 migration 437 and the seed list agree", () => {
-    const migration = read("server/migrations/437_kyoto_gem_coordinates.sql");
+    // Migration 441 (sanctioned edit): the list now holds 437's four and 441's fourteen; each row is in one of the two.
+    const migration = read("server/migrations/437_kyoto_gem_coordinates.sql") + read("server/migrations/441_kyoto_gem_coordinates_2.sql");
     const seed = read("server/seeds/kyoto-gem-coordinates.seed.ts");
     const rows = [...seed.matchAll(/\{ placeName: "([^"]+)", latitude: "([^"]+)", longitude: "([^"]+)", sourceUrl: "([^"]+)", osm: (true|false) \}/g)];
-    assert.equal(rows.length, 4);
+    assert.equal(rows.length, 18);
+    const esc = (v: string) => v.replace(/[.?/()&]/g, "\\$&");
     for (const [, name, lat, lng, url] of rows) {
-      assert.match(migration, new RegExp(`-- ${name} — source: ${url.replace(/[.?/]/g, "\\$&")} — © OpenStreetMap contributors, ODbL 1\\.0`));
-      assert.match(migration, new RegExp(`SET latitude = ${lat.replace(".", "\\.")}, longitude = ${lng.replace(".", "\\.")}\\s+WHERE city ILIKE 'kyoto' AND place_name = '${name}' AND latitude IS NULL AND longitude IS NULL;`));
+      assert.match(migration, new RegExp(`-- ${esc(name)} — source: ${esc(url)}( \\([^)]*\\))? — © OpenStreetMap contributors, ODbL 1\\.0`));
+      assert.match(migration, new RegExp(`SET latitude = ${lat.replace(".", "\\.")}, longitude = ${lng.replace(".", "\\.")}\\s+WHERE city ILIKE 'kyoto' AND place_name = '${esc(name.replace(/'/g, "''"))}' AND latitude IS NULL AND longitude IS NULL;`));
       assert.match(url, /^https:\/\/www\.openstreetmap\.org\//);
     }
     assert.doesNotMatch(migration + seed, /googleapis|maps\.google|google\.com\/maps|goo\.gl/i, "no Google source URL");

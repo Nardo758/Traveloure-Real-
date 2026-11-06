@@ -2295,4 +2295,7 @@ export const MIGRATION_FILES = [
   // R3-15: "perfect" removed from six travel_pulse_hidden_gems descriptions, data only, idempotent. Ledger
   // 2026-11-05-r3-followups.
   "440_r3_perfect_copy.sql",
+  // 441 — A-18 follow-up: editorial OSM coordinates on fourteen more Kyoto gems that have no point (sheet rows 22–35).
+  // DATA ONLY, idempotent. Ledger 2026-11-05-kyoto-gem-coordinates-441.
+  "441_kyoto_gem_coordinates_2.sql",
 ] as const;
