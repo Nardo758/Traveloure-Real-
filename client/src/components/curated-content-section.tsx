@@ -3,6 +3,9 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
+import { useSignupMode } from "@/lib/signup-mode";
+import { GUEST_PLAN_COPY } from "@shared/guest-plan-copy";
+import { guestSaveErrorMessage, guestSavedMessage, saveToGuestPlan } from "@/lib/waitlist-guest-plan";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -201,6 +204,33 @@ export function CuratedCard({
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const isAffiliate = !!item.affiliate_url;
+  // PLAN-2 lane 1 (A-5): a waitlist guest's save writes the guest plan through CAP-2. Before this it
+  // opened the owner-trip picker and ended at "No active trips found." — an offer that could not work.
+  const { user } = useAuth();
+  const { mode } = useSignupMode();
+  const guestWaitlist = mode === "waitlist" && !user;
+  const [guestSaving, setGuestSaving] = useState(false);
+  const guestRef = (() => {
+    const key = curatedRefKey(item);
+    const [kind, id] = key ? key.split(":") : [];
+    const city = (item.city ?? "").trim();
+    return kind === "affiliate_product" && id && city ? { kind: "affiliate_product" as const, source_id: id, city } : null;
+  })();
+  const saveForGuest = async () => {
+    if (!guestRef || guestSaving) {
+      toast({ variant: "destructive", title: GUEST_PLAN_COPY.saveFailed });
+      return;
+    }
+    setGuestSaving(true);
+    try {
+      const result = await saveToGuestPlan(guestRef, guestRef.city);
+      toast({ title: guestSavedMessage(result) });
+    } catch (err) {
+      toast({ variant: "destructive", title: guestSaveErrorMessage(err) });
+    } finally {
+      setGuestSaving(false);
+    }
+  };
 
   // Unified affiliate redirect — always routes through platform intermediary for ALL affiliate items.
   // Server resolves the authoritative URL and records an affiliate_clicks row before returning it.
@@ -377,12 +407,13 @@ export function CuratedCard({
               city={item.city}
               order={["save", "book"]}
               save={{
-                placeable: !!curatedRefKey(item),
-                savedKey: curatedRefKey(item),
+                placeable: guestWaitlist ? !!guestRef : !!curatedRefKey(item),
+                savedKey: guestWaitlist ? null : curatedRefKey(item),
                 testId: `button-add-trip-${item.id}`,
                 className: cn(buttonVariants({ size: "sm", variant: "outline" }), "flex-1 text-xs h-8"),
                 icon: <Plus className="w-3 h-3 mr-1" />,
-                onClick: () => onAddToTrip(item),
+                disabled: guestSaving,
+                onClick: () => (guestWaitlist ? void saveForGuest() : onAddToTrip(item)),
               }}
               book={
                 isAffiliate

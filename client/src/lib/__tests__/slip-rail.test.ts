@@ -309,8 +309,6 @@ describe("slip rail — four cards, and every rail kept a home", () => {
       "slip-action-refinalize",
       // Main-rail (ruling 3): "Send feedback" in the ⋯ plan menu — the SAME post-draft tap.
       "slip-action-feedback",
-      // P-1c: waitlist Save to plan row.
-      "slip-action-save-to-plan",
       // PS-5: Change how you book, the finished state's way back into the chooser.
       "slip-action-change-booking",
     ]);

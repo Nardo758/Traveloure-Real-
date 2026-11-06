@@ -1148,7 +1148,6 @@ export function FinishCard({
   // the press says so — and the fee preview is not drawn.
   const waitlist = !useBookingActionsShown();
   const { toast: finishToast } = useToast();
-  const savedToPlan = () => finishToast({ title: WAITLIST_COPY.savedToPlan });
   const [finalizeModalOpen, setFinalizeModalOpen] = useState(false);
   // §8 phone delivery (ledger `2026-10-17-phone-delivery-calendar`): once Finalize has made a NEW
   // final, "Get your Trip Card on your phone" follows the booking chooser. The dialog closes
@@ -1197,6 +1196,12 @@ export function FinishCard({
   // A non-owner viewer has no finish controls at all: finalize, reopen and the chooser are all
   // owner-gated server-side, so the card would be a list of 403s.
   if (!isOwner) return null;
+
+  // PLAN-2 lane 1 / D4: in waitlist mode the finish rail is not drawn at all — no Finalize press, no
+  // "Change how you book", no chooser. A final version cannot exist (W8: a waitlist Trip Card cannot
+  // exist), so every control here would be a door to nothing. The old waitlist branch also carried a
+  // "Save to plan" press that wrote nothing and claimed a save; it is gone with the rail.
+  if (waitlist) return null;
 
   // THE CHOOSER IS MOUNTED OUTSIDE BOTH STATES, AND THAT PLACEMENT IS LOAD-BEARING.
   //
@@ -1276,13 +1281,7 @@ export function FinishCard({
             ) : null}
           </p>
         ) : null}
-        {checkoutReady > 0 && waitlist ? (
-          <p className="text-xs text-[color:var(--slip-muted)]">
-            <button type="button" onClick={savedToPlan} className="font-semibold text-[color:var(--slip-navy)] underline underline-offset-2" data-testid="slip-action-save-to-plan">
-              {WAITLIST_COPY.saveToPlan}
-            </button>
-          </p>
-        ) : checkoutReady > 0 ? (
+        {checkoutReady > 0 ? (
           <p className="text-xs text-[color:var(--slip-muted)]">
             <Link href="/cart" className="font-semibold text-[color:var(--slip-navy)] underline underline-offset-2" data-testid="slip-action-go-to-checkout">
               Go to checkout ({checkoutReady})
@@ -1374,14 +1373,7 @@ export function FinishCard({
         testId="slip-action-finalize-plan"
       />
 
-      {checkoutReady > 0 && waitlist ? (
-        <RailRow
-          label={WAITLIST_COPY.saveToPlan}
-          icon={<ShoppingCart className="w-3.5 h-3.5" />}
-          onClick={savedToPlan}
-          testId="slip-action-save-to-plan"
-        />
-      ) : checkoutReady > 0 ? (
+      {checkoutReady > 0 ? (
         <RailRow
           label={`Go to checkout (${checkoutReady})`}
           icon={<ShoppingCart className="w-3.5 h-3.5" />}
