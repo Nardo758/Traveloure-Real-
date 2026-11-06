@@ -24,7 +24,8 @@ test("C4 S10-2: the comparison route resolves to a plan's versions board; a trip
   const app = read("client/src/App.tsx");
   assert.match(app, /const ItineraryComparisonPage = lazy\(\(\) => import\("@\/pages\/plan-versions"\)\)/);
   const page = read("client/src/pages/plan-versions.tsx");
-  assert.match(page, /noRunCta=\{\s*<OptimizerLead/);
+  // Lane 4 wraps OptimizerLead with the preview status line in a fragment; the CTA is still OptimizerLead.
+  assert.match(page, /noRunCta=\{\s*<>[\s\S]*?<OptimizerLead/);
   const board = read("client/src/components/plancard/VersionsBoard.tsx");
   assert.match(board, /data-board-state="draft-only"/);
   // Draft-only: the map is mounted WITHOUT versions — no A/B/C toggle.

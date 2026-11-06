@@ -15,13 +15,17 @@ export interface OptimizerLeadData {
   /** P0-d item 1: the preview's leg coverage and routed-plan answer, read beside the findings. */
   coverage: TripOptimizationPreview["coverage"];
   routedPlan: boolean | undefined;
+  /** PLAN-2 lane 4 (W9/W10): the preview read's own state — a slow or failed read is drawn, never silently absent. */
+  previewLoading: boolean;
+  previewFailed: boolean;
+  retryPreview: () => void;
   hasPricedItems: boolean;
   fee: OptimizationFeeQuote | null;
   realised: unknown | null;
 }
 
 export function useOptimizerLeadData(tripId: string, enabled: boolean): OptimizerLeadData {
-  const { data: preview } = useQuery<TripOptimizationPreview>({
+  const { data: preview, isLoading: previewLoading, isError: previewFailed, refetch: retryPreview } = useQuery<TripOptimizationPreview>({
     queryKey: ["/api/optimization-preview", { tripId }],
     enabled: enabled && !!tripId,
   });
@@ -38,6 +42,9 @@ export function useOptimizerLeadData(tripId: string, enabled: boolean): Optimize
     findings: enabled ? preview?.findings : undefined,
     coverage: enabled ? preview?.coverage : undefined,
     routedPlan: enabled ? preview?.routedPlan : undefined,
+    previewLoading: enabled && previewLoading,
+    previewFailed: enabled && previewFailed,
+    retryPreview: () => void retryPreview(),
     hasPricedItems: !!preview?.hasPricedItems,
     fee: enabled ? fee ?? null : null,
     realised: plan?.lastOptimizedAt ? plan.optimizationDelta ?? null : null,
