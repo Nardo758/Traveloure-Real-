@@ -1,7 +1,6 @@
 /**
- * CB-1: the traveler-facing analytics consent copy. HELD for owner approval ("Wording approved — Leon" on
- * the PR); one edit here flips the banner when the wording is ruled. The privacy policy §11 text (also held)
- * lives inline in `pages/privacy.tsx` with the rest of the policy.
+ * CB-1: the traveler-facing analytics consent copy. Wording approved — Leon (Nov 6, 2026), with the privacy
+ * policy §11 text, which lives inline in `pages/privacy.tsx` with the rest of the policy.
  */
 
 /** The banner (`components/AnalyticsConsentBanner.tsx`). */

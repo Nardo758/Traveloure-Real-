@@ -3,13 +3,13 @@
  * operating market (one row per email + market); the marquee market is `platform_settings.launch_market_slug` and is
  * never hard-coded; a market's status comes from settings through the ONE `marketStatus` (shared/ticker.ts).
  *
- * The visible words here are HELD for "Wording approved — Leon".
+ * The visible words here: Wording approved — Leon (Nov 6, 2026).
  */
 import { OPERATING_MARKETS } from "@shared/operating-markets";
 import { waitlistCityName } from "@shared/launch-waitlist";
 import type { MarketStatusSettings } from "@shared/ticker";
 
-/** The sign-up row's three columns (HELD). */
+/** The sign-up row's three columns. */
 export const WAITLIST_SIGNUP_ROW_COPY = {
   travelersHeading: "Travelers",
   travelersLine: (city: string) => `Join the list for ${city}.`,
@@ -19,7 +19,7 @@ export const WAITLIST_SIGNUP_ROW_COPY = {
   providersLine: "List your service for travelers.",
 } as const;
 
-/** The traveler/provider join button when more than one market is ticked (HELD). */
+/** The traveler/provider join button when more than one market is ticked. */
 export const WAITLIST_JOIN_ANY = "Join the list";
 
 /** "Join the list" for several markets (or none named), else the existing "Join the {City} list". */

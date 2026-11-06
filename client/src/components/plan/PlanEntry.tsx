@@ -84,7 +84,7 @@ const MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 const SERIF = "'Fraunces', Georgia, serif";
 
 /**
- * ENTRY-1: the footer button's label. HELD for "Wording approved — Leon".
+ * ENTRY-1: the footer button's label. Wording approved — Leon (Nov 6, 2026).
  * The default group is not drawn as chosen until the traveler picks one; picking does not advance.
  */
 export const PLAN_ENTRY_CONTINUE = "Continue";
