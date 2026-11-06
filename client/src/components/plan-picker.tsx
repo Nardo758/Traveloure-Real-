@@ -15,6 +15,8 @@
  * §13: a failed or unauthorised read says so and never renders as "you have no plans"; an empty
  * list says there are none; New plan is offered in every one of those states, and it is last.
  */
+import { refreshSavedRefs } from "@/lib/saved-refs";
+import { planSaveRefusalMessage } from "@/lib/plan-save-refusal";
 import { MapPin, Plus, Plane } from "lucide-react";
 import {
   Dialog,
@@ -237,6 +239,8 @@ export async function addItemToPlan(tripId: string, body: Record<string, unknown
   await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, body);
   queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
   queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+  // R4b-3: "Saved to plan" reads the plan's items on the server.
+  void refreshSavedRefs(queryClient);
 }
 
 /**
@@ -259,12 +263,14 @@ export function useStartPlanThenAdd(): (body: Record<string, unknown>) => void {
           const tripId = plan.tripId;
           addItemToPlan(tripId, body).then(
             () => toast({ title: ADDED_TO_PLAN_TITLE, description: "It's on your new plan." }),
-            (err: unknown) =>
-              toast({
-                variant: "destructive",
-                title: ADD_TO_PLAN_FAILED_TITLE,
-                description: err instanceof Error ? err.message : undefined,
-              }),
+            (err: unknown) => {
+              const refusal = planSaveRefusalMessage(err);
+              toast(
+                refusal
+                  ? { variant: "destructive", title: refusal }
+                  : { variant: "destructive", title: ADD_TO_PLAN_FAILED_TITLE, description: err instanceof Error ? err.message : undefined },
+              );
+            },
           );
         }
         return false;

@@ -42,7 +42,8 @@ describe("CAP-2 Phase 1 (client)", () => {
     const dialog = read("client/src/components/add-to-experience-dialog.tsx");
     assert.match(dialog, /const ref = planItemRefFromFeedItem\(item,/);
     assert.match(dialog, /\.\.\.\(ref \? \{ ref \} : \{\}\),/);
-    assert.match(dialog, /toast\(\{ title: GUEST_PLAN_COPY\.saveFailed, variant: "destructive" \}\);/);
+    // R4b-1: the approved sentence stays the fallback; only the dated out-of-dates refusal names its day.
+    assert.match(dialog, /toast\(\{ title: planSaveRefusalMessage\(err\) \?\? GUEST_PLAN_COPY\.saveFailed, variant: "destructive" \}\);/);
     const save = read("client/src/lib/browse-save.ts");
     assert.match(save, /const body = city \? guestItemFromFeedItem\(item as any, city\) : null;/);
     assert.match(save, /saveToGuestPlan\(body, city, chosenDate\)/);

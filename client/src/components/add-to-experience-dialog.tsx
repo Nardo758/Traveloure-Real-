@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { planSaveRefusalMessage } from "@/lib/plan-save-refusal";
 import { useMutation } from "@tanstack/react-query";
 import {
   Dialog,
@@ -19,7 +20,7 @@ import { addItemFit, statedCity } from "@/lib/trip-target";
 import { useAddPlanResolution } from "@/hooks/use-open-plans";
 import { ADDED_TO_PLAN_TITLE } from "@/lib/plan-vocabulary";
 import { planItemRefFromFeedItem } from "@shared/plan-item-ref";
-import { markRefSaved, savedRefKey } from "@/lib/saved-refs";
+import { refreshSavedRefs } from "@/lib/saved-refs";
 import { GUEST_PLAN_COPY } from "@shared/guest-plan-copy";
 import { syncActiveTripToContext } from "@/lib/trip-selection";
 import { PlanPickerList, useStartPlanThenAdd, type PickablePlan } from "@/components/plan-picker";
@@ -55,8 +56,8 @@ export function AddToExperienceDialog({
   const { openSignInModal } = useSignInModal();
   const { toast } = useToast();
 
-  // Ledger `2026-10-20-add-plan-open-plans`: `?tripId=` wins; exactly one open plan adds
-  // straight to it; two or more always show this picker. The tab pen is not a target.
+  // Ledger `2026-10-20-add-plan-open-plans`: `?tripId=` wins; otherwise the picker, even for one open plan
+  // (R4b-2: never auto-selected; the traveler's click places it). The tab pen is not a target.
   // No price is sent (§14). The trip-less cart write is gone (RC-2).
   const searchString = useSearch();
   const fit = addItemFit(item);
@@ -102,13 +103,13 @@ export function AddToExperienceDialog({
         credentials: "include",
         body: JSON.stringify(feedItemBody(plan.startDate, plan)),
       });
-      if (!res.ok) throw new Error("Failed to add item");
+      // R4b-1: the refusal's body travels in the error so the toast can name an out-of-dates event's day.
+      if (!res.ok) throw new Error(`${res.status}: ${await res.text().catch(() => "")}`);
       return res.json();
     },
     onSuccess: (_res, plan) => {
-      // CAP-2 Phase 3: the row is confirmed — the card's save action now says "Saved to plan".
-      const body = feedItemBody(plan.startDate, plan) as { ref?: { kind?: string; source_id?: string } };
-      markRefSaved(savedRefKey(body.ref));
+      // R4b-3: the row is confirmed — refresh the plan reads "Saved to plan" is drawn from.
+      void refreshSavedRefs(queryClient);
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${plan.id}/itinerary-items`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${plan.id}/plancard`] });
       queryClient.invalidateQueries({ queryKey: ["/api/trips"] });
@@ -118,9 +119,9 @@ export function AddToExperienceDialog({
       });
       onOpenChange(false);
     },
-    onError: () => {
-      // CAP-2 ruling 3: a refused save says the approved sentence, nothing else.
-      toast({ title: GUEST_PLAN_COPY.saveFailed, variant: "destructive" });
+    onError: (err: unknown) => {
+      // CAP-2 ruling 3: a refused save says the approved sentence, nothing else — R4b-1's dated refusal excepted.
+      toast({ title: planSaveRefusalMessage(err) ?? GUEST_PLAN_COPY.saveFailed, variant: "destructive" });
     },
   });
 
@@ -137,8 +138,8 @@ export function AddToExperienceDialog({
     startPlanThenAdd(feedItemBody(null));
   };
 
-  // A URL trip, or the only open plan, adds as soon as the dialog opens. Two or more
-  // stay on the picker below. The ref stops a second render from posting twice.
+  // A URL trip adds as soon as the dialog opens. Any open-plan list (one or more) stays on the
+  // picker below (R4b-2). The ref stops a second render from posting twice.
   useEffect(() => {
     if (!open) {
       directFired.current = "";

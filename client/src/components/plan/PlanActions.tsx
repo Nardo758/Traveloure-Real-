@@ -10,7 +10,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { Link } from "wouter";
 import { useSignupMode } from "@/lib/signup-mode";
 import { useGuestCapabilities } from "@/lib/use-guest-capabilities";
-import { useRefSaved } from "@/lib/saved-refs";
+import { useRefSavedState } from "@/lib/saved-refs";
 import {
   bookLabel,
   saveLabel,
@@ -45,8 +45,8 @@ export interface PlanActionsProps {
   /** The tile's area: the guest-capabilities read answers Hire for it. */
   city?: string | null;
   /**
-   * Save: always "Save to plan"; "Saved to plan" (and inert) once this item's save is confirmed (`savedKey`,
-   * `kind:source_id` — see lib/saved-refs.ts).
+   * Save: always "Save to plan"; "Saved to plan" (and inert) once the plan's items on the server hold this item
+   * (`savedKey`, `kind:source_id` — see lib/saved-refs.ts, R4b-3).
    */
   save?: (PlanActionSpec & { placeable: boolean; savedKey?: string | null; saved?: boolean }) | null;
   book?: (PlanActionSpec & { variant: BookVariant; done?: boolean }) | null;
@@ -134,9 +134,12 @@ export function usePlanActionsVisible(props: Pick<PlanActionsProps, "site" | "ci
 
 export function PlanActions(props: PlanActionsProps) {
   const visible = usePlanActionsVisible(props);
-  const savedInStore = useRefSaved(props.save?.savedKey ?? null);
+  // R4b-3: read from the plan's items on the server (survives a reload), not a session store.
+  // Signed in it is informational: the press still opens the picker (a second plan); inert on the guest rail only.
+  const savedState = useRefSavedState(props.save?.savedKey ?? null);
   // A site that already knows its add was confirmed (the discover card's cart answer) says so directly.
-  const saved = savedInStore || props.save?.saved === true;
+  const saved = savedState.saved || props.save?.saved === true;
+  const savedInert = savedState.inert;
   const order = props.layout === "primary" ? [planActionsPrimary(visible)].filter((o): o is Output => !!o) : props.order ?? DEFAULT_ORDER;
   const els: ReactNode[] = [];
   for (const out of order) {
@@ -147,7 +150,13 @@ export function PlanActions(props: PlanActionsProps) {
     if (out === "save" && props.save) els.push(
         <ActionEl
           key="save"
-          spec={saved ? { ...props.save, href: undefined, onClick: undefined, disabled: true, data: { ...(props.save.data ?? {}), "data-saved": "true" } } : props.save}
+          spec={
+            saved
+              ? savedInert
+                ? { ...props.save, href: undefined, onClick: undefined, disabled: true, data: { ...(props.save.data ?? {}), "data-saved": "true" } }
+                : { ...props.save, data: { ...(props.save.data ?? {}), "data-saved": "true" } }
+              : props.save
+          }
           label={saveLabel(saved)}
           primaryAttr={primaryAttr}
         />,

@@ -20,7 +20,8 @@
  *
  * This component owns the data; the renderers only draw. It fabricates no coordinate (§13).
  */
-import { savedRefKey } from "@/lib/saved-refs";
+import { planSaveRefusalMessage } from "@/lib/plan-save-refusal";
+import { refreshSavedRefs, savedRefKey } from "@/lib/saved-refs";
 import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 import { nextTabKey } from "@/lib/roving-tabs";
 import { useEffect, useMemo, useState } from "react";
@@ -340,11 +341,16 @@ export function MapControlCenter({
       void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
       // R322: the Workstation reads the trip's item list directly; keep it in step with the add.
       void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
+      // R4b-3: "Saved to plan" reads the plan's items on the server.
+      void refreshSavedRefs(queryClient);
       const title = `Added ${place.name} to day ${dayNumber ?? 1}`;
       if (out?.id && out?.addChecks) setChecked({ itemId: out.id, checks: out.addChecks, title });
       else toast({ title });
     },
-    onError: (e: any) => toast({ variant: "destructive", title: "Couldn't add that", description: e?.message }),
+    onError: (e: any) => {
+      const refusal = planSaveRefusalMessage(e);
+      toast(refusal ? { variant: "destructive", title: refusal } : { variant: "destructive", title: "Couldn't add that", description: e?.message });
+    },
   });
   // "On day N · Remove": the EXISTING item DELETE route — the one remove rail (LD 39).
   const remove = useMutation({

@@ -14,7 +14,7 @@
  *
  * Run: node --import ./client/src/lib/__tests__/lc1-css-register.mjs --import tsx --test client/src/lib/__tests__/round4-fixes.test.tsx
  */
-import { describe, it, beforeEach } from "node:test";
+import { describe, it } from "node:test";
 import "../../components/__tests__/node-navigator";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -27,7 +27,7 @@ import { planEyebrowLabel, phaseShown } from "@shared/plan-dates";
 import { planItemRefFromFeedItem } from "@shared/plan-item-ref";
 import { guestAnswersLine, guestPlanBanner } from "../guest-map";
 import { addedItemFor } from "../browse-supply";
-import { markRefSaved, resetSavedRefs } from "../saved-refs";
+import { GUEST_PLAN_QUERY_KEY } from "../waitlist-guest-plan";
 import { SaveToPlanButton } from "../../components/plan/SaveToPlanButton";
 import { CityCard } from "../../components/travelpulse/CityCard";
 import { catalogueSearchRedirectTarget } from "../catalogue-search-route";
@@ -49,7 +49,6 @@ function render(node: React.ReactNode, mode: "waitlist" | "open"): string {
 }
 
 describe("Round 4 fixes", () => {
-  beforeEach(() => resetSavedRefs());
 
   it("R4-1 a city_events card saves as city_event by its source id; a partner event as event", () => {
     const card = read("client/src/components/city-feed-card.tsx");
@@ -115,8 +114,12 @@ describe("Round 4 fixes", () => {
     assert.equal(addedItemFor({ id: "g2", kind: "gem", name: "x", lat: null, lng: null } as any, items), null);
     const btn = <SaveToPlanButton testId="map-browse-add" savedKey="gem:g1" onSave={() => {}} />;
     assert.match(renderToString(btn), /data-testid="map-browse-add"[^>]*>Save to plan</);
-    markRefSaved("gem:g1");
-    assert.match(renderToString(btn), /disabled=""[^>]*data-testid="map-browse-add"[^>]*>Saved to plan</);
+    // R4b-3: the guest plan's items on the server hold gem:g1 (guest rail ⇒ inert).
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, enabled: false } } });
+    qc.setQueryData(["/api/public/signup-mode"], { mode: "waitlist" });
+    qc.setQueryData(["/api/auth/user"], null);
+    qc.setQueryData(GUEST_PLAN_QUERY_KEY, { plan: {}, items: [{ id: "i", contentType: "gem", contentId: "g1" }], retentionDays: null });
+    assert.match(renderToString(<QueryClientProvider client={qc}>{btn}</QueryClientProvider>), /disabled=""[^>]*data-testid="map-browse-add"[^>]*>Saved to plan</);
     assert.match(read("client/src/components/plancard/MapControlCenter.tsx"), /contentType: \(a as any\)\.contentType \?\? null,/);
     assert.match(read("server/services/trip-plan.service.ts"), /contentType: \(item as any\)\.contentType as string, contentId: \(item as any\)\.contentId as string/);
   });

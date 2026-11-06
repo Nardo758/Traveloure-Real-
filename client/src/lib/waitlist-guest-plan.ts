@@ -6,7 +6,7 @@
  *
  * Not to be confused with `guest-plan.ts` (row 280b: an invited event guest's "Plan my day" button).
  */
-import { markRefSaved, savedRefKey } from "./saved-refs";
+import { planSaveRefusalMessage } from "./plan-save-refusal";
 import { dayNumberForDate, planItemRefFromFeedItem, type PlanItemKind, type PlanItemRef } from "@shared/plan-item-ref";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -33,6 +33,12 @@ export interface GuestPlanItem {
   longitude: string | null;
   /** A-18: the item has a point (the map draws it); false ⇒ listed as not on the map. */
   located?: boolean;
+  /** R4b-5: the item's own day (`YYYY-MM-DD`) and wall-clock start ("17:30") when stored — an event's. */
+  scheduledDate?: string | null;
+  startTime?: string | null;
+  /** R4b-3: the content row it was saved from — "Saved to plan" reads it. */
+  contentType?: string | null;
+  contentId?: string | null;
 }
 
 export interface GuestPlanView {
@@ -83,9 +89,10 @@ export function statusOf(err: unknown): number | null {
   return m ? Number(m[1]) : null;
 }
 
-/** The approved sentence for a failed save: rate limit, else the general failure. */
+/** The approved sentence for a failed save: rate limit, an event outside the plan's dates (R4b-1), else the general failure. */
 export function guestSaveErrorMessage(err: unknown): string {
-  return statusOf(err) === 429 ? GUEST_PLAN_COPY.rateLimited : GUEST_PLAN_COPY.saveFailed;
+  if (statusOf(err) === 429) return GUEST_PLAN_COPY.rateLimited;
+  return planSaveRefusalMessage(err) ?? GUEST_PLAN_COPY.saveFailed;
 }
 
 /** The session's guest plan, or null when it has none (404). */
@@ -176,10 +183,8 @@ export async function saveToGuestPlan(
   }
   try {
     const res = await apiRequest("POST", "/api/guest-plans/current/items", ref);
-    const result = (await res.json()) as GuestSaveResult;
-    // CAP-2 Phase 3: the server confirmed the row (apiRequest throws on a refusal) — the card now says "Saved to plan".
-    markRefSaved(savedRefKey(ref as any));
-    return result;
+    // R4b-3: "Saved to plan" reads the refreshed plan below (its items), never a client-side flag.
+    return (await res.json()) as GuestSaveResult;
   } finally {
     // R3-1: "Your plan" follows the server on every answer — a refused save included — so the list never waits for a
     // reload to show what the plan holds.
@@ -336,7 +341,8 @@ export function guestPlanDays(view: GuestPlanView): PlanCardDay[] {
       name: it.title,
       type: it.itemType ?? "activity",
       status: "planned",
-      time: "",
+      // R4b-5: an event's stated start ("17:30") is drawn on its row; an untimed item stays "".
+      time: it.startTime ?? "",
       location: it.locationName ?? "",
       ...(Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : {}),
       cost: 0,

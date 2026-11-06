@@ -57,14 +57,14 @@ test("tripId wins over every open plan, including a single one and a city-date f
   assert.equal(readTripIdParam(`?showExperts=true&tripId=${TRIP_URL}`), TRIP_URL);
 });
 
-test("exactly one open plan is a direct add, even when its city and dates do not fit", () => {
+test("R4b-2: exactly one open plan still asks — the picker never auto-selects", () => {
   const resolved = resolveAddPlanTarget("", [plan(LAST_OPENED, { city: "Osaka", startDate: "2026-11-01", endDate: "2026-11-02" })], {
     city: "Kyoto",
     isEvent: true,
     date: "2026-11-03",
   });
-  assert.deepEqual(resolved, { status: "direct", tripId: LAST_OPENED });
-  assert.equal(resolveTargetTripId("?q=kyoto&page=2", [plan(LAST_OPENED)]), LAST_OPENED);
+  assert.equal(resolved.status, "picker");
+  assert.equal(resolveTargetTripId("?q=kyoto&page=2", [plan(LAST_OPENED)]), "");
 });
 
 test("two or more open plans always ask — the first plan is not a silent target", () => {
@@ -77,7 +77,7 @@ test("two or more open plans always ask — the first plan is not a silent targe
 });
 
 test("a blank tripId does not win, and an unknown list does not guess a plan", () => {
-  assert.deepEqual(resolveAddPlanTarget("?tripId=", [plan(LAST_OPENED)]), { status: "direct", tripId: LAST_OPENED });
+  assert.equal(resolveAddPlanTarget("?tripId=", [plan(LAST_OPENED)]).status, "picker");
   assert.deepEqual(resolveAddPlanTarget("?tripId=%20%20", [osakaWeek, kyotoWeek]).status, "picker");
   assert.deepEqual(resolveAddPlanTarget("", null), { status: "pending" });
   assert.deepEqual(resolveAddPlanTarget(undefined, undefined), { status: "pending" });

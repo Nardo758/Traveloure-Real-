@@ -5,13 +5,14 @@
  */
 import { useToast } from "@/hooks/use-toast";
 import { WAITLIST_COPY } from "@/lib/waitlist-copy";
-import { useRefSaved } from "@/lib/saved-refs";
+import { useRefSavedState } from "@/lib/saved-refs";
 
 export function SaveToPlanButton({ testId, className, onSave, disabled, savedKey }: { testId: string; className?: string; onSave?: () => void; disabled?: boolean; savedKey?: string | null }) {
   const { toast } = useToast();
   // R4-5 (round 4): a browse save whose row the server confirmed reads "Saved to plan", like every PlanActions site.
-  const saved = useRefSaved(savedKey ?? null);
-  if (saved) {
+  // R4b-3: read from the plan's items; signed in it stays pressable (a second plan), inert on the guest rail only.
+  const { saved, inert } = useRefSavedState(savedKey ?? null);
+  if (saved && inert) {
     return (
       <button type="button" disabled className={className ?? "inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-semibold"} data-testid={testId} data-saved="true">
         {WAITLIST_COPY.savedToPlan}
@@ -28,8 +29,9 @@ export function SaveToPlanButton({ testId, className, onSave, disabled, savedKey
       // Without it the item is already on the plan (P-1c) and the press only says so.
       onClick={() => (onSave ? onSave() : toast({ title: WAITLIST_COPY.savedToPlan }))}
       data-testid={testId}
+      {...(saved ? { "data-saved": "true" } : {})}
     >
-      {WAITLIST_COPY.saveToPlan}
+      {saved ? WAITLIST_COPY.savedToPlan : WAITLIST_COPY.saveToPlan}
     </button>
   );
 }

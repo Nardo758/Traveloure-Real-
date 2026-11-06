@@ -118,3 +118,12 @@ export function formatShortTripRange(
   };
   return `${one(start)}${SHORT_TRIP_RANGE_SEPARATOR}${one(end)}`;
 }
+
+/**
+ * R4b-4: a stated calendar day ("2026-11-17") in words, read as that day wherever the viewer is. `new Date("2026-11-17")`
+ * is UTC midnight, which a US browser shows as Nov 16. Unreadable ⇒ "".
+ */
+export function formatCalendarDate(value: string | Date | null | undefined, opts: Intl.DateTimeFormatOptions): string {
+  const d = parseCalendarDate(value);
+  return d ? d.toLocaleDateString("en-US", opts) : "";
+}

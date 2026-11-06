@@ -34,7 +34,7 @@ import {
   type PeriodKind,
 } from "@shared/events-calendar";
 import { usePlanning } from "@/contexts/PlanningContext";
-import { useLaunchMarket } from "@/lib/signup-mode";
+import { useLaunchMarket, useMarketStatusSettings, useSignupMode } from "@/lib/signup-mode";
 import { MonthGrid, MONO } from "./MonthGrid";
 import { WhatsOn } from "./WhatsOn";
 import { WhereToGo } from "./WhereToGo";
@@ -73,9 +73,39 @@ function FilterChip({ on, label, count, onClick, testId }: { on: boolean; label:
   );
 }
 
+/**
+ * R4b-6 (round 4b, Nov 6, 2026): until the calendar AND the marquee market have answered, /events draws a skeleton —
+ * no chips, no counts ("All 0" was a claim about nothing). Pure.
+ */
+export function eventsCalendarLoading(s: { calendarLoading: boolean; marketSettled: boolean; modeLoading: boolean }): boolean {
+  return s.calendarLoading || !s.marketSettled || s.modeLoading;
+}
+
+export function EventsCalendarSkeleton() {
+  const bar = (w: number, h = 28) => (
+    <span className="block animate-pulse rounded-full" style={{ width: w, height: h, background: "var(--earn-border)" }} />
+  );
+  return (
+    <section data-testid="events-calendar-skeleton" aria-busy="true" aria-label="Loading the calendar" className="flex min-h-[200px] flex-col gap-5">
+      <div className="flex flex-wrap items-center gap-2">
+        {[52, 64, 88, 76, 96].map((w, i) => (
+          <span key={i}>{bar(w)}</span>
+        ))}
+      </div>
+      <div className="flex flex-col gap-3">
+        {[0, 1, 2].map((i) => (
+          <span key={i} className="block animate-pulse rounded-[12px]" style={{ height: 72, background: "var(--earn-border)" }} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function EventsCalendar() {
   const { open } = usePlanning();
   const { data, isLoading, isError } = useQuery<EventsCalendarPayload>({ queryKey: ["/api/city-events/calendar"] });
+  const { settled: marketSettled } = useMarketStatusSettings();
+  const { isLoading: modeLoading } = useSignupMode();
 
   const [mode, setMode] = useState<PeriodKind>("month");
   const [monthIdx, setMonthIdx] = useState(0);
@@ -177,6 +207,8 @@ export function EventsCalendar() {
     </button>
   );
 
+  if (eventsCalendarLoading({ calendarLoading: isLoading, marketSettled, modeLoading })) return <EventsCalendarSkeleton />;
+
   return (
     <section data-testid="global-calendar" className="flex min-h-[200px] flex-col gap-5">
       {/* What / Where */}
@@ -191,11 +223,6 @@ export function EventsCalendar() {
         </div>
       </div>
 
-      {isLoading && (
-        <p className="text-[13px]" style={{ color: "var(--earn-muted)" }}>
-          Loading the calendar…
-        </p>
-      )}
       {isError && (
         <p className="text-[13px]" style={{ color: "var(--earn-muted)" }} data-testid="events-calendar-error">
           The events calendar could not be loaded right now.

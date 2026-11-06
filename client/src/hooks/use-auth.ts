@@ -3,7 +3,7 @@ import type { User } from "@shared/models/auth";
 import { forgetPhonePushOnSignOut } from "@/lib/web-push";
 import { clearPaymentMethodPromptDismissed } from "@/lib/payment-method-setup";
 
-async function fetchUser(): Promise<User | null> {
+export async function fetchUser(): Promise<User | null> {
   const response = await fetch("/api/auth/user", {
     credentials: "include",
   });
