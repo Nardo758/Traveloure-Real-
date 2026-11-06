@@ -34,7 +34,8 @@ import {
   planActionsVisible,
   saveLabel,
 } from "../plan-actions";
-import { SAVED_REFS_QUERY_KEY, savedRefKey } from "../saved-refs";
+import { savedRefKey } from "../saved-refs";
+import { GUEST_PLAN_QUERY_KEY } from "../waitlist-guest-plan";
 import { PlanActions } from "../../components/plan/PlanActions";
 import { UnifiedResultCard } from "../../components/unified-result-card";
 import { CuratedCard } from "../../components/curated-content-section";
@@ -53,9 +54,10 @@ function render(node: React.ReactNode, mode: "waitlist" | "open", caps?: unknown
   qc.setQueryData(["/api/public/signup-mode"], { mode });
   if (caps) qc.setQueryData([guestCapabilitiesUrl("Kyoto")], caps);
   // R4b-3: "Saved to plan" reads the signed-in plan's keys from the server answer.
+  // On the guest rail (one plan) a saved action is inert; signed in it stays pressable (R4b-3 ruling).
   if (planKeys) {
-    qc.setQueryData(["/api/auth/user"], { id: "u-test" });
-    qc.setQueryData(SAVED_REFS_QUERY_KEY, { keys: planKeys });
+    qc.setQueryData(["/api/auth/user"], null);
+    qc.setQueryData(GUEST_PLAN_QUERY_KEY, { plan: {}, items: planKeys.map((k, i) => { const [t, c] = k.split(":"); return t === "listing" ? { id: `i${i}`, providerServiceId: c } : { id: `i${i}`, contentType: t, contentId: c }; }), retentionDays: null });
   }
   return renderToString(
     <QueryClientProvider client={qc}>
@@ -147,7 +149,7 @@ describe("CAP-2 Phase 3 — PlanActions", () => {
     );
     assert.equal((primary.match(/data-bento-primary-action=/g) ?? []).length, 1);
     assert.doesNotMatch(primary, /data-testid="s"/);
-    // Saved: the plan's items on the server hold the row (R4b-3) ⇒ "Saved to plan", disabled.
+    // Saved: the guest plan's items on the server hold the row (R4b-3) ⇒ "Saved to plan", disabled (guest rail).
     planKeys = ["listing:s1"];
     const saved = render(node, "waitlist");
     assert.match(saved, /data-testid="s"[^>]*disabled=""[^>]*>Saved to plan</);

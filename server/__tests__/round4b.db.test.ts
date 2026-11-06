@@ -5,6 +5,7 @@
  *      naming the event's day; nothing is written.
  *   B2 R4b-1 / R4b-5 an undated guest plan accepts it: the event sets its own day (scheduled 2026-11-17) at its
  *      published 17:30, and the guest plan view carries both (and the content link "Saved to plan" reads, R4b-3).
+ *   B4 R4b-3 ruling: two plans — the item saved on plan A is a saved key, and the same item still saves to plan B.
  *   B3 R4b-3 the signed-in read answers the keys the traveler's own plans hold; another user's plan and an ended plan
  *      are not read.
  *
@@ -19,6 +20,7 @@ import fs from "node:fs";
 import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { itineraryItems, tripCollaborators, trips, users } from "@shared/schema";
+import { storage } from "../storage";
 import {
   createGuestPlan,
   hashGuestSession,
@@ -126,5 +128,23 @@ describe("Round 4b", () => {
     assert.ok(keys.includes(`gem:g-open-${tag}`));
     assert.ok(!keys.includes(`gem:g-ended-${tag}`), "an ended plan is not read");
     assert.ok(!keys.includes(`gem:g-other-${tag}`), "another traveler's plan is not read");
+  });
+
+  it("B4 two plans: saved on A, it still saves to B", async () => {
+    const mkTrip = async (title: string) => {
+      const [t] = await db.insert(trips).values({ userId: userA, title, destination: "Kyoto, Japan", startDate: "2026-11-15", endDate: "2026-11-20" } as any).returning({ id: trips.id });
+      tripIds.add(t.id);
+      return t.id;
+    };
+    const a = await mkTrip(`R4b A ${tag}`);
+    const b = await mkTrip(`R4b B ${tag}`);
+    const link = { contentLink: { contentType: "city_event", contentId: "chionin-autumn-lightup-2026" } };
+    const onA: any = await storage.createItineraryItem({ tripId: a, title: "Chion-in lit for autumn", dayNumber: 3, status: "planned" }, link);
+    assert.ok(onA?.id, "saved on A");
+    assert.ok((await savedRefKeysForUser(userA)).includes("city_event:chionin-autumn-lightup-2026"), "A's item reads Saved to plan");
+    const onB: any = await storage.createItineraryItem({ tripId: b, title: "Chion-in lit for autumn", dayNumber: 3, status: "planned" }, link);
+    assert.ok(onB?.id && onB.id !== onA.id, "a second plan takes its own item");
+    const rows = await db.select({ tripId: itineraryItems.tripId }).from(itineraryItems).where(inArray(itineraryItems.tripId, [a, b]));
+    assert.deepEqual(rows.map((r) => r.tripId).sort(), [a, b].sort());
   });
 });

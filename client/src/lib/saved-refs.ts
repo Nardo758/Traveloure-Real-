@@ -52,6 +52,14 @@ async function fetchSavedRefs(): Promise<{ keys: string[] }> {
 
 /** The keys the viewer's plan(s) hold, read from the server. */
 export function useSavedRefKeys(): ReadonlySet<string> {
+  return useSavedRefRead().keys;
+}
+
+/**
+ * R4b-3 ruling (Nov 6, 2026): which rail answered. Signed in, "Saved to plan" is INFORMATIONAL — the press still opens
+ * the picker (the same item may go on a second plan). The guest rail has one plan, so there the saved action is inert.
+ */
+function useSavedRefRead(): { keys: ReadonlySet<string>; guestRail: boolean } {
   const client = useContext(QueryClientContext);
   const qc = client ?? NO_PROVIDER_CLIENT;
   const { mode } = useSignupMode();
@@ -67,13 +75,24 @@ export function useSavedRefKeys(): ReadonlySet<string> {
     qc,
   );
   return useMemo(() => {
-    if (!client) return EMPTY;
-    if (signedIn) return new Set(owner.data?.keys ?? []);
-    return savedKeysFromGuestView(guest.data);
+    if (!client) return { keys: EMPTY, guestRail: false };
+    if (signedIn) return { keys: new Set(owner.data?.keys ?? []), guestRail: false };
+    return { keys: savedKeysFromGuestView(guest.data), guestRail: true };
   }, [client, signedIn, owner.data, guest.data]);
 }
 
+/** Pure: a saved action is inert only on the guest rail (R4b-3 ruling). */
+export function savedActionInert(saved: boolean, guestRail: boolean): boolean {
+  return saved && guestRail;
+}
+
+/** `saved`: the plan holds it ("Saved to plan"). `inert`: the press does nothing (guest rail only). */
+export function useRefSavedState(key: string | null | undefined): { saved: boolean; inert: boolean } {
+  const { keys, guestRail } = useSavedRefRead();
+  const saved = !!key && keys.has(key);
+  return { saved, inert: savedActionInert(saved, guestRail) };
+}
+
 export function useRefSaved(key: string | null | undefined): boolean {
-  const keys = useSavedRefKeys();
-  return !!key && keys.has(key);
+  return useRefSavedState(key).saved;
 }

@@ -26,7 +26,9 @@ import { planSaveRefusalMessage } from "../plan-save-refusal";
 import { guestPlanDays, guestSaveErrorMessage } from "../waitlist-guest-plan";
 import { resolveAddPlanTarget } from "../trip-target";
 import { formatCalendarDate } from "../calendar-date";
-import { SAVED_REFS_QUERY_KEY, savedKeysFromGuestView, useSavedRefKeys } from "../saved-refs";
+import { SAVED_REFS_QUERY_KEY, savedActionInert, savedKeysFromGuestView, useSavedRefKeys } from "../saved-refs";
+import { PlanActions } from "../../components/plan/PlanActions";
+import { SaveToPlanButton } from "../../components/plan/SaveToPlanButton";
 import { GUEST_PLAN_QUERY_KEY } from "../waitlist-guest-plan";
 import { EventsCalendarSkeleton, eventsCalendarLoading } from "../../components/events/EventsCalendar";
 
@@ -99,6 +101,31 @@ describe("Round 4b fixes", () => {
     renderToString(<QueryClientProvider client={guest}><Probe /></QueryClientProvider>);
     assert.deepEqual(got, ["city_event:c1"]);
     assert.match(read("server/routes/guest-plans.routes.ts"), /router\.get\("\/api\/plans\/saved-refs", isAuthenticated,/);
+  });
+
+  it("R4b-3 ruling: signed in, Saved to plan is informational and still opens the picker; inert on the guest rail only", () => {
+    assert.equal(savedActionInert(true, false), false, "signed in: pressable");
+    assert.equal(savedActionInert(true, true), true, "guest rail: inert");
+    assert.equal(savedActionInert(false, true), false);
+    // Two plans; the item is on plan A. Signed in, the card reads "Saved to plan" and the press still asks (plan B).
+    const qc = new QueryClient({ defaultOptions: { queries: { enabled: false } } });
+    qc.setQueryData(["/api/public/signup-mode"], { mode: "waitlist" });
+    qc.setQueryData(["/api/auth/user"], { id: "u" });
+    qc.setQueryData(SAVED_REFS_QUERY_KEY, { keys: ["city_event:chionin-autumn-lightup-2026"] });
+    const wrap = (n: React.ReactNode) => renderToString(<QueryClientProvider client={qc}>{n}</QueryClientProvider>);
+    const card = wrap(<PlanActions site="bento" save={{ placeable: true, testId: "s", savedKey: "city_event:chionin-autumn-lightup-2026", onClick: () => {} }} />);
+    assert.match(card, /data-testid="s"[^>]*>Saved to plan</);
+    assert.doesNotMatch(card, /disabled=""/, "signed in: the press opens the picker for plan B");
+    const btn = wrap(<SaveToPlanButton testId="b" savedKey="city_event:chionin-autumn-lightup-2026" onSave={() => {}} />);
+    assert.match(btn, />Saved to plan</);
+    assert.doesNotMatch(btn, /disabled=""/);
+    // The guest rail (one plan): inert.
+    const g = new QueryClient({ defaultOptions: { queries: { enabled: false } } });
+    g.setQueryData(["/api/public/signup-mode"], { mode: "waitlist" });
+    g.setQueryData(["/api/auth/user"], null);
+    g.setQueryData(GUEST_PLAN_QUERY_KEY, { plan: {}, items: [{ id: "i", contentType: "city_event", contentId: "chionin-autumn-lightup-2026" }], retentionDays: null });
+    const guestCard = renderToString(<QueryClientProvider client={g}><PlanActions site="bento" save={{ placeable: true, testId: "s", savedKey: "city_event:chionin-autumn-lightup-2026", onClick: () => {} }} /></QueryClientProvider>);
+    assert.match(guestCard, /data-testid="s"[^>]*disabled=""[^>]*>Saved to plan</);
   });
 
   it("R4b-4 a stated event day is that day in a US zone", () => {

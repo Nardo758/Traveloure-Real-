@@ -27,7 +27,7 @@ import { planEyebrowLabel, phaseShown } from "@shared/plan-dates";
 import { planItemRefFromFeedItem } from "@shared/plan-item-ref";
 import { guestAnswersLine, guestPlanBanner } from "../guest-map";
 import { addedItemFor } from "../browse-supply";
-import { SAVED_REFS_QUERY_KEY } from "../saved-refs";
+import { GUEST_PLAN_QUERY_KEY } from "../waitlist-guest-plan";
 import { SaveToPlanButton } from "../../components/plan/SaveToPlanButton";
 import { CityCard } from "../../components/travelpulse/CityCard";
 import { catalogueSearchRedirectTarget } from "../catalogue-search-route";
@@ -114,10 +114,11 @@ describe("Round 4 fixes", () => {
     assert.equal(addedItemFor({ id: "g2", kind: "gem", name: "x", lat: null, lng: null } as any, items), null);
     const btn = <SaveToPlanButton testId="map-browse-add" savedKey="gem:g1" onSave={() => {}} />;
     assert.match(renderToString(btn), /data-testid="map-browse-add"[^>]*>Save to plan</);
-    // R4b-3: the signed-in plan's items on the server hold gem:g1.
+    // R4b-3: the guest plan's items on the server hold gem:g1 (guest rail ⇒ inert).
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false, enabled: false } } });
-    qc.setQueryData(["/api/auth/user"], { id: "u-test" });
-    qc.setQueryData(SAVED_REFS_QUERY_KEY, { keys: ["gem:g1"] });
+    qc.setQueryData(["/api/public/signup-mode"], { mode: "waitlist" });
+    qc.setQueryData(["/api/auth/user"], null);
+    qc.setQueryData(GUEST_PLAN_QUERY_KEY, { plan: {}, items: [{ id: "i", contentType: "gem", contentId: "g1" }], retentionDays: null });
     assert.match(renderToString(<QueryClientProvider client={qc}>{btn}</QueryClientProvider>), /disabled=""[^>]*data-testid="map-browse-add"[^>]*>Saved to plan</);
     assert.match(read("client/src/components/plancard/MapControlCenter.tsx"), /contentType: \(a as any\)\.contentType \?\? null,/);
     assert.match(read("server/services/trip-plan.service.ts"), /contentType: \(item as any\)\.contentType as string, contentId: \(item as any\)\.contentId as string/);
