@@ -167,6 +167,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/round4b.db.test.ts
       - name: PLAN-1 Phase 1 — the guest view carries the occasion label, end time and listing / partner ids (one DTO) (node:test)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/plan1-phase1.db.test.ts
+      - name: PLAN-1 Phase 2 — a map-created plan carries the server-owned opensOn key; a client cannot set or erase it (node:test)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/plan1-phase2.db.test.ts
       - name: Migration 439 Kyoto events seed — seven factchecked rows, idempotent, all in Kyoto (node:test)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/kyoto-events-439.db.test.ts
       - name: Migration 442 Kyoto event venue points — seven OSM points, fill only a NULL point, rerun changes nothing, Plan around it lands the pin (node:test)

@@ -314,7 +314,8 @@ export async function createGuestPlan(hash: string, body: z.infer<typeof guestPl
       guestSessionHash: hash,
       userId: null,
     } as any,
-    { datesChosenByTraveler },
+    // PLAN-1 Phase 2 (ruling 4): a guest plan is built on the map, so once claimed it opens on Map.
+    { datesChosenByTraveler, opensOnMap: true },
     );
   } catch (err) {
     // The concurrent create won the unique index: answer its plan.

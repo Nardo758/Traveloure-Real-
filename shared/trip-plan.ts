@@ -761,6 +761,8 @@ export interface TripPlanPlancardExtras {
      * `planDatesAreConfirmed` (`shared/plan-dates.ts`) answers once (§18 rule 1).
      */
     datesConfirmed?: boolean;
+    /** PLAN-1 Phase 2 (ruling 4): "map" when the plan was created from the map. */
+    opensOn?: "map" | null;
     /** R3-23: the plan's occasion label — the catalog name for `trips.occasion_slug`; null = no occasion (A-8). */
     occasionLabel?: string | null;
   };

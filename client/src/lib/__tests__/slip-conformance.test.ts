@@ -260,6 +260,19 @@ const ALLOWED_ADDITIONS = {
  * addition or a removal is, rather than the pin being loosened for every control at once.
  */
 const ALLOWED_REPOINTS: Record<string, { to: string[]; reason: string }> = {
+  // PLAN-1 Phase 2 (ledger `2026-11-06-plan1-phase2-view-toggle`; ruling 4; sanctioned edit, Nov 6, 2026).
+  "button-slip-view-list": {
+    to: ['onClick:() => chooseView("list")'],
+    reason:
+      "PLAN-1 Phase 2 ruling 4 — the Days / Map toggle is remembered per traveler server-side: `chooseView` " +
+      "sets the SAME view state (`setSlipView`) and saves the choice (`savePlanView` → PATCH /api/me/preferences).",
+  },
+  "button-slip-view-map": {
+    to: ['onClick:() => chooseView("map")'],
+    reason:
+      "PLAN-1 Phase 2 ruling 4 — the Days / Map toggle is remembered per traveler server-side: `chooseView` " +
+      "sets the SAME view state (`setSlipView`) and saves the choice (`savePlanView` → PATCH /api/me/preferences).",
+  },
   // Lane E1 (ledger `2026-10-08-e1-zero-questions`, ruling 7; sanctioned edit, decision-maker Oct 8, 2026).
   "slip-action-draft-ai": {
     to: ["onClick:() => guard((dates) => draft.mutate(dates))"],

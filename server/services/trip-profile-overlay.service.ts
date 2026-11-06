@@ -7,6 +7,7 @@
  * `storage.createTrip` / `updateTrip` strip a client-sent `profileOverlay` and keep the stored one, so the general
  * trip rails can neither forge nor wipe it (§19 layer 2).
  */
+import { PLAN_OPENS_ON_KEY } from "@shared/plan-view";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { trips } from "@shared/schema";
@@ -56,15 +57,23 @@ export async function addSkippedCorridor(tripId: string, corridorKey: string): P
  * §19 layer 2 for the general trip rails: a client-sent `preferences` never carries its own overlay. On a mint the
  * key is dropped; on an update the stored overlay is kept (one SQL expression, so no read-modify-write).
  */
+/**
+ * The `trips.preferences` keys only the server writes: the profile overlay (TC-3b) and PLAN-1 Phase 2's `opensOn` (a
+ * plan created from the map). A client-sent `preferences` never carries them, and a client update never erases them.
+ */
+export const SERVER_OWNED_TRIP_PREFERENCE_KEYS = [TRIP_PROFILE_OVERLAY_KEY, PLAN_OPENS_ON_KEY] as const;
+
 export function stripClientProfileOverlay<T extends Record<string, unknown> | null | undefined>(preferences: T): T {
-  if (!preferences || typeof preferences !== "object" || !(TRIP_PROFILE_OVERLAY_KEY in preferences)) return preferences;
-  const { [TRIP_PROFILE_OVERLAY_KEY]: _dropped, ...rest } = preferences as Record<string, unknown>;
+  if (!preferences || typeof preferences !== "object") return preferences;
+  if (!SERVER_OWNED_TRIP_PREFERENCE_KEYS.some((k) => k in (preferences as Record<string, unknown>))) return preferences;
+  const rest = { ...(preferences as Record<string, unknown>) };
+  for (const k of SERVER_OWNED_TRIP_PREFERENCE_KEYS) delete rest[k];
   return rest as T;
 }
 
 export function preferencesKeepingStoredOverlay(incoming: Record<string, unknown>) {
-  return sql`(${JSON.stringify(stripClientProfileOverlay(incoming))}::jsonb) || CASE
-    WHEN ${trips.preferences} ? ${TRIP_PROFILE_OVERLAY_KEY}
-      THEN jsonb_build_object(${TRIP_PROFILE_OVERLAY_KEY}::text, ${trips.preferences} -> ${TRIP_PROFILE_OVERLAY_KEY})
-    ELSE '{}'::jsonb END`;
+  const keep = SERVER_OWNED_TRIP_PREFERENCE_KEYS.map(
+    (k) => sql` || CASE WHEN ${trips.preferences} ? ${k} THEN jsonb_build_object(${k}::text, ${trips.preferences} -> ${k}) ELSE '{}'::jsonb END`,
+  );
+  return sql`(${JSON.stringify(stripClientProfileOverlay(incoming))}::jsonb)${sql.join(keep, sql``)}`;
 }

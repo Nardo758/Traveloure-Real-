@@ -14,13 +14,17 @@ import { ConciergeCard } from "@/components/marketplace/concierge-card";
 import { PLAN_LOAD_RATE_LIMITED, planLoadErrorKind, plancardRefetchInterval } from "@/lib/plancard-refetch";
 import { Button } from "@/components/ui/button";
 import { useDocumentTitle } from "@/lib/use-document-title";
+import { planViewFromUrl, resolvePlanView } from "@shared/plan-view";
+import { ME_PREFERENCES_QUERY_KEY, rememberedPlanView } from "@/lib/plan-view-preference";
 
 export default function SlipViewPage() {
   const { tripId } = useParams<{ tripId: string }>();
   const searchStr = useSearch();
   const highlightItemId = new URLSearchParams(searchStr).get("item");
-  // Step 8b-2 (D4): `?view=map` opens the map layout of the plan.
-  const initialView = new URLSearchParams(searchStr).get("view") === "map" ? "map" : null;
+  // PLAN-1 Phase 2 (ruling 4): the opening planner — the URL's `?view=`, else a plan created from the map opens on
+  // Map, else the traveler's remembered view (server-side), else Days (`resolvePlanView`).
+  const urlView = planViewFromUrl(searchStr);
+  const prefsQ = useQuery<unknown>({ queryKey: ME_PREFERENCES_QUERY_KEY, staleTime: 60_000, retry: false, enabled: !urlView });
 
   const { data, isLoading, error, refetch, isFetching } = useQuery<SlipData>({
     // The plancard is LIVE by default (ledger `2026-09-26-slip-renders-live`); only the Trip Card asks
@@ -37,8 +41,16 @@ export default function SlipViewPage() {
   const renderLegBetween = useSlipLegs(data as any, tripId);
   // N-5 (round 2): the tab names this plan, never the page before it.
   useDocumentTitle(data?.trip?.title ?? null);
+  const openingView = resolvePlanView({
+    url: urlView,
+    planOpensOn: (data?.trip as any)?.opensOn === "map" ? "map" : null,
+    remembered: rememberedPlanView(prefsQ.data),
+  });
+  const initialView = openingView === "map" ? ("map" as const) : ("list" as const);
+  // The remembered view is read before the plan opens, so it never flashes the other planner (a failed read ⇒ Days).
+  const viewReady = !!urlView || !prefsQ.isLoading;
 
-  if (isLoading) {
+  if (isLoading || !viewReady) {
     return (
       <div className="min-h-[50vh] flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
