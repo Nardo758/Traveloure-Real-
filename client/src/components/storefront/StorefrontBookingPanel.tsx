@@ -35,7 +35,9 @@ import {
   Wallet,
   Zap,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { PlanActions } from "@/components/plan/PlanActions";
+import { cn } from "@/lib/utils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { apiRefusalMessage } from "@/lib/api-refusal";
 import { useAuth } from "@/hooks/use-auth";
@@ -248,12 +250,17 @@ export function StorefrontBookingPanel(props: StorefrontBookingPanelProps) {
         {bookable.length > 0 && (
           <div className="flex flex-col gap-2">
             {single ? (
-              <Link href={`/services/${single.id}${tripQuery}`}>
-                <Button className={PRIMARY} data-testid="storefront-panel-primary">
-                  <CalendarDays className="mr-2 h-4 w-4" />
-                  Check availability
-                </Button>
-              </Link>
+              // CAP-2 Phase 3: PlanActions' Book "availability" variant (open mode only).
+              <PlanActions
+                site="storefrontPanel"
+                book={{
+                  variant: "availability",
+                  href: `/services/${single.id}${tripQuery}`,
+                  className: cn(buttonVariants(), PRIMARY),
+                  icon: <CalendarDays className="mr-2 h-4 w-4" />,
+                  testId: "storefront-panel-primary",
+                }}
+              />
             ) : (
               <Button asChild className={PRIMARY} data-testid="storefront-panel-primary">
                 <a href={`#${servicesAnchorId}`}>
@@ -417,9 +424,10 @@ export function StorefrontBookingBar(props: StorefrontBookingPanelProps & { pane
   if (kind === "provider") {
     if (bookable.length === 1) {
       action = (
-        <Link href={`/services/${bookable[0].id}${tripQuery}`}>
-          <Button className={PRIMARY} data-testid="storefront-bar-primary">Check availability</Button>
-        </Link>
+        <PlanActions
+          site="storefrontPanel"
+          book={{ variant: "availability", href: `/services/${bookable[0].id}${tripQuery}`, className: cn(buttonVariants(), PRIMARY), testId: "storefront-bar-primary" }}
+        />
       );
     } else if (bookable.length > 1) {
       action = (

@@ -19,6 +19,7 @@ import { addItemFit, statedCity } from "@/lib/trip-target";
 import { useAddPlanResolution } from "@/hooks/use-open-plans";
 import { ADDED_TO_PLAN_TITLE } from "@/lib/plan-vocabulary";
 import { planItemRefFromFeedItem } from "@shared/plan-item-ref";
+import { markRefSaved, savedRefKey } from "@/lib/saved-refs";
 import { GUEST_PLAN_COPY } from "@shared/guest-plan-copy";
 import { syncActiveTripToContext } from "@/lib/trip-selection";
 import { PlanPickerList, useStartPlanThenAdd, type PickablePlan } from "@/components/plan-picker";
@@ -37,8 +38,6 @@ interface ExperienceItem {
   scheduledDate?: string | null;
   /** Row 305: a catalogue result's own listing, kept on the plan item (the add rail re-checks it). */
   providerServiceId?: string;
-  /** Row 305: a catalogue result's Viator product (the add rail admits it through `admitViatorAdd`). */
-  viatorProductCode?: string;
 }
 
 interface AddToExperienceDialogProps {
@@ -88,10 +87,8 @@ export function AddToExperienceDialog({
       dayNumber,
       status: "planned",
       ...(item?.scheduledDate ? { scheduledDate: item.scheduledDate } : {}),
-      // Row 305: a catalogue result keeps its link — the listing it names, or its Viator product. The add rail
-      // re-checks both server-side (the listing gate; `admitViatorAdd`).
+      // Row 305: a catalogue result keeps the listing it names; the add rail re-checks it server-side (the listing gate).
       ...(typeof item?.providerServiceId === "string" ? { providerServiceId: item.providerServiceId } : {}),
-      ...(typeof item?.viatorProductCode === "string" ? { viatorProductCode: item.viatorProductCode } : {}),
       ...(ref ? { ref } : {}),
     };
   };
@@ -109,6 +106,9 @@ export function AddToExperienceDialog({
       return res.json();
     },
     onSuccess: (_res, plan) => {
+      // CAP-2 Phase 3: the row is confirmed — the card's save action now says "Saved to plan".
+      const body = feedItemBody(plan.startDate, plan) as { ref?: { kind?: string; source_id?: string } };
+      markRefSaved(savedRefKey(body.ref));
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${plan.id}/itinerary-items`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${plan.id}/plancard`] });
       queryClient.invalidateQueries({ queryKey: ["/api/trips"] });

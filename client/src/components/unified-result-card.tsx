@@ -3,7 +3,9 @@ import { optimizeUnsplashUrl } from "@/lib/unsplash";
 import { formatSourceAmount } from "@/lib/partner-price";
 import { PARTNER_PRICE_LINK_LABEL } from "@/lib/browse-supply";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { PlanActions } from "@/components/plan/PlanActions";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -345,24 +347,35 @@ export function UnifiedResultCard({
                 </Button>
               )}
               
-              {(hasPartnerBookingUrl || websiteUrl) && (
+              {/* CAP-2 Phase 3 (Phase 0 correction, ruled Nov 6): the booking-agent request and a partner's booking are
+                  PlanActions' Book ("Request to book" / "Book on partner"), open mode only. A venue's own website is
+                  informational and keeps its "View" link. */}
+              {hasPartnerBookingUrl || (websiteUrl && isPartner) ? (
+                <PlanActions
+                  site="discoverService"
+                  city={(result as any).city ?? (result as any).location ?? null}
+                  book={{
+                    variant: hasPartnerBookingUrl ? "request" : "partner",
+                    onClick: handleViewDetails,
+                    testId: `button-view-${result.id}`,
+                    className: hasPartnerBookingUrl
+                      ? cn(buttonVariants({ size: "sm", variant: "outline" }), "border-violet-300 text-violet-700 hover:bg-violet-50")
+                      : buttonVariants({ size: "sm" }),
+                    icon: hasPartnerBookingUrl ? <UserCheck className="h-3.5 w-3.5 mr-1" /> : <ExternalLink className="h-3.5 w-3.5 mr-1" />,
+                  }}
+                />
+              ) : websiteUrl ? (
                 <Button
                   size="sm"
-                  variant={hasPartnerBookingUrl ? "outline" : "default"}
-                  className={hasPartnerBookingUrl ? "border-violet-300 text-violet-700 hover:bg-violet-50" : ""}
                   onClick={(e) => {
                     e.stopPropagation();
                     handleViewDetails();
                   }}
                   data-testid={`button-view-${result.id}`}
                 >
-                  {hasPartnerBookingUrl ? (
-                    <><UserCheck className="h-3.5 w-3.5 mr-1" />Request booking</>
-                  ) : (
-                    <><ExternalLink className="h-3.5 w-3.5 mr-1" />{isPartner ? "Book" : "View"}</>
-                  )}
+                  <ExternalLink className="h-3.5 w-3.5 mr-1" />View
                 </Button>
-              )}
+              ) : null}
             </div>
           </div>
         </CardContent>

@@ -1,6 +1,4 @@
 import type { Express, RequestHandler } from "express";
-import { admitViatorAdd } from "./services/viator-item-admission";
-import { viatorDirectEnabled } from "./config/viator.config";
 import { tripGetsRoutedLegs } from "./services/routing/plan-routed-legs.service";
 import { enqueuePlanLegRecompute } from "./services/routing/plan-legs-queue";
 import { decorateComparison, openSetSlotsForRun } from "./services/version-options.service";
@@ -13533,12 +13531,12 @@ ${bannedCopyPromptLine()}`;
         return res.status(400).json({ message: "That partner item could not be found or is no longer available.", reason: resolvedAffiliate.reason });
       }
       if (resolvedAffiliate.action === "set") itemData.affiliateProductId = resolvedAffiliate.value;
-      // VD-1b (ledger `2026-10-18-viator-add-to-plan`): an add from a live Viator card stores the title, the
-      // product code (stamped by storage onto content_type/content_id) and "Partner: Viator" ONLY — never a
-      // Viator price, description or coordinate — so the item re-fetches Viator live. Off with the live search.
-      const viatorAdd = admitViatorAdd(req.body, itemData as Record<string, unknown>, viatorDirectEnabled());
-      if (!viatorAdd.ok) return res.status(400).json({ message: viatorAdd.message });
-      const viatorProductCode = viatorAdd.viatorProductCode;
+      // CAP-2 Phase 3 (FU-CAP2-2; ruling, Nov 5, 2026): the Viator add path is retired. Viator is not a PlanItemRef kind
+      // (it has no row of ours to re-read), so a body naming a Viator product is refused, never stored. Items saved
+      // before are ordinary rows and are untouched.
+      if (Object.prototype.hasOwnProperty.call(req.body ?? {}, "viatorProductCode")) {
+        return res.status(400).json({ code: "unknown_kind", message: "Couldn't save that. Try again." });
+      }
       // ── CAP-2 (ledger `2026-11-05-cap2-plan-item-ref`; rulings 3, 4, 8) ─────────────────────────────────────────
       // A content save names a PlanItemRef (`ref`). The ONE resolver the guest rail uses re-reads the row for the item's
       // name, point, link and placement; the body's title, coordinates and coordinate source are ignored for it. A
@@ -13546,7 +13544,7 @@ ${bannedCopyPromptLine()}`;
       // its point is the row's (R323's client-coordinate path is retired) and a withdrawn row is refused. A refusal is a
       // 400 carrying its reason code. A typed item with no link is untouched.
       const hasRef = Object.prototype.hasOwnProperty.call(req.body ?? {}, "ref");
-      const legacyLink = !hasRef && !viatorProductCode
+      const legacyLink = !hasRef
         ? (typeof itemData.providerServiceId === "string" && itemData.providerServiceId
             ? { kind: "listing" as const, source_id: itemData.providerServiceId as string }
             : typeof itemData.affiliateProductId === "string" && itemData.affiliateProductId
@@ -13556,7 +13554,6 @@ ${bannedCopyPromptLine()}`;
       let contentLink: { contentType: string; contentId: string } | undefined;
       let resolvedRef = false;
       if (hasRef || legacyLink) {
-        if (viatorProductCode) return res.status(400).json({ code: "unplaceable", message: "Couldn't save that. Try again." });
         const { parsePlanItemRef } = await import("@shared/plan-item-ref");
         const { planMarkets, resolvePlanItemRef } = await import("./services/guest-item-source.service");
         const tripRow = await storage.getTrip(tripId);
@@ -13625,7 +13622,7 @@ ${bannedCopyPromptLine()}`;
         const { fileExpertSuggestion } = await import("./services/expert-suggestions.service");
         const suggestion = await fileExpertSuggestion({
           tripId, expertId: userId, kind: "add",
-          payload: { item: viatorProductCode ? { ...itemData, viatorProductCode } : contentLink ? { ...itemData, contentLink } : itemData },
+          payload: { item: contentLink ? { ...itemData, contentLink } : itemData },
         });
         return res.status(202).json({ suggested: true, suggestion });
       }
@@ -13639,8 +13636,7 @@ ${bannedCopyPromptLine()}`;
       // nothing else; absent ⇒ NULL, which reads as Google.
       const item = gemWrite?.item ?? await storage.createItineraryItem(itemData, {
         // CAP-2: a resolved save's point is the row's — the body's coordinate source is not read for it.
-        coordSource: viatorProductCode || resolvedRef ? undefined : admitItemCoordSource(req.body),
-        ...(viatorProductCode ? { viatorProductCode } : {}),
+        coordSource: resolvedRef ? undefined : admitItemCoordSource(req.body),
         ...(contentLink ? { contentLink } : {}),
       });
       if (!gemWrite || gemWrite.created) {

@@ -27,11 +27,11 @@
 import { PlacePhoto } from "./PlacePhoto";
 import { HAND_ADDED_STAY_LINE } from "@shared/where-to-stay";
 import { useBookingActionsShown } from "@/lib/signup-mode";
+import { PlanActions } from "@/components/plan/PlanActions";
 import { OSM_COORD_ATTRIBUTION } from "@shared/open-coords";
 import {
   GOOGLE_MAPS_ATTRIBUTION,
   STAY_CHANGED_LINE,
-  STAY_HERE_LABEL,
   STAY_PICK_TITLE,
   STAY_STRAIGHT_LINE_TITLE,
   STAY_SWAP_LEAD,
@@ -41,7 +41,6 @@ import {
   stayFarDayLines,
   stayCardLink,
   STAY_RATES_LOADING,
-  STAY_RATES_SEE,
   stayRatesLines,
   type StayRatesView,
 } from "@/lib/stay-card";
@@ -317,16 +316,19 @@ export function StayPickCard({
                   </span>
                 );
               })()}
+              {/* CAP-2 Phase 3: "Stay here" is PlanActions' Book "stay_here" variant (open mode only). */}
               {canChoose && bookingShown ? (
-                <button
-                  type="button"
-                  className="inline-flex min-h-[40px] shrink-0 items-center whitespace-nowrap rounded-[var(--slip-radius-button,10px)] bg-[color:var(--slip-primary,#C8443D)] px-4 text-sm font-semibold text-[color:var(--slip-primary-ink,#fff)] hover:brightness-95 disabled:opacity-60"
-                  onClick={() => onStayHere?.(h)}
-                  disabled={busy}
-                  data-testid={`stay-pick-stay-${h.kind}-${h.id}`}
-                >
-                  {STAY_HERE_LABEL}
-                </button>
+                <PlanActions
+                  site="anchor"
+                  bookingShown={bookingShown}
+                  book={{
+                    variant: "stay_here",
+                    className: "inline-flex min-h-[40px] shrink-0 items-center whitespace-nowrap rounded-[var(--slip-radius-button,10px)] bg-[color:var(--slip-primary,#C8443D)] px-4 text-sm font-semibold text-[color:var(--slip-primary-ink,#fff)] hover:brightness-95 disabled:opacity-60",
+                    onClick: () => onStayHere?.(h),
+                    disabled: busy,
+                    testId: `stay-pick-stay-${h.kind}-${h.id}`,
+                  }}
+                />
               ) : null}
             </span>
             {bookingShown && h.kind === "liteapi" ? <StayRatesRow hotel={h} view={stayRates?.[h.id]} onSeeRates={onSeeRates} /> : null}
@@ -358,9 +360,8 @@ function StayRatesRow({ hotel, view, onSeeRates }: { hotel: StayHotel; view?: St
   if (!view) {
     return (
       <span className="basis-full">
-        <button type="button" className={quiet} onClick={() => onSeeRates?.(hotel)} data-testid={`stay-rates-open-${hotel.id}`}>
-          {STAY_RATES_SEE}
-        </button>
+        {/* CAP-2 Phase 3: "See rates" is PlanActions' Book "see_rates" variant (open mode only). */}
+        <PlanActions site="anchor" bookingShown book={{ variant: "see_rates", className: quiet, onClick: () => onSeeRates?.(hotel), testId: `stay-rates-open-${hotel.id}` }} />
       </span>
     );
   }
@@ -448,15 +449,17 @@ function RankedList({
                         ) : null}
                       </span>
                       {canChoose && bookingShown ? (
-                        <button
-                          type="button"
-                          className="text-xs font-semibold underline underline-offset-2 hover:text-foreground"
-                          onClick={() => onStayHere?.(h)}
-                          disabled={busy}
-                          data-testid={`where-to-stay-stay-${h.kind}-${h.id}`}
-                        >
-                          Stay here
-                        </button>
+                        <PlanActions
+                          site="anchor"
+                          bookingShown={bookingShown}
+                          book={{
+                            variant: "stay_here",
+                            className: "text-xs font-semibold underline underline-offset-2 hover:text-foreground",
+                            onClick: () => onStayHere?.(h),
+                            disabled: busy,
+                            testId: `where-to-stay-stay-${h.kind}-${h.id}`,
+                          }}
+                        />
                       ) : null}
                     </li>
                   ))}

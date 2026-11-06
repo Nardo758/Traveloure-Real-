@@ -33,11 +33,8 @@ import { CatalogueResultRow } from "../../catalogue-search-results";
 import { useBrowseSaveToPlan } from "../../../lib/browse-save";
 import { browseSavesToPlan } from "../../../lib/signup-mode";
 import { BROWSE_EMPTY_COPY, PARTNER_COMMISSION_NOTE, browseTabEmptyShown, partnerCommissionShown } from "../../../lib/browse-supply";
-import { catalogueActionLabel } from "../../../lib/catalogue-search-copy";
-import { tileActionLabel } from "../../../lib/bento-action-state";
 import { READY_MADE_SHELF_COPY, readyMadeShelfState } from "../../../lib/ready-made-shelf-state";
 import { WAITLIST_COPY } from "../../../lib/waitlist-copy";
-import { TILE_ACTION_COPY } from "../../../lib/tile-action-copy";
 
 (globalThis as any).React = React;
 
@@ -78,7 +75,7 @@ const viatorResult: CatalogueResult = {
   kind: "partner_viator",
   title: "Arashiyama walk",
   action: { type: "book_on_site", site: "Viator", href: "https://www.viator.com/tours/x" },
-  addToPlan: { title: "Arashiyama walk", viatorProductCode: "1" },
+  addToPlan: { title: "Arashiyama walk" },
 } as CatalogueResult;
 
 /** Captures the hook's answer during a server render (no effects run; the hook is a pure read of the seeded cache). */
@@ -99,12 +96,14 @@ describe("GATE-1 + PARTNER-1", () => {
     for (const html of [
       render(<CityFeedCardGem gem={gem} city={CITY} onAdd={() => {}} />, "waitlist"),
       render(<CityFeedCardSupply item={supply} kind="supply-activity" city={CITY} onAdd={() => {}} />, "waitlist"),
-      render(<ul><CatalogueResultRow result={searchResult} timeZone={null} onAdd={() => {}} /></ul>, "waitlist"),
-      render(<EventSheetBody data={{ id: "ev-1", title: "Gion Matsuri" }} action={{ saveToPlan: true, label: "x", onAdd: () => {} }} />, "waitlist"),
+      // CAP-2 Phase 3 (sanctioned edit): the row takes the searched city (its save's city), and the drawer's action is
+      // PlanActions' save (placeable, with its saved-ref key).
+      render(<ul><CatalogueResultRow result={searchResult} timeZone={null} city={CITY} onAdd={() => {}} /></ul>, "waitlist"),
+      render(<EventSheetBody data={{ id: "ev-1", title: "Gion Matsuri" }} action={{ placeable: true, savedKey: "event:ev-1", city: CITY, onAdd: () => {} }} />, "waitlist"),
     ]) {
       assert.ok(text(html).includes(WAITLIST_COPY.saveToPlan), text(html).slice(0, 200));
       assert.ok(!text(html).includes("Sign In Required"));
-      assert.ok(!text(html).includes(TILE_ACTION_COPY.addToPlan), "no 'Add to plan' left on the card");
+      assert.ok(!text(html).includes("Add to plan"), "no 'Add to plan' left on the card");
     }
     // The press: the card's add path is replaced by the "Saved to plan" toast — the dialog opener is never called.
     const hook = browseHookAnswer("waitlist", null);
@@ -134,15 +133,13 @@ describe("GATE-1 + PARTNER-1", () => {
     assert.equal(browseHookAnswer("waitlist", { id: "u1" }).saveToPlan, false);
   });
 
-  it("T2 open mode + signed out: today's labels and the dialog path, unchanged", () => {
+  // CAP-2 Phase 3 (sanctioned edit): "Add to plan" is retired (ruling, Nov 6) — the save reads "Save to plan" in open
+  // mode too. The open-mode PATH is unchanged: a signed-out viewer's press keeps the card's own add (the dialog).
+  it("T2 open mode + signed out: 'Save to plan', and the dialog path, unchanged", () => {
     assert.equal(browseSavesToPlan("open", false), false);
     const gemHtml = text(render(<CityFeedCardGem gem={gem} city={CITY} onAdd={() => {}} />, "open"));
-    assert.ok(gemHtml.includes(TILE_ACTION_COPY.addToPlan));
-    assert.ok(!gemHtml.includes(WAITLIST_COPY.saveToPlan));
-    assert.equal(catalogueActionLabel(searchResult, { waitlist: false, signedOut: true }), TILE_ACTION_COPY.addToPlan);
-    assert.equal(catalogueActionLabel(searchResult, { waitlist: true, signedOut: false }), TILE_ACTION_COPY.addToPlan);
-    assert.equal(tileActionLabel("event", {}), TILE_ACTION_COPY.addToPlan);
-    assert.equal(tileActionLabel("event", { saveToPlan: true }), WAITLIST_COPY.saveToPlan);
+    assert.ok(gemHtml.includes(WAITLIST_COPY.saveToPlan));
+    assert.ok(!gemHtml.includes("Add to plan"));
     const hook = browseHookAnswer("open", null);
     assert.equal(hook.saveToPlan, false);
     const opener = () => {};
@@ -158,8 +155,8 @@ describe("GATE-1 + PARTNER-1", () => {
     assert.ok(!text(render(<EventSheetBody data={tokenEvent} />, "waitlist")).includes(PARTNER_COMMISSION_NOTE), "waitlist: none, even with a token");
     assert.ok(!text(render(<EventSheetBody data={{ id: "ev-3", title: "No link" }} />, "open")).includes(PARTNER_COMMISSION_NOTE));
     // The catalogue's Viator disclosure follows the same rule.
-    const vOpen = render(<ul><CatalogueResultRow result={viatorResult} timeZone={null} onAdd={() => {}} /></ul>, "open");
-    const vWait = render(<ul><CatalogueResultRow result={viatorResult} timeZone={null} onAdd={() => {}} /></ul>, "waitlist");
+    const vOpen = render(<ul><CatalogueResultRow result={viatorResult} timeZone={null} city={CITY} onAdd={() => {}} /></ul>, "open");
+    const vWait = render(<ul><CatalogueResultRow result={viatorResult} timeZone={null} city={CITY} onAdd={() => {}} /></ul>, "waitlist");
     assert.match(vOpen, /data-testid="catalogue-commission-viator:1"/);
     assert.doesNotMatch(vWait, /data-testid="catalogue-commission-viator:1"/);
     // Every remaining commission site reads the gate.

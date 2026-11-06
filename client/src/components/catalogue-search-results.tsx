@@ -12,12 +12,13 @@ import { useBrowseSaveToPlan } from "@/lib/browse-save";
 import { partnerCommissionShown } from "@/lib/browse-supply";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
+import { PlanActions } from "@/components/plan/PlanActions";
+import { feedSaveIntent } from "@/lib/plan-actions";
+import { cn } from "@/lib/utils";
 import { CATALOGUE_QUERY_MIN, CATALOGUE_SEARCH_COPY, normalizeCatalogueQuery, type CatalogueResult, type CatalogueSearchResponse } from "@shared/catalogue-search";
 import {
   CATALOGUE_RESULT_COPY,
-  catalogueActionLabel,
   catalogueAddItem,
   catalogueTimeZone,
   viatorPriceLine,
@@ -40,17 +41,20 @@ function useDebounced(value: string, ms: number): string {
 export function CatalogueResultRow({
   result,
   timeZone,
+  city = null,
   onAdd: onAddProp,
 }: {
   result: CatalogueResult;
   timeZone: string | null;
+  /** The searched city (the response's): the save's city and the guest-capabilities area. */
+  city?: string | null;
   onAdd: (item: Record<string, unknown>) => void;
 }) {
   const waitlist = !useBookingActionsShown();
   // GATE-1: waitlist + signed out ⇒ the add press is "Save to plan" (a toast, no dialog, no sign-in wall).
   const browseSave = useBrowseSaveToPlan();
   const onAdd = browseSave.wrapAdd(onAddProp) ?? onAddProp;
-  const label = catalogueActionLabel(result, { waitlist, signedOut: browseSave.saveToPlan });
+  const addItem = { ...catalogueAddItem(result), city: city ?? undefined };
   const price = result.kind === "partner_viator" ? viatorPriceLine(result.livePrice, timeZone) : null;
   return (
     <li className="flex items-start justify-between gap-3 py-2.5" data-testid={`catalogue-result-${result.id}`}>
@@ -95,22 +99,35 @@ export function CatalogueResultRow({
           </p>
         )}
       </div>
-      <div className="shrink-0" data-testid={`catalogue-action-${result.id}`}>
-        {result.action.type === "book" && !waitlist ? (
-          <Button asChild size="sm" className="h-8 text-xs">
-            <Link href={result.action.href}>{label}</Link>
-          </Button>
-        ) : result.action.type === "book_on_site" ? (
-          <Button asChild size="sm" variant="outline" className="h-8 text-xs">
-            <a href={result.action.href} target="_blank" rel="noopener noreferrer nofollow sponsored">
-              {label}
-            </a>
-          </Button>
-        ) : (
-          <Button disabled={browseSave.pending} size="sm" variant="outline" className="h-8 text-xs" onClick={() => onAdd(catalogueAddItem(result))}>
-            {label}
-          </Button>
-        )}
+      <div className="shrink-0 flex flex-col items-end gap-1" data-testid={`catalogue-action-${result.id}`}>
+        {/* CAP-2 Phase 3: PlanActions. A listing's book lands on its detail page, which knows the booking mode
+            ("Check availability"); a partner or official site's own booking is "Book on partner" (open mode only).
+            More info opens the result's page; it is hidden where the Book link already goes there. A Viator row names
+            no row of ours, so it has no save (ruling, Nov 5). */}
+        <PlanActions
+          site="catalogue"
+          city={city}
+          order={["book", "save", "moreInfo"]}
+          book={
+            result.action.type === "book"
+              ? { variant: "availability", href: result.action.href, testId: `catalogue-book-${result.id}`, className: cn(buttonVariants({ size: "sm" }), "h-8 text-xs") }
+              : result.action.type === "book_on_site"
+                ? { variant: "partner", href: result.action.href, external: true, testId: `catalogue-book-${result.id}`, className: cn(buttonVariants({ size: "sm", variant: "outline" }), "h-8 text-xs") }
+                : null
+          }
+          moreInfo={
+            result.action.type === "book" || result.action.type === "book_on_site"
+              ? { href: result.action.href, external: result.action.type === "book_on_site", testId: `catalogue-more-info-${result.id}`, className: cn(buttonVariants({ size: "sm", variant: "outline" }), "h-8 text-xs") }
+              : null
+          }
+          save={{
+            ...feedSaveIntent(addItem, city),
+            disabled: browseSave.pending,
+            testId: `catalogue-save-${result.id}`,
+            className: cn(buttonVariants({ size: "sm", variant: "outline" }), "h-8 text-xs"),
+            onClick: () => onAdd(addItem),
+          }}
+        />
       </div>
     </li>
   );
@@ -142,7 +159,7 @@ export function CatalogueSearchView({
       {status === "ready" && (data?.results.length ?? 0) > 0 && (
         <ul className="divide-y list-none p-0 m-0">
           {data!.results.map((r) => (
-            <CatalogueResultRow key={r.id} result={r} timeZone={timeZone} onAdd={onAdd} />
+            <CatalogueResultRow key={r.id} result={r} timeZone={timeZone} city={city} onAdd={onAdd} />
           ))}
         </ul>
       )}

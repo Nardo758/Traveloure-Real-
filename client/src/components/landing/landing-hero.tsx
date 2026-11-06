@@ -29,6 +29,7 @@ import { HERO_PILL_COPY, heroMarketPill } from "@shared/ticker";
 import { statusSettingsFrom } from "@/lib/waitlist-markets";
 import { PLAN_START_HREF, planStartClick } from "@/lib/plan-entry";
 import { Fragment, useState, type ReactNode } from "react";
+import { PlanActions } from "@/components/plan/PlanActions";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -236,7 +237,6 @@ function useBillboardCopy() {
       String(t("hero.billboard.planWith", { handle, defaultValue: "Plan with @{{handle}}" })).replace("{{handle}}", handle),
     viewListing: t("hero.billboard.viewListing", "View listing"),
     planAroundGem: t("hero.billboard.planAroundGem", "Plan around this gem"),
-    bookNow: t("hero.billboard.bookNow", "Book now"),
   };
 }
 
@@ -511,14 +511,21 @@ function BookableTileCard({
       )}
       label={copy.slotLabels[2]}
       headline={slot.listing.title}
-      actions={bookingShown && <Link
-        href={`/services/${encodeURIComponent(slot.listing.id)}`}
-        className="relative z-10 mt-2 inline-flex min-h-[36px] items-center self-start rounded-[7px] px-2.5 text-[12px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-        style={{ background: "var(--coral-fill)" }}
-        data-testid={`hero-billboard-book-${tile.key}`}
-      >
-        {copy.bookNow}
-      </Link>}
+      actions={
+        // CAP-2 Phase 3: PlanActions' Book (open mode only). The listing's booking mode is decided on its detail page,
+        // so the words are "Check availability".
+        <PlanActions
+          site="landingHero"
+          city={market.cityName}
+          book={{
+            variant: "availability",
+            href: `/services/${encodeURIComponent(slot.listing.id)}`,
+            className: "relative z-10 mt-2 inline-flex min-h-[36px] items-center self-start rounded-[7px] px-2.5 text-[12px] font-semibold text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white",
+            style: { background: "var(--coral-fill)" },
+            testId: `hero-billboard-book-${tile.key}`,
+          }}
+        />
+      }
       credit={!usesListingPhoto && !fallbackFailed && <TileCredit tileKey={tile.key} credit={tile.credit} />}
     />
   );

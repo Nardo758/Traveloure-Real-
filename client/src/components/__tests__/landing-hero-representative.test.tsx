@@ -250,7 +250,9 @@ describe("landing hero billboard", () => {
     assert.ok(html.includes("Tea ceremony in a machiya"));
     assert.ok(html.includes("$145"));
     assert.ok(html.indexOf('data-testid="hero-billboard-price-date-night"') < html.indexOf("Tea ceremony in a machiya"), "the bookable price is a top-right badge");
-    assert.ok(html.includes("Book now"));
+    // CAP-2 Phase 3 (sanctioned edit): the listing's Book is PlanActions' "Check availability" (its booking mode is the
+    // detail page's to decide).
+    assert.ok(html.includes("Check availability"));
     assert.ok(!html.includes("A quiet afternoon with a local host."), "live cards keep the screenshot's compact label-title-action hierarchy");
     assert.ok(html.includes("/fixture/bookable-listing.jpg"));
     assert.ok(html.includes('href="/services/service%2Fwith%20space"'));
@@ -323,10 +325,11 @@ describe("landing hero billboard", () => {
     assert.deepEqual(actions(two), ["Plan around this gem"], "gem: one action");
     assert.equal(badge(two), null, "SH-1 item 1: the gem card carries no score");
     assert.ok(!two.includes("HIDDEN GEM") && two.includes("KYOTO"), "SH-1 item 1: the gem slot's eyebrow is its city");
-    assert.deepEqual(actions(three), ["Book now"], "listing: one action");
+    // CAP-2 Phase 3 (sanctioned edit): the listing's one action is PlanActions' Book, "Check availability".
+    assert.deepEqual(actions(three), ["Check availability"], "listing: one action");
     assert.equal(badge(three), "$145", "listing: its own price, top right");
     assert.ok(three.includes("BOOK ON TRAVELOURE"));
-    assert.ok(three.includes('href="/services/service%2Fwith%20space"'), "Book now goes to the listing's own booking path");
+    assert.ok(three.includes('href="/services/service%2Fwith%20space"'), "the Book goes to the listing's own booking path");
     for (const tile of [one, two, three]) assert.ok(!tile.includes("Start this plan"), "a real card never offers the curated action");
     // The listing's and the gem's own photos: no representative label, no repo credit.
     assert.ok(!one.includes("Representative photo") && !one.includes("hero-billboard-credit-"), "expert card on its listing's own photo");

@@ -1402,8 +1402,28 @@ Migration 439's seven `city_events` rows (Kodai-ji, To-ji, Chion-in ×2, Eikando
 an open source with its attribution (the LD 59 posture: the venue lookup or an admin edit on a NULL-coordinate row) —
 never from Google. A data row for Research Bot, not code.
 
-### FU-CAP2-2 — the server's Viator add path has no client caller (CAP-2 Phase 2)
+### FU-CAP2-2 — the server's Viator add path has no client caller (CAP-2 Phase 2) — CLOSED in CAP-2 Phase 3
+
+CLOSED (Nov 6, 2026): the item-create rail refuses a `viatorProductCode` body (400 `unknown_kind`); `admitViatorAdd`,
+`viatorAddBody` and `shared/viator-item.ts` (no reader outside tests) are deleted; storage and the suggestion replay stamp
+no Viator pair. Items saved before are ordinary rows and are untouched (ledger `2026-11-06-cap2-phase3-plan-actions`).
 
 Phase 2 removed "Add to plan" from Viator results (ruling, Nov 5: Viator is not a PlanItemRef). The signed-in item create
 still admits a `viatorProductCode` body (`admitViatorAdd`, `server/routes.ts`) and the suggestion replay still stamps it.
 Ruling (Nov 5): retired in CAP-2 Phase 3 with the PlanActions sweep; existing Viator items keep working.
+
+### FU-CAP2-3 — two traveler files with booking words and no caller (CAP-2 Phase 3)
+
+`client/src/components/affiliate-transport-products.tsx` has no importer, and `matchedServiceSuggestion` in
+`client/src/lib/feed-stream.ts` has no caller (the gem matched-service query it fed is disabled). Both still hold
+booking words ("Book", "Reserve", "Book both", "Book guide"), so the PlanActions guard (`cap2-phase3.test.tsx` P5) names
+them. They are §18c deletion candidates; this lane did not delete them (outside its sites). Delete, then drop them from
+the guard's list.
+
+### FU-CAP2-4 — results that name no row of ours no longer offer a save (CAP-2 Phase 3)
+
+PlanActions draws Save only when the card can build a PlanItemRef (dispatch ruling 5: "Save to plan … when placeable").
+A catalogue checked place, an official-site row with no booking, and a curated item with no partner product name no row
+the resolver can re-read, so they now offer no save (before, a signed-in viewer could add them as a title-only item).
+If those should be saveable, they need a PlanItemRef kind (a ruling), not a client-built item.
+

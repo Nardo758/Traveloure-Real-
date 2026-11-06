@@ -152,7 +152,9 @@ describe("traveler CTAs (gem-card parity, not the provider CTA)", () => {
   // CAP-2 Phase 2 (ruling option (a), sanctioned edit): a recommendation names a category, not a row — no Add, no Save.
   it("renders Ask / Book (browse the category), no Add, and never 'I do this' (the city has an expert to ask)", () => {
     const html = render(candidate, {}, { expertAvailable: true });
-    assert.ok(html.includes("Book"), "Book CTA missing");
+    // CAP-2 Phase 3 (sanctioned edit): the platform book lands on the category browse, so PlanActions words it
+    // "Check availability" (open mode).
+    assert.match(html, /data-testid="btn-book-rec-0"[^>]*>Check availability</, "Book CTA missing");
     assert.ok(!html.includes("btn-add-rec-"), "no Add on a recommendation");
     assert.ok(html.includes("Ask"), "Ask CTA missing");
     assert.ok(!html.includes("I do this"), "provider-side CTA leaked onto a traveler card");
@@ -162,7 +164,7 @@ describe("traveler CTAs (gem-card parity, not the provider CTA)", () => {
     const html = render(candidate);
     assert.ok(!html.includes("btn-ask-rec-"), "Ask CTA drawn without a server yes");
     assert.ok(!html.includes("Ask an expert"), "Ask label drawn without a server yes");
-    assert.ok(html.includes("Book"), "Book CTA missing");
+    assert.match(html, /data-testid="btn-book-rec-0"[^>]*>Check availability</, "Book CTA missing");
     assert.ok(!html.includes("btn-add-rec-"), "no Add on a recommendation");
   });
 });

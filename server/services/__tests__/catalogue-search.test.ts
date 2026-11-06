@@ -126,7 +126,8 @@ test("S7 the Viator reader carries the live price and its time, never a review, 
   const viator = src.slice(src.indexOf("async viator("), src.indexOf("async hotels("));
   assert.match(viator, /livePrice: \{ amount: i\.price, currency: i\.currency, asOf: live\.asOf! \}/);
   assert.doesNotMatch(viator, /rating|review|imageUrl|photo/i);
-  assert.match(viator, /addToPlan: \{ title: i\.title, viatorProductCode: i\.productCode \}/);
+  // CAP-2 Phase 3 (sanctioned, FU-CAP2-2): a Viator result carries no add.
+  assert.match(viator, /addToPlan: \{ title: i\.title \}/);
 });
 
 test("S8 the service writes nothing and reads no excluded source", () => {

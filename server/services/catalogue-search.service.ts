@@ -196,7 +196,8 @@ export const defaultCatalogueReaders: CatalogueReaders = {
         title: i.title,
         attribution: "Viator",
         action: { type: "book_on_site" as const, site: "Viator", href: i.productUrl! },
-        addToPlan: { title: i.title, viatorProductCode: i.productCode },
+        // CAP-2 Phase 3 (FU-CAP2-2): a Viator result carries no add (Viator is not a PlanItemRef kind).
+        addToPlan: { title: i.title },
         ...(i.price != null && i.currency ? { livePrice: { amount: i.price, currency: i.currency, asOf: live.asOf! } } : {}),
       }));
   },

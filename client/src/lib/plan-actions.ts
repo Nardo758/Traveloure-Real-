@@ -15,19 +15,18 @@
  * WORDING: every label below is HELD for "Wording approved — Leon" on the Phase 3 PR. The ones marked "approved" were
  * approved before this lane and are only moved here.
  */
-import { ADD_TO_PLAN_LABEL } from "./plan-vocabulary";
 import { WAITLIST_COPY } from "./waitlist-copy";
 import { STAY_HERE_LABEL, STAY_RATES_SEE } from "./stay-card";
 import { CN1_COPY } from "@shared/cn1-copy";
 import type { SignupMode } from "./signup-mode";
+import { planItemRefFromFeedItem } from "@shared/plan-item-ref";
+import { savedRefKey } from "./saved-refs";
 
 export const PLAN_ACTIONS_COPY = {
-  /** approved (P-1c / GATE-1) */
+  /** approved (P-1c / GATE-1). The save action's ONE label on every tile, every mode ("Add to plan" retired, Nov 6). */
   saveToPlan: WAITLIST_COPY.saveToPlan,
-  /** approved (P-1c) */
+  /** approved (P-1c). The save action after the server confirmed the row. */
   savedToPlan: WAITLIST_COPY.savedToPlan,
-  /** existing add label (row 302a), moved here unchanged */
-  addToPlan: ADD_TO_PLAN_LABEL,
   /** HELD */
   moreInfo: "More info",
   /** HELD — instant booking */
@@ -52,11 +51,9 @@ export const PLAN_ACTIONS_COPY = {
   browseCategory: (category: string) => `Browse ${category}`,
 } as const;
 
-/** "Add to plan", or "Add to Nov 3" when the feed is scoped to one day (row 302a, unchanged). */
-export function planActionsAddLabel(scheduledDate?: string | null): string {
-  if (!scheduledDate) return PLAN_ACTIONS_COPY.addToPlan;
-  const day = new Date(`${scheduledDate}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  return `Add to ${day}`;
+/** The save action's label: "Save to plan", then "Saved to plan" once a save of this item is confirmed. */
+export function saveLabel(saved: boolean): string {
+  return saved ? PLAN_ACTIONS_COPY.savedToPlan : PLAN_ACTIONS_COPY.saveToPlan;
 }
 
 export type BookVariant = "instant" | "request" | "quote" | "partner" | "availability" | "stay_here" | "see_rates";
@@ -152,9 +149,10 @@ export interface PlanActionsVisible {
 }
 
 /**
- * Pure, fail-closed: which outputs draw. Book and Hire need open mode on BOTH reads — the shared mode read
- * (`bookingActionsShown`) and the guest-capabilities answer — so an unread or disagreeing answer hides them. Hire also
- * needs the capabilities answer's `hire` (an approved expert in the area). Save draws only when placeable.
+ * Pure, fail-closed: which outputs draw.
+ *   Book — open mode on the shared mode read (`bookingActionsShown`, dispatch ruling 6), so an unread mode hides it.
+ *   Hire — open mode AND the guest-capabilities answer's `hire` (an approved expert in the area); unread ⇒ hidden.
+ *   Save — placeable. More info — the site's config. Browse — the waitlist-mode recommendation only.
  */
 export function planActionsVisible(input: {
   mode: SignupMode;
@@ -162,13 +160,13 @@ export function planActionsVisible(input: {
   site: PlanActionsSite;
   intent: PlanActionsIntent;
 }): PlanActionsVisible {
-  const open = input.mode === "open" && input.capabilities?.mode === "open";
+  const open = input.mode === "open";
   const caps = input.capabilities?.actions ?? {};
   const cfg: PlanActionsSiteConfig = PLAN_ACTIONS_SITES[input.site];
   return {
     save: !!input.intent.save?.placeable,
-    book: !!input.intent.book && open && caps.book === true,
-    hire: !!input.intent.hire && open && caps.hire === true,
+    book: !!input.intent.book && open,
+    hire: !!input.intent.hire && open && input.capabilities?.mode === "open" && caps.hire === true,
     moreInfo: !!input.intent.moreInfo && cfg.moreInfo,
     browse: !!input.intent.browse && !open,
   };
@@ -190,4 +188,13 @@ export const GUEST_CAPABILITIES_ROUTE = "/api/public/guest-capabilities";
 export function guestCapabilitiesUrl(city: string | null | undefined): string {
   const c = typeof city === "string" ? city.trim() : "";
   return c ? `${GUEST_CAPABILITIES_ROUTE}?city=${encodeURIComponent(c)}` : GUEST_CAPABILITIES_ROUTE;
+}
+
+/**
+ * The save part of a card's intent, from the add payload it already builds: placeable when the payload names its own
+ * row (a PlanItemRef can be built — the same mapping the save rails send), and the key "Saved to plan" is read by.
+ */
+export function feedSaveIntent(payload: unknown, city: string | null | undefined): { placeable: boolean; savedKey: string | null } {
+  const ref = planItemRefFromFeedItem(payload as any, city ?? null);
+  return { placeable: !!ref, savedKey: savedRefKey(ref) };
 }

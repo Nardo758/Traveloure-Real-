@@ -2,8 +2,6 @@ import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { needHelpBody } from "@/lib/discover-need-help";
 import { readyMadeShelfState, READY_MADE_SHELF_COPY } from "@/lib/ready-made-shelf-state";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useBookingActionsShown } from "@/lib/signup-mode";
-import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { createComparison as createComparisonRequest } from "@/lib/create-comparison";
 import { useToast } from "@/hooks/use-toast";
@@ -17,7 +15,7 @@ import { useAskExpert } from "@/lib/use-ask-expert";
 import type { BuyAction } from "@shared/buy-action";
 import { LocationMismatchDialog } from "@/components/location-mismatch-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
@@ -105,8 +103,11 @@ import { useTrip } from "@/hooks/use-trips";
 // reads, same empty-state behaviour; only their mount changed.
 import { SavedTripsSection } from "@/components/dashboard/SavedTripsSection";
 import { WishlistSection } from "@/components/dashboard/WishlistSection";
-import { ADDED_TO_CART_TITLE, ADDED_TO_PLAN_TITLE, ADD_TO_PLAN_FAILED_TITLE, ADD_TO_PLAN_LABEL } from "@/lib/plan-vocabulary";
-import { addButtonLabel, decideAddTarget, GUEST_CART_SAVED_NOTE, listingPlanItemBody } from "@/lib/add-target";
+import { ADDED_TO_CART_TITLE, ADDED_TO_PLAN_TITLE, ADD_TO_PLAN_FAILED_TITLE } from "@/lib/plan-vocabulary";
+import { PlanActions, usePlanActionsVisible } from "@/components/plan/PlanActions";
+import { planActionFromBuyAction } from "@/lib/plan-actions";
+import { savedRefKey } from "@/lib/saved-refs";
+import { decideAddTarget, GUEST_CART_SAVED_NOTE, listingPlanItemBody } from "@/lib/add-target";
 import { PlanPickerDialog, useStartPlanThenAdd, type PickablePlan } from "@/components/plan-picker";
 import { syncActiveTripToContext } from "@/lib/trip-selection";
 import type { LucideIcon } from "lucide-react";
@@ -442,15 +443,12 @@ function ServiceCard({
   isAddingToCart,
   isAdded,
   targetTripId,
-  addLabelText = ADD_TO_PLAN_LABEL,
 }: {
   service: Service;
   category?: ServiceCategory;
   onAddToCart?: (serviceId: string) => void;
   isAddingToCart?: boolean;
   isAdded?: boolean;
-  /** The add button's words, from `addButtonLabel` — "Add to Cart" only for a guest (RC-2). */
-  addLabelText?: string;
   /** A direct add target (URL `?tripId=` or the only open plan), forwarded into the
       detail link. A tab plan is not stamped here — that would skip the picker. */
   targetTripId?: string;
@@ -476,10 +474,33 @@ function ServiceCard({
   // then not drawn, so the card has one action.
   // Lane 2 (A-3 / A-28): the shared rule. In waitlist mode with no add path there is no booking action at all (hidden,
   // never relabelled).
-  const bookingShown = useBookingActionsShown();
-  const saveMode = !bookingShown && !!onAddToCart;
-  const bookHidden = !bookingShown && !saveMode;
   const messageOnly = offeringActionIsMessageOnly(service.buyAction);
+  // CAP-2 Phase 3: the card's save / book / hire are PlanActions. The server buy action picks the Book variant
+  // (book → "Book", request → "Request to book", quote → "Request a quote") or the Hire output.
+  const planAction = planActionFromBuyAction(service.buyAction ?? null);
+  const serviceActionClass = "bg-[var(--earn-teal)] hover:bg-[var(--earn-teal)] text-white border border-[var(--earn-teal)]";
+  const actionsProps = {
+    site: "discoverService" as const,
+    city: service.location ?? null,
+    save: onAddToCart && !messageOnly
+      ? {
+          placeable: true,
+          savedKey: savedRefKey({ kind: "listing", source_id: String(service.id) }),
+          saved: isAdded,
+          onClick: () => onAddToCart(service.id),
+          disabled: isAddingToCart || isAdded,
+          testId: `button-add-to-cart-${service.id}`,
+          className: cn(buttonVariants({ size: "sm" }), "bg-[var(--earn-navy)] hover:bg-[var(--earn-navy)] text-white border border-[var(--earn-navy)]", isAdded && "opacity-90"),
+        }
+      : null,
+    book: !messageOnly && planAction?.output === "book"
+      ? { variant: planAction.variant, onClick: () => navigateTo(actionHref), testId: `button-service-action-${service.id}`, className: cn(buttonVariants({ size: "sm" }), serviceActionClass) }
+      : null,
+    hire: !messageOnly && planAction?.output === "hire"
+      ? { onClick: () => navigateTo(actionHref), testId: `button-service-action-${service.id}`, className: cn(buttonVariants({ size: "sm" }), serviceActionClass) }
+      : null,
+  };
+  const actionsVisible = usePlanActionsVisible(actionsProps);
   const actionHref = actionLabel ? buildStorefrontActionHref(detailHref, actionLabel, null) : detailHref;
   const rating = parseFloat(service.averageRating || "0") || 0;
   // No zero where the source has no value (footer-pages ruling, Sep 28, 2026): a missing or
@@ -633,7 +654,7 @@ function ServiceCard({
               className="text-[9.5px] uppercase tracking-wider text-[color:var(--earn-teal-ink)] mb-1.5"
               style={{ fontFamily: EARN_MONO }}
             >
-              {messageOnly ? "Not open for booking" : saveMode ? WAITLIST_COPY.saveToPlan : bookHidden ? null : "Book on Traveloure"}
+              {messageOnly ? "Not open for booking" : actionsVisible.book || actionsVisible.hire ? "Book on Traveloure" : null}
             </div>
             <div className="grid grid-cols-2 gap-2">
               {messageOnly ? (
@@ -655,30 +676,8 @@ function ServiceCard({
                     Message
                   </Button>
                 ) : null
-              ) : bookHidden ? null : (
-                <Button
-                  size="sm"
-                  className="bg-[var(--earn-teal)] hover:bg-[var(--earn-teal)] text-white border border-[var(--earn-teal)]"
-                  onClick={() => (saveMode ? onAddToCart?.(service.id) : navigateTo(actionHref))}
-                  disabled={saveMode && (isAddingToCart || isAdded)}
-                  data-testid={`button-service-action-${service.id}`}
-                >
-                  {saveMode ? WAITLIST_COPY.saveToPlan : actionLabel}
-                </Button>
-              )}
-              {onAddToCart && !messageOnly && !saveMode && (
-                <Button
-                  size="sm"
-                  className={cn(
-                    "bg-[var(--earn-navy)] hover:bg-[var(--earn-navy)] text-white border border-[var(--earn-navy)]",
-                    isAdded && "opacity-90",
-                  )}
-                  onClick={() => onAddToCart(service.id)}
-                  disabled={isAddingToCart || isAdded}
-                  data-testid={`button-add-to-cart-${service.id}`}
-                >
-                  {isAdded ? "Added" : isAddingToCart ? "Adding…" : addLabelText}
-                </Button>
+              ) : (
+                <PlanActions {...actionsProps} order={["book", "hire", "save"]} />
               )}
             </div>
             {expertAvailable && (
@@ -2004,7 +2003,6 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
                               isAddingToCart={addingToCartId === service.id}
                               isAdded={addedServices.has(service.id)}
                               targetTripId={directTripId}
-                              addLabelText={addButtonLabel(addTarget)}
                             />
                           ))}
                         </div>

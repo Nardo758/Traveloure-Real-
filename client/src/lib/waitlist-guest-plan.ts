@@ -6,6 +6,7 @@
  *
  * Not to be confused with `guest-plan.ts` (row 280b: an invited event guest's "Plan my day" button).
  */
+import { markRefSaved, savedRefKey } from "./saved-refs";
 import { dayNumberForDate, planItemRefFromFeedItem, type PlanItemKind, type PlanItemRef } from "@shared/plan-item-ref";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -175,7 +176,10 @@ export async function saveToGuestPlan(
   }
   try {
     const res = await apiRequest("POST", "/api/guest-plans/current/items", ref);
-    return (await res.json()) as GuestSaveResult;
+    const result = (await res.json()) as GuestSaveResult;
+    // CAP-2 Phase 3: the server confirmed the row (apiRequest throws on a refusal) — the card now says "Saved to plan".
+    markRefSaved(savedRefKey(ref as any));
+    return result;
   } finally {
     // R3-1: "Your plan" follows the server on every answer — a refused save included — so the list never waits for a
     // reload to show what the plan holds.

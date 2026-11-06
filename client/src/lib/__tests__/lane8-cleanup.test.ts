@@ -43,20 +43,22 @@ describe("Lane 8 cleanup", () => {
     assert.doesNotMatch(hook, /createHeldPress|useRef/, "no queued press: the shell remounts the page on sign-in");
     assert.match(read("client/src/components/browse-shell.tsx"), /if \(!isLoading && user\) \{\s*return <DashboardLayout>/);
     // Each add <Button> in a card that reads the hook carries the disabled state.
+    // CAP-2 Phase 3 (sanctioned edit): the add controls are PlanActions' save, which takes `disabled: browseSave.pending`
+    // (eight card saves + the event drawer's action on the feed cards; one on a catalogue row).
     const sites: Array<[string, number]> = [
-      ["client/src/components/city-feed-card.tsx", 8],
+      ["client/src/components/city-feed-card.tsx", 9],
       ["client/src/components/catalogue-search-results.tsx", 1],
     ];
     for (const [f, n] of sites) {
-      assert.equal((read(f).match(/disabled=\{browseSave\.pending\}/g) ?? []).length, n, f);
+      assert.equal((read(f).match(/disabled(=\{|: )browseSave\.pending/g) ?? []).length, n, f);
     }
     // CAP-2 Phase 2 (ruling option (a), sanctioned edit): the recommendation card saves nothing, so it no longer reads the
     // save hook and has no add control to disable.
     assert.doesNotMatch(read("client/src/components/city-feed-card-recommendation.tsx"), /useBrowseSaveToPlan|browseSave\./);
     const card = read("client/src/components/city-feed-card.tsx");
     assert.match(card, /disabled: browseSave\.pending,/);
-    assert.match(card, /onSave=\{action\.onAdd\} disabled=\{action\.disabled\}/);
-    assert.match(card, /onClick=\{action\.onAdd\} disabled=\{action\.disabled\}/);
+    // CAP-2 Phase 3 (sanctioned edit): the drawer's save is PlanActions', disabled the same way.
+    assert.match(card, /disabled: action\.disabled,[\s\S]{0,200}onClick: action\.onAdd,/);
     assert.match(read("client/src/components/plan/SaveToPlanButton.tsx"), /disabled=\{disabled\}/);
   });
 

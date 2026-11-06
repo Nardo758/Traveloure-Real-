@@ -13,6 +13,7 @@
  *
  * Run: npx tsx --test client/src/lib/__tests__/lane2-mode-read.test.ts
  */
+import { planActionsVisible } from "../plan-actions";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -31,12 +32,13 @@ describe("Lane 2 mode read", () => {
   });
 
   it("M2 no tile books in waitlist mode", () => {
-    assert.equal(tileActionLabel("vendor-service", { bookable: true }), "Check availability");
-    assert.equal(tileActionLabel("vendor-service", { bookable: true, waitlist: true, saveToPlan: true }), "Save to plan");
-    assert.equal(tileActionLabel("recommendation", { bookable: true, affiliate: true }), "Book on partner");
-    assert.equal(tileActionLabel("recommendation", { bookable: true, affiliate: true, waitlist: true }), "Save to plan");
-    assert.equal(tileActionLabel("recommendation", { bookable: true, waitlist: true }), "Save to plan");
-    assert.equal(tileActionLabel("recommendation", { bookable: true }), "Book now");
+    // CAP-2 Phase 3 (sanctioned edit): a tile's save / book is PlanActions'. In waitlist mode it draws the save and
+    // never a Book, whatever the card asks for; in open mode the Book draws.
+    const intent = { save: { placeable: true }, book: { variant: "availability" as const } };
+    assert.deepEqual(planActionsVisible({ mode: "waitlist", capabilities: undefined, site: "bento", intent }), { save: true, book: false, hire: false, moreInfo: false, browse: false });
+    assert.equal(planActionsVisible({ mode: "open", capabilities: undefined, site: "bento", intent }).book, true);
+    assert.equal(tileActionLabel("vendor-service"), null, "the tile label table no longer words a save or a book");
+    assert.equal(tileActionLabel("recommendation"), null);
   });
 
   it("M3 the service detail page keeps only add-to-plan in waitlist mode", () => {
@@ -63,30 +65,25 @@ describe("Lane 2 mode read", () => {
 
   it("M4 every listed site reads the shared rule", () => {
     const pins: Array<[string, RegExp]> = [
-      ["client/src/components/city-feed-card.tsx", /\{bookingShown && resolvedBookability !== "info_only" && bookHref && \(/],
-      ["client/src/components/city-feed-card.tsx", /\{bookingShown && resolvedBookability !== "info_only" && \(/],
-      ["client/src/components/city-feed-card.tsx", /\{bookingShown && compactActionState === "platform"/],
       ["client/src/components/city-feed-card.tsx", /function BookingBadge[\s\S]{0,200}if \(!shown\) return null;/],
       ["client/src/components/city-feed-card.tsx", /if \(!bookingShown && !isRequest && !isExpertSuggestion\) return null;/],
-      ["client/src/components/city-feed-card-recommendation.tsx", /const waitlist = !useBookingActionsShown\(\);\s*const saveMode = waitlist && !!onBook;/],
-      ["client/src/components/landing/landing-hero.tsx", /actions=\{bookingShown && <Link/],
       ["client/src/components/landing/landing-hero.tsx", /const price = bookingShown \? derivePreviewPrice\(slot\.listing\) : null;/],
       ["client/src/components/storefront/StorefrontBookingPanel.tsx", /if \(kind === "provider" && !bookingShown\) return null;[\s\S]*if \(kind === "provider" && !bookingShown\) return null;/],
       ["client/src/pages/storefront.tsx", /const noBooking = bookingClosed \|\| !bookingShown;/],
-      ["client/src/pages/discover.tsx", /const saveMode = !bookingShown && !!onAddToCart;/],
       ["client/src/pages/service-detail.tsx", /const buy = bookingShown \? serviceDetailBuyRender\(service\.buyAction\) : withoutBookingActions\(/],
       ["client/src/pages/service-detail.tsx", /\{bookingShown && \(<>\s*\{isRoom \? \(/],
       ["client/src/pages/service-detail.tsx", /\{bookingShown && hasLeadTime && \(/],
       ["client/src/pages/ready-made-detail.tsx", /\{purchaseCopyShown && \(<>/],
-      ["client/src/pages/deals.tsx", /\{!bookingShown \? null : deal\.bookingToken \? \(/],
       ["client/src/pages/providers-directory.tsx", /\{bookingShown && provider\.instantBooking && \(/],
-      ["client/src/components/curated-content-section.tsx", /\{!bookingShown \? null : isAffiliate \? \(/],
       // R3-24 (A-3 regression): the plan's lodging panel — "Stay here" and "See rates".
       ["client/src/components/plan/AnchorPanel.tsx", /const bookingShown = useBookingActionsShown\(\);/],
       ["client/src/components/plan/AnchorPanel.tsx", /bookingShown=\{bookingShown\}/],
-      ["client/src/components/plan/AnchorPanel.tsx", /\{canChoose && bookingShown \? \([\s\S]{0,800}STAY_HERE_LABEL/],
-      ["client/src/components/plan/AnchorPanel.tsx", /\{canChoose && bookingShown \? \([\s\S]{0,800}Stay here/],
       ["client/src/components/plan/AnchorPanel.tsx", /\{bookingShown && h\.kind === "liteapi" \? <StayRatesRow/],
+      // CAP-2 Phase 3 (sanctioned edit): the tile book / stay / rates controls moved into PlanActions, whose Book draws
+      // only on the shared mode read; the sites pass intent and the view passes its wrapper's read.
+      ["client/src/lib/plan-actions.ts", /book: !!input\.intent\.book && open,/],
+      ["client/src/components/plan/PlanActions.tsx", /const read = useSignupMode\(\)\.mode;/],
+      ["client/src/components/plan/AnchorPanel.tsx", /\{canChoose && bookingShown \? \([\s\S]{0,200}<PlanActions\s+site="anchor"\s+bookingShown=\{bookingShown\}/],
     ];
     for (const [file, re] of pins) assert.match(read(file), re, file);
     // The P-1c reads on the plan surfaces are the shared rule now, not a second copy of it.
@@ -98,12 +95,14 @@ describe("Lane 2 mode read", () => {
 
   it("M5 a traveler file that draws a booking label reads the shared rule", () => {
     const LABEL = /(["'`>]\s*)(Book now|Book Now|Check availability|Instant booking|Book via Traveloure|Book on Traveloure|Book this leg)(\s*["'`<])/;
-    const READS = /useBookingActionsShown|withoutBookingActions|tileActionLabel\(/;
+    // CAP-2 Phase 3 (sanctioned edit): a file whose booking control is PlanActions' reads the rule through it.
+    const READS = /useBookingActionsShown|withoutBookingActions|tileActionLabel\(|<PlanActions\b|usePlanActionsVisible\(/;
     // Not traveler surfaces, or a label only in a comment / a label table read through a gated caller.
     const NOT_TRAVELER: Record<string, string> = {
       "client/src/components/backoffice/booking-mode-toggle.tsx": "seller backoffice: what travelers will see",
       "client/src/lib/booking-mode-prompt.ts": "seller backoffice prompt",
       "client/src/lib/tile-action-copy.ts": "the label table; read only through tileActionLabel",
+      "client/src/lib/plan-actions.ts": "PlanActions' label table; read only through PlanActions, which reads the shared rule",
       "client/src/lib/storefront-offering-action.ts": "the label mapper; its two callers (storefront, discover) gate it",
     };
     const offenders: string[] = [];

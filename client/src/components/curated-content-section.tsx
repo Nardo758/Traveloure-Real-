@@ -1,12 +1,10 @@
 import { useState } from "react";
-import { useBookingActionsShown } from "@/lib/signup-mode";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -14,7 +12,6 @@ import {
   MapPin,
   Star,
   Clock,
-  ExternalLink,
   Plus,
   ShoppingCart,
   Loader2,
@@ -22,7 +19,12 @@ import {
   Package,
 } from "lucide-react";
 import { motion } from "framer-motion";
-import { ADDED_TO_PLAN_TITLE, ADD_TO_PLAN_LABEL } from "@/lib/plan-vocabulary";
+import { ADDED_TO_PLAN_TITLE } from "@/lib/plan-vocabulary";
+import { PLAN_ACTIONS_COPY } from "@/lib/plan-actions";
+import { cn } from "@/lib/utils";
+import { PlanActions } from "@/components/plan/PlanActions";
+import { markRefSaved, savedRefKey } from "@/lib/saved-refs";
+import { buttonVariants } from "@/components/ui/button";
 import { buildDiscoverAddBody } from "@/lib/discover-add-body";
 
 interface CuratedItem {
@@ -53,6 +55,12 @@ interface CuratedItem {
     partnerId: string | null;
     isAffiliateTracked: boolean;
   };
+}
+
+/** CAP-2 Phase 3: a curated item's saved-ref key — its partner product (`affiliate_product`), or null when it names none. */
+function curatedRefKey(item: Pick<CuratedItem, "tracking">): string | null {
+  const id = typeof item.tracking?.productId === "string" ? item.tracking.productId.trim() : "";
+  return savedRefKey(id ? { kind: "affiliate_product", source_id: id } : null);
 }
 
 interface CuratedContentResponse {
@@ -103,6 +111,8 @@ function AddToTripDialog({
       );
     },
     onSuccess: (_, tripId) => {
+      // CAP-2 Phase 3: the row is confirmed — the card's save says "Saved to plan".
+      if (item) markRefSaved(curatedRefKey(item));
       queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "itinerary-items"] });
       toast({
         title: ADDED_TO_PLAN_TITLE,
@@ -190,8 +200,6 @@ function CuratedCard({
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const isAffiliate = !!item.affiliate_url;
-  // Lane 2 (A-3): no Book / checkout control in waitlist mode — the card keeps its add.
-  const bookingShown = useBookingActionsShown();
 
   // Unified affiliate redirect — always routes through platform intermediary for ALL affiliate items.
   // Server resolves the authoritative URL and records an affiliate_clicks row before returning it.
@@ -246,7 +254,7 @@ function CuratedCard({
       if (data.url) {
         window.location.href = data.url;
       } else {
-        toast({ title: "Checkout unavailable", description: `Could not open checkout. Try ${ADD_TO_PLAN_LABEL} instead.`, variant: "destructive" });
+        toast({ title: "Checkout unavailable", description: `Could not open checkout. Try ${PLAN_ACTIONS_COPY.saveToPlan} instead.`, variant: "destructive" });
       }
     },
     onError: (err: unknown) => {
@@ -360,66 +368,43 @@ function CuratedCard({
           </div>
 
           <div className="flex gap-2 mt-auto">
-            <Button
-              size="sm"
-              variant="outline"
-              className="flex-1 text-xs h-8"
-              onClick={() => onAddToTrip(item)}
-              data-testid={`button-add-trip-${item.id}`}
-            >
-              <Plus className="w-3 h-3 mr-1" />
-              {ADD_TO_PLAN_LABEL}
-            </Button>
-            {!bookingShown ? null : isAffiliate ? (
-              // ALL affiliate items route through platform intermediary — click recorded server-side
-              <Button
-                size="sm"
-                className="flex-1 text-xs h-8 bg-primary hover:bg-primary/90"
-                onClick={handleBookViaTraveloure}
-                disabled={affiliateRedirectMutation.isPending}
-                data-testid={`button-book-via-traveloure-${item.id}`}
-              >
-                {affiliateRedirectMutation.isPending ? (
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                ) : (
-                  <>
-                    Book via Traveloure
-                    <ExternalLink className="w-3 h-3 ml-1" />
-                  </>
-                )}
-              </Button>
-            ) : isCuratedCheckoutUnavailable ? (
-              // F-1: no fulfillment path exists for a priced curated item yet — disabled with an
-              // honest label instead of a "Book Now" that only leads to a dead-end 501.
-              <Button
-                size="sm"
-                variant="outline"
-                className="flex-1 text-xs h-8"
-                disabled
-                title="Checkout for curated content isn't available yet."
-                data-testid={`button-book-now-${item.id}`}
-              >
-                Not available yet
-              </Button>
-            ) : (
-              // Non-affiliate curated item with no price — trip planner
-              <Button
-                size="sm"
-                className="flex-1 text-xs h-8"
-                onClick={handleBookNow}
-                disabled={stripeCheckoutMutation.isPending}
-                data-testid={`button-book-now-${item.id}`}
-              >
-                {stripeCheckoutMutation.isPending ? (
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                ) : (
-                  <>
-                    <ShoppingCart className="w-3 h-3 mr-1" />
-                    Book Now
-                  </>
-                )}
-              </Button>
-            )}
+            {/* CAP-2 Phase 3: PlanActions. Save names the item's partner product (its only row of ours) — an item
+                with none is not placeable and offers no save. Book: a partner item is "Book on partner" (the tracked
+                redirect); an item with a checkout is "Book"; an item with no checkout draws nothing. */}
+            <PlanActions
+              site="curated"
+              city={item.city}
+              order={["save", "book"]}
+              save={{
+                placeable: !!curatedRefKey(item),
+                savedKey: curatedRefKey(item),
+                testId: `button-add-trip-${item.id}`,
+                className: cn(buttonVariants({ size: "sm", variant: "outline" }), "flex-1 text-xs h-8"),
+                icon: <Plus className="w-3 h-3 mr-1" />,
+                onClick: () => onAddToTrip(item),
+              }}
+              book={
+                isAffiliate
+                  ? {
+                      variant: "partner",
+                      onClick: handleBookViaTraveloure,
+                      disabled: affiliateRedirectMutation.isPending,
+                      testId: `button-book-via-traveloure-${item.id}`,
+                      className: cn(buttonVariants({ size: "sm" }), "flex-1 text-xs h-8 bg-primary hover:bg-primary/90"),
+                      icon: affiliateRedirectMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null,
+                    }
+                  : isCuratedCheckoutUnavailable
+                    ? null
+                    : {
+                        variant: "instant",
+                        onClick: handleBookNow,
+                        disabled: stripeCheckoutMutation.isPending,
+                        testId: `button-book-now-${item.id}`,
+                        className: cn(buttonVariants({ size: "sm" }), "flex-1 text-xs h-8"),
+                        icon: stripeCheckoutMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <ShoppingCart className="w-3 h-3 mr-1" />,
+                      }
+              }
+            />
           </div>
         </CardContent>
       </Card>

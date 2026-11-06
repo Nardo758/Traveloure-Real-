@@ -8,11 +8,11 @@ import { guestCapabilitiesUrl, type GuestCapabilities } from "./plan-actions";
 
 const NO_PROVIDER_CLIENT = new QueryClient();
 
-export function useGuestCapabilities(city: string | null | undefined): GuestCapabilities | undefined {
+export function useGuestCapabilities(city: string | null | undefined, enabled = true): GuestCapabilities | undefined {
   const client = useContext(QueryClientContext);
   const url = guestCapabilitiesUrl(city);
   const q = useQuery<GuestCapabilities>(
-    { queryKey: [url], retry: false, staleTime: 30_000, enabled: !!client },
+    { queryKey: [url], retry: false, staleTime: 30_000, enabled: !!client && enabled },
     client ?? NO_PROVIDER_CLIENT,
   );
   return q.data;

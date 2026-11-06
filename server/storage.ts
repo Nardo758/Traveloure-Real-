@@ -1,6 +1,5 @@
 import { toPublicListing } from "./utils/public-service-listing";
 import { hideBlockedListingImages } from "./services/place-photo-blocks.service";
-import { VIATOR_ITEM_CONTENT_TYPE } from "@shared/viator-item";
 import { db } from "./db";
 import { scrubStoredTransportOption } from "./services/transport-option-client";
 import { enqueuePlanLegRecompute } from "./services/routing/plan-legs-queue";
@@ -1139,7 +1138,7 @@ export interface IStorage {
 
   getItineraryItems(tripId: string): Promise<any[]>;
 
-  createItineraryItem(item: any, opts?: { fromLocalInput?: boolean; coordSource?: GoogleCoordSource; viatorProductCode?: string }): Promise<any>;
+  createItineraryItem(item: any, opts?: { fromLocalInput?: boolean; coordSource?: GoogleCoordSource; contentLink?: { contentType: string; contentId: string } }): Promise<any>;
   createPendingBillboardGemItemIfAbsent(
     item: InsertItineraryItem & { tripId: string },
     gemId: string,
@@ -8448,21 +8447,16 @@ export class DatabaseStorage implements IStorage {
   // caller that sets it at create time (see the schema comment).
   async createItineraryItem(
     item: InsertItineraryItem & { tripId: string },
-    opts: { fromLocalInput?: boolean; coordSource?: GoogleCoordSource; viatorProductCode?: string; contentLink?: { contentType: string; contentId: string } } = {},
+    opts: { fromLocalInput?: boolean; coordSource?: GoogleCoordSource; contentLink?: { contentType: string; contentId: string } } = {},
   ): Promise<ItineraryItem> {
     const safeItem = withItemCoordSource(stampItemSourceClass(stripItineraryItemRoutingFields(item as Record<string, unknown>), opts), opts.coordSource);
     // CAP-2 (ledger `2026-11-05-cap2-plan-item-ref`): the content pair a PlanItemRef resolved to, stamped HERE after the
     // strip from the resolver's own answer — never from the body.
-    if (opts.contentLink && !opts.viatorProductCode) {
+    if (opts.contentLink) {
       (safeItem as any).contentType = opts.contentLink.contentType;
       (safeItem as any).contentId = opts.contentLink.contentId;
     }
-    // VD-1b (ledger `2026-10-18-viator-add-to-plan`): the content pair is stamped HERE, after the strip, from a
-    // code the create rail admitted (`itineraryItemViatorLinkSchema`) — never from the body.
-    if (opts.viatorProductCode) {
-      (safeItem as any).contentType = VIATOR_ITEM_CONTENT_TYPE;
-      (safeItem as any).contentId = opts.viatorProductCode;
-    }
+    // CAP-2 Phase 3 (FU-CAP2-2): the VD-1b Viator stamp is retired — no new item takes a Viator content pair.
     // A-11 (migration 436): one item per source content row on a plan. A second add of the same content answers the
     // item the plan already holds instead of failing on the unique index.
     const [created] = await db.insert(itineraryItems).values(safeItem as any).onConflictDoNothing().returning();

@@ -27,8 +27,6 @@ import { Router } from "wouter";
 import { siteNeverSayHits } from "@shared/banned-copy";
 import { WAITLIST_COPY } from "../../../lib/waitlist-copy";
 import { signupModeFrom } from "../../../lib/signup-mode";
-import { tileActionLabel } from "../../../lib/bento-action-state";
-import { catalogueActionLabel } from "../../../lib/catalogue-search-copy";
 import { STAY_HERE_LABEL } from "../../../lib/stay-card";
 import { SignInModalProvider } from "../../../contexts/SignInModalContext";
 import { CityFeedCardRecommendation } from "../../city-feed-card-recommendation";
@@ -77,17 +75,15 @@ describe("P-1c — waitlist mode", () => {
     assert.equal(signupModeFrom({ mode: "open" }), "open");
   });
 
-  it("T3 waitlist: the recommendation's book reads 'Save to plan' and runs the add path", () => {
-    assert.equal(tileActionLabel("recommendation", { bookable: true, waitlist: true }), "Save to plan");
-    assert.equal(tileActionLabel("recommendation", { bookable: true, affiliate: true, waitlist: true }), "Save to plan"); // Lane 2 (A-3): no partner booking in waitlist mode.
-    // CAP-2 Phase 2 (ruling option (a), sanctioned edit): a recommendation names a category, not a row, so it never
-    // saves. In waitlist mode its browse action waits for an approved label (Phase 3); the card draws no button.
+  // CAP-2 Phase 3 (sanctioned edit; ruling Nov 6): in waitlist mode the recommendation's one action is PlanActions'
+  // "Browse {category}" — the same category browse — never a save and never a book.
+  it("T3 waitlist: the recommendation reads 'Browse {category}', no save, no book", () => {
     const html = renderRec(null); // no answer ⇒ waitlist
-    assert.doesNotMatch(html, /data-testid="btn-book-rec-0"/, "no save dressed as a book");
+    assert.doesNotMatch(html, /data-testid="btn-book-rec-0"/, "no book in waitlist mode");
     assert.doesNotMatch(html, /data-testid="btn-add-rec-0"/, "no add");
+    assert.match(html, /data-testid="btn-browse-rec-0"[^>]*>Browse Tea Ceremony Host</);
     const card = read("client/src/components/city-feed-card-recommendation.tsx");
     assert.match(card, /const book = \(\) => onBook\?\.\(candidate\);/);
-    assert.ok(read("client/src/lib/catalogue-search-copy.ts").includes("opts.waitlist ? WAITLIST_COPY.saveToPlan : CATALOGUE_RESULT_COPY.book"));
   });
 
   it("T4 waitlist: the slip hides the paid actions; Stay here stays", () => {
@@ -125,13 +121,12 @@ describe("P-1c — waitlist mode", () => {
     assert.ok(!read("client/src/components/plancard/AffiliateBookButton.tsx").includes("useSignupMode"));
   });
 
-  it("T7 open mode: every label is unchanged", () => {
-    assert.equal(tileActionLabel("recommendation", { bookable: true }), "Book now");
-    assert.equal(tileActionLabel("recommendation", { bookable: true, waitlist: false }), "Book now");
-    assert.equal(catalogueActionLabel({ kind: "platform", action: { type: "book", href: "/x" } } as any), "Book");
-    assert.equal(catalogueActionLabel({ kind: "platform", action: { type: "book", href: "/x" } } as any, { waitlist: false }), "Book");
+  it("T7 open mode: the recommendation books; the slip's labels are unchanged", () => {
+    // CAP-2 Phase 3 (sanctioned edit): the recommendation's book is PlanActions' — a platform candidate lands on the
+    // category browse, so it reads "Check availability".
     const html = renderRec("open");
-    assert.match(html, /data-testid="btn-book-rec-0"[^>]*>Book now</);
+    assert.match(html, /data-testid="btn-book-rec-0"[^>]*>Check availability</);
+    assert.doesNotMatch(html, /data-testid="btn-browse-rec-0"/, "no browse in open mode");
     // CAP-2 Phase 2 (sanctioned edit): no Add on a recommendation in either mode.
     assert.doesNotMatch(html, /data-testid="btn-add-rec-0"/);
     const rail = read("client/src/components/plancard/SlipRail.tsx");

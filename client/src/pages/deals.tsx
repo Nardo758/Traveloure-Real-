@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { useBookingActionsShown } from "@/lib/signup-mode";
 import { useQuery } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { PlanActions } from "@/components/plan/PlanActions";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,6 @@ import {
   Hotel,
   Activity,
   Car,
-  ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useContentAgentBooking } from "@/hooks/use-content-agent-booking";
@@ -117,8 +116,6 @@ function DealCard({ deal, idx }: { deal: DealItem; idx: number }) {
   const colorClass = typeColors[deal.type] || "bg-gray-50 text-gray-700";
   const [imgFailed, setImgFailed] = useState(false);
   const resolvedImage = resolveImage(deal);
-  // Lane 2 (A-3 / K-10): no Book Now (and no "Unavailable" booking state) in waitlist mode.
-  const bookingShown = useBookingActionsShown();
 
   // §16: a deal's "Book" never opens a raw off-site affiliate link — it routes through the
   // in-platform booking-agent rail via the opaque bookingToken the feed shipped in place of
@@ -231,27 +228,20 @@ function DealCard({ deal, idx }: { deal: DealItem; idx: number }) {
                 <div className="text-xs text-[#9CA3AF]">{deal.providerLabel}</div>
               </div>
 
-              {!bookingShown ? null : deal.bookingToken ? (
-                <Button
-                  size="sm"
-                  className="bg-primary hover:bg-primary/90 text-white shrink-0"
-                  onClick={book}
-                  disabled={isPending || requested}
-                  data-testid={`button-book-${deal.id}`}
-                >
-                  {requested ? "Requested" : "Book Now"}
-                  <ExternalLink className="w-3 h-3 ml-1" />
-                </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="shrink-0"
-                  disabled
-                >
-                  Unavailable
-                </Button>
-              )}
+              {/* CAP-2 Phase 3: PlanActions' Book "request" variant — the booking-agent request (§16), open mode only;
+                  "Requested" after it is sent. A deal with no booking token draws nothing. */}
+              <PlanActions
+                site="deals"
+                city={deal.destination || null}
+                book={deal.bookingToken ? {
+                  variant: "request",
+                  done: requested,
+                  onClick: book,
+                  disabled: isPending || requested,
+                  testId: `button-book-${deal.id}`,
+                  className: cn(buttonVariants({ size: "sm" }), "bg-primary hover:bg-primary/90 text-white shrink-0"),
+                } : null}
+              />
             </div>
           </div>
         </CardContent>
