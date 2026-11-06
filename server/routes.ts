@@ -1563,6 +1563,12 @@ export async function registerRoutes(
         } as any,
         { datesChosenByTraveler },
       );
+      // CAP-2 Phase 2 (ruling 9): "Plan around it" on a city event lands the event on the plan as an item, through the
+      // one resolver. The event was verified above; landing it never fails the mint.
+      if (mintEntry?.eventSourceId) {
+        const { landRefOnNewPlan } = await import("./services/plan-item-ref-write.service");
+        await landRefOnNewPlan(trip as any, { kind: "city_event", source_id: mintEntry.eventSourceId, city: String(sanitizedInput.destination ?? "").split(",")[0].trim() });
+      }
 
       // Fire-and-forget: T2 funnel event. E1: `door` / `occasionSource` are CLIENT-SUPPLIED (the
       // door the traveler came through — the server cannot observe it) and omitted when not sent;

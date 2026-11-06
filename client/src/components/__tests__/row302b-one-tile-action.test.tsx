@@ -200,7 +200,7 @@ describe("row 302b — one primary action per bento kind", () => {
     assert.equal(add.includes("btn-book-svc-"), false);
   });
 
-  it("recommendation is Book when that control is bookable, otherwise Add", () => {
+  it("recommendation is Book when that control is bookable, otherwise nothing (no Add — CAP-2 option (a))", () => {
     const book = render(
       <CityFeedCardRecommendation
         candidate={candidate}
@@ -230,8 +230,10 @@ describe("row 302b — one primary action per bento kind", () => {
       />,
       { expertAvailable: true },
     );
-    assertOnePrimary(add, "rec add");
-    assert.match(add, /data-testid="btn-add-rec-1"/);
+    // CAP-2 Phase 2 (ruling option (a), sanctioned edit): a recommendation names a category, not a row, so a
+    // not-bookable one draws no Add — it has no primary action at all.
+    assert.equal(primaryCount(add), 0, "rec not-bookable: no primary action");
+    assert.equal(add.includes("btn-add-rec-"), false);
     assert.equal(add.includes("btn-book-rec-"), false);
   });
 

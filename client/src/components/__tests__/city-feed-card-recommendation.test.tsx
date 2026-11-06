@@ -149,20 +149,21 @@ describe("traveler CTAs (gem-card parity, not the provider CTA)", () => {
     sourceType: "platform_provider",
   };
 
-  it("renders Add / Ask / Book and never 'I do this' (the city has an expert to ask)", () => {
+  // CAP-2 Phase 2 (ruling option (a), sanctioned edit): a recommendation names a category, not a row — no Add, no Save.
+  it("renders Ask / Book (browse the category), no Add, and never 'I do this' (the city has an expert to ask)", () => {
     const html = render(candidate, {}, { expertAvailable: true });
     assert.ok(html.includes("Book"), "Book CTA missing");
-    assert.ok(html.includes("Add"), "Add CTA missing");
+    assert.ok(!html.includes("btn-add-rec-"), "no Add on a recommendation");
     assert.ok(html.includes("Ask"), "Ask CTA missing");
     assert.ok(!html.includes("I do this"), "provider-side CTA leaked onto a traveler card");
   });
 
-  it("SH-1 item 11: with no availability answer the Ask CTA is not drawn (Add and Book stay)", () => {
+  it("SH-1 item 11: with no availability answer the Ask CTA is not drawn (Book stays)", () => {
     const html = render(candidate);
     assert.ok(!html.includes("btn-ask-rec-"), "Ask CTA drawn without a server yes");
     assert.ok(!html.includes("Ask an expert"), "Ask label drawn without a server yes");
     assert.ok(html.includes("Book"), "Book CTA missing");
-    assert.ok(html.includes("Add"), "Add CTA missing");
+    assert.ok(!html.includes("btn-add-rec-"), "no Add on a recommendation");
   });
 });
 

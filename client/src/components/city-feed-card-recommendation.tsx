@@ -17,7 +17,7 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { Info, Plus, Sparkles } from "lucide-react";
+import { Info, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -32,7 +32,6 @@ import { useAskExpert } from "@/lib/use-ask-expert";
 import type { BentoCompactActionState } from "@/lib/bento-action-state";
 import { tileActionLabel } from "@/lib/bento-action-state";
 import { useBookingActionsShown } from "@/lib/signup-mode";
-import { useBrowseSaveToPlan } from "@/lib/browse-save";
 
 export interface RecommendationCandidate {
   offeringId: string;
@@ -118,7 +117,7 @@ export function CityFeedCardRecommendation({
   city,
   position,
   scheduledDate,
-  onAdd: onAddProp,
+  onAdd: _onAdd,
   onBook,
   recommendedLabel = "Picked for your days",
   affiliateLabel = "Paid partner",
@@ -129,9 +128,6 @@ export function CityFeedCardRecommendation({
   compactActionState,
 }: CityFeedCardRecommendationProps) {
   const [imgLoaded, setImgLoaded] = useState(false);
-  // GATE-1: waitlist + signed out ⇒ the add press is "Save to plan" (a toast, no dialog, no sign-in wall).
-  const browseSave = useBrowseSaveToPlan();
-  const onAdd = browseSave.wrapAdd(onAddProp);
   // Why-recommended disclosure modal — opened by the CARD itself (family
   // grammar: the card is the link; no "More info" text link).
   const [infoOpen, setInfoOpen] = useState(false);
@@ -179,18 +175,11 @@ export function CityFeedCardRecommendation({
   // so look one up by display name + city, with the category emoji fallback.
   const { photoUrl, loading } = useGemPhoto(`rec-${position}-${name}`, name, city, null);
 
-  const addLabel = tileActionLabel("recommendation", { bookable: false, scheduledDate, saveToPlan: browseSave.saveToPlan }) ?? "";
-  // Row P-1c (waitlist mode): a Traveloure book becomes "Save to plan" and runs the add-to-plan path; the separate
-  // add button is then not drawn, so the card has one action. A partner's book link is not a purchase and stays.
-  const addItem = () =>
-    onAdd?.({
-      title: name,
-      description: candidate.tagline,
-      city,
-      type: "recommendation",
-      scheduledDate,
-    });
-  const book = () => (saveMode ? addItem() : onBook?.(candidate));
+  // CAP-2 Phase 2 (ruling, Nov 5, 2026 — option (a)): a recommendation names an offering CATEGORY
+  // (`service_offering_types.offering_type_key`), not a row a PlanItemRef can name, so the card offers no save and no add.
+  // Its action browses that category (`onBook` → the services browse filtered by `categoryKey`). In waitlist mode the
+  // browse action waits for its approved label (CAP-2 Phase 3, PlanActions); until then the card draws no button there.
+  const book = () => onBook?.(candidate);
 
   const photoArea = (
     <div
@@ -246,9 +235,8 @@ export function CityFeedCardRecommendation({
       )}
 
       <div className="flex gap-1.5 pt-0.5 flex-wrap">
-        {onBook && (
+        {onBook && !saveMode && (
           <Button
-            disabled={saveMode && browseSave.pending}
             size="sm"
             className="h-7 text-xs px-3"
             style={bookStyle}
@@ -259,28 +247,6 @@ export function CityFeedCardRecommendation({
             data-testid={`btn-book-rec-${position}`}
           >
             {bookLabel}
-          </Button>
-        )}
-        {!saveMode && (
-          <Button
-            disabled={browseSave.pending}
-            size="sm"
-            className="h-7 text-xs px-3"
-            style={{ background: "var(--earn-navy)", color: "#fff", border: "none" }}
-            onClick={(e) => {
-              e.stopPropagation();
-              onAdd?.({
-                title: name,
-                description: candidate.tagline,
-                city,
-                type: "recommendation",
-                scheduledDate,
-              });
-            }}
-            data-testid={`btn-add-rec-${position}`}
-          >
-            <Plus className="w-3 h-3 mr-1" />
-            {addLabel}
           </Button>
         )}
         {expertAvailable && (
@@ -335,35 +301,14 @@ export function CityFeedCardRecommendation({
               )}
 
               <div className="flex flex-wrap gap-2 pt-1">
-                {onBook && (
+                {onBook && !saveMode && (
                   <Button
-                    disabled={saveMode && browseSave.pending}
                     size="sm"
                     style={bookStyle}
                     onClick={book}
                     data-testid={`modal-book-rec-${position}`}
                   >
                     {bookLabel}
-                  </Button>
-                )}
-                {!saveMode && (
-                  <Button
-                    disabled={browseSave.pending}
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      onAdd?.({
-                        title: name,
-                        description: candidate.tagline,
-                        city,
-                        type: "recommendation",
-                        scheduledDate,
-                      })
-                    }
-                    data-testid={`modal-add-rec-${position}`}
-                  >
-                    <Plus className="w-3 h-3 mr-1" />
-                    {addLabel}
                   </Button>
                 )}
               </div>
@@ -433,9 +378,8 @@ export function CityFeedCardRecommendation({
             </div>
           )}
           <div className="flex flex-wrap gap-1.5 pt-0.5 items-center mt-auto min-w-0">
-            {onBook && compactActionState !== "not-bookable" ? (
+            {onBook && !saveMode && compactActionState !== "not-bookable" ? (
               <Button
-                disabled={saveMode && browseSave.pending}
                 size="sm"
                 className="h-7 text-xs px-3 flex-1 min-w-0 whitespace-nowrap"
                 style={bookStyle}
@@ -448,29 +392,7 @@ export function CityFeedCardRecommendation({
               >
                 {bookLabel}
               </Button>
-            ) : (
-              <Button
-                disabled={browseSave.pending}
-                size="sm"
-                className="h-7 text-xs px-3 flex-1 min-w-0 whitespace-nowrap"
-                style={{ background: "var(--earn-navy)", color: "#fff", border: "none" }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onAdd?.({
-                    title: name,
-                    description: candidate.tagline,
-                    city,
-                    type: "recommendation",
-                    scheduledDate,
-                  });
-                }}
-                data-testid={`btn-add-rec-${position}`}
-                data-bento-primary-action=""
-              >
-                <Plus className="w-3 h-3 mr-1" />
-                {addLabel}
-              </Button>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -508,35 +430,14 @@ export function CityFeedCardRecommendation({
               )}
 
               <div className="flex flex-wrap gap-2 pt-1">
-                {onBook && (
+                {onBook && !saveMode && (
                   <Button
-                    disabled={saveMode && browseSave.pending}
                     size="sm"
                     style={bookStyle}
                     onClick={book}
                     data-testid={`modal-book-rec-${position}`}
                   >
                     {bookLabel}
-                  </Button>
-                )}
-                {!saveMode && (
-                  <Button
-                    disabled={browseSave.pending}
-                    size="sm"
-                    variant="outline"
-                    onClick={() =>
-                      onAdd?.({
-                        title: name,
-                        description: candidate.tagline,
-                        city,
-                        type: "recommendation",
-                        scheduledDate,
-                      })
-                    }
-                    data-testid={`modal-add-rec-${position}`}
-                  >
-                    <Plus className="w-3 h-3 mr-1" />
-                    {addLabel}
                   </Button>
                 )}
               </div>

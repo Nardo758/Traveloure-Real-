@@ -80,11 +80,13 @@ describe("P-1c — waitlist mode", () => {
   it("T3 waitlist: the recommendation's book reads 'Save to plan' and runs the add path", () => {
     assert.equal(tileActionLabel("recommendation", { bookable: true, waitlist: true }), "Save to plan");
     assert.equal(tileActionLabel("recommendation", { bookable: true, affiliate: true, waitlist: true }), "Save to plan"); // Lane 2 (A-3): no partner booking in waitlist mode.
+    // CAP-2 Phase 2 (ruling option (a), sanctioned edit): a recommendation names a category, not a row, so it never
+    // saves. In waitlist mode its browse action waits for an approved label (Phase 3); the card draws no button.
     const html = renderRec(null); // no answer ⇒ waitlist
-    assert.match(html, /data-testid="btn-book-rec-0"[^>]*>Save to plan</);
-    assert.doesNotMatch(html, /data-testid="btn-add-rec-0"/, "one action, not two");
+    assert.doesNotMatch(html, /data-testid="btn-book-rec-0"/, "no save dressed as a book");
+    assert.doesNotMatch(html, /data-testid="btn-add-rec-0"/, "no add");
     const card = read("client/src/components/city-feed-card-recommendation.tsx");
-    assert.match(card, /const book = \(\) => \(saveMode \? addItem\(\) : onBook\?\.\(candidate\)\);/);
+    assert.match(card, /const book = \(\) => onBook\?\.\(candidate\);/);
     assert.ok(read("client/src/lib/catalogue-search-copy.ts").includes("opts.waitlist ? WAITLIST_COPY.saveToPlan : CATALOGUE_RESULT_COPY.book"));
   });
 
@@ -130,7 +132,8 @@ describe("P-1c — waitlist mode", () => {
     assert.equal(catalogueActionLabel({ kind: "platform", action: { type: "book", href: "/x" } } as any, { waitlist: false }), "Book");
     const html = renderRec("open");
     assert.match(html, /data-testid="btn-book-rec-0"[^>]*>Book now</);
-    assert.match(html, /data-testid="btn-add-rec-0"/);
+    // CAP-2 Phase 2 (sanctioned edit): no Add on a recommendation in either mode.
+    assert.doesNotMatch(html, /data-testid="btn-add-rec-0"/);
     const rail = read("client/src/components/plancard/SlipRail.tsx");
     assert.ok(rail.includes("Go to checkout ({checkoutReady})"));
     assert.ok(read("client/src/components/plancard/SlipView.tsx").includes(">Book</Link>"));

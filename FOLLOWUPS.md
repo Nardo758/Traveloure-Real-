@@ -1391,3 +1391,16 @@ Market alley stalls · Otagi Nenbutsu-ji · Pontocho evening walk · Sannenzaka 
 
 "Kagurazaka Ishikawa" (a Tokyo restaurant) and the two "Kishiwada" rows (a city in Osaka Prefecture) look misfiled under
 Kyoto; a person decides whether they belong to the market before they are given a point.
+
+### FU-CAP2-1 — the seeded Kyoto city events have no venue point (CAP-2 Phase 2)
+
+Migration 439's seven `city_events` rows (Kodai-ji, To-ji, Chion-in ×2, Eikando, Kiyomizu-dera, Minamiza) carry no
+`venue_lat`/`venue_lng`, so "Plan around it" lands each one on the plan as an item with no pin. The point comes only from
+an open source with its attribution (the LD 59 posture: the venue lookup or an admin edit on a NULL-coordinate row) —
+never from Google. A data row for Research Bot, not code.
+
+### FU-CAP2-2 — the server's Viator add path has no client caller (CAP-2 Phase 2)
+
+Phase 2 removed "Add to plan" from Viator results (ruling, Nov 5: Viator is not a PlanItemRef). The signed-in item create
+still admits a `viatorProductCode` body (`admitViatorAdd`, `server/routes.ts`) and the suggestion replay still stamps it.
+Ruling (Nov 5): retired in CAP-2 Phase 3 with the PlanActions sweep; existing Viator items keep working.

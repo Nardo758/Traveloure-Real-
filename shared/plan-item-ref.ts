@@ -93,12 +93,36 @@ export function planItemRefFromFeedItem(
     id = providerServiceId;
   }
   if (!kind || !id) return null;
+  const placement: NonNullable<PlanItemRef["placement"]> = {};
+  if (typeof dayNumber === "number" && Number.isInteger(dayNumber) && dayNumber >= 1) placement.day_number = Math.min(dayNumber, 60);
+  // A-29 / CAP-2 Phase 2: an event card's own start and end ride as hints (the server's row still wins).
+  if (kind === "event" || kind === "city_event") {
+    const startsAt = isoOrNull(item?.startsAt);
+    const endsAt = isoOrNull(item?.endsAt);
+    if (startsAt) placement.starts_at = startsAt;
+    if (endsAt) placement.ends_at = endsAt;
+  }
   return {
     kind,
     source_id: id.slice(0, 200),
     city: c.slice(0, 120),
-    ...(typeof dayNumber === "number" && Number.isInteger(dayNumber) && dayNumber >= 1 ? { placement: { day_number: Math.min(dayNumber, 60) } } : {}),
+    ...(Object.keys(placement).length ? { placement } : {}),
   };
+}
+
+function isoOrNull(v: unknown): string | null {
+  if (typeof v !== "string" || !v.trim() || v.length > 40 || Number.isNaN(Date.parse(v))) return null;
+  return v.trim();
+}
+
+/**
+ * CAP-2 Phase 2: an event card's start and end as the add payload carries them (`startsAt` / `endsAt`). A Fever event
+ * states them under `dates`; a city event at its top level. Absent ⇒ nothing (§13 — never a guessed time).
+ */
+export function eventPlacementHints(event: any): { startsAt?: string; endsAt?: string } {
+  const startsAt = isoOrNull(event?.dates?.startDate ?? event?.startsAt ?? event?.startDate);
+  const endsAt = isoOrNull(event?.dates?.endDate ?? event?.endsAt ?? event?.endDate);
+  return { ...(startsAt ? { startsAt } : {}), ...(endsAt ? { endsAt } : {}) };
 }
 
 /** Pure: the 1-based day a chosen calendar day falls on in a plan starting `planStart` (both YYYY-MM-DD). */

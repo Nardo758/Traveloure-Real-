@@ -45,13 +45,14 @@ describe("Lane 8 cleanup", () => {
     // Each add <Button> in a card that reads the hook carries the disabled state.
     const sites: Array<[string, number]> = [
       ["client/src/components/city-feed-card.tsx", 8],
-      ["client/src/components/city-feed-card-recommendation.tsx", 4],
       ["client/src/components/catalogue-search-results.tsx", 1],
     ];
     for (const [f, n] of sites) {
       assert.equal((read(f).match(/disabled=\{browseSave\.pending\}/g) ?? []).length, n, f);
     }
-    assert.equal((read("client/src/components/city-feed-card-recommendation.tsx").match(/disabled=\{saveMode && browseSave\.pending\}/g) ?? []).length, 4);
+    // CAP-2 Phase 2 (ruling option (a), sanctioned edit): the recommendation card saves nothing, so it no longer reads the
+    // save hook and has no add control to disable.
+    assert.doesNotMatch(read("client/src/components/city-feed-card-recommendation.tsx"), /useBrowseSaveToPlan|browseSave\./);
     const card = read("client/src/components/city-feed-card.tsx");
     assert.match(card, /disabled: browseSave\.pending,/);
     assert.match(card, /onSave=\{action\.onAdd\} disabled=\{action\.disabled\}/);

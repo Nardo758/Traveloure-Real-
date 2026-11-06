@@ -280,6 +280,13 @@ function WaitlistGuestPlan() {
         if (pending) {
           await saveToGuestPlan(pending, destination).catch(() => undefined);
         }
+        // CAP-2 Phase 2 (ruling 9): "Plan around it" on a city event lands the event on the new plan as an item.
+        const aroundEvent = record.source.eventSourceId
+          ? { kind: "city_event" as const, source_id: record.source.eventSourceId, city: destination.split(",")[0].trim() }
+          : null;
+        if (aroundEvent) {
+          await saveToGuestPlan(aroundEvent, destination).catch(() => undefined);
+        }
       })
       .catch(() => setCreateFailed(true))
       .finally(() => setCreating(false));
