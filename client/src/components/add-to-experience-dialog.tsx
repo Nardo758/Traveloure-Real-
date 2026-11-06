@@ -169,12 +169,9 @@ export function AddToExperienceDialog({
   // toast and the dialog closes, so "Sign In Required" is never drawn in waitlist mode.
   const { mode: signupMode } = useSignupMode();
   const waitlistSave = browseSavesToPlan(signupMode, isAuthenticated);
-  useEffect(() => {
-    if (!open || !waitlistSave) return;
-    toast({ title: WAITLIST_COPY.savedToPlan });
-    onOpenChange(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, waitlistSave]);
+  // PLAN-2 lane 1: this dialog made the same false claim the heart made — it toasted `Saved to plan`
+  // and closed, with nothing written. In waitlist mode a signed-out viewer is not offered the
+  // owner-trip dialog at all, and nothing is announced, so nothing is claimed.
   if (waitlistSave) return null;
 
   if (!isAuthenticated) {

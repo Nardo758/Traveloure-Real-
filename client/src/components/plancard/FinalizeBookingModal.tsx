@@ -183,25 +183,11 @@ export function FinalizeBookingModal({
     ...(expertsAvailable ? [expertLane] : []),
   ];
 
-  if (waitlist) {
-    return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-lg" data-testid="finalize-modal">
-          <DialogHeader>
-            <DialogTitle className="sr-only">{WAITLIST_COPY.saveToPlan}</DialogTitle>
-          </DialogHeader>
-          <button
-            type="button"
-            onClick={() => onOpenChange(false)}
-            data-testid="finalize-option-save-to-plan"
-            className="w-full rounded-lg border border-primary bg-primary/5 p-3 text-left font-medium"
-          >
-            {WAITLIST_COPY.saveToPlan}
-          </button>
-        </DialogContent>
-      </Dialog>
-    );
-  }
+  // PLAN-2 lane 1 / D4: Finalize is HIDDEN, never greyed, in waitlist mode. There is no final version to
+  // choose how to book (W8: a waitlist Trip Card cannot exist), so the chooser and its single
+  // "Save to plan" press — which wrote nothing and claimed a save — are gone. Entry points are hidden too
+  // (SlipRail's finish rail).
+  if (waitlist) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -245,9 +231,13 @@ export function FinalizeBookingModal({
             </div>
           </button>
 
-          <div className="flex items-center gap-2 text-[12px] uppercase tracking-wide text-muted-foreground">
-            <span className="h-px flex-1 bg-border" /> or have someone book it for you <span className="h-px flex-1 bg-border" />
-          </div>
+          {/* PLAN-2 lane 1: the divider announces a person lane; with none it is hidden rather than left
+              hanging over nothing. */}
+          {people.length > 0 ? (
+            <div className="flex items-center gap-2 text-[12px] uppercase tracking-wide text-muted-foreground">
+              <span className="h-px flex-1 bg-border" /> or have someone book it for you <span className="h-px flex-1 bg-border" />
+            </div>
+          ) : null}
 
           {people.map((p) => {
             const Icon = p.icon;

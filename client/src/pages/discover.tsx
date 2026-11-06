@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { needHelpBody } from "@/lib/discover-need-help";
 import { readyMadeShelfState, READY_MADE_SHELF_COPY } from "@/lib/ready-made-shelf-state";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { GUEST_PLAN_COPY } from "@shared/guest-plan-copy";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { createComparison as createComparisonRequest } from "@/lib/create-comparison";
 import { useToast } from "@/hooks/use-toast";
@@ -108,6 +109,8 @@ import { PlanActions, usePlanActionsVisible } from "@/components/plan/PlanAction
 import { planActionFromBuyAction } from "@/lib/plan-actions";
 import { refreshSavedRefs, savedRefKey } from "@/lib/saved-refs";
 import { decideAddTarget, GUEST_CART_SAVED_NOTE, listingPlanItemBody } from "@/lib/add-target";
+import { useSignupMode } from "@/lib/signup-mode";
+import { guestSaveErrorMessage, guestSavedMessage, saveToGuestPlan } from "@/lib/waitlist-guest-plan";
 import { PlanPickerDialog, useStartPlanThenAdd, type PickablePlan } from "@/components/plan-picker";
 import { syncActiveTripToContext } from "@/lib/trip-selection";
 import type { LucideIcon } from "lucide-react";
@@ -480,16 +483,40 @@ export function ServiceCard({
   // (book → "Book", request → "Request to book", quote → "Request a quote") or the Hire output.
   const planAction = planActionFromBuyAction(service.buyAction ?? null);
   const serviceActionClass = "bg-[var(--earn-teal)] hover:bg-[var(--earn-teal)] text-white border border-[var(--earn-teal)]";
+  // PLAN-2 lane 1 (A-3): a waitlist guest's "Save to plan" is a real guest-plan write through CAP-2,
+  // never a localStorage cart add. The ref names the listing row; the resolver reads its name and point.
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const { mode: signupMode } = useSignupMode();
+  const guestWaitlist = signupMode === "waitlist" && !user;
+  const [guestSaving, setGuestSaving] = useState(false);
+  const saveForGuest = async () => {
+    const city = (service.location ?? "").trim();
+    if (!city || city === "Unknown" || guestSaving) {
+      // No city to start the plan in — say nothing was saved rather than claim one.
+      toast({ variant: "destructive", title: GUEST_PLAN_COPY.saveFailed });
+      return;
+    }
+    setGuestSaving(true);
+    try {
+      const result = await saveToGuestPlan({ kind: "listing", source_id: String(service.id), city }, city);
+      toast({ title: guestSavedMessage(result) });
+    } catch (err) {
+      toast({ variant: "destructive", title: guestSaveErrorMessage(err) });
+    } finally {
+      setGuestSaving(false);
+    }
+  };
   const actionsProps = {
     site: "discoverService" as const,
     city: service.location ?? null,
     save: onAddToCart && !messageOnly
       ? {
           placeable: true,
-          savedKey: savedRefKey({ kind: "listing", source_id: String(service.id) }),
-          saved: isAdded,
-          onClick: () => onAddToCart(service.id),
-          disabled: isAddingToCart || isAdded,
+          savedKey: guestWaitlist ? null : savedRefKey({ kind: "listing", source_id: String(service.id) }),
+          saved: guestWaitlist ? false : isAdded,
+          onClick: () => (guestWaitlist ? void saveForGuest() : onAddToCart(service.id)),
+          disabled: guestSaving || isAddingToCart || isAdded,
           testId: `button-add-to-cart-${service.id}`,
           className: cn(buttonVariants({ size: "sm" }), "bg-[var(--earn-navy)] hover:bg-[var(--earn-navy)] text-white border border-[var(--earn-navy)]", isAdded && "opacity-90"),
         }
