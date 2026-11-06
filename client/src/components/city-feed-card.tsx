@@ -32,6 +32,7 @@ import { buildSaveItem } from "@/lib/saved-items";
 import type { SaveItemBody } from "@shared/saved-items";
 import { stripPartnerCardPhrase } from "@shared/banned-copy";
 import { GemPhotoMedia } from "@/components/gem-photo-band";
+import { formatCalendarDate } from "@/lib/calendar-date";
 
 // Bookability (native | deeplink | info_only) is DERIVED, never stored. The single
 // source of truth is `resolveBookability` in @shared/bookability — both this client
@@ -1465,7 +1466,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd: onAddProp
   // price; each omitted when absent. Keeps the Tickets/Add/Ask action row.
   if (density === "compact") {
     const dateStr = event.date
-      ? new Date(event.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+      ? formatCalendarDate(event.date, { month: "short", day: "numeric" })
       : null;
     const venueStr = partnerPlace ? null : (event.venueName ? String(event.venueName) : null);
     const priceStr = partnerPriced
@@ -1576,7 +1577,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd: onAddProp
         <div className="p-3 flex flex-col gap-1.5 flex-1">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide uppercase bg-pink-50 text-pink-700">
-              Event{event.date ? ` · ${new Date(event.date).toLocaleDateString("en-US", { month: "short" })}` : ""}
+              Event{event.date ? ` · ${formatCalendarDate(event.date, { month: "short" })}` : ""}
             </span>
             <BookingBadge level={bookability} />
             {priceChip}
@@ -1602,7 +1603,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd: onAddProp
             facts={[
               {
                 value: event.date
-                  ? new Date(event.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                  ? formatCalendarDate(event.date, { month: "short", day: "numeric" })
                   : "",
                 label: "date",
               },

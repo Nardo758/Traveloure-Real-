@@ -16,6 +16,8 @@
  *   · retention — unclaimed guest plans whose last change is older than GUEST_PLAN_RETENTION_DAYS are deleted
  *               (items cascade); unset ⇒ disabled, deletes nothing (ruling 6).
  */
+import { eventOutsideConfirmedDates } from "@shared/plan-dates";
+import { savedRefKeyOfItem } from "@shared/plan-item-ref";
 import crypto, { createHash } from "node:crypto";
 import { and, asc, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -153,6 +155,12 @@ export type GuestPlanView = {
     latitude: string | null;
     longitude: string | null;
     located: boolean;
+    /** R4b-5: the item's own day and time when it has them (an event's), as stored. */
+    scheduledDate: string | null;
+    startTime: string | null;
+    /** R4b-3: the content row the item was saved from, so a card reads "Saved to plan" from the plan itself. */
+    contentType: string | null;
+    contentId: string | null;
   }>;
   retentionDays: number | null;
 };
@@ -172,6 +180,18 @@ async function currentGuestTrip(hash: string): Promise<Trip | null> {
     .orderBy(desc(trips.createdAt))
     .limit(1);
   return row ?? null;
+}
+
+/** R4b-5: a stored `scheduled_date` (a timestamp, written from a `YYYY-MM-DD` day) as that day. */
+function storedDay(v: unknown): string | null {
+  if (v == null) return null;
+  // A timestamp without a zone is read back as the server's local midnight, so its local fields are the stored day.
+  if (v instanceof Date) {
+    if (Number.isNaN(v.getTime())) return null;
+    return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, "0")}-${String(v.getDate()).padStart(2, "0")}`;
+  }
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(v));
+  return m ? m[1] : null;
 }
 
 function viewOf(trip: Trip, items: Array<typeof itineraryItems.$inferSelect>): GuestPlanView {
@@ -199,6 +219,10 @@ function viewOf(trip: Trip, items: Array<typeof itineraryItems.$inferSelect>): G
       latitude: i.latitude ?? null,
       longitude: i.longitude ?? null,
       located: i.latitude != null && i.longitude != null,
+      scheduledDate: storedDay((i as any).scheduledDate),
+      startTime: (i as any).startTime ?? null,
+      contentType: (i as any).contentType ?? null,
+      contentId: (i as any).contentId ?? null,
     })),
     retentionDays: guestPlanRetentionDays(),
   };
@@ -314,7 +338,7 @@ export async function updateGuestPlan(hash: string, body: z.infer<typeof guestPl
 
 export type GuestSaveOutcome =
   | { ok: true; itemId: string; located: boolean; existing: boolean; item: GuestPlanView["items"][number] | null }
-  | { ok: false; code: "no_plan" | PlanItemRejectReason };
+  | { ok: false; code: "no_plan" | PlanItemRejectReason; eventDate?: string };
 
 /**
  * R3-17, pure: where an event lands on a plan — its own date, and that date's day number inside the plan's window
@@ -365,6 +389,10 @@ export async function saveGuestPlanItem(
   lap("resolve");
   if (!resolved.ok) return { ok: false, code: resolved.reason };
   const source = resolved.source;
+  // R4b-1: an event outside the plan's CONFIRMED dates is refused; an unconfirmed plan lets the event set its own day.
+  if (eventOutsideConfirmedDates(source.eventDate, { startDate: trip.startDate, endDate: trip.endDate, datesConfirmed: trip.datesConfirmedAt != null })) {
+    return { ok: false, code: "event_outside_dates", eventDate: String(source.eventDate).slice(0, 10) };
+  }
   const located = source.latitude != null && source.longitude != null;
   // R3-17: an event lands on its own day — `scheduled_date` is the event's date, and its day number is that day's place
   // in the plan's window. A day the window does not hold keeps the date and lands on day 1 (never a guessed day).
@@ -525,4 +553,27 @@ export async function deleteUnclaimedGuestPlan(tripId: string): Promise<boolean>
     .where(and(eq(trips.id, tripId), isNotNull(trips.guestSessionHash), isNull(trips.userId), isNull(trips.guestClaimedAt)))
     .returning({ id: trips.id });
   return deleted.length > 0;
+}
+
+/**
+ * R4b-3 (round 4b, Nov 6, 2026): the `kind:source_id` keys a signed-in traveler's plans hold — their own plans that
+ * have not ended — read from the stored items, so "Saved to plan" survives a reload. No price, no amount, no item body.
+ */
+export async function savedRefKeysForUser(userId: string): Promise<string[]> {
+  const rows = await db
+    .select({
+      contentType: itineraryItems.contentType,
+      contentId: itineraryItems.contentId,
+      providerServiceId: itineraryItems.providerServiceId,
+      affiliateProductId: itineraryItems.affiliateProductId,
+    })
+    .from(itineraryItems)
+    .innerJoin(trips, eq(trips.id, itineraryItems.tripId))
+    .where(and(eq(trips.userId, userId), sql`(${trips.endDate} IS NULL OR ${trips.endDate} >= CURRENT_DATE)`));
+  const keys = new Set<string>();
+  for (const r of rows) {
+    const k = savedRefKeyOfItem(r);
+    if (k) keys.add(k);
+  }
+  return Array.from(keys).sort();
 }

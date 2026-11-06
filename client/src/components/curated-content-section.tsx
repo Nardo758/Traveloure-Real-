@@ -23,7 +23,7 @@ import { ADDED_TO_PLAN_TITLE } from "@/lib/plan-vocabulary";
 import { PLAN_ACTIONS_COPY } from "@/lib/plan-actions";
 import { cn } from "@/lib/utils";
 import { PlanActions } from "@/components/plan/PlanActions";
-import { markRefSaved, savedRefKey } from "@/lib/saved-refs";
+import { refreshSavedRefs, savedRefKey } from "@/lib/saved-refs";
 import { buttonVariants } from "@/components/ui/button";
 import { buildDiscoverAddBody } from "@/lib/discover-add-body";
 
@@ -111,8 +111,8 @@ function AddToTripDialog({
       );
     },
     onSuccess: (_, tripId) => {
-      // CAP-2 Phase 3: the row is confirmed — the card's save says "Saved to plan".
-      if (item) markRefSaved(curatedRefKey(item));
+      // R4b-3: the row is confirmed — refresh the plan reads "Saved to plan" is drawn from.
+      void refreshSavedRefs(queryClient);
       queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "itinerary-items"] });
       toast({
         title: ADDED_TO_PLAN_TITLE,

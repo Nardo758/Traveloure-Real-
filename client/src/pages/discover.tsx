@@ -106,7 +106,7 @@ import { WishlistSection } from "@/components/dashboard/WishlistSection";
 import { ADDED_TO_CART_TITLE, ADDED_TO_PLAN_TITLE, ADD_TO_PLAN_FAILED_TITLE } from "@/lib/plan-vocabulary";
 import { PlanActions, usePlanActionsVisible } from "@/components/plan/PlanActions";
 import { planActionFromBuyAction } from "@/lib/plan-actions";
-import { savedRefKey } from "@/lib/saved-refs";
+import { refreshSavedRefs, savedRefKey } from "@/lib/saved-refs";
 import { decideAddTarget, GUEST_CART_SAVED_NOTE, listingPlanItemBody } from "@/lib/add-target";
 import { PlanPickerDialog, useStartPlanThenAdd, type PickablePlan } from "@/components/plan-picker";
 import { syncActiveTripToContext } from "@/lib/trip-selection";
@@ -450,7 +450,7 @@ export function ServiceCard({
   onAddToCart?: (serviceId: string) => void;
   isAddingToCart?: boolean;
   isAdded?: boolean;
-  /** A direct add target (URL `?tripId=` or the only open plan), forwarded into the
+  /** A direct add target (URL `?tripId=`), forwarded into the
       detail link. A tab plan is not stamped here — that would skip the picker. */
   targetTripId?: string;
 }) {
@@ -1386,8 +1386,8 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
   // start one), and a guest keeps the client-local guest cart above. Nothing on this grid writes a
   // trip-less server cart row any more.
 
-  // Ledger `2026-10-20-add-plan-open-plans`. `?tripId=` wins. Otherwise one open plan adds
-  // straight to it, and two or more always ask. The tab pen (`tripCtx`) is not a target.
+  // Ledger `2026-10-20-add-plan-open-plans`. `?tripId=` wins. Otherwise any open plan list
+  // asks — one plan too (R4b-2: the picker never auto-selects). The tab pen (`tripCtx`) is not a target.
   // The write is still POST /api/trips/:tripId/itinerary-items. Not a money endpoint.
   const { resolution } = useAddPlanResolution(searchString);
   const [chosenTripId, setChosenTripId] = useState<string | null>(null);
@@ -1411,6 +1411,8 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
       setAddedServices((prev) => new Set(prev).add(serviceId));
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      // R4b-3: "Saved to plan" reads the plan's items on the server.
+      void refreshSavedRefs(queryClient);
       toast({ title: ADDED_TO_PLAN_TITLE, description: "Find it on your plan." });
       setAddingToCartId(null);
     },

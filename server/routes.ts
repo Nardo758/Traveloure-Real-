@@ -13565,6 +13565,12 @@ ${bannedCopyPromptLine()}`;
         const resolved = await resolvePlanItemRef(parsedRef.ref as any, { markets: await planMarkets(tripId), planDays: Number.isFinite(planDays as number) ? planDays : null });
         if (!resolved.ok) return res.status(400).json({ code: resolved.reason, message: "Couldn't save that. Try again." });
         const src = resolved.source;
+        // R4b-1: the guest rail's rule — an event outside the plan's CONFIRMED dates is refused, naming its day.
+        const { eventOutsideConfirmedDates, eventOutsideDatesMessage } = await import("@shared/plan-dates");
+        if (tripRow && eventOutsideConfirmedDates(src.eventDate, { startDate: tripRow.startDate, endDate: tripRow.endDate, datesConfirmed: (tripRow as any).datesConfirmedAt != null })) {
+          const day = String(src.eventDate).slice(0, 10);
+          return res.status(400).json({ code: "event_outside_dates", eventDate: day, message: eventOutsideDatesMessage(day) });
+        }
         resolvedRef = true;
         // Ruling 4: the point is the row's, never the body's.
         delete itemData.latitude;

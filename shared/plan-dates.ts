@@ -202,3 +202,29 @@ export function planEyebrowLabel(input: { datesConfirmed: boolean | null | undef
 export function phaseShown(datesConfirmed: boolean | null | undefined): boolean {
   return datesConfirmed === true;
 }
+
+/**
+ * R4b-1 (round 4b, Nov 6, 2026): an event whose day is outside a plan's CONFIRMED dates cannot be placed on it — both
+ * save rails refuse it as `event_outside_dates`. A plan whose dates are not confirmed accepts it, and the event sets its
+ * own day (R3-17). Pure; days are `YYYY-MM-DD` (a longer string is read for its first ten characters).
+ */
+export function eventOutsideConfirmedDates(
+  eventDate: string | null | undefined,
+  plan: { startDate: unknown; endDate: unknown; datesConfirmed: boolean },
+): boolean {
+  if (!plan.datesConfirmed || !eventDate || !/^\d{4}-\d{2}-\d{2}/.test(eventDate)) return false;
+  const day = eventDate.slice(0, 10);
+  const start = String(plan.startDate ?? "").slice(0, 10);
+  const end = String(plan.endDate ?? "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) return false;
+  return day < start || day > end;
+}
+
+/** R4b-1: the refusal's toast. Wording approved — Leon (Nov 6, 2026). `day` is `YYYY-MM-DD`. */
+export function eventOutsideDatesMessage(day: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(day);
+  const label = m
+    ? new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })
+    : day;
+  return `That event is on ${label}, outside your plan's dates.`;
+}

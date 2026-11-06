@@ -34,7 +34,7 @@ import {
   planActionsVisible,
   saveLabel,
 } from "../plan-actions";
-import { markRefSaved, resetSavedRefs, savedRefKey } from "../saved-refs";
+import { SAVED_REFS_QUERY_KEY, savedRefKey } from "../saved-refs";
 import { PlanActions } from "../../components/plan/PlanActions";
 import { UnifiedResultCard } from "../../components/unified-result-card";
 import { CuratedCard } from "../../components/curated-content-section";
@@ -47,10 +47,16 @@ import { SignInModalProvider } from "../../contexts/SignInModalContext";
 const ROOT = resolve(import.meta.dirname, "../../../..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
 
+let planKeys: string[] | null = null;
 function render(node: React.ReactNode, mode: "waitlist" | "open", caps?: unknown): string {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, enabled: false } } });
   qc.setQueryData(["/api/public/signup-mode"], { mode });
   if (caps) qc.setQueryData([guestCapabilitiesUrl("Kyoto")], caps);
+  // R4b-3: "Saved to plan" reads the signed-in plan's keys from the server answer.
+  if (planKeys) {
+    qc.setQueryData(["/api/auth/user"], { id: "u-test" });
+    qc.setQueryData(SAVED_REFS_QUERY_KEY, { keys: planKeys });
+  }
   return renderToString(
     <QueryClientProvider client={qc}>
       <Router ssrPath="/discover/location/kyoto">
@@ -62,7 +68,9 @@ function render(node: React.ReactNode, mode: "waitlist" | "open", caps?: unknown
 const text = (html: string) => html.replace(/<!-- -->/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 
 describe("CAP-2 Phase 3 — PlanActions", () => {
-  beforeEach(() => resetSavedRefs());
+  beforeEach(() => {
+    planKeys = null;
+  });
 
   it("P1 the pure rule, fail-closed", () => {
     const all = { save: { placeable: true }, book: { variant: "instant" as const }, hire: {}, moreInfo: {}, browse: { category: "Photographers" } };
@@ -139,8 +147,8 @@ describe("CAP-2 Phase 3 — PlanActions", () => {
     );
     assert.equal((primary.match(/data-bento-primary-action=/g) ?? []).length, 1);
     assert.doesNotMatch(primary, /data-testid="s"/);
-    // Saved: the store says the row was confirmed ⇒ "Saved to plan", disabled.
-    markRefSaved("listing:s1");
+    // Saved: the plan's items on the server hold the row (R4b-3) ⇒ "Saved to plan", disabled.
+    planKeys = ["listing:s1"];
     const saved = render(node, "waitlist");
     assert.match(saved, /data-testid="s"[^>]*disabled=""[^>]*>Saved to plan</);
     // Hire: open mode and an approved expert in the area.

@@ -19,8 +19,11 @@ import { z } from "zod";
 export const PLAN_ITEM_KINDS = ["gem", "event", "city_event", "listing", "affiliate_product", "hotel", "activity"] as const;
 export type PlanItemKind = (typeof PLAN_ITEM_KINDS)[number];
 
-/** Why a save was refused. Not user-facing: the client shows "Couldn't save that. Try again." for every one. */
-export const PLAN_ITEM_REJECT_REASONS = ["unknown_kind", "unknown_source", "source_withdrawn", "city_mismatch", "unplaceable"] as const;
+/**
+ * Why a save was refused. Not user-facing: the client shows "Couldn't save that. Try again." for every one except
+ * `event_outside_dates` (R4b-1), which names the event's day (`eventOutsideDatesMessage`, shared/plan-dates.ts).
+ */
+export const PLAN_ITEM_REJECT_REASONS = ["unknown_kind", "unknown_source", "source_withdrawn", "city_mismatch", "unplaceable", "event_outside_dates"] as const;
 export type PlanItemRejectReason = (typeof PLAN_ITEM_REJECT_REASONS)[number];
 
 const isoInstant = z.string().trim().min(1).max(40).refine((v) => !Number.isNaN(Date.parse(v)), { message: "ISO instant" });
@@ -133,4 +136,24 @@ export function dayNumberForDate(chosen: string | null | undefined, planStart: s
   if (Number.isNaN(a) || Number.isNaN(b)) return null;
   const n = Math.round((a - b) / 86_400_000) + 1;
   return n >= 1 ? n : null;
+}
+
+/**
+ * R4b-3 (round 4b, Nov 6, 2026): the `kind:source_id` key a stored plan item answers for — the same key a card's save
+ * names (`savedRefKey`, client/src/lib/saved-refs.ts). "Saved to plan" reads it from the plan's own items, never from a
+ * session store. A content item is its `content_type:content_id` (the resolver stamps the kind and the source id there);
+ * a listing or partner product is its own column. An item with no link ⇒ null.
+ */
+export function savedRefKeyOfItem(item: {
+  contentType?: string | null;
+  contentId?: string | null;
+  providerServiceId?: string | null;
+  affiliateProductId?: string | null;
+}): string | null {
+  const t = typeof item.contentType === "string" ? item.contentType.trim() : "";
+  const c = typeof item.contentId === "string" ? item.contentId.trim() : "";
+  if (t && c && (PLAN_ITEM_KINDS as readonly string[]).includes(t)) return `${t}:${c}`;
+  if (typeof item.providerServiceId === "string" && item.providerServiceId.trim()) return `listing:${item.providerServiceId.trim()}`;
+  if (typeof item.affiliateProductId === "string" && item.affiliateProductId.trim()) return `affiliate_product:${item.affiliateProductId.trim()}`;
+  return null;
 }

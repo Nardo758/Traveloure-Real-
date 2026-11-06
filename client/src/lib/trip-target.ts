@@ -7,8 +7,9 @@
  *
  * Otherwise the add does NOT use the plan last opened in this browser tab
  * (`client/src/lib/trip-context.ts`). Ledger `2026-10-20-add-plan-open-plans`:
- *   · exactly one open plan → add straight to it;
- *   · two or more open plans → always the picker;
+ *   · R4b-2 (round 4b, Nov 6, 2026): the picker never auto-selects — one open plan still shows the picker and
+ *     still needs the traveler's click (was: "exactly one open plan → add straight to it");
+ *   · one or more open plans → always the picker;
  *   · in the picker, preselect the plan whose city matches the item's city and,
  *     for an event, whose dates contain the item's date;
  *   · if none fits, preselect New plan.
@@ -152,7 +153,6 @@ export function resolveAddPlanTarget(
   if (fromUrl) return { status: "direct", tripId: fromUrl };
   const plans = usablePlans(openPlans);
   if (plans == null) return { status: "pending" };
-  if (plans.length === 1) return { status: "direct", tripId: plans[0].id };
   return { status: "picker", preselect: preselectAddPlan(plans, item) };
 }
 

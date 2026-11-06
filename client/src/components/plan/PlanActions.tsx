@@ -45,8 +45,8 @@ export interface PlanActionsProps {
   /** The tile's area: the guest-capabilities read answers Hire for it. */
   city?: string | null;
   /**
-   * Save: always "Save to plan"; "Saved to plan" (and inert) once this item's save is confirmed (`savedKey`,
-   * `kind:source_id` — see lib/saved-refs.ts).
+   * Save: always "Save to plan"; "Saved to plan" (and inert) once the plan's items on the server hold this item
+   * (`savedKey`, `kind:source_id` — see lib/saved-refs.ts, R4b-3).
    */
   save?: (PlanActionSpec & { placeable: boolean; savedKey?: string | null; saved?: boolean }) | null;
   book?: (PlanActionSpec & { variant: BookVariant; done?: boolean }) | null;
@@ -134,9 +134,10 @@ export function usePlanActionsVisible(props: Pick<PlanActionsProps, "site" | "ci
 
 export function PlanActions(props: PlanActionsProps) {
   const visible = usePlanActionsVisible(props);
-  const savedInStore = useRefSaved(props.save?.savedKey ?? null);
+  // R4b-3: read from the plan's items on the server (survives a reload), not a session store.
+  const savedOnPlan = useRefSaved(props.save?.savedKey ?? null);
   // A site that already knows its add was confirmed (the discover card's cart answer) says so directly.
-  const saved = savedInStore || props.save?.saved === true;
+  const saved = savedOnPlan || props.save?.saved === true;
   const order = props.layout === "primary" ? [planActionsPrimary(visible)].filter((o): o is Output => !!o) : props.order ?? DEFAULT_ORDER;
   const els: ReactNode[] = [];
   for (const out of order) {

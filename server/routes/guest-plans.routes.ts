@@ -40,6 +40,7 @@ import {
   logGuestPlanRetentionBootState,
   readGuestPlan,
   saveGuestPlanItem,
+  savedRefKeysForUser,
   type GuestSaveTimings,
   updateGuestPlan,
 } from "../services/guest-plan.service";
@@ -167,7 +168,7 @@ router.post("/api/guest-plans/current/items", guestOnly, savesPerSession, async 
     res.set("Server-Timing", Object.entries(timings).map(([k, v]) => `${k};dur=${v}`).join(", "));
     // A-1 / CAP-2: a save the server cannot place is a 400 carrying its reason — never a saved title with nothing
     // behind it. No plan yet is a 404.
-    if (!out.ok) return out.code === "no_plan" ? res.status(404).json({ code: "not_found" }) : res.status(400).json({ code: out.code });
+    if (!out.ok) return out.code === "no_plan" ? res.status(404).json({ code: "not_found" }) : res.status(400).json({ code: out.code, ...(out.eventDate ? { eventDate: out.eventDate } : {}) });
     // R3-1 (round 3 ruling): a committed write answers 200 with its item — a new one and one the plan already held
     // (A-11) alike; `existing` says which.
     res.status(200).json({ id: out.itemId, located: out.located, existing: out.existing, item: out.item });
@@ -179,6 +180,18 @@ router.post("/api/guest-plans/current/items", guestOnly, savesPerSession, async 
 });
 
 // Ruling 5, following POST /api/cart/migrate: the session account (§14), the guest id in the body.
+/** R4b-3: the signed-in rail's saved keys — "Saved to plan" reads the plan's own items (survives a reload). */
+router.get("/api/plans/saved-refs", isAuthenticated, async (req, res) => {
+  try {
+    const keys = await savedRefKeysForUser(getUserId(req)!);
+    res.set("Cache-Control", "private, no-store");
+    res.json({ keys });
+  } catch (err: any) {
+    logger.error({ route: "GET /api/plans/saved-refs", code: err?.code, err: err?.message }, "saved refs read failed");
+    res.status(500).json({ code: "error" });
+  }
+});
+
 router.post("/api/guest-plans/claim", isAuthenticated, async (req, res) => {
   const userId = getUserId(req)!;
   // A-10: the cookie's guest, else (cookies off) the id the client names; a claim never mints one.
