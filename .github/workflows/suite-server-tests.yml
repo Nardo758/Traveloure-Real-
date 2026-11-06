@@ -167,6 +167,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/kyoto-events-439.db.test.ts
       - name: Migration 442 Kyoto event venue points — seven OSM points, fill only a NULL point, rerun changes nothing, Plan around it lands the pin (node:test)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/kyoto-event-venues-442.db.test.ts
+      - name: Migration 443 Kyoto event times — four rows, time of day only, blanks untouched, rerun changes nothing, Plan around it at 17:30 (node:test)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/kyoto-event-times-443.db.test.ts
       - name: Round 3 entry and city — recent plans order only; the occasion PATCH derives event_type from the slug (node:test)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/r3-entry-city.db.test.ts
       - name: Round 2 — upcoming events end today or later, marquee first, limit after order (node:test)
