@@ -1,7 +1,7 @@
 /**
  * WAIT-1 (ledger `2026-11-04-wait1-all-markets`): the waitlist's market pieces — the market chips (one or more
  * markets per sign-up, each labelled with its status from settings), the three-column sign-up row, and the page for
- * a market that is not the marquee. Words are HELD for "Wording approved — Leon".
+ * a market that is not the marquee. Wording approved — Leon (Nov 6, 2026).
  */
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
