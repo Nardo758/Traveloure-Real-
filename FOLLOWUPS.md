@@ -1462,7 +1462,9 @@ so on a fresh database migration 400 finds nothing to hide and its 28 gems are i
 environment). Production is correct: 400 ran over rows that already existed. Fix in code, not data: stamp `hidden_at` on
 insert for a name in `KYOTO_GEMS_TO_HIDE` (and `KYOTO_GEMS_HIDDEN_BY_425`), the way the happening-now seed does.
 
-### FU-R3-6c — seven visible production Kyoto gems that no seed or migration creates
+### FU-R3-6c — seven visible production Kyoto gems that no seed or migration creates — CLOSED Nov 6, by design
+
+**Closed by design:** editorial gem rows live in production; seeds bootstrap, they don't mirror the catalogue.
 
 Production's Kyoto location feed shows 21 gems; a fresh database built from the repo shows 14 (all in production's 21).
 These seven exist on production only (rows from before migration 400, which updated them in place), so a fresh database
