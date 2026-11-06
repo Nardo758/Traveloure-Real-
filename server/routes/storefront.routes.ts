@@ -21,6 +21,7 @@
  * approved items, so an unvetted earner has no public page. Filed follow-up (V.1, IMPLEMENTATION_MAP
  * Phase 0.5): additionally gate on identity/KYB verification status before any marketing push.
  */
+import { PLAN_VIEWS } from "@shared/plan-view";
 import { loadLiveStatus } from "../services/live-status.service";
 import { Router } from "express";
 import { isExpertIdRoutable, isPublicExpertAccount } from "../services/expert-routability";
@@ -248,6 +249,8 @@ const settingsPatchSchema = z.object({
   // Audit B-5: the Settings leaderboard toggle had a Save with no handler and no store —
   // now a real persisted preference (display opt-in only, no money/ranking semantics here).
   showOnLeaderboard: z.boolean().optional(),
+  // PLAN-1 Phase 2 (ruling 4): the traveler's last planner view on /plans/{id} — server-side, never localStorage.
+  planView: z.enum(PLAN_VIEWS).optional(),
   // Migration 225: DB-backed column on users (not JSONB). Written to users.email_booking_alerts.
   emailBookingAlerts: z.boolean().optional(),
 }).strict();
@@ -295,6 +298,7 @@ router.patch("/api/me/preferences", isAuthenticated, async (req: any, res) => {
         ...(patch.language !== undefined ? { language: patch.language } : {}),
         ...(patch.timezone !== undefined ? { timezone: patch.timezone } : {}),
         ...(patch.showOnLeaderboard !== undefined ? { showOnLeaderboard: patch.showOnLeaderboard } : {}),
+        ...(patch.planView !== undefined ? { planView: patch.planView } : {}),
         ...(patch.notifications
           ? { notifications: { ...(currentSettings.notifications ?? {}), ...patch.notifications } }
           : {}),

@@ -1559,7 +1559,9 @@ export async function registerRoutes(
           ...(placeholderDay ? { startDate: placeholderDay, endDate: placeholderDay } : {}),
           userId: actorUserId,
         } as any,
-        { datesChosenByTraveler },
+        // PLAN-1 Phase 2 (ruling 4): a plan started through the ONE mint door (PlanEntry / IntakePanel — the body names
+        // its `entry`) lands on its map, so it opens on Map. The expert finish lands at the expert door instead.
+        { datesChosenByTraveler, opensOnMap: !!mintEntry && mintEntry.finish !== "local_expert" },
       );
       // CAP-2 Phase 2 (ruling 9): "Plan around it" on a city event lands the event on the plan as an item, through the
       // one resolver. The event was verified above; landing it never fails the mint.

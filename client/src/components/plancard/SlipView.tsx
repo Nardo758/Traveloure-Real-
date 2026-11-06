@@ -14,6 +14,7 @@
  *    (FU-9C-1): every shown leg renders between its two stops through `renderLegBetween`
  *    (`slipLegBetween`, step 9c D5), so no leg loses its render.
  */
+import { savePlanView } from "@/lib/plan-view-preference";
 import { planEyebrowLabel, phaseShown } from "@shared/plan-dates";
 import { SaveToPlanButton } from "@/components/plan/SaveToPlanButton";
 import { useBookingActionsShown } from "@/lib/signup-mode";
@@ -250,6 +251,8 @@ export interface SlipTrip {
    * `planDatesAreConfirmed` answers once (§18 rule 1).
    */
   datesConfirmed?: boolean;
+  /** PLAN-1 Phase 2: "map" when the plan was created from the map (it opens on Map). */
+  opensOn?: "map" | null;
 }
 
 export interface SlipData extends PlanCardData {
@@ -1669,6 +1672,12 @@ export function useSlipViewModel({
   // ZERO located items the Map view is not offered at all (disabled control with the true
   // reason — the same title-reason pattern the Optimize button uses).
   const [slipView, setSlipView] = useState<"list" | "map">(initialView === "map" ? "map" : "list");
+  // PLAN-1 Phase 2 (ruling 4): the traveler's toggle is remembered server-side (`savePlanView`); a programmatic switch
+  // (Find a host, the empty board's Browse) is not a choice and is not saved.
+  const chooseView = (v: "list" | "map") => {
+    setSlipView(v);
+    void savePlanView(v === "map" ? "map" : "days");
+  };
   const [mapDay, setMapDay] = useState(0);
   // LD 43(d): "the plan holds bookable rows" = something staged for checkout, or already booked.
   // Derived from the rows this surface already has — no new fetch, and no claim when there are none.
@@ -1701,8 +1710,9 @@ export function useSlipViewModel({
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
-      if (slipView === "map") params.set("view", "map");
-      else params.delete("view");
+      // PLAN-1 Phase 2: the shown planner is always stated (`days` too), so a reload keeps it even on a plan that
+      // opens on Map by default.
+      params.set("view", slipView === "map" ? "map" : "days");
       const qs = params.toString();
       const next = `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`;
       if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
@@ -2086,6 +2096,7 @@ export function useSlipViewModel({
     bookedInScope,
     slipView,
     setSlipView,
+    chooseView,
     mapDay,
     setMapDay,
     hasBookableRows,
@@ -2185,6 +2196,7 @@ export function SlipView({
     bookedInScope,
     slipView,
     setSlipView,
+    chooseView,
     mapDay,
     setMapDay,
     hasBookableRows,
@@ -2479,7 +2491,7 @@ export function SlipView({
                 <button
                   type="button"
                   className={`inline-flex h-9 items-center rounded-[var(--slip-radius-chip)] px-[18px] text-sm ${slipView === "list" ? "bg-[color:var(--slip-card)] font-semibold text-[color:var(--slip-ink)]" : "font-medium text-[color:var(--slip-muted)]"}`}
-                  onClick={() => setSlipView("list")}
+                  onClick={() => chooseView("list")}
                   aria-pressed={slipView === "list"}
                   data-testid="button-slip-view-list"
                 >
@@ -2488,7 +2500,7 @@ export function SlipView({
                 <button
                   type="button"
                   className={`inline-flex h-9 items-center rounded-[var(--slip-radius-chip)] px-[18px] text-sm ${slipView === "map" ? "bg-[color:var(--slip-card)] font-semibold text-[color:var(--slip-ink)]" : "font-medium text-[color:var(--slip-muted)]"} disabled:opacity-50 disabled:cursor-not-allowed`}
-                  onClick={() => setSlipView("map")}
+                  onClick={() => chooseView("map")}
                   aria-pressed={slipView === "map"}
                   data-testid="button-slip-view-map"
                 >
