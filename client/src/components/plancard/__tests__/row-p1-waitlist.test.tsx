@@ -7,7 +7,7 @@
  *   T3 waitlist: the Discover recommendation's book reads "Save to plan" and runs the add-to-plan path.
  *   T4 waitlist: the slip draws no Optimize, no "Go to checkout", no fee preview, no hold, no paid apply;
  *      "Stay here" still renders.
- *   T5 waitlist: Finalize renders one "Save to plan" lane; open: today's lanes.
+ *   T5 waitlist: Finalize is hidden; open: today's lanes.
  *   T6 waitlist: Trip Card items read "Saved to plan"; no Leave-by; no advisor card; partner links stay.
  *   T7 open mode: every label above is unchanged.
  *
@@ -89,9 +89,14 @@ describe("P-1c — waitlist mode", () => {
   it("T4 waitlist: the slip hides the paid actions; Stay here stays", () => {
     const rail = read("client/src/components/plancard/SlipRail.tsx");
     assert.match(rail, /\{isOwner && !optimizerWaitlist \? \(optimizerSlot \? createPortal\(optimizerBlock, optimizerSlot\) : optimizerBlock\) : null\}/);
-    assert.match(rail, /checkoutReady > 0 && waitlist \?/);
+    // Lane 1: the finish rail returns null in waitlist, so Go to checkout is behind that hide
+    // rather than a nested checkoutReady && waitlist ternary.
+    const waitlistHide = rail.indexOf("if (waitlist) return null;");
+    const checkoutDoor = rail.indexOf('data-testid="slip-action-go-to-checkout"');
+    assert.ok(waitlistHide >= 0 && checkoutDoor > waitlistHide, "Go to checkout sits behind the waitlist hide, never shown in waitlist");
     assert.ok(!rail.includes("slip-traveler-fee-preview"), "no fee preview (removed outright by P-6)");
-    assert.match(rail, /data-testid="slip-action-save-to-plan"/);
+    assert.doesNotMatch(rail, /data-testid="slip-action-save-to-plan"/, "the write-nothing waitlist save is gone");
+    assert.match(rail, /if \(waitlist\) return null;/);
     assert.match(read("client/src/components/plan/HandoffChooser.tsx"), /if \(waitlist\) return null;\n\s+return \(\n\s+<div className="space-y-3" data-testid="handoff-hold-form">/);
     assert.match(read("client/src/components/plancard/AskAiDrawer.tsx"), /const visibility = waitlist \? \{ \.\.\.railVisibility, canApply: false \} : railVisibility;/);
     assert.ok(read("client/src/components/plancard/SlipView.tsx").includes("<SaveToPlanButton testId={`item-sheet-save-to-plan-${a.id}`} />"));
@@ -101,12 +106,10 @@ describe("P-1c — waitlist mode", () => {
     assert.ok(!read("client/src/components/plan/AnchorPanel.tsx").includes("useSignupMode"), "Stay here is a plan choice, untouched");
   });
 
-  it("T5 waitlist: Finalize is one 'Save to plan' lane that returns to the slip", () => {
+  it("T5 waitlist: Finalize is hidden, never a write-nothing Save to plan lane", () => {
     const modal = read("client/src/components/plancard/FinalizeBookingModal.tsx");
-    const waitlistBranch = modal.slice(modal.indexOf("  if (waitlist) {"), modal.indexOf("  return (\n    <Dialog open={open} onOpenChange={onOpenChange}>\n      <DialogContent className=\"sm:max-w-lg\" data-testid=\"finalize-modal\">\n        <DialogHeader>\n          <DialogTitle>You're set"));
-    assert.match(waitlistBranch, /data-testid="finalize-option-save-to-plan"/);
-    assert.match(waitlistBranch, /onClick=\{\(\) => onOpenChange\(false\)\}/);
-    assert.doesNotMatch(waitlistBranch, /\$|finalize-option-myself|finalize-option-expert|Travel expert/);
+    assert.match(modal, /if \(waitlist\) return null;/);
+    assert.doesNotMatch(modal, /data-testid="finalize-option-save-to-plan"/);
     assert.match(modal, /data-testid="finalize-option-myself"/, "open mode keeps today's lanes");
   });
 

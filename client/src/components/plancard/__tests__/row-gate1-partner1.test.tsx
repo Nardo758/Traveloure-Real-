@@ -3,7 +3,7 @@
  * when reviewed.
  *
  *   T1 waitlist + signed out: a gem card, a supply card, a search result and the event drawer render "Save to plan";
- *      the press toasts "Saved to plan" and calls no dialog; "Sign In Required" is never drawn in waitlist mode.
+ *      the press writes the guest plan and toasts only after that write resolves; it calls no dialog; "Sign In Required" is never drawn in waitlist mode.
  *   T2 open mode + signed out: today's labels and today's add path (the dialog) — unchanged.
  *   T3 the commission note: only with a usable partner link AND open mode; never in waitlist, even with a token.
  *   T5 the drawer with no reviewed description draws no "About" heading.
@@ -128,7 +128,11 @@ describe("GATE-1 + PARTNER-1", () => {
     const guard = dialog.indexOf("if (waitlistSave) return null;");
     assert.ok(guard > 0 && guard < dialog.indexOf("<DialogTitle>Sign In Required</DialogTitle>"));
     assert.match(read("client/src/pages/discover-location.tsx"), /const handleAdd =\s*browseSave\.wrapAdd\(/);
-    assert.match(read("client/src/components/SaveToggle.tsx"), /if \(saveToPlan\) toast\(\{ title: WAITLIST_COPY\.savedToPlan \}\);\s*else openSignInModal\(\);/);
+    const saveToggle = read("client/src/components/SaveToggle.tsx");
+    // Lane 1: the toast fires only after the guest-plan write resolves — never a bare claim.
+    assert.match(saveToggle, /if \(saveToPlan\) void saveForGuest\(\);\s*else openSignInModal\(\);/);
+    assert.match(saveToggle, /const result = await saveToGuestPlan\(guestRef, guestRef\.city\);\s*toast\(\{ title: guestSavedMessage\(result\) \}\);/);
+    assert.doesNotMatch(saveToggle, /if \(saveToPlan\) toast\(\{ title: WAITLIST_COPY\.savedToPlan \}\);/);
     // Signed in, waitlist mode: today's path.
     assert.equal(browseHookAnswer("waitlist", { id: "u1" }).saveToPlan, false);
   });
