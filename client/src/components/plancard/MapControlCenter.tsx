@@ -24,7 +24,7 @@ import { planSaveRefusalMessage } from "@/lib/plan-save-refusal";
 import { refreshSavedRefs, savedRefKey } from "@/lib/saved-refs";
 import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 import { nextTabKey } from "@/lib/roving-tabs";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Layers, MapPin, MessageSquare, Plus } from "lucide-react";
 import { SiApple, SiGoogle } from "react-icons/si";
@@ -77,7 +77,7 @@ import { MAP_COMPARE_LINK_LABEL, mapDayChipLabel, mapMovedLine, mapSheetTitle } 
 import { Link } from "wouter";
 import { MAPS_BROWSER_KEY } from "@/lib/maps-browser-key";
 import { useSignupMode } from "@/lib/signup-mode";
-import { useTripCapabilities } from "@/lib/trip-capabilities";
+import { useTripCapabilities, type TripCapabilities } from "@/lib/trip-capabilities";
 import { SaveToPlanButton } from "@/components/plan/SaveToPlanButton";
 import { gemCategory } from "@/lib/feed-stream";
 
@@ -121,65 +121,79 @@ export function locatedCountLabel(activities: readonly PlanCardActivity[] | unde
   return `${located} of ${total} located`;
 }
 
+/**
+ * PLAN-1 Phase 1 (ledger `2026-11-06-plan1-one-planner`; rulings 1 and 5): ONE map planner, two modes. A caller says
+ * which it is — `mode.kind` — and the inputs that mode has; nothing of the other mode can be passed.
+ *   · `guest`: the guest page (`/plans/new`). Browse is always on, the centre comes from the caller (the guest cannot
+ *     geocode), and Save to plan hands the place back to the page's guest rail (`onSave`).
+ *   · `owner`: every signed-in surface (the slip's map view, the Trip Card, the versions board, the Workstation, the
+ *     itinerary view). The plan's own inputs — anchor, areas, versions, candidates — and the owner slots the slip's map
+ *     band carries (ruling 5: Quick draft and the Trip Card banner; share and the expert door ride the header).
+ */
+export type MapPlannerMode =
+  | {
+      kind: "guest";
+      center: { lat: number; lng: number } | null;
+      /** The page's save (the guest rail): the place, and the day chip shown when it was pressed. */
+      onSave: (place: BrowsePlace, dayNumber: number) => void;
+      /**
+       * GATE-1B (ledger `2026-11-04-gate1b-guest-plan`): a waitlist guest WITH a server-side plan — the day chips and
+       * the plan's stops show. Absent ⇒ a plan-less guest map (Browse only).
+       */
+      withPlan?: boolean;
+    }
+  | {
+      kind: "owner";
+      /** False ⇒ a surface that shows a plan without changing it: no Browse layer and no Add. */
+      canEdit: boolean;
+      /** The plan's capabilities (CAP-1), when the caller already read them. Absent ⇒ the map reads them itself. */
+      capabilities?: TripCapabilities;
+      /** §21: the TRAVELER-FACING trip-level note (`trips.expert_traveler_note`). */
+      expertTravelerNote?: string | null;
+      /** The plan's anchor (stay / reservation / venue) — always drawn when located. */
+      anchor?: MapAnchor | null;
+      /** Neighbourhood centroids; named as labelled pins (never a shape) while `showAreas`. */
+      areas?: MapArea[] | null;
+      showAreas?: boolean;
+      /** A run's versions: the Draft / A / B / C toggle. */
+      versions?: MapVersion[] | null;
+      /** Controlled version toggle ("draft" or a version key) — the board keeps the map on its column. */
+      versionKey?: string;
+      onVersionChange?: (key: string) => void;
+      /** Held-batch-1 item 9: the run's versions board ("Compare →"). Absent ⇒ no link (§13). */
+      compareHref?: string | null;
+      /**
+       * R322 (step 7a, R-bh): the Workstation's open Add-panel drawer — its own already-filtered, already-located
+       * results, drawn as hollow browse markers with the SAME "Save to plan" card; the add is the drawer's handler.
+       */
+      candidates?: { sourceLabel: string | null; items: ReadonlyArray<{ id: string; title: string; lat: number; lng: number; price?: string | null }> } | null;
+      onAddCandidate?: (id: string, dayNumber: number) => void;
+      /**
+       * Ruling 5: what owners have, drawn as the slip's map band above the map (its existing grid — no new layout).
+       * Quick draft (`SlipDraftAiRow`, empty plan only) and the Trip Card banner (`FinishCard`).
+       */
+      slots?: { quickDraft?: ReactNode; tripCardBanner?: ReactNode } | null;
+    };
+
 export interface MapControlCenterProps {
   tripId: string;
   tripDestination: string;
   days: PlanCardDay[];
   selectedDay: number;
   onSelectDay: (i: number) => void;
-  /** §21: the TRAVELER-FACING trip-level note (`trips.expert_traveler_note`). */
-  expertTravelerNote?: string | null;
   compact?: boolean;
-  /** No Browse layer and no Add — a surface that shows a plan without changing it. */
-  readOnly?: boolean;
-  /** The plan's anchor (stay / reservation / venue) — always drawn when located. */
-  anchor?: MapAnchor | null;
-  /** Neighbourhood centroids; named as labelled pins (never a shape) while `showAreas` (the stay is
-   *  located, or the AnchorPanel is open). */
-  areas?: MapArea[] | null;
-  showAreas?: boolean;
-  /** A run's versions: the Draft / A / B / C toggle. */
-  versions?: MapVersion[] | null;
   /** Controlled Browse layer (e.g. "Find a host" opens it filtered to a category). */
   browse?: { open: boolean; categoryKey: string | null } | null;
   onBrowseChange?: (next: { open: boolean; categoryKey: string | null }) => void;
-  /** Controlled version toggle ("draft" or a version key) — the board keeps the map on its column. */
-  versionKey?: string;
-  onVersionChange?: (key: string) => void;
-  /** Held-batch-1 item 9: the run's versions board ("Compare →" on the board's stops sheet). Absent ⇒ no link (§13). */
-  compareHref?: string | null;
   /**
-   * R322 (step 7a, R-bh): the Workstation's open Add-panel drawer — its own already-filtered,
-   * already-located results (`useMapCandidates`). Drawn as hollow browse markers and rows, with the
-   * SAME "Save to plan" card the Browse layer uses; the add itself is the drawer's own handler
-   * (`onAddCandidate`), which posts the existing item route for the selected day. No second add rail.
-   */
-  candidates?: { sourceLabel: string | null; items: ReadonlyArray<{ id: string; title: string; lat: number; lng: number; price?: string | null }> } | null;
-  onAddCandidate?: (id: string, dayNumber: number) => void;
-  /**
-   * Step 8b-2 (ledger `2026-10-06-step8b2-map-layout`): the slip's map layout. `split` puts the map on
-   * the left and a rail on the right that FOLLOWS THE SHOWN LAYER — Browse while Browse is on, the
-   * shown day's "Your plan" stops otherwise (item 13). Every other mount keeps `stacked`, unchanged.
+   * Step 8b-2 (ledger `2026-10-06-step8b2-map-layout`): the slip's map layout. `split` puts the map on the left and a
+   * rail on the right that FOLLOWS THE SHOWN LAYER. Every other mount keeps `stacked`.
    */
   layout?: "stacked" | "split";
   /** The empty "Your plan" line (ruling 2): the slip's own reason text, shown while nothing is located. */
   planEmptyNote?: string | null;
-  /**
-   * Step 8d (ledger `2026-10-07-step8d-guest-map`; brief item 24): the GUEST map — a signed-out visitor
-   * with no plan. Browse only: always open, no day chips, no "Your plan" layer, no versions, no Remove;
-   * the centre comes from the caller (the eight-market list — a centre, never a pin), because
-   * `/api/geocode` stays closed to guests; "Save to plan" hands the place back (`onAdd`) instead of
-   * posting. The member path is untouched when this is absent.
-   */
-  guest?: {
-    center: { lat: number; lng: number } | null;
-    onAdd: (place: BrowsePlace) => void;
-    /**
-     * GATE-1B (ledger `2026-11-04-gate1b-guest-plan`): a waitlist guest WITH a server-side plan — the day chips and
-     * the plan's stops show, and Save to plan writes through `onAdd` (the page toasts on the server's answer).
-     */
-    withPlan?: boolean;
-  } | null;
+  /** PLAN-1: guest or owner, with that mode's inputs. */
+  mode: MapPlannerMode;
 }
 
 export function MapControlCenter({
@@ -188,24 +202,32 @@ export function MapControlCenter({
   days,
   selectedDay,
   onSelectDay,
-  expertTravelerNote,
   compact = false,
-  readOnly = false,
-  anchor = null,
-  areas = null,
-  showAreas = false,
-  versions = null,
   browse: browseControlled = null,
   onBrowseChange,
-  versionKey: versionKeyControlled,
-  onVersionChange,
-  compareHref = null,
-  candidates = null,
-  onAddCandidate,
   layout = "stacked",
   planEmptyNote = null,
-  guest = null,
+  mode,
 }: MapControlCenterProps) {
+  // PLAN-1: the mode's inputs, under the names the map has always read.
+  const owner = mode.kind === "owner" ? mode : null;
+  const readOnly = owner ? !owner.canEdit : false;
+  const expertTravelerNote = owner?.expertTravelerNote;
+  const anchor = owner?.anchor ?? null;
+  const areas = owner?.areas ?? null;
+  const showAreas = owner?.showAreas ?? false;
+  const versions = owner?.versions ?? null;
+  const versionKeyControlled = owner?.versionKey;
+  const onVersionChange = owner?.onVersionChange;
+  const compareHref = owner?.compareHref ?? null;
+  const candidates = owner?.candidates ?? null;
+  const onAddCandidate = owner?.onAddCandidate;
+  const slots = owner?.slots ?? null;
+  // The guest's save is handed the day chip shown when it was pressed (`dayNumber`, read below at press time).
+  const guest =
+    mode.kind === "guest"
+      ? { center: mode.center, withPlan: mode.withPlan, onAdd: (place: BrowsePlace) => mode.onSave(place, dayNumber ?? 1) }
+      : null;
   const { toast } = useToast();
   const [planLayer, setPlanLayer] = useState(true);
   const [browseLocal, setBrowseLocal] = useState<{ open: boolean; categoryKey: string | null }>({ open: false, categoryKey: null });
@@ -286,7 +308,9 @@ export function MapControlCenter({
   // GATE-1B (ruling 2): the Budget filter is a priced control, so it is drawn only where purchases are on sale — the
   // public mode for a guest, the plan's capabilities for a member. Unknown ⇒ hidden (fail closed).
   const { mode: signupMode } = useSignupMode();
-  const { data: caps } = useTripCapabilities(guest ? null : tripId, !guest && browseOn);
+  // PLAN-1: an owner caller that already read the plan's capabilities passes them; otherwise the map reads them here.
+  const capsRead = useTripCapabilities(guest || owner?.capabilities ? null : tripId, !guest && !owner?.capabilities && browseOn);
+  const caps = owner?.capabilities ?? capsRead.data;
   const budgetShown = guest ? signupMode === "open" : caps?.signup.mode === "open";
   const budgetMax = !budgetShown || budgetText.trim() === "" ? null : Number(budgetText);
   const allSupply = useMemo(
@@ -435,7 +459,21 @@ export function MapControlCenter({
   // Item 13: in the split layout the rail FOLLOWS THE SHOWN LAYER — Browse while it is on, the day's
   // "Your plan" stops otherwise. The stacked layout keeps both, exactly as before.
   const showPlanRail = !guest && (!split || !browseOn);
+  // PLAN-1 ruling 5: the owner's map band (Quick draft, the Trip Card banner), in the slip's existing grid.
+  const band =
+    slots && (slots.quickDraft || slots.tripCardBanner) ? (
+      <div className="grid gap-3 sm:grid-cols-2" data-testid="map-band">
+        {slots.quickDraft ? (
+          <div className="rounded-lg border border-border p-2" data-testid="map-band-ai">
+            {slots.quickDraft}
+          </div>
+        ) : null}
+        {slots.tripCardBanner ?? null}
+      </div>
+    ) : null;
   return (
+    <>
+    {band}
     <div
       data-testid={`map-control-center-${tripId}`}
       data-map-renderer={renderer}
@@ -923,6 +961,7 @@ export function MapControlCenter({
         {!center && !geocoding ? <MapPin className="hidden" aria-hidden="true" /> : null}
       </div>
     </div>
+    </>
   );
 }
 

@@ -115,6 +115,8 @@ export interface PlanEntryStart {
   /** Party the traveler typed on the details step. Absent = not answered, never 0. */
   adults?: number;
   kids?: number;
+  /** PLAN-1: a door that asks one party TOTAL (IntakePanel) — stored as the plan's count, never split (LD 33). */
+  travelers?: number;
   /** TG-1: the picker group the plan was started in (an analytics label; the mint does not read it). */
   group?: OccasionPickerGroup;
 }

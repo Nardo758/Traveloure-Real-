@@ -165,6 +165,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/round4-events.db.test.ts
       - name: Round 4b — an event outside a plan's confirmed dates is refused; an undated plan takes the event's own day at its time; Saved to plan reads the plan's items (node:test)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/round4b.db.test.ts
+      - name: PLAN-1 Phase 1 — the guest view carries the occasion label, end time and listing / partner ids (one DTO) (node:test)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/plan1-phase1.db.test.ts
       - name: Migration 439 Kyoto events seed — seven factchecked rows, idempotent, all in Kyoto (node:test)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/kyoto-events-439.db.test.ts
       - name: Migration 442 Kyoto event venue points — seven OSM points, fill only a NULL point, rerun changes nothing, Plan around it lands the pin (node:test)

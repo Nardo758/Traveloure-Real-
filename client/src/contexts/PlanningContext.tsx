@@ -555,6 +555,7 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
       const outcome = await mintTripSlip(
         {
           ...mintBasics,
+          ...(start.travelers !== undefined ? { numberOfTravelers: start.travelers } : {}),
           entry: {
             ...(door ? { door } : {}),
             occasionSource: start.occasionAsked ? "asked" : "door_prefilled",

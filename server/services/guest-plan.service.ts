@@ -17,6 +17,7 @@
  *               (items cascade); unset ⇒ disabled, deletes nothing (ruling 6).
  */
 import { eventOutsideConfirmedDates } from "@shared/plan-dates";
+import { occasionLabelForPlan } from "./occasion-label.service";
 import { savedRefKeyOfItem } from "@shared/plan-item-ref";
 import crypto, { createHash } from "node:crypto";
 import { and, asc, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
@@ -143,6 +144,8 @@ export type GuestPlanView = {
     kids: number | null;
     numberOfTravelers: number | null;
     eventType: string | null;
+    /** PLAN-1 (shared DTO): the plan's occasion in words — the same label the plancard sends (`occasionLabelForPlan`). */
+    occasionLabel: string | null;
     updatedAt: string | null;
   };
   items: Array<{
@@ -158,9 +161,14 @@ export type GuestPlanView = {
     /** R4b-5: the item's own day and time when it has them (an event's), as stored. */
     scheduledDate: string | null;
     startTime: string | null;
+    /** PLAN-1 (shared DTO): the stored wall-clock end, as the plancard sends it. */
+    endTime: string | null;
     /** R4b-3: the content row the item was saved from, so a card reads "Saved to plan" from the plan itself. */
     contentType: string | null;
     contentId: string | null;
+    /** PLAN-1 (shared DTO): a listing or partner product the item names, as the plancard sends them. */
+    providerServiceId: string | null;
+    affiliateProductId: string | null;
   }>;
   retentionDays: number | null;
 };
@@ -194,7 +202,7 @@ function storedDay(v: unknown): string | null {
   return m ? m[1] : null;
 }
 
-function viewOf(trip: Trip, items: Array<typeof itineraryItems.$inferSelect>): GuestPlanView {
+function viewOf(trip: Trip, items: Array<typeof itineraryItems.$inferSelect>, occasionLabel: string | null = null): GuestPlanView {
   return {
     plan: {
       id: trip.id,
@@ -207,6 +215,7 @@ function viewOf(trip: Trip, items: Array<typeof itineraryItems.$inferSelect>): G
       kids: trip.kids ?? null,
       numberOfTravelers: trip.numberOfTravelers ?? null,
       eventType: trip.eventType ?? null,
+      occasionLabel,
       updatedAt: trip.updatedAt ? new Date(trip.updatedAt).toISOString() : null,
     },
     items: items.map((i) => ({
@@ -221,8 +230,11 @@ function viewOf(trip: Trip, items: Array<typeof itineraryItems.$inferSelect>): G
       located: i.latitude != null && i.longitude != null,
       scheduledDate: storedDay((i as any).scheduledDate),
       startTime: (i as any).startTime ?? null,
+      endTime: (i as any).endTime ?? null,
       contentType: (i as any).contentType ?? null,
       contentId: (i as any).contentId ?? null,
+      providerServiceId: (i as any).providerServiceId ?? null,
+      affiliateProductId: (i as any).affiliateProductId ?? null,
     })),
     retentionDays: guestPlanRetentionDays(),
   };
@@ -236,7 +248,13 @@ export async function readGuestPlan(hash: string): Promise<GuestPlanView | null>
     .from(itineraryItems)
     .where(eq(itineraryItems.tripId, trip.id))
     .orderBy(asc(itineraryItems.dayNumber), asc(itineraryItems.createdAt), asc(itineraryItems.id));
-  return viewOf(trip, items);
+  return fullView(trip, items);
+}
+
+/** PLAN-1: the whole plan, with its occasion label read the plancard's way (a failed read ⇒ null, never a guess). */
+async function fullView(trip: Trip, items: Array<typeof itineraryItems.$inferSelect>): Promise<GuestPlanView> {
+  const label = await occasionLabelForPlan((trip as any).occasionSlug ?? null).catch(() => null);
+  return viewOf(trip, items, label);
 }
 
 export type GuestCreateOutcome =
@@ -306,7 +324,7 @@ export async function createGuestPlan(hash: string, body: z.infer<typeof guestPl
     }
     throw err;
   }
-  return { ok: true, view: viewOf(trip, []), created: true };
+  return { ok: true, view: await fullView(trip, []), created: true };
 }
 
 /** Postgres `unique_violation`, read through the driver's wrapper when there is one. */

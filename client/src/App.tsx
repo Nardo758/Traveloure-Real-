@@ -18,6 +18,7 @@ import { EALayout } from "@/components/ea-layout";
 import { PlanPageShell } from "@/components/plan-page-shell";
 import { useAuth } from "@/hooks/use-auth";
 import { claimGuestPlans } from "@/lib/waitlist-guest-plan";
+import { claimLandingPath } from "@/lib/plan-landing";
 import { PenBinder } from "@/components/pen-binder";
 import { useLocale } from "@/hooks/use-locale";
 import { TripQueueProvider } from "@/contexts/TripQueueContext";
@@ -1578,6 +1579,7 @@ function Router() {
 function GuestCartMigrator() {
   const { user, isLoading } = useAuth();
   const qc = useQueryClient();
+  const [, setLocation] = useLocation();
   const wasAuthenticated = useRef(false);
 
   useEffect(() => {
@@ -1603,13 +1605,18 @@ function GuestCartMigrator() {
           .catch((err) => console.warn("[cart] Guest cart migration failed", err));
         // GATE-1B (ledger 2026-11-04-gate1b-guest-plan): the session's guest plans become the account's, as-is.
         // A-37: one claim request per sign-in (the plan page reuses this one).
+        // PLAN-1 ruling 2: a sign-in that claimed a plan lands on it, on its map — every sign-in path (the
+        // "refresh the list without navigating" branch is retired). Nothing claimed ⇒ the traveler stays put.
         void claimGuestPlans((user as any)?.id ?? null).then((ids) => {
-          if (ids.length > 0) qc.invalidateQueries({ queryKey: ["/api/trips"] });
+          if (ids.length === 0) return;
+          qc.invalidateQueries({ queryKey: ["/api/trips"] });
+          const to = claimLandingPath(ids);
+          if (to) setLocation(to);
         });
       }
     }
     wasAuthenticated.current = isNowAuth;
-  }, [user, isLoading, qc]);
+  }, [user, isLoading, qc, setLocation]);
 
   return null;
 }

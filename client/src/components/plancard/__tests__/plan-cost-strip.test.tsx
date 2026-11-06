@@ -246,7 +246,9 @@ describe("plan cost strip", () => {
     const at = code.indexOf("<PlanCostStrip");
     assert.ok(code.indexOf("<SlipHeader") < at && at < code.indexOf("<ToolsTray"));
     const before = code.slice(Math.max(0, at - 400), at);
-    assert.doesNotMatch(before, /experienceGroup ===|isOwner &&|slipView ===/);
+    assert.doesNotMatch(before, /experienceGroup ===|isOwner &&/);
+    // PLAN-1 (sanctioned edit, ruling Nov 6): the strip is Days-view only — owner map view draws no cost strip.
+    assert.match(before, /\{slipView === "list" \? \(\s*$/);
     assert.doesNotMatch(code.slice(at, code.indexOf("/>", at)), /data-testid/);
     for (const f of [
       "client/src/components/plancard/SlipRail.tsx",

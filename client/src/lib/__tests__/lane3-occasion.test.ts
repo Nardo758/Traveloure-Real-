@@ -84,10 +84,12 @@ describe("Lane 3 occasion (client)", () => {
     assert.match(ctx, /\.\.\.\(start\.occasionSlug \? \{ experienceSlug: start\.occasionSlug, eventType: eventTypeForSlug\(start\.occasionSlug\) \} : \{\}\)/);
     assert.doesNotMatch(ctx, /OCCASION_GROUP_DEFAULT_SLUG\.trips/, "a replayed record never invents the trips default");
     assert.doesNotMatch(ctx, /console\.warn\("\[plan-entry\] occasion not saved/);
+    // PLAN-1 (sanctioned edit): IntakePanel starts through the ONE mint (`planning.start`), so its occasion is saved by
+    // the provider's retried PATCH above and its title by the mint's `planTitle` — it has no rail of its own.
     const intake = read("client/src/components/intake-panel.tsx");
-    assert.match(intake, /sendWithRetry\(\(\) => apiRequest\("PATCH", `\/api\/trips\/\$\{trip\.id\}\/occasion`, \{ experienceSlug: slug \}\)\)/);
-    assert.match(intake, /if \(!saved\.ok\) toast\(\{ variant: "destructive", title: OCCASION_SAVE_FAILED \}\)/);
-    assert.match(intake, /title: planTitle\(/);
+    assert.match(intake, /const out = await planning\.start\(\{/);
+    assert.match(intake, /occasionSlug: slug,/);
+    assert.doesNotMatch(intake, /useCreateTrip|apiRequest\(|sendWithRetry/, "no second create or occasion rail");
     assert.doesNotMatch(intake, /\} Trip`/, "no second title rule");
     const entry = read("client/src/components/plan/PlanEntry.tsx");
     // R3-6 (sanctioned edit): `groupChosen` starts from `doorChoseGroup(source)`, so it alone carries the door's group.

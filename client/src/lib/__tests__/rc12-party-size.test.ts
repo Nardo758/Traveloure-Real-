@@ -150,6 +150,10 @@ describe("nothing sends or saves a count nobody stated (RC-12 source pins)", () 
     const src = read("client/src/components/intake-panel.tsx");
     assert.doesNotMatch(src, /useState\(2\)/);
     assert.doesNotMatch(src, /numberOfTravelers: travelers,/);
-    assert.match(src, /partyStated !== undefined \? \{ numberOfTravelers: partyStated \}/);
+    // PLAN-1 (sanctioned edit): IntakePanel starts through the ONE mint; the typed total rides `travelers`, which the
+    // mint stores as the count (never a split), and an untouched field sends nothing.
+    assert.match(src, /partyStated !== undefined \? \{ travelers: partyStated \}/);
+    assert.match(read("client/src/contexts/PlanningContext.tsx"), /start\.travelers !== undefined \? \{ numberOfTravelers: start\.travelers \}/);
+    assert.match(read("client/src/lib/trip-slip.ts"), /Number\.isInteger\(basics\.numberOfTravelers\) && basics\.numberOfTravelers > 0/);
   });
 });

@@ -315,7 +315,9 @@ describe("I1 — the intake panel states a TOTAL and fabricates no split", () =>
   it("the stated total IS still sent — stripping the split must not drop the real answer", () => {
     // RC-12 (ledger `2026-09-25-rc12-party-size`): the total is sent only when the traveler stated
     // one — an untouched field is omitted, never an invented count (§13).
-    assert.match(panel, /partyStated !== undefined \? \{ numberOfTravelers: partyStated \}/);
+    // PLAN-1 (sanctioned edit): the panel starts through the ONE mint; the stated total rides `travelers` → the mint's
+    // `numberOfTravelers` (client/src/contexts/PlanningContext.tsx).
+    assert.match(panel, /partyStated !== undefined \? \{ travelers: partyStated \}/);
   });
 });
 

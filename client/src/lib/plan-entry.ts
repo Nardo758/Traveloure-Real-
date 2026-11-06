@@ -588,19 +588,14 @@ export function canStartPlan(state: PlanEntryState): boolean {
 }
 
 /**
- * Where the plan opens. Trip, group travel, a multi-day event → the map; a moment, a celebration, a
- * hosted event → the list. The group is the CHOSEN occasion's own (a "More specific" pick moves it).
+ * PLAN-1 ruling 3 (ledger `2026-11-06-plan1-one-planner`): a new plan lands on the map — from every door, whatever the
+ * group or the event's span. The arguments stay for the callers' shape; nothing they hold moves the landing.
  */
 export function planEntryView(
-  state: PlanEntryState,
-  occasionRow: ExperienceGroupRow | null | undefined,
+  _state?: PlanEntryState,
+  _occasionRow?: ExperienceGroupRow | null | undefined,
 ): "map" | "list" {
-  // SH-1 Q16.1: around an event the group follows the nights; the carried "show" slug does not move the landing view.
-  const eventSlug = !!state.event && state.occasionSlug === EVENT_OCCASION_SLUG;
-  const group = occasionRow && !eventSlug ? experienceGroupFor(occasionRow) : state.group;
-  if (group === "trips" || group === "group_travel") return "map";
-  if (state.event && state.startDate && state.endDate && state.startDate !== state.endDate) return "map";
-  return "list";
+  return "map";
 }
 
 function ymd(d: Date): string {
