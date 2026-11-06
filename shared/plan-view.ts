@@ -22,12 +22,17 @@ export function isPlanView(v: unknown): v is PlanView {
   return typeof v === "string" && (PLAN_VIEWS as readonly string[]).includes(v);
 }
 
-/** The URL's view: `map`, or `days` (also the legacy `list`); anything else ⇒ none stated. */
+/**
+ * The URL's view: `map`, or `days` (also the legacy `list`). The expert door's link (`?help=expert`) opens its help card,
+ * which lives in the Days view — so it states Days unless the URL names a view. Anything else ⇒ none stated.
+ */
 export function planViewFromUrl(search: string | null | undefined): PlanView | null {
   try {
-    const v = new URLSearchParams(search ?? "").get("view");
+    const params = new URLSearchParams(search ?? "");
+    const v = params.get("view");
     if (v === "map") return "map";
     if (v === "days" || v === "list") return "days";
+    if (params.get("help") === "expert") return "days";
     return null;
   } catch {
     return null;

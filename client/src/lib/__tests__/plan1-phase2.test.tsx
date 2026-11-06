@@ -26,6 +26,9 @@ describe("PLAN-1 Phase 2 — the planner toggle", () => {
     assert.equal(planViewFromUrl("?view=days"), "days");
     assert.equal(planViewFromUrl("?view=list"), "days", "the legacy word");
     assert.equal(planViewFromUrl("?item=x"), null);
+    // The expert door's card lives in the Days view: its link opens Days on any plan (a `local` finish lands there).
+    assert.equal(planViewFromUrl("?help=expert"), "days");
+    assert.equal(planViewFromUrl("?help=expert&view=map"), "map", "a named view still wins");
     assert.equal(planOpensOn({ [PLAN_OPENS_ON_KEY]: "map" }), "map");
     assert.equal(planOpensOn({}), null);
     assert.equal(planOpensOn(null), null);
