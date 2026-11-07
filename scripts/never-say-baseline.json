@@ -39,9 +39,6 @@
   "client/src/components/plan/GettingThereSheet.tsx": {
     "busy": 1
   },
-  "client/src/components/plancard/BuildAroundDialog.tsx": {
-    "ranked by": 1
-  },
   "client/src/components/provider/service-photos-drawer.tsx": {
     "recommended": 1
   },
