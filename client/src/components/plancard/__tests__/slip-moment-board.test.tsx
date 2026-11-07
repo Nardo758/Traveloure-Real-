@@ -12,6 +12,7 @@
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import React from "react";
 import { renderToString } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -27,6 +28,14 @@ import { SlipHeaderMeta } from "../SlipHeaderMeta";
 const text = (html: string) => html.replace(/<!-- -->/g, "").replace(/<[^>]+>/g, " ").replace(/&#x27;/g, "'").replace(/\s+/g, " ").trim();
 const wrap = (el: React.ReactElement) =>
   renderToString(React.createElement(QueryClientProvider, { client: new QueryClient() }, React.createElement(GuestTripProvider, null, el)));
+
+describe("QW-5 — the Moment anchor survives the map view", () => {
+  it("the anchor card is not gated on the list view", () => {
+    const src = readFileSync(new URL("../SlipView.tsx", import.meta.url), "utf8");
+    assert.doesNotMatch(src, /momentAnchor && slipView === "list"/);
+    assert.match(src, /momentAnchor \? \(/);
+  });
+});
 
 describe("Moment board", () => {
   it("MO1 the span word", () => {
