@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Stage 3 — Trip Card, phone (canonical)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&amp;family=Public+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#5B4B8A}a:hover{color:#3F3366}
+</style>
+</helmet>
+<div style="width: 390px; height: 1600px; box-sizing: border-box; background: #FAFAF8; color: #1A1A18; font-family: 'Public Sans', system-ui, sans-serif; font-size: 14px; line-height: 1.45; display: flex; flex-direction: column; gap: 12px; padding: 14px 14px 24px">
+
+  <!-- Header: back · title · ⋯ menu (194) -->
+  <div style="display: flex; align-items: center; justify-content: space-between">
+    <a href="Finalize.dc.html" aria-label="Back" style="width: 44px; height: 44px; display: grid; place-items: center; text-decoration: none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1A1A18" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg></a>
+    <span style="font-size: 11px; letter-spacing: .13em; text-transform: uppercase; color: #5B4B8A; font-weight: 600">Trip Card · on trip</span>
+    <button aria-label="More actions" style="width: 44px; height: 44px; border: 0; background: transparent; font-weight: 700">⋯</button>
+  </div>
+
+  <!-- Hero -->
+  <div>
+    <h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 26px; line-height: 1.1; letter-spacing: -.02em">Kyoto · Day 2 of 5</h1>
+    <span style="font-size: 12.5px; color: #7A7A72">[Dates] · 3 legs · <span style="border-bottom: 1px dashed #7A7A72">2 not checked yet</span> <span style="font-size: 11px">(P-5 status items, queued)</span></span>
+  </div>
+
+  <!-- Leave-by (9b) -->
+  <div style="padding: 12px 14px; background: #F6EDD8; border: 1px solid #E8D6AF; border-radius: 12px; display: flex; flex-direction: column; gap: 4px">
+    <span style="font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #8A5E12; font-weight: 600">Next</span>
+    <span style="font-family: 'Bricolage Grotesque', sans-serif; font-size: 20px; font-weight: 600; color: #8A5E12">Leave by [HH:MM]</span>
+    <span style="font-size: 12.5px; color: #8A5E12">for [next stop] — from the routed leg, in the trip's time zone.</span>
+    <div style="display: flex; gap: 8px; margin-top: 4px"><button style="font: 600 12.5px 'Public Sans', sans-serif; padding: 8px 11px; border-radius: 8px; border: 0; background: #1A1A18; color: #FAFAF8">Navigate to next stop</button><button style="font: 600 12.5px 'Public Sans', sans-serif; padding: 8px 11px; border-radius: 8px; border: 1px solid #E8D6AF; background: #fff; color: #8A5E12">Message host</button></div>
+  </div>
+
+  <!-- J5 on-trip map: placeholder set, pins only -->
+  <div style="position: relative; height: 230px; border-radius: 14px; overflow: hidden; background: #ECEBE4; border: 1px solid #E8E8E2">
+    <svg width="362" height="230" viewBox="0 0 362 230" aria-hidden="true" style="position: absolute; inset: 0">
+      <g stroke="#DEDCD2" stroke-width="1"><path d="M0 80 H362 M0 160 H362 M120 0 V230 M240 0 V230"></path></g>
+      <path d="M0 150 C 90 120, 180 170, 362 140" fill="none" stroke="#D6DEE6" stroke-width="8"></path>
+      <g font-family="IBM Plex Mono, monospace" font-size="11" font-weight="600" text-anchor="middle">
+        <circle cx="80" cy="70" r="17" fill="none" stroke="#5B4B8A" stroke-width="2"></circle><circle cx="80" cy="70" r="12" fill="#5B4B8A"></circle><text x="80" y="74" fill="#fff">1</text>
+        <circle cx="200" cy="120" r="17" fill="none" stroke="#5B4B8A" stroke-width="2"></circle><circle cx="200" cy="120" r="12" fill="#5B4B8A"></circle><text x="200" y="124" fill="#fff">2</text>
+        <circle cx="290" cy="60" r="12" fill="#B7A9E6"></circle><text x="290" y="64" fill="#fff">3</text>
+        <rect x="300" y="170" width="24" height="24" rx="6" fill="#1E7A52"></rect><text x="312" y="187" fill="#fff" font-size="12">⌂</text>
+      </g>
+    </svg>
+    <div style="position: absolute; left: 10px; bottom: 10px; display: flex; gap: 6px"><span style="font-size: 11.5px; font-weight: 600; padding: 5px 9px; border-radius: 999px; background: #fff; border: 1px solid #DAD9D1">Today's stops</span><span style="font-size: 11.5px; font-weight: 600; padding: 5px 9px; border-radius: 999px; background: #fff; border: 1px solid #DAD9D1; color: #1E7A52">⌂ Where you're staying</span></div>
+  </div>
+  <span style="font-size: 11.5px; color: #7A7A72">J5 (as built): rings mark the current leg's two ends · no lines · no device position · Leon's placeholder set of 5.</span>
+
+  <!-- Today -->
+  <div style="display: flex; flex-direction: column; gap: 8px">
+    <span style="font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #7A7A72; font-weight: 600">Today</span>
+
+    <div style="padding: 12px; background: #fff; border: 1px solid #E8E8E2; border-radius: 12px; display: flex; flex-direction: column; gap: 6px">
+      <div style="display: flex; justify-content: space-between"><span style="font-weight: 600">[Morning stop]</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: #7A7A72">09:00</span></div>
+      <span style="font-size: 12.5px; color: #1E7A52; font-weight: 600">Confirmed by [provider] · [date]</span>
+    </div>
+
+    <!-- 179 upsell line: routed legs only, owner only -->
+    <div style="display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; padding: 10px 12px; background: #EEEAF6; border: 1px solid #D8CFEE; border-radius: 10px">
+      <span style="font-size: 12.5px; color: #5B4B8A">Leg → [next stop] · Add [transport option] for this leg</span>
+      <button style="font: 600 12px 'Public Sans', sans-serif; padding: 7px 10px; border-radius: 8px; border: 1px solid #D8CFEE; background: #fff; color: #5B4B8A">Ride options</button>
+    </div>
+    <span style="font-size: 11px; color: #7A7A72; margin-top: -4px">179 line — routed legs only, owner only; the one place a minute figure may appear (B8).</span>
+
+    <div style="padding: 12px; background: #fff; border: 1px solid #E8E8E2; border-radius: 12px; display: flex; flex-direction: column; gap: 6px">
+      <div style="display: flex; justify-content: space-between"><span style="font-weight: 600">[Partner activity]</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: #7A7A72">13:30</span></div>
+      <span style="font-size: 12.5px; color: #7A7A72">Your booking is with [partner], under their terms.</span>
+      <a href="#partner" style="font-size: 12.5px; font-weight: 600; text-decoration: none">Booked on [partner] →</a>
+    </div>
+
+    <div style="padding: 12px; background: #fff; border: 1px solid #E8E8E2; border-radius: 12px; display: flex; flex-direction: column; gap: 6px">
+      <div style="display: flex; justify-content: space-between"><span style="font-weight: 600">[Evening stop]</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: #7A7A72">18:30</span></div>
+      <span style="font-size: 12.5px; color: #8A5E12; font-weight: 600">Not checked yet</span>
+    </div>
+  </div>
+
+  <!-- Advisor card: CN-1e task log (queued) -->
+  <div style="padding: 12px 14px; background: #fff; border: 1px dashed #7A7A72; border-radius: 12px; display: flex; flex-direction: column; gap: 8px">
+    <div style="display: flex; align-items: center; gap: 10px">
+      <span style="width: 32px; height: 32px; border-radius: 50%; background: #D8CFEE; display: grid; place-items: center; font-weight: 700; color: #5B4B8A; font-size: 13px">E</span>
+      <div style="display: flex; flex-direction: column"><span style="font-weight: 600; font-size: 13px">[Expert name] · Local concierge</span><span style="font-size: 11.5px; color: #7A7A72">On your card until [access_until]</span></div>
+      <button style="margin-left: auto; font: 600 12px 'Public Sans', sans-serif; padding: 7px 10px; border-radius: 8px; border: 1px solid #DAD9D1; background: #fff">Message</button>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 4px; font-size: 12.5px">
+      <div style="display: flex; justify-content: space-between; padding: 6px 0; border-top: 1px solid #E8E8E2"><span>Reservation lifeline — [restaurant]</span><span style="font-weight: 600; color: #1E7A52">Done</span></div>
+      <div style="display: flex; justify-content: space-between; padding: 6px 0; border-top: 1px solid #E8E8E2"><span>Done-for-you — tea ceremony</span><span style="font-weight: 600; color: #8A5E12">In progress</span></div>
+    </div>
+    <span style="font-size: 11px; color: #7A7A72">CN-1e task log in the TripCardRail advisor card — queued UI (brief attached). Absent when no advisor.</span>
+  </div>
+
+  <!-- Where you're staying -->
+  <div style="padding: 12px; background: #fff; border: 1px solid #E8E8E2; border-radius: 12px; display: flex; flex-direction: column; gap: 6px">
+    <span style="font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #7A7A72; font-weight: 600">Where you're staying</span>
+    <span style="font-weight: 600">[Place name] · [Neighbourhood]</span>
+    <span style="font-size: 12.5px; color: #7A7A72">Stays and transport are links — you book them yourself.</span>
+    <a href="#partner" style="font-size: 12.5px; font-weight: 600; text-decoration: none">View on [partner] →</a>
+  </div>
+
+  <!-- ⋯ menu contents (194): 4 + 1 -->
+  <div style="padding: 12px 14px; border: 1px dashed #DAD9D1; border-radius: 12px; display: flex; flex-direction: column; gap: 4px; font-size: 12.5px">
+    <span style="font-weight: 600">⋯ menu (as built · Leon's 4 + 1 set)</span>
+    <span>[Menu item 1] · [Menu item 2] · [Menu item 3] · [Menu item 4] — same set as desktop</span>
+    <span style="color: #5B4B8A">Need to change the plan? <b>Reopen</b> — returns to the slip; bookings stay.</span>
+  </div>
+
+  <div style="margin-top: auto; padding: 10px 12px; border-radius: 10px; background: #F4F3EF; font-size: 12px; color: #7A7A72">Canonical phone card = October structure (hero → today → stay) + 9b leave-by, J5 map, 179 leg line, CN-1e advisor card. No Tonight/Tomorrow slot (Later). Where booking copies live is still Leon's call.</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1600}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Trip Slip — planning surface as built</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&amp;family=Public+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0;background:#FAFAF8;color:#1A1A18;font-family:"Public Sans",ui-sans-serif,system-ui,sans-serif;font-size:15px;line-height:1.5}
+a{color:#5B4B8A}a:hover{color:#3F3366}
+</style>
+</helmet>
+<div style="max-width: 1280px; margin: 0 auto; padding: 24px 22px 56px; display: flex; flex-direction: column; gap: 18px">
+
+  <div style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: #FFFFFF; border: 1px solid #E8E8E2; border-radius: 12px; box-shadow: 0 1px 2px rgba(26,26,24,.04), 0 8px 24px rgba(26,26,24,.05)">
+    <span aria-hidden="true" style="width: 26px; height: 26px; border-radius: 8px; background: #5B4B8A; display: grid; place-items: center; color: #fff; flex: none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 4l2.5 5.5L21 12l-5.5 2.5L13 20l-2.5-5.5L5 12l5.5-2.5L13 4z"></path></svg></span>
+    <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 600">Traveloure</span>
+    <span style="color: #7A7A72; font-size: 13px">Plans / <b style="color: #1A1A18; font-weight: 600">Kyoto, 5 days</b></span>
+    <span style="flex: 1"></span>
+    <button aria-label="Share this plan" style="display: inline-flex; align-items: center; gap: 6px; font: 500 12.5px 'Public Sans', sans-serif; padding: 6px 11px; border-radius: 8px; border: 1px solid #DAD9D1; background: #fff; color: #1A1A18"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"></path></svg>Share</button>
+    <button aria-label="More actions" style="display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 8px; border: 1px solid #DAD9D1; background: #fff; color: #1A1A18; font-weight: 700">⋯</button>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 16px; align-items: stretch; max-width: 680px; margin: 0 auto; width: 100%">
+    <div style="display: flex; flex-direction: column; gap: 14px">
+
+      <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; flex-wrap: wrap">
+        <div>
+          <p style="margin: 0 0 6px; font-size: 12px; letter-spacing: .13em; text-transform: uppercase; color: #5B4B8A; font-weight: 600">Trip Slip · Owner view</p>
+          <h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; letter-spacing: -.02em; font-size: 34px; line-height: 1.08">Kyoto, 5 days</h1>
+          <p style="margin: 6px 0 0; color: #7A7A72">[Dates] · [N travelers] · 3 legs · 2 not checked yet</p>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; padding: 4px 9px; border-radius: 999px; border: 1px solid #DAD9D1; background: #fff">[Day 1 date]</span>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; padding: 4px 9px; border-radius: 999px; border: 1px solid #DAD9D1; background: #fff">[Day 5 date]</span>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 14px; padding: 12px 14px; background: #FFFFFF; border: 1px solid #E8E8E2; border-radius: 12px; flex-wrap: wrap">
+        <div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #7A7A72; font-weight: 600">Real prices on your plan</span><span style="font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 18px">[$ total]</span></div>
+        <div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #7A7A72; font-weight: 600">Unpriced stops</span><span style="font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 18px">[n]</span></div>
+        <div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #7A7A72; font-weight: 600">Booked</span><span style="font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 18px">[n]</span></div>
+        <span style="flex: 1"></span>
+        <span style="align-self: center; font-size: 12.5px; color: #7A7A72">No traveler fee line — by ruling</span>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px">
+          <h2 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 18px; font-weight: 600">Day 1 · [date]</h2>
+          <div style="display: flex; gap: 6px">
+            <button style="font: 500 12.5px 'Public Sans', sans-serif; padding: 6px 11px; border-radius: 8px; border: 1px solid #DAD9D1; background: #fff; color: #1A1A18">Add to this day</button>
+            <button style="font: 500 12.5px 'Public Sans', sans-serif; padding: 6px 11px; border-radius: 8px; border: 1px solid #DAD9D1; background: #fff; color: #1A1A18">Swap a stop</button>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 56px 1fr auto auto; align-items: center; gap: 12px; padding: 12px 14px; background: #fff; border: 1px solid #E8E8E2; border-radius: 12px">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7A7A72">09:00</span>
+          <div style="min-width: 0"><div style="font-weight: 600">[Morning stop]</div><div style="font-size: 12.5px; color: #7A7A72">Checked · Source: [official site]</div></div>
+          <span style="font-size: 12px; font-weight: 600; color: #1E7A52; background: #E7F3EC; border: 1px solid #C4E4D1; padding: 3px 9px; border-radius: 999px">Booked</span>
+          <button aria-label="Stop actions" style="width: 34px; height: 34px; border-radius: 8px; border: 1px solid #DAD9D1; background: #fff; font-weight: 700">⋯</button>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 56px 1fr auto; align-items: center; gap: 12px; padding: 8px 14px; border-left: 2px dashed #DAD9D1; margin-left: 24px">
+          <span aria-hidden="true"></span>
+          <span style="font-size: 12.5px; color: #7A7A72">Leg · not checked yet · <span style="color: #8A5E12">est.</span></span>
+          <button style="font: 500 12px 'Public Sans', sans-serif; padding: 5px 10px; border-radius: 8px; border: 1px solid #DAD9D1; background: #fff">Travel options for this leg</button>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 56px 1fr auto auto; align-items: center; gap: 12px; padding: 12px 14px; background: #fff; border: 1px solid #E8E8E2; border-radius: 12px">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7A7A72">13:00</span>
+          <div style="min-width: 0"><div style="font-weight: 600">[Lunch stop]</div><div style="font-size: 12.5px; color: #7A7A72">Hours not checked yet</div></div>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7A7A72">[$ price]</span>
+          <button aria-label="Stop actions" style="width: 34px; height: 34px; border-radius: 8px; border: 1px solid #DAD9D1; background: #fff; font-weight: 700">⋯</button>
+        </div>
+
+        <div style="margin-left: 70px; width: 300px; background: #fff; border: 1px solid #E8E8E2; border-radius: 12px; box-shadow: 0 2px 4px rgba(26,26,24,.05), 0 14px 40px rgba(26,26,24,.09); padding: 6px; display: flex; flex-direction: column">
+          <span style="padding: 6px 10px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #7A7A72; font-weight: 600">Stop menu (as built)</span>
+          <button style="text-align: left; font: 500 13.5px 'Public Sans', sans-serif; padding: 8px 10px; border: 0; background: transparent; border-radius: 8px">Swap</button>
+          <button style="text-align: left; font: 500 13.5px 'Public Sans', sans-serif; padding: 8px 10px; border: 0; background: transparent; border-radius: 8px">Move</button>
+          <button style="text-align: left; font: 500 13.5px 'Public Sans', sans-serif; padding: 8px 10px; border: 0; background: transparent; border-radius: 8px">Build my days around this</button>
+          <button style="text-align: left; font: 500 13.5px 'Public Sans', sans-serif; padding: 8px 10px; border: 0; background: transparent; border-radius: 8px">Ask a local about this</button>
+          <button style="text-align: left; font: 500 13.5px 'Public Sans', sans-serif; padding: 8px 10px; border: 0; background: transparent; border-radius: 8px">Keep this</button>
+          <button style="text-align: left; font: 500 13.5px 'Public Sans', sans-serif; padding: 8px 10px; border: 0; background: transparent; border-radius: 8px">Find a host</button>
+          <button style="text-align: left; font: 500 13.5px 'Public Sans', sans-serif; padding: 8px 10px; border: 0; background: transparent; border-radius: 8px">Set as where you're staying</button>
+          <button style="text-align: left; font: 500 13.5px 'Public Sans', sans-serif; padding: 8px 10px; border: 0; background: transparent; border-radius: 8px">Details</button>
+          <button style="text-align: left; font: 500 13.5px 'Public Sans', sans-serif; padding: 8px 10px; border: 0; background: transparent; border-radius: 8px; color: #8A5E12">Remove</button>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px">
+          <h2 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 18px; font-weight: 600">Day 2 · [date]</h2>
+          <button style="font: 500 12.5px 'Public Sans', sans-serif; padding: 6px 11px; border-radius: 8px; border: 1px solid #DAD9D1; background: #fff">Collapse</button>
+        </div>
+        <div style="padding: 16px 14px; background: #fff; border: 1px dashed #DAD9D1; border-radius: 12px; color: #7A7A72; font-size: 13.5px">Add your first stop · <a href="#discover">Discover</a></div>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 14px 16px; background: #fff; border: 1px solid #E8E8E2; border-radius: 12px; box-shadow: 0 1px 2px rgba(26,26,24,.04), 0 8px 24px rgba(26,26,24,.05)">
+        <span style="font-size: 11px; letter-spacing: .11em; text-transform: uppercase; color: #7A7A72; font-weight: 600; font-family: 'IBM Plex Mono', monospace; width: 100%">Action row · owner only</span>
+        <button style="display: inline-flex; align-items: center; gap: 6px; font: 600 13px 'Public Sans', sans-serif; padding: 8px 13px; border-radius: 8px; border: 1px solid #D8CFEE; background: #EEEAF6; color: #5B4B8A; box-shadow: 0 0 0 3px #D8CFEE"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4z"></path></svg>Optimize this plan</button>
+        <span style="font-size: 12.5px; color: #7A7A72">Greyed with a reason when there is nothing to optimize · price shown before any charge</span>
+        <span style="flex: 1"></span>
+        <button style="font: 600 13px 'Public Sans', sans-serif; padding: 8px 13px; border-radius: 8px; border: 1px solid #1A1A18; background: #1A1A18; color: #FAFAF8">Finalize plan</button>
+      </div>
+
+      <div style="padding: 12px 14px; border: 1px dashed #5B4B8A; border-radius: 12px; background: #FFFFFF; display: flex; gap: 10px; align-items: center; flex-wrap: wrap">
+        <span style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #5B4B8A; font-weight: 600">Queued · P-1 waitlist mode</span>
+        <span style="font-size: 13px; color: #7A7A72">Optimize and Add-all are hidden, not greyed; every buy action reads</span>
+        <button style="font: 600 13px 'Public Sans', sans-serif; padding: 7px 12px; border-radius: 8px; border: 1px solid #DAD9D1; background: #fff">Save to plan</button>
+      </div>
+    </div>
+
+    <aside style="display: flex; flex-direction: column; gap: 12px">
+      <div style="padding: 14px; background: #fff; border: 1px solid #E8E8E2; border-radius: 12px">
+        <span style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #7A7A72; font-weight: 600">Tools tray · live · one horizontal row (desktop ruling Oct 8: one centered column, no right rail)</span>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px">
+          <button style="font: 600 12.5px 'Public Sans', sans-serif; padding: 6px 11px; border-radius: 999px; border: 1px solid #D8CFEE; background: #EEEAF6; color: #5B4B8A">Where to stay</button>
+          <button style="font: 600 12.5px 'Public Sans', sans-serif; padding: 6px 11px; border-radius: 999px; border: 1px solid #DAD9D1; background: #fff">Travel party</button>
+          <button style="font: 600 12.5px 'Public Sans', sans-serif; padding: 6px 11px; border-radius: 999px; border: 1px solid #DAD9D1; background: #fff">Getting around</button>
+          <button style="font: 600 12.5px 'Public Sans', sans-serif; padding: 6px 11px; border-radius: 999px; border: 1px solid #DAD9D1; background: #fff">Pace</button>
+          <button style="font: 600 12.5px 'Public Sans', sans-serif; padding: 6px 11px; border-radius: 999px; border: 1px solid #DAD9D1; background: #fff">Getting there</button>
+        </div>
+        <p style="margin: 10px 0 0; font-size: 12px; color: #7A7A72">Six unbuilt tools draw nothing — no "coming soon". Ship order ruled: Budget → Getting home → group package → Getting back late.</p>
+      </div>
+
+      <div style="padding: 14px; background: #fff; border: 1px solid #E8E8E2; border-radius: 12px">
+        <span style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #7A7A72; font-weight: 600">Planning map</span>
+        <div style="margin-top: 10px; height: 220px; border-radius: 10px; background: #F4F3EF; border: 1px solid #E8E8E2; position: relative; overflow: hidden">
+          <span aria-hidden="true" style="position: absolute; left: 34%; top: 28%; width: 22px; height: 22px; border-radius: 50%; background: #1A1A18; color: #fff; font: 600 11px 'IBM Plex Mono', monospace; display: grid; place-items: center">1</span>
+          <span aria-hidden="true" style="position: absolute; left: 58%; top: 52%; width: 22px; height: 22px; border-radius: 50%; background: #1A1A18; color: #fff; font: 600 11px 'IBM Plex Mono', monospace; display: grid; place-items: center">2</span>
+          <span aria-hidden="true" style="position: absolute; left: 46%; top: 70%; width: 26px; height: 26px; border-radius: 50%; border: 2px solid #5B4B8A; background: #EEEAF6"></span>
+          <span style="position: absolute; left: 10px; bottom: 8px; font-size: 11px; color: #7A7A72">Numbered pins · anchor ring · no leg lines (GC-1)</span>
+        </div>
+      </div>
+
+      <div style="width: 260px; background: #fff; border: 1px solid #E8E8E2; border-radius: 12px; box-shadow: 0 2px 4px rgba(26,26,24,.05), 0 14px 40px rgba(26,26,24,.09); padding: 6px; display: flex; flex-direction: column; align-self: flex-end">
+        <span style="padding: 6px 10px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #7A7A72; font-weight: 600">⋯ menu (194, as built)</span>
+        <button style="text-align: left; font: 500 13.5px 'Public Sans', sans-serif; padding: 8px 10px; border: 0; background: transparent; border-radius: 8px">Share link</button>
+        <button style="text-align: left; font: 500 13.5px 'Public Sans', sans-serif; padding: 8px 10px; border: 0; background: transparent; border-radius: 8px">Trip Card</button>
+        <button style="text-align: left; font: 500 13.5px 'Public Sans', sans-serif; padding: 8px 10px; border: 0; background: transparent; border-radius: 8px">Download PDF</button>
+        <button style="text-align: left; font: 500 13.5px 'Public Sans', sans-serif; padding: 8px 10px; border: 0; background: transparent; border-radius: 8px">Add to calendar</button>
+      </div>
+    </aside>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1180}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

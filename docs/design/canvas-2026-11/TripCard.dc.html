@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Trip Card — on trip</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&amp;family=Public+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0;background:#FAFAF8;color:#1A1A18;font-family:"Public Sans",ui-sans-serif,system-ui,sans-serif;font-size:15px;line-height:1.5}
+a{color:#5B4B8A}a:hover{color:#3F3366}
+</style>
+</helmet>
+<div style="max-width: 1280px; margin: 0 auto; padding: 24px 22px 56px; display: flex; flex-direction: column; gap: 18px">
+
+  <div style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: #FFFFFF; border: 1px solid #E8E8E2; border-radius: 12px; box-shadow: 0 1px 2px rgba(26,26,24,.04), 0 8px 24px rgba(26,26,24,.05)">
+    <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 600">Traveloure</span>
+    <span style="color: #7A7A72; font-size: 13px">Plans / <b style="color: #1A1A18; font-weight: 600">Kyoto, 5 days</b> / Trip Card</span>
+    <span style="flex: 1"></span>
+    <button style="display: inline-flex; align-items: center; gap: 6px; font: 500 12.5px 'Public Sans', sans-serif; padding: 6px 11px; border-radius: 8px; border: 1px solid #DAD9D1; background: #fff">Share</button>
+    <button aria-label="More actions" style="width: 34px; height: 34px; border-radius: 8px; border: 1px solid #DAD9D1; background: #fff; font-weight: 700">⋯</button>
+  </div>
+
+  <div style="display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start">
+    <div style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 14px">
+
+      <div style="padding: 20px 22px; background: #1A1A18; color: #FAFAF8; border-radius: 14px; display: flex; flex-direction: column; gap: 8px">
+        <p style="margin: 0; font-size: 12px; letter-spacing: .13em; text-transform: uppercase; color: #B7A9E6; font-weight: 600">Your Trip Card · Day 2 of 5</p>
+        <h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; letter-spacing: -.02em; font-size: 32px; line-height: 1.08">Kyoto</h1>
+        <p style="margin: 0; color: #9A9A8F">[Dates] · 3 legs · 2 not checked yet <span style="font-size: 11px; color: #B7A9E6">(leg count on the hero: P-5, queued)</span></p>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px">
+          <button style="font: 600 13px 'Public Sans', sans-serif; padding: 8px 13px; border-radius: 8px; border: 0; background: #FAFAF8; color: #1A1A18">Navigate to next stop</button>
+          <button style="font: 600 13px 'Public Sans', sans-serif; padding: 8px 13px; border-radius: 8px; border: 1px solid #3A3A31; background: transparent; color: #FAFAF8">Message host</button>
+        </div>
+      </div>
+
+      <div style="padding: 12px 14px; border-radius: 12px; background: #F6EDD8; border: 1px solid #E8D6AF; color: #8A5E12; font-size: 13.5px; display: flex; gap: 10px; align-items: center">
+        <span style="font-weight: 600">Leave by [HH:MM]</span><span>for [next stop] — from the routed leg, in the trip's time zone.</span>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 10px">
+        <h2 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 18px; font-weight: 600">Today</h2>
+
+        <div style="display: grid; grid-template-columns: 56px 1fr auto; align-items: center; gap: 12px; padding: 12px 14px; background: #fff; border: 1px solid #E8E8E2; border-radius: 12px">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7A7A72">09:00</span>
+          <div><div style="font-weight: 600">[Morning stop]</div><div style="font-size: 12.5px; color: #7A7A72">Confirmed by [provider] · [date]</div></div>
+          <span style="font-size: 12px; font-weight: 600; color: #1E7A52; background: #E7F3EC; border: 1px solid #C4E4D1; padding: 3px 9px; border-radius: 999px">Booked</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 56px 1fr auto; align-items: center; gap: 12px; padding: 10px 14px; border-left: 2px solid #5B4B8A; margin-left: 24px; background: #EEEAF6; border-radius: 0 10px 10px 0">
+          <span aria-hidden="true"></span>
+          <span style="font-size: 13px; color: #5B4B8A">Add [transport option] for this leg <span style="font-size: 11px">(179 upsell line · routed legs only · owner only)</span></span>
+          <button style="font: 600 12px 'Public Sans', sans-serif; padding: 5px 10px; border-radius: 8px; border: 1px solid #D8CFEE; background: #fff; color: #5B4B8A">Ride options</button>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 56px 1fr auto; align-items: center; gap: 12px; padding: 12px 14px; background: #fff; border: 1px solid #E8E8E2; border-radius: 12px">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7A7A72">13:00</span>
+          <div><div style="font-weight: 600">[Partner activity]</div><div style="font-size: 12.5px; color: #7A7A72">Your booking is with [partner], under their terms.</div></div>
+          <span style="font-size: 12px; font-weight: 600; color: #7A7A72; border: 1px dashed #5B4B8A; padding: 3px 9px; border-radius: 999px">Booked on [partner] <span style="font-size: 10px; color: #5B4B8A">P-5</span></span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 56px 1fr auto; align-items: center; gap: 12px; padding: 12px 14px; background: #fff; border: 1px solid #E8E8E2; border-radius: 12px">
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7A7A72">Stay</span>
+          <div><div style="font-weight: 600">[Where you're staying]</div><div style="font-size: 12.5px; color: #7A7A72">Stays and transport are links — you book them yourself.</div></div>
+          <a href="#stay" style="font: 600 12.5px 'Public Sans', sans-serif; padding: 6px 11px; border-radius: 8px; border: 1px solid #DAD9D1; background: #fff; text-decoration: none">View on [partner]</a>
+        </div>
+
+        <div style="padding: 14px; background: #fff; border: 1px dashed #DAD9D1; border-radius: 12px; color: #7A7A72; font-size: 13px">Nothing booked yet · <a href="#slip">Back to your plan</a> <span style="font-size: 11px; color: #5B4B8A">(P-5 empty state, queued)</span></div>
+      </div>
+
+      <div style="padding: 12px 14px; background: #fff; border: 1px solid #E8E8E2; border-radius: 12px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap">
+        <span style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #7A7A72; font-weight: 600">Tomorrow</span>
+        <span style="font-size: 13px; color: #7A7A72">[n] stops · first at [HH:MM]</span>
+        <span style="flex: 1"></span>
+        <span style="font-size: 12px; color: #7A7A72">No Tonight/Tomorrow suggestion slot — Later, by ruling</span>
+      </div>
+    </div>
+
+    <aside style="flex: 1 1 320px; min-width: 300px; display: flex; flex-direction: column; gap: 12px">
+      <div style="padding: 14px; background: #fff; border: 1px solid #E8E8E2; border-radius: 12px">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px">
+          <span style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #7A7A72; font-weight: 600">On-trip map (J5, as built)</span>
+        </div>
+        <div style="display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap">
+          <button aria-pressed="true" style="font: 600 12px 'Public Sans', sans-serif; padding: 5px 10px; border-radius: 999px; border: 1px solid #D8CFEE; background: #EEEAF6; color: #5B4B8A">Today's stops</button>
+          <button aria-pressed="true" style="font: 600 12px 'Public Sans', sans-serif; padding: 5px 10px; border-radius: 999px; border: 1px solid #D8CFEE; background: #EEEAF6; color: #5B4B8A">Where you're staying</button>
+          <button aria-pressed="true" style="font: 600 12px 'Public Sans', sans-serif; padding: 5px 10px; border-radius: 999px; border: 1px solid #D8CFEE; background: #EEEAF6; color: #5B4B8A">Current leg</button>
+        </div>
+        <div style="margin-top: 10px; height: 300px; border-radius: 10px; background: #F4F3EF; border: 1px solid #E8E8E2; position: relative; overflow: hidden">
+          <span aria-hidden="true" style="position: absolute; left: 30%; top: 30%; width: 22px; height: 22px; border-radius: 50%; background: #1A1A18; color: #fff; font: 600 11px 'IBM Plex Mono', monospace; display: grid; place-items: center">1</span>
+          <span aria-hidden="true" style="position: absolute; left: 30%; top: 30%; width: 34px; height: 34px; margin: -6px; border-radius: 50%; border: 2px solid #8A5E12"></span>
+          <span aria-hidden="true" style="position: absolute; left: 60%; top: 50%; width: 22px; height: 22px; border-radius: 50%; background: #1A1A18; color: #fff; font: 600 11px 'IBM Plex Mono', monospace; display: grid; place-items: center">2</span>
+          <span aria-hidden="true" style="position: absolute; left: 60%; top: 50%; width: 34px; height: 34px; margin: -6px; border-radius: 50%; border: 2px solid #8A5E12"></span>
+          <span aria-hidden="true" style="position: absolute; left: 44%; top: 72%; width: 26px; height: 26px; border-radius: 50%; border: 2px solid #5B4B8A; background: #EEEAF6"></span>
+          <span style="position: absolute; left: 10px; bottom: 8px; font-size: 11px; color: #7A7A72">Rings mark the current leg's two ends · no lines (GC-1) · no device position</span>
+        </div>
+        <p style="margin: 10px 0 0; font-size: 12px; color: #7A7A72">Drawn only from stored coordinates and the server's projection; renders nothing when empty.</p>
+      </div>
+
+      <div style="width: 260px; background: #fff; border: 1px solid #E8E8E2; border-radius: 12px; box-shadow: 0 2px 4px rgba(26,26,24,.05), 0 14px 40px rgba(26,26,24,.09); padding: 6px; display: flex; flex-direction: column; align-self: flex-end">
+        <span style="padding: 6px 10px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #7A7A72; font-weight: 600">⋯ menu (as built · Leon's 4 + 1 placeholders)</span>
+        <button style="text-align: left; font: 500 13.5px 'Public Sans', sans-serif; padding: 8px 10px; border: 0; background: transparent; border-radius: 8px">[Menu item 1]</button>
+        <button style="text-align: left; font: 500 13.5px 'Public Sans', sans-serif; padding: 8px 10px; border: 0; background: transparent; border-radius: 8px">[Menu item 2]</button>
+        <button style="text-align: left; font: 500 13.5px 'Public Sans', sans-serif; padding: 8px 10px; border: 0; background: transparent; border-radius: 8px">[Menu item 3]</button>
+        <button style="text-align: left; font: 500 13.5px 'Public Sans', sans-serif; padding: 8px 10px; border: 0; background: transparent; border-radius: 8px">[Menu item 4]</button>
+        <button style="text-align: left; font: 500 13.5px 'Public Sans', sans-serif; padding: 8px 10px; border: 0; background: transparent; border-radius: 8px">Need to change the plan? Reopen</button>
+      </div>
+    </aside>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1100}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

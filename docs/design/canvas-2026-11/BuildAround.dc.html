@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Build around — Place, Date, Event</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&amp;family=Public+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0;background:#FAFAF8;color:#1A1A18;font-family:"Public Sans",ui-sans-serif,system-ui,sans-serif;font-size:15px;line-height:1.5}
+a{color:#5B4B8A}a:hover{color:#3F3366}
+</style>
+</helmet>
+<div style="max-width: 1280px; margin: 0 auto; padding: 24px 22px 56px; display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start">
+
+  <div style="flex: 1 1 560px; max-width: 560px; background: #FFFFFF; border: 1px solid #E8E8E2; border-radius: 14px; box-shadow: 0 2px 4px rgba(26,26,24,.05), 0 14px 40px rgba(26,26,24,.09); display: flex; flex-direction: column">
+    <div style="display: flex; align-items: center; justify-content: space-between; padding: 18px 22px 10px">
+      <h2 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 22px; letter-spacing: -.01em">Build around a location</h2>
+      <button aria-label="Close" style="width: 34px; height: 34px; border-radius: 8px; border: 1px solid #DAD9D1; background: #fff">✕</button>
+    </div>
+    <p style="margin: 0; padding: 0 22px 12px; color: #7A7A72; font-size: 13.5px"><span style="border-bottom: 1px dashed #5B4B8A">We suggest 3 starting points. Or build around a place, a date or an event on your plan.</span> <span style="font-size: 11px; color: #5B4B8A">H1 held</span></p>
+
+    <div style="margin: 0 22px; padding: 12px 14px; border: 1px solid #D8CFEE; background: #EEEAF6; border-radius: 10px; display: flex; gap: 10px; align-items: flex-start">
+      <span style="color: #5B4B8A; font-weight: 700">✦</span>
+      <div><div style="font-weight: 600; color: #5B4B8A"><span style="border-bottom: 1px dashed #5B4B8A">We'll suggest 3</span> <span style="font-size: 11px">H2 held</span></div><div style="font-size: 12.5px; color: #5B4B8A">We suggest a hotel, a neighborhood and an activity to build around, ranked by straight-line distance to your stops.</div></div>
+      <span style="margin-left: auto; color: #5B4B8A; font-weight: 700">✓</span>
+    </div>
+
+    <p style="margin: 14px 22px 8px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #7A7A72; font-weight: 600">Or choose your own</p>
+
+    <div role="group" aria-label="Kind of anchor" style="margin: 0 22px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 4px; background: #F4F3EF; border-radius: 10px">
+      <button aria-pressed="true" style="font: 600 13px 'Public Sans', sans-serif; padding: 9px 10px; border-radius: 8px; border: 1px solid #DAD9D1; background: #fff; color: #1A1A18">Place</button>
+      <button aria-pressed="false" style="font: 600 13px 'Public Sans', sans-serif; padding: 9px 10px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: #7A7A72">Date</button>
+      <button aria-pressed="false" style="font: 600 13px 'Public Sans', sans-serif; padding: 9px 10px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: #7A7A72">Event</button>
+    </div>
+
+    <div style="margin: 12px 22px 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+      <button aria-pressed="true" style="min-height: 64px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; border-radius: 10px; border: 1px solid #D8CFEE; background: #EEEAF6; color: #5B4B8A; font: 600 13px 'Public Sans', sans-serif"><span>Hotel</span><em style="font: 400 11.5px 'Public Sans', sans-serif; color: #5B4B8A">Stay somewhere specific</em></button>
+      <button aria-pressed="false" style="min-height: 64px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; border-radius: 10px; border: 1px solid #DAD9D1; background: #fff; color: #1A1A18; font: 600 13px 'Public Sans', sans-serif"><span>Neighborhood</span><em style="font: 400 11.5px 'Public Sans', sans-serif; color: #7A7A72">Base in one area</em></button>
+      <button aria-pressed="false" style="min-height: 64px; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; border-radius: 10px; border: 1px solid #DAD9D1; background: #fff; color: #1A1A18; font: 600 13px 'Public Sans', sans-serif"><span>Activity</span><em style="font: 400 11.5px 'Public Sans', sans-serif; color: #7A7A72">Build around a must-do</em></button>
+    </div>
+
+    <p style="margin: 14px 22px 6px; font-size: 12.5px; color: #7A7A72">Hotels near your stops — pick one</p>
+    <div role="radiogroup" aria-label="Hotel options" style="margin: 0 22px; display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto">
+      <button role="radio" aria-checked="true" style="display: grid; grid-template-columns: 16px 1fr auto; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid #D8CFEE; background: #EEEAF6; text-align: left"><span aria-hidden="true" style="width: 14px; height: 14px; border-radius: 50%; border: 4px solid #5B4B8A; background: #fff"></span><span><b>[Hotel name]</b><br><span style="font-size: 12px; color: #7A7A72">[Area]</span></span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: #7A7A72" title="A straight-line distance, not a walking route.">about [N] m apart in a straight line</span></button>
+      <button role="radio" aria-checked="false" style="display: grid; grid-template-columns: 16px 1fr auto; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid #DAD9D1; background: #fff; text-align: left"><span aria-hidden="true" style="width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid #DAD9D1; background: #fff"></span><span><b>[Hotel name]</b><br><span style="font-size: 12px; color: #7A7A72">[Area]</span></span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: #7A7A72">about [N] m apart in a straight line</span></button>
+      <button role="radio" aria-checked="false" style="display: grid; grid-template-columns: 16px 1fr auto; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid #DAD9D1; background: #fff; text-align: left"><span aria-hidden="true" style="width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid #DAD9D1; background: #fff"></span><span><b>[Hotel name]</b><br><span style="font-size: 12px; color: #7A7A72">[Area]</span></span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: #7A7A72">—</span></button>
+    </div>
+    <p style="margin: 8px 22px 0; font-size: 11.5px; color: #7A7A72">No star ratings, no minutes, no "best fit" — by ruling. Distance is labelled as straight-line.</p>
+
+    <div style="margin: 14px 22px 0; display: flex; flex-direction: column; gap: 6px">
+      <label for="custom-location" style="font-size: 12.5px; color: #7A7A72">Not listed? Build around a custom location</label>
+      <input id="custom-location" type="text" placeholder="Type an address or place name" style="font: 14px 'Public Sans', sans-serif; padding: 10px 12px; border-radius: 10px; border: 1px solid #DAD9D1; background: #fff">
+    </div>
+
+    <div style="margin: 18px 22px 0; padding-top: 14px; border-top: 1px solid #E8E8E2; display: flex; flex-direction: column; gap: 8px">
+      <span style="font-size: 13px">Three versions built around <b>[Hotel name]</b>.</span>
+      <span style="font-size: 12.5px; color: #7A7A72">You'll pay on the next screen; nothing runs until you do.</span>
+      <div style="display: flex; gap: 8px; justify-content: flex-end; padding-bottom: 18px">
+        <button style="font: 600 13.5px 'Public Sans', sans-serif; padding: 10px 14px; border-radius: 9px; border: 1px solid #DAD9D1; background: transparent; color: #7A7A72">Cancel</button>
+        <button style="font: 600 13.5px 'Public Sans', sans-serif; padding: 10px 14px; border-radius: 9px; border: 0; background: #1A1A18; color: #FAFAF8">Continue to pay [price]</button>
+      </div>
+    </div>
+  </div>
+
+  <div style="flex: 1 1 560px; max-width: 560px; display: flex; flex-direction: column; gap: 18px">
+
+    <div style="background: #FFFFFF; border: 1px dashed #5B4B8A; border-radius: 14px; padding: 18px 22px; display: flex; flex-direction: column; gap: 10px">
+      <span style="font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #5B4B8A; font-weight: 600">Date tab · queued (OPT-B)</span>
+      <p style="margin: 0; font-size: 12.5px; color: #7A7A72">One row per trip day. A locked day keeps every stop's place and time; the other days are rebuilt around it.</p>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <button role="radio" aria-checked="true" style="display: grid; grid-template-columns: 16px 1fr auto; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid #D8CFEE; background: #EEEAF6; text-align: left"><span aria-hidden="true" style="width: 14px; height: 14px; border-radius: 50%; border: 4px solid #5B4B8A; background: #fff"></span><span><b>Day 2 · [date]</b></span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: #7A7A72">4 stops · 4 located</span></button>
+        <button role="radio" aria-checked="false" style="display: grid; grid-template-columns: 16px 1fr auto; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid #DAD9D1; background: #fff; text-align: left"><span aria-hidden="true" style="width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid #DAD9D1; background: #fff"></span><span><b>Day 3 · [date]</b></span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: #7A7A72">3 stops · 2 located</span></button>
+        <button role="radio" aria-checked="false" disabled="" style="display: grid; grid-template-columns: 16px 1fr auto; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid #E8E8E2; background: #F4F3EF; text-align: left; color: #7A7A72"><span aria-hidden="true" style="width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid #DAD9D1; background: #fff"></span><span><b>Day 4 · [date]</b><br><span style="font-size: 12px">Nothing on this day has a location yet.</span> <span style="font-size: 11px; color: #5B4B8A">D1 held</span></span><span></span></button>
+      </div>
+      <span style="font-size: 13px">Three versions built around <b>Day 2</b>.</span>
+    </div>
+
+    <div style="background: #FFFFFF; border: 1px dashed #5B4B8A; border-radius: 14px; padding: 18px 22px; display: flex; flex-direction: column; gap: 10px">
+      <span style="font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #5B4B8A; font-weight: 600">Event tab · queued (OPT-B)</span>
+      <p style="margin: 0; font-size: 12.5px; color: #7A7A72">Events already on your plan with a place and a start time. The event is fixed; its day pivots on it.</p>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <button role="radio" aria-checked="true" style="display: grid; grid-template-columns: 16px 1fr auto; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid #D8CFEE; background: #EEEAF6; text-align: left"><span aria-hidden="true" style="width: 14px; height: 14px; border-radius: 50%; border: 4px solid #5B4B8A; background: #fff"></span><span><b>[Event name]</b><br><span style="font-size: 12px; color: #7A7A72">Day 3 · 19:00</span></span><span style="font-size: 12px; font-weight: 600; color: #1E7A52; background: #E7F3EC; border: 1px solid #C4E4D1; padding: 3px 9px; border-radius: 999px">Booked</span></button>
+        <button role="radio" aria-checked="false" style="display: grid; grid-template-columns: 16px 1fr auto; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid #DAD9D1; background: #fff; text-align: left"><span aria-hidden="true" style="width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid #DAD9D1; background: #fff"></span><span><b>[Event name]</b><br><span style="font-size: 12px; color: #7A7A72">Day 1 · 13:00</span></span><span></span></button>
+      </div>
+      <div style="padding: 10px 12px; border-radius: 10px; background: #F6EDD8; border: 1px solid #E8D6AF; color: #8A5E12; font-size: 12.5px">Refusal, never charged: "That event can't be built around — it needs a place and a start time." <span style="font-size: 11px">R1 held</span></div>
+      <span style="font-size: 13px">Three versions built around <b>[Event name]</b>.</span>
+    </div>
+
+    <div style="padding: 14px 16px; background: #fff; border: 1px solid #E8E8E2; border-radius: 12px; font-size: 12.5px; color: #7A7A72">
+      <b style="color: #1A1A18">Not in this design, by ruling:</b> the mock's "Trending now" / "Popular around your dates" strip, "Let the AI pick", star ratings, "N min median" fit figures, and a changed pay-button label. Under 430px the modal becomes a full-height sheet.
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":980}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

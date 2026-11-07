@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Entry — place, date or event, then the occasion</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&amp;family=Public+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#5B4B8A}a:hover{color:#3F3366}
+</style>
+</helmet>
+<div style="width: 390px; height: 1180px; box-sizing: border-box; background: #FAFAF8; color: #1A1A18; font-family: 'Public Sans', system-ui, sans-serif; font-size: 14px; line-height: 1.45; display: flex; flex-direction: column; gap: 14px; padding: 18px 16px 24px">
+
+  <span style="font-size: 11px; letter-spacing: .13em; text-transform: uppercase; color: #5B4B8A; font-weight: 600">Start a plan · step 1 of 3 (main)</span>
+  <h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 26px; line-height: 1.1; letter-spacing: -.02em">Plan around a place, a date or an event</h1>
+
+  <div role="group" aria-label="Start from" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 4px; background: #F4F3EF; border-radius: 10px">
+    <button aria-pressed="true" style="font: 600 13px 'Public Sans', sans-serif; padding: 10px; border-radius: 8px; border: 1px solid #DAD9D1; background: #fff">Place</button>
+    <button aria-pressed="false" style="font: 600 13px 'Public Sans', sans-serif; padding: 10px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: #7A7A72">Date</button>
+    <button aria-pressed="false" style="font: 600 13px 'Public Sans', sans-serif; padding: 10px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: #7A7A72">Event</button>
+  </div>
+  <label for="entry-place" style="font-size: 12.5px; color: #7A7A72">Where to?</label>
+  <input id="entry-place" type="text" placeholder="City or area" style="font: 15px 'Public Sans', sans-serif; padding: 12px; border-radius: 10px; border: 1px solid #DAD9D1; background: #fff">
+
+  <div style="height: 1px; background: #E8E8E2"></div>
+
+  <span style="font-size: 11px; letter-spacing: .13em; text-transform: uppercase; color: #5B4B8A; font-weight: 600">Step 2 of 3 (main)</span>
+  <h2 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 600; font-size: 20px">What's the occasion?</h2>
+  <div style="display: flex; flex-direction: column; gap: 6px">
+    <button aria-pressed="true" style="text-align: left; font: 600 14px 'Public Sans', sans-serif; padding: 12px 14px; border-radius: 10px; border: 1px solid #D8CFEE; background: #EEEAF6; color: #5B4B8A">A trip <span style="font-weight: 400; font-size: 12px; color: #5B4B8A">· where to stay, travel party, getting around, pace</span></button>
+    <button aria-pressed="false" style="text-align: left; font: 600 14px 'Public Sans', sans-serif; padding: 12px 14px; border-radius: 10px; border: 1px solid #DAD9D1; background: #fff">A moment <span style="font-weight: 400; font-size: 12px; color: #7A7A72">· the reservation, timing check</span></button>
+    <button aria-pressed="false" style="text-align: left; font: 600 14px 'Public Sans', sans-serif; padding: 12px 14px; border-radius: 10px; border: 1px solid #DAD9D1; background: #fff">A celebration <span style="font-weight: 400; font-size: 12px; color: #7A7A72">· venue, guests, vendors</span></button>
+    <button aria-pressed="false" style="text-align: left; font: 600 14px 'Public Sans', sans-serif; padding: 12px 14px; border-radius: 10px; border: 1px solid #DAD9D1; background: #fff">A hosted event <span style="font-weight: 400; font-size: 12px; color: #7A7A72">· run of show, invites, vendor contracts</span></button>
+    <button aria-pressed="false" style="text-align: left; font: 600 14px 'Public Sans', sans-serif; padding: 12px 14px; border-radius: 10px; border: 1px solid #DAD9D1; background: #fff">Group travel <span style="font-weight: 400; font-size: 12px; color: #7A7A72">· shared lodging, who's coming</span></button>
+  </div>
+
+  <div style="height: 1px; background: #E8E8E2"></div>
+
+  <span style="font-size: 11px; letter-spacing: .13em; text-transform: uppercase; color: #5B4B8A; font-weight: 600">Step 3 of 3 (main) · event fields are a 2.3 proposal</span>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px">
+    <div style="display: flex; flex-direction: column; gap: 4px"><label for="entry-dates" style="font-size: 12.5px; color: #7A7A72">Dates</label><input id="entry-dates" type="text" placeholder="Placeholder dates allowed" style="font: 14px 'Public Sans', sans-serif; padding: 11px; border-radius: 10px; border: 1px solid #DAD9D1; background: #fff"></div>
+    <div style="display: flex; flex-direction: column; gap: 4px"><label for="entry-party" style="font-size: 12.5px; color: #7A7A72">Who's coming?</label><input id="entry-party" type="text" placeholder="[N]" style="font: 14px 'Public Sans', sans-serif; padding: 11px; border-radius: 10px; border: 1px solid #DAD9D1; background: #fff"></div>
+  </div>
+  <div style="padding: 10px 12px; border: 1px dashed #5B4B8A; border-radius: 10px; display: flex; flex-direction: column; gap: 6px">
+    <span style="font-size: 11px; color: #5B4B8A; font-weight: 600">Optional event (proposal 2.3) — becomes an Event anchor once it has a place and a time</span>
+    <input type="text" aria-label="Event title" placeholder="Event title" style="font: 14px 'Public Sans', sans-serif; padding: 10px; border-radius: 10px; border: 1px solid #DAD9D1; background: #fff">
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px"><input type="text" aria-label="Event date" placeholder="Date" style="font: 14px 'Public Sans', sans-serif; padding: 10px; border-radius: 10px; border: 1px solid #DAD9D1; background: #fff"><input type="text" aria-label="Event time" placeholder="Time" style="font: 14px 'Public Sans', sans-serif; padding: 10px; border-radius: 10px; border: 1px solid #DAD9D1; background: #fff"></div>
+    <input type="text" aria-label="Event place" placeholder="Place" style="font: 14px 'Public Sans', sans-serif; padding: 10px; border-radius: 10px; border: 1px solid #DAD9D1; background: #fff">
+  </div>
+
+  <div style="display: flex; gap: 8px; margin-top: auto">
+    <a href="EmptySlip.dc.html" style="flex: 2; text-align: center; font: 600 14px 'Public Sans', sans-serif; padding: 13px; border-radius: 10px; border: 0; background: #1A1A18; color: #FAFAF8; text-decoration: none">Start a plan</a>
+    <button style="flex: 1; font: 600 13px 'Public Sans', sans-serif; padding: 13px; border-radius: 10px; border: 1px dashed #1E7A52; background: #fff; color: #1E7A52">Add to a plan I have</button>
+  </div>
+  <span style="font-size: 11.5px; color: #7A7A72">"Add to a plan I have" and saved occasions ("Plan this" / "Open its plan") are 2.3 proposals.</span>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1180}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
