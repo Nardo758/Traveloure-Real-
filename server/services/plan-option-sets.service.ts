@@ -70,6 +70,8 @@ import {
 } from "@shared/plan-fit";
 import { snapToCentroid, type Centroid } from "@shared/travel-time";
 import { planFitEasierThreshold, slipEventsHourlyCap } from "../config/plan-fit.config";
+import { straightLineCloseness, straightLineDayCloseness, type StayCloseness, type StayDayCloseness } from "@shared/stay-pick";
+import { stayCloseStraightKm } from "../config/stay-closeness.config";
 
 export const SLIP_OPTION_ADDED_EVENT = "slip_option_added";
 export const SLIP_ANCHOR_CHANGED_EVENT = "slip_anchor_changed";
@@ -585,7 +587,12 @@ async function planScorer(tripId: string) {
   const score = (lat: unknown, lng: unknown): PlanFit =>
     planFitFor({ option: toPoint(lat, lng), items, travel, centroids, walkThresholdMeters: WITHIN_WALK_METERS, beyondWalkMode });
   const located = items.filter((i) => i.lat !== null && i.lng !== null).length;
-  return { score, centroids, market, stops: { located, total: items.length } };
+  // PLAN-3: the SAME located stops, as the shape the closeness helpers read. A stop with no day or no
+  // point is not an answer about a day (Â§13), so it is left out rather than defaulted.
+  const stopPoints = items
+    .filter((i) => i.lat !== null && i.lng !== null && i.dayNumber !== null)
+    .map((i) => ({ dayNumber: i.dayNumber as number, lat: i.lat as number, lng: i.lng as number }));
+  return { score, centroids, market, stops: { located, total: items.length }, stopPoints };
 }
 
 /**
@@ -665,6 +672,13 @@ export interface OptionFitView {
   datedPrice: DatedPrice | null;
   /** On a CHOSEN set: how many fewer minutes a day this place would take than the choice, when it beats it (M9). */
   easierByMinutes: number | null;
+  /**
+   * PLAN-3 (FU-S1-3 / row 244): how many of the plan's located-stop days this place is close to, and the
+   * per-day list â€” the SAME shared computation the stay card uses (straight-line basis, labelled as such).
+   * Null when the place has no point or the plan has no located day: unknown is never "0 of 0".
+   */
+  closeness: StayCloseness | null;
+  dayCloseness: StayDayCloseness[] | null;
 }
 export interface OptionSetWithFit extends OptionSetView {
   options: Array<PlanOption & OptionFitView>;
@@ -678,11 +692,23 @@ export interface OptionSetWithFit extends OptionSetView {
 export async function listOptionSetsWithFit(tripId: string): Promise<OptionSetWithFit[]> {
   const sets = await listOptionSets(tripId);
   if (!sets.length) return [];
-  const { score, centroids, market, stops } = await planScorer(tripId);
+  const { score, centroids, market, stops, stopPoints } = await planScorer(tripId);
   const nameOf = await neighborhoodNamer(market, centroids);
   const hotelIds = Array.from(new Set(sets.flatMap((s) => s.options.map((o) => o.hotelCacheId).filter((x): x is string => !!x))));
   const prices = await datedPrices(tripId, hotelIds);
   const threshold = planFitEasierThreshold();
+  const closeKm = stayCloseStraightKm();
+  // One place's closeness, from its own point and the plan's located stops. No point â‡’ null, never a
+  // guessed city-centre answer.
+  const closenessOf = (o: PlanOption): { closeness: StayCloseness | null; dayCloseness: StayDayCloseness[] | null } => {
+    const p = toPoint(o.latitude, o.longitude);
+    if (!p) return { closeness: null, dayCloseness: null };
+    const candidate = { kind: "hotel_cache" as const, id: String(o.id), name: String(o.title ?? ""), lat: p.lat, lng: p.lng };
+    return {
+      closeness: straightLineCloseness(candidate, stopPoints, closeKm),
+      dayCloseness: straightLineDayCloseness(candidate, stopPoints, closeKm),
+    };
+  };
   return sets.map((set) => {
     const fits = set.options.map((o) => score(o.latitude, o.longitude));
     const ranks = fitRanks(fits);
@@ -698,6 +724,7 @@ export async function listOptionSetsWithFit(tripId: string): Promise<OptionSetWi
         fitRank: ranks[i],
         easiest: best === i,
         neighborhood: nameOf(o.latitude, o.longitude, o.locationPrecision),
+        ...closenessOf(o),
         datedPrice: o.hotelCacheId ? prices.get(o.hotelCacheId) ?? null : null,
         easierByMinutes:
           beats && fit.scored && chosenFit!.scored ? chosenFit!.minutesPerDay - fit.minutesPerDay : null,

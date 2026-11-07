@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { PlanFit } from "@shared/plan-fit";
+import type { StayCloseness, StayDayCloseness } from "@shared/stay-pick";
 import { compareBurdenLine, type DatedPriceView } from "@/lib/plan-compare";
 import { OPTION_SET_CAP } from "@shared/plan-options";
 
@@ -44,6 +45,9 @@ export interface SlipOption {
   easiest?: boolean;
   neighborhood?: string | null;
   datedPrice?: DatedPriceView | null;
+  /** PLAN-3: the server's closeness for this place, and its per-day list (see `@shared/stay-pick`). */
+  closeness?: StayCloseness | null;
+  dayCloseness?: StayDayCloseness[] | null;
   easierByMinutes?: number | null;
 }
 

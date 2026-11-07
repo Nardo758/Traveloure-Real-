@@ -155,7 +155,10 @@ export function compareTitle(_count: number): string {
  * THE COMPARE BOARD'S DAY STRIP (slip conformance, boards rev 15; ledger `2026-10-08-slip-compare-board`):
  * one cell per day, in day order. A checked day states the SERVER's own minutes (`fit.minutesByDay`).
  * A day that is not checked states `PLAN_COMPARE_MINUTE_COPY.notCheckedYet` — never a straight-line
- * minute and never a tilde. Nothing is judged "close" or "far". Unscored ⇒ no strip.
+ * minute and never a tilde. Unscored ⇒ no strip.
+ * PLAN-3 (Leon approved lifting the close/far ban at this line): the close/far JUDGEMENT is now stated on
+ * the compare card from the SERVER's own `closeness` / `dayCloseness` (the stay-card helpers). This module
+ * still infers neither, and nothing is ranked.
  */
 export function dayStripCells(fit: PlanFit): { day: number; label: string; minutes: string }[] {
   if (!fit.scored || !fit.minutesByDay) return [];
