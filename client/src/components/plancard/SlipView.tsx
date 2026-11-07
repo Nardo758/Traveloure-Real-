@@ -2485,8 +2485,10 @@ export function SlipView({
           ) : null}
           {/* Smoke 9 S9-4: the optimizer LEADS the page (§8) — directly under the tools tray at every
               width. The rail renders its OptimizerLead into this slot (a portal; its state stays there). */}
-          {/* The Moment board's anchor card: the reservation, between the tray and the optimizer. */}
-          {momentAnchor && slipView === "list" ? (
+          {/* The Moment board's anchor card: the reservation, between the tray and the optimizer.
+              QW-5: on a Moment it is drawn in the MAP view too — the reservation is the plan's whole
+              subject, and the map was the one view that dropped it. Getting home stays HELD. */}
+          {momentAnchor ? (
             <MomentAnchorCard
               item={momentAnchor}
               facts={data.placeFacts?.[momentAnchor.id]}
