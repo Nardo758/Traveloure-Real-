@@ -72,7 +72,7 @@ describe("Lane 4 places and plans/new", () => {
     assert.match(app, /<Route path="\/places\/:city">\s*\{\(params: any\) => <Layout><HiddenGemsPage city=\{params\.city\} \/><\/Layout>\}/);
     assert.match(app, /<Route path="\/places">\s*<PlacesRedirect \/>/);
     assert.match(app, /<Route path="\/hidden-gems">\s*<PlacesRedirect \/>/);
-    const page = read("client/src/pages/hidden-gems.tsx");
+    const page = read("client/src/pages/places.tsx");
     assert.doesNotMatch(page, /"Local Picks"/);
     assert.doesNotMatch(page, /rarely find/);
     assert.match(page, /if \(!market\) return <NotFound \/>;/);

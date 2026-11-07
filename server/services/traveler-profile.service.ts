@@ -38,6 +38,7 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { users } from "@shared/schema";
+import { hasProfileWriteConsent } from "./profile-write-consent";
 import type { UserTransportPrefs } from "./transport-leg-calculator";
 import { updateUserPreferences } from "./user-preferences-writer";
 import {
@@ -421,6 +422,9 @@ export async function recordDislikeFeedback(userId: string, chips: readonly stri
   const real = chips.filter((c): c is DislikeFeedbackChip => (DISLIKE_FEEDBACK_CHIPS as readonly string[]).includes(c));
   if (real.length === 0) return;
   try {
+    // Write-back is off until this account has an explicit consent grant. A read of the
+    // profile still returns counts already stored. A consent lookup that fails skips the write.
+    if (!(await hasProfileWriteConsent(userId))) return;
     // The ONE locked writer: a counter incremented from an unlocked read loses increments when
     // two regenerates overlap, and could erase a concurrent explicit-profile save.
     await updateUserPreferences(userId, (prefs) => {

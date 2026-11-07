@@ -83,6 +83,8 @@ import { healthFlags, healthEgressFlags, healthMapsCaps, healthKeyPresence } fro
 import { readHotelSupply } from "../services/hotel-supply.service";
 import { enrichPlanItems } from "../services/content-facts/place-facts.service";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { waitlistPurchaseDecisionFor } from "../services/waitlist-purchase-gate";
+import { TRAVELER_WAITLIST, TRAVELER_WAITLIST_MESSAGE } from "@shared/launch-signup";
 import { requireVerifiedEmail } from "../services/verified-email-action-gate";
 import { aiRateLimiter, strictRateLimiter } from "../infrastructure/rate-limiter";
 import { geocodeAddress } from "../utils/geocode";
@@ -762,10 +764,15 @@ router.get("/api/generated-itineraries/:tripId", isAuthenticated, async (req, re
   // Tourist Places Routes
 
 router.post("/api/ai/generate-blueprint", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const waitlistGate = await waitlistPurchaseDecisionFor(userId);
+    if (!waitlistGate.allowed) {
+      return res.status(403).json({ code: TRAVELER_WAITLIST, message: TRAVELER_WAITLIST_MESSAGE });
+    }
     try {
       const { eventType, destination, travelers, startDate, endDate, budget, preferences } =
         aiBlueprintRequestSchema.parse(req.body);
-      const userId = getUserId(req)!;
 
       const prompt = `You are an expert travel planner. Create a detailed trip blueprint for the following:
       
@@ -818,7 +825,7 @@ ${bannedCopyPromptLine()}`;
       try {
         blueprintData = blueprintContent ? JSON.parse(blueprintContent) : {};
       } catch {
-        return res.status(502).json({ message: "AI provider returned an invalid blueprint" });
+        return res.status(502).json({ message: "The blueprint could not be read" });
       }
 
       const blueprint = await insertAiBlueprint({ userId, eventType: eventType || 'vacation', destination, blueprintData });
@@ -834,6 +841,12 @@ ${bannedCopyPromptLine()}`;
   // AI Chat Endpoint for Trip Planning
 
 router.post("/api/ai/chat", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const waitlistGate = await waitlistPurchaseDecisionFor(userId);
+    if (!waitlistGate.allowed) {
+      return res.status(403).json({ code: TRAVELER_WAITLIST, message: TRAVELER_WAITLIST_MESSAGE });
+    }
     try {
       const { messages, tripContext } = aiChatRequestSchema.parse(req.body);
 
@@ -872,7 +885,7 @@ Be friendly, helpful, and provide specific actionable advice. If recommending sp
       res.json({ response });
     } catch (error) {
       if (error instanceof z.ZodError) return sendValidationError(res, error);
-      console.error("Error in AI chat:", error);
+      console.error("Error in chat:", error);
       res.status(500).json({ message: "Failed to process chat request" });
     }
   });
@@ -882,8 +895,14 @@ Be friendly, helpful, and provide specific actionable advice. If recommending sp
   // travelers via the gated paid path (/api/optimization-payments → /confirm), not here.
 
 router.post("/api/ai/optimize-experience", isAuthenticated, async (req, res) => {
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const waitlistGate = await waitlistPurchaseDecisionFor(userId);
+    if (!waitlistGate.allowed) {
+      return res.status(403).json({ code: TRAVELER_WAITLIST, message: TRAVELER_WAITLIST_MESSAGE });
+    }
     try {
-      const user = await storage.getUser(getUserId(req)!);
+      const user = await storage.getUser(userId);
       // Full expert family (shared/roles.ts): bare `role !== "expert"` locked out
       // local_expert / travel_expert / event_planner.
       if (!user || (user.role !== "admin" && !isExpertRole(user.role))) {

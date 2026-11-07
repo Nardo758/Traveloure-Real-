@@ -21,7 +21,7 @@ import React from "react";
 import { renderToString } from "react-dom/server";
 import { CURATED_HERO_CREDIT, gemPhotoCredit, resolveCoverPhoto } from "../../../lib/cover-photo";
 import { GemImageCredit } from "../../city-feed-card";
-import { PLACES_HEADING } from "../../../pages/hidden-gems";
+import { PLACES_HEADING } from "../../../pages/places";
 import { partnerItemsUrl } from "../../admin/PartnerEditorialPanel";
 
 (globalThis as any).React = React;
@@ -70,7 +70,7 @@ describe("CMS-1 — client", () => {
     assert.ok(read("shared/client-routes.generated.ts").includes('"/places"'));
     assert.match(read("server/routes/seo.routes.ts"), /"\/places",/);
     // The AI scan card is gone (its output can never show here), and an empty list says the approved line.
-    const page = read("client/src/pages/hidden-gems.tsx");
+    const page = read("client/src/pages/places.tsx");
     assert.doesNotMatch(page, /\/api\/discovery\/scan|button-discover|input-discover-destination|Discover Gems/);
     assert.match(page, /data-testid="text-empty-title">Nothing here yet\.<\/h3>/);
   });

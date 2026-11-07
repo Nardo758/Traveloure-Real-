@@ -47,7 +47,7 @@ const SECTION_4C = [
   "client/src/components/travelpulse/AIRecommendationBadges.tsx",
   "client/src/components/travelpulse/DestinationCalendar.tsx",
   "client/src/components/travelpulse/TravelPulseCard.tsx",
-  "client/src/pages/hidden-gems.tsx",
+  "client/src/pages/places.tsx",
   "client/src/components/travelpulse/ExperienceTemplates.tsx",
   "client/src/components/spontaneous-discovery.tsx",
   "client/src/pages/transportation-booking.tsx",
