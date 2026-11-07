@@ -18,7 +18,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { trayPress, type TrayFacts } from "../tray-stage";
 
-const base: TrayFacts = { datesConfirmed: true, travelers: 2, stops: 3, locatedStops: 3 };
+const base: TrayFacts = { datesConfirmed: true, travelers: 2, stops: 3 };
 const read = (p: string) => fs.readFileSync(p, "utf8");
 
 describe("QW-4 — stage-aware tray", () => {
@@ -41,9 +41,9 @@ describe("QW-4 — stage-aware tray", () => {
     assert.equal(trayPress("timing_check", { ...base, stops: 1 }), "sheet");
   });
 
-  it("T4 Getting around needs two located stops, and hides (no chip can add one)", () => {
-    assert.equal(trayPress("getting_around", { ...base, locatedStops: 1 }), "hidden");
-    assert.equal(trayPress("getting_around", { ...base, locatedStops: 2 }), "sheet");
+  it("T4 Getting around needs two stops, and hides when the plan has fewer", () => {
+    assert.equal(trayPress("getting_around", { ...base, stops: 1 }), "hidden");
+    assert.equal(trayPress("getting_around", { ...base, stops: 2 }), "sheet");
   });
 
   it("T5 Pace needs two items", () => {
@@ -63,7 +63,7 @@ describe("QW-4 — stage-aware tray", () => {
     assert.match(tray, /if \(press === "dates" && props\.onNeedDates\) return props\.onNeedDates\(\);/);
     assert.match(tray, /if \(press === "party" && props\.onNeedParty\) return props\.onNeedParty\(\);/);
     const slip = read("client/src/components/plancard/SlipView.tsx");
-    assert.match(slip, /locatedStops: locatedActivities\.length/);
+    assert.match(slip, /stops: allActivities\.length/);
     assert.match(slip, /onNeedDates=\{\(\) => setTrayChip\("dates"\)\}/);
     assert.match(slip, /onNeedParty=\{askParty \? \(\) => setTrayChip\("who"\) : undefined\}/);
     // The press opens the panels the header chips open — not a new surface.

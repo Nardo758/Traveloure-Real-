@@ -2517,7 +2517,6 @@ export function SlipView({
                 datesConfirmed: (data.trip as any)?.datesConfirmed === true,
                 travelers: (data.trip as any)?.travelers ?? null,
                 stops: allActivities.length,
-                locatedStops: locatedActivities.length,
               }}
               onNeedDates={() => setTrayChip("dates")}
               onNeedParty={askParty ? () => setTrayChip("who") : undefined}

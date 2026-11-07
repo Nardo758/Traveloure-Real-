@@ -15,8 +15,6 @@ export interface TrayFacts {
   travelers: number | null;
   /** Every item on the plan. */
   stops: number;
-  /** Items with a point. */
-  locatedStops: number;
 }
 
 /** What pressing a chip does: open its sheet, open the dates chip, open the party chip, or not draw it. */
@@ -41,9 +39,10 @@ export function trayPress(key: ToolKey, f: TrayFacts): TrayPress {
     case "run_of_show":
     case "timing_check":
       return f.stops >= 1 ? "sheet" : "hidden";
+    // Legs need two stops, and a stop is content — not something the slip's chips can add. (Coordinates
+    // are not settable on the ordinary create rail, so gating on POINTS would hide a chip on a plan that
+    // visibly has two stops; the sheet itself says which gaps have no travel time.)
     case "getting_around":
-      // Legs need two located points; a point is not something the slip's chips can add.
-      return f.locatedStops >= 2 ? "sheet" : "hidden";
     case "pace":
       return f.stops >= 2 ? "sheet" : "hidden";
     // Anchor tools and the vendor/guest surfaces answer from the plan itself.
