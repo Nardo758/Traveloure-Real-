@@ -21,6 +21,10 @@ import { enteredStatus } from "../utils/form-status-transition";
 import { zodErrorBody } from "../utils/zod-error-body";
 import { getUserId } from "../utils/auth";
 import { requireStaff } from "../utils/staff-access";
+import { strictRateLimiter } from "../infrastructure/rate-limiter";
+import { hashPassword } from "../replit_integrations/auth/emailAuth";
+import { resetQaPasswordAsAdmin } from "../services/password-reset-tokens.service";
+import { sendPasswordChangedEmail } from "../services/email.service";
 import { assertReadyMadeComplete } from "./ready-made.routes";
 import { resolveConciergeTierView } from "../utils/concierge-tier-filter";
 import { pgTextArray } from "../services/upsell-query.service";
@@ -365,6 +369,44 @@ const requireAdminLocal = async (req: any, res: any, next: any) => {
   }
   next();
 };
+
+const qaPasswordResetSchema = z.object({
+  adminPassword: z.string().min(1).max(200),
+  newPassword: z.string().min(8).max(200),
+}).strict();
+
+router.post("/api/admin/users/:id/qa-password-reset", isAuthenticated, requireAdminLocal, strictRateLimiter, async (req, res) => {
+  const parsed = qaPasswordResetSchema.safeParse(req.body);
+  if (!parsed.success || !req.params.id || req.params.id.length > 128) {
+    return res.status(400).json({ message: "Check the password fields and try again." });
+  }
+  let result: Awaited<ReturnType<typeof resetQaPasswordAsAdmin>>;
+  try {
+    result = await resetQaPasswordAsAdmin({
+      adminId: getUserId(req)!, targetId: req.params.id,
+      adminPassword: parsed.data.adminPassword,
+      hashedPassword: await hashPassword(parsed.data.newPassword),
+    });
+  } catch {
+    // Never log request bodies, passwords, hashes, recipient addresses or raw database errors.
+    console.error("[admin/qa-password-reset] decision=failed");
+    // A lost COMMIT acknowledgement is indeterminate; do not promise that nothing committed.
+    return res.status(500).json({ message: "Password reset could not be confirmed. Check the account before retrying." });
+  }
+  if (!result.ok) {
+    return res.status(403).json({ message: "Reset not permitted. Check your password and the account's QA eligibility." });
+  }
+  // Existing best-effort producer, after commit. It retains all current send gates.
+  // This endpoint does NOT claim atomic notice delivery or bypass a held/disabled type.
+  try {
+    await sendPasswordChangedEmail({
+      toEmail: result.email, firstName: result.firstName, tokenHash: result.auditId,
+    });
+  } catch {
+    console.error("[admin/qa-password-reset] decision=notice_unconfirmed");
+  }
+  return res.json({ message: "QA password reset. Existing sessions and reset links were revoked." });
+});
 
 router.post("/api/admin/gems/backfill-photos", isAuthenticated, requireAdminLocal, async (req, res) => {
   try {

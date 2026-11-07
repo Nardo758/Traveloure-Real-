@@ -14,7 +14,7 @@ import {
   Eye,
   Loader2
 } from "lucide-react";
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -87,8 +87,47 @@ export default function AdminUsers() {
   const [viewUser, setViewUser] = useState<AdminUserRow | null>(null);
   const [suspendUser, setSuspendUser] = useState<AdminUserRow | null>(null);
   const [suspendReason, setSuspendReason] = useState("");
+  const [qaPasswordResetUser, setQaPasswordResetUser] = useState<AdminUserRow | null>(null);
+  const [adminPassword, setAdminPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [isResettingQaPassword, setIsResettingQaPassword] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  const clearQaPasswordFields = () => {
+    setAdminPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+  };
+
+  const handleQaPasswordReset = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!qaPasswordResetUser || isResettingQaPassword) return;
+
+    setIsResettingQaPassword(true);
+    try {
+      await apiRequest("POST", `/api/admin/users/${qaPasswordResetUser.id}/qa-password-reset`, {
+        adminPassword,
+        newPassword,
+      });
+      clearQaPasswordFields();
+      setQaPasswordResetUser(null);
+      toast({
+        title: "Password reset",
+        description: "QA password reset. Existing sessions and reset links were revoked.",
+      });
+    } catch {
+      clearQaPasswordFields();
+      toast({
+        title: "Could not reset password",
+        description: "Please check the information and try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsResettingQaPassword(false);
+    }
+  };
 
   const { data: usersData, isLoading } = useQuery<{
     users: AdminUserRow[];
@@ -372,6 +411,17 @@ export default function AdminUsers() {
                                   Suspend account
                                 </DropdownMenuItem>
                               )}
+                              {user.status === "active" && user.role !== "admin" && (
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    clearQaPasswordFields();
+                                    setQaPasswordResetUser(user);
+                                  }}
+                                  data-testid={`menu-reset-qa-password-${user.id}`}
+                                >
+                                  Reset QA password
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuItem
                                 onClick={() => testFlagMutation.mutate({ id: user.id, isTest: !user.isTest })}
                                 disabled={testFlagMutation.isPending}
@@ -489,6 +539,107 @@ export default function AdminUsers() {
               Close
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* QA password reset dialog */}
+      <Dialog
+        open={!!qaPasswordResetUser}
+        onOpenChange={(open) => {
+          if (!open) {
+            setQaPasswordResetUser(null);
+            clearQaPasswordFields();
+          }
+        }}
+      >
+        <DialogContent data-testid="dialog-qa-password-reset">
+          <DialogHeader>
+            <DialogTitle>Reset QA password</DialogTitle>
+            <DialogDescription>
+              Set a new password for {qaPasswordResetUser?.name} ({qaPasswordResetUser?.email}).
+              The server will confirm whether this account is eligible for a QA reset.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleQaPasswordReset} className="space-y-4">
+            <div className="space-y-2">
+              <label htmlFor="qa-reset-admin-password" className="text-sm font-medium text-gray-900">
+                Your current password
+              </label>
+              <Input
+                id="qa-reset-admin-password"
+                type="password"
+                autoComplete="current-password"
+                value={adminPassword}
+                onChange={(event) => setAdminPassword(event.target.value)}
+                required
+                data-testid="input-qa-reset-admin-password"
+              />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="qa-reset-new-password" className="text-sm font-medium text-gray-900">
+                New password
+              </label>
+              <Input
+                id="qa-reset-new-password"
+                type="password"
+                autoComplete="new-password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+                minLength={8}
+                maxLength={200}
+                required
+                aria-describedby="qa-reset-password-guidance"
+                data-testid="input-qa-reset-new-password"
+              />
+              <p id="qa-reset-password-guidance" className="text-xs text-gray-500">
+                Use 8–200 characters.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="qa-reset-confirm-password" className="text-sm font-medium text-gray-900">
+                Confirm new password
+              </label>
+              <Input
+                id="qa-reset-confirm-password"
+                type="password"
+                autoComplete="new-password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                minLength={8}
+                maxLength={200}
+                required
+                data-testid="input-qa-reset-confirm-password"
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setQaPasswordResetUser(null);
+                  clearQaPasswordFields();
+                }}
+                disabled={isResettingQaPassword}
+                data-testid="button-qa-reset-cancel"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={
+                  isResettingQaPassword ||
+                  !adminPassword ||
+                  newPassword.length < 8 ||
+                  newPassword.length > 200 ||
+                  confirmPassword !== newPassword
+                }
+                data-testid="button-qa-reset-submit"
+              >
+                {isResettingQaPassword && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                Reset password
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
