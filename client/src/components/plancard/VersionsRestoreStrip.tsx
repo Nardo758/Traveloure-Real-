@@ -11,7 +11,7 @@
  * OWNER's. A read-only viewer's POST answers 404 with no code (string R10), so the strip draws nothing,
  * and sends no GET, unless `tripRole` is "owner". An absent role is treated as a viewer (hidden).
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { FIXED_CANCEL, FIXED_CONFIRM } from "@/lib/fixed-plan";
@@ -22,6 +22,11 @@ import {
   restorableKey,
   restoreFailureKey,
   restoreNoteLine,
+  restoreExpiredLine,
+  expiredToShow,
+  markExpiredSeen,
+  readExpiredSeen,
+  type ExpiredRestoreView,
   restoreRequestBody,
   restoreRowsToShow,
   restoreSuccessKey,
@@ -43,6 +48,9 @@ export interface VersionsRestoreViewProps {
   onOpen?: (day: number) => void;
   onCancel?: () => void;
   onConfirm?: (row: RestoreRowView) => void;
+  /** W13: expired snapshots to say once (already filtered for seen / dismissed). */
+  expired?: readonly ExpiredRestoreView[];
+  onDismissExpired?: (snapshotId: string) => void;
 }
 
 function Result({ day, note }: { day: number; note: RestoreNoteKey }) {
@@ -54,14 +62,15 @@ function Result({ day, note }: { day: number; note: RestoreNoteKey }) {
 }
 
 /** Props only, no hooks: what the strip draws for one state of the GET and the notes. */
-export function VersionsRestoreView({ finalized, rows, previewDay, pending, notes, onOpen, onCancel, onConfirm }: VersionsRestoreViewProps) {
+export function VersionsRestoreView({ finalized, rows, previewDay, pending, notes, onOpen, onCancel, onConfirm, expired = [], onDismissExpired }: VersionsRestoreViewProps) {
   const isFinalized = finalized || Object.values(notes).includes("finalized");
-  const rowDays = new Set(rows.map((r) => r.day));
+  const expiredDays = new Set(expired.map((e) => e.day));
+  const rowDays = new Set([...rows.map((r) => r.day), ...Array.from(expiredDays)]);
   const orphanNotes = Object.entries(notes)
     .map(([d, note]) => ({ day: Number(d), note }))
     .filter((n) => !rowDays.has(n.day) && n.note !== "finalized")
     .sort((a, b) => a.day - b.day);
-  if (!isFinalized && rows.length === 0 && orphanNotes.length === 0) return null;
+  if (!isFinalized && rows.length === 0 && orphanNotes.length === 0 && expired.length === 0) return null;
 
   return (
     <section
@@ -137,6 +146,23 @@ export function VersionsRestoreView({ finalized, rows, previewDay, pending, note
               </div>
             );
           })}
+          {/* W13: an expired snapshot is said once, with a dismiss; it never gets a button. */}
+          {expired.map((e) => (
+            <div key={e.snapshotId} className="mt-2 flex items-start justify-between gap-2" data-testid={`versions-restore-expired-${e.day}`}>
+              <p role="status" className="text-[color:var(--slip-ink)]" data-testid={`versions-restore-expired-line-${e.day}`}>
+                {restoreExpiredLine(e.day)}
+              </p>
+              <button
+                type="button"
+                aria-label="Dismiss"
+                className="shrink-0 text-[color:var(--slip-muted)] hover:text-[color:var(--slip-ink)]"
+                onClick={() => onDismissExpired?.(e.snapshotId)}
+                data-testid={`versions-restore-expired-dismiss-${e.day}`}
+              >
+                ×
+              </button>
+            </div>
+          ))}
           {orphanNotes.map((n) => (
             <div key={n.day} className="mt-2" data-testid={`versions-restore-row-${n.day}`}>
               <Result day={n.day} note={n.note} />
@@ -158,6 +184,15 @@ export function VersionsRestoreStrip({ tripId, tripRole }: { tripId: string; tri
   const key = restorableKey(tripId);
   const { data, isError: readFailed, refetch: retryRead } = useQuery<unknown>({ queryKey: key, retry: false, staleTime: 15_000, enabled: shownForRole });
   const shown = restoreRowsToShow(readRestorable(data));
+  // W13: what this browser was already told, read once when the strip mounts; this render shows the rest once.
+  const [seenAtMount] = useState(() => readExpiredSeen(typeof localStorage !== "undefined" ? localStorage : null));
+  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
+  const expired = expiredToShow(shown.expired, seenAtMount, dismissed);
+  const expiredIds = expired.map((e) => e.snapshotId).join(",");
+  useEffect(() => {
+    // Once drawn, a snapshot's line is recorded as seen, so a reload never shows it again.
+    if (shownForRole && expiredIds) markExpiredSeen(typeof localStorage !== "undefined" ? localStorage : null, expiredIds.split(","));
+  }, [shownForRole, expiredIds]);
   const [previewDay, setPreviewDay] = useState<number | null>(null);
   const [notes, setNotes] = useState<Record<number, RestoreNoteKey>>({});
   const note = (day: number, k: RestoreNoteKey) => setNotes((prev) => ({ ...prev, [day]: k }));
@@ -204,6 +239,11 @@ export function VersionsRestoreStrip({ tripId, tripRole }: { tripId: string; tri
       previewDay={previewDay}
       pending={restore.isPending}
       notes={notes}
+      expired={expired}
+      onDismissExpired={(id) => {
+        setDismissed((prev) => new Set(prev).add(id));
+        markExpiredSeen(typeof localStorage !== "undefined" ? localStorage : null, [id]);
+      }}
       onOpen={(day) => setPreviewDay(day)}
       onCancel={() => setPreviewDay(null)}
       onConfirm={(row) => {

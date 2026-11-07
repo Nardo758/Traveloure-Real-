@@ -4,7 +4,7 @@
  *
  *   CR1  readRestorable: anything that is not { days: [...] } gives no rows
  *   CR2  readRestorable drops bad rows, keeps the first per day, sorts by day
- *   CR3  restoreRowsToShow: restorable has a button, changed has none, expired is left out, finalized wins
+ *   CR3  restoreRowsToShow: restorable has a button, changed has none, expired is returned for its W13 line, finalized wins
  *   CR4  savedUntil = appliedAt + DAY_RESTORE_RETENTION_MS; null when the date does not parse
  *   CR5  restoreFailureKey: the four named answers
  *   CR6  restoreFailureKey: everything else is failed
@@ -77,12 +77,14 @@ describe("Restore my draft on the Versions board", () => {
     assert.deepEqual(got, [row(2, "changed_since"), row(3)]);
   });
 
-  it("CR3 restoreRowsToShow: restorable has a button, changed has none, expired is left out, finalized wins", () => {
+  it("CR3 restoreRowsToShow: restorable has a button, changed has none, expired is returned for its W13 line, finalized wins", () => {
     const shown = restoreRowsToShow([row(1), row(2, "changed_since"), row(3, "expired")] as any);
     assert.equal(shown.finalized, false);
     assert.deepEqual(shown.rows.map((r) => [r.day, r.kind]), [[1, "restorable"], [2, "changed"]]);
-    assert.deepEqual(restoreRowsToShow([row(1), row(2, "finalized")] as any), { finalized: true, rows: [] });
-    assert.deepEqual(restoreRowsToShow(null), { finalized: false, rows: [] });
+    // W13 (ledger `2026-11-07-w13-expired-restore`): the expired day is decided before it is dropped from `rows`.
+    assert.deepEqual(shown.expired, [{ day: 3, snapshotId: "s3" }]);
+    assert.deepEqual(restoreRowsToShow([row(1), row(2, "finalized")] as any), { finalized: true, rows: [], expired: [] });
+    assert.deepEqual(restoreRowsToShow(null), { finalized: false, rows: [], expired: [] });
   });
 
   it("CR4 savedUntil = appliedAt + DAY_RESTORE_RETENTION_MS; null when the date does not parse", () => {
