@@ -1,10 +1,11 @@
 /**
- * PLAN-1 Phase 2 (ledger `2026-11-06-plan1-phase2-view-toggle`; ruling 4): a plan created from the map carries the
- * server-owned `trips.preferences.opensOn = "map"`. No column, no migration.
+ * PLAN-1 Phase 2's `trips.preferences.opensOn` key, after the slip-first hotfix (ledger `2026-11-07-slip-first-landing`;
+ * TEST EDIT, retargeted): no mint stamps it any more and nothing reads it; rows stamped Nov 6–7 keep it, still
+ * server-owned. No column, no migration.
  *
- *   O1 the mint option stamps it; a mint without it does not, and a client-sent key is dropped.
- *   O2 a client `preferences` update can neither set nor erase it (the stored key is kept).
- *   O3 a guest plan (built on the map) carries it; once claimed it opens on Map.
+ *   O1 no mint stamps it, and a client-sent key is dropped.
+ *   O2 a client `preferences` update can neither set nor erase it (a key already on a row is kept, inert).
+ *   O3 a guest plan does not carry it (it opens on Days like every other plan).
  *
  * Disposable database only. Rows this file writes are removed in after().
  *
@@ -17,7 +18,7 @@ import { eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import { tripCollaborators, trips, users } from "@shared/schema";
-import { planOpensOn } from "@shared/plan-view";
+import { PLAN_OPENS_ON_KEY } from "@shared/plan-view";
 import { createGuestPlan, hashGuestSession } from "../services/guest-plan.service";
 
 const DISPOSABLE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0", ""]);
@@ -48,41 +49,42 @@ after(async () => {
   await db.delete(users).where(eq(users.id, userId));
 });
 
-const mint = async (opts: { opensOnMap?: boolean }, preferences?: Record<string, unknown>) => {
+const opensOn = (prefs: Record<string, unknown> | null | undefined) => (prefs ?? {})[PLAN_OPENS_ON_KEY] ?? null;
+const mint = async (preferences?: Record<string, unknown>) => {
   const t = await storage.createTrip(
     { userId, title: `P2 ${tag}`, destination: "Kyoto, Japan", startDate: "2026-12-01", endDate: "2026-12-03", ...(preferences ? { preferences } : {}) } as any,
-    { datesChosenByTraveler: true, ...opts },
+    { datesChosenByTraveler: true },
   );
   tripIds.add(t.id);
   return t;
 };
 
-describe("PLAN-1 Phase 2 — a map-created plan opens on Map", () => {
-  it("O1 the mint stamps it; a client cannot", async () => {
-    const onMap = await mint({ opensOnMap: true }, { pace: "slow" });
-    assert.equal(planOpensOn(await prefsOf(onMap.id)), "map");
-    assert.equal((await prefsOf(onMap.id)).pace, "slow", "the client's own keys stay");
-    const plain = await mint({});
-    assert.equal(planOpensOn(await prefsOf(plain.id)), null);
-    const forged = await mint({}, { opensOn: "map" });
-    assert.equal(planOpensOn(await prefsOf(forged.id)), null, "a client-sent key is dropped");
+describe("slip-first — no plan opens on Map by itself", () => {
+  it("O1 no mint stamps it; a client cannot", async () => {
+    const plain = await mint({ pace: "slow" });
+    assert.equal(opensOn(await prefsOf(plain.id)), null, "the mint stamps no opening view");
+    assert.equal((await prefsOf(plain.id)).pace, "slow", "the client's own keys stay");
+    const forged = await mint({ opensOn: "map" });
+    assert.equal(opensOn(await prefsOf(forged.id)), null, "a client-sent key is dropped");
   });
 
   it("O2 a client update neither sets nor erases it", async () => {
-    const onMap = await mint({ opensOnMap: true });
-    await storage.updateTrip(onMap.id, { preferences: { pace: "fast", opensOn: "days" } } as any);
-    const p = await prefsOf(onMap.id);
+    // A row stamped before the hotfix (Nov 6–7) keeps its key; it is inert, and a client still cannot touch it.
+    const legacy = await mint();
+    await db.execute(sql`UPDATE trips SET preferences = jsonb_build_object('opensOn', 'map') WHERE id = ${legacy.id}`);
+    await storage.updateTrip(legacy.id, { preferences: { pace: "fast", opensOn: "days" } } as any);
+    const p = await prefsOf(legacy.id);
     assert.equal(p.opensOn, "map", "the stored key is kept");
     assert.equal(p.pace, "fast");
-    const plain = await mint({});
+    const plain = await mint();
     await storage.updateTrip(plain.id, { preferences: { opensOn: "map" } } as any);
-    assert.equal(planOpensOn(await prefsOf(plain.id)), null, "a client update cannot set it");
+    assert.equal(opensOn(await prefsOf(plain.id)), null, "a client update cannot set it");
   });
 
-  it("O3 a guest plan carries it", async () => {
+  it("O3 a guest plan does not carry it", async () => {
     const out: any = await createGuestPlan(hashGuestSession(crypto.randomUUID())!, { destination: "Kyoto, Japan" } as any);
     assert.equal(out.ok, true, JSON.stringify(out));
     tripIds.add(out.view.plan.id);
-    assert.equal(planOpensOn(await prefsOf(out.view.plan.id)), "map");
+    assert.equal(opensOn(await prefsOf(out.view.plan.id)), null);
   });
 });

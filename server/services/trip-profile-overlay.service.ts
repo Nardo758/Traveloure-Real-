@@ -58,8 +58,9 @@ export async function addSkippedCorridor(tripId: string, corridorKey: string): P
  * key is dropped; on an update the stored overlay is kept (one SQL expression, so no read-modify-write).
  */
 /**
- * The `trips.preferences` keys only the server writes: the profile overlay (TC-3b) and PLAN-1 Phase 2's `opensOn` (a
- * plan created from the map). A client-sent `preferences` never carries them, and a client update never erases them.
+ * The `trips.preferences` keys only the server writes: the profile overlay (TC-3b) and PLAN-1 Phase 2's `opensOn`
+ * (inert since the slip-first hotfix, ledger `2026-11-07-slip-first-landing`: nothing stamps or reads it, and it stays
+ * guarded so a client can never set it). A client-sent `preferences` never carries them, and a client update never erases them.
  */
 export const SERVER_OWNED_TRIP_PREFERENCE_KEYS = [TRIP_PROFILE_OVERLAY_KEY, PLAN_OPENS_ON_KEY] as const;
 

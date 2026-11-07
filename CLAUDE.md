@@ -590,6 +590,11 @@ This document captures architectural decisions to maintain consistency across co
     (§18c). Deep links seed the panel and never start a plan — a visit writes nothing; a city and an
     occasion land on Step 2 with Start a plan ready; `?group=` seeds the group. A door slug the catalog
     does not carry is dropped, never minted (§13).
+    **AMENDED — SLIP-FIRST LANDING (decision-maker, round 5 smoke, Nov 7, 2026 — ledger
+    `2026-11-07-slip-first-landing`).** Every create and every claim lands on the Trip Slip's Days view, on both
+    rails (guest `/plans/new`, owner `/plans/:id`, `ai` → `?draft=ai`); Map is one tab away. `?view=map` opens only
+    when the traveler toggles it or their own saved view says so. Nothing stamps `trips.preferences.opensOn` and
+    nothing reads it; the key stays server-owned.
     **THE CHOOSER'S THREE WAYS TO BUILD ARE THE FINISH of the last visible step, not a sixth step
     and not a first one:** you say what you are planning before you say who should build it. A
     `source.branch` deep-open (the pricing ladder rows, the Moments CTA) still runs every step and
@@ -1492,7 +1497,7 @@ This document captures architectural decisions to maintain consistency across co
     no second admission rail); every AI write is still a proposal or the free draft on an empty plan
     (LD 41, LD 45); the owner-only edit render rule (D16) and D8 stand; fee disclosure stays at checkout.
     A new plan started from Experiences or from Plan with AI lands on the map (scope assumed, not ruled;
-    every other door unchanged). Which other doors land on the map, venue-led planners, Trip Pass, the
+    every other door unchanged) — SUPERSEDED: every new plan lands on Days (LD 33, slip-first amendment). Which other doors land on the map, venue-led planners, Trip Pass, the
     Ask AI drawer and the Optimize comparison on the map are **NOT ruled** (brief §B).
 
 43. **PAYMENT METHODS: NOTHING AT SIGNUP; STRIPE HOLDS THE VAULT; WALLETS ON EVERY PLATFORM CHARGE;

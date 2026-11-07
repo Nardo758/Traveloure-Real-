@@ -5,9 +5,9 @@
  *      loose owner props are gone, and every mount names its mode.
  *   P2 owner map view is the header, the map band and the map: the tools tray (where-to-stay inside it) and the cost
  *      strip are Days-view only, and nothing in the map view draws "Stay here" or the lodging ranking.
- *   P3 the claim lands on `/plans/{id}?view=map` on every sign-in path (the app watcher); the no-navigation branch is
+ *   P3 the claim lands on `/plans/{id}` (slip-first: Days unless the traveler saved Map) on every sign-in path; the no-navigation branch is
  *      retired.
- *   P4 one mint, every create lands on the map: `planEntryView` is the map for every door; IntakePanel starts through
+ *   P4 one mint, every create lands on the slip's Days view (slip-first): `planEntryView` is Days for every door; IntakePanel starts through
  *      the provider's mint (no `POST /api/trips` of its own).
  *   P5 the shared DTO: the guest view carries `occasionLabel`, `endTime` and the listing / partner ids, and the guest
  *      row passes them through.
@@ -101,8 +101,9 @@ describe("PLAN-1 Phase 1", () => {
     assert.match(read("client/src/components/plan/AnchorPanel.tsx"), /\{routed \? STAY_PICK_TITLE : STAY_STRAIGHT_LINE_TITLE\}/);
   });
 
-  it("P3 the claim lands on the plan's map, every sign-in path", () => {
-    assert.equal(claimLandingPath(["t-1", "t-2"]), "/plans/t-1?view=map");
+  // TEST EDIT (slip-first hotfix, ledger `2026-11-07-slip-first-landing`): the claim lands on the slip, no view named.
+  it("P3 the claim lands on the plan's slip, every sign-in path", () => {
+    assert.equal(claimLandingPath(["t-1", "t-2"]), "/plans/t-1");
     assert.equal(claimLandingPath([]), null, "nothing claimed ⇒ stay put");
     assert.equal(claimLandingPath(null), null);
     const app = read("client/src/App.tsx");
@@ -110,18 +111,20 @@ describe("PLAN-1 Phase 1", () => {
     assert.doesNotMatch(app, /if \(ids\.length > 0\) qc\.invalidateQueries\(\{ queryKey: \["\/api\/trips"\] \}\);\s*\}\);/, "the no-navigation branch is retired");
   });
 
-  it("P4 one mint, and every create lands on the map", () => {
+  // TEST EDIT (slip-first hotfix, ledger `2026-11-07-slip-first-landing`): every create lands on the slip's Days view.
+  it("P4 one mint, and every create lands on the slip's Days view", () => {
     const base = emptyPlanEntry();
     for (const group of ["trips", "group_travel", "moments", "celebrations", "hosted_events"] as const) {
-      assert.equal(planEntryView({ ...base, group } as any, null), "map", group);
+      assert.equal(planEntryView({ ...base, group } as any, null), "list", group);
     }
     const ctx = read("client/src/contexts/PlanningContext.tsx");
-    assert.match(ctx, /setLocation\(view === "map" \? `\/plans\/\$\{tripId\}\?view=map` : `\/plans\/\$\{tripId\}`\);/);
+    assert.match(ctx, /setLocation\(`\/plans\/\$\{tripId\}`\);/);
+    assert.doesNotMatch(ctx, /\?view=map/, "no create names the map");
     assert.match(ctx, /continueOn\(branch, plan, from, start\.view\);/);
     assert.equal((ctx.match(/mintTripSlip\(/g) ?? []).length, 1, "one mint call");
     const intake = read("client/src/components/intake-panel.tsx");
     assert.match(intake, /const out = await planning\.start\(\{/);
-    assert.match(intake, /view: "map",/);
+    assert.match(intake, /view: "list", \/\/ slip-first/);
     assert.doesNotMatch(intake, /useCreateTrip|navigate\(`\/plans\//, "no second mint, no list landing");
     // The typed party total rides the one mint as a count — never a split, never invented.
     assert.equal(buildTripMintBody({ destination: "Kyoto, Japan", numberOfTravelers: 3 }).numberOfTravelers, 3);

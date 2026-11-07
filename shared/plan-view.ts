@@ -3,19 +3,21 @@
  *
  * The planners on `/plans/{id}` are Days and Map (Calendar follows once its Design artifact is approved — ruling,
  * Nov 6). The traveler's last toggle is remembered server-side (`users.preferences.settings.planView`, written through
- * the allow-listed `PATCH /api/me/preferences`; never localStorage). A plan created from the map carries the
- * server-owned key `trips.preferences.opensOn = "map"` (stamped at the mint and at the guest-plan create; a client write
- * can neither set nor erase it).
+ * the allow-listed `PATCH /api/me/preferences`; never localStorage).
  *
- *   the URL's `?view=` (a reload, a shared link) → that view;
- *   a plan created from the map                → Map;
- *   an older plan                              → the remembered view, else Days.
+ * SLIP-FIRST (round 5 hotfix, ledger `2026-11-07-slip-first-landing`): every plan opens on Days; the saved view
+ * overrides only once the traveler has set one. The Phase 2 "a map-created plan opens on Map" default is gone: no mint
+ * stamps `trips.preferences.opensOn` any more, and nothing reads it. Rows stamped Nov 6–7 keep the key; it stays
+ * server-owned (a client write can neither set nor erase it) and is inert.
+ *
+ *   the URL's `?view=` (a reload, a shared link, the traveler's toggle) → that view;
+ *   otherwise                                                           → the remembered view, else Days.
  * Pure.
  */
 export const PLAN_VIEWS = ["days", "map"] as const;
 export type PlanView = (typeof PLAN_VIEWS)[number];
 
-/** The server-owned `trips.preferences` key a map-created plan carries. */
+/** The server-owned `trips.preferences` key Nov 6–7 mints stamped (inert since the slip-first hotfix; still guarded). */
 export const PLAN_OPENS_ON_KEY = "opensOn" as const;
 
 export function isPlanView(v: unknown): v is PlanView {
@@ -39,14 +41,7 @@ export function planViewFromUrl(search: string | null | undefined): PlanView | n
   }
 }
 
-/** The plan's own opening view, from `trips.preferences` (server-stamped). */
-export function planOpensOn(preferences: unknown): "map" | null {
-  const v = preferences && typeof preferences === "object" ? (preferences as Record<string, unknown>)[PLAN_OPENS_ON_KEY] : null;
-  return v === "map" ? "map" : null;
-}
-
-export function resolvePlanView(input: { url: PlanView | null; planOpensOn: PlanView | null; remembered: unknown }): PlanView {
+export function resolvePlanView(input: { url: PlanView | null; remembered: unknown }): PlanView {
   if (input.url) return input.url;
-  if (input.planOpensOn === "map") return "map";
   return isPlanView(input.remembered) ? input.remembered : "days";
 }

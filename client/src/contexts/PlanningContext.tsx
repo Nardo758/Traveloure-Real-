@@ -53,7 +53,7 @@ import { addPendingGemToTrip } from "@/lib/billboard-gem-planning";
 import { doorStartsNewPlan } from "@/lib/plan-steps";
 import { eventsNotYetCreated } from "@/lib/organize-events";
 import { normalizePendingPlanItems, type PendingPlanItem } from "@shared/pending-plan-items";
-import { DRAFT_AI_QUERY, DRAFT_AI_VALUE, GUEST_MAP_PATH, planLandingPath } from "@/lib/plan-landing";
+import { DRAFT_AI_QUERY, DRAFT_AI_VALUE, GUEST_PLAN_PATH, planLandingPath } from "@/lib/plan-landing";
 import {
   attachPendingMapAdd,
   pendingMapAddMessage,
@@ -371,7 +371,8 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
   const continueOn = (branch: PlanningBranch, plan: CommittedPlan, source: PlanningSource | null, view: "map" | "list") => {
     const tripId = plan.tripId as string;
     if (branch === "ai") {
-      setLocation(`/plans/${tripId}?view=map&${DRAFT_AI_QUERY}=${DRAFT_AI_VALUE}`);
+      // Slip-first (round 5 hotfix): the slip, Days unless the traveler saved Map; the draft starts there.
+      setLocation(`/plans/${tripId}?${DRAFT_AI_QUERY}=${DRAFT_AI_VALUE}`);
       return;
     }
     if (branch === "local") {
@@ -387,7 +388,10 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
       setLocation(expertDoorHref(tripId));
       return;
     }
-    setLocation(view === "map" ? `/plans/${tripId}?view=map` : `/plans/${tripId}`);
+    // Slip-first (round 5 hotfix): every create lands on the slip with no view in the URL — Days, unless the traveler's
+    // saved view is Map. `view` is kept for the callers' shape and no longer moves the landing.
+    void view;
+    setLocation(`/plans/${tripId}`);
   };
 
   const open = useCallback((src?: PlanningSource) => {
@@ -542,7 +546,7 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
           ...(from?.pendingMapAdd ? { pendingAdd: from.pendingMapAdd } : {}),
         });
         setEntryOpen(false);
-        setLocation(GUEST_MAP_PATH);
+        setLocation(GUEST_PLAN_PATH);
         return { ok: true };
       }
       if (pendingGemRecovery) {
@@ -789,8 +793,8 @@ function entryStartFromRecord(record: PendingPlanRecord): PlanEntryStart | null 
   // A-8: a record with no occasion replays with none — never the trips group's default.
   const occasionSlug = (a.occasionSlug || record.source.experienceSlug || "").trim() || null;
   const ev = a.events?.[0];
-  // The record carries no catalog row to group by; a replayed start lands where the guest already was — the map.
-  const view = "map" as const;
+  // Slip-first (round 5 hotfix): a replayed start lands on the slip's Days view like every other create.
+  const view = "list" as const;
   const adults = travelersForSave(a.adults);
   const kids = travelersForSave(a.kids);
   return {

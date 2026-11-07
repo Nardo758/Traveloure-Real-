@@ -43,7 +43,6 @@ export default function SlipViewPage() {
   useDocumentTitle(data?.trip?.title ?? null);
   const openingView = resolvePlanView({
     url: urlView,
-    planOpensOn: (data?.trip as any)?.opensOn === "map" ? "map" : null,
     remembered: rememberedPlanView(prefsQ.data),
   });
   const initialView = openingView === "map" ? ("map" as const) : ("list" as const);

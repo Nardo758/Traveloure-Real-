@@ -33,7 +33,7 @@ import {
 } from "../browse-supply";
 import { buildMapScene } from "../map-scene";
 import { mapDayChips, tripWindowDayCount } from "../map-days";
-import { opensOnMap, planLandingPath } from "../plan-landing";
+import { planLandingPath } from "../plan-landing";
 import { slipBuildAiAction } from "../slip-rail";
 import {
   PENDING_PLAN_RECORD_KEY,
@@ -187,12 +187,11 @@ test("M6: day chips come from the trip's dates; no dates ⇒ one Day 1; items ke
   assert.equal(withItem[1], day2, "the plan's own day is kept as it is");
 });
 
-test("M7: the landing is keyed on the branch and the door", () => {
-  assert.equal(planLandingPath("t1", "ai", "hero"), "/plans/t1?view=map");
-  assert.equal(planLandingPath("t1", "ai", null), "/plans/t1?view=map");
-  assert.equal(planLandingPath("t1", "myself", "experiences"), "/plans/t1?view=map");
-  assert.equal(planLandingPath("t1", "myself", "hero"), "/plans/t1");
-  assert.equal(opensOnMap("local", "experiences"), false);
+// TEST EDIT (slip-first hotfix, ledger `2026-11-07-slip-first-landing`): no branch or door names the map any more.
+test("M7: every finish lands on the slip, whatever the branch and the door", () => {
+  for (const [branch, door] of [["ai", "hero"], ["ai", null], ["myself", "experiences"], ["myself", "hero"]] as const) {
+    assert.equal(planLandingPath("t1", branch, door), "/plans/t1", `${branch}/${door}`);
+  }
 });
 
 test("M8: the free-draft button is absent on a plan that holds anything", () => {

@@ -27,7 +27,7 @@ export function startForCity(m: OperatingMarket) {
     city: m.cityName,
     country: m.country,
     occasionSlug: null,
-    view: "map" as const,
+    view: "list" as const, // slip-first: a new plan lands on Days
     occasionAsked: false,
   };
 }

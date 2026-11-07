@@ -9,10 +9,11 @@
  *  2. PlanEntry asks "Plan around…" a place · a date · an event, then the occasion, then Start a
  *     plan — and nothing before the plan asks When, Who, a plan name or a way to build.
  *  3. Place → Kyoto → Start a plan is three clicks and zero typed fields; signed out it lands on the
- *     guest map carrying the sign-in record; signed in it lands on the plan's map.
+ *     guest plan (`/plans/new`) carrying the sign-in record; signed in it lands on the plan's Days
+ *     view — Map is one tab away (slip-first, ledger `2026-11-07-slip-first-landing`).
  *  4. A typed city we do not plan in says so and suggests the same country first, else all eight.
  *  5. A door that already chose a way to build continues on the plan: `ai` lands with Draft it with
- *     AI started (`?view=map&draft=ai`).
+ *     AI started (`?draft=ai`, on Days).
  *  6. The EDIT window (the slip's Edit) edits the bound plan only: no Occasion step, no build
  *     chooser, no Clear, no plan name — and its steps still follow the plan's own occasion (stops
  *     under a many-stop occasion, the accessibility note under a guest-list occasion).
@@ -38,6 +39,20 @@ async function openEntryFromHero(page: Page) {
   await cta.waitFor({ state: "visible", timeout: 20_000 });
   await cta.click();
   await expect(page.getByTestId("plan-entry")).toBeVisible({ timeout: 10_000 });
+}
+
+/**
+ * Slip-first (ledger `2026-11-07-slip-first-landing`): a new plan lands on Days. The guest's `/plans/new` is the
+ * guest slip in waitlist mode (Days pressed) or the no-plan record page in open mode (no toggle at all) —
+ * either way, never Map.
+ */
+async function expectDaysLanding(page: Page) {
+  expect(new URL(page.url()).searchParams.get("view"), "never ?view=map").not.toBe("map");
+  const map = page.getByTestId("button-slip-view-map");
+  if ((await map.count()) > 0) {
+    await expect(page.getByTestId("button-slip-view-list")).toHaveAttribute("aria-pressed", "true");
+    await expect(map).toHaveAttribute("aria-pressed", "false");
+  }
 }
 
 async function registerUser(page: Page) {
@@ -87,7 +102,9 @@ test.describe("Single planning entry — PlanEntry", () => {
     await page.getByTestId("plan-entry-around-place").click();
     await page.getByTestId("plan-entry-city-kyoto").click();
     await page.getByTestId("button-plan-entry-start").click();
-    await expect(page).toHaveURL(/\/plans\/new\?view=map$/, { timeout: 10_000 });
+    // TEST EDIT (slip-first hotfix, ledger `2026-11-07-slip-first-landing`): hero → Kyoto lands the guest on /plans/new, Days first — never ?view=map.
+    await expect(page).toHaveURL(/\/plans\/new(\?view=days)?$/, { timeout: 10_000 });
+    await expectDaysLanding(page);
     await expect(page.getByTestId("guest-map-answers")).toContainText("Kyoto");
     const record = JSON.parse((await page.evaluate(() => sessionStorage.getItem("traveloure_pending_plan"))) ?? "null");
     expect(record?.branch).toBe("myself");
@@ -236,7 +253,8 @@ test.describe("/experiences is the start state, and no route auto-opens (walkthr
     await page.getByTestId("button-plan-entry-start").click();
     await page.getByTestId("plan-entry-group-hosted_events").click();
     await page.getByTestId("button-plan-entry-start").click();
-    await expect(page).toHaveURL(/\/plans\/new\?view=map$/, { timeout: 10_000 });
+    // TEST EDIT (slip-first hotfix, ledger `2026-11-07-slip-first-landing`).
+    await expect(page).toHaveURL(/\/plans\/new(\?view=days)?$/, { timeout: 10_000 });
     await expect(page.getByTestId("plan-entry")).toHaveCount(0);
     await expect(page.getByTestId("plan-modal")).toHaveCount(0);
     await expect(page.getByTestId("guest-map-answers")).toContainText("Kyoto");
@@ -268,11 +286,14 @@ test.describe("/experiences is the start state, and no route auto-opens (walkthr
 });
 
 test.describe("Single planning entry — authed", () => {
-  test("Start a plan mints and lands on the plan's map (a trip), with placeholder dates", async ({ page }) => {
+  // TEST EDIT (slip-first hotfix, ledger `2026-11-07-slip-first-landing`): hero → Kyoto lands the owner on the plan's Days view; Map is one tab away.
+  test("Start a plan mints and lands on the plan's Days view (a trip), with placeholder dates", async ({ page }) => {
     await registerUser(page);
     await openEntryFromHero(page);
     await startPlanIn(page, "kyoto");
-    await expect(page).toHaveURL(/\/plans\/[0-9a-f-]{36}\?view=map/, { timeout: 15_000 });
+    await expect(page).toHaveURL(/\/plans\/[0-9a-f-]{36}(\?view=days)?$/, { timeout: 15_000 });
+    await expect(page.getByTestId("button-slip-view-list")).toHaveAttribute("aria-pressed", "true", { timeout: 15_000 });
+    await expect(page.getByTestId("button-slip-view-map")).toHaveAttribute("aria-pressed", "false");
     const tripId = page.url().match(/\/plans\/([0-9a-f-]{36})/)![1];
     const trip = await (await page.request.get(`${BASE_URL}/api/trips/${tripId}`)).json();
     expect(trip.destination).toBe("Kyoto, Japan");
@@ -299,7 +320,7 @@ test.describe("Single planning entry — authed", () => {
     expect(trip.datesConfirmedAt, "a date pick is a chosen date").toBeTruthy();
   });
 
-  test("the pricing ladder's AI row lands on the map with Draft it with AI started", async ({ page }) => {
+  test("the pricing ladder's AI row lands on Days with Draft it with AI started", async ({ page }) => {
     await registerUser(page);
     await page.goto(`${BASE_URL}/pricing`, { waitUntil: "domcontentloaded" });
     const ai = page.getByTestId("button-plan-ai");
@@ -308,7 +329,8 @@ test.describe("Single planning entry — authed", () => {
     await expect(page.getByTestId("plan-entry")).toBeVisible({ timeout: 10_000 });
     await startPlanIn(page, "kyoto");
     // The request is consumed once and removed from the address; the draft asks for dates first (E1).
-    await expect(page).toHaveURL(/\/plans\/[0-9a-f-]{36}\?view=map$/, { timeout: 15_000 });
+    // TEST EDIT (slip-first hotfix, ledger `2026-11-07-slip-first-landing`): no ?view=map.
+    await expect(page).toHaveURL(/\/plans\/[0-9a-f-]{36}(\?view=days)?$/, { timeout: 15_000 });
     await expect(page.getByTestId("slip-draft-dates-gate")).toBeVisible({ timeout: 15_000 });
   });
 

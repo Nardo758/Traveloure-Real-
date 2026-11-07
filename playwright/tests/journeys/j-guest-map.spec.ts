@@ -64,7 +64,8 @@ test("8d — signed out: browse with no plan, add, sign up → exactly one plan,
   await expect(testid(page, "plan-entry"), "the start page opens no pop-up").toHaveCount(0);
 
   // ── The guest map: no plan, the answers, Browse ─────────────────────────────────────────────────
-  await expect(page).toHaveURL(/\/plans\/new\?view=map$/, { timeout: 15_000 });
+  // TEST EDIT (slip-first hotfix, ledger `2026-11-07-slip-first-landing`): the guest lands on /plans/new, Days first.
+  await expect(page).toHaveURL(/\/plans\/new(\?view=days)?$/, { timeout: 15_000 });
   await expect(testid(page, "guest-map-banner")).toContainText("Your plan is created when you sign in");
   await expect(testid(page, "guest-map-answers")).toContainText("Kyoto");
   // Lane E1: the start page asked no party, so the answers line names none (§13).
@@ -107,7 +108,7 @@ test("8d — signed out: browse with no plan, add, sign up → exactly one plan,
   // just typed (the register answer itself stays neutral, AUTH-1 3b). An address that must be confirmed lands on the
   // verify page ("Check your email to confirm your account."), with the guest's record kept for the return; an address
   // that need not be confirmed returns straight to this page, which replays the record.
-  await expect(page).toHaveURL(/\/verify-email|\/plans\/(?!new)[a-zA-Z0-9-]+\?view=map/, { timeout: 15_000 });
+  await expect(page).toHaveURL(/\/verify-email|\/plans\/(?!new)[a-zA-Z0-9-]+(\?view=days)?$/, { timeout: 15_000 });
   if (/\/verify-email/.test(page.url())) {
     await expect(page.getByText("Check your email to confirm your account.")).toBeVisible();
     expect(await page.evaluate(() => sessionStorage.getItem("traveloure_pending_plan")), "the record is kept").not.toBeNull();
@@ -116,11 +117,12 @@ test("8d — signed out: browse with no plan, add, sign up → exactly one plan,
 
     // The address is confirmed (the fixture stamps it, as the verify link would), and the traveler returns to the map.
     await rows(`UPDATE users SET email_verified = NOW() WHERE lower(email) = lower($1) AND email_verified IS NULL`, [email]);
-    await page.goto("/plans/new?view=map");
+    await page.goto("/plans/new");
   }
 
-  // The record replays: ONE plan, landing on its map.
-  await expect(page).toHaveURL(/\/plans\/(?!new)[a-zA-Z0-9-]+\?view=map/, { timeout: 30_000 });
+  // The record replays: ONE plan, landing on Days (TEST EDIT, slip-first hotfix, ledger `2026-11-07-slip-first-landing`).
+  await expect(page).toHaveURL(/\/plans\/(?!new)[a-zA-Z0-9-]+(\?view=days)?$/, { timeout: 30_000 });
+  await expect(testid(page, "button-slip-view-list")).toHaveAttribute("aria-pressed", "true", { timeout: 20_000 });
   const tripId = page.url().match(/\/plans\/([a-zA-Z0-9-]+)/)![1];
 
   const [user] = await rows<{ id: string }>(`SELECT id FROM users WHERE email = $1`, [email]);
@@ -175,7 +177,8 @@ test("8d — social sign-in from the guest map asks to come back to this page", 
   await testid(page, "button-plan-entry-start").click();
   await testid(page, "plan-entry-group-trips").click();
   await testid(page, "button-plan-entry-start").click();
-  await expect(page).toHaveURL(/\/plans\/new\?view=map$/, { timeout: 15_000 });
+  // TEST EDIT (slip-first hotfix, ledger `2026-11-07-slip-first-landing`): the guest lands on /plans/new, Days first.
+  await expect(page).toHaveURL(/\/plans\/new(\?view=days)?$/, { timeout: 15_000 });
 
   await testid(page, "button-guest-map-start").click();
   await expect(testid(page, "modal-sign-in")).toBeVisible({ timeout: 10_000 });
@@ -191,7 +194,7 @@ test("8d — social sign-in from the guest map asks to come back to this page", 
   const req = await pending;
   const url = new URL(req.url());
   expect(url.pathname).toBe("/api/login");
-  expect(url.searchParams.get("returnTo")).toBe("/plans/new?view=map");
+  expect(url.searchParams.get("returnTo")).toBe("/plans/new");
   expect(url.searchParams.get("intent")).toBeNull();
   expect(url.searchParams.has("source")).toBe(false);
 });

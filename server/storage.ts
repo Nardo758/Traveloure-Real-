@@ -219,7 +219,6 @@ import { resolveMarketSlug } from "./services/trend-engine/operating-markets";
 import { resolveTripTimezone } from "./services/trip-timezone";
 import { drainPendingEventsIntoTrip } from "./services/pending-events.service";
 import { preferencesKeepingStoredOverlay, stripClientProfileOverlay } from "./services/trip-profile-overlay.service";
-import { PLAN_OPENS_ON_KEY } from "@shared/plan-view";
 // RELEASE-ALL-NIGHTS hotfix (§18b-class): the ONE shared derivation of a booking's full claimed-
 // slot set (see its docblock in checkout-claim.service.ts) — used here so
 // updateServiceBookingStatus's release can never drift from voidClaim's / refundServiceBooking's.
@@ -290,8 +289,6 @@ export interface BookingStatusNotification {
  */
 export interface TripMintOptions {
   datesChosenByTraveler?: boolean;
-  /** PLAN-1 Phase 2 (ruling 4): the mint landed the plan on its map — it opens on Map (server-owned key). */
-  opensOnMap?: boolean;
 }
 
 import type { FormStatusWriteResult } from "./utils/form-status-transition";
@@ -1792,10 +1789,6 @@ export class DatabaseStorage implements IStorage {
     // (trip-profile-overlay.service.ts); a mint body never carries one (§19 layer 2).
     if (mintValues.preferences && typeof mintValues.preferences === "object") {
       mintValues.preferences = stripClientProfileOverlay(mintValues.preferences as Record<string, unknown>);
-    }
-    if (options?.opensOnMap) {
-      const base = mintValues.preferences && typeof mintValues.preferences === "object" ? (mintValues.preferences as Record<string, unknown>) : {};
-      mintValues.preferences = { ...base, [PLAN_OPENS_ON_KEY]: "map" } as any;
     }
     const [newTrip] = await db
       .insert(trips)

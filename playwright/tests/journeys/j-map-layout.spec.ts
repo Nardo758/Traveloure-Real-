@@ -51,11 +51,15 @@ test("8b-2 — start page → modal → the map opens on Browse with the trip's 
   await testid(page, "plan-entry-group-trips").click();
   await testid(page, "button-plan-entry-start").click();
   // E3 (ledger `2026-10-09-e3-experiences-inline`; sanctioned rewrite of :46-50): PlanEntry inline's
-  // Start a plan opens the plan straight away — no pop-up, no When, no Who — on its MAP view, Browse.
-  await expect(page).toHaveURL(/\/plans\/(?!new)[a-zA-Z0-9-]+\?view=map/, { timeout: 20_000 });
+  // Start a plan opens the plan straight away — no pop-up, no When, no Who.
+  // TEST EDIT (slip-first hotfix, ledger `2026-11-07-slip-first-landing`): it lands on Days; Map is one tab away.
+  await expect(page).toHaveURL(/\/plans\/(?!new)[a-zA-Z0-9-]+(\?view=days)?$/, { timeout: 20_000 });
   await expect(testid(page, "plan-modal"), "the start page opens no planning modal").toHaveCount(0);
   const tripId = page.url().match(/\/plans\/([a-zA-Z0-9-]+)/)![1];
   expect(tripId, "Continue minted a plan").toBeTruthy();
+  await expect(testid(page, "button-slip-view-list")).toHaveAttribute("aria-pressed", "true", { timeout: 20_000 });
+  await testid(page, "button-slip-view-map").click();
+  await expect(page).toHaveURL(/\?view=map/);
 
   // Ruling 9: an empty plan opens on Browse. No dates yet ⇒ one "Day 1" (the 8b-2 rule).
   const sheet = page.locator(`[data-testid="map-sheet-${tripId}"]`);
