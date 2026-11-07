@@ -83,7 +83,8 @@ test("R8: a door that NAMES a plan is never minted a second one", () => {
 
 test("R9: the minted plan lands with Draft it with AI started (`?draft=ai`)", () => {
   const ctx = read("../../contexts/PlanningContext.tsx");
-  assert.ok(ctx.includes("setLocation(`/plans/${tripId}?view=map&${DRAFT_AI_QUERY}=${DRAFT_AI_VALUE}`);"));
+  // TEST EDIT (slip-first hotfix, ledger `2026-11-07-slip-first-landing`): the slip, no view named.
+  assert.ok(ctx.includes("setLocation(`/plans/${tripId}?${DRAFT_AI_QUERY}=${DRAFT_AI_VALUE}`);"));
   const hook = read("../../components/plan/useSlipFreeDraft.tsx");
   assert.ok(/asksToStartDraft\(window\.location\.search\)/.test(hook), "the hook reads the request once");
 });

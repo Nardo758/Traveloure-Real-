@@ -1,5 +1,5 @@
 /**
- * THE GUEST MAP — `/plans/new?view=map` (step 8d, brief items 24–26; ledger
+ * THE GUEST MAP — `/plans/new` (step 8d, brief items 24–26; ledger
  * `2026-10-07-step8d-guest-map`; boards `docs/design/experiences-map-planner/ExperienceMap*.dc.html`,
  * the guest states).
  *
@@ -22,7 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { MapControlCenter } from "@/components/plancard/MapControlCenter";
 import { mapDayChips } from "@/lib/map-days";
-import { GUEST_MAP_PATH } from "@/lib/plan-landing";
+import { GUEST_PLAN_PATH } from "@/lib/plan-landing";
 import {
   hasPendingPlanRecord,
   peekPendingPlanRecord,
@@ -119,7 +119,8 @@ function SignedInLanding() {
   useEffect(() => {
     let live = true;
     const open = (id: string | null | undefined) => {
-      if (live && id) setLocation(`/plans/${encodeURIComponent(id)}?view=map`);
+      // Slip-first (round 5 hotfix): the claimed plan's slip, Days unless the traveler saved Map.
+      if (live && id) setLocation(`/plans/${encodeURIComponent(id)}`);
     };
     const stored = takeClaimedGuestPlanId();
     if (stored) open(stored);
@@ -175,7 +176,7 @@ function GuestPlanMapRecord({ record: initialRecord }: { record: PendingPlanReco
     openSignInModal({
       title: GUEST_GATE_TITLE,
       description: guestGateDescription(answersLine, gate),
-      returnTo: GUEST_MAP_PATH,
+      returnTo: GUEST_PLAN_PATH,
       dismissLabel: GUEST_GATE_DISMISS,
     });
 

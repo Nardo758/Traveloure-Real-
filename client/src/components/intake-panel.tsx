@@ -85,7 +85,7 @@ function StepRail({ current }: { current: 1 | 2 }) {
  *      "Plan it with AI" option that hands the Step-1 fields to the AI planner via
  *      TripContext instead of creating a trip (R-D: no trip is persisted unless created).
  * A shape pick (not AI) starts the plan through the ONE mint PlanEntry uses (`usePlanning().start` →
- * `mintTripSlip`; PLAN-1 ruling 3) and lands on its map (/plans/:tripId?view=map).
+ * `mintTripSlip`; PLAN-1 ruling 3) and lands on its slip (/plans/:tripId — Days unless the traveler saved Map).
  */
 export function IntakePanel({
   open,
@@ -220,7 +220,7 @@ export function IntakePanel({
         ...(startDate && endDate ? { startDate, endDate } : {}),
         occasionSlug: slug,
         ...(occasionName ? { occasionName } : {}),
-        view: "map",
+        view: "list", // slip-first: a new plan lands on Days
         occasionAsked: true,
         ...(partyStated !== undefined ? { travelers: partyStated } : {}),
       });

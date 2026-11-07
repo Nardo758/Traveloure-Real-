@@ -48,7 +48,7 @@ const {
 const { PENDING_MAP_ADD_RETRY_KEY, attachPendingMapAdd, planAlreadyHolds, readPendingMapAddRetry, writePendingMapAddRetry } =
   await import("../pending-map-add");
 const guest = await import("../guest-map");
-const { GUEST_MAP_PATH, opensGuestMap } = await import("../plan-landing");
+const { GUEST_PLAN_PATH, opensGuestMap } = await import("../plan-landing");
 
 const answers = {
   title: "", stops: ["Kyoto"], startDate: "2026-11-12", endDate: "2026-11-16", adults: "2", kids: "",
@@ -237,8 +237,9 @@ test("G6: the centre is one of the eight cities exactly — none outside them", 
   assert.equal(guest.guestDestination({ stops: [] }, { destination: null, city: "Porto" }), "Porto");
 });
 
-test("G7: only `myself` from the Experiences door lands a guest on the guest map", () => {
-  assert.equal(GUEST_MAP_PATH, "/plans/new?view=map");
+test("G7: only `myself` from the Experiences door lands a guest on the guest plan page", () => {
+  // TEST EDIT (slip-first hotfix, ledger `2026-11-07-slip-first-landing`): the guest path names no view — Days.
+  assert.equal(GUEST_PLAN_PATH, "/plans/new");
   assert.equal(opensGuestMap("myself", "experiences"), true);
   assert.equal(opensGuestMap("myself", "hero"), false);
   assert.equal(opensGuestMap("ai", "experiences"), false);

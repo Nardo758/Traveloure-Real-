@@ -37,7 +37,6 @@
  *        `bookVia: 'agent-rail'` so the CTA routes through the in-platform booking-agent rail.
  */
 
-import { planOpensOn } from "@shared/plan-view";
 import { occasionLabelForPlan } from "./occasion-label.service";
 import { resolvePlanBookingPaths, readFrozenBookingPaths } from "./booking-path.service";
 import type { BookingPath } from "@shared/booking-path";
@@ -1447,8 +1446,6 @@ export async function assembleTripPlan(
         // publishing it would invite a second reader to re-answer the question (§18 rule 1).
         // `planDatesAreConfirmed` is that one answer.
         datesConfirmed: planDatesAreConfirmed((trip as any).datesConfirmedAt),
-        // PLAN-1 Phase 2 (ruling 4): a plan created from the map opens on Map (server-owned `trips.preferences` key).
-        opensOn: planOpensOn((trip as any).preferences),
         // R3-23: the ONE occasion label, from `occasion_slug` (null stays null, A-8).
         occasionLabel,
         ...(fromOccasionDraft ? { fromOccasionDraft: true } : {}),

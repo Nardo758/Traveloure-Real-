@@ -138,14 +138,15 @@ test("E7: an unserved city — same country first, else all eight", () => {
   assert.equal(typedCity("   "), null);
 });
 
-test("E8 (PLAN-1 ruling 3): every new plan lands on the map, whatever the group or the event's span", () => {
+// TEST EDIT (slip-first hotfix, ledger `2026-11-07-slip-first-landing`): PLAN-1 ruling 3's map landing is superseded.
+test("E8 (slip-first): every new plan lands on the slip's Days view, whatever the group or the event's span", () => {
   const base = { ...emptyPlanEntry(), market: kyoto };
   for (const group of ["trips", "group_travel", "moments", "celebrations", "hosted_events"] as const) {
-    assert.equal(planEntryView({ ...base, group }, null), "map", group);
+    assert.equal(planEntryView({ ...base, group }, null), "list", group);
   }
   const oneDay = withEvent(base, { title: "X", city: "Kyoto", country: "Japan", venue: "V", firstDate: "2027-10-10", lastDate: "2027-10-10", startTime: null });
-  assert.equal(planEntryView({ ...oneDay, group: "moments" }, null), "map", "a one-day event opens the map too");
-  assert.equal(planEntryView({ ...base, group: "trips" }, { defaultStops: "one", defaultDuration: "day", defaultGuests: true }), "map");
+  assert.equal(planEntryView({ ...oneDay, group: "moments" }, null), "list", "a one-day event lands on Days too");
+  assert.equal(planEntryView({ ...base, group: "trips" }, { defaultStops: "one", defaultDuration: "day", defaultGuests: true }), "list");
 });
 
 test("E9: a starting group (?group=) seeds the group, an exact key only (E3 ruling 3)", () => {

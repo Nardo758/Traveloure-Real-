@@ -588,14 +588,15 @@ export function canStartPlan(state: PlanEntryState): boolean {
 }
 
 /**
- * PLAN-1 ruling 3 (ledger `2026-11-06-plan1-one-planner`): a new plan lands on the map — from every door, whatever the
- * group or the event's span. The arguments stay for the callers' shape; nothing they hold moves the landing.
+ * SLIP-FIRST (round 5 hotfix, ledger `2026-11-07-slip-first-landing`; supersedes PLAN-1 ruling 3's map landing): a new
+ * plan lands on the Trip Slip's Days view — from every door, whatever the group or the event's span. Map is one tab
+ * away; the traveler's own saved view overrides only once they have set one. The arguments stay for the callers' shape.
  */
 export function planEntryView(
   _state?: PlanEntryState,
   _occasionRow?: ExperienceGroupRow | null | undefined,
 ): "map" | "list" {
-  return "map";
+  return "list";
 }
 
 function ymd(d: Date): string {

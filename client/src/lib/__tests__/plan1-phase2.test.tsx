@@ -13,7 +13,8 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { PLAN_OPENS_ON_KEY, PLAN_VIEWS, planOpensOn, planViewFromUrl, resolvePlanView } from "@shared/plan-view";
+import * as planViewModule from "@shared/plan-view";
+import { PLAN_VIEWS, planViewFromUrl, resolvePlanView } from "@shared/plan-view";
 import { rememberedPlanView } from "../plan-view-preference";
 
 const ROOT = resolve(import.meta.dirname, "../../../..");
@@ -29,18 +30,15 @@ describe("PLAN-1 Phase 2 — the planner toggle", () => {
     // The expert door's card lives in the Days view: its link opens Days on any plan (a `local` finish lands there).
     assert.equal(planViewFromUrl("?help=expert"), "days");
     assert.equal(planViewFromUrl("?help=expert&view=map"), "map", "a named view still wins");
-    assert.equal(planOpensOn({ [PLAN_OPENS_ON_KEY]: "map" }), "map");
-    assert.equal(planOpensOn({}), null);
-    assert.equal(planOpensOn(null), null);
-    // URL first.
-    assert.equal(resolvePlanView({ url: "days", planOpensOn: "map", remembered: "map" }), "days");
-    // A plan created from the map opens on Map.
-    assert.equal(resolvePlanView({ url: null, planOpensOn: "map", remembered: "days" }), "map");
-    // An older plan: the remembered view, else Days.
-    assert.equal(resolvePlanView({ url: null, planOpensOn: null, remembered: "map" }), "map");
-    assert.equal(resolvePlanView({ url: null, planOpensOn: null, remembered: "days" }), "days");
-    assert.equal(resolvePlanView({ url: null, planOpensOn: null, remembered: undefined }), "days");
-    assert.equal(resolvePlanView({ url: null, planOpensOn: null, remembered: "calendar" }), "days", "an unknown view is not one");
+    // TEST EDIT (slip-first hotfix, ledger `2026-11-07-slip-first-landing`): no plan opens on Map by itself any more —
+    // the URL (the traveler's toggle), else the remembered view, else Days.
+    assert.equal(resolvePlanView({ url: "days", remembered: "map" }), "days", "URL first");
+    assert.equal(resolvePlanView({ url: "map", remembered: "days" }), "map", "the traveler's toggle");
+    assert.equal(resolvePlanView({ url: null, remembered: "map" }), "map", "the saved view, once set");
+    assert.equal(resolvePlanView({ url: null, remembered: "days" }), "days");
+    assert.equal(resolvePlanView({ url: null, remembered: undefined }), "days", "nothing saved ⇒ Days");
+    assert.equal(resolvePlanView({ url: null, remembered: "calendar" }), "days", "an unknown view is not one");
+    assert.equal("planOpensOn" in planViewModule, false, "the map-created default is gone");
     assert.equal(rememberedPlanView({ planView: "map", language: "en" }), "map");
     assert.equal(rememberedPlanView({}), null);
   });
@@ -70,7 +68,7 @@ describe("PLAN-1 Phase 2 — the planner toggle", () => {
   it("V4 the remembered view is read before the plan opens", () => {
     const page = read("client/src/pages/slip-view.tsx");
     assert.match(page, /const urlView = planViewFromUrl\(searchStr\);/);
-    assert.match(page, /planOpensOn: \(data\?\.trip as any\)\?\.opensOn === "map" \? "map" : null,/);
+    assert.doesNotMatch(page, /opensOn/, "slip-first: the plan's own opening view is not read");
     assert.match(page, /remembered: rememberedPlanView\(prefsQ\.data\),/);
     assert.match(page, /if \(isLoading \|\| !viewReady\) \{/);
   });
