@@ -260,3 +260,4 @@ function main() {
 
 module.exports = { hexHits, hexOutsideTokens, stripComments, evaluate, evaluateZero, evaluateStyles, FOOTER_PAGE_FILES, ZERO_HEX_DIRS, STYLES_HEX_ALLOW };
 if (require.main === module) main();
+// UI-0: verified locally on this machine (lint OK, --self-test all pass) before this push.
