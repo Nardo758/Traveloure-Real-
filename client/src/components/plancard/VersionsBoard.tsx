@@ -145,6 +145,15 @@ export function VersionsBoard({
   const [phoneDay, setPhoneDay] = useState<number | null>(null);
   const activePhoneDay = phoneDay ?? allDays[0] ?? 1;
   const [paidGate, setPaidGate] = useState<{ dayNumber: number; line: string } | null>(null);
+  // PLAN-3 (P2-D): an unchanged day is COLLAPSED by default ("Same as draft"). The traveler can reveal
+  // one day, or every day at once. Expand-only, deliberately: collapsing back would need copy nobody
+  // has approved yet, and a day that matched the draft is not information worth hiding twice.
+  const [expandedDays, setExpandedDays] = useState<ReadonlySet<string>>(new Set());
+  const [expandAllDays, setExpandAllDays] = useState(false);
+  const dayExpanded = (variantId: string, dayNumber: number) =>
+    expandAllDays || expandedDays.has(`${variantId}:${dayNumber}`);
+  const revealDay = (variantId: string, dayNumber: number) =>
+    setExpandedDays((prev) => new Set(prev).add(`${variantId}:${dayNumber}`));
 
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: versionsKey });
@@ -363,6 +372,19 @@ export function VersionsBoard({
               : "Swipe across the versions. Days that match your draft say so. Take a single day from any column."
             : `${allAnchored ? "Each version is built around one place to stay. " : ""}Adopt a whole version, or take single days from different ones. ${VERSIONS_RESTORE_COPY.chooseNoteTail}`}
         </p>
+        {/* PLAN-3 (P2-D): one control for every collapsed day. Drawn only when a day actually matches
+            the draft, so a plan whose versions all differ is unchanged. */}
+        {mode === "compare" && view.versions.some((v) => v.days.some((d) => d.identical)) ? (
+          <button
+            type="button"
+            className="self-start text-sm font-semibold text-[color:var(--slip-navy)] underline-offset-2 hover:underline disabled:opacity-60"
+            onClick={() => setExpandAllDays(true)}
+            disabled={expandAllDays}
+            data-testid="versions-expand-all"
+          >
+            Expand all
+          </button>
+        ) : null}
       </div>
       {headerOffer}
       <VersionsRestoreStrip tripId={tripId} tripRole={tripRole} />
@@ -532,8 +554,18 @@ export function VersionsBoard({
                           {inPlan ? "in Your plan" : c.identical ? "same as draft" : c.summary}
                         </span>
                       </p>
-                      {c.identical ? (
-                        <p className="mt-0.5 text-[color:var(--slip-muted)]" data-testid={`versions-desk-same-${c.label}-${dayNumber}`}>Same as draft</p>
+                      {c.identical && !dayExpanded(c.variantId, dayNumber) ? (
+                        <div className="mt-0.5">
+                          <p className="text-[color:var(--slip-muted)]" data-testid={`versions-desk-same-${c.label}-${dayNumber}`}>Same as draft</p>
+                          <button
+                            type="button"
+                            className="mt-1 text-[11px] font-semibold text-[color:var(--slip-navy)] underline-offset-2 hover:underline"
+                            onClick={() => revealDay(c.variantId, dayNumber)}
+                            data-testid={`versions-desk-show-${c.label}-${dayNumber}`}
+                          >
+                            Show the day anyway
+                          </button>
+                        </div>
                       ) : (
                         <ol className="mt-1 space-y-0.5">
                           {c.stops.map((st) => (
@@ -677,8 +709,18 @@ export function VersionsBoard({
                     ) : null}
                   </div>
                   <div className="space-y-3 px-4 py-3">
-                    {c.identical ? (
-                      <p className="text-[color:var(--slip-muted)]" data-testid={`versions-same-${c.label}`}>Same as draft</p>
+                    {c.identical && !dayExpanded(c.variantId, activePhoneDay) ? (
+                      <div>
+                        <p className="text-[color:var(--slip-muted)]" data-testid={`versions-same-${c.label}`}>Same as draft</p>
+                        <button
+                          type="button"
+                          className="mt-1 text-[11px] font-semibold text-[color:var(--slip-navy)] underline-offset-2 hover:underline"
+                          onClick={() => revealDay(c.variantId, activePhoneDay)}
+                          data-testid={`versions-show-${c.label}`}
+                        >
+                          Show the day anyway
+                        </button>
+                      </div>
                     ) : (
                       <ol className="divide-y divide-[color:var(--slip-line)]">
                         {c.stops.map((st) => (
