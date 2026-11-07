@@ -63,8 +63,6 @@ import { anchorMissedBanner, leaveByMissed, missedLine, type LeaveByRow } from "
 import type { UpsellLine } from "@shared/upsell-line";
 import { buildServicesBrowseHref } from "@/lib/services-browse";
 import { postUpsellClick } from "@/components/UpsellSlot";
-import "@/styles/slip-tokens.css";
-import "@/styles/slip-tokens.canvas.css";
 import { readSlipTokensMode, slipTokensAttr } from "@/lib/slip-tokens-mode";
 
 export interface TripCardDaysProps {
@@ -395,11 +393,7 @@ export function TripCardDays(props: TripCardDaysProps) {
 
   return (
     <PlanRowLookProvider look="board">
-    <div
-      className="slip-surface space-y-3 px-3 pt-3 font-[family-name:var(--slip-font-body)] sm:px-5"
-      {...slipTokensAttr(readSlipTokensMode())}
-      data-testid="card-days"
-    >
+    <div className="slip-surface space-y-3 px-3 pt-3 font-[family-name:var(--slip-font-body)] sm:px-5" {...slipTokensAttr(readSlipTokensMode())} data-testid="card-days">
       {provenance || readyMadeSourceLine(props.readyMadeSource) ? (
         <div className="space-y-0.5 rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] px-4 py-3">
           {provenance ? (
