@@ -20,7 +20,7 @@ const LIB = fs.readFileSync("client/src/lib/versions-board.ts", "utf8");
 
 describe("audit D3 step 0: the Versions board says adopting replaces a day", () => {
   it("(a) the keep note is the ruled interim string", () => {
-    assert.equal(VERSIONS_RESTORE_COPY.keepNote, "Adopting a version replaces that day.");
+    assert.equal(VERSIONS_RESTORE_COPY.keepNote, "Adopting a version replaces each of its days in Your plan."); // PLAN-2 W14
     assert.equal(VERSIONS_RESTORE_COPY.adoptToastDescription, "The run's versions are kept.");
     assert.equal(VERSIONS_RESTORE_COPY.chooseNoteTail, "Each day you adopt replaces that day in Your plan.");
   });

@@ -47,7 +47,8 @@ test("FU-8D-4 — a dialog over the member map receives the click everywhere on 
   await page.goto(`${BASE_URL}/plans/${tripId}?view=map`, { waitUntil: "domcontentloaded" });
   const list = testid(page, `map-fallback-list-${tripId}`);
   await expect(list).toBeVisible({ timeout: 30_000 });
-  await expect(list).toContainText("The map isn't available here, so this day is shown as a list.");
+  // PLAN-2 W7 (Wording approved — Leon, Nov 6, 2026): the list fallback's line.
+  await expect(list).toContainText("This day's stops can't be drawn on this map, so they're listed.");
   await expect(page.locator(".leaflet-container")).toHaveCount(0);
 
   // The map band's Finalize opens the chooser dialog over the map.
