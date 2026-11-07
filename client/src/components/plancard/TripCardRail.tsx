@@ -37,6 +37,8 @@
  * than a narrowing of the drawer's own rule.
  */
 import { useBookingActionsShown } from "@/lib/signup-mode";
+import { conciergeAccessOpen } from "@/lib/concierge-task-copy";
+import { useTripCapabilities, conciergeShown } from "@/lib/trip-capabilities";
 import { useQuery } from "@tanstack/react-query";
 import { FINALIZE_AGENT_LANE_SHOWN } from "./FinalizeBookingModal";
 import { Link, useLocation } from "wouter";
@@ -176,6 +178,26 @@ function BookingAgentCard({ tripId }: { tripId: string }) {
 
 // ── 2 · Your expert ──────────────────────────────────────────────────────────────────────────
 
+/**
+ * QW-6: the waitlist-mode expert card. It draws ONLY what a bought engagement still owes the traveler —
+ * the CN-1e task log — and nothing that sells (no hire, no message, no storefront). It renders nothing
+ * without an open concierge access window and a live CAP-1 concierge action, so a plan with no bought
+ * service is unchanged in waitlist.
+ */
+function WaitlistExpertTasks({ trip, advisor }: { trip: TripCardRailTrip; advisor: SlipRailAdvisor | null }) {
+  const caps = useTripCapabilities(trip.id);
+  if (!advisor || !conciergeAccessOpen(advisor, new Date()) || !conciergeShown(caps.data)) return null;
+  const state = slipExpertRailState(advisor);
+  return (
+    <RailCard card="expert" title="Your expert">
+      <p className="truncate text-sm font-semibold text-foreground" data-testid="trip-card-expert-name">
+        {state.kind === "message" ? state.name : ""}
+      </p>
+      <TripCardConciergeTasks tripId={trip.id} advisor={advisor} expertFirstName={state.kind === "message" ? state.name : ""} />
+    </RailCard>
+  );
+}
+
 function YourExpertCard({ trip, advisor }: { trip: TripCardRailTrip; advisor: SlipRailAdvisor | null }) {
   const askExpert = useAskExpert();
   const state = slipExpertRailState(advisor);
@@ -288,8 +310,10 @@ export function TripCardRail({ trip, isOwner, itemCount }: TripCardRailProps) {
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 items-start" data-testid="trip-card-rail">
       {/* Row P-6: the booking-agent card is not drawn while the agent lane is parked (row 298). */}
       {FINALIZE_AGENT_LANE_SHOWN ? <BookingAgentCard tripId={trip.id} /> : null}
-      {/* Row P-1c: waitlist mode — no advisor card (a paid handoff). */}
-      {waitlist ? null : <YourExpertCard trip={trip} advisor={advisor} />}
+      {/* Row P-1c: waitlist mode — no advisor card (a paid handoff).
+          QW-6 (Leon ruled yes): a BOUGHT concierge engagement's task log is a post-purchase view, not a
+          paid action, so it stays. Only the card's paid parts (hire, message, storefront) are hidden. */}
+      {waitlist ? <WaitlistExpertTasks trip={trip} advisor={advisor} /> : <YourExpertCard trip={trip} advisor={advisor} />}
       {/* 3 · ASK AI — the SAME drawer the slip mounts (L16 lane 4, ledger
           `2026-09-17-l16-lane4-postfinal`), in the Suggestion card's slot, with the suggestion
           panel — which draws nothing unless the expert has actually posted one — directly beneath

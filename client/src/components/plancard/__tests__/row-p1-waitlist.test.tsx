@@ -118,7 +118,13 @@ describe("P-1c — waitlist mode", () => {
     assert.ok(days.includes("bookingState={waitlist ? WAITLIST_COPY.savedToPlan : slipItemBookingLine(a)}"));
     assert.ok(days.includes("isToday && upNext && !waitlist ? <LeaveByLine"));
     assert.ok(days.includes("isToday && upNext && !waitlist\n              ? (d.anchorStops ?? [])"));
-    assert.ok(read("client/src/components/plancard/TripCardRail.tsx").includes("{waitlist ? null : <YourExpertCard trip={trip} advisor={advisor} />}"));
+    const rail = read("client/src/components/plancard/TripCardRail.tsx");
+  // QW-6 (Leon ruled yes): the open-mode advisor card is still not drawn, but a BOUGHT engagement's
+  // task log is a post-purchase view and stays.
+  assert.ok(rail.includes("{waitlist ? <WaitlistExpertTasks trip={trip} advisor={advisor} /> : <YourExpertCard trip={trip} advisor={advisor} />}"));
+  const waitlistCard = rail.slice(rail.indexOf("function WaitlistExpertTasks"), rail.indexOf("function YourExpertCard"));
+  assert.match(waitlistCard, /TripCardConciergeTasks/);
+  assert.doesNotMatch(waitlistCard, /Message \{|storefront|earnerProfilePath|askExpert/i, "the waitlist card sells nothing");
     assert.ok(read("client/src/components/plancard/BottomActionBar.tsx").includes("expertsAvailable: expertsAvailable && !paidHidden"), "CAP-1: the help door follows the capabilities answer");
     // Partner links are not purchases: the affiliate button is not gated.
     assert.ok(!read("client/src/components/plancard/AffiliateBookButton.tsx").includes("useSignupMode"));
