@@ -93,7 +93,8 @@ export function isLocated(a: Pick<PlanCardActivity, "lat" | "lng">): boolean {
 
 /** "X of Y located" for a day — reads the SAME predicate the pin layer reads. Null for no stops. */
 /** GC-1: what the map says when the fallback shows the day as a list. */
-export const MAP_FALLBACK_LIST_NOTICE = "The map isn't available here, so this day is shown as a list.";
+// PLAN-2 W7 (Wording approved — Leon, Nov 6, 2026).
+export const MAP_FALLBACK_LIST_NOTICE = "This day's stops can't be drawn on this map, so they're listed.";
 
 /** GC-1: the day's stops in order — names and times only, no point, line or minute. */
 function MapFallbackList({ tripId, activities }: { tripId: string; activities: readonly PlanCardActivity[] }) {

@@ -24,10 +24,10 @@ import {
   type DayDiff,
 } from "@shared/version-board";
 
-// TODO(Leon): wording. Interim, true until D3 restore ships (CB-H). PENDING LEON WORDING APPROVAL.
+// keepNote: PLAN-2 W14 (Wording approved — Leon, Nov 6, 2026). The other two: interim, true until D3 restore ships (CB-H).
 /** The Versions board's adopt copy (audit D3, step 0): adopting a day replaces that day of Your plan. */
 export const VERSIONS_RESTORE_COPY = {
-  keepNote: "Adopting a version replaces that day.",
+  keepNote: "Adopting a version replaces each of its days in Your plan.",
   adoptToastDescription: "The run's versions are kept.",
   chooseNoteTail: "Each day you adopt replaces that day in Your plan.",
 } as const;
