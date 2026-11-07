@@ -54,6 +54,10 @@ describe("Lane 1 guest save rail (client)", () => {
     const store = new Map<string, string>();
     (globalThis as any).sessionStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) };
     (globalThis as any).localStorage = { getItem: () => "11111111-2222-3333-4444-555555555555", setItem: () => {}, removeItem: () => {} };
+    // PLAN-2 C4: the claim is sent only when the browser has a guest (the presence cookie).
+    const hadDocument = "document" in globalThis;
+    const realDocument = (globalThis as any).document;
+    (globalThis as any).document = { ...(realDocument ?? {}), cookie: "traveloure_guest_present=1" };
     let calls = 0;
     const realFetch = globalThis.fetch;
     (globalThis as any).fetch = async () => {
@@ -74,6 +78,8 @@ describe("Lane 1 guest save rail (client)", () => {
       assert.equal(calls, 1);
     } finally {
       (globalThis as any).fetch = realFetch;
+      if (hadDocument) (globalThis as any).document = realDocument;
+      else delete (globalThis as any).document;
     }
   });
 

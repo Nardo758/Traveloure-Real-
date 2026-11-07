@@ -10,7 +10,7 @@ import { createComparison as createComparisonRequest } from "@/lib/create-compar
 import { bookingConfirmationPath } from "@/lib/booking-confirmation";
 import { requestOptimizationGate, confirmOptimizationPayment } from "@/lib/optimization-gate";
 import { useAuth } from "@/hooks/use-auth";
-import { getGuestSessionId } from "@/lib/guestSession";
+import { getGuestSessionId } from "@/lib/guest-session";
 import {
   MAX_CART_QUANTITY_DIGITS,
   MIN_CART_QUANTITY,

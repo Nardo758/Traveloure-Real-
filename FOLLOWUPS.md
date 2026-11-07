@@ -1471,3 +1471,22 @@ These seven exist on production only (rows from before migration 400, which upda
 cannot have them: Gion's old streets, Kiyomizu-dera back paths, Kurama Onsen, Kyoto Botanical Gardens, Omen, Otagi
 Nenbutsu-ji Temple, Yasaka Koshindo Temple. Closing the gap means adding their content to a seed (a content decision,
 with sources per LD 21), not a code fix. Decision-maker to rule.
+
+### FU-PLAN2-C4 — npm audit: the 12 advisories a version bump does not fix (PLAN-2 C4, Nov 6, 2026)
+
+`npm audit` went from 27 (2 critical, 11 high, 14 moderate) to 12 (3 high, 9 moderate) with in-range lockfile updates
+(axios, body-parser, browserslist, dompurify, express → qs, fast-copy, follow-redirects, ip-address, nanoid, proxy-addr,
+source-map-js, baseline-browser-mapping) and two spec bumps inside their majors (`vite` ^8.1.6, `vitest` ^4.1.12). What
+is left needs a major upgrade or has no fix published:
+
+| Package | Severity | Why it stays | Next step |
+|---|---|---|---|
+| `zod` (^3.25.76) | high | fix is zod 4.6.7 — a major (3 → 4) across every schema | its own lane: the zod 4 migration |
+| `zod-validation-error` (^3.5.4) | high | follows zod (fix 5.0.0, major) | with the zod lane |
+| `@mendable/firecrawl-js` (^1.16.0) | high | fix 4.52.0 (major), via its own zod | upgrade the client (API changed between 1.x and 4.x) |
+| `satori` (^0.29.0) | moderate | improper SVG escaping; fix 0.63.2 (major for 0.x) | share-image lane: re-render the three share formats on 0.63 |
+| `@tailwindcss/typography` / `postcss-selector-parser` | moderate | the fix npm names (0.5.4) is a downgrade; the vulnerable parser comes in through tailwindcss 3's own tree | Tailwind 4 migration |
+| `uuid` (via `teeny-request` → `retry-request` → `@google-cloud/storage` → `@replit/object-storage`), `gaxios` | moderate | no fixed version in the chain (`@replit/object-storage` pins it) | wait for `@replit/object-storage`, or move uploads off it |
+
+`npm audit fix` itself crashes on this tree (Arborist `edgesOut` on the vitest peer set), so the updates were made one
+package at a time with `--package-lock-only`; strict `npm ci` installs the result.

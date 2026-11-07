@@ -160,7 +160,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   navbar-links-smoke:
     # NOTE: this check name must EXACTLY equal the branch-protection required-status
-    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' && needs.setup.result == 'success' }}
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     # context "navbar-links-smoke" — a descriptive suffix here orphans the required
     # context and leaves it stuck "Expected — Waiting for status to be reported".
     name: navbar-links-smoke
@@ -172,6 +172,14 @@ jobs:
     # parallelizing.
     timeout-minutes: 40
     steps:
+      # PLAN-2 C4 (ledger `2026-11-06-plan2-c4-cleanup`): a required check whose setup was cancelled or failed must FAIL,
+      # not skip — GitHub counts a skipped required check as passing. So this job no longer skips on setup's result;
+      # it starts and fails here.
+      - name: Fail when setup did not succeed
+        if: ${{ needs.setup.result != 'success' }}
+        run: |
+          echo "::error::setup ended '${{ needs.setup.result }}' — this required check fails rather than skipping."
+          exit 1
       - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres

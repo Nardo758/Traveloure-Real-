@@ -568,6 +568,9 @@ let pushTimer: ReturnType<typeof setTimeout> | undefined;
 
 function schedulePush(context: TripContext): void {
   if (typeof fetch !== "function") return;
+  // PLAN-2 C4: a guest's pen is local only (the route is sign-in only, so this was always a 401); sign-in hands it
+  // over through `handOffGuestPen`.
+  if (activePrincipal === null) return;
   if (pushTimer) clearTimeout(pushTimer);
   pushTimer = setTimeout(() => {
     pushTimer = undefined;
@@ -618,6 +621,8 @@ export async function releasePendingEventsPen(): Promise<boolean> {
     pushTimer = undefined;
   }
   if (typeof fetch !== "function") return false;
+  // PLAN-2 C4: a guest has no server pen to release (the route is sign-in only) — unconfirmed, nothing sent.
+  if (activePrincipal === null) return false;
   try {
     const res = await fetch(`/api/trip-context${tripScopedQuery(next)}`, {
       method: "PUT",

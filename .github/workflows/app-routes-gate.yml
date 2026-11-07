@@ -138,7 +138,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   app-routes-smoke:
     name: app-routes-smoke (Playwright DOM gate)
-    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' && needs.setup.result == 'success' }}
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     needs: [changes, setup]
     # 30, not 20: the test step itself takes ~13 minutes on every green run (three measured 2026-09-03),
@@ -147,6 +147,14 @@ jobs:
     # can eat measures the runner, not the routes.
     timeout-minutes: 30
     steps:
+      # PLAN-2 C4 (ledger `2026-11-06-plan2-c4-cleanup`): a required check whose setup was cancelled or failed must FAIL,
+      # not skip — GitHub counts a skipped required check as passing. So this job no longer skips on setup's result;
+      # it starts and fails here.
+      - name: Fail when setup did not succeed
+        if: ${{ needs.setup.result != 'success' }}
+        run: |
+          echo "::error::setup ended '${{ needs.setup.result }}' — this required check fails rather than skipping."
+          exit 1
       - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres
@@ -289,11 +297,19 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────
   cosmetic-public-surfaces:
     name: cosmetic-public-surfaces (Playwright DOM gate)
-    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' && needs.setup.result == 'success' }}
+    if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
     runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     needs: [changes, setup]
     timeout-minutes: 30
     steps:
+      # PLAN-2 C4 (ledger `2026-11-06-plan2-c4-cleanup`): a required check whose setup was cancelled or failed must FAIL,
+      # not skip — GitHub counts a skipped required check as passing. So this job no longer skips on setup's result;
+      # it starts and fails here.
+      - name: Fail when setup did not succeed
+        if: ${{ needs.setup.result != 'success' }}
+        run: |
+          echo "::error::setup ended '${{ needs.setup.result }}' — this required check fails rather than skipping."
+          exit 1
       - uses: actions/checkout@v5.1.0
       - name: Start PostgreSQL (runner-installed; no registry pull)
         uses: ./.github/actions/start-postgres

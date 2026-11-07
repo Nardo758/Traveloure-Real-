@@ -137,6 +137,16 @@ These are judgment calls the automation deliberately does not make.
    `event_type = 'other'`, which lands in the optimizer fee's default branch. "other" stands (ruling, Nov 5, 2026;
    FU-R3-2). Before traveler sign-up opens, decide the fee for those plans as a `fee_bands` row with its admin
    control (LD 8), and have a person read it.
+10. **Expert rail onto PlanItemRef — platform-wide, before open mode (ruling, Nov 7, 2026; PLAN-2 C1).** The Workstation's
+   add sources with no PlanItemRef kind — the content library (`content_registry`), DMO places, Google-Places transport
+   and the live partner feeds (`/api/catalog/*`) — post a free-text item that keeps its own point, stamped with its
+   `coord_source`. That stays as built (the expert WRITE rail). Before open mode, give those sources resolver kinds so
+   the expert rail adds by its row like every traveler surface (ledger `2026-11-07-plan2-c1-candidates-ruling`); file
+   it with the suggestion-rails unification (item 11).
+11. **Unify the two expert-suggestion rails (`trip_suggestions` / `expert_suggestions`) — platform-wide, before open
+   mode.** One table, one verb pair, one success state, and a notification when a suggestion is filed. It needs a
+   migration, and it sits next to fee capture, so a person reads it before it ships. Source: DeepSeek report §3 F3 and
+   §6.2. Item 10 is filed with it.
 
 ## Explicitly NOT per-market
 
