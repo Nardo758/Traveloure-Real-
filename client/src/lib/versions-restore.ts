@@ -21,7 +21,8 @@ export const VERSIONS_RESTORE_UI_COPY = Object.freeze({
   preview: "Day {day} goes back to your draft from before you adopted the version.", // R5
   done: "Day {day} is back to your draft.", // R6
   changed: "You’ve changed Day {day} since you adopted the version, so we didn’t restore your draft. Nothing was overwritten.", // R7
-  expired: "The saved draft for Day {day} has expired, so it can’t be restored.", // R8
+  // R8 → W13 (Wording approved — Leon, Nov 7, 2026): said once per expired snapshot, and for a 409 restore_expired.
+  expired: "Your draft for Day {day} is no longer saved. Nothing on your plan changed.", // R8 / W13
   finalized: "This plan is finalized. Reopen it to restore a draft.", // R9
   failed: "We couldn’t restore Day {day} just now. Nothing was changed.", // R10
   notFound: "There’s no saved draft to restore for Day {day}.", // R11
@@ -83,16 +84,69 @@ export interface RestoreRowView {
   kind: "restorable" | "changed";
 }
 
-/** Which rows the strip draws. Expired days are left out; any finalized row means one R9 line and no rows. */
-export function restoreRowsToShow(rows: readonly RestorableRow[] | null): { finalized: boolean; rows: RestoreRowView[] } {
-  if (!rows) return { finalized: false, rows: [] };
-  if (rows.some((r) => r.state === "finalized")) return { finalized: true, rows: [] };
+/** An expired snapshot the strip says once (W13). It never gets a button. */
+export interface ExpiredRestoreView {
+  day: number;
+  snapshotId: string;
+}
+
+/**
+ * Which rows the strip draws. Any finalized row means one R9 line and no rows. W13 (ledger
+ * `2026-11-07-w13-expired-restore`): an expired day is DECIDED here, before it is dropped from `rows` — it is
+ * returned in `expired` so the strip can say its line once; it never reaches `rows` and never gets a button.
+ */
+export function restoreRowsToShow(
+  rows: readonly RestorableRow[] | null,
+): { finalized: boolean; rows: RestoreRowView[]; expired: ExpiredRestoreView[] } {
+  if (!rows) return { finalized: false, rows: [], expired: [] };
+  if (rows.some((r) => r.state === "finalized")) return { finalized: true, rows: [], expired: [] };
   const out: RestoreRowView[] = [];
+  const expired: ExpiredRestoreView[] = [];
   for (const r of rows) {
     if (r.state === "restorable") out.push({ day: r.day, snapshotId: r.snapshotId, appliedAt: r.appliedAt, kind: "restorable" });
     else if (r.state === "changed_since") out.push({ day: r.day, snapshotId: r.snapshotId, appliedAt: r.appliedAt, kind: "changed" });
+    else if (r.state === "expired") expired.push({ day: r.day, snapshotId: r.snapshotId });
   }
-  return { finalized: false, rows: out };
+  return { finalized: false, rows: out, expired };
+}
+
+/**
+ * W13: the expired snapshots this browser has already been told about. A snapshot's line shows once — then it is
+ * recorded here (after it renders, or on dismiss) and never shown again for that snapshot. Per-viewer only; an
+ * absent or throwing store reads as "none seen", so the worst case is the line once more.
+ */
+export const RESTORE_EXPIRED_SEEN_KEY = "traveloure_restore_expired_seen";
+
+export function readExpiredSeen(store: Pick<Storage, "getItem"> | null | undefined): Set<string> {
+  try {
+    const raw = store?.getItem(RESTORE_EXPIRED_SEEN_KEY);
+    const ids = raw ? (JSON.parse(raw) as unknown) : [];
+    return new Set(Array.isArray(ids) ? ids.filter((x): x is string => typeof x === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+export function markExpiredSeen(store: Pick<Storage, "getItem" | "setItem"> | null | undefined, snapshotIds: readonly string[]): void {
+  if (!snapshotIds.length) return;
+  try {
+    const seen = readExpiredSeen(store);
+    for (const id of snapshotIds) seen.add(id);
+    // Bounded: the newest 200 ids are plenty for one viewer.
+    store?.setItem(RESTORE_EXPIRED_SEEN_KEY, JSON.stringify(Array.from(seen).slice(-200)));
+  } catch {
+    // Best effort: without a store the line may show again on a reload.
+  }
+}
+
+/** W13: the expired lines to draw — not yet seen, not dismissed. */
+export function expiredToShow(expired: readonly ExpiredRestoreView[], seen: ReadonlySet<string>, dismissed: ReadonlySet<string>): ExpiredRestoreView[] {
+  return expired.filter((e) => !seen.has(e.snapshotId) && !dismissed.has(e.snapshotId));
+}
+
+/** W13: the line for an expired day. */
+export function restoreExpiredLine(day: number): string {
+  return fillRestoreCopy(VERSIONS_RESTORE_UI_COPY.expired, { day });
 }
 
 /** The day the saved draft expires, in the board's date style; null when appliedAt does not parse. */
