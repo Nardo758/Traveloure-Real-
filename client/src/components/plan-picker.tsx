@@ -270,7 +270,8 @@ export function useStartPlanThenAdd(): (body: Record<string, unknown>) => void {
               toast({
                 title: ADDED_TO_PLAN_TITLE,
                 // QW-3: name the day it landed on; with no day in the answer, keep the existing sentence.
-                description: day === null ? "It's on your new plan." : `It's on Day ${day}.`,
+                // QW-3 (Leon): the signed-in rail says the same sentence as the guest rail.
+                description: day === null ? "It's on your new plan." : `Saved to Day ${day}.`,
               }),
             (err: unknown) => {
               const refusal = planSaveRefusalMessage(err);

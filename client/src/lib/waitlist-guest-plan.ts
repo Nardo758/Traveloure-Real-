@@ -217,7 +217,9 @@ export function guestSavedMessage(result: Pick<GuestSaveResult, "located"> & Pic
   const raw = result.item?.dayNumber;
   const day = typeof raw === "number" && Number.isInteger(raw) && raw > 0 ? raw : null;
   if (day === null) return result.located ? WAITLIST_COPY.savedToPlan : GUEST_PLAN_COPY.savedNotOnMap;
-  return result.located ? `${WAITLIST_COPY.savedToPlan} · Day ${day}` : `Saved to Day ${day}. We don't have this spot on the map yet.`;
+  // Leon (Nov 7): ONE shape for one fact — every rail says "Saved to Day {n}."; the unlocated save keeps
+  // the map fact as a second sentence.
+  return result.located ? `Saved to Day ${day}.` : `Saved to Day ${day}. We don't have this spot on the map yet.`;
 }
 
 /**

@@ -19,8 +19,8 @@ const read = (p: string) => fs.readFileSync(p, "utf8");
 
 describe("QW-3 — the save toast names the day", () => {
   it("D1 a located save names its day", () => {
-    assert.equal(guestSavedMessage({ located: true, item: { dayNumber: 2 } }), `${WAITLIST_COPY.savedToPlan} · Day 2`);
-    assert.equal(guestSavedMessage({ located: true, item: { dayNumber: 1 } }), "Saved to plan · Day 1");
+    assert.equal(guestSavedMessage({ located: true, item: { dayNumber: 2 } }), "Saved to Day 2.");
+    assert.equal(guestSavedMessage({ located: true, item: { dayNumber: 1 } }), "Saved to Day 1.");
   });
 
   it("D2 an unlocated save names its day and keeps the map fact", () => {
@@ -36,6 +36,6 @@ describe("QW-3 — the save toast names the day", () => {
   it("D4 the signed-in rail reads the day from the created row", () => {
     const picker = read("client/src/components/plan-picker.tsx");
     assert.match(picker, /return typeof raw === "number" && Number\.isInteger\(raw\) && raw > 0 \? raw : null;/);
-    assert.match(picker, /description: day === null \? "It's on your new plan\." : `It's on Day \$\{day\}\.`/);
+    assert.match(picker, /description: day === null \? "It's on your new plan\." : `Saved to Day \$\{day\}\.`/);
   });
 });
