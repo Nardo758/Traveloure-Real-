@@ -105,7 +105,8 @@ test("VB2 4b: an identical day collapses to 'Same as draft'; Take this day picks
   const view = makeView();
   const day2 = dayColumns(view, 2);
   assert.equal(day2.find((c) => c.label === "A")!.identical, true);
-  assert.deepEqual(day2.find((c) => c.label === "A")!.stops, [], "collapsed ⇒ no stop list");
+  // PLAN-3: an identical day KEEPS the version's stops — the reveal ("Show the day anyway") draws them.
+  assert.deepEqual(day2.find((c) => c.label === "A")!.stops.map((s) => s.id), ["a3", "a4"], "an identical day keeps its stops");
   assert.equal(day2.find((c) => c.label === "C")!.identical, false);
   let picks = takeDay({}, 1, "vB");
   picks = takeDay(picks, 2, "vC");
