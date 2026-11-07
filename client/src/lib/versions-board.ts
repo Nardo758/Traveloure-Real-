@@ -86,8 +86,18 @@ export function chooseCards(view: Pick<VersionsBoardView, "versions">) {
   }));
 }
 
+/** One version's column for one day (what `dayColumns` returns). */
+export type DayColumn = {
+  variantId: string;
+  label: string;
+  identical: boolean;
+  matchedByName: boolean;
+  summary: string;
+  stops: BoardStop[];
+};
+
 /** 4b: a day's column per version. A day identical to the draft collapses to "same as draft". */
-export function dayColumns(view: Pick<VersionsBoardView, "versions">, dayNumber: number) {
+export function dayColumns(view: Pick<VersionsBoardView, "versions">, dayNumber: number): DayColumn[] {
   return view.versions.map((v) => {
     const diff = v.days.find((d) => d.dayNumber === dayNumber) ?? null;
     const identical = diff ? diff.identical : !v.stops.some((s) => s.dayNumber === dayNumber);
@@ -97,7 +107,9 @@ export function dayColumns(view: Pick<VersionsBoardView, "versions">, dayNumber:
       identical,
       matchedByName: !!diff?.matchedByName,
       summary: diff ? daySummary(diff) : "Same as draft",
-      stops: identical ? [] : v.stops.filter((s) => s.dayNumber === dayNumber),
+      // A day identical to the draft still holds the version's stops — they are simply unchanged.
+      // Returning [] here made the reveal ("Show the day anyway") draw an empty day (PLAN-3 review).
+      stops: v.stops.filter((s) => s.dayNumber === dayNumber),
     };
   });
 }
