@@ -25,7 +25,7 @@ test("G2: the rows are §4 verbatim", () => {
   assert.equal(labels("trip"), "Where to stay · Travel party · Getting around · Pace · Getting there");
   assert.equal(labels("moment"), "The reservation · Timing check · Getting home");
   assert.equal(labels("celebration"), "The venue · Guests · Budget · Vendors");
-  assert.equal(labels("hosted_event"), "Run of show · Guest invites · Arrivals & split groups · Vendor contracts");
+  assert.equal(labels("hosted_event"), "The venue · Run of show · Guest invites · Arrivals & split groups · Vendor contracts");
   assert.equal(labels("group_travel"), "Shared lodging · Who's coming · Split activities · Who pays what · Getting there");
   assert.deepEqual(
     Object.values(GROUP_MANIFEST).map((r) => [r.eyebrow, r.anchorQuestion, r.timeUnit]),
@@ -50,7 +50,7 @@ test("G2b (QW-1): every row is anchor -> no-supply -> supply", () => {
     trip: "where_to_stay",
     moment: "the_reservation",
     celebration: "the_venue",
-    hosted_event: null, // QW-2 adds the venue chip; until then this row has no anchor tool
+    hosted_event: "the_venue",
     group_travel: "shared_lodging",
   };
   for (const [group, row] of Object.entries(GROUP_MANIFEST)) {
