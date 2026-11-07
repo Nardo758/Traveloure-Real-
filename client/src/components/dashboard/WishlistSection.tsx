@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { planItemRefFromSavedItem } from "@shared/plan-item-ref";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Heart, X, MapPin, ArrowRight, Loader2, CalendarPlus, Link2, Copy } from "lucide-react";
@@ -228,10 +229,13 @@ export function WishlistSection() {
                   variant="outline"
                   className="text-[10px] h-6 px-2 flex-1"
                   onClick={() => {
+                    // PLAN-2 C1: the saved row's own id rides as `sourceContentId`, so the dialog sends its PlanItemRef and
+                    // the server's resolver names and places the item. A saved kind the resolver does not read is free text.
                     setAddDialogItem({
                       title: item.contentName,
                       type: item.contentType,
                       city: item.city ?? undefined,
+                      ...(planItemRefFromSavedItem(item, item.city) ? { sourceContentId: item.contentId } : {}),
                     });
                     setAddDialogOpen(true);
                   }}

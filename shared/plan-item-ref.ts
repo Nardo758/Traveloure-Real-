@@ -157,3 +157,32 @@ export function savedRefKeyOfItem(item: {
   if (typeof item.affiliateProductId === "string" && item.affiliateProductId.trim()) return `affiliate_product:${item.affiliateProductId.trim()}`;
   return null;
 }
+
+/**
+ * PLAN-2 C1 (ledger `2026-11-06-plan2-c1-resolver-adds`): a saved place → the PlanItemRef that names its row, or null.
+ * A saved row is `content_type` + `content_id`; only the kinds the resolver re-reads are a ref (gem, event, city_event,
+ * hotel, activity; a saved `service` is its listing). Anything else names no row of ours, so it is null and the caller
+ * adds it as free text: a title with no point and no link (§13), and says so.
+ */
+export function planItemRefFromSavedItem(
+  row: { contentType?: string | null; contentId?: string | null; city?: string | null },
+  planCity?: string | null,
+): PlanItemRef | null {
+  const type = typeof row.contentType === "string" ? row.contentType.trim() : "";
+  const id = typeof row.contentId === "string" ? row.contentId.trim() : "";
+  const city = (typeof row.city === "string" && row.city.trim() ? row.city : typeof planCity === "string" ? planCity : "")
+    .split(",")[0]
+    .trim();
+  if (!id || !city) return null;
+  const kind: PlanItemKind | null =
+    type === "service" ? "listing" : ["gem", "event", "city_event", "hotel", "activity"].includes(type) ? (type as PlanItemKind) : null;
+  if (!kind) return null;
+  return { kind, source_id: id.slice(0, 200), city: city.slice(0, 120), placement: { day_number: 1 } };
+}
+
+/** PLAN-2 C1: a created plan item has a point only when both coordinates are set. */
+export function createdItemIsLocated(item: { latitude?: unknown; longitude?: unknown } | null | undefined): boolean {
+  const lat = item?.latitude == null || item.latitude === "" ? NaN : Number(item.latitude);
+  const lng = item?.longitude == null || item.longitude === "" ? NaN : Number(item.longitude);
+  return Number.isFinite(lat) && Number.isFinite(lng);
+}
