@@ -93,7 +93,7 @@ describe("Round 3 follow-ups 2", () => {
   });
 
   it("R3-26 /places passes the gem card an add action that opens the add-to-plan dialog", () => {
-    const page = read("client/src/pages/hidden-gems.tsx");
+    const page = read("client/src/pages/places.tsx");
     assert.match(page, /<CityFeedCardGem [^>]*onAdd=\{onAdd\}/);
     assert.match(page, /<AddToExperienceDialog item=\{addItem\} open=\{addOpen\} onOpenChange=\{setAddOpen\} \/>/);
   });

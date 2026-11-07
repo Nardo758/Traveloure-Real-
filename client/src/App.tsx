@@ -219,7 +219,7 @@ const StayBookedPage = lazy(() => import("@/pages/stay-booked"));
 // Track A step A4 (ledger `2026-09-29-a4-plan-fit-compare`): compare the places in one of a plan's
 // comparisons, led by plan-fit. Parameterised, so NOT in role-routes-config.ts.
 const PlanComparePage = lazy(() => import("@/pages/plan-compare"));
-const HiddenGemsPage = lazy(() => import("@/pages/hidden-gems"));
+const HiddenGemsPage = lazy(() => import("@/pages/places"));
 /** C-4: an in-app `/places` (or `/hidden-gems`) link lands on the named or launch market's `/places/{city}`. */
 function PlacesRedirect() {
   const launch = useLaunchMarket();
