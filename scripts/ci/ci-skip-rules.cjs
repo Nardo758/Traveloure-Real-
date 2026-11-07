@@ -228,6 +228,57 @@ function checkReadyForReviewCancel(file, text) {
   return errs;
 }
 
+// PLAN-2 C4 (ledger `2026-11-06-plan2-c4-cleanup`): a job that provides a required check may not SKIP on another job's
+// result. GitHub counts a skipped required check as passing, so `needs.setup.result == 'success'` in its `if:` turns a
+// cancelled or failed setup (or a re-run of the check alone after a cancelled run) into a green check. The job keeps
+// the changes gate and fails in a first step instead (`if: needs.<job>.result != 'success'` → exit 1).
+// NEGATIVE SPACE: it reads `if:` lines of jobs whose name is a required context; it does not see a job that skips by
+// some other expression.
+function checkRequiredDependencySkip(file, text, required) {
+  const errs = [];
+  for (const j of jobsOf(text)) {
+    if (!required.has(j.name)) continue;
+    const cond = (/^    if:\s*(.+)$/m.exec(j.body) || [])[1] || "";
+    if (/needs\.[A-Za-z0-9_-]+\.result\s*==\s*'success'/.test(cond)) {
+      errs.push(`${file}: required job ${j.id} skips when a needed job is not 'success' — a skipped required check passes; fail in a step instead`);
+    }
+  }
+  return errs;
+}
+
+// PLAN-2 C4: the ready-for-review rule above, EVALUATED. A cancel-in-progress expression is evaluated for a
+// ready_for_review pull_request event; it must come out false, so marking a PR ready never cancels a run in flight. Only the small grammar these
+// workflows use is understood (github.event_name, github.event.action, quoted strings, == != && || ! and parentheses);
+// anything else is reported, never guessed.
+function evalCancelInProgress(raw, ctx) {
+  const m = /^\$\{\{\s*([\s\S]*?)\s*\}\}$/.exec(raw);
+  const expr = m ? m[1] : raw;
+  if (expr === "true" || expr === "false") return expr === "true";
+  const js = expr
+    .replace(/github\.event_name/g, JSON.stringify(ctx.event_name))
+    .replace(/github\.event\.action/g, JSON.stringify(ctx.action))
+    .replace(/'([^']*)'/g, (_x, v) => JSON.stringify(v))
+    .replace(/!=/g, "!==")
+    .replace(/(^|[^!=])==(?!=)/g, "$1===");
+  if (!/^[\s"a-z_!=&|()]*$/.test(js)) return null;
+  try {
+    return !!Function(`"use strict"; return (${js});`)();
+  } catch {
+    return null;
+  }
+}
+function checkReadyForReviewEvaluated(file, text) {
+  const errs = [];
+  for (const m of text.matchAll(/^\s*cancel-in-progress:\s*(.*?)\s*$/gm)) {
+    for (const ctx of [{ event_name: "pull_request", action: "ready_for_review" }]) {
+      const v = evalCancelInProgress(m[1], ctx);
+      if (v === null) errs.push(`${file}: cannot evaluate cancel-in-progress ${m[1]}`);
+      else if (v) errs.push(`${file}: cancel-in-progress ${m[1]} is true for ${ctx.event_name}/${ctx.action}`);
+    }
+  }
+  return errs;
+}
+
 // Runner selection (CI runner Phase 1). Every job's runner is this ONE expression: a self-hosted label
 // from the repository variable CI_RUNNER, but ONLY when the event says the repository is private — a
 // public repository runs fork PRs, and a fork's code must never reach a self-hosted machine. Unset
@@ -250,7 +301,7 @@ function runCheck(root = process.cwd()) {
   const errs = [];
   for (const f of fs.readdirSync(dir).filter((f) => f.endsWith(".yml")).sort()) {
     const text = fs.readFileSync(path.join(dir, f), "utf8");
-    errs.push(...checkWorkflow(f, text, required), ...checkMergeGroup(f, text, required), ...checkRunsOn(f, text), ...checkReadyForReviewCancel(f, text));
+    errs.push(...checkWorkflow(f, text, required), ...checkMergeGroup(f, text, required), ...checkRunsOn(f, text), ...checkReadyForReviewCancel(f, text), ...checkReadyForReviewEvaluated(f, text), ...checkRequiredDependencySkip(f, text, required));
   }
   if (errs.length) {
     errs.forEach((e) => console.error(`::error::${e}`));
@@ -317,6 +368,16 @@ function selfTest() {
   assert.equal(checkReadyForReviewCancel("x.yml", "concurrency:\n  cancel-in-progress: ${{ github.event_name == 'pull_request' }}\n").length, 1, "a PR-only cancel that still fires on ready_for_review fails");
   assert.deepEqual(checkReadyForReviewCancel("x.yml", "concurrency:\n  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'ready_for_review' }}\n"), [], "excluding ready_for_review passes");
   assert.deepEqual(checkReadyForReviewCancel("x.yml", "concurrency:\n  cancel-in-progress: false\n"), [], "false passes");
+  // PLAN-2 C4: a required job may not skip on a needed job's result; the ready-for-review rule is evaluated.
+  const depSkip = reqOk.replace("needs: [changes]", "needs: [changes, setup]").replace("run != 'false' }}", "run != 'false' && needs.setup.result == 'success' }}");
+  assert.equal(checkRequiredDependencySkip("build.yml", depSkip, req).length, 1, "a required job that skips on setup's result fails");
+  assert.deepEqual(checkRequiredDependencySkip("build.yml", reqOk, req), [], "the changes gate alone passes");
+  assert.deepEqual(checkRequiredDependencySkip("other.yml", depSkip.replace("build (vite + esbuild bundle)", "not required"), req), [], "a non-required job may skip");
+  assert.deepEqual(checkReadyForReviewEvaluated("x.yml", "  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'ready_for_review' }}\n"), []);
+  assert.deepEqual(checkReadyForReviewEvaluated("x.yml", "  cancel-in-progress: ${{ github.event.action != 'ready_for_review' }}\n"), []);
+  assert.equal(checkReadyForReviewEvaluated("x.yml", "  cancel-in-progress: ${{ github.event.action != 'ready_for_review' || true }}\n").length, 1, "a text match that still evaluates true fails");
+  assert.equal(checkReadyForReviewEvaluated("x.yml", "  cancel-in-progress: ${{ contains(github.ref, 'x') }}\n").length, 1, "an expression it cannot read is reported");
+  assert.deepEqual(checkReadyForReviewEvaluated("x.yml", "  cancel-in-progress: false\n"), []);
   assert.deepEqual(checkRunsOn("a.yml", `jobs:\n  a:\n    runs-on: ${RUNS_ON}\n`), [], "the one runner expression passes");
   assert.equal(checkRunsOn("a.yml", "jobs:\n  a:\n    runs-on: ubuntu-latest\n").length, 1, "a hard-coded hosted label fails");
   assert.equal(checkRunsOn("a.yml", "jobs:\n  a:\n    runs-on: self-hosted\n").length, 1, "a hard-coded self-hosted label fails");

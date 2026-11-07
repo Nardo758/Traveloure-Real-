@@ -78,7 +78,7 @@ describe("Lane 8 cleanup", () => {
     walk(resolve(process.cwd(), "client/src"));
     walk(resolve(process.cwd(), "shared"));
     assert.deepEqual(hits.map((h) => h.replace(process.cwd() + "/", "")), ["client/src/lib/guest-session-key.ts"]);
-    for (const f of ["client/src/lib/waitlist-guest-plan.ts", "client/src/lib/queryClient.ts", "client/src/App.tsx", "client/src/components/SignInModal.tsx", "client/src/pages/cart.tsx", "client/src/lib/guest-session.ts", "client/src/lib/guestSession.ts"]) {
+    for (const f of ["client/src/lib/waitlist-guest-plan.ts", "client/src/lib/queryClient.ts", "client/src/App.tsx", "client/src/components/SignInModal.tsx", "client/src/pages/cart.tsx", "client/src/lib/guest-session.ts"]) { // PLAN-2 C4: guestSession.ts merged into guest-session.ts
       assert.match(read(f), /guest-session-key"/, f);
     }
   });

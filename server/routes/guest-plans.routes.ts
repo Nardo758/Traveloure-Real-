@@ -16,6 +16,7 @@
  *
  * Limits live in `server/config/guest-plan.config.ts`; the 429 body carries the approved sentence.
  */
+import { GUEST_PRESENT_COOKIE } from "@shared/guest-presence";
 import { parsePlanItemRef } from "@shared/plan-item-ref";
 import { logger } from "../infrastructure/logger";
 import { Router, type Request, type Response, type NextFunction } from "express";
@@ -65,13 +66,17 @@ function sessionHash(req: Request): string | null {
 
 /** Sets (or refreshes — a rolling lifetime) the guest cookie. httpOnly; never read by the page. */
 function setGuestCookie(res: Response, id: string) {
+  const secure = process.env.NODE_ENV === "production" && process.env.SESSION_COOKIE_INSECURE !== "1";
   res.cookie(GUEST_SESSION_COOKIE, id, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production" && process.env.SESSION_COOKIE_INSECURE !== "1",
+    secure,
     path: "/api/guest-plans",
     maxAge: guestSessionCookieMaxAgeMs(),
   });
+  // PLAN-2 C4: the companion the page CAN read — no id, only that a guest exists — so a sign-in with no guest sends no
+  // claim (shared/guest-presence.ts). Same lifetime as the guest cookie.
+  res.cookie(GUEST_PRESENT_COOKIE, "1", { httpOnly: false, sameSite: "lax", secure, path: "/", maxAge: guestSessionCookieMaxAgeMs() });
 }
 
 const rateLimited = (_req: Request, res: Response) =>

@@ -11,6 +11,7 @@ import { dayNumberForDate, planItemRefFromFeedItem, type PlanItemKind, type Plan
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { GUEST_PLAN_COPY } from "@shared/guest-plan-copy";
+import { shouldClaimGuestPlans } from "@shared/guest-presence";
 import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 import { mapDayChips } from "@/lib/map-days";
 import { planTitle } from "@/lib/trip-slip";
@@ -276,6 +277,10 @@ async function claimGuestPlansOnce(): Promise<string[]> {
   } catch {
     guestSessionId = null;
   }
+  // PLAN-2 C4: no guest in this browser ⇒ no claim request (and no 400).
+  const cookieString = typeof document !== "undefined" ? document.cookie : "";
+  const cookiesEnabled = typeof navigator !== "undefined" ? navigator.cookieEnabled : undefined;
+  if (!shouldClaimGuestPlans({ cookieString, cookiesEnabled, localGuestId: guestSessionId })) return [];
   try {
     const res = await apiRequest("POST", "/api/guest-plans/claim", guestSessionId ? { guestSessionId } : {});
     const out = (await res.json()) as { tripIds?: string[] };
