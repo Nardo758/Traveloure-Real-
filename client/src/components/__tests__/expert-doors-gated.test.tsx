@@ -23,10 +23,11 @@ import { expertAvailabilityUrl } from "@/lib/expert-availability";
 const TRIP_ID = "trip-223";
 const TRIP = { id: TRIP_ID, destination: "Kyoto, Japan", startDate: "2027-04-01", endDate: "2027-04-03", datesConfirmed: true } as any;
 
-function renderEmpty(answer: { available: boolean } | undefined): string {
+function renderEmpty(answer: { available: boolean } | undefined, mode: "open" | "waitlist" = "open"): string {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity, enabled: false } } });
   const url = expertAvailabilityUrl({ city: TRIP.destination })!;
   if (answer) client.setQueryData([url], answer);
+  client.setQueryData(["/api/public/signup-mode"], { mode });
   client.setQueryData([`/api/trips/${TRIP_ID}/expert-help`], { levels: [{ expertCount: 1 }] });
   return renderToString(
     <QueryClientProvider client={client}>
@@ -45,6 +46,10 @@ test("ED1 · the empty slip's handoff door is hidden with no expert and shown wi
   const yes = renderEmpty({ available: true });
   assert.ok(yes.includes('data-testid="slip-empty-handoff"'));
   assert.ok(yes.includes("Hand it to a Kyoto local"));
+  const waitlisted = renderEmpty({ available: true }, "waitlist");
+  assert.ok(waitlisted.includes('data-testid="slip-empty-browse"'), "the Browse door stays");
+  assert.ok(!waitlisted.includes('data-testid="slip-empty-handoff"'), "waitlist hides the handoff door even with a live expert");
+  assert.ok(!waitlisted.includes("Hand it to a"), "hidden, never greyed or relabelled");
 });
 
 test("ED2 · the drafted slip's Local expert draws only when SlipRail passes a handler", () => {
@@ -61,7 +66,8 @@ test("ED2 · the drafted slip's Local expert draws only when SlipRail passes a h
   // The one other door on the slip is gated by the same reading.
   const empty = fs.readFileSync("client/src/components/plan/SlipEmptyStart.tsx", "utf8");
   assert.match(empty, /const expertsAvailable = useExpertAvailability\(\{ city: trip\.destination \}\);/);
-  assert.match(empty, /\{expertsAvailable \? \(\s*<button[\s\S]{0,400}data-testid="slip-empty-handoff"/);
+  assert.match(empty, /const waitlist = !useBookingActionsShown\(\);/);
+  assert.match(empty, /\{expertsAvailable && !waitlist \? \(\s*<button[\s\S]{0,400}data-testid="slip-empty-handoff"/);
 });
 
 test("ED3 · the Finalize chooser is not part of this row", () => {

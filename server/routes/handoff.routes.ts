@@ -185,6 +185,12 @@ router.post("/api/trips/:tripId/handoff/quote", isAuthenticated, async (req: any
   if (sessionUserId && await refuseUnverifiedTravelerSender(res, sessionUserId)) return;
   const userId = await ownerOr404(req, res);
   if (!userId) return;
+  // PLAN-2 lane 3 / D4: the quote is the price of a paid ask, so it is gated exactly like the ask — a
+  // visible price for a purchase that can only 403 is not a UI gate. Admin/QA still pass (P-1s rule).
+  const waitlistGate = await waitlistPurchaseDecisionFor(userId);
+  if (!waitlistGate.allowed) {
+    return res.status(403).json({ code: TRAVELER_WAITLIST, message: TRAVELER_WAITLIST_MESSAGE });
+  }
   const parsed = quoteBody.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ message: "Choose how much help you want" });
   if (await bookingHandoffOff(parsed.data.kind)) {

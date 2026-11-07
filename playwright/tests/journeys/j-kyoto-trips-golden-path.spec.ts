@@ -1625,6 +1625,49 @@ async function existingJaipurPlan(ctx: Page["request"], title: string): Promise<
 }
 
 test.describe("7 · a local expert checks the plan", () => {
+  /**
+   * PLAN-2 lane 3 / D1: the slip's expert door now needs APPROVED SUPPLY as well as an unanswered
+   * advisor read, so every §7 test needs Kyoto's chooser to have someone in it. This is the same
+   * fixture `slip-rail-actions.spec.ts` uses (Row 223): seed ONE byline-gated Kyoto expert, switch
+   * `expert_hook_cities` on for kyoto, and put the setting back afterwards. The supply is real (the
+   * seeder writes it); nothing here fakes the availability answer.
+   */
+  let priorExpertHookCities: string | null = null;
+
+  test.beforeAll(async () => {
+    const [row] = await rows<{ setting_value: string | null }>(
+      `SELECT setting_value FROM platform_settings WHERE setting_key = 'expert_hook_cities'`,
+    );
+    priorExpertHookCities = row?.setting_value ?? null;
+    await rows(
+      `INSERT INTO platform_settings (setting_key, setting_value) VALUES ('expert_hook_cities', '["kyoto"]')
+       ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = NOW()`,
+    );
+    execFileSync("npx", ["tsx", "scripts/seed-fixture-kyoto-expert.ts", "door7"], {
+      env: { ...process.env, ALLOW_TEST_ACCOUNTS: "1" },
+      encoding: "utf8",
+      timeout: 120_000,
+    });
+  });
+
+  test.afterAll(async () => {
+    if (priorExpertHookCities) {
+      await rows(`UPDATE platform_settings SET setting_value = $1 WHERE setting_key = 'expert_hook_cities'`, [priorExpertHookCities]);
+    } else {
+      await rows(`DELETE FROM platform_settings WHERE setting_key = 'expert_hook_cities'`);
+    }
+  });
+
+  // The setting is cached server-side for ~15s: wait for the availability answer itself, not a timer.
+  test.beforeEach(async ({ page }) => {
+    await expect
+      .poll(
+        async () =>
+          (await (await page.request.get(`${BASE_URL}/api/expert-availability?city=${encodeURIComponent("Kyoto, Japan")}`)).json()).available,
+        { timeout: 45_000 },
+      )
+      .toBe(true);
+  });
   test("§7 expert door — a plan from PlanEntry opens the expert door's help card", async ({ page }) => {
     // E2 (rulings 1–2): the pop-up has no build chooser; a `local` start continues on the plan's expert
     // door (`expertDoorHref`). The trip_created row records the door and the default finish.
@@ -1660,29 +1703,23 @@ test.describe("7 · a local expert checks the plan", () => {
     await expect(testid(page, "expert-door-card")).toBeVisible();
   });
 
-  test("§7 expert door — a market with no expert says so, naming the city, and records the interest", async ({ page }) => {
+  test("§7 expert door — a market with no expert does not draw the door (D1), and records nothing", async ({ page }) => {
+    // PLAN-2 lane 3 / D1: the door is HIDDEN, never greyed, when the plan's market has no approved expert
+    // — the empty picker is no longer reachable from it. Jaipur has no fixture supply, so this is the
+    // no-supply case. What used to be proven here (the empty picker naming the city, and an
+    // `expert_interest` row) is recorded as ABSENT-by-rule: the assertion is that the deep link opens
+    // nothing and writes nothing.
     await signedInTraveler(page, "door-empty");
     const tripId = await existingJaipurPlan(page.request, "Jaipur door");
     await createItem(page.request, tripId, "Amber Fort", 1);
     await page.goto(`/plans/${tripId}?help=expert`);
-    await expect(testid(page, "expert-door-card")).toBeVisible({ timeout: 20_000 });
-    // No band anywhere: nobody offers anything here, and a number would be invented (§13).
+    await expect(testid(page, "slip-view-toggle")).toBeVisible({ timeout: 20_000 });
+    await expect(testid(page, "expert-door-card")).toHaveCount(0);
     await expect(page.locator('[data-testid^="expert-door-band-"]')).toHaveCount(0);
-    const shown = await actAndAwait(page, () => testid(page, "expert-door-level-plan").click(), {
-      method: "GET",
-      path: new RegExp(`^/api/trips/${tripId}/expert-help/picker$`),
-    });
-    expect(ok2xx(shown)).toBe(true);
-    const empty = testid(page, "expert-picker-empty");
-    await expect(empty).toContainText("No local expert offers this in Jaipur yet");
-    await expect(testid(page, "expert-picker-list").locator("li")).toHaveCount(0);
-    await testid(page, "expert-picker-interest").click();
-    await expect.poll(async () => (await doorRows(tripId, "expert_interest")).length, { timeout: 10_000 }).toBe(1);
-    expect((await doorRows(tripId, "expert_interest"))[0]).toMatchObject({ level: "plan", tier: "planning", market: "jaipur" });
-    expect((await doorRows(tripId, "expert_help_level_chosen"))[0]).toMatchObject({ level: "plan", tier: "planning" });
-    expect((await doorRows(tripId, "expert_picker_shown"))[0]).toMatchObject({ level: "plan", count: 0 });
+    // §13: no interest is recorded by a surface that never appeared.
+    expect((await doorRows(tripId, "expert_interest")).length).toBe(0);
+    expect((await doorRows(tripId, "expert_help_level_chosen")).length).toBe(0);
   });
-
   test("§7 R-r — with no local live in the city, ⋯ Ask a local about this records the item and the question, charging nothing", async ({ page }) => {
     // Surface step 1 (ledger `2026-10-03-surface-step1-item-row`).
     await signedInTraveler(page, "ask-local");

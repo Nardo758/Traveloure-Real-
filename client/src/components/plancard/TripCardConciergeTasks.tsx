@@ -13,6 +13,7 @@ import { serverMessageOf } from "@/lib/concierge-hire-copy";
 import { CONCIERGE_TASK_COPY, conciergeAccessOpen, conciergeBookingForTrip } from "@/lib/concierge-task-copy";
 import { ConciergeTaskLogDialog } from "@/components/concierge-task-log";
 import type { SlipRailAdvisor } from "@/lib/slip-rail";
+import { useTripCapabilities, conciergeShown } from "@/lib/trip-capabilities";
 
 interface MyBookingRow {
   id: string;
@@ -26,7 +27,9 @@ export function TripCardConciergeTasks({ tripId, advisor, expertFirstName }: { t
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [booking, setBooking] = useState<MyBookingRow | null>(null);
-  if (!conciergeAccessOpen(advisor, new Date())) return null;
+  // PLAN-2 lane 3: the task log is drawn only while CAP-1 reports a live concierge engagement. Fail-closed.
+  const caps = useTripCapabilities(tripId);
+  if (!conciergeAccessOpen(advisor, new Date()) || !conciergeShown(caps.data)) return null;
 
   async function open() {
     if (loading) return;

@@ -74,6 +74,7 @@ import {
   type AskAiSurface,
   askAiBarLabel,
 } from "@/lib/ask-ai-drawer";
+import { useTripCapabilities, askShown } from "@/lib/trip-capabilities";
 
 const EARN_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
@@ -130,6 +131,8 @@ export function AskAiDrawer({
 }: AskAiDrawerProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  // PLAN-2 lane 3: the ask door exists only when CAP-1 says this viewer may ask. Fail-closed.
+  const caps = useTripCapabilities(tripId);
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState("");
   const [askRefusal, setAskRefusal] = useState<AskAiAskRefusal | null>(null);
@@ -289,7 +292,7 @@ export function AskAiDrawer({
     }
   }
 
-  if (!visibility.visible) return null;
+  if (!visibility.visible || !askShown(caps.data)) return null;
 
   const proposals = Array.isArray(logQuery.data?.proposals) ? logQuery.data!.proposals! : [];
   const priceLine = askAiPriceLine(logQuery.data?.aiTask);

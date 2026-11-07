@@ -1671,7 +1671,7 @@ export function useSlipViewModel({
   // advisor read must have ANSWERED before the card shows, so a plan that has an expert never
   // flashes the question.
   const [expertDoorState, setExpertDoorState] = useExpertDoorState(tripId);
-  const expertDoorLive = isOwner && slipAdvisorData !== undefined && !slipAdvisorData?.advisor;
+  // (moved below the availability read, PLAN-2 lane 3 / D1)
   const transitions = data.recentTransitions ?? [];
   const hasOptimized = transitions.some((t) => t.eventType === "variant_applied");
   // R-F: `finalized_at ∨ now ≥ startDate−48h ∨ underway → Trip Card is primary` — the SAME rule
@@ -1684,6 +1684,9 @@ export function useSlipViewModel({
   const allActivities = useMemo(() => days.flatMap((d) => d.activities), [days]);
   // Row P-7: the one expert-door gate for the drafted-slip note.
   const slipExpertsAvailable = useExpertAvailability({ city: isGuest ? null : data?.trip?.destination ?? null });
+  // PLAN-2 lane 3 / D1: the same door rule as the rail's (row 223) — owner, no advisor attached, AND the city
+  // has an expert to hand to. Loading, an error or "no supply" hide it; the empty picker is never shown.
+  const expertDoorLive = isOwner && slipAdvisorData !== undefined && !slipAdvisorData?.advisor && slipExpertsAvailable;
   // The Handoff board: while an expert holds the pen, the stops in the request's scope carry the pen
   // mark and the day says how many are theirs. The SAME handoff read the banner makes (one cache).
   const { data: handoffRead } = useHandoff(tripId, isOwner || isExpertViewer);
