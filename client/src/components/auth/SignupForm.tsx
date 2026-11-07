@@ -82,7 +82,9 @@ export function SignupFields({ draft, onChange }: { draft: SignupDraft; onChange
           <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             id="signup-email"
+            name="email"
             type="email"
+            autoComplete="username"
             placeholder={t("fields.signupEmailPlaceholder")}
             className="pl-9"
             value={draft.email}
@@ -98,7 +100,9 @@ export function SignupFields({ draft, onChange }: { draft: SignupDraft; onChange
           <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             id="signup-password"
+            name="password"
             type="password"
+            autoComplete="new-password"
             placeholder={t("fields.passwordPlaceholderSignup")}
             className="pl-9"
             value={draft.password}

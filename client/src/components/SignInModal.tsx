@@ -340,7 +340,9 @@ export function SignInModal({
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="email"
+                  name="email"
                   type="email"
+                  autoComplete="username"
                   placeholder={t("fields.emailPlaceholder")}
                   className="pl-9"
                   value={formData.email}
@@ -358,7 +360,9 @@ export function SignInModal({
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="password"
+                    name="password"
                     type="password"
+                    autoComplete="current-password"
                     placeholder={t("fields.passwordPlaceholderSignin")}
                     className="pl-9"
                     value={formData.password}
