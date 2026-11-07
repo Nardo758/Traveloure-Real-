@@ -32,21 +32,74 @@ function fail(msg) {
   process.exit(1);
 }
 
-const raw = fs.readFileSync(ROUTES_FILE, "utf8");
+function stripComments(raw) {
+  // Line comments only, avoiding `://` (so `http://` survives); block comments removed wholesale.
+  return raw
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .split("\n")
+    .map((line) => line.replace(/^\s*\/\/.*$/, "").replace(/([^:])\/\/.*$/, "$1"))
+    .join("\n");
+}
 
-// Strip comments so a commented-out `app.use(x)` (or import) does NOT count as mounted.
-// Line comments only, avoiding `://` (so `http://` survives); block comments removed wholesale.
-const src = raw
-  .replace(/\/\*[\s\S]*?\*\//g, "")
-  .split("\n")
-  .map((line) => line.replace(/^\s*\/\/.*$/, "").replace(/([^:])\/\/.*$/, "$1"))
-  .join("\n");
+function resolveTs(fromFile, spec) {
+  if (!spec.startsWith(".")) return null;
+  const base = path.resolve(path.dirname(fromFile), spec);
+  for (const candidate of [base, `${base}.ts`, `${base}.tsx`, path.join(base, "index.ts")]) {
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return candidate;
+  }
+  return null;
+}
+
+/**
+ * Route files this file mounts via app.use/router.use. A sibling import that is
+ * not passed to .use() does not count — that is the guest-invites lesson.
+ */
+function directMountedRouteFiles(file) {
+  const body = stripComments(fs.readFileSync(file, "utf8"));
+  const imports = new Map();
+  const importRe = /import\s+([A-Za-z_$][\w$]*)\s*(?:,\s*\{[^}]*\})?\s+from\s+["'](\.[^"']+)["']/g;
+  let match;
+  while ((match = importRe.exec(body)) !== null) {
+    const resolved = resolveTs(file, match[2]);
+    if (resolved && (resolved === ROUTES_DIR || resolved.startsWith(ROUTES_DIR + path.sep))) imports.set(match[1], resolved);
+  }
+  const found = new Set();
+  const useRe = /\b(?:app|router)\.use\(([^)]*)\)/g;
+  while ((match = useRe.exec(body)) !== null) {
+    for (const [id, child] of imports) {
+      if (new RegExp("\\b" + id + "\\b").test(match[1])) found.add(child);
+    }
+  }
+  return found;
+}
+
+/** entry files plus every route file they mount, walked until the chain stops. */
+function liveViaMountedParents(entryFiles) {
+  const live = new Set(entryFiles);
+  const queue = [...entryFiles];
+  while (queue.length) {
+    const file = queue.shift();
+    for (const child of directMountedRouteFiles(file)) {
+      if (!live.has(child)) {
+        live.add(child);
+        queue.push(child);
+      }
+    }
+  }
+  return live;
+}
+
+const src = stripComments(fs.readFileSync(ROUTES_FILE, "utf8"));
 
 // 1. Default imports of route modules: `import Foo from "./routes/bar"` (optionally with named: `import Foo, { x } from ...`).
-const importRe = /import\s+([A-Za-z_$][\w$]*)\s*(?:,\s*\{[^}]*\})?\s+from\s+["']\.\/routes\/[^"']+["']/g;
+const importRe = /import\s+([A-Za-z_$][\w$]*)\s*(?:,\s*\{[^}]*\})?\s+from\s+["'](\.\/routes\/[^"']+)["']/g;
 const imported = [];
+const importSpec = new Map();
 let m;
-while ((m = importRe.exec(src)) !== null) imported.push(m[1]);
+while ((m = importRe.exec(src)) !== null) {
+  imported.push(m[1]);
+  importSpec.set(m[1], m[2]);
+}
 
 if (imported.length === 0) fail("found no `import X from \"./routes/…\"` default imports — parser or file path is wrong.");
 
@@ -113,9 +166,9 @@ const routeFiles = fs
   .filter((f) => f.endsWith(".ts"))
   .map((f) => f.replace(/\.ts$/, ""));
 
-// Comment-stripped concatenation of every server .ts file EXCEPT the routes dir itself
-// (a routes file importing a sibling doesn't make either of them live — liveness comes
-// from being imported by routes.ts / index.ts / services / other server code).
+// Comment-stripped concatenation of every server .ts file EXCEPT the routes dir itself.
+// A sibling import counts only when a router that server/routes.ts mounts passes that
+// binding to router.use/app.use (walked). An import with no .use() stays dark.
 const serverSources = collectTsFiles(SERVER_DIR)
   .filter((f) => !f.startsWith(ROUTES_DIR + path.sep))
   .map((f) =>
@@ -128,20 +181,31 @@ const serverSources = collectTsFiles(SERVER_DIR)
   )
   .join("\n");
 
-const neverImported = routeFiles.filter((base) => {
-  if (base in ALLOWED_UNIMPORTED) return false;
-  // Match any import/require specifier ending in routes/<base> (with or without .ts/.js).
-  const specRe = new RegExp(
-    "from\\s+[\"'][^\"']*routes/" + base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?:\\.[tj]s)?[\"']",
-  );
-  return !specRe.test(serverSources);
-});
+const entryFiles = [];
+for (const id of mounted) {
+  const spec = importSpec.get(id);
+  if (!spec) continue;
+  const resolved = resolveTs(ROUTES_FILE, spec);
+  if (resolved) entryFiles.push(resolved);
+}
+const liveRoutes = liveViaMountedParents(entryFiles);
 
-const staleUnimportedAllow = Object.keys(ALLOWED_UNIMPORTED).filter((base) => {
+function importedOutsideRoutes(base) {
   const specRe = new RegExp(
     "from\\s+[\"'][^\"']*routes/" + base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?:\\.[tj]s)?[\"']",
   );
   return specRe.test(serverSources);
+}
+
+const neverImported = routeFiles.filter((base) => {
+  if (base in ALLOWED_UNIMPORTED) return false;
+  if (liveRoutes.has(path.join(ROUTES_DIR, `${base}.ts`))) return false;
+  return !importedOutsideRoutes(base);
+});
+
+const staleUnimportedAllow = Object.keys(ALLOWED_UNIMPORTED).filter((base) => {
+  if (liveRoutes.has(path.join(ROUTES_DIR, `${base}.ts`))) return true;
+  return importedOutsideRoutes(base);
 });
 
 if (staleUnimportedAllow.length > 0) {
@@ -153,7 +217,7 @@ if (staleUnimportedAllow.length > 0) {
 
 if (neverImported.length > 0) {
   fail(
-    "these server/routes/*.ts files are NEVER IMPORTED by any server code outside server/routes/ — every endpoint in them is DEAD (200-HTML):\n" +
+    "these server/routes/*.ts files are not imported outside server/routes/ and are not mounted by a live router — every endpoint in them is DEAD (200-HTML):\n" +
       neverImported.map((b) => `  • server/routes/${b}.ts`).join("\n") +
       "\n\nFix: import + mount the router in server/routes.ts (or, if genuinely deferred, add it to ALLOWED_UNIMPORTED in this script WITH a reason). See CLAUDE.md §9.",
   );
