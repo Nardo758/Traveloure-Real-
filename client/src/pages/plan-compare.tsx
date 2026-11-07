@@ -34,6 +34,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { compareIntroLine } from "@shared/plan-fit";
+import { stayClosenessLine, stayFarDayLines } from "@/lib/stay-card";
 import {
   invalidatePlan,
   serverMessage,
@@ -129,6 +130,28 @@ function CompareCard({
           </span>
           {area && !option.easiest ? <span className="text-[13px] text-[color:var(--slip-muted)] break-words">{area}</span> : null}
         </div>
+        {/* PLAN-3: the board #11 pair, in words, from the SERVER's own computation â€” "Close to N of M days"
+            and the far-day line. Nothing is ranked; a place is compared with the caller's days, never with
+            the other places. */}
+        {(() => {
+          const close = stayClosenessLine(option.closeness);
+          const far = stayFarDayLines(option.dayCloseness);
+          if (!close && far.length === 0) return null;
+          return (
+            <div className="flex flex-col gap-0.5" data-testid={`compare-closeness-${option.id}`}>
+              {close ? (
+                <span className="text-[13px] font-semibold text-[color:var(--slip-ink)]" data-testid={`compare-close-${option.id}`}>
+                  {close}
+                </span>
+              ) : null}
+              {far.map((line) => (
+                <span key={line} className="text-xs text-[color:var(--slip-muted)]" data-testid={`compare-far-${option.id}`}>
+                  {line}
+                </span>
+              ))}
+            </div>
+          );
+        })()}
         <div ref={fitRef} className="grid grid-cols-3 gap-2" data-testid={`compare-metrics-${option.id}`}>
           <Metric label="Travel / day" cell={travelCell(option.fit)} testId={`compare-travel-${option.id}`} />
           <Metric label="Walkable" cell={areasCell(option.fit)} testId={`compare-areas-${option.id}`} />

@@ -42,5 +42,14 @@ test("C4: the page keeps every pinned testid and sentence source, and the strip 
   assert.match(src, /\{compareTitle\(set\.options\.length\)\}/);
   assert.match(src, /\{compareIntroLine\(stops\.located, stops\.total\)\}/);
   assert.match(src, />\s*Easiest days\s*</);
-  assert.doesNotMatch(src, /close to|far day/i);
+  // PLAN-3: the close/far judgement is no longer banned â€” it is RENDERED from the server's own fields.
+  assert.match(src, /stayClosenessLine\(option\.closeness\)/);
+  assert.match(src, /stayFarDayLines\(option\.dayCloseness\)/);
+  // Still no client-side geography: the page renders answers, it never measures.
+  assert.doesNotMatch(src, /haversine|closeDays\s*[-+]/);
+  // The server derives both lines with the ONE shared closeness computation (PLAN-3), not a second one.
+  const svc = readFileSync(new URL("../../../server/services/plan-option-sets.service.ts", import.meta.url), "utf8");
+  assert.match(svc, /straightLineCloseness\(candidate, stopPoints, closeKm\)/);
+  assert.match(svc, /straightLineDayCloseness\(candidate, stopPoints, closeKm\)/);
+  assert.match(svc, /dayCloseness: StayDayCloseness\[\] \| null/);
 });
