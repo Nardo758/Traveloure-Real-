@@ -88,8 +88,8 @@ interface TripCardRailProps {
 function RailCard({ card, title, children }: { card: string; title: string; children: React.ReactNode }) {
   return (
     <Card data-testid={`trip-card-rail-${card}`}>
-      <CardContent className="p-3 space-y-2">
-        <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <CardContent className="space-y-3 p-4">
+        <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
           {title}
         </p>
         {children}
