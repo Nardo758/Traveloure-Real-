@@ -13,6 +13,8 @@
  *       committed change — so W1 fails on the unlocked shape.
  *   W2  Twenty concurrent saves, each adding its own key, leave all twenty keys.
  *   W3  A user that does not exist writes nothing and resolves null.
+ *   W4  Dislike feedback is stored only after an explicit consent grant. A read keeps counts
+ *       already stored when the grant is absent.
  *
  * DISPOSABLE DB ONLY. Run solo:
  *   JOURNEY_DB_WRITES_OK=1 npx tsx --test server/__tests__/user-preferences-writer.db.test.ts
@@ -20,6 +22,8 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { after, before, test } from "node:test";
+import { grantProfileWriteConsent, revokeProfileWriteConsent } from "../services/profile-write-consent";
+import { getTravelerProfile, recordDislikeFeedback } from "../services/traveler-profile.service";
 import { updateUserPreferences } from "../services/user-preferences-writer";
 
 const { Pool } = await import("pg");
@@ -111,4 +115,19 @@ test("W3: an unknown user writes nothing and resolves null", async () => {
   });
   assert.equal(result, null);
   assert.equal(merged, false, "the merge is not even run for a user that does not exist");
+});
+
+test("W4: dislike feedback is stored only after an explicit consent grant", async () => {
+  await revokeProfileWriteConsent(USER_ID);
+  await recordDislikeFeedback(USER_ID, ["too_expensive", "not_a_chip"]);
+  const blocked = await getTravelerProfile(USER_ID);
+  assert.equal(blocked.derived.dislikeThemeCounts.too_expensive ?? 0, 0);
+  assert.equal(await grantProfileWriteConsent(USER_ID), true);
+  await recordDislikeFeedback(USER_ID, ["too_expensive"]);
+  const granted = await getTravelerProfile(USER_ID);
+  assert.equal(granted.derived.dislikeThemeCounts.too_expensive, 1);
+  await revokeProfileWriteConsent(USER_ID);
+  await recordDislikeFeedback(USER_ID, ["too_expensive"]);
+  const still = await getTravelerProfile(USER_ID);
+  assert.equal(still.derived.dislikeThemeCounts.too_expensive, 1, "the read keeps the stored count");
 });

@@ -7,6 +7,7 @@
  *   D4 traits are counted from the traveler's own rows; another traveler's rows never count
  *   D5 reset clears the traveler's own rows, and only theirs
  *   D6 the hooks log the plan owner's own actions only; the readers are the planner and paid Optimize
+ *   D7 the platform flag on and consent absent writes nothing; a read of rows already stored still returns traits
  *
  * Run: DATABASE_URL=… JOURNEY_DB_WRITES_OK=1 npx tsx --test --test-force-exit server/services/__tests__/selection-profile.db.test.ts
  */
@@ -26,6 +27,7 @@ const CITY = `Sptown${R}`;
 let db: any;
 let svc: typeof import("../selection-profile.service");
 let flags: typeof import("../platform-flags");
+let consent: typeof import("../profile-write-consent");
 
 async function setFlag(value: string | null) {
   await db.execute(sql`DELETE FROM platform_settings WHERE setting_key = 'selection_profile'`);
@@ -43,6 +45,7 @@ before(async () => {
   db = (await import("../../db")).db;
   svc = await import("../selection-profile.service");
   flags = await import("../platform-flags");
+  consent = await import("../profile-write-consent");
   await db.execute(sql`INSERT INTO users (id, email, role) VALUES (${ALICE}, ${`${ALICE}@example.com`}, 'traveler'), (${BOB}, ${`${BOB}@example.com`}, 'traveler')`);
   await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, start_date, end_date, status)
     VALUES (${TRIP}, ${ALICE}, 'Selection', ${`${CITY}, Japan`}, '2027-05-01', '2027-05-02', 'draft')`);
@@ -75,6 +78,7 @@ test("D1 off: nothing written, nothing read", async () => {
 
 test("D2 on: the row is the action and four coarse fields", async () => {
   await setFlag("true");
+  assert.equal(await consent.grantProfileWriteConsent(ALICE), true);
   assert.equal(await svc.recordSelection({ userId: ALICE, action: "add", tripId: TRIP, item: dinner }), true);
   const [row] = await rowsFor(ALICE);
   assert.deepEqual(
@@ -87,6 +91,7 @@ test("D2 on: the row is the action and four coarse fields", async () => {
 
 test("D3 a Google point gives no neighbourhood", async () => {
   await setFlag("true");
+  assert.equal(await consent.grantProfileWriteConsent(BOB), true);
   for (const coordSource of [null, "places", "geocode_google"]) {
     await svc.recordSelection({ userId: BOB, action: "add", tripId: TRIP, item: { ...dinner, coordSource } });
   }
@@ -97,6 +102,7 @@ test("D3 a Google point gives no neighbourhood", async () => {
 
 test("D4 traits count the traveler's own rows only", async () => {
   await setFlag("true");
+  await consent.grantProfileWriteConsent(ALICE);
   await svc.recordSelection({ userId: ALICE, action: "add", tripId: TRIP, item: dinner });
   await svc.recordSelection({ userId: ALICE, action: "add", tripId: TRIP, item: dinner });
   const traits = await svc.readSelectionTraits(ALICE);
@@ -131,4 +137,20 @@ test("D6 the hooks log the owner's own actions; the planner and paid Optimize re
   assert.match(optimizer, /\$\{travelerProfileSection\}\$\{selectionProfileSection\}/, "paid Optimize's prompt reads it");
   assert.match(content, /router\.post\("\/api\/me\/selection-profile\/reset", isAuthenticated/);
   assert.match(content, /resetSelectionProfile\(getUserId\(req\)!\)/, "the owner is the session");
+});
+
+test("D7 consent off writes nothing; a read of stored rows still returns traits", async () => {
+  await setFlag("true");
+  await consent.revokeProfileWriteConsent(ALICE);
+  await db.execute(sql`DELETE FROM selection_events WHERE user_id = ${ALICE}`);
+  for (let i = 0; i < 3; i++) {
+    await db.execute(sql`INSERT INTO selection_events (id, user_id, action, neighbourhood) VALUES (${`sp-d7-${R}-${i}`}, ${ALICE}, 'add', 'gion')`);
+  }
+  const traits = await svc.readSelectionTraits(ALICE);
+  assert.ok(traits.some((t) => t.field === "neighbourhood" && t.value === "gion" && t.count === 3), "a read does not ask for consent");
+  assert.equal(await svc.recordSelection({ userId: ALICE, action: "add", tripId: TRIP, item: dinner }), false);
+  assert.equal((await rowsFor(ALICE)).length, 3, "no fourth row without consent");
+  assert.equal(await consent.grantProfileWriteConsent(ALICE), true);
+  assert.equal(await svc.recordSelection({ userId: ALICE, action: "add", tripId: TRIP, item: dinner }), true);
+  assert.equal((await rowsFor(ALICE)).length, 4);
 });

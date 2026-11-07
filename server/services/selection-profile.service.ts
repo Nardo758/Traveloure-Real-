@@ -1,9 +1,11 @@
 /**
  * Row 306 (CS-3 brief 10, E): the selection profile, server half.
  *
- *   · `selectionProfileOn()` is the ONE gate: the platform setting `selection_profile`, off unless it is exactly
+ *   · `selectionProfileOn()` is the platform gate: the setting `selection_profile`, off unless it is exactly
  *     "true". While off nothing is written (`recordSelection` returns before any read) and nothing is read
  *     (`readSelectionTraits` returns no traits), so the planner and Optimize see no change.
+ *   · A second gate, per user: `recordSelection` also returns before any write unless
+ *     `hasProfileWriteConsent` is true. Reads are not consent-gated.
  *   · `recordSelection` writes one `selection_events` row from a plan item: action, stop type (the item's coarse
  *     type), neighbourhood (from the item's point only when that point is NOT Google's — a Google point never
  *     feeds stored data), time of day and price band. It never throws: a failed log never fails the planner
@@ -30,6 +32,7 @@ import {
 import { isNonGoogleCoordSource } from "@shared/item-coord-source";
 import { placeServiceInNeighborhood, type NeighborhoodRow } from "@shared/neighborhood-placement";
 import { getPlatformFlag } from "./platform-flags";
+import { hasProfileWriteConsent } from "./profile-write-consent";
 import { selectionPriceBandBounds, selectionProfileReadLimit, selectionTraitMinCount } from "../config/selection-profile.config";
 
 export async function selectionProfileOn(): Promise<boolean> {
@@ -90,7 +93,8 @@ async function neighbourhoodsForTrip(tripId: string | null | undefined): Promise
 }
 
 /**
- * Log one action. Off ⇒ returns false before reading anything. Never throws.
+ * Log one action. The platform flag off, or no consent grant, returns false before a selection row
+ * is read or written. Never throws.
  * `item` is the plan item the action was about (absent for a move, a kept version or a search).
  */
 export async function recordSelection(input: {
@@ -102,6 +106,7 @@ export async function recordSelection(input: {
   try {
     if (!input.userId) return false;
     if (!(await selectionProfileOn())) return false;
+    if (!(await hasProfileWriteConsent(input.userId))) return false;
     const neighbourhoods = input.item ? await neighbourhoodsForTrip(input.tripId) : [];
     const row = selectionRowFor(input.action, input.item ?? null, neighbourhoods, selectionPriceBandBounds());
     await db.insert(selectionEvents).values({ id: crypto.randomUUID(), userId: input.userId, ...row });
