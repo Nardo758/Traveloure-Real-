@@ -21,6 +21,8 @@ import { useBookingActionsShown } from "@/lib/signup-mode";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 // Ruling 5 (ledger `2026-10-08-conformance-slip-phase0`): the slip's token layer, imported here only.
 import "@/styles/slip-tokens.css";
+import "@/styles/slip-tokens.canvas.css";
+import { readSlipTokensMode, slipTokensAttr } from "@/lib/slip-tokens-mode";
 import { Link, useLocation } from "wouter";
 import { bookingControls } from "@shared/booking-path";
 import type { WaitingLine } from "@shared/fact-review";
@@ -2341,6 +2343,7 @@ export function SlipView({
       /* Ruling 7: one centered column, at most 680px wide, at every width; the map view keeps its
          wide layout (map view unchanged). */
       className={`${SLIP_SURFACE_CLASS} ${slipView === "map" ? "max-w-6xl" : "max-w-[680px]"} mx-auto space-y-5`}
+      {...slipTokensAttr(readSlipTokensMode())}
       data-testid={`slip-view-${planTripId}`}
       /* A1: the group is an internal key (R127) — a data attribute for tests, never display text. */
       data-experience-group={occasionResolved ? experienceGroup : undefined}

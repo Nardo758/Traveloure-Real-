@@ -1,0 +1,62 @@
+/*
+ * CANVAS TOKENS — the palette the 22 boards actually use (docs/design/canvas-2026-11), behind a ROOT
+ * ATTRIBUTE instead of a second theme. Planner containers only; the nav, sign-in and console shell keep
+ * brand coral because a root attribute below them cannot reach them.
+ *
+ * Values are the boards', counted from the 22 `.dc.html` sources on Nov 7, 2026:
+ *   Bricolage Grotesque display · Public Sans body · IBM Plex Mono · violet #5B4B8A (161 uses) with
+ *   lavender #D8CFEE / #EEEAF6 · ground #FAFAF8 · ink #1A1A18 · mid #7A7A72 (432) · lines #E8E8E2 /
+ *   #DAD9D1 · green #1E7A52 + #E7F3EC · gold #8A5E12 + #F6EDD8 / #E8D6AF.
+ * (An earlier description of this palette as "Fraunces + navy" was a mis-description — neither appears
+ * on any board. Leon, Nov 7, 2026: the boards are the values.)
+ *
+ * This file is the ONE stylesheet allowed to carry palette hex — `scripts/check-page-hex.cjs` names it
+ * explicitly (single file, no folder glob). Every other stylesheet stays hex-free outside token blocks.
+ *
+ * Every token here must also exist in `slip-tokens.css` (pinned by
+ * `client/src/lib/__tests__/slip-tokens-canvas.test.ts`), so default mode is a complete fallback.
+ */
+.slip-surface[data-slip-tokens="canvas"] {
+  /* Type — the board's three faces. */
+  --slip-font-display: "Bricolage Grotesque", "Public Sans", system-ui, sans-serif;
+  --slip-font-body: "Public Sans", system-ui, sans-serif;
+  --slip-font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Ground, ink and structure. */
+  --slip-ground: #FAFAF8;
+  --slip-card: #FFFFFF;
+  --slip-ink: #1A1A18;
+  --slip-navy: #5B4B8A;
+  --slip-muted: #7A7A72;
+  --slip-line: #E8E8E2;
+  --slip-line-strong: #DAD9D1;
+  --slip-wash: #F4F3EF;
+  --slip-on-navy-muted: #E7E2F3;
+  --slip-on-navy-line: #A99BC9;
+
+  /* Accents: the boards' green (positive/selected) and gold (attention), with their washes. */
+  --slip-teal: #1E7A52;
+  --slip-teal-ink: #1E7A52;
+  --slip-teal-wash: #E7F3EC;
+  --slip-gold: #E8D6AF;
+  --slip-gold-ink: #8A5E12;
+  --slip-gold-wash: #F6EDD8;
+  --slip-green: #1E7A52;
+  --slip-anchor-wash: #F4F3EF;
+  --slip-teal-halo: #C4E4D1;
+  --slip-note-wash: #F6EDD8;
+  --slip-dash: #DAD9D1;
+
+  /* The boards' lavender — the violet's quiet family. */
+  --slip-lavender: #D8CFEE;
+  --slip-lavender-wash: #EEEAF6;
+
+  /* Primary action: the board's violet fill, white on it. */
+  --slip-primary: #5B4B8A;
+  --slip-primary-ink: #FFFFFF;
+
+  /* Radii. */
+  --slip-radius-card: 18px;
+  --slip-radius-button: 12px;
+  --slip-radius-chip: 999px;
+}

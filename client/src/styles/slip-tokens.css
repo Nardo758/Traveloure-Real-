@@ -15,6 +15,8 @@
   /* Type — Fraunces display, Inter body (both loaded by index.css's font import). */
   --slip-font-display: "Fraunces", Georgia, serif;
   --slip-font-body: "Inter", system-ui, sans-serif;
+  /* The board's third face. Unused by the default look; declared so canvas mode has a fallback. */
+  --slip-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 
   /* Ground, ink and structure. */
   --slip-ground: #F6F4EF;
@@ -48,6 +50,10 @@
   --slip-teal-halo: #CDE6E6;
   --slip-note-wash: #FFF9EA;
   --slip-dash: #B9C3CC;
+  /* The canvas's lavender family. Default resolves both to the neutral wash: brand coral stays the
+     accent outside the planner, and nothing here renders until canvas mode is selected. */
+  --slip-lavender: var(--slip-wash);
+  --slip-lavender-wash: var(--slip-wash);
 
   /* Primary action (ruling 2): the coral fill, white on it. */
   --slip-primary: var(--coral-fill);
