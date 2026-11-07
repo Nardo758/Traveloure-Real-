@@ -82,7 +82,10 @@ describe("tools tray", () => {
     }
     assert.ok(!chips(render({ group: "trips" })).some(([k]) => k === "getting_there"), "flag unknown ⇒ hidden");
     assert.ok(!chips(render({ group: "trips", flags: { FLIGHT_LOOKUP_ENABLED: false } })).some(([k]) => k === "getting_there"), "flag off ⇒ hidden");
-    assert.deepEqual(chips(render({ group: "trips", flags: FLAG_ON })).map(([k]) => k)[0], "getting_there", "flag on ⇒ live, in manifest order");
+    // QW-1: Getting there is a SUPPLY tool, so it sorts after the no-supply ones (it used to lead).
+    const flagOn = chips(render({ group: "trips", flags: FLAG_ON })).map(([k]) => k);
+    assert.ok(flagOn.includes("getting_there"), "flag on ⇒ live");
+    assert.equal(flagOn[flagOn.length - 1], "getting_there", "a supply tool sorts last in the Trip tray");
     // The registry and the manifest's state say the same thing for every tool.
     for (const k of Object.keys(TOOL_STATE) as ToolKey[]) {
       const hasComponent = toolContent(k, base) !== null;

@@ -22,11 +22,11 @@ test("G1: every group resolves; unknown → Trip", () => {
 
 test("G2: the rows are §4 verbatim", () => {
   const labels = (g: keyof typeof GROUP_MANIFEST) => GROUP_MANIFEST[g].tools.map((k) => TOOL_LABEL[k]).join(" · ");
-  assert.equal(labels("trip"), "Getting there · Where to stay · Travel party · Getting around · Pace");
+  assert.equal(labels("trip"), "Where to stay · Travel party · Getting around · Pace · Getting there");
   assert.equal(labels("moment"), "The reservation · Timing check · Getting home");
-  assert.equal(labels("celebration"), "The venue · Guests · Vendors · Budget");
-  assert.equal(labels("hosted_event"), "Run of show · Guest invites · Vendor contracts · Arrivals & split groups");
-  assert.equal(labels("group_travel"), "Getting there · Shared lodging · Who's coming · Split activities · Who pays what");
+  assert.equal(labels("celebration"), "The venue · Guests · Budget · Vendors");
+  assert.equal(labels("hosted_event"), "Run of show · Guest invites · Arrivals & split groups · Vendor contracts");
+  assert.equal(labels("group_travel"), "Shared lodging · Who's coming · Split activities · Who pays what · Getting there");
   assert.deepEqual(
     Object.values(GROUP_MANIFEST).map((r) => [r.eyebrow, r.anchorQuestion, r.timeUnit]),
     [
@@ -40,6 +40,29 @@ test("G2: the rows are §4 verbatim", () => {
   assert.deepEqual(GROUP_MANIFEST.trip.anchorPanelThreshold, { kind: "min_days", days: 2 });
   assert.deepEqual(GROUP_MANIFEST.group_travel.anchorPanelThreshold, { kind: "min_days", days: 2 });
   for (const g of ["moment", "celebration", "hosted_event"] as const) assert.deepEqual(GROUP_MANIFEST[g].anchorPanelThreshold, { kind: "always" });
+});
+
+test("G2b (QW-1): every row is anchor -> no-supply -> supply", () => {
+  // The dispatch's rule, stated once. A tool is "supply" when it needs a local supplier or inventory
+  // (a stay, a venue, vendors, a flight); the rest are answered from the plan itself.
+  const SUPPLY = new Set<ToolKey>(["where_to_stay", "the_venue", "vendors", "vendor_contracts", "shared_lodging", "getting_there", "the_show", "the_reservation"]);
+  const ANCHOR: Record<keyof typeof GROUP_MANIFEST, ToolKey | null> = {
+    trip: "where_to_stay",
+    moment: "the_reservation",
+    celebration: "the_venue",
+    hosted_event: null, // QW-2 adds the venue chip; until then this row has no anchor tool
+    group_travel: "shared_lodging",
+  };
+  for (const [group, row] of Object.entries(GROUP_MANIFEST)) {
+    const tools = row.tools as readonly ToolKey[];
+    const anchor = ANCHOR[group as keyof typeof GROUP_MANIFEST];
+    if (anchor) assert.equal(tools[0], anchor, `${group}: the anchor is first`);
+    const rest = anchor ? tools.slice(1) : tools;
+    const firstSupply = rest.findIndex((k) => SUPPLY.has(k));
+    if (firstSupply >= 0) {
+      for (const k of rest.slice(firstSupply)) assert.ok(SUPPLY.has(k), `${group}: ${k} is a no-supply tool after a supply tool`);
+    }
+  }
 });
 
 test("G3: Show / Festival overlays its parent group", () => {
