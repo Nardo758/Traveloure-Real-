@@ -82,9 +82,8 @@ export const GEM_EXEMPTIONS: ReadonlyArray<{
 export const PAYPAL_ALLOWED: readonly RegExp[] = [/^client\/src\/lib\/payout-[^/]+\.ts$/, /^client\/src\/components\/payouts?\//];
 
 /** Baseline entries kept on purpose, printed on every run so they are never mistaken for debt to shrink. */
-export const BASELINE_NOTES: Readonly<Record<string, string>> = {
-  'client/src/components/plancard/BuildAroundDialog.tsx "ranked by"': "approved R198 (BUILD_AROUND_COPY.autoBody)",
-};
+// W22 (Nov 7, 2026): BuildAroundDialog's "ranked by" note is gone with the deleted `autoBody` line.
+export const BASELINE_NOTES: Readonly<Record<string, string>> = {};
 
 const NEVER_SCANNED = [/^shared\/banned-copy\.ts$/, /(^|\/)__tests__\//, /\.test\.tsx?$/, /^scripts\//];
 const SKIP_ATTRIBUTES = new Set(["data-testid", "className", "key", "id", "href", "to", "src", "name", "type", "role", "aria-hidden"]);

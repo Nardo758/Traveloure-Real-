@@ -108,8 +108,6 @@ describe("row 198 strings pass", () => {
       assert.doesNotMatch(v, /\$|\d+\.\d{2}/, v);
       assert.doesNotMatch(v, /score|estimate/i, v);
       assert.doesNotMatch(v, /pulse|crowd|destination intel/i, v);
-      // approved R198; baselined in P-6 §4e
-      if (v === BUILD_AROUND_COPY.autoBody) continue;
       assert.deepEqual(siteNeverSayHits(v), [], v);
     }
   });
@@ -148,18 +146,24 @@ describe("row 198 strings pass", () => {
       assert.ok(!DIALOG_CODE.includes(gone), gone);
     }
     assert.doesNotMatch(DIALOG_CODE, /^\s*recommended\s*$/m);
-    for (const key of ["description", "loadError", "autoBody", "chooseYourOwn", "optionsLabel("]) assert.ok(DIALOG.includes(`BUILD_AROUND_COPY.${key}`), key);
-    // OPT-B (sanctioned, Architect Nov 2): the P-3 values — H1, H2, H3 and E1 are HELD for Leon.
-    assert.equal(BUILD_AROUND_COPY.description, "We suggest 3 starting points. Or build around a place, a date or an event on your plan.");
-    assert.equal(BUILD_AROUND_COPY.autoLabel, "We'll suggest 3");
+    for (const key of ["description", "loadError", "autoLabel", "chooseYourOwn", "optionsLabel("]) assert.ok(DIALOG.includes(`BUILD_AROUND_COPY.${key}`), key);
+    // TEST EDIT (W22, ledger `2026-11-07-w22-build-around-copy`; Wording approved — Leon, Nov 7, 2026): the HELD
+    // values are replaced by role, and `autoBody` is deleted.
+    assert.equal(BUILD_AROUND_COPY.description, "Pick a hotel, a neighborhood or an activity to build the day around. We list the ones closest to your stops.");
+    assert.equal(BUILD_AROUND_COPY.autoLabel, "Choose for me");
     assert.equal(BUILD_AROUND_COPY.chooseYourOwn, "Or choose your own");
-    assert.equal(BUILD_AROUND_COPY.autoBody, "We suggest a hotel, a neighborhood and an activity to build around, ranked by straight-line distance to your stops.");
-    assert.equal(BUILD_AROUND_COPY.loadError, "We couldn't load places to build around. Close and reopen to try again, or let us suggest 3.");
+    assert.equal("autoBody" in BUILD_AROUND_COPY, false);
+    assert.equal(BUILD_AROUND_COPY.loadError, "Couldn't load places to build around. Try again.");
+    assert.deepEqual(BUILD_AROUND_COPY.dayReason, {
+      noLocatedStops: "Nothing on this day has a location yet.",
+      nothingToRebuild: "Nothing else on your plan can be rebuilt around this day.",
+    });
+    assert.doesNotMatch(DIALOG, /HELD/);
     assert.equal(BUILD_AROUND_COPY.optionsLabel("Hotel"), "Hotel options");
     for (const type of ["hotel", "neighborhood", "activity"]) {
       assert.ok(DIALOG.includes(`${type}: "No ${type} suggestions near your stops yet. You can type one below."`), type);
     }
-    assert.ok(DIALOG.includes('event: "No events with a time on your plan yet. Add one with a start time first."'), "E1");
+    assert.ok(DIALOG.includes('event: "No events on your dates yet."'), "E1 (W22)");
     const catchBlock = DIALOG.slice(DIALOG.indexOf("} catch"), DIALOG.indexOf("} finally"));
     assert.ok(!catchBlock.includes("error?.message"));
     assert.ok(!catchBlock.includes(".message"));

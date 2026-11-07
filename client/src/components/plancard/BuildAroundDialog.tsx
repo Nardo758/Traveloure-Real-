@@ -117,18 +117,18 @@ const TYPE_OPTIONS: Array<{
 
 /**
  * Row 198 (strings 24–27, 29, 30; approved by Leon Oct 26, 2026): the Build-around dialog's words.
- * OPT-B (ledger 2026-11-02-opt-b-build-around-place-date-event): `description` (H1), `autoLabel` (H2),
- * `loadError` (H3) and `dayReason` (D1, D2) are HELD for Leon's approval. The group labels are the
- * Experiences page's words and `customPlaceholder` was approved by the Architect.
+ * W22 (Wording approved — Leon, Nov 7, 2026; ledger `2026-11-07-w22-build-around-copy`): `description`,
+ * `autoLabel`, `loadError`, both `dayReason` lines (approved verbatim) and the event empty line. The old
+ * `autoBody` line is deleted (its content is in `description`). The group labels are the Experiences page's
+ * words and `customPlaceholder` was approved by the Architect.
  */
 export const BUILD_AROUND_COPY = {
-  description: "We suggest 3 starting points. Or build around a place, a date or an event on your plan.",
+  description: "Pick a hotel, a neighborhood or an activity to build the day around. We list the ones closest to your stops.",
   // #30: shown only for a priced run on a mount that shows the pay line.
   paidStep: "This is a paid step. You'll see the price before you pay, and nothing runs until you do.",
-  autoLabel: "We'll suggest 3",
-  autoBody: "We suggest a hotel, a neighborhood and an activity to build around, ranked by straight-line distance to your stops.",
+  autoLabel: "Choose for me",
   chooseYourOwn: "Or choose your own",
-  loadError: "We couldn't load places to build around. Close and reopen to try again, or let us suggest 3.",
+  loadError: "Couldn't load places to build around. Try again.",
   optionsLabel: (typeLabel: string): string => `${typeLabel} options`,
   groups: { place: "Place", date: "Date", event: "Event" } satisfies Record<AnchorGroup, string>,
   customPlaceholder: "Type an address or place name",
@@ -142,8 +142,8 @@ const EMPTY_COPY: Record<PlaceAnchorType | "event", string> = {
   hotel: "No hotel suggestions near your stops yet. You can type one below.",
   neighborhood: "No neighborhood suggestions near your stops yet. You can type one below.",
   activity: "No activity suggestions near your stops yet. You can type one below.",
-  // OPT-B E1, HELD for Leon's approval.
-  event: "No events with a time on your plan yet. Add one with a start time first.",
+  // W22 (Wording approved — Leon, Nov 7, 2026).
+  event: "No events on your dates yet.",
 };
 
 /** "{name} · Day {n} · {HH:MM}" — the start time exactly as stored, no zone and no arithmetic. */
@@ -479,9 +479,6 @@ export function BuildAroundPanel({
           <span className="min-w-0 flex-1">
             <span className="flex flex-wrap items-center gap-2 font-semibold text-[color:var(--earn-ink)]">
               {BUILD_AROUND_COPY.autoLabel}
-            </span>
-            <span className="mt-1 block text-sm leading-5 text-[color:var(--earn-muted)]">
-              {BUILD_AROUND_COPY.autoBody}
             </span>
           </span>
           <span

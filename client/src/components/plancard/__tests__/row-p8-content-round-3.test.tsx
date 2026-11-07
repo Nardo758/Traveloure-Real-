@@ -7,7 +7,7 @@
  *   T3 Migration 431 is registered, carries no DDL, and every statement matches the OLD text only.
  *   T4 The experience-template seed carries no "Most Popular" / "Popular but Spacious".
  *   T5 ROUND3_AI_CEILING and the never-say baseline equal their pinned counts and sit below 159 / 133.
- *   T6 Off-limits: BuildAroundDialog still says "ranked by" (R198); the cart's fee line is still drawn.
+ *   T6 Off-limits: the cart's fee line is still drawn. (BuildAroundDialog's "ranked by" line was deleted by W22, Nov 7, 2026.)
  *   T7 The new strings pass the AI check and the never-say list; the three server feed-label fallbacks read
  *      "Picked for your days".
  *
@@ -121,8 +121,9 @@ describe("P-8 — content round 3", () => {
     // TEST EDIT (CMS-1 brief §4g, ledger `2026-11-04-cms1-launch-screens` — SANCTION REQUESTED, not in §7): the
     // launch-waitlist.tsx block (3 entries, 5 hits) is removed from the baseline, so the pin moves 119 → 116 and 321 → 316.
     // Lane 5 (K-7, K-8) removed 7 entries and 8 hits: 116 → 109 and 316 → 308.
-    assert.equal(entries, 109);
-    assert.equal(hits, 308);
+    // W22 (ledger `2026-11-07-w22-build-around-copy`) deleted BuildAroundDialog's "ranked by" line: 109 → 108, 308 → 307.
+    assert.equal(entries, 108);
+    assert.equal(hits, 307);
     assert.ok(entries < 133);
     const perfect = Object.values(b).filter((by) => "perfect" in by);
     assert.equal(perfect.length, 13, "files with a recorded 'perfect' hit");
@@ -132,7 +133,8 @@ describe("P-8 — content round 3", () => {
   });
 
   it("T6 the off-limits lines are untouched", () => {
-    assert.ok(read("client/src/components/plancard/BuildAroundDialog.tsx").includes("ranked by straight-line distance to your stops"));
+    // TEST EDIT (W22, ledger `2026-11-07-w22-build-around-copy`; sanctioned): Leon deleted the `autoBody` line.
+    assert.ok(!read("client/src/components/plancard/BuildAroundDialog.tsx").includes("ranked by"));
     assert.ok(read("client/src/pages/cart.tsx").includes('<span className="text-muted-foreground">Service fee</span>'));
   });
 

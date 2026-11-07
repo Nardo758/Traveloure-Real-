@@ -147,7 +147,7 @@ describe("OPT-B Build-around: Place · Date · Event", () => {
     assert.equal(dayCandidateLabel({ dayNumber: 5, date: null }), "Day 5");
 
     const empty = render({ mode: "event", ranked: { ...RANKED, event: [] } });
-    assert.match(empty, /data-testid="build-around-empty-event"[^>]*>No events with a time on your plan yet\. Add one with a start time first\./);
+    assert.match(empty, /data-testid="build-around-empty-event"[^>]*>No events on your dates yet\./); // W22
   });
 
   it("B2 posts: event and day by bare id; place exactly as before", () => {
