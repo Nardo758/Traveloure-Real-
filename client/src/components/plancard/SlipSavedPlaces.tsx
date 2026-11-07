@@ -15,6 +15,9 @@ import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { ADDED_TO_PLAN_TITLE } from "@/lib/plan-vocabulary";
 import { AddChecksNotice, type AddedStop } from "@/components/plancard/AddChecksNotice";
+import { createdItemIsLocated, planItemRefFromSavedItem } from "@shared/plan-item-ref";
+import { GUEST_PLAN_COPY } from "@shared/guest-plan-copy";
+import { planSaveRefusalMessage } from "@/lib/plan-save-refusal";
 import {
   planHasItemNamed,
   savedPlacesForPlan,
@@ -47,28 +50,40 @@ export function SlipSavedPlaces({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          title: place.contentName,
-          description: "",
-          itemType: place.contentType,
-          dayNumber: 1,
-          status: "planned",
-          ...(place.city ? { locationName: place.city } : {}),
-          addChecks: true,
-        }),
+        // PLAN-2 C1: a saved place that names its row sends that row's PlanItemRef — the server's resolver sets the
+        // item's name, point and link. One that names no row of ours is free text: a title with no point and no
+        // link, and the success line says it is not on the map.
+        body: JSON.stringify(savedPlaceAddBody(place, destination)),
       });
-      if (!res.ok) throw new Error("add failed");
-      const out = await res.json().catch(() => null);
+      let res2 = res;
+      // A saved id the resolver finds no row for (`unknown_source` — e.g. a partner search result) has no identity of
+      // ours: it is added as free text, with no point and no link, and the success line says it is not on the map.
+      if (res.status === 400) {
+        const refusal = await res.clone().json().catch(() => null);
+        if (refusal?.code === "unknown_source") {
+          res2 = await fetch(`/api/trips/${tripId}/itinerary-items`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify(savedPlaceAddBody(place, destination, { freeText: true })),
+          });
+        }
+      }
+      if (!res2.ok) throw new Error(`${res2.status}: ${await res2.text().catch(() => "")}`);
+      const out = await res2.json().catch(() => null);
       return { place, out };
     },
     onSuccess: ({ place, out }) => {
       setAdded((prev) => new Set(prev).add(place.id));
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      // PLAN-2 C1: an add with no point says so — the add-checks notice names it "isn't on the map"; without that
+      // notice, A-18's approved line does.
       if (out?.id && out?.addChecks) setChecked({ itemId: out.id, checks: out.addChecks });
+      else if (out?.id && !createdItemIsLocated(out)) toast({ title: GUEST_PLAN_COPY.savedNotOnMap });
       else toast({ title: ADDED_TO_PLAN_TITLE, description: `"${place.contentName}" is on day 1 of this plan.` });
     },
-    onError: () => toast({ title: "Couldn't add it", variant: "destructive" }),
+    onError: (e: any) => toast({ title: planSaveRefusalMessage(e) ?? "Couldn't add it", variant: "destructive" }),
   });
 
   if (places.length === 0) return null;
@@ -133,4 +148,26 @@ export function SlipSavedPlaces({
       </ul>
     </section>
   );
+}
+
+/**
+ * PLAN-2 C1 (ledger `2026-11-06-plan2-c1-resolver-adds`): the add body for a saved place. With a ref, the body's title
+ * and type are ignored by the server (the row names the item); without one it is a typed item with no point.
+ */
+export function savedPlaceAddBody(
+  place: SavedItemRow,
+  destination: string | null | undefined,
+  opts: { freeText?: boolean } = {},
+): Record<string, unknown> {
+  const ref = opts.freeText ? null : planItemRefFromSavedItem(place, destination);
+  return {
+    title: place.contentName,
+    description: "",
+    itemType: place.contentType === "service" ? "activity" : place.contentType,
+    dayNumber: 1,
+    status: "planned",
+    ...(place.city ? { locationName: place.city } : {}),
+    ...(ref ? { ref } : {}),
+    addChecks: true,
+  };
 }

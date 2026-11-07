@@ -27,6 +27,8 @@ import { Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { createdItemIsLocated } from "@shared/plan-item-ref";
+import { GUEST_PLAN_COPY } from "@shared/guest-plan-copy";
 import { legRefetchDelayMs } from "@/lib/slip-legs";
 import { roundToFiveMinutes, type StopTimeRule } from "@shared/stop-time-edit";
 import { usePlanRowLook } from "@/components/plan/row-look";
@@ -185,7 +187,10 @@ export function SlipAddItemControl({
       invalidatePlan(tripId);
       setValues(EMPTY_SLIP_ITEM_FORM);
       setOpen(false);
+      // PLAN-2 C1: a hand-typed item names no row of ours — no point, no link — and says so: the add-checks notice
+      // names it "isn't on the map"; without that notice, A-18's approved line does.
       if (out?.id && out?.addChecks) setAdded({ itemId: out.id, checks: out.addChecks });
+      else if (out?.id && !createdItemIsLocated(out)) toast({ title: GUEST_PLAN_COPY.savedNotOnMap });
       else toast({ title: "Added to your plan" });
     },
     onError: (err: any) =>
