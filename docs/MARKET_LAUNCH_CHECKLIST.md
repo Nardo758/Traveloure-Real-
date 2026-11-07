@@ -142,7 +142,11 @@ These are judgment calls the automation deliberately does not make.
    and the live partner feeds (`/api/catalog/*`) — post a free-text item that keeps its own point, stamped with its
    `coord_source`. That stays as built (the expert WRITE rail). Before open mode, give those sources resolver kinds so
    the expert rail adds by its row like every traveler surface (ledger `2026-11-07-plan2-c1-candidates-ruling`); file
-   it with the suggestion-rails unification.
+   it with the suggestion-rails unification (item 11).
+11. **Unify the two expert-suggestion rails (`trip_suggestions` / `expert_suggestions`) — platform-wide, before open
+   mode.** One table, one verb pair, one success state, and a notification when a suggestion is filed. It needs a
+   migration, and it sits next to fee capture, so a person reads it before it ships. Source: DeepSeek report §3 F3 and
+   §6.2. Item 10 is filed with it.
 
 ## Explicitly NOT per-market
 
