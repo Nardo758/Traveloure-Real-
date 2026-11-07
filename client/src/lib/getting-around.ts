@@ -74,6 +74,13 @@ export function gettingAroundDays(days: readonly any[] | null | undefined, timeZ
         gaps.push({ key, title, kind: "pending", line: unlocated ? gettingAroundUnlocatedLine(stopName(unlocated)) : GETTING_AROUND_PENDING });
       }
     }
+    // QW-4 follow-up (Nov 7): the tray opens this sheet on two stops across the PLAN, so a day can hold one stop and
+    // no gap. A stop alone on its day with no point still says so — the same "isn't on the map" line — rather than
+    // leaving an empty day. A located stop alone on its day has no leg and draws nothing.
+    if (stops.length === 1 && !hasPoint(stops[0])) {
+      const only = stops[0];
+      gaps.push({ key: String(only.id), title: stopName(only), kind: "pending", line: gettingAroundUnlocatedLine(stopName(only)) });
+    }
     out.push({ dayNumber, gaps });
   }
   return out.sort((a, b) => a.dayNumber - b.dayNumber);

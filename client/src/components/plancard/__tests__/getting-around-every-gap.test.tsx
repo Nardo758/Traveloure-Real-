@@ -117,3 +117,20 @@ describe("Getting around lists every gap", () => {
     assert.equal(gettingAroundHeader({ routedLegs: true }), null);
   });
 });
+
+// QW-4 follow-up (Nov 7): the tray opens Getting around on two stops across the plan, so a day may hold one stop.
+import { describe as describeQW, it as itQW } from "node:test";
+import assertQW from "node:assert/strict";
+import { gettingAroundDays as gaDaysQW } from "@/lib/getting-around";
+describeQW("QW-4 follow-up — a lone unlocated stop is not an empty day", () => {
+  itQW("one unlocated stop per day: each day says the stop isn't on the map", () => {
+    const days = gaDaysQW([{ dayNum: 1, activities: [{ id: "a", name: "Nishiki Market" }] }, { dayNum: 2, activities: [{ id: "b", name: "Gion" }] }], null);
+    assertQW.deepEqual(days.map((d) => d.gaps.map((g) => g.line)), [["not worked out yet — Nishiki Market isn't on the map"], ["not worked out yet — Gion isn't on the map"]]);
+  });
+  itQW("two unlocated stops on one day keep the gap line; a located lone stop draws nothing", () => {
+    const same = gaDaysQW([{ dayNum: 1, activities: [{ id: "a", name: "Nishiki Market" }, { id: "b", name: "Gion" }] }], null);
+    assertQW.deepEqual(same[0].gaps.map((g) => g.line), ["not worked out yet — Nishiki Market isn't on the map"]);
+    const located = gaDaysQW([{ dayNum: 1, activities: [{ id: "a", name: "Nishiki Market", lat: 35.0, lng: 135.7 }] }], null);
+    assertQW.deepEqual(located[0].gaps, []);
+  });
+});
