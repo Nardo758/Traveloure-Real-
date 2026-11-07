@@ -1,3 +1,15 @@
+> [!IMPORTANT]
+> **A seeder or script that inserts a `trips` row outside the mint must also write the owner's
+> `trip_collaborators` row** (`role = 'owner'`, `user_id = trips.user_id`) in the same run
+> (CLAUDE.md Locked Decision 42 — D17 records that the plancard read still resolves the owner only
+> through `trip_collaborators`). Without it the owner is refused their own plan ("Access denied" on
+> `GET /api/trips/:id/plancard`), and every surface that reads the plancard — the slip, the Trip
+> Card, the Versions board — shows "We couldn't find that plan". The mint (`storage.createTrip`)
+> writes the row; a raw `INSERT INTO trips` or `db.insert(trips)` does not. `seedTripOwnership()`
+> (`server/seeds/trip-ownership.seed.ts`) backfills every trip with a `user_id` at boot, but a row
+> inserted after boot has no owner row until the next boot. Found on Nov 7, 2026, when a W13 proof
+> fixture inserted a trip by hand (#1937).
+
 > [!WARNING]
 > **`npm run seed:beta` DOES NOT RUN, and this document is kept as a historical record.**
 >
