@@ -63,6 +63,15 @@ const FOOTER_PAGE_FILES = [
 /** Component directories held to ZERO hex (rule 1b), relative to the repo root. */
 const ZERO_HEX_DIRS = ["client/src/components/landing"];
 
+/**
+ * Phase 1 (canvas palette): stylesheets are scanned too, and a colour belongs in a TOKEN BLOCK
+ * (`--name: #hex`), which is the only place it may appear. The canvas palette file is the single
+ * exception, named exactly — never a folder glob, so the next file that happens to sit in the folder is
+ * not licensed by it.
+ */
+const STYLES_DIR = path.join(ROOT, "client/src/styles");
+const STYLES_HEX_ALLOW = new Set(["slip-tokens.canvas.css"]);
+
 const HEX = /#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3})(?![0-9a-zA-Z_-])/g;
 
 /** Removes // and /* *\/ comments, leaving string and template contents intact. */
@@ -152,6 +161,44 @@ function evaluateZero(sources) {
   return failures;
 }
 
+function listStyleFiles(dir = STYLES_DIR) {
+  const out = [];
+  if (!fs.existsSync(dir)) return out;
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) { out.push(...listStyleFiles(p)); continue; }
+    if (/\.css$/.test(e.name)) out.push(p);
+  }
+  return out;
+}
+
+/** Every hex that is NOT inside a custom-property declaration — the only place a colour may live. */
+function hexOutsideTokens(src) {
+  const code = stripComments(src);
+  const hits = [];
+  code.split("\n").forEach((line, idx) => {
+    // A token declaration is where a palette colour belongs; drop it before counting. One-line
+    // declarations only — a value split across lines is outside this rule (stated in the header).
+    const withoutTokens = line.replace(/--[a-z0-9-]+\s*:[^;]*/gi, "");
+    for (const m of withoutTokens.matchAll(HEX)) hits.push({ line: idx + 1, hex: m[0] });
+  });
+  return hits;
+}
+
+/** Pure: stylesheets state colour only through tokens; the allow-listed file is exempt entirely. */
+function evaluateStyles(sources, allow = STYLES_HEX_ALLOW) {
+  const failures = [];
+  for (const [rel, src] of Object.entries(sources)) {
+    if (allow.has(path.basename(rel))) continue;
+    const hits = hexOutsideTokens(src);
+    if (hits.length) {
+      const where = hits.slice(0, 5).map((h) => `${rel}:${h.line} ${h.hex}`).join(", ");
+      failures.push(`${rel} states a colour outside a token block — ${hits.length} hex literal(s): ${where}`);
+    }
+  }
+  return failures;
+}
+
 function selfTest() {
   const cases = [
     ["a footer page with a hex fails", () => evaluate({ "about.tsx": 'const x = "bg-[#FF385C]";' }, {}).failures.length === 1],
@@ -167,6 +214,10 @@ function selfTest() {
     ["a footer page listed in the baseline fails", () => evaluate({}, { "about.tsx": 1 }).failures.length === 1],
     ["a landing component with a hex fallback fails", () => evaluateZero({ "client/src/components/landing/x.tsx": 'a("var(--earn-ink, #1F2733)");' }).length === 1],
     ["a landing component on tokens passes", () => evaluateZero({ "client/src/components/landing/x.tsx": 'a("var(--earn-ink)");' }).length === 0],
+    ["a token block may hold a palette hex", () => evaluateStyles({ "client/src/styles/slip-tokens.css": ".slip-surface { --slip-ink: #0D2137; }" }).length === 0],
+    ["a raw colour outside a token block fails", () => evaluateStyles({ "client/src/styles/bad.css": ".x { color: #fff; }" }).length === 1],
+    ["the canvas palette file is the named exception", () => evaluateStyles({ "client/src/styles/slip-tokens.canvas.css": ".x { color: #5B4B8A; }" }).length === 0],
+    ["the exception is the file, not the folder", () => evaluateStyles({ "client/src/styles/other.css": ".x { color: #5B4B8A; }" }).length === 1],
   ];
   let ok = true;
   for (const [name, fn] of cases) {
@@ -195,6 +246,8 @@ function main() {
   const { failures, shrunk } = evaluate(sources, baseline);
   const zeroFiles = ZERO_HEX_DIRS.flatMap((d) => listPageFiles(path.join(ROOT, d)));
   failures.push(...evaluateZero(Object.fromEntries(zeroFiles.map((f) => [path.relative(ROOT, f).split(path.sep).join("/"), fs.readFileSync(f, "utf8")]))));
+  const styleFiles = listStyleFiles();
+  failures.push(...evaluateStyles(Object.fromEntries(styleFiles.map((f) => [path.relative(ROOT, f).split(path.sep).join("/"), fs.readFileSync(f, "utf8")]))));
   for (const s of shrunk) console.log(`note: ${s}`);
   if (failures.length) {
     for (const f of failures) console.error(`FAIL: ${f}`);
@@ -202,8 +255,9 @@ function main() {
     process.exit(1);
   }
   const debt = Object.values(baseline).reduce((a, b) => a + b, 0);
-  console.log(`check-page-hex: OK — ${FOOTER_PAGE_FILES.length} footer pages and ${ZERO_HEX_DIRS.join(", ")} hold no hex; ${Object.keys(baseline).length} other page files carry ${debt} baselined literal(s), none added.`);
+  console.log(`check-page-hex: OK — ${FOOTER_PAGE_FILES.length} footer pages and ${ZERO_HEX_DIRS.join(", ")} hold no hex; ${styleFiles.length} stylesheet(s) state colour only through tokens (${[...STYLES_HEX_ALLOW].join(", ")} named explicitly); ${Object.keys(baseline).length} other page files carry ${debt} baselined literal(s), none added.`);
 }
 
-module.exports = { hexHits, stripComments, evaluate, evaluateZero, FOOTER_PAGE_FILES, ZERO_HEX_DIRS };
+module.exports = { hexHits, hexOutsideTokens, stripComments, evaluate, evaluateZero, evaluateStyles, FOOTER_PAGE_FILES, ZERO_HEX_DIRS, STYLES_HEX_ALLOW };
 if (require.main === module) main();
+// UI-0: verified locally on this machine (lint OK, --self-test all pass) before this push.
