@@ -21,6 +21,7 @@ import { GettingThereSheet } from "./GettingThereSheet";
 import { GettingAroundSheet } from "./GettingAroundSheet";
 import { TOOL_LABEL, manifestFor, toolIsLive, type ToolFlags, type ToolKey } from "@shared/group-manifest";
 import type { PlanEvent } from "@/lib/slip-events";
+import { trayPress, type TrayFacts } from "@/lib/tray-stage";
 
 export interface ToolsTrayProps {
   tripId: string;
@@ -50,6 +51,14 @@ export interface ToolsTrayProps {
   /** The header's own zone line (`slipZoneLine`), shown again in the Travel party sheet (ruling 3,
    *  ledger `2026-10-08-slip-main-rail`). Null ⇒ the plan states no zone and nothing is printed (LD 30). */
   zoneLine?: string | null;
+  /**
+   * QW-4: the plan's own stage facts. When given, a tool whose question cannot be answered yet is either
+   * hidden (a fact the slip cannot supply) or routes its press to the dates/party chip. Omitted => every
+   * chip behaves as before (the older callers and tests).
+   */
+  facts?: TrayFacts;
+  onNeedDates?: () => void;
+  onNeedParty?: () => void;
 }
 
 /** The tool → existing component registry. `null` ⇒ no existing component (`coming_soon` in the manifest). */
@@ -112,10 +121,12 @@ export function toolContent(key: ToolKey, p: ToolsTrayProps): ReactNode | null {
 const HIDDEN_OCCASION_ABSENT: ReadonlySet<ToolKey> = new Set<ToolKey>(["guests", "guest_invites", "travel_party", "whos_coming"]);
 
 /** The chips this plan draws: the manifest's tools, minus a hidden occasion's absent ones, LIVE only. */
-export function trayTools(p: Pick<ToolsTrayProps, "group" | "occasionSlug" | "isHidden" | "flags" | "manifestTools">): ToolKey[] {
+export function trayTools(p: Pick<ToolsTrayProps, "group" | "occasionSlug" | "isHidden" | "flags" | "manifestTools" | "facts">): ToolKey[] {
   return (p.manifestTools ?? manifestFor(p.group, p.occasionSlug).tools)
     .filter((k) => !(p.isHidden && HIDDEN_OCCASION_ABSENT.has(k)))
-    .filter((k) => toolIsLive(k, p.flags));
+    .filter((k) => toolIsLive(k, p.flags))
+    // QW-4: a hidden gate is NOT drawn. A gate that is one chip away stays drawn (its press routes there).
+    .filter((k) => !p.facts || trayPress(k, p.facts) !== "hidden");
 }
 
 export function ToolsTray(props: ToolsTrayProps) {
@@ -154,7 +165,13 @@ export function ToolsTray(props: ToolsTrayProps) {
           <button
             key={key}
             type="button"
-            onClick={() => setOpen(key)}
+            onClick={() => {
+              // QW-4: an unmet gate whose fact is a chip on the plan opens that chip, not the sheet.
+              const press = props.facts ? trayPress(key, props.facts) : "sheet";
+              if (press === "dates" && props.onNeedDates) return props.onNeedDates();
+              if (press === "party" && props.onNeedParty) return props.onNeedParty();
+              setOpen(key);
+            }}
             className={
               done
                 ? "inline-flex h-[38px] flex-shrink-0 items-center whitespace-nowrap rounded-[var(--slip-radius-chip)] bg-[color:var(--slip-navy)] px-3.5 text-[13px] font-semibold text-white hover:brightness-110"

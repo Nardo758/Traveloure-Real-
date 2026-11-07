@@ -1702,6 +1702,9 @@ export function useSlipViewModel({
   // ZERO located items the Map view is not offered at all (disabled control with the true
   // reason — the same title-reason pattern the Optimize button uses).
   const [slipView, setSlipView] = useState<"list" | "map">(initialView === "map" ? "map" : "list");
+  // QW-4: the tray's teaching press ("Set your dates" / "Who's coming?") opens the SAME inline panel
+  // the header chip opens, one tap away.
+  const [trayChip, setTrayChip] = useState<"dates" | "who" | null>(null);
   // PLAN-1 Phase 2 (ruling 4): the traveler's toggle is remembered server-side (`savePlanView`); a programmatic switch
   // (Find a host, the empty board's Browse) is not a choice and is not saved.
   const chooseView = (v: "list" | "map") => {
@@ -2132,6 +2135,8 @@ export function useSlipViewModel({
     slipView,
     setSlipView,
     chooseView,
+    trayChip,
+    setTrayChip,
     mapDay,
     setMapDay,
     hasBookableRows,
@@ -2240,6 +2245,8 @@ export function SlipView({
     slipView,
     setSlipView,
     chooseView,
+    trayChip,
+    setTrayChip,
     mapDay,
     setMapDay,
     hasBookableRows,
@@ -2457,6 +2464,31 @@ export function SlipView({
           {/* ── SURFACE STEP 2 · THE TOOLS TRAY (ledger `2026-10-03-surface-step2-tools-tray`) ─────────
               The group manifest's tools for THIS plan, each opening the EXISTING component in a sheet;
               the logistics pieces the rail used to mount live here now. Owner only, as they were. */}
+          {/* QW-4: the tray's press for a missing fact opens the panel, never a broken sheet. */}
+          {trayChip === "dates" && data.trip ? (
+            <InlineDatesPanel
+              tripId={data.trip.id}
+              startDate={data.trip.startDate}
+              endDate={data.trip.endDate}
+              {...(guest ? { submit: (d: { startDate: string; endDate: string }) => guest.submitDates(d) } : {})}
+              onSaved={() => setTrayChip(null)}
+              onCancel={() => setTrayChip(null)}
+            />
+          ) : null}
+          {trayChip === "who" && data.trip ? (
+            <InlineWhoPanel
+              tripId={data.trip.id}
+              current={{
+                adults: (data.trip as any).adults ?? null,
+                kids: (data.trip as any).kids ?? null,
+                petKind: (data.trip as any).petKind ?? null,
+                petCount: (data.trip as any).petCount ?? null,
+              }}
+              {...(guest ? { submit: (p: { adults?: number | null; kids?: number | null }) => guest.submitParty({ adults: p.adults ?? null, kids: p.kids ?? null }) } : {})}
+              onSaved={() => setTrayChip(null)}
+              onCancel={() => setTrayChip(null)}
+            />
+          ) : null}
           {isOwner && data.trip && slipView === "list" ? (
             <ToolsTray
               tripId={tripId}
@@ -2481,6 +2513,13 @@ export function SlipView({
               flags={healthFlags}
               doneTools={doneTools}
               zoneLine={zoneLine}
+              facts={{
+                datesConfirmed: (data.trip as any)?.datesConfirmed === true,
+                travelers: (data.trip as any)?.travelers ?? null,
+                stops: allActivities.length,
+              }}
+              onNeedDates={() => setTrayChip("dates")}
+              onNeedParty={askParty ? () => setTrayChip("who") : undefined}
             />
           ) : null}
           {/* Smoke 9 S9-4: the optimizer LEADS the page (§8) — directly under the tools tray at every
