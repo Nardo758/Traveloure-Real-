@@ -182,8 +182,9 @@ export const GROUP_MANIFEST: Readonly<Record<ManifestGroup, GroupManifestRow>> =
     eyebrow: "Your plan · Event",
     anchorQuestion: "Where's the venue?",
     timeUnit: "run of show",
-    // QW-1: no anchor tool in this row yet (QW-2 adds the venue); no-supply first, contracts last.
-    tools: ["run_of_show", "guest_invites", "arrivals_split_groups", "vendor_contracts"],
+    // QW-1/QW-2: the venue is this row's anchor (the tool already existed — the row never listed it),
+    // then the no-supply tools, then contracts.
+    tools: ["the_venue", "run_of_show", "guest_invites", "arrivals_split_groups", "vendor_contracts"],
     anchorPanelThreshold: { kind: "always" },
   },
   group_travel: {
