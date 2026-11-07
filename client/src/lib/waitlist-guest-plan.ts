@@ -89,6 +89,8 @@ export interface GuestSaveResult {
   id: string;
   located: boolean;
   existing: boolean;
+  /** The stored row the save answered with — its `dayNumber` is the day it landed on. */
+  item?: { dayNumber?: number | null } | null;
 }
 
 /** `apiRequest` throws "<status>: <body>"; the status is all a caller needs. */
@@ -210,8 +212,14 @@ export function guestChosenDay(chosenDate: string, planStart: string, planEnd: s
 }
 
 /** A-18: the toast for a confirmed save — the not-on-the-map hint when the place has no point. */
-export function guestSavedMessage(result: Pick<GuestSaveResult, "located">): string {
-  return result.located ? WAITLIST_COPY.savedToPlan : GUEST_PLAN_COPY.savedNotOnMap;
+export function guestSavedMessage(result: Pick<GuestSaveResult, "located"> & Pick<GuestSaveResult, "item">): string {
+  // QW-3 (Leon, Nov 7): a save lands on Day 1 unless a day was chosen — say which day in the toast.
+  const raw = result.item?.dayNumber;
+  const day = typeof raw === "number" && Number.isInteger(raw) && raw > 0 ? raw : null;
+  if (day === null) return result.located ? WAITLIST_COPY.savedToPlan : GUEST_PLAN_COPY.savedNotOnMap;
+  // Leon (Nov 7): ONE shape for one fact — every rail says "Saved to Day {n}."; the unlocated save keeps
+  // the map fact as a second sentence.
+  return result.located ? `Saved to Day ${day}.` : `Saved to Day ${day}. We don't have this spot on the map yet.`;
 }
 
 /**

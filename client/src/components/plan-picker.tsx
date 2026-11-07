@@ -235,12 +235,16 @@ export function PlanPickerDialog({
 }
 
 /** Land one item on a plan through the ordinary item rail, and refresh that plan's two reads. */
-export async function addItemToPlan(tripId: string, body: Record<string, unknown>): Promise<void> {
-  await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, body);
+export async function addItemToPlan(tripId: string, body: Record<string, unknown>): Promise<number | null> {
+  const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, body);
+  // QW-3: the item's own day, for the toast ("It's on Day 2."). Read, never assumed.
+  const saved = await res.json().catch(() => null);
   queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
   queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
   // R4b-3: "Saved to plan" reads the plan's items on the server.
   void refreshSavedRefs(queryClient);
+  const raw = (saved as { dayNumber?: unknown } | null)?.dayNumber;
+  return typeof raw === "number" && Number.isInteger(raw) && raw > 0 ? raw : null;
 }
 
 /**
@@ -262,7 +266,13 @@ export function useStartPlanThenAdd(): (body: Record<string, unknown>) => void {
         if (plan.tripId) {
           const tripId = plan.tripId;
           addItemToPlan(tripId, body).then(
-            () => toast({ title: ADDED_TO_PLAN_TITLE, description: "It's on your new plan." }),
+            (day) =>
+              toast({
+                title: ADDED_TO_PLAN_TITLE,
+                // QW-3: name the day it landed on; with no day in the answer, keep the existing sentence.
+                // QW-3 (Leon): the signed-in rail says the same sentence as the guest rail.
+                description: day === null ? "It's on your new plan." : `Saved to Day ${day}.`,
+              }),
             (err: unknown) => {
               const refusal = planSaveRefusalMessage(err);
               toast(
