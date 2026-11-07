@@ -26,7 +26,7 @@ import { q, seedReadyMadeHero, seedReadyMadeProposedLegs } from './lib/db';
 const EXPERT = { email: 'ci-expert@traveloure.test', password: 'CITestExpert!99' };
 const TIP = 'Walk the Shirakawa canal, not the main road';
 
-const rowSel = '[data-testid="workstation-days"] [data-item-mode]';
+const rowSel = '[data-testid="client-format-view"] [data-testid="workstation-days"] [data-item-mode]';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -75,23 +75,22 @@ test('W1: an expert builds a 3-day Kyoto trip on the Workstation and submits it'
   // `isVisible()` does not wait, and one missed snapshot skips the click entirely — so the count
   // runs against a view that never mounted. Both call sites (the map adds, and the leg rows) go
   // through this helper.
+  //
+  // SETTLE FIRST (ledger `2026-11-07-w1-day-list-settle`): under CPU load the canvas paints a bare
+  // `workstation-days` for a few ms BEFORE the Kyoto format resolves, then swaps it for the format view
+  // (Structure, with the toggle). A trace of a failing run showed exactly that: the old loop saw the
+  // transient list at +22ms, stopped, and the list was gone 30ms later and never came back. So the
+  // helper waits for the settled layout (`client-format-view`) and only counts a day list INSIDE it;
+  // the toggle click is retried until that list is on screen.
   const showDayList = async () => {
-    const toggle = page.getByTestId('toggle-format-day-list');
-    const days = page.getByTestId('workstation-days');
-    await expect(days.or(toggle).first()).toBeVisible({ timeout: 20_000 });
-
-    // Re-check after every click. One click is not a mount: if it is lost, formatView stays on
-    // Structure and the next pass clicks again instead of asserting against the missing list.
-    for (let attempt = 0; attempt < 3; attempt++) {
-      if (await days.isVisible().catch(() => false)) break;
-      const toggleReady = await toggle.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true).catch(() => false);
-      if (await days.isVisible().catch(() => false)) break;
-      if (!toggleReady) continue;
-      await toggle.click().catch(() => {});
-      const mounted = await days.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true).catch(() => false);
-      if (mounted) break;
-    }
-    await expect(days).toBeVisible({ timeout: 20_000 });
+    const formatView = page.getByTestId('client-format-view');
+    const toggle = formatView.getByTestId('toggle-format-day-list');
+    const days = formatView.getByTestId('workstation-days');
+    await expect(formatView, 'the Kyoto build settles on its format view').toBeVisible({ timeout: 20_000 });
+    await expect(async () => {
+      if (!(await days.isVisible())) await toggle.click({ timeout: 2_000 });
+      await expect(days).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 20_000 });
 
     // The shell can be visible with zero rows while the plancard refetch (triggered after the
     // item-list invalidation, not by this toggle) is still in flight. The painted stop count has
