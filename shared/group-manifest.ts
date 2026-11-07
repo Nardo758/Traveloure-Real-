@@ -156,7 +156,8 @@ export const GROUP_MANIFEST: Readonly<Record<ManifestGroup, GroupManifestRow>> =
     eyebrow: "Your plan · Trip",
     anchorQuestion: "Where are you staying?",
     timeUnit: "days",
-    tools: ["getting_there", "where_to_stay", "travel_party", "getting_around", "pace"],
+    // QW-1: the anchor first, then tools that need no local supplier, then the ones that do.
+    tools: ["where_to_stay", "travel_party", "getting_around", "pace", "getting_there"],
     anchorPanelThreshold: { kind: "min_days", days: 2 },
   },
   moment: {
@@ -172,7 +173,8 @@ export const GROUP_MANIFEST: Readonly<Record<ManifestGroup, GroupManifestRow>> =
     eyebrow: "Your plan · Celebration",
     anchorQuestion: "Where's it happening?",
     timeUnit: "one day, hours",
-    tools: ["the_venue", "guests", "vendors", "budget"],
+    // QW-1: venue (anchor) -> guests, budget (no supply) -> vendors.
+    tools: ["the_venue", "guests", "budget", "vendors"],
     anchorPanelThreshold: { kind: "always" },
   },
   hosted_event: {
@@ -180,7 +182,8 @@ export const GROUP_MANIFEST: Readonly<Record<ManifestGroup, GroupManifestRow>> =
     eyebrow: "Your plan · Event",
     anchorQuestion: "Where's the venue?",
     timeUnit: "run of show",
-    tools: ["run_of_show", "guest_invites", "vendor_contracts", "arrivals_split_groups"],
+    // QW-1: no anchor tool in this row yet (QW-2 adds the venue); no-supply first, contracts last.
+    tools: ["run_of_show", "guest_invites", "arrivals_split_groups", "vendor_contracts"],
     anchorPanelThreshold: { kind: "always" },
   },
   group_travel: {
@@ -188,7 +191,8 @@ export const GROUP_MANIFEST: Readonly<Record<ManifestGroup, GroupManifestRow>> =
     eyebrow: "Your plan · Group",
     anchorQuestion: "Where is everyone staying?",
     timeUnit: "days",
-    tools: ["getting_there", "shared_lodging", "whos_coming", "split_activities", "who_pays_what"],
+    // QW-1: shared lodging (anchor) -> who's coming, split activities, who pays what -> getting there.
+    tools: ["shared_lodging", "whos_coming", "split_activities", "who_pays_what", "getting_there"],
     anchorPanelThreshold: { kind: "min_days", days: 2 },
   },
 };
