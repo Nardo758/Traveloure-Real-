@@ -18,10 +18,64 @@ import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
 import { users, passwordResetTokens } from "@shared/models/auth";
 import { dispatchModerationEvent } from "../automations/moderation/runtime";
+import { accessAuditLogs } from "@shared/schema";
+import { isTestAccount } from "./test-account";
+import { verifyLoginCredential } from "./login-credentials.service";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export const RESET_TOKEN_TTL_MIN = 60;
+
+/** No secrets leave this result. Recipient fields are used only by the existing notice producer. */
+export type AdminQaResetResult =
+  | { ok: false }
+  | { ok: true; auditId: string; email: string; firstName: string | null };
+
+/**
+ * QA-only admin recovery. Lock both accounts in ID order so concurrent resets cannot deadlock.
+ * Re-authentication and target eligibility are checked under those locks, not trusted from the UI.
+ * This does not create an email identity, verify an address, restore an account or grant a role.
+ */
+export async function resetQaPasswordAsAdmin(input: {
+  adminId: string;
+  targetId: string;
+  adminPassword: string;
+  hashedPassword: string;
+}): Promise<AdminQaResetResult> {
+  return db.transaction(async (tx) => {
+    const accounts = new Map<string, typeof users.$inferSelect>();
+    for (const id of Array.from(new Set([input.adminId, input.targetId])).sort()) {
+      const [account] = await tx.select().from(users).where(eq(users.id, id)).for("update");
+      if (account) accounts.set(id, account);
+    }
+    const admin = accounts.get(input.adminId);
+    const target = accounts.get(input.targetId);
+    const credentialOk = await verifyLoginCredential(input.adminPassword, admin?.password ?? null);
+    if (!credentialOk || !admin || admin.role !== "admin" || admin.isDeleted || admin.isSuspended
+      || !target || target.role === "admin" || target.isDeleted || target.isSuspended
+      || !target.password || !target.email || !isTestAccount(target)) {
+      return { ok: false };
+    }
+    const auditId = crypto.randomUUID();
+    await tx.update(users).set({ password: input.hashedPassword, updatedAt: new Date() })
+      .where(eq(users.id, target.id));
+    await tx.update(passwordResetTokens).set({ usedAt: new Date() })
+      .where(and(eq(passwordResetTokens.userId, target.id), isNull(passwordResetTokens.usedAt)));
+    await tx.execute(sql`
+      DELETE FROM sessions
+      WHERE sess->'passport'->'user'->'claims'->>'sub' = ${target.id}
+         OR sess->'passport'->'user'->>'id' = ${target.id}
+    `);
+    // An audit failure is fatal: never commit an unrecorded credential replacement.
+    await tx.insert(accessAuditLogs).values({
+      id: auditId, actorId: admin.id, actorRole: "admin",
+      action: "reset_qa_password", resourceType: "user",
+      resourceId: target.id, targetUserId: target.id,
+      metadata: { decision: "qa_password_reset", sessionsRevoked: true, resetLinksRevoked: true },
+    });
+    return { ok: true, auditId, email: target.email, firstName: target.firstName };
+  });
+}
 
 /** sha256 of a raw emailed token; only the hash is ever stored. Shared with email verification. */
 export function hashAuthToken(raw: string): string {

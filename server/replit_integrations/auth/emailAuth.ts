@@ -50,7 +50,7 @@ export { issueEmailVerification, isEmailUniqueViolation };
 
 // Simple password hashing using Node's built-in crypto
 // For production, consider using bcrypt or argon2
-async function hashPassword(password: string): Promise<string> {
+export async function hashPassword(password: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const salt = crypto.randomBytes(16).toString("hex");
     crypto.scrypt(password, salt, 64, (err, derivedKey) => {

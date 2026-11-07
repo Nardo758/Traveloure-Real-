@@ -408,8 +408,17 @@ test("current mounted graph parity includes auth helpers and shared api paths", 
   // 751 / 743 (GATE-1B, ledger `2026-11-04-gate1b-guest-plan`): POST /api/guest-plans, PATCH /api/guest-plans/current,
   // POST /api/guest-plans/current/items, POST /api/guest-plans/claim and POST /internal/jobs/guest-plan-retention.
   // 752 / 744 (Lane 7, ledger `2026-11-05-lane7-guest-slip`): DELETE /api/admin/guest-plans/:tripId.
-  assert.equal(result.mutations.length, 752);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 744);
+  // QA-only admin password reset: one additional authenticated admin mutation.
+  assert.equal(result.mutations.length, 753);
+  const qaReset = result.mutations.filter((mutation) =>
+    mutation.method === "POST" && mutation.effectivePath === "/api/admin/users/:id/qa-password-reset");
+  assert.equal(qaReset.length, 1);
+  assert.equal(qaReset[0].expectedAuth, "required");
+  assert.deepEqual(qaReset[0].expectedRoles, ["admin"]);
+  assert.equal(qaReset[0].expectedBoundary, "admin-role");
+  const adminSource = fs.readFileSync(path.resolve("server/routes/admin.routes.ts"), "utf8");
+  assert.match(adminSource, /router\.post\("\/api\/admin\/users\/:id\/qa-password-reset", isAuthenticated, requireAdminLocal, strictRateLimiter,/);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 745);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -430,7 +439,7 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // 738 (CMS-1, ledger `2026-11-04-cms1-launch-screens`): PATCH /api/admin/partner-items/:table/:id.
   // 743 (GATE-1B, ledger `2026-11-04-gate1b-guest-plan`): the four /api/guest-plans writes and the retention job.
   // 744 (Lane 7, ledger `2026-11-05-lane7-guest-slip`): DELETE /api/admin/guest-plans/:tripId.
-  assert.equal(endpointRows.length, 744);
+  assert.equal(endpointRows.length, 745);
   // 709 / 701 (ledger `2026-10-18-fd4-share-projection`): the shadowed quick-start twin is deleted; unique paths stay 701.
   // 710 / 702 (ledger `2026-10-19-fb1-free-retime`): + POST /api/trips/:tripId/retime-fixes/:itemId/apply.
   // 712 / 704 (ledger `2026-10-18-cs1-source-signoff`): the sign-off and photo-block POSTs.
@@ -464,8 +473,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // 751 / 743 (GATE-1B, ledger `2026-11-04-gate1b-guest-plan`): POST /api/guest-plans, PATCH /api/guest-plans/current,
   // POST /api/guest-plans/current/items, POST /api/guest-plans/claim and POST /internal/jobs/guest-plan-retention.
   // 752 / 744 (Lane 7, ledger `2026-11-05-lane7-guest-slip`): DELETE /api/admin/guest-plans/:tripId.
-  assert.equal(manifest.rawRegistrationCount, 752);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 744);
+  assert.equal(manifest.rawRegistrationCount, 753);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 745);
   // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R274): user-data,
   // session-self; the owner/delegate check runs in the service before any write.
   // + POST /api/admin/content-sources/:id/public-ok (ledger `2026-10-03-official-facts-public-ok`, R278):
@@ -532,7 +541,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // admin 201 → 202 (CMS-1, ledger `2026-11-04-cms1-launch-screens`): PATCH /api/admin/partner-items/:table/:id.
   // other 253 → 258 (GATE-1B): the four /api/guest-plans writes and POST /internal/jobs/guest-plan-retention.
   // admin 202 → 203 (Lane 7, ledger `2026-11-05-lane7-guest-slip`): DELETE /api/admin/guest-plans/:tripId.
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 203, "user-data": 252, other: 258 });
+  // QA password recovery adds one admin endpoint; all other risk counts stay pinned.
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 204, "user-data": 252, other: 258 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
@@ -598,12 +608,18 @@ test("generated user-facing inventory contains one row per unique endpoint and s
     // POST /api/guest-plans/current/items — refused to a signed-in caller and keyed on the X-Guest-Session hash, which
     // the heuristic does not see — and POST /internal/jobs/guest-plan-retention, the internal-secret trigger.
     // admin-role 202 → 203 (Lane 7, ledger `2026-11-05-lane7-guest-slip`): DELETE /api/admin/guest-plans/:tripId.
-    "admin-role": 203, "session-self": 368, "resource-owner": 105,
+    "admin-role": 204, "session-self": 368, "resource-owner": 105,
     signature: 7, "public-or-system": 61, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
     `${mutation.method} ${mutation.effectivePath}`, mutation,
   ]));
+  const qaReset = byEndpoint.get("POST /api/admin/users/:id/qa-password-reset");
+  assert.ok(qaReset);
+  assert.equal(qaReset.risk, "admin");
+  assert.equal(qaReset.expectedAuth, "required");
+  assert.deepEqual(qaReset.expectedRoles, ["admin"]);
+  assert.equal(qaReset.expectedBoundary, "admin-role");
   assert.equal(byEndpoint.get("POST /api/bookings/process-cart").risk, "payments");
   assert.equal(byEndpoint.get("POST /api/bookings/process-cart").expectedBoundary, "session-self");
   assert.equal(byEndpoint.get("POST /api/coordination-states/:id/pay").expectedBoundary, "resource-owner");
