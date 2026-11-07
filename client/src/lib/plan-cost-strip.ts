@@ -26,6 +26,8 @@ export const PLAN_COST_STRIP_COPY = Object.freeze({
   travelers: (n: number) => (n === 1 ? "1 traveler" : `${n} travelers`),
   pricedWord: "priced",
   left: (amount: string) => `${amount} left`,
+  /** PLAN-3: the over-budget state, said in words (never colour alone). HELD for Leon. */
+  overBudget: "Over budget",
   coverageA: (n: number, m: number) => (m === 1 ? `${n} of 1 stop has a price` : `${n} of ${m} stops have a price`),
   unpriced: (k: number) => `${k} unpriced`,
   coverageB: (n: number, m: number) => (m === 1 ? `${n} of 1 stop priced` : `${n} of ${m} stops priced`),
@@ -97,6 +99,8 @@ export interface PlanCostStripText {
   label: string | null;
   amount: string | null;
   secondary: string | null;
+  /** The over-budget word: a state said in words, never colour alone (PLAN-3). */
+  overLabel: string | null;
   coverageLeft: string | null;
   coverageRight: string | null;
   footnote: string | null;
@@ -132,7 +136,7 @@ export function planCostStripView(args: {
   const budgetTotal = planBudgetTotal(args.planEvents)?.total ?? null;
   const { pricedTotal, pricedCount, stopCount, perPerson } = summary;
   const empty: PlanCostStripText = {
-    label: null, amount: null, secondary: null, coverageLeft: null, coverageRight: null, footnote: null, title: null, sub: null,
+    label: null, amount: null, secondary: null, overLabel: null, coverageLeft: null, coverageRight: null, footnote: null, title: null, sub: null,
   };
 
   if (budgetTotal !== null) {
@@ -152,6 +156,7 @@ export function planCostStripView(args: {
         label: C.budgetLabel(formatPlanBudget(budgetTotal), party),
         amount: formatPlanBudget(priced),
         secondary,
+        overLabel: over ? C.overBudget : null,
         coverageLeft: C.coverageB(pricedCount, stopCount),
       },
     };
