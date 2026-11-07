@@ -393,11 +393,11 @@ export function TripCardDays(props: TripCardDaysProps) {
 
   return (
     <PlanRowLookProvider look="board">
-    <div className="slip-surface space-y-3 px-3 pt-3 font-[family-name:var(--slip-font-body)] sm:px-5" {...slipTokensAttr(readSlipTokensMode())} data-testid="card-days">
+    <div className="slip-surface space-y-4 px-4 pt-4 font-[family-name:var(--slip-font-body)] sm:px-6" {...slipTokensAttr(readSlipTokensMode())} data-testid="card-days">
       {provenance || readyMadeSourceLine(props.readyMadeSource) ? (
         <div className="space-y-0.5 rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] px-4 py-3">
           {provenance ? (
-            <p className="text-[13px] font-semibold text-[color:var(--slip-ink)]" data-testid="card-provenance">
+            <p className="slip-display text-[15px] font-semibold leading-snug text-[color:var(--slip-ink)]" data-testid="card-provenance">
               {provenance}
             </p>
           ) : null}
@@ -411,7 +411,7 @@ export function TripCardDays(props: TripCardDaysProps) {
       ) : null}
 
       {conflict ? (
-        <div className="rounded-xl border border-[color:var(--slip-gold)] bg-[color:var(--slip-gold-wash)] p-3 text-sm text-[color:var(--slip-ink)]" data-testid="card-recheck-banner">
+        <div className="rounded-[var(--slip-radius-card)] border border-[color:var(--slip-gold)] bg-[color:var(--slip-gold-wash)] p-4 text-sm text-[color:var(--slip-ink)]" data-testid="card-recheck-banner">
           <p className="flex items-start gap-1.5">
             <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0 text-[color:var(--slip-gold-ink)]" />
             <span>{recheckBannerLine(conflict.findings, factCheckedLabel(conflict.checkedAt, timeZone))}</span>
@@ -442,7 +442,7 @@ export function TripCardDays(props: TripCardDaysProps) {
       ) : null}
 
       {recheck?.legs?.length ? (
-        <div className="rounded-xl border border-[color:var(--slip-gold)] bg-[color:var(--slip-gold-wash)] p-3 text-sm text-[color:var(--slip-ink)]" data-testid="card-recheck-legs">
+        <div className="rounded-[var(--slip-radius-card)] border border-[color:var(--slip-gold)] bg-[color:var(--slip-gold-wash)] p-4 text-sm text-[color:var(--slip-ink)]" data-testid="card-recheck-legs">
           {recheck.legs.map((l, i) => (
             <p key={i} className="flex items-start gap-1.5" data-testid={`card-recheck-leg-${i}`}>
               <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0 text-[color:var(--slip-gold-ink)]" />
@@ -482,12 +482,12 @@ export function TripCardDays(props: TripCardDaysProps) {
             <button
               key={d.dayNum}
               type="button"
-              className={`min-h-[44px] flex-shrink-0 rounded-xl border px-3 text-xs ${
+              className={`min-h-[44px] flex-shrink-0 rounded-[var(--slip-radius-chip)] border px-3.5 text-[13px] ${
                 on
-                  ? "border-[color:var(--slip-teal-ink)] bg-[color:var(--slip-teal-ink)] font-semibold text-white"
+                  ? "border-[color:var(--slip-navy)] bg-[color:var(--slip-navy)] font-semibold text-white"
                   : past
                     ? "border-[color:var(--slip-line)] bg-[color:var(--slip-card)] text-[color:var(--slip-muted)]"
-                    : "border-[color:var(--slip-line)] bg-[color:var(--slip-card)] text-[color:var(--slip-navy)]"
+                    : "border-[color:var(--slip-line-strong)] bg-[color:var(--slip-card)] text-[color:var(--slip-navy)]"
               }`}
               aria-pressed={on}
               onClick={() => setOpenDay(d.dayNum)}
