@@ -6,6 +6,8 @@
  *   G4  travelItemKind (addendum): an AI row naming a transport hub AND a direction
  *   G5  absorbedTravelItemId: the first arrival / the last departure absorbs the placeholder
  *   G6  PLAN-2 C2: the coming-soon build order — Budget → Getting home → the group package → Getting back late; all still coming soon
+ *   G7  QW-1 and C2 are different axes: each group's row order (anchor → no-supply → supply) and the coming-soon ship
+ *       order live on different keys, and both hold at once
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -120,4 +122,21 @@ test("G6: PLAN-2 C2 — the coming-soon build order, all still coming soon", () 
   const soon = (Object.keys(TOOL_STATE) as ToolKey[]).filter((k) => TOOL_STATE[k].kind === "coming_soon");
   assert.deepEqual([...soon].sort(), [...COMING_SOON_BUILD_ORDER].sort());
   assert.equal(new Set(COMING_SOON_BUILD_ORDER).size, COMING_SOON_BUILD_ORDER.length);
+});
+
+test("G7: QW-1's row order and C2's build order coexist on different keys", () => {
+  // Row order within an occasion (QW-1): GROUP_MANIFEST[group].tools.
+  const labels = (g: keyof typeof GROUP_MANIFEST) => GROUP_MANIFEST[g].tools.map((k) => TOOL_LABEL[k]);
+  assert.deepEqual(labels("trip"), ["Where to stay", "Travel party", "Getting around", "Pace", "Getting there"]);
+  assert.deepEqual(labels("moment"), ["The reservation", "Timing check", "Getting home"]);
+  assert.deepEqual(labels("celebration"), ["The venue", "Guests", "Budget", "Vendors"]);
+  assert.deepEqual(labels("hosted_event"), ["The venue", "Run of show", "Guest invites", "Arrivals & split groups", "Vendor contracts"]);
+  assert.deepEqual(labels("group_travel"), ["Shared lodging", "Who's coming", "Split activities", "Who pays what", "Getting there"]);
+  // Ship order of the coming-soon tools (C2): COMING_SOON_BUILD_ORDER — unchanged by QW-1.
+  assert.deepEqual(COMING_SOON_BUILD_ORDER.map((k) => TOOL_LABEL[k]), ["Budget", "Getting home", "Arrivals & split groups", "Split activities", "Who pays what", "Getting back late"]);
+  // Different keys: no row IS the build order, and the build order is not read off any row.
+  for (const row of Object.values(GROUP_MANIFEST)) assert.notEqual(row.tools, COMING_SOON_BUILD_ORDER);
+  // The two orders are allowed to disagree: a row places a coming-soon tool by need-for-supply, not by ship date.
+  const celebration = GROUP_MANIFEST.celebration.tools as readonly ToolKey[];
+  assert.ok(celebration.includes("budget") && COMING_SOON_BUILD_ORDER[0] === "budget");
 });
