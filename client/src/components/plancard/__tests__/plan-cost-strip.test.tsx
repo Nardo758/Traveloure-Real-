@@ -186,6 +186,11 @@ describe("plan cost strip", () => {
     assert.equal(over.remaining, null);
     const overHtml = render([traveler(1500)], 2, budget);
     assert.doesNotMatch(text(overHtml), /left/);
+    // PLAN-3: the state is stated in words; colour is not the only carrier.
+    assert.equal(over.text.overLabel, COPY.overBudget);
+    assert.match(overHtml, /data-testid="plan-cost-strip-over"/);
+    assert.ok(text(overHtml).includes(COPY.overBudget));
+    assert.equal(b.text.overLabel, null);
     assert.match(overHtml, /data-over="true"/);
     assert.match(overHtml, /var\(--coral-fill\)/);
     const exact = planCostStripView({ activities: [traveler(1200)], travelers: 2, planEvents: budget });

@@ -59,6 +59,16 @@ export function PlanCostStrip({ activities, travelers, planEvents, isOwner }: Pl
         <p id={LABEL_ID} data-testid="plan-cost-strip-label" className="text-xs font-semibold uppercase tracking-[0.08em] text-[color:var(--slip-muted)]">
           {t.label}
         </p>
+        {/* PLAN-3: over budget is a WORD, not a colour — the bar may also turn coral, but the state is
+            readable without it. */}
+        {t.overLabel ? (
+          <span
+            data-testid="plan-cost-strip-over"
+            className="inline-flex items-center rounded-[6px] bg-[color:var(--coral-fill)] px-1.5 py-0.5 text-[11px] font-semibold text-white"
+          >
+            {t.overLabel}
+          </span>
+        ) : null}
       </div>
       <div className="flex flex-wrap items-baseline gap-2.5">
         <span data-testid="plan-cost-strip-amount" className="slip-display text-[28px] font-semibold leading-none text-[color:var(--slip-ink)]">
