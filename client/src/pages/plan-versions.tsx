@@ -12,6 +12,8 @@
  */
 import { lazy, Suspense } from "react";
 import "@/styles/slip-tokens.css";
+import "@/styles/slip-tokens.canvas.css";
+import { readSlipTokensMode, slipTokensAttr } from "@/lib/slip-tokens-mode";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useParams } from "wouter";
 import { Loader2 } from "lucide-react";
@@ -93,7 +95,11 @@ export default function PlanVersionsPage() {
   const optimizeHref = `${slipHref}?optimize=1`;
   return (
     // The Optimized board (ledger `2026-10-08-slip-optimized-board`): the slip's tokens and ground.
-    <div className="slip-surface mx-auto max-w-6xl space-y-4 bg-[color:var(--slip-ground)] px-4 py-6" data-testid="plan-versions-page">
+    <div
+      className="slip-surface mx-auto max-w-6xl space-y-4 bg-[color:var(--slip-ground)] px-4 py-6"
+      {...slipTokensAttr(readSlipTokensMode())}
+      data-testid="plan-versions-page"
+    >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Link href={slipHref} className="text-sm font-semibold text-[color:var(--slip-navy)] underline-offset-2 hover:underline" data-testid="plan-versions-back">
           ← Back to your plan

@@ -26,6 +26,8 @@
  * minutes per day as a strip, and only for a checked day; "Stay here" is the coral primary (ruling 2).
  */
 import "@/styles/slip-tokens.css";
+import "@/styles/slip-tokens.canvas.css";
+import { readSlipTokensMode, slipTokensAttr } from "@/lib/slip-tokens-mode";
 import { useRef, useState } from "react";
 import { Link, useParams } from "wouter";
 import { useMutation } from "@tanstack/react-query";
@@ -260,6 +262,7 @@ export default function PlanComparePage() {
   return (
     <main
       className="slip-surface mx-auto flex w-full max-w-[680px] flex-col bg-[color:var(--slip-ground)] font-[family-name:var(--slip-font-body)]"
+      {...slipTokensAttr(readSlipTokensMode())}
       data-testid={`compare-view-${set.id}`}
       data-set-status={set.status}
     >

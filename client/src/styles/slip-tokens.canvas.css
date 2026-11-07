@@ -1,0 +1,56 @@
+/*
+ * CANVAS TOKENS — the Phase 1 seam for art direction (Leon's go, Nov 7, 2026).
+ *
+ * The same `--slip-*` NAMES as `slip-tokens.css`, scoped behind a ROOT ATTRIBUTE
+ * (`[data-slip-tokens="canvas"]`) instead of a second theme. With no attribute the slip renders
+ * exactly as it does today; setting it is the whole switch.
+ *
+ * Why the values are the same as the default file today: `slip-tokens.css` was written FROM the
+ * canvas (conformance Phase 0 §2a — Fraunces, #F6F4EF ground, #0D2137 ink, 18/12/999 radii), so the
+ * default already carries the board palette. This file exists so a value that differs in the 22-board
+ * artifact (OPEN-F, login-gated) lands HERE as one edit, never as a restyle of the default.
+ *
+ * Every token below must also exist in `slip-tokens.css` — pinned by
+ * `client/src/lib/__tests__/slip-tokens-canvas.test.ts`. A canvas-only name would be a token the
+ * default mode cannot fall back to.
+ */
+.slip-surface[data-slip-tokens="canvas"] {
+  /* Type — the board's display face and body face. */
+  --slip-font-display: "Fraunces", Georgia, serif;
+  --slip-font-body: "Inter", system-ui, sans-serif;
+
+  /* Ground, ink and structure. */
+  --slip-ground: #F6F4EF;
+  --slip-card: #FFFFFF;
+  --slip-ink: #0D2137;
+  --slip-navy: #1E3A5F;
+  --slip-muted: #5B6B7A;
+  --slip-faint: #8A97A3;
+  --slip-line: #E3E6E8;
+  --slip-line-strong: #C9D1D8;
+  --slip-wash: #E9EEF2;
+  --slip-on-navy-muted: #D7E0E8;
+  --slip-on-navy-line: #5B7A94;
+
+  /* Accents. */
+  --slip-teal: #2E8B8B;
+  --slip-teal-ink: #1F6F6F;
+  --slip-teal-wash: #E6F2F2;
+  --slip-gold: #E8B339;
+  --slip-gold-ink: #8A6A1E;
+  --slip-gold-wash: #FFF6DF;
+  --slip-green: #5DCAA5;
+  --slip-anchor-wash: #F3F8F8;
+  --slip-teal-halo: #CDE6E6;
+  --slip-note-wash: #FFF9EA;
+  --slip-dash: #B9C3CC;
+
+  /* Primary action: the coral fill, white on it (LD 45 (7) as amended). */
+  --slip-primary: var(--coral-fill);
+  --slip-primary-ink: #FFFFFF;
+
+  /* Radii. */
+  --slip-radius-card: 18px;
+  --slip-radius-button: 12px;
+  --slip-radius-chip: 999px;
+}
