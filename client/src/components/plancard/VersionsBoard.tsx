@@ -32,6 +32,7 @@ import { retimeLine } from "@shared/version-board";
 import { COVERAGE_REDUCED_LINE, NO_VERSION_PASSES_LEAD, fixLine, issueLine } from "@shared/version-check";
 import { feasibilityLine } from "@shared/plan-feasibility";
 import { DayFeasibilityLine } from "@/components/plan/DayBlock";
+import { VersionDayBody, dragProps } from "./VersionDayBody";
 import {
   BOARD_DRAG_MIME,
   adoptAllPicks,
@@ -288,14 +289,6 @@ export function VersionsBoard({
     if (out.action === "pick") setPicks(out.picks);
     else if (out.action === "retime") requestRetime(dayNumber, out.order, out.swapIn);
   };
-  const dragProps = (d: BoardDrag) => ({
-    draggable: true,
-    onDragStart: (e: React.DragEvent) => {
-      e.dataTransfer.setData(BOARD_DRAG_MIME, encodeDrag(d));
-      e.dataTransfer.effectAllowed = "move";
-      e.stopPropagation();
-    },
-  });
 
   const dateOf = new Map(sortedDays.map((d) => [d.dayNum, d.dateIso ?? null] as const));
   // FD-3 (ledger `2026-10-10-fd3-feasibility`): the same per-day line the slip's DayBlock draws, on Your plan.
@@ -554,33 +547,12 @@ export function VersionsBoard({
                           {inPlan ? "in Your plan" : c.identical ? "same as draft" : c.summary}
                         </span>
                       </p>
-                      {c.identical && !dayExpanded(c.variantId, dayNumber) ? (
-                        <div className="mt-0.5">
-                          <p className="text-[color:var(--slip-muted)]" data-testid={`versions-desk-same-${c.label}-${dayNumber}`}>Same as draft</p>
-                          <button
-                            type="button"
-                            className="mt-1 text-[11px] font-semibold text-[color:var(--slip-navy)] underline-offset-2 hover:underline"
-                            onClick={() => revealDay(c.variantId, dayNumber)}
-                            data-testid={`versions-desk-show-${c.label}-${dayNumber}`}
-                          >
-                            Show the day anyway
-                          </button>
-                        </div>
-                      ) : (
-                        <ol className="mt-1 space-y-0.5">
-                          {c.stops.map((st) => (
-                            <li
-                              key={st.id}
-                              {...dragProps({ kind: "swap", variantId: c.variantId, dayNumber, variantItemId: st.id })}
-                              className="rounded px-1 text-[color:var(--slip-ink)] hover:bg-[color:var(--slip-wash)]"
-                              data-testid={`versions-desk-stop-${st.id}`}
-                            >
-                              {st.startTime ? <span className="text-[color:var(--slip-muted)]">{st.startTime} </span> : null}
-                              {st.name}
-                            </li>
-                          ))}
-                        </ol>
-                      )}
+                      <VersionDayBody
+                        c={c}
+                        dayNumber={dayNumber}
+                        expanded={dayExpanded(c.variantId, dayNumber)}
+                        onReveal={() => revealDay(c.variantId, dayNumber)}
+                      />
                       {c.matchedByName ? <p className="mt-1 text-[10px] text-[color:var(--slip-muted)]">Matched by name</p> : null}
                     </div>
                   );

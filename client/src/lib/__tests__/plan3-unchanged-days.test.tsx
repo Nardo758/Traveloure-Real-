@@ -1,38 +1,69 @@
 /**
- * PLAN-3 item 1 (P2-D): unchanged days are collapsed in the by-day compare, with a per-day reveal and
- * one "Expand all". The copy is held for Leon; the behaviour is what this pins.
+ * PLAN-3 item 1 (P2-D): an unchanged day is collapsed in the by-day compare, and revealing it draws
+ * the day's stops.
  *
- *   U1 the collapsed day keeps its "Same as draft" note and offers the reveal
- *   U2 the reveal is per day and per version (keyed by variant + day), never a global toggle
- *   U3 "Expand all" is drawn only when some day actually matches the draft
+ * The bug this pins: `dayColumns` returned `stops: []` for an identical day, so the reveal drew an
+ * EMPTY day. The guard is therefore two-sided — the column must carry the stops, and the rendered
+ * body must show them once expanded.
+ *
+ *   U1 `dayColumns` keeps an identical day's stops
+ *   U2 collapsed: the note and the reveal control, no stops
+ *   U3 expanded (the reveal): the stops appear
  *
  * Run: npx tsx --test client/src/lib/__tests__/plan3-unchanged-days.test.tsx
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
+import React from "react";
+import { renderToString } from "react-dom/server";
+import { VersionDayBody } from "@/components/plancard/VersionDayBody";
+import { dayColumns, type DayColumn, type VersionsBoardView } from "@/lib/versions-board";
 
-const read = (p: string) => fs.readFileSync(p, "utf8");
+(globalThis as any).React = React;
+
+const view = {
+  plan: { stops: [{ id: "d1", dayNumber: 1, name: "Kinkaku-ji", startTime: "08:00" }] },
+  versions: [
+    {
+      variantId: "v1",
+      label: "A",
+      name: "Version A",
+      badge: null,
+      anchor: null,
+      stops: [
+        { id: "s1", dayNumber: 1, name: "Kinkaku-ji", startTime: "08:00" },
+        { id: "s2", dayNumber: 1, name: "Ryoan-ji", startTime: "11:30" },
+      ],
+      days: [{ dayNumber: 1, identical: true, matchedByName: false, moved: [], added: [], dropped: [] }],
+    },
+  ],
+} as unknown as VersionsBoardView;
+
+const column = dayColumns(view, 1)[0] as DayColumn;
+const html = (expanded: boolean) =>
+  renderToString(<VersionDayBody c={column} dayNumber={1} expanded={expanded} onReveal={() => {}} />);
 
 describe("PLAN-3 — unchanged days collapse", () => {
-  const board = read("client/src/components/plancard/VersionsBoard.tsx");
-
-  it("U1 a matching day can be revealed, desktop and phone", () => {
-    assert.match(board, /data-testid={`versions-desk-show-\$\{c\.label\}-\$\{dayNumber\}`}/);
-    assert.match(board, /data-testid={`versions-show-\$\{c\.label\}`}/);
-    assert.match(board, /Show the day anyway/);
-    assert.match(board, /c\.identical && !dayExpanded\(c\.variantId, dayNumber\)/);
-    assert.match(board, /c\.identical && !dayExpanded\(c\.variantId, activePhoneDay\)/);
+  it("U1 the identical day's column still carries its stops", () => {
+    assert.equal(column.identical, true);
+    assert.deepEqual(column.stops.map((s) => s.name), ["Kinkaku-ji", "Ryoan-ji"]);
   });
 
-  it("U2 the reveal is keyed by version and day", () => {
-    assert.match(board, /expandedDays\.has\(`\$\{variantId\}:\$\{dayNumber\}`\)/);
-    assert.match(board, /setExpandedDays\(\(prev\) => new Set\(prev\)\.add\(`\$\{variantId\}:\$\{dayNumber\}`\)\)/);
+  it("U2 collapsed: same as draft, a reveal control, and no stops", () => {
+    const out = html(false);
+    assert.match(out, /Same as draft/);
+    assert.match(out, /data-testid="versions-desk-show-A-1"/);
+    assert.match(out, /Show the day anyway/);
+    assert.doesNotMatch(out, /Kinkaku-ji|Ryoan-ji/);
+    assert.doesNotMatch(out, /versions-desk-stop-/);
   });
 
-  it("U3 Expand all exists and is drawn only when a day matches", () => {
-    assert.match(board, /data-testid="versions-expand-all"/);
-    assert.match(board, /Expand all/);
-    assert.match(board, /view\.versions\.some\(\(v\) => v\.days\.some\(\(d\) => d\.identical\)\)/);
+  it("U3 expanded: the day's stops render", () => {
+    const out = html(true);
+    assert.match(out, /Kinkaku-ji/);
+    assert.match(out, /Ryoan-ji/);
+    assert.match(out, /data-testid="versions-desk-stop-s1"/);
+    assert.match(out, /data-testid="versions-desk-stop-s2"/);
+    assert.doesNotMatch(out, /Same as draft/);
   });
 });
