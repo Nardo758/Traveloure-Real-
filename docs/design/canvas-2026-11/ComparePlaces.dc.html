@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Stage 2 — compare places to stay</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&amp;family=Public+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#5B4B8A}a:hover{color:#3F3366}
+</style>
+</helmet>
+<div style="width: 390px; height: 1100px; box-sizing: border-box; background: #FAFAF8; color: #1A1A18; font-family: 'Public Sans', system-ui, sans-serif; font-size: 14px; line-height: 1.45; display: flex; flex-direction: column; gap: 12px; padding: 14px 14px 24px">
+
+  <div style="display: flex; align-items: center; justify-content: space-between">
+    <a href="Drafted.dc.html" aria-label="Back" style="width: 44px; height: 44px; display: grid; place-items: center; text-decoration: none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1A1A18" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg></a>
+    <span style="font-size: 11px; letter-spacing: .13em; text-transform: uppercase; color: #5B4B8A; font-weight: 600">Where to stay</span>
+    <span style="width: 44px"></span>
+  </div>
+  <h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 24px; line-height: 1.1; letter-spacing: -.02em">Which one fits your days?</h1>
+  <p style="margin: 0; font-size: 12.5px; color: #7A7A72">Plan-fit is distance-based until you optimize. Hotels come only from live results or approved listings; no ratings.</p>
+
+  <span style="font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #7A7A72; font-weight: 600"><span style="border-bottom: 1px dashed #1E7A52">Closest to your stops</span> <span style="font-size: 10px; color: #1E7A52; text-transform: none; letter-spacing: 0">proposed · replaces "Best fit"</span></span>
+
+  <div style="padding: 14px; background: #fff; border: 1px solid #D8CFEE; border-radius: 14px; display: flex; flex-direction: column; gap: 10px">
+    <div style="display: flex; justify-content: space-between; align-items: baseline"><span style="font-family: 'Bricolage Grotesque', sans-serif; font-size: 18px; font-weight: 600">[Place name]</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7A7A72">[$ / night]</span></div>
+    <span style="font-size: 12.5px; color: #7A7A72">[Neighbourhood] · from [source]</span>
+    <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px">
+      <span style="height: 8px; border-radius: 4px; background: #1E7A52"></span><span style="height: 8px; border-radius: 4px; background: #1E7A52"></span><span style="height: 8px; border-radius: 4px; background: #1E7A52"></span><span style="height: 8px; border-radius: 4px; background: #1E7A52"></span><span style="height: 8px; border-radius: 4px; background: #E8E8E2"></span>
+    </div>
+    <span style="font-size: 13px; font-weight: 600; color: #1E7A52">Close to 4 of 5 days</span>
+    <span style="font-size: 12.5px; color: #8A5E12; border-bottom: 1px dashed #5B4B8A; align-self: flex-start">Day 5 is a longer trip from here.</span>
+    <div style="display: flex; gap: 8px"><button style="font: 600 13px 'Public Sans', sans-serif; padding: 9px 12px; border-radius: 8px; border: 0; background: #1A1A18; color: #FAFAF8">Stay here</button><button style="font: 600 13px 'Public Sans', sans-serif; padding: 9px 12px; border-radius: 8px; border: 1px solid #DAD9D1; background: #fff">Details</button></div>
+  </div>
+
+  <div style="padding: 14px; background: #fff; border: 1px solid #E8E8E2; border-radius: 14px; display: flex; flex-direction: column; gap: 10px">
+    <div style="display: flex; justify-content: space-between; align-items: baseline"><span style="font-family: 'Bricolage Grotesque', sans-serif; font-size: 18px; font-weight: 600">[Place name]</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7A7A72">[$ / night]</span></div>
+    <span style="font-size: 12.5px; color: #7A7A72">[Neighbourhood] · from [source]</span>
+    <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px">
+      <span style="height: 8px; border-radius: 4px; background: #1E7A52"></span><span style="height: 8px; border-radius: 4px; background: #1E7A52"></span><span style="height: 8px; border-radius: 4px; background: #1E7A52"></span><span style="height: 8px; border-radius: 4px; background: #E8E8E2"></span><span style="height: 8px; border-radius: 4px; background: #E8E8E2"></span>
+    </div>
+    <span style="font-size: 13px; font-weight: 600; color: #1E7A52">Close to 3 of 5 days</span>
+    <div style="display: flex; gap: 8px"><button style="font: 600 13px 'Public Sans', sans-serif; padding: 9px 12px; border-radius: 8px; border: 0; background: #1A1A18; color: #FAFAF8">Stay here</button><button style="font: 600 13px 'Public Sans', sans-serif; padding: 9px 12px; border-radius: 8px; border: 1px solid #DAD9D1; background: #fff">Details</button></div>
+  </div>
+
+  <div style="padding: 14px; background: #fff; border: 1px solid #E8E8E2; border-radius: 14px; display: flex; flex-direction: column; gap: 10px">
+    <div style="display: flex; justify-content: space-between; align-items: baseline"><span style="font-family: 'Bricolage Grotesque', sans-serif; font-size: 18px; font-weight: 600">[Place name]</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7A7A72">[$ / night]</span></div>
+    <span style="font-size: 12.5px; color: #7A7A72">[Neighbourhood] · from [source]</span>
+    <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px">
+      <span style="height: 8px; border-radius: 4px; background: #1E7A52"></span><span style="height: 8px; border-radius: 4px; background: #1E7A52"></span><span style="height: 8px; border-radius: 4px; background: #E8E8E2"></span><span style="height: 8px; border-radius: 4px; background: #E8E8E2"></span><span style="height: 8px; border-radius: 4px; background: #E8E8E2"></span>
+    </div>
+    <span style="font-size: 13px; font-weight: 600; color: #1E7A52">Close to 2 of 5 days</span>
+    <div style="display: flex; gap: 8px"><button style="font: 600 13px 'Public Sans', sans-serif; padding: 9px 12px; border-radius: 8px; border: 0; background: #1A1A18; color: #FAFAF8">Stay here</button><button style="font: 600 13px 'Public Sans', sans-serif; padding: 9px 12px; border-radius: 8px; border: 1px solid #DAD9D1; background: #fff">Details</button></div>
+  </div>
+
+  <div style="padding: 12px 14px; background: #EEEAF6; border: 1px solid #D8CFEE; border-radius: 12px; color: #5B4B8A; font-size: 13px">Can't decide? Optimize keeps all three and builds a version around each.</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1100}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Stage 2 — the same slip as a Moment</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&amp;family=Public+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#5B4B8A}a:hover{color:#3F3366}
+</style>
+</helmet>
+<div style="width: 390px; height: 1100px; box-sizing: border-box; background: #FAFAF8; color: #1A1A18; font-family: 'Public Sans', system-ui, sans-serif; font-size: 14px; line-height: 1.45; display: flex; flex-direction: column; gap: 12px; padding: 14px 14px 24px">
+
+  <div style="display: flex; align-items: center; justify-content: space-between">
+    <a href="Entry.dc.html" aria-label="Back" style="width: 44px; height: 44px; display: grid; place-items: center; text-decoration: none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1A1A18" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg></a>
+    <span style="font-size: 11px; letter-spacing: .13em; text-transform: uppercase; color: #5B4B8A; font-weight: 600">Your plan · Moment</span>
+    <button aria-label="More actions" style="width: 44px; height: 44px; border: 0; background: transparent; font-weight: 700">⋯</button>
+  </div>
+
+  <div>
+    <span style="font-size: 12px; color: #5B4B8A">Anniversary dinner · Kyoto</span>
+    <h1 style="margin: 2px 0 0; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 26px; line-height: 1.1; letter-spacing: -.02em">One evening, done right</h1>
+  </div>
+
+  <div style="display: flex; gap: 6px; flex-wrap: wrap">
+    <span style="font-size: 12.5px; font-weight: 600; padding: 7px 11px; border-radius: 999px; background: #EEEAF6; border: 1px solid #D8CFEE; color: #5B4B8A">[Date] · 19:30</span>
+    <span style="font-size: 12.5px; font-weight: 600; padding: 7px 11px; border-radius: 999px; background: #fff; border: 1px solid #DAD9D1">2 people</span>
+  </div>
+
+  <div style="padding: 14px; background: #fff; border: 1px solid #D8CFEE; border-radius: 14px; display: flex; flex-direction: column; gap: 8px">
+    <span style="font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #5B4B8A; font-weight: 600">Event anchor · fixed</span>
+    <span style="font-family: 'Bricolage Grotesque', sans-serif; font-size: 18px; font-weight: 600">[Restaurant] · [Neighbourhood]</span>
+    <span style="font-size: 12.5px; color: #7A7A72">The reservation is the anchor: place + time are locked, the evening is built around it (OPT-A event kind).</span>
+    <div style="display: flex; gap: 8px"><button style="font: 600 13px 'Public Sans', sans-serif; padding: 9px 12px; border-radius: 8px; border: 1px solid #DAD9D1; background: #fff">Change time</button><button style="font: 600 13px 'Public Sans', sans-serif; padding: 9px 12px; border-radius: 8px; border: 1px solid #DAD9D1; background: #fff">Pin it</button></div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 8px">
+    <span style="font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #7A7A72; font-weight: 600">The evening</span>
+    <div style="display: grid; grid-template-columns: 52px 1fr; gap: 8px; padding: 10px 12px; background: #fff; border: 1px solid #E8E8E2; border-radius: 10px; font-size: 13px"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: #7A7A72">18:15</span><span>[Before — a walk or a drink nearby] <span style="color: #7A7A72">· optional</span></span></div>
+    <div style="display: grid; grid-template-columns: 52px 1fr; gap: 8px; padding: 10px 12px; background: #EEEAF6; border: 1px solid #D8CFEE; border-radius: 10px; font-size: 13px"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: #5B4B8A">19:30</span><span style="font-weight: 600">[Restaurant] — the reservation</span></div>
+    <div style="display: grid; grid-template-columns: 52px 1fr; gap: 8px; padding: 10px 12px; background: #fff; border: 1px solid #E8E8E2; border-radius: 10px; font-size: 13px"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: #7A7A72">21:45</span><span>Getting home <span style="color: #7A7A72">· Ride options</span></span></div>
+  </div>
+
+  <div style="padding: 12px 14px; background: #fff; border: 1px solid #E8E8E2; border-radius: 12px; display: flex; flex-direction: column; gap: 8px">
+    <span style="font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #7A7A72; font-weight: 600">Tools for a moment</span>
+    <div style="display: flex; gap: 6px; flex-wrap: wrap">
+      <button style="font: 600 12.5px 'Public Sans', sans-serif; padding: 8px 11px; border-radius: 999px; border: 1px solid #DAD9D1; background: #fff">Timing check</button>
+      <button style="font: 600 12.5px 'Public Sans', sans-serif; padding: 8px 11px; border-radius: 999px; border: 1px solid #DAD9D1; background: #fff">Getting home</button>
+      <button style="font: 600 12.5px 'Public Sans', sans-serif; padding: 8px 11px; border-radius: 999px; border: 1px solid #DAD9D1; background: #fff">The reservation ✓</button>
+    </div>
+    <span style="font-size: 11.5px; color: #7A7A72">October manifest: the reservation · timing check · getting home (Getting home is planned, not shown until it ships). No versions or places-to-stay for a Moment.</span>
+  </div>
+
+  <div style="padding: 12px 14px; background: #F6EDD8; border: 1px dashed #8A5E12; border-radius: 12px; display: flex; flex-direction: column; gap: 6px">
+    <span style="font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #8A5E12; font-weight: 600">Open: Leon to decide</span>
+    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px"><span style="font-size: 13px; color: #8A5E12">October had an Optimize for a Moment — <span style="border-bottom: 1px dashed #1E7A52">"Make the evening flow"</span> (proposed). Keep it, or no Optimize for a Moment?</span><button style="font: 600 12.5px 'Public Sans', sans-serif; padding: 8px 11px; border-radius: 8px; border: 1px solid #E8D6AF; background: #fff; color: #8A5E12; white-space: nowrap">Make the evening flow</button></div>
+    <span style="font-size: 12px; color: #8A5E12">Also open: Moment tools = reservation · timing check · getting home (October), or swap Getting home for Getting back late (revision 2 draft).</span>
+  </div>
+
+  <div style="padding: 12px 14px; background: #fff; border: 1px solid #E8E8E2; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; font-size: 13px">
+    <span>Need the table held or a note passed to the restaurant?</span>
+    <button style="font: 600 12.5px 'Public Sans', sans-serif; padding: 8px 11px; border-radius: 8px; border: 1px solid #DAD9D1; background: #fff; white-space: nowrap"><span style="border-bottom: 1px dashed #1E7A52">Get help with this plan</span></button>
+  </div>
+  <span style="font-size: 11.5px; color: #7A7A72">Expert door shows only with a live local (223). Concierge task kinds (CN-1): reservation lifeline / done-for-you — "Local concierge" on screen.</span>
+
+  <div style="margin-top: auto; display: flex; gap: 8px">
+    <a href="Finalize.dc.html" style="flex: 1; text-align: center; font: 600 14px 'Public Sans', sans-serif; padding: 13px; border-radius: 10px; background: #1A1A18; color: #FAFAF8; text-decoration: none">Finalize</a>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1100}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

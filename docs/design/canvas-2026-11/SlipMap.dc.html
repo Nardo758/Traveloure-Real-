@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Stage 2 — slip map</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&amp;family=Public+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#5B4B8A}a:hover{color:#3F3366}
+</style>
+</helmet>
+<div style="width: 390px; height: 1100px; box-sizing: border-box; background: #FAFAF8; color: #1A1A18; font-family: 'Public Sans', system-ui, sans-serif; font-size: 14px; line-height: 1.45; display: flex; flex-direction: column; gap: 10px; padding: 14px 14px 24px">
+
+  <div style="display: flex; align-items: center; justify-content: space-between">
+    <a href="Drafted.dc.html" aria-label="Back" style="width: 44px; height: 44px; display: grid; place-items: center; text-decoration: none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1A1A18" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg></a>
+    <span style="font-size: 11px; letter-spacing: .13em; text-transform: uppercase; color: #5B4B8A; font-weight: 600">Map · Kyoto</span>
+    <button style="font: 600 12px 'Public Sans', sans-serif; padding: 7px 10px; border-radius: 8px; border: 1px solid #DAD9D1; background: #fff">List</button>
+  </div>
+
+  <div style="display: flex; gap: 6px; overflow-x: auto">
+    <button aria-pressed="false" style="flex: none; font: 600 12.5px 'Public Sans', sans-serif; padding: 8px 12px; border-radius: 999px; border: 1px solid #DAD9D1; background: #fff">All days</button>
+    <button aria-pressed="true" style="flex: none; font: 600 12.5px 'Public Sans', sans-serif; padding: 8px 12px; border-radius: 999px; border: 1px solid #D8CFEE; background: #EEEAF6; color: #5B4B8A">Day 1</button>
+    <button aria-pressed="false" style="flex: none; font: 600 12.5px 'Public Sans', sans-serif; padding: 8px 12px; border-radius: 999px; border: 1px solid #DAD9D1; background: #fff">Day 2</button>
+    <button aria-pressed="false" style="flex: none; font: 600 12.5px 'Public Sans', sans-serif; padding: 8px 12px; border-radius: 999px; border: 1px solid #DAD9D1; background: #fff">Day 3</button>
+  </div>
+
+  <div role="group" aria-label="Version" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 3px; background: #F4F3EF; border-radius: 9px">
+    <button aria-pressed="true" style="font: 600 12px 'Public Sans', sans-serif; padding: 7px; border-radius: 7px; border: 1px solid #DAD9D1; background: #fff">Draft</button>
+    <button aria-pressed="false" style="font: 600 12px 'Public Sans', sans-serif; padding: 7px; border-radius: 7px; border: 0; background: transparent; color: #7A7A72">A</button>
+    <button aria-pressed="false" style="font: 600 12px 'Public Sans', sans-serif; padding: 7px; border-radius: 7px; border: 0; background: transparent; color: #7A7A72">B</button>
+    <button aria-pressed="false" style="font: 600 12px 'Public Sans', sans-serif; padding: 7px; border-radius: 7px; border: 0; background: transparent; color: #7A7A72">C</button>
+  </div>
+
+  <!-- Map area: pins only, no lines -->
+  <div style="position: relative; height: 520px; border-radius: 14px; overflow: hidden; background: #ECEBE4; border: 1px solid #E8E8E2">
+    <svg width="362" height="520" viewBox="0 0 362 520" aria-hidden="true" style="position: absolute; inset: 0">
+      <g stroke="#DEDCD2" stroke-width="1"><path d="M0 120 H362 M0 260 H362 M0 400 H362 M90 0 V520 M200 0 V520 M300 0 V520"></path></g>
+      <path d="M0 330 C 80 300, 160 360, 240 330 S 330 300, 362 320" fill="none" stroke="#D6DEE6" stroke-width="10"></path>
+      <g fill="#F2F1EA"><rect x="20" y="30" width="60" height="50" rx="6"></rect><rect x="230" y="150" width="70" height="60" rx="6"></rect><rect x="120" y="420" width="80" height="60" rx="6"></rect></g>
+      <!-- numbered day pins -->
+      <g font-family="IBM Plex Mono, monospace" font-size="11" font-weight="600" text-anchor="middle">
+        <circle cx="70" cy="110" r="13" fill="#5B4B8A"></circle><text x="70" y="114" fill="#fff">1</text>
+        <circle cx="150" cy="210" r="13" fill="#5B4B8A"></circle><text x="150" y="214" fill="#fff">2</text>
+        <circle cx="260" cy="250" r="13" fill="#5B4B8A"></circle><text x="260" y="254" fill="#fff">3</text>
+        <circle cx="210" cy="400" r="13" fill="#5B4B8A"></circle><text x="210" y="404" fill="#fff">4</text>
+        <!-- lodging -->
+        <rect x="286" y="382" width="26" height="26" rx="6" fill="#1E7A52"></rect><text x="299" y="400" fill="#fff" font-size="12">⌂</text>
+        <!-- browse layer: muted, unlabelled -->
+        <circle cx="110" cy="300" r="7" fill="#fff" stroke="#8A5E12" stroke-width="2"></circle>
+        <circle cx="300" cy="90" r="7" fill="#fff" stroke="#8A5E12" stroke-width="2"></circle>
+        <circle cx="180" cy="470" r="7" fill="#fff" stroke="#8A5E12" stroke-width="2"></circle>
+      </g>
+    </svg>
+    <div style="position: absolute; left: 10px; bottom: 10px; right: 10px; display: flex; gap: 6px; flex-wrap: wrap">
+      <span style="font-size: 11.5px; font-weight: 600; padding: 5px 9px; border-radius: 999px; background: #fff; border: 1px solid #DAD9D1">● Day stops</span>
+      <span style="font-size: 11.5px; font-weight: 600; padding: 5px 9px; border-radius: 999px; background: #fff; border: 1px solid #DAD9D1; color: #1E7A52">⌂ Where you stay</span>
+      <button aria-pressed="true" style="font: 600 11.5px 'Public Sans', sans-serif; padding: 5px 9px; border-radius: 999px; background: #F6EDD8; border: 1px solid #E8D6AF; color: #8A5E12">○ Browse nearby · on</button>
+    </div>
+  </div>
+  <span style="font-size: 11.5px; color: #7A7A72">Pins only — no leg lines on any map (GC-1); Google-derived coordinates never drawn on Leaflet. Browse layer shows approved listings + hosts near the stops; tapping opens the candidate sheet (no ratings, no minutes).</span>
+
+  <!-- Selected pin sheet -->
+  <div style="padding: 12px 14px; background: #fff; border: 1px solid #D8CFEE; border-radius: 12px; display: flex; flex-direction: column; gap: 6px">
+    <div style="display: flex; justify-content: space-between; align-items: baseline"><span style="font-weight: 600">2 · [Stop name]</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: #7A7A72">12:30</span></div>
+    <span style="font-size: 12.5px; color: #7A7A72">[Neighbourhood] · from [source]</span>
+    <div style="display: flex; gap: 6px; flex-wrap: wrap">
+      <button style="font: 600 12px 'Public Sans', sans-serif; padding: 7px 10px; border-radius: 8px; border: 1px solid #DAD9D1; background: #fff">Open in plan</button>
+      <a href="BuildAround.dc.html" style="font: 600 12px 'Public Sans', sans-serif; padding: 7px 10px; border-radius: 8px; border: 1px solid #DAD9D1; background: #fff; text-decoration: none; color: #1A1A18">Build around this</a>
+      <button style="font: 600 12px 'Public Sans', sans-serif; padding: 7px 10px; border-radius: 8px; border: 1px solid #DAD9D1; background: #fff">Ride options</button>
+    </div>
+  </div>
+
+  <div style="margin-top: auto; padding: 10px 12px; border-radius: 10px; background: #F4F3EF; font-size: 12px; color: #7A7A72">Small per-version maps on the Versions screen stay a Later proposal; this full map is the one map in the slip.</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1100}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

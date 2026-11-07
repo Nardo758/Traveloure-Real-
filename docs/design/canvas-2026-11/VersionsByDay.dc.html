@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Stage 2 — compare day by day</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&amp;family=Public+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#5B4B8A}a:hover{color:#3F3366}
+</style>
+</helmet>
+<div style="width: 390px; height: 1100px; box-sizing: border-box; background: #FAFAF8; color: #1A1A18; font-family: 'Public Sans', system-ui, sans-serif; font-size: 14px; line-height: 1.45; display: flex; flex-direction: column; gap: 12px; padding: 14px 14px 24px">
+
+  <div style="display: flex; align-items: center; justify-content: space-between">
+    <a href="Versions.dc.html" aria-label="Back" style="width: 44px; height: 44px; display: grid; place-items: center; text-decoration: none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1A1A18" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg></a>
+    <span style="font-size: 11px; letter-spacing: .13em; text-transform: uppercase; color: #5B4B8A; font-weight: 600">Compare day by day</span>
+    <span style="width: 44px"></span>
+  </div>
+
+  <div style="display: flex; gap: 6px; overflow-x: auto">
+    <button aria-pressed="false" style="flex: none; font: 600 12.5px 'Public Sans', sans-serif; padding: 8px 12px; border-radius: 999px; border: 1px solid #DAD9D1; background: #fff">Day 1</button>
+    <button aria-pressed="false" style="flex: none; font: 600 12.5px 'Public Sans', sans-serif; padding: 8px 12px; border-radius: 999px; border: 1px solid #DAD9D1; background: #fff">Day 2</button>
+    <button aria-pressed="true" style="flex: none; font: 600 12.5px 'Public Sans', sans-serif; padding: 8px 12px; border-radius: 999px; border: 1px solid #D8CFEE; background: #EEEAF6; color: #5B4B8A">Day 3</button>
+    <button aria-pressed="false" style="flex: none; font: 600 12.5px 'Public Sans', sans-serif; padding: 8px 12px; border-radius: 999px; border: 1px solid #DAD9D1; background: #fff">Day 4</button>
+    <button aria-pressed="false" style="flex: none; font: 600 12.5px 'Public Sans', sans-serif; padding: 8px 12px; border-radius: 999px; border: 1px solid #DAD9D1; background: #fff">Day 5</button>
+  </div>
+
+  <div style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px">
+    <div style="flex: none; width: 240px; padding: 12px; background: #fff; border: 1px solid #D8CFEE; border-radius: 12px; display: flex; flex-direction: column; gap: 8px">
+      <span style="font-weight: 600">A · Least travel</span>
+      <div style="font-size: 12.5px; display: flex; flex-direction: column; gap: 4px"><span><span style="font-family: 'IBM Plex Mono', monospace; color: #7A7A72">09:00</span> [Stop]</span><span><span style="font-family: 'IBM Plex Mono', monospace; color: #7A7A72">11:30</span> <span style="color: #5B4B8A; font-weight: 600">[Moved stop]</span></span><span><span style="font-family: 'IBM Plex Mono', monospace; color: #7A7A72">14:00</span> [Stop]</span></div>
+      <button style="font: 600 12.5px 'Public Sans', sans-serif; padding: 8px 10px; border-radius: 8px; border: 0; background: #1A1A18; color: #FAFAF8"><span style="border-bottom: 1px dashed #B7A9E6">Take this day</span></button>
+    </div>
+    <div style="flex: none; width: 240px; padding: 12px; background: #fff; border: 1px solid #E8E8E2; border-radius: 12px; display: flex; flex-direction: column; gap: 8px">
+      <span style="font-weight: 600">B · Most time at stops</span>
+      <div style="font-size: 12.5px; color: #7A7A72; padding: 12px 0">Same as draft</div>
+    </div>
+    <div style="flex: none; width: 240px; padding: 12px; background: #fff; border: 1px solid #E8E8E2; border-radius: 12px; display: flex; flex-direction: column; gap: 8px">
+      <span style="font-weight: 600">C · Earliest evenings</span>
+      <div style="font-size: 12.5px; display: flex; flex-direction: column; gap: 4px"><span><span style="font-family: 'IBM Plex Mono', monospace; color: #7A7A72">08:30</span> [Stop]</span><span><span style="font-family: 'IBM Plex Mono', monospace; color: #7A7A72">10:30</span> [Stop]</span><span><span style="font-family: 'IBM Plex Mono', monospace; color: #7A7A72">13:00</span> <span style="color: #5B4B8A; font-weight: 600">[Moved stop]</span></span></div>
+      <button style="font: 600 12.5px 'Public Sans', sans-serif; padding: 8px 10px; border-radius: 8px; border: 0; background: #1A1A18; color: #FAFAF8">Take this day</button>
+    </div>
+  </div>
+  <span style="font-size: 11.5px; color: #7A7A72">Snap-scrolls A / B / C; three full columns on desktop. Days identical to the draft collapse to "Same as draft".</span>
+
+  <div style="padding: 12px 14px; background: #EEEAF6; border: 1px solid #D8CFEE; border-radius: 12px; display: flex; flex-direction: column; gap: 8px">
+    <span style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #5B4B8A; font-weight: 600">Your pick so far</span>
+    <div style="display: flex; gap: 6px; flex-wrap: wrap">
+      <span style="font-size: 12px; font-weight: 600; padding: 4px 9px; border-radius: 999px; background: #fff; border: 1px solid #D8CFEE; color: #5B4B8A">Day 1 · A</span>
+      <span style="font-size: 12px; font-weight: 600; padding: 4px 9px; border-radius: 999px; background: #fff; border: 1px solid #DAD9D1; color: #7A7A72">Day 2 · draft</span>
+      <span style="font-size: 12px; font-weight: 600; padding: 4px 9px; border-radius: 999px; background: #fff; border: 1px solid #D8CFEE; color: #5B4B8A">Day 3 · C</span>
+      <span style="font-size: 12px; font-weight: 600; padding: 4px 9px; border-radius: 999px; background: #fff; border: 1px solid #DAD9D1; color: #7A7A72">Day 4 · draft</span>
+      <span style="font-size: 12px; font-weight: 600; padding: 4px 9px; border-radius: 999px; background: #fff; border: 1px solid #DAD9D1; color: #7A7A72">Day 5 · draft</span>
+    </div>
+    <button style="align-self: flex-start; font: 600 13px 'Public Sans', sans-serif; padding: 9px 13px; border-radius: 8px; border: 0; background: #5B4B8A; color: #fff"><span style="border-bottom: 1px dashed #D8CFEE">Apply 2 days</span></button>
+    <span style="font-size: 11.5px; color: #5B4B8A">Confirm/Cancel preview before anything changes; the draft stays restorable.</span>
+  </div>
+
+  <div style="padding: 10px 12px; border-radius: 10px; background: #F4F3EF; font-size: 12px; color: #7A7A72">The DAY is the unit: times, legs and checked facts travel with it. Stops reorder only inside a day in Your plan and the day re-times itself within the free re-time window. Phone uses buttons; desktop may drag whole days.</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1100}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

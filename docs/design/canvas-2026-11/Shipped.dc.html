@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Shipped pieces — banner, tile panel, task log, cost sources</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&amp;family=Public+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0;background:#FAFAF8;color:#1A1A18;font-family:"Public Sans",ui-sans-serif,system-ui,sans-serif;font-size:15px;line-height:1.5}
+a{color:#5B4B8A}a:hover{color:#3F3366}
+</style>
+</helmet>
+<div style="max-width: 1280px; margin: 0 auto; padding: 24px 22px 56px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px">
+
+  <section style="background: #fff; border: 1px solid #E8E8E2; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px">
+    <span style="font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #7A7A72; font-weight: 600">Row 276 · failed-booking banner on the slip (shipped #1788)</span>
+    <div style="padding: 14px 16px; border-radius: 12px; background: #F6EDD8; border: 1px solid #E8D6AF; color: #8A5E12; display: flex; flex-direction: column; gap: 4px">
+      <span style="font-weight: 600">This booking didn't go ahead.</span>
+      <span style="font-size: 13.5px">We've released your card hold. <span style="font-size: 11px">(payment = hold_released; one line per server payment value)</span></span>
+    </div>
+    <div style="padding: 10px 12px; border-radius: 10px; background: #F4F3EF; font-size: 12.5px; color: #7A7A72">Other payment lines: refunded · checking (also the fallback for any unknown value) · none. Never "No local was free in time" on a failed booking. Six strings held for Leon.</div>
+  </section>
+
+  <section style="background: #fff; border: 1px solid #E8E8E2; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px">
+    <span style="font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #7A7A72; font-weight: 600">Row 303 · Discover tile detail panel (shipped #1803 / #1821)</span>
+    <div style="border: 1px solid #E8E8E2; border-radius: 12px; overflow: hidden">
+      <div style="height: 120px; background: #F4F3EF; display: grid; place-items: center; color: #7A7A72; font-size: 12.5px">[Photo · credit shown · rights ticked]</div>
+      <div style="padding: 12px 14px; display: flex; flex-direction: column; gap: 10px">
+        <h3 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 18px; font-weight: 600">[Tile name]</h3>
+        <div><div style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #7A7A72; font-weight: 600">What it is</div><div style="font-size: 13.5px">[Sourced fact] <span style="font-size: 11px; color: #7A7A72">· from [source] · checked [date]</span></div></div>
+        <div><div style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #7A7A72; font-weight: 600">Where</div><div style="font-size: 13.5px">[Sourced fact]</div></div>
+        <div><div style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #7A7A72; font-weight: 600">When</div><div style="font-size: 13.5px; color: #7A7A72"><span style="border-bottom: 1px dashed #5B4B8A">Not checked yet — see the official site.</span> <span style="font-size: 11px; color: #5B4B8A">state message held</span></div></div>
+        <div><div style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #7A7A72; font-weight: 600">Cost</div><div style="font-size: 13.5px">[Sourced fact]</div></div>
+        <div><div style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #7A7A72; font-weight: 600">Expert tips</div><div style="font-size: 13.5px">[Reviewed tip · by [expert first name]]</div></div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap"><button style="font: 600 13px 'Public Sans', sans-serif; padding: 8px 12px; border-radius: 8px; border: 0; background: #1A1A18; color: #FAFAF8">Add to Plan</button><a href="#partner" style="font: 600 13px 'Public Sans', sans-serif; padding: 8px 12px; border-radius: 8px; border: 1px solid #DAD9D1; text-decoration: none">View on [partner]</a></div>
+        <p style="margin: 0; font-size: 11.5px; color: #7A7A72">We may earn a commission if you book through this link. Your booking is with [partner], under their terms.</p>
+      </div>
+    </div>
+    <div style="padding: 10px 12px; border-radius: 10px; background: #F4F3EF; font-size: 12.5px; color: #7A7A72">Headings approved. Facts render only with a source, a checked date and a review; never Google Places or OTA data. Panel opens only on tiles with no detail path of their own.</div>
+  </section>
+
+  <section style="background: #fff; border: 1px dashed #5B4B8A; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px">
+    <span style="font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #5B4B8A; font-weight: 600">CN-1e · concierge task log (server shipped #1848 · screens queued)</span>
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px">
+      <h3 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 18px; font-weight: 600">Tasks for this trip <span style="font-size: 11px; color: #5B4B8A; font-weight: 400">held</span></h3>
+      <button style="font: 600 12.5px 'Public Sans', sans-serif; padding: 7px 12px; border-radius: 8px; border: 1px solid #D8CFEE; background: #EEEAF6; color: #5B4B8A">Request a task</button>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <div style="display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 10px 12px; border: 1px solid #E8E8E2; border-radius: 10px"><div><div style="font-weight: 600">[Dinner reservation] · <span style="font-weight: 400; color: #7A7A72">[Task title]</span></div><div style="font-size: 12px; color: #7A7A72">Requested by you · [date]</div></div><div style="display: flex; gap: 6px; align-items: center"><span style="font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; border: 1px solid #DAD9D1; color: #7A7A72">Requested</span><button style="font: 600 12px 'Public Sans', sans-serif; padding: 5px 10px; border-radius: 8px; border: 0; background: #1A1A18; color: #FAFAF8">OK</button></div></div>
+      <div style="display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 10px 12px; border: 1px solid #E8E8E2; border-radius: 10px"><div><div style="font-weight: 600">[Club entry] · <span style="font-weight: 400; color: #7A7A72">[Task title]</span></div><div style="font-size: 12px; color: #7A7A72">You said OK · [date]</div></div><span style="font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; color: #1E7A52; background: #E7F3EC; border: 1px solid #C4E4D1; align-self: center">Done</span></div>
+      <div style="display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 10px 12px; border: 1px solid #E8E8E2; border-radius: 10px"><div><div style="font-weight: 600">[Airport transfer] · <span style="font-weight: 400; color: #7A7A72">[Task title]</span></div><div style="font-size: 12px; color: #7A7A72">You book stays and transport yourself. [Name] can send you the link.</div><a href="#link" style="font-size: 12.5px">Open link</a> <span style="font-size: 11px; color: #5B4B8A">held</span></div><span style="font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; color: #1E7A52; background: #E7F3EC; border: 1px solid #C4E4D1; align-self: center">Done</span></div>
+      <div style="display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 10px 12px; border: 1px solid #E8E8E2; border-radius: 10px"><div><div style="font-weight: 600">[Errand] · <span style="font-weight: 400; color: #7A7A72">[Task title]</span></div><div style="font-size: 12px; color: #7A7A72">[Expert's note on why]</div></div><span style="font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; color: #8A5E12; background: #F6EDD8; border: 1px solid #E8D6AF; align-self: center">Couldn't get it</span></div>
+    </div>
+    <div style="padding: 10px 12px; border-radius: 10px; background: #F4F3EF; font-size: 12.5px; color: #7A7A72">Only the traveler OKs; only the expert resolves, inside the access window. Caps from the listing ("2 of 3" per kind). No amounts anywhere — venues are paid directly. Stays and transport are links, never "Booked".</div>
+  </section>
+
+  <section style="background: #fff; border: 1px solid #E8E8E2; border-radius: 14px; padding: 18px 20px; display: flex; flex-direction: column; gap: 12px">
+    <span style="font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #7A7A72; font-weight: 600">Row 242 · cost source on the slip (data shipped · labels held)</span>
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <div style="display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 10px 12px; border: 1px solid #E8E8E2; border-radius: 10px"><span>[Stop]</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px">[$] <span style="font-family: 'Public Sans', sans-serif; font-size: 11px; color: #7A7A72; border-bottom: 1px dashed #5B4B8A">From your booking</span></span></div>
+      <div style="display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 10px 12px; border: 1px solid #E8E8E2; border-radius: 10px"><span>[Stop]</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px">[$] <span style="font-family: 'Public Sans', sans-serif; font-size: 11px; color: #7A7A72; border-bottom: 1px dashed #5B4B8A">Listed price</span></span></div>
+      <div style="display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 10px 12px; border: 1px solid #E8E8E2; border-radius: 10px"><span>[Stop]</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px">[$] <span style="font-family: 'Public Sans', sans-serif; font-size: 11px; color: #8A5E12; border-bottom: 1px dashed #5B4B8A">Estimate · typical price</span></span></div>
+      <div style="display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 10px 12px; border: 1px solid #E8E8E2; border-radius: 10px"><span>[Stop]</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7A7A72">— <span style="font-family: 'Public Sans', sans-serif; font-size: 11px">Unpriced</span></span></div>
+    </div>
+    <div style="padding: 10px 12px; border-radius: 10px; background: #F4F3EF; font-size: 12.5px; color: #7A7A72">Rule: "Estimate" never stands alone — it names its kind. The cost strip sums real prices only; estimates and unpriced stops are counted, not added.</div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1180}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

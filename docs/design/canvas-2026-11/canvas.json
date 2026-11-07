@@ -1,0 +1,279 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "BuildAround.dc.html": {
+      "expand": "fill",
+      "h": 980,
+      "title": "Stage 1 · Build around — Place · Date · Event (OPT-A/OPT-B)",
+      "w": 1280,
+      "x": 1360,
+      "y": 0
+    },
+    "ComparePlaces.dc.html": {
+      "h": 1100,
+      "radius": 24,
+      "title": "Stage 2 · Compare places to stay — days covered, far-day line (path c)",
+      "w": 390,
+      "x": 1410,
+      "y": 4100
+    },
+    "DesktopVersions.dc.html": {
+      "expand": "fill",
+      "h": 760,
+      "title": "Stage 2 · Desktop versions (4c) — drag whole days into Your plan",
+      "w": 1280,
+      "x": 2300,
+      "y": 6100
+    },
+    "Drafted.dc.html": {
+      "h": 1760,
+      "radius": 24,
+      "title": "Stage 2 · Drafted — tools row, Optimize card, day cards, expert note (path a)",
+      "w": 390,
+      "x": 940,
+      "y": 4100
+    },
+    "EmptySlip.dc.html": {
+      "h": 1000,
+      "radius": 24,
+      "title": "Stage 1 · Empty slip — Quick draft, dates/party chips, expert door",
+      "w": 390,
+      "x": 470,
+      "y": 4100
+    },
+    "Entry.dc.html": {
+      "h": 1180,
+      "radius": 24,
+      "title": "Entry · Place | Date | Event → occasion → Start a plan (main + 2.3 proposal)",
+      "w": 390,
+      "x": 0,
+      "y": 4100
+    },
+    "Finalize.dc.html": {
+      "h": 900,
+      "radius": 24,
+      "title": "Finalize — Book it myself · Travel expert (agent lane hidden, concierge off)",
+      "w": 390,
+      "x": 0,
+      "y": 6100
+    },
+    "Logistics.dc.html": {
+      "expand": "fill",
+      "h": 1100,
+      "title": "Stage 2 · Logistics sheets (path c) — Getting around · Getting there · Travel party · Pace · Travel options for this leg",
+      "w": 1280,
+      "x": 0,
+      "y": 7900
+    },
+    "Main.dc.html": {
+      "expand": "fill",
+      "h": 1180,
+      "title": "Stage 1 · Trip Slip desktop — one column, 194 header, tools row (as built)",
+      "w": 1280,
+      "x": 0,
+      "y": 0
+    },
+    "Moment.dc.html": {
+      "h": 1100,
+      "radius": 24,
+      "title": "Stage 2 · Same slip as a Moment — reservation anchor, its tools",
+      "w": 390,
+      "x": 2820,
+      "y": 4100
+    },
+    "OccasionSlips.dc.html": {
+      "expand": "fill",
+      "h": 1000,
+      "title": "Slip variants — Celebration · Hosted event · Group travel · Saved occasions (2.3)",
+      "w": 1280,
+      "x": 2720,
+      "y": 7900
+    },
+    "PlannedTools.dc.html": {
+      "expand": "fill",
+      "h": 1120,
+      "title": "Six tray tools — planned, not shown (Budget · Getting home · Arrivals & split · Split activities · Who pays what · Getti",
+      "w": 1280,
+      "x": 1360,
+      "y": 7900
+    },
+    "Review.dc.html": {
+      "expand": "fill",
+      "h": 1100,
+      "title": "Stage 2 · Review board — baseline + 3 versions (as built)",
+      "w": 1280,
+      "x": 0,
+      "y": 1300
+    },
+    "Shipped.dc.html": {
+      "expand": "fill",
+      "h": 1180,
+      "title": "Shipped pieces — 276 banner, 303 tile panel, CN-1e task log (queued), 242 cost sources",
+      "w": 1280,
+      "x": 0,
+      "y": 2520
+    },
+    "SlipMap.dc.html": {
+      "h": 1100,
+      "radius": 24,
+      "title": "Stage 2 · Slip map — day tabs, version toggle, Browse layer, no lines",
+      "w": 390,
+      "x": 3760,
+      "y": 4100
+    },
+    "States.dc.html": {
+      "expand": "fill",
+      "h": 1060,
+      "title": "States — Optimize error/loading/empty · pay confirm · pin refusal · waitlist Trip Card · restore strip",
+      "w": 1280,
+      "x": 0,
+      "y": 9200
+    },
+    "Strips.dc.html": {
+      "expand": "fill",
+      "h": 980,
+      "title": "Rows 221 · 222 · 223 — cost strip states, vendor shortlist, hidden expert doors",
+      "w": 1280,
+      "x": 940,
+      "y": 6100
+    },
+    "TripCard.dc.html": {
+      "expand": "fill",
+      "h": 1100,
+      "title": "Stage 3 · Trip Card desktop — J5 map, 179 line, header menu",
+      "w": 1280,
+      "x": 1360,
+      "y": 1300
+    },
+    "TripCardPhone.dc.html": {
+      "h": 1600,
+      "radius": 24,
+      "title": "Stage 3 · Trip Card phone — merged October structure + J5/179/CN-1e",
+      "w": 390,
+      "x": 470,
+      "y": 6100
+    },
+    "Versions.dc.html": {
+      "h": 1400,
+      "radius": 24,
+      "title": "Stage 2 · Versions A/B/C — apply by day, Use all fixed days",
+      "w": 390,
+      "x": 1880,
+      "y": 4100
+    },
+    "VersionsByDay.dc.html": {
+      "h": 1100,
+      "radius": 24,
+      "title": "Stage 2 · Compare day by day — Take this day, Apply N days",
+      "w": 390,
+      "x": 2350,
+      "y": 4100
+    },
+    "WithExpert.dc.html": {
+      "h": 1500,
+      "radius": 24,
+      "title": "Stage 2 · With an expert — the pen handed off (path b)",
+      "w": 390,
+      "x": 3290,
+      "y": 4100
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-11-02T14:05:00Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
+  },
+  "noteOrder": [
+    "t1",
+    "n1",
+    "t2",
+    "n2",
+    "n3",
+    "t3",
+    "n4"
+  ],
+  "notes": {
+    "n1": {
+      "fill": "gray",
+      "text": "Legend: solid = on main today · dashed purple = held string (Leon) · dashed green = proposed string (Leon) · dashed outline = queued row. No real hotel names, ratings, minutes or trending lines anywhere — by ruling.",
+      "w": 1280,
+      "x": 0,
+      "y": 1240
+    },
+    "n2": {
+      "fill": "orange",
+      "text": "Ruled in chat (Nov 1–2), not in Coding Bot's record — Leon confirms each with one word, else it is open: (1) waitlist hides paid actions, not grey · (2) pins only, no leg lines on any map (GC-1) · (3) no minutes in the picker; minutes only on leg rows · (4) tools ship Budget → Getting home → group package → Getting back late · (5) undo after Optimize = the restore strip. Still Leon's: where booking copies live; every held/proposed string; Moment Optimize + tools (see board).",
+      "w": 390,
+      "x": 0,
+      "y": 5320
+    },
+    "n3": {
+      "fill": "gray",
+      "text": "Superseded from October, not carried: Draft it with AI / AI starting sketch / Ask AI bar · Recommended without a reason · Best fit · Hotels soon · 5 runs for $19 · ranked-by wording · crowd reasons · minutes on version cards or picker · apply by stop with ticks · $5.99 literals (price comes from admin pricing config).",
+      "w": 390,
+      "x": 470,
+      "y": 5140
+    },
+    "n4": {
+      "fill": "gray",
+      "text": "Revision 2.1 changes: With an expert redrawn to main's model (expert_suggestions pending → Accept / Decline / Reply, Accept all; PlanApprovalBanner Approve plan / Approve & book / Request changes; fee captured on approval, 7 d auto-approve). Finalize label = main's \"I book them myself\". ⋯ menus = the same 4 + 1 placeholders on desktop and phone. Moment: Optimize and tools marked Open: Leon to decide.",
+      "w": 1280,
+      "x": 1360,
+      "y": 9200
+    },
+    "t1": {
+      "kind": "title1",
+      "maxW": 2640,
+      "text": "Stage 1 desktop + Stage 2 review + Stage 3 card — what is on main (solid) and what is queued (dashed)",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    },
+    "t2": {
+      "kind": "title1",
+      "maxW": 4150,
+      "text": "Revision 2 · Entry → Stage 1 → Stage 2 (paths a, b, c) → Finalize → Stage 3, phone",
+      "w": 240,
+      "x": 0,
+      "y": 3800
+    },
+    "t3": {
+      "kind": "title1",
+      "maxW": 4000,
+      "text": "Revision 2.1 · review items 1–8 — logistics, planned tools, occasion variants, states, desktop drag",
+      "w": 240,
+      "x": 0,
+      "y": 7700
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "BuildAround.dc.html",
+    "Review.dc.html",
+    "TripCard.dc.html",
+    "Shipped.dc.html",
+    "Entry.dc.html",
+    "EmptySlip.dc.html",
+    "Drafted.dc.html",
+    "ComparePlaces.dc.html",
+    "Versions.dc.html",
+    "VersionsByDay.dc.html",
+    "Moment.dc.html",
+    "WithExpert.dc.html",
+    "SlipMap.dc.html",
+    "Finalize.dc.html",
+    "TripCardPhone.dc.html",
+    "Strips.dc.html",
+    "DesktopVersions.dc.html",
+    "Logistics.dc.html",
+    "PlannedTools.dc.html",
+    "OccasionSlips.dc.html",
+    "States.dc.html"
+  ],
+  "pages": [],
+  "title": "Planning Surface — Slip, Build-around, Review, Trip Card"
+}

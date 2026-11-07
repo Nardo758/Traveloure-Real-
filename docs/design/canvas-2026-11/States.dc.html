@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>States — Optimize errors, loading, pay confirm, pin refusal, waitlist Trip Card, restore strip</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&amp;family=Public+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap">
+<style>
+body{margin:0;background:#FAFAF8;color:#1A1A18;font-family:"Public Sans",ui-sans-serif,system-ui,sans-serif;font-size:14px;line-height:1.45}
+a{color:#5B4B8A}a:hover{color:#3F3366}
+</style>
+</helmet>
+<div style="max-width: 1280px; margin: 0 auto; padding: 24px 22px 56px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px">
+<section style="background: #fff; border: 1px solid #E8E8E2; border-radius: 14px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px">
+<span style="font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #7A7A72; font-weight: 600">Optimize · error (replaces main's "choose Auto")</span>
+<div style="padding: 12px; background: #F6EDD8; border: 1px solid #E8D6AF; border-radius: 10px; color: #8A5E12; font-size: 13px">We couldn't load places to build around. Close and reopen to try again, <span style="border-bottom: 1px dashed #1E7A52">or let us suggest 3.</span></div><div style="display: flex; gap: 6px; flex-wrap: wrap"><button style="font: 600 12.5px 'Public Sans', sans-serif; padding: 8px 11px; border-radius: 8px; border: 0; background: #1A1A18; color: #FAFAF8">Try again</button><button style="font: 600 12.5px 'Public Sans', sans-serif; padding: 8px 11px; border-radius: 8px; border: 1px solid #DAD9D1; background: #fff">Suggest 3</button></div><div style="padding: 9px 11px; border-radius: 10px; font-size: 12px; background: #F4F3EF; color: #7A7A72">Main: BuildAroundDialog.tsx:69 ends "…or choose Auto." — the proposed tail is the only change (string row for session 2).</div>
+</section>
+<section style="background: #fff; border: 1px solid #E8E8E2; border-radius: 14px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px">
+<span style="font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #7A7A72; font-weight: 600">Optimize · loading and empty (proposed)</span>
+<div style="padding: 12px; border: 1px solid #E8E8E2; border-radius: 10px; display: flex; flex-direction: column; gap: 6px"><span style="height: 10px; width: 60%; background: #ECEBE4; border-radius: 5px"></span><span style="height: 10px; width: 80%; background: #ECEBE4; border-radius: 5px"></span><span style="height: 10px; width: 45%; background: #ECEBE4; border-radius: 5px"></span></div><span style="font-size: 12.5px; color: #7A7A72"><span style="border-bottom: 1px dashed #1E7A52">"Fixing your days…"</span> · day skeletons on the slip while the run is open.</span><div style="padding: 12px; border: 1px dashed #DAD9D1; border-radius: 10px; font-size: 13px; color: #7A7A72"><span style="border-bottom: 1px dashed #1E7A52">Nothing to fix yet. Add a stop to start.</span></div><div style="padding: 9px 11px; border-radius: 10px; font-size: 12px; background: #F4F3EF; color: #7A7A72">Mobile: the popup is full-screen. Optimize is owner-only; others see it greyed with a reason (proposed).</div>
+</section>
+<section style="background: #fff; border: 1px solid #E8E8E2; border-radius: 14px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px">
+<span style="font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #7A7A72; font-weight: 600">Pay · confirm before any charge</span>
+<span style="font-family: 'Bricolage Grotesque', sans-serif; font-size: 18px; font-weight: 600">Build 3 versions?</span><span style="font-size: 12.5px; color: #7A7A72">Optimize · {price} — from admin pricing config, never a literal.</span><span style="font-size: 12.5px; color: #7A7A72"><span style="border-bottom: 1px dashed #5B4B8A">Re-timing a day is included with your Trip Pass, for 24 hours after each run.</span> (approved on main, optimization-preview.ts:160)</span><div style="display: flex; gap: 6px; flex-wrap: wrap"><button style="font: 600 12.5px 'Public Sans', sans-serif; padding: 8px 11px; border-radius: 8px; border: 0; background: #1A1A18; color: #FAFAF8"><span style="border-bottom: 1px dashed #B7A9E6">Pay {price} and build</span></button><button style="font: 600 12.5px 'Public Sans', sans-serif; padding: 8px 11px; border-radius: 8px; border: 1px solid #DAD9D1; background: #fff">Cancel</button></div><div style="padding: 9px 11px; border-radius: 10px; font-size: 12px; background: #F4F3EF; color: #7A7A72">Leon clicks every payment confirm in test. Pay-button labels are pinned.</div>
+</section>
+<section style="background: #fff; border: 1px solid #E8E8E2; border-radius: 14px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px">
+<span style="font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #7A7A72; font-weight: 600">Custom pin · refusal (rows 196/197)</span>
+<div style="padding: 12px; background: #F6EDD8; border: 1px solid #E8D6AF; border-radius: 10px; color: #8A5E12; font-size: 13px"><span style="border-bottom: 1px dashed #5B4B8A">We couldn't place that location, so it can't be a base. Pick a place from your plan instead.</span></div><span style="font-size: 12.5px; color: #7A7A72">Fit footnote (proposed): <span style="border-bottom: 1px dashed #1E7A52">"Fit is how close this base is to your stops. If we can't place a custom location, we'll say so."</span></span><div style="padding: 9px 11px; border-radius: 10px; font-size: 12px; background: #F4F3EF; color: #7A7A72">Paid pins refund through PIN_ANCHOR_TYPES (OPT-A). No coordinates from Google ever drawn on the map.</div>
+</section>
+<section style="background: #fff; border: 1px solid #E8E8E2; border-radius: 14px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px">
+<span style="font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #7A7A72; font-weight: 600">Trip Card · waitlist mode</span>
+<span style="font-family: 'Bricolage Grotesque', sans-serif; font-size: 18px; font-weight: 600">Kyoto · [Dates]</span><div style="display: flex; justify-content: space-between; gap: 8px; padding: 9px 11px; background: #E7F3EC; border: 1px solid #C4E4D1; border-radius: 10px; font-size: 13px"><span>[Stop]</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: #7A7A72; white-space: nowrap"><span style="color:#1E7A52">Saved to plan</span></span></div><div style="display: flex; justify-content: space-between; gap: 8px; padding: 9px 11px; background: #fff; border: 1px solid #E8E8E2; border-radius: 10px; font-size: 13px"><span>[Partner activity]</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: #7A7A72; white-space: nowrap">View on [partner] →</span></div><div style="display: flex; justify-content: space-between; gap: 8px; padding: 9px 11px; background: #fff; border: 1px solid #E8E8E2; border-radius: 10px; font-size: 13px"><span>[Where you're staying]</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: #7A7A72; white-space: nowrap">View on [partner] →</span></div><div style="padding: 9px 11px; border-radius: 10px; font-size: 12px; background: #F4F3EF; color: #7A7A72">"Saved to plan" plus partner links only. No Booked, no prices, no Leave-by, no advisor card. <span style="border-bottom: 1px dashed #1E7A52">"Save to plan"</span> is not on main yet (P-1).</div>
+</section>
+<section style="background: #fff; border: 1px solid #E8E8E2; border-radius: 14px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px">
+<span style="font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: #7A7A72; font-weight: 600">Restore strip · undo after Optimize is applied</span>
+<div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 12px; background: #EEEAF6; border: 1px solid #D8CFEE; border-radius: 10px; font-size: 13px; color: #5B4B8A"><span>Days 1, 3 and 4 now use version A. Your draft is kept.</span><button style="font: 600 12.5px 'Public Sans', sans-serif; padding: 8px 11px; border-radius: 8px; border: 1px solid #DAD9D1; background: #fff">Restore draft</button></div><span style="font-size: 12.5px; color: #7A7A72">Item-level "Undo 10 s" stays on main for single edits. This strip is the undo for an applied version; it stays until the next run or Finalize.</span><div style="padding: 9px 11px; border-radius: 10px; font-size: 12px; background: #F4F3EF; color: #7A7A72">Ruled in chat (undo = restore strip); Leon confirms.</div>
+</section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1060}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
