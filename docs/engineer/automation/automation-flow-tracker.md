@@ -2,6 +2,124 @@
 
 **DEV-CLOSED WITH BLOCKERS. RELEASE HELD.**
 
+## Partial-refund notice proposal — 2026-11-07
+
+**Proposal only; implementation and execution not approved. E12 notice proof remains BLOCKED.**
+This section concerns Wave 1's two-partial-refunds/replay requirement, not other
+unrelated cases also numbered E12 in the repository. No runtime change or new
+delivery claim is made by this investigation.
+
+### Current-source findings
+
+| Existing source | What it establishes | What it does not establish |
+| --- | --- | --- |
+| `server/services/email.service.ts`, `sendBookingCancellationWithRefundEmail` | Enqueues `cancellation_refund`; key `cancellation_refund:<bookingId>`; subject, HTML and text explicitly describe cancellation and a **full** refund. | Not a partial-refund producer. Changing the amount or passing two amounts cannot prove two event notices. |
+| `server/__tests__/critical-email-outbox.test.ts`, cancellation-with-refund case | Explicit regression contract: two helper calls for one booking insert one row and retain “Full Refund Issued.” | Not evidence for partial refunds or real delivery. |
+| `server/automations/payments/platform-charge-refunded.ts`, payments `index.ts` and `runtime.ts`; `server/routes/bookings.ts` | Registered `payments.platform-charge-refunded` event is reached through the existing platform webhook dispatch. It wraps existing audit/protection/settlement work. | Despite “receipt” in its name, its action is `mutate_record`, not a traveler refund-notice enqueue. Registry presence is not a notice producer. |
+| `server/automations/payments/bundle-partial-settlement.ts` | Registered recovery sweep for an existing partial settlement. | Not an event-scoped traveler notice producer; do not invoke its money-moving action for email proof. |
+| `server/automations/messaging/producer-index.ts` and messaging `index.ts` | Current registered messaging producers are enumerated. | No dedicated partial-refund notice producer found. Generic provider transport registration does not supply one. |
+| `server/services/stripe-payment.service.ts`, `recordRefundAuditRow`, `handleRefund`, `refundServiceBooking` | Existing writer serializes by Stripe refund ID; app and webhook converge on the same audit row. App-issued rows can carry booking ID; webhook-only rows can lack it. `handleRefund` validates the charge snapshot and pages its refund list; uncaptured charges return without recording a refund. | Audit rows alone do not universally prove successful payment return, partial-versus-full scope, recipient attribution, or a notice trigger. Do not change these writers. |
+| `shared/schema.ts`, `refunds`; `shared/booking-refund-record.ts`; `server/services/out-of-band-refund.service.ts`, `refundSummariesFor` | Existing read-only material includes Stripe refund IDs, status, currency, amount and optional booking linkage, plus server-authored refund records/stamps. Existing summary deliberately avoids allocating a shared-payment partial refund to a booking. | Nullable IDs, a cumulative summary and a single booking refund record are not a universal event stream. The summary omits event IDs. Schema comments describing older audit behavior are not authoritative over current executable writers. |
+| `server/services/email-outbox.service.ts`, enqueue dedupe transaction | Existing metadata dedupe key is checked under a transaction advisory lock. | Dedupe does not choose the correct refund identity or create a producer. Immediate enqueue can attempt delivery; an investigation must not call it. |
+
+### Provenance decision and blockers
+
+**A trustworthy identity exists for a recorded refund: the Stripe refund object's
+`re_…` ID, persisted as `refunds.stripe_refund_id`. No payment-writer change is
+needed to read it.** One charge/PaymentIntent can have multiple such IDs. A
+Stripe webhook `evt_…` ID identifies a delivery event, not one refund: a later
+`charge.refunded` snapshot can include refunds already seen. Booking ID, charge
+ID, amount, timestamp, array position and a generated fixture ID are not
+substitutes for refund identity.
+
+The complete notice provenance is **not established**: no registered
+partial-refund messaging producer was found, and there is no existing identified
+read-only consumer connecting those audit events to one. A webhook audit row
+without booking linkage must not be assigned to a booking merely because its
+PaymentIntent matches: that payment can cover multiple bookings. Pending, failed,
+canceled and `voided_uncaptured` records must not assert “refund issued.”
+Even the app path's final booking status is not proof that Stripe reports a
+succeeded refund.
+
+Consequently, an existing end-to-end producer proof cannot be run within the
+present approval. This is a missing notice path, **not** a claim that Stripe
+refund IDs are absent. A future design must demonstrate, from existing
+server-authored reads, all of: succeeded status, refund ID, event amount and
+currency, authoritative charged basis/scope, and unambiguous booking/recipient
+binding. Missing, conflicting or ambiguous provenance is an explicit blocked
+outcome, not permission to infer it or fetch production data.
+
+### Alternatives and smallest touch list
+
+1. **Recommended now: retain BLOCKED and preserve the full-refund path.** Actual
+   touch list is this existing report only:
+   `docs/engineer/automation/automation-flow-tracker.md`. No runtime additions,
+   changes or deletions; no new files.
+2. **After explicit approval: provider-free contract characterization only.**
+   Smallest candidate existing-file list:
+   - Change `server/__tests__/critical-email-outbox.test.ts` to strengthen the
+     unchanged full-refund regression and characterize event-key semantics with
+     a local test adapter. Label it adapter-only, not registered-producer proof.
+   - Change `server/__tests__/refund-merged-design.db.test.ts` only if an isolated
+     development fixture run is separately approved: extend existing per-refund
+     audit/replay cases to expose the identity and attribution boundaries, using
+     its stubbed Stripe client. This suite invokes payment writers; it is **not**
+     a read-only inspection and is not authorized by this proposal.
+   - Change this report to record evidence and unresolved gates.
+   No additions or deletions. Tests alone cannot close the missing notice path.
+3. **Future runtime notice implementation: separate approval required.** There
+   is no defensible complete existing-file runtime touch list yet: the missing
+   registered producer and its read-only invocation boundary must first be
+   approved. Do not quietly add an email-service helper, bolt an enqueue onto
+   the webhook, or turn a payment registry action into a message sender.
+   Any later list must identify the producer registration, caller, content,
+   outbox classification and verification-at-send changes, without a new
+   payment writer, scheduler, schema or table. Stop if those constraints cannot
+   be met.
+
+### Conditional proof plan — not executed
+
+Use the existing outbox only after a genuine registered producer and read-only
+provenance boundary have been approved. Proposed notice identity is a separate
+namespace such as `partial_refund:<stripeRefundId>`; this is **not** an existing
+email type or approved activation. Keep `cancellation_refund:<bookingId>` and
+its content/callers unchanged. Use per-event amount/currency, never the charge's
+cumulative refunded amount as the event's amount. Avoid cancellation/full-refund
+language for a partial event.
+
+For the positive fixture, use one unambiguously attributed booking on a captured
+USD 100 payment, with two server-proven succeeded refunds, A for USD 20 and B for
+USD 15. Their cumulative USD 35 remains partial. Both may have the same timestamp;
+also test equal amounts to ensure neither time nor amount is the discriminator.
+Use synthetic IDs only inside isolated stub fixtures; never present them as
+observed payment or delivery provenance.
+
+| Case | Required evidence after future approval |
+| --- | --- |
+| First snapshot contains A | One partial notice row keyed by A, amount USD 20. No full-refund notice created. |
+| Later snapshot contains A and B | Exactly one additional row keyed by B, amount USD 15; total two, not USD 35 in B's event content. |
+| Replay A, replay both, or another webhook event ID containing the same refunds | Still exactly two partial rows, same keys and amounts; explicit duplicate outcome. |
+| Concurrent A/A and A/B, reversed order, restart and older snapshot after newer | Exactly one row per refund ID; no loss or mutation of the distinct event. A fake in-memory lock is not durable-concurrency evidence. |
+| Pending A later becomes succeeded; failed/canceled/uncaptured records | Nothing claims a successful refund before a trustworthy succeeded record; later success queues once. Released holds never generate refund notices. |
+| Missing refund ID, inconsistent amounts/currency, absent booking, shared-payment ambiguity or conflicting duplicate audit data | Explicit refusal/blocked reason; zero notice rows and zero transport calls, no invented binding. |
+| Existing full-cancellation helper twice for one booking | Still one `cancellation_refund:<bookingId>` row, unchanged subject/HTML/text. Partial keys neither suppress nor overwrite this namespace. |
+| Enqueue failure and retry | Observable failed enqueue, then one durable row after retry; never count an attempted enqueue as a queued notice. |
+
+Collect producer/registry identity, source refund IDs, sanitized source binding,
+outbox row IDs and keys, amounts/currency, counts and skip/error reasons.
+For contract tests, stub transport at its configured boundary and assert zero
+network calls. Durable locking/restart proof needs a separately approved isolated
+database run through the approved producer, not a direct send or hand-inserted
+outbox rows. Real email, push, provider receipts and inbox delivery remain
+unproven and held; do not mark E12 passed from a local adapter.
+
+**Execution in this investigation:** source inspection and this report edit
+only. No tests, payment calls, database access, production access, application
+restart, checkout/payment edits, migration registration, schema/table change,
+direct send, real email, push, Git commit, push or merge. Design deliverable is
+complete; notice implementation and E12 execution remain blocked pending
+explicit approval.
+
 Prepared 17 October 2026. Source recovery is **PARTIAL WITH DOCUMENTED GAPS — PARKED**. This starts the master tracker; no Part 2 build step or operational check has started. Await owner OK before further work.
 
 ## 1. Scope, units and evidence rules
