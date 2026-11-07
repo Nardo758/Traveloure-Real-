@@ -1,0 +1,1776 @@
+{
+  "startedAt": "2026-11-07T05:55:53.765Z",
+  "sourceSha256": "6e541f52f435595d869cbef85db1d4862236de12520c97369b44e0612020a507",
+  "ddlHashes": {
+    "server/migrations/240_email_outbox.sql": "79232be398bc83e6846590fd09d2a2178e3f264b62ae81595b7c7e9a63aff273",
+    "server/migrations/411_email_outbox_expires_at.sql": "fa2b13ceb5964114b7393fdfab4b07d123e1e93eb38c869ec157e18b2eebf99a"
+  },
+  "identity": {
+    "current_user": "outbox_benchmark",
+    "current_database": "postgres",
+    "address": null
+  },
+  "postgres": "postgres (PostgreSQL) 16.10",
+  "host": {
+    "platform": "linux",
+    "architecture": "x64",
+    "cpus": 8,
+    "cpuModel": "INTEL(R) XEON(R) PLATINUM 8581C CPU @ 2.30GHz",
+    "memoryBytes": 16794308608,
+    "node": "v20.20.0"
+  },
+  "settings": [
+    {
+      "name": "default_transaction_isolation",
+      "setting": "read committed",
+      "unit": null
+    },
+    {
+      "name": "effective_cache_size",
+      "setting": "524288",
+      "unit": "8kB"
+    },
+    {
+      "name": "fsync",
+      "setting": "on",
+      "unit": null
+    },
+    {
+      "name": "full_page_writes",
+      "setting": "on",
+      "unit": null
+    },
+    {
+      "name": "jit",
+      "setting": "on",
+      "unit": null
+    },
+    {
+      "name": "max_parallel_workers_per_gather",
+      "setting": "2",
+      "unit": null
+    },
+    {
+      "name": "random_page_cost",
+      "setting": "4",
+      "unit": null
+    },
+    {
+      "name": "seq_page_cost",
+      "setting": "1",
+      "unit": null
+    },
+    {
+      "name": "server_version",
+      "setting": "16.10",
+      "unit": null
+    },
+    {
+      "name": "shared_buffers",
+      "setting": "16384",
+      "unit": "8kB"
+    },
+    {
+      "name": "synchronous_commit",
+      "setting": "on",
+      "unit": null
+    },
+    {
+      "name": "work_mem",
+      "setting": "4096",
+      "unit": "kB"
+    }
+  ],
+  "indexes": [
+    {
+      "indexname": "email_outbox_created_idx",
+      "indexdef": "CREATE INDEX email_outbox_created_idx ON public.email_outbox USING btree (created_at DESC)"
+    },
+    {
+      "indexname": "email_outbox_pkey",
+      "indexdef": "CREATE UNIQUE INDEX email_outbox_pkey ON public.email_outbox USING btree (id)"
+    },
+    {
+      "indexname": "email_outbox_retry_idx",
+      "indexdef": "CREATE INDEX email_outbox_retry_idx ON public.email_outbox USING btree (status, retry_after) WHERE ((status)::text = ANY ((ARRAY['pending'::character varying, 'failed'::character varying])::text[]))"
+    }
+  ],
+  "configuration": {
+    "sizes": [
+      10000,
+      100000,
+      1000000
+    ],
+    "samples": 100,
+    "warmups": 5,
+    "concurrency": 16,
+    "rounds": 5
+  },
+  "percentileMethod": "Nearest rank, ceil(n*p)-1, milliseconds; client performance.now() wall time.",
+  "scales": [
+    {
+      "size": 10000,
+      "seedMs": 718.7342209999988,
+      "relation": {
+        "rows": 10000,
+        "heap_bytes": "11706368",
+        "total_bytes": "12443648",
+        "average_row_bytes": 1087.9208
+      },
+      "statusDistribution": [
+        {
+          "status": "failed",
+          "rows": 1000
+        },
+        {
+          "status": "held",
+          "rows": 1000
+        },
+        {
+          "status": "pending",
+          "rows": 1000
+        },
+        {
+          "status": "sent",
+          "rows": 7000
+        }
+      ],
+      "lookups": {
+        "early": {
+          "key": "fixture:1",
+          "sql": "select \"id\" from \"email_outbox\" where \"email_outbox\".\"metadata\"->>'dedupeKey' = $1 limit $2",
+          "lock": {
+            "n": 100,
+            "p50Ms": 0.17463599999973667,
+            "p95Ms": 0.4019239999979618,
+            "minMs": 0.08032699999967008,
+            "maxMs": 0.8433269999986805
+          },
+          "lookup": {
+            "n": 100,
+            "p50Ms": 0.2472300000008545,
+            "p95Ms": 0.4492110000028333,
+            "minMs": 0.09761799999978393,
+            "maxMs": 4.238236999997753
+          },
+          "transaction": {
+            "n": 100,
+            "p50Ms": 0.8061390000002575,
+            "p95Ms": 1.3770870000007562,
+            "minMs": 0.34883300000001327,
+            "maxMs": 4.949665999996796
+          },
+          "plan": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 0,
+                "Total Cost": 31.58,
+                "Plan Rows": 1,
+                "Plan Width": 8,
+                "Actual Startup Time": 0.006,
+                "Actual Total Time": 0.007,
+                "Actual Rows": 1,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 1,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Seq Scan",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Relation Name": "email_outbox",
+                    "Alias": "email_outbox",
+                    "Startup Cost": 0,
+                    "Total Cost": 1579,
+                    "Plan Rows": 50,
+                    "Plan Width": 8,
+                    "Actual Startup Time": 0.006,
+                    "Actual Total Time": 0.006,
+                    "Actual Rows": 1,
+                    "Actual Loops": 1,
+                    "Filter": "((metadata ->> 'dedupeKey'::text) = 'fixture:1'::text)",
+                    "Rows Removed by Filter": 0,
+                    "Shared Hit Blocks": 1,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0
+                  }
+                ]
+              },
+              "Settings": {},
+              "Planning": {
+                "Shared Hit Blocks": 0,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.043,
+              "Triggers": [],
+              "Execution Time": 0.016
+            }
+          ]
+        },
+        "middle": {
+          "key": "fixture:5000",
+          "sql": "select \"id\" from \"email_outbox\" where \"email_outbox\".\"metadata\"->>'dedupeKey' = $1 limit $2",
+          "lock": {
+            "n": 100,
+            "p50Ms": 0.17892500000016298,
+            "p95Ms": 0.357771999999386,
+            "minMs": 0.07902299999841489,
+            "maxMs": 1.2515550000025542
+          },
+          "lookup": {
+            "n": 100,
+            "p50Ms": 1.3291659999995318,
+            "p95Ms": 1.9164349999991828,
+            "minMs": 0.9845730000015465,
+            "maxMs": 3.7935429999997723
+          },
+          "transaction": {
+            "n": 100,
+            "p50Ms": 2.098580000001675,
+            "p95Ms": 2.646530999998504,
+            "minMs": 1.316265999997995,
+            "maxMs": 4.5028219999985595
+          },
+          "plan": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 0,
+                "Total Cost": 31.58,
+                "Plan Rows": 1,
+                "Plan Width": 8,
+                "Actual Startup Time": 1.673,
+                "Actual Total Time": 1.675,
+                "Actual Rows": 1,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 715,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Seq Scan",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Relation Name": "email_outbox",
+                    "Alias": "email_outbox",
+                    "Startup Cost": 0,
+                    "Total Cost": 1579,
+                    "Plan Rows": 50,
+                    "Plan Width": 8,
+                    "Actual Startup Time": 1.673,
+                    "Actual Total Time": 1.673,
+                    "Actual Rows": 1,
+                    "Actual Loops": 1,
+                    "Filter": "((metadata ->> 'dedupeKey'::text) = 'fixture:5000'::text)",
+                    "Rows Removed by Filter": 4999,
+                    "Shared Hit Blocks": 715,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0
+                  }
+                ]
+              },
+              "Settings": {},
+              "Planning": {
+                "Shared Hit Blocks": 0,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.042,
+              "Triggers": [],
+              "Execution Time": 1.685
+            }
+          ]
+        },
+        "late": {
+          "key": "fixture:10000",
+          "sql": "select \"id\" from \"email_outbox\" where \"email_outbox\".\"metadata\"->>'dedupeKey' = $1 limit $2",
+          "lock": {
+            "n": 100,
+            "p50Ms": 0.18638500000088243,
+            "p95Ms": 0.3419689999973343,
+            "minMs": 0.10387199999968288,
+            "maxMs": 0.48891100000037113
+          },
+          "lookup": {
+            "n": 100,
+            "p50Ms": 2.4404729999987467,
+            "p95Ms": 3.427917000000889,
+            "minMs": 1.7782960000004095,
+            "maxMs": 5.329745999999432
+          },
+          "transaction": {
+            "n": 100,
+            "p50Ms": 3.077929999999469,
+            "p95Ms": 4.284689000000071,
+            "minMs": 2.155114000001049,
+            "maxMs": 5.898955000000569
+          },
+          "plan": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 0,
+                "Total Cost": 31.58,
+                "Plan Rows": 1,
+                "Plan Width": 8,
+                "Actual Startup Time": 3.16,
+                "Actual Total Time": 3.161,
+                "Actual Rows": 1,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 1429,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Seq Scan",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Relation Name": "email_outbox",
+                    "Alias": "email_outbox",
+                    "Startup Cost": 0,
+                    "Total Cost": 1579,
+                    "Plan Rows": 50,
+                    "Plan Width": 8,
+                    "Actual Startup Time": 3.159,
+                    "Actual Total Time": 3.159,
+                    "Actual Rows": 1,
+                    "Actual Loops": 1,
+                    "Filter": "((metadata ->> 'dedupeKey'::text) = 'fixture:10000'::text)",
+                    "Rows Removed by Filter": 9999,
+                    "Shared Hit Blocks": 1429,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0
+                  }
+                ]
+              },
+              "Settings": {},
+              "Planning": {
+                "Shared Hit Blocks": 0,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.041,
+              "Triggers": [],
+              "Execution Time": 3.171
+            }
+          ]
+        },
+        "absent": {
+          "key": "absent:10000",
+          "sql": "select \"id\" from \"email_outbox\" where \"email_outbox\".\"metadata\"->>'dedupeKey' = $1 limit $2",
+          "lock": {
+            "n": 100,
+            "p50Ms": 0.1858829999982845,
+            "p95Ms": 0.32338399999935064,
+            "minMs": 0.10791099999914877,
+            "maxMs": 4.732577999999194
+          },
+          "lookup": {
+            "n": 100,
+            "p50Ms": 2.3589710000014747,
+            "p95Ms": 3.3927499999990687,
+            "minMs": 1.7818649999971967,
+            "maxMs": 5.799915999999939
+          },
+          "transaction": {
+            "n": 100,
+            "p50Ms": 3.0390779999979713,
+            "p95Ms": 4.545427000000927,
+            "minMs": 2.2822479999995267,
+            "maxMs": 8.767853000001196
+          },
+          "plan": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 0,
+                "Total Cost": 31.58,
+                "Plan Rows": 1,
+                "Plan Width": 8,
+                "Actual Startup Time": 3.134,
+                "Actual Total Time": 3.135,
+                "Actual Rows": 0,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 1429,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Seq Scan",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Relation Name": "email_outbox",
+                    "Alias": "email_outbox",
+                    "Startup Cost": 0,
+                    "Total Cost": 1579,
+                    "Plan Rows": 50,
+                    "Plan Width": 8,
+                    "Actual Startup Time": 3.134,
+                    "Actual Total Time": 3.134,
+                    "Actual Rows": 0,
+                    "Actual Loops": 1,
+                    "Filter": "((metadata ->> 'dedupeKey'::text) = 'absent:10000'::text)",
+                    "Rows Removed by Filter": 10000,
+                    "Shared Hit Blocks": 1429,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0
+                  }
+                ]
+              },
+              "Settings": {},
+              "Planning": {
+                "Shared Hit Blocks": 0,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.041,
+              "Triggers": [],
+              "Execution Time": 3.145
+            }
+          ]
+        }
+      },
+      "races": {
+        "fresh": {
+          "lock": {
+            "n": 80,
+            "p50Ms": 13.121275999998034,
+            "p95Ms": 25.136819999999716,
+            "minMs": 0.801447999998345,
+            "maxMs": 30.249313000000257
+          },
+          "lookup": {
+            "n": 80,
+            "p50Ms": 0.4745919999986654,
+            "p95Ms": 2.1588970000011614,
+            "minMs": 0.21340000000054715,
+            "maxMs": 3.21735500000068
+          },
+          "transaction": {
+            "n": 80,
+            "p50Ms": 15.391271999997116,
+            "p95Ms": 31.46400999999969,
+            "minMs": 7.4516269999985525,
+            "maxMs": 36.64094800000021
+          },
+          "waves": [
+            {
+              "round": 0,
+              "inserted": 1,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            },
+            {
+              "round": 1,
+              "inserted": 1,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            },
+            {
+              "round": 2,
+              "inserted": 1,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            },
+            {
+              "round": 3,
+              "inserted": 1,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            },
+            {
+              "round": 4,
+              "inserted": 1,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            }
+          ],
+          "attempts": 80,
+          "duplicates": 0,
+          "errors": 0
+        },
+        "existing": {
+          "lock": {
+            "n": 80,
+            "p50Ms": 5.9108240000023216,
+            "p95Ms": 16.338682999998127,
+            "minMs": 0.8081720000009227,
+            "maxMs": 21.17587800000183
+          },
+          "lookup": {
+            "n": 80,
+            "p50Ms": 0.4182600000021921,
+            "p95Ms": 0.8324790000006033,
+            "minMs": 0.21503999999913503,
+            "maxMs": 1.6795799999999872
+          },
+          "transaction": {
+            "n": 80,
+            "p50Ms": 7.6625200000016775,
+            "p95Ms": 19.44621499999994,
+            "minMs": 1.885082999997394,
+            "maxMs": 23.88865000000078
+          },
+          "waves": [
+            {
+              "round": 0,
+              "inserted": 0,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            },
+            {
+              "round": 1,
+              "inserted": 0,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            },
+            {
+              "round": 2,
+              "inserted": 0,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            },
+            {
+              "round": 3,
+              "inserted": 0,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            },
+            {
+              "round": 4,
+              "inserted": 0,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            }
+          ],
+          "attempts": 80,
+          "duplicates": 0,
+          "errors": 0
+        }
+      },
+      "finalRows": 10010
+    },
+    {
+      "size": 100000,
+      "seedMs": 4190.348600999998,
+      "relation": {
+        "rows": 100000,
+        "heap_bytes": "117030912",
+        "total_bytes": "123551744",
+        "average_row_bytes": 1087.99208
+      },
+      "statusDistribution": [
+        {
+          "status": "failed",
+          "rows": 10000
+        },
+        {
+          "status": "held",
+          "rows": 10000
+        },
+        {
+          "status": "pending",
+          "rows": 10000
+        },
+        {
+          "status": "sent",
+          "rows": 70000
+        }
+      ],
+      "lookups": {
+        "early": {
+          "key": "fixture:1",
+          "sql": "select \"id\" from \"email_outbox\" where \"email_outbox\".\"metadata\"->>'dedupeKey' = $1 limit $2",
+          "lock": {
+            "n": 100,
+            "p50Ms": 0.14274000000295928,
+            "p95Ms": 0.49609399999826564,
+            "minMs": 0.09228300000177114,
+            "maxMs": 0.8003409999982978
+          },
+          "lookup": {
+            "n": 100,
+            "p50Ms": 1.057383999999729,
+            "p95Ms": 12.244951999997284,
+            "minMs": 0.1157920000005106,
+            "maxMs": 16.53064699999959
+          },
+          "transaction": {
+            "n": 100,
+            "p50Ms": 1.4869160000016564,
+            "p95Ms": 13.046521000000212,
+            "minMs": 0.3740959999995539,
+            "maxMs": 17.36242299999867
+          },
+          "plan": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 0,
+                "Total Cost": 31.57,
+                "Plan Rows": 1,
+                "Plan Width": 8,
+                "Actual Startup Time": 0.029,
+                "Actual Total Time": 0.03,
+                "Actual Rows": 1,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 15,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Seq Scan",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Relation Name": "email_outbox",
+                    "Alias": "email_outbox",
+                    "Startup Cost": 0,
+                    "Total Cost": 15786,
+                    "Plan Rows": 500,
+                    "Plan Width": 8,
+                    "Actual Startup Time": 0.029,
+                    "Actual Total Time": 0.029,
+                    "Actual Rows": 1,
+                    "Actual Loops": 1,
+                    "Filter": "((metadata ->> 'dedupeKey'::text) = 'fixture:1'::text)",
+                    "Rows Removed by Filter": 96,
+                    "Shared Hit Blocks": 15,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0
+                  }
+                ]
+              },
+              "Settings": {},
+              "Planning": {
+                "Shared Hit Blocks": 0,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.028,
+              "Triggers": [],
+              "Execution Time": 0.036
+            }
+          ]
+        },
+        "middle": {
+          "key": "fixture:50000",
+          "sql": "select \"id\" from \"email_outbox\" where \"email_outbox\".\"metadata\"->>'dedupeKey' = $1 limit $2",
+          "lock": {
+            "n": 100,
+            "p50Ms": 0.09285499999896274,
+            "p95Ms": 0.1748059999990801,
+            "minMs": 0.07161999999880209,
+            "maxMs": 0.5882459999993443
+          },
+          "lookup": {
+            "n": 100,
+            "p50Ms": 9.66482299999916,
+            "p95Ms": 13.344772000000376,
+            "minMs": 8.91124900000068,
+            "maxMs": 15.964160999999876
+          },
+          "transaction": {
+            "n": 100,
+            "p50Ms": 10.12905099999989,
+            "p95Ms": 13.683071999999811,
+            "minMs": 9.206001999998989,
+            "maxMs": 16.288157999999385
+          },
+          "plan": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 0,
+                "Total Cost": 31.57,
+                "Plan Rows": 1,
+                "Plan Width": 8,
+                "Actual Startup Time": 9.259,
+                "Actual Total Time": 9.26,
+                "Actual Rows": 1,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 7143,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Seq Scan",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Relation Name": "email_outbox",
+                    "Alias": "email_outbox",
+                    "Startup Cost": 0,
+                    "Total Cost": 15786,
+                    "Plan Rows": 500,
+                    "Plan Width": 8,
+                    "Actual Startup Time": 9.258,
+                    "Actual Total Time": 9.259,
+                    "Actual Rows": 1,
+                    "Actual Loops": 1,
+                    "Filter": "((metadata ->> 'dedupeKey'::text) = 'fixture:50000'::text)",
+                    "Rows Removed by Filter": 49999,
+                    "Shared Hit Blocks": 7143,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0
+                  }
+                ]
+              },
+              "Settings": {},
+              "Planning": {
+                "Shared Hit Blocks": 0,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.016,
+              "Triggers": [],
+              "Execution Time": 9.265
+            }
+          ]
+        },
+        "late": {
+          "key": "fixture:100000",
+          "sql": "select \"id\" from \"email_outbox\" where \"email_outbox\".\"metadata\"->>'dedupeKey' = $1 limit $2",
+          "lock": {
+            "n": 100,
+            "p50Ms": 0.1506310000004305,
+            "p95Ms": 0.27953899999920395,
+            "minMs": 0.09952699999848846,
+            "maxMs": 0.9489350000003469
+          },
+          "lookup": {
+            "n": 100,
+            "p50Ms": 0.8041439999979048,
+            "p95Ms": 11.81086100000175,
+            "minMs": 0.14614799999981187,
+            "maxMs": 16.654977000001963
+          },
+          "transaction": {
+            "n": 100,
+            "p50Ms": 2.8860899999999674,
+            "p95Ms": 12.333693999997195,
+            "minMs": 0.45711500000106753,
+            "maxMs": 17.13619800000015
+          },
+          "plan": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 0,
+                "Total Cost": 31.57,
+                "Plan Rows": 1,
+                "Plan Width": 8,
+                "Actual Startup Time": 10.137,
+                "Actual Total Time": 10.138,
+                "Actual Rows": 1,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 7150,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Seq Scan",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Relation Name": "email_outbox",
+                    "Alias": "email_outbox",
+                    "Startup Cost": 0,
+                    "Total Cost": 15786,
+                    "Plan Rows": 500,
+                    "Plan Width": 8,
+                    "Actual Startup Time": 10.137,
+                    "Actual Total Time": 10.137,
+                    "Actual Rows": 1,
+                    "Actual Loops": 1,
+                    "Filter": "((metadata ->> 'dedupeKey'::text) = 'fixture:100000'::text)",
+                    "Rows Removed by Filter": 50047,
+                    "Shared Hit Blocks": 7150,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0
+                  }
+                ]
+              },
+              "Settings": {},
+              "Planning": {
+                "Shared Hit Blocks": 0,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.026,
+              "Triggers": [],
+              "Execution Time": 10.146
+            }
+          ]
+        },
+        "absent": {
+          "key": "absent:100000",
+          "sql": "select \"id\" from \"email_outbox\" where \"email_outbox\".\"metadata\"->>'dedupeKey' = $1 limit $2",
+          "lock": {
+            "n": 100,
+            "p50Ms": 0.1415369999995164,
+            "p95Ms": 0.2301820000029693,
+            "minMs": 0.10422800000014831,
+            "maxMs": 1.4629890000032901
+          },
+          "lookup": {
+            "n": 100,
+            "p50Ms": 19.221514000000752,
+            "p95Ms": 25.416023000001587,
+            "minMs": 17.638490000001184,
+            "maxMs": 31.070639000001393
+          },
+          "transaction": {
+            "n": 100,
+            "p50Ms": 19.707859999998618,
+            "p95Ms": 25.7879729999986,
+            "minMs": 18.119786999999633,
+            "maxMs": 31.46583499999906
+          },
+          "plan": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 0,
+                "Total Cost": 31.57,
+                "Plan Rows": 1,
+                "Plan Width": 8,
+                "Actual Startup Time": 18.754,
+                "Actual Total Time": 18.755,
+                "Actual Rows": 0,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 14286,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Seq Scan",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Relation Name": "email_outbox",
+                    "Alias": "email_outbox",
+                    "Startup Cost": 0,
+                    "Total Cost": 15786,
+                    "Plan Rows": 500,
+                    "Plan Width": 8,
+                    "Actual Startup Time": 18.753,
+                    "Actual Total Time": 18.754,
+                    "Actual Rows": 0,
+                    "Actual Loops": 1,
+                    "Filter": "((metadata ->> 'dedupeKey'::text) = 'absent:100000'::text)",
+                    "Rows Removed by Filter": 100000,
+                    "Shared Hit Blocks": 14286,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0
+                  }
+                ]
+              },
+              "Settings": {},
+              "Planning": {
+                "Shared Hit Blocks": 0,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.029,
+              "Triggers": [],
+              "Execution Time": 18.762
+            }
+          ]
+        }
+      },
+      "races": {
+        "fresh": {
+          "lock": {
+            "n": 80,
+            "p50Ms": 27.83082800000193,
+            "p95Ms": 37.463410000000295,
+            "minMs": 0.5466249999990396,
+            "maxMs": 39.69033800000034
+          },
+          "lookup": {
+            "n": 80,
+            "p50Ms": 0.35897299999851384,
+            "p95Ms": 18.231857999999193,
+            "minMs": 0.16445999999996275,
+            "maxMs": 23.31137899999885
+          },
+          "transaction": {
+            "n": 80,
+            "p50Ms": 29.600611000001663,
+            "p95Ms": 38.867607000000135,
+            "minMs": 23.48783099999855,
+            "maxMs": 41.383412999999564
+          },
+          "waves": [
+            {
+              "round": 0,
+              "inserted": 1,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            },
+            {
+              "round": 1,
+              "inserted": 1,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            },
+            {
+              "round": 2,
+              "inserted": 1,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            },
+            {
+              "round": 3,
+              "inserted": 1,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            },
+            {
+              "round": 4,
+              "inserted": 1,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            }
+          ],
+          "attempts": 80,
+          "duplicates": 0,
+          "errors": 0
+        },
+        "existing": {
+          "lock": {
+            "n": 80,
+            "p50Ms": 4.596827999997913,
+            "p95Ms": 8.578474000001734,
+            "minMs": 0.5788639999991574,
+            "maxMs": 10.876064000000042
+          },
+          "lookup": {
+            "n": 80,
+            "p50Ms": 0.3089319999999134,
+            "p95Ms": 0.4861009999985981,
+            "minMs": 0.15634299999874202,
+            "maxMs": 1.7170089999999618
+          },
+          "transaction": {
+            "n": 80,
+            "p50Ms": 6.37515699999858,
+            "p95Ms": 12.162210000002233,
+            "minMs": 1.5052340000002005,
+            "maxMs": 15.353554000001168
+          },
+          "waves": [
+            {
+              "round": 0,
+              "inserted": 0,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            },
+            {
+              "round": 1,
+              "inserted": 0,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            },
+            {
+              "round": 2,
+              "inserted": 0,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            },
+            {
+              "round": 3,
+              "inserted": 0,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            },
+            {
+              "round": 4,
+              "inserted": 0,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            }
+          ],
+          "attempts": 80,
+          "duplicates": 0,
+          "errors": 0
+        }
+      },
+      "finalRows": 100010
+    },
+    {
+      "size": 1000000,
+      "seedMs": 41891.47263599999,
+      "relation": {
+        "rows": 1000000,
+        "heap_bytes": "1170292736",
+        "total_bytes": "1234821120",
+        "average_row_bytes": 1087.999216
+      },
+      "statusDistribution": [
+        {
+          "status": "failed",
+          "rows": 100000
+        },
+        {
+          "status": "held",
+          "rows": 100000
+        },
+        {
+          "status": "pending",
+          "rows": 100000
+        },
+        {
+          "status": "sent",
+          "rows": 700000
+        }
+      ],
+      "lookups": {
+        "early": {
+          "key": "fixture:1",
+          "sql": "select \"id\" from \"email_outbox\" where \"email_outbox\".\"metadata\"->>'dedupeKey' = $1 limit $2",
+          "lock": {
+            "n": 100,
+            "p50Ms": 0.17474799999035895,
+            "p95Ms": 0.2756870000011986,
+            "minMs": 0.1263160000089556,
+            "maxMs": 1.461883999989368
+          },
+          "lookup": {
+            "n": 100,
+            "p50Ms": 0.8870420000021113,
+            "p95Ms": 215.59626400000707,
+            "minMs": 0.1443520000029821,
+            "maxMs": 220.4246839999978
+          },
+          "transaction": {
+            "n": 100,
+            "p50Ms": 1.6253399999986868,
+            "p95Ms": 216.25888400000986,
+            "minMs": 0.49270799999067094,
+            "maxMs": 221.14923599999747
+          },
+          "plan": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 0,
+                "Total Cost": 31.57,
+                "Plan Rows": 1,
+                "Plan Width": 8,
+                "Actual Startup Time": 0.028,
+                "Actual Total Time": 0.029,
+                "Actual Rows": 1,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 11,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Seq Scan",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Relation Name": "email_outbox",
+                    "Alias": "email_outbox",
+                    "Startup Cost": 0,
+                    "Total Cost": 157857.65,
+                    "Plan Rows": 5000,
+                    "Plan Width": 8,
+                    "Actual Startup Time": 0.028,
+                    "Actual Total Time": 0.028,
+                    "Actual Rows": 1,
+                    "Actual Loops": 1,
+                    "Filter": "((metadata ->> 'dedupeKey'::text) = 'fixture:1'::text)",
+                    "Rows Removed by Filter": 64,
+                    "Shared Hit Blocks": 11,
+                    "Shared Read Blocks": 0,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0
+                  }
+                ]
+              },
+              "Settings": {},
+              "Planning": {
+                "Shared Hit Blocks": 0,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.04,
+              "Triggers": [],
+              "Execution Time": 0.037
+            }
+          ]
+        },
+        "middle": {
+          "key": "fixture:500000",
+          "sql": "select \"id\" from \"email_outbox\" where \"email_outbox\".\"metadata\"->>'dedupeKey' = $1 limit $2",
+          "lock": {
+            "n": 100,
+            "p50Ms": 0.09336800000164658,
+            "p95Ms": 0.1992749999917578,
+            "minMs": 0.07666099999914877,
+            "maxMs": 0.562646999998833
+          },
+          "lookup": {
+            "n": 100,
+            "p50Ms": 218.1552970000048,
+            "p95Ms": 233.42356100000325,
+            "minMs": 209.15847600001143,
+            "maxMs": 255.20881100000406
+          },
+          "transaction": {
+            "n": 100,
+            "p50Ms": 218.52138799999375,
+            "p95Ms": 233.97589499999594,
+            "minMs": 209.45842999999877,
+            "maxMs": 255.60149299999466
+          },
+          "plan": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 0,
+                "Total Cost": 31.57,
+                "Plan Rows": 1,
+                "Plan Width": 8,
+                "Actual Startup Time": 213.619,
+                "Actual Total Time": 213.62,
+                "Actual Rows": 1,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 3085,
+                "Shared Read Blocks": 68344,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Seq Scan",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Relation Name": "email_outbox",
+                    "Alias": "email_outbox",
+                    "Startup Cost": 0,
+                    "Total Cost": 157857.65,
+                    "Plan Rows": 5000,
+                    "Plan Width": 8,
+                    "Actual Startup Time": 213.618,
+                    "Actual Total Time": 213.619,
+                    "Actual Rows": 1,
+                    "Actual Loops": 1,
+                    "Filter": "((metadata ->> 'dedupeKey'::text) = 'fixture:500000'::text)",
+                    "Rows Removed by Filter": 499999,
+                    "Shared Hit Blocks": 3085,
+                    "Shared Read Blocks": 68344,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0
+                  }
+                ]
+              },
+              "Settings": {},
+              "Planning": {
+                "Shared Hit Blocks": 0,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.03,
+              "Triggers": [],
+              "Execution Time": 213.628
+            }
+          ]
+        },
+        "late": {
+          "key": "fixture:1000000",
+          "sql": "select \"id\" from \"email_outbox\" where \"email_outbox\".\"metadata\"->>'dedupeKey' = $1 limit $2",
+          "lock": {
+            "n": 100,
+            "p50Ms": 0.19024799999897368,
+            "p95Ms": 0.27581300000019837,
+            "minMs": 0.12829799999599345,
+            "maxMs": 0.5437019999953918
+          },
+          "lookup": {
+            "n": 100,
+            "p50Ms": 0.8391339999943739,
+            "p95Ms": 214.37796299999172,
+            "minMs": 0.18911500000103842,
+            "maxMs": 234.28317199999583
+          },
+          "transaction": {
+            "n": 100,
+            "p50Ms": 1.7392040000122506,
+            "p95Ms": 214.89262799998687,
+            "minMs": 0.5919520000170451,
+            "maxMs": 234.96323599999596
+          },
+          "plan": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 0,
+                "Total Cost": 31.57,
+                "Plan Rows": 1,
+                "Plan Width": 8,
+                "Actual Startup Time": 207.525,
+                "Actual Total Time": 207.526,
+                "Actual Rows": 1,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 13237,
+                "Shared Read Blocks": 58197,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Seq Scan",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Relation Name": "email_outbox",
+                    "Alias": "email_outbox",
+                    "Startup Cost": 0,
+                    "Total Cost": 157857.65,
+                    "Plan Rows": 5000,
+                    "Plan Width": 8,
+                    "Actual Startup Time": 207.524,
+                    "Actual Total Time": 207.524,
+                    "Actual Rows": 1,
+                    "Actual Loops": 1,
+                    "Filter": "((metadata ->> 'dedupeKey'::text) = 'fixture:1000000'::text)",
+                    "Rows Removed by Filter": 500031,
+                    "Shared Hit Blocks": 13237,
+                    "Shared Read Blocks": 58197,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0
+                  }
+                ]
+              },
+              "Settings": {},
+              "Planning": {
+                "Shared Hit Blocks": 0,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.04,
+              "Triggers": [],
+              "Execution Time": 207.535
+            }
+          ]
+        },
+        "absent": {
+          "key": "absent:1000000",
+          "sql": "select \"id\" from \"email_outbox\" where \"email_outbox\".\"metadata\"->>'dedupeKey' = $1 limit $2",
+          "lock": {
+            "n": 100,
+            "p50Ms": 0.17997299999115057,
+            "p95Ms": 0.2830439999961527,
+            "minMs": 0.1356180000002496,
+            "maxMs": 0.67195299998275
+          },
+          "lookup": {
+            "n": 100,
+            "p50Ms": 425.3757570000016,
+            "p95Ms": 451.5362929999974,
+            "minMs": 408.17867999999726,
+            "maxMs": 504.59801100000914
+          },
+          "transaction": {
+            "n": 100,
+            "p50Ms": 425.9399179999891,
+            "p95Ms": 452.08389599999646,
+            "minMs": 408.63111400000344,
+            "maxMs": 505.1843369999988
+          },
+          "plan": [
+            {
+              "Plan": {
+                "Node Type": "Limit",
+                "Parallel Aware": false,
+                "Async Capable": false,
+                "Startup Cost": 0,
+                "Total Cost": 31.57,
+                "Plan Rows": 1,
+                "Plan Width": 8,
+                "Actual Startup Time": 425.572,
+                "Actual Total Time": 425.574,
+                "Actual Rows": 0,
+                "Actual Loops": 1,
+                "Shared Hit Blocks": 16349,
+                "Shared Read Blocks": 126509,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0,
+                "Plans": [
+                  {
+                    "Node Type": "Seq Scan",
+                    "Parent Relationship": "Outer",
+                    "Parallel Aware": false,
+                    "Async Capable": false,
+                    "Relation Name": "email_outbox",
+                    "Alias": "email_outbox",
+                    "Startup Cost": 0,
+                    "Total Cost": 157857.65,
+                    "Plan Rows": 5000,
+                    "Plan Width": 8,
+                    "Actual Startup Time": 425.571,
+                    "Actual Total Time": 425.572,
+                    "Actual Rows": 0,
+                    "Actual Loops": 1,
+                    "Filter": "((metadata ->> 'dedupeKey'::text) = 'absent:1000000'::text)",
+                    "Rows Removed by Filter": 1000000,
+                    "Shared Hit Blocks": 16349,
+                    "Shared Read Blocks": 126509,
+                    "Shared Dirtied Blocks": 0,
+                    "Shared Written Blocks": 0,
+                    "Local Hit Blocks": 0,
+                    "Local Read Blocks": 0,
+                    "Local Dirtied Blocks": 0,
+                    "Local Written Blocks": 0,
+                    "Temp Read Blocks": 0,
+                    "Temp Written Blocks": 0
+                  }
+                ]
+              },
+              "Settings": {},
+              "Planning": {
+                "Shared Hit Blocks": 0,
+                "Shared Read Blocks": 0,
+                "Shared Dirtied Blocks": 0,
+                "Shared Written Blocks": 0,
+                "Local Hit Blocks": 0,
+                "Local Read Blocks": 0,
+                "Local Dirtied Blocks": 0,
+                "Local Written Blocks": 0,
+                "Temp Read Blocks": 0,
+                "Temp Written Blocks": 0
+              },
+              "Planning Time": 0.039,
+              "Triggers": [],
+              "Execution Time": 425.583
+            }
+          ]
+        }
+      },
+      "races": {
+        "fresh": {
+          "lock": {
+            "n": 80,
+            "p50Ms": 435.29169100002036,
+            "p95Ms": 495.22493399999803,
+            "minMs": 0.6415049999777693,
+            "maxMs": 497.71766399999615
+          },
+          "lookup": {
+            "n": 80,
+            "p50Ms": 0.35265799998887815,
+            "p95Ms": 408.2080699999933,
+            "minMs": 0.20454100001370534,
+            "maxMs": 433.1980690000055
+          },
+          "transaction": {
+            "n": 80,
+            "p50Ms": 439.0011509999749,
+            "p95Ms": 497.1997090000077,
+            "minMs": 412.9410949999874,
+            "maxMs": 499.3724280000024
+          },
+          "waves": [
+            {
+              "round": 0,
+              "inserted": 1,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            },
+            {
+              "round": 1,
+              "inserted": 1,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            },
+            {
+              "round": 2,
+              "inserted": 1,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            },
+            {
+              "round": 3,
+              "inserted": 1,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            },
+            {
+              "round": 4,
+              "inserted": 1,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            }
+          ],
+          "attempts": 80,
+          "duplicates": 0,
+          "errors": 0
+        },
+        "existing": {
+          "lock": {
+            "n": 80,
+            "p50Ms": 4.227416000008816,
+            "p95Ms": 8.137020999973174,
+            "minMs": 0.5734959999972489,
+            "maxMs": 9.893404999980703
+          },
+          "lookup": {
+            "n": 80,
+            "p50Ms": 0.3058219999948051,
+            "p95Ms": 0.4475009999878239,
+            "minMs": 0.16293699998641387,
+            "maxMs": 0.6067019999900367
+          },
+          "transaction": {
+            "n": 80,
+            "p50Ms": 5.659807000018191,
+            "p95Ms": 11.249233000009554,
+            "minMs": 1.4876470000017434,
+            "maxMs": 13.102630000008503
+          },
+          "waves": [
+            {
+              "round": 0,
+              "inserted": 0,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            },
+            {
+              "round": 1,
+              "inserted": 0,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            },
+            {
+              "round": 2,
+              "inserted": 0,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            },
+            {
+              "round": 3,
+              "inserted": 0,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            },
+            {
+              "round": 4,
+              "inserted": 0,
+              "rowCount": 1,
+              "duplicates": 0,
+              "uniqueReturnedIds": 1
+            }
+          ],
+          "attempts": 80,
+          "duplicates": 0,
+          "errors": 0
+        }
+      },
+      "finalRows": 1000010
+    }
+  ],
+  "finishedAt": "2026-11-07T05:58:25.841Z",
+  "cleanup": {
+    "stopped": true,
+    "dataDirectoryRemoved": true,
+    "socketDirectoryRemoved": true
+  },
+  "rawEvidence": {
+    "path": "generated-artifacts/outbox-once-only/run-qQOwUA/measurements.json",
+    "sha256": "c88d35d9eff925717186c8146dc2a1a61186f786ba6bb3f0d480c06211ffd31b",
+    "note": "Individual timing arrays omitted here; all distributions and full query plans retained. Raw file is workspace-only, excluded from Git and deployment."
+  }
+}
