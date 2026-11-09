@@ -188,12 +188,12 @@ export function planDatesGateLine(action: string): string {
 export const PLAN_PARTY_ASK = "Who's coming?";
 
 /**
- * R4-3 (round 4; R3-23 completed): the slip's eyebrow. An unconfirmed plan is a proposal — "Your plan · Proposal" —
- * whatever its occasion; a confirmed plan names its occasion ("Your plan · Wedding"), or reads "Your plan" alone.
- * The phase badge (Upcoming / Active / Past) is shown only once the dates are confirmed (`phaseShown`).
+ * The slip's eyebrow. R5-3 (decision-maker, Nov 9, 2026; ledger `2026-11-09-r5-3-eyebrow`) drops R4-3's "Proposal"
+ * placeholder, which read as the Proposal occasion: the eyebrow names the plan's occasion ("Your plan · Wedding") when it
+ * has one, else "Your plan" — whether or not the dates are confirmed. `datesConfirmed` is accepted and ignored so the
+ * callers stay as they are. The phase badge (Upcoming / Active / Past) still needs confirmed dates (`phaseShown`).
  */
-export function planEyebrowLabel(input: { datesConfirmed: boolean | null | undefined; occasionName?: string | null }): string {
-  if (input.datesConfirmed !== true) return "Your plan · Proposal";
+export function planEyebrowLabel(input: { datesConfirmed?: boolean | null | undefined; occasionName?: string | null }): string {
   const occ = typeof input.occasionName === "string" ? input.occasionName.trim() : "";
   return occ ? `Your plan · ${occ}` : "Your plan";
 }
