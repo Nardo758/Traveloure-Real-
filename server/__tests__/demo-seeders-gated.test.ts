@@ -382,6 +382,13 @@ const EXEMPTIONS: Record<string, string> = {
     "the PURGE counterpart, not a seeder — it must run precisely when demoSeedsAllowed() is " +
     "FALSE (production), the opposite gating direction from every other entry here; server/" +
     "index.ts's own `allowTestAccounts` if/else already encodes that.",
+  "seeds/staging-qa.seed.ts::seedStagingQa":
+    "launch item 12 (ledger `2026-11-09-staging-item12-seeds`): called only inside server/index.ts's " +
+    "`allowTestAccounts` branch AND only when its own `stagingQaSeedGate()` passes — which refuses " +
+    "ENVIRONMENT=PROD outright and writes nothing without STAGING_QA_PASSWORD. Stricter than " +
+    "demoSeedsAllowed(), never wider.",
+  "seeds/staging-qa.seed.ts::stagingQaSeedGate":
+    "the gate itself (pure; writes nothing), imported beside seedStagingQa to decide whether it runs.",
   "seed-expert-services.ts::seedProviderServiceListings":
     "no-op since migration 013 removed the ESO workflow columns it used to write (see its own " +
     "body: \"Skipping mock custom services seed…\") — zero DB side effects. The body's lone " +

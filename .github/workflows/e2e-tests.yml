@@ -63,6 +63,9 @@ jobs:
     if: needs.config.outputs.configured == 'true'
     env:
       E2E_STAGING_BASE_URL: ${{ secrets.E2E_STAGING_BASE_URL }}
+      # Launch item 12: the staging box's basic auth (server/middleware/staging-access.ts); empty ⇒ not sent.
+      E2E_STAGING_BASIC_AUTH_USER: ${{ secrets.E2E_STAGING_BASIC_AUTH_USER }}
+      E2E_STAGING_BASIC_AUTH_PASSWORD: ${{ secrets.E2E_STAGING_BASIC_AUTH_PASSWORD }}
 
     steps:
       - name: Checkout code
@@ -196,7 +199,9 @@ jobs:
         # running the commit under test. A stale (or "dev") deploy is the #1 cause of red here:
         # a failing journey may just be testing older code. Warn-only — never fails the run.
         run: |
-          DEPLOY_SHA=$(curl -s --connect-timeout 15 --max-time 20 "$E2E_STAGING_BASE_URL/api/version" \
+          AUTH=()
+          if [ -n "$E2E_STAGING_BASIC_AUTH_USER" ] && [ -n "$E2E_STAGING_BASIC_AUTH_PASSWORD" ]; then AUTH=(-u "$E2E_STAGING_BASIC_AUTH_USER:$E2E_STAGING_BASIC_AUTH_PASSWORD"); fi
+          DEPLOY_SHA=$(curl -s --connect-timeout 15 --max-time 20 "${AUTH[@]}" "$E2E_STAGING_BASE_URL/api/version" \
             | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{process.stdout.write(JSON.parse(d).sha||'unknown')}catch{process.stdout.write('unknown')}})" \
             || echo "unreachable")
           echo "Deploy /api/version sha: $DEPLOY_SHA"

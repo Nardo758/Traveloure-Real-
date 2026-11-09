@@ -102,6 +102,9 @@ jobs:
     timeout-minutes: 30
     env:
       E2E_STAGING_BASE_URL: ${{ secrets.E2E_STAGING_BASE_URL }}
+      # Launch item 12: the staging box's basic auth (server/middleware/staging-access.ts); empty ⇒ not sent.
+      E2E_STAGING_BASIC_AUTH_USER: ${{ secrets.E2E_STAGING_BASIC_AUTH_USER }}
+      E2E_STAGING_BASIC_AUTH_PASSWORD: ${{ secrets.E2E_STAGING_BASIC_AUTH_PASSWORD }}
       # Staging may carry its own seed password so it can be rotated without
       # touching the existing E2E_TEST_PASSWORD secret; it falls back to that
       # one. If BOTH are absent the value is the empty string, and both the
@@ -128,7 +131,9 @@ jobs:
           PW="${E2E_TEST_PASSWORD:-TestPass123!}"
           EMAIL="test-traveler-kyoto@traveloure.test"
           BODY=$(node -e 'process.stdout.write(JSON.stringify({email:process.argv[1],password:process.argv[2]}))' "$EMAIL" "$PW")
-          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 \
+          AUTH=()
+          if [ -n "$E2E_STAGING_BASIC_AUTH_USER" ] && [ -n "$E2E_STAGING_BASIC_AUTH_PASSWORD" ]; then AUTH=(-u "$E2E_STAGING_BASIC_AUTH_USER:$E2E_STAGING_BASIC_AUTH_PASSWORD"); fi
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 "${AUTH[@]}" \
             -X POST "$E2E_STAGING_BASE_URL/api/auth/login" \
             -H 'Content-Type: application/json' \
             -d "$BODY") || code=000

@@ -62,7 +62,7 @@ Everything below is read from the code, not guessed; the source is cited.
 | Variable | Value | Why — source |
 |---|---|---|
 | `ALLOW_TEST_ACCOUNTS` | `1` | The opt-in that makes the boot **seed** instead of **purge**. `server/index.ts:439`; also required by the seed's own fail-safe, `server/seeds/e2e-test-accounts.seed.ts:44-52`. **It is also what enables the test-seed endpoints** (`POST /api/transport-booking-options/seed/test-variant`, used by `e2e/specs/journey-6.spec.ts`): they are refused with a 503 on a production-strict boot — `server/middleware/test-only-endpoint.ts`, audit finding 11. Same predicate (`isProdStrictEnv`), so nothing extra to configure: where the seeded accounts can log in, the seed endpoints answer. |
-| `ENVIRONMENT` | **must NOT be `PROD`** (leave unset) | `ENVIRONMENT === "PROD"` overrides `ALLOW_TEST_ACCOUNTS` and forces the purge branch — `server/index.ts:440` and `e2e-test-accounts.seed.ts:45`. |
+| `ENVIRONMENT` | **`staging`** — never `PROD` | `ENVIRONMENT === "PROD"` overrides `ALLOW_TEST_ACCOUNTS` and forces the purge branch — `server/index.ts:440` and `e2e-test-accounts.seed.ts:45`. Launch item 12: `staging` turns on the basic-auth gate and noindex (§6). |
 | `DATABASE_URL` | staging's own Postgres | See 2.1. |
 | `E2E_TEST_PASSWORD` | the password the seeded accounts get | `e2e-test-accounts.seed.ts:19` — `process.env.E2E_TEST_PASSWORD \|\| "TestPass123!"`. **Must equal** the GitHub secret in 2.3. If you set neither side, both default to `TestPass123!` and it still works. |
 | `STRIPE_SECRET_KEY` | a **`sk_test_…`** key — **NOT `sk_live_`** | With `ALLOW_TEST_ACCOUNTS=1`, `isProdStrictEnv()` is **false** (`server/utils/stripe-key-policy.ts:29-34`), and `checkStripeKeyPrefix` then *requires* the `sk_test_` prefix. A live key makes `server/validate-env.ts:46` **throw at boot**. This is deliberate: E2E journeys create real Stripe objects. |
@@ -167,7 +167,7 @@ the suite keeps the hard-asserted negative contract exactly as before. The boot-
 3. **Custom domain vs `*.replit.app`** — either works; only HTTPS matters.
 4. **Stripe test-mode account** — which Stripe test account/webhook endpoint should staging
    point at? Reusing production's webhook endpoint will not work (different signing secret).
-5. **Deploy cadence** — should staging auto-deploy from `main` on every merge? The daily
+5. **Deploy cadence** — RULED Nov 8, 2026 (item 12): **manual** deploys. Should staging auto-deploy from `main` on every merge? The daily
    journey suite's "STALE DEPLOY" warning exists because the target can lag `main`; a
    deploy-on-merge staging makes that warning meaningful.
 6. **`GIT_COMMIT` injection** — production does not inject it, so `/api/version` reports the
@@ -186,3 +186,59 @@ the suite keeps the hard-asserted negative contract exactly as before. The boot-
 - **Do not** re-add `continue-on-error` or a "skip on 401" branch to the staging workflow. A
   401 from a *configured* staging target means staging is misprovisioned, which is a real
   failure. Only an *absent* `E2E_STAGING_BASE_URL` may skip, and it skips loudly.
+
+---
+
+## 6. Launch checklist item 12 — open-mode QA walks on this same box
+
+Decision-maker rulings, Nov 8, 2026 (doc "Launch checklist 12 — open-mode staging environment", §9): **one** staging box
+(this one, shared with the CI auth smoke), Replit Autoscale, a **fresh** database (startup seeds only — never production's
+`DATABASE_URL`), **manual** deploys, basic auth in front, Stripe **test** workspace with Connect accounts created through the
+API, email **fully off**. Ledger `2026-11-09-staging-item12-seeds`. It unblocks the boards production's waitlist mode hides:
+Versions / VersionsByDay / DesktopVersions / Review, WithExpert, Finalize, Trip Card.
+
+### 6.1 Environment variables (names only — values live in Replit Secrets)
+
+| Variable | Value | What it does |
+|---|---|---|
+| `ENVIRONMENT` | `staging` | Turns on `server/middleware/staging-access.ts`: basic auth on every request, `X-Robots-Tag: noindex, nofollow`, `robots.txt` → `Disallow: /`. A no-op on any other value. |
+| `STAGING_BASIC_AUTH_USER`, `STAGING_BASIC_AUTH_PASSWORD` | the gate's credentials | **Fail closed:** with `ENVIRONMENT=staging` and either unset, every gated request answers 503. Exempt, and nothing else: `/health*`, `/api/health`, `/api/ready`, the Stripe/Resend webhook paths (signature-verified by their handlers), and `GET /` from a non-browser (the startup probe). |
+| `ALLOW_TEST_ACCOUNTS` | `1` | As §2.2 — the boot seeds instead of refusing. |
+| `STAGING_QA_PASSWORD` | 12+ characters | The password the item-12 accounts get (`server/seeds/staging-qa.seed.ts`). **Unset ⇒ the QA seed does not run** (and is not stamped, so setting it later seeds on the next boot). No password is committed. |
+| `SHOW_DEMO_EXPERTS` | `1` | `@traveloure.test` is a seed domain, so the QA expert is routable only with this (`server/services/expert-routability.ts`). It relaxes the seed-domain clause only — approval, Identity and Connect are still required. |
+| `STRIPE_SECRET_KEY_TEST`, `VITE_STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET_TEST`, `STRIPE_CONNECT_WEBHOOK_SECRET_TEST`, `STRIPE_IDENTITY_WEBHOOK_SECRET` | Stripe **test** workspace | A live key is refused at boot. The QA seed creates its two Connect accounts with this key (`stripeTestConnectCreator`, test keys only). Point staging's webhooks at a **separate** Stripe test endpoint — production's signing secret will not verify. |
+| `XAI_API_KEY`, `SESSION_SECRET` | as §2.2 | `/api/ready` needs them. |
+| `EMAIL_SENDS_ENABLED` | **leave unset** | Every send is refused (email fully off, ruling). |
+
+**Open mode is a database setting, not an env var:** after the first boot, flip `traveler_signup_mode` to `open` in
+staging's admin (audited). `scripts/ci-open-traveler-signup.ts` refuses a non-localhost database by design.
+
+**GitHub secrets for the shared CI smoke:** `E2E_STAGING_BASIC_AUTH_USER` / `E2E_STAGING_BASIC_AUTH_PASSWORD` (same values as
+the gate). `playwright.e2e.config.ts` and `e2e/global-setup.ts` send them as `httpCredentials`, and the smoke's curl preflight
+sends `-u`; without them the gate answers 401 and the smoke fails loudly, as §5 requires.
+
+### 6.2 What the boot seeds (`server/seeds/staging-qa.seed.ts`)
+
+| Account | Who | State |
+|---|---|---|
+| `qa-expert-kyoto@traveloure.test` (`@qa-expert-kyoto`) | QA expert | approved application, Identity verified, Connect complete (a real test-mode Connect account), approved advisory listing "A local checks your Kyoto plan" (`itinerary_2nd_opinion`), a **verified** Kyoto neighbourhood ratified through the claim services (LD 27) |
+| `tb1-qa-smoke12@traveloure.test` | TB1 · QA Smoke 12 | traveler |
+| `tb2-qa-smoke9@traveloure.test` | TB2 · QA Smoke9 | traveler |
+| `tb3-supply-scout@traveloure.test` (`@tb3-supply-scout`) | TB3 · TEST Supply Scout | provider, test Connect account, one approved in-person listing |
+| `tb4-wedding-walk@traveloure.test` | TB4 · Wedding Walk | traveler; owns **"Wedding in Kyoto"**, minted the way the `hosted_events` door mints it (`storage.createTrip`, owner `trip_collaborators` row — LD 42; occasion `wedding`; dates unconfirmed) — not "Plan around it" |
+
+Every account has terms, privacy and email-verified stamped. **No final version is seeded** — bots create it through
+Finalize, which is the path under test. The seed is idempotent and refuses `ENVIRONMENT=PROD`. If a Connect account cannot
+be created (no test key, Stripe unreachable), boot logs `Staging QA seed incomplete` with the reason, does **not** mark the
+expert complete, and retries on the next boot.
+
+### 6.3 Acceptance (doc §8) — check on staging after the first deploy
+
+- [ ] `GET /api/health` / `/api/ready` answer without credentials; any page asks for basic auth; `/robots.txt` disallows all.
+- [ ] Boot log: `Staging QA seed ran` with `complete: true` (two `acct_…` ids).
+- [ ] Admin: `traveler_signup_mode` = `open`; `GET /api/public/signup-mode` → `"mode":"open"`.
+- [ ] `GET /api/experts?city=Kyoto` lists `qa-expert-kyoto`; WithExpert can be walked to that expert.
+- [ ] TB1–TB4 log in with `STAGING_QA_PASSWORD`; paid Finalize / Ask controls render for a signed-in traveler.
+- [ ] A bot-created plan reaches a final version; Versions / Review and the Trip Card open for its owner.
+- [ ] Checkout and paid actions complete with Stripe **test** cards only; no email leaves.
+- [ ] The CI staging auth smoke passes with the two new GitHub secrets set.

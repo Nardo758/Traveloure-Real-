@@ -101,6 +101,8 @@ export const SEEDER_INPUT_FILES = {
   seedPhaseDKyotoVendors: ["server/seeds/phase-d-kyoto-vendors.seed.ts"],
   seedTripOwnership: ["server/seeds/trip-ownership.seed.ts"],
   seedE2EAccounts: ["server/seeds/e2e-test-accounts.seed.ts"],
+  // Launch item 12: pushed only when its own gate passes (staging), so CI and dev never stamp it.
+  seedStagingQa: ["server/seeds/staging-qa.seed.ts", "server/seeds/staging-qa.gate.ts"],
   backfillAffiliateProviderMetadata: ["server/storage.ts"],
 } as const;
 

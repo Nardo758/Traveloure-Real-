@@ -33,6 +33,8 @@ import { seedDmoKyotoHeritage } from "./seeds/dmo-kyoto-heritage.seed";
 import { seedRoleScopedTemplates } from "./seeds/role-scoped-templates.seed";
 import { seedTripOwnership } from "./seeds/trip-ownership.seed";
 import { seedE2EAccounts } from "./seeds/e2e-test-accounts.seed";
+import { seedStagingQa, stagingQaSeedGate } from "./seeds/staging-qa.seed";
+import { stagingAccessGate } from "./middleware/staging-access";
 import { seedLocationCache } from "./seeds/location-cache.seed";
 import { demoSeedsAllowed, demoSeedSkipMessage } from "./seeds/lib/demo-seed-gate";
 import {
@@ -131,6 +133,10 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
 });
 
 app.use(httpLogger as unknown as RequestHandler);
+
+// Launch item 12: on ENVIRONMENT=staging only — basic auth + noindex in front of everything but the probes and the
+// signature-verified webhooks (server/middleware/staging-access.ts). A no-op everywhere else.
+app.use(stagingAccessGate());
 
 app.use(createHealthRouter());
 app.use(createMetricsRouter());
@@ -607,6 +613,20 @@ function collectBootSeeders(): StampedSeeder[] {
       await seedE2EAccounts();
       logger.info("E2E test accounts ready (dev/CI)");
     }, (err) => logger.error({ err }, "Failed to seed E2E test accounts")));
+    // Launch item 12 (ledger `2026-11-09-staging-item12-seeds`): the staging QA expert, TB1–TB4 and the wedding plan.
+    // Its own gate refuses ENVIRONMENT=PROD and writes nothing without STAGING_QA_PASSWORD, so CI and dev are untouched.
+    // Pushed only when its gate passes, so a skip is never stamped: setting STAGING_QA_PASSWORD later still seeds on the
+    // next boot. A run whose Connect leg did not complete THROWS, which leaves it unstamped so the next boot retries.
+    const stagingQaGate = stagingQaSeedGate();
+    if (stagingQaGate.run) {
+      seeders.push(bootSeeder("seedStagingQa", async () => {
+        const r = await seedStagingQa();
+        logger.info({ accounts: Object.keys(r.accounts), expert: r.expert, provider: r.provider, weddingTripId: r.weddingTripId, complete: r.complete }, "Staging QA seed ran");
+        if (!r.complete) throw new Error(`Staging QA seed incomplete — expert Connect: ${r.expert?.connect}; provider Connect: ${r.provider?.connect}`);
+      }, (err) => logger.error({ err }, "Staging QA seed incomplete or failed — retried on the next boot")));
+    } else {
+      logger.info({ reason: stagingQaGate.reason }, "Staging QA seed not run");
+    }
   }
   // Boot removals (ledger `2026-10-18-boot-removals`): production no longer purges test accounts at boot —
   // it rewrote every @traveloure.test password and retried blocked deletes on every start. Production still
