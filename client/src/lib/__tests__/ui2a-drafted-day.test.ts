@@ -30,16 +30,16 @@ const PHOTO = fs.readFileSync("client/src/components/plan/PlacePhoto.tsx", "utf8
 const DAY = fs.readFileSync("client/src/components/plan/DayBlock.tsx", "utf8");
 
 describe("UI-2a — the day's add control", () => {
-  it("D1 the approved wording is HELD; the one-line change is already prepared", () => {
-    // The round 5 ruling names "+ Add to this day", but the gate is Leon's own comment on #1952 —
-    // the Coding Bot's review says exactly that. Until then the ratified artboard sentence stands.
-    assert.equal(SLIP_ADD_DAY_LABEL, "Add something to this day");
-    assert.doesNotMatch(SLIP_ADD_DAY_LABEL, /^\+ /, "no unapproved plus on screen");
-    // The mechanism is in place for the day it lands: the control yields its glyph to a leading "+".
+  it("D1 the approved wording, and exactly one plus", () => {
+    // Approved 2026-11-09 ("Wording approved — Leon", recorded on #1959) — the gate the Coding Bot's
+    // review of #1952 demanded before the string could land.
+    assert.equal(SLIP_ADD_DAY_LABEL, "+ Add to this day", "the approved string, verbatim");
+    assert.match(SLIP_ADD_DAY_LABEL, /^\+ /, "the plus is part of the copy, as the board draws it");
+    // …and the control yields its glyph to that plus, so the control never reads "++ Add to this day".
     assert.match(
       TOOLS,
       /\{label\.trimStart\(\)\.startsWith\("\+"\) \? null : <Plus className="w-3 h-3" \/>\} \{label\}/,
-      "applying the approved string is one line, with no double plus",
+      "the icon yields to the approved sign",
     );
   });
 
