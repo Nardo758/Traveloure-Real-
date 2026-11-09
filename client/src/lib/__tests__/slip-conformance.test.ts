@@ -177,6 +177,12 @@ const ALLOWED_ADDITIONS = {
   // predicates and hrefs (counts · badge · Compare versions · the optimizer portal).
   "slip-back": "UI-1 — the top bar's back arrow: in-app history when it exists, else the plan list (owner) or the plan's city in Browse (guest)",
   "slip-state-board": "UI-1 — the ONE state board: routing counts, optimized badge, Compare versions and the optimizer slot in one container (no handler of its own)",
+  // B-10 (ruled 2026-11-09): a GUEST's empty plan draws Browse + "Where are you staying?" instead of
+  // the owner's draft card. The ids on the two rows and the block live in `SlipEmptyStart` (outside
+  // this inventory's file set); the container in SlipView is declared here for the same reason every
+  // other container is — a control that appears without a named ruling behind it is what this pin
+  // refuses, and this one has B-10 behind it.
+  "slip-empty-guest-board": "B-10 — the guest EmptySlip container: Browse + lodging, owner's start absent (no handler of its own)",
   // PLAN-1 Phase 3 (ledger `2026-11-06-plan1-phase3-one-planner`): Calendar holds its place on the toggle, disabled.
   "button-slip-view-calendar": "PLAN-1 Phase 3 — the Calendar segment, a disabled placeholder until its artifact lands",
   // 3 · the rail's Expert card
