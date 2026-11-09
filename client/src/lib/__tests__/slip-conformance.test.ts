@@ -308,6 +308,17 @@ const ALLOWED_REPOINTS: Record<string, { to: string[]; reason: string }> = {
       "chooser rule, named once as `refinalize` so \"Finalize Plan\" and \"Make it final again\" " +
       "share it (§18 rule 1). Its label reads \"Make it final again\" once a final exists.",
   },
+  // B-11 (ruled 2026-11-09): the party sheet's "Invite someone" presses the plan menu's OWN share
+  // handler, so the mutation moved out of this component into `useSlipShare` (still in SlipRail) and
+  // the call gained the copy-only flag's argument object. Same POST, same token, same slipShareUrl —
+  // the destination is unchanged; the expression is the same mutation with its options made explicit.
+  "slip-action-share": {
+    to: ["onClick:() => share.mutate({})"],
+    reason:
+      "B-11 — the share mutation is now the ONE `useSlipShare` handler shared by the plan menu and the " +
+      "party sheet ('Invite someone' / 'Copy link'). `mutate({})` is the same call with no options; " +
+      "no second mint path exists (pinned by ui2b-party-sheet P5).",
+  },
   "slip-browse-services": {
     to: ["href:slipBrowseServicesHref(tripId, trip.destination)"],
     reason:

@@ -34,6 +34,12 @@ export interface ToolsTrayProps {
   isHidden: boolean;
   /** The plan's own "Where to stay" surface, as the slip already resolves it (the panel or the compare). */
   whereToStay: ReactNode;
+  /**
+   * B-11 (ruled 2026-11-09): the travel party sheet's ROSTER section — who is on the plan, and the
+   * one share rail's two controls. Resolved by the CALLER (owner-gated there), so this tray stays a
+   * registry of tools and never learns about ownership; absent ⇒ the sheet draws what it drew before.
+   */
+  partyRoster?: ReactNode;
   trip: { destination: string | null; startDate: string | null; endDate: string | null };
   /** Controlled: which tool's sheet is open (the day rows' "Add your flight" opens Getting there). */
   openTool?: ToolKey | null;
@@ -74,6 +80,7 @@ export function toolContent(key: ToolKey, p: ToolsTrayProps): ReactNode | null {
     case "whos_coming":
       return (
         <>
+          {p.partyRoster ?? null}
           {p.zoneLine ? (
             <p className="mb-3 text-[11px] text-[color:var(--slip-muted)]" data-testid="tool-travel-party-zone">
               {p.zoneLine}
