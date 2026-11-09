@@ -99,6 +99,33 @@ npm run preflight:publish -- --strict     # prints the verdict; changes nothing
    left-hand side, and why this step is a human one. See the script header's
    NEGATIVE SPACE section for the rest of what it does not cover.
 
+## Per-deployment Secrets — ENVIRONMENT and the storage bucket (ledger `2026-11-09-deploy-env-secrets`)
+
+A shared `.replit` cannot carry per-deployment values. On 2026-11-09 its `[userenv.production] ENVIRONMENT = "PROD"`
+beat the staging deployment's own Secret, and the staging boot crashed in `stripe.service.ts` ("STRIPE_SECRET_KEY must
+be a live key … (ENVIRONMENT=PROD)"). From this change on, `.replit` sets **neither** `ENVIRONMENT` nor
+`REPLIT_OBJECT_STORAGE_BUCKET`; each deployment sets both as **Secrets**:
+
+| Deployment | `ENVIRONMENT` | `REPLIT_OBJECT_STORAGE_BUCKET` |
+|---|---|---|
+| production | `PROD` | production's bucket id — **verify it in production's App Storage panel first**; the repo's last known value is `replit-objstore-b9da6238-639b-4b0e-8956-034ec0042760` |
+| staging | `staging` | staging's own bucket id (never production's) |
+
+**Fail closed.** In a Replit deployment (`REPLIT_DEPLOYMENT` set) the boot is refused when `ENVIRONMENT` is unset or not
+exactly `PROD`/`staging`, or when `REPLIT_OBJECT_STORAGE_BUCKET` is unset (`server/utils/deploy-env.ts`, called first
+by `server/validate-env.ts`). It never defaults to a non-PROD value. A refused boot fails the publish and **the current
+deployment stays live**. The boot logs one line, `environment=<ENVIRONMENT> bucket=<id>`, just before `Server started`.
+
+`scripts/publish-preflight.cjs --strict` (check 5) refuses a `.replit` that sets either name in `[env]` or any
+`[userenv.*]`, and ignores `[objectStorage].defaultBucketID` (Replit's UI rewrites it; the code never reads it). The Stripe
+key rules are unchanged; note `getStripeSecretKey` prefers `STRIPE_SECRET_KEY_TEST` outside prod-strict, which is why
+staging (`NODE_ENV=production` + `ALLOW_TEST_ACCOUNTS=1`) runs on its test key once its `ENVIRONMENT` is its own.
+
+**Order — do not reorder:**
+1. Set production's two Secrets (Deployments → Secrets) and **verify** the bucket id against production's App Storage.
+2. Merge the change that removes them from `.replit`.
+3. Publish production. Confirm the boot log shows `environment=PROD bucket=<production's id>` before `Server started`.
+
 ## Rotating the browser Maps key
 
 The browser's Google Maps key has one name, `GOOGLE_MAPS_BROWSER_KEY`

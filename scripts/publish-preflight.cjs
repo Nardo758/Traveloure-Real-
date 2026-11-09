@@ -26,6 +26,12 @@
  *   3. `HEAD` == `origin/main`                       — nothing local ahead of, or behind, review
  *   4. `package-lock.json` holds ZERO `replit.local` — the lockfile-purity rule, at the last
  *                                                      moment it can still be caught
+ *   5. `.replit` sets neither `ENVIRONMENT` nor `REPLIT_OBJECT_STORAGE_BUCKET` in `[env]` or any
+ *      `[userenv.*]` section (ledger `2026-11-09-deploy-env-secrets`). A shared `.replit` cannot
+ *      carry per-deployment values: on staging, `[userenv.production] ENVIRONMENT = "PROD"` beat the
+ *      deployment's own Secret and the boot refused its test Stripe key. Each deployment sets both as
+ *      Secrets. `[objectStorage].defaultBucketID` is IGNORED on purpose — Replit's UI rewrites it, and
+ *      the code reads the bucket only from `REPLIT_OBJECT_STORAGE_BUCKET`.
  *
  * It also PRINTS, on pass and on fail: both shas, and the last entry of the migration registry
  * (`server/migrations/migration-files.ts`). Those two lines exist to be COMPARED BY A HUMAN to
@@ -102,6 +108,32 @@ const MIGRATION_REGISTRY = path.join(ROOT, "server", "migrations", "migration-fi
 
 /** The polluted-registry marker the lockfile must never carry (CLAUDE.md "Lockfile purity"). */
 const POLLUTION_MARKER = "replit.local";
+const REPLIT_FILE = path.join(ROOT, ".replit");
+/** Per-deployment values: set as each deployment's Secrets, never in the shared `.replit`. */
+const PER_DEPLOYMENT_VARS = ["ENVIRONMENT", "REPLIT_OBJECT_STORAGE_BUCKET"];
+
+/**
+ * Check 5, pure: every `[env]` / `[userenv]` / `[userenv.<x>]` assignment of a per-deployment var in
+ * `.replit`. Line-based on purpose (no TOML dependency); a section header switches the scope, and any
+ * other section — `[objectStorage]` included — is ignored.
+ */
+function perDeploymentAssignments(replitText) {
+  const found = [];
+  let section = "";
+  for (const raw of String(replitText).split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    const header = line.match(/^\[\[?\s*([^\]]+?)\s*\]\]?$/);
+    if (header) {
+      section = header[1];
+      continue;
+    }
+    if (!(section === "env" || section === "userenv" || section.startsWith("userenv."))) continue;
+    const kv = line.match(/^"?([A-Za-z_][A-Za-z0-9_]*)"?\s*=/);
+    if (kv && PER_DEPLOYMENT_VARS.includes(kv[1])) found.push(`[${section}] ${kv[1]}`);
+  }
+  return found;
+}
 
 /**
  * Hard bound on the one network call this script makes. It runs as the FIRST step of the
@@ -202,6 +234,19 @@ function evaluate(snapshot) {
       failures.push(
         `package-lock.json holds ${hits} \`${POLLUTION_MARKER}\` URL(s) — run ` +
           "`node scripts/scrub-lockfile.cjs`, commit, and land it on main before publishing",
+      );
+    }
+  }
+
+  // 5 — `.replit` carries no per-deployment value
+  if (snapshot.replitToml === null) {
+    failures.push("could not read `.replit` — refusing to assume it carries no per-deployment value");
+  } else if (snapshot.replitToml !== undefined) {
+    const hits = perDeploymentAssignments(snapshot.replitToml);
+    if (hits.length > 0) {
+      failures.push(
+        `\`.replit\` sets ${hits.join(", ")} — a shared file cannot carry per-deployment values (it beat ` +
+          "staging's own Secret on 2026-11-09). Remove it; each deployment sets it as a Secret (docs/RELEASE.md)",
       );
     }
   }
@@ -340,6 +385,7 @@ function gather() {
       originOk === null ? false : git(["merge-base", "--is-ancestor", originOk, "HEAD"]) !== null,
     extraCommits: originOk === null ? [] : readExtraCommits(originOk),
     lockfile: readFileOrNull(LOCKFILE),
+    replitToml: readFileOrNull(REPLIT_FILE),
     fetchFailed,
   };
 }
@@ -359,6 +405,7 @@ function selfTest() {
     // `[]` is what keeps THE INCIDENT failing — a bare `headSha` mismatch with no explaining
     // commit is rejected by the predicate's third condition.
     extraCommits: [],
+    replitToml: '[env]\nPORT = "5000"\n\n[userenv.production]\nPLUS_SALES_ENABLED = "false"\n\n[objectStorage]\ndefaultBucketID = "replit-objstore-x"\n',
     fetchFailed: false,
   };
   const fail = (over) => evaluate({ ...CLEAN, ...over }).failures;
@@ -501,6 +548,30 @@ function selfTest() {
       () => lastMigrationEntry("export const MIGRATION_FILES = [] as const;") === null,
     ],
     ["an unreadable registry reports null, never a placeholder", () => lastMigrationEntry(null) === null],
+    [
+      "check 5: [userenv.production] ENVIRONMENT fails, naming the section",
+      () =>
+        fail({ replitToml: '[userenv.production]\nENVIRONMENT = "PROD"\n' }).some((e) =>
+          e.includes("[userenv.production] ENVIRONMENT"),
+        ),
+    ],
+    [
+      "check 5: [env] REPLIT_OBJECT_STORAGE_BUCKET fails",
+      () =>
+        fail({ replitToml: '[env]\nPORT = "5000"\nREPLIT_OBJECT_STORAGE_BUCKET = "b"\n' }).some((e) =>
+          e.includes("[env] REPLIT_OBJECT_STORAGE_BUCKET"),
+        ),
+    ],
+    [
+      "check 5: [objectStorage].defaultBucketID is ignored (Replit's UI rewrites it)",
+      () => fail({}).length === 0 && perDeploymentAssignments(CLEAN.replitToml).length === 0,
+    ],
+    [
+      "check 5: a commented-out assignment and other sections are ignored",
+      () =>
+        perDeploymentAssignments('[env]\n# ENVIRONMENT = "PROD"\n[deployment]\nENVIRONMENT = "x"\n').length === 0,
+    ],
+    ["check 5: an unreadable .replit fails closed", () => fail({ replitToml: null }).some((e) => e.includes("`.replit`"))],
     [
       "the fetch is bounded — an unbounded fetch would be an unbounded deploy",
       () => Number.isFinite(FETCH_TIMEOUT_MS) && FETCH_TIMEOUT_MS > 0 && FETCH_TIMEOUT_MS <= 60_000,

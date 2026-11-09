@@ -3,6 +3,7 @@
 import "dotenv/config";
 import { healthEgress } from "./services/runtime-flags";
 import "./validate-env";
+import { deploymentEnvLine } from "./utils/deploy-env";
 import express, { type Request, Response, NextFunction, RequestHandler } from "express";
 import crypto from "crypto";
 import { createServer, request as httpRequest } from "http";
@@ -843,6 +844,8 @@ if (process.env.NODE_ENV === "production") {
     console.log(`[readiness] identity/KYB keys: PERSONA_API_KEY=${personaKey} PERSONA_TEMPLATE_ID=${personaTemplate} STRIPE_IDENTITY_WEBHOOK_SECRET=${stripeIdentity}`);
     const retiredMapsKey = retiredMapsBrowserKeyWarning(process.env);
     if (retiredMapsKey) logger.warn(retiredMapsKey);
+    // Ledger `2026-11-09-deploy-env-secrets`: which deployment this is, and its bucket — one line, before "Server started".
+    logger.info(deploymentEnvLine());
     logger.info({ port }, "Server started");
 
     cacheSchedulerService.start();
