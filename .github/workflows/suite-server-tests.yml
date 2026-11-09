@@ -155,6 +155,9 @@ jobs:
       # Launch item 12 (ledger `2026-11-09-staging-item12-seeds`): the staging access gate (pure) and the staging QA seed.
       - name: Staging access gate + QA seed gate (node:test, pure)
         run: npx tsx --test server/__tests__/staging-access.test.ts
+      # Ledger `2026-11-09-deploy-env-secrets`: per-deployment ENVIRONMENT + bucket, fail closed in a deployment.
+      - name: Deployment environment — fail closed, boot line, .replit carries no per-deployment value (node:test, pure)
+        run: npx tsx --test server/__tests__/deploy-env.test.ts
       - name: Staging QA seed — accounts, routable expert, wedding plan, idempotent (node:test)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/staging-qa-seed.db.test.ts
       - name: ED-1 footer Blog link — published-count gate, fail-closed (node:test)

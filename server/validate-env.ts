@@ -36,6 +36,17 @@
  */
 
 import { isProdStrictEnv, checkStripeKeyPrefix } from "./utils/stripe-key-policy";
+import { deploymentEnvProblems } from "./utils/deploy-env";
+
+// Ledger `2026-11-09-deploy-env-secrets`: FIRST, before any Stripe check — a deployment with no (or a misspelled)
+// ENVIRONMENT, or no REPLIT_OBJECT_STORAGE_BUCKET, refuses to boot. Never defaults to non-PROD. A no-op outside a
+// Replit deployment (workspace, CI, tests).
+{
+  const problems = deploymentEnvProblems();
+  if (problems.length > 0) {
+    throw new Error(`[validate-env] Refusing to start this deployment: ${problems.join("; ")}. See docs/RELEASE.md.`);
+  }
+}
 import { getStripeSecretKey, getStripeWebhookSecret } from "./utils/stripe-key";
 import { SIGN_IN_WITH_APPLE_ENABLED, appleSignInFlagOn, missingAppleEnvNames } from "./replit_integrations/auth/apple-env";
 
