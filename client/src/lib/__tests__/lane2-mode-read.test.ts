@@ -134,6 +134,22 @@ describe("Lane 2 mode read", () => {
     assert.match(read("client/src/pages/deals.tsx"), /\{!bookingShown \? null : formattedPrice \? \(/);
   });
 
+  // R5-4 (round 5, ledger `2026-11-09-round5-fixes`): a paid AI task's price is booking copy too — a file that prints
+  // it (the Ask bar or the rail's price line) must read the shared rule; the drawer renders nothing in waitlist.
+  it("M8 a file that prints a paid-AI price reads the shared rule", () => {
+    const PRICED = /\baskAiBarLabel\(|\baskAiPriceLine\(/;
+    const READS = /useBookingActionsShown|withoutBookingActions|usePlanActionsVisible\(/;
+    const NAMED: Record<string, string> = { "client/src/lib/ask-ai-drawer.ts": "the copy module; read only through AskAiDrawer, which reads the shared rule" };
+    const offenders: string[] = [];
+    for (const file of walk("client/src")) {
+      if (file.includes("__tests__") || NAMED[file]) continue;
+      const code = stripComments(read(file));
+      if (PRICED.test(code) && !READS.test(code)) offenders.push(file);
+    }
+    assert.deepEqual(offenders, [], "a paid-AI price drawn without the shared mode read");
+    assert.match(read("client/src/components/plancard/AskAiDrawer.tsx"), /\n\s*if \(waitlist\) return null;/);
+  });
+
   it("M6 traveler sign-up is hidden in waitlist mode", () => {
     const menu = read("client/src/components/user-menu.tsx");
     assert.match(menu, /const travelerSignupShown = useTravelerSignupShown\(\);/);

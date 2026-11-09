@@ -21,8 +21,8 @@ export default function SlipViewPage() {
   const { tripId } = useParams<{ tripId: string }>();
   const searchStr = useSearch();
   const highlightItemId = new URLSearchParams(searchStr).get("item");
-  // PLAN-1 Phase 2 (ruling 4): the opening planner — the URL's `?view=`, else a plan created from the map opens on
-  // Map, else the traveler's remembered view (server-side), else Days (`resolvePlanView`).
+  // The opening planner (`resolvePlanView`, slip-first ledger `2026-11-07-slip-first-landing`): the URL's `?view=`, else
+  // the traveler's remembered view (server-side), else Days.
   const urlView = planViewFromUrl(searchStr);
   const prefsQ = useQuery<unknown>({ queryKey: ME_PREFERENCES_QUERY_KEY, staleTime: 60_000, retry: false, enabled: !urlView });
 

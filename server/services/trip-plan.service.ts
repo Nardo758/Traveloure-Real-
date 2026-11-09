@@ -678,6 +678,10 @@ export async function assembleTripPlan(
   if (!trip) throw new TripPlanNotFoundError(tripId);
 
   const startDate = trip.startDate ? new Date(trip.startDate) : new Date();
+  // R5-5 (round 5, ledger `2026-11-09-round5-fixes`; LD 30): a day has a calendar date only once the plan's dates are
+  // confirmed. Until then its days are "Day 1", "Day 2"… — a placeholder window is never a date (`date` "" and
+  // `dateIso` null, the same shape a plan with no start date already has).
+  const dayDateStart: Date | null = planDatesAreConfirmed((trip as any).datesConfirmedAt) ? startDate : null;
   const deliveredBy = await resolveDeliveredBy(tripId);
   const planApproval = await resolvePlanApproval(tripId);
 
@@ -1106,13 +1110,13 @@ export async function assembleTripPlan(
     return {
       dayNumber: dayNum,
       dayNum,
-      date: dayDateLabel(startDate, dayNum),
+      date: dayDateStart ? dayDateLabel(dayDateStart, dayNum) : "",
       // The MACHINE date beside the display one (ledger `2026-09-04-reaudit-fixes`, re-audit A17).
       // The slip's day heading names the weekday, and a weekday can only be derived from a real
       // calendar date — parsing the localised `date` string back into one would be a second, and
       // fragile, authority for the same fact (§18 rule 1). `dayDateIso` returns null with no start
       // date and never guesses, so a plan that does not know its dates keeps its ordinal heading.
-      dateIso: dayDateIso(startDate, dayNum),
+      dateIso: dayDateIso(dayDateStart, dayNum),
       label: generateDayLabel(types, dayItems),
       activities: dayItems.map(buildActivity),
       transports: dayLegs.map(buildLeg),
@@ -1162,10 +1166,10 @@ export async function assembleTripPlan(
         return {
           dayNumber: dayNum,
           dayNum,
-          date: dayDateLabel(startDate, dayNum),
+          date: dayDateStart ? dayDateLabel(dayDateStart, dayNum) : "",
           // Same machine date as the structured branch above (re-audit A17), so the two producers
           // cannot give the same plan two different day headings.
-          dateIso: dayDateIso(startDate, dayNum),
+          dateIso: dayDateIso(dayDateStart, dayNum),
           label: generateDayLabel(types, []),
           activities: acts.map((a: any, ai: number) => {
             const title = a.name || a.title || "";

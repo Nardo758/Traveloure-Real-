@@ -27,6 +27,7 @@ import { AiDraftFailureAlert } from "@/lib/ai-draft-failure";
 import {
   AI_DRAFT_FAILURE_TITLE,
   FreeDraftFailure,
+  rereadUntilDraftShows,
   runFreeDraft,
   type AiDraftFailureNotice,
   type FreeDraftResult,
@@ -92,7 +93,13 @@ export function useSlipFreeDraft(trip: FreeDraftTripInput, tripId: string): Slip
       setFailure(null);
       // TG-1: a successful free draft. No params.
       trackEvent("quick_draft");
-      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      // R5-1 (round 5): re-read the slip's plan until it shows the drafted rows — one failed or stale re-read (a 429
+      // from the plan-read limiter) left the pre-draft plan on screen until a reload. Bounded; never throws.
+      const plancardKey = [`/api/trips/${tripId}/plancard`];
+      void rereadUntilDraftShows(async () => {
+        await queryClient.refetchQueries({ queryKey: plancardKey, exact: true });
+        return queryClient.getQueryData(plancardKey);
+      }, result.itemsWritten);
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/option-sets`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/where-to-stay`] });
       toast({

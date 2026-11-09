@@ -43,9 +43,11 @@ export function tripWindowDayCount(startDate: string | null | undefined, endDate
 
 export function mapDayChips(
   days: readonly PlanCardDay[],
-  trip: { startDate?: string | null; endDate?: string | null } | null | undefined,
+  trip: { startDate?: string | null; endDate?: string | null; datesConfirmed?: boolean | null } | null | undefined,
 ): PlanCardDay[] {
-  const start = dayIndex(trip?.startDate);
+  // R5-5 (round 5; LD 30): the window still says how many days the plan has, but a day is dated only once the dates are
+  // confirmed — an unconfirmed plan's empty days read "Day 1", "Day 2"…, never a placeholder weekday.
+  const start = trip?.datesConfirmed === false ? null : dayIndex(trip?.startDate);
   const count = tripWindowDayCount(trip?.startDate, trip?.endDate);
   const byNum = new Map(days.map((d) => [d.dayNum, d]));
   const nums = new Set<number>(days.map((d) => d.dayNum));
