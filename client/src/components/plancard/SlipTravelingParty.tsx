@@ -339,7 +339,7 @@ export function SlipTravelingParty({ tripId }: { tripId: string }) {
               const arrives = displayDay(member.arrivalDatetime);
               const departs = displayDay(member.departureDatetime);
               return (
-                <li key={member.id} className="rounded-lg border p-3" data-testid={`party-row-${member.id}`}>
+                <li key={member.id} className="rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] p-3" data-testid={`party-row-${member.id}`}>
                   {editingId === member.id ? (
                     <PartyForm
                       form={editForm}
