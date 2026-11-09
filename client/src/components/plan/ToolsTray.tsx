@@ -172,6 +172,15 @@ export function ToolsTray(props: ToolsTrayProps) {
     <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-0.5" data-testid="slip-tools-tray">
       {tools.map((key) => {
         const done = props.doneTools?.has(key) === true;
+        // B-8 (ruled 2026-11-09): a chip shows the COUNT where the board shows one — "Travel party ·
+        // 2". It reads the same facts the gate reads, writes nothing, and invents nothing: a party
+        // nobody stated draws no count (§13 — never "· 0").
+        const count =
+          (key === "travel_party" || key === "whos_coming") &&
+          typeof props.facts?.travelers === "number" &&
+          props.facts.travelers > 0
+            ? props.facts.travelers
+            : null;
         return (
           <button
             key={key}
@@ -190,8 +199,10 @@ export function ToolsTray(props: ToolsTrayProps) {
             }
             data-testid={`tool-chip-${key}`}
             data-tool-done={done ? "true" : undefined}
+            data-tool-count={count != null ? String(count) : undefined}
           >
             {TOOL_LABEL[key]}
+            {count != null ? ` · ${count}` : ""}
             {done ? " ✓" : null}
           </button>
         );

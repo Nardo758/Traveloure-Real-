@@ -2342,10 +2342,22 @@ export function SlipView({
   const leadCopy: SlipLeadCopy | null = isMoment
     ? { title: momentLeadTitle(momentSpan), intro: momentLeadIntro(momentAnchor), noStay: true }
     : null;
-  const doneTools = useMemo(
-    () => new Set<ToolKey>(momentAnchor ? ["the_reservation"] : []),
-    [momentAnchor],
-  );
+  // B-8 (ruled 2026-11-09): a tray chip is CHECKED when the fact it asks for is already saved —
+  // dates ⇒ Getting there, a stay chosen ⇒ Where to stay — and the Moment's reservation keeps its
+  // existing rule. Both read fields the slip already holds: no new ask, no new string, and a fact
+  // nobody saved stays unchecked (§13 — an unanswered question is not "done").
+  const datesSaved = (data.trip as any)?.datesConfirmed === true;
+  const stayChosen = allActivities.some((a) => isLodgingItem({ type: a.type, title: a.name }));
+  const doneTools = useMemo(() => {
+    const done = new Set<ToolKey>();
+    if (momentAnchor) done.add("the_reservation");
+    if (datesSaved) done.add("getting_there");
+    if (stayChosen) {
+      done.add("where_to_stay");
+      done.add("shared_lodging");
+    }
+    return done;
+  }, [momentAnchor, datesSaved, stayChosen]);
 
   return (
     <div
@@ -2512,7 +2524,11 @@ export function SlipView({
                   ? renderAnchorPanel("chooser")
                   : anchorSurface.trayChange
                     ? renderAnchorPanel("change")
-                    : <SlipAnchorCompareButton tripId={tripId} />
+                    // B-9 (ruled 2026-11-09): the owner's lodging CTA says the approved words —
+                    // "Compare places to stay" (Wording approved — Leon). Owner-only by construction:
+                    // this tray is inside the `isOwner` gate and the option-set write is owner-gated
+                    // server-side too. A guest never sees it; their row is Browse on the Hotels tab.
+                    : <SlipAnchorCompareButton tripId={tripId} label="Compare places to stay" />
               }
               trip={{
                 destination: data.trip.destination ?? null,
