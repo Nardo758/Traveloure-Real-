@@ -391,15 +391,19 @@ export function TripCardDays(props: TripCardDaysProps) {
     timeZone,
   });
 
+  // ONE EDGE PER CARD (review, 2026-11-09). This root is a SIBLING of the card's other rows
+  // (Open in maps · Purchases · Change history, and the suggestions block), which are all
+  // `px-3 sm:px-5` in `PlanCard.tsx`. UI-6a first moved this root to `px-4 sm:px-6` for the board's
+  // 16px rhythm, which inset the provenance line, the chip row and the day cards 4px on each side of
+  // rows that did not move — a visible step at both widths (34/356 vs 30/360 at 390; 262/1062 vs
+  // 258/1066 at 1440). The day root keeps the card's existing inset; the vertical rhythm
+  // (space-y-4, pt-4) is unchanged. Pinned by T6.
+  //
+  // This note is a LINE COMMENT above the return, deliberately: `slip-trip-card-board.test.ts` T1
+  // matches `<PlanRowLookProvider look="board">\s*<div className="slip-surface ` — a JSX comment in
+  // between broke that pre-existing pin, which is how the first version of this fix went red on CI.
   return (
     <PlanRowLookProvider look="board">
-    {/* ONE EDGE PER CARD (review, 2026-11-09). This root is a SIBLING of the card's other rows
-        (Open in maps · Purchases · Change history, and the suggestions block), which are all
-        `px-3 sm:px-5` in `PlanCard.tsx`. UI-6a first moved this root to `px-4 sm:px-6` for the
-        board's 16px rhythm, which inset the provenance line, the chip row and the day cards 4px on
-        each side of rows that did not move — a visible step at both widths (34/356 vs 30/360 at
-        390; 262/1062 vs 258/1066 at 1440). The day root keeps the card's existing inset; the
-        vertical rhythm (space-y-4, pt-4) is unchanged. Pinned by T6. */}
     <div className="slip-surface space-y-4 px-3 pt-4 font-[family-name:var(--slip-font-body)] sm:px-5" {...slipTokensAttr(readSlipTokensMode())} data-testid="card-days">
       {provenance || readyMadeSourceLine(props.readyMadeSource) ? (
         <div className="space-y-0.5 rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] px-4 py-3">
