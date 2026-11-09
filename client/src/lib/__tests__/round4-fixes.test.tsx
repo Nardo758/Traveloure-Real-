@@ -3,7 +3,7 @@
  *
  *   R4-1  an Events card built from a city_events row saves as `city_event` / its source id, with no client hints.
  *   R4-2  the calendar's request path never waits on the partner fetch (background refresh only).
- *   R4-3  the slip eyebrow reads "Your plan · Proposal" until dates are confirmed; no phase claim before that.
+ *   R4-3  the slip eyebrow (R5-3: the "Proposal" placeholder is dropped — the occasion, or "Your plan"); no phase claim before the dates are confirmed.
  *   R4-4  the guest plan banner / answers line read "2 adults" / "2 adults, 1 child" from the ONE helper.
  *   R4-5  the map's Browse rail finds a saved gem / event by its content row; the guest save button turns "Saved to plan".
  *   R4-6  the plan picker reads "Save to this plan".
@@ -79,9 +79,10 @@ describe("Round 4 fixes", () => {
     assert.match(src, /return cache && cache\.key === key \? cache\.events : \[\];/);
   });
 
-  it("R4-3 the eyebrow: Proposal until dates are confirmed; no phase claim before that", () => {
-    assert.equal(planEyebrowLabel({ datesConfirmed: false, occasionName: "Wedding" }), "Your plan · Proposal");
-    assert.equal(planEyebrowLabel({ datesConfirmed: null }), "Your plan · Proposal");
+  it("R4-3 the eyebrow (R5-3: no Proposal placeholder); no phase claim before the dates are confirmed", () => {
+    // TEST EDIT (R5-3, ledger `2026-11-09-r5-3-eyebrow`): the "Proposal" placeholder is dropped — the occasion, or "Your plan".
+    assert.equal(planEyebrowLabel({ datesConfirmed: false, occasionName: "Wedding" }), "Your plan · Wedding");
+    assert.equal(planEyebrowLabel({ datesConfirmed: null }), "Your plan");
     assert.equal(planEyebrowLabel({ datesConfirmed: true, occasionName: "Wedding" }), "Your plan · Wedding");
     assert.equal(planEyebrowLabel({ datesConfirmed: true }), "Your plan");
     assert.equal(phaseShown(false), false);

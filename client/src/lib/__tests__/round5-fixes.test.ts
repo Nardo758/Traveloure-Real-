@@ -71,3 +71,16 @@ test("R5-6 the event-night picker asks 'Which dates?' (Wording approved — Leon
   assert.equal((entry.match(/>Which dates\?<\/p>/g) ?? []).length, 2);
   assert.doesNotMatch(entry, /Which night\?/);
 });
+
+test("R5-3 the eyebrow names the occasion, or reads 'Your plan', whether or not the dates are confirmed", async () => {
+  const { planEyebrowLabel, phaseShown } = await import("@shared/plan-dates");
+  for (const datesConfirmed of [false, null, undefined, true]) {
+    assert.equal(planEyebrowLabel({ datesConfirmed, occasionName: "Travel" }), "Your plan · Travel", `occasion, dates ${datesConfirmed}`);
+    assert.equal(planEyebrowLabel({ datesConfirmed, occasionName: null }), "Your plan", `no occasion, dates ${datesConfirmed}`);
+    assert.equal(planEyebrowLabel({ datesConfirmed, occasionName: "  " }), "Your plan");
+  }
+  assert.doesNotMatch(src("shared/plan-dates.ts"), /"Your plan · Proposal"/);
+  // The UPCOMING badge rule is unchanged: the phase needs confirmed dates.
+  assert.equal(phaseShown(false), false);
+  assert.equal(phaseShown(true), true);
+});
