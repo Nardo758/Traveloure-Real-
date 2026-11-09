@@ -24,6 +24,7 @@ import { planSaveRefusalMessage } from "@/lib/plan-save-refusal";
 import { refreshSavedRefs, savedRefKey } from "@/lib/saved-refs";
 import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 import { nextTabKey } from "@/lib/roving-tabs";
+import { readSlipTokensMode, slipTokensAttr } from "@/lib/slip-tokens-mode";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Layers, MapPin, MessageSquare, Plus } from "lucide-react";
@@ -479,10 +480,16 @@ export function MapControlCenter({
       data-testid={`map-control-center-${tripId}`}
       data-map-renderer={renderer}
       data-map-layout={layout}
+      // UI-7 (Phase 0 §4.1; Leon's explicit naming): the map is the THIRD planner container, so its
+      // root carries the same token attribute the slip and the Trip Card carry — and the
+      // `slip-surface` hook the canvas block is scoped to (`.slip-surface[data-slip-tokens="canvas"]`).
+      // Nothing else in this file changes: the board's layout, its controls and its testids are the
+      // ones that were here.
+      {...slipTokensAttr(readSlipTokensMode())}
       // FU-8D-4 (ledger `2026-10-07-map-dialog-isolation`): `isolate` gives the map its own stacking
       // context. Leaflet's panes and controls carry z-indexes in the hundreds; without it they draw
       // above any dialog opened over the map and take its clicks. Every mount inherits this.
-      className={split ? "isolate lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start" : "isolate"}
+      className={`slip-surface ${split ? "isolate lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start" : "isolate"}`}
     >
       <div className="min-w-0" data-testid={`map-main-${tripId}`}>
       {checked && (
