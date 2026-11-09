@@ -254,8 +254,6 @@ export interface SlipTrip {
    * `planDatesAreConfirmed` answers once (§18 rule 1).
    */
   datesConfirmed?: boolean;
-  /** PLAN-1 Phase 2: "map" when the plan was created from the map (it opens on Map). */
-  opensOn?: "map" | null;
 }
 
 /**
