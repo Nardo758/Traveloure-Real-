@@ -19,7 +19,7 @@ import { SlipTravelingParty } from "@/components/plancard/SlipTravelingParty";
 import { SlipAnchorsTool, SlipGuestsTool } from "@/components/plancard/SlipLogisticsSection";
 import { GettingThereSheet } from "./GettingThereSheet";
 import { GettingAroundSheet } from "./GettingAroundSheet";
-import { TOOL_LABEL, manifestFor, toolIsLive, type ToolFlags, type ToolKey } from "@shared/group-manifest";
+import { TOOL_LABEL, manifestFor, toolIsLive, toolSheetTitle, type ToolFlags, type ToolKey } from "@shared/group-manifest";
 import { readSlipTokensMode, slipTokensAttr } from "@/lib/slip-tokens-mode";
 import type { PlanEvent } from "@/lib/slip-events";
 import { trayPress, type TrayFacts } from "@/lib/tray-stage";
@@ -95,13 +95,10 @@ export function toolContent(key: ToolKey, p: ToolsTrayProps): ReactNode | null {
     case "the_venue":
     case "the_show":
       return <SlipAnchorsTool tripId={p.tripId} planEvents={p.planEvents} />;
+    // Occasion-map item 2 (ruling, Nov 9, 2026): a hosted event has ONE anchor — the venue chip leads; run of show is
+    // the schedule under it and drops its anchor half (SlipAnchorsTool stays on the_venue only for this group).
     case "run_of_show":
-      return (
-        <div className="space-y-4">
-          <SlipAnchorsTool tripId={p.tripId} planEvents={p.planEvents} />
-          <ScheduleValidator tripId={p.tripId} />
-        </div>
-      );
+      return <ScheduleValidator tripId={p.tripId} />;
     case "timing_check":
       return <ScheduleValidator tripId={p.tripId} />;
     case "guests":
@@ -162,8 +159,9 @@ export function ToolsTray(props: ToolsTrayProps) {
         {open ? (
           <>
             <SheetHeader>
-              <SheetTitle>{TOOL_LABEL[open]}</SheetTitle>
-              <SheetDescription className="sr-only">{TOOL_LABEL[open]}</SheetDescription>
+              {/* Occasion-map item 11: an anchor's sheet names the answer ("Where you're staying"); the chip asks. */}
+              <SheetTitle>{toolSheetTitle(open)}</SheetTitle>
+              <SheetDescription className="sr-only">{toolSheetTitle(open)}</SheetDescription>
             </SheetHeader>
             <div className="mt-4">{content}</div>
           </>
