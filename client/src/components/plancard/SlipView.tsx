@@ -23,6 +23,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "
 import "@/styles/slip-tokens.css";
 import "@/styles/slip-tokens.canvas.css";
 import { readSlipTokensMode, slipTokensAttr } from "@/lib/slip-tokens-mode";
+import { sameOriginHistory, slipBackHref } from "@/lib/slip-back";
 import { Link, useLocation } from "wouter";
 import { bookingControls } from "@shared/booking-path";
 import type { WaitingLine } from "@shared/fact-review";
@@ -31,6 +32,7 @@ import { AffiliateBookButton } from "./AffiliateBookButton";
 import { format } from "date-fns";
 import {
   Anchor,
+  ArrowLeft,
   CalendarDays,
   CheckCircle2,
   EyeOff,
@@ -383,7 +385,6 @@ function expertFirstName(data: SlipData): string | null {
 
 export function SlipHeader({
   data,
-  hasOptimized,
   eventCount,
   partyLabel,
   isHidden,
@@ -411,7 +412,6 @@ export function SlipHeader({
   sketchLine?: string | null;
   /** The expert door's small "Add a local expert" control (ledger `2026-09-29-expert-door`), or null. */
   expertControl?: React.ReactNode;
-  hasOptimized: boolean;
   /**
    * A1 (ledger `2026-09-29-a1-trips-frame`) — the occasion's OWN name (`experience_types.name`),
    * the B1 header's eyebrow. Only when the occasion resolved to a row; `null` renders nothing — a
@@ -479,20 +479,54 @@ export function SlipHeader({
   const phase = phaseShown(datesConfirmed) ? derivePhase(start, end) : null;
   // R4-3: the eyebrow always draws — "Your plan · Proposal" until the dates are confirmed, then the occasion.
   const eyebrow = planEyebrowLabel({ datesConfirmed, occasionName });
+  // B-7 (UI-1, ruled 2026-11-09). The arrow is a REAL link whose href is the no-history fallback:
+  // an owner goes to the plan list, a guest to the plan's own city in Browse — never to sign-in.
+  // When this tab does have a same-origin entry behind it, the click simply steps back instead, so
+  // the control matches how the traveler actually arrived. The decision lives in `@/lib/slip-back`
+  // so the control and its pins read one statement of it (H5).
+  const backHref = slipBackHref({ guest: !!guest, destination: trip?.destination ?? null });
+  const onBack = (e: React.MouseEvent) => {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+    if (
+      sameOriginHistory({
+        referrer: document.referrer,
+        historyLength: window.history.length,
+        origin: window.location.origin,
+      })
+    ) {
+      e.preventDefault();
+      window.history.back();
+    }
+    // No in-app history: the href above is the destination, and wouter handles it client-side.
+  };
 
   return (
     <div className="space-y-1.5" data-testid="slip-header">
       {/* The Main board's top bar: the eyebrow on the left, the expert door and the ⋯ plan menu on
-          the right — one row. */}
+          the right — one row. UI-1 (ruled 2026-11-09) puts the board's back arrow at the START of
+          that row, before the eyebrow: it is the first thing a thumb finds and it says where you
+          are leaving. The row is a REGROUP, not new machinery — the eyebrow, the expert door and
+          the ⋯ are the ones that were already here. */}
       {(
         <div className="flex items-center justify-between gap-2">
-          <p
-            className="font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground"
-            data-testid="slip-occasion-name"
-            data-dates-confirmed={datesConfirmed ? "true" : "false"}
-          >
-            {eyebrow}
-          </p>
+          <div className="flex min-w-0 items-center gap-2">
+            <Link
+              href={backHref}
+              onClick={onBack}
+              aria-label="Back"
+              data-testid="slip-back"
+              className="-ml-1.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--slip-radius-chip)] text-[color:var(--slip-muted)] transition-colors hover:bg-[color:var(--slip-wash)] hover:text-[color:var(--slip-ink)]"
+            >
+              <ArrowLeft className="h-[18px] w-[18px]" aria-hidden="true" />
+            </Link>
+            <p
+              className="truncate font-mono text-[11px] uppercase tracking-[0.12em] text-muted-foreground"
+              data-testid="slip-occasion-name"
+              data-dates-confirmed={datesConfirmed ? "true" : "false"}
+            >
+              {eyebrow}
+            </p>
+          </div>
           {expertControl || menu ? (
             <div className="flex items-center gap-1">
               {expertControl}
@@ -558,33 +592,10 @@ export function SlipHeader({
             <EyeOff className="w-3 h-3" /> private plan
           </span>
         )}
-        {/* Spec B: OptimizedBadge — only when a REAL variant_applied diary row exists. */}
-        {hasOptimized && (
-          <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide"
-            style={tintPillStyle(OPTIMIZED_TINT)}
-            data-testid="slip-optimized-badge"
-          >
-            <Sparkles className="w-3 h-3" /> optimized
-          </span>
-        )}
-        {/* LD 41 (ledger `2026-09-05-comparison-map-baseline-compare`): the board stays
-            REVISITABLE after an adopt (adopt-finalize-conform D-4 removed the losing-variant
-            discard), so the optimized state links back to it. The id is read STRAIGHT OFF this
-            DTO (`lastComparisonId`, present only when a comparison row exists) — no surface
-            fetches the user's comparisons to work out which board this was. Absent id ⇒ NO LINK
-            (§13): a link to a board we cannot name is worse than none. */}
-        {/* Smoke 10 S10-2: once a run exists the slip links to its versions board as "Compare
-            versions" — whether or not a version was applied yet. */}
-        {data.lastComparisonId && (
-          <Link
-            href={`/itinerary-comparison/${data.lastComparisonId}`}
-            className="text-[10px] font-semibold underline underline-offset-2 text-muted-foreground hover:text-foreground"
-            data-testid="slip-see-what-changed"
-          >
-            Compare versions
-          </Link>
-        )}
+        {/* Spec B's OptimizedBadge and the "Compare versions" link are NOT drawn here any more
+            (UI-1, ruled 2026-11-09): they are two of the four pieces of the ONE state board, which
+            stands beside the optimizer lead lower in the plan column. They keep their testids, their
+            predicates and their href — only their home moved. */}
       </div>
       <h1
         className={`${SLIP_TITLE_FONT_CLASS} text-[30px] font-semibold leading-[1.1] tracking-[-0.01em] text-[color:var(--slip-ink)]`}
@@ -2417,7 +2428,6 @@ export function SlipView({
           ) : null
         }
         data={data}
-        hasOptimized={hasOptimized}
         eventCount={countPlanEvents(planEvents)}
         partyLabel={partyLabel}
         isHidden={occasionIsHidden}
@@ -2536,42 +2546,89 @@ export function SlipView({
               timeZone={(data.trip as any)?.timezone ?? null}
             />
           ) : null}
-          {isOwner ? <div ref={setOptimizerSlot} data-testid="slip-optimizer-slot" /> : null}
-          {/* ── THE VIEW BAR — the counts and the view toggle, ONE row (the canvas `viewbar`) ──
-              These were two stacked rows with the whole rail between them, so the plan's status
-              line and the control that changes how the plan is displayed read as unrelated. They
-              are one row now, and BOTH halves are exactly what they were:
+          {/* ── THE ONE STATE BOARD (UI-1, ruled 2026-11-09) ────────────────────────────────────
+              Four pieces that each had a home of their own are ONE board here:
+                · the routing counts (`slip-status-strip`), which used to be the left half of the
+                  view bar — so the plan's state and the control that changes how it LOOKS were one
+                  row answering two different questions;
+                · the optimized badge (`slip-optimized-badge`) and the way back to the comparison
+                  (`slip-see-what-changed`), which used to sit in the header's badge row;
+                · the optimizer lead's PORTAL TARGET (`slip-optimizer-slot`), moved in the SAME
+                  commit as the pieces around it — the rail portals its lead into this node, so a
+                  move without this node would have made the optimizer vanish from the slip.
+              The predicates, testids and hrefs are the ones that were already here; only the home
+              changed. The board carries no handler of its own.
 
-              THE STATUS STRIP keeps the ONE taxonomy the slip has always shown (in planning · with
-              expert · in checkout · purchased) and stays zero-omitting: a status no row is in is
-              not a segment (§13). It does not count ORIGINS — who added a row is a per-row fact the
-              item rows carry, and a second population summed into this line would read as the same
-              taxonomy while answering a different question.
+              §13 IS UNCHANGED: the counts stay zero-omitting (`SlipStatusStrip` returns null when
+              no row is in any status), and an empty plan says "Nothing added yet" in one sentence
+              rather than four zeroes — four zeroes would be four claims about rows that do not
+              exist. */}
+          <div className="space-y-3" data-testid="slip-state-board">
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+              <div className="min-w-0">
+                {allActivities.length > 0 ? (
+                  <SlipStatusStrip activities={allActivities} />
+                ) : (
+                  <p className="text-sm text-muted-foreground" data-testid="slip-viewbar-empty">
+                    Nothing added yet
+                  </p>
+                )}
+              </div>
+              {hasOptimized || data.lastComparisonId ? (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  {/* Spec B: OptimizedBadge — only when a REAL variant_applied diary row exists. */}
+                  {hasOptimized && (
+                    <span
+                      className="inline-flex items-center gap-1 rounded-[var(--slip-radius-chip)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
+                      style={tintPillStyle(OPTIMIZED_TINT)}
+                      data-testid="slip-optimized-badge"
+                    >
+                      <Sparkles className="w-3 h-3" /> optimized
+                    </span>
+                  )}
+                  {/* LD 41 (ledger `2026-09-05-comparison-map-baseline-compare`): the board stays
+                      REVISITABLE after an adopt, so the optimized state links back to it. The id is
+                      read STRAIGHT OFF this DTO (`lastComparisonId`, present only when a comparison
+                      row exists) — absent id ⇒ NO LINK (§13): a link to a board we cannot name is
+                      worse than none. Smoke 10 S10-2: "Compare versions" once a run exists. */}
+                  {data.lastComparisonId && (
+                    <Link
+                      href={`/itinerary-comparison/${data.lastComparisonId}`}
+                      className="text-[11px] font-semibold underline underline-offset-2 text-[color:var(--slip-muted)] hover:text-[color:var(--slip-ink)]"
+                      data-testid="slip-see-what-changed"
+                    >
+                      Compare versions
+                    </Link>
+                  )}
+                </div>
+              ) : null}
+            </div>
+            {/* Smoke 9 S9-4: the optimizer LEADS the page (§8) — directly under the tools tray at
+                every width. The rail renders its OptimizerLead into this slot (a portal; its state
+                stays there). Owner only, as it was. */}
+            {isOwner ? <div ref={setOptimizerSlot} data-testid="slip-optimizer-slot" /> : null}
+          </div>
+          {/* ── THE VIEW BAR — the view controls, ONE row (the canvas `viewbar`) ────────────────────
+              UI-1 (ruled 2026-11-09) took the counts OUT of this row and into the state board above,
+              which is the whole reason the row is now ONE thing: the control that changes how the
+              plan is DISPLAYED, not a status line with a switch bolted to its right. The pieces are
+              otherwise exactly what they were:
 
               THE TOGGLE keeps its honest map gating: Map is offered only when at least one stop is
-              genuinely located, and its disabled title says why.
+              genuinely located, and its disabled title says why. The count beside it reads the same
+              located total, never a ward centroid.
 
-              §13 ON AN EMPTY PLAN (ledger `2026-09-06-role-chips-filter`) — the bar RENDERS, and
-              its left half says "Nothing added yet" in the canvas's own words. It used to be
-              absent altogether, which took the List | Map toggle with it: a fresh plan had no
-              view control at all, and the one row the canvas draws simply was not there. The
-              zero-omitting rule is untouched and is the reason the placeholder is a SENTENCE
-              rather than "0 planning · 0 purchased" — a status no row is in is not a segment, and
-              four zeroes would be four claims about rows that do not exist. `SlipStatusStrip`
-              still returns null when every count is zero, so the two can never both draw. */}
+              THE CALENDAR segment STAYS and STAYS DISABLED (OPEN-C, PLAN-1 Phase 3): it holds its
+              place on the toggle until its artifact lands. Removing it is not this slice's to do.
+
+              The bar still RENDERS on an empty plan (ledger `2026-09-06-role-chips-filter`) — it is
+              the only view control a fresh plan has. Its "Nothing added yet" sentence moved with the
+              counts into the state board, so the placeholder and the segments can still never both
+              draw: `SlipStatusStrip` returns null when every count is zero (§13). */}
           <div
             className="flex items-center justify-between gap-3 flex-wrap"
             data-testid="slip-viewbar"
           >
-            <div className="min-w-0">
-              {allActivities.length > 0 ? (
-                <SlipStatusStrip activities={allActivities} />
-              ) : (
-                <p className="text-sm text-muted-foreground" data-testid="slip-viewbar-empty">
-                  Nothing added yet
-                </p>
-              )}
-            </div>
             <div className="flex items-center gap-3 flex-wrap" data-testid="slip-view-toggle">
               {/* The Main board's switch (ledger `2026-10-08-slip-main-rows`): "Days" and "Map · N of M",
                   where N is the located stops — a real coordinate, never a ward centroid. */}
