@@ -34,11 +34,15 @@ describe("Phase 1 — canvas token seam", () => {
     assert.doesNotMatch(CANVAS_CSS, /^\s*:root\s*\{/m, "a :root block would restyle every page");
   });
 
-  it("C3 the mode is default unless asked for", () => {
-    assert.equal(slipTokensMode("", null), "default");
-    assert.equal(slipTokensMode("view=map", "default"), "default");
+  it("C3 the mode is CANVAS by default (UI-flip), and default only when asked for", () => {
+    // UI-flip (ruled 2026-11-09) — sanctioned edit to this pin: it used to record the opt-in
+    // (`default` unless asked). The ruling turns the planner CONTAINERS on by default; the escape
+    // hatch is `?tokens=default` or a stored "default", which is also the flip's own revert.
+    assert.equal(slipTokensMode("", null), "canvas", "the flip: the planner containers default to canvas");
     assert.equal(slipTokensMode("tokens=canvas", null), "canvas");
     assert.equal(slipTokensMode("", "canvas"), "canvas");
+    assert.equal(slipTokensMode("tokens=default", null), "default", "the one-step way back");
+    assert.equal(slipTokensMode("view=map", "default"), "default", "a device that opted out stays out");
   });
 
   it("C4 default mode spreads no attribute", () => {
