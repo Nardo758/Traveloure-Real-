@@ -66,6 +66,11 @@ export function PlacePhoto({
       </figure>
     );
   }
+  // UI-2a (row 5): the band's attribution is a fact drawn ON the image, so it needs its own picture
+  // ground. It used to state that ground as a brand-era literal pair (a translucent white and a raw
+  // hex); it now takes the slip's card ground and muted ink, the same pair the rest of the board uses.
+  // This note lives OUTSIDE the block on purpose: `ui2a-drafted-day.test.ts` slices the band and
+  // refuses a hex there, and its first version failed because the explanation sat inside the slice.
   if (size === "band") {
     return (
       <figure className="relative" data-testid={testId} data-photo-source={photo.source}>
@@ -76,8 +81,9 @@ export function PlacePhoto({
         ) : (
           img
         )}
+        {/* The band's attribution is the same fact as the hero's, on its own picture ground. */}
         <span
-          className="absolute bottom-2 left-2 max-w-[calc(100%-1rem)] truncate rounded-md bg-white/90 px-2 py-0.5 text-[11px] text-[#5B6B7A]"
+          className="absolute bottom-2 left-2 max-w-[calc(100%-1rem)] truncate rounded-[var(--slip-radius-chip)] bg-[color:var(--slip-card)] px-2 py-0.5 text-[11px] text-[color:var(--slip-muted)]"
           data-testid={`${testId}-attribution`}
         >
           {photo.sourceUrl ? (

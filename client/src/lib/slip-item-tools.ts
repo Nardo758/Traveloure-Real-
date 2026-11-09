@@ -34,6 +34,15 @@ export const SLIP_ITEM_ENDPOINTS = {
 } as const;
 
 export const SLIP_ADD_EVENT_LABEL = "Add something to this event";
+/**
+ * UI-2a (row 5). **The approved canvas wording — "+ Add to this day" — is HELD, not applied.** The
+ * round 5 ruling lists it under "Copy approved (Wording approved — Leon)", but the Coding Bot's review
+ * on #1952 rightly refuses to take a ruling document as Leon's own approval: the gate is a comment
+ * from Leon on THAT PR. So the label keeps the ratified artboard's sentence until he posts it.
+ *
+ * When he does, applying it is ONE line here — `SlipAddItemControl` already reads a leading "+" as the
+ * sign and yields its `Plus` glyph to it, so no second edit is needed.
+ */
 export const SLIP_ADD_DAY_LABEL = "Add something to this day";
 /**
  * §13 — WHY AN ADD CONTROL CAN BE ABSENT, SAID OUT LOUD. `itinerary_items.day_number` is NOT NULL,
