@@ -74,11 +74,14 @@ export function VersionsRestoreView({ finalized, rows, previewDay, pending, note
 
   return (
     <section
-      className="rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] p-3 text-xs"
+      className="rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] p-4 text-xs"
       data-testid="versions-restore-strip"
       aria-labelledby="versions-restore-heading"
     >
-      <p id="versions-restore-heading" className="font-semibold text-[color:var(--slip-ink)]" data-testid="versions-restore-heading">
+      {/* UI-5b: the strip is a card in the board's family, so its label is the family's EYEBROW
+          (11px / 0.08em uppercase) rather than a plain semibold sentence, and its padding is the
+          card's p-4. Nothing about what it says or when it draws moved. */}
+      <p id="versions-restore-heading" className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--slip-muted)]" data-testid="versions-restore-heading">
         {C.heading}
       </p>
       {isFinalized ? (
@@ -221,7 +224,7 @@ export function VersionsRestoreStrip({ tripId, tripRole }: { tripId: string; tri
   if (readFailed) {
     return (
       <section
-        className="rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] p-3 text-xs"
+        className="rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] p-4 text-xs"
         data-testid="versions-restore-strip-error"
         role="alert"
       >

@@ -164,7 +164,7 @@ function CompareCard({
             <span className="text-[13px] font-semibold text-[color:var(--slip-navy)]">Plan-fit by day</span>
             <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${Math.min(strip.length, 7)}, minmax(0, 1fr))` }}>
               {strip.map((c) => (
-                <div key={c.day} className="flex min-w-0 flex-col items-center gap-0.5 rounded-lg bg-[color:var(--slip-wash)] px-1 py-1.5" data-testid={`compare-day-${option.id}-${c.day}`}>
+                <div key={c.day} className="flex min-w-0 flex-col items-center gap-0.5 rounded-[var(--slip-radius-chip)] bg-[color:var(--slip-wash)] px-1 py-1.5" data-testid={`compare-day-${option.id}-${c.day}`}>
                   <span className="text-[11px] text-[color:var(--slip-muted)]">{c.label}</span>
                   <span className="text-center text-[11px] font-semibold leading-tight text-[color:var(--slip-navy)] break-words">{c.minutes}</span>
                 </div>
@@ -231,7 +231,7 @@ export default function PlanComparePage() {
     <Link
       href={`/plans/${tripId}`}
       aria-label="Back to your plan"
-      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-[color:var(--slip-navy)] hover:bg-[color:var(--slip-wash)]"
+      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--slip-radius-chip)] text-[color:var(--slip-navy)] hover:bg-[color:var(--slip-wash)]"
       data-testid="compare-back"
     >
       <ArrowLeft className="h-[18px] w-[18px]" />
@@ -268,7 +268,7 @@ export default function PlanComparePage() {
     >
       <div className="flex items-center gap-2 px-4 pt-4">
         {back}
-        <span className="flex-1 text-center text-[12px] font-semibold uppercase tracking-[0.1em] text-[color:var(--slip-muted)]" data-testid="compare-eyebrow">
+        <span className="flex-1 text-center text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--slip-muted)]" data-testid="compare-eyebrow">
           {compareEyebrow(set.label, set.options.length)}
         </span>
         <span className="h-11 w-11 shrink-0" aria-hidden="true" />
