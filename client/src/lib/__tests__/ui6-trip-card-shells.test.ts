@@ -7,6 +7,7 @@
  *   T3 the provenance line is set in the display face
  *   T4 the rail's card family uses the board's eyebrow rhythm and 16px padding
  *   T5 P2-B: no bookings section is drawn yet (it needs an approved heading string)
+ *   T6 the days root shares the card family's ONE inset, so the column has a single edge
  *
  * Run: npx tsx --test client/src/lib/__tests__/ui6-trip-card-shells.test.ts
  */
@@ -18,6 +19,7 @@ import { cardProvenanceLine } from "../trip-card";
 const read = (p: string) => fs.readFileSync(p, "utf8");
 const DAYS = read("client/src/components/plancard/TripCardDays.tsx");
 const RAIL = read("client/src/components/plancard/TripCardRail.tsx");
+const CARD = read("client/src/components/plancard/PlanCard.tsx");
 
 describe("UI-6a — Trip Card shells", () => {
   it("T1 P2-A: the provenance already names the version and run", () => {
@@ -49,5 +51,15 @@ describe("UI-6a — Trip Card shells", () => {
   it("T5 P2-B is not built yet: no bookings section until its heading is approved", () => {
     assert.doesNotMatch(RAIL, /trip-card-rail-bookings/);
     assert.doesNotMatch(RAIL, /Bookings section/);
+  });
+
+  it("T6 the days root shares the card family's one inset", () => {
+    // Review, 2026-11-09: the days root is a SIBLING of Open in maps / Purchases / Change history,
+    // so it takes their inset. UI-6a had moved it to px-4 sm:px-6 and stepped the column 4px on each
+    // side; the roots must agree, not merely be close.
+    assert.match(DAYS, /className="slip-surface space-y-4 px-3 pt-4[^"]*sm:px-5"/);
+    assert.doesNotMatch(DAYS, /className="slip-surface space-y-4 px-4/, "the 4px-stepped inset is gone");
+    // …and the rows it sits beside keep the same inset, read in the same file it would drift from.
+    assert.ok(CARD.includes("px-3 sm:px-5"), "the sibling rows keep the card's px-3 sm:px-5 inset");
   });
 });
