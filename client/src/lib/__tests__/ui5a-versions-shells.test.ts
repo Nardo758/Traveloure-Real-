@@ -23,7 +23,10 @@ const BOARD = fs.readFileSync("client/src/components/plancard/VersionsBoard.tsx"
 
 describe("UI-5a — the Versions page shell", () => {
   it("V1 the page header carries the plan's name as its h1, under the back control", () => {
-    const header = PAGE.slice(PAGE.indexOf('data-testid="plan-versions-header"'), PAGE.indexOf("runState === \"building\""));
+    // The header block ends where the run-state lines begin. The BRACE matters: the poll's
+    // `enabled: runState === "building"` says the same words EARLIER in the file, and slicing to that
+    // occurrence produced an empty block — which is exactly what running the pin caught.
+    const header = PAGE.slice(PAGE.indexOf('data-testid="plan-versions-header"'), PAGE.indexOf('{runState === "building"'));
     assert.ok(header.length > 0, "the header is addressable");
     assert.match(header, /<h1/, "the page has a title where a title goes — not a muted <p> on the right");
     assert.match(header, /data-testid="plan-versions-title"/);
