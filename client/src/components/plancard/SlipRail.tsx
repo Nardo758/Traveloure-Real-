@@ -848,62 +848,68 @@ function ExpertCard({
       ? advisor.profile_image_url
       : null;
   return (
-    <Card data-testid="slip-rail-expert">
-      <CardContent className="p-3 space-y-2">
-        <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Expert
-        </p>
-        <div className="flex items-center gap-2.5 min-w-0">
-          <Avatar className="h-9 w-9 flex-shrink-0">
-            <AvatarImage src={avatarUrl ?? undefined} alt="" />
-            <AvatarFallback>{initials}</AvatarFallback>
-          </Avatar>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-foreground" data-testid="slip-rail-expert-name">
-              {expertState.name}
-            </p>
-            {/* §13 — a row with no standing to state draws no line, never "status unknown". */}
-            {standing && (
-              <p
-                className="font-mono text-[10px] leading-snug text-muted-foreground"
-                data-testid="slip-rail-expert-standing"
-              >
-                {standing}
-              </p>
-            )}
-            {conciergeLine && (
-              <p
-                className="text-[11px] leading-snug text-muted-foreground break-words"
-                data-testid={conciergeLine.kind === "ended" ? "slip-rail-expert-concierge-ended" : "slip-rail-expert-concierge-access"}
-              >
-                {conciergeLine.text}
-              </p>
-            )}
-          </div>
-        </div>
-        {storefront && (
-          <RailRow
-            label="View storefront"
-            meta="public page"
-            icon={<ExternalLink className="w-3.5 h-3.5" />}
-            href={storefront}
-            testId="slip-rail-expert-storefront"
-          />
-        )}
-        {/* D7 — every advisor on the plan is named. §13: nothing renders when there is only one. */}
-        {otherAdvisorsLine && (
-          <p
-            className="font-mono text-[10px] leading-snug text-muted-foreground"
-            data-testid="slip-rail-expert-others"
-          >
-            {otherAdvisorsLine}
+    /* UI-3 (row 16): the person on the plan is a card in the BOARD's family — the card radius, the
+       card's p-4 and the family's 11px / 0.08em eyebrow — instead of the console's `Card` chrome
+       (10px mono eyebrow, brand muted ink). Everything it says and every control it carries is
+       unchanged: the standing sentence, the other-advisors line, the one message control and the
+       storefront row keep their words, their predicates and their testids. */
+    <section
+      className="space-y-3 rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] p-4"
+      data-testid="slip-rail-expert"
+    >
+      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--slip-muted)]">
+        Expert
+      </p>
+      <div className="flex items-center gap-2.5 min-w-0">
+        <Avatar className="h-9 w-9 flex-shrink-0">
+          <AvatarImage src={avatarUrl ?? undefined} alt="" />
+          <AvatarFallback>{initials}</AvatarFallback>
+        </Avatar>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-[color:var(--slip-ink)]" data-testid="slip-rail-expert-name">
+            {expertState.name}
           </p>
-        )}
-        {/* Main board (ledger `2026-10-08-slip-main-rail`): the Build card is gone, so the ONE
-            message control sits with the person it messages (the Handoff board's own placement). */}
-        {messageControl}
-      </CardContent>
-    </Card>
+          {/* §13 — a row with no standing to state draws no line, never "status unknown". */}
+          {standing && (
+            <p
+              className="text-[11px] leading-snug text-[color:var(--slip-muted)]"
+              data-testid="slip-rail-expert-standing"
+            >
+              {standing}
+            </p>
+          )}
+          {conciergeLine && (
+            <p
+              className="text-[11px] leading-snug text-[color:var(--slip-muted)] break-words"
+              data-testid={conciergeLine.kind === "ended" ? "slip-rail-expert-concierge-ended" : "slip-rail-expert-concierge-access"}
+            >
+              {conciergeLine.text}
+            </p>
+          )}
+        </div>
+      </div>
+      {storefront && (
+        <RailRow
+          label="View storefront"
+          meta="public page"
+          icon={<ExternalLink className="w-3.5 h-3.5" />}
+          href={storefront}
+          testId="slip-rail-expert-storefront"
+        />
+      )}
+      {/* D7 — every advisor on the plan is named. §13: nothing renders when there is only one. */}
+      {otherAdvisorsLine && (
+        <p
+          className="text-[11px] leading-snug text-[color:var(--slip-muted)]"
+          data-testid="slip-rail-expert-others"
+        >
+          {otherAdvisorsLine}
+        </p>
+      )}
+      {/* Main board (ledger `2026-10-08-slip-main-rail`): the Build card is gone, so the ONE
+          message control sits with the person it messages (the Handoff board's own placement). */}
+      {messageControl}
+    </section>
   );
 }
 
@@ -1045,9 +1051,13 @@ function PlanCard({
 
       {/* THE BUDGET — stated PER EVENT, plan total DERIVED and never stored (ledger
           `2026-09-04-event-budget`). Rendered only when at least one event states one; the count
-          is part of the claim, so the line says how many events it covers. */}
+          is part of the claim, so the line says how many events it covers.
+
+          UI-3 (row 13, "budget display only"): the sentence is the SAME one `planBudgetLine`
+          composed — this slice may not recompute or reword it — but it is now read at body size in
+          the canvas's muted ink rather than 11px in the console's. The editor stays Claude's. */}
       {budgetLine && (
-        <p className="px-1 text-[11px] text-muted-foreground" data-testid="slip-plan-budget">
+        <p className="px-1 text-[13px] leading-snug text-[color:var(--slip-muted)]" data-testid="slip-plan-budget">
           {budgetLine}
         </p>
       )}
