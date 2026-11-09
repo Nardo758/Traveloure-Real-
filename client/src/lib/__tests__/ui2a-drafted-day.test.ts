@@ -3,10 +3,11 @@
  *
  * What this slice ships, and what it deliberately does not:
  *
- *   D1 the day's add control reads the APPROVED copy, "+ Add to this day", and the approved string
- *      carries its own plus — so the control never draws two of them
- *   D2 the event-level control keeps its own label and its icon (the day label is the only one that
- *      changed)
+ *   D1 the day's add control HELD: the approved wording ("+ Add to this day") is not applied until
+ *      Leon comments on #1952, but the mechanism is ready — the control yields its glyph to a leading
+ *      "+", so applying it later is one line and never two pluses
+ *   D2 the event-level control keeps its own label and its icon (the day label is the only one in
+ *      flight)
  *   D3 the day photo's attribution band takes the token ground/ink — no raw hex on a planner surface
  *   D4 the day's heading, its stats and the per-row "Swap" entry are untouched (they already exist;
  *      this slice may not lose them while restyling around them)
@@ -29,14 +30,16 @@ const PHOTO = fs.readFileSync("client/src/components/plan/PlacePhoto.tsx", "utf8
 const DAY = fs.readFileSync("client/src/components/plan/DayBlock.tsx", "utf8");
 
 describe("UI-2a — the day's add control", () => {
-  it("D1 the approved copy, and exactly one plus", () => {
-    assert.equal(SLIP_ADD_DAY_LABEL, "+ Add to this day", "the approved string, verbatim — never reworded");
-    assert.match(SLIP_ADD_DAY_LABEL, /^\+ /, "the plus is part of the copy, as the board draws it");
-    // The control draws the glyph ONLY for a label that does not already carry one.
+  it("D1 the approved wording is HELD; the one-line change is already prepared", () => {
+    // The round 5 ruling names "+ Add to this day", but the gate is Leon's own comment on #1952 —
+    // the Coding Bot's review says exactly that. Until then the ratified artboard sentence stands.
+    assert.equal(SLIP_ADD_DAY_LABEL, "Add something to this day");
+    assert.doesNotMatch(SLIP_ADD_DAY_LABEL, /^\+ /, "no unapproved plus on screen");
+    // The mechanism is in place for the day it lands: the control yields its glyph to a leading "+".
     assert.match(
       TOOLS,
       /\{label\.trimStart\(\)\.startsWith\("\+"\) \? null : <Plus className="w-3 h-3" \/>\} \{label\}/,
-      "no double plus: the icon yields to the approved sign",
+      "applying the approved string is one line, with no double plus",
     );
   });
 

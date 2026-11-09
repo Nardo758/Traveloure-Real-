@@ -327,10 +327,10 @@ describe("A1 — the slip renders the tools through the owner-gated predicate", 
 
   it("keeps the labels the ratified artboards draw", () => {
     assert.equal(SLIP_ADD_EVENT_LABEL, "Add something to this event");
-    // UI-2a (row 5): the day control's label is the APPROVED board copy, "+ Add to this day"
-    // (Wording approved — Leon, round 5 ruling 2026-11-08). Sanctioned edit to this pin: the
-    // artboard text it recorded was superseded by that approval, and the "+" is part of the copy.
-    assert.equal(SLIP_ADD_DAY_LABEL, "+ Add to this day");
+    // UI-2a HOLDS the canvas wording ("+ Add to this day") until Leon comments on #1952: the round 5
+    // ruling names it, but the Coding Bot's review rightly requires Leon's own approval on the PR.
+    // So the ratified artboard's sentence stays, and this pin is unchanged from `main`.
+    assert.equal(SLIP_ADD_DAY_LABEL, "Add something to this day");
   });
 });
 
