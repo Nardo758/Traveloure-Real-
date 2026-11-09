@@ -117,7 +117,7 @@ test("A1: one centered column at most 680px wide, no rail, and the bottom bar un
   expect(overflow, "no horizontal scroll at phone width").toBeLessThanOrEqual(0);
 });
 
-test("A2: the view bar is ONE row — the status counts beside the List | Map toggle", async ({
+test("A2: the view bar is ONE row of view controls — the status counts are the state board's", async ({
   page,
 }) => {
   // Two slips are opened here (a plan with a row, and an empty one), and an unbundled dev server
@@ -128,10 +128,15 @@ test("A2: the view bar is ONE row — the status counts beside the List | Map to
   await page.setViewportSize({ width: 1440, height: 1000 });
   await openSlip(page, tripId);
 
+  // UI-1 (ruled 2026-11-09): the counts LEFT the view bar for the one state board, so this pin reads
+  // each half where it now lives — the strip inside `slip-state-board`, the toggle inside
+  // `slip-viewbar`. The invariant the pin exists for is unchanged: both are on the slip, one row each.
+  const board = page.getByTestId("slip-state-board");
   const bar = page.getByTestId("slip-viewbar");
   await expect(bar).toBeVisible();
-  await expect(bar.getByTestId("slip-status-strip")).toBeVisible();
+  await expect(board.getByTestId("slip-status-strip")).toBeVisible();
   await expect(bar.getByTestId("slip-view-toggle")).toBeVisible();
+  await expect(bar.getByTestId("slip-status-strip")).toHaveCount(0);
   // The toggle WORKS: List is the default. Step 8b-2 (item 10, ruling 2 — sanctioned edit): Map is
   // ALWAYS reachable; with nothing located it opens on Browse, and "Your plan" says why it is empty
   // (§13 — never a city-centre fallback, never a guessed pin).
@@ -142,15 +147,17 @@ test("A2: the view bar is ONE row — the status counts beside the List | Map to
   // AND ON AN EMPTY PLAN THE ROW IS STILL THERE (ledger `2026-09-06-role-chips-filter`). The bar
   // used to be gated on the plan already holding rows, so a fresh plan had no view bar at all and
   // therefore no List | Map toggle — a control that simply was not on the page, which no source
-  // pin can see. The left half reads the canvas's "Nothing added yet" and the toggle keeps its
+  // pin can see. The placeholder reads the canvas's "Nothing added yet" and the toggle keeps its
   // honest disabled Map. §13 is untouched in the half that matters: the COUNT SEGMENTS stay
-  // zero-omitting, so the strip must be absent rather than rendering "0 planning · 0 purchased".
+  // zero-omitting, so the strip must be absent rather than rendering "0 planning · 0 purchased" —
+  // and "Nothing added yet" now sits in the state board, with the counts it stands in for.
   const emptyTrip = await registerAndCreateTrip(page, "viewbar-empty");
   await openSlip(page, emptyTrip);
+  const emptyBoard = page.getByTestId("slip-state-board");
   const emptyBar = page.getByTestId("slip-viewbar");
   await expect(emptyBar).toBeVisible();
-  await expect(emptyBar.getByTestId("slip-viewbar-empty")).toHaveText("Nothing added yet");
-  await expect(emptyBar.getByTestId("slip-status-strip")).toHaveCount(0);
+  await expect(emptyBoard.getByTestId("slip-viewbar-empty")).toHaveText("Nothing added yet");
+  await expect(emptyBoard.getByTestId("slip-status-strip")).toHaveCount(0);
   await expect(emptyBar.getByTestId("slip-view-toggle")).toBeVisible();
   await expect(page.getByTestId("button-slip-view-list")).toBeEnabled();
   const emptyMapBtn = page.getByTestId("button-slip-view-map");

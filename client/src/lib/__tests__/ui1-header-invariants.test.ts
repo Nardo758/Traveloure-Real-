@@ -38,8 +38,14 @@ describe("UI-1 — header, state board and view bar invariants", () => {
 
   it("H2 keeps the three state pieces the board absorbs, in the board", () => {
     assert.ok(BOARD.length > 0, "the state board is addressable, above the view bar");
-    for (const id of ["slip-status-strip", "slip-optimized-badge", "slip-see-what-changed"]) {
+    // The counts are a MOUNT, not a literal: the `slip-status-strip` testid lives on
+    // `SlipStatusStrip` itself, exactly as `slip-conformance` reads it. So the board is asserted to
+    // MOUNT the counts, and the one-copy rule below still proves the literal appears once.
+    assert.ok(BOARD.includes("<SlipStatusStrip"), "the state board mounts the counts");
+    for (const id of ["slip-optimized-badge", "slip-see-what-changed"]) {
       assert.ok(BOARD.includes(id), `${id} must live in the state board`);
+    }
+    for (const id of ["slip-status-strip", "slip-optimized-badge", "slip-see-what-changed"]) {
       // One copy: a piece left behind in the header would be a second renderer.
       assert.equal((SRC.match(new RegExp(`"${id}"`, "g")) ?? []).length, 1, `${id} renders once`);
     }
