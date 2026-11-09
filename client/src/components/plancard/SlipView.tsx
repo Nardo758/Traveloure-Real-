@@ -108,7 +108,7 @@ import {
 import { absorbedTravelItemId, flightTimeConflictLine } from "@shared/getting-there";
 import { ToolsTray } from "@/components/plan/ToolsTray";
 import { PlanCostStrip } from "@/components/plan/PlanCostStrip";
-import { SlipEmptyStart } from "@/components/plan/SlipEmptyStart";
+import { SlipEmptyGuestStart, SlipEmptyStart } from "@/components/plan/SlipEmptyStart";
 import { MomentAnchorCard } from "@/components/plan/MomentAnchorCard";
 import { momentEveningHeading, momentTimeSpan, momentLeadIntro, momentLeadTitle, momentSketchLine, momentSpanWord } from "@/lib/slip-moment";
 import { useHealthFlags } from "@/lib/health-flags";
@@ -2323,6 +2323,10 @@ export function SlipView({
   const freeFixes = useFreeRetimeFixes(tripId, canEditItems);
   // The Empty board's start renders for the OWNER of a plan with no items, in list view only.
   const emptyStartShown = isOwner && aiAction === "draft" && slipView === "list";
+  // B-10 (ruled 2026-11-09): a GUEST's empty plan draws Browse + lodging and nothing else — no Quick
+  // draft (they are signed out; the draft is an owner action) and no handoff door (it needs a plan
+  // owner). Same empty state, same list view, one rail over.
+  const guestEmptyStartShown = !!guest && aiAction === "draft" && slipView === "list";
   // ── THE MOMENT BOARD (slip conformance; ledger `2026-10-08-slip-moment-board`) ─────────────────
   // A resolved Moment occasion only (the group is an internal key, R127): its primary anchor (the
   // reservation) gets its own card, the tray marks "The reservation" done once it exists, and the
@@ -2477,6 +2481,19 @@ export function SlipView({
             <div className="space-y-3.5" data-testid="slip-empty-board">
               {anchorPanelEmpty ? renderAnchorPanel("empty") : null}
               <SlipEmptyStart tripId={tripId} trip={data.trip as any} onBrowse={() => setSlipView("map")} />
+            </div>
+          ) : null}
+          {/* B-10 (ruled 2026-11-09): the GUEST's empty plan — Browse and lodging, the two rails that
+              need no account. The lodging row opens the map's Browse layer on its EXISTING Hotels tab
+              through the same `openFindHost` the item rows' "Find a host" uses (no filter is added
+              anywhere), and it hides with that tab (`useHotelsTabShown`, inside the block). */}
+          {guestEmptyStartShown && data.trip ? (
+            <div data-testid="slip-empty-guest-board">
+              <SlipEmptyGuestStart
+                trip={data.trip as any}
+                onBrowse={() => setSlipView("map")}
+                onLodging={() => openFindHost("accommodation")}
+              />
             </div>
           ) : null}
           {/* PLAN-1 ruling: the cost strip, the tools tray and the where-to-stay panel are Days-view only — owner map view
@@ -2826,7 +2843,7 @@ export function SlipView({
           leadCopy={leadCopy}
         />
       ) : null}
-      {anchorSurface.slip === "drafted" ? renderAnchorPanel("drafted") : anchorPanelEmpty && !emptyStartShown ? renderAnchorPanel("empty") : null}
+      {anchorSurface.slip === "drafted" ? renderAnchorPanel("drafted") : anchorPanelEmpty && !emptyStartShown && !guestEmptyStartShown ? renderAnchorPanel("empty") : null}
       {/* A3b — the plan's comparisons sit ABOVE the days they are about (golden path Step 2). An
           open set is not an item (R126): it never enters the day list, the cart or the counts. */}
       {/* Smoke 5 item 2 (ledger `2026-10-03-smoke5-fixes`): the legacy inline lodging card ("Where are
