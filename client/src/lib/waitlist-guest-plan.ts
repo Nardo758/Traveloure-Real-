@@ -61,6 +61,8 @@ export interface GuestPlanView {
     eventType: string | null;
     /** PLAN-1 (shared DTO): the plan's occasion in words, as the plancard sends it. */
     occasionLabel?: string | null;
+    /** R5-3 (option b): the stored occasion slug. */
+    occasionSlug?: string | null;
     updatedAt: string | null;
   };
   items: GuestPlanItem[];
@@ -403,6 +405,7 @@ export function guestSlipData(view: GuestPlanView): import("@/components/plancar
       ...(kids != null ? { kids } : {}),
       datesConfirmed: plan.datesConfirmed,
       occasionLabel: plan.occasionLabel ?? null,
+      occasionSlug: plan.occasionSlug ?? null,
     } as any,
     days: guestPlanDays(view),
     changeLog: [],

@@ -80,17 +80,17 @@ describe("Round 4 fixes", () => {
   });
 
   it("R4-3 the eyebrow (R5-3: no Proposal placeholder); no phase claim before the dates are confirmed", () => {
-    // TEST EDIT (R5-3, ledger `2026-11-09-r5-3-eyebrow`): the "Proposal" placeholder is dropped — the occasion, or "Your plan".
-    assert.equal(planEyebrowLabel({ datesConfirmed: false, occasionName: "Wedding" }), "Your plan · Wedding");
+    // TEST EDIT (R5-3 amended, ledger `2026-11-09-r5-3-group-eyebrow`): the occasion's name alone; a group default ⇒ the group.
+    assert.equal(planEyebrowLabel({ datesConfirmed: false, occasionName: "Proposal", occasionSlug: "proposal" }), "Proposal");
     assert.equal(planEyebrowLabel({ datesConfirmed: null }), "Your plan");
-    assert.equal(planEyebrowLabel({ datesConfirmed: true, occasionName: "Wedding" }), "Your plan · Wedding");
+    assert.equal(planEyebrowLabel({ datesConfirmed: true, occasionName: "Wedding", occasionSlug: "wedding" }), "A hosted event");
     assert.equal(planEyebrowLabel({ datesConfirmed: true }), "Your plan");
     assert.equal(phaseShown(false), false);
     assert.equal(phaseShown(undefined), false);
     assert.equal(phaseShown(true), true);
     const slip = read("client/src/components/plancard/SlipView.tsx");
     assert.match(slip, /const phase = phaseShown\(datesConfirmed\) \? derivePhase\(start, end\) : null;/);
-    assert.match(slip, /const eyebrow = planEyebrowLabel\(\{ datesConfirmed, occasionName \}\);/);
+    assert.match(slip, /const eyebrow = planEyebrowLabel\(\{ datesConfirmed, occasionName, occasionSlug \}\);/);
     assert.match(read("client/src/components/plancard/PlanCard.tsx"), /if \(!phaseShown\(datesConfirmed\)\) return/);
     assert.match(read("client/src/components/plancard/HeroSection.tsx"), /const timeLabel = !phaseShown\(\(trip as any\)\?\.datesConfirmed\)\s*\? "Planning"/);
   });

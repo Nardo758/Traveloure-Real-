@@ -146,6 +146,8 @@ export type GuestPlanView = {
     eventType: string | null;
     /** PLAN-1 (shared DTO): the plan's occasion in words — the same label the plancard sends (`occasionLabelForPlan`). */
     occasionLabel: string | null;
+    /** R5-3 (option b): the stored occasion slug, so the eyebrow can name a group default's group. */
+    occasionSlug: string | null;
     updatedAt: string | null;
   };
   items: Array<{
@@ -216,6 +218,7 @@ function viewOf(trip: Trip, items: Array<typeof itineraryItems.$inferSelect>, oc
       numberOfTravelers: trip.numberOfTravelers ?? null,
       eventType: trip.eventType ?? null,
       occasionLabel,
+      occasionSlug: (trip as any).occasionSlug ?? null,
       updatedAt: trip.updatedAt ? new Date(trip.updatedAt).toISOString() : null,
     },
     items: items.map((i) => ({

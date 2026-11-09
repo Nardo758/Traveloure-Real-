@@ -416,8 +416,9 @@ export function SlipHeader({
   /**
    * A1 (ledger `2026-09-29-a1-trips-frame`) — the occasion's OWN name (`experience_types.name`),
    * the B1 header's eyebrow. Only when the occasion resolved to a row; `null` renders nothing — a
-   * plan whose occasion did not resolve is never labelled with a guessed one (§13), and the
-   * experience GROUP is never rendered at all (R127).
+   * plan whose occasion did not resolve is never labelled with a guessed one (§13). R5-3 (option b, ledger
+   * `2026-11-09-r5-3-group-eyebrow`) amends R127 for the eyebrow only: a group's DEFAULT occasion reads as its group's
+   * label (`planEyebrowLabel`, from the plan's `occasionSlug`).
    */
   occasionName?: string | null;
   /** A1 — the Trips anchor state line (`tripsAnchorLine`), for a Trips plan only; `null` otherwise. */
@@ -478,8 +479,9 @@ export function SlipHeader({
   // the dates are set, never off the placeholder window an unconfirmed plan carries (LD 30).
   const datesConfirmed = (trip as any)?.datesConfirmed === true;
   const phase = phaseShown(datesConfirmed) ? derivePhase(start, end) : null;
-  // R4-3: the eyebrow always draws — "Your plan · Proposal" until the dates are confirmed, then the occasion.
-  const eyebrow = planEyebrowLabel({ datesConfirmed, occasionName });
+  // R5-3 (option b): a group's default occasion ⇒ the group label; another occasion ⇒ its name; none ⇒ "Your plan".
+  const occasionSlug = (trip as any)?.occasionSlug ?? null;
+  const eyebrow = planEyebrowLabel({ datesConfirmed, occasionName, occasionSlug });
   // B-7 (UI-1, ruled 2026-11-09). The arrow is a REAL link whose href is the no-history fallback:
   // an owner goes to the plan list, a guest to the plan's own city in Browse — never to sign-in.
   // When this tab does have a same-origin entry behind it, the click simply steps back instead, so

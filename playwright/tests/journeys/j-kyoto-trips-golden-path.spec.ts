@@ -225,7 +225,9 @@ test.describe("1 · entry and occasion", () => {
     const tripRead = await actAndAwait(page, async () => { await page.reload(); }, { method: "GET", path: new RegExp(`^/api/trips/${tripId}$`) });
     expect(ok2xx(tripRead)).toBe(true);
 
-    await expect(testid(page, "slip-occasion-name")).toHaveText(/Travel/, { timeout: 20_000 });
+    // TEST EDIT (R5-3 option b, ledger `2026-11-09-r5-3-group-eyebrow`): `travel` is the Trips group's default, so the
+    // eyebrow reads the group's label — the existing "A trip" — not the occasion's name.
+    await expect(testid(page, "slip-occasion-name")).toHaveText(/^A trip$/, { timeout: 20_000 });
     await expect(testid(page, `slip-view-${tripId}`)).toHaveAttribute("data-experience-group", "trips");
     // The group is a key, never display text (R127).
     await expect(page.getByText("Trips", { exact: true })).toHaveCount(0);

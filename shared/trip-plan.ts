@@ -763,6 +763,8 @@ export interface TripPlanPlancardExtras {
     datesConfirmed?: boolean;
     /** R3-23: the plan's occasion label — the catalog name for `trips.occasion_slug`; null = no occasion (A-8). */
     occasionLabel?: string | null;
+    /** R5-3 (option b): the plan's stored occasion slug (`trips.occasion_slug`); null when none (A-8). */
+    occasionSlug?: string | null;
   };
   changeLog: TripPlanChange[];
   metrics: TripPlanMetrics;

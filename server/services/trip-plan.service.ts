@@ -1452,6 +1452,8 @@ export async function assembleTripPlan(
         datesConfirmed: planDatesAreConfirmed((trip as any).datesConfirmedAt),
         // R3-23: the ONE occasion label, from `occasion_slug` (null stays null, A-8).
         occasionLabel,
+        // R5-3 (option b): the slug itself, so the eyebrow can tell a group's default occasion from a specific one.
+        occasionSlug: (trip as any).occasionSlug ?? null,
         ...(fromOccasionDraft ? { fromOccasionDraft: true } : {}),
       },
       changeLog,
