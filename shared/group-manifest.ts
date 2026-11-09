@@ -68,6 +68,23 @@ export const TOOL_LABEL: Readonly<Record<ToolKey, string>> = {
 };
 
 /**
+ * Occasion-map item 11 (Wording approved — Leon, Nov 9, 2026; ledger `2026-11-09-occasion-map-2-11`): an ANCHOR tool's
+ * sheet names the answer while its chip asks the question. Every other tool's sheet keeps its chip label
+ * (`toolSheetTitle`). Group travel's shared lodging is not in the approved set and keeps its label.
+ */
+export const ANCHOR_SHEET_TITLE: Readonly<Partial<Record<ToolKey, string>>> = {
+  where_to_stay: "Where you're staying",
+  the_reservation: "The reservation",
+  the_venue: "The venue",
+  the_show: "The show",
+};
+
+/** The tool sheet's title: the anchor's approved title, else the chip label. */
+export function toolSheetTitle(key: ToolKey): string {
+  return ANCHOR_SHEET_TITLE[key] ?? TOOL_LABEL[key];
+}
+
+/**
  * Whether a tool RENDERS (decision-maker, Oct 8, 2026 — ledger `2026-10-08-tools-tray-live-only`).
  * `live` — an existing component backs it; `coming_soon` — none does, and the tray draws nothing for
  * it (no disabled chip); `flag` — live only while the named operator switch is on, read from the
