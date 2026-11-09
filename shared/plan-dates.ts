@@ -28,6 +28,7 @@
  *     is `undefined`, which reads as NOT CONFIRMED here — the same direction as NULL, because the
  *     safe failure mode for a CLAIM is to withhold it.
  */
+import { OCCASION_GROUP_DEFAULT_SLUG, OCCASION_GROUP_LABELS, type OccasionPickerGroup } from "./experience-group";
 
 /**
  * What a reader hands in. Four shapes, and the fourth is the reason this is a union rather than a
@@ -188,14 +189,33 @@ export function planDatesGateLine(action: string): string {
 export const PLAN_PARTY_ASK = "Who's coming?";
 
 /**
- * The slip's eyebrow. R5-3 (decision-maker, Nov 9, 2026; ledger `2026-11-09-r5-3-eyebrow`) drops R4-3's "Proposal"
- * placeholder, which read as the Proposal occasion: the eyebrow names the plan's occasion ("Your plan · Wedding") when it
- * has one, else "Your plan" — whether or not the dates are confirmed. `datesConfirmed` is accepted and ignored so the
- * callers stay as they are. The phase badge (Upcoming / Active / Past) still needs confirmed dates (`phaseShown`).
+ * The slip's eyebrow (R5-3 as amended, decision-maker option (b), Nov 9, 2026; ledger `2026-11-09-r5-3-group-eyebrow`):
+ *   · the plan's stored occasion is its GROUP's default (the trips chip stores `travel`) ⇒ that group's label;
+ *   · any other occasion ⇒ that occasion's name alone ("Proposal");
+ *   · no occasion ⇒ "Your plan".
+ * Existing labels only — `OCCASION_GROUP_LABELS`, the catalog name — no new string. Stated limit: an occasion picked
+ * under "More specific" that happens to be a group default (e.g. "Travel") reads as its group, because the two are
+ * stored the same way. `datesConfirmed` is ignored (R5-3); the phase badge still needs confirmed dates (`phaseShown`).
  */
-export function planEyebrowLabel(input: { datesConfirmed?: boolean | null | undefined; occasionName?: string | null }): string {
+export function planEyebrowLabel(input: {
+  datesConfirmed?: boolean | null | undefined;
+  occasionName?: string | null;
+  occasionSlug?: string | null;
+}): string {
+  const group = occasionGroupForDefaultSlug(input.occasionSlug);
+  if (group) return OCCASION_GROUP_LABELS[group];
   const occ = typeof input.occasionName === "string" ? input.occasionName.trim() : "";
-  return occ ? `Your plan · ${occ}` : "Your plan";
+  return occ || "Your plan";
+}
+
+/** The picker group whose DEFAULT occasion is this slug, or null (one slug per group). */
+export function occasionGroupForDefaultSlug(slug: string | null | undefined): OccasionPickerGroup | null {
+  const s = typeof slug === "string" ? slug.trim() : "";
+  if (!s) return null;
+  for (const g of Object.keys(OCCASION_GROUP_DEFAULT_SLUG) as OccasionPickerGroup[]) {
+    if (OCCASION_GROUP_DEFAULT_SLUG[g] === s) return g;
+  }
+  return null;
 }
 
 /** R4-3: any "Upcoming" / days-away / phase claim needs confirmed dates (LD 30 — a placeholder window is no date). */

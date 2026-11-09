@@ -72,14 +72,31 @@ test("R5-6 the event-night picker asks 'Which dates?' (Wording approved — Leon
   assert.doesNotMatch(entry, /Which night\?/);
 });
 
-test("R5-3 the eyebrow names the occasion, or reads 'Your plan', whether or not the dates are confirmed", async () => {
-  const { planEyebrowLabel, phaseShown } = await import("@shared/plan-dates");
+test("R5-3 (option b) the eyebrow: a group's default occasion ⇒ the group label; another occasion ⇒ its name; none ⇒ 'Your plan'", async () => {
+  // TEST EDIT (R5-3 amended, ledger `2026-11-09-r5-3-group-eyebrow`): replaces the "Your plan · {occasion}" pins.
+  const { planEyebrowLabel, phaseShown, occasionGroupForDefaultSlug } = await import("@shared/plan-dates");
   for (const datesConfirmed of [false, null, undefined, true]) {
-    assert.equal(planEyebrowLabel({ datesConfirmed, occasionName: "Travel" }), "Your plan · Travel", `occasion, dates ${datesConfirmed}`);
-    assert.equal(planEyebrowLabel({ datesConfirmed, occasionName: null }), "Your plan", `no occasion, dates ${datesConfirmed}`);
-    assert.equal(planEyebrowLabel({ datesConfirmed, occasionName: "  " }), "Your plan");
+    // 1. the group's default — "A trip" stores `travel`, "A hosted event" stores `wedding`.
+    assert.equal(planEyebrowLabel({ datesConfirmed, occasionSlug: "travel", occasionName: "Travel" }), "A trip");
+    assert.equal(planEyebrowLabel({ datesConfirmed, occasionSlug: "wedding", occasionName: "Wedding" }), "A hosted event");
+    // 2. any other occasion — its own name, alone.
+    assert.equal(planEyebrowLabel({ datesConfirmed, occasionSlug: "proposal", occasionName: "Proposal" }), "Proposal");
+    // 3. no occasion.
+    assert.equal(planEyebrowLabel({ datesConfirmed, occasionSlug: null, occasionName: null }), "Your plan");
+    assert.equal(planEyebrowLabel({ datesConfirmed }), "Your plan");
   }
-  assert.doesNotMatch(src("shared/plan-dates.ts"), /"Your plan · Proposal"/);
+  // Every group's default maps to its own label (the existing OCCASION_GROUP_LABELS — no new string).
+  const { OCCASION_GROUP_DEFAULT_SLUG, OCCASION_GROUP_LABELS } = await import("@shared/experience-group");
+  for (const [g, slug] of Object.entries(OCCASION_GROUP_DEFAULT_SLUG)) {
+    assert.equal(occasionGroupForDefaultSlug(slug), g);
+    assert.equal(planEyebrowLabel({ occasionSlug: slug, occasionName: "x" }), (OCCASION_GROUP_LABELS as any)[g]);
+  }
+  assert.doesNotMatch(src("shared/plan-dates.ts"), /"Your plan · Proposal"|`Your plan · \$\{/);
+  // The slug reaches the eyebrow: the plan DTO and the guest view carry it, and the slip header passes it.
+  assert.match(src("server/services/trip-plan.service.ts"), /occasionSlug: \(trip as any\)\.occasionSlug \?\? null,/);
+  assert.match(src("server/services/guest-plan.service.ts"), /occasionSlug: \(trip as any\)\.occasionSlug \?\? null,/);
+  assert.match(src("client/src/lib/waitlist-guest-plan.ts"), /occasionSlug: plan\.occasionSlug \?\? null,/);
+  assert.match(src("client/src/components/plancard/SlipView.tsx"), /planEyebrowLabel\(\{ datesConfirmed, occasionName, occasionSlug \}\)/);
   // The UPCOMING badge rule is unchanged: the phase needs confirmed dates.
   assert.equal(phaseShown(false), false);
   assert.equal(phaseShown(true), true);
