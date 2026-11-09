@@ -391,13 +391,24 @@ export function TripCardDays(props: TripCardDaysProps) {
     timeZone,
   });
 
+  // ONE EDGE PER CARD (review, 2026-11-09). This root is a SIBLING of the card's other rows
+  // (Open in maps · Purchases · Change history, and the suggestions block), which are all
+  // `px-3 sm:px-5` in `PlanCard.tsx`. UI-6a first moved this root to `px-4 sm:px-6` for the board's
+  // 16px rhythm, which inset the provenance line, the chip row and the day cards 4px on each side of
+  // rows that did not move — a visible step at both widths (34/356 vs 30/360 at 390; 262/1062 vs
+  // 258/1066 at 1440). The day root keeps the card's existing inset; the vertical rhythm
+  // (space-y-4, pt-4) is unchanged. Pinned by T6.
+  //
+  // This note is a LINE COMMENT above the return, deliberately: `slip-trip-card-board.test.ts` T1
+  // matches `<PlanRowLookProvider look="board">\s*<div className="slip-surface ` — a JSX comment in
+  // between broke that pre-existing pin, which is how the first version of this fix went red on CI.
   return (
     <PlanRowLookProvider look="board">
-    <div className="slip-surface space-y-3 px-3 pt-3 font-[family-name:var(--slip-font-body)] sm:px-5" {...slipTokensAttr(readSlipTokensMode())} data-testid="card-days">
+    <div className="slip-surface space-y-4 px-3 pt-4 font-[family-name:var(--slip-font-body)] sm:px-5" {...slipTokensAttr(readSlipTokensMode())} data-testid="card-days">
       {provenance || readyMadeSourceLine(props.readyMadeSource) ? (
         <div className="space-y-0.5 rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] px-4 py-3">
           {provenance ? (
-            <p className="text-[13px] font-semibold text-[color:var(--slip-ink)]" data-testid="card-provenance">
+            <p className="slip-display text-[15px] font-semibold leading-snug text-[color:var(--slip-ink)]" data-testid="card-provenance">
               {provenance}
             </p>
           ) : null}
@@ -411,7 +422,7 @@ export function TripCardDays(props: TripCardDaysProps) {
       ) : null}
 
       {conflict ? (
-        <div className="rounded-xl border border-[color:var(--slip-gold)] bg-[color:var(--slip-gold-wash)] p-3 text-sm text-[color:var(--slip-ink)]" data-testid="card-recheck-banner">
+        <div className="rounded-[var(--slip-radius-card)] border border-[color:var(--slip-gold)] bg-[color:var(--slip-gold-wash)] p-4 text-sm text-[color:var(--slip-ink)]" data-testid="card-recheck-banner">
           <p className="flex items-start gap-1.5">
             <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0 text-[color:var(--slip-gold-ink)]" />
             <span>{recheckBannerLine(conflict.findings, factCheckedLabel(conflict.checkedAt, timeZone))}</span>
@@ -442,7 +453,7 @@ export function TripCardDays(props: TripCardDaysProps) {
       ) : null}
 
       {recheck?.legs?.length ? (
-        <div className="rounded-xl border border-[color:var(--slip-gold)] bg-[color:var(--slip-gold-wash)] p-3 text-sm text-[color:var(--slip-ink)]" data-testid="card-recheck-legs">
+        <div className="rounded-[var(--slip-radius-card)] border border-[color:var(--slip-gold)] bg-[color:var(--slip-gold-wash)] p-4 text-sm text-[color:var(--slip-ink)]" data-testid="card-recheck-legs">
           {recheck.legs.map((l, i) => (
             <p key={i} className="flex items-start gap-1.5" data-testid={`card-recheck-leg-${i}`}>
               <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0 text-[color:var(--slip-gold-ink)]" />
@@ -482,12 +493,12 @@ export function TripCardDays(props: TripCardDaysProps) {
             <button
               key={d.dayNum}
               type="button"
-              className={`min-h-[44px] flex-shrink-0 rounded-xl border px-3 text-xs ${
+              className={`min-h-[44px] flex-shrink-0 rounded-[var(--slip-radius-chip)] border px-3.5 text-[13px] ${
                 on
-                  ? "border-[color:var(--slip-teal-ink)] bg-[color:var(--slip-teal-ink)] font-semibold text-white"
+                  ? "border-[color:var(--slip-navy)] bg-[color:var(--slip-navy)] font-semibold text-white"
                   : past
                     ? "border-[color:var(--slip-line)] bg-[color:var(--slip-card)] text-[color:var(--slip-muted)]"
-                    : "border-[color:var(--slip-line)] bg-[color:var(--slip-card)] text-[color:var(--slip-navy)]"
+                    : "border-[color:var(--slip-line-strong)] bg-[color:var(--slip-card)] text-[color:var(--slip-navy)]"
               }`}
               aria-pressed={on}
               onClick={() => setOpenDay(d.dayNum)}
