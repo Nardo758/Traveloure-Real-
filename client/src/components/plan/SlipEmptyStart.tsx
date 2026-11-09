@@ -20,7 +20,7 @@
  *   · "Hand it to a <city> local" names the city only when the expert door reports a local live
  *     in this plan's market. Otherwise it reads "Hand it to a local expert".
  */
-import { Search, UserRound } from "lucide-react";
+import { MapPin, Search, UserRound } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useHealthFlags } from "@/lib/health-flags";
 import { anyLocalLive } from "@/lib/item-row-menu";
@@ -28,6 +28,7 @@ import { openHandoffChooser } from "@/lib/handoff-client";
 import { EXPERT_DOOR_COPY } from "@/lib/expert-door-copy";
 import { useExpertAvailability } from "@/lib/expert-availability";
 import { useBookingActionsShown } from "@/lib/signup-mode";
+import { useHotelsTabShown } from "@/components/plancard/useHotelsTabShown";
 import { useSlipFreeDraft, type FreeDraftTripInput } from "./useSlipFreeDraft";
 
 /** "Kyoto, Japan" → "Kyoto" — the same first-segment reading the map's Browse layer uses. */
@@ -151,6 +152,69 @@ export function SlipEmptyStart({
         {EMPTY_FOOTNOTE_NOTHING_CHARGED}
         {placesFactsOn ? ` ${EMPTY_FOOTNOTE_PLACES}` : ""}
       </p>
+    </div>
+  );
+}
+
+// ── the GUEST's empty start (B-10, ruled 2026-11-09) ─────────────────────────────────────────────
+
+/**
+ * The guest EmptySlip: **Browse and lodging, and nothing else.**
+ *
+ * Ruled: "guest EmptySlip = Browse + lodging sections", with Quick draft HIDDEN for guests (they are
+ * signed out — the draft is an owner action, and the handoff door needs a plan owner). So this block
+ * draws two rows, and both are EXISTING rails:
+ *
+ *   · **Browse** — the same control as the owner's empty board, same testid, same words, pressing it
+ *     switches the slip to its map where the Browse layer lives (the guest's whole plan surface).
+ *   · **"Where are you staying?"** — opens that SAME map with its Browse layer on the **existing
+ *     Hotels tab** (`openFindHost("accommodation")` → `browseTabForCategory` → `hotels`). It adds no
+ *     filter and no endpoint; it selects a tab the layer already draws.
+ *
+ * **The row hides with the tab.** `useHotelsTabShown` asks the map's own question of the map's own
+ * reads, so a city with no Hotels tab has no lodging row either — the same rule, not a second one.
+ * While the reads are in flight it answers `true`, matching `visibleBrowseTabs`' no-flicker rule.
+ */
+export function SlipEmptyGuestStart({
+  trip,
+  onBrowse,
+  onLodging,
+}: {
+  trip: FreeDraftTripInput;
+  /** Switches the slip to its map, where the Browse layer opens. */
+  onBrowse: () => void;
+  /** Opens the map's Browse layer on the existing Hotels tab. */
+  onLodging: () => void;
+}) {
+  const hotelsShown = useHotelsTabShown(trip.destination);
+  const city = planCityName(trip.destination);
+  return (
+    <div className="space-y-2" data-testid="slip-empty-guest-start">
+      <button
+        type="button"
+        className="flex min-h-[60px] w-full items-center gap-3.5 rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] px-4 py-2 text-left hover:bg-[color:var(--slip-ground)]"
+        onClick={onBrowse}
+        data-testid="slip-empty-browse"
+      >
+        <Search className="h-[22px] w-[22px] flex-shrink-0 text-[color:var(--slip-teal)]" aria-hidden="true" />
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="text-[15px] font-semibold text-[color:var(--slip-ink)]">
+            {city ? `Browse ${city} and add stops yourself` : "Browse and add stops yourself"}
+          </span>
+          <span className="text-[13px] text-[color:var(--slip-muted)]">{EMPTY_BROWSE_DETAIL}</span>
+        </span>
+      </button>
+      {hotelsShown ? (
+        <button
+          type="button"
+          className="flex min-h-[60px] w-full items-center gap-3.5 rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] px-4 py-2 text-left hover:bg-[color:var(--slip-ground)]"
+          onClick={onLodging}
+          data-testid="slip-empty-guest-lodging"
+        >
+          <MapPin className="h-[22px] w-[22px] flex-shrink-0 text-[color:var(--slip-teal)]" aria-hidden="true" />
+          <span className="min-w-0 text-[15px] font-semibold text-[color:var(--slip-ink)]">Where are you staying?</span>
+        </button>
+      ) : null}
     </div>
   );
 }
