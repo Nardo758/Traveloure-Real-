@@ -7,6 +7,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { ROLES, ACCOUNTS, PASSWORD } from './fixtures/accounts';
 
+/** Launch item 12: the staging box's basic auth (server/middleware/staging-access.ts), sent only when both secrets are set. */
+function stagingCredentials(): { httpCredentials?: { username: string; password: string } } {
+  const username = process.env.E2E_STAGING_BASIC_AUTH_USER;
+  const password = process.env.E2E_STAGING_BASIC_AUTH_PASSWORD;
+  return username && password ? { httpCredentials: { username, password } } : {};
+}
+
 const AUTH_DIR = path.join(process.cwd(), 'e2e', 'auth');
 
 export default async function globalSetup(config: FullConfig) {
@@ -59,7 +66,7 @@ export default async function globalSetup(config: FullConfig) {
   } else {
   for (const role of ROLES) {
     const browser = await chromium.launch(launchOpts);
-    const context = await browser.newContext({ baseURL });
+    const context = await browser.newContext({ ...stagingCredentials(), baseURL });
     const page = await context.newPage();
 
     // ── SWAP #3: login + the authed-confirmation ────────────────────────────────────
@@ -124,6 +131,7 @@ export default async function globalSetup(config: FullConfig) {
   console.log('⏳ Warming up Vite routes (may take up to 4 min)…');
   const warmBrowser = await chromium.launch(launchOpts);
   const warmCtx = await warmBrowser.newContext({
+    ...stagingCredentials(),
     baseURL,
     storageState: path.join(AUTH_DIR, 'traveler.json'),
   });

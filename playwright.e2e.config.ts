@@ -32,6 +32,13 @@ if (!baseURL) {
   );
 }
 
+// Launch item 12 (ledger `2026-11-09-staging-item12-seeds`): the staging box answers 401 without basic auth
+// (server/middleware/staging-access.ts). The credentials come from two secrets and are sent only when both are set.
+export const stagingHttpCredentials =
+  process.env.E2E_STAGING_BASIC_AUTH_USER && process.env.E2E_STAGING_BASIC_AUTH_PASSWORD
+    ? { username: process.env.E2E_STAGING_BASIC_AUTH_USER, password: process.env.E2E_STAGING_BASIC_AUTH_PASSWORD }
+    : undefined;
+
 // NOTE: filename is playwright.e2e.config.ts (not playwright.config.ts) on purpose
 // — the repo already has a root playwright.config.ts for the local-dev harness
 // (./playwright/tests). Run this one with:  -c playwright.e2e.config.ts
@@ -52,6 +59,7 @@ export default defineConfig({
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL,
+    ...(stagingHttpCredentials ? { httpCredentials: stagingHttpCredentials } : {}),
     trace: 'on-first-retry',       // bot reads the trace on failure
     screenshot: 'only-on-failure', // + screenshot
     video: 'retain-on-failure',    // + video
