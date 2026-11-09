@@ -129,7 +129,7 @@ function PartyForm({
 }) {
   const set = (patch: Partial<TravelingPartyForm>) => setForm({ ...form, ...patch });
   return (
-    <div className="rounded-lg border bg-muted/20 p-3 space-y-3" data-testid={`${testPrefix}-form`}>
+    <div className="rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-wash)] p-4 space-y-3" data-testid={`${testPrefix}-form`}>
       <div className="grid sm:grid-cols-2 gap-3">
         <div className="space-y-1">
           <Label htmlFor={`${testPrefix}-name`} className="text-xs">
@@ -145,7 +145,7 @@ function PartyForm({
         </div>
         <div className="space-y-1">
           <Label htmlFor={`${testPrefix}-role`} className="text-xs">
-            Role <span className="text-muted-foreground font-normal">(optional)</span>
+            Role <span className="text-[color:var(--slip-muted)] font-normal">(optional)</span>
           </Label>
           {/* A native select so an unrecognised STORED value is never silently rewritten to a
               option this list happens to carry. The blank option is how "not stated" stays
@@ -170,7 +170,7 @@ function PartyForm({
         </div>
         <div className="space-y-1">
           <Label htmlFor={`${testPrefix}-arrival`} className="text-xs">
-            Arrives <span className="text-muted-foreground font-normal">(optional)</span>
+            Arrives <span className="text-[color:var(--slip-muted)] font-normal">(optional)</span>
           </Label>
           <Input
             id={`${testPrefix}-arrival`}
@@ -182,7 +182,7 @@ function PartyForm({
         </div>
         <div className="space-y-1">
           <Label htmlFor={`${testPrefix}-departure`} className="text-xs">
-            Departs <span className="text-muted-foreground font-normal">(optional)</span>
+            Departs <span className="text-[color:var(--slip-muted)] font-normal">(optional)</span>
           </Label>
           <Input
             id={`${testPrefix}-departure`}
@@ -194,7 +194,7 @@ function PartyForm({
         </div>
         <div className="space-y-1">
           <Label htmlFor={`${testPrefix}-mobility`} className="text-xs">
-            Mobility <span className="text-muted-foreground font-normal">(optional)</span>
+            Mobility <span className="text-[color:var(--slip-muted)] font-normal">(optional)</span>
           </Label>
           <select
             id={`${testPrefix}-mobility`}
@@ -216,7 +216,7 @@ function PartyForm({
         </div>
         <div className="space-y-1">
           <Label htmlFor={`${testPrefix}-access`} className="text-xs">
-            Accessibility needs <span className="text-muted-foreground font-normal">(optional)</span>
+            Accessibility needs <span className="text-[color:var(--slip-muted)] font-normal">(optional)</span>
           </Label>
           <Input
             id={`${testPrefix}-access`}
@@ -319,7 +319,7 @@ export function SlipTravelingParty({ tripId }: { tripId: string }) {
           roster is derived from per-event invites and answers "who is invited"; these are stored
           rows and answer "who is traveling". They are never merged.
         */}
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-[color:var(--slip-muted)]">
           Who is <strong>traveling</strong> with you — arrival and departure days, and anything the
           plan needs to work around. This is a different list from{" "}
           <strong>Guests &amp; invites</strong>, which is who is <strong>invited</strong> to each
@@ -327,9 +327,9 @@ export function SlipTravelingParty({ tripId }: { tripId: string }) {
         </p>
 
         {isLoading ? (
-          <div className="py-6 text-center text-sm text-muted-foreground">Loading…</div>
+          <div className="py-6 text-center text-sm text-[color:var(--slip-muted)]">Loading…</div>
         ) : rows.length === 0 ? (
-          <div className="py-6 text-center text-sm text-muted-foreground" data-testid="party-empty">
+          <div className="py-6 text-center text-sm text-[color:var(--slip-muted)]" data-testid="party-empty">
             Nobody has been added yet.
           </div>
         ) : (
@@ -370,14 +370,14 @@ export function SlipTravelingParty({ tripId }: { tripId: string }) {
                           ) : null}
                         </div>
                         {(arrives || departs) && (
-                          <div className="text-xs text-muted-foreground mt-1">
+                          <div className="text-xs text-[color:var(--slip-muted)] mt-1">
                             {arrives ? `Arrives ${arrives}` : null}
                             {arrives && departs ? " · " : null}
                             {departs ? `Departs ${departs}` : null}
                           </div>
                         )}
                         {needs ? (
-                          <div className="text-xs text-muted-foreground mt-1">Access notes: {needs}</div>
+                          <div className="text-xs text-[color:var(--slip-muted)] mt-1">Access notes: {needs}</div>
                         ) : null}
                       </div>
                       <div className="flex gap-1 shrink-0">
@@ -435,7 +435,7 @@ export function SlipTravelingParty({ tripId }: { tripId: string }) {
           themselves, not a checklist of certified attributes, so the platform claims no
           accessibility standard on anyone's behalf.
         */}
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-[11px] text-[color:var(--slip-muted)]">
           Access notes are free text and are not a claim of any accessibility standard. Payment
           and RSVP for the party are handled elsewhere and are never edited here.
         </p>

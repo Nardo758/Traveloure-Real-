@@ -20,6 +20,7 @@ import { SlipAnchorsTool, SlipGuestsTool } from "@/components/plancard/SlipLogis
 import { GettingThereSheet } from "./GettingThereSheet";
 import { GettingAroundSheet } from "./GettingAroundSheet";
 import { TOOL_LABEL, manifestFor, toolIsLive, type ToolFlags, type ToolKey } from "@shared/group-manifest";
+import { readSlipTokensMode, slipTokensAttr } from "@/lib/slip-tokens-mode";
 import type { PlanEvent } from "@/lib/slip-events";
 import { trayPress, type TrayFacts } from "@/lib/tray-stage";
 
@@ -74,7 +75,7 @@ export function toolContent(key: ToolKey, p: ToolsTrayProps): ReactNode | null {
       return (
         <>
           {p.zoneLine ? (
-            <p className="mb-3 text-xs text-muted-foreground" data-testid="tool-travel-party-zone">
+            <p className="mb-3 text-[11px] text-[color:var(--slip-muted)]" data-testid="tool-travel-party-zone">
               {p.zoneLine}
             </p>
           ) : null}
@@ -140,7 +141,17 @@ export function ToolsTray(props: ToolsTrayProps) {
   const content = open ? toolContent(open, props) : null;
   const sheet = (
     <Sheet open={open !== null} onOpenChange={(o) => !o && setOpen(null)}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg" data-testid={open ? `tool-sheet-${open}` : undefined}>
+      {/* UI-4: a sheet is PORTALED to the body, so it sits OUTSIDE the slip's token root — every
+          tool opened from the planner would otherwise render in the console's colours while the
+          plan behind it is canvas. The sheet content therefore carries the planner's root itself
+          (the same attribute the slip spreads), ground and body face included. It mounts no second
+          surface: the same components, the same testids, the same rails. */}
+      <SheetContent
+        side="right"
+        className="slip-surface w-full overflow-y-auto bg-[color:var(--slip-ground)] font-[family-name:var(--slip-font-body)] sm:max-w-lg"
+        {...slipTokensAttr(readSlipTokensMode())}
+        data-testid={open ? `tool-sheet-${open}` : undefined}
+      >
         {open ? (
           <>
             <SheetHeader>
