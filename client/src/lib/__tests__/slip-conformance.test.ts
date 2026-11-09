@@ -171,6 +171,12 @@ const ALLOWED_ADDITIONS = {
   // 1 · the two-column relayout and the merged view bar
   "slip-columns": "1 — the plan column (Main-rail: one centered column; the rail track is gone, ruling 7)",
   "slip-viewbar": "1 — the status counts and the List | Map toggle, merged into one row",
+  // UI-1 (dispatch; Phase 0 rev 3; B-7 ruled 2026-11-09). The top bar's back arrow and the ONE state
+  // board it regroups the slip's state into. Neither is a new action: the arrow is a link to a
+  // ruled destination, and the board is a container for controls that keep their own testids,
+  // predicates and hrefs (counts · badge · Compare versions · the optimizer portal).
+  "slip-back": "UI-1 — the top bar's back arrow: in-app history when it exists, else the plan list (owner) or the plan's city in Browse (guest)",
+  "slip-state-board": "UI-1 — the ONE state board: routing counts, optimized badge, Compare versions and the optimizer slot in one container (no handler of its own)",
   // PLAN-1 Phase 3 (ledger `2026-11-06-plan1-phase3-one-planner`): Calendar holds its place on the toggle, disabled.
   "button-slip-view-calendar": "PLAN-1 Phase 3 — the Calendar segment, a disabled placeholder until its artifact lands",
   // 3 · the rail's Expert card
@@ -472,21 +478,34 @@ describe("1 — one centered column; the rail's pieces each have one home", () =
     assert.doesNotMatch(pass, /unlimited/);
   });
 
-  it("the viewbar is ONE row: the status counts and the List | Map toggle together", () => {
-    assert.match(viewCode, /data-testid="slip-viewbar"/, "the merged row exists");
-    // Both halves keep the testids CI reads.
+  it("the viewbar is ONE row of view controls; the counts live in the state board", () => {
+    assert.match(viewCode, /data-testid="slip-viewbar"/, "the row exists");
+    // Every testid CI reads is still on the slip.
     assert.match(viewCode, /data-testid="slip-status-strip"/);
     assert.match(viewCode, /data-testid="slip-view-toggle"/);
     assert.match(viewCode, /data-testid="button-slip-view-list"/);
     assert.match(viewCode, /data-testid="button-slip-view-map"/);
     assert.match(viewCode, /data-testid="text-slip-map-located"/);
-    // They are in ONE container: the strip mount and the toggle both sit inside the viewbar block,
-    // which is what "one row" means structurally.
     const bar = viewCode.slice(viewCode.indexOf('data-testid="slip-viewbar"'));
     const barEnd = bar.indexOf('data-testid="slip-map-view"');
     const barBlock = barEnd > 0 ? bar.slice(0, barEnd) : bar;
-    assert.match(barBlock, /<SlipStatusStrip activities=/, "the strip is inside the viewbar");
-    assert.match(barBlock, /data-testid="slip-view-toggle"/, "and so is the toggle");
+    assert.match(barBlock, /data-testid="slip-view-toggle"/, "the toggle is inside the view bar");
+    // UI-1 (ruled 2026-11-09): the counts LEFT this row. The view bar is now the control that
+    // changes how the plan is displayed, and the status line is the state board's.
+    assert.doesNotMatch(barBlock, /<SlipStatusStrip activities=/, "the counts are no longer in the view bar");
+    const boardStart = viewCode.indexOf('data-testid="slip-state-board"');
+    const board = viewCode.slice(boardStart, viewCode.indexOf('data-testid="slip-viewbar"'));
+    assert.ok(boardStart > 0, "the state board is addressable");
+    assert.match(board, /<SlipStatusStrip activities=/, "the state board carries the counts");
+    assert.match(board, /data-testid="slip-optimizer-slot"/, "…and the optimizer's portal target");
+    assert.match(board, /data-testid="slip-optimized-badge"/, "…and the optimized badge");
+    assert.match(board, /data-testid="slip-see-what-changed"/, "…and the way back to the comparison");
+    // ONE board means ONE copy of the pieces that moved: a second badge or link left behind in the
+    // header would be the duplicate-renderer class this suite exists to refuse.
+    for (const id of ["slip-optimized-badge", "slip-see-what-changed", "slip-status-strip", "slip-optimizer-slot"]) {
+      const copies = (viewCode.match(new RegExp(`data-testid="${id}"`, "g")) ?? []).length;
+      assert.equal(copies, 1, `${id} renders once, in the one state board`);
+    }
     // Step 8b-2 (item 10, ruling 2 — sanctioned edit): Map is always offered; its honesty about
     // located stops is the empty "Your plan" line, which carries the old reason text.
     assert.match(viewCode, /planEmptyReason/);
