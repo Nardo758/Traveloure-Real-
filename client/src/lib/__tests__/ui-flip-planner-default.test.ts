@@ -61,7 +61,9 @@ describe("UI-flip — nothing outside the planner is widened", () => {
   });
 
   it("F4 the revert is one line", () => {
-    const body = MODE.slice(MODE.indexOf("export function slipTokensMode"));
+    // Bounded to THIS function: run to the end of the file and `readSlipTokensMode`'s own
+    // `return "default"` (the SSR guard) would be counted as a third opt-out.
+    const body = MODE.slice(MODE.indexOf("export function slipTokensMode"), MODE.indexOf("export function slipTokensAttr"));
     assert.equal((body.match(/return "default";/g) ?? []).length, 2, "the two explicit opt-outs");
     // The DEFAULT return is the function's tail: changing its one word to "default" is the revert.
     assert.match(body, /return "canvas";\s*\n\}/, "the canvas return is the function's tail");
