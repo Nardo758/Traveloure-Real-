@@ -60,7 +60,8 @@ export interface FreeDraftTrip {
   travelers?: number | null;
 }
 
-export type FreeDraftResult = { kind: "drafted"; basisLine: string | null };
+/** `itemsWritten`: the rows the draft committed (the answer's `itinerary.items`); null when the answer did not say. */
+export type FreeDraftResult = { kind: "drafted"; basisLine: string | null; itemsWritten: number | null };
 
 export async function runFreeDraft(trip: FreeDraftTrip): Promise<FreeDraftResult> {
   const res = await fetch("/api/ai/generate-itinerary", {
@@ -86,5 +87,42 @@ export async function runFreeDraft(trip: FreeDraftTrip): Promise<FreeDraftResult
     throw new Error(body?.message || AI_DRAFT_FAILURE_TITLE);
   }
   const line = typeof body?.draftBasis?.line === "string" ? body.draftBasis.line : null;
-  return { kind: "drafted", basisLine: line };
+  const written = Array.isArray(body?.itinerary?.items) ? body.itinerary.items.length : null;
+  return { kind: "drafted", basisLine: line, itemsWritten: written };
+}
+
+/**
+ * R5-1 (round 5, ledger `2026-11-09-round5-fixes`): does the slip's plan read already show the draft? It does when
+ * its days hold at least the rows the draft wrote. An unknown count (null) asks only for a non-empty plan.
+ */
+export function planShowsDraft(plan: { days?: Array<{ activities?: unknown[] | null }> | null } | null | undefined, itemsWritten: number | null): boolean {
+  const rows = (plan?.days ?? []).reduce((n, d) => n + (Array.isArray(d?.activities) ? d.activities.length : 0), 0);
+  return itemsWritten === null ? rows > 0 : rows >= itemsWritten;
+}
+
+/** The waits between re-reads after a draft (ms): the first re-read is immediate, then three bounded retries. */
+export const DRAFT_REREAD_DELAYS_MS = [0, 1000, 2000, 4000] as const;
+
+/**
+ * R5-1: a successful draft re-reads the slip's plan until it shows the drafted rows — a failed or stale re-read
+ * (a 429, a dropped request) no longer leaves the pre-draft plan on screen until a reload. Bounded; never throws.
+ * `read` re-fetches the plan and returns what the slip will render.
+ */
+export async function rereadUntilDraftShows(
+  read: () => Promise<unknown>,
+  itemsWritten: number | null,
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+  delays: readonly number[] = DRAFT_REREAD_DELAYS_MS,
+): Promise<{ shown: boolean; reads: number }> {
+  let reads = 0;
+  for (const wait of delays) {
+    if (wait > 0) await sleep(wait);
+    reads += 1;
+    try {
+      if (planShowsDraft((await read()) as any, itemsWritten)) return { shown: true, reads };
+    } catch {
+      // A failed re-read is the case this exists for: wait and read again.
+    }
+  }
+  return { shown: false, reads };
 }

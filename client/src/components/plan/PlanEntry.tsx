@@ -692,7 +692,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
               </p>
               {nightOptions && (
                 <div className="space-y-2">
-                  <p className="text-[13px] font-semibold" style={{ color: "var(--earn-navy, #1A1A18)" }}>Which night?</p>
+                  <p className="text-[13px] font-semibold" style={{ color: "var(--earn-navy, #1A1A18)" }}>Which dates?</p>
                   <div className="flex flex-wrap gap-2">
                     {/* R3-14: "All of it" only when what is left of the event is 14 days or fewer. */}
                     {allOfIt && (
@@ -774,7 +774,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
 
               {nightOptions && (
                 <div className="space-y-2">
-                  <p className="text-[13px] font-semibold" style={{ color: "var(--earn-navy, #1A1A18)" }}>Which night?</p>
+                  <p className="text-[13px] font-semibold" style={{ color: "var(--earn-navy, #1A1A18)" }}>Which dates?</p>
                   <div className="flex flex-wrap gap-2">
                     {/* R3-14: "All of it" only when what is left of the event is 14 days or fewer. */}
                     {allOfIt && (

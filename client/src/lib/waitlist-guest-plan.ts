@@ -373,7 +373,11 @@ export function guestPlanDays(view: GuestPlanView): PlanCardDay[] {
     });
     byDay.set(it.dayNumber, d);
   }
-  return mapDayChips(Array.from(byDay.values()), { startDate: view.plan.startDate, endDate: view.plan.endDate });
+  return mapDayChips(Array.from(byDay.values()), {
+    startDate: view.plan.startDate,
+    endDate: view.plan.endDate,
+    datesConfirmed: view.plan.datesConfirmed === true,
+  });
 }
 
 

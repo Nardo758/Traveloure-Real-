@@ -293,6 +293,9 @@ export function AskAiDrawer({
   }
 
   if (!visibility.visible || !askShown(caps.data)) return null;
+  // R5-4 (round 5): waitlist mode shows no paid AI task at all — not the bar's "Ask · $2.99", not the rail card — through
+  // the shared mode read above. P-1c hid only the apply, which left the price on screen.
+  if (waitlist) return null;
 
   const proposals = Array.isArray(logQuery.data?.proposals) ? logQuery.data!.proposals! : [];
   const priceLine = askAiPriceLine(logQuery.data?.aiTask);
