@@ -16,7 +16,7 @@ import "@/styles/slip-tokens.canvas.css";
 import { readSlipTokensMode, slipTokensAttr } from "@/lib/slip-tokens-mode";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useParams } from "wouter";
-import { Loader2 } from "lucide-react";
+import { Loader2, ArrowLeft } from "lucide-react";
 import { VersionsBoard } from "@/components/plancard/VersionsBoard";
 import { OptimizerLead } from "@/components/plan/OptimizerLead";
 import { TripPassCard } from "@/components/plancard/TripPassCard";
@@ -100,22 +100,38 @@ export default function PlanVersionsPage() {
       {...slipTokensAttr(readSlipTokensMode())}
       data-testid="plan-versions-page"
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <Link href={slipHref} className="text-sm font-semibold text-[color:var(--slip-navy)] underline-offset-2 hover:underline" data-testid="plan-versions-back">
-          ← Back to your plan
+      {/* ── THE PAGE HEADER (UI-5a, ruled 2026-11-09) ──────────────────────────────────────────
+          The site bar used to be a back link with the plan's NAME as a muted <p> pushed to the
+          right, so the page had no title where a title goes. The header is the plan's own name in
+          the display face — the ONE h1 on this page (the board's headline is an h2, and the run's
+          eyebrow is a <p>) — with the back control above it, in the slip header's idiom: an arrow,
+          then the words. No new strings: "Back to your plan" is the sentence that was here. */}
+      <header className="space-y-1.5" data-testid="plan-versions-header">
+        <Link
+          href={slipHref}
+          className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[color:var(--slip-navy)] underline-offset-2 hover:underline"
+          data-testid="plan-versions-back"
+        >
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+          Back to your plan
         </Link>
-        <p className="text-sm text-[color:var(--slip-muted)]">{plan.data.trip?.title || plan.data.trip?.destination}</p>
-      </div>
+        <h1
+          className="slip-display text-[26px] font-semibold leading-tight tracking-[-0.01em] text-[color:var(--slip-ink)]"
+          data-testid="plan-versions-title"
+        >
+          {plan.data.trip?.title || plan.data.trip?.destination}
+        </h1>
+      </header>
       {runState === "building" ? (
-        <p className="rounded-md border border-dashed p-3 text-sm" data-testid="plan-versions-building">
+        <p className="rounded-[var(--slip-radius-card)] border border-dashed border-[color:var(--slip-line-strong)] p-3 text-sm text-[color:var(--slip-ink)]" data-testid="plan-versions-building">
           Your versions are being built. Your plan is untouched; this page updates when they land.
         </p>
       ) : runState === "awaiting_payment" ? (
-        <p className="rounded-md border border-dashed p-3 text-sm" data-testid="plan-versions-awaiting-payment">
+        <p className="rounded-[var(--slip-radius-card)] border border-dashed border-[color:var(--slip-line-strong)] p-3 text-sm text-[color:var(--slip-ink)]" data-testid="plan-versions-awaiting-payment">
           This run is waiting for payment. <Link href={optimizeHref} className="underline">Finish it on your plan</Link>.
         </p>
       ) : runState === "failed" ? (
-        <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:bg-amber-950/20" data-testid="plan-versions-failed">
+        <p className="rounded-[var(--slip-radius-card)] border border-[color:var(--slip-gold)] bg-[color:var(--slip-gold-wash)] p-3 text-sm text-[color:var(--slip-ink)]" data-testid="plan-versions-failed">
           {feeRefund === "refunded" ? (
             OPTIMIZE_FAILED_REFUNDED
           ) : feeRefund === "pending" ? (

@@ -218,7 +218,7 @@ export function VersionsBoard({
   if (view.run && view.versions.length === 0 && view.blocked) {
     return (
       <section className="mb-6 space-y-4" data-testid="versions-board" data-board-state="no-version-passes">
-        <h2 className="text-lg font-semibold">Your plan's versions</h2>
+        <h2 className="slip-display text-[24px] font-semibold leading-tight text-[color:var(--slip-ink)]">Your plan's versions</h2>
         <p className="text-sm" data-testid="versions-no-pass-lead">{NO_VERSION_PASSES_LEAD}</p>
         <ul className="space-y-2" data-testid="versions-no-pass-issues">
           {view.blocked.openIssues.map((issue, i) => (
@@ -235,12 +235,12 @@ export function VersionsBoard({
     if (!noRunCta) return null;
     return (
       <section className="mb-6 space-y-4" data-testid="versions-board" data-board-state="draft-only">
-        <h2 className="text-lg font-semibold">Your plan's versions</h2>
+        <h2 className="slip-display text-[24px] font-semibold leading-tight text-[color:var(--slip-ink)]">Your plan's versions</h2>
         <p className="text-sm text-muted-foreground" data-testid="versions-draft-only">
           Only your draft so far. Optimize builds up to three versions to compare with it.
         </p>
         {sortedDays.length ? (
-          <div className="rounded-lg border border-border overflow-hidden">
+          <div className="rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] overflow-hidden">
             <MapControlCenter
               tripId={tripId}
               tripDestination={destination}
@@ -324,7 +324,10 @@ export function VersionsBoard({
       {/* The Optimized board (ledger `2026-10-08-slip-optimized-board`): the run's eyebrow, the
           headline counted from the run's own versions and the plan's days, and what adopting does. */}
       <div className="space-y-1.5">
-        <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-[color:var(--slip-muted)]" data-testid="versions-run-date">
+        {/* UI-5a: the run's eyebrow takes the card family's metrics (11px / 0.08em, the same
+            eyebrow the Trip Card's rail cards use) instead of 12px / 0.1em, so the board's first
+            line and the cards below it read as one family. */}
+        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--slip-muted)]" data-testid="versions-run-date">
           Optimized · Run of {runDateLabel(view.run.runAt)}
         </p>
         {chargeLine ? (
@@ -515,7 +518,7 @@ export function VersionsBoard({
                 </div>
                 <button
                   type="button"
-                  className="flex-shrink-0 rounded-lg border border-[color:var(--slip-line-strong)] px-2.5 py-1.5 text-xs font-semibold text-[color:var(--slip-navy)] hover:bg-[color:var(--slip-wash)] disabled:opacity-60"
+                  className="flex-shrink-0 rounded-[var(--slip-radius-button)] border border-[color:var(--slip-line-strong)] px-2.5 py-1.5 text-xs font-semibold text-[color:var(--slip-navy)] hover:bg-[color:var(--slip-wash)] disabled:opacity-60"
                   onClick={() => apply.mutate(adoptAllPicks(view, v.variantId))}
                   disabled={apply.isPending}
                   data-testid={`versions-desk-adopt-all-${v.label}`}
@@ -530,7 +533,7 @@ export function VersionsBoard({
                   return (
                     <div
                       key={dayNumber}
-                      className={`rounded-xl border p-2.5 text-xs ${inPlan ? "border-[color:var(--slip-teal)] bg-[color:var(--slip-teal-wash)]" : "border-[color:var(--slip-line)] bg-[color:var(--slip-ground)]"}`}
+                      className={`rounded-[var(--slip-radius-card)] border p-2.5 text-xs ${inPlan ? "border-[color:var(--slip-teal)] bg-[color:var(--slip-teal-wash)]" : "border-[color:var(--slip-line)] bg-[color:var(--slip-ground)]"}`}
                       data-testid={`versions-desk-day-${c.label}-${dayNumber}`}
                     >
                       {/* The DAY drags by its header (times, legs and facts travel with it); a stop
@@ -588,7 +591,7 @@ export function VersionsBoard({
                       e.preventDefault();
                       onDropPlanDay(dayNumber, e.dataTransfer.getData(BOARD_DRAG_MIME), planStops.length);
                     }}
-                    className={`rounded-xl p-2.5 text-xs ${pickedFrom ? "border border-[color:var(--slip-navy)] bg-[color:var(--slip-card)]" : "border border-dashed border-[color:var(--slip-line-strong)] bg-[color:var(--slip-ground)]"}`}
+                    className={`rounded-[var(--slip-radius-card)] p-2.5 text-xs ${pickedFrom ? "border border-[color:var(--slip-navy)] bg-[color:var(--slip-card)]" : "border border-dashed border-[color:var(--slip-line-strong)] bg-[color:var(--slip-ground)]"}`}
                     data-testid={`versions-desk-plan-day-${dayNumber}`}
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -647,7 +650,7 @@ export function VersionsBoard({
                   type="button"
                   aria-pressed={on}
                   onClick={() => setPhoneDay(d)}
-                  className={`min-h-[44px] rounded-xl border text-sm ${on ? "border-[color:var(--slip-navy)] bg-[color:var(--slip-navy)] font-semibold text-white" : "border-[color:var(--slip-line)] bg-[color:var(--slip-card)] text-[color:var(--slip-navy)]"}`}
+                  className={`min-h-[44px] rounded-[var(--slip-radius-chip)] border text-sm ${on ? "border-[color:var(--slip-navy)] bg-[color:var(--slip-navy)] font-semibold text-white" : "border-[color:var(--slip-line)] bg-[color:var(--slip-card)] text-[color:var(--slip-navy)]"}`}
                   data-testid={`versions-day-${d}`}
                 >
                   {on ? boardDayDateLabel(d, dateOf.get(d)) : boardDayLabel(d, dateOf.get(d))}
@@ -735,14 +738,14 @@ export function VersionsBoard({
 
       {mode === "compare" && !isDesktop ? (
         <div className="space-y-3 rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] p-4" data-testid="versions-pick-strip">
-          <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-[color:var(--slip-muted)]">Your pick so far</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--slip-muted)]">Your pick so far</p>
           <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${Math.min(Math.max(allDays.length, 1), 5)}, minmax(0, 1fr))` }}>
             {allDays.map((d) => {
               const label = picks[d] ? view.versions.find((v) => v.variantId === picks[d])?.label ?? "?" : null;
               return (
                 <div
                   key={d}
-                  className={`flex flex-col items-center rounded-lg py-1.5 text-xs ${label ? "bg-[color:var(--slip-teal-wash)] text-[color:var(--slip-teal-ink)]" : "bg-[color:var(--slip-wash)] text-[color:var(--slip-muted)]"}`}
+                  className={`flex flex-col items-center rounded-[var(--slip-radius-chip)] py-1.5 text-xs ${label ? "bg-[color:var(--slip-teal-wash)] text-[color:var(--slip-teal-ink)]" : "bg-[color:var(--slip-wash)] text-[color:var(--slip-muted)]"}`}
                   data-testid={label ? `versions-pick-${d}` : undefined}
                 >
                   <span>{boardDayLabel(d, dateOf.get(d))}</span>
@@ -776,7 +779,7 @@ export function VersionsBoard({
       {map}
 
       {paidGate ? (
-        <div className="order-4 flex flex-wrap items-center gap-2 rounded-xl border border-[color:var(--slip-gold)] bg-[color:var(--slip-gold-wash)] p-3 text-sm text-[color:var(--slip-ink)]" data-testid="versions-retime-paid">
+        <div className="order-4 flex flex-wrap items-center gap-2 rounded-[var(--slip-radius-card)] border border-[color:var(--slip-gold)] bg-[color:var(--slip-gold-wash)] p-3 text-sm text-[color:var(--slip-ink)]" data-testid="versions-retime-paid">
           {fee?.aiDisabled ? (
             <span data-testid="optimize-unavailable">{OPTIMIZE_UNAVAILABLE}</span>
           ) : (
