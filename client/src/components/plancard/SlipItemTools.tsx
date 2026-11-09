@@ -228,7 +228,10 @@ export function SlipAddItemControl({
         onClick={() => setOpen(true)}
         data-testid={testId}
       >
-        <Plus className="w-3 h-3" /> {label}
+        {/* UI-2a: the approved day label ("+ Add to this day") carries its own plus, so the glyph
+            is drawn only for a label that does not — otherwise the control reads "＋ + Add to this
+            day". The event label ("Add something to this event") is unchanged and keeps its icon. */}
+        {label.trimStart().startsWith("+") ? null : <Plus className="w-3 h-3" />} {label}
       </button>
       </>
     );

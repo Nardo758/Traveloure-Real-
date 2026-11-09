@@ -76,8 +76,12 @@ export function PlacePhoto({
         ) : (
           img
         )}
+        {/* UI-2a: the band's attribution is a fact drawn ON the image, so it needs its own picture
+            ground. It used to name `bg-white/90` and `#5B6B7A` directly — a raw hex in a planner
+            component — which is exactly what the token layer exists to prevent. It now takes the
+            slip's card ground and muted ink, the same pair the rest of the board uses. */}
         <span
-          className="absolute bottom-2 left-2 max-w-[calc(100%-1rem)] truncate rounded-md bg-white/90 px-2 py-0.5 text-[11px] text-[#5B6B7A]"
+          className="absolute bottom-2 left-2 max-w-[calc(100%-1rem)] truncate rounded-[var(--slip-radius-chip)] bg-[color:var(--slip-card)] px-2 py-0.5 text-[11px] text-[color:var(--slip-muted)]"
           data-testid={`${testId}-attribution`}
         >
           {photo.sourceUrl ? (

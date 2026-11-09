@@ -34,7 +34,13 @@ export const SLIP_ITEM_ENDPOINTS = {
 } as const;
 
 export const SLIP_ADD_EVENT_LABEL = "Add something to this event";
-export const SLIP_ADD_DAY_LABEL = "Add something to this day";
+/**
+ * UI-2a (row 5). "+ Add to this day" — Wording approved — Leon, round 5 ruling (2026-11-08). The
+ * approved string carries its OWN plus, because the board draws the sign as copy rather than as an
+ * icon; `SlipAddItemControl` therefore drops its `Plus` glyph for a label that already starts with
+ * one, so the control reads "+ Add to this day" and never "＋ + Add to this day".
+ */
+export const SLIP_ADD_DAY_LABEL = "+ Add to this day";
 /**
  * §13 — WHY AN ADD CONTROL CAN BE ABSENT, SAID OUT LOUD. `itinerary_items.day_number` is NOT NULL,
  * so an item must land on a numbered day. A slot the EVENTS alone brought into being (an event
