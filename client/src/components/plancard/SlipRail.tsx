@@ -1529,6 +1529,40 @@ export function useSlipAdvisor(tripId: string, isOwner: boolean) {
  * whose gate is closed is absent, never greyed (§13), and the menu itself is absent when it would be
  * empty.
  */
+/**
+ * THE ONE SHARE RAIL (B-11, ruled 2026-11-09). The plan menu's "Share link" and the party sheet's
+ * "Invite someone" / "Copy link" are three presses of ONE handler: the same POST `/share`, the same
+ * minted token, the same `slipShareUrl`. A second copy of that sequence would be a second place the
+ * token and its toast have to be remembered (§18 rule 1) — so there is one, here.
+ *
+ * `copyOnly` suppresses the native share sheet; it does NOT take a different route. Both flavours
+ * mint through the same mutation, so a plan without a token gets exactly one.
+ */
+export function useSlipShare(trip: { title?: string | null; destination?: string | null }, tripId: string) {
+  const { toast } = useToast();
+  const share = useMutation({
+    mutationFn: async (opts?: { copyOnly?: boolean }) => {
+      const res = await apiRequest("POST", `/api/trips/${tripId}/share`);
+      return { ...((await res.json()) as { success?: boolean; shareToken?: string | null }), copyOnly: opts?.copyOnly === true };
+    },
+    onSuccess: (data) => {
+      const token = typeof data?.shareToken === "string" ? data.shareToken : "";
+      if (!token) {
+        toast({ variant: "destructive", title: "Couldn't create a share link", description: "Please try again." });
+        return;
+      }
+      const url = slipShareUrl(window.location.origin, token);
+      navigator.clipboard?.writeText(url).catch(() => {});
+      toast({ title: "Link copied!", description: "Anyone with this link can view your plan." });
+      if (!data.copyOnly && navigator.share) {
+        navigator.share({ title: `${trip.title || trip.destination || "Trip"} - Traveloure`, url }).catch(() => {});
+      }
+    },
+    onError: () => toast({ variant: "destructive", title: "Couldn't create a share link" }),
+  });
+  return share;
+}
+
 export function SlipPlanMenu({
   trip,
   tripId,
@@ -1540,33 +1574,13 @@ export function SlipPlanMenu({
   isOwner: boolean;
   canEditItems: boolean;
 }) {
-  const { toast } = useToast();
   const { isHidden: occasionHidden } = useOccasionSwitches(tripId);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const { data: feedback } = useQuery<{ open?: string[] }>({
     queryKey: [`/api/plans/${tripId}/feedback`],
     enabled: isOwner && !!tripId,
   });
-  const share = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/trips/${tripId}/share`);
-      return (await res.json()) as { success?: boolean; shareToken?: string | null };
-    },
-    onSuccess: (data) => {
-      const token = typeof data?.shareToken === "string" ? data.shareToken : "";
-      if (!token) {
-        toast({ variant: "destructive", title: "Couldn't create a share link", description: "Please try again." });
-        return;
-      }
-      const url = slipShareUrl(window.location.origin, token);
-      navigator.clipboard?.writeText(url).catch(() => {});
-      toast({ title: "Link copied!", description: "Anyone with this link can view your plan." });
-      if (navigator.share) {
-        navigator.share({ title: `${trip.title || trip.destination || "Trip"} - Traveloure`, url }).catch(() => {});
-      }
-    },
-    onError: () => toast({ variant: "destructive", title: "Couldn't create a share link" }),
-  });
+  const share = useSlipShare(trip, tripId);
 
   // Under a hidden-visibility occasion the share entries are absent (LD 28), as the Share card was.
   const showShare = isOwner && !occasionHidden;
@@ -1589,7 +1603,7 @@ export function SlipPlanMenu({
         <DropdownMenuContent align="end" className="w-64">
           {showShare ? (
             <>
-              <DropdownMenuItem onClick={() => share.mutate()} disabled={share.isPending} data-testid="slip-action-share">
+              <DropdownMenuItem onClick={() => share.mutate({})} disabled={share.isPending} data-testid="slip-action-share">
                 <Share2 className="mr-2 h-4 w-4" /> Share link
               </DropdownMenuItem>
               {/* TC-5a: owner only, the same rule as Share; shown on any plan that has EVER been

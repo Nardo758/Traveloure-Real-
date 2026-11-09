@@ -107,6 +107,7 @@ import {
 } from "@/components/plan/AnchorRow";
 import { absorbedTravelItemId, flightTimeConflictLine } from "@shared/getting-there";
 import { ToolsTray } from "@/components/plan/ToolsTray";
+import { SlipPartyRoster } from "./SlipPartyRoster";
 import { PlanCostStrip } from "@/components/plan/PlanCostStrip";
 import { SlipEmptyStart } from "@/components/plan/SlipEmptyStart";
 import { MomentAnchorCard } from "@/components/plan/MomentAnchorCard";
@@ -2519,6 +2520,10 @@ export function SlipView({
               occasionSlug={occasion?.slug ?? null}
               planEvents={planEvents}
               isHidden={occasionIsHidden}
+              /* B-11 (ruled 2026-11-09): the party sheet's roster, owner-only. The CALLER owns the
+                 gate, so the tray stays a tool registry; a guest plan passes nothing and the sheet
+                 draws today's count view with no names and no controls. */
+              partyRoster={isOwner && data.trip ? <SlipPartyRoster trip={data.trip} tripId={tripId} isOwner={isOwner} /> : null}
               whereToStay={
                 anchorSurface.trayChooser
                   ? renderAnchorPanel("chooser")
