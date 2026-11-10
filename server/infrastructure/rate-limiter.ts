@@ -169,11 +169,31 @@ export function isDiscoverRead(req: Pick<Request, "method" | "path">): boolean {
   return req.method === "GET" && /^\/discover\/?$/.test(req.path);
 }
 
+/**
+ * TB2.6, measured (Coding Bot, prod 4ad1eaa, signed out, Nov 10, 2026): a cold load of `/discover/location/Kyoto` is
+ * 38 `/api` calls on desktop (36 at 375px), 21 of them `GET /api/media/place-photo` — the feed's photo proxy, one per
+ * tile. On the general 100/min bucket that is ~2.6 cold loads per minute per IP before a visitor is refused. The
+ * photo read is skipped by the general limiter and counted by `placePhotoReadRateLimiter` alone: 300/min is fourteen
+ * cold loads of photos, a ceiling and not a budget a browsing visitor reaches. Path relative to the `/api` mount.
+ */
+export function isPlacePhotoRead(req: Pick<Request, "method" | "path">): boolean {
+  return req.method === "GET" && /^\/media\/place-photo\/?$/.test(req.path);
+}
+
 export const generalRateLimiter = createRateLimiter({
   windowMs: 60 * 1000,
   maxRequests: 100,
   keyGenerator: (req) => `general:${req.ip || "unknown"}`,
-  skip: (req) => loopbackSkip(req) || isPlancardRead(req) || isDiscoverRead(req),
+  skip: (req) => loopbackSkip(req) || isPlancardRead(req) || isDiscoverRead(req) || isPlacePhotoRead(req),
+});
+
+export const PLACE_PHOTO_READ_MAX_PER_MINUTE = 300;
+
+export const placePhotoReadRateLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  maxRequests: PLACE_PHOTO_READ_MAX_PER_MINUTE,
+  keyGenerator: (req) => `place-photo:${req.ip || "unknown"}`,
+  skip: (req) => !isPlacePhotoRead(req) || loopbackSkip(req),
 });
 
 export const DISCOVER_READ_MAX_PER_MINUTE = 60;

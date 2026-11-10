@@ -358,20 +358,6 @@ export default function EarnPage() {
             <p className="text-muted-foreground">
               Pick the role that sounds like you — see exactly what you'd offer and what you keep.
             </p>
-            {/* TB4.12 (round 2): the Local Expert door is on the page from the first screen, not only once the Local
-                Expert role is selected. Wording approved — Leon (Nov 10, 2026, 12:34 PM ET). Same handler as the
-                catalog's button: sign in first when signed out, then the application. */}
-            <p className="mt-3 text-[14px]">
-              <button
-                type="button"
-                onClick={applyAsLocalExpert}
-                disabled={authLoading}
-                className={PAGE_LINK}
-                data-testid="earn-local-experts-apply-now"
-              >
-                {EARN_ROUND2_COPY.localExpertsApplyNow}
-              </button>
-            </p>
             <p className="mt-3 text-[14px]">
               <span className="text-muted-foreground">Already a partner?</span>{" "}
               <button
@@ -427,7 +413,9 @@ export default function EarnPage() {
                   className={PAGE_ACTION.primary}
                   data-testid="earn-apply-local-expert"
                 >
-                  Apply as a Local Expert
+                  {/* TB4.12 (round 2): Wording approved — Leon (Nov 10, 2026, 12:34 PM ET). Replaces "Apply as a
+                      Local Expert" on this button only; the sign-in prompt's words are unchanged. */}
+                  {EARN_ROUND2_COPY.localExpertsApplyNow}
                 </Button>
               )}
             </div>

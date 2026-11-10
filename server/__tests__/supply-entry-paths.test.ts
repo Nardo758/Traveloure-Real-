@@ -130,7 +130,9 @@ test("P7 — the Local Expert apply path is a same-site return the earn card use
   const earn = readFileSync(new URL("../../client/src/pages/earn.tsx", import.meta.url), "utf8");
   assert.match(earn, /activeKey === "local_expert"/);
   assert.match(earn, /data-testid="earn-apply-local-expert"/);
-  assert.match(earn, /Apply as a Local Expert/);
+  // TB4.12 (round 2, Wording approved — Leon, Nov 10, 2026): the button reads "Local experts, apply now".
+  assert.match(earn, /\{EARN_ROUND2_COPY\.localExpertsApplyNow\}/);
+  assert.doesNotMatch(earn, /Apply as a Local Expert</);
   assert.match(earn, /Sign in to apply as a Local Expert/);
   assert.match(earn, /Create an account or sign in, and you'll come back to the Local Expert application\./);
   assert.match(earn, /intent:\s*"supply"/);

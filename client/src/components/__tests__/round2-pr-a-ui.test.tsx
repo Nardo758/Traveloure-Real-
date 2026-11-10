@@ -115,8 +115,18 @@ describe("TB4.12 / TB4.13 — /earn", () => {
     assert.equal(EARN_ROUND2_COPY.localExpertsApplyNow, "Local experts, apply now");
     assert.equal(EARN_ROUND2_COPY.payoutSentence, "Payouts go through Stripe to your bank details. As a partner you never enter a card.");
     const earn = read("client/src/pages/earn.tsx");
-    assert.match(earn, /data-testid="earn-local-experts-apply-now"[\s\S]{0,80}\{EARN_ROUND2_COPY\.localExpertsApplyNow\}/);
+    // TB4.12 replaces the catalog button's words (earn-apply-local-expert); the sign-in prompt and :447 are unchanged.
+    assert.match(earn, /data-testid="earn-apply-local-expert"\s*>[\s\S]{0,400}\{EARN_ROUND2_COPY\.localExpertsApplyNow\}\s*<\/Button>/);
+    assert.doesNotMatch(earn, /Apply as a Local Expert</);
+    assert.match(earn, /Sign in to apply as a Local Expert/);
     assert.match(earn, /data-testid="earn-payout-sentence">\s*\{EARN_ROUND2_COPY\.payoutSentence\}/);
-    assert.match(earn, /onClick=\{applyAsLocalExpert\}[\s\S]{0,200}data-testid="earn-local-experts-apply-now"/, "the same door as the catalog's apply button");
+    // TB4.13 also on the first screen of both wizards.
+    for (const p of ["client/src/pages/travel-experts.tsx", "client/src/pages/services-provider.tsx"]) {
+      const src = read(p);
+      assert.match(src, /currentStep === 1 && \([\s\S]{0,700}data-testid="application-payout-sentence">\s*\{EARN_ROUND2_COPY\.payoutSentence\}/, p);
+    }
+    const wlb = read("client/src/lib/wlb-signup-copy.ts");
+    assert.match(wlb, /expertHeading/);
+    assert.match(wlb, /expertPayouts/);
   });
 });

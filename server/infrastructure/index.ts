@@ -5,6 +5,7 @@ export {
   generalRateLimiter,
   plancardReadRateLimiter,
   discoverReadRateLimiter,
+  placePhotoReadRateLimiter,
   aiRateLimiter,
   searchRateLimiter,
   authRateLimiter,

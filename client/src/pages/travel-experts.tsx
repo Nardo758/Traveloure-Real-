@@ -40,6 +40,7 @@ import { SiFacebook, SiInstagram } from "react-icons/si";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { ApplicationStepTracker } from "@/components/application-step-tracker";
+import { EARN_ROUND2_COPY } from "@shared/earn-round2-copy";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
@@ -872,6 +873,11 @@ export default function TravelExpertsPage() {
                 <CardTitle className="text-2xl text-foreground">Basic Information</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* TB4.13 (round 2): how a partner is paid, on the first screen. Wording approved — Leon (Nov 10, 2026,
+                    12:34 PM ET). The rail only — no rate, no amount (§8). */}
+                <p className="text-sm text-muted-foreground" data-testid="application-payout-sentence">
+                  {EARN_ROUND2_COPY.payoutSentence}
+                </p>
                 {/* Quick Social Sign-In */}
                 {socialAuthConnected ? (
                   <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-5 border border-green-200 dark:border-green-800">

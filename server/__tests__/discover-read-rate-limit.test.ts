@@ -12,11 +12,15 @@
  *   D3 the discover limiter answers 429 on the 61st discover read in a minute, from its OWN key, and that spend
  *      leaves the general budget untouched
  *   D4 `server/index.ts` mounts the discover limiter on `/api` beside the plancard one
+ *   D5 `GET /api/media/place-photo` (21 of a cold load's 38 calls, measured on prod 4ad1eaa) is skipped by the general
+ *      limiter and counted by `placePhotoReadRateLimiter` alone — 300/min, at least fourteen cold loads of photos;
+ *      the 301st is a 429 from that limiter and the general budget is untouched
  *
  * STATED NEGATIVE SPACE (§18d): the limiters are executed in-process with a stubbed req/res; middleware ORDER in the
- * live app is proven only as the mount LINE (D4). The 60/min figure was sized from the debounce, not from a measured
- * per-load request count on staging (no staging credentials in the building session) — the number is a ceiling for
- * toggling, and a measured count may move it.
+ * live app is proven only as the mount LINE (D4). Sizing (Coding Bot, prod 4ad1eaa, Nov 10, 2026): a cold load of
+ * /discover/location/Kyoto is 38 /api calls (36 at 375px) — place-photo ×21, the location payload ×1, 15 others ×1 —
+ * and three quick theme presses are 2 GET /api/discover. 60/min for discover is a ceiling for toggling; 300/min for
+ * place-photo is ~14 cold loads. The general bucket is no longer drained by either.
  *
  * Run: npx tsx --test server/__tests__/discover-read-rate-limit.test.ts
  */
@@ -25,10 +29,13 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   isDiscoverRead,
+  isPlacePhotoRead,
   isPlancardRead,
   discoverReadRateLimiter,
+  placePhotoReadRateLimiter,
   generalRateLimiter,
   DISCOVER_READ_MAX_PER_MINUTE,
+  PLACE_PHOTO_READ_MAX_PER_MINUTE,
 } from "../infrastructure/rate-limiter";
 
 type Res = { status: number | null; headers: Record<string, string>; body: unknown };
@@ -91,4 +98,29 @@ test("D2 + D3 the discover read spends its own budget and never the general one"
 test("D4 server/index.ts mounts the discover limiter on /api beside the plancard one", () => {
   const index = readFileSync(new URL("../index.ts", import.meta.url), "utf8");
   assert.match(index, /app\.use\("\/api", plancardReadRateLimiter as RequestHandler\);\s*\n\s*\/\/ TB2\.6[^\n]*\n\s*app\.use\("\/api", discoverReadRateLimiter as RequestHandler\);/);
+});
+
+test("D5 the place-photo read spends its own 300/min budget and never the general one", () => {
+  delete process.env.RATE_LIMIT_LOOPBACK_SKIP;
+  assert.equal(isPlacePhotoRead({ method: "GET", path: "/media/place-photo" }), true);
+  assert.equal(isPlacePhotoRead({ method: "GET", path: "/media/place-photo/" }), true);
+  assert.equal(isPlacePhotoRead({ method: "POST", path: "/media/place-photo" }), false);
+  assert.equal(isPlacePhotoRead({ method: "GET", path: "/media/other" }), false);
+  assert.equal(isDiscoverRead({ method: "GET", path: "/media/place-photo" }), false, "disjoint from the discover read");
+  const ip = `198.51.100.${Math.floor(Math.random() * 200) + 1}`;
+  const photo = { method: "GET", path: "/media/place-photo", ip };
+  const other = { method: "GET", path: "/discover/location/Kyoto", ip };
+  const g = run(generalRateLimiter, photo);
+  assert.equal(g.nexted, true);
+  assert.equal(g.res.headers["X-RateLimit-Limit"], undefined, "the general limiter skips it");
+  assert.equal(run(placePhotoReadRateLimiter, other).res.headers["X-RateLimit-Limit"], undefined, "and the photo limiter ignores everything else");
+  assert.equal(PLACE_PHOTO_READ_MAX_PER_MINUTE, 300);
+  assert.ok(PLACE_PHOTO_READ_MAX_PER_MINUTE >= 21 * 10, "at least ten cold loads of photos per minute");
+  for (let i = 1; i <= PLACE_PHOTO_READ_MAX_PER_MINUTE; i++) assert.equal(run(placePhotoReadRateLimiter, photo).nexted, true, `read ${i}`);
+  const over = run(placePhotoReadRateLimiter, photo);
+  assert.equal(over.nexted, false);
+  assert.equal(over.res.status, 429);
+  assert.equal(run(generalRateLimiter, other).res.headers["X-RateLimit-Remaining"], "99", "the general budget is untouched");
+  const index = readFileSync(new URL("../index.ts", import.meta.url), "utf8");
+  assert.match(index, /app\.use\("\/api", discoverReadRateLimiter as RequestHandler\);\s*\n\s*\/\/ TB2\.6[^\n]*\n\s*app\.use\("\/api", placePhotoReadRateLimiter as RequestHandler\);/);
 });

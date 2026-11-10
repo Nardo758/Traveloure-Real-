@@ -65,11 +65,15 @@ function project(
 ): PublicFeverEvent {
   const located =
     Number.isFinite(Number(e.venue?.coordinates?.lat)) && Number.isFinite(Number(e.venue?.coordinates?.lng)) && e.venue?.coordinates?.lat != null && e.venue?.coordinates?.lng != null;
+  // PARTNER-1: no description, short description or highlights from Fever — only our reviewed editorial text.
+  const description = reviewedEditorialDescription(editorial);
+  // Cut-list #3 (Leon, Nov 10, 2026): the point rides ONLY on a REVIEWED event — the one the guest map lists and pins;
+  // an unreviewed Fever row is not listed (`cityContentPlaces`), so it ships no point either.
+  const pinned = located && description != null;
   return {
     id: String(e.id),
     title: e.title,
-    // PARTNER-1: no description, short description or highlights from Fever — only our reviewed editorial text.
-    description: reviewedEditorialDescription(editorial),
+    description,
     imageUrl: str(e.imageUrl),
     category: str(e.category),
     subcategory: str(e.subcategory),
@@ -80,8 +84,8 @@ function project(
     endDate: str(e.dates?.endDate),
     isSoldOut: e.isSoldOut === true,
     located,
-    latitude: located ? String(e.venue!.coordinates!.lat) : null,
-    longitude: located ? String(e.venue!.coordinates!.lng) : null,
+    latitude: pinned ? String(e.venue!.coordinates!.lat) : null,
+    longitude: pinned ? String(e.venue!.coordinates!.lng) : null,
     provider: FEVER_PROVIDER,
     priceSource: FEVER_PRICE_SOURCE,
     partnerName,

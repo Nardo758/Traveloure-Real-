@@ -59,14 +59,20 @@ test("FP1: the projection is an allowlist — no pricing, Free, URL or street; a
   // `shortDescription` is gone and `description` is null for an event with no reviewed row.
   assert.deepEqual(Object.keys(p).sort(), [
     // Lane 1 A-33 (ledger 2026-11-05-lane1-guest-save-rail; sanctioned edit): `located` — a boolean.
-    // SANCTIONED TEST EDIT (cut-list #3, Leon Nov 10, 2026): a LOCATED event also carries `latitude`/`longitude`
-    // so the guest map pins it; an unlocated one carries null for both. Gems are unchanged (A-33, boolean only).
+    // SANCTIONED TEST EDIT (cut-list #3, Leon Nov 10, 2026): a LOCATED, REVIEWED event also carries
+    // `latitude`/`longitude` so the guest map pins it; an unreviewed or unlocated one carries null for both.
+    // Gems are unchanged (A-33, boolean only).
     "areaName", "bookingToken", "category", "date", "description", "endDate", "id", "imageUrl", "isSoldOut",
     "latitude", "located", "longitude", "osmCredit", "partnerName", "priceSource", "provider", "subcategory", "title", "venueName",
   ].sort());
   assert.equal(p.located, true);
-  assert.equal(p.latitude, "0");
-  assert.equal(p.longitude, "0");
+  assert.equal(p.latitude, null, "unreviewed ⇒ no point, even when located");
+  assert.equal(p.longitude, null);
+  const reviewed = async () => new Map([["fx-1", { editorialDescription: "Our words.", editorialReviewedAt: new Date("2026-11-01T00:00:00Z") }]]);
+  const [r] = await toPublicFeverEvents([fixture({ isFree: true, pricing: { currency: "USD", minPrice: 0 } })], { editorial: reviewed });
+  assert.equal(r.description, "Our words.");
+  assert.equal(r.latitude, "0", "reviewed and located ⇒ the point rides");
+  assert.equal(r.longitude, "0");
   assert.equal(p.description, null, "no reviewed editorial row ⇒ no description, never Fever's");
   const json = JSON.stringify(p);
   for (const banned of ["pricing", "priceRange", "minPrice", "isFree", "Free", "currency", "bookingUrl", "affiliateUrl", "partner.example.test", "coordinates", "rating", "1 Test Street", "venueAddress"]) {
