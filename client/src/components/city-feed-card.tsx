@@ -972,6 +972,11 @@ function MoreInfoSheet({ open, onClose, cardType, data, saveItem, action }: More
             ? "h-full w-full sm:max-w-[480px] overflow-y-auto px-5 pb-8"
             : "h-[85vh] overflow-y-auto rounded-t-2xl px-5 pb-8"
         }
+        // TB2.8 (round 2, Leon Nov 10, 2026): the drawer's body IS its description (the gem / event / listing content
+        // below the title); Radix warns when a dialog names neither a Description nor `aria-describedby`. An explicit
+        // `undefined` is Radix's own way to say "no separate description" — no sentence is invented for it.
+        aria-describedby={undefined}
+        data-testid={`city-feed-card-sheet-${cardType}`}
       >
         <SheetHeader className="mb-2">
           <SheetTitle className="text-left text-[17px] leading-snug pr-8">{titleMap[cardType]}</SheetTitle>

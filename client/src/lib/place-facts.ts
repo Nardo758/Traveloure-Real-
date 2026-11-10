@@ -244,7 +244,7 @@ export function factsLineParts(text: string): { lead: string; source: string | n
  */
 export function itemPlaceLine(
   facts: readonly FactView[] | undefined,
-  item: { location?: string | null },
+  item: { location?: string | null; name?: string | null },
   timeZone?: string | null,
 ): { text: string; provenance: string | null; checked: string | null; sourceUrl: string | null } | null {
   const fact = facts?.find((f) => f.factType === "address" && f.origin === "places_api");
@@ -259,7 +259,16 @@ export function itemPlaceLine(
     };
   }
   const stored = (item.location ?? "").trim();
+  // TB3.10 (round 2, Leon Nov 10, 2026): the place line is a SECOND fact about the stop. The save rails store the
+  // stop's own name as its location when the source names no venue or area (`guest-item-source.service.ts` `base`),
+  // which drew "Kibune / Kibune" — the name twice. The same string is not a place line; nothing is drawn (§13).
+  if (stored && sameName(stored, item.name)) return null;
   return stored ? { text: stored, provenance: null, checked: null, sourceUrl: null } : null;
+}
+
+function sameName(a: string, b: string | null | undefined): boolean {
+  const norm = (v: string) => v.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+  return typeof b === "string" && b.trim() !== "" && norm(a) === norm(b);
 }
 
 /**

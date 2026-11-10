@@ -711,6 +711,27 @@ export function doorChoseGroup(source: Pick<PlanEntrySource, "group" | "onlyGrou
   return !!source?.group && !source?.onlyGroup;
 }
 
+/**
+ * TB1.1 (round 2, Leon Nov 10, 2026): is a group chip DRAWN active? A pressed chip, or a door-chosen occasion, draws
+ * the state's group active (as before). `/experiences?group=` draws its ONE filtered chip active too — the visitor sees
+ * the group they arrived on selected — while R3-6 stands untouched: `groupChosen` stays false, so the step still asks
+ * and `chosenOccasionSlug` still answers nothing. Pure, so every group key is proven.
+ */
+export function groupChipActive(input: {
+  key: OccasionPickerGroup;
+  stateGroup: OccasionPickerGroup;
+  groupChosen: boolean;
+  occasionSlug: string | null;
+  moreSpecific: boolean;
+  onlyGroup: OccasionPickerGroup | null | undefined;
+  shownCount: number;
+}): boolean {
+  if (input.stateGroup !== input.key) return false;
+  if (input.moreSpecific && input.occasionSlug) return false;
+  const filteredToThis = input.shownCount === 1 && input.onlyGroup === input.key;
+  return input.groupChosen || !!input.occasionSlug || filteredToThis;
+}
+
 export function shownOccasionGroups(
   available: readonly OccasionPickerGroup[],
   onlyGroup: OccasionPickerGroup | null | undefined,

@@ -19,13 +19,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
-import { OCCASION_GROUP_DEFAULT_SLUG, experienceGroupFor, type ExperienceGroupRow } from "@shared/experience-group";
+import { OCCASION_GROUP_DEFAULT_SLUG, OCCASION_GROUP_ORDER, experienceGroupFor, type ExperienceGroupRow } from "@shared/experience-group";
 import {
   asksWhichNight,
   canStartPlan,
   browseDatesFromPen,
   choosePlanEntryGroup,
   chosenOccasionSlug,
+  groupChipActive,
   emptyPlanEntry,
   eventNightDates,
   eventsOverlapping,
@@ -266,4 +267,22 @@ test("E10: a series' show dates come from its sibling rows on one series_key", (
   assert.equal(s.night, "2027-03-14", "the picked show stays the chosen night");
   assert.deepEqual(nightPickerOptions(s, now), ["2027-03-11", "2027-03-14", "2027-03-20"]);
   assert.equal(withSeriesShows(picked, rows.slice(1, 2)), picked, "one show is not a series");
+});
+
+test("TB1.1: /experiences?group= draws its one filtered chip active for every group; R3-6 still asks the step", () => {
+  assert.deepEqual([...OCCASION_GROUP_ORDER], ["trips", "moments", "celebrations", "hosted_events", "group_travel"]);
+  for (const key of OCCASION_GROUP_ORDER) {
+    // The door filtered to this group (onlyGroup) — groupChosen is false by R3-6, one chip shown.
+    const filtered = { key, stateGroup: key, groupChosen: false, occasionSlug: null, moreSpecific: false, onlyGroup: key, shownCount: 1 };
+    assert.equal(groupChipActive(filtered), true, `${key}: the filtered chip is drawn active`);
+    assert.equal(chosenOccasionSlug({ occasionSlug: null, group: key }, false), null, `${key}: the filter is still not an answer`);
+    // The same filter with the five chips shown (catalog did not carry the group ⇒ no filter) draws nothing active.
+    assert.equal(groupChipActive({ ...filtered, shownCount: 5, onlyGroup: undefined }), false, `${key}: unfiltered, untouched ⇒ inactive`);
+    // Pressed chip: active as before; a different key never is.
+    assert.equal(groupChipActive({ ...filtered, onlyGroup: undefined, shownCount: 5, groupChosen: true }), true);
+    const other = OCCASION_GROUP_ORDER.find((k) => k !== key)!;
+    assert.equal(groupChipActive({ ...filtered, key: other }), false, `${key}: another chip is not active`);
+    // "More specific" with a chosen occasion hides the group highlight (unchanged rule).
+    assert.equal(groupChipActive({ ...filtered, moreSpecific: true, occasionSlug: "wedding" }), false);
+  }
 });

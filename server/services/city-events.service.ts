@@ -515,10 +515,10 @@ export async function listCityEventsForLocation(
   const today = localDate(now, timezoneForMarket(market.marketKey));
   return rows
     .filter((r) => isRenderableCityEvent(r))
-    .map((r) => ({ c: toCityEventCard(r, null, now), located: r.venueLat != null && r.venueLng != null }))
+    .map((r) => ({ c: toCityEventCard(r, null, now), located: r.venueLat != null && r.venueLng != null, lat: r.venueLat, lng: r.venueLng }))
     .filter(({ c }) => c.lastDate >= today)
     .slice(0, limit)
-    .map(({ c, located }) => ({
+    .map(({ c, located, lat, lng }) => ({
       id: `ce-${c.sourceId}`,
       planKind: "city_event",
       sourceId: c.sourceId,
@@ -535,6 +535,10 @@ export async function listCityEventsForLocation(
       startTime: c.startTime,
       isSoldOut: false,
       located,
+      // Cut-list #3 (Leon, Nov 10, 2026): a LOCATED event's venue point rides the public payload so the guest map can
+      // pin it; an unlocated one carries null, never a guessed point (§13). Gems stay A-33: boolean only.
+      latitude: located ? String(lat) : null,
+      longitude: located ? String(lng) : null,
       provider: "city_events",
       priceSource: null,
       partnerName: null,

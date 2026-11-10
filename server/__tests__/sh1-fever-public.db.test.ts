@@ -1,7 +1,7 @@
 /**
  * SH-1 item 7 — no Fever amount or partner URL reaches a traveler (architect's rulings Q7.1–Q7.5, Oct 19, 2026).
  *
- *   FP1  the projection is an allowlist: no pricing, "Free", URL or coordinates
+ *   FP1  the projection is an allowlist: no pricing, "Free", URL or street; a located venue's point only (cut-list #3)
  *   FP2  the partner URL becomes an opaque token that resolves server-side to it, as a Fever token
  *   FP3  an event with no partner URL gets no token
  *   FP4  the booking_token redirect answers the URL and records the click; other providers and unknown tokens 404
@@ -52,16 +52,27 @@ after(async () => {
   await pool.end().catch(() => {});
 });
 
-test("FP1: the projection is an allowlist — no pricing, Free, URL, coordinates or street", async () => {
+test("FP1: the projection is an allowlist — no pricing, Free, URL or street; a located venue's point only", async () => {
   const [p] = await toPublicFeverEvents([fixture({ isFree: true, pricing: { currency: "USD", minPrice: 0 } })]);
   // SANCTIONED TEST EDIT (GATE-1 + PARTNER-1 brief §7, ledger `2026-11-03-gate1-partner1`): the key list pinned
   // `shortDescription` and the raw Fever description. PARTNER-1 publishes our reviewed editorial text only, so
   // `shortDescription` is gone and `description` is null for an event with no reviewed row.
   assert.deepEqual(Object.keys(p).sort(), [
-    // Lane 1 A-33 (ledger 2026-11-05-lane1-guest-save-rail; sanctioned edit): `located` — a boolean, never the point.
+    // Lane 1 A-33 (ledger 2026-11-05-lane1-guest-save-rail; sanctioned edit): `located` — a boolean.
+    // SANCTIONED TEST EDIT (cut-list #3, Leon Nov 10, 2026): a LOCATED, REVIEWED event also carries
+    // `latitude`/`longitude` so the guest map pins it; an unreviewed or unlocated one carries null for both.
+    // Gems are unchanged (A-33, boolean only).
     "areaName", "bookingToken", "category", "date", "description", "endDate", "id", "imageUrl", "isSoldOut",
-    "located", "osmCredit", "partnerName", "priceSource", "provider", "subcategory", "title", "venueName",
+    "latitude", "located", "longitude", "osmCredit", "partnerName", "priceSource", "provider", "subcategory", "title", "venueName",
   ].sort());
+  assert.equal(p.located, true);
+  assert.equal(p.latitude, null, "unreviewed ⇒ no point, even when located");
+  assert.equal(p.longitude, null);
+  const reviewed = async () => new Map([["fx-1", { editorialDescription: "Our words.", editorialReviewedAt: new Date("2026-11-01T00:00:00Z") }]]);
+  const [r] = await toPublicFeverEvents([fixture({ isFree: true, pricing: { currency: "USD", minPrice: 0 } })], { editorial: reviewed });
+  assert.equal(r.description, "Our words.");
+  assert.equal(r.latitude, "0", "reviewed and located ⇒ the point rides");
+  assert.equal(r.longitude, "0");
   assert.equal(p.description, null, "no reviewed editorial row ⇒ no description, never Fever's");
   const json = JSON.stringify(p);
   for (const banned of ["pricing", "priceRange", "minPrice", "isFree", "Free", "currency", "bookingUrl", "affiliateUrl", "partner.example.test", "coordinates", "rating", "1 Test Street", "venueAddress"]) {

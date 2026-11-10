@@ -489,9 +489,12 @@ export function MapControlCenter({
       // FU-8D-4 (ledger `2026-10-07-map-dialog-isolation`): `isolate` gives the map its own stacking
       // context. Leaflet's panes and controls carry z-indexes in the hundreds; without it they draw
       // above any dialog opened over the map and take its clicks. Every mount inherits this.
-      className={`slip-surface ${split ? "isolate lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start" : "isolate"}`}
+      // Cut-list #3 (Leon, Nov 10, 2026): on the GUEST page at phone width the list (sheet) draws first and the map
+      // below it — a visitor sees the suggestions before an empty canvas. From `lg` the split grid is unchanged.
+      className={`slip-surface ${split ? `isolate ${guest ? "flex flex-col " : ""}lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start` : "isolate"}`}
+      data-list-first={split && guest ? "phone" : undefined}
     >
-      <div className="min-w-0" data-testid={`map-main-${tripId}`}>
+      <div className={`min-w-0${split && guest ? " order-2 lg:order-none" : ""}`} data-testid={`map-main-${tripId}`}>
       {checked && (
         <div className="px-3">
           <AddChecksNotice
@@ -655,7 +658,7 @@ export function MapControlCenter({
 
       {/* ── The bottom sheet: the day's stops, selection synced both ways ─────────────────────── */}
       <div
-        className={`border-t border-border px-3 py-2 space-y-2${split ? " lg:border-t-0 lg:border-l" : ""}`}
+        className={`border-t border-border px-3 py-2 space-y-2${split ? " lg:border-t-0 lg:border-l" : ""}${split && guest ? " order-1 lg:order-none border-t-0 border-b lg:border-b-0" : ""}`}
         data-testid={`map-sheet-${tripId}`}
         data-rail-layer={split ? (browseOn ? "browse" : "plan") : undefined}
       >

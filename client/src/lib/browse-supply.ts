@@ -355,8 +355,9 @@ export function gemTabKey(category: string): BrowseTabKey {
 /**
  * The city payload's gems and events as browse places. Gems are the payload's visible (moderated) gems; an event is
  * included only when its description is our reviewed editorial text (PARTNER-1: `description` is published only once
- * `editorial_reviewed_at` is set). Neither carries a point in the public payload; A-33: each carries `located`, so only an
- * unlocated one lists "not on the map".
+ * `editorial_reviewed_at` is set). A-33: a gem carries `located` and never its point, so a gem is listed and never pinned.
+ * Cut-list #3 (Leon, Nov 10, 2026): a located REVIEWED event carries its venue point and is pinned; an unlocated one
+ * lists "not on the map".
  */
 export function cityContentPlaces(
   payload: { gems?: { data?: unknown } | null; events?: { data?: { events?: unknown } | null } | null } | null | undefined,
@@ -374,7 +375,10 @@ export function cityContentPlaces(
     const name = typeof e?.title === "string" ? e.title.trim() : typeof e?.name === "string" ? e.name.trim() : "";
     const reviewed = typeof e?.description === "string" && e.description.trim() !== "";
     if (!e?.id || !name || !reviewed) continue;
-    out.push({ id: String(e.id), kind: "event", name, lat: null, lng: null, located: e.located === true, category: null, tabKey: "activities" });
+    const lat = e.located === true ? coord(e.latitude) : null;
+    const lng = e.located === true ? coord(e.longitude) : null;
+    const pinned = lat !== null && lng !== null;
+    out.push({ id: String(e.id), kind: "event", name, lat: pinned ? lat : null, lng: pinned ? lng : null, located: e.located === true, category: null, tabKey: "activities" });
   }
   return out;
 }

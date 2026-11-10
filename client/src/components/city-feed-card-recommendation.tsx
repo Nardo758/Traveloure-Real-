@@ -265,7 +265,7 @@ export function CityFeedCardRecommendation({
             gone). Built ONLY from wire fields (reason + expertEndorsed);
             templateStrength/matchType/price never reach the client (§13). */}
         <Dialog open={infoOpen} onOpenChange={setInfoOpen}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-md" aria-describedby={undefined} data-testid="recommendation-why-dialog">
             <DialogHeader>
               <DialogTitle>{name}</DialogTitle>
             </DialogHeader>
@@ -371,7 +371,7 @@ export function CityFeedCardRecommendation({
 
         {/* Same "Why recommended" disclosure modal, opened by the card. */}
         <Dialog open={infoOpen} onOpenChange={setInfoOpen}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-md" aria-describedby={undefined} data-testid="recommendation-why-dialog">
             <DialogHeader>
               <DialogTitle>{name}</DialogTitle>
             </DialogHeader>

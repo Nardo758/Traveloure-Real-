@@ -39,6 +39,7 @@ import { PageLayout, SectionTitle, PAGE_ACTION, PAGE_LINK } from "@/components/c
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useAuth } from "@/hooks/use-auth";
 import { LOCAL_EXPERT_APPLY_PATH } from "@shared/supply-entry";
+import { EARN_ROUND2_COPY } from "@shared/earn-round2-copy";
 import { apiRequest } from "@/lib/queryClient";
 import { Star, ArrowRight, AlertCircle, PackageOpen, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -412,7 +413,9 @@ export default function EarnPage() {
                   className={PAGE_ACTION.primary}
                   data-testid="earn-apply-local-expert"
                 >
-                  Apply as a Local Expert
+                  {/* TB4.12 (round 2): Wording approved — Leon (Nov 10, 2026, 12:34 PM ET). Replaces "Apply as a
+                      Local Expert" on this button only; the sign-in prompt's words are unchanged. */}
+                  {EARN_ROUND2_COPY.localExpertsApplyNow}
                 </Button>
               )}
             </div>
@@ -555,6 +558,11 @@ export default function EarnPage() {
             {keepSentence}
           </p>
         )}
+        {/* TB4.13 (round 2): how a partner is paid, said once on the earn page beside what they keep. Wording approved —
+            Leon (Nov 10, 2026, 12:34 PM ET). A statement of the rail only — no rate, no amount (§8). */}
+        <p className="text-[14px] text-[color:var(--earn-muted)]" data-testid="earn-payout-sentence">
+          {EARN_ROUND2_COPY.payoutSentence}
+        </p>
 
         {showReadyMadeCalculator && readyMadeRate !== null && (
           <ReadyMadeCalculator rate={readyMadeRate} showExample={keepRates?.readyMadeExampleEnabled === true} />

@@ -39,6 +39,8 @@ import {
 import { SiFacebook, SiInstagram } from "react-icons/si";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { ApplicationStepTracker } from "@/components/application-step-tracker";
+import { EARN_ROUND2_COPY } from "@shared/earn-round2-copy";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
@@ -779,49 +781,8 @@ export default function TravelExpertsPage() {
         </div>
       </header>
 
-      {/* Progress Steps */}
-      <div className="bg-white border-b border-border py-4">
-        <div className="container mx-auto px-4 max-w-4xl">
-          <div className="flex items-center justify-between gap-1 overflow-x-auto">
-            {steps.map((step, idx) => (
-              <div key={step.id} className="flex items-center">
-                <div
-                  className={cn(
-                    "flex items-center gap-2 px-1 py-2 sm:px-3 rounded-lg transition-colors",
-                    currentStep === step.id
-                      ? "bg-[#FFE3E8] text-primary"
-                      : currentStep > step.id
-                      ? "text-green-600"
-                      : "text-[#9CA3AF]"
-                  )}
-                >
-                  <div
-                    className={cn(
-                      "w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium",
-                      currentStep === step.id
-                        ? "bg-primary text-white"
-                        : currentStep > step.id
-                        ? "bg-green-100 text-green-600"
-                        : "bg-[#F3F4F6] text-[#9CA3AF]"
-                    )}
-                  >
-                    {currentStep > step.id ? <Check className="w-4 h-4" /> : step.id}
-                  </div>
-                  <span className="hidden sm:inline text-sm font-medium">{step.title}</span>
-                </div>
-                {idx < steps.length - 1 && (
-                  <div
-                    className={cn(
-                      "w-2 sm:w-8 md:w-12 h-0.5 mx-1 sm:mx-2",
-                      currentStep > step.id ? "bg-green-300" : "bg-[#E5E7EB]"
-                    )}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+      {/* Progress Steps — TB4.11: the ONE shared tracker; it wraps and never scrolls. */}
+      <ApplicationStepTracker steps={steps} currentStep={currentStep} testId="expert-step-tracker" />
 
       <main className="container mx-auto px-4 max-w-2xl py-8">
         {/* Ask up front, not after the work: a guest sees this the moment they
@@ -912,6 +873,11 @@ export default function TravelExpertsPage() {
                 <CardTitle className="text-2xl text-foreground">Basic Information</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* TB4.13 (round 2): how a partner is paid, on the first screen. Wording approved — Leon (Nov 10, 2026,
+                    12:34 PM ET). The rail only — no rate, no amount (§8). */}
+                <p className="text-sm text-muted-foreground" data-testid="application-payout-sentence">
+                  {EARN_ROUND2_COPY.payoutSentence}
+                </p>
                 {/* Quick Social Sign-In */}
                 {socialAuthConnected ? (
                   <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-5 border border-green-200 dark:border-green-800">

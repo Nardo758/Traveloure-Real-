@@ -54,6 +54,7 @@ import {
   choosePlanEntryGroup,
   chosenOccasionSlug,
   doorChoseGroup,
+  groupChipActive,
   eventPickerGroups,
   eventsOverlapping,
   planEntryChoiceLabel,
@@ -793,7 +794,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
                 {shownGroups.map((key: OccasionPickerGroup) => (
                   <Chip
                     key={key}
-                    active={(groupChosen || !!state.occasionSlug) && state.group === key && !(moreSpecific && state.occasionSlug)}
+                    active={groupChipActive({ key, stateGroup: state.group, groupChosen, occasionSlug: state.occasionSlug, moreSpecific, onlyGroup: source?.onlyGroup, shownCount: shownGroups.length })}
                     onClick={() => {
                       setGroupChosen(true);
                       setState((s) => ({ ...s, ...choosePlanEntryGroup(s, key) }));

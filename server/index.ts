@@ -89,6 +89,8 @@ import {
   notFoundHandler,
   generalRateLimiter,
   plancardReadRateLimiter,
+  discoverReadRateLimiter,
+  placePhotoReadRateLimiter,
   aiRateLimiter,
   searchRateLimiter,
   authRateLimiter,
@@ -159,6 +161,10 @@ app.use(metricsMiddleware() as RequestHandler);
 app.use("/api", generalRateLimiter as RequestHandler);
 // Smoke 7: the slip's plancard poll has its own budget (`isPlancardRead`), never the general one.
 app.use("/api", plancardReadRateLimiter as RequestHandler);
+// TB2.6: the public listing search has its own budget (`isDiscoverRead`), never the general one.
+app.use("/api", discoverReadRateLimiter as RequestHandler);
+// TB2.6 (measured): the feed's photo proxy is 21 of a cold load's 38 calls; it has its own budget too.
+app.use("/api", placePhotoReadRateLimiter as RequestHandler);
 app.use("/api/ai", aiRateLimiter as RequestHandler);
 app.use("/api/admin", adminRateLimiter as RequestHandler);
 app.use("/api/admin", queryCounterMiddleware as RequestHandler);
