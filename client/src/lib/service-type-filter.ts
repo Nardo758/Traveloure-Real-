@@ -50,6 +50,19 @@ export function emptyConciergeLine(city: string): string {
   return SERVICE_TYPE_FILTER_COPY.emptyConcierge.replace("{city}", city);
 }
 
+/**
+ * TB2.7 (round 2, Leon Nov 10, 2026): a selected type with no listings in this city says so, for EVERY choice — the
+ * concierge line existed; "Trip planning" answered zero results with nothing. ONE template, the concierge sentence's
+ * own shape with the choice's label lowercased: "No trip planning listings in Kyoto yet." / "No local concierge
+ * listings in Kyoto yet." — PROPOSED for "Wording approved — Leon" in PR A; the concierge output is byte-identical to
+ * the HELD line already on main.
+ */
+export function emptyServiceTypeLine(choice: string, city: string): string | null {
+  const row = SERVICE_TYPE_FILTER_CHOICES.find((c) => c.value !== "" && c.value === choice);
+  if (!row) return null;
+  return `No ${row.label.toLowerCase()} listings in ${city} yet.`;
+}
+
 /** A failed read's message: the server's own `message` when it sent one, else the fallback. */
 export async function readFailureMessage(res: Response, fallback: string): Promise<string> {
   const body = await res.json().catch(() => null);

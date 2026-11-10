@@ -56,9 +56,16 @@ export function mapDayChips(
   return Array.from(nums)
     .sort((a, b) => a - b)
     .map((n) => {
-      const existing = byNum.get(n);
-      if (existing) return existing;
       const iso = start != null && count != null && n <= count ? isoOf(start + n - 1) : null;
+      const existing = byNum.get(n);
+      if (existing) {
+        // TB3.9 (round 2, Leon Nov 10, 2026): a day that HOLDS stops is dated by the same window as an empty one. The
+        // guest rail builds a day from its items with no date (`guestPlanDays`), so a day lost "Tue · Dec 1" the
+        // moment it got a stop while its empty neighbours kept theirs. Fill the window's date in; a day the caller
+        // already dated keeps its own.
+        if (iso && !existing.dateIso && !existing.date) return { ...existing, date: displayOf(iso), dateIso: iso };
+        return existing;
+      }
       return {
         dayNum: n,
         date: iso ? displayOf(iso) : "",

@@ -1,4 +1,5 @@
 import { useDebouncedValue, DISCOVER_THEME_DEBOUNCE_MS } from "@/hooks/use-debounced-value";
+import { SPINE_CHIPS, effectiveSpineFilter, shownSpineChips } from "@/lib/spine-chips";
 import { DISCOVER_HEADLINE_COPY } from "@shared/copy-2026-10-31";
 import { neighbourhoodHomeKey } from "@/lib/wanted-slot-link";
 import { heroEyebrowFragments } from "@/lib/hero-eyebrow";
@@ -14,7 +15,7 @@ import { OPERATING_MARKETS } from "@shared/operating-markets";
 import { useMarketStatusSettings } from "@/lib/signup-mode";
 import { ClosedMarketCityView } from "@/components/waitlist/WaitlistMarkets";
 import { ServiceTypeFilter } from "@/components/service-type-filter";
-import { SERVICE_TYPE_FILTER_PARAM, emptyConciergeLine, readFailureMessage, serviceTypeFromUrl, withServiceType } from "@/lib/service-type-filter";
+import { SERVICE_TYPE_FILTER_PARAM, emptyServiceTypeLine, readFailureMessage, serviceTypeFromUrl, withServiceType } from "@/lib/service-type-filter";
 import { trackCityView } from "@/hooks/use-recently-viewed";
 import { useQuery } from "@tanstack/react-query";
 import { NAV_LEAF_ICONS } from "@/components/layout";
@@ -369,17 +370,6 @@ function FiltersPopover({
 
 // ─── Spine filter chips (rendered inside FiltersPopover above) ────────────────
 
-const SPINE_CHIPS = [
-  { id: "all", label: "All gems" },
-  { id: "eat", label: "Eat" },
-  { id: "do", label: "Do" },
-  { id: "stay", label: "Stay" },
-  { id: "services", label: "Services" },
-  { id: "experts", label: "Experts" },
-  { id: "events", label: "Events" },
-  { id: "photo_spots", label: "Photo spots" },
-  { id: "vibe", label: "Vibe" },
-];
 
 /**
  * Does one tile match a spine chip? DELEGATES to the canonical
@@ -425,7 +415,7 @@ function SpineChipRail({
 }) {
   return (
     <div className="flex flex-wrap gap-2" data-testid="spine-filter-bar">
-      {SPINE_CHIPS.map((chip) => {
+      {shownSpineChips(counts).map((chip) => {
         const count = counts[chip.id] ?? 0;
         const isActive = active === chip.id;
         return (
@@ -1727,6 +1717,38 @@ export default function DiscoverLocationPage() {
       })
     : experts;
 
+  // ── Spine chip live-stock counts (§13: real counts from the loaded data) ──
+  // Counted over the DELIBERATE-SEARCH stream (full experts, uncapped services —
+  // exactly what selecting the chip shows) with each neighbourhood's nested gems
+  // expanded to their bento exposure. Zero renders NO badge, never a fabricated
+  // number.
+  const chipCounts: Record<string, number> = (() => {
+    if (!data) return {};
+    const searchStream = buildFeedStream(
+      neighborhoods, allGems, experts, events, supplyHotels, supplyActivities, servicesForFeed,
+      undefined,
+      Number.POSITIVE_INFINITY,
+    );
+    const countable: FeedItem[] = searchStream.flatMap((it) => {
+      if (it.kind === "neighborhood")
+        return ((it.data?.gems ?? []) as any[])
+          .slice(0, 4)
+          .map((g) => ({ kind: "loose-gem" as FeedItem["kind"], id: `gem-${g.id}`, data: g }));
+      if (it.kind === "city-separator") return [];
+      return [it];
+    });
+    return Object.fromEntries(
+      SPINE_CHIPS.map((c) => [
+        c.id,
+        c.id === "all" ? countable.length : countable.filter((it) => chipMatches(it, c.id)).length,
+      ]),
+    );
+  })();
+
+  // TB2.7: the chip counts are derived BEFORE the feed so the active chip can be reconciled against the chips the
+  // rail draws — a hidden (zero) chip never filters the feed.
+  const spineFilter = effectiveSpineFilter(activeFilter, chipCounts);
+
   // FP-1 / B4 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1): the mixed "all" feed keeps its
   // 4-service balance cap; a spine chip is a deliberate search and must show EVERY matching
   // approved listing, not a sample of four (that cap is why a whole approved Kyoto catalog was
@@ -1736,10 +1758,10 @@ export default function DiscoverLocationPage() {
   const feedItems: FeedItem[] = data
     ? buildFeedStream(
         neighborhoods, allGems,
-        activeFilter === "all" ? feedExperts : experts,
+        spineFilter === "all" ? feedExperts : experts,
         events, supplyHotels, supplyActivities, servicesForFeed,
         undefined,
-        activeFilter === "all" ? undefined : Number.POSITIVE_INFINITY,
+        spineFilter === "all" ? undefined : Number.POSITIVE_INFINITY,
       )
     : [];
 
@@ -1836,7 +1858,7 @@ export default function DiscoverLocationPage() {
   // card and external stubs (below), which keeps those injections on the
   // stocked index too.
   const composedItems =
-    activeFilter === "all"
+    spineFilter === "all"
       ? composeDiscoverFeed(
           withoutUnstockedNeighbourhoods(feedItems),
           discoverySlotResult.candidates,
@@ -1862,7 +1884,7 @@ export default function DiscoverLocationPage() {
 
   // Exactly ONE earn-card near position 9 (F7/F9), only on the unfiltered "all" view.
   const filteredItems: FeedItem[] = (() => {
-    if (activeFilter !== "all") return retagged;
+    if (spineFilter !== "all") return retagged;
     const out = [...retagged];
     out.splice(Math.min(9, out.length), 0, { kind: "earn-card", id: "earn-card", data: { city } });
     // External stubs are woven in after the earn-card region (append — they never displace a
@@ -1886,33 +1908,6 @@ export default function DiscoverLocationPage() {
     return range ? `${displayCity} · ${range}` : displayCity;
   })();
 
-  // ── Spine chip live-stock counts (§13: real counts from the loaded data) ──
-  // Counted over the DELIBERATE-SEARCH stream (full experts, uncapped services —
-  // exactly what selecting the chip shows) with each neighbourhood's nested gems
-  // expanded to their bento exposure. Zero renders NO badge, never a fabricated
-  // number.
-  const chipCounts: Record<string, number> = (() => {
-    if (!data) return {};
-    const searchStream = buildFeedStream(
-      neighborhoods, allGems, experts, events, supplyHotels, supplyActivities, servicesForFeed,
-      undefined,
-      Number.POSITIVE_INFINITY,
-    );
-    const countable: FeedItem[] = searchStream.flatMap((it) => {
-      if (it.kind === "neighborhood")
-        return ((it.data?.gems ?? []) as any[])
-          .slice(0, 4)
-          .map((g) => ({ kind: "loose-gem" as FeedItem["kind"], id: `gem-${g.id}`, data: g }));
-      if (it.kind === "city-separator") return [];
-      return [it];
-    });
-    return Object.fromEntries(
-      SPINE_CHIPS.map((c) => [
-        c.id,
-        c.id === "all" ? countable.length : countable.filter((it) => chipMatches(it, c.id)).length,
-      ]),
-    );
-  })();
 
   // ── Header: light client-side narrow from the "what" search ─────────────
   // Empty query is a pure passthrough (behaviour unchanged). A non-empty query
@@ -2054,12 +2049,13 @@ export default function DiscoverLocationPage() {
             <CatalogueSearchResults city={displayCity} query={searchQuery} onAdd={handleAdd} />
 
             {/* ── Spine chip rail (Phase 2c — the visible gem-type filter) ── */}
-            <SpineChipRail active={activeFilter} counts={chipCounts} onSelect={setActiveFilter} />
+            <SpineChipRail active={spineFilter} counts={chipCounts} onSelect={setActiveFilter} />
 
             <ServiceTypeFilter value={serviceType} onChange={setServiceType} />
-            {serviceType === "concierge" && servicesForFeed.length === 0 && !(selectedThemeSlugs.length > 0 && !themedDiscover) && (
-              <p className="text-sm text-muted-foreground -mt-2 mb-4" data-testid="text-concierge-empty">
-                {emptyConciergeLine(displayCity)}
+            {/* TB2.7: any selected type with no listings here says so (the concierge line, generalised). */}
+            {serviceType !== "" && servicesForFeed.length === 0 && !(selectedThemeSlugs.length > 0 && !themedDiscover) && emptyServiceTypeLine(serviceType, displayCity) && (
+              <p className="text-sm text-muted-foreground -mt-2 mb-4" data-testid={serviceType === "concierge" ? "text-concierge-empty" : `text-service-type-empty-${serviceType}`}>
+                {emptyServiceTypeLine(serviceType, displayCity)}
               </p>
             )}
 
@@ -2123,7 +2119,7 @@ export default function DiscoverLocationPage() {
               city={city}
               cityWideReadyMade={cityWideReadyMade}
               scheduledDate={scheduledDate}
-              activeFilter={activeFilter}
+              activeFilter={spineFilter}
               priceFilter={priceFilter}
               sortMode={sortMode}
               neighbourhoodFilter={neighbourhoodFilter}
@@ -2136,7 +2132,7 @@ export default function DiscoverLocationPage() {
                 affiliateLabel: feedConfig.affiliateLabel,
               }}
             />
-            {activeFilter === "all" && !neighbourhoodFilter && (
+            {spineFilter === "all" && !neighbourhoodFilter && (
               <TripComplementsStrip city={city} highlight={null} />
             )}
 
