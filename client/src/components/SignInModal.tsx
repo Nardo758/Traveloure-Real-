@@ -23,9 +23,9 @@ import { socialSignInHref, supplySourceTag } from "@/lib/social-sign-in";
 import {
   EMPTY_SIGNUP_DRAFT,
   SignupFields,
-  signInAfterSignup,
+  SignupCheckEmailNotice,
+  rememberSignupOrigin,
   signupDraftReady,
-  takeSignupReturnTo,
   useWaitlistSignupGate,
   type SignupDraft,
 } from "@/components/auth/SignupForm";
@@ -67,6 +67,8 @@ export function SignInModal({
   const description = descriptionProp ?? t(travelerSignupShown ? "modal.descSignInDefault" : "modal.descSignInWaitlist");
   const [mode, setMode] = useState<"signin" | "signup" | "reset">("signin");
   const [isLoading, setIsLoading] = useState(false);
+  // After a sign-up's neutral answer: the approved check-email sentence above the sign-in form.
+  const [signupCheckEmail, setSignupCheckEmail] = useState(false);
   const [resetSent, setResetSent] = useState(false);
   // AUTH-1 fix 3b: a sign-up gets the server's neutral answer — no session, so no guest claim, no navigation and
   // no "Account created". Guest state and the return destination wait for an actual sign-in.
@@ -87,6 +89,7 @@ export function SignInModal({
 
   // Clear inline error whenever the user switches sign-in mode
   useEffect(() => { setAuthError(null); }, [mode]);
+  useEffect(() => { if (mode === "signup" || !open) setSignupCheckEmail(false); }, [mode, open]);
 
   const migrateGuestCart = async () => {
     try {
@@ -149,34 +152,17 @@ export function SignInModal({
       const read = await readAuthResponse(response);
       const genericError = t("signupPage.genericError");
 
-      // N-1 (round 2): the register answer stays neutral (AUTH-1 3b). The form then signs in with the credentials
-      // just typed and returns the person to where they came from; an address to confirm goes to the verify page.
-      // A sign-in that fails falls back to the sign-in screen, as before.
+      // The register answer stays neutral (AUTH-1 3b) and signs nobody in. The form does not sign in for the person
+      // (ledger `2026-11-10-signup-no-autologin`): it keeps the origin for the verify link, says to check email, and
+      // opens sign-in with the address filled in.
       if (mode === "signup" && read.kind === "json" && isRegistrationNeutral(response.status, read.data)) {
         const sessionOrigin = sessionStorage.getItem("traveloure_return_to");
         const origin =
           sanitizeReturnTo(returnTo) ?? sanitizeReturnTo(sessionOrigin ?? undefined) ?? sanitizeReturnTo(`${window.location.pathname}${window.location.search}`) ?? null;
-        const after = await signInAfterSignup(signupDraft.email, signupDraft.password, origin);
-        if (after.kind === "not_signed_in") {
-          setFormData((f) => ({ ...f, email: signupDraft.email, password: "" }));
-          setMode("signin");
-          return;
-        }
-        if (sessionOrigin) sessionStorage.removeItem("traveloure_return_to");
-        if (after.kind === "verify") {
-          queryClient.setQueryData(["/api/auth/user"], {
-            ...(after.data.user ?? {}),
-            emailVerificationRequired: true,
-            nextStep: typeof after.data.nextStep === "string" ? after.data.nextStep : "verify_email",
-          });
-          onOpenChange(false);
-          window.location.href = "/verify-email";
-          return;
-        }
-        await migrateGuestCart();
-        queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
-        onOpenChange(false);
-        window.location.href = takeSignupReturnTo() ?? origin ?? getRoleHomePath(after.data.user?.role ?? "user");
+        rememberSignupOrigin(origin);
+        setFormData((f) => ({ ...f, email: signupDraft.email, password: "" }));
+        setSignupCheckEmail(true);
+        setMode("signin");
         return;
       }
 
@@ -331,6 +317,8 @@ export function SignInModal({
               </div>
             ) : null}
             {mode === "signup" && signupGate === "form" ? <SignupFields draft={signupDraft} onChange={setSignupDraft} /> : null}
+
+            {mode === "signin" && signupCheckEmail ? <SignupCheckEmailNotice /> : null}
 
             {mode !== "signup" && (
             <>

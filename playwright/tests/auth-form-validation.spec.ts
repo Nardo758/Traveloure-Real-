@@ -437,11 +437,14 @@ test.describe("Signup page — form structure and validation (UI)", () => {
     console.log("[I5-signup-UI] PASS — spaces-only password on /signup is not sent");
   });
 
-  // N-1 (round 2 rulings, sanctioned rewrite): the register answer stays neutral (AUTH-1 3b); the form then signs in
-  // with the credentials just typed. Where the account must confirm its address, it lands on the verify page;
-  // otherwise it is signed in and returned to where it started (here /signup, so its home).
-  test("valid data: neutral register answer, then signed in and sent to confirm the address", async ({ page }) => {
+  // TEST EDIT (ledger `2026-11-10-signup-no-autologin`; replaces the N-1 auto-sign-in pin): the register answer stays
+  // neutral (AUTH-1 3b) and the page makes NO login call after it. It shows the approved sentence and a way to sign in.
+  test("valid data: neutral register answer, no sign-in, the check-email sentence", async ({ page }) => {
     const email = `valid.signup.${uid()}@example.com`;
+    const loginCalls: string[] = [];
+    page.on("request", (r) => {
+      if (new URL(r.url()).pathname === "/api/auth/login") loginCalls.push(r.method());
+    });
 
     await page.locator('[data-testid="input-first-name"]').fill("Valid");
     await page.locator('[data-testid="input-last-name"]').fill("User");
@@ -452,25 +455,20 @@ test.describe("Signup page — form structure and validation (UI)", () => {
     const registered = page.waitForResponse(
       (r) => new URL(r.url()).pathname === "/api/auth/register" && r.request().method() === "POST",
     );
-    const signedIn = page.waitForResponse(
-      (r) => new URL(r.url()).pathname === "/api/auth/login" && r.request().method() === "POST",
-    );
     await page.locator('[data-testid="button-create-account"]').click();
     expect((await registered).status()).toBe(202);
-    expect((await signedIn).status()).toBe(200);
 
-    // The page leaves /signup either for the verify page (an address that must be confirmed) or for where it started.
-    // The login answer's body is not read here: the page navigates away as soon as it lands.
-    await expect(page).not.toHaveURL(/\/(signup|login)(\?|$)/, { timeout: 15_000 });
-    if (/\/verify-email/.test(page.url())) {
-      await expect(page.getByText("Check your email to confirm your account.")).toBeVisible();
-    }
-    await expect(page.getByText(/account created/i)).toHaveCount(0);
+    await expect(page.locator('[data-testid="text-signup-check-email"]')).toHaveText(
+      "Check your email to finish setting up. If you already have an account with this address, sign in or reset your password instead.",
+    );
+    await expect(page.locator('[data-testid="link-signup-check-email-signin"]')).toHaveAttribute("href", "/login");
+    await expect(page).toHaveURL(/\/signup(\?|$)/);
+    expect(loginCalls, "no login call after the neutral answer").toEqual([]);
 
-    // The session is the sign-in the form made after the neutral answer.
+    // Nobody is signed in by registering.
     const me = await page.request.get(`${BASE_URL}/api/auth/user`);
-    expect(me.status()).toBe(200);
-    console.log(`[signup-UI] PASS — valid signup signs in (${page.url()})`);
+    expect(me.status()).toBe(401);
+    console.log("[signup-UI] PASS — valid signup shows check-email and signs nobody in");
   });
 });
 

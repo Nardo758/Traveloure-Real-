@@ -102,12 +102,26 @@ test("8d — signed out: browse with no plan, add, sign up → exactly one plan,
   await testid(page, "input-email").fill(email);
   await testid(page, "input-password").fill("Journey!Pass123");
   await testid(page, "checkbox-signup-consent").click();
+  const loginCalls: string[] = [];
+  page.on("request", (r) => {
+    if (new URL(r.url()).pathname === "/api/auth/login") loginCalls.push(r.method());
+  });
   await testid(page, "button-auth-submit").click();
 
-  // N-1 (round 2 rulings, Nov 4, 2026; sanctioned rewrite): creating the account signs it in with the credentials
-  // just typed (the register answer itself stays neutral, AUTH-1 3b). An address that must be confirmed lands on the
-  // verify page ("Check your email to confirm your account."), with the guest's record kept for the return; an address
-  // that need not be confirmed returns straight to this page, which replays the record.
+  // TEST EDIT (ledger `2026-11-10-signup-no-autologin`; replaces the N-1 auto-sign-in pin): the register answer stays
+  // neutral (AUTH-1 3b) and the modal makes NO login call. It shows the approved sentence over the sign-in form, with
+  // the address filled in; the traveler then signs in themselves.
+  await expect(testid(page, "text-signup-check-email")).toHaveText(
+    "Check your email to finish setting up. If you already have an account with this address, sign in or reset your password instead.",
+    { timeout: 15_000 },
+  );
+  expect(loginCalls, "no login call after the neutral answer").toEqual([]);
+  await expect(testid(page, "input-email")).toHaveValue(email);
+  await testid(page, "input-password").fill("Journey!Pass123");
+  await testid(page, "button-auth-submit").click();
+
+  // Signed in: an address that must be confirmed lands on the verify page ("Check your email to confirm your
+  // account."), with the guest's record kept for the return; one that need not be confirmed replays the record here.
   await expect(page).toHaveURL(/\/verify-email|\/plans\/(?!new)[a-zA-Z0-9-]+(\?view=days)?$/, { timeout: 15_000 });
   if (/\/verify-email/.test(page.url())) {
     await expect(page.getByText("Check your email to confirm your account.")).toBeVisible();
