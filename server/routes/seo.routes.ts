@@ -52,6 +52,10 @@ const STATIC_ROUTES = [
   "/visa-help",
   "/press",
   "/careers",
+  // TB1.4: the legal pages belong in the sitemap; they are public, canonical and stable.
+  "/terms",
+  "/privacy",
+  "/cookies",
   // Lane B: the Help center and each PUBLISHED article — a held article (an unshipped feature)
   // is never in the sitemap (shared/help-article-slugs.ts).
   "/help",
@@ -191,6 +195,29 @@ const ROUTE_META: Record<string, { title: string; description: string }> = {
     title: "Visa Help & Travel Documents | Traveloure",
     description:
       "Understand visa requirements for your destination and get help with travel documents.",
+  },
+  // TB1.2 (Wording approved — Leon, 2026-11-09): the legal and company pages were inheriting the
+  // homepage's <title> and canonical. Each now serves its own title, description and self-canonical
+  // through the same `routeHeadTags` rail every other public route uses.
+  "/terms": {
+    title: "Terms of Service | Traveloure",
+    description: "The terms that govern your use of Traveloure.",
+  },
+  "/privacy": {
+    title: "Privacy Policy | Traveloure",
+    description: "What we collect, why, and the controls you have over it.",
+  },
+  "/cookies": {
+    title: "Cookie Policy | Traveloure",
+    description: "The cookies Traveloure sets and what each one is for.",
+  },
+  "/press": {
+    title: "Press | Traveloure",
+    description: "Press resources and contact for Traveloure.",
+  },
+  "/careers": {
+    title: "Careers | Traveloure",
+    description: "Open roles at Traveloure.",
   },
 };
 
