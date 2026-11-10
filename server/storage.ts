@@ -1741,6 +1741,21 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
+    // Cut-list #1 slice A: ONE grouped count for the whole list — the same batched posture as the
+    // final-version lookup above, never a per-row read. The header chip names this number; a list
+    // without it left a signed-in traveler with a full plan being offered "Start a plan".
+    const itemCountByTrip = new Map<string, number>();
+    if (tripIds.length > 0) {
+      const countRows = await db
+        .select({ tripId: itineraryItems.tripId, count: sql<number>`count(*)` })
+        .from(itineraryItems)
+        .where(inArray(itineraryItems.tripId, tripIds))
+        .groupBy(itineraryItems.tripId);
+      for (const row of countRows) {
+        if (row.tripId) itemCountByTrip.set(row.tripId, Number(row.count));
+      }
+    }
+
     return rows.map(({ occasionLabel, occasionDate, occasionTemplateKey }, index) => {
       const trip = filledTrips[index];
       return {
@@ -1752,6 +1767,7 @@ export class DatabaseStorage implements IStorage {
             }
           : null,
         finalVersion: finalVersionByTrip.get(trip.id) ?? null,
+        itemCount: itemCountByTrip.get(trip.id) ?? 0,
       };
     });
   }

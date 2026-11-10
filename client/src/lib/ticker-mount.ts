@@ -9,7 +9,6 @@ export const TICKER_MARKETING_PATHS: readonly string[] = [
   "/blog",
   "/careers",
   "/contact",
-  "/experiences",
   "/features",
   "/help",
   "/how-it-works",
