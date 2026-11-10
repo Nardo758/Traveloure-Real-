@@ -292,11 +292,20 @@ for (const [routePath, meta] of Object.entries(ROUTE_META)) {
 // WHAT IS EXCLUDED, deliberately: anything that is not an HTML GET. `/api/*` (its own routers
 // answer JSON, including their own 404s), assets, uploads, the sitemap and robots keep their very
 // different responses — a crawler asking for a missing image must never receive the app shell.
-const NOT_A_PAGE_PATH = /^\/(api|assets|images|attachments|uploads|static|og-cover\.png|sitemap\.xml|robots\.txt)(\/|$)/;
+//
+// AND THE DEV SERVER'S OWN MODULES, because the app under test is not always a production build:
+// the e2e gates run `npm run dev`, so the browser asks for `/@vite/client`, `/@react-refresh`,
+// `/src/main.tsx` and `/node_modules/.vite/…`. None of those is an App.tsx route, so the first cut
+// answered them with this 404 HTML — the app never booted, and every spec failed on a blank page
+// ("element(s) not found") rather than on the route it thought it was testing. A path whose last
+// segment has a file extension is likewise never a page.
+const NOT_A_PAGE_PATH = /^\/(api|assets|images|attachments|uploads|static|@[^/]+|src|node_modules|\.vite|og-cover\.png|sitemap\.xml|robots\.txt)(\/|$)/;
+const LOOKS_LIKE_A_FILE = /\.[a-z0-9]{1,16}$/i;
 
 router.use(async (req, res, next) => {
   if (req.method !== "GET" && req.method !== "HEAD") return next();
   if (NOT_A_PAGE_PATH.test(req.path)) return next();
+  if (LOOKS_LIKE_A_FILE.test(req.path)) return next();
   if (!req.accepts("html")) return next();
   if (isClientRoutePath(req.path)) return next();
   try {

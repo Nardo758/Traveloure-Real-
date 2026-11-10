@@ -63,3 +63,25 @@ describe("TB1.3 — the manifest is generated, and the server uses it", () => {
     assert.match(SEO, /return res\.status\(404\)\.set\(\{ "Content-Type": "text\/html" \}\)\.end\(template\);/, "a real 404 with the SPA shell");
   });
 });
+
+describe("TB1.3 — the dev server's own modules are never pages", () => {
+  it("N6 Vite's module requests and file-looking paths fall through, and a bogus page still 404s", () => {
+    // The e2e gates run `npm run dev`, and the first cut answered `/@vite/client` with the 404 shell,
+    // so the app never booted and every spec failed on a blank page. Both guards now exist.
+    assert.match(SEO, /NOT_A_PAGE_PATH = \/\^\\\/\(api\|assets\|images\|attachments\|uploads\|static\|@[^/]+\|src\|node_modules/);
+    assert.match(SEO, /const LOOKS_LIKE_A_FILE = \/\\\.[a-z0-9]{1,16}\$\/i;/);
+    assert.match(SEO, /if \(LOOKS_LIKE_A_FILE\.test\(req\.path\)\) return next\(\);/);
+
+    // The predicates themselves, replayed over the paths that matter.
+    const notAPage = /^\/(api|assets|images|attachments|uploads|static|@[^/]+|src|node_modules|\.vite|og-cover\.png|sitemap\.xml|robots\.txt)(\/|$)/;
+    const looksLikeAFile = /\.[a-z0-9]{1,10}$/i;
+    const isDevModule = (p: string) => notAPage.test(p) || looksLikeAFile.test(p);
+    for (const devPath of ["/@vite/client", "/@react-refresh", "/src/main.tsx", "/src/App.tsx", "/node_modules/.vite/deps/react.js", "/favicon.ico", "/manifest.webmanifest", "/og-cover.png", "/sitemap.xml", "/robots.txt"]) {
+      assert.equal(isDevModule(devPath), true, `${devPath} must never be answered with the 404 shell`);
+    }
+    for (const pagePath of ["/nosuchpage", "/definitely/not/a/route", "/terms/extra"]) {
+      assert.equal(isDevModule(pagePath), false, `${pagePath} is still judged by the route table`);
+      assert.equal(isClientRoutePath(pagePath), false, `${pagePath} is not a page`);
+    }
+  });
+});
