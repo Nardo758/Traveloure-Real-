@@ -45,6 +45,7 @@ import {
   changeUnverifiedEmail,
 } from "../../services/email-verification.service";
 import { isEmailUniqueViolation } from "./email-unique-violation";
+import { stagingAuthDiagnostics } from "./staging-auth-diagnostics";
 
 export { issueEmailVerification, isEmailUniqueViolation };
 
@@ -185,6 +186,7 @@ export function setupEmailAuth(app: Express): void {
         .then((r) => r[0]);
 
       if (existingUser) {
+        stagingAuthDiagnostics.record("register_existing");
         return res.status(REGISTRATION_NEUTRAL_STATUS).json(registrationNeutralBody());
       }
 
@@ -217,12 +219,14 @@ export function setupEmailAuth(app: Express): void {
         // A concurrent sign-up for the same address won the email unique index: that is a duplicate, and gets the
         // duplicate's answer. Any other failure stays a failure (outer catch → 500).
         if (!isEmailUniqueViolation(err)) throw err;
+        stagingAuthDiagnostics.record("register_conflict");
         created = null;
       }
       if (!created) {
         return res.status(REGISTRATION_NEUTRAL_STATUS).json(registrationNeutralBody());
       }
       const { newUser, welcomeId } = created;
+      stagingAuthDiagnostics.record("register_committed");
 
       // LW-1d: a supply account records its sign-up source tag once. Never fails the sign-up (the writer never throws).
       if (normalizeSignupIntent(validation.data.intent) === "supply") {
@@ -275,6 +279,7 @@ export function setupEmailAuth(app: Express): void {
       // POST /api/auth/login (which regenerates the session id) like every other account.
       return res.status(REGISTRATION_NEUTRAL_STATUS).json(registrationNeutralBody());
     } catch (error) {
+      stagingAuthDiagnostics.record("register_failed");
       console.error("Registration error:", error);
       res.status(500).json({ message: "Failed to create account" });
     }
@@ -306,6 +311,7 @@ export function setupEmailAuth(app: Express): void {
       // answers 500, not 401. Deleted and suspended checks stay after this.
       const passwordOk = await verifyLoginCredential(password, user?.password ?? null);
       if (!passwordOk || !user) {
+        stagingAuthDiagnostics.record("login_credentials_rejected");
         return res.status(401).json({
           message: "Invalid email or password",
         });
@@ -350,16 +356,20 @@ export function setupEmailAuth(app: Express): void {
       // cookie before login cannot use that same ID after authentication.
       req.session.regenerate((regenErr) => {
         if (regenErr) {
+          stagingAuthDiagnostics.record("login_regenerate_failed");
           console.error("Session regeneration error:", regenErr);
           return res.status(500).json({ message: "Failed to create session" });
         }
+        stagingAuthDiagnostics.record("login_regenerated");
         (req as any).login(sessionUser, (err: any) => {
           if (err) {
+            stagingAuthDiagnostics.record("login_passport_failed");
             console.error("Login error:", err);
             return res.status(500).json({ message: "Failed to create session" });
           }
 
           stampGrandfatherOnSession(req.session, gate.access, user.emailVerified);
+          stagingAuthDiagnostics.record("login_authenticated", { authenticated: req.isAuthenticated() === true });
           res.json({
             message: "Logged in successfully",
             emailVerificationRequired: gate.emailVerificationRequired,
@@ -375,6 +385,7 @@ export function setupEmailAuth(app: Express): void {
         });
       });
     } catch (error) {
+      stagingAuthDiagnostics.record("login_failed");
       console.error("Login error:", error);
       res.status(500).json({ message: "Failed to log in" });
     }

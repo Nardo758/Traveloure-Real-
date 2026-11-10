@@ -26,16 +26,16 @@
  * Every 401 is logged at warn with the instance id, the path and the reason — never a header, cookie or Secret value.
  */
 import crypto from "node:crypto";
-import os from "node:os";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 import { logger } from "../infrastructure/logger";
+import { stagingAuthDiagnostics } from "../replit_integrations/auth/staging-auth-diagnostics";
 
 export const STAGING_GATE_COOKIE = "stg_gate";
 export const STAGING_GATE_COOKIE_MAX_AGE_SECONDS = 12 * 60 * 60;
 const STAGING_GATE_COOKIE_LABEL = "stg_gate.v1";
 
-/** One per process: a container hostname plus the pid, so two instances' 401s can be told apart in the logs. */
-export const STAGING_GATE_INSTANCE_ID = `${os.hostname()}:${process.pid}`;
+/** Same nonce-suffixed process identity as auth diagnostics; hostname:pid can collide across containers. */
+export const STAGING_GATE_INSTANCE_ID = stagingAuthDiagnostics.instance;
 
 export type StagingChallengeReason = "no_authorization_header" | "credentials_mismatch" | "malformed_or_wrong_scheme";
 export type StagingCookieState = "absent" | "invalid" | "expired" | "valid";
