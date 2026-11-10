@@ -20,7 +20,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { waitlistBlockedPath } from "@shared/launch-signup";
-import { readAuthResponse } from "@/lib/auth-response";
+import { readAuthResponse, type AuthResponseRead } from "@/lib/auth-response";
+import { isRegistrationNeutral } from "@shared/registration-neutral";
 import { sanitizeReturnTo } from "@/lib/safe-return-to";
 
 export interface SignupDraft {
@@ -189,35 +190,58 @@ export function takeSignupReturnTo(): string | null {
   }
 }
 
-export type SignInAfterSignup =
-  | { kind: "signed_in"; data: Record<string, any> }
-  | { kind: "verify"; data: Record<string, any> }
-  | { kind: "not_signed_in" };
-
 /**
- * N-1: after the neutral register answer, sign in with the credentials just typed (POST /api/auth/login — no new
- * rail, no change to the register answer). A failure is "not signed in", and the caller falls back to its sign-in
- * screen exactly as before. The origin is stored first, so an account sent to confirm its address can return there.
+ * Staging session fix (ledger `2026-11-10-signup-no-autologin`). After the neutral register answer (AUTH-1 fix 3b) the
+ * form does NOT sign in: it shows this sentence (Wording approved — Leon, Nov 9, 2026, 10:27 PM ET) and the person signs
+ * in themselves. English only until a Japanese version is approved.
  */
-export async function signInAfterSignup(email: string, password: string, origin: string | null): Promise<SignInAfterSignup> {
+export const SIGNUP_CHECK_EMAIL_COPY =
+  "Check your email to finish setting up. If you already have an account with this address, sign in or reset your password instead.";
+
+/** Keeps the sign-up's origin so a confirmed account returns there (read once by `takeSignupReturnTo`). No network. */
+export function rememberSignupOrigin(origin: string | null): void {
   try {
     if (origin) localStorage.setItem(SIGNUP_RETURN_TO_KEY, origin);
   } catch {
     /* no store ⇒ the confirmed account goes to its home */
   }
-  try {
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ email, password }),
-    });
-    const read = await readAuthResponse(res);
-    if (!res.ok || read.kind !== "json") return { kind: "not_signed_in" };
-    return read.data.emailVerificationRequired === true ? { kind: "verify", data: read.data } : { kind: "signed_in", data: read.data };
-  } catch {
-    return { kind: "not_signed_in" };
-  }
+}
+
+export interface RegistrationAnswer {
+  response: Response;
+  read: AuthResponseRead;
+  /** The neutral 202: nobody is signed in; show `SIGNUP_CHECK_EMAIL_COPY`. */
+  checkEmail: boolean;
+}
+
+/**
+ * The ONE register call for the sign-up page: POST /api/auth/register and nothing after it. On the neutral answer it
+ * stores the origin and reports `checkEmail`; it never calls /api/auth/login.
+ */
+export async function submitRegistration(
+  body: Record<string, unknown>,
+  origin: string | null,
+  fetchImpl: typeof fetch = fetch,
+): Promise<RegistrationAnswer> {
+  const response = await fetchImpl("/api/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(body),
+  });
+  const read = await readAuthResponse(response);
+  const checkEmail = read.kind === "json" && isRegistrationNeutral(response.status, read.data);
+  if (checkEmail) rememberSignupOrigin(origin);
+  return { response, read, checkEmail };
+}
+
+/** The approved sentence, as the modal shows it above the sign-in form. */
+export function SignupCheckEmailNotice() {
+  return (
+    <p className="text-sm text-muted-foreground" role="status" data-testid="text-signup-check-email">
+      {SIGNUP_CHECK_EMAIL_COPY}
+    </p>
+  );
 }
 
 /** A container's extra fields (the page's provider and QA fields) sit between the shared fields and its button. */

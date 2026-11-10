@@ -11,18 +11,16 @@ import {
   providerSignupReady,
   type ProviderSignupDraft,
 } from "@/lib/wlb-signup-copy";
-import { isRegistrationNeutral } from "@shared/registration-neutral";
 import { supplySignupContinuation } from "@shared/supply-entry";
 import { sanitizeReturnTo } from "@/lib/safe-return-to";
 import { authFailureMessage, readAuthResponse } from "@/lib/auth-response";
 import { useTranslation } from "react-i18next";
-import { getRoleHomePath } from "@/lib/role-utils";
 import {
   EMPTY_SIGNUP_DRAFT,
   SignupFields,
-  signInAfterSignup,
+  SIGNUP_CHECK_EMAIL_COPY,
+  submitRegistration,
   signupDraftReady,
-  takeSignupReturnTo,
   useWaitlistSignupGate,
   type SignupDraft,
 } from "@/components/auth/SignupForm";
@@ -69,6 +67,7 @@ export function SignupPage() {
   const [draft, setDraft] = useState<SignupDraft>(EMPTY_SIGNUP_DRAFT);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [checkEmail, setCheckEmail] = useState(false);
 
   if (supplyContinuation.kind !== "account") return null;
 
@@ -76,11 +75,8 @@ export function SignupPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
+      const { response: res, read, checkEmail: neutral } = await submitRegistration(
+        {
           firstName: draft.firstName,
           lastName: draft.lastName,
           email: draft.email,
@@ -95,24 +91,13 @@ export function SignupPage() {
           ...(intent === "supply" && params.get("source") ? { signupSource: params.get("source") } : {}),
           ...(showQaCode && qaCode ? { qaCode } : {}),
           // NOTE: NO role field — server always assigns "user"
-        }),
-      });
-      const read = await readAuthResponse(res);
-      // N-1 (round 2): the register answer stays neutral (AUTH-1 3b); the page then signs in with the credentials just
-      // typed and returns to the origin (`?returnTo=`, else home). An address to confirm goes to the verify page. A
-      // sign-in that fails goes to /login, as before.
-      if (read.kind === "json" && isRegistrationNeutral(res.status, read.data)) {
-        const origin = sanitizeReturnTo(params.get("returnTo") ?? undefined) ?? null;
-        const after = await signInAfterSignup(draft.email, draft.password, origin);
-        if (after.kind === "not_signed_in") {
-          window.location.assign("/login");
-          return;
-        }
-        if (after.kind === "verify") {
-          window.location.assign("/verify-email");
-          return;
-        }
-        window.location.assign(takeSignupReturnTo() ?? origin ?? getRoleHomePath(after.data.user?.role ?? "user"));
+        },
+        sanitizeReturnTo(params.get("returnTo") ?? undefined) ?? null,
+      );
+      // The register answer stays neutral (AUTH-1 3b) and signs nobody in. The page does not sign in for the person
+      // (ledger `2026-11-10-signup-no-autologin`): it keeps the origin for the verify link and says to check email.
+      if (neutral) {
+        setCheckEmail(true);
         return;
       }
       // WL-B: an expert is told to apply on the waitlist — the server's message and its form, nothing else.
@@ -138,6 +123,8 @@ export function SignupPage() {
       setLoading(false);
     }
   };
+
+  if (checkEmail) return <SignupCheckEmailPanel signInLabel={t("signupPage.signIn")} />;
 
   if (expertRefusal) {
     return (
@@ -255,6 +242,24 @@ export function SignupPage() {
             {t("signupPage.referral", { token: refToken })}
           </p>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** After the neutral register answer: the approved sentence and the way to sign in. Nobody is signed in. */
+export function SignupCheckEmailPanel({ signInLabel }: { signInLabel: string }) {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div className="bg-white rounded-2xl border border-gray-200 p-8 w-full max-w-md" data-testid="signup-check-email">
+        <p className="text-sm text-gray-700" role="status" data-testid="text-signup-check-email">{SIGNUP_CHECK_EMAIL_COPY}</p>
+        <a
+          href="/login"
+          data-testid="link-signup-check-email-signin"
+          className="mt-4 block w-full bg-gray-900 text-white rounded-lg py-2.5 text-center text-sm font-semibold hover:bg-gray-700"
+        >
+          {signInLabel}
+        </a>
       </div>
     </div>
   );

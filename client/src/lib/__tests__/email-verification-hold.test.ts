@@ -35,7 +35,10 @@ describe("email verification hold", () => {
       assert.equal(src.includes("payout-setup"), false, name);
       assert.match(src, /registered\.paymentStep/, name);
     }
-    assert.match(signup, /window\.location\.assign\("\/login"\)/);
+    // TEST EDIT (ledger `2026-11-10-signup-no-autologin`): the page no longer signs in after the neutral answer and
+    // no longer falls back to /login; it shows the approved check-email panel, whose link goes to /login.
+    assert.match(signup, /if \(checkEmail\) return <SignupCheckEmailPanel /);
+    assert.match(signup, /href="\/login"/);
     const follow = modal.slice(modal.indexOf("isRegistrationNeutral"), modal.indexOf("if (read.kind === \"non-json\""));
     assert.match(follow, /setMode\("signin"\)/);
     assert.equal(follow.includes("setSignupSubmitted(true)"), false);
