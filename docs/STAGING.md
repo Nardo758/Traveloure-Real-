@@ -209,6 +209,13 @@ line at warn with `instance` (hostname:pid), `path`, `reason` (`no_authorization
 If `credentials_mismatch` shows up on some instances only, the Secret differs between them, and the cookie will not fix
 sign-up on those instances.
 
+**Diagnosing a sign-up bounce.** A registration 202 is deliberately neutral for both new and existing addresses and
+does not authenticate either one. The client follows it with a separate login request. Distinguish a JSON login 401
+(credential rejection) from the gate's plain-text 401; do not infer a lost session without a successful login followed
+by an unauthenticated request. Staging already uses the same PostgreSQL session-store implementation as production.
+The bounded November 9 investigation and its telemetry limits are recorded in
+[`2026-11-09-staging-session-phase0.md`](findings/2026-11-09-staging-session-phase0.md).
+
 ### 6.1 Environment variables (names only — values live in Replit Secrets)
 
 | Variable | Value | What it does |
