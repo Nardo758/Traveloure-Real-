@@ -24,6 +24,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import {
+  GUEST_PLAN_HREF,
   HEADER_ADD_DATES_LABEL,
   activeHeaderTrip,
   headerDatesLabel,
@@ -62,14 +63,17 @@ describe("slice A — the header plan state", () => {
 
   it("H3 a guest with stops gets the chip", () => {
     const state = headerPlanState({ isSignedIn: false, guestStatus: "ready", guestPlan: guest({}, 2), trips: null });
-    assert.deepEqual(state, { kind: "chip", planId: "gp-1", city: "Kyoto", stops: 2, dates: "Nov 12\u201315" });
+    assert.deepEqual(state, { kind: "chip", planId: "gp-1", city: "Kyoto", stops: 2, dates: "Nov 12\u201315", guest: true });
     assert.equal(headerPlanLabel(state), "Your Kyoto plan \u00b7 2");
     assert.equal(headerDatesLine(state), "Nov 12\u201315");
     // The chip links the slip's Days view — no ?view= (it is the ruled landing).
     const CTA = fs.readFileSync("client/src/components/HeaderPlanCTA.tsx", "utf8");
-    const hrefLine = CTA.split("\n").find((line) => line.includes("/plans/${state.planId}")) ?? "";
-    assert.match(hrefLine, /href=\{`\/plans\/\$\{state\.planId\}`\}/, "the chip links the plan");
-    assert.doesNotMatch(hrefLine, /\?view=/, "no view override on the chip itself (the prose may say why)");
+    // A GUEST chip goes to the guest slip, never /plans/{id}: that is a ProtectedRoute and would
+    // sign-in-wall the very traveler the chip speaks for. Never /?start=1 either (a new plan).
+    assert.equal(GUEST_PLAN_HREF, "/plans/new");
+    assert.match(CTA, /state\.guest \? GUEST_PLAN_HREF : `\/plans\/\$\{state\.planId\}`/, "guest → /plans/new, owner → /plans/{id}");
+    const ctaHrefs = CTA.split("\n").filter((line) => line.includes("GUEST_PLAN_HREF") || line.includes("/plans/${state.planId}") || line.includes("PLAN_START_HREF"));
+    for (const line of ctaHrefs) assert.doesNotMatch(line, /\?view=/, line);
   });
 
   it("H4 without a city, the label falls back", () => {
@@ -95,10 +99,12 @@ describe("slice A — the header plan state", () => {
       { id: "final", destination: "Osaka", updatedAt: "2026-11-10T00:00:00Z", itemCount: 9, finalizedAt: "2026-11-10T00:00:00Z" },
       { id: "done", destination: "Rome", updatedAt: "2026-11-10T00:00:00Z", itemCount: 2, status: "completed" },
     ];
-    assert.equal(activeHeaderTrip(trips)?.id, "newest");
+    // Finality is the ONLY filter: `done` was never finalized, so it is the active plan even though
+    // its status says completed (a lifecycle label, not a finality fact).
+    assert.equal(activeHeaderTrip(trips)?.id, "done", "the newest UN-FINALIZED plan wins, whatever its status");
     const state = headerPlanState({ isSignedIn: true, guestStatus: "idle", guestPlan: null, trips });
-    assert.deepEqual(state, { kind: "chip", planId: "newest", city: "Lisbon", stops: 7, dates: null });
-    assert.equal(headerPlanLabel(state), "Your Lisbon plan \u00b7 7");
+    assert.deepEqual(state, { kind: "chip", planId: "done", city: "Rome", stops: 2, dates: null, guest: false });
+    assert.equal(headerPlanLabel(state), "Your Rome plan \u00b7 2");
     assert.equal(headerDatesLine(state), HEADER_ADD_DATES_LABEL, "the list carries no dates ⇒ Add dates, never a guess");
   });
 
@@ -140,18 +146,19 @@ describe("slice A — the 375px budget and the two mounts", () => {
     assert.match(LAYOUT, /hasGuestPresenceCookie\(document\.cookie\)/, "…by the same check shouldClaimGuestPlans uses");
   });
 
-  it("BETA is its own link, and the ticker is gone from the traveler path", () => {
+  it("BETA is its own link, and the ribbon left only the traveler path", () => {
     const LAYOUT = fs.readFileSync("client/src/components/layout.tsx", "utf8");
     // No nested anchors: the logo link closes before the BETA link opens.
     const logoEnd = LAYOUT.indexOf("</Link>", LAYOUT.indexOf('data-testid="link-logo"'));
     const betaLink = LAYOUT.indexOf('data-testid="link-beta"');
     assert.ok(logoEnd > 0 && betaLink > logoEnd, "BETA sits AFTER the logo link closes");
     assert.match(LAYOUT, /href="\/discover\/location\/Kyoto"/, "…and points at the launch surface");
-    // The ticker: no mount, no import.
-    assert.doesNotMatch(LAYOUT, /<CityTickerTape/, "the ribbon is not mounted");
-    assert.doesNotMatch(LAYOUT, /from "@\/components\/CityTickerTape"/, "…and its import is gone");
-    // A CALL would mount it; the word may still appear in the comment that records the removal.
-    assert.doesNotMatch(LAYOUT, /\{showsTicker\(/, "no per-path ticker predicate is CALLED");
-    assert.doesNotMatch(LAYOUT, /from "@\/lib\/ticker-mount"/, "…and the module is not imported");
+    // The ribbon KEEPS its mount on the marketing pages; the traveler path is what it left.
+    assert.match(LAYOUT, /\{showsTicker\(location\) && <CityTickerTape \/>\}/, "the ribbon still mounts");
+    const MOUNT = fs.readFileSync("client/src/lib/ticker-mount.ts", "utf8");
+    assert.doesNotMatch(MOUNT, /"\/experiences"/, "/experiences is OFF the marketing list");
+    for (const marketing of ['"/"', '"/about"', '"/pricing"', '"/how-it-works"', '"/local-experts"', '"/providers"', '"/press"', '"/blog"']) {
+      assert.ok(MOUNT.includes(marketing), `${marketing} keeps the ribbon`);
+    }
   });
 });

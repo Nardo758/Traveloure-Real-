@@ -354,15 +354,29 @@ test.describe("Single planning entry — authed", () => {
     await expect(page.getByTestId("button-etp-save")).toBeVisible();
   });
 
-  // H1 + E2 (E2 landed second and wires the header button): with a plan BOUND, the nav's "Start a plan"
-  // still starts a NEW plan — PlanEntry, never the bound plan's edit window.
-  test("with a plan bound, the header's Start a plan opens PlanEntry, not the edit window", async ({ page }) => {
+  // SUPERSEDES H1 + E2 FOR THE 0-STOP CASE (cut-list #1 slice A, Leon Nov 10 2026): the header now
+  // speaks for the plan the traveler HAS. A plan with no stops yet is REOPENED — the chip/resume
+  // lands on that plan — because minting a second empty plan is what the ruling removed. A traveler
+  // with nothing still gets PlanEntry, which is the next test.
+  test("with an EMPTY plan bound, the header's Start a plan reopens that plan", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await registerUser(page);
     await openEntryFromHero(page);
     await startPlanIn(page, "kyoto", "wedding");
     await expect(page).toHaveURL(/\/plans\/[0-9a-f-]{36}/, { timeout: 15_000 });
-    // The plan page is a console page; the public header (and its button) is on the site's pages.
+    const boundUrl = page.url();
+    // The plan page is a console page; the public header (and its control) is on the site's pages.
+    await page.goto(`${BASE_URL}/about`, { waitUntil: "domcontentloaded" });
+    await page.getByTestId("button-nav-start-plan").click({ timeout: 15_000 });
+    // It navigates to the SAME plan — no second plan, and no edit window either.
+    await expect(page).toHaveURL(boundUrl.replace(/\/$/, ""), { timeout: 15_000 });
+    await expect(page.getByTestId("plan-modal")).toHaveCount(0);
+  });
+
+  // The start state keeps E2's promise for a traveler who has nothing yet: the header opens
+  // PlanEntry (a new plan), never the bound plan's edit window.
+  test("with no plan, the header's Start a plan opens PlanEntry", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${BASE_URL}/about`, { waitUntil: "domcontentloaded" });
     await page.getByTestId("button-nav-start-plan").click({ timeout: 15_000 });
     await expect(page.getByTestId("plan-entry")).toBeVisible({ timeout: 10_000 });

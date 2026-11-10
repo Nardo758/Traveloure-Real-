@@ -25,23 +25,35 @@ export interface HeaderGuestPlan {
   items: readonly unknown[];
 }
 
-/** The subset of a signed-in trip the header needs. `itemCount` is absent when the list omits it. */
+/** The subset of a signed-in trip the header needs. `itemCount` is absent when the payload omits it. */
 export interface HeaderTrip {
   id: string;
   destination: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  /** NULL = the dates were never chosen (a NOT NULL placeholder window). */
+  datesConfirmedAt?: string | null;
   updatedAt?: string | null;
   finalizedAt?: string | null;
-  status?: string | null;
   itemCount?: number | null;
 }
 
 export type HeaderPlanState =
   | { kind: "start" }
   | { kind: "resume"; planId: string; city: string | null; guest: boolean }
-  | { kind: "chip"; planId: string; city: string | null; stops: number; dates: string | null };
+  | { kind: "chip"; planId: string; city: string | null; stops: number; dates: string | null; guest: boolean };
 
 /** Wording approved — Leon (Nov 10, 11:27 AM ET): the chip's date fallback. */
 export const HEADER_ADD_DATES_LABEL = "Add dates";
+
+/**
+ * Cut-list #1 slice A: where a GUEST's chip and 0-stop resume go.
+ *
+ * NOT `/plans/{id}` — that is a `ProtectedRoute`, so a guest following it is sign-in-walled. NOT
+ * `PLAN_START_HREF` (`/?start=1`) either: that opens a NEW plan. `/plans/new` is the guest's own
+ * slip, which is the plan the chip is speaking for. No `?view=` (Days is the ruled landing).
+ */
+export const GUEST_PLAN_HREF = "/plans/new";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -64,13 +76,15 @@ export function headerDatesLabel(startDate: string | null | undefined, endDate: 
   return `${MONTHS[a.month]} ${a.day} \u2013 ${MONTHS[b.month]} ${b.day}`;
 }
 
-const FINISHED_STATUSES = new Set(["completed", "cancelled"]);
-
-/** The signed-in plan the header speaks for: most recently updated, never finalized, not finished. */
+/**
+ * The signed-in plan the header speaks for: most recently updated, never finalized.
+ *
+ * Filtered on `finalizedAt` ONLY. `trips.status` is a display lifecycle that a reopen or an admin
+ * action can move without touching finality, so filtering on it would silently drop a plan the
+ * traveler is still working on.
+ */
 export function activeHeaderTrip(trips: readonly HeaderTrip[] | null | undefined): HeaderTrip | null {
-  const live = (trips ?? []).filter(
-    (t) => !t.finalizedAt && !FINISHED_STATUSES.has(String(t.status ?? "").toLowerCase()),
-  );
+  const live = (trips ?? []).filter((t) => !t.finalizedAt);
   if (live.length === 0) return null;
   return [...live].sort((x, y) => String(y.updatedAt ?? "").localeCompare(String(x.updatedAt ?? "")))[0];
 }
@@ -95,6 +109,7 @@ export function headerPlanState(input: {
       city,
       stops,
       dates: guest.plan.datesConfirmed ? headerDatesLabel(guest.plan.startDate, guest.plan.endDate) : null,
+      guest: true,
     };
   }
 
@@ -102,10 +117,13 @@ export function headerPlanState(input: {
   if (!trip) return { kind: "start" };
   const city = String(trip.destination ?? "").trim() || null;
   const stops = typeof trip.itemCount === "number" ? trip.itemCount : null;
-  // The list does not always carry a count. Claim no number rather than invent one: reopening the
-  // plan is honest, "Your plan · 0" is not.
+  // A genuinely missing count claims no number rather than inventing one — reopening the plan is
+  // honest, "Your plan · 0" is not.
   if (stops == null || stops === 0) return { kind: "resume", planId: trip.id, city, guest: false };
-  return { kind: "chip", planId: trip.id, city, stops, dates: headerDatesLabel((trip as any).startDate, (trip as any).endDate) };
+  // Only CONFIRMED dates are formatted. A plan's startDate/endDate are NOT NULL and are routinely a
+  // one-day placeholder nobody chose, so printing them would show a date the traveler never picked.
+  const dates = trip.datesConfirmedAt ? headerDatesLabel(trip.startDate, trip.endDate) : null;
+  return { kind: "chip", planId: trip.id, city, stops, dates, guest: false };
 }
 
 /** "Your Kyoto plan · 3" / "Your plan · 3"; null for the non-chip states. */

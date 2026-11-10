@@ -74,9 +74,10 @@ import { UserMenu } from "@/components/user-menu";
 import { NotificationBell } from "@/components/notification-bell";
 import { navGroupsConfig, authNavConfig, visibleFooterSections, activeNavGroupName } from "@/lib/nav-config";
 import { TripStrip } from "@/components/trip/trip-strip";
-// Cut-list #1 slice A: the partner ticker is off the traveler path for good — its mount and its
-// imports are gone rather than hidden behind a flag (a `showsTicker` that still says yes for
-// /experiences is exactly the surface the ruling named).
+// Cut-list #1 slice A: the ribbon still mounts on the MARKETING pages. It left the TRAVELER path
+// only, by dropping /experiences from TICKER_MARKETING_PATHS — not by unmounting it everywhere.
+import { CityTickerTape } from "@/components/CityTickerTape";
+import { showsTicker } from "@/lib/ticker-mount";
 import { HeaderPlanCTA } from "@/components/HeaderPlanCTA";
 import { headerPlanState, type HeaderTrip } from "@/lib/header-plan";
 import { hasGuestPresenceCookie } from "@shared/guest-presence";
@@ -784,8 +785,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {t("skipToContent")}
       </a>
 
-      {/* LW-1f's launch-market ribbon used to mount here. Cut-list #1 slice A removes the partner
-          ticker from the traveler path entirely, /experiences included (Leon, Nov 10, 11:51 AM ET). */}
+      {/* LW-1f: the launch-market ribbon, above the header, on the public marketing pages only
+          (lib/ticker-mount). Cut-list #1 slice A took /experiences OFF that list — the ribbon still
+          belongs on the marketing pages, it just left the traveler path (Leon, Nov 10, 11:51 AM ET). */}
+      {showsTicker(location) && <CityTickerTape />}
 
       {/* TEST 5 — aria-label="Main navigation" announces the landmark to screen readers */}
       <nav

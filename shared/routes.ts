@@ -29,6 +29,13 @@ export type TripListItem = typeof trips.$inferSelect & {
    * the frozen snapshot) — the flip is "a final exists", i.e. finalVersion != null.
    */
   finalVersion: number | null;
+  /**
+   * Cut-list #1 slice A: how many stops the plan holds, counted for the WHOLE list in ONE grouped
+   * query (the same batched posture as `finalVersion`, never a per-row read). The header chip names
+   * this count; without it a signed-in traveler with a full plan could only be offered "Start a
+   * plan". 0 is a real COUNTED answer, never the absence of one.
+   */
+  itemCount: number;
 };
 
 export const errorSchemas = {

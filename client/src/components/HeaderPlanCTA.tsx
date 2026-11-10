@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { PLAN_START_HREF } from "@/lib/plan-entry";
 import { START_PLAN_LABEL } from "@/lib/plan-vocabulary";
-import { headerDatesLine, headerPlanLabel, type HeaderPlanState } from "@/lib/header-plan";
+import { headerDatesLine, headerPlanLabel, GUEST_PLAN_HREF, type HeaderPlanState } from "@/lib/header-plan";
 
 const CHIP_CLASS =
   "inline-flex items-center gap-1.5 min-w-0 max-w-[200px] rounded-full border px-3 py-1 text-xs font-semibold " +
@@ -48,7 +48,7 @@ export function HeaderPlanCTA({
     const dates = headerDatesLine(state) ?? "";
     return (
       <Link
-        href={`/plans/${state.planId}`}
+        href={state.guest ? GUEST_PLAN_HREF : `/plans/${state.planId}`}
         className={cn(CHIP_CLASS, wide)}
         style={CHIP_STYLE}
         data-testid={variant === "mobile" ? "chip-mobile-plan" : "chip-nav-plan"}
@@ -71,7 +71,7 @@ export function HeaderPlanCTA({
   // the wrong object anyway — a guest's plan id is not a trip id, and a trip id is exactly what
   // `/plans/{id}` takes. No `?view=`: Days is the ruled landing.
   const reopen = state.kind === "resume";
-  const href = reopen ? (state.guest ? PLAN_START_HREF : `/plans/${state.planId}`) : PLAN_START_HREF;
+  const href = state.kind === "start" ? PLAN_START_HREF : state.guest ? GUEST_PLAN_HREF : `/plans/${state.planId}`;
   return (
     <Button
       asChild
