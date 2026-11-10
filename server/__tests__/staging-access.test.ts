@@ -7,6 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   STAGING_GATE_COOKIE_MAX_AGE_SECONDS,
+  STAGING_GATE_INSTANCE_ID,
   signStagingGateCookie,
   stagingAccessActive,
   stagingAccessDecision,
@@ -182,7 +183,8 @@ test("SC5 each 401 logs one warn with the instance, path and the right reason â€
     assert.equal(fields.reason, reason);
     assert.equal(fields.gateCookie, gateCookie);
     assert.equal(fields.path, "/api/auth/register");
-    assert.match(String(fields.instance), /^.+:\d+$/);
+    assert.equal(fields.instance, STAGING_GATE_INSTANCE_ID);
+    assert.match(String(fields.instance), /^.+:\d+:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     const logged = JSON.stringify(r.warns);
     for (const secret of ["s3cret-pass", "qa:", ...Object.values(headers)]) assert.equal(logged.includes(secret), false, secret);
   }

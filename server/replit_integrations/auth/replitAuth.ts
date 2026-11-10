@@ -23,6 +23,7 @@ import { recordSignupSource } from "../../services/signup-source-record";
 import { sessionPoolConfig } from "../../db-pool-config";
 import { isConnectTimeoutError } from "../../services/connect-timeout";
 import { logger } from "../../infrastructure/logger";
+import { stagingAuthDiagnostics } from "./staging-auth-diagnostics";
 import {
   decideEmailMerge,
   oidcEmailVerified,
@@ -54,7 +55,7 @@ export function getSession() {
   });
   return session({
     secret: process.env.SESSION_SECRET!,
-    store: sessionStore,
+    store: stagingAuthDiagnostics.observeStore(sessionStore),
     resave: false,
     saveUninitialized: false,
     cookie: {
@@ -178,6 +179,7 @@ function isLivenessProbe(req: { method: string; path: string }): boolean {
 
 export async function setupAuth(app: Express) {
   app.set("trust proxy", 1);
+  app.use(stagingAuthDiagnostics.middleware);
   const sessionMiddleware = getSession();
   const passportInit = passport.initialize();
   const passportSession = passport.session();
@@ -187,6 +189,7 @@ export async function setupAuth(app: Express) {
   app.use((req, res, next) => {
     if (isLivenessProbe(req)) return next();
     sessionMiddleware(req, res, (err?: unknown) => {
+      if (err) stagingAuthDiagnostics.record("session_load_failed");
       if (err && isConnectTimeoutError(err)) {
         logger.warn(
           { err, path: req.path },
@@ -197,7 +200,12 @@ export async function setupAuth(app: Express) {
       if (err) return next(err as Error);
       passportInit(req, res, (err2?: unknown) => {
         if (err2) return next(err2 as Error);
-        passportSession(req, res, next);
+        passportSession(req, res, (sessionErr?: unknown) => {
+          stagingAuthDiagnostics.record(sessionErr ? "session_load_failed" : "session_loaded", {
+            authenticated: req.isAuthenticated() === true,
+          });
+          next(sessionErr);
+        });
       });
     });
   });

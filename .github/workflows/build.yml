@@ -1731,6 +1731,11 @@ jobs:
       - if: ${{ !cancelled() }}
         name: Login enumeration credential check
         run: npx tsx --test server/__tests__/login-enumeration.test.ts
+      - if: ${{ !cancelled() }}
+        name: Staging auth diagnostics privacy and session observation
+        env:
+          NODE_ENV: test
+        run: npx tsx --test server/__tests__/staging-auth-diagnostics.test.ts
 
   traveler-charge-composition:
     needs: [changes]

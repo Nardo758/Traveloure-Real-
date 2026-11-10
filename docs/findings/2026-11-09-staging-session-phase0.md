@@ -1,7 +1,8 @@
 # Staging sign-up/session investigation — Phase 0
 
-Status: diagnosis only; **not a session-persistence fix**. No application code,
-user-facing strings, Secrets, migrations, seeds, or account data changed.
+Status: Phase 0 evidence plus user-approved staging-only diagnostics;
+**not a session-persistence fix**. No user-facing strings, Secrets, migrations,
+seeds, account data, auth contract, or public responses changed.
 
 ## Scope and source
 
@@ -140,13 +141,27 @@ request** would establish the session-loss path that this report currently
 lacks. A login 401 before session creation needs a different investigation;
 changing stores cannot repair credential rejection.
 
-Next bounded option: staging-only, non-identifying auth outcome diagnostics,
-with no public response changes, would distinguish account-creation commit,
-credential rejection, and session persistence. That option is not implemented
-in this Phase 0 report.
+The user approved staging-only, non-identifying auth outcome diagnostics.
+These are now implemented in `staging-auth-diagnostics.ts` and wired before the
+session middleware, around the existing store's read/write callbacks, and at
+registration/login decision points. No extra save or query is added. Production
+keeps its original store methods and emits no diagnostic events.
+
+The gate and auth events share a nonce-suffixed process identity, because
+hostname/PID alone collided in the historical evidence. Each traced request
+gets a new server-generated request ID. Only allowlisted events, statuses,
+outcomes, and booleans are logged; no account identifiers, credential material,
+headers, cookies, session IDs, raw errors, or SQL are logged.
 
 The requested regression coverage must preserve neutral registration: test
 register → separate login → authenticated next request, plus replay against
 a second app with a separate store object using the same database/secret.
-No new tests were added or run in this documentation-only Phase 0 PR. This PR
-must remain draft and must not be described as a completed bug fix.
+The diagnostic suite uses isolated HTTP fixtures, real Express sessions and
+Passport, and in-memory stores; it performs no database writes or outbound
+service calls. It covers the neutral-register/separate-login sequence, a second
+app reading a shared fixture session, store errors, concurrent request
+correlation, production no-op, secure proxy cookies, and private-field exclusion.
+It is wired into the existing npm-ci-backed unit job in `build.yml`.
+The shared fixture test is **not** proof of live Postgres cross-instance
+persistence. The actual root-cause fix and live reproduction remain outstanding.
+This PR must not be described as a completed bug fix or published by the agent.
