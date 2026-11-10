@@ -154,7 +154,12 @@ test("AW17: the static shell canonical, og:url, og:image and twitter:image are w
 test("AW18: SEOHead builds fullUrl and imageUrl from SITE_ORIGIN", () => {
   const src = read("client/src/components/seo-head.tsx");
   assert.match(src, /import \{ SITE_ORIGIN \} from "@shared\/site-origin"/);
-  assert.match(src, /const fullUrl = url \? `\$\{SITE_ORIGIN\}\$\{url\}` : SITE_ORIGIN;/);
+  // R2-6: the pin used to restate the OLD expression, which WAS the defect — a page without a `url`
+  // prop got SITE_ORIGIN (the root) as its canonical. The INTENT this test guards is unchanged
+  // (the www origin comes from SITE_ORIGIN, never a literal apex): fullUrl is now built from
+  // SITE_ORIGIN plus the page's OWN path, resolved by canonicalPath().
+  assert.match(src, /const fullUrl = `\$\{SITE_ORIGIN\}\$\{canonicalPath\(url, pathname\)\}`;/);
+  assert.match(src, /import \{ canonicalPath \} from "@\/lib\/canonical";/);
   assert.match(src, /const imageUrl = image\.startsWith\("http"\) \? image : `\$\{SITE_ORIGIN\}\$\{image\}`;/);
   assert.equal(src.includes("https://traveloure.com"), false);
 });
