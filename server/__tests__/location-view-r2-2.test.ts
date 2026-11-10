@@ -13,13 +13,15 @@
  *   M1 the country is derived from the market, and only for a market we actually operate
  *   M2 a payload carrying ANY section error is not cacheable; a clean one is
  *   M3 the partner read is bounded BELOW the section budget, and the cache write asks M2's question
+ *   M4 no legacy crowd/pulse claim survives on the public payload — the leak R2-2 exposed
  *
  * Run: npx tsx --test server/__tests__/location-view-r2-2.test.ts
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { locationViewCacheable, marketCountryFor } from "../services/location-view.service";
+import { locationViewCacheable, marketCountryFor } from "../services/location-view-rules";
+import { LEGACY_CROWD_KEYS, stripLegacyCrowdFields } from "@shared/public-crowd";
 
 const SRC = fs.readFileSync("server/services/location-view.service.ts", "utf8");
 
@@ -74,5 +76,40 @@ describe("R2-2 — the wiring that makes the two fixes real", () => {
       /\n\s*locationViewCache\.set\(cacheKey, \{ payload, expiresAt: Date\.now\(\) \+ 5 \* 60 \* 1000 \}\);\n\n\s*return payload;/,
       "no unconditional cache write remains",
     );
+  });
+});
+
+describe("R2-2 — no legacy crowd claim survives on the public payload", () => {
+  it("M4 every legacy key is stripped at any depth, immutably", () => {
+    const payload = {
+      hero: { data: { seasonCrowdLevel: "packed", crowdLevel: "packed", pulseScore: 95, keep: "ok" } },
+      recommendations: {
+        data: {
+          seasonalInsight: { crowdLevel: "packed" },
+          crowd_level: "packed",
+          pulse_score: 95,
+          reasons: [{ crowdLevel: "packed" }, { note: "keep me" }],
+        },
+      },
+      gems: [{ name: "Kibune", crowdLevel: null }],
+    };
+    const clean = stripLegacyCrowdFields(payload);
+    for (const key of LEGACY_CROWD_KEYS) {
+      assert.doesNotMatch(JSON.stringify(clean), new RegExp(`"${key}"`), `${key} is gone at every depth`);
+    }
+    // The claims that are NOT legacy survive untouched.
+    assert.equal(clean.hero.data.keep, "ok");
+    assert.equal(clean.recommendations.data.reasons[1].note, "keep me");
+    assert.equal(clean.gems[0].name, "Kibune");
+    // Immutable: the input still carries its fields.
+    assert.equal(payload.recommendations.data.seasonalInsight.crowdLevel, "packed", "input untouched");
+  });
+
+  it("M4b the service strips before it caches", () => {
+    const SRC = fs.readFileSync("server/services/location-view.service.ts", "utf8");
+    assert.match(SRC, /const payload: LocationViewPayload = stripLegacyCrowdFields\(\{/);
+    const stripAt = SRC.indexOf("stripLegacyCrowdFields({");
+    const cacheAt = SRC.indexOf("if (locationViewCacheable(payload))");
+    assert.ok(stripAt > 0 && cacheAt > stripAt, "the strip happens before the cache write");
   });
 });
