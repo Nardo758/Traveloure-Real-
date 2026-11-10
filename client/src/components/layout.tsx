@@ -817,7 +817,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               {/*
                 WHILE THE SESSION IS UNKNOWN THE HEADER CLAIMS NOTHING (QA F8). `GET /api/auth/user`
                 takes 1–3 s on a cold load, and until this gate the account slot rendered the
-                signed-out CTAs ("Join as Partner" / "Sign In") for that whole window — a signed-in
+                signed-out CTAs ("Sign up" / "Sign In") for that whole window — a signed-in
                 traveler watched the header tell them they were logged out and then replace itself.
                 The neutral placeholder below holds the slot's width so nothing jumps when the
                 answer arrives; it carries no label, because "we are still asking" is not a message
