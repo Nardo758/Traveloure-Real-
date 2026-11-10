@@ -74,8 +74,13 @@ import { UserMenu } from "@/components/user-menu";
 import { NotificationBell } from "@/components/notification-bell";
 import { navGroupsConfig, authNavConfig, visibleFooterSections, activeNavGroupName } from "@/lib/nav-config";
 import { TripStrip } from "@/components/trip/trip-strip";
-import { CityTickerTape } from "@/components/CityTickerTape";
-import { showsTicker } from "@/lib/ticker-mount";
+// Cut-list #1 slice A: the partner ticker is off the traveler path for good — its mount and its
+// imports are gone rather than hidden behind a flag (a `showsTicker` that still says yes for
+// /experiences is exactly the surface the ruling named).
+import { HeaderPlanCTA } from "@/components/HeaderPlanCTA";
+import { headerPlanState, type HeaderTrip } from "@/lib/header-plan";
+import { hasGuestPresenceCookie } from "@shared/guest-presence";
+import { useGuestPlan } from "@/lib/waitlist-guest-plan";
 import { useExpertsLive } from "@/lib/signup-mode";
 
 // ── Icon maps ─────────────────────────────────────────────────────────────────
@@ -639,6 +644,25 @@ export function Layout({ children }: { children: React.ReactNode }) {
     });
   };
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  // ── Cut-list #1 slice A: the header's plan state, computed ONCE for both mounts ────────────────
+  // The guest read is gated on the presence cookie — the same check `shouldClaimGuestPlans` makes —
+  // so a visitor who has never saved an item never touches /api/guest-plans (that read would 404 for
+  // them anyway, and the header would flash a chip that is not there).
+  const guestPresent = typeof document !== "undefined" && hasGuestPresenceCookie(document.cookie);
+  const guestPlanQuery = useGuestPlan(guestPresent && !user);
+  const { data: headerTrips } = useQuery<HeaderTrip[]>({ queryKey: ["/api/trips"], enabled: !!user });
+  const headerState = headerPlanState({
+    isSignedIn: !!user,
+    guestStatus: guestPlanQuery.isLoading
+      ? "loading"
+      : guestPlanQuery.isError
+        ? "error"
+        : guestPlanQuery.data
+          ? "ready"
+          : "idle",
+    guestPlan: (guestPlanQuery.data ?? null) as unknown as Parameters<typeof headerPlanState>[0]["guestPlan"],
+    trips: headerTrips ?? null,
+  });
   // QA F6 — see DesktopDropdown: the navbar, not each trigger, knows which menu is open.
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const navRef = useRef<HTMLElement>(null);
@@ -760,8 +784,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {t("skipToContent")}
       </a>
 
-      {/* LW-1f: the launch-market ribbon, above the header, on the public marketing pages only (lib/ticker-mount). */}
-      {showsTicker(location) && <CityTickerTape />}
+      {/* LW-1f's launch-market ribbon used to mount here. Cut-list #1 slice A removes the partner
+          ticker from the traveler path entirely, /experiences included (Leon, Nov 10, 11:51 AM ET). */}
 
       {/* TEST 5 — aria-label="Main navigation" announces the landmark to screen readers */}
       <nav
@@ -781,6 +805,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 data-testid="link-logo"
               >
                 <TraveloureLogo className="h-[26px]" />
+              </Link>
+
+              {/* Cut-list #1 slice A: the BETA pill was a <span> INSIDE the logo link, so the word
+                  BETA announced the homepage and could never be clicked on its own. It is its own
+                  link now — no nested anchors — pointing at the launch surface it stands for.
+                  Copy unchanged: "BETA". */}
+              <Link
+                href="/discover/location/Kyoto"
+                className={cn("flex-shrink-0", FOCUS_RING)}
+                data-testid="link-beta"
+              >
                 <span
                   className="px-2 py-0.5 text-[10px] font-medium tracking-[0.08em] rounded-full border"
                   style={{
@@ -789,7 +824,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     borderColor: "var(--earn-coral-border)",
                     color: "var(--earn-coral-ink)",
                   }}
-                  aria-hidden="true"
                 >
                   BETA
                 </span>
@@ -903,14 +937,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   wires it): it STARTS A NEW PLAN — `newPlan: true` opens PlanEntry even while a plan is
                   bound (a bare open would edit the bound plan). No door is recorded; `PLAN_DOORS` is a
                   closed list. The phone menu's and the footer's "Start a plan" do the same. */}
-              <Button asChild
-                size="sm"
-                className="hidden xl:inline-flex text-sm text-white bg-[color:var(--coral-fill)] hover:bg-[color:var(--coral-fill)]/90"
-                onClick={planStartClick(openNewPlan)}
-                data-testid="button-nav-start-plan"
-              ><Link href={PLAN_START_HREF}>
-                {START_PLAN_LABEL}
-              </Link></Button>
+              <HeaderPlanCTA
+                state={headerState}
+                variant="desktop"
+                onStart={planStartClick(openNewPlan)}
+              />
 
               {/* TEST 3 + 9 — Hamburger: aria-label, aria-expanded, aria-controls; min 44×44px */}
               <div className="flex items-center xl:hidden">
@@ -960,16 +991,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   a signed-out visitor is most likely to want is not. Signed-out only — a signed-in
                   visitor's identity/logout stays where it already was, at the panel's foot. */}
               <div className="px-4 pt-3">
-                <Button asChild
-                  className="w-full text-white bg-[color:var(--coral-fill)] hover:bg-[color:var(--coral-fill)]/90"
-                  onClick={planStartClick(() => {
+                <HeaderPlanCTA
+                  state={headerState}
+                  variant="mobile"
+                  onStart={planStartClick(() => {
                     setIsMobileMenuOpen(false);
                     openNewPlan();
                   })}
-                  data-testid="button-mobile-start-plan"
-                ><Link href={PLAN_START_HREF}>
-                  {START_PLAN_LABEL}
-                </Link></Button>
+                />
               </div>
               {!user && (
                 <div className="px-4 pt-3">
