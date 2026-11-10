@@ -68,13 +68,18 @@ describe("TB1.3 — the dev server's own modules are never pages", () => {
   it("N6 Vite's module requests and file-looking paths fall through, and a bogus page still 404s", () => {
     // The e2e gates run `npm run dev`, and the first cut answered `/@vite/client` with the 404 shell,
     // so the app never booted and every spec failed on a blank page. Both guards now exist.
-    assert.match(SEO, /NOT_A_PAGE_PATH = \/\^\\\/\(api\|assets\|images\|attachments\|uploads\|static\|@[^/]+\|src\|node_modules/);
-    assert.match(SEO, /const LOOKS_LIKE_A_FILE = \/\\\.[a-z0-9]{1,16}\$\/i;/);
-    assert.match(SEO, /if \(LOOKS_LIKE_A_FILE\.test\(req\.path\)\) return next\(\);/);
+    //
+    // SUBSTRING checks, not regexes: the source text below IS a regular expression, so matching it
+    // with one means every bracket in it is read as syntax (`@[^/]+` became "an @ then a character
+    // class"). This pin failed on exactly that, in CI, while the code it guards was correct.
+    assert.ok(SEO.includes("const NOT_A_PAGE_PATH ="), "the exclusion list exists");
+    assert.ok(SEO.includes("@[^/]+|src|node_modules"), "the dev module prefixes are excluded");
+    assert.ok(SEO.includes("const LOOKS_LIKE_A_FILE = /\\.[a-z0-9]{1,16}$/i;"), "a file-looking path is its own guard");
+    assert.ok(SEO.includes("if (LOOKS_LIKE_A_FILE.test(req.path)) return next();"), "…and the handler asks it");
 
     // The predicates themselves, replayed over the paths that matter.
     const notAPage = /^\/(api|assets|images|attachments|uploads|static|@[^/]+|src|node_modules|\.vite|og-cover\.png|sitemap\.xml|robots\.txt)(\/|$)/;
-    const looksLikeAFile = /\.[a-z0-9]{1,10}$/i;
+    const looksLikeAFile = /\.[a-z0-9]{1,16}$/i;
     const isDevModule = (p: string) => notAPage.test(p) || looksLikeAFile.test(p);
     for (const devPath of ["/@vite/client", "/@react-refresh", "/src/main.tsx", "/src/App.tsx", "/node_modules/.vite/deps/react.js", "/favicon.ico", "/manifest.webmanifest", "/og-cover.png", "/sitemap.xml", "/robots.txt"]) {
       assert.equal(isDevModule(devPath), true, `${devPath} must never be answered with the 404 shell`);
