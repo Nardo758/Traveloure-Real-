@@ -268,8 +268,14 @@ export default function StripeCheckout({
   const [stripe, setStripe] = useState<Stripe | null>(null);
 
   useEffect(() => {
+    // R2-5: NO PAYMENT TO MAKE ⇒ NO Stripe.js. This resolved the loader on MOUNT, so a checkout
+    // surface that was merely rendered — an Ask-AI drawer sitting on a public city page, a slip rail
+    // with no fee open — pulled js.stripe.com (and its m.stripe.com cookie) onto pages a guest never
+    // pays from. It now runs only when there is a client secret to pay against, which is the moment
+    // a payment surface actually exists.
+    if (!paymentIntent?.clientSecret) return;
     getStripePromise().then(setStripe);
-  }, []);
+  }, [paymentIntent?.clientSecret]);
 
   if (!paymentIntent?.clientSecret) {
     return (
