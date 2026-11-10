@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { HOMEPAGE_META_DESCRIPTION } from "@/lib/g02-g06-copy";
 import { SITE_TITLE } from "@/lib/site-meta-copy";
 import { SITE_ORIGIN } from "@shared/site-origin";
+import { canonicalPath } from "@/lib/canonical";
 
 interface SEOHeadProps {
   title?: string;
@@ -43,7 +44,12 @@ export function SEOHead({
   ogTitle,
 }: SEOHeadProps) {
   const fullTitle = title ? `${title} | ${SITE_NAME}` : DEFAULT_TITLE;
-  const fullUrl = url ? `${SITE_ORIGIN}${url}` : SITE_ORIGIN;
+  // R2-6: a page is canonical to ITSELF. Without this, `url` absent meant SITE_ORIGIN — the root —
+  // so /earn and /pricing rewrote their own server-sent canonical once JS ran. `window` is read
+  // inside the component because this is a client-only head manager; `url` still wins when a page
+  // knows it is a duplicate of another address.
+  const pathname = typeof window !== "undefined" ? window.location.pathname : "";
+  const fullUrl = `${SITE_ORIGIN}${canonicalPath(url, pathname)}`;
   const imageUrl = image.startsWith("http") ? image : `${SITE_ORIGIN}${image}`;
 
   const defaultKeywords = [
