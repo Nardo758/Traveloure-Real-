@@ -462,6 +462,14 @@ jobs:
       - if: ${{ !cancelled() }}
         name: Fee-band admin guards (V-4 cap, V-5 deactivation ruling, V-6 visibility)
         run: npx tsx --test server/__tests__/fee-band-admin-guards.test.ts
+
+      # ── R2-1 static compression ──────────────────────────────────────────────
+      # The probe showed ~1.2 MB of JS/CSS per page load with no Content-Encoding. The test drives
+      # the real handlers against a temp dist dir and decodes the bytes with zlib, so a regression
+      # (a dropped Vary, a body that is not actually the file) fails here rather than in the field.
+      - if: ${{ !cancelled() }}
+        name: R2-1 static compression (gzip/br negotiation)
+        run: npx tsx --test server/__tests__/static-compression.test.ts
       # ── walkthrough-pins ────────────────────────────────────────────
       - name: "── walkthrough-pins (EX-1 logout endpoint + EX-2 price floor)"
         if: ${{ !cancelled() }}
