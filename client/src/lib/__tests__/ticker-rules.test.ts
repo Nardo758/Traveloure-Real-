@@ -108,12 +108,14 @@ describe("K5 — the launch city", () => {
 
 describe("K6 — where the ribbon is mounted", () => {
   it("shows on the marketing pages", () => {
-    for (const p of ["/", "/pricing", "/about", "/how-it-works", "/blog", "/blog/some-post", "/help/billing", "/experiences", "/pricing?x=1"]) {
+    // Cut-list #1 slice A (Leon, Nov 10 2026): /experiences left the TRAVELER path, so it moved to
+    // the "never" list below. The marketing pages keep the ribbon — that is all this list is for.
+    for (const p of ["/", "/pricing", "/about", "/how-it-works", "/blog", "/blog/some-post", "/help/billing", "/pricing?x=1"]) {
       assert.ok(showsTicker(p), p);
     }
   });
-  it("never on checkout, admin, the workspace, planning, invites or the waitlist page", () => {
-    for (const p of ["/checkout", "/cart", "/admin", "/admin/ticker", "/dashboard", "/plans/new", "/plans/abc", "/invite/t", "/kyoto", "/blog/a/b", "/experiences/x", "/privacy"]) {
+  it("never on checkout, admin, the workspace, planning, invites, the waitlist page or /experiences", () => {
+    for (const p of ["/checkout", "/cart", "/admin", "/admin/ticker", "/dashboard", "/plans/new", "/plans/abc", "/invite/t", "/kyoto", "/blog/a/b", "/experiences", "/experiences/x", "/privacy"]) {
       assert.ok(!showsTicker(p), p);
     }
   });
