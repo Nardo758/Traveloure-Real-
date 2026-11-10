@@ -15,8 +15,9 @@ The read-only deployment investigation queried **2026-11-10
 01:50:00–01:55:00 UTC**, equivalent to **20:50–20:55 EST on November 9**.
 Latest successful staging revision before the window:
 `176ed225-e2e1-4afe-935a-e3e1db82c8f4`, created at 01:39:27 UTC.
-Telemetry did not independently establish its source commit; do not describe
-these logs as proof that the requested source revision was served.
+A follow-up inspection confirmed source commit
+`b81a6ee2aa9e57db64991679569dd17d0c551e34` in build metadata and a runtime
+commit line at 01:45:58.897 UTC.
 
 ## 1. Runtime evidence
 
@@ -52,7 +53,7 @@ Targeted log queries were complete. The unfiltered window was truncated.
 Endpoint metrics returned fewer register/login requests than the completion
 logs, so those metrics are not substituted for the logged counts.
 
-Read-only staging production-database check (no account identifiers, password
+Read-only staging production-replica check (no account identifiers, password
 hashes, or session contents selected):
 
 ```sql
@@ -63,10 +64,20 @@ WHERE created_at >= '2026-11-10T01:50:00Z'::timestamptz
 -- 0
 ```
 
-The neutral 202s therefore do **not** establish fresh account creation.
-Existing-address/unique-conflict neutral responses are a plausible explanation.
-Without request-to-account correlation, this does not identify which account
-was used or why its credentials were rejected.
+**Correction and limitation:** this query is against the Agent's read-only
+production replica, which Replit documents as a snapshot. At 02:01:38 UTC its
+latest account timestamp was still 23:12:13 on November 9. The replica reports
+recovery mode, but replay timestamp/lag are unavailable; neither freshness nor
+identity with the runtime write database was established. Its zero-row result
+must **not** be used to conclude that the runtime failed to create an account.
+
+The user explicitly confirmed that the submitted address was **fresh and
+never used**. Do not attribute their attempt to a duplicate-address path
+without contrary runtime evidence. The neutral 202s alone do not prove account
+creation either. There is no request-to-account correlation in these logs.
+
+Follow-up exact-window searches found no registration error, purge, user
+deletion, or email-verification event. This does not rule out unlogged activity.
 
 ## 2. Session configuration
 
@@ -121,11 +132,18 @@ Source: `server/replit_integrations/auth/emailAuth.ts`,
 this window.** Production behavior remains unchanged. There is no demonstrated
 production session defect in this evidence.
 
-Before a code fix, Leon should reproduce with a genuinely unused allowed
-staging address, or use the supported reset flow for a known account. Capture
-the register → login → `/api/auth/user` status sequence without credentials or
-cookie values. A login **200 followed by an unauthenticated next request** would
-establish the session-loss path that this report currently lacks.
+The address is already confirmed fresh. The missing evidence is the actual
+register → login → `/api/auth/user` response sequence (including safe response
+bodies, not passwords, headers, or cookie values), and runtime-side account
+creation/login outcomes. A login **200 followed by an unauthenticated next
+request** would establish the session-loss path that this report currently
+lacks. A login 401 before session creation needs a different investigation;
+changing stores cannot repair credential rejection.
+
+Next bounded option: staging-only, non-identifying auth outcome diagnostics,
+with no public response changes, would distinguish account-creation commit,
+credential rejection, and session persistence. That option is not implemented
+in this Phase 0 report.
 
 The requested regression coverage must preserve neutral registration: test
 register → separate login → authenticated next request, plus replay against
