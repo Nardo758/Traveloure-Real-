@@ -111,6 +111,8 @@ jobs:
       # probe below and e2e/fixtures/accounts.ts fall back to the same
       # documented dev default (TestPass123!).
       E2E_TEST_PASSWORD: ${{ secrets.E2E_STAGING_TEST_PASSWORD || secrets.E2E_TEST_PASSWORD }}
+      # Presence flag only (yes/no in the preflight log) — never the value.
+      E2E_STAGING_TEST_PASSWORD_SET: ${{ secrets.E2E_STAGING_TEST_PASSWORD != '' && '1' || '' }}
     steps:
       - uses: actions/checkout@v5.1.0
 
@@ -133,11 +135,25 @@ jobs:
           BODY=$(node -e 'process.stdout.write(JSON.stringify({email:process.argv[1],password:process.argv[2]}))' "$EMAIL" "$PW")
           AUTH=()
           if [ -n "$E2E_STAGING_BASIC_AUTH_USER" ] && [ -n "$E2E_STAGING_BASIC_AUTH_PASSWORD" ]; then AUTH=(-u "$E2E_STAGING_BASIC_AUTH_USER:$E2E_STAGING_BASIC_AUTH_PASSWORD"); fi
-          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 "${AUTH[@]}" \
+          # Which secrets are SET (yes/no only — never a value, never the -u argument, never the body).
+          if [ -n "${E2E_STAGING_TEST_PASSWORD_SET:-}" ]; then echo "E2E_STAGING_TEST_PASSWORD secret: set (yes)"; else echo "E2E_STAGING_TEST_PASSWORD secret: not set (no) — the step falls back to E2E_TEST_PASSWORD, then the seed default"; fi
+          if [ "${#AUTH[@]}" -gt 0 ]; then echo "basic-auth credentials: sent (yes)"; else echo "basic-auth credentials: not sent (no)"; fi
+          # Two 401s look the same as a status code and mean different things: the staging GATE refusing the
+          # CI basic-auth pair (WWW-Authenticate: Basic, text/plain "Authentication required."), or the APP
+          # refusing the seeded traveler's password (JSON {"message":"Invalid email or password"}). The
+          # response is captured — status, Content-Type, whether WWW-Authenticate is present, and the first
+          # 200 bytes of the body (one of those two sentences; never a secret) — so the error names the cause.
+          HDRS="$RUNNER_TEMP/preflight-headers.txt"
+          BODYOUT="$RUNNER_TEMP/preflight-body.txt"
+          code=$(curl -s -o "$BODYOUT" -D "$HDRS" -w "%{http_code}" --max-time 60 "${AUTH[@]}" \
             -X POST "$E2E_STAGING_BASE_URL/api/auth/login" \
             -H 'Content-Type: application/json' \
             -d "$BODY") || code=000
-          echo "POST /api/auth/login -> $code"
+          ctype=$(grep -i '^content-type:' "$HDRS" 2>/dev/null | tail -1 | cut -d: -f2- | tr -d '\r' | sed 's/^ *//')
+          if grep -qi '^www-authenticate:' "$HDRS" 2>/dev/null; then wwwauth=present; else wwwauth=absent; fi
+          if grep -qi '^www-authenticate: *basic' "$HDRS" 2>/dev/null; then wwwbasic=yes; else wwwbasic=no; fi
+          body200=$(head -c 200 "$BODYOUT" 2>/dev/null | tr -d '\r\n')
+          echo "POST /api/auth/login -> $code; Content-Type: ${ctype:-<none>}; WWW-Authenticate: $wwwauth; body[0:200]: ${body200:-<empty>}"
           if [ "$code" = "200" ]; then
             echo "Staging accepts the seeded traveler — proceeding."
             exit 0
@@ -146,9 +162,20 @@ jobs:
             echo "## ❌ Staging preflight failed (HTTP $code)"
             echo
             echo "\`POST /api/auth/login\` for \`$EMAIL\` returned **$code** against the configured staging URL."
+            echo
+            echo "- Content-Type: \`${ctype:-<none>}\`"
+            echo "- WWW-Authenticate: $wwwauth"
+            echo "- body (first 200 bytes): \`${body200:-<empty>}\`"
           } >> "$GITHUB_STEP_SUMMARY"
           if [ "$code" = "401" ]; then
-            echo "::error title=Staging is misprovisioned::401 from staging means the seeded @traveloure.test accounts are absent or the password does not match. The staging deployment must carry the test-account opt-in env var and the same seed password. See docs/STAGING.md."
+            case "$ctype" in application/json*) isjson=yes ;; *) isjson=no ;; esac
+            if [ "$wwwbasic" = "yes" ] || { [ "$isjson" = "no" ] && printf '%s' "$ctype" | grep -qi '^text/plain'; }; then
+              echo "::error title=Staging gate rejected CI credentials::E2E_STAGING_BASIC_AUTH_USER/PASSWORD do not match staging's STAGING_BASIC_AUTH_USER/PASSWORD. The 401 came from the staging basic-auth gate (WWW-Authenticate: Basic / text/plain), before the app saw the login. See docs/STAGING.md §6.1."
+            elif [ "$isjson" = "yes" ]; then
+              echo "::error title=Seeded password mismatch::The password secret does not match the password staging seeded test-traveler-kyoto with (the seed never rewrites an existing account's password). Set E2E_STAGING_TEST_PASSWORD to the value staging's E2E_TEST_PASSWORD held when the account was created, or recreate the account. See docs/STAGING.md §6.1."
+            else
+              echo "::error title=Staging is misprovisioned::401 from staging with neither a Basic challenge nor a JSON body. The seeded @traveloure.test accounts are absent or the password does not match. The staging deployment must carry the test-account opt-in env var and the same seed password. See docs/STAGING.md."
+            fi
           elif [ "$code" = "000" ]; then
             echo "::error title=Staging unreachable::Could not reach E2E_STAGING_BASE_URL within 60s. Confirm the staging deployment is running and the secret holds its HTTPS URL. See docs/STAGING.md."
           else

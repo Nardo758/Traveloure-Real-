@@ -237,6 +237,7 @@ capture the UTC window and compare outcomes across process identities. Do not ca
 | `REPLIT_OBJECT_STORAGE_BUCKET` | **staging's own** App Storage bucket id — as a deployment Secret, never production's | The only place the code reads the bucket (`server/infrastructure/object-storage.ts`); `.replit` no longer sets it and `[objectStorage].defaultBucketID` is ignored (Replit's UI rewrites it). A deployment without it refuses to boot. The boot logs `environment=staging bucket=<id>` just before `Server started`. |
 | `STAGING_BASIC_AUTH_USER`, `STAGING_BASIC_AUTH_PASSWORD` | the gate's credentials | **Fail closed:** with `ENVIRONMENT=staging` and either unset, every gated request answers 503. Exempt, and nothing else: `/health*`, `/api/health`, `/api/ready`, the Stripe/Resend webhook paths (signature-verified by their handlers), and `GET /` from a non-browser (the startup probe). |
 | `ALLOW_TEST_ACCOUNTS` | `1` | As §2.2 — the boot seeds instead of refusing. |
+| `E2E_TEST_PASSWORD` | the password the `@traveloure.test` E2E accounts get | As §2.2 — `e2e-test-accounts.seed.ts` reads it when it **creates** `test-traveler-kyoto@traveloure.test` and the other seeded accounts (default `TestPass123!`). **The seed never rewrites an existing account's password**, so the value that matters is the one staging held at the boot that created the account; changing it later changes nothing until the account is recreated. Must equal the GitHub secret `E2E_STAGING_TEST_PASSWORD` below. |
 | `STAGING_QA_PASSWORD` | 12+ characters | The password the item-12 accounts get (`server/seeds/staging-qa.seed.ts`). **Unset ⇒ the QA seed does not run** (and is not stamped, so setting it later seeds on the next boot). No password is committed. |
 | `SHOW_DEMO_EXPERTS` | `1` | `@traveloure.test` is a seed domain, so the QA expert is routable only with this (`server/services/expert-routability.ts`). It relaxes the seed-domain clause only — approval, Identity and Connect are still required. |
 | `STRIPE_SECRET_KEY_TEST`, `VITE_STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET_TEST`, `STRIPE_CONNECT_WEBHOOK_SECRET_TEST`, `STRIPE_IDENTITY_WEBHOOK_SECRET` | Stripe **test** workspace | A live key is refused at boot. The QA seed creates its two Connect accounts with this key (`stripeTestConnectCreator`, test keys only). Point staging's webhooks at a **separate** Stripe test endpoint — production's signing secret will not verify. |
@@ -248,7 +249,12 @@ staging's admin (audited). `scripts/ci-open-traveler-signup.ts` refuses a non-lo
 
 **GitHub secrets for the shared CI smoke:** `E2E_STAGING_BASIC_AUTH_USER` / `E2E_STAGING_BASIC_AUTH_PASSWORD` (same values as
 the gate). `playwright.e2e.config.ts` and `e2e/global-setup.ts` send them as `httpCredentials`, and the smoke's curl preflight
-sends `-u`; without them the gate answers 401 and the smoke fails loudly, as §5 requires.
+sends `-u`; without them the gate answers 401 and the smoke fails loudly, as §5 requires. And `E2E_STAGING_TEST_PASSWORD`: the
+seeded traveler's password — it **must equal the password the seed used when it created the account** (staging's
+`E2E_TEST_PASSWORD` at that boot, default `TestPass123!`), because the seed never rewrites an existing account's password.
+The preflight tells the two 401s apart: a `WWW-Authenticate: Basic` / `text/plain` 401 is the gate refusing the CI basic-auth
+pair ("Staging gate rejected CI credentials"); a JSON 401 is the app refusing the seeded password ("Seeded password
+mismatch"). It logs whether `E2E_STAGING_TEST_PASSWORD` is set (yes/no) and the first 200 bytes of the body — never a value.
 
 ### 6.2 What the boot seeds (`server/seeds/staging-qa.seed.ts`)
 
