@@ -28,6 +28,7 @@ import { blogIndexRobots, blogPostRobots, publishedBlogSitemapEntries } from "..
 import { SITE_ORIGIN, buildSitemapXml, routeHeadTags, sitemapUrlsFor } from "../utils/seo-output";
 import { placesMarketFor, placesPath, placesRedirectTarget } from "@shared/places-path";
 import { getLaunchMarketSlug } from "../services/platform-flags";
+import { isClientRoutePath } from "@shared/ticker";
 
 const router = Router();
 
@@ -279,5 +280,36 @@ router.get("/blog/:slug", async (req, res, next) => {
 for (const [routePath, meta] of Object.entries(ROUTE_META)) {
   router.get(routePath, (req, res, next) => serveWithHead(req, res, next, meta, routePath));
 }
+
+// ─── TB1.3: an unknown URL answers 404, and still renders the SPA's not-found page ───────────────
+//
+// THE ROUTE LIST IS NOT HAND-WRITTEN. `CLIENT_ROUTES` is generated from `App.tsx`'s own route table
+// by `scripts/generate-client-routes.cjs` (CI fails when the committed file is stale), and
+// `isClientRoutePath` already matches `:param` segments — so `/plans/abc123` keeps its 200 while
+// `/nosuchpage` becomes a real 404. A hand-guessed prefix list would drift the first time a route
+// moved, and a wrong 404 on a legitimate deep link is worse than the soft 404 this replaces.
+//
+// WHAT IS EXCLUDED, deliberately: anything that is not an HTML GET. `/api/*` (its own routers
+// answer JSON, including their own 404s), assets, uploads, the sitemap and robots keep their very
+// different responses — a crawler asking for a missing image must never receive the app shell.
+const NOT_A_PAGE_PATH = /^\/(api|assets|images|attachments|uploads|static|og-cover\.png|sitemap\.xml|robots\.txt)(\/|$)/;
+
+router.use(async (req, res, next) => {
+  if (req.method !== "GET" && req.method !== "HEAD") return next();
+  if (NOT_A_PAGE_PATH.test(req.path)) return next();
+  if (!req.accepts("html")) return next();
+  if (isClientRoutePath(req.path)) return next();
+  try {
+    const templatePath = resolveTemplatePath();
+    if (!templatePath) return next();
+    const template = await transformDevHtml(req.originalUrl, fs.readFileSync(templatePath, "utf-8"));
+    // The SPA boots and its own NotFound page renders — the STATUS is what changes, so a crawler
+    // stops indexing a page that does not exist (the soft-404 this replaces answered 200).
+    return res.status(404).set({ "Content-Type": "text/html" }).end(template);
+  } catch (err) {
+    console.error("[seo] not-found shell failed:", err);
+    return next();
+  }
+});
 
 export default router;
