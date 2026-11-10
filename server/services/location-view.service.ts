@@ -294,6 +294,48 @@ export interface LocationViewOptions {
 
 const SECTION_TIMEOUT_MS = 12_000;
 
+/**
+ * R2-2: the partner (Fever) event read gets its own, much shorter budget. It is an EXTERNAL call on
+ * the request path, and the section already has its own events in hand before it starts; giving it
+ * the section's full 12s meant one slow partner hop deleted the city's own rows from the page.
+ */
+const PARTNER_EVENTS_TIMEOUT_MS = 3_000;
+
+/**
+ * R2-2 — the country a recommendations call needs, when the caller passed no `?country=`.
+ *
+ * An OPERATING MARKET already knows its own country (`OPERATING_MARKETS`), so a caller that omits
+ * the param is not a caller who lacks the fact. Returns null for a city that is not one of the eight
+ * — the honest "not captured" answer, never a nearest-looking guess (§13).
+ */
+export function marketCountryFor(cityName: string | null | undefined): string | null {
+  const market = resolveMarketSlug(cityName);
+  if (!market) return null;
+  return OPERATING_MARKETS.find((m) => m.marketKey === market)?.country ?? null;
+}
+
+/**
+ * R2-2 — is this payload safe to cache?
+ *
+ * "Never cache an error/timeout result" (the probe found a 12s events timeout re-served in ~0.2s for
+ * the rest of the window). A section that carries an error is a statement about a FAILED read, not
+ * about the city, so caching it freezes the failure. One clear payload is enough to say the read
+ * worked; anything else waits for the next request.
+ */
+export function locationViewCacheable(payload: {
+  hero: { error: string | null };
+  recommendations: { error: string | null };
+  events: { error: string | null };
+  neighborhoods: { error: string | null };
+  gems: { error: string | null };
+  services: { error: string | null };
+  externalStubs: { error: string | null };
+}): boolean {
+  return [payload.hero, payload.recommendations, payload.events, payload.neighborhoods, payload.gems, payload.services, payload.externalStubs].every(
+    (section) => section.error === null,
+  );
+}
+
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(
@@ -415,6 +457,12 @@ class LocationViewService {
         }
       }
       if (!countryForCall) {
+        // R2-2: derive it from the MARKET before giving up. `?country` is an optimisation, not a
+        // requirement — an operating market already knows its own country, so a caller that omits
+        // the param (the Kyoto page does) must not lose the whole recommendations section.
+        countryForCall = marketCountryFor(cityName);
+      }
+      if (!countryForCall) {
         throw new Error("country unknown — pass ?country= to fetch AI recommendations");
       }
       const { aiRecommendationEngineService } = await import("./recommendation.service");
@@ -445,13 +493,22 @@ class LocationViewService {
       });
       let partner: Awaited<ReturnType<typeof toPublicFeverEvents>> = [];
       try {
-        const result = await feverService.searchEvents({
-          city: cityName,
-          startDate,
-          endDate,
-          limit,
-          sortBy: "date",
-        });
+        // R2-2: the partner read gets its OWN short budget. It used to ride the section's full 12s,
+        // so a slow Fever response took the CITY'S OWN events down with it — `own` was already in
+        // hand, but the section rejected at the timeout and the page rendered an empty list. A
+        // partner timeout now costs only the partner half, which is the documented posture ("a
+        // failed partner read leaves the city events standing").
+        const result = await withTimeout(
+          feverService.searchEvents({
+            city: cityName,
+            startDate,
+            endDate,
+            limit,
+            sortBy: "date",
+          }),
+          PARTNER_EVENTS_TIMEOUT_MS,
+          "fever events",
+        );
         if (result && result.events.length > 0) {
           // R3-17: the listed events are cached by their own id. Awaited now, so the filter below sees this write.
           await feverService.cacheListedEvents(cityName, result.events).catch((err: any) => {
@@ -876,7 +933,11 @@ class LocationViewService {
       marketOpen: true,
     };
 
-    locationViewCache.set(cacheKey, { payload, expiresAt: Date.now() + 5 * 60 * 1000 });
+    // R2-2: a payload that carries a section error is NOT cached — the timed-out (empty) events list
+    // the probe saw re-served at 0.2s was exactly this write. A clean payload caches as before.
+    if (locationViewCacheable(payload)) {
+      locationViewCache.set(cacheKey, { payload, expiresAt: Date.now() + 5 * 60 * 1000 });
+    }
 
     return payload;
   }
