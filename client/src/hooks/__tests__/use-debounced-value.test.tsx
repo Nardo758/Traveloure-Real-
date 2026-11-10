@@ -42,7 +42,7 @@ class FakeNode {
   addEventListener() {}
   removeEventListener() {}
   get firstChild() { return this.childNodes[0] ?? null; }
-  get nextSibling() { const p = this.parentNode; if (!p) return null; const i = p.childNodes.indexOf(this); return p.childNodes[i + 1] ?? null; }
+  get nextSibling(): FakeNode | null { const p = this.parentNode; if (!p) return null; const i = p.childNodes.indexOf(this); return p.childNodes[i + 1] ?? null; }
   set nodeValue(v: string) { this.textContent = v; }
   get nodeValue() { return this.textContent; }
   /** Rendered text: React sets `textContent` on a single-text-child element and `nodeValue` on text nodes. */
@@ -62,9 +62,13 @@ doc.defaultView = { document: doc, HTMLIFrameElement: class {}, navigator: { use
 let createRoot: typeof import("react-dom/client").createRoot;
 let act: typeof import("react-dom/test-utils").act;
 before(async () => {
-  (globalThis as any).window = doc.defaultView;
-  (globalThis as any).document = doc;
-  (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+  // CI runs Node 20, which has no global `navigator` (Node 21+ does): react-dom reads `navigator.userAgent` at load,
+  // and `window` / `document` at render. All three are set on globalThis BEFORE react-dom is imported.
+  const g = globalThis as any;
+  g.window = doc.defaultView;
+  g.document = doc;
+  if (typeof g.navigator === "undefined") g.navigator = doc.defaultView.navigator;
+  g.IS_REACT_ACT_ENVIRONMENT = true;
   createRoot = (await import("react-dom/client")).createRoot;
   act = (await import("react-dom/test-utils")).act;
 });
@@ -74,7 +78,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 function mount(delayMs: number) {
   const container = new FakeNode("div", doc);
   let setValue!: (v: string) => void;
+  let renders = 0;
   function Probe() {
+    renders++;
     const [v, set] = React.useState("a");
     setValue = set;
     const settled = useDebouncedValue(v, delayMs);
@@ -87,6 +93,8 @@ function mount(delayMs: number) {
     flush: () => act(async () => {}),
     unmount: () => act(async () => { root.unmount(); }),
     text: () => container.text,
+    /** How many times the probe rendered — the hook's timer settling is a state write, so it is one more render. */
+    renders: () => renders,
   };
 }
 
@@ -105,9 +113,11 @@ test("U2 a change settles after the delay, not before", async () => {
   await sleep(60);
   await p.flush();
   assert.equal(p.text(), "b|a", "still inside the window");
+  const before = p.renders();
   await sleep(90);
   await p.flush();
   assert.equal(p.text(), "b|b", "settled after the delay");
+  assert.ok(p.renders() > before, "the settle is the hook's own state write from its timer — the probe rendered again with no outside change");
   await p.unmount();
 });
 
