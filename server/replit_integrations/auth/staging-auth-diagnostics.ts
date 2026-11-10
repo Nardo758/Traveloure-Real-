@@ -63,7 +63,7 @@ export function createStagingAuthDiagnostics(
     ] as const) {
       if (typeof details[key] === "boolean") record[key] = details[key];
     }
-    if (Number.isInteger(details.status) && details.status! >= 100 && details.status! <= 599) record.status = details.status;
+    if (Number.isInteger(details.status) && details.status! >= 100 && details.status! < 600) record.status = details.status; // the HTTP status range
     try { write(record); } catch { /* Diagnostics must never change an auth result. */ }
   }
 
