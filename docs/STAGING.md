@@ -197,6 +197,18 @@ Decision-maker rulings, Nov 8, 2026 (doc "Launch checklist 12 — open-mode stag
 API, email **fully off**. Ledger `2026-11-09-staging-item12-seeds`. It unblocks the boards production's waitlist mode hides:
 Versions / VersionsByDay / DesktopVersions / Review, WithExpert, Finalize, Trip Card.
 
+**The gate cookie and the 401 log (ledger `2026-11-09-staging-gate-cookie`).** A browser re-sends its cached basic-auth
+credentials up front only for paths under the one it first authenticated on, so same-origin requests elsewhere (e.g. `POST
+/api/auth/register` after authenticating on `/plans/new`) went out bare, took a 401 challenge and were retried — the
+intermittent 401s. So a request that passes basic auth on a non-exempt path also gets an `stg_gate` cookie (HttpOnly,
+Secure, SameSite=Lax, Path=/, 12 h): an expiry plus an HMAC-SHA256 keyed from `STAGING_BASIC_AUTH_PASSWORD`. The gate
+accepts valid basic auth **or** a valid, unexpired cookie; there is no shared state, so every instance checks it the same
+way, and rotating the password invalidates every cookie. Exempt paths never get one. Every 401 logs one `staging gate 401`
+line at warn with `instance` (hostname:pid), `path`, `reason` (`no_authorization_header` · `credentials_mismatch` ·
+`malformed_or_wrong_scheme`) and `gateCookie` (`absent` · `invalid` · `expired`) — never a header, cookie or Secret value.
+If `credentials_mismatch` shows up on some instances only, the Secret differs between them, and the cookie will not fix
+sign-up on those instances.
+
 ### 6.1 Environment variables (names only — values live in Replit Secrets)
 
 | Variable | Value | What it does |
