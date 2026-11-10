@@ -2,6 +2,9 @@
 name: Prod verification constraints
 description: What can and cannot be verified directly against the production Traveloure deploy
 ---
+- Production `executeSql` uses a read-only snapshot/replica. An absent recent signup is not proof that the runtime failed to create it unless replica freshness and database identity are established.
+  **Why:** Replit documents snapshot reads; a fresh-address staging report conflicted with a replica whose latest account timestamp preceded the request window. Available replay metadata could not establish freshness.
+  **How to apply:** use runtime outcomes or freshness-verified reads for recent-write conclusions; clearly qualify snapshot-only counts. Reference: https://docs.replit.com/features/data-and-storage/development-and-production
 - Prod `executeSql` is strictly read-only — UPDATE/DELETE fail. QA accounts created on prod via signup cannot be role-granted or deleted from the DB; there is no self-delete API route either. Cleanup = logout only; record residue in the report.
   **Why:** dispatch playbooks assume "grant role directly in the DB", which is impossible on prod.
   **How to apply:** run expert-session UI checks on the dev workspace pinned to the same commit as prod, and mark prod-side session checks NOT VERIFIED (env-blocked).
