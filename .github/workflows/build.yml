@@ -432,7 +432,7 @@ jobs:
   unit-pins:
     needs: [changes]
     if: ${{ !cancelled() && needs.changes.outputs.run != 'false' }}
-    name: unit-pins (twenty-three no-DB pin lanes)
+    name: unit-pins (no-DB pin lanes)
     runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     timeout-minutes: 30
     steps:
@@ -470,6 +470,11 @@ jobs:
       - if: ${{ !cancelled() }}
         name: R2-1 static compression (gzip/br negotiation)
         run: npx tsx --test server/__tests__/static-compression.test.ts
+
+      # ── R2-2 location view: no cached failures, country from the market ──────
+      - if: ${{ !cancelled() }}
+        name: R2-2 location view (cache guard + market country)
+        run: npx tsx --test server/__tests__/location-view-r2-2.test.ts
       # ── walkthrough-pins ────────────────────────────────────────────
       - name: "── walkthrough-pins (EX-1 logout endpoint + EX-2 price floor)"
         if: ${{ !cancelled() }}

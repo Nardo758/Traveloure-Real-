@@ -49,6 +49,8 @@ import { OPERATING_MARKETS } from "@shared/operating-markets";
 import { placesMarketFor } from "@shared/places-path";
 import { getLaunchMarketSlug, getLiveMarketSlugs } from "./platform-flags";
 import { resolveMarketSlug } from "./trend-engine/operating-markets";
+import { locationViewCacheable, marketCountryFor } from "./location-view-rules";
+import { stripLegacyCrowdFields } from "@shared/public-crowd";
 
 /**
  * ── FP-1 / B4 (docs/testing/PROVIDER_BATCH_EXERCISE.md, P1) ─────────────────────────────────
@@ -294,6 +296,16 @@ export interface LocationViewOptions {
 
 const SECTION_TIMEOUT_MS = 12_000;
 
+/**
+ * R2-2: the partner (Fever) event read gets its own, much shorter budget. It is an EXTERNAL call on
+ * the request path, and the section already has its own events in hand before it starts; giving it
+ * the section's full 12s meant one slow partner hop deleted the city's own rows from the page.
+ */
+const PARTNER_EVENTS_TIMEOUT_MS = 3_000;
+
+// R2-2's two rules live in a DB-FREE module: this file's graph opens the database, and a no-DB pin
+// lane that imported it died on "DATABASE_URL must be set". See `location-view-rules.ts`.
+
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(
@@ -415,6 +427,12 @@ class LocationViewService {
         }
       }
       if (!countryForCall) {
+        // R2-2: derive it from the MARKET before giving up. `?country` is an optimisation, not a
+        // requirement — an operating market already knows its own country, so a caller that omits
+        // the param (the Kyoto page does) must not lose the whole recommendations section.
+        countryForCall = marketCountryFor(cityName);
+      }
+      if (!countryForCall) {
         throw new Error("country unknown — pass ?country= to fetch AI recommendations");
       }
       const { aiRecommendationEngineService } = await import("./recommendation.service");
@@ -445,13 +463,22 @@ class LocationViewService {
       });
       let partner: Awaited<ReturnType<typeof toPublicFeverEvents>> = [];
       try {
-        const result = await feverService.searchEvents({
-          city: cityName,
-          startDate,
-          endDate,
-          limit,
-          sortBy: "date",
-        });
+        // R2-2: the partner read gets its OWN short budget. It used to ride the section's full 12s,
+        // so a slow Fever response took the CITY'S OWN events down with it — `own` was already in
+        // hand, but the section rejected at the timeout and the page rendered an empty list. A
+        // partner timeout now costs only the partner half, which is the documented posture ("a
+        // failed partner read leaves the city events standing").
+        const result = await withTimeout(
+          feverService.searchEvents({
+            city: cityName,
+            startDate,
+            endDate,
+            limit,
+            sortBy: "date",
+          }),
+          PARTNER_EVENTS_TIMEOUT_MS,
+          "fever events",
+        );
         if (result && result.events.length > 0) {
           // R3-17: the listed events are cached by their own id. Awaited now, so the filter below sees this write.
           await feverService.cacheListedEvents(cityName, result.events).catch((err: any) => {
@@ -861,7 +888,12 @@ class LocationViewService {
       settle("externalStubs", externalStubsPromise),
     ]);
 
-    const payload: LocationViewPayload = {
+    // Legacy crowd/pulse claims never leave a public route (ledger `2026-09-29-travelpulse-hygiene`).
+    // R2-2 made the recommendations section ANSWER again, and the recommendation engine's payload
+    // carries `seasonalInsight.crowdLevel` — a legacy claim that had only ever been invisible because
+    // the section was empty. `travelpulse-public-crowd.db.test.ts` T1 caught it on the first run.
+    // Stripped before the cache write, so a cached copy is clean too.
+    const payload: LocationViewPayload = stripLegacyCrowdFields({
       city: cityName,
       country: country ?? (hero.data as any)?.country ?? null,
       generatedAt: new Date().toISOString(),
@@ -874,9 +906,13 @@ class LocationViewService {
       externalStubs,
       market,
       marketOpen: true,
-    };
+    });
 
-    locationViewCache.set(cacheKey, { payload, expiresAt: Date.now() + 5 * 60 * 1000 });
+    // R2-2: a payload that carries a section error is NOT cached — the timed-out (empty) events list
+    // the probe saw re-served at 0.2s was exactly this write. A clean payload caches as before.
+    if (locationViewCacheable(payload)) {
+      locationViewCache.set(cacheKey, { payload, expiresAt: Date.now() + 5 * 60 * 1000 });
+    }
 
     return payload;
   }
