@@ -41,8 +41,11 @@ export interface PublicFeverEvent {
   date: string | null;
   endDate: string | null;
   isSoldOut: boolean;
-  /** A-33: the event's venue has a point — a boolean, never the point. */
+  /** A-33: the event's venue has a point. */
   located: boolean;
+  /** Cut-list #3 (Leon, Nov 10, 2026): the located venue's point, so the guest map can pin it; null when unlocated. */
+  latitude: string | null;
+  longitude: string | null;
   provider: typeof FEVER_PROVIDER;
   priceSource: typeof FEVER_PRICE_SOURCE;
   /** The approved partner's stored name. Null when none is approved or the name is blank. */
@@ -60,6 +63,8 @@ function project(
   partnerName: string | null,
   editorial: EditorialFields | null,
 ): PublicFeverEvent {
+  const located =
+    Number.isFinite(Number(e.venue?.coordinates?.lat)) && Number.isFinite(Number(e.venue?.coordinates?.lng)) && e.venue?.coordinates?.lat != null && e.venue?.coordinates?.lng != null;
   return {
     id: String(e.id),
     title: e.title,
@@ -74,7 +79,9 @@ function project(
     date: str(e.dates?.startDate),
     endDate: str(e.dates?.endDate),
     isSoldOut: e.isSoldOut === true,
-    located: Number.isFinite(Number(e.venue?.coordinates?.lat)) && Number.isFinite(Number(e.venue?.coordinates?.lng)) && e.venue?.coordinates?.lat != null && e.venue?.coordinates?.lng != null,
+    located,
+    latitude: located ? String(e.venue!.coordinates!.lat) : null,
+    longitude: located ? String(e.venue!.coordinates!.lng) : null,
     provider: FEVER_PROVIDER,
     priceSource: FEVER_PRICE_SOURCE,
     partnerName,

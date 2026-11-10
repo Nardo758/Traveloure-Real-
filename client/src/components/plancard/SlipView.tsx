@@ -2713,7 +2713,9 @@ export function SlipView({
                   {allDaysOpen ? "Collapse all" : "Expand all"}
                 </button>
               ) : null}
-              {slipView === "map" && (
+              {/* Cut-list #3 (Leon, Nov 10, 2026): an empty plan draws no counter — "0 of 0 located" is a claim
+                  about nothing. The line appears with the first stop. */}
+              {slipView === "map" && allActivities.length > 0 && (
                 <span className="text-xs text-muted-foreground" data-testid="text-slip-map-located">
                   {/* Ledger `2026-10-03-no-ward-pins` (decision-maker): the line reads "N of M located".
                       Located means a real coordinate — never a ward or city centroid. */}

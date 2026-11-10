@@ -1,3 +1,4 @@
+import { useDebouncedValue, DISCOVER_THEME_DEBOUNCE_MS } from "@/hooks/use-debounced-value";
 import { DISCOVER_HEADLINE_COPY } from "@shared/copy-2026-10-31";
 import { neighbourhoodHomeKey } from "@/lib/wanted-slot-link";
 import { heroEyebrowFragments } from "@/lib/hero-eyebrow";
@@ -1616,13 +1617,15 @@ export default function DiscoverLocationPage() {
     queryKey: ["/api/experience-themes"],
     staleTime: 5 * 60_000,
   });
+  // TB2.6: the chips are instant (URL state); the REQUEST keys on the slugs settled 300 ms after the last press.
+  const settledThemeParam = useDebouncedValue(selectedThemeSlugs.join(","), DISCOVER_THEME_DEBOUNCE_MS);
   const { data: themedDiscover, isError: themedDiscoverError, error: themedDiscoverQueryError } = useQuery<{ services: any[] }>({
-    queryKey: ["/api/discover", "location-theme", city, selectedThemeSlugs.join(","), serviceType],
-    enabled: selectedThemeSlugs.length > 0 && !!city,
+    queryKey: ["/api/discover", "location-theme", city, settledThemeParam, serviceType],
+    enabled: settledThemeParam.length > 0 && !!city,
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set("location", city);
-      params.set(SERVICES_BROWSE_THEME_PARAM, selectedThemeSlugs.join(","));
+      params.set(SERVICES_BROWSE_THEME_PARAM, settledThemeParam);
       if (serviceType) params.set(SERVICE_TYPE_FILTER_PARAM, serviceType);
       params.set("limit", "50");
       const res = await fetch(`/api/discover?${params.toString()}`);

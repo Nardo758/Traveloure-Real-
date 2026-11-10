@@ -156,11 +156,33 @@ export function isPlancardRead(req: Pick<Request, "method" | "path">): boolean {
   return req.method === "GET" && /^\/trips\/[^/]+\/plancard\/?$/.test(req.path);
 }
 
+/**
+ * TB2.6 (round 2, Leon Nov 10, 2026): the public listing search, `GET /api/discover` (the Kyoto feed's theme filter
+ * and the services browse). Every theme toggle is one request, and the location page's own reads already spend most of
+ * the general per-IP budget, so a few toggles tipped a visitor into a 429 on a public page. It is NOT counted against
+ * the general budget and has its own (`discoverReadRateLimiter`), sized for toggling with the client's 300 ms debounce
+ * (`DISCOVER_THEME_DEBOUNCE_MS`): at most ~3 requests/s sustained ⇒ 60/min is twenty seconds of continuous toggling.
+ * The location payload (`/api/discover/location/:city`) and the tile panel are NOT this read and stay general.
+ * Path relative to the `/api` mount.
+ */
+export function isDiscoverRead(req: Pick<Request, "method" | "path">): boolean {
+  return req.method === "GET" && /^\/discover\/?$/.test(req.path);
+}
+
 export const generalRateLimiter = createRateLimiter({
   windowMs: 60 * 1000,
   maxRequests: 100,
   keyGenerator: (req) => `general:${req.ip || "unknown"}`,
-  skip: (req) => loopbackSkip(req) || isPlancardRead(req),
+  skip: (req) => loopbackSkip(req) || isPlancardRead(req) || isDiscoverRead(req),
+});
+
+export const DISCOVER_READ_MAX_PER_MINUTE = 60;
+
+export const discoverReadRateLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  maxRequests: DISCOVER_READ_MAX_PER_MINUTE,
+  keyGenerator: (req) => `discover:${req.ip || "unknown"}`,
+  skip: (req) => !isDiscoverRead(req) || loopbackSkip(req),
 });
 
 export const plancardReadRateLimiter = createRateLimiter({
