@@ -30,6 +30,7 @@ import { ReferencePhotoChip } from "@/components/ui/reference-photo-chip";
 import { SaveToggle } from "@/components/SaveToggle";
 import { buildSaveItem } from "@/lib/saved-items";
 import type { SaveItemBody } from "@shared/saved-items";
+import { wikimediaSrcSet } from "@shared/photo-srcset";
 import { stripPartnerCardPhrase } from "@shared/banned-copy";
 import { GemPhotoMedia } from "@/components/gem-photo-band";
 import { formatCalendarDate } from "@/lib/calendar-date";
@@ -40,6 +41,11 @@ import { formatCalendarDate } from "@/lib/calendar-date";
 
 /**
  * Build srcSet + sizes for retina delivery.
+ *
+ * R2-3: the Wikimedia branch is what the probe found missing — every Commons URL fell through with
+ * no srcSet, so the browser fetched the 9–16 MB original. `wikimediaSrcSet` asks only for
+ * MediaWiki's standard thumb steps and never wider than `maxWidth`; the original stays the `src`
+ * fallback, so a browser (or a failed thumb) still shows the photograph.
  */
 function buildSrcSet(url: string | null | undefined): { srcSet?: string; sizes: string } {
   const sizes = "(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw";
@@ -56,6 +62,8 @@ function buildSrcSet(url: string | null | undefined): { srcSet?: string; sizes: 
     p2.delete("fm");
     return { srcSet: `${base}?${p1} 800w, ${base}?${p2} 1600w`, sizes };
   }
+  const wikimedia = wikimediaSrcSet(url);
+  if (wikimedia) return { srcSet: wikimedia, sizes };
   return { sizes };
 }
 
