@@ -64,7 +64,11 @@ function stub(over: Partial<ExternalStubData> = {}): ExternalStubData {
 
 describe("row 304c: partner tiles on main", () => {
   it("PT1 no one — a signed-out visitor included — receives a partner tile: no partner section, no partner kind", () => {
-    const payload = section(locationView, "const payload: LocationViewPayload = {", "};");
+    // R2-2: the payload literal is now wrapped in `stripLegacyCrowdFields({ … })`, so the old `= {`
+    // needle stopped matching. The anchor is the DECLARATION plus the object's last field, so this
+    // pin reads the same span — all seven sections, no partner field — whatever wraps the literal.
+    // No assertion below was changed or dropped.
+    const payload = section(locationView, "const payload: LocationViewPayload", "marketOpen: true,");
     for (const key of ["hero", "recommendations", "events", "neighborhoods", "gems", "services", "externalStubs"]) {
       assert.match(payload, new RegExp(`\\b${key}\\b`), key);
     }
