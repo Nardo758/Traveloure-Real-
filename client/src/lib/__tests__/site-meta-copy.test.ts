@@ -94,12 +94,28 @@ function aboutRouteDescription(slice: string): string {
   return desc[1];
 }
 
-test("SM4 ROUTE_META has the seven keys and /about uses the page sentence", () => {
+// TB1.2 (Wording approved — Leon, 2026-11-09): the five legal/company pages joined ROUTE_META, so this
+// pin's exact list grows from seven to twelve. The pin exists so an entry cannot be added without a
+// ruling behind it; the ruling is TB1.2 and the strings are the approved ones.
+test("SM4 ROUTE_META has the twelve keys and /about uses the page sentence", () => {
   const slice = routeMetaSlice(read("server/routes/seo.routes.ts"));
   assert.doesNotMatch(slice, /\bAI\b/);
   assert.doesNotMatch(slice, /AI-powered/i);
   const keys = [...slice.matchAll(/^\s+"([^"]+)":\s*\{/gm)].map((m) => m[1]);
-  assert.deepEqual(keys, ["/discover", "/experts", "/experiences", "/pricing", "/about", "/contact", "/visa-help"]);
+  assert.deepEqual(keys, [
+    "/discover",
+    "/experts",
+    "/experiences",
+    "/pricing",
+    "/about",
+    "/contact",
+    "/visa-help",
+    "/terms",
+    "/privacy",
+    "/cookies",
+    "/press",
+    "/careers",
+  ]);
   const page = aboutPageDescription(read("client/src/pages/about.tsx"));
   assert.equal(aboutRouteDescription(slice), page);
 });
