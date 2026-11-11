@@ -29,7 +29,8 @@ import {
   useWaitlistSignupGate,
   type SignupDraft,
 } from "@/components/auth/SignupForm";
-import { GUEST_SESSION_STORAGE_KEY } from "@/lib/guest-session-key";
+import { claimGuestPlans } from "@/lib/waitlist-guest-plan";
+import { claimLandingPath } from "@/lib/plan-landing";
 
 interface SignInModalProps {
   open: boolean;
@@ -91,25 +92,6 @@ export function SignInModal({
   useEffect(() => { setAuthError(null); }, [mode]);
   useEffect(() => { if (mode === "signup" || !open) setSignupCheckEmail(false); }, [mode, open]);
 
-  const migrateGuestCart = async () => {
-    try {
-      const guestSessionId = localStorage.getItem(GUEST_SESSION_STORAGE_KEY);
-      if (!guestSessionId) return;
-      const res = await fetch("/api/cart/migrate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ guestSessionId }),
-        credentials: "include",
-      });
-      if (!res.ok) {
-        console.warn("[cart] Guest cart migration returned", res.status);
-        return;
-      }
-      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
-    } catch (err) {
-      console.warn("[cart] Guest cart migration failed", err);
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -192,7 +174,11 @@ export function SignInModal({
         return;
       }
 
-      await migrateGuestCart();
+      // QA round 3 PR 3 (Leon, Nov 11, 2026): the claim runs HERE, before this modal's full page load — the app watcher's
+      // own landing would be lost to that load. The guest cart is migrated by the one app watcher (GuestCartMigrator),
+      // which also covers social sign-in and every other path. A failed claim is toasted inside `claimGuestPlans` and
+      // answers [], so the traveler goes to the normal destination; nothing claimed lands nowhere new.
+      const claimedIds = await claimGuestPlans(typeof data.user?.id === "string" ? data.user.id : null);
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
 
       toast({
@@ -210,7 +196,7 @@ export function SignInModal({
       // can never navigate off-site, regardless of where the value came from.
       const safeDest =
         sanitizeReturnTo(returnTo) ?? sanitizeReturnTo(sessionReturnTo);
-      window.location.href = safeDest ?? getRoleHomePath(role);
+      window.location.href = claimLandingPath(claimedIds) ?? safeDest ?? getRoleHomePath(role);
     } catch (error: any) {
       const msg = error.message || t("signupPage.genericError");
       // TEST 10 — set in-DOM error for aria-live announcement; also toast for visual users

@@ -1582,13 +1582,15 @@ function GuestCartMigrator() {
   const { user, isLoading } = useAuth();
   const qc = useQueryClient();
   const [, setLocation] = useLocation();
-  const wasAuthenticated = useRef(false);
+  const cartWasAuthenticated = useRef(false);
+  const claimWasAuthenticated = useRef(false);
 
+  // The guest cart becomes the account's. Its own guard: it needs the page's guest id to name the cart.
   useEffect(() => {
     if (isLoading) return;
     if (emailVerificationHoldRequired(user)) return;
     const isNowAuth = !!user;
-    if (!wasAuthenticated.current && isNowAuth) {
+    if (!cartWasAuthenticated.current && isNowAuth) {
       const guestSessionId = localStorage.getItem(GUEST_SESSION_STORAGE_KEY);
       if (guestSessionId) {
         fetch("/api/cart/migrate", {
@@ -1605,34 +1607,45 @@ function GuestCartMigrator() {
             }
           })
           .catch((err) => console.warn("[cart] Guest cart migration failed", err));
-        // GATE-1B (ledger 2026-11-04-gate1b-guest-plan): the session's guest plans become the account's, as-is.
-        // A-37: one claim request per sign-in (the plan page reuses this one).
-        // PLAN-1 ruling 2: a sign-in that claimed a plan lands on it, on its map — every sign-in path (the
-        // "refresh the list without navigating" branch is retired). Nothing claimed ⇒ the traveler stays put.
-        void claimGuestPlans((user as any)?.id ?? null).then(async (ids) => {
-          if (ids.length === 0) return;
-          // Cut-list #1 slice D: the claim turned the plan's bookable items into cart lines (server-side, after the
-          // claim commits), so the cart is re-read rather than showing its pre-claim count.
-          qc.invalidateQueries({ queryKey: ["/api/cart"] });
-          const to = claimLandingPath(ids);
-          // Cut-list #1 header fix v2 (the ONE active-plan rule): the claimed plan is BOUND into the pen the
-          // moment the claim resolves, so the strip, the nav slot and the picker name it before the slip's own
-          // open binds it (RC-5). Read from the freshly re-fetched list — never from the ids alone — so the
-          // pen carries the plan's own identity fields (REPLACE semantics, #972). A list that cannot be read
-          // binds nothing: the landing's open still binds, a beat later.
-          try {
-            const trips = (await qc.fetchQuery<TripIdentitySource[]>({ queryKey: ["/api/trips"], staleTime: 0 })) ?? [];
-            const claimed = trips.find((t) => t.id === ids[0]);
-            if (claimed) syncActiveTripToContext(claimed);
-          } catch {
-            /* the landing binds; the list read failed, so refresh it the old way */
-            qc.invalidateQueries({ queryKey: ["/api/trips"] });
-          }
-          if (to) setLocation(to);
-        });
       }
     }
-    wasAuthenticated.current = isNowAuth;
+    cartWasAuthenticated.current = isNowAuth;
+  }, [user, isLoading, qc]);
+
+  // GATE-1B (ledger 2026-11-04-gate1b-guest-plan): the session's guest plans become the account's, as-is.
+  // QA round 3 PR 3 (Leon, Nov 11, 2026): its OWN effect, outside the cart's localStorage guard — the claim starts from
+  // `shouldClaimGuestPlans` (the presence cookie, or the page's id with cookies off), inside `claimGuestPlans`, so a
+  // cookie-only guest is claimed too. A-37: one claim request per sign-in (the modal and the plan page share it).
+  // PLAN-1 ruling 2: a sign-in that claimed a plan lands on it — every sign-in path. Nothing claimed (or a failure,
+  // which `claimGuestPlans` toasts) ⇒ the traveler stays put.
+  useEffect(() => {
+    if (isLoading) return;
+    if (emailVerificationHoldRequired(user)) return;
+    const isNowAuth = !!user;
+    if (!claimWasAuthenticated.current && isNowAuth) {
+      void claimGuestPlans((user as any)?.id ?? null).then(async (ids) => {
+        if (ids.length === 0) return;
+        // Cut-list #1 slice D: the claim turned the plan's bookable items into cart lines (server-side, after the
+        // claim commits), so the cart is re-read rather than showing its pre-claim count.
+        qc.invalidateQueries({ queryKey: ["/api/cart"] });
+        const to = claimLandingPath(ids);
+        // Cut-list #1 header fix v2 (the ONE active-plan rule): the claimed plan is BOUND into the pen the
+        // moment the claim resolves, so the strip, the nav slot and the picker name it before the slip's own
+        // open binds it (RC-5). Read from the freshly re-fetched list — never from the ids alone — so the
+        // pen carries the plan's own identity fields (REPLACE semantics, #972). A list that cannot be read
+        // binds nothing: the landing's open still binds, a beat later.
+        try {
+          const trips = (await qc.fetchQuery<TripIdentitySource[]>({ queryKey: ["/api/trips"], staleTime: 0 })) ?? [];
+          const claimed = trips.find((t) => t.id === ids[0]);
+          if (claimed) syncActiveTripToContext(claimed);
+        } catch {
+          /* the landing binds; the list read failed, so refresh it the old way */
+          qc.invalidateQueries({ queryKey: ["/api/trips"] });
+        }
+        if (to) setLocation(to);
+      });
+    }
+    claimWasAuthenticated.current = isNowAuth;
   }, [user, isLoading, qc, setLocation]);
 
   return null;

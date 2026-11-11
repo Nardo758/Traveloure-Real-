@@ -12,6 +12,7 @@ import { dayNumberForDate, planItemRefFromFeedItem, type PlanItemKind, type Plan
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { GUEST_PLAN_COPY } from "@shared/guest-plan-copy";
+import { toast } from "@/hooks/use-toast";
 import { shouldClaimGuestPlans } from "@shared/guest-presence";
 import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 import { mapDayChips } from "@/lib/map-days";
@@ -230,15 +231,32 @@ export function guestItemFromFeedItem(item: any, city?: string | null, dayNumber
   return planItemRefFromFeedItem(item, city ?? (typeof item?.city === "string" ? item.city : null), dayNumber);
 }
 
-let claimInFlight: Promise<string[]> | null = null;
+/**
+ * QA round 3 PR 3 (Leon, Nov 11, 2026): what one claim request came back with — the ids it claimed (possibly none), or
+ * a real failure (a rejected request or a non-2xx answer). An empty claim and a failed one are different facts: only a
+ * failure is said out loud, and only a success stamps the memo, so the next sign-in tries again.
+ */
+export type GuestClaimOutcome = { ok: true; ids: string[] } | { ok: false };
+
+/** The one failure toast: the existing save-failed sentence, no new string. Swappable in tests only. */
+let announceClaimFailure: () => void = () => {
+  toast({ variant: "destructive", title: guestSaveErrorMessage(null) });
+};
+export function setClaimFailureAnnouncerForTests(fn: (() => void) | null): void {
+  announceClaimFailure = fn ?? (() => toast({ variant: "destructive", title: guestSaveErrorMessage(null) }));
+}
+
+let claimInFlight: Promise<GuestClaimOutcome> | null = null;
 /** A-37: the sign-in this tab already claimed for, and what it claimed. One claim request per sign-in. */
 let claimedFor: { userId: string; ids: string[] } | null = null;
 const CLAIMED_FOR_STORAGE_KEY = "traveloure_guest_claimed_for";
 
 /**
  * Ruling 5, on sign-in (beside /api/cart/migrate): the session's guest plans become the account's. A-37: ONE request
- * per sign-in — the app-level watcher and the plan page share it (in flight), and a later call for the same account in
- * this tab answers what was claimed without asking again. The endpoint is idempotent either way.
+ * per sign-in — the app-level watcher, the sign-in modal and the plan page share it (in flight), and a later call for
+ * the same account in this tab answers what was claimed without asking again. The endpoint is idempotent either way.
+ * QA round 3 PR 3: a failed request answers `[]` to the caller, is toasted once (the existing save-failed sentence,
+ * `guestSaveErrorMessage(null)`), and stamps no memo — the next sign-in claims again. An empty claim is not a failure.
  */
 export function claimGuestPlans(userId?: string | null): Promise<string[]> {
   const who = userId ?? null;
@@ -252,22 +270,27 @@ export function claimGuestPlans(userId?: string | null): Promise<string[]> {
   }
   if (!claimInFlight) {
     claimInFlight = claimGuestPlansOnce()
-      .then((ids) => {
+      .then((out) => {
+        if (!out.ok) {
+          // Said once per failed request, whichever caller started it.
+          announceClaimFailure();
+          return out;
+        }
         if (who) {
-          claimedFor = { userId: who, ids };
+          claimedFor = { userId: who, ids: out.ids };
           try {
             sessionStorage.setItem(CLAIMED_FOR_STORAGE_KEY, who);
           } catch {
             // Best effort: the module memo still holds for this page.
           }
         }
-        return ids;
+        return out;
       })
       .finally(() => {
         claimInFlight = null;
       });
   }
-  return claimInFlight;
+  return claimInFlight.then((out) => (out.ok ? out.ids : []));
 }
 
 /** Tests: forget this tab's claim memo. */
@@ -276,7 +299,32 @@ export function _resetGuestClaimMemo(): void {
   claimInFlight = null;
 }
 
-async function claimGuestPlansOnce(): Promise<string[]> {
+/**
+ * QA round 3 PR 3: forget this tab's claim memo AND the claimed-plan hand-off — on sign-out, and on a 401 after a
+ * session had existed — so the next sign-in in this tab asks the server again (TB2: a guest save made after signing out
+ * was never claimed, because the memo still named the account).
+ */
+export function clearGuestClaimMemo(): void {
+  claimedFor = null;
+  try {
+    sessionStorage.removeItem(CLAIMED_FOR_STORAGE_KEY);
+    sessionStorage.removeItem(CLAIMED_PLAN_STORAGE_KEY);
+  } catch {
+    // No session storage: nothing was kept there.
+  }
+}
+
+/** Was this tab's claim memo stamped for a signed-in account (evidence a session existed here)? */
+export function hasGuestClaimMemo(): boolean {
+  if (claimedFor) return true;
+  try {
+    return sessionStorage.getItem(CLAIMED_FOR_STORAGE_KEY) != null;
+  } catch {
+    return false;
+  }
+}
+
+async function claimGuestPlansOnce(): Promise<GuestClaimOutcome> {
   // A-10 (ledger `2026-11-05-lane6-guest-cookie`): the guest cookie rides the request and names the guest; the
   // localStorage id is sent too, and the server reads it only when this browser's cookies are off.
   let guestSessionId: string | null = null;
@@ -285,10 +333,10 @@ async function claimGuestPlansOnce(): Promise<string[]> {
   } catch {
     guestSessionId = null;
   }
-  // PLAN-2 C4: no guest in this browser ⇒ no claim request (and no 400).
+  // PLAN-2 C4: no guest in this browser ⇒ no claim request (and no 400). Nothing to claim is a success.
   const cookieString = typeof document !== "undefined" ? document.cookie : "";
   const cookiesEnabled = typeof navigator !== "undefined" ? navigator.cookieEnabled : undefined;
-  if (!shouldClaimGuestPlans({ cookieString, cookiesEnabled, localGuestId: guestSessionId })) return [];
+  if (!shouldClaimGuestPlans({ cookieString, cookiesEnabled, localGuestId: guestSessionId })) return { ok: true, ids: [] };
   try {
     const res = await apiRequest("POST", "/api/guest-plans/claim", guestSessionId ? { guestSessionId } : {});
     const out = (await res.json()) as { tripIds?: string[] };
@@ -301,9 +349,10 @@ async function claimGuestPlansOnce(): Promise<string[]> {
         // No session storage: the plan page falls back to "no plan waiting" (§13), the plan is still the account's.
       }
     }
-    return ids;
+    return { ok: true, ids };
   } catch {
-    return [];
+    // `apiRequest` throws on a non-2xx answer as on a network failure: both are a real failure, never "nothing".
+    return { ok: false };
   }
 }
 

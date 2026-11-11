@@ -245,6 +245,20 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           CI: 'true'
 
+      # QA round 3 PR 3 (ledger `2026-11-11-qa3-claim-signin`): TB2's path in one tab — guest save → email sign-in lands
+      # on the plan → sign out → guest save → sign in as the same account lands on the NEW plan. It sets waitlist mode
+      # for its own run (restored after), so it runs in its own step.
+      - name: Sign-in claim (QA round 3 PR 3, TB2)
+        if: ${{ !cancelled() }}
+        # --reporter=json into the same playwright-json/ folder the upload below sends: the spec-arming gate reads every
+        # report in it to tell an executed test from a skip.
+        run: npx playwright test playwright/tests/journeys/j-claim-signin.spec.ts --project=chromium --workers=1 --reporter=list,json
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-json/claim-signin.json
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          CI: 'true'
+
       - name: Upload the add-actions Playwright JSON (spec-arming evidence)
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
