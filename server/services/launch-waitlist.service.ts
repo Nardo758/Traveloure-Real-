@@ -1,15 +1,15 @@
 // LW-1c (ledger `2026-10-16-lw1c-kyoto-waitlist`): the ONE writer of `launch_waitlist` and the admin reads.
 // Raw SQL against migration 381's tables (`launch_waitlist`, `consent_texts`).
 //
-//   - One row per (email, market): a repeat sign-up UPDATES the row through the UNIQUE (email, market_slug) index
-//     in one statement — never a second row, never a check-then-insert (§15).
+//   - One row per (email, market, role) after migration 445: a repeat of the SAME role UPDATES that row.
+//     A different role for the same address and market is its own row.
 //   - The FIRST sign-up's source is kept: a later visit through a different door does not rewrite where the person
 //     came from. The latest submission's role and answers replace the earlier ones ("a repeat sign-up updates the
 //     answers"), and the other role's fields are set NULL, so a row only ever carries its own role's answers.
 //   - Consent is an opt-in, not a gate (Launch ruling 1): ticking stamps consent_at and names the consent version;
 //     a repeat sign-up without the tick never clears an earlier consent. Unsubscribe is the withdrawal:
 //     it sets revoked_at on every consent_records row for that waitlist id and launch_waitlist.unsubscribed_at.
-//     A later sign-up does not clear either.
+//     A later join of the same role clears unsubscribed_at (Leon, Nov 11, 2026: leave, then rejoin).
 //   - The caller learns nothing about whether the address was already on the list.
 import crypto from "node:crypto";
 import { sql, type SQL } from "drizzle-orm";
@@ -200,9 +200,9 @@ async function upsertWaitlistRow(
         (gen_random_uuid(), ${email}, ${marketSlug}, ${role}, ${source}, ${tripType}, ${roughMonth}, ${worry},
          ${contactName}, ${businessName}, ${serviceType}, ${area}, ${referrerUserId}, ${shortLinkCode},
          CASE WHEN ${consent} THEN NOW() ELSE NULL END, ${consentVersion}, NOW(), NOW()${expert ? sql`, ${website}, ${textArray(languages)}` : sql``})
-      ON CONFLICT (email, market_slug) DO UPDATE SET
+      ON CONFLICT (email, market_slug, role) DO UPDATE SET
         updated_at           = NOW(),
-        role                 = EXCLUDED.role,
+        unsubscribed_at      = NULL,
         trip_type            = EXCLUDED.trip_type,
         rough_month          = EXCLUDED.rough_month,
         worry                = EXCLUDED.worry,
@@ -261,9 +261,9 @@ export async function recordProviderSignup(input: {
       (gen_random_uuid(), ${email}, ${input.marketSlug}, 'provider', ${WAITLIST_PROVIDER_SIGNUP_SOURCE},
        ${input.contactName}, ${f.businessName.trim()}, ${f.category}, ${f.city.trim()}, ${f.website?.trim() || null},
        ${textArray(waitlistLanguagesList(f.languages))}, NOW(), NOW())
-    ON CONFLICT (email, market_slug) DO UPDATE SET
+    ON CONFLICT (email, market_slug, role) DO UPDATE SET
       updated_at    = NOW(),
-      role          = 'provider',
+      unsubscribed_at = NULL,
       contact_name  = EXCLUDED.contact_name,
       business_name = EXCLUDED.business_name,
       service_type  = EXCLUDED.service_type,
@@ -647,4 +647,63 @@ export async function enqueueMarketOpened(input: { market: string; role: Waitlis
     else enqueued += 1;
   }
   return { enqueued, skipped };
+}
+
+export interface WaitlistEntryRow {
+  id: string;
+  email: string;
+  role: string;
+  marketSlug: string;
+  source: string | null;
+  contactName: string | null;
+  businessName: string | null;
+  serviceType: string | null;
+  createdAt: string | null;
+  isQa: boolean;
+}
+
+/** Admin list: every role, including expert, ordered so the page can group by market. */
+export async function listWaitlistEntries(marketSlug: string | null): Promise<WaitlistEntryRow[]> {
+  const market = marketSlug ? sql`AND w.market_slug = ${marketSlug}` : sql``;
+  const r = await db.execute(sql`
+    SELECT w.id, w.email, COALESCE(w.role, 'traveler') AS role, w.market_slug, w.source,
+           w.contact_name, w.business_name, w.service_type,
+           ${isoUtc("w.created_at")} AS created_at,
+           ${QA_W} AS is_qa
+    FROM launch_waitlist w
+    WHERE w.market_slug IS NOT NULL ${market}
+    ORDER BY w.market_slug ASC, COALESCE(w.role, 'traveler') ASC, w.created_at ASC NULLS LAST, w.email ASC
+  `);
+  return (r.rows as any[]).map((row) => ({
+    id: String(row.id),
+    email: String(row.email),
+    role: String(row.role),
+    marketSlug: String(row.market_slug),
+    source: row.source == null ? null : String(row.source),
+    contactName: row.contact_name == null ? null : String(row.contact_name),
+    businessName: row.business_name == null ? null : String(row.business_name),
+    serviceType: row.service_type == null ? null : String(row.service_type),
+    createdAt: row.created_at == null ? null : String(row.created_at),
+    isQa: row.is_qa === true || row.is_qa === "true" || row.is_qa === "t",
+  }));
+}
+
+/** Markets this address still has an active row for, for one waitlist role. */
+export async function partnerWaitlistMarkets(email: string, role: string): Promise<string[]> {
+  const r = await db.execute(sql`
+    SELECT market_slug FROM launch_waitlist
+    WHERE email = ${normalizeWaitlistEmail(email)} AND role = ${role} AND unsubscribed_at IS NULL
+      AND market_slug IS NOT NULL
+    ORDER BY market_slug ASC
+  `);
+  return (r.rows as any[]).map((row) => String(row.market_slug));
+}
+
+/** Leave one market. A row that was never joined is left alone. The first leave timestamp is kept. */
+export async function leavePartnerWaitlist(email: string, role: string, marketSlug: string): Promise<void> {
+  await db.execute(sql`
+    UPDATE launch_waitlist
+    SET unsubscribed_at = COALESCE(unsubscribed_at, NOW()), updated_at = NOW()
+    WHERE email = ${normalizeWaitlistEmail(email)} AND role = ${role} AND market_slug = ${marketSlug}
+  `);
 }

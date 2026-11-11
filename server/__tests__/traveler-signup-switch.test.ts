@@ -7,19 +7,16 @@
  *   npx tsx --test server/__tests__/traveler-signup-switch.test.ts
  *
  * S1 — the mode is read FAIL CLOSED: 'open' opens; a missing row, any other value or a read error is 'waitlist'.
- * S2 — email register, waitlist mode: a traveler is refused 403 TRAVELER_WAITLIST with redirectTo
- *      /<launch market>?blocked=1 (no email in it), before the existing-email check; supply intent passes.
+ * S2 — email register, waitlist mode: a traveler, a provider, and a role-less supply sign-up all pass
+ *      (Leon, Nov 11, 2026). The purchase gate is unchanged.
  * S3 — email register, open mode: a traveler passes.
- * S4 — the QA sign-up: a QA-domain address with the matching code passes a waitlist-mode traveler; a QA-domain
- *      address with a wrong, absent or UNSET code refuses; the right code on a non-QA address refuses; an unset
- *      QA domain refuses; the comparison is over digests (length mismatch never throws).
+ * S4 — the QA code no longer decides the account (sign-up is open). The digest comparison still holds.
  * S5 — existing accounts always sign in: POST /api/auth/login never consults the switch.
  * S6 — the Ready-Made purchase gate: waitlist mode refuses a traveler and passes an admin and a QA-tagged account;
  *      open mode passes everyone.
  * S7 — the pure rules (decideFirstTimeSignup, normalizeSignupIntent, waitlistBlockedPath).
- * S8 — Replit OIDC: a first-time traveler is refused in waitlist mode and passes in open mode; a first-time supply
- *      sign-up passes in waitlist mode; an existing account signs in in waitlist mode.
- * S9 — Facebook: the same four cases, and a new Facebook account records authProvider "facebook".
+ * S8 — Replit OIDC: a first-time traveler and a first-time supply sign-up both create an account in waitlist mode.
+ * S9 — Facebook: the same, and a new Facebook account records authProvider "facebook".
  * S11 — GET /api/public/signup-mode answers exactly { mode, launchMarketSlug }, no-store.
  * S10 — the session stash: intent and a same-site return path survive; an open redirect, a stale stash and a
  *      missing stash read as a traveler with no return path; taking the return path clears the stash.
@@ -42,7 +39,6 @@ import { decideWaitlistPurchase } from "../services/waitlist-purchase-gate.js";
 import launchPublicRouter from "../routes/launch-public.routes.js";
 import {
   TRAVELER_WAITLIST,
-  TRAVELER_WAITLIST_MESSAGE,
   decideFirstTimeSignup,
   normalizeSignupIntent,
   parseTravelerSignupMode,
@@ -153,37 +149,28 @@ describe("S1 — the mode is read fail closed", () => {
 });
 
 describe("S2 — email register in waitlist mode", () => {
-  it("refuses a traveler with TRAVELER_WAITLIST and the launch market's waitlist path, before any account read", async () => {
+  it("lets a traveler past the gate", async () => {
     const res = await register();
-    assert.equal(res.statusCode, 403);
-    assert.equal(res.body.code, TRAVELER_WAITLIST);
-    assert.equal(res.body.redirectTo, "/kyoto?blocked=1");
-    assert.equal(res.body.message, TRAVELER_WAITLIST_MESSAGE, "Marketing's exact blocked line");
-    assert.ok(!JSON.stringify(res.body).includes("traveloure-qa.test"), "the refusal carries no email");
-    assert.equal(selectCalls, 0, "refused before the existing-email check");
-  });
-  // WL-B (Leon, Oct 30, 2026 — sanctioned pin edit): before launch a supply sign-up must name its role; a provider
-  // with its fields passes, a role-less one is sent to the provider email path.
-  it("lets a provider supply sign-up with its fields past the gate; a role-less one is refused", async () => {
-    const res = await register({ intent: "supply", supplyRole: "provider", provider: { businessName: "B", category: "other", city: "Kyoto" } });
-    // AUTH-1 fix 3b: an existing address gets the neutral 202, never "already exists".
     assert.equal(res.statusCode, REGISTRATION_NEUTRAL_STATUS);
     assert.equal(res.body.code, REGISTRATION_NEUTRAL_CODE);
-    assert.equal(selectCalls, 1);
+    assert.equal(res.body.redirectTo, undefined);
+    assert.equal(selectCalls, 1, "the existing-email check runs");
+  });
+  it("lets a provider with fields and a role-less supply sign-up past the gate", async () => {
+    const res = await register({ intent: "supply", supplyRole: "provider", provider: { businessName: "B", category: "other", city: "Kyoto" } });
+    assert.equal(res.statusCode, REGISTRATION_NEUTRAL_STATUS);
+    assert.equal(res.body.code, REGISTRATION_NEUTRAL_CODE);
     const bare = await register({ intent: "supply" });
-    assert.equal(bare.statusCode, 403);
-    assert.equal(bare.body.reason, "provider_fields_required");
-    assert.equal(selectCalls, 1, "refused before the existing-email check");
+    assert.equal(bare.statusCode, REGISTRATION_NEUTRAL_STATUS);
+    assert.equal(bare.body.code, REGISTRATION_NEUTRAL_CODE);
+    const expert = await register({ intent: "supply", supplyRole: "expert" });
+    assert.equal(expert.statusCode, REGISTRATION_NEUTRAL_STATUS);
+    assert.equal(expert.body.reason, undefined);
   });
-  it("an unknown intent is a traveler", async () => {
+  it("an unknown intent still creates the account", async () => {
     const res = await register({ intent: "provider" });
-    assert.equal(res.statusCode, 403);
-    assert.equal(res.body.code, TRAVELER_WAITLIST);
-  });
-  it("with no launch market stated, the redirect is the home page — never a guessed city", async () => {
-    settings.launch_market_slug = null;
-    const res = await register();
-    assert.equal(res.body.redirectTo, "/");
+    assert.equal(res.statusCode, REGISTRATION_NEUTRAL_STATUS);
+    assert.equal(res.body.code, REGISTRATION_NEUTRAL_CODE);
   });
 });
 
@@ -197,33 +184,17 @@ describe("S3 — email register in open mode", () => {
   });
 });
 
-describe("S4 — the QA sign-up needs the QA domain AND the code", () => {
-  it("a QA-domain address with the matching code passes a waitlist-mode traveler", async () => {
+describe("S4 — the QA code does not decide the account", () => {
+  it("a waitlist-mode traveler passes with or without the code", async () => {
     process.env.QA_SIGNUP_CODE = "qa-secret-123";
-    const res = await register({ qaCode: "qa-secret-123" });
-    // AUTH-1 fix 3b: an existing address gets the neutral 202, never "already exists".
+    assert.equal((await register({ qaCode: "qa-secret-123" })).statusCode, REGISTRATION_NEUTRAL_STATUS);
+    assert.equal((await register({ qaCode: "qa-secret-12" })).statusCode, REGISTRATION_NEUTRAL_STATUS);
+    assert.equal((await register({})).statusCode, REGISTRATION_NEUTRAL_STATUS);
+    delete process.env.QA_SIGNUP_CODE;
+    delete process.env.QA_ACCOUNT_EMAIL_DOMAIN;
+    const res = await register({ email: "someone@example.com", qaCode: "anything" });
     assert.equal(res.statusCode, REGISTRATION_NEUTRAL_STATUS);
     assert.equal(res.body.code, REGISTRATION_NEUTRAL_CODE);
-  });
-  it("a QA-domain address with a wrong, absent or unset code refuses", async () => {
-    process.env.QA_SIGNUP_CODE = "qa-secret-123";
-    assert.equal((await register({ qaCode: "qa-secret-12" })).statusCode, 403);
-    assert.equal((await register({})).statusCode, 403);
-    delete process.env.QA_SIGNUP_CODE;
-    assert.equal((await register({ qaCode: "" })).statusCode, 403);
-    assert.equal((await register({ qaCode: "anything" })).statusCode, 403);
-  });
-  it("the right code on a non-QA address refuses", async () => {
-    process.env.QA_SIGNUP_CODE = "qa-secret-123";
-    const res = await register({ email: "someone@example.com", qaCode: "qa-secret-123" });
-    assert.equal(res.statusCode, 403);
-    assert.equal(res.body.code, TRAVELER_WAITLIST);
-    assert.equal((await register({ email: "x@traveloure-qa.test.example.com", qaCode: "qa-secret-123" })).statusCode, 403);
-  });
-  it("an unset QA domain refuses even the right code", async () => {
-    process.env.QA_SIGNUP_CODE = "qa-secret-123";
-    delete process.env.QA_ACCOUNT_EMAIL_DOMAIN;
-    assert.equal((await register({ qaCode: "qa-secret-123" })).statusCode, 403);
   });
   it("the comparison never throws on a length mismatch and never matches an empty secret", () => {
     assert.equal(qaSignupCodeMatches("a", "a-much-longer-secret"), false);
@@ -272,11 +243,16 @@ describe("S6 — the Ready-Made purchase gate", () => {
 
 describe("S7 — the pure rules", () => {
   it("decides, normalises and builds the path", () => {
-    assert.deepEqual(decideFirstTimeSignup({ mode: "open", intent: "traveler", qaCodeValid: false }), { allowed: true });
-    // WL-B (sanctioned pin edit): a role-less supply sign-up is refused before launch.
-    assert.deepEqual(decideFirstTimeSignup({ mode: "waitlist", intent: "supply", qaCodeValid: false }), { allowed: false, reason: "provider_fields_required" });
-    assert.deepEqual(decideFirstTimeSignup({ mode: "waitlist", intent: "traveler", qaCodeValid: true }), { allowed: true });
-    assert.deepEqual(decideFirstTimeSignup({ mode: "waitlist", intent: "traveler", qaCodeValid: false }), { allowed: false, code: TRAVELER_WAITLIST });
+    for (const input of [
+      { mode: "open" as const, intent: "traveler" as const, qaCodeValid: false },
+      { mode: "waitlist" as const, intent: "supply" as const, qaCodeValid: false },
+      { mode: "waitlist" as const, intent: "traveler" as const, qaCodeValid: true },
+      { mode: "waitlist" as const, intent: "traveler" as const, qaCodeValid: false },
+      { mode: "waitlist" as const, intent: "supply" as const, qaCodeValid: false, supplyRole: "expert" as const },
+      { mode: "waitlist" as const, intent: "supply" as const, qaCodeValid: false, supplyRole: "provider" as const, providerFieldsValid: false },
+    ]) {
+      assert.deepEqual(decideFirstTimeSignup(input), { allowed: true });
+    }
     assert.equal(normalizeSignupIntent("supply"), "supply");
     assert.equal(normalizeSignupIntent("SUPPLY"), "traveler");
     assert.equal(normalizeSignupIntent(undefined), "traveler");
@@ -297,17 +273,11 @@ describe("S8 — Replit OIDC", () => {
     authStorage.getUserByEmail = async () => undefined as any;
     authStorage.upsertUser = async (u: any) => { created.push(u); return { ...u, isSuspended: false } as any; };
   });
-  it("waitlist mode refuses a first-time traveler and creates nothing", async () => {
-    await assert.rejects(() => upsertUser({ sub: "r-new-1" }), new RegExp(TRAVELER_WAITLIST));
-    assert.equal(created.length, 0);
+  it("waitlist mode creates a first-time traveler", async () => {
+    assert.equal(await upsertUser({ sub: "r-new-1" }), "r-new-1");
+    assert.equal(created.length, 1);
   });
-  // WL-B (sanctioned pin edit): a social sign-in carries no provider fields, so before launch a first-time supply
-  // sign-up is refused there and nothing is created; it passes once sign-up is open.
-  it("waitlist mode refuses a first-time supply sign-up and creates nothing; open mode lets it through", async () => {
-    await assert.rejects(() => upsertUser({ sub: "r-new-2" }, { intent: "supply" }), /provider_fields_required/);
-    assert.equal(created.length, 0);
-    settings.traveler_signup_mode = "open";
-    invalidatePlatformFlagCache();
+  it("waitlist mode creates a first-time supply sign-up", async () => {
     assert.equal(await upsertUser({ sub: "r-new-2" }, { intent: "supply" }), "r-new-2");
     assert.equal(created.length, 1);
   });
@@ -336,22 +306,12 @@ describe("S9 — Facebook", () => {
     await facebookVerify("t", "r", profile, (err, user, info) => { out = { err, user, info }; }, intent ? { intent } : {});
     return out;
   }
-  it("waitlist mode refuses a first-time traveler and creates nothing", async () => {
+  it("waitlist mode creates a first-time traveler", async () => {
     const out = await verify();
-    assert.equal(out.user, false);
-    assert.equal(out.info.code, TRAVELER_WAITLIST);
-    assert.ok(!JSON.stringify(out.info).includes("@"), "the refusal carries no email");
-    assert.equal(created.length, 0);
+    assert.equal(out.user?.claims?.sub, "fb_4242");
+    assert.equal(created.length, 1);
   });
-  // WL-B (sanctioned pin edit): refused before launch (no provider fields on a social sign-in); open mode lets it
-  // through, recorded as a Facebook account.
-  it("waitlist mode refuses a first-time supply sign-up; open mode records it as a Facebook account", async () => {
-    const refused = await verify("supply");
-    assert.equal(refused.user, false);
-    assert.equal(refused.info.code, "provider_fields_required");
-    assert.equal(created.length, 0);
-    settings.traveler_signup_mode = "open";
-    invalidatePlatformFlagCache();
+  it("waitlist mode records a first-time supply sign-up as a Facebook account", async () => {
     const out = await verify("supply");
     assert.equal(out.user?.claims?.sub, "fb_4242");
     assert.equal(created[0]?.authProvider, "facebook");

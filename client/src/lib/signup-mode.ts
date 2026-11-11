@@ -69,9 +69,9 @@ export function useBookingActionsShown(): boolean {
   return bookingActionsShown(useSignupMode().mode);
 }
 
-/** A-7: traveler sign-up is offered only in open mode (provider and expert sign-up are not traveler paths). */
+/** Leon, Nov 11, 2026: traveler sign-up is offered in waitlist mode too. Purchases stay behind `bookingActionsShown`. */
 export function useTravelerSignupShown(): boolean {
-  return useSignupMode().mode === "open";
+  return true;
 }
 
 /**

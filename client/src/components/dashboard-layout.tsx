@@ -4,6 +4,7 @@ import { Link } from "wouter";
 import { UserMenu } from "@/components/user-menu";
 import { NotificationBell } from "@/components/notification-bell";
 import { TraveloureLogo } from "@/components/ui/traveloure-logo";
+import { KyotoMarketNotice } from "@/components/KyotoMarketNotice";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -43,6 +44,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               <UserMenu />
             </div>
           </header>
+          <KyotoMarketNotice />
           <main className="flex-1 overflow-auto">
             {children}
           </main>

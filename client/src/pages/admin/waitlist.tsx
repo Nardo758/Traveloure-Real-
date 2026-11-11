@@ -39,6 +39,18 @@ interface WaitlistCounts {
 interface WaitlistSearchRow {
   id: string; email: string; role: string; marketSlug: string | null; source: string | null; createdAt: string | null; isQa: boolean;
 }
+interface WaitlistEntryRow {
+  id: string;
+  email: string;
+  role: string;
+  marketSlug: string;
+  source: string | null;
+  contactName: string | null;
+  businessName: string | null;
+  serviceType: string | null;
+  createdAt: string | null;
+  isQa: boolean;
+}
 
 function WaitlistSearch() {
   const [input, setInput] = useState("");
@@ -170,6 +182,59 @@ function Totals({ total, consented, prefix }: { total: number; consented: number
   );
 }
 
+function WaitlistEntries({ marketQuery }: { marketQuery: string }) {
+  const { data, isLoading, isError } = useQuery<{ rows: WaitlistEntryRow[] }>({
+    queryKey: [`/api/admin/waitlist/entries${marketQuery}`],
+  });
+  const groups: { market: string; rows: WaitlistEntryRow[] }[] = [];
+  for (const row of data?.rows ?? []) {
+    const last = groups[groups.length - 1];
+    if (!last || last.market !== row.marketSlug) groups.push({ market: row.marketSlug, rows: [row] });
+    else last.rows.push(row);
+  }
+  return (
+    <Card>
+      <CardHeader><CardTitle>Sign-ups</CardTitle></CardHeader>
+      <CardContent className="space-y-6">
+        {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+        {isError && <p className="text-sm text-destructive">Could not load the waitlist.</p>}
+        {data && groups.length === 0 && <p className="text-sm text-muted-foreground">None yet</p>}
+        {groups.map((g) => (
+          <div key={g.market} data-testid={`group-waitlist-entries-${g.market}`}>
+            <h3 className="mb-2 text-sm font-medium">{waitlistCityName(g.market) ?? g.market}</h3>
+            <table className="text-sm" data-testid={`table-waitlist-entries-${g.market}`}>
+              <thead>
+                <tr>
+                  <th className="pr-4 text-left font-medium">Role</th>
+                  <th className="pr-4 text-left font-medium">Name</th>
+                  <th className="pr-4 text-left font-medium">Business</th>
+                  <th className="pr-4 text-left font-medium">Email</th>
+                  <th className="pr-4 text-left font-medium">Category</th>
+                  <th className="pr-4 text-left font-medium">Source</th>
+                  <th className="text-left font-medium">Joined</th>
+                </tr>
+              </thead>
+              <tbody>
+                {g.rows.map((r) => (
+                  <tr key={r.id} data-testid={`row-waitlist-entry-${r.id}`}>
+                    <td className="pr-4">{r.role}</td>
+                    <td className="pr-4">{r.contactName ?? ""}</td>
+                    <td className="pr-4">{r.businessName ?? ""}</td>
+                    <td className="pr-4">{r.email}{r.isQa && <span className="ml-2 text-xs text-muted-foreground">QA</span>}</td>
+                    <td className="pr-4">{r.serviceType ?? ""}</td>
+                    <td className="pr-4">{r.source ?? ""}</td>
+                    <td>{r.createdAt ?? ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
 function MarketTable({ rows }: { rows: WaitlistCounts["byMarket"] }) {
   return (
     <table className="text-sm" data-testid="table-waitlist-markets">
@@ -235,6 +300,7 @@ export default function AdminWaitlist() {
                 </label>
               </CardContent>
             </Card>
+            <WaitlistEntries marketQuery={qs} />
             <Card>
               <CardHeader><CardTitle>Travelers{market}</CardTitle></CardHeader>
               <CardContent className="space-y-4">

@@ -269,6 +269,8 @@ import { conciergeRetiredMiddleware } from "./routes/concierge-retired";
 import upsellRoutes from "./routes/upsell.routes";
 import tripsRoutes from "./routes/trips.routes";
 import { marketOpenDecisionFor } from "./services/market-open-gate";
+import { waitlistPurchaseDecisionFor } from "./services/waitlist-purchase-gate";
+import { TRAVELER_WAITLIST, TRAVELER_WAITLIST_MESSAGE } from "@shared/launch-signup";
 import advisorRoutes from "./routes/advisor.routes";
 import demandRoutes from "./routes/demand.routes";
 import providerListingHealthRoutes from "./routes/provider-listing-health.routes";
@@ -2078,6 +2080,10 @@ ${bannedCopyPromptLine()}`;
   app.post("/api/expert-booking-requests", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!; // §14: acting user is the session, never req.body
+      const waitlistGate = await waitlistPurchaseDecisionFor(userId);
+      if (!waitlistGate.allowed) {
+        return res.status(403).json({ code: TRAVELER_WAITLIST, message: TRAVELER_WAITLIST_MESSAGE });
+      }
       if (userId && await refuseUnverifiedTravelerSender(res, userId)) return;
 
       // A tripId that isn't even a non-empty string never resolves to a trip; the lookup is

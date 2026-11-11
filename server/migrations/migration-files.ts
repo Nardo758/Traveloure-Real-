@@ -2309,4 +2309,8 @@ export const MIGRATION_FILES = [
   // platform_admin. The owner statement is NOT here (Leon runs it by hand; his id never goes in a commit). Ledger
   // 2026-11-10-slice0-staff-roles.
   "444_slice0_staff_roles.sql",
+  // 445 — launch_waitlist unique index becomes (email, market_slug, role) so one address can
+  // hold a traveler row and an expert or provider row in the same market. Index only.
+  // Migration 445 SQL approved — Leon (Nov 11, 2026).
+  "445_launch_waitlist_email_market_role.sql",
 ] as const;

@@ -8,6 +8,7 @@ import { LanguageMenu } from "@/components/language-menu";
 import { useAuth } from "@/hooks/use-auth";
 import { HandleClaimBanner } from "@/components/backoffice/handle-claim-banner";
 import { BookingModeBanner } from "@/components/backoffice/booking-mode-banner";
+import { KyotoMarketNotice } from "@/components/KyotoMarketNotice";
 
 /**
  * BackofficeShell — the single console shell shared by the provider and expert
@@ -142,6 +143,7 @@ export function BackofficeShell({
               <UserMenu />
             </div>
           </header>
+          <KyotoMarketNotice />
           {/* Ledger `2026-09-05-handles-are-claimed` (LD 40): the "Claim your handle" prompt mounts
               HERE — once, on the shell BOTH earner consoles render through — rather than once per
               console, so there is one decision about when an earner is asked. It renders nothing

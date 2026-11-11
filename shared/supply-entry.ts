@@ -2,7 +2,8 @@
  * Where a supply sign-up continues (ledger `2026-10-21-supply-entry-paths`).
  *
  * One path per role — the same destinations `/earn`'s "I do this" already uses.
- * A door that names no role, or a role this map does not carry, lands on `/earn`.
+ * A door that names no role, or a role this map does not carry, stays on the account form
+ * (Leon, Nov 11, 2026: every supply door can create an account).
  * It does not invent a service. `?qa=1` stays on the account form so a tester can
  * still type the server-side QA code. Anything that is not `intent=supply` is
  * left on the account form (traveler sign-up, including the waitlist redirect).
@@ -81,12 +82,6 @@ function withCarried(path: string, params: URLSearchParams): string {
   return sameSiteReturnPath(href) ?? base;
 }
 
-function chooserHref(params: URLSearchParams): string {
-  const source = carriedSupplySource(params.get("source"));
-  const href = source ? `/earn?source=${encodeURIComponent(source)}` : "/earn";
-  return sameSiteReturnPath(href) ?? "/earn";
-}
-
 /** Where `intent=supply` continues. Account means "do not redirect". */
 export function supplySignupContinuation(search: string): SupplyContinuation {
   const params = searchParamsOf(search);
@@ -100,7 +95,7 @@ export function supplySignupContinuation(search: string): SupplyContinuation {
   const path = role && Object.prototype.hasOwnProperty.call(SUPPLY_APPLICATION_BY_ROLE, role)
     ? SUPPLY_APPLICATION_BY_ROLE[role as SupplyApplicationRole]
     : null;
-  if (!path) return { kind: "chooser", href: chooserHref(params) };
+  if (!path) return { kind: "account" };
   return { kind: "application", href: withCarried(path, params) };
 }
 

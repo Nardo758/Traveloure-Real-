@@ -130,7 +130,7 @@ describe("WL-B screen: the expert refusal", () => {
   it("E a stated supply role stays on the account form", () => {
     assert.deepEqual(supplySignupContinuation("?intent=supply&supplyRole=provider"), { kind: "account" });
     assert.deepEqual(supplySignupContinuation("?intent=supply&supplyRole=expert"), { kind: "account" });
-    assert.equal(supplySignupContinuation("?intent=supply").kind, "chooser");
+    assert.equal(supplySignupContinuation("?intent=supply").kind, "account");
     assert.equal(supplySignupContinuation("?intent=supply&role=service_provider").kind, "application");
   });
 });

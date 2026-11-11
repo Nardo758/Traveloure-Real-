@@ -5,6 +5,7 @@ import { Bell, X, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { UserMenu } from "@/components/user-menu";
+import { KyotoMarketNotice } from "@/components/KyotoMarketNotice";
 import { useQuery } from "@tanstack/react-query";
 
 interface EALayoutProps {
@@ -219,6 +220,7 @@ export function EALayout({ children, title }: EALayoutProps) {
               <UserMenu />
             </div>
           </header>
+          <KyotoMarketNotice />
           <ImminentDatesBanner />
           <main className="flex-1 overflow-auto">
             {children}

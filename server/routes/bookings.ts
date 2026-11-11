@@ -15,6 +15,8 @@ import { db } from '../db';
 import { serviceBookings } from '@shared/schema';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { getUserId, getDbRole } from '../utils/auth';
+import { waitlistPurchaseDecisionFor } from '../services/waitlist-purchase-gate';
+import { TRAVELER_WAITLIST, TRAVELER_WAITLIST_MESSAGE } from '@shared/launch-signup';
 import { sanitizeBookingForExpert } from '../utils/data-sanitizer';
 import { holdWindowDays } from '../config/earnings-hold.config';
 import { DISPUTABLE_FROM_STATUSES, TRAVELER_CONFIRMABLE_FROM_STATUSES } from '../utils/booking-from-states';
@@ -179,6 +181,10 @@ router.post('/process-cart', isAuthenticated, requireVerifiedEmail("booking"), a
     // authenticated user create trips/bookings under another user's id.)
     const sessionUserId = getUserId(req)!;
     if (!sessionUserId) return res.status(401).json({ error: 'Not authenticated' });
+    const waitlistGate = await waitlistPurchaseDecisionFor(sessionUserId);
+    if (!waitlistGate.allowed) {
+      return res.status(403).json({ code: TRAVELER_WAITLIST, message: TRAVELER_WAITLIST_MESSAGE });
+    }
 
     const { cartItems, paymentMethod = 'full', bookingMetadata } = req.body;
 

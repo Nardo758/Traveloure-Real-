@@ -3,9 +3,9 @@
  * create an account; an expert is refused and sent to "Apply Now" on the waitlist. ONE decision, read by every path.
  *
  *   G1  a provider supply sign-up with business name, category and city passes (the email is the account's own)
- *   G2  a provider missing any one required field is refused provider_fields_required, before any account read
+ *   G2  a provider missing a field still fails the field schema; the account is no longer refused
  *   G3  a traveler is decided exactly as before WL-B
- *   G4  an expert supply sign-up is refused expert_apply_now, before any account read
+ *   G4  an expert supply sign-up is allowed (Leon, Nov 11, 2026)
  *   G5  email, Replit and Facebook give the same decision; a social provider sign-up (no fields) is sent to email
  *   G6  website and languages are optional; venue is a category
  *   G8  the expert refusal carries reason, the exact message and applyPath = WAITLIST_EXPERT_FORM_PATH
@@ -15,7 +15,7 @@
  *       may not send traveler or provider fields;
  *       traveler and provider bodies validate as before
  *   G14 the expert keep rate the page shows is GET /api/fee-policies/keep-rates (admin config), never a literal
- *   L   a supply sign-up that names no role is refused provider_fields_required before launch; a social door's role
+ *   L   a supply sign-up that names no role is allowed; a social door's role
  *       is taken from its return path (/become-expert ⇒ expert, /become-provider ⇒ provider)
  *
  * Run: npx tsx --test server/__tests__/wlb-provider-signup-gate.test.ts
@@ -35,7 +35,6 @@ import {
   EXPERT_APPLY_NOW_MESSAGE,
   PROVIDER_EMAIL_SIGNUP_PATH,
   PROVIDER_FIELDS_REQUIRED,
-  TRAVELER_WAITLIST,
   decideFirstTimeSignup,
   providerSignupFieldsSchema,
   supplyRefusalRedirect,
@@ -109,8 +108,6 @@ async function register(extra: Record<string, unknown> = {}) {
   return res;
 }
 
-const expertRefusal = { allowed: false, reason: EXPERT_APPLY_NOW, message: EXPERT_APPLY_NOW_MESSAGE, applyPath: WAITLIST_EXPERT_FORM_PATH };
-
 describe("WL-B decision", () => {
   it("G1 a provider with its fields passes; G6 website and languages are optional, venue is a category", () => {
     assert.ok(providerSignupFieldsSchema.safeParse(FIELDS).success);
@@ -119,7 +116,7 @@ describe("WL-B decision", () => {
     assert.deepEqual(decideFirstTimeSignup({ mode: "waitlist", intent: "supply", qaCodeValid: false, supplyRole: "provider", providerFieldsValid: true }), { allowed: true });
   });
 
-  it("G2 a provider missing any required field is refused", () => {
+  it("G2 a provider missing any required field fails the field schema and the account is still allowed", () => {
     for (const k of ["businessName", "category", "city"] as const) {
       const partial: Record<string, string> = { ...FIELDS };
       delete partial[k];
@@ -127,20 +124,17 @@ describe("WL-B decision", () => {
       assert.equal(providerSignupFieldsSchema.safeParse({ ...FIELDS, [k]: "  " }).success, false, `${k} blank`);
     }
     assert.equal(providerSignupFieldsSchema.safeParse({ ...FIELDS, category: "spa" }).success, false);
-    assert.deepEqual(decideFirstTimeSignup({ mode: "waitlist", intent: "supply", qaCodeValid: false, supplyRole: "provider", providerFieldsValid: false }), { allowed: false, reason: PROVIDER_FIELDS_REQUIRED });
+    assert.equal(providerSignupFieldsSchema.safeParse({ ...FIELDS, category: "spa" }).success, false);
+    assert.deepEqual(decideFirstTimeSignup({ mode: "waitlist", intent: "supply", qaCodeValid: false, supplyRole: "provider", providerFieldsValid: false }), { allowed: true });
   });
 
-  it("G3 a traveler is decided as before; L a supply sign-up with no role is decided as before", () => {
-    assert.deepEqual(decideFirstTimeSignup({ mode: "waitlist", intent: "traveler", qaCodeValid: false }), { allowed: false, code: TRAVELER_WAITLIST });
+  it("G3/G4/L every waitlist sign-up is allowed", () => {
+    assert.deepEqual(decideFirstTimeSignup({ mode: "waitlist", intent: "traveler", qaCodeValid: false }), { allowed: true });
     assert.deepEqual(decideFirstTimeSignup({ mode: "waitlist", intent: "traveler", qaCodeValid: true }), { allowed: true });
     assert.deepEqual(decideFirstTimeSignup({ mode: "open", intent: "traveler", qaCodeValid: false }), { allowed: true });
-    assert.deepEqual(decideFirstTimeSignup({ mode: "waitlist", intent: "supply", qaCodeValid: false }), { allowed: false, reason: PROVIDER_FIELDS_REQUIRED });
-    assert.deepEqual(decideFirstTimeSignup({ mode: "waitlist", intent: "supply", qaCodeValid: true }), { allowed: true }, "a QA sign-up passes");
-    assert.deepEqual(decideFirstTimeSignup({ mode: "open", intent: "supply", qaCodeValid: false, supplyRole: "expert" }), { allowed: true }, "after launch nobody is refused");
-  });
-
-  it("G4/G8 an expert is refused with the apply-now answer", () => {
-    assert.deepEqual(decideFirstTimeSignup({ mode: "waitlist", intent: "supply", qaCodeValid: false, supplyRole: "expert" }), expertRefusal);
+    assert.deepEqual(decideFirstTimeSignup({ mode: "waitlist", intent: "supply", qaCodeValid: false }), { allowed: true });
+    assert.deepEqual(decideFirstTimeSignup({ mode: "waitlist", intent: "supply", qaCodeValid: false, supplyRole: "expert" }), { allowed: true });
+    assert.deepEqual(decideFirstTimeSignup({ mode: "open", intent: "supply", qaCodeValid: false, supplyRole: "expert" }), { allowed: true });
     assert.equal(EXPERT_APPLY_NOW_MESSAGE, "Expert accounts open at launch. Apply now to join as a local expert.");
   });
 
@@ -154,39 +148,31 @@ describe("WL-B decision", () => {
 });
 
 describe("WL-B on every path", () => {
-  it("G2/G4/G8/G9 email: the expert and the field-less provider are refused before any account read", async () => {
+  it("G2/G4 email: the expert, the field-less provider, and the traveler all pass", async () => {
     const expert = await register({ intent: "supply", supplyRole: "expert" });
-    assert.equal(expert.statusCode, 403);
-    assert.deepEqual(expert.body, expertRefusal);
+    assert.equal(expert.statusCode, 202);
+    assert.equal(expert.body.reason, undefined);
     const bare = await register({ intent: "supply", supplyRole: "provider", provider: { businessName: "Fixture Tours" } });
-    assert.equal(bare.statusCode, 403);
-    assert.deepEqual(bare.body, { allowed: false, reason: PROVIDER_FIELDS_REQUIRED });
-    assert.equal(selectCalls, 0, "no account read, no account created");
+    assert.equal(bare.statusCode, 202);
     const ok = await register({ intent: "supply", supplyRole: "provider", provider: FIELDS });
-    assert.equal(ok.statusCode, 202, "past the gate");
-    for (const r of [bare, ok]) {
-      assert.equal(JSON.stringify(r.body).includes("applyPath"), false);
-      assert.equal(JSON.stringify(r.body).includes(EXPERT_APPLY_NOW_MESSAGE), false);
-    }
+    assert.equal(ok.statusCode, 202);
     const traveler = await register();
-    assert.equal(traveler.body.code, TRAVELER_WAITLIST);
-    assert.equal(JSON.stringify(traveler.body).includes("applyPath"), false);
+    assert.equal(traveler.statusCode, 202);
+    assert.equal(traveler.body.code, "registration_received");
   });
 
-  it("G5 Replit and Facebook give the same decision and create nothing when refused", async () => {
-    await assert.rejects(() => upsertUser({ sub: "wlb-r-1" }, { intent: "supply", supplyRole: "expert" }), new RegExp(EXPERT_APPLY_NOW));
-    await assert.rejects(() => upsertUser({ sub: "wlb-r-2" }, { intent: "supply", supplyRole: "provider" }), new RegExp(PROVIDER_FIELDS_REQUIRED));
-    assert.equal(created.length, 0);
-    await assert.rejects(() => upsertUser({ sub: "wlb-r-3" }, { intent: "supply" }), new RegExp(PROVIDER_FIELDS_REQUIRED), "no role: refused");
-    assert.equal(created.length, 0);
+  it("G5 Replit and Facebook create the account in waitlist mode", async () => {
+    assert.equal(await upsertUser({ sub: "wlb-r-1" }, { intent: "supply", supplyRole: "expert" }), "wlb-r-1");
+    assert.equal(await upsertUser({ sub: "wlb-r-2" }, { intent: "supply", supplyRole: "provider" }), "wlb-r-2");
+    assert.equal(await upsertUser({ sub: "wlb-r-3" }, { intent: "supply" }), "wlb-r-3");
+    assert.equal(created.length, 3);
     const profile: any = { id: "9191", displayName: "F B", emails: [{ value: "wlb-fb@example.com" }], photos: [], name: { givenName: "F" } };
-    for (const [role, code] of [["expert", EXPERT_APPLY_NOW], ["provider", PROVIDER_FIELDS_REQUIRED]] as const) {
+    for (const role of ["expert", "provider"] as const) {
       created = [];
       let out: any;
       await facebookVerify("t", "r", profile, (err, user, info) => { out = { err, user, info }; }, { intent: "supply", supplyRole: role });
-      assert.equal(out.user, false);
-      assert.equal(out.info.code, code);
-      assert.equal(created.length, 0);
+      assert.equal(out.user?.claims?.sub, "fb_9191");
+      assert.equal(created.length, 1);
     }
   });
 
