@@ -2,7 +2,7 @@
  * issue-queue.service.ts — the per-market issue queue (slice 0, Addendum A v2). DERIVED, not a table.
  *
  * Addendum A names four existing reads. Two exist on main and are read here (Phase 0 F4):
- *   · expired facts — a public, non-plan `place_facts` row past `expires_at` and not superseded;
+ *   · expired facts — a non-plan registry `place_facts` row (never `places_api`) past `expires_at`, not superseded;
  *   · pending bot proposals — `bot_proposals.status = 'pending'`.
  * The other two join when their slices land: provider gaps (`listing_gap`, slice 1) and unclaimed questions (slice 7).
  * Message reports carry no market and stay on their own moderator/admin routes.
@@ -11,7 +11,7 @@
  * row with no market is in no scope). The bot projection (Ops Bot, `queue:read`) carries ids, kinds, markets and ages
  * only — no proposal body, no bot name, no user id.
  */
-import { and, asc, eq, inArray, isNotNull, isNull, lt } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, lt, ne } from "drizzle-orm";
 import { db } from "../db";
 import { botAccounts, botProposals, placeFacts } from "@shared/schema";
 
@@ -42,6 +42,8 @@ export async function listIssueQueue(scope: "all" | readonly string[], now: Date
         isNull(placeFacts.supersededBy),
         isNull(placeFacts.planId),
         isNull(placeFacts.itineraryItemId),
+        // Never a Places fact (LD 57: Google content stays plan-only); registry rows only.
+        ne(placeFacts.origin, "places_api"),
         marketWhere(placeFacts.market),
       ),
     )

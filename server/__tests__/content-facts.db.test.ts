@@ -305,6 +305,10 @@ test("C5: no Places fact reaches a public route", async () => {
     // are excluded in SQL, never fetched. An expired place leaves only "not checked yet" and the source's top-level
     // site, never fact content.
     "server/services/catalogue-search.service.ts",
+    // Slice 0 (ledger `2026-11-10-slice0-staff-roles`): the per-market issue queue READS expired REGISTRY rows (no
+    // plan, no item, `origin <> 'places_api'` in SQL) for /api/admin/issue-queue behind the blanket admin guard.
+    // The Ops Bot's /api/bot/queue projection carries only the row id, kind, market and age — never fact content.
+    "server/services/issue-queue.service.ts",
   ]);
   const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
   const offenders: string[] = [];
