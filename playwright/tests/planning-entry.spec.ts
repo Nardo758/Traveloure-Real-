@@ -155,6 +155,36 @@ test.describe("Single planning entry — PlanEntry", () => {
     await expect(page.getByTestId("plan-entry-summary")).toContainText("Kyoto");
   });
 
+  test("QA round 3: a date-first door with no occasion offers Next, never Start, on Step 1, and lands on Step 2", async ({ page }) => {
+    // QA's reported path (prod 47989fa): a fresh guest, header Start a plan → /?start=1&step=around → "A date" →
+    // "Pick dates" → a range → the city chip under "What's on" → Step 2, the occasion. Nothing is minted on the way.
+    let mints = 0;
+    page.on("request", (r) => {
+      if (r.method() === "POST" && /^\/api\/(trips|guest-plans)$/.test(new URL(r.url()).pathname)) mints++;
+    });
+    await page.goto(`${BASE_URL}/?start=1&step=around`, { waitUntil: "domcontentloaded" });
+    // A fresh visitor has no plan: the footer's Start a plan is drawn (it gates on the start state).
+    await expect(page.getByTestId("button-footer-start-plan")).toHaveCount(1, { timeout: 15_000 });
+    await page.getByTestId("plan-entry-around-date").click();
+    await page.getByTestId("plan-entry-date-pick").click();
+    const now = new Date();
+    const ymd = (d: number) => {
+      const t = new Date(now.getFullYear(), now.getMonth() + 1, d);
+      return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+    };
+    await pickPlanDates(page.getByTestId("plan-entry-dates"), ymd(1), ymd(4));
+    await expect(page.getByTestId("plan-entry-whats-on")).toBeVisible();
+    await page.getByTestId("plan-entry-whats-on").getByTestId("plan-entry-city-kyoto").click();
+    // Step 1 offers Next and no Start.
+    await expect(page.getByTestId("button-plan-entry-next")).toBeVisible();
+    await expect(page.getByTestId("button-plan-entry-start")).toHaveCount(0);
+    await page.getByTestId("button-plan-entry-next").click();
+    await expect(page.getByTestId("plan-entry-step-occasion")).toBeVisible();
+    await expect(page.getByTestId("plan-entry").first()).toContainText("Kyoto");
+    expect(new URL(page.url()).pathname, "no plan was opened").toBe("/");
+    expect(mints, "nothing is minted before Step 2 is answered").toBe(0);
+  });
+
   for (const entry of [
     { path: "/about", testid: "button-start-planning" },
     { path: "/features", testid: "button-start-planning" },
@@ -363,6 +393,19 @@ test.describe("Single planning entry — authed", () => {
   // speaks for the plan the traveler HAS. A plan with no stops yet is REOPENED — the chip/resume
   // lands on that plan — because minting a second empty plan is what the ruling removed. A traveler
   // with nothing still gets PlanEntry, which is the next test.
+  test("QA round 3: the console sidebar's Start a plan opens PlanEntry for a new plan, never the /ai-assistant chat", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await registerUser(page);
+    await page.goto(`${BASE_URL}/dashboard`, { waitUntil: "domcontentloaded" });
+    const door = page.getByTestId("link-sidebar-start-a-plan");
+    await expect(door).toBeVisible({ timeout: 15_000 });
+    await expect(door).toHaveAttribute("href", "/?start=1");
+    await door.click();
+    await expect(page.getByTestId("plan-entry").first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("plan-entry-step-around")).toBeVisible();
+    expect(new URL(page.url()).pathname).not.toBe("/ai-assistant");
+  });
+
   test("with an EMPTY plan bound, the Trip Strip's Start a plan reopens that plan and the nav draws none", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await registerUser(page);
@@ -377,6 +420,8 @@ test.describe("Single planning entry — authed", () => {
     const strip = page.getByTestId("trip-strip");
     await expect(strip).toHaveAttribute("data-plan-state", "resume", { timeout: 15_000 });
     await expect(page.getByTestId("button-nav-start-plan")).toHaveCount(0);
+    // QA round 3 PR 2 (Leon, Nov 11, 2026): the footer's "Start a plan" gates on the start state like the nav's.
+    await expect(page.getByTestId("button-footer-start-plan")).toHaveCount(0);
     await expect(page.getByTestId("trip-strip-plan-label")).toHaveText("Start a plan");
     await page.getByTestId("trip-strip-plan-link").click();
     // It navigates to the SAME plan — no second plan, and no edit window either.

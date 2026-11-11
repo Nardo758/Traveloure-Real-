@@ -583,6 +583,32 @@ export function withMarqueeCity(state: PlanEntryState, marquee: string | null | 
 }
 
 /** Start a plan needs a city; nothing else (dates are optional — E1 placeholder window). */
+/**
+ * QA round 3 PR 2 (Leon, Nov 11, 2026): where Step 1's forward control goes. Pure — `PlanEntry`'s `advanceFromAround`
+ * calls this and nothing else decides it. A door that carried NO occasion, group or experience (and no event) goes to
+ * Step 2, the occasion — never to dates and party, never to a minted plan. A door that carried one goes to `details`:
+ * E2's carried-occasion skips stand (an event, a door's occasion slug, a door-chosen group, H-10's carried experience).
+ * No market yet ⇒ null (nothing to move to).
+ */
+export function stepAfterAround(input: {
+  state: Pick<PlanEntryState, "market" | "event" | "occasionSlug">;
+  groupChosen: boolean;
+  askDatesAndParty?: boolean | null;
+}): PlanEntryStep | null {
+  if (!input.state.market) return null;
+  const known = !!input.state.event || !!input.state.occasionSlug || input.groupChosen || !!input.askDatesAndParty;
+  return known ? "details" : "occasion";
+}
+
+/**
+ * QA round 3 PR 2: is the Start control (`button-plan-entry-start`) drawn on Step 1? In the pop-up only for a door that
+ * carried an occasion — a door with none offers "Next" to Step 2 and nothing else. Inline (the /experiences page) it is
+ * the page's sticky Continue (E3), whose press on Step 1 is `stepAfterAround` — it moves to the next step, never mints.
+ */
+export function startOfferedOnAround(input: { inline: boolean; state: Pick<PlanEntryState, "market" | "occasionSlug"> }): boolean {
+  return input.inline || (!!input.state.market && !!input.state.occasionSlug);
+}
+
 export function canStartPlan(state: PlanEntryState): boolean {
   return !!state.market;
 }
