@@ -20,7 +20,9 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { browseSavesToPlan, useSignupMode, type SignupMode } from "./signup-mode";
 import { cityFromPath, guestItemFromFeedItem, guestSaveErrorMessage, resolveSaveCity } from "./waitlist-guest-plan";
-import { queuePlanAdd, runGuestAdd } from "./plan-add-runner";
+import { queuePlanAdd, runGuestAdd, runSignedInRefAdd } from "./plan-add-runner";
+import { useSignInModal } from "@/contexts/SignInModalContext";
+import type { PlanItemRef } from "@shared/plan-item-ref";
 import { savedRefKey } from "./saved-refs";
 
 export type BrowseSavePath = "wait" | "guest_save" | "card_add";
@@ -92,5 +94,25 @@ export function useBrowseSaveToPlan(): {
       if (!saveToPlan && !onAdd) return undefined;
       return (item) => queueSave(item);
     },
+  };
+}
+
+/**
+ * Cut-list #1 slice C (/experiences event cards; Leon, Nov 11): an add that already holds its PlanItemRef and city —
+ * no card payload to map. Same paths as `wrapAdd`: a press before the reads answer waits in the one slot; a guest in
+ * waitlist mode writes to the guest plan; a signed-in traveler writes by ref to the active plan (or a new plan in the
+ * ref's city); a signed-out traveler in open mode is asked to sign in, as every open-mode add is.
+ */
+export function useDirectPlanAdd(): (job: { ref: PlanItemRef; city: string }) => void {
+  const { mode, isLoading: modeLoading } = useSignupMode();
+  const { user, isLoading: authLoading } = useAuth();
+  const { openSignInModal } = useSignInModal();
+  const path = browseSavePath({ modeLoading, authLoading, mode, signedIn: !!user });
+  return ({ ref, city }) => {
+    const job = { ref, city, chosenDate: null, key: savedRefKey(ref) };
+    if (path === "wait") queuePlanAdd(job);
+    else if (path === "guest_save") void runGuestAdd(job);
+    else if (user) void runSignedInRefAdd(job);
+    else openSignInModal();
   };
 }

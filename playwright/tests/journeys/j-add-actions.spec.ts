@@ -166,3 +166,51 @@ test("slice C — guest add: spinner, first-add calendar with Skip, Added to Day
   await page.keyboard.press("Escape");
   await expect(testid(page, "change-day-dialog")).toHaveCount(0);
 });
+
+/**
+ * A7 /experiences (Leon, Nov 11): the start page's event cards carry the same add button. Starting a plan around an
+ * event is unchanged; the add puts the event itself on the guest plan, with the same toast, first-add calendar and
+ * "Added ✓", inside the 375px viewport.
+ */
+test("slice C — /experiences event card: Add to plan → first-add calendar → Added to Day 1, at 375px", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.goto("/experiences");
+  await testid(page, "plan-entry-around-event").click({ timeout: 20_000 });
+  const events = testid(page, "plan-entry-events");
+  await expect(events).toBeVisible();
+  const add = events.locator('[data-testid^="plan-entry-event-add-"]').first();
+  await expect(add, "an open-market event carries the add button").toBeVisible({ timeout: 20_000 });
+  await expect(add).toContainText("Add to plan");
+  const eventId = ((await add.getAttribute("data-testid")) ?? "").replace("plan-entry-event-add-", "");
+  // The row that starts a plan around the event is still its own control, beside the add.
+  await expect(testid(page, `plan-entry-event-${eventId}`)).toBeVisible();
+
+  await add.click();
+  // A guest's first add makes the guest plan with no chosen dates, so the calendar opens with Skip for now.
+  const dates = testid(page, "first-add-dates-dialog");
+  await expect(dates).toBeVisible({ timeout: 15_000 });
+  await testid(page, "first-add-dates-panel-calendar-skip").click();
+  await expect(dates).toHaveCount(0);
+  await expect(testid(page, "toast-added")).toContainText(/Added to Day \d+\./, { timeout: 10_000 });
+  await expect(testid(page, "toast-added-undo")).toBeVisible();
+  await expect(add).toContainText("Added ✓", { timeout: 10_000 });
+  await expect(add).toBeDisabled();
+
+  // The row on the server: the session's guest plan holds this city event (named by its source id).
+  const held = await rows<{ id: string }>(
+    `SELECT i.id FROM itinerary_items i JOIN trips t ON t.id = i.trip_id JOIN city_events ce ON ce.source_id = i.content_id
+      WHERE t.guest_session_hash IS NOT NULL AND t.user_id IS NULL AND i.content_type = 'city_event' AND ce.id = $1
+      ORDER BY i.created_at DESC LIMIT 1`,
+    [eventId],
+  );
+  expect(held, "the event is on the guest plan").toHaveLength(1);
+
+  // 375px: the add button and the toast are inside the viewport; nothing scrolls sideways.
+  for (const el of [add, testid(page, "toast-added")]) {
+    const box = await el.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(375);
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+});

@@ -8,6 +8,8 @@
  *   B5 375px budget: one line, `whitespace-nowrap`, the longest label fits a phone card column
  *   B6 the header chip carries "View plan" from sm: up, as a sibling link (never nested)
  *   B7 the feedback host is mounted once in App and draws "Change day" / the first-add calendar with Skip for now
+ *   B8 /experiences: the page's event cards carry the one add button (beside the row, never inside it); the pop-up's
+ *      and a closed market's do not; an event with no source id names no row and draws none; city cards draw none
  *
  * Run: npx tsx --test client/src/components/__tests__/add-to-plan-button.test.tsx
  */
@@ -123,5 +125,22 @@ describe("B7 the feedback host", () => {
     assert.match(host, /altText=\{ADD_COPY\.undo\}/);
     assert.match(host, /altText=\{ADD_COPY\.retry\}/);
     assert.match(host, /max-w-\[calc\(100vw-2rem\)\]/, "both dialogs fit a phone");
+  });
+});
+
+describe("B8 /experiences event cards", () => {
+  it("the page container's open-market event rows carry the one add button, beside the row", () => {
+    const src = readFileSync("client/src/components/plan/PlanEntry.tsx", "utf8");
+    assert.match(src, /inline && \(!e\.marketKey \|\| isOpenMarket\(e\.marketKey\)\) \?/);
+    assert.match(src, /\{eventRow\(e\)\}\s*<EventAddButton event=\{e\} \/>/, "a sibling of the row, so no button nests in a button");
+    assert.match(src, /<AddToPlanButton\s+testId=\{`plan-entry-event-add-\$\{event\.id\}`\}/);
+    assert.match(src, /event\.sourceId\s*\?\s*planItemRefFromFeedItem\(\{ type: "city_event", sourceContentId: event\.sourceId/);
+    assert.match(src, /if \(!ref\) return null;/);
+    assert.match(src, /onClick=\{\(\) => add\(\{ ref, city: event\.city \}\)\}/);
+    // City cards keep their pick for Start a plan (Leon, Nov 11): no add button on the page's Place picker.
+    assert.doesNotMatch(readFileSync("client/src/pages/experiences.tsx", "utf8"), /AddToPlanButton/);
+    // The direct add takes the same paths as the feed: the slot, the guest rail, the signed-in ref rail, or sign-in.
+    const hook = readFileSync("client/src/lib/browse-save.ts", "utf8");
+    assert.match(hook, /if \(path === "wait"\) queuePlanAdd\(job\);\s*else if \(path === "guest_save"\) void runGuestAdd\(job\);\s*else if \(user\) void runSignedInRefAdd\(job\);\s*else openSignInModal\(\);/);
   });
 });
