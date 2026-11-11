@@ -386,7 +386,7 @@ test("slice B — header Add dates → a same-day range saves, and the slip agre
   day.setDate(day.getDate() + 45);
   const iso = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
   await pickPlanDates(panel, iso, iso);
-  await expect(panel.getByText("Leave date must be after")).toHaveCount(0);
+  await expect(panel.getByText("Leave date can't be before")).toHaveCount(0);
   const status = await actAndAwait(
     page,
     async () => {

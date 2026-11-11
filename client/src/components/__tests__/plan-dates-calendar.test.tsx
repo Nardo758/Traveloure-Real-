@@ -69,12 +69,12 @@ describe("C2 Skip for now only with onSkip", () => {
 describe("C3 leave before arrive, and same-day", () => {
   it("an inverted range shows the refusal and disables Save", () => {
     const out = text(html(<PlanDatesCalendar value={{ start: "2026-11-15", end: "2026-11-12" }} onChange={noop} onSave={noop} />));
-    assert.match(out, /role="alert"[^>]*>Leave date must be after your arrive date\.</);
+    assert.match(out, /role="alert"[^>]*>Leave date can't be before your arrive date\.</);
     assert.match(out, /<button[^>]*disabled=""[^>]*data-testid="button-slip-dates-save"/);
   });
   it("a same-day range has no refusal and Save is enabled", () => {
     const out = text(html(<PlanDatesCalendar value={{ start: "2026-11-12", end: "2026-11-12" }} onChange={noop} onSave={noop} />));
-    assert.doesNotMatch(out, /Leave date must be after/);
+    assert.doesNotMatch(out, /Leave date can't be before/);
     assert.doesNotMatch(out, /<button[^>]*disabled=""[^>]*data-testid="button-slip-dates-save"/);
     assert.match(out, /plan-dates-calendar-summary"[^>]*>Nov 12</);
   });

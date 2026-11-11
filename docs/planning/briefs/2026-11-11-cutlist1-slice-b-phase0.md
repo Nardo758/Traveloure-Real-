@@ -49,7 +49,8 @@ So slice B is client-only. **No migration. No server change.**
 ## 4. Strings
 
 New, all stamped — Wording approved — Leon (Nov 10, 11:27 AM ET): "When are you going?",
-"Add dates" (already on main), "Leave date must be after your arrive date."; Wording approved —
+"Add dates" (already on main); Wording approved — Leon (Nov 10, 11:47 PM ET): "Leave date can't be
+before your arrive date." (replaces the 11:27 AM wording); Wording approved —
 Leon (Nov 10, 11:44 AM ET): "Skip for now" (rendered only when a caller passes `onSkip`; only
 slice C's first add will). Reused as-is: "Save dates", "Saving…", "Not now". The month caption and
 the previous/next-month labels are react-day-picker's built-ins (unchanged library strings).

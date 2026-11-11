@@ -103,6 +103,6 @@ describe("R5 rangeSummary", () => {
 
 describe("R6 copy", () => {
   it("the refusal is the approved sentence", () => {
-    assert.equal(LEAVE_BEFORE_ARRIVE_MESSAGE, "Leave date must be after your arrive date.");
+    assert.equal(LEAVE_BEFORE_ARRIVE_MESSAGE, "Leave date can't be before your arrive date.");
   });
 });
