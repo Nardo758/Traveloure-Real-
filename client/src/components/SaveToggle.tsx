@@ -14,6 +14,9 @@
  * all: no control is better than a control that claims a save it cannot make. A signed-in viewer keeps
  * the Saved places shelf exactly as before — the two saves are deliberately different things.
  */
+import { ADD_COPY } from "@/lib/add-to-plan";
+import { runGuestAdd } from "@/lib/plan-add-runner";
+import { savedRefKey as addRefKey } from "@/lib/saved-refs";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Heart, Loader2 } from "lucide-react";
@@ -97,10 +100,9 @@ export function SaveToggle({
     if (guestSaving || !guestRef) return;
     setGuestSaving(true);
     try {
-      const result = await saveToGuestPlan(guestRef, guestRef.city);
-      toast({ title: guestSavedMessage(result) });
-    } catch (err) {
-      toast({ variant: "destructive", title: guestSaveErrorMessage(err) });
+      // Cut-list #1 slice C: the one add runner — "Added to Day {n}." with Undo / Change day, or Retry.
+      const ref = guestRef;
+      await runGuestAdd({ key: addRefKey(ref), ref, city: guestRef.city, chosenDate: null });
     } finally {
       setGuestSaving(false);
     }
@@ -138,7 +140,7 @@ export function SaveToggle({
       ) : (
         <Heart className={cn("h-3.5 w-3.5", existing ? "fill-rose-500 text-rose-500" : "text-gray-600")} />
       )}
-      {showLabel && <span>{saveToPlan ? WAITLIST_COPY.saveToPlan : existing ? "Saved" : "Save"}</span>}
+      {showLabel && <span>{saveToPlan ? ADD_COPY.addToPlan : existing ? "Saved" : "Save"}</span>}
     </button>
   );
 }

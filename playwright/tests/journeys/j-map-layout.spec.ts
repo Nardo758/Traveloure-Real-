@@ -85,8 +85,8 @@ test("8b-2 — start page → modal → the map opens on Browse with the trip's 
   await testid(page, "map-browse-tab-activities").click();
   await testid(page, "map-browse-search").fill(listingName);
   await testid(page, `map-browse-row-listing-${listing.id}`).click({ timeout: 20_000 });
-  // CAP-2 Phase 3 (ruling Nov 6): the add reads Save to plan; the day pill still places it on day 2.
-  await expect(testid(page, "map-browse-add")).toContainText("Save to plan");
+  // Cut-list #1 slice C: the one add button names the day the pill chose.
+  await expect(testid(page, "map-browse-add")).toContainText("Add to Day 2");
   const status = await actAndAwait(
     page,
     async () => {
@@ -97,6 +97,25 @@ test("8b-2 — start page → modal → the map opens on Browse with the trip's 
   expect(ok2xx(status), `the add answered ${status}`).toBe(true);
   // The card now says where it went, and offers the remove.
   await expect(testid(page, "map-browse-added")).toContainText("On day 2", { timeout: 15_000 });
+  // Slice C: the done state, and the toast with Undo and Change day.
+  await expect(testid(page, "map-browse-added")).toContainText("Added ✓");
+  await expect(testid(page, "toast-added")).toContainText("Added to Day 2.", { timeout: 10_000 });
+  await expect(testid(page, "toast-added-undo")).toBeVisible();
+  // Change day: the dialog lists the plan's four days (Day 2 is where it is); Day 3 moves the row on the server,
+  // and the next toast's Change day moves it back.
+  const moveTo = async (day: number) => {
+    await testid(page, "toast-added-change-day").click();
+    await expect(testid(page, "change-day-dialog")).toBeVisible();
+    await expect(testid(page, "change-day-option-4")).toBeVisible();
+    await expect(testid(page, "change-day-option-5")).toHaveCount(0);
+    await testid(page, `change-day-option-${day}`).click();
+    await expect(testid(page, "toast-added")).toContainText(`Added to Day ${day}.`, { timeout: 10_000 });
+    await expect
+      .poll(async () => (await rows<{ day_number: number }>(`SELECT day_number FROM itinerary_items WHERE trip_id = $1`, [tripId]))[0]?.day_number, { timeout: 10_000 })
+      .toBe(day);
+  };
+  await moveTo(3);
+  await moveTo(2);
 
   // The one item rail wrote ONE row, on the shown day, naming the listing.
   const items = await rows<{ id: string; day_number: number; provider_service_id: string | null }>(

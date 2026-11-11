@@ -36,30 +36,26 @@ describe("Lane 8 cleanup", () => {
     assert.equal(browseSavePath({ modeLoading: false, authLoading: false, mode: "waitlist", signedIn: false }), "guest_save");
   });
 
-  it("L2 every browse add control is disabled while a read is in flight", () => {
+  // Cut-list #1 slice C (ledger `2026-11-11-cutlist1-slice-c-add-actions`) supersedes A-12's "a press during the wait
+  // sends nothing": the first tap now WAITS in the one slot (its button shows the spinner) and runs on the path the
+  // reads choose. The slot lives in a module, not a card, so the shell's remount on sign-in does not lose it.
+  it("L2 a press while a read is in flight waits in the one slot and shows the spinner", () => {
     const hook = read("client/src/lib/browse-save.ts");
     assert.match(hook, /pending: path === "wait",/);
-    assert.match(hook, /return \(\) => \{\};/, "a press during the wait sends nothing");
-    assert.doesNotMatch(hook, /createHeldPress|useRef/, "no queued press: the shell remounts the page on sign-in");
+    assert.match(hook, /return \(item\) => queueSave\(item\);/, "a press during the wait is queued");
+    assert.doesNotMatch(hook, /createHeldPress|useRef/, "the slot is module state, never a card ref");
     assert.match(read("client/src/components/browse-shell.tsx"), /if \(!isLoading && user\) \{\s*return <DashboardLayout>/);
-    // Each add <Button> in a card that reads the hook carries the disabled state.
-    // CAP-2 Phase 3 (sanctioned edit): the add controls are PlanActions' save, which takes `disabled: browseSave.pending`
-    // (eight card saves + the event drawer's action on the feed cards; one on a catalogue row).
-    const sites: Array<[string, number]> = [
-      ["client/src/components/city-feed-card.tsx", 9],
-      ["client/src/components/catalogue-search-results.tsx", 1],
-    ];
-    for (const [f, n] of sites) {
-      assert.equal((read(f).match(/disabled(=\{|: )browseSave\.pending/g) ?? []).length, n, f);
+    const runner = read("client/src/lib/plan-add-runner.ts");
+    assert.match(runner, /let slot: QueuedAdd \| null = null;/, "one slot");
+    assert.match(runner, /export function useAddPending\(/);
+    // The host in App runs the slot once both reads answer.
+    assert.match(read("client/src/App.tsx"), /<PlanAddFeedbackHost \/>/);
+    // The cards no longer disable their add on the wait: the button stays pressable and shows the spinner instead.
+    for (const f of ["client/src/components/city-feed-card.tsx", "client/src/components/catalogue-search-results.tsx"]) {
+      assert.doesNotMatch(read(f), /disabled(=\{|: )browseSave\.pending/, f);
     }
-    // CAP-2 Phase 2 (ruling option (a), sanctioned edit): the recommendation card saves nothing, so it no longer reads the
-    // save hook and has no add control to disable.
     assert.doesNotMatch(read("client/src/components/city-feed-card-recommendation.tsx"), /useBrowseSaveToPlan|browseSave\./);
-    const card = read("client/src/components/city-feed-card.tsx");
-    assert.match(card, /disabled: browseSave\.pending,/);
-    // CAP-2 Phase 3 (sanctioned edit): the drawer's save is PlanActions', disabled the same way.
-    assert.match(card, /disabled: action\.disabled,[\s\S]{0,200}onClick: action\.onAdd,/);
-    assert.match(read("client/src/components/plan/SaveToPlanButton.tsx"), /disabled=\{disabled\}/);
+    assert.match(read("client/src/components/plan/AddToPlanButton.tsx"), /aria-busy=\{pending \? "true" : undefined\}/);
   });
 
   it("L3 the guest storage key has one definition", () => {

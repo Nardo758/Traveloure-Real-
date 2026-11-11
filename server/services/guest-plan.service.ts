@@ -23,7 +23,10 @@ import crypto, { createHash } from "node:crypto";
 import { and, asc, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db";
-import { experienceTypes, itineraryItems, tripCollaborators, trips, type Trip } from "@shared/schema";
+import { experienceTypes, itineraryItems, providerServices, tripCollaborators, trips, type Trip } from "@shared/schema";
+import { syncItemProjection } from "./cart-projection.service";
+import { checkoutProjectionRefusals } from "./buy-action-payload";
+import { logItemTransition } from "./item-transition-log.service";
 import { planMarkets, resolvePlanItemRef } from "./guest-item-source.service";
 import { parsePlanItemRef, planItemRefSchema, type PlanItemRef, type PlanItemRejectReason } from "@shared/plan-item-ref";
 import { stampItemSourceClass } from "@shared/content-tiers";
@@ -190,6 +193,57 @@ async function currentGuestTrip(hash: string): Promise<Trip | null> {
     .orderBy(desc(trips.createdAt))
     .limit(1);
   return row ?? null;
+}
+
+/**
+ * Cut-list #1 slice C: the guest's Undo and Change day. Both act on ONE item of the session's OWN current plan — the item
+ * id is matched together with that plan's id in the same statement, so another session's item (or a claimed plan's) is
+ * not found, never touched (one 404 for "no such item" and "not yours", LD 40 posture). No schema change.
+ */
+export const guestPlanItemMoveBody = z.object({ dayNumber: z.number().int().min(1).max(366) }).strict();
+
+/** Days the guest plan holds: end − start + 1 (a one-day placeholder window is one day). */
+function guestPlanDayCount(trip: Trip): number {
+  const a = Date.parse(String(trip.startDate).slice(0, 10));
+  const b = Date.parse(String(trip.endDate).slice(0, 10));
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return 1;
+  return Math.round((b - a) / 86_400_000) + 1;
+}
+
+export async function deleteGuestPlanItem(hash: string, itemId: string): Promise<{ ok: true; view: GuestPlanView } | { ok: false; code: "not_found" }> {
+  const trip = await currentGuestTrip(hash);
+  if (!trip) return { ok: false, code: "not_found" };
+  // The item must be on THIS session's plan; then it leaves through the ONE logged delete (`item_removed` diary row,
+  // trip-scoped leg cascade, superseded legs restored — the same path the signed-in item DELETE takes).
+  const [own] = await db
+    .select({ id: itineraryItems.id })
+    .from(itineraryItems)
+    .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, trip.id)))
+    .limit(1);
+  if (!own) return { ok: false, code: "not_found" };
+  await storage.deleteItineraryItem(own.id, { actorType: "traveler", actorId: null });
+  enqueuePlanLegRecompute(trip.id);
+  const view = await readGuestPlan(hash);
+  return view ? { ok: true, view } : { ok: false, code: "not_found" };
+}
+
+export async function moveGuestPlanItem(
+  hash: string,
+  itemId: string,
+  dayNumber: number,
+): Promise<{ ok: true; view: GuestPlanView } | { ok: false; code: "not_found" | "day_out_of_range" }> {
+  const trip = await currentGuestTrip(hash);
+  if (!trip) return { ok: false, code: "not_found" };
+  if (dayNumber > guestPlanDayCount(trip)) return { ok: false, code: "day_out_of_range" };
+  const moved = await db
+    .update(itineraryItems)
+    .set({ dayNumber, updatedAt: new Date() } as any)
+    .where(and(eq(itineraryItems.id, itemId), eq(itineraryItems.tripId, trip.id)))
+    .returning({ id: itineraryItems.id });
+  if (moved.length === 0) return { ok: false, code: "not_found" };
+  enqueuePlanLegRecompute(trip.id);
+  const view = await readGuestPlan(hash);
+  return view ? { ok: true, view } : { ok: false, code: "not_found" };
 }
 
 /** R4b-5: a stored `scheduled_date` (a timestamp, written from a `YYYY-MM-DD` day) as that day. */
@@ -516,6 +570,70 @@ export async function claimGuestPlans(hash: string, userId: string): Promise<str
       .sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime())
       .map((r) => r.id);
   });
+}
+
+/**
+ * Cut-list #1 slice C — on sign-in, a claimed plan keeps every item, and its BOOKABLE items become cart lines.
+ *
+ * Bookable = an item that names a platform listing (`provider_service_id`), still `in_planning`, whose listing the
+ * checkout would hold (`checkoutProjectionRefusals` — published price, not request-only/hidden; the ONE predicate the
+ * projection itself applies, §18 rule 1). Each flip is the routing machine's own `in_planning → ready_for_checkout`
+ * edge as an atomic conditional (§15) with its diary row in the same transaction, then `syncItemProjection` writes the
+ * cart line (LD 39: the cart IS that projection; no second store). Runs AFTER the claim commits, so the projection
+ * reads the new owner; a failure here never fails the claim (§15b) — the items stay on the plan, routable by hand.
+ * Partner (affiliate) items, events and free places are never carted: nothing on the platform sells them.
+ */
+export async function projectClaimedBookableItems(tripIds: string[], userId: string): Promise<{ carted: string[] }> {
+  const carted: string[] = [];
+  if (tripIds.length === 0) return { carted };
+  for (const tripId of tripIds) {
+    try {
+      const rows = await db
+        .select({
+          id: itineraryItems.id,
+          serviceId: itineraryItems.providerServiceId,
+          ownerId: providerServices.userId,
+          price: providerServices.price,
+          priceType: providerServices.priceType,
+          bookingMode: providerServices.bookingMode,
+        })
+        .from(itineraryItems)
+        .innerJoin(providerServices, eq(providerServices.id, itineraryItems.providerServiceId))
+        .where(and(eq(itineraryItems.tripId, tripId), eq(itineraryItems.routingStatus, "in_planning"), isNotNull(itineraryItems.providerServiceId)));
+      if (rows.length === 0) continue;
+      const refusals = await checkoutProjectionRefusals(
+        rows.map((r) => ({ id: r.serviceId!, userId: r.ownerId, price: r.price, priceType: r.priceType, bookingMode: r.bookingMode })),
+      );
+      for (const r of rows) {
+        if (refusals.has(r.serviceId!)) continue;
+        const flipped = await db.transaction(async (tx) => {
+          const out = await tx
+            .update(itineraryItems)
+            .set({ routingStatus: "ready_for_checkout", updatedAt: new Date() })
+            .where(and(eq(itineraryItems.id, r.id), eq(itineraryItems.tripId, tripId), eq(itineraryItems.routingStatus, "in_planning")))
+            .returning({ id: itineraryItems.id });
+          if (out.length > 0) {
+            await logItemTransition(tx, {
+              tripId,
+              itemId: r.id,
+              eventType: "status_transition",
+              fromStatus: "in_planning",
+              toStatus: "ready_for_checkout",
+              actorType: "traveler",
+              actorId: userId,
+            });
+          }
+          return out.length > 0;
+        });
+        if (!flipped) continue;
+        const sync = await syncItemProjection(r.id);
+        if (sync.action === "upserted") carted.push(r.id);
+      }
+    } catch (err: any) {
+      logger.warn({ tripId, code: err?.code, err: err?.message }, "guest claim: cart projection failed; items stay on the plan");
+    }
+  }
+  return { carted };
 }
 
 export const GUEST_PLAN_RETENTION_DISABLED_LOG = "guest plan retention is disabled (GUEST_PLAN_RETENTION_DAYS unset); deleted nothing";

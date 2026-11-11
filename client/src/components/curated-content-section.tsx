@@ -1,3 +1,5 @@
+import { announceTripAdd, runGuestAdd } from "@/lib/plan-add-runner";
+import { savedRefKey as addRefKey } from "@/lib/saved-refs";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -113,14 +115,18 @@ function AddToTripDialog({
         buildDiscoverAddBody(item, tripId),
       );
     },
-    onSuccess: (_, tripId) => {
-      // R4b-3: the row is confirmed — refresh the plan reads "Saved to plan" is drawn from.
+    onSuccess: async (res, tripId) => {
+      // R4b-3: the row is confirmed — refresh the plan reads "Added ✓" is drawn from.
       void refreshSavedRefs(queryClient);
       queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId, "itinerary-items"] });
-      toast({
-        title: ADDED_TO_PLAN_TITLE,
-        description: `"${item?.title}" has been added to your itinerary.`,
-      });
+      // Cut-list #1 slice C: the one add toast — "Added to Day {n}." with Undo and Change day.
+      const row = res ? await (res as Response).json().catch(() => null) : null;
+      if (row?.id) announceTripAdd(tripId, row);
+      else
+        toast({
+          title: ADDED_TO_PLAN_TITLE,
+          description: `"${item?.title}" has been added to your itinerary.`,
+        });
       onOpenChange(false);
     },
     onError: () => {
@@ -223,10 +229,9 @@ export function CuratedCard({
     }
     setGuestSaving(true);
     try {
-      const result = await saveToGuestPlan(guestRef, guestRef.city);
-      toast({ title: guestSavedMessage(result) });
-    } catch (err) {
-      toast({ variant: "destructive", title: guestSaveErrorMessage(err) });
+      // Cut-list #1 slice C: the one add runner — "Added to Day {n}." with Undo / Change day, or Retry.
+      const ref = guestRef;
+      await runGuestAdd({ key: addRefKey(ref), ref, city: guestRef.city, chosenDate: null });
     } finally {
       setGuestSaving(false);
     }

@@ -91,7 +91,7 @@ describe("R1 — the picker commits nothing the traveler did not choose", () => 
     assert.match(html, /disabled=""\s+data-testid="which-event-confirm"/);
     // With nothing chosen the CTA falls back to the platform's universal action label — it must
     // not name an event, because naming one is what a pre-selection would look like.
-    assert.match(html, /data-testid="which-event-confirm">Save to plan</);
+    assert.match(html, /data-testid="which-event-confirm">Add to plan</);
   });
 });
 
@@ -153,7 +153,7 @@ describe("R3 — the hint marks exactly what the module marked, and nothing else
     const html = render(EVENTS, "florist");
     assert.equal(html.includes('aria-checked="true"'), false, "the marked row was pre-selected");
     assert.match(html, /disabled=""\s+data-testid="which-event-confirm"/);
-    assert.match(html, /data-testid="which-event-confirm">Save to plan</);
+    assert.match(html, /data-testid="which-event-confirm">Add to plan</);
   });
 
   it("R3e: the mark never becomes a bare row's name", () => {

@@ -1,3 +1,4 @@
+import { announceTripAdd } from "@/lib/plan-add-runner";
 import { useEffect, useRef } from "react";
 import { planSaveRefusalMessage } from "@/lib/plan-save-refusal";
 import { useMutation } from "@tanstack/react-query";
@@ -107,16 +108,19 @@ export function AddToExperienceDialog({
       if (!res.ok) throw new Error(`${res.status}: ${await res.text().catch(() => "")}`);
       return res.json();
     },
-    onSuccess: (_res, plan) => {
-      // R4b-3: the row is confirmed — refresh the plan reads "Saved to plan" is drawn from.
+    onSuccess: (res, plan) => {
+      // R4b-3: the row is confirmed — refresh the plan reads "Added ✓" is drawn from.
       void refreshSavedRefs(queryClient);
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${plan.id}/itinerary-items`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${plan.id}/plancard`] });
       queryClient.invalidateQueries({ queryKey: ["/api/trips"] });
-      toast({
-        title: ADDED_TO_PLAN_TITLE,
-        description: `"${item?.title}" has been added to your itinerary.`,
-      });
+      // Cut-list #1 slice C: the one add toast — "Added to Day {n}." with Undo and Change day.
+      if ((res as any)?.id) announceTripAdd(plan.id, res as any, plan as any);
+      else
+        toast({
+          title: ADDED_TO_PLAN_TITLE,
+          description: `"${item?.title}" has been added to your itinerary.`,
+        });
       onOpenChange(false);
     },
     onError: (err: unknown) => {

@@ -8,6 +8,7 @@ import { VerifyEmailReminderBanner } from "@/components/auth/VerifyEmailReminder
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
+import { PlanAddFeedbackHost } from "@/components/plan/PlanAddFeedbackHost";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
 import { DashboardLayout } from "@/components/dashboard-layout";
@@ -1651,6 +1652,8 @@ function App() {
                     the same chooser via usePlanning(). */}
                 <PlanningProvider>
                   <Toaster />
+                  {/* Cut-list #1 slice C: what follows an add (Undo / Change day / Retry / first-add calendar). */}
+                  <PlanAddFeedbackHost />
                   {/* TG-1: sanitised GA4 page views (no-op unless the tag is loaded). */}
                   <Ga4PageViews />
                   {/* CB-1: the analytics consent banner (EEA/UK/CH time zones; nothing unless the tag is loaded). */}

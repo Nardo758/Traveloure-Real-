@@ -232,6 +232,17 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           CI: 'true'
 
+      # Cut-list #1 slice C (ledger `2026-11-11-cutlist1-slice-c-add-actions`): the guest add — spinner, Retry on a
+      # failed save, the first-add calendar with Skip for now, "Added to Day 1." with Undo / Change day, at 375px.
+      # It sets waitlist mode for its own run (restored after), so it runs in its own step.
+      - name: Add actions (cut-list #1 slice C)
+        if: ${{ !cancelled() }}
+        run: npx playwright test playwright/tests/journeys/j-add-actions.spec.ts --project=chromium --workers=1
+        env:
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          CI: 'true'
+
       # FU-8D-4 (ledger `2026-10-07-map-dialog-isolation`): a dialog opened over the MEMBER map
       # receives the click everywhere on its box — Leaflet's panes stay inside the map's own stacking
       # context (`isolate` on MapControlCenter's root). RED on the pre-fix build.

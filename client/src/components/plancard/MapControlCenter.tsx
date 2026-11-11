@@ -21,7 +21,7 @@
  * This component owns the data; the renderers only draw. It fabricates no coordinate (§13).
  */
 import { planSaveRefusalMessage } from "@/lib/plan-save-refusal";
-import { refreshSavedRefs, savedRefKey } from "@/lib/saved-refs";
+import { refreshSavedRefs, savedRefKey, useRefSavedState } from "@/lib/saved-refs";
 import { WAITLIST_COPY } from "@/lib/waitlist-copy";
 import { nextTabKey } from "@/lib/roving-tabs";
 import { readSlipTokensMode, slipTokensAttr } from "@/lib/slip-tokens-mode";
@@ -79,7 +79,10 @@ import { Link } from "wouter";
 import { MAPS_BROWSER_KEY } from "@/lib/maps-browser-key";
 import { useSignupMode } from "@/lib/signup-mode";
 import { useTripCapabilities, type TripCapabilities } from "@/lib/trip-capabilities";
-import { SaveToPlanButton } from "@/components/plan/SaveToPlanButton";
+import { AddToPlanButton } from "@/components/plan/AddToPlanButton";
+import { buttonVariants } from "@/components/ui/button";
+import { ADD_COPY } from "@/lib/add-to-plan";
+import { announceTripAdd, emitPlanAddFeedback } from "@/lib/plan-add-runner";
 import { gemCategory } from "@/lib/feed-stream";
 
 const MAPS_API_KEY = MAPS_BROWSER_KEY;
@@ -370,12 +373,16 @@ export function MapControlCenter({
       // R4b-3: "Saved to plan" reads the plan's items on the server.
       void refreshSavedRefs(queryClient);
       const title = `Added ${place.name} to day ${dayNumber ?? 1}`;
+      // The inline notice keeps what still needs checking (hours, a time) beside the plan.
       if (out?.id && out?.addChecks) setChecked({ itemId: out.id, checks: out.addChecks, title });
-      else toast({ title });
+      // Cut-list #1 slice C: every add gets the one add toast — "Added to Day {n}." with Undo and Change day.
+      announceTripAdd(tripId, { id: out?.id ?? null, dayNumber: out?.dayNumber ?? dayNumber ?? 1 });
     },
-    onError: (e: any) => {
+    onError: (e: any, place) => {
       const refusal = planSaveRefusalMessage(e);
-      toast(refusal ? { variant: "destructive", title: refusal } : { variant: "destructive", title: "Couldn't add that", description: e?.message });
+      // Slice C: a refusal says why; any other failure is the recovery toast with Retry.
+      if (refusal) toast({ variant: "destructive", title: refusal });
+      else emitPlanAddFeedback({ kind: "failed", message: "Couldn't add that", retry: () => add.mutate(place) });
     },
   });
   // "On day N · Remove": the EXISTING item DELETE route — the one remove rail (LD 39).
@@ -846,29 +853,27 @@ export function MapControlCenter({
                 </p>
                 {selectedBrowse.kind === "partner" ? <PartnerPriceLink productId={selectedBrowse.id} purchasesAllowed={purchasesAllowed} /> : null}
                 {(() => {
+                  // Cut-list #1 slice C: the one add button on every branch ("Add to plan" / "Add to Day {n}", spinner,
+                  // "Added ✓").
+                  const addCls = buttonVariants({ size: "sm" });
+                  const browseKey = savedRefKey({ kind: selectedBrowse.kind === "partner" ? "affiliate_product" : selectedBrowse.kind, source_id: selectedBrowse.id });
                   if (guestSavesToPlan) {
-                    // GATE-1: in waitlist mode the guest's add is "Save to plan" — no sign-in hand-off.
+                    // GATE-1: in waitlist mode the guest's add writes to the guest plan — no sign-in hand-off.
                     return (
-                      <SaveToPlanButton
-                        testId="map-browse-add"
-                        onSave={() => guest!.onAdd(selectedBrowse)}
-                        savedKey={savedRefKey({ kind: selectedBrowse.kind === "partner" ? "affiliate_product" : selectedBrowse.kind, source_id: selectedBrowse.id })}
-                      />
+                      <GuestBrowseAdd testId="map-browse-add" className={addCls} savedKey={browseKey} onAdd={() => guest!.onAdd(selectedBrowse)} />
                     );
                   }
                   if (guest) {
                     // Step 8d: the guest's one add is handed back — the page carries it through sign-in.
                     return (
-                      <Button size="sm" onClick={() => guest.onAdd(selectedBrowse)} data-testid="map-browse-add">
-                        <Plus className="mr-1 h-3.5 w-3.5" /> {WAITLIST_COPY.saveToPlan}
-                      </Button>
+                      <AddToPlanButton testId="map-browse-add" className={addCls} icon={<Plus className="mr-1 h-3.5 w-3.5" />} onClick={() => guest.onAdd(selectedBrowse)} />
                     );
                   }
                   const added = addedItemFor(selectedBrowse, planItems);
                   if (added) {
                     return (
                       <p className="flex items-center gap-2 text-xs" data-testid="map-browse-added">
-                        <span>{WAITLIST_COPY.savedToPlan} · On day {added.dayNum}</span>·
+                        <span>{ADD_COPY.added} · On day {added.dayNum}</span>·
                         <button
                           type="button"
                           className="underline"
@@ -882,20 +887,20 @@ export function MapControlCenter({
                     );
                   }
                   return (
-                    <Button
-                      size="sm"
+                    <AddToPlanButton
+                      testId="map-browse-add"
+                      className={addCls}
+                      icon={<Plus className="mr-1 h-3.5 w-3.5" />}
+                      // The item lands on the day the map is showing, so the label names it.
+                      dayNumber={dayNumber ?? 1}
+                      pending={add.isPending}
                       onClick={() => {
                         if (selectedBrowse.kind === "candidate") {
                           onAddCandidate?.(selectedBrowse.id, dayNumber ?? 1);
                           setSelectedBrowseId(null);
                         } else add.mutate(selectedBrowse);
                       }}
-                      disabled={add.isPending}
-                      data-testid="map-browse-add"
-                    >
-                      {/* CAP-2 Phase 3 (ruling Nov 6, "one label for one action"); the item still lands on this day. */}
-                      <Plus className="mr-1 h-3.5 w-3.5" /> {WAITLIST_COPY.saveToPlan}
-                    </Button>
+                    />
                   );
                 })()}
               </div>
@@ -1054,4 +1059,14 @@ function ViatorLiveRow({ city, tripId, purchasesAllowed }: { city: string; tripI
       </ul>
     </div>
   );
+}
+
+
+/**
+ * Cut-list #1 slice C: the guest's browse add on the map — the one add button, reading "Added ✓" (inert) once the
+ * guest plan's items hold this place (R4b-3, read from the server).
+ */
+function GuestBrowseAdd({ testId, className, savedKey, onAdd }: { testId: string; className: string; savedKey: string | null; onAdd: () => void }) {
+  const { saved, inert } = useRefSavedState(savedKey);
+  return <AddToPlanButton testId={testId} className={className} pendingKey={savedKey} added={saved} addedInert={inert} onClick={onAdd} />;
 }

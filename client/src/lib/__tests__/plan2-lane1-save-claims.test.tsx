@@ -23,9 +23,10 @@ const read = (p: string) => fs.readFileSync(p, "utf8");
 describe("PLAN-2 lane 1 — save claims are confirmed writes", () => {
   it("S1 the heart saves to the guest plan, never a bare claim", () => {
     const src = read("client/src/components/SaveToggle.tsx");
-    assert.match(src, /saveToGuestPlan\(/, "the guest rail is the write");
-    assert.match(src, /guestSavedMessage\(/, "the toast is the server's answer");
-    assert.match(src, /guestSaveErrorMessage\(/, "a refusal says so");
+    // Cut-list #1 slice C: the write is the one add runner (saveToGuestPlan), whose toasts are the server's answer.
+    assert.match(src, /runGuestAdd\(/, "the guest rail is the write");
+    assert.match(read("client/src/lib/plan-add-runner.ts"), /saveToGuestPlan\(job\.ref/, "the runner writes the guest rail");
+    assert.match(read("client/src/lib/plan-add-runner.ts"), /guestSaveErrorMessage\(err\)/, "a refusal says so");
     assert.match(src, /if \(!user && saveToPlan && !guestRef\) return null;/, "an unplaceable item draws no heart");
     assert.doesNotMatch(src, /toast\(\{\s*title:\s*WAITLIST_COPY\.savedToPlan\s*\}\)/, "no optimistic claim");
   });
@@ -57,8 +58,8 @@ describe("PLAN-2 lane 1 — save claims are confirmed writes", () => {
     for (const f of ["client/src/pages/discover.tsx", "client/src/components/curated-content-section.tsx"]) {
       const src = read(f);
       assert.match(src, /guestWaitlist/, `${f}: guest branch`);
-      assert.match(src, /saveToGuestPlan\(/, `${f}: real write`);
-      assert.match(src, /guestSavedMessage\(/, `${f}: confirmed toast`);
+      // Cut-list #1 slice C: through the one add runner (real write, confirmed toast with Undo / Change day).
+      assert.match(src, /runGuestAdd\(/, `${f}: real write`);
     }
   });
 });

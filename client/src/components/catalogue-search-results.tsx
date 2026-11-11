@@ -122,7 +122,6 @@ export function CatalogueResultRow({
           }
           save={{
             ...feedSaveIntent(addItem, city),
-            disabled: browseSave.pending,
             testId: `catalogue-save-${result.id}`,
             className: cn(buttonVariants({ size: "sm", variant: "outline" }), "h-8 text-xs"),
             onClick: () => onAdd(addItem),

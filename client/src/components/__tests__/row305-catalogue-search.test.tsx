@@ -3,7 +3,7 @@
  *
  *   K1 the city page's one box carries the approved placeholder and drives both the feed and the catalogue
  *   K2 every result draws its PlanActions outputs (CAP-2 Phase 3)
- *   K3 hotels draw Save to plan only; checked places draw nothing
+ *   K3 hotels draw Add to plan only; checked places draw nothing
  *   K4 a Viator result shows its attribution, the live price with its time, and the commission line; no rating,
  *      review or photo
  *   K5 a checked place shows its source and checked date; an expired one shows "Not checked yet" with the site
@@ -81,20 +81,20 @@ describe("row 305 — catalogue search results", () => {
   });
 
   // CAP-2 Phase 3 (sanctioned edit): a result's actions are PlanActions'. Open mode: a listing's Book is "Check
-  // availability" (its detail page holds the booking mode) beside "Save to plan"; a partner's or official site's own
+  // availability" (its detail page holds the booking mode) beside "Add to plan" (slice C); a partner's or official site's own
   // booking is "Book on partner"; More info is not drawn where the Book link already goes there; a result that names
   // no row of ours (a checked place, an official site with no booking, a Viator product) offers no save.
   it("K2 every result draws its PlanActions outputs, in open mode", () => {
     const html = render({ city: "Kyoto", query: "kyoto", results });
     const expected: Record<string, string[]> = {
-      "listing:s1": ["Check availability", "Save to plan"],
-      "listing:s2": ["Save to plan"],
+      "listing:s1": ["Check availability", "Add to plan"],
+      "listing:s2": ["Add to plan"],
       "place:fushimi inari": [],
       "place:gio-ji": [],
       "official:jr_west": ["Book on partner"],
       "official:jr_central": [],
       "viator:5010P1": ["Book on partner"],
-      "hotel:h1": ["Save to plan"],
+      "hotel:h1": ["Add to plan"],
     };
     for (const [id, labels] of Object.entries(expected)) {
       const block = actionBlock(html, id).split("</li>")[0];
@@ -105,7 +105,7 @@ describe("row 305 — catalogue search results", () => {
     assert.match(actionBlock(html, "official:jr_west"), /href="https:\/\/www\.westjr\.co\.jp\/"/);
   });
 
-  it("K3 hotels draw Save to plan only; checked places draw nothing", () => {
+  it("K3 hotels draw Add to plan only; checked places draw nothing", () => {
     const html = render({ city: "Kyoto", query: "kyoto", results });
     assert.doesNotMatch(actionBlock(html, "hotel:h1").split("</li>")[0], /href=/, "hotel:h1 is not a link");
     for (const id of ["place:fushimi inari", "place:gio-ji"]) {

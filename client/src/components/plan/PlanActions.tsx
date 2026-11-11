@@ -11,9 +11,9 @@ import { Link } from "wouter";
 import { useSignupMode } from "@/lib/signup-mode";
 import { useGuestCapabilities } from "@/lib/use-guest-capabilities";
 import { useRefSavedState } from "@/lib/saved-refs";
+import { AddToPlanButton } from "@/components/plan/AddToPlanButton";
 import {
   bookLabel,
-  saveLabel,
   PLAN_ACTIONS_COPY,
   planActionsPrimary,
   planActionsVisible,
@@ -45,10 +45,10 @@ export interface PlanActionsProps {
   /** The tile's area: the guest-capabilities read answers Hire for it. */
   city?: string | null;
   /**
-   * Save: always "Save to plan"; "Saved to plan" (and inert) once the plan's items on the server hold this item
+   * Save (slice C): "Add to plan" / "Add to Day {n}"; "Added ✓" (and inert on the guest rail) once the plan's items on the server hold this item
    * (`savedKey`, `kind:source_id` — see lib/saved-refs.ts, R4b-3).
    */
-  save?: (PlanActionSpec & { placeable: boolean; savedKey?: string | null; saved?: boolean }) | null;
+  save?: (PlanActionSpec & { placeable: boolean; savedKey?: string | null; saved?: boolean; dayNumber?: number | null; pending?: boolean }) | null;
   book?: (PlanActionSpec & { variant: BookVariant; done?: boolean }) | null;
   hire?: PlanActionSpec | null;
   moreInfo?: PlanActionSpec | null;
@@ -147,20 +147,30 @@ export function PlanActions(props: PlanActionsProps) {
     // More info that goes where the drawn Book link already goes is not drawn twice.
     if (out === "moreInfo" && visible.book && props.book?.href && props.book.href === props.moreInfo?.href) continue;
     const primaryAttr = props.layout === "primary" ? props.primaryAttr : undefined;
-    if (out === "save" && props.save) els.push(
-        <ActionEl
+    // Cut-list #1 slice C: the save output IS the one add button (spinner while pending, "Added ✓" once confirmed).
+    if (out === "save" && props.save) {
+      const sv = props.save;
+      const data: Record<string, string> = { ...(sv.data ?? {}) };
+      if (primaryAttr !== undefined) data["data-bento-primary-action"] = primaryAttr;
+      els.push(
+        <AddToPlanButton
           key="save"
-          spec={
-            saved
-              ? savedInert
-                ? { ...props.save, href: undefined, onClick: undefined, disabled: true, data: { ...(props.save.data ?? {}), "data-saved": "true" } }
-                : { ...props.save, data: { ...(props.save.data ?? {}), "data-saved": "true" } }
-              : props.save
-          }
-          label={saveLabel(saved)}
-          primaryAttr={primaryAttr}
+          testId={sv.testId}
+          className={sv.className}
+          style={sv.style}
+          icon={sv.icon}
+          data={data}
+          href={saved ? undefined : sv.href}
+          onClick={saved && savedInert ? undefined : sv.onClick}
+          disabled={sv.disabled}
+          added={saved}
+          addedInert={savedInert}
+          dayNumber={sv.dayNumber ?? null}
+          pendingKey={sv.savedKey ?? null}
+          pending={sv.pending}
         />,
       );
+    }
     if (out === "book" && props.book) els.push(<ActionEl key="book" spec={props.book} label={bookLabel(props.book.variant, { done: props.book.done })} primaryAttr={primaryAttr} />);
     if (out === "hire" && props.hire) els.push(<ActionEl key="hire" spec={props.hire} label={PLAN_ACTIONS_COPY.hire} primaryAttr={primaryAttr} />);
     if (out === "moreInfo" && props.moreInfo) els.push(<ActionEl key="moreInfo" spec={props.moreInfo} label={PLAN_ACTIONS_COPY.moreInfo} primaryAttr={primaryAttr} />);

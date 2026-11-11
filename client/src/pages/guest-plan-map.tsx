@@ -13,6 +13,8 @@
  * Unprotected by design; `/plans/:tripId` stays protected. Nothing is stored for a guest on the server
  * (G2), and nothing here writes the cart.
  */
+import { runGuestAdd } from "@/lib/plan-add-runner";
+import { savedRefKey } from "@/lib/saved-refs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { Loader2 } from "lucide-react";
@@ -343,10 +345,8 @@ function WaitlistGuestPlan() {
   const onSave = (place: BrowsePlace, dayNumber: number) => {
     const body = guestBodyForPlace(place, dayNumber, plan.destination.split(",")[0].trim());
     if (!body) return;
-    saveToGuestPlan(body, plan.destination).then(
-      (result) => toast({ title: guestSavedMessage(result) }),
-      (err) => toast({ variant: "destructive", title: guestSaveErrorMessage(err) }),
-    );
+    // Cut-list #1 slice C: the one add runner — spinner, "Added to Day {n}." with Undo / Change day, Retry on failure.
+    void runGuestAdd({ key: savedRefKey(body), ref: body, city: plan.destination, chosenDate: null });
   };
 
   return (

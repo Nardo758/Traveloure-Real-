@@ -6,6 +6,7 @@
  *
  * Not to be confused with `guest-plan.ts` (row 280b: an invited event guest's "Plan my day" button).
  */
+import { addedMessage } from "./add-to-plan";
 import { planSaveRefusalMessage } from "./plan-save-refusal";
 import { dayNumberForDate, planItemRefFromFeedItem, type PlanItemKind, type PlanItemRef } from "@shared/plan-item-ref";
 import { useQuery } from "@tanstack/react-query";
@@ -213,15 +214,12 @@ export function guestChosenDay(chosenDate: string, planStart: string, planEnd: s
   return dayNumberForDate(chosenDate, planStart);
 }
 
-/** A-18: the toast for a confirmed save — the not-on-the-map hint when the place has no point. */
+/**
+ * A-18: the toast for a confirmed save. Cut-list #1 slice C: "Added to Day {n}." (supersedes the Nov 7 "Saved to Day
+ * {n}."), with the unlocated place's map fact as a second sentence — ONE wording, `addedMessage` (lib/add-to-plan.ts).
+ */
 export function guestSavedMessage(result: Pick<GuestSaveResult, "located"> & Pick<GuestSaveResult, "item">): string {
-  // QW-3 (Leon, Nov 7): a save lands on Day 1 unless a day was chosen — say which day in the toast.
-  const raw = result.item?.dayNumber;
-  const day = typeof raw === "number" && Number.isInteger(raw) && raw > 0 ? raw : null;
-  if (day === null) return result.located ? WAITLIST_COPY.savedToPlan : GUEST_PLAN_COPY.savedNotOnMap;
-  // Leon (Nov 7): ONE shape for one fact — every rail says "Saved to Day {n}."; the unlocated save keeps
-  // the map fact as a second sentence.
-  return result.located ? `Saved to Day ${day}.` : `Saved to Day ${day}. We don't have this spot on the map yet.`;
+  return addedMessage({ dayNumber: result.item?.dayNumber, located: result.located });
 }
 
 /**

@@ -4,13 +4,13 @@
  *   P1 the pure rule: Save when placeable · Book in open mode only (the shared mode read) · Hire in open mode AND the
  *      guest-capabilities answer's `hire` · More info per site (off on bento) · Browse only in waitlist mode.
  *   P2 the Book words follow the listing's booking mode; the server buy action maps to Book / Hire / Save / nothing.
- *   P3 the save is "Save to plan" everywhere ("Add to plan" retired, Nov 6) and "Saved to plan" once confirmed.
+ *   P3 the add is "Add to plan" / "Add to Day {n}" everywhere (cut-list #1 slice C supersedes the Nov 6 "Save to plan") and "Added ✓" once confirmed.
  *   P4 the renderer: waitlist draws no Book; open draws it; a compact tile draws one primary; a confirmed save is inert.
  *   P5 the GUARD: a traveler-facing file that draws a save / book / hire / more-info label without PlanActions fails.
  *      Label tables and the ruled-out surfaces are named, each with its reason; the list only shrinks.
  *   P6 every Phase 3 site renders through PlanActions, and the public guest-capabilities read carries no price.
  *   P7 the sites a local build cannot reach with data (Discover service and result cards, curated content, Deals),
- *      rendered in both modes: waitlist draws no Book; open draws the mode-honest Book; the save reads "Save to plan".
+ *      rendered in both modes: waitlist draws no Book; open draws the mode-honest Book; the add reads "Add to plan".
  *
  * Run: node --import ./client/src/lib/__tests__/lc1-css-register.mjs --import tsx --test client/src/lib/__tests__/cap2-phase3.test.tsx
  */
@@ -117,10 +117,13 @@ describe("CAP-2 Phase 3 — PlanActions", () => {
     assert.equal(planActionFromBuyAction({ primary: { kind: "book" }, refusal: { reason: "not_available" } }), null);
   });
 
-  it("P3 the save is 'Save to plan' everywhere, 'Saved to plan' once confirmed", () => {
-    assert.equal(saveLabel(false), "Save to plan");
-    assert.equal(saveLabel(true), "Saved to plan");
-    assert.ok(!Object.values(PLAN_ACTIONS_COPY).includes("Add to plan" as any), "'Add to plan' is retired");
+  // Cut-list #1 slice C (ledger `2026-11-11-cutlist1-slice-c-add-actions`): the add reads "Add to plan" / "Add to Day
+  // {n}", "Added ✓" once confirmed — superseding the Nov 6 "Save to plan" for the add action.
+  it("P3 the add is 'Add to plan' everywhere (or 'Add to Day {n}'), 'Added ✓' once confirmed", () => {
+    assert.equal(saveLabel(false), "Add to plan");
+    assert.equal(saveLabel(false, 3), "Add to Day 3");
+    assert.equal(saveLabel(true), "Added ✓");
+    assert.ok(!Object.values(PLAN_ACTIONS_COPY).includes("Save to plan" as any), "'Save to plan' is superseded for the add");
     // A card that names its row is placeable; a Viator result names none (ruling, Nov 5).
     assert.deepEqual(feedSaveIntent({ type: "gem", sourceContentId: "g1" }, "Kyoto"), { placeable: true, savedKey: "gem:g1" });
     assert.deepEqual(feedSaveIntent({ type: "activity", viatorProductCode: "V1" }, "Kyoto"), { placeable: false, savedKey: null });
@@ -138,10 +141,10 @@ describe("CAP-2 Phase 3 — PlanActions", () => {
     );
     const wait = render(node, "waitlist");
     assert.doesNotMatch(wait, /data-testid="b"/, "waitlist: no Book");
-    assert.match(text(wait), /Save to plan/);
+    assert.match(text(wait), /Add to plan/);
     const open = render(node, "open");
     assert.match(open, /data-testid="b"[^>]*>Check availability</);
-    assert.match(open, /data-testid="s"[^>]*>Save to plan</);
+    assert.match(open, /data-testid="s"[^>]*><span[^>]*>Add to plan</);
     // A compact tile: one primary only.
     const primary = render(
       <PlanActions site="bento" layout="primary" primaryAttr="" book={{ variant: "availability", testId: "b" }} save={{ placeable: true, testId: "s" }} />,
@@ -149,10 +152,10 @@ describe("CAP-2 Phase 3 — PlanActions", () => {
     );
     assert.equal((primary.match(/data-bento-primary-action=/g) ?? []).length, 1);
     assert.doesNotMatch(primary, /data-testid="s"/);
-    // Saved: the guest plan's items on the server hold the row (R4b-3) ⇒ "Saved to plan", disabled (guest rail).
+    // Added: the guest plan's items on the server hold the row (R4b-3) ⇒ "Added ✓", disabled (guest rail).
     planKeys = ["listing:s1"];
     const saved = render(node, "waitlist");
-    assert.match(saved, /data-testid="s"[^>]*disabled=""[^>]*>Saved to plan</);
+    assert.match(saved, /data-testid="s"[^>]*disabled=""[^>]*><span[^>]*>Added ✓</);
     // Hire: open mode and an approved expert in the area.
     const hire = <PlanActions site="discoverService" city="Kyoto" hire={{ testId: "h" }} />;
     assert.doesNotMatch(render(hire, "open"), /data-testid="h"/, "no area answer ⇒ no Hire");
@@ -167,7 +170,8 @@ describe("CAP-2 Phase 3 — PlanActions", () => {
     // Every file here is named with its reason (ruling, Nov 6, unless stated). The list only shrinks.
     const NAMED: Record<string, string> = {
       "client/src/lib/plan-actions.ts": "PlanActions' own label table",
-      "client/src/lib/waitlist-copy.ts": "the approved Save to plan / Saved to plan strings PlanActions reads",
+      "client/src/lib/waitlist-copy.ts": "the approved Save to plan / Saved to plan strings the P-1c stand-ins read",
+      "client/src/lib/add-to-plan.ts": "cut-list #1 slice C: the add action's approved strings AddToPlanButton and PlanActions read",
       "client/src/lib/stay-card.ts": "the approved Stay here / See rates strings PlanActions reads",
       "client/src/lib/storefront-offering-action.ts": "the buy-action wording mapper; its tile callers render through PlanActions and read it only for the intent hash",
       "client/src/components/backoffice/booking-mode-toggle.tsx": "seller backoffice, not a traveler surface",
@@ -218,7 +222,7 @@ describe("CAP-2 Phase 3 — PlanActions", () => {
 });
 
 describe("CAP-2 Phase 3 — the sites without local data, rendered in both modes (P7)", () => {
-  it("P7a the Discover service card: Book by booking mode in open mode only; the save reads Save to plan", () => {
+  it("P7a the Discover service card: Book by booking mode in open mode only; the save reads Add to plan (slice C)", () => {
     const service: any = {
       id: "svc-p7", serviceName: "Tea ceremony", price: "40", location: "Kyoto", deliveryMethod: "in_person",
       buyAction: { primary: { kind: "request_to_book", label: "Request to book" }, landing: { store: "request" } },
@@ -226,10 +230,10 @@ describe("CAP-2 Phase 3 — the sites without local data, rendered in both modes
     const node = <ServiceCard service={service} onAddToCart={() => {}} />;
     const wait = render(node, "waitlist");
     assert.doesNotMatch(wait, /data-testid="button-service-action-svc-p7"/, "waitlist: no Book");
-    assert.match(wait, /data-testid="button-add-to-cart-svc-p7"[^>]*>Save to plan</);
+    assert.match(wait, /data-testid="button-add-to-cart-svc-p7"[^>]*><span[^>]*>Add to plan</);
     const open = render(node, "open");
     assert.match(open, /data-testid="button-service-action-svc-p7"[^>]*>Request to book</);
-    assert.match(open, /data-testid="button-add-to-cart-svc-p7"[^>]*>Save to plan</);
+    assert.match(open, /data-testid="button-add-to-cart-svc-p7"[^>]*><span[^>]*>Add to plan</);
     const hire: any = { ...service, id: "svc-hire", buyAction: { primary: { kind: "hire", label: "Hire for this trip" }, landing: { store: "hire" } } };
     assert.doesNotMatch(render(<ServiceCard service={hire} />, "open"), /Hire for this trip/, "no area answer ⇒ no Hire");
     assert.match(render(<ServiceCard service={hire} />, "open", { mode: "open", actions: { save: true, book: true, hire: true } }), />Hire for this trip</);
@@ -243,12 +247,12 @@ describe("CAP-2 Phase 3 — the sites without local data, rendered in both modes
     assert.match(render(<UnifiedResultCard result={site} />, "waitlist"), />View</, "a venue's own site keeps View in any mode");
   });
 
-  it("P7c curated content: Book on partner / Book in open mode only; Save to plan when it names its partner product", () => {
+  it("P7c curated content: Book on partner / Book in open mode only; Add to plan (slice C) when it names its partner product", () => {
     const base: any = { id: "c1", sourceId: "s", type: "affiliate", contentCategory: "activity", title: "Tea", description: "", cover_image: null, price: null, price_display: null, source: "x", rating: null, city: "Kyoto", country: "Japan", duration: null, highlights: [], metadata: {}, tracking: { productId: "ap-1", partnerId: null, isAffiliateTracked: true } };
     const aff = { ...base, affiliate_url: "https://partner.example" };
     const wait = render(<CuratedCard item={aff} onAddToTrip={() => {}} />, "waitlist");
     assert.doesNotMatch(wait, /button-book-via-traveloure-c1/);
-    assert.match(wait, /data-testid="button-add-trip-c1"[^>]*>(<svg[\s\S]*?<\/svg>)?Save to plan</);
+    assert.match(wait, /data-testid="button-add-trip-c1"[^>]*>(<svg[\s\S]*?<\/svg>)?<span[^>]*>Add to plan</);
     assert.match(render(<CuratedCard item={aff} onAddToTrip={() => {}} />, "open"), /data-testid="button-book-via-traveloure-c1"[^>]*>(<svg[\s\S]*?<\/svg>)?Book on partner</);
     const none = { ...base, affiliate_url: null, tracking: { productId: null, partnerId: null, isAffiliateTracked: false } };
     const noneOpen = render(<CuratedCard item={none} onAddToTrip={() => {}} />, "open");

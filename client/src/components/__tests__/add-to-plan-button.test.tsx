@@ -1,0 +1,127 @@
+/**
+ * Cut-list #1 slice C — THE ONE ADD BUTTON, rendered (react-dom/server, no jsdom).
+ *
+ *   B1 idle: "Add to plan"; with a known day "Add to Day {n}"
+ *   B2 pending: the spinner, `aria-busy`, disabled (a second press cannot double-add); the label stays
+ *   B3 the pending state follows the ITEM's key across a remount (module state, the one slot)
+ *   B4 added: "Added ✓", inert on the guest rail, still pressable signed in (R4b-3)
+ *   B5 375px budget: one line, `whitespace-nowrap`, the longest label fits a phone card column
+ *   B6 the header chip carries "View plan" from sm: up, as a sibling link (never nested)
+ *   B7 the feedback host is mounted once in App and draws "Change day" / the first-add calendar with Skip for now
+ *
+ * Run: npx tsx --test client/src/components/__tests__/add-to-plan-button.test.tsx
+ */
+import { beforeEach, describe, it } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import React from "react";
+import { renderToString } from "react-dom/server";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Router } from "wouter";
+import { AddToPlanButton } from "../plan/AddToPlanButton";
+import { HeaderPlanCTA } from "../HeaderPlanCTA";
+import { __planAddRunner, setAddPending } from "@/lib/plan-add-runner";
+
+(globalThis as any).React = React;
+
+const html = (node: React.ReactElement) => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return renderToString(
+    <Router ssrPath="/">
+      <QueryClientProvider client={client}>{node}</QueryClientProvider>
+    </Router>,
+  );
+};
+const label = (out: string) => (out.match(/<span class="whitespace-nowrap">([^<]*)<\/span>/) ?? [])[1];
+
+beforeEach(() => __planAddRunner.reset());
+
+describe("B1 idle", () => {
+  it("Add to plan, or Add to Day {n}", () => {
+    assert.equal(label(html(<AddToPlanButton testId="a" onClick={() => {}} />)), "Add to plan");
+    assert.equal(label(html(<AddToPlanButton testId="a" dayNumber={3} onClick={() => {}} />)), "Add to Day 3");
+    const out = html(<AddToPlanButton testId="a" onClick={() => {}} />);
+    assert.match(out, /data-add-state="idle"/);
+    assert.doesNotMatch(out, /aria-busy|disabled=""/);
+  });
+});
+
+describe("B2 pending", () => {
+  it("spinner, aria-busy, disabled; the words stay", () => {
+    const out = html(<AddToPlanButton testId="a" pending onClick={() => {}} />);
+    assert.match(out, /data-testid="a-spinner"/);
+    assert.match(out, /animate-spin/);
+    assert.match(out, /aria-busy="true"/);
+    assert.match(out, /disabled=""/);
+    assert.match(out, /data-add-state="pending"/);
+    assert.equal(label(out), "Add to plan");
+  });
+});
+
+describe("B3 pending follows the item", () => {
+  it("a key in flight spins wherever its button renders", () => {
+    setAddPending("gem:g1", true);
+    assert.match(html(<AddToPlanButton testId="a" pendingKey="gem:g1" onClick={() => {}} />), /data-testid="a-spinner"/);
+    assert.doesNotMatch(html(<AddToPlanButton testId="b" pendingKey="gem:g2" onClick={() => {}} />), /spinner/);
+    setAddPending("gem:g1", false);
+    assert.doesNotMatch(html(<AddToPlanButton testId="a" pendingKey="gem:g1" onClick={() => {}} />), /spinner/);
+  });
+});
+
+describe("B4 added", () => {
+  it("Added ✓; inert on the guest rail, pressable signed in", () => {
+    const guest = html(<AddToPlanButton testId="a" added addedInert onClick={() => {}} />);
+    assert.equal(label(guest), "Added ✓");
+    assert.match(guest, /data-add-state="added"/);
+    assert.match(guest, /data-saved="true"/);
+    assert.match(guest, /disabled=""/);
+    const signedIn = html(<AddToPlanButton testId="a" added onClick={() => {}} />);
+    assert.equal(label(signedIn), "Added ✓");
+    assert.doesNotMatch(signedIn, /disabled=""/);
+    // Added wins over a stale pending flag: never a spinner beside "Added ✓".
+    assert.doesNotMatch(html(<AddToPlanButton testId="a" added pending onClick={() => {}} />), /spinner/);
+  });
+});
+
+describe("B5 375px budget", () => {
+  it("one line; the longest label fits a phone card column", () => {
+    const src = readFileSync("client/src/components/plan/AddToPlanButton.tsx", "utf8");
+    assert.match(src, /<span className="whitespace-nowrap">\{label\}<\/span>/);
+    assert.match(src, /h-3\.5 w-3\.5 shrink-0 animate-spin/, "the spinner is 14px and never squeezes the label");
+    // A phone card column at 375px: 375 − 2×16 gutters − 2×14 card padding = 315px; a two-up action row gives each
+    // button (315 − 8 gap) / 2 = 153px. "Add to Day 14" at 12px semibold ≈ 7.2px/char × 13 = 94px, + 14px icon + 4px
+    // gap + 2×12px padding = 136px ≤ 153px.
+    const longest = "Add to Day 14".length * 7.2 + 14 + 4 + 24;
+    assert.ok(longest <= (375 - 32 - 28 - 8) / 2, `${longest}px must fit 153px`);
+  });
+});
+
+describe("B6 header View plan", () => {
+  it("a sibling link from sm: up, never nested", () => {
+    const out = html(
+      <HeaderPlanCTA state={{ kind: "chip", planId: "p1", city: "Kyoto", stops: 2, dates: null, guest: false }} variant="desktop" onStart={() => {}} />,
+    ).replace(/<!-- -->/g, "");
+    const view = out.match(/<a\b[^>]*data-testid="chip-nav-plan-view"[^>]*>([^<]*)<\/a>/);
+    assert.ok(view, "View plan is a link");
+    assert.equal(view![1], "View plan");
+    assert.match(view![0], /href="\/plans\/p1"/);
+    assert.match(view![0], /hidden[^"]*sm:inline/, "from sm: up");
+    for (const body of Array.from(out.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/g), (m) => m[1])) assert.doesNotMatch(body, /<(a|button)\b/);
+    const guest = html(<HeaderPlanCTA state={{ kind: "chip", planId: "g1", city: "Kyoto", stops: 1, dates: null, guest: true }} variant="mobile" onStart={() => {}} />);
+    assert.match(guest, /data-testid="chip-nav-plan-view"[^>]*href="\/plans\/new"|href="\/plans\/new"[^>]*data-testid="chip-nav-plan-view"/);
+  });
+});
+
+describe("B7 the feedback host", () => {
+  it("mounted once; Change day lists the plan's days; the first-add calendar can be skipped", () => {
+    const app = readFileSync("client/src/App.tsx", "utf8");
+    assert.equal((app.match(/<PlanAddFeedbackHost \/>/g) ?? []).length, 1);
+    const host = readFileSync("client/src/components/plan/PlanAddFeedbackHost.tsx", "utf8");
+    assert.match(host, /<DialogTitle>\{ADD_COPY\.changeDay\}<\/DialogTitle>/);
+    assert.match(host, /changeDayOptions\(changeDay\.days, current\)/);
+    assert.match(host, /<InlineDatesPanel[\s\S]*datesConfirmed=\{false\}[\s\S]*onSkip=\{\(\) => setDates\(null\)\}/);
+    assert.match(host, /altText=\{ADD_COPY\.undo\}/);
+    assert.match(host, /altText=\{ADD_COPY\.retry\}/);
+    assert.match(host, /max-w-\[calc\(100vw-2rem\)\]/, "both dialogs fit a phone");
+  });
+});

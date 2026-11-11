@@ -15,7 +15,7 @@
  * WORDING: every label below is HELD for "Wording approved — Leon" on the Phase 3 PR. The ones marked "approved" were
  * approved before this lane and are only moved here.
  */
-import { WAITLIST_COPY } from "./waitlist-copy";
+import { ADD_COPY, addLabel } from "./add-to-plan";
 import { STAY_HERE_LABEL, STAY_RATES_SEE } from "./stay-card";
 import { CN1_COPY } from "@shared/cn1-copy";
 import type { SignupMode } from "./signup-mode";
@@ -23,10 +23,13 @@ import { planItemRefFromFeedItem } from "@shared/plan-item-ref";
 import { savedRefKey } from "./saved-refs";
 
 export const PLAN_ACTIONS_COPY = {
-  /** approved (P-1c / GATE-1). The save action's ONE label on every tile, every mode ("Add to plan" retired, Nov 6). */
-  saveToPlan: WAITLIST_COPY.saveToPlan,
-  /** approved (P-1c). The save action after the server confirmed the row. */
-  savedToPlan: WAITLIST_COPY.savedToPlan,
+  /**
+   * Cut-list #1 slice C (Wording approved — Leon, Nov 10): the add action's ONE label on every tile, every mode —
+   * "Add to plan" (or "Add to Day {n}", `addLabel`). Supersedes the Nov 6 "Save to plan" for the add action.
+   */
+  saveToPlan: ADD_COPY.addToPlan,
+  /** Slice C (Wording approved — Leon, Nov 10, 11:44 AM ET): the add once the server confirmed the row. */
+  savedToPlan: ADD_COPY.added,
   /** HELD */
   moreInfo: "More info",
   /** HELD — instant booking */
@@ -51,9 +54,9 @@ export const PLAN_ACTIONS_COPY = {
   browseCategory: (category: string) => `Browse ${category}`,
 } as const;
 
-/** The save action's label: "Save to plan", then "Saved to plan" once a save of this item is confirmed. */
-export function saveLabel(saved: boolean): string {
-  return saved ? PLAN_ACTIONS_COPY.savedToPlan : PLAN_ACTIONS_COPY.saveToPlan;
+/** The add action's label: "Add to plan" (or "Add to Day {n}"), then "Added ✓" once the server confirmed the row. */
+export function saveLabel(saved: boolean, dayNumber?: number | null): string {
+  return addLabel({ added: saved, dayNumber });
 }
 
 export type BookVariant = "instant" | "request" | "quote" | "partner" | "availability" | "stay_here" | "see_rates";

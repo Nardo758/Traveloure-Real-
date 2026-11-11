@@ -12,6 +12,8 @@
  *   GET   /api/guest-plans/current         the session's plan and its items
  *   PATCH /api/guest-plans/current         dates and party
  *   POST  /api/guest-plans/current/items   save one item (60 / session / hour)
+ *   DELETE /api/guest-plans/current/items/:id      Undo (cut-list #1 slice C) — the session's own item only
+ *   PATCH  /api/guest-plans/current/items/:id      Change day — `{ dayNumber }`, within the plan's days
  *   POST  /api/guest-plans/claim           on sign-in: the session's guest plans become the account's (isAuthenticated)
  *
  * Limits live in `server/config/guest-plan.config.ts`; the 429 body carries the approved sentence.
@@ -33,10 +35,14 @@ import {
   readCookie,
   resolveGuestSessionId,
   claimGuestPlans,
+  projectClaimedBookableItems,
   createGuestPlan,
   guestPlanCreateBody,
   guestPlanItemBody,
   guestPlanUpdateBody,
+  guestPlanItemMoveBody,
+  deleteGuestPlanItem,
+  moveGuestPlanItem,
   hashGuestSession,
   logGuestPlanRetentionBootState,
   readGuestPlan,
@@ -184,6 +190,35 @@ router.post("/api/guest-plans/current/items", guestOnly, savesPerSession, async 
   }
 });
 
+/**
+ * Cut-list #1 slice C — the guest's Undo and Change day. The item is found only on the caller's OWN current plan, so
+ * another session's item, a claimed plan's item and no item at all are the same 404 (LD 40). Shares the save limiter:
+ * an undo/move is a write on the same plan.
+ */
+router.delete("/api/guest-plans/current/items/:id", guestOnly, savesPerSession, async (req, res) => {
+  try {
+    const out = await deleteGuestPlanItem(sessionHash(req)!, String(req.params.id));
+    if (!out.ok) return res.status(404).json({ code: "not_found" });
+    res.json(out.view);
+  } catch (err: any) {
+    logger.error({ route: "DELETE /api/guest-plans/current/items/:id", code: err?.code, err: err?.message }, "guest item delete failed");
+    res.status(500).json({ code: "error" });
+  }
+});
+
+router.patch("/api/guest-plans/current/items/:id", guestOnly, savesPerSession, async (req, res) => {
+  const parsed = guestPlanItemMoveBody.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ code: "invalid_body" });
+  try {
+    const out = await moveGuestPlanItem(sessionHash(req)!, String(req.params.id), parsed.data.dayNumber);
+    if (!out.ok) return out.code === "not_found" ? res.status(404).json({ code: "not_found" }) : res.status(400).json({ code: out.code });
+    res.json(out.view);
+  } catch (err: any) {
+    logger.error({ route: "PATCH /api/guest-plans/current/items/:id", code: err?.code, err: err?.message }, "guest item move failed");
+    res.status(500).json({ code: "error" });
+  }
+});
+
 // Ruling 5, following POST /api/cart/migrate: the session account (§14), the guest id in the body.
 /** R4b-3: the signed-in rail's saved keys — "Saved to plan" reads the plan's own items (survives a reload). */
 router.get("/api/plans/saved-refs", isAuthenticated, async (req, res) => {
@@ -212,7 +247,9 @@ router.post("/api/guest-plans/claim", isAuthenticated, async (req, res) => {
   if (!hash) return res.status(400).json({ code: "guest_session_required" });
   try {
     const tripIds = await claimGuestPlans(hash, userId);
-    res.json({ success: true, tripIds });
+    // Cut-list #1 slice C: after the claim commits, bookable items become cart lines. Never fails the claim.
+    const { carted } = await projectClaimedBookableItems(tripIds, userId).catch(() => ({ carted: [] as string[] }));
+    res.json({ success: true, tripIds, cartedItemIds: carted });
   } catch {
     res.status(500).json({ code: "error" });
   }
