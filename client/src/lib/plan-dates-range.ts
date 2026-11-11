@@ -11,7 +11,7 @@
  *   nextRange      — what one tap on a day does to the selection.
  *   initialRange   — no prefill for dates nobody chose (`datesConfirmed === false`).
  *
- * Wording approved — Leon (Nov 10, 11:27 AM ET): `LEAVE_BEFORE_ARRIVE_MESSAGE`.
+ * Wording approved — Leon (Nov 10, 11:47 PM ET): `LEAVE_BEFORE_ARRIVE_MESSAGE` (replaces the 11:27 AM wording).
  */
 
 export interface DayRange {
@@ -21,7 +21,7 @@ export interface DayRange {
 
 export type RangeValidity = "ok" | "incomplete" | "leave_before_arrive";
 
-export const LEAVE_BEFORE_ARRIVE_MESSAGE = "Leave date must be after your arrive date.";
+export const LEAVE_BEFORE_ARRIVE_MESSAGE = "Leave date can't be before your arrive date.";
 
 const DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 

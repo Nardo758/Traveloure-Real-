@@ -13,9 +13,10 @@
  * Same-day trips are allowed: tap a day, then the same day again. The one refusal is a leave day
  * before the arrive day, said in words (`LEAVE_BEFORE_ARRIVE_MESSAGE`), never silently repaired.
  *
- * Copy: "When are you going?", "Add dates", "Leave date must be after your arrive date." —
+ * Copy: "When are you going?", "Add dates" —
  * Wording approved — Leon (Nov 10, 11:27 AM ET). "Skip for now" — Wording approved — Leon
- * (Nov 10, 11:44 AM ET). "Save dates" / "Saving…" are the panel's existing strings.
+ * (Nov 10, 11:44 AM ET). "Leave date can't be before your arrive date." — Wording approved — Leon
+ * (Nov 10, 11:47 PM ET). "Save dates" / "Saving…" are the panel's existing strings.
  *
  * 375px budget: seven 36px day cells + the calendar's 12px padding each side = 276px, inside the
  * 343px a phone gives after its 16px gutters. One month is shown at every width.
