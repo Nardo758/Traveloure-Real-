@@ -416,7 +416,10 @@ test.describe("Single planning entry — authed", () => {
         const n = document.querySelector("nav")!.getBoundingClientRect();
         return [Math.round(s.top), Math.round(n.bottom)];
       });
-      expect(stripTop, `strip top at ${width}`).toBe(navBottom);
+      // The nav's box is --chrome-nav-h plus its 1px hairline border; the strip sticks at the variable and the
+      // hairline draws over its top pixel (the nav is z-50). Equal to within that hairline, never a gap.
+      expect(Math.abs(stripTop - navBottom), `strip top ${stripTop} vs nav bottom ${navBottom} at ${width}`).toBeLessThanOrEqual(1);
+      expect(stripTop, `strip never sits below the nav at ${width}`).toBeLessThanOrEqual(navBottom);
     }
   });
 
