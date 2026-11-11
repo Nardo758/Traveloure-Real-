@@ -28,7 +28,9 @@ import { writeState, readState } from './lib/state';
 import { testid, appears } from './lib/ui';
 import { dedupe } from './lib/dedupe';
 
-const ADMIN = { email: 'ci-admin@traveloure.test', password: 'CITestAdmin!99' };
+// Slice 0 (ledger `2026-11-10-slice0-staff-roles`): a platform_admin's approval waits for the owner's sign-off, so
+// the account that approves and publishes here is the CI owner (seeded on the loopback CI database only).
+const ADMIN = { email: 'ci-owner@traveloure.test', password: 'CITestOwner!99' };
 
 test.describe.configure({ mode: 'serial' });
 

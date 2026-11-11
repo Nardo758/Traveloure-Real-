@@ -35,7 +35,9 @@ import { shot3, netLogger3, dbStep, file3 } from './lib/p3';
 
 test.describe.configure({ mode: 'serial' });
 
-const ADMIN = { email: 'ci-admin@traveloure.test', password: 'CITestAdmin!99' };
+// Slice 0 (ledger `2026-11-10-slice0-staff-roles`): a platform_admin's approval waits for the owner's sign-off, so
+// the account that approves and publishes here is the CI owner (seeded on the loopback CI database only).
+const ADMIN = { email: 'ci-owner@traveloure.test', password: 'CITestOwner!99' };
 
 /** Padding after a navigation. NOT a confirmation: every caller follows it with `must()`, which is. */
 async function settle(page: Page, ms = 800) {
