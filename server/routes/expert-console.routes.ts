@@ -33,6 +33,7 @@ import {
 import { proposeNuggetAsGem } from "../services/gem-promotion.service";
 import { expertTrackSwitchRequiresReview } from "../services/role-transition";
 import { deriveSlotEndTime } from "@shared/slot-end-time";
+import { isAdminRole } from "@shared/roles";
 
 const router = Router();
 
@@ -623,7 +624,7 @@ async function requireLocalExpertOrAdmin(req: any, res: any, next: any) {
   try {
     const [row] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId));
     if (!row) return res.status(401).json({ message: "Authentication required" });
-    if (row.role !== "local_expert" && row.role !== "admin") {
+    if (row.role !== "local_expert" && !isAdminRole(row.role)) {
       return res.status(403).json({ message: "Local Expert access required" });
     }
     next();

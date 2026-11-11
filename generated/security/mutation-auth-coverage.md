@@ -4,13 +4,13 @@ Generated deterministically from `generated/security/mutation-auth-manifest.json
 
 ## Coverage summary
 
-- **Tested: 0/745**; remaining: **745**.
-- Admin: **0/204**; payments: **0/31**; user-data: **0/252**; other: **0/258**.
+- **Tested: 0/749**; remaining: **749**.
+- Admin: **0/208**; payments: **0/31**; user-data: **0/252**; other: **0/258**.
 
 ## Methodology and live evidence
 
 - Every unique `METHOD effectivePath` in the manifest receives exactly one tested/untested disposition; duplicate registrations are normalized to one reachable endpoint.
-- Evidence state: **evidence manifest SHA-256 is stale**; manifest SHA-256: `30e761bba81b9201dffb2579dcf987dc91df071b84daf7c77955434b895344cf`; run timestamp: 2026-09-25T00:56:06.499Z.
+- Evidence state: **evidence manifest SHA-256 is stale**; manifest SHA-256: `8166e08ab17e45e65f59c1c644d7e1cfa015595460f6ef88db8483f7e3d38372`; run timestamp: 2026-09-25T00:56:06.499Z.
 - `admin`: **passed**, 146 exact endpoint keys, context `admin`.
 - `highrisk-unauthenticated`: **passed**, 236 exact endpoint keys, context `unauthenticated`.
 - `expert-provider-wrong-role`: **passed**, 54 exact endpoint keys, context `wrong-role`.
@@ -32,29 +32,29 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | Endpoint | Risk | Boundary | Source | Exact reason |
 | --- | --- | --- | --- | --- |
 | DELETE /api/admin/affiliate/partners/:id | admin | admin-role | server/routes/content.routes.ts:9011 | Not run: evidence manifest SHA-256 is stale. |
-| DELETE /api/admin/categories/:id | admin | admin-role | server/routes/admin.routes.ts:4315 | Not run: evidence manifest SHA-256 is stale. |
-| DELETE /api/admin/content-placement-rules/:id | admin | admin-role | server/routes/admin.routes.ts:9500 | Not run: evidence manifest SHA-256 is stale. |
-| DELETE /api/admin/event-packages/:id | admin | admin-role | server/routes/admin.routes.ts:9765 | Not run: evidence manifest SHA-256 is stale. |
-| DELETE /api/admin/expert-offering-types/:key | admin | admin-role | server/routes/admin.routes.ts:8838 | Not run: evidence manifest SHA-256 is stale. |
-| DELETE /api/admin/guest-plans/:tripId | admin | admin-role | server/routes/admin.routes.ts:10716 | Not run: evidence manifest SHA-256 is stale. |
-| DELETE /api/admin/neighborhoods/:id/coverage-targets/:categoryKey | admin | admin-role | server/routes/admin.routes.ts:9937 | Not run: evidence manifest SHA-256 is stale. |
-| DELETE /api/admin/notifications/:id | admin | admin-role | server/routes.ts:14030 | Not run: evidence manifest SHA-256 is stale. |
-| DELETE /api/admin/service-offering-types/:key | admin | admin-role | server/routes/admin.routes.ts:8786 | Not run: evidence manifest SHA-256 is stale. |
-| DELETE /api/admin/service-templates/:id | admin | admin-role | server/routes/admin.routes.ts:4022 | Not run: evidence manifest SHA-256 is stale. |
-| DELETE /api/admin/services/:id | admin | admin-role | server/routes/admin.routes.ts:5306 | Not run: evidence manifest SHA-256 is stale. |
-| DELETE /api/admin/slow-queries | admin | admin-role | server/routes.ts:12875 | Not run: evidence manifest SHA-256 is stale. |
-| DELETE /api/admin/subcategories/:id | admin | admin-role | server/routes/admin.routes.ts:4371 | Not run: evidence manifest SHA-256 is stale. |
-| DELETE /api/admin/users/:id | admin | admin-role | server/routes/admin.routes.ts:6792 | Not run: evidence manifest SHA-256 is stale. |
-| DELETE /api/admin/waitlist/:id | admin | admin-role | server/routes/launch-waitlist.routes.ts:191 | Not run: evidence manifest SHA-256 is stale. |
+| DELETE /api/admin/categories/:id | admin | admin-role | server/routes/admin.routes.ts:4341 | Not run: evidence manifest SHA-256 is stale. |
+| DELETE /api/admin/content-placement-rules/:id | admin | admin-role | server/routes/admin.routes.ts:9562 | Not run: evidence manifest SHA-256 is stale. |
+| DELETE /api/admin/event-packages/:id | admin | admin-role | server/routes/admin.routes.ts:9827 | Not run: evidence manifest SHA-256 is stale. |
+| DELETE /api/admin/expert-offering-types/:key | admin | admin-role | server/routes/admin.routes.ts:8893 | Not run: evidence manifest SHA-256 is stale. |
+| DELETE /api/admin/guest-plans/:tripId | admin | admin-role | server/routes/admin.routes.ts:10778 | Not run: evidence manifest SHA-256 is stale. |
+| DELETE /api/admin/neighborhoods/:id/coverage-targets/:categoryKey | admin | admin-role | server/routes/admin.routes.ts:9999 | Not run: evidence manifest SHA-256 is stale. |
+| DELETE /api/admin/notifications/:id | admin | admin-role | server/routes.ts:14036 | Not run: evidence manifest SHA-256 is stale. |
+| DELETE /api/admin/service-offering-types/:key | admin | admin-role | server/routes/admin.routes.ts:8841 | Not run: evidence manifest SHA-256 is stale. |
+| DELETE /api/admin/service-templates/:id | admin | admin-role | server/routes/admin.routes.ts:4048 | Not run: evidence manifest SHA-256 is stale. |
+| DELETE /api/admin/services/:id | admin | admin-role | server/routes/admin.routes.ts:5361 | Not run: evidence manifest SHA-256 is stale. |
+| DELETE /api/admin/slow-queries | admin | admin-role | server/routes.ts:12881 | Not run: evidence manifest SHA-256 is stale. |
+| DELETE /api/admin/subcategories/:id | admin | admin-role | server/routes/admin.routes.ts:4397 | Not run: evidence manifest SHA-256 is stale. |
+| DELETE /api/admin/users/:id | admin | admin-role | server/routes/admin.routes.ts:6847 | Not run: evidence manifest SHA-256 is stale. |
+| DELETE /api/admin/waitlist/:id | admin | admin-role | server/routes/launch-waitlist.routes.ts:192 | Not run: evidence manifest SHA-256 is stale. |
 | DELETE /api/anchors/:id | other | resource-owner | server/routes/trips.routes.ts:1741 | Other-category endpoint is intentionally outside the strict tested set. |
 | DELETE /api/auth/account | user-data | session-self | server/replit_integrations/auth/routes.ts:220 | Not run: evidence manifest SHA-256 is stale. |
 | DELETE /api/blog/posts/:slug/reactions/:kind | other | session-self | server/routes/blog.routes.ts:237 | Other-category endpoint is intentionally outside the strict tested set. |
-| DELETE /api/cart | user-data | session-self | server/routes.ts:10143 | Not run: evidence manifest SHA-256 is stale. |
-| DELETE /api/cart/:id | user-data | session-self | server/routes.ts:10125 | Not run: evidence manifest SHA-256 is stale. |
-| DELETE /api/contracts/:id | user-data | session-self | server/routes.ts:13178 | Not run: evidence manifest SHA-256 is stale. |
+| DELETE /api/cart | user-data | session-self | server/routes.ts:10149 | Not run: evidence manifest SHA-256 is stale. |
+| DELETE /api/cart/:id | user-data | session-self | server/routes.ts:10131 | Not run: evidence manifest SHA-256 is stale. |
+| DELETE /api/contracts/:id | user-data | session-self | server/routes.ts:13184 | Not run: evidence manifest SHA-256 is stale. |
 | DELETE /api/conversations/:id | user-data | session-self | server/replit_integrations/chat/routes.ts:108 | Not run: evidence manifest SHA-256 is stale. |
-| DELETE /api/coordination-bookings/:id | other | session-self | server/routes.ts:11497 | Other-category endpoint is intentionally outside the strict tested set. |
-| DELETE /api/coordination-states/:id | other | session-self | server/routes.ts:11395 | Other-category endpoint is intentionally outside the strict tested set. |
+| DELETE /api/coordination-bookings/:id | other | session-self | server/routes.ts:11503 | Other-category endpoint is intentionally outside the strict tested set. |
+| DELETE /api/coordination-states/:id | other | session-self | server/routes.ts:11401 | Other-category endpoint is intentionally outside the strict tested set. |
 | DELETE /api/custom-venues/:id | other | resource-owner | server/routes/content.routes.ts:1274 | Other-category endpoint is intentionally outside the strict tested set. |
 | DELETE /api/destination-calendar/events/:id | other | session-self | server/routes/content.routes.ts:2501 | Other-category endpoint is intentionally outside the strict tested set. |
 | DELETE /api/ea/ai-tasks/:id | admin | admin-role | server/routes/ea.routes.ts:657 | Not run: evidence manifest SHA-256 is stale. |
@@ -67,29 +67,29 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | DELETE /api/ea/venues/:id | admin | admin-role | server/routes/ea.routes.ts:557 | Not run: evidence manifest SHA-256 is stale. |
 | DELETE /api/emergency-contacts/:id | other | session-self | server/routes/content.routes.ts:7577 | Other-category endpoint is intentionally outside the strict tested set. |
 | DELETE /api/expert-workspace/collections/:id/items/:itemId | other | public-or-system | server/routes/expert-workspace.routes.ts:793 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| DELETE /api/expert/knowledge-nuggets/:id | user-data | session-self | server/routes/expert-console.routes.ts:709 | Not run: evidence manifest SHA-256 is stale. |
+| DELETE /api/expert/knowledge-nuggets/:id | user-data | session-self | server/routes/expert-console.routes.ts:710 | Not run: evidence manifest SHA-256 is stale. |
 | DELETE /api/expert/ready-made/build/:id | user-data | resource-owner | server/routes/ready-made.routes.ts:328 | Not run: evidence manifest SHA-256 is stale. |
-| DELETE /api/expert/selected-services/:serviceOfferingId | user-data | session-self | server/routes.ts:6080 | Not run: evidence manifest SHA-256 is stale. |
-| DELETE /api/expert/service-listings/:id | user-data | session-self | server/routes.ts:6269 | Not run: evidence manifest SHA-256 is stale. |
-| DELETE /api/expert/specializations/:specialization | user-data | session-self | server/routes.ts:6118 | Not run: evidence manifest SHA-256 is stale. |
+| DELETE /api/expert/selected-services/:serviceOfferingId | user-data | session-self | server/routes.ts:6086 | Not run: evidence manifest SHA-256 is stale. |
+| DELETE /api/expert/service-listings/:id | user-data | session-self | server/routes.ts:6275 | Not run: evidence manifest SHA-256 is stale. |
+| DELETE /api/expert/specializations/:specialization | user-data | session-self | server/routes.ts:6124 | Not run: evidence manifest SHA-256 is stale. |
 | DELETE /api/expert/vendors/:vendorId | user-data | session-self | server/routes/experts.routes.ts:445 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | DELETE /api/faqs/:id | other | session-self | server/routes/content.routes.ts:2306 | Other-category endpoint is intentionally outside the strict tested set. |
 | DELETE /api/invites/:inviteId | other | session-self | server/routes/guest-invites.ts:406 | Other-category endpoint is intentionally outside the strict tested set. |
 | DELETE /api/me/ea-links/:id | user-data | session-self | server/routes/ea.routes.ts:815 | Not run: evidence manifest SHA-256 is stale. |
 | DELETE /api/me/payment-methods/:id | payments | session-self | server/routes/payment-methods.routes.ts:85 | Not run: evidence manifest SHA-256 is stale. |
 | DELETE /api/me/profile-photo | user-data | session-self | server/routes/profile-photo.routes.ts:114 | Not run: evidence manifest SHA-256 is stale. |
-| DELETE /api/me/slots/:slotId | user-data | resource-owner | server/routes/expert-console.routes.ts:289 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| DELETE /api/me/slots/:slotId | user-data | resource-owner | server/routes/expert-console.routes.ts:290 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | DELETE /api/messages/block/:targetUserId | user-data | session-self | server/routes/messages.ts:334 | Not run: evidence manifest SHA-256 is stale. |
 | DELETE /api/notifications/:id | user-data | resource-owner | server/routes/content.routes.ts:3474 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | DELETE /api/occasions/:id | other | session-self | server/routes/occasions.routes.ts:163 | Other-category endpoint is intentionally outside the strict tested set. |
 | DELETE /api/participants/:id | user-data | session-self | server/routes/content.routes.ts:7478 | Not run: evidence manifest SHA-256 is stale. |
 | DELETE /api/plans/:id/feedback | other | session-self | server/routes/feedback.routes.ts:73 | Other-category endpoint is intentionally outside the strict tested set. |
-| DELETE /api/provider/availability/:id | user-data | session-self | server/routes.ts:11174 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| DELETE /api/provider/availability/:id | user-data | session-self | server/routes.ts:11180 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | DELETE /api/provider/blackout-dates/:id | user-data | resource-owner | server/routes/experts.routes.ts:508 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| DELETE /api/provider/bundles/:id | user-data | session-self | server/routes/provider.routes.ts:447 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| DELETE /api/provider/properties/:id | user-data | session-self | server/routes/provider.routes.ts:796 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| DELETE /api/provider/rooms/:id | user-data | session-self | server/routes/provider.routes.ts:931 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| DELETE /api/provider/services/:id | user-data | session-self | server/routes.ts:5107 | Not run: evidence manifest SHA-256 is stale. |
+| DELETE /api/provider/bundles/:id | user-data | session-self | server/routes/provider.routes.ts:448 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| DELETE /api/provider/properties/:id | user-data | session-self | server/routes/provider.routes.ts:797 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| DELETE /api/provider/rooms/:id | user-data | session-self | server/routes/provider.routes.ts:932 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| DELETE /api/provider/services/:id | user-data | session-self | server/routes.ts:5113 | Not run: evidence manifest SHA-256 is stale. |
 | DELETE /api/push/subscriptions | other | session-self | server/routes/push.routes.ts:106 | Other-category endpoint is intentionally outside the strict tested set. |
 | DELETE /api/saved-items/:id | user-data | session-self | server/routes/saved-items.routes.ts:134 | Not run: evidence manifest SHA-256 is stale. |
 | DELETE /api/saved-items/shares/:shareId | user-data | session-self | server/routes/saved-items.routes.ts:108 | Not run: evidence manifest SHA-256 is stale. |
@@ -100,59 +100,60 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | DELETE /api/trips/:tripId/option-sets/:setId/options/:optionId | user-data | session-self | server/routes/plan-option-sets.routes.ts:213 | Not run: evidence manifest SHA-256 is stale. |
 | DELETE /api/trips/:tripId/phone-delivery/calendar | user-data | session-self | server/routes/phone-delivery.routes.ts:59 | Not run: evidence manifest SHA-256 is stale. |
 | DELETE /api/trips/:tripId/transport-legs/:legId | user-data | session-self | server/routes/transport-legs.routes.ts:394 | Not run: evidence manifest SHA-256 is stale. |
-| DELETE /api/upsell/expert-review/endorse | other | session-self | server/routes/upsell.routes.ts:745 | Other-category endpoint is intentionally outside the strict tested set. |
+| DELETE /api/upsell/expert-review/endorse | other | session-self | server/routes/upsell.routes.ts:746 | Other-category endpoint is intentionally outside the strict tested set. |
 | DELETE /api/user-experience-items/:id | other | resource-owner | server/routes/content.routes.ts:2242 | Other-category endpoint is intentionally outside the strict tested set. |
 | DELETE /api/user-experiences/:id | other | session-self | server/routes/content.routes.ts:2156 | Other-category endpoint is intentionally outside the strict tested set. |
 | PATCH /api/admin/affiliate/partners/:id | admin | admin-role | server/routes/content.routes.ts:8987 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/affiliate/reconciliation/:earningId | admin | admin-role | server/routes/admin.routes.ts:4835 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/affiliate/reconciliation/:earningId | admin | admin-role | server/routes/admin.routes.ts:4890 | Not run: evidence manifest SHA-256 is stale. |
 | PATCH /api/admin/blog/posts/:id | admin | admin-role | server/routes/blog.routes.ts:169 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/bookings/auto-cancel/config | admin | admin-role | server/routes/admin.routes.ts:2428 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/categories/:id | admin | admin-role | server/routes/admin.routes.ts:4202 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/bookings/auto-cancel/config | admin | admin-role | server/routes/admin.routes.ts:2431 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/bot-accounts/:id/scopes | admin | admin-role | server/routes/bot-admin.routes.ts:92 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/categories/:id | admin | admin-role | server/routes/admin.routes.ts:4228 | Not run: evidence manifest SHA-256 is stale. |
 | PATCH /api/admin/concierge-task-kinds/:id | admin | admin-role | server/routes/concierge-task-kinds.routes.ts:68 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/contact-submissions/:id | admin | admin-role | server/routes/admin.routes.ts:3149 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/content-placement-rules/:id | admin | admin-role | server/routes/admin.routes.ts:9488 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/contact-submissions/:id | admin | admin-role | server/routes/admin.routes.ts:3152 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/content-placement-rules/:id | admin | admin-role | server/routes/admin.routes.ts:9550 | Not run: evidence manifest SHA-256 is stale. |
 | PATCH /api/admin/content-sources/:id | admin | admin-role | server/routes/content-sources.routes.ts:88 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/event-packages/:id | admin | admin-role | server/routes/admin.routes.ts:9738 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/evidence-thresholds/:key | admin | admin-role | server/routes/neighborhood-claims.routes.ts:310 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/event-packages/:id | admin | admin-role | server/routes/admin.routes.ts:9800 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/evidence-thresholds/:key | admin | admin-role | server/routes/neighborhood-claims.routes.ts:311 | Not run: evidence manifest SHA-256 is stale. |
 | PATCH /api/admin/experience-themes/:id | admin | admin-role | server/routes/experience-themes.routes.ts:69 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/expert-applications/:id/rejection-reason | admin | admin-role | server/routes/admin.routes.ts:3509 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/expert-applications/:id/status | admin | admin-role | server/routes/admin.routes.ts:3298 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/expert-offering-types/:key | admin | admin-role | server/routes/admin.routes.ts:8816 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/expert-templates/:id/roles | admin | admin-role | server/routes/admin.routes.ts:4077 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/fee-bands/:bandKey | admin | admin-role | server/routes/admin.routes.ts:8470 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/invoices/:invoiceNumber/status | admin | admin-role | server/routes/admin.routes.ts:5451 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/lead-routing-logs/:id/override | admin | admin-role | server/routes/admin.routes.ts:9075 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/message-reports/:id | admin | admin-role | server/routes/admin.routes.ts:8248 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/neighborhoods/:id/adjacency | admin | admin-role | server/routes/admin.routes.ts:10066 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/notifications/:id/read | admin | admin-role | server/routes.ts:13996 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/notifications/read-all | admin | admin-role | server/routes.ts:14056 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/partner-items/:table/:id | admin | admin-role | server/routes/admin.routes.ts:1612 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/payouts/:id | admin | admin-role | server/routes/admin.routes.ts:6341 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/platform-settings/:settingKey | admin | admin-role | server/routes/admin.routes.ts:8869 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/provider-applications/:id/rejection-reason | admin | admin-role | server/routes/admin.routes.ts:3909 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/provider-applications/:id/status | admin | admin-role | server/routes/admin.routes.ts:3784 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/ready-made/:id/badge | admin | admin-role | server/routes/admin.routes.ts:1654 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/reviews/:id/status | admin | admin-role | server/routes/admin.routes.ts:8330 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/service-offering-types/:key | admin | admin-role | server/routes/admin.routes.ts:8763 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/expert-applications/:id/rejection-reason | admin | admin-role | server/routes/admin.routes.ts:3512 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/expert-applications/:id/status | admin | admin-role | server/routes/admin.routes.ts:3301 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/expert-offering-types/:key | admin | admin-role | server/routes/admin.routes.ts:8871 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/expert-templates/:id/roles | admin | admin-role | server/routes/admin.routes.ts:4103 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/fee-bands/:bandKey | admin | admin-role | server/routes/admin.routes.ts:8525 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/invoices/:invoiceNumber/status | admin | admin-role | server/routes/admin.routes.ts:5506 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/lead-routing-logs/:id/override | admin | admin-role | server/routes/admin.routes.ts:9137 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/message-reports/:id | admin | admin-role | server/routes/admin.routes.ts:8303 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/neighborhoods/:id/adjacency | admin | admin-role | server/routes/admin.routes.ts:10128 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/notifications/:id/read | admin | admin-role | server/routes.ts:14002 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/notifications/read-all | admin | admin-role | server/routes.ts:14062 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/partner-items/:table/:id | admin | admin-role | server/routes/admin.routes.ts:1615 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/payouts/:id | admin | admin-role | server/routes/admin.routes.ts:6396 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/platform-settings/:settingKey | admin | admin-role | server/routes/admin.routes.ts:8924 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/provider-applications/:id/rejection-reason | admin | admin-role | server/routes/admin.routes.ts:3935 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/provider-applications/:id/status | admin | admin-role | server/routes/admin.routes.ts:3789 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/ready-made/:id/badge | admin | admin-role | server/routes/admin.routes.ts:1657 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/reviews/:id/status | admin | admin-role | server/routes/admin.routes.ts:8385 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/service-offering-types/:key | admin | admin-role | server/routes/admin.routes.ts:8818 | Not run: evidence manifest SHA-256 is stale. |
 | PATCH /api/admin/service-requests/:id | admin | admin-role | server/routes/service-requests.routes.ts:116 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/service-templates/:id | admin | admin-role | server/routes/admin.routes.ts:4000 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/services/:id/affinity-tags | admin | admin-role | server/routes/admin.routes.ts:5269 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/services/:id/featured | admin | admin-role | server/routes/admin.routes.ts:5242 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/services/:id/status | admin | admin-role | server/routes/admin.routes.ts:5216 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/subcategories/:id | admin | admin-role | server/routes/admin.routes.ts:4349 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/ticker/:id | admin | admin-role | server/routes/ticker.routes.ts:161 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/users/:id/commission-override | admin | admin-role | server/routes/admin.routes.ts:3608 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/users/:id/suspend | admin | admin-role | server/routes/admin.routes.ts:10189 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/users/:id/test-flag | admin | admin-role | server/routes/admin.routes.ts:3653 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/users/:id/unsuspend | admin | admin-role | server/routes/admin.routes.ts:10355 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/admin/users/:id/verification | admin | admin-role | server/routes/admin.routes.ts:3545 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/service-templates/:id | admin | admin-role | server/routes/admin.routes.ts:4026 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/services/:id/affinity-tags | admin | admin-role | server/routes/admin.routes.ts:5324 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/services/:id/featured | admin | admin-role | server/routes/admin.routes.ts:5297 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/services/:id/status | admin | admin-role | server/routes/admin.routes.ts:5271 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/subcategories/:id | admin | admin-role | server/routes/admin.routes.ts:4375 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/ticker/:id | admin | admin-role | server/routes/ticker.routes.ts:162 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/users/:id/commission-override | admin | admin-role | server/routes/admin.routes.ts:3611 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/users/:id/suspend | admin | admin-role | server/routes/admin.routes.ts:10251 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/users/:id/test-flag | admin | admin-role | server/routes/admin.routes.ts:3656 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/users/:id/unsuspend | admin | admin-role | server/routes/admin.routes.ts:10417 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/admin/users/:id/verification | admin | admin-role | server/routes/admin.routes.ts:3548 | Not run: evidence manifest SHA-256 is stale. |
 | PATCH /api/affiliate-booking-requests/:id | other | resource-owner | server/routes/content.routes.ts:8256 | Other-category endpoint is intentionally outside the strict tested set. |
-| PATCH /api/cart/:id | user-data | session-self | server/routes.ts:10053 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/contracts/:id | user-data | session-self | server/routes.ts:13109 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/cart/:id | user-data | session-self | server/routes.ts:10059 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/contracts/:id | user-data | session-self | server/routes.ts:13115 | Not run: evidence manifest SHA-256 is stale. |
 | PATCH /api/conversations/:id | user-data | session-self | server/replit_integrations/chat/routes.ts:90 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/coordination-bookings/:id | other | session-self | server/routes.ts:11455 | Other-category endpoint is intentionally outside the strict tested set. |
-| PATCH /api/coordination-states/:id | other | session-self | server/routes.ts:11290 | Other-category endpoint is intentionally outside the strict tested set. |
-| PATCH /api/coordination-states/:id/status | other | session-self | server/routes.ts:11318 | Other-category endpoint is intentionally outside the strict tested set. |
+| PATCH /api/coordination-bookings/:id | other | session-self | server/routes.ts:11461 | Other-category endpoint is intentionally outside the strict tested set. |
+| PATCH /api/coordination-states/:id | other | session-self | server/routes.ts:11296 | Other-category endpoint is intentionally outside the strict tested set. |
+| PATCH /api/coordination-states/:id/status | other | session-self | server/routes.ts:11324 | Other-category endpoint is intentionally outside the strict tested set. |
 | PATCH /api/custom-venues/:id | other | resource-owner | server/routes/content.routes.ts:1238 | Other-category endpoint is intentionally outside the strict tested set. |
 | PATCH /api/ea/ai-tasks/:id | admin | admin-role | server/routes/ea.routes.ts:636 | Not run: evidence manifest SHA-256 is stale. |
 | PATCH /api/ea/clients/:id | admin | admin-role | server/routes/ea.routes.ts:142 | Not run: evidence manifest SHA-256 is stale. |
@@ -163,24 +164,24 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | PATCH /api/ea/travel/:id | admin | admin-role | server/routes/ea.routes.ts:435 | Not run: evidence manifest SHA-256 is stale. |
 | PATCH /api/ea/venues/:id | admin | admin-role | server/routes/ea.routes.ts:544 | Not run: evidence manifest SHA-256 is stale. |
 | PATCH /api/emergency-contacts/:id | other | session-self | server/routes/content.routes.ts:7559 | Other-category endpoint is intentionally outside the strict tested set. |
-| PATCH /api/expert-requests/:id/complete | other | session-self | server/routes/booking-actions.ts:437 | Other-category endpoint is intentionally outside the strict tested set. |
+| PATCH /api/expert-requests/:id/complete | other | session-self | server/routes/booking-actions.ts:438 | Other-category endpoint is intentionally outside the strict tested set. |
 | PATCH /api/expert-review/:shareToken/acknowledge | other | resource-owner | server/routes/trips.routes.ts:2889 | Other-category endpoint is intentionally outside the strict tested set. |
 | PATCH /api/expert-workspace/edits/:editId/submit | other | session-self | server/routes/expert-workspace.routes.ts:863 | Other-category endpoint is intentionally outside the strict tested set. |
 | PATCH /api/expert-workspace/gaps/:id/assign | other | session-self | server/routes/expert-workspace.routes.ts:917 | Other-category endpoint is intentionally outside the strict tested set. |
 | PATCH /api/expert-workspace/gaps/:id/resolve | other | public-or-system | server/routes/expert-workspace.routes.ts:934 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | PATCH /api/expert-workspace/library/:id/extracted-places/:index | other | resource-owner | server/routes/expert-workspace.routes.ts:426 | Other-category endpoint is intentionally outside the strict tested set. |
-| PATCH /api/expert/assignments/:assignmentId/workspace-status | user-data | resource-owner | server/routes/booking-actions.ts:1375 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| PATCH /api/expert/bookings/:id/status | user-data | session-self | server/routes.ts:8065 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| PATCH /api/expert/knowledge-nuggets/:id | user-data | session-self | server/routes/expert-console.routes.ts:661 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/expert/neighborhoods | user-data | session-self | server/routes.ts:5843 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/expert/photo | user-data | session-self | server/routes.ts:6043 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/expert/profile | user-data | session-self | server/routes.ts:5947 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/expert/profile-notes | user-data | session-self | server/routes.ts:5890 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/expert/assignments/:assignmentId/workspace-status | user-data | resource-owner | server/routes/booking-actions.ts:1376 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| PATCH /api/expert/bookings/:id/status | user-data | session-self | server/routes.ts:8071 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| PATCH /api/expert/knowledge-nuggets/:id | user-data | session-self | server/routes/expert-console.routes.ts:662 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/expert/neighborhoods | user-data | session-self | server/routes.ts:5849 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/expert/photo | user-data | session-self | server/routes.ts:6049 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/expert/profile | user-data | session-self | server/routes.ts:5953 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/expert/profile-notes | user-data | session-self | server/routes.ts:5896 | Not run: evidence manifest SHA-256 is stale. |
 | PATCH /api/expert/ready-made/:id | user-data | session-self | server/routes/ready-made.routes.ts:665 | Not run: evidence manifest SHA-256 is stale. |
 | PATCH /api/expert/ready-made/build/:tripId | user-data | resource-owner | server/routes/ready-made.routes.ts:292 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/expert/role | user-data | session-self | server/routes/expert-console.routes.ts:75 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| PATCH /api/expert/service-listings/:id | user-data | session-self | server/routes.ts:6193 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/expert/services/:id/status | user-data | resource-owner | server/routes.ts:6728 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| PATCH /api/expert/role | user-data | session-self | server/routes/expert-console.routes.ts:76 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| PATCH /api/expert/service-listings/:id | user-data | session-self | server/routes.ts:6199 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/expert/services/:id/status | user-data | resource-owner | server/routes.ts:6734 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | PATCH /api/faqs/:id | other | session-self | server/routes/content.routes.ts:2284 | Other-category endpoint is intentionally outside the strict tested set. |
 | PATCH /api/guest-plans/current | other | public-or-system | server/routes/guest-plans.routes.ts:147 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | PATCH /api/itinerary-share/:token/acknowledge | other | resource-owner | server/routes/trips.routes.ts:2732 | Other-category endpoint is intentionally outside the strict tested set. |
@@ -201,23 +202,23 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | PATCH /api/participants/:id | user-data | resource-owner | server/routes/content.routes.ts:7414 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | PATCH /api/participants/:id/rsvp | user-data | session-self | server/routes/content.routes.ts:7440 | Not run: evidence manifest SHA-256 is stale. |
 | PATCH /api/profile | user-data | session-self | server/replit_integrations/auth/routes.ts:104 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/provider-application | other | session-self | server/routes.ts:3002 | Other-category endpoint is intentionally outside the strict tested set. |
-| PATCH /api/provider/availability/:id | user-data | session-self | server/routes.ts:11150 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| PATCH /api/provider/bookings/:id/status | user-data | session-self | server/routes.ts:8069 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| PATCH /api/provider/bundles/:id | user-data | session-self | server/routes/provider.routes.ts:347 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| PATCH /api/provider/properties/:id | user-data | session-self | server/routes/provider.routes.ts:731 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| PATCH /api/provider/rooms/:id | user-data | session-self | server/routes/provider.routes.ts:884 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| PATCH /api/provider/services/:id | user-data | resource-owner | server/routes.ts:4540 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| PATCH /api/provider/settings | user-data | resource-owner | server/routes/provider.routes.ts:127 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| PATCH /api/service-bookings/:id/document-checklist | other | session-self | server/routes.ts:8527 | Other-category endpoint is intentionally outside the strict tested set. |
-| PATCH /api/service-bookings/:id/visa-status | other | session-self | server/routes.ts:8462 | Other-category endpoint is intentionally outside the strict tested set. |
-| PATCH /api/short-links/:id | other | resource-owner | server/routes/short-links.routes.ts:191 | Other-category endpoint is intentionally outside the strict tested set. |
+| PATCH /api/provider-application | other | session-self | server/routes.ts:3008 | Other-category endpoint is intentionally outside the strict tested set. |
+| PATCH /api/provider/availability/:id | user-data | session-self | server/routes.ts:11156 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| PATCH /api/provider/bookings/:id/status | user-data | session-self | server/routes.ts:8075 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| PATCH /api/provider/bundles/:id | user-data | session-self | server/routes/provider.routes.ts:348 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| PATCH /api/provider/properties/:id | user-data | session-self | server/routes/provider.routes.ts:732 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| PATCH /api/provider/rooms/:id | user-data | session-self | server/routes/provider.routes.ts:885 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| PATCH /api/provider/services/:id | user-data | resource-owner | server/routes.ts:4546 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| PATCH /api/provider/settings | user-data | resource-owner | server/routes/provider.routes.ts:128 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| PATCH /api/service-bookings/:id/document-checklist | other | session-self | server/routes.ts:8533 | Other-category endpoint is intentionally outside the strict tested set. |
+| PATCH /api/service-bookings/:id/visa-status | other | session-self | server/routes.ts:8468 | Other-category endpoint is intentionally outside the strict tested set. |
+| PATCH /api/short-links/:id | other | resource-owner | server/routes/short-links.routes.ts:192 | Other-category endpoint is intentionally outside the strict tested set. |
 | PATCH /api/transactions/:id | other | session-self | server/routes/content.routes.ts:7521 | Other-category endpoint is intentionally outside the strict tested set. |
 | PATCH /api/transport-legs/:legId/mode | other | resource-owner | server/routes/trips.routes.ts:2269 | Other-category endpoint is intentionally outside the strict tested set. |
 | PATCH /api/transport-legs/:legId/status | other | resource-owner | server/routes/plancard.routes.ts:1135 | Other-category endpoint is intentionally outside the strict tested set. |
 | PATCH /api/trips/:id | user-data | session-self | server/routes/trips.routes.ts:633 | Not run: evidence manifest SHA-256 is stale. |
-| PATCH /api/trips/:id/suggestions/:suggestionId | user-data | resource-owner | server/routes/booking-actions.ts:1186 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| PATCH /api/trips/:tripId/expert-notes | user-data | session-self | server/routes/booking-actions.ts:1861 | Not run: evidence manifest SHA-256 is stale. |
+| PATCH /api/trips/:id/suggestions/:suggestionId | user-data | resource-owner | server/routes/booking-actions.ts:1187 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| PATCH /api/trips/:tripId/expert-notes | user-data | session-self | server/routes/booking-actions.ts:1862 | Not run: evidence manifest SHA-256 is stale. |
 | PATCH /api/trips/:tripId/expert-traveler-note | user-data | session-self | server/routes/trips.routes.ts:3506 | Not run: evidence manifest SHA-256 is stale. |
 | PATCH /api/trips/:tripId/itinerary-items/:itemId | user-data | resource-owner | server/routes/trips.routes.ts:3206 | Not run: evidence manifest SHA-256 is stale. |
 | PATCH /api/trips/:tripId/occasion | user-data | session-self | server/routes/trips.routes.ts:3627 | Not run: evidence manifest SHA-256 is stale. |
@@ -225,11 +226,11 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | PATCH /api/user-experience-items/:id | other | resource-owner | server/routes/content.routes.ts:2219 | Other-category endpoint is intentionally outside the strict tested set. |
 | PATCH /api/user-experiences/:id | other | resource-owner | server/routes/content.routes.ts:2107 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/admin/affiliate/partners | admin | admin-role | server/routes/content.routes.ts:8923 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/affiliate/partners/:id/approve | admin | admin-role | server/routes/admin.routes.ts:10399 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/affiliate/partners/:id/approve | admin | admin-role | server/routes/admin.routes.ts:10461 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/affiliate/partners/:id/page-extract | admin | admin-role | server/routes/content.routes.ts:9029 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/affiliate/partners/:id/reject | admin | admin-role | server/routes/admin.routes.ts:10410 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/affiliate/partners/:id/reject | admin | admin-role | server/routes/admin.routes.ts:10472 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/affiliate/partners/:id/scrape | admin | admin-role | server/routes/content.routes.ts:9048 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/affiliate/reconciliation | admin | admin-role | server/routes/admin.routes.ts:4801 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/affiliate/reconciliation | admin | admin-role | server/routes/admin.routes.ts:4856 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/blog/drafts | admin | admin-role | server/routes/blog.routes.ts:124 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/blog/event-guides | admin | admin-role | server/routes/blog.routes.ts:141 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/blog/posts | admin | admin-role | server/routes/blog.routes.ts:109 | Not run: evidence manifest SHA-256 is stale. |
@@ -239,103 +240,106 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/admin/blog/race-weekends | admin | admin-role | server/routes/blog.routes.ts:163 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/blog/series-follows | admin | admin-role | server/routes/blog.routes.ts:151 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/blog/travelpulse-weekly | admin | admin-role | server/routes/blog.routes.ts:133 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/bookings/:bookingId/exception-refund | admin | admin-role | server/routes/admin.routes.ts:835 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/bookings/:bookingId/lost-chargeback/reconcile | admin | admin-role | server/routes/admin.routes.ts:901 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/bookings/:bookingId/out-of-band-refund/clear | admin | admin-role | server/routes/admin.routes.ts:753 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/bookings/:kind(service|legacy|liteapi)/:id/resolve | admin | admin-role | server/routes/admin.routes.ts:997 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/bookings/auto-cancel/run | admin | admin-role | server/routes/admin.routes.ts:2464 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/bot-accounts | admin | admin-role | server/routes/bot-admin.routes.ts:47 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/bot-accounts/:id/revoke | admin | admin-role | server/routes/bot-admin.routes.ts:62 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/bot-proposals/:id/approve | admin | admin-role | server/routes/bot-admin.routes.ts:89 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/bot-proposals/:id/reject | admin | admin-role | server/routes/bot-admin.routes.ts:108 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/bot-proposals/refresh-facts/:id/approve | admin | admin-role | server/routes/bot-admin.routes.ts:132 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/catalog/ingest | admin | admin-role | server/routes/admin.routes.ts:2916 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/categories | admin | admin-role | server/routes/admin.routes.ts:4150 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/categories/:categoryId/subcategories | admin | admin-role | server/routes/admin.routes.ts:4326 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/bookings/:bookingId/exception-refund | admin | admin-role | server/routes/admin.routes.ts:838 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/bookings/:bookingId/lost-chargeback/reconcile | admin | admin-role | server/routes/admin.routes.ts:904 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/bookings/:bookingId/out-of-band-refund/clear | admin | admin-role | server/routes/admin.routes.ts:756 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/bookings/:kind(service|legacy|liteapi)/:id/resolve | admin | admin-role | server/routes/admin.routes.ts:1000 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/bookings/auto-cancel/run | admin | admin-role | server/routes/admin.routes.ts:2467 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/bot-accounts | admin | admin-role | server/routes/bot-admin.routes.ts:62 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/bot-accounts/:id/revoke | admin | admin-role | server/routes/bot-admin.routes.ts:77 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/bot-proposals/:id/approve | admin | admin-role | server/routes/bot-admin.routes.ts:132 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/bot-proposals/:id/assign | admin | admin-role | server/routes/bot-admin.routes.ts:171 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/bot-proposals/:id/reject | admin | admin-role | server/routes/bot-admin.routes.ts:152 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/bot-proposals/refresh-facts/:id/approve | admin | admin-role | server/routes/bot-admin.routes.ts:217 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/catalog/ingest | admin | admin-role | server/routes/admin.routes.ts:2919 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/categories | admin | admin-role | server/routes/admin.routes.ts:4176 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/categories/:categoryId/subcategories | admin | admin-role | server/routes/admin.routes.ts:4352 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/city-knowledge/:cityKey/sign-off | admin | admin-role | server/routes/city-knowledge.routes.ts:98 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/concierge-task-kinds | admin | admin-role | server/routes/concierge-task-kinds.routes.ts:57 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/content-placement-rules | admin | admin-role | server/routes/admin.routes.ts:9477 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/content-placement-rules/auto-index | admin | admin-role | server/routes/admin.routes.ts:9513 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/content-placement-rules | admin | admin-role | server/routes/admin.routes.ts:9539 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/content-placement-rules/auto-index | admin | admin-role | server/routes/admin.routes.ts:9575 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/content-sources | admin | admin-role | server/routes/content-sources.routes.ts:78 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/content-sources/:id/activate | admin | admin-role | server/routes/content-sources.routes.ts:96 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/content-sources/:id/deactivate | admin | admin-role | server/routes/content-sources.routes.ts:104 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/content-sources/:id/public-ok | admin | admin-role | server/routes/content-sources.routes.ts:112 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/content-sources/:id/signoff | admin | admin-role | server/routes/content-sources.routes.ts:120 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/content/:trackingNumber/moderate | admin | admin-role | server/routes/admin.routes.ts:5013 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/content/flags/:flagId/resolve | admin | admin-role | server/routes/admin.routes.ts:5066 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/content/register | admin | admin-role | server/routes/admin.routes.ts:4958 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/coordination-states/:id/assign-coordinator | admin | admin-role | server/routes/admin.routes.ts:1318 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/coordination-states/:id/review-ledger-gap | admin | admin-role | server/routes/admin.routes.ts:1409 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/content/:trackingNumber/moderate | admin | admin-role | server/routes/admin.routes.ts:5068 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/content/flags/:flagId/resolve | admin | admin-role | server/routes/admin.routes.ts:5121 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/content/register | admin | admin-role | server/routes/admin.routes.ts:5013 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/coordination-states/:id/assign-coordinator | admin | admin-role | server/routes/admin.routes.ts:1321 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/coordination-states/:id/review-ledger-gap | admin | admin-role | server/routes/admin.routes.ts:1412 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/demand/onepager/:market/approve | admin | admin-role | server/routes/demand.routes.ts:855 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/demand/onepager/:market/generate | admin | admin-role | server/routes/demand.routes.ts:839 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/demand/onepager/:market/withdraw | admin | admin-role | server/routes/demand.routes.ts:871 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/destination-events/:id/approve | admin | admin-role | server/routes/admin.routes.ts:4707 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/destination-events/:id/reject | admin | admin-role | server/routes/admin.routes.ts:4733 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/digest/send-now | admin | admin-role | server/routes/admin.routes.ts:10161 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/disputes/:bookingId/refund-rejected-artifact | admin | admin-role | server/routes/admin.routes.ts:2135 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/disputes/:bookingId/reject | admin | admin-role | server/routes/admin.routes.ts:1948 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/disputes/:bookingId/uphold | admin | admin-role | server/routes/admin.routes.ts:2026 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/dmo/analyze-gaps | admin | admin-role | server/routes/admin.routes.ts:2562 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/dmo/ingest-gaps | admin | admin-role | server/routes/admin.routes.ts:2578 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/dmo/ingest-kyoto | admin | admin-role | server/routes/admin.routes.ts:2521 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/dmo/ingest-youtube | admin | admin-role | server/routes/admin.routes.ts:2612 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/dmo/intake/:id/approve | admin | admin-role | server/routes/admin.routes.ts:2853 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/dmo/intake/:id/reject | admin | admin-role | server/routes/admin.routes.ts:2943 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/dmo/publish-batch | admin | admin-role | server/routes/admin.routes.ts:3027 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/dmo/publish/:id | admin | admin-role | server/routes/admin.routes.ts:2982 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/dmo/resolve | admin | admin-role | server/routes/admin.routes.ts:3081 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/dmo/sync-registry | admin | admin-role | server/routes/admin.routes.ts:2898 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/email-outbox/:id/retry | admin | admin-role | server/routes/admin.routes.ts:10529 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/event-packages | admin | admin-role | server/routes/admin.routes.ts:9716 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/destination-events/:id/approve | admin | admin-role | server/routes/admin.routes.ts:4762 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/destination-events/:id/reject | admin | admin-role | server/routes/admin.routes.ts:4788 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/digest/send-now | admin | admin-role | server/routes/admin.routes.ts:10223 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/disputes/:bookingId/refund-rejected-artifact | admin | admin-role | server/routes/admin.routes.ts:2138 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/disputes/:bookingId/reject | admin | admin-role | server/routes/admin.routes.ts:1951 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/disputes/:bookingId/uphold | admin | admin-role | server/routes/admin.routes.ts:2029 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/dmo/analyze-gaps | admin | admin-role | server/routes/admin.routes.ts:2565 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/dmo/ingest-gaps | admin | admin-role | server/routes/admin.routes.ts:2581 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/dmo/ingest-kyoto | admin | admin-role | server/routes/admin.routes.ts:2524 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/dmo/ingest-youtube | admin | admin-role | server/routes/admin.routes.ts:2615 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/dmo/intake/:id/approve | admin | admin-role | server/routes/admin.routes.ts:2856 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/dmo/intake/:id/reject | admin | admin-role | server/routes/admin.routes.ts:2946 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/dmo/publish-batch | admin | admin-role | server/routes/admin.routes.ts:3030 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/dmo/publish/:id | admin | admin-role | server/routes/admin.routes.ts:2985 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/dmo/resolve | admin | admin-role | server/routes/admin.routes.ts:3084 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/dmo/sync-registry | admin | admin-role | server/routes/admin.routes.ts:2901 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/email-outbox/:id/retry | admin | admin-role | server/routes/admin.routes.ts:10591 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/event-packages | admin | admin-role | server/routes/admin.routes.ts:9778 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/experience-theme-suggestions/:id/accept | admin | admin-role | server/routes/experience-themes.routes.ts:79 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/experience-theme-suggestions/:id/dismiss | admin | admin-role | server/routes/experience-themes.routes.ts:87 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/experience-themes | admin | admin-role | server/routes/experience-themes.routes.ts:56 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/expert-applications/:id/city-knowledge/retake | admin | admin-role | server/routes/city-knowledge.routes.ts:134 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/expert-applications/:id/rescore | admin | admin-role | server/routes/admin.routes.ts:3467 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/expert-offering-types | admin | admin-role | server/routes/admin.routes.ts:8806 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/experts/:userId/remind-stripe | admin | admin-role | server/routes/admin.routes.ts:3774 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/gem-candidates/:id/approve | admin | admin-role | server/routes/admin.routes.ts:9381 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/gem-candidates/:id/reject | admin | admin-role | server/routes/admin.routes.ts:9424 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/gems/:id/verify | admin | admin-role | server/routes/admin.routes.ts:9361 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/gems/backfill-photos | admin | admin-role | server/routes/admin.routes.ts:411 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/expert-applications/:id/rescore | admin | admin-role | server/routes/admin.routes.ts:3470 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/expert-offering-types | admin | admin-role | server/routes/admin.routes.ts:8861 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/experts/:userId/remind-stripe | admin | admin-role | server/routes/admin.routes.ts:3779 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/gem-candidates/:id/approve | admin | admin-role | server/routes/admin.routes.ts:9443 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/gem-candidates/:id/reject | admin | admin-role | server/routes/admin.routes.ts:9486 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/gems/:id/verify | admin | admin-role | server/routes/admin.routes.ts:9423 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/gems/backfill-photos | admin | admin-role | server/routes/admin.routes.ts:414 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/handoffs/:id/assign | admin | admin-role | server/routes/handoff.routes.ts:457 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/invoices | admin | admin-role | server/routes/admin.routes.ts:5387 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/leads/:expertRequestId/assign | admin | admin-role | server/routes/admin.routes.ts:9155 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/leads/:expertRequestId/confirm | admin | admin-role | server/routes/admin.routes.ts:9258 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/invoices | admin | admin-role | server/routes/admin.routes.ts:5442 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/leads/:expertRequestId/assign | admin | admin-role | server/routes/admin.routes.ts:9217 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/leads/:expertRequestId/confirm | admin | admin-role | server/routes/admin.routes.ts:9320 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/markets | admin | admin-role | server/routes/admin-markets.routes.ts:187 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/markets/:slug/refresh-geography | admin | admin-role | server/routes/admin-markets.routes.ts:284 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/neighborhood-claims/:id/ratify | admin | admin-role | server/routes/neighborhood-claims.routes.ts:236 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/neighborhood-claims/:id/rescore | admin | admin-role | server/routes/neighborhood-claims.routes.ts:287 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/neighborhood-claims/:id/return | admin | admin-role | server/routes/neighborhood-claims.routes.ts:262 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/neighborhood-claims/manual-entry | admin | admin-role | server/routes/neighborhood-claims.routes.ts:160 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/neighborhoods/:id/coverage-targets | admin | admin-role | server/routes/admin.routes.ts:9888 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/neighborhoods/backfill | admin | admin-role | server/routes/admin.routes.ts:9849 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/optimization-fees | admin | admin-role | server/routes/admin.routes.ts:9653 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/payouts | admin | admin-role | server/routes/admin.routes.ts:6235 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/payouts/:id/mark-paid | admin | admin-role | server/routes/admin.routes.ts:6580 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/neighborhood-claims/:id/ratify | admin | admin-role | server/routes/neighborhood-claims.routes.ts:237 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/neighborhood-claims/:id/rescore | admin | admin-role | server/routes/neighborhood-claims.routes.ts:288 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/neighborhood-claims/:id/return | admin | admin-role | server/routes/neighborhood-claims.routes.ts:263 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/neighborhood-claims/manual-entry | admin | admin-role | server/routes/neighborhood-claims.routes.ts:161 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/neighborhoods/:id/coverage-targets | admin | admin-role | server/routes/admin.routes.ts:9950 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/neighborhoods/backfill | admin | admin-role | server/routes/admin.routes.ts:9911 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/optimization-fees | admin | admin-role | server/routes/admin.routes.ts:9715 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/payouts | admin | admin-role | server/routes/admin.routes.ts:6290 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/payouts/:id/mark-paid | admin | admin-role | server/routes/admin.routes.ts:6635 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/admin/place-photo-blocks | admin | admin-role | server/routes/place-photo-blocks.routes.ts:25 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/provider-services/:id/approve | admin | admin-role | server/routes/admin.routes.ts:4525 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/provider-services/:id/reject | admin | admin-role | server/routes/admin.routes.ts:4614 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/providers/:userId/remind-stripe | admin | admin-role | server/routes/admin.routes.ts:3778 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/qa/run-nightly | admin | admin-role | server/routes/admin.routes.ts:10313 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/ready-made/:id/approve | admin | admin-role | server/routes/admin.routes.ts:1469 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/ready-made/:id/reject | admin | admin-role | server/routes/admin.routes.ts:1686 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/ready-made/disputes/:purchaseId/dismiss | admin | admin-role | server/routes/admin.routes.ts:1891 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/ready-made/disputes/:purchaseId/refund | admin | admin-role | server/routes/admin.routes.ts:1786 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/reconciliation/run-now | admin | admin-role | server/routes/admin.routes.ts:2272 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/reviews/:id/clear-response | admin | admin-role | server/routes/admin.routes.ts:8351 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/routing-queue/:requestId/confirm | admin | admin-role | server/routes/admin.routes.ts:9270 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/routing-queue/:requestId/reassign | admin | admin-role | server/routes/admin.routes.ts:9282 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/seed-categories | admin | admin-role | server/routes/admin.routes.ts:4382 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/service-offering-types | admin | admin-role | server/routes/admin.routes.ts:8753 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/service-templates | admin | admin-role | server/routes/admin.routes.ts:3955 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/system/test-email | admin | admin-role | server/routes/admin.routes.ts:7493 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/ticker | admin | admin-role | server/routes/ticker.routes.ts:130 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/trigger-digest | admin | admin-role | server/routes/admin.routes.ts:10149 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/trip-pass/issue | admin | admin-role | server/routes/admin.routes.ts:10656 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/users/:id/qa-password-reset | admin | admin-role | server/routes/admin.routes.ts:378 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/waitlist/market-opened | admin | admin-role | server/routes/launch-waitlist.routes.ts:212 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/admin/webhook-events/:stripeEventId/replay | admin | admin-role | server/routes/admin.routes.ts:1078 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/provider-services/:id/approve | admin | admin-role | server/routes/admin.routes.ts:4559 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/provider-services/:id/reject | admin | admin-role | server/routes/admin.routes.ts:4665 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/providers/:userId/remind-stripe | admin | admin-role | server/routes/admin.routes.ts:3783 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/qa/run-nightly | admin | admin-role | server/routes/admin.routes.ts:10375 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/ready-made/:id/approve | admin | admin-role | server/routes/admin.routes.ts:1472 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/ready-made/:id/reject | admin | admin-role | server/routes/admin.routes.ts:1689 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/ready-made/disputes/:purchaseId/dismiss | admin | admin-role | server/routes/admin.routes.ts:1894 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/ready-made/disputes/:purchaseId/refund | admin | admin-role | server/routes/admin.routes.ts:1789 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/reconciliation/run-now | admin | admin-role | server/routes/admin.routes.ts:2275 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/reviews/:id/clear-response | admin | admin-role | server/routes/admin.routes.ts:8406 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/routing-queue/:requestId/confirm | admin | admin-role | server/routes/admin.routes.ts:9332 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/routing-queue/:requestId/reassign | admin | admin-role | server/routes/admin.routes.ts:9344 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/seed-categories | admin | admin-role | server/routes/admin.routes.ts:4408 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/service-offering-types | admin | admin-role | server/routes/admin.routes.ts:8808 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/service-templates | admin | admin-role | server/routes/admin.routes.ts:3981 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/staff/:userId/markets | admin | admin-role | server/routes/staff-admin.routes.ts:102 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/staff/:userId/role | admin | admin-role | server/routes/staff-admin.routes.ts:75 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/system/test-email | admin | admin-role | server/routes/admin.routes.ts:7548 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/ticker | admin | admin-role | server/routes/ticker.routes.ts:131 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/trigger-digest | admin | admin-role | server/routes/admin.routes.ts:10211 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/trip-pass/issue | admin | admin-role | server/routes/admin.routes.ts:10718 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/users/:id/qa-password-reset | admin | admin-role | server/routes/admin.routes.ts:381 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/waitlist/market-opened | admin | admin-role | server/routes/launch-waitlist.routes.ts:213 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/admin/webhook-events/:stripeEventId/replay | admin | admin-role | server/routes/admin.routes.ts:1081 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/affiliate-booking-requests | other | resource-owner | server/routes/content.routes.ts:7819 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/affiliate-booking-requests/:id/claim | other | session-self | server/routes/content.routes.ts:8198 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/affiliate-booking-requests/:id/verify | other | session-self | server/routes/content.routes.ts:8551 | Other-category endpoint is intentionally outside the strict tested set. |
@@ -356,44 +360,44 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/analytics/search-event | other | session-self | server/routes/content.routes.ts:3273 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/auth/accept-terms | other | session-self | server/replit_integrations/auth/routes.ts:164 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/auth/apple/callback | other | public-or-system | server/replit_integrations/auth/appleAuth.ts:516 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/auth/change-unverified-email | other | public-or-system | server/replit_integrations/auth/emailAuth.ts:536 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/auth/forgot-password | other | public-or-system | server/replit_integrations/auth/emailAuth.ts:397 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/auth/login | other | session-self | server/replit_integrations/auth/emailAuth.ts:284 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/auth/logout | other | public-or-system | server/replit_integrations/auth/emailAuth.ts:586 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/auth/register | other | public-or-system | server/replit_integrations/auth/emailAuth.ts:128 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/auth/resend-verification | other | public-or-system | server/replit_integrations/auth/emailAuth.ts:509 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/auth/reset-password | other | public-or-system | server/replit_integrations/auth/emailAuth.ts:461 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/auth/send-verification | other | public-or-system | server/replit_integrations/auth/emailAuth.ts:519 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/auth/verify-email | other | public-or-system | server/replit_integrations/auth/emailAuth.ts:562 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /api/auth/change-unverified-email | other | public-or-system | server/replit_integrations/auth/emailAuth.ts:547 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /api/auth/forgot-password | other | public-or-system | server/replit_integrations/auth/emailAuth.ts:408 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /api/auth/login | other | session-self | server/replit_integrations/auth/emailAuth.ts:289 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/auth/logout | other | public-or-system | server/replit_integrations/auth/emailAuth.ts:597 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /api/auth/register | other | public-or-system | server/replit_integrations/auth/emailAuth.ts:129 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /api/auth/resend-verification | other | public-or-system | server/replit_integrations/auth/emailAuth.ts:520 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /api/auth/reset-password | other | public-or-system | server/replit_integrations/auth/emailAuth.ts:472 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /api/auth/send-verification | other | public-or-system | server/replit_integrations/auth/emailAuth.ts:530 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /api/auth/verify-email | other | public-or-system | server/replit_integrations/auth/emailAuth.ts:573 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /api/blog/posts/:slug/reactions | other | session-self | server/routes/blog.routes.ts:231 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/bookings | user-data | session-self | server/routes.ts:7758 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/bookings/:id/accept-deliverable | user-data | session-self | server/routes/bookings.ts:1003 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/bookings/:id/cancel | user-data | session-self | server/routes.ts:8577 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/bookings/:id/components/:componentServiceId/cancel | user-data | session-self | server/routes.ts:8369 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/bookings/:id/confirm-completion | payments | resource-owner | server/routes/bookings.ts:784 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/bookings/:id/deliver-artifact | user-data | session-self | server/routes/bookings.ts:1072 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/bookings/:id/dispute | payments | resource-owner | server/routes/bookings.ts:862 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/bookings | user-data | session-self | server/routes.ts:7764 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/bookings/:id/accept-deliverable | user-data | session-self | server/routes/bookings.ts:1004 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/bookings/:id/cancel | user-data | session-self | server/routes.ts:8583 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/bookings/:id/components/:componentServiceId/cancel | user-data | session-self | server/routes.ts:8375 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/bookings/:id/confirm-completion | payments | resource-owner | server/routes/bookings.ts:785 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/bookings/:id/deliver-artifact | user-data | session-self | server/routes/bookings.ts:1073 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/bookings/:id/dispute | payments | resource-owner | server/routes/bookings.ts:863 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | POST /api/bookings/:id/pay-balance | payments | resource-owner | server/routes/payments.routes.ts:2486 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/bookings/:id/request-revision | user-data | session-self | server/routes/bookings.ts:1029 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/bookings/:id/request-revision | user-data | session-self | server/routes/bookings.ts:1030 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/bookings/:id/resume-payment | user-data | session-self | server/routes/payments.routes.ts:2421 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/bookings/bulk-status | user-data | resource-owner | server/routes/bookings.ts:414 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/bookings/confirm-payment | payments | resource-owner | server/routes/bookings.ts:266 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/bookings/estimate-cost | user-data | session-self | server/routes/bookings.ts:532 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/bookings/process-cart | payments | session-self | server/routes/bookings.ts:163 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/bookings/refund | payments | resource-owner | server/routes/bookings.ts:661 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/bookings/webhooks/stripe | payments | signature | server/routes/bookings.ts:655 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/bot/proposals | other | public-or-system | server/routes/bot.routes.ts:96 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /api/bookings/bulk-status | user-data | resource-owner | server/routes/bookings.ts:415 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/bookings/confirm-payment | payments | resource-owner | server/routes/bookings.ts:267 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/bookings/estimate-cost | user-data | session-self | server/routes/bookings.ts:533 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/bookings/process-cart | payments | session-self | server/routes/bookings.ts:164 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/bookings/refund | payments | resource-owner | server/routes/bookings.ts:662 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/bookings/webhooks/stripe | payments | signature | server/routes/bookings.ts:656 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/bot/proposals | other | public-or-system | server/routes/bot.routes.ts:115 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /api/budget/calculate-tip | other | session-self | server/routes/content.routes.ts:7510 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/budget/convert-currency | other | session-self | server/routes/content.routes.ts:7496 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/cache/checkout-verify | other | session-self | server/routes/content.routes.ts:4152 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/cache/cleanup | other | session-self | server/routes/content.routes.ts:3959 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/cache/refresh | other | session-self | server/routes/content.routes.ts:4118 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/cache/verify-availability | other | session-self | server/routes/content.routes.ts:3909 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/cart | user-data | resource-owner | server/routes.ts:9858 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/cart/convert-to-itinerary | user-data | resource-owner | server/routes.ts:10179 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/cart/items | user-data | resource-owner | server/routes.ts:7617 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/cart/migrate | user-data | session-self | server/routes.ts:10155 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/cart/resolve-trip | user-data | resource-owner | server/routes.ts:9655 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/cart | user-data | resource-owner | server/routes.ts:9864 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/cart/convert-to-itinerary | user-data | resource-owner | server/routes.ts:10185 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/cart/items | user-data | resource-owner | server/routes.ts:7623 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/cart/migrate | user-data | session-self | server/routes.ts:10161 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/cart/resolve-trip | user-data | resource-owner | server/routes.ts:9661 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | POST /api/chat/start | other | session-self | server/routes/content.routes.ts:580 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/chats | other | session-self | server/routes/trips.routes.ts:750 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/checkout | payments | session-self | server/routes/payments.routes.ts:1144 | Not run: evidence manifest SHA-256 is stale. |
@@ -410,20 +414,20 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/content/:trackingNumber/flag | other | session-self | server/routes/content.routes.ts:9562 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/content/affiliate-redirect | other | session-self | server/routes/content.routes.ts:9398 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/content/checkout | other | session-self | server/routes/content.routes.ts:9383 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/contracts/:id/communication | user-data | session-self | server/routes.ts:13161 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/contracts/:id/milestone | payments | resource-owner | server/routes.ts:13144 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/contracts/:id/payment | payments | resource-owner | server/routes.ts:13126 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/contracts/:id/communication | user-data | session-self | server/routes.ts:13167 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/contracts/:id/milestone | payments | resource-owner | server/routes.ts:13150 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/contracts/:id/payment | payments | resource-owner | server/routes.ts:13132 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | POST /api/conversations | user-data | session-self | server/replit_integrations/chat/routes.ts:53 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/conversations/:id/messages | user-data | session-self | server/replit_integrations/chat/routes.ts:121 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/conversations/start | user-data | session-self | server/routes/conversations.routes.ts:68 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/coordination-bookings/:id/confirm | other | session-self | server/routes.ts:11481 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/coordination-states | other | resource-owner | server/routes.ts:11238 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/coordination-states/:coordinationId/bookings | other | session-self | server/routes.ts:11424 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/coordination-states/:id/pay | payments | resource-owner | server/routes.ts:11551 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/coordination-states/:id/pay/confirm | payments | resource-owner | server/routes.ts:11775 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/coordination-states/:id/refund | payments | resource-owner | server/routes.ts:11851 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/coordination-bookings/:id/confirm | other | session-self | server/routes.ts:11487 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/coordination-states | other | resource-owner | server/routes.ts:11244 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/coordination-states/:coordinationId/bookings | other | session-self | server/routes.ts:11430 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/coordination-states/:id/pay | payments | resource-owner | server/routes.ts:11557 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/coordination-states/:id/pay/confirm | payments | resource-owner | server/routes.ts:11781 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/coordination-states/:id/refund | payments | resource-owner | server/routes.ts:11857 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | POST /api/credits/purchase | payments | session-self | server/routes/payments.routes.ts:288 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/cross-sell-events | other | session-self | server/routes/cross-sell.routes.ts:38 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/cross-sell-events | other | session-self | server/routes/cross-sell.routes.ts:39 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/custom-venues | other | resource-owner | server/routes/content.routes.ts:1212 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/destination-calendar/events | other | session-self | server/routes/content.routes.ts:2433 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/destination-calendar/events/:id/submit | other | session-self | server/routes/content.routes.ts:2476 | Other-category endpoint is intentionally outside the strict tested set. |
@@ -440,11 +444,11 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/ea/venues | admin | admin-role | server/routes/ea.routes.ts:532 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/events/:experienceId/invites | other | session-self | server/routes/guest-invites.ts:152 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/events/:experienceId/invites/send | other | session-self | server/routes/guest-invites.ts:311 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/expert-application | other | session-self | server/routes.ts:2722 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/expert-booking-requests | other | resource-owner | server/routes.ts:2072 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/expert-forms | other | session-self | server/routes.ts:2816 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/expert-requests | other | resource-owner | server/routes/booking-actions.ts:206 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/expert-requests/payment-intent | payments | resource-owner | server/routes/booking-actions.ts:118 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/expert-application | other | session-self | server/routes.ts:2728 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/expert-booking-requests | other | resource-owner | server/routes.ts:2078 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/expert-forms | other | session-self | server/routes.ts:2822 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/expert-requests | other | resource-owner | server/routes/booking-actions.ts:207 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/expert-requests/payment-intent | payments | resource-owner | server/routes/booking-actions.ts:119 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | POST /api/expert-review/:shareToken/submit | other | resource-owner | server/routes/trips.routes.ts:2765 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/expert-workspace/build-itinerary | other | resource-owner | server/routes/expert-workspace.routes.ts:584 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/expert-workspace/collections | other | session-self | server/routes/expert-workspace.routes.ts:541 | Other-category endpoint is intentionally outside the strict tested set. |
@@ -452,35 +456,35 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/expert-workspace/content/:id/edit | other | session-self | server/routes/expert-workspace.routes.ts:808 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/expert-workspace/library/:id/extract-places | other | session-self | server/routes/expert-workspace.routes.ts:380 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/expert-workspace/scrape-jobs | other | public-or-system | server/routes/expert-workspace.routes.ts:981 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/expert/:expertId/tip | payments | resource-owner | server/routes.ts:6332 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/expert/ai-tasks/:taskId/approve | user-data | session-self | server/routes.ts:12615 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| POST /api/expert/ai-tasks/:taskId/regenerate | user-data | session-self | server/routes.ts:12678 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| POST /api/expert/ai-tasks/:taskId/reject | user-data | session-self | server/routes.ts:12648 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| POST /api/expert/ai-tasks/delegate | user-data | session-self | server/routes.ts:12519 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| POST /api/expert/assignments/:assignmentId/accept | user-data | session-self | server/routes/booking-actions.ts:1344 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| POST /api/expert/:expertId/tip | payments | resource-owner | server/routes.ts:6338 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/expert/ai-tasks/:taskId/approve | user-data | session-self | server/routes.ts:12621 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| POST /api/expert/ai-tasks/:taskId/regenerate | user-data | session-self | server/routes.ts:12684 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| POST /api/expert/ai-tasks/:taskId/reject | user-data | session-self | server/routes.ts:12654 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| POST /api/expert/ai-tasks/delegate | user-data | session-self | server/routes.ts:12525 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| POST /api/expert/assignments/:assignmentId/accept | user-data | session-self | server/routes/booking-actions.ts:1345 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | POST /api/expert/blog/posts/:id/sign | user-data | session-self | server/routes/blog.routes.ts:199 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/expert/bookings/:id/complete | user-data | session-self | server/routes.ts:8236 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| POST /api/expert/bookings/:id/component-failed | user-data | session-self | server/routes.ts:8331 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/expert/bookings/:id/complete | user-data | session-self | server/routes.ts:8242 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| POST /api/expert/bookings/:id/component-failed | user-data | session-self | server/routes.ts:8337 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/expert/city-knowledge/answer | user-data | session-self | server/routes/city-knowledge.routes.ts:72 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | POST /api/expert/city-knowledge/part-b | user-data | session-self | server/routes/city-knowledge.routes.ts:82 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | POST /api/expert/city-knowledge/start | user-data | session-self | server/routes/city-knowledge.routes.ts:56 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | POST /api/expert/inbox/questions/:id/answer | user-data | session-self | server/routes/expert-inbox-questions.routes.ts:43 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/expert/knowledge-nuggets | user-data | session-self | server/routes/expert-console.routes.ts:646 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/expert/knowledge-nuggets/:id/propose-gem | user-data | session-self | server/routes/expert-console.routes.ts:685 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/expert/neighborhood-claims | user-data | session-self | server/routes/neighborhood-claims.routes.ts:84 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/expert/neighborhood-claims/:id/submit | user-data | session-self | server/routes/neighborhood-claims.routes.ts:115 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/expert/knowledge-nuggets | user-data | session-self | server/routes/expert-console.routes.ts:647 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/expert/knowledge-nuggets/:id/propose-gem | user-data | session-self | server/routes/expert-console.routes.ts:686 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/expert/neighborhood-claims | user-data | session-self | server/routes/neighborhood-claims.routes.ts:85 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/expert/neighborhood-claims/:id/submit | user-data | session-self | server/routes/neighborhood-claims.routes.ts:116 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/expert/ready-made | user-data | resource-owner | server/routes/ready-made.routes.ts:78 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/expert/ready-made/:id/build-review | user-data | session-self | server/routes/ready-made.routes.ts:889 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/expert/ready-made/:id/submit | user-data | session-self | server/routes/ready-made.routes.ts:794 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/expert/ready-made/:id/withdraw | user-data | session-self | server/routes/ready-made.routes.ts:855 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/expert/ready-made/from-trip/:tripId | user-data | resource-owner | server/routes/ready-made.routes.ts:167 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/expert/reviews/:id/respond | user-data | session-self | server/routes.ts:8764 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| POST /api/expert/selected-services | user-data | session-self | server/routes.ts:6072 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/expert/service-listings | user-data | session-self | server/routes.ts:6147 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/expert/service-listings/:id/submit | user-data | session-self | server/routes.ts:6227 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/expert/services/:id/duplicate | user-data | session-self | server/routes.ts:6770 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/expert/services/from-template/:templateId | user-data | session-self | server/routes.ts:6835 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/expert/specializations | user-data | session-self | server/routes.ts:6094 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/expert/reviews/:id/respond | user-data | session-self | server/routes.ts:8770 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| POST /api/expert/selected-services | user-data | session-self | server/routes.ts:6078 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/expert/service-listings | user-data | session-self | server/routes.ts:6153 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/expert/service-listings/:id/submit | user-data | session-self | server/routes.ts:6233 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/expert/services/:id/duplicate | user-data | session-self | server/routes.ts:6776 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/expert/services/from-template/:templateId | user-data | session-self | server/routes.ts:6841 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/expert/specializations | user-data | session-self | server/routes.ts:6100 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/expert/trips/:tripId/vendors | user-data | session-self | server/routes/experts.routes.ts:357 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | POST /api/faqs | other | session-self | server/routes/content.routes.ts:2265 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/fever/cache/refresh-all | other | session-self | server/routes/content.routes.ts:7299 | Other-category endpoint is intentionally outside the strict tested set. |
@@ -513,12 +517,12 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/invites/:token/plan | other | session-self | server/routes/guest-invites.ts:590 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/invites/:token/rsvp | other | public-or-system | server/routes/guest-invites.ts:541 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /api/invites/:token/view | other | public-or-system | server/routes/guest-invites.ts:489 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/itinerary-comparisons | other | signature | server/routes.ts:10299 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/itinerary-comparisons | other | signature | server/routes.ts:10305 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/itinerary-comparisons/:id/adopt-stop | other | resource-owner | server/routes/plancard.routes.ts:418 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/itinerary-comparisons/:id/adopt-stops | other | resource-owner | server/routes/plancard.routes.ts:577 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/itinerary-comparisons/:id/apply-to-cart | other | session-self | server/routes/trips.routes.ts:916 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/itinerary-comparisons/:id/apply-to-trip | other | resource-owner | server/routes/plancard.routes.ts:117 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/itinerary-comparisons/:id/generate | other | resource-owner | server/routes.ts:10706 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/itinerary-comparisons/:id/generate | other | resource-owner | server/routes.ts:10712 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/itinerary-comparisons/:id/select | other | session-self | server/routes/trips.routes.ts:887 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/itinerary-items/:id/backup | other | resource-owner | server/routes/trips.routes.ts:1472 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/itinerary-share/:token/suggest | other | resource-owner | server/routes/trips.routes.ts:2675 | Other-category endpoint is intentionally outside the strict tested set. |
@@ -536,8 +540,8 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/me/profile-photo | user-data | session-self | server/routes/profile-photo.routes.ts:51 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/me/research-prefs | user-data | session-self | server/routes/demand.routes.ts:933 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/me/selection-profile/reset | user-data | session-self | server/routes/content.routes.ts:1689 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/me/services/:serviceId/slots | user-data | session-self | server/routes/expert-console.routes.ts:255 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/me/services/:serviceId/slots/range | user-data | session-self | server/routes/expert-console.routes.ts:346 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/me/services/:serviceId/slots | user-data | session-self | server/routes/expert-console.routes.ts:256 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/me/services/:serviceId/slots/range | user-data | session-self | server/routes/expert-console.routes.ts:347 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/memberships/checkout | other | session-self | server/routes/payments.routes.ts:3557 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/messages | user-data | session-self | server/routes/messages.ts:174 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/messages/block/:targetUserId | user-data | session-self | server/routes/messages.ts:317 | Not run: evidence manifest SHA-256 is stale. |
@@ -553,48 +557,48 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/participants/:id/payment | payments | resource-owner | server/routes/content.routes.ts:7459 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | POST /api/payouts/request | payments | session-self | server/routes/payments.routes.ts:3233 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/plans/:id/feedback | other | session-self | server/routes/feedback.routes.ts:53 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/provider-application | other | session-self | server/routes.ts:2963 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/provider-forms | other | session-self | server/routes.ts:3036 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/provider/availability | user-data | resource-owner | server/routes.ts:11122 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/provider-application | other | session-self | server/routes.ts:2969 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/provider-forms | other | session-self | server/routes.ts:3042 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/provider/availability | user-data | resource-owner | server/routes.ts:11128 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | POST /api/provider/blackout-dates | user-data | session-self | server/routes/experts.routes.ts:481 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| POST /api/provider/bookings/:id/complete | user-data | session-self | server/routes.ts:8235 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| POST /api/provider/bookings/:id/component-failed | user-data | session-self | server/routes.ts:8330 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/provider/bundles | user-data | session-self | server/routes/provider.routes.ts:252 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| POST /api/provider/properties | user-data | session-self | server/routes/provider.routes.ts:580 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
-| POST /api/provider/properties/:id/rooms | user-data | session-self | server/routes/provider.routes.ts:818 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| POST /api/provider/bookings/:id/complete | user-data | session-self | server/routes.ts:8241 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| POST /api/provider/bookings/:id/component-failed | user-data | session-self | server/routes.ts:8336 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/provider/bundles | user-data | session-self | server/routes/provider.routes.ts:253 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| POST /api/provider/properties | user-data | session-self | server/routes/provider.routes.ts:581 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
+| POST /api/provider/properties/:id/rooms | user-data | session-self | server/routes/provider.routes.ts:819 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | POST /api/provider/quotes/:quoteId/issue | user-data | session-self | server/routes/service-quotes.routes.ts:155 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/provider/quotes/:quoteId/withdraw | user-data | session-self | server/routes/service-quotes.routes.ts:176 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/provider/request-verification-review | user-data | session-self | server/routes.ts:4501 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/provider/services | user-data | resource-owner | server/routes.ts:4083 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/provider/services/:id/archive | user-data | session-self | server/routes.ts:5137 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/provider/request-verification-review | user-data | session-self | server/routes.ts:4507 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/provider/services | user-data | resource-owner | server/routes.ts:4089 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/provider/services/:id/archive | user-data | session-self | server/routes.ts:5143 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/provider/services/:id/attestations | user-data | session-self | server/routes/service-attestations.routes.ts:135 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/provider/services/:id/cover-photo | user-data | session-self | server/routes.ts:7237 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/provider/services/:id/deliverable-file | user-data | resource-owner | server/routes.ts:7149 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/provider/services/:id/duplicate | user-data | session-self | server/routes.ts:6804 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/provider/services/:id/gallery-photo | user-data | session-self | server/routes.ts:7374 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/provider/services/:id/submit | user-data | session-self | server/routes.ts:5066 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/provider/services/:id/translations/:locale/approve | user-data | session-self | server/routes.ts:4017 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/provider/services/:id/translations/:locale/draft | user-data | session-self | server/routes.ts:4036 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/provider/services/:id/cover-photo | user-data | session-self | server/routes.ts:7243 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/provider/services/:id/deliverable-file | user-data | resource-owner | server/routes.ts:7155 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/provider/services/:id/duplicate | user-data | session-self | server/routes.ts:6810 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/provider/services/:id/gallery-photo | user-data | session-self | server/routes.ts:7380 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/provider/services/:id/submit | user-data | session-self | server/routes.ts:5072 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/provider/services/:id/translations/:locale/approve | user-data | session-self | server/routes.ts:4023 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/provider/services/:id/translations/:locale/draft | user-data | session-self | server/routes.ts:4042 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/push/subscriptions | other | session-self | server/routes/push.routes.ts:79 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/push/test | other | session-self | server/routes/push.routes.ts:122 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/qa-sessions/:bookingId/start | other | session-self | server/routes/live-help.routes.ts:96 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/quick-start-itinerary | other | session-self | server/routes.ts:12331 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/quick-start-itinerary | other | session-self | server/routes.ts:12337 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/quotes/:quoteId/accept | other | session-self | server/routes/service-quotes.routes.ts:121 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/quotes/:quoteId/decline | other | session-self | server/routes/service-quotes.routes.ts:133 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/ready-made/:id/purchase | payments | session-self | server/routes/ready-made.routes.ts:1386 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/ready-made/:id/purchase/confirm | payments | resource-owner | server/routes/ready-made.routes.ts:1481 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | POST /api/ready-made/purchases/:id/concern | payments | resource-owner | server/routes/ready-made.routes.ts:1576 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | POST /api/ready-made/purchases/:id/request-revision | payments | resource-owner | server/routes/ready-made.routes.ts:1729 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/recommendations/:id/convert | other | session-self | server/routes.ts:9247 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/recommendations/:id/dismiss | other | session-self | server/routes.ts:9277 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/recommendations/refresh/:city | other | session-self | server/routes.ts:9231 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/recommendations/:id/convert | other | session-self | server/routes.ts:9253 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/recommendations/:id/dismiss | other | session-self | server/routes.ts:9283 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/recommendations/refresh/:city | other | session-self | server/routes.ts:9237 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/reviews/:id/flag | user-data | session-self | server/routes/content.routes.ts:3503 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/routes/transit | other | session-self | server/routes/content.routes.ts:4524 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/routes/transit-multi | other | session-self | server/routes/content.routes.ts:4560 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/saved-items | user-data | session-self | server/routes/saved-items.routes.ts:38 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/saved-items/shares | user-data | session-self | server/routes/saved-items.routes.ts:90 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/saved-trips | other | session-self | server/routes/booking-actions.ts:459 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/saved-trips/:id/convert | other | session-self | server/routes/booking-actions.ts:491 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/saved-trips | other | session-self | server/routes/booking-actions.ts:460 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/saved-trips/:id/convert | other | session-self | server/routes/booking-actions.ts:492 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/serp/inquiry | other | session-self | server/routes/content.routes.ts:6669 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/serp/track-click | other | public-or-system | server/routes/content.routes.ts:6641 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /api/service-categories | other | session-self | server/routes/content.routes.ts:1119 | Other-category endpoint is intentionally outside the strict tested set. |
@@ -602,8 +606,8 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/service-subcategories | other | session-self | server/routes/content.routes.ts:1145 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/services/:id/quote-requests | other | session-self | server/routes/service-quotes.routes.ts:83 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/services/:serviceId/reviews | other | session-self | server/routes/content.routes.ts:3521 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/shared-trips | other | session-self | server/routes/booking-actions.ts:528 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/short-links | other | resource-owner | server/routes/short-links.routes.ts:85 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/shared-trips | other | session-self | server/routes/booking-actions.ts:529 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/short-links | other | resource-owner | server/routes/short-links.routes.ts:86 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/spontaneous/:id/book | other | session-self | server/routes/content.routes.ts:7753 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/spontaneous/preferences | user-data | session-self | server/routes/content.routes.ts:7719 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/stripe/connect/onboard | payments | session-self | server/routes/payments.routes.ts:3005 | Not run: evidence manifest SHA-256 is stale. |
@@ -628,45 +632,45 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/travelpulse/truth-check | other | public-or-system | server/routes/content.routes.ts:5702 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /api/trip-context/extract | other | signature | server/routes/trip-context.routes.ts:381 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/trips | user-data | public-or-system | server/routes/trips.routes.ts:582 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/trips/:id/claim | user-data | session-self | server/routes.ts:1676 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/trips/:id/expert-advisor | user-data | resource-owner | server/routes/booking-actions.ts:730 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/trips/:id/generate-itinerary | user-data | resource-owner | server/routes.ts:1711 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/trips/:id/plan-review | user-data | resource-owner | server/routes/booking-actions.ts:1503 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/trips/:id/share | user-data | resource-owner | server/routes/booking-actions.ts:576 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| POST /api/trips/:id/suggestions | user-data | session-self | server/routes/booking-actions.ts:1083 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/trips/:tripId/activate-transport | user-data | session-self | server/routes.ts:13834 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/trips/:id/claim | user-data | session-self | server/routes.ts:1682 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/trips/:id/expert-advisor | user-data | resource-owner | server/routes/booking-actions.ts:731 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/trips/:id/generate-itinerary | user-data | resource-owner | server/routes.ts:1717 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/trips/:id/plan-review | user-data | resource-owner | server/routes/booking-actions.ts:1504 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/trips/:id/share | user-data | resource-owner | server/routes/booking-actions.ts:577 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/trips/:id/suggestions | user-data | session-self | server/routes/booking-actions.ts:1084 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/trips/:tripId/activate-transport | user-data | session-self | server/routes.ts:13840 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/advisor/narration | user-data | session-self | server/routes/advisor.routes.ts:478 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/trips/:tripId/advisors | user-data | resource-owner | server/routes/booking-actions.ts:803 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/trips/:tripId/alerts | user-data | session-self | server/routes.ts:13976 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/trips/:tripId/advisors | user-data | resource-owner | server/routes/booking-actions.ts:804 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/trips/:tripId/alerts | user-data | session-self | server/routes.ts:13982 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/analytics/infer | user-data | resource-owner | server/routes/trips.routes.ts:3050 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/anchor-suggestions | user-data | session-self | server/routes/trips.routes.ts:1875 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/anchor/promote | user-data | session-self | server/routes/plan-option-sets.routes.ts:266 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/anchors | user-data | session-self | server/routes/trips.routes.ts:1625 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/anchors/:anchorId/impacts | user-data | session-self | server/routes/trips.routes.ts:1855 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/trips/:tripId/budget/calculate-split | user-data | session-self | server/routes.ts:13300 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/trips/:tripId/calculate-energy | user-data | session-self | server/routes/booking-actions.ts:2140 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/trips/:tripId/budget/calculate-split | user-data | session-self | server/routes.ts:13306 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/trips/:tripId/calculate-energy | user-data | session-self | server/routes/booking-actions.ts:2141 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/changes | user-data | session-self | server/routes/plancard.routes.ts:1099 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/trips/:tripId/contracts | user-data | session-self | server/routes.ts:13092 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/trips/:tripId/contracts | user-data | session-self | server/routes.ts:13098 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/contracts/:contractId/documents | user-data | session-self | server/routes/trips.routes.ts:1058 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/day-boundaries | user-data | session-self | server/routes/trips.routes.ts:1780 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/days/:day/retime | user-data | session-self | server/routes/versions.routes.ts:174 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/trips/:tripId/emergency-contacts | user-data | session-self | server/routes.ts:13911 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/trips/:tripId/emergency/initialize | user-data | session-self | server/routes.ts:13928 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/trips/:tripId/emergency-contacts | user-data | session-self | server/routes.ts:13917 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/trips/:tripId/emergency/initialize | user-data | session-self | server/routes.ts:13934 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/expert-suggestions/accept-all | user-data | session-self | server/routes/handoff.routes.ts:343 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/finalize | user-data | resource-owner | server/routes/routing.routes.ts:473 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/flight-lookup | user-data | session-self | server/routes/trips.routes.ts:1670 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/trips/:tripId/generate-presets | user-data | session-self | server/routes/booking-actions.ts:2199 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/trips/:tripId/generate-presets | user-data | session-self | server/routes/booking-actions.ts:2200 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/handoff | user-data | session-self | server/routes/handoff.routes.ts:205 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/handoff/quote | user-data | session-self | server/routes/handoff.routes.ts:183 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/trips/:tripId/items/:itemId/comments | user-data | resource-owner | server/routes/booking-actions.ts:1734 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| POST /api/trips/:tripId/items/:itemId/comments | user-data | resource-owner | server/routes/booking-actions.ts:1735 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | POST /api/trips/:tripId/items/:itemId/route | user-data | resource-owner | server/routes/routing.routes.ts:138 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/items/:itemId/stay-booking/book | user-data | session-self | server/routes/plan-option-sets.routes.ts:432 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/items/:itemId/stay-booking/cancel | user-data | session-self | server/routes/plan-option-sets.routes.ts:442 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/items/:itemId/stay-booking/prebook | user-data | session-self | server/routes/plan-option-sets.routes.ts:422 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/trips/:tripId/itinerary-items | user-data | resource-owner | server/routes.ts:13397 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/trips/:tripId/itinerary-items | user-data | resource-owner | server/routes.ts:13403 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/itinerary-items/:itemId/fresh-facts | user-data | session-self | server/routes/content-facts.routes.ts:27 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/trips/:tripId/itinerary/optimize-order | user-data | resource-owner | server/routes.ts:13783 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/trips/:tripId/itinerary/reorder | user-data | resource-owner | server/routes.ts:13732 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/trips/:tripId/itinerary/optimize-order | user-data | resource-owner | server/routes.ts:13789 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/trips/:tripId/itinerary/reorder | user-data | resource-owner | server/routes.ts:13738 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/legs/:legId/options | user-data | session-self | server/routes/transport-legs.routes.ts:390 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/option-sets | user-data | session-self | server/routes/plan-option-sets.routes.ts:185 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/option-sets/:setId/choose | user-data | session-self | server/routes/plan-option-sets.routes.ts:222 | Not run: evidence manifest SHA-256 is stale. |
@@ -674,8 +678,8 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/trips/:tripId/option-sets/:setId/options | user-data | session-self | server/routes/plan-option-sets.routes.ts:196 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/option-sets/:setId/reopen | user-data | session-self | server/routes/plan-option-sets.routes.ts:246 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/option-sets/suggest | user-data | session-self | server/routes/plan-option-sets.routes.ts:256 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/trips/:tripId/participants | user-data | resource-owner | server/routes.ts:12961 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/trips/:tripId/participants/bulk-invite | user-data | session-self | server/routes.ts:12997 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/trips/:tripId/participants | user-data | resource-owner | server/routes.ts:12967 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/trips/:tripId/participants/bulk-invite | user-data | session-self | server/routes.ts:13003 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/phone-delivery/calendar | user-data | session-self | server/routes/phone-delivery.routes.ts:49 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/phone-delivery/home-screen | user-data | session-self | server/routes/phone-delivery.routes.ts:68 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/place-facts/:factId/confirm | user-data | session-self | server/routes/content-facts.routes.ts:61 | Not run: evidence manifest SHA-256 is stale. |
@@ -689,8 +693,8 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/trips/:tripId/rides | user-data | resource-owner | server/routes/trips.routes.ts:3109 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | POST /api/trips/:tripId/slip-events | user-data | session-self | server/routes/plan-option-sets.routes.ts:277 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/stay-pick/seen | user-data | session-self | server/routes/plan-option-sets.routes.ts:456 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/trips/:tripId/transactions | user-data | session-self | server/routes.ts:13257 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/trips/:tripId/transactions/split | user-data | session-self | server/routes.ts:13274 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/trips/:tripId/transactions | user-data | session-self | server/routes.ts:13263 | Not run: evidence manifest SHA-256 is stale. |
+| POST /api/trips/:tripId/transactions/split | user-data | session-self | server/routes.ts:13280 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/transport-legs/:legId/options | user-data | session-self | server/routes/transport-legs.routes.ts:384 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/transport-legs/generate | user-data | resource-owner | server/routes/transport-legs.routes.ts:121 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/trip-pass/purchase | user-data | session-self | server/routes/trip-pass.routes.ts:77 | Not run: evidence manifest SHA-256 is stale. |
@@ -700,27 +704,27 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /api/trips/:tripId/versions/apply-days | user-data | session-self | server/routes/versions.routes.ts:79 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/versions/days/:day/restore | user-data | session-self | server/routes/versions.routes.ts:109 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/trips/:tripId/where-to-stay | user-data | session-self | server/routes/plan-option-sets.routes.ts:343 | Not run: evidence manifest SHA-256 is stale. |
-| POST /api/upsell/ai-concierge | other | session-self | server/routes/upsell.routes.ts:897 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/upsell/cart | other | session-self | server/routes/upsell.routes.ts:164 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/upsell/checkout | other | session-self | server/routes/upsell.routes.ts:791 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/upsell/click | other | public-or-system | server/routes/upsell.routes.ts:982 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/upsell/discover-date | other | public-or-system | server/routes/upsell.routes.ts:279 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/upsell/discover-location | other | public-or-system | server/routes/upsell.routes.ts:234 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/upsell/expert-review | other | session-self | server/routes/upsell.routes.ts:651 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/upsell/expert-review/endorse | other | session-self | server/routes/upsell.routes.ts:709 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/upsell/impression | other | public-or-system | server/routes/upsell.routes.ts:946 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/upsell/optimize-gate | other | session-self | server/routes/upsell.routes.ts:382 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/upsell/plancard-ontrip | other | resource-owner | server/routes/upsell.routes.ts:510 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/upsell/plancard-pretrip | other | session-self | server/routes/upsell.routes.ts:444 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/upsell/post-booking | other | session-self | server/routes/upsell.routes.ts:843 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/upsell/ai-concierge | other | session-self | server/routes/upsell.routes.ts:898 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/upsell/cart | other | session-self | server/routes/upsell.routes.ts:165 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/upsell/checkout | other | session-self | server/routes/upsell.routes.ts:792 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/upsell/click | other | public-or-system | server/routes/upsell.routes.ts:983 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /api/upsell/discover-date | other | public-or-system | server/routes/upsell.routes.ts:280 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /api/upsell/discover-location | other | public-or-system | server/routes/upsell.routes.ts:235 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /api/upsell/expert-review | other | session-self | server/routes/upsell.routes.ts:652 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/upsell/expert-review/endorse | other | session-self | server/routes/upsell.routes.ts:710 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/upsell/impression | other | public-or-system | server/routes/upsell.routes.ts:947 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /api/upsell/optimize-gate | other | session-self | server/routes/upsell.routes.ts:383 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/upsell/plancard-ontrip | other | resource-owner | server/routes/upsell.routes.ts:511 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/upsell/plancard-pretrip | other | session-self | server/routes/upsell.routes.ts:445 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/upsell/post-booking | other | session-self | server/routes/upsell.routes.ts:844 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/user-experiences | other | session-self | server/routes/content.routes.ts:2064 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/user-experiences/:id/items | other | resource-owner | server/routes/content.routes.ts:2196 | Other-category endpoint is intentionally outside the strict tested set. |
-| POST /api/vendors | other | session-self | server/routes.ts:2663 | Other-category endpoint is intentionally outside the strict tested set. |
+| POST /api/vendors | other | session-self | server/routes.ts:2669 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/viator/availability | other | session-self | server/routes/content.routes.ts:3768 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/viator/live/click | other | session-self | server/routes/content.routes.ts:1718 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/visa/requirements | other | public-or-system | server/routes/experts.routes.ts:670 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/waitlist | other | public-or-system | server/routes/launch-waitlist.routes.ts:53 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /api/waitlist/unsubscribe | other | public-or-system | server/routes/launch-waitlist.routes.ts:106 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /api/waitlist | other | public-or-system | server/routes/launch-waitlist.routes.ts:54 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /api/waitlist/unsubscribe | other | public-or-system | server/routes/launch-waitlist.routes.ts:107 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /api/wallet/add-credits | payments | session-self | server/routes/payments.routes.ts:282 | Not run: evidence manifest SHA-256 is stale. |
 | POST /api/webhooks/persona | other | signature | server/routes/webhooks.routes.ts:113 | Other-category endpoint is intentionally outside the strict tested set. |
 | POST /api/webhooks/resend | other | signature | server/routes/webhooks.routes.ts:591 | Other-category endpoint is intentionally outside the strict tested set. |
@@ -738,14 +742,14 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /internal/jobs/email-outbox | other | public-or-system | server/routes/internal.routes.ts:384 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /internal/jobs/facts-recheck | other | public-or-system | server/routes/internal.routes.ts:454 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /internal/jobs/guest-data-retention | other | public-or-system | server/routes/internal.routes.ts:494 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /internal/jobs/guest-plan-retention | other | public-or-system | server/routes/internal.routes.ts:504 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /internal/jobs/guest-plan-retention | other | public-or-system | server/routes/internal.routes.ts:515 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /internal/jobs/handoff-timers | other | public-or-system | server/routes/internal.routes.ts:439 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /internal/jobs/itinerary-generation-sweep | other | public-or-system | server/routes/internal.routes.ts:375 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /internal/jobs/leg-google-coords | other | public-or-system | server/routes/internal.routes.ts:546 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /internal/jobs/liteapi-booking-sync | other | public-or-system | server/routes/internal.routes.ts:524 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /internal/jobs/liteapi-sync | other | public-or-system | server/routes/internal.routes.ts:510 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /internal/jobs/official-refresh | other | public-or-system | server/routes/internal.routes.ts:517 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
-| POST /internal/jobs/routing-recheck | other | public-or-system | server/routes/internal.routes.ts:533 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /internal/jobs/leg-google-coords | other | public-or-system | server/routes/internal.routes.ts:557 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /internal/jobs/liteapi-booking-sync | other | public-or-system | server/routes/internal.routes.ts:535 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /internal/jobs/liteapi-sync | other | public-or-system | server/routes/internal.routes.ts:521 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /internal/jobs/official-refresh | other | public-or-system | server/routes/internal.routes.ts:528 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
+| POST /internal/jobs/routing-recheck | other | public-or-system | server/routes/internal.routes.ts:544 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /internal/jobs/score-neighborhood-claims | other | public-or-system | server/routes/internal.routes.ts:402 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /internal/jobs/stripe-reconciliation | other | public-or-system | server/routes/internal.routes.ts:304 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /internal/jobs/travel-matrix-refresh | other | public-or-system | server/routes/internal.routes.ts:418 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
@@ -754,24 +758,24 @@ Untested endpoints below need endpoint-appropriate coverage. In particular, excl
 | POST /internal/jobs/waitlist-retention | other | public-or-system | server/routes/internal.routes.ts:487 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | POST /internal/run-occasion-drafts | other | public-or-system | server/routes/internal.routes.ts:261 | Public-or-system boundary is intentionally outside the strict protected-endpoint test set. |
 | PUT /api/admin/city-knowledge/:cityKey | admin | admin-role | server/routes/city-knowledge.routes.ts:116 | Not run: evidence manifest SHA-256 is stale. |
-| PUT /api/admin/neighborhoods/:id/lead | admin | admin-role | server/routes/admin.routes.ts:9962 | Not run: evidence manifest SHA-256 is stale. |
+| PUT /api/admin/neighborhoods/:id/lead | admin | admin-role | server/routes/admin.routes.ts:10024 | Not run: evidence manifest SHA-256 is stale. |
 | PUT /api/admin/place-coords/:placeId | admin | admin-role | server/routes/admin-place-coords.routes.ts:30 | Not run: evidence manifest SHA-256 is stale. |
-| PUT /api/admin/testimonials/featured | admin | admin-role | server/routes/admin.routes.ts:8402 | Not run: evidence manifest SHA-256 is stale. |
-| PUT /api/admin/ticker/order | admin | admin-role | server/routes/ticker.routes.ts:146 | Not run: evidence manifest SHA-256 is stale. |
+| PUT /api/admin/testimonials/featured | admin | admin-role | server/routes/admin.routes.ts:8457 | Not run: evidence manifest SHA-256 is stale. |
+| PUT /api/admin/ticker/order | admin | admin-role | server/routes/ticker.routes.ts:147 | Not run: evidence manifest SHA-256 is stale. |
 | PUT /api/anchors/:id | other | resource-owner | server/routes/trips.routes.ts:1714 | Other-category endpoint is intentionally outside the strict tested set. |
 | PUT /api/destination-calendar/events/:id | other | session-self | server/routes/content.routes.ts:2451 | Other-category endpoint is intentionally outside the strict tested set. |
-| PUT /api/expert/neighborhood-claims/:id/capture | user-data | session-self | server/routes/neighborhood-claims.routes.ts:102 | Not run: evidence manifest SHA-256 is stale. |
+| PUT /api/expert/neighborhood-claims/:id/capture | user-data | session-self | server/routes/neighborhood-claims.routes.ts:103 | Not run: evidence manifest SHA-256 is stale. |
 | PUT /api/expert/vendors/:vendorId | user-data | session-self | server/routes/experts.routes.ts:407 | Explicitly excluded in expert-provider-mutation-auth.test.ts; handler-owned real fixture is required before authorization can be claimed. |
 | PUT /api/me/available-now | user-data | session-self | server/routes/live-help.routes.ts:62 | Not run: evidence manifest SHA-256 is stale. |
 | PUT /api/me/payout-setup | user-data | session-self | server/routes/payments.routes.ts:3206 | Not run: evidence manifest SHA-256 is stale. |
 | PUT /api/provider/booking-requests/:requestId/respond | user-data | resource-owner | server/routes/experts.routes.ts:563 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| PUT /api/provider/services/:id/availability-patterns | user-data | session-self | server/routes.ts:3697 | Not run: evidence manifest SHA-256 is stale. |
-| PUT /api/provider/services/:id/blackouts | user-data | session-self | server/routes.ts:3861 | Not run: evidence manifest SHA-256 is stale. |
-| PUT /api/provider/services/:id/date-ranges | user-data | session-self | server/routes.ts:3778 | Not run: evidence manifest SHA-256 is stale. |
-| PUT /api/provider/services/:id/pickup-route-points | user-data | session-self | server/routes.ts:3598 | Not run: evidence manifest SHA-256 is stale. |
-| PUT /api/provider/services/:id/route-points | user-data | session-self | server/routes.ts:3544 | Not run: evidence manifest SHA-256 is stale. |
-| PUT /api/provider/services/:id/surcharge-tiers | payments | resource-owner | server/routes.ts:3641 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
-| PUT /api/provider/services/:id/translations/:locale | user-data | resource-owner | server/routes.ts:3989 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| PUT /api/provider/services/:id/availability-patterns | user-data | session-self | server/routes.ts:3703 | Not run: evidence manifest SHA-256 is stale. |
+| PUT /api/provider/services/:id/blackouts | user-data | session-self | server/routes.ts:3867 | Not run: evidence manifest SHA-256 is stale. |
+| PUT /api/provider/services/:id/date-ranges | user-data | session-self | server/routes.ts:3784 | Not run: evidence manifest SHA-256 is stale. |
+| PUT /api/provider/services/:id/pickup-route-points | user-data | session-self | server/routes.ts:3604 | Not run: evidence manifest SHA-256 is stale. |
+| PUT /api/provider/services/:id/route-points | user-data | session-self | server/routes.ts:3550 | Not run: evidence manifest SHA-256 is stale. |
+| PUT /api/provider/services/:id/surcharge-tiers | payments | resource-owner | server/routes.ts:3647 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
+| PUT /api/provider/services/:id/translations/:locale | user-data | resource-owner | server/routes.ts:3995 | Resource-owner endpoint is not one of the 33 trip or two optimization real-fixture endpoints. |
 | PUT /api/trip-context | other | session-self | server/routes/trip-context.routes.ts:267 | Other-category endpoint is intentionally outside the strict tested set. |
 | PUT /api/trips/:tripId/destinations | user-data | session-self | server/routes/trips.routes.ts:539 | Not run: evidence manifest SHA-256 is stale. |
 | PUT /api/trips/:tripId/itinerary-items/:itemId/lock | user-data | session-self | server/routes/trips.routes.ts:3078 | Not run: evidence manifest SHA-256 is stale. |

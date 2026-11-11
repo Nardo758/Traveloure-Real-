@@ -28,7 +28,7 @@
 import { isProdStrictEnv, checkStripeKeyPrefix } from "../utils/stripe-key-policy";
 import { getStripeSecretKey, getStripeWebhookSecret } from "../utils/stripe-key";
 import type { QAResults } from "./qa-verify.service";
-
+import { ADMIN_ROLES } from "@shared/roles";
 /**
  * Where H1 probes the running app. `QA_RUNTIME_BASE_URL` wins (trailing slash
  * stripped). Otherwise loopback on `PORT`, default 5000 — the same port
@@ -581,11 +581,11 @@ export async function runRuntimeHealth(): Promise<QAResults> {
   try {
     const { db } = await import("../db");
     const { users } = await import("@shared/schema");
-    const { and, eq, isNotNull, ne, sql } = await import("drizzle-orm");
+    const { and, inArray, isNotNull, ne, sql } = await import("drizzle-orm");
     const [row] = await db
       .select({ n: sql<number>`count(*)::int` })
       .from(users)
-      .where(and(eq(users.role, "admin"), isNotNull(users.email), ne(users.email, "")));
+      .where(and(inArray(users.role, [...ADMIN_ROLES]), isNotNull(users.email), ne(users.email, "")));
     adminUsersWithEmail = row?.n ?? 0;
   } catch (err: any) {
     console.warn(`[runtime-health] H7: admin-user count unreadable (${err?.message ?? err}) — reporting UNKNOWN`);

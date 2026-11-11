@@ -120,6 +120,8 @@ jobs:
           PORT: 5000
           SESSION_COOKIE_INSECURE: '1'
           RATE_LIMIT_LOOPBACK_SKIP: '1'
+          # Slice 0: the /api/bot surface answers 404 unless this is set; staff-roles-bot walks it.
+          BOT_API_ENABLED: '1'
       - name: Wait for server
         run: |
           for i in $(seq 1 60); do
@@ -128,11 +130,11 @@ jobs:
             echo "attempt $i/60: waiting... ($result)"; sleep 5
           done
           echo "::error::Server did not become ready within 5 minutes"; exit 1
-      # T-4. Eight suites. The two static ones need no server; the six live ones
+      # T-4. Nine suites. The two static ones need no server; the six live ones
       # probe the running app as an UNAUTHENTICATED caller and as an
       # AUTHENTICATED ORDINARY USER, and assert the exact refusal status.
-      - name: server/__tests__/mutation-auth (all eight suites)
-        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/mutation-auth/admin-mutation-auth.test.ts server/__tests__/mutation-auth/expert-provider-mutation-auth.test.ts server/__tests__/mutation-auth/mutation-auth.http.test.ts server/__tests__/mutation-auth/mutation-auth.inventory.test.ts server/__tests__/mutation-auth/non-admin-payments-user-data-mutation-auth.http.test.ts server/__tests__/mutation-auth/payment-mutation-auth.manifest.test.ts server/__tests__/mutation-auth/payments-mutation-auth.test.ts server/__tests__/mutation-auth/payments-other-rails-mutation-auth.test.ts
+      - name: server/__tests__/mutation-auth (all nine suites)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/mutation-auth/admin-mutation-auth.test.ts server/__tests__/mutation-auth/expert-provider-mutation-auth.test.ts server/__tests__/mutation-auth/mutation-auth.http.test.ts server/__tests__/mutation-auth/mutation-auth.inventory.test.ts server/__tests__/mutation-auth/non-admin-payments-user-data-mutation-auth.http.test.ts server/__tests__/mutation-auth/payment-mutation-auth.manifest.test.ts server/__tests__/mutation-auth/payments-mutation-auth.test.ts server/__tests__/mutation-auth/payments-other-rails-mutation-auth.test.ts server/__tests__/mutation-auth/staff-roles-bot.http.test.ts
       # The generated manifest three of those suites read is a DERIVED
       # inventory, and it had drifted far enough to probe four retired
       # /api/expert/templates routes (ledger

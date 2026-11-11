@@ -17,7 +17,7 @@ import {
 } from "@shared/support-intake";
 import { supportDigestCounts, type SupportDigestCounts } from "./admin-digest-shape";
 import { getPlatformSettingValue } from "./admin-query.service";
-
+import { ADMIN_ROLES } from "@shared/roles";
 export const SUPPORT_LIST_MAX = 200;
 
 export async function loadSupportFirstResponseHours(): Promise<number | null> {
@@ -46,12 +46,12 @@ export async function listSupportAssignees(): Promise<Array<{ id: string; name: 
   const rows = await db
     .select({ id: users.id, firstName: users.firstName, lastName: users.lastName, email: users.email })
     .from(users)
-    .where(eq(users.role, "admin"));
+    .where(inArray(users.role, [...ADMIN_ROLES]));
   return rows.map((r) => ({ id: r.id, name: [r.firstName, r.lastName].filter(Boolean).join(" ") || r.email || r.id }));
 }
 
 export async function isSupportAssignee(userId: string): Promise<boolean> {
-  const r = await db.select({ id: users.id }).from(users).where(and(eq(users.id, userId), eq(users.role, "admin"))).limit(1);
+  const r = await db.select({ id: users.id }).from(users).where(and(eq(users.id, userId), inArray(users.role, [...ADMIN_ROLES]))).limit(1);
   return r.length === 1;
 }
 

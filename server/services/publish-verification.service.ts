@@ -10,7 +10,7 @@
 import { db } from "../db";
 import { users, serviceProviderForms, localExpertForms, providerServices } from "@shared/schema";
 import { eq, and, asc, sql } from "drizzle-orm";
-import { isExpertRole, isProviderRole } from "@shared/roles";
+import { isExpertRole, isProviderRole, isAdminRole } from "@shared/roles";
 
 export interface PublishVerificationResult {
   ok: boolean;
@@ -24,7 +24,7 @@ export interface PublishVerificationResult {
  * Takes an ARBITRARY userId — a caller acting on behalf of someone else (admin
  * approving a listing) must pass the LISTING OWNER's id, never the actor's.
  *
- *   - role === "admin"      -> bypass, always ok.
+ *   - isAdminRole(role)      -> bypass, always ok.
  *   - isProviderRole(role)  -> service_provider_forms row, BOTH identity AND business
  *                              "verified".
  *   - isExpertRole(role)    -> local_expert_forms row, identity "verified" ONLY.
@@ -38,7 +38,7 @@ export async function resolvePublishVerification(userId: string): Promise<Publis
   const [userRow] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1);
   const role = userRow?.role ?? null;
 
-  if (role === "admin") {
+  if (isAdminRole(role)) {
     return { ok: true, role, identityVerified: true, businessVerified: true };
   }
 

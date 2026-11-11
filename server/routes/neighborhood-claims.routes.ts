@@ -35,6 +35,7 @@ import {
 import { EvidenceThresholdsMissingError, isEvidenceThresholdKey, listEvidenceThresholds, loadEvidenceThresholds, updateEvidenceThreshold } from "../services/evidence-thresholds.service";
 import { CLAIM_STATUSES, EVIDENCE_DIMENSIONS, type ClaimStatus } from "@shared/neighborhood-claims";
 import { scoreClaim } from "../services/evidence-scorer.service";
+import { isAdminRole } from "@shared/roles";
 
 const router = Router();
 
@@ -45,7 +46,7 @@ async function requireAdmin(req: any, res: any, next: any) {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ message: "Authentication required" });
   const u = await getAdminRole(userId);
-  if (!u || u.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+  if (!u || !isAdminRole(u.role)) return res.status(403).json({ message: "Admin access required" });
   (req as any).adminId = userId;
   next();
 }

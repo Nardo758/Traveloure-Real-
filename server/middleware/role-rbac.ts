@@ -6,7 +6,7 @@ import { eq } from "drizzle-orm";
 // (role-utils.ts) and the ratified EA-console model (§9: EA is its own /ea namespace, gated
 // by isEA, not an expert-family member). EA pages consume /api/ea/* only, so dropping EA
 // from the expert family removes unused server surface, not a working path.
-import { isExpertRole, isProviderRole, isEarnerRole } from "@shared/roles";
+import { isExpertRole, isProviderRole, isEarnerRole, isAdminRole } from "@shared/roles";
 import { listingWriteRefusal } from "@shared/application-status";
 import { readSupplyAccount } from "../services/pending-supply-account";
 
@@ -26,7 +26,7 @@ export const isExpert = async (req: any, res: any, next: any) => {
   }
   try {
     const [row] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId));
-    if (!row || (!isExpertRole(row.role) && row.role !== "admin")) {
+    if (!row || (!isExpertRole(row.role) && !isAdminRole(row.role))) {
       return res.status(403).json({ message: "Expert access required" });
     }
     next();
@@ -66,7 +66,7 @@ export const isEarner = async (req: any, res: any, next: any) => {
   }
   try {
     const [row] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId));
-    if (!row || (!isEarnerRole(row.role) && row.role !== "admin")) {
+    if (!row || (!isEarnerRole(row.role) && !isAdminRole(row.role))) {
       return res.status(403).json({ message: "Expert or provider access required" });
     }
     next();
@@ -91,7 +91,7 @@ export const isEarnerOrPendingDraft = async (req: any, res: any, next: any) => {
   }
   try {
     const [row] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId));
-    if (row && (isEarnerRole(row.role) || row.role === "admin")) return next();
+    if (row && (isEarnerRole(row.role) || isAdminRole(row.role))) return next();
     const account = await readSupplyAccount(userId);
     if (account.canSaveDraftListing) return next();
     const decision = listingWriteRefusal(account, { draft: true, enteringReview: false, statusActive: false });
@@ -118,7 +118,7 @@ export const isProvider = async (req: any, res: any, next: any) => {
   }
   try {
     const [row] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId));
-    if (!row || (!isProviderRole(row.role) && row.role !== "admin")) {
+    if (!row || (!isProviderRole(row.role) && !isAdminRole(row.role))) {
       return res.status(403).json({ message: "Provider access required" });
     }
     next();

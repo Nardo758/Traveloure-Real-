@@ -21,10 +21,14 @@ export const sessions = pgTable(
 // - service_provider: Hotels, restaurants, tours, experiences
 // - executive_assistant: Manage travel for high-net-worth clients
 // - expert: Legacy role (maps to travel_expert)
-// - admin: Platform administration (every admin route)
+// - owner: Staff (slice 0, Addendum A v2). Every admin route, and the ONLY holder of money rails,
+//   fee bands, platform settings, bot keys and role/market grants (shared/staff-permissions.ts).
+// - platform_admin: Staff. Every admin route except the owner-only ones; all markets.
+// - admin: alias of platform_admin for one release (migration 444 rewrites the stored value).
+// - regional_manager: Staff. Approvals and the issue queue in ASSIGNED markets only.
 // - support: Staff. Contact submissions and read-only booking detail. Not an admin.
 // - moderator: Staff. Message reports, report context, and listing status. Not an admin.
-// users.role is varchar(30) with NO database CHECK, so these two need no migration.
+// users.role is varchar(30) with NO database CHECK, so a new value needs no schema change.
 export const userRoleEnum = [
   "user",
   "travel_expert",
@@ -36,6 +40,9 @@ export const userRoleEnum = [
   "admin",
   "support",
   "moderator",
+  "owner",
+  "platform_admin",
+  "regional_manager",
 ] as const;
 
 // User storage table.

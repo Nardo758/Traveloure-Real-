@@ -17,6 +17,7 @@ import { accommodationCategoryId } from "../utils/property-category";
 import { deriveBundleDeliveryMethod as deriveBundleDeliveryMethodFromMethods } from "@shared/bundle-delivery-method";
 import { sanitizeStringFields, sanitizeText } from "../utils/text-sanitizer";
 import { PHOTO_BLOCK_REFUSAL, listingPhotoSubject, photoBlockedFor } from "../services/place-photo-blocks.service";
+import { isAdminRole } from "@shared/roles";
 
 /**
  * Provider supply tools — /api/provider/settings (Kyoto-supply activation).
@@ -65,7 +66,7 @@ async function requireProviderRole(req: any, res: any): Promise<string | null> {
   // Role vocabulary ground truth: provider approval writes role "service_provider"
   // (routes.ts, admin approval path), NOT "provider" — same set as PROVIDER_ROLES in
   // middleware/role-rbac.ts. Checking "provider" here locked out every real provider.
-  if (!row || (row.role !== "service_provider" && row.role !== "admin")) {
+  if (!row || (row.role !== "service_provider" && !isAdminRole(row.role))) {
     res.status(403).json({ message: "Provider access required" });
     return null;
   }

@@ -124,9 +124,12 @@ let origUpdateServiceProviderFormStatus: typeof storage.updateServiceProviderFor
 let origGetUser: typeof storage.getUser;
 let savedResendKey: string | undefined;
 
+// Slice 0 (ledger `2026-11-10-slice0-staff-roles`): a platform_admin's (or `admin` alias's) approval now stamps and
+// waits for the owner's sign-off (202, no email). The decision this file tests is the PUBLISHING approval, which is
+// the owner's, so the fixture approver is the owner. The staff two-step is proven in slice0-staff-roles tests.
 const FAKE_ADMIN_USER = {
   id: 'admin-user-1',
-  role: 'admin',
+  role: 'owner',
   email: 'admin@example.com',
   firstName: 'Admin',
   lastName: 'User',

@@ -45,6 +45,7 @@ import {
 } from "@shared/concierge-task-log";
 import { isConciergeLinkOnly } from "@shared/concierge-tasks";
 import { isTripAdvisorWithWriteAccess } from "../utils/trip-advisor";
+import { isAdminRole } from "@shared/roles";
 
 export type TaskResult<T> = { ok: true; status: number; body: T } | { ok: false; status: number; body: Record<string, unknown> };
 
@@ -82,7 +83,7 @@ async function loadEngagement(bookingId: string): Promise<Engagement | null> {
 
 async function isAdmin(userId: string): Promise<boolean> {
   const user = await storage.getUser(userId);
-  return (user as any)?.role === "admin";
+  return isAdminRole((user as any)?.role);
 }
 
 /** The assigned expert's window: a §12 write-status advisor row on the trip whose access has not ended. */

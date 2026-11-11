@@ -62,6 +62,7 @@ import {
   FEED_CONFIG_DEFAULTS,
   resolveTemplateKey,
 } from "../services/upsell-query.service";
+import { isAdminRole } from "@shared/roles";
 
 const router = Router();
 
@@ -716,7 +717,7 @@ router.post("/api/upsell/expert-review/endorse", isAuthenticated, async (req, re
     if (body.scope === "trip") {
       await upsertTripEndorsement(expertId, body.tripId!, body.offeringId, body.categoryKey ?? null, body.notes ?? null);
     } else {
-      if (role !== "admin") {
+      if (!isAdminRole(role)) {
         const isLead = await checkIsNeighborhoodLead(expertId, body.neighborhoodId!);
         if (!isLead) {
           return res.status(403).json({

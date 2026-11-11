@@ -14,7 +14,7 @@
  *   );
  */
 import { getDbRole } from "../utils/auth";
-
+import { isAdminRole } from "@shared/roles";
 export function requireOwnership(
   getResourceUserId: (req: any) => Promise<string | number | null>
 ) {
@@ -36,7 +36,7 @@ export function requireOwnership(
       const isOwner = String(resourceUserId) === String(actorId);
       const actorRole = isOwner ? null : await getDbRole(req);
 
-      if (!isOwner && actorRole !== "admin") {
+      if (!isOwner && !isAdminRole(actorRole)) {
         console.warn(
           `[IDOR ATTEMPT] User ${actorId} tried to access resource owned by ` +
             `${resourceUserId} at ${req.method} ${req.path}`

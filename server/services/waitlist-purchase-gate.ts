@@ -8,6 +8,7 @@ import { users } from "@shared/models/auth";
 import { getTravelerSignupMode } from "./platform-flags";
 import { isQaDomainAccount } from "./qa-trip-pass.service";
 import { TRAVELER_WAITLIST, type TravelerSignupMode } from "@shared/launch-signup";
+import { isAdminRole } from "@shared/roles";
 
 export type WaitlistPurchaseDecision = { allowed: true } | { allowed: false; code: typeof TRAVELER_WAITLIST };
 
@@ -17,7 +18,7 @@ export function decideWaitlistPurchase(input: {
   qaDomain: string | undefined;
 }): WaitlistPurchaseDecision {
   if (input.mode === "open") return { allowed: true };
-  if (input.user?.role === "admin") return { allowed: true };
+  if (isAdminRole(input.user?.role)) return { allowed: true };
   if (isQaDomainAccount(input.user?.email ?? null, input.qaDomain)) return { allowed: true };
   return { allowed: false, code: TRAVELER_WAITLIST };
 }

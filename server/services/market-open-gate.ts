@@ -11,6 +11,7 @@ import { marketIsOpen } from "@shared/ticker";
 import { getLaunchMarketSlug, getLiveMarketSlugs } from "./platform-flags";
 import { isQaDomainAccount } from "./qa-trip-pass.service";
 import { resolveMarketSlug } from "./trend-engine/operating-markets";
+import { isAdminRole } from "@shared/roles";
 
 export const MARKET_NOT_OPEN = "market_not_open" as const;
 
@@ -25,7 +26,7 @@ export function decideMarketOpen(input: {
   qaDomain: string | undefined;
 }): MarketOpenDecision {
   if (input.market && marketIsOpen(input.market, { launch: input.launch, live: input.live, beta: [], dates: {} })) return { allowed: true };
-  if (input.user?.role === "admin") return { allowed: true };
+  if (isAdminRole(input.user?.role)) return { allowed: true };
   if (isQaDomainAccount(input.user?.email ?? null, input.qaDomain)) return { allowed: true };
   return { allowed: false, code: MARKET_NOT_OPEN, market: input.market };
 }

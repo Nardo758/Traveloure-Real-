@@ -47,6 +47,7 @@ import { logger } from "../infrastructure/logger";
 import { csvCell } from "../utils/csv";
 import { resolveWaitlistReferral } from "../services/waitlist-referral.service";
 import { notifyWaitlistProviderApply } from "../services/waitlist-apply-invite-email";
+import { isAdminRole } from "@shared/roles";
 
 const router = Router();
 
@@ -123,7 +124,7 @@ async function requireAdminUser(req: any, res: any): Promise<{ id: string; role:
     return null;
   }
   const user = await getAdminRole(userId);
-  if (!user || user.role !== "admin") {
+  if (!user || !isAdminRole(user.role)) {
     res.status(403).json({ error: "Admin access required" });
     return null;
   }

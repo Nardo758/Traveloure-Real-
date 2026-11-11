@@ -14,10 +14,10 @@
 
 import { db } from "../db";
 import { qaRunSnapshots, users } from "@shared/schema";
-import { eq, desc, ne } from "drizzle-orm";
+import { eq, desc, ne, inArray } from "drizzle-orm";
 import { sendEmail, type SendEmailResult } from "../services/email.service";
 import { runQAVerify, type QAResults } from "../services/qa-verify.service";
-
+import { ADMIN_ROLES } from "@shared/roles";
 export interface NightlyQAResult {
   snapshotId: string;
   passCount: number;
@@ -261,7 +261,7 @@ export async function runNightlyQA(triggeredBy: "scheduled" | "manual" = "schedu
     const adminRows = await db
       .select({ email: users.email })
       .from(users)
-      .where(eq(users.role, "admin"));
+      .where(inArray(users.role, [...ADMIN_ROLES]));
 
     const recipientSet = new Set<string>(
       adminRows.map(r => r.email).filter(Boolean) as string[]

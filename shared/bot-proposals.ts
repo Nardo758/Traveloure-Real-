@@ -17,7 +17,10 @@
  *     author label and never "Traveloure team" (LD 65). `verified_by` is the approving admin, kept for audit.
  */
 
-export const BOT_SCOPES = ["coverage:read", "facts:read", "proposals:write", "proposals:read"] as const;
+// Slice 0 (Addendum A v2 + the group's addition): `queue:read` is the Ops Bot's scope — it reads the issue queue
+// (ids, kinds, markets, ages) and nothing else. No scope approves, publishes, hides, grants, or writes a feature flag
+// or platform_settings: there is no such verb on /api/bot, and a bot key is refused on every /api/admin route.
+export const BOT_SCOPES = ["coverage:read", "facts:read", "proposals:write", "proposals:read", "queue:read"] as const;
 export type BotScope = (typeof BOT_SCOPES)[number];
 
 export const BOT_PROPOSAL_KINDS = ["place_fact.hours", "place_fact.last_admission", "place_fact.closed_dates", "place_fact.timed_entry_required"] as const;

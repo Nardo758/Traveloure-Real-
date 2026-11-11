@@ -48,15 +48,50 @@ export function isEarnerRole(role: string | null | undefined): boolean {
 }
 
 /**
- * Staff roles. `admin` keeps every admin route. `support` and `moderator` are additive:
- * what each may do is the permission map in `shared/staff-permissions.ts`, not this list.
- * None of these earn. A hand-written copy of this list is a defect — email-merge refusal
- * and the staff gate both import it.
+ * Staff roles (slice 0, Addendum A v2). `owner` holds every power; `platform_admin` every power
+ * except the owner-only routes; `admin` is an alias of `platform_admin` for one release (migration
+ * 444 rewrites the stored value). `regional_manager`, `moderator` and `support` pass only what the
+ * permission map in `shared/staff-permissions.ts` gives them. None of these earn. A hand-written
+ * copy of this list is a defect — email-merge refusal and the staff gate both import it.
  */
-export const STAFF_ROLES = ["admin", "support", "moderator"] as const;
+export const STAFF_ROLES = ["owner", "platform_admin", "admin", "regional_manager", "support", "moderator"] as const;
 export type StaffRole = (typeof STAFF_ROLES)[number];
 
-/** True iff `role` is a stored staff role (admin, support, or moderator). */
+/** True iff `role` is a stored staff role. */
 export function isStaffRole(role: string | null | undefined): role is StaffRole {
   return role != null && (STAFF_ROLES as readonly string[]).includes(role);
+}
+
+/**
+ * The roles that pass an admin-only check: owner, platform_admin, and the `admin` alias. This is
+ * the ONE answer to "is this an admin?" — every former `role === "admin"` comparison reads it. What
+ * the owner alone may do is decided by the blanket guard (`staffMayPassBlanketGuard`), not here.
+ */
+export const ADMIN_ROLES = ["owner", "platform_admin", "admin"] as const;
+export type AdminRole = (typeof ADMIN_ROLES)[number];
+
+/** A type predicate, so a check like `if (!user || !isAdminRole(user.role)) return` narrows `user.role` as `=== "admin"` did. */
+export function isAdminRole(role: string | null | undefined): role is AdminRole {
+  return role != null && (ADMIN_ROLES as readonly string[]).includes(role);
+}
+
+/** True only for the owner. Money rails, fee bands, settings, bot keys and grants read this. */
+export function isOwnerRole(role: string | null | undefined): boolean {
+  return role === "owner";
+}
+
+/** The `admin` alias reads as `platform_admin` (one release). Any other value is returned as is. */
+export function canonicalStaffRole(role: string | null | undefined): string | null {
+  if (role == null) return null;
+  return role === "admin" ? "platform_admin" : role;
+}
+
+/** The roles an owner may grant through POST /api/admin/staff/:userId/role. Never owner, never an earner role. */
+export const GRANTABLE_STAFF_ROLES = ["platform_admin", "regional_manager", "moderator", "support"] as const;
+export type GrantableStaffRole = (typeof GRANTABLE_STAFF_ROLES)[number];
+
+/** Staff roles whose powers are limited to assigned markets (staff_market_assignments). */
+export const MARKET_SCOPED_ROLES = ["regional_manager", "moderator"] as const;
+export function isMarketScopedRole(role: string | null | undefined): boolean {
+  return role != null && (MARKET_SCOPED_ROLES as readonly string[]).includes(role);
 }

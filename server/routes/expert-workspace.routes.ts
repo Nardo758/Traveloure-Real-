@@ -16,7 +16,7 @@ import {
 } from "@shared/schema";
 import { eq, ne, and, or, ilike, desc, asc, sql, count, gte, lte, isNull, not, inArray } from "drizzle-orm";
 import { asyncHandler, ForbiddenError, ValidationError, NotFoundError } from "../infrastructure";
-import { isExpertRole } from "@shared/roles";
+import { isExpertRole, isAdminRole, ADMIN_ROLES } from "@shared/roles";
 import { LAUNCH_MARKETS, isLaunchMarket, STORE_GATE_MESSAGE } from "@shared/launch-markets";
 import { createDMOCrawler } from "../content/scrapers/DMOCrawler";
 import {
@@ -54,7 +54,7 @@ async function requireExpert(req: any, res: any, next: any) {
   // Canonical expert family (shared/roles.ts, role-vocabulary audit): the previous local
   // list omitted bare "expert" (locking those users out of the DMO workspace) and included
   // executive_assistant (EA has its own /ea console and no client path to /expert/*).
-  if (!isExpertRole(role) && role !== "admin") {
+  if (!isExpertRole(role) && !isAdminRole(role)) {
     return res.status(403).json({ message: "Expert access required" });
   }
   next();
@@ -592,7 +592,7 @@ router.post(
     // door — requireExpert alone admits bare "expert"/event_planner off the session role,
     // while store authoring is DB-role-gated to local/travel experts during the Kyoto launch.
     const dbUser = await storage.getUser(expertId);
-    if (!dbUser || !["local_expert", "travel_expert", "admin"].includes(dbUser.role ?? "")) {
+    if (!dbUser || !["local_expert", "travel_expert", ...ADMIN_ROLES].includes(dbUser.role ?? "")) {
       throw new ForbiddenError("Ready-made authoring requires a local expert or trip advisor role");
     }
 

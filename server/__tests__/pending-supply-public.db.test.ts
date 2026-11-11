@@ -217,7 +217,7 @@ test("public readers and the write rails call the one owner predicate", () => {
   assert.ok(routes.includes("refuseUnapprovedListingWrite"));
   const gate = read("server/services/pending-supply-account.ts");
   assert.match(gate, /const unapprovedSupply = chosen != null && chosen\.rank > 0 && chosen\.status !== "approved"/);
-  assert.match(gate, /const publishesFreely = earner \|\| \(role === "admin" && !unapprovedSupply\)/);
+  assert.match(gate, /const publishesFreely = earner \|\| \(isAdminRole\(role\) && !unapprovedSupply\)/);
   assert.equal(gate.includes('role === "admin" || isEarnerRole'), false);
   const draftPage = read("client/src/pages/dashboard-listing.tsx");
   assert.equal(/isEarnerRole\(role\) \|\| role === "admin"/.test(draftPage), false);

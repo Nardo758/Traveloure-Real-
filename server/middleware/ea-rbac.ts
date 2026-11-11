@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { isAdminRole } from "@shared/roles";
 
 /**
  * isEA — middleware that allows only executive_assistant and admin users.
@@ -28,7 +29,7 @@ export const isEA = async (req: any, res: any, next: any) => {
     .from(users)
     .where(eq(users.id, userId));
 
-  if (!row || (row.role !== "executive_assistant" && row.role !== "admin")) {
+  if (!row || (row.role !== "executive_assistant" && !isAdminRole(row.role))) {
     return res
       .status(403)
       .json({ message: "Executive Assistant access required" });

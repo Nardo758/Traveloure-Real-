@@ -6,7 +6,7 @@
 
 import { db } from "../db";
 import { sql } from "drizzle-orm";
-import { isExpertRole } from "@shared/roles";
+import { isExpertRole, isAdminRole } from "@shared/roles";
 import {
   rankCandidates,
   getSlotConfig,
@@ -370,7 +370,7 @@ export async function requireExpertRole(
   const role = (userRow.rows?.[0] as any)?.role;
   // Full expert family (shared/roles.ts): the previous pair (expert | local_expert)
   // silently excluded travel_expert and event_planner from the endorsement surface.
-  if (!isExpertRole(role) && role !== "admin") {
+  if (!isExpertRole(role) && !isAdminRole(role)) {
     res.status(403).json({ error: "Expert role required" });
     return null;
   }

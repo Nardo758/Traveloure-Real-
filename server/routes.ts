@@ -218,7 +218,7 @@ import { trackAnthropicResponse } from "./services/ai-cost-tracker";
 import { sanitizeAiContentFailure } from "./utils/ai-error-sanitizer";
 import { revenueTrackingService } from "./services/revenue-tracking.service";
 import { experienceTypes as experienceTypesTable, coordinationStates, coordinationFeeCredits, platformRevenue } from "@shared/schema";
-import { isExpertRole, isProviderRole } from "@shared/roles";
+import { isExpertRole, isProviderRole, isAdminRole } from "@shared/roles";
 import { isArtifactDelivery, SESSION_END_METHODS } from "@shared/service-fundamentals";
 import { DELIVERABLE_READABLE_STATUSES, resolveDeliverable } from "@shared/acceptance-window";
 import { resolvePublishVerification } from "./services/publish-verification.service";
@@ -356,6 +356,7 @@ import occasionsRoutes from "./routes/occasions.routes";
 import internalRoutes from "./routes/internal.routes";
 import botRoutes from "./routes/bot.routes";
 import botAdminRoutes from "./routes/bot-admin.routes";
+import staffAdminRoutes from "./routes/staff-admin.routes";
 import {
   insertTripParticipantSchema, 
   insertVendorContractSchema, 
@@ -486,7 +487,7 @@ async function authorizeTripOwnerTier(
 
   // Admin: allowed, but audit-logged (interim, mirroring authorizeTripLogistics).
   const user = await storage.getUser(userId);
-  if (user?.role === "admin") {
+  if (isAdminRole(user?.role)) {
     console.log(
       `[audit] admin cross-trip owner-tier access actor=${userId} route=${route} tripId=${tripId}`,
     );
@@ -972,6 +973,9 @@ export async function registerRoutes(
           reason: user.suspensionReason ?? undefined,
         });
       }
+      // Slice 0: the DB role this guard just read travels with the request, so a handler's market scope
+      // (`staffMayActOn`) and its audit row's actorRole read the same answer, never the session's claims.
+      req.staffActor = { id: user.id, role: user.role };
       return next();
     } catch (err) {
       console.error("adminApiGuard error:", err);
@@ -1008,7 +1012,7 @@ export async function registerRoutes(
       const userId = getUserId(req)!;
       if (userId) {
         const [user] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1);
-        if (user?.role === "admin") return next();
+        if (isAdminRole(user?.role)) return next();
       }
       return res.status(503).json({
         maintenance: true,
@@ -1336,6 +1340,8 @@ export async function registerRoutes(
   // off unless BOT_API_ENABLED=1 — and its admin side under /api/admin (the blanket adminApiGuard above).
   app.use(botRoutes);
   app.use(botAdminRoutes);
+  // Slice 0 (Addendum A v2): staff roles, market grants, the owner sign-off queue and the issue queue.
+  app.use(staffAdminRoutes);
 
   // Traveler service requests ("request a service that doesn't exist yet"):
   // POST/GET /api/service-requests (session-scoped) + /api/admin/service-requests
@@ -2633,7 +2639,7 @@ ${bannedCopyPromptLine()}`;
         return res.status(401).json({ message: "Authentication required" });
       }
       const user = await storage.getUser(userId);
-      if (!user || user.role !== "admin") {
+      if (!user || !isAdminRole(user.role)) {
         return res.status(403).json({ message: "Admin access required" });
       }
 
@@ -2889,7 +2895,7 @@ ${bannedCopyPromptLine()}`;
   // Admin: Payout-gap report — approved experts who haven't completed Stripe Connect
   app.get("/api/admin/expert-payout-gap", isAuthenticated, async (req, res) => {
     const user = await db.select().from(users).where(eq(users.id, getUserId(req)!)).then(r => r[0]);
-    if (!user || user.role !== "admin") {
+    if (!user || !isAdminRole(user.role)) {
       return res.status(403).json({ message: "Admin access required" });
     }
     try {
@@ -6151,7 +6157,7 @@ ${bannedCopyPromptLine()}`;
       
       // Full expert family (shared/roles.ts): the previous bare `role !== "expert"` check
       // 403'd local_expert / travel_expert / event_planner off their own listings endpoint.
-      if (!user || (!isExpertRole(user.role) && user.role !== "admin")) {
+      if (!user || (!isExpertRole(user.role) && !isAdminRole(user.role))) {
         return res.status(403).json({ message: "Expert access required" });
       }
 
@@ -10287,7 +10293,7 @@ ${bannedCopyPromptLine()}`;
       (contract.earnerId && contract.earnerId === userId);
     if (!isParty) {
       const actor = await storage.getUser(userId);
-      if (actor?.role !== "admin") {
+      if (!isAdminRole(actor?.role)) {
         return res.status(404).json({ message: "Contract not found" });
       }
     }
@@ -11855,7 +11861,7 @@ ${bannedCopyPromptLine()}`;
 
       // Admin-only gate (inline, consistent with other admin checks in this file)
       const [callerRow] = await db.select({ role: users.role }).from(users).where(eq(users.id, callerId));
-      if (!callerRow || callerRow.role !== "admin") {
+      if (!callerRow || !isAdminRole(callerRow.role)) {
         return res.status(403).json({ message: "Admin access required" });
       }
 
@@ -12833,7 +12839,7 @@ ${bannedCopyPromptLine()}`;
       return res.status(401).json({ message: "Authentication required" });
     }
     const user = await db.select().from(users).where(eq(users.id, getUserId(req)!)).then(r => r[0]);
-    if (!user || user.role !== "admin") {
+    if (!user || !isAdminRole(user.role)) {
       return res.status(403).json({ message: "Admin access required" });
     }
     next();

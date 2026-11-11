@@ -46,7 +46,7 @@
 import { z } from "zod";
 
 import { storage } from "../storage";
-import { isExpertRole } from "@shared/roles";
+import { isExpertRole, isAdminRole } from "@shared/roles";
 import type { AffiliateBookingRequest } from "@shared/schema";
 import { grantConciergePlanRead } from "./concierge-plan-read.service";
 import { logger } from "../infrastructure/logger";
@@ -136,7 +136,7 @@ export async function claimBookingRequest(
   const { requestId, actorUserId } = params;
 
   const actor = await storage.getUser(actorUserId);
-  if (!actor || (!isExpertRole(actor.role ?? "") && actor.role !== "admin")) {
+  if (!actor || (!isExpertRole(actor.role ?? "") && !isAdminRole(actor.role))) {
     return { ok: false, reason: "not_an_agent" };
   }
 
