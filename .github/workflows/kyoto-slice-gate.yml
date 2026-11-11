@@ -237,11 +237,21 @@ jobs:
       # It sets waitlist mode for its own run (restored after), so it runs in its own step.
       - name: Add actions (cut-list #1 slice C)
         if: ${{ !cancelled() }}
-        run: npx playwright test playwright/tests/journeys/j-add-actions.spec.ts --project=chromium --workers=1
+        # --reporter=json: the spec-arming gate reads this run's report to tell an executed test from a skip.
+        run: npx playwright test playwright/tests/journeys/j-add-actions.spec.ts --project=chromium --workers=1 --reporter=list,json
         env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-json/results.json
           BASE_URL: http://localhost:5000
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           CI: 'true'
+
+      - name: Upload the add-actions Playwright JSON (spec-arming evidence)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-json
+          path: playwright-json/
+          if-no-files-found: error
 
       # FU-8D-4 (ledger `2026-10-07-map-dialog-isolation`): a dialog opened over the MEMBER map
       # receives the click everywhere on its box — Leaflet's panes stay inside the map's own stacking
