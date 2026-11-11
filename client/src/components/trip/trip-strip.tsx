@@ -3,7 +3,15 @@ import { useQuery } from "@tanstack/react-query";
 import { MapPin, Calendar, CalendarDays, Users, ShoppingCart, Lock, Heart } from "lucide-react";
 import { useTripContext } from "@/lib/trip-context";
 import { planningRouteForTrip, usePlanning } from "@/contexts/PlanningContext";
-import { classify, eventCountLabel, partyCountLabel, partyCountOnly, partyCompositionLabel } from "@/lib/plan-vocabulary";
+import { classify, eventCountLabel, partyCountLabel, partyCountOnly, partyCompositionLabel, START_PLAN_LABEL } from "@/lib/plan-vocabulary";
+import {
+  GUEST_PLAN_HREF,
+  headerDatesLine,
+  headerPlanLabel,
+  type HeaderDatesTarget,
+  type HeaderPlanState,
+} from "@/lib/header-plan";
+import { HeaderDatesPopover } from "@/components/HeaderDatesPopover";
 // Ledger 2026-09-04-which-event-picker: "the events of THIS plan" now has ONE definition, shared
 // with the picker that writes the link. The strip filtered inline before that module existed; two
 // copies of the same filter is the drift class §18 rule 1 names.
@@ -12,37 +20,38 @@ import { findOccasionByKey } from "@shared/occasions";
 import type { ExperienceType, UserExperience } from "@shared/schema";
 
 /**
- * TripStrip — the ratified Option A global trip bar (Trip-Strip program P3).
- * One mount in the traveler Layout; renders only when a trip is in progress
- * (any context field set OR items in cart). Owns ALL trip state display:
- * destination · dates · party · THE cart chip (the site's single cart display).
+ * TripStrip — the ratified Option A global trip bar (Trip-Strip program P3), and since the cut-list
+ * #1 header fix v2 (decision-maker Leon Dixon, Nov 11, 2026: "if we have the trip Strip, then the
+ * Sticky header is redundant") THE ONE PLAN SURFACE in the chrome. Ruling 1 (Nov 10) moved "Start a
+ * plan" out of the nav into "a sticky header showing the live plan"; slices A/B read that as the nav
+ * itself and put a truncated chip in it. The chip is gone. This strip now:
  *
- * Rules (spec of record = the ratified page-by-page mockup):
- * - Vocabulary classes: Travel / Event / Couple, keyed off experienceType.
- * - Server-truth mode: once tripId exists the strip shows TWO controls — "Edit", which opens
- *   the one plan modal on the bound plan, and "Continue planning ›", which navigates to the
- *   plan's own surface (ledger `2026-09-04-reaudit-fixes`, the re-audit's B2; the `StripLead`
- *   artboard draws both). Before a trip exists there is nothing to continue TO, so the single
- *   control is the modal.
- * - Edit-locked on /checkout, /payment, /booking/confirmation.
- * - "Continue planning ›" label on marketing pages (the trip-less branch; the bound branch says
- *   it unconditionally, because that is what that control does everywhere).
- * - Browse never writes: this component only displays; writes happen through
- *   the ONE plan modal (usePlanning().open, ledger `2026-09-04-one-modal-many-doors`)
- *   or explicit page actions.
+ * - is STICKY directly under the nav (`top: var(--chrome-nav-h)`, the one variable the nav's height
+ *   and this offset both read, so the two cannot drift);
+ * - renders for a GUEST with a plan and for a signed-in member, from the ONE plan state the layout
+ *   computes once (`headerPlanState` over `useActivePlan`'s rule — `?tripId=`, then the pen, then the
+ *   most recently updated un-finalized plan) and passes down. No second fetch: the guest read stays
+ *   gated on the presence cookie in the layout;
+ * - prints the approved label "Your {city} plan · {n}" / "Your plan · {n}" (`headerPlanLabel`, the one
+ *   formatter) as THE link to the plan — `/plans/new` for a guest, the date-derived planning route for
+ *   a member — and beside it the dates, or "Add dates", opening the ONE dates panel (slice B's
+ *   `HeaderDatesPopover`). A 0-stop plan reads "Start a plan" linking to that plan (reopen, never a
+ *   second plan). The label is never truncated: the strip has the row.
+ * - keeps: party · events · THE cart chip (the site's single cart display, LD 39) · Edit (the one plan
+ *   modal, signed-in and bound only). "Continue planning ›" is retired — the label is the link.
+ * - Edit-locked on /checkout, /payment, /booking/confirmation: the lock hides Edit, the label link and
+ *   the dates popover alike (the label stays as text).
+ * - A pen with no plan state yet (mid-intake, or a list still loading) keeps the pre-v2 lead,
+ *   destination and dates chips exactly as before.
+ * - Browse never writes: this component only displays; writes happen through the ONE plan modal
+ *   (usePlanning().open, ledger `2026-09-04-one-modal-many-doors`), the dates panel's own rails, or
+ *   explicit page actions.
  */
 
 // Chrome earn grammar (ruling 2026-08-28-chrome-alignment): mono for eyebrow/counts,
 // Inter (the app default) for the trip name and buttons. Shell restyle only — every
 // data source, testid and handler below is unchanged.
 const STRIP_MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
-
-const MARKETING_PATHS = new Set([
-  "/", "/about", "/pricing", "/how-it-works", "/features",
-  "/careers", "/press", "/blog", "/help", "/support",
-]);
-// Help articles (/help/:slug) are marketing pages too (Lane B); /faq now redirects to /help.
-const MARKETING_PREFIXES = ["/help/"];
 
 const LOCKED_PREFIXES = ["/checkout", "/payment", "/booking/confirmation"];
 
@@ -58,7 +67,19 @@ function formatDate(ymd?: string): string {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-export function TripStrip() {
+const START_STATE: HeaderPlanState = { kind: "start" };
+
+export function TripStrip({
+  planState = START_STATE,
+  datesTarget = null,
+  signedIn = false,
+}: {
+  /** The ONE plan state the layout computed (`headerPlanState`); absent ⇒ the pre-v2 context-only strip. */
+  planState?: HeaderPlanState;
+  /** The plan the dates segment re-dates (slice B); null ⇒ the dates line is text. */
+  datesTarget?: HeaderDatesTarget | null;
+  signedIn?: boolean;
+} = {}) {
   const [ctx] = useTripContext();
   const [location] = useLocation();
   // "Edit ›" is a DOOR of the one planning modal, not a dialog this strip mounts. The modal opens
@@ -119,12 +140,13 @@ export function TripStrip() {
   const hasContext = Object.keys(ctx).some(
     (k) => ["destination", "startDate", "endDate", "travelers", "experienceType", "tripId"].includes(k) && (ctx as any)[k],
   );
-  // Visibility rule: a trip is in progress when any detail is set OR the cart has items.
-  if (!hasContext && cartCount === 0) return null;
+  // Visibility rule: a trip is in progress when any detail is set OR the cart has items — or (v2)
+  // when the ONE plan state names a plan, which is how a guest with a saved plan sees the strip.
+  const showsPlan = planState.kind !== "start";
+  if (!hasContext && cartCount === 0 && !showsPlan) return null;
 
   const vocab = classify(ctx.experienceType);
   const locked = LOCKED_PREFIXES.some((p) => location.startsWith(p));
-  const marketing = MARKETING_PATHS.has(location) || MARKETING_PREFIXES.some((p) => location.startsWith(p));
 
   const destination = ctx.destination || ctx.city || "";
   // A3 (docs/briefs/04): invite-aware Event-class variant — a context born from a
@@ -213,61 +235,142 @@ export function TripStrip() {
       : `${formatDate(ctx.startDate)}${ctx.endDate ? ` → ${formatDate(ctx.endDate)}` : ""}`
     : "";
 
+  // ── v2: the plan label is THE link to the plan ─────────────────────────────────────────────────
+  // A guest's plan lives at /plans/new (a `ProtectedRoute` would wall them off `/plans/{id}`); a
+  // member's follows the date-derived route (ruling 2: a plan whose end has passed lands on /trip/:id).
+  const planHref = showsPlan
+    ? planState.guest
+      ? GUEST_PLAN_HREF
+      : planningRouteForTrip(planState.planId, (datesTarget?.endDate ?? (ctx.tripId === planState.planId ? ctx.endDate : undefined)) || undefined)
+    : ctx.tripId
+      ? planningRouteForTrip(ctx.tripId, ctx.endDate)
+      : null;
+  const planLabel = planState.kind === "chip" ? headerPlanLabel(planState) : planState.kind === "resume" ? START_PLAN_LABEL : null;
+  const datesLine = headerDatesLine(planState);
+
+  const labelClass = "inline-flex items-center gap-1.5 font-semibold shrink-0";
+  const linkable = !locked && !!planHref;
+
   return (
     <div
-      className="w-full border-b"
-      style={{ background: "var(--earn-ground)", borderColor: "var(--earn-border)" }}
+      className="sticky z-40 w-full border-b"
+      style={{ top: "var(--chrome-nav-h)", background: "var(--earn-ground)", borderColor: "var(--earn-border)" }}
       data-testid="trip-strip"
+      data-plan-state={planState.kind}
     >
       <div className="container mx-auto min-h-[44px] px-4 py-1.5 flex items-center gap-2 flex-wrap text-sm">
-        {/* Ruling 2026-08-28-chrome-alignment: the strip's eyebrow is one of the chrome's
-            three ratified coral touches (Sign In, BETA pill, this). */}
-        <span
-          className="hidden sm:inline text-[10px] font-medium uppercase tracking-[0.12em] shrink-0"
-          style={{ fontFamily: STRIP_MONO, color: "var(--earn-coral-ink)" }}
-          aria-hidden="true"
-        >
-          Your Trip
-        </span>
-        <span
-          className="flex items-center gap-1.5 font-semibold shrink-0"
-          style={{ color: "var(--earn-ink)" }}
-          data-testid="trip-strip-lead"
-          data-invite-aware={inviteAware ? "true" : undefined}
-        >
-          {inviteAware ? (
-            <Heart className="w-3.5 h-3.5 text-[color:var(--earn-teal-ink)]" />
-          ) : (
-            <MapPin className="w-3.5 h-3.5 text-[color:var(--earn-muted)]" />
-          )}
-          {/* no `capitalize` on the invite lead — the event title keeps its own casing */}
-          <span
-            className={`${inviteAware ? "" : "capitalize"}${leadDuplicatesEyebrow ? " sm:hidden" : ""}`.trim() || undefined}
-            data-testid="trip-strip-lead-text"
-          >
-            {lead}
-          </span>
-        </span>
+        {showsPlan && planLabel ? (
+          <>
+            {/* The approved label, never truncated. A link unless the payment lock is on. */}
+            {linkable ? (
+              <Link href={planHref!} className={`${labelClass} hover:underline underline-offset-2`} style={{ color: "var(--earn-ink)" }} data-testid="trip-strip-plan-link">
+                <MapPin className="w-3.5 h-3.5 text-[color:var(--earn-muted)]" />
+                <span data-testid="trip-strip-plan-label">{planLabel}</span>
+              </Link>
+            ) : (
+              <span className={labelClass} style={{ color: "var(--earn-ink)" }}>
+                <MapPin className="w-3.5 h-3.5 text-[color:var(--earn-muted)]" />
+                <span data-testid="trip-strip-plan-label">{planLabel}</span>
+              </span>
+            )}
+            {datesLine && (
+              <>
+                <span className="shrink-0" aria-hidden="true" style={{ color: "var(--earn-faint)" }}>
+                  ·
+                </span>
+                {datesTarget && !locked ? (
+                  <HeaderDatesPopover target={datesTarget} variant="desktop">
+                    <button
+                      type="button"
+                      className="shrink-0 text-xs underline-offset-2 hover:underline"
+                      style={{ fontFamily: STRIP_MONO, color: "var(--earn-teal-ink)" }}
+                      data-testid="trip-strip-plan-dates"
+                    >
+                      {datesLine}
+                    </button>
+                  </HeaderDatesPopover>
+                ) : (
+                  <span className="shrink-0 text-xs" style={{ fontFamily: STRIP_MONO, color: "var(--earn-muted)" }} data-testid="trip-strip-plan-dates">
+                    {datesLine}
+                  </span>
+                )}
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            {/* Ruling 2026-08-28-chrome-alignment: the strip's eyebrow is one of the chrome's
+                three ratified coral touches (Sign In, BETA pill, this). Pre-v2 branch: a pen with no
+                plan state yet. */}
+            <span
+              className="hidden sm:inline text-[10px] font-medium uppercase tracking-[0.12em] shrink-0"
+              style={{ fontFamily: STRIP_MONO, color: "var(--earn-coral-ink)" }}
+              aria-hidden="true"
+            >
+              Your Trip
+            </span>
+            {(() => {
+              const leadBody = (
+                <>
+                  {inviteAware ? (
+                    <Heart className="w-3.5 h-3.5 text-[color:var(--earn-teal-ink)]" />
+                  ) : (
+                    <MapPin className="w-3.5 h-3.5 text-[color:var(--earn-muted)]" />
+                  )}
+                  {/* no `capitalize` on the invite lead — the event title keeps its own casing */}
+                  <span
+                    className={`${inviteAware ? "" : "capitalize"}${leadDuplicatesEyebrow ? " sm:hidden" : ""}`.trim() || undefined}
+                    data-testid="trip-strip-lead-text"
+                  >
+                    {lead}
+                  </span>
+                </>
+              );
+              // A bound pen whose plan state has not resolved still links to its plan (the lead is
+              // the link, as the label is in the resolved branch).
+              return linkable ? (
+                <Link
+                  href={planHref!}
+                  className={`${labelClass} hover:underline underline-offset-2`}
+                  style={{ color: "var(--earn-ink)" }}
+                  data-testid="trip-strip-plan-link"
+                  data-invite-aware={inviteAware ? "true" : undefined}
+                >
+                  <span className="inline-flex items-center gap-1.5" data-testid="trip-strip-lead">{leadBody}</span>
+                </Link>
+              ) : (
+                <span
+                  className={labelClass}
+                  style={{ color: "var(--earn-ink)" }}
+                  data-testid="trip-strip-lead"
+                  data-invite-aware={inviteAware ? "true" : undefined}
+                >
+                  {leadBody}
+                </span>
+              );
+            })()}
 
-        {destination && vocab === "travel" && (
-          <span
-            className="inline-flex items-center rounded-full border px-3 py-0.5 text-xs"
-            style={{ fontFamily: STRIP_MONO, background: "var(--earn-chip)", borderColor: "var(--earn-border)", color: "var(--earn-ink)" }}
-            data-testid="trip-strip-destination"
-          >
-            {destination}
-          </span>
-        )}
+            {destination && vocab === "travel" && (
+              <span
+                className="inline-flex items-center rounded-full border px-3 py-0.5 text-xs"
+                style={{ fontFamily: STRIP_MONO, background: "var(--earn-chip)", borderColor: "var(--earn-border)", color: "var(--earn-ink)" }}
+                data-testid="trip-strip-destination"
+              >
+                {destination}
+              </span>
+            )}
 
-        {dateLabel && (
-          <span
-            className="inline-flex items-center gap-1 rounded-full border px-3 py-0.5 text-xs"
-            style={{ fontFamily: STRIP_MONO, background: "var(--earn-chip)", borderColor: "var(--earn-border)", color: "var(--earn-muted)" }}
-            data-testid="trip-strip-dates"
-          >
-            <Calendar className="w-3 h-3 text-[color:var(--earn-faint)]" />
-            {dateLabel}
-          </span>
+            {dateLabel && (
+              <span
+                className="inline-flex items-center gap-1 rounded-full border px-3 py-0.5 text-xs"
+                style={{ fontFamily: STRIP_MONO, background: "var(--earn-chip)", borderColor: "var(--earn-border)", color: "var(--earn-muted)" }}
+                data-testid="trip-strip-dates"
+              >
+                <Calendar className="w-3 h-3 text-[color:var(--earn-faint)]" />
+                {dateLabel}
+              </span>
+            )}
+          </>
         )}
 
         {hasTravelers && (
@@ -322,31 +425,17 @@ export function TripStrip() {
             </span>
           ) : ctx.tripId ? (
             /*
-             * TWO CONTROLS, AS RATIFIED (ledger `2026-09-04-reaudit-fixes`, the re-audit's B2;
-             * the `StripLead` artboard draws both). They answer different questions and neither
-             * substitutes for the other:
+             * EDIT opens the ONE plan modal on the plan already bound, so the five questions
+             * (occasion, where, when, who, what's happening) can be CORRECTED without leaving the
+             * page — Locked Decision 33's "Trip Strip's Edit" door. Signed-in only: a guest's plan has
+             * no modal binding (its edits live on /plans/new). "Continue planning ›" is retired by the
+             * header fix v2 — the plan label above is the link to the plan's own surface.
              *
-             *   EDIT            — opens the ONE plan modal on the plan already bound, so the five
-             *                     questions (occasion, where, when, who, what's happening) can be
-             *                     CORRECTED without leaving the page. Locked Decision 33's door
-             *                     table has always promised this door — "the Trip Strip's Edit →
-             *                     step 1 or 2 by what the plan already holds, with every visible
-             *                     step reachable from the rail" — and until now the code exposed
-             *                     it only in the trip-LESS branch, so the moment a plan existed
-             *                     the door the ruling names disappeared.
-             *   CONTINUE        — the navigation to the plan's own surface, unchanged.
-             *
-             * The modal needs NO source here: `resolvePlanSteps` reads the held trip context, so
-             * a plan that already names its occasion opens at step 2 under the pill and one that
-             * does not opens at step 1. That decision stays in the one door table; passing a
-             * source from here would be a second copy of it (§18 rule 1).
-             *
-             * TESTIDS: the LINK keeps `trip-strip-edit` because `planning-entry.spec.ts` asserts
-             * its href (the date-derived /plans vs /trip routing, ruling 2); the new button is
-             * `trip-strip-edit-plan`. Renaming the link to match its new label would have moved a
-             * pinned selector for a cosmetic reason.
+             * The modal needs NO source here: `resolvePlanSteps` reads the held trip context, so a plan
+             * that already names its occasion opens at step 2 under the pill and one that does not
+             * opens at step 1. That decision stays in the one door table (§18 rule 1).
              */
-            <span className="inline-flex items-center gap-1.5">
+            signedIn ? (
               <button
                 type="button"
                 onClick={() => openPlanModal({ door: "trip_strip_edit" })}
@@ -355,28 +444,17 @@ export function TripStrip() {
               >
                 Edit
               </button>
-              {/* Ruling 2026-08-28-single-planning-entry: mid-planning continues on the
-                  PLANNING surface (/plans/:tripId, the canonical slip), never the details
-                  card; only a trip whose end date has passed lands on /trip/:id. Phase
-                  derives from dates per ruling 2 (trips.status is dead). */}
-              <Link
-                href={planningRouteForTrip(ctx.tripId, ctx.endDate)}
-                className="inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-semibold transition-colors border-[color:var(--earn-navy)] text-[color:var(--earn-navy)] hover:bg-[color:var(--earn-navy)] hover:text-white"
-                data-testid="trip-strip-edit"
-              >
-                Continue planning ›
-              </Link>
-            </span>
-          ) : (
+            ) : null
+          ) : hasContext ? (
             <button
               type="button"
               onClick={() => openPlanModal({ door: "trip_strip_edit" })}
               className="inline-flex items-center rounded-md border px-2.5 py-1 text-xs font-semibold transition-colors border-[color:var(--earn-navy)] text-[color:var(--earn-navy)] hover:bg-[color:var(--earn-navy)] hover:text-white"
               data-testid="trip-strip-edit"
             >
-              {marketing ? "Continue planning ›" : "Edit ›"}
+              Edit ›
             </button>
-          )}
+          ) : null}
         </span>
       </div>
     </div>

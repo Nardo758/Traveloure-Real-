@@ -1,5 +1,8 @@
+import { pickActivePlan } from "./active-plan";
+
 /**
- * Cut-list #1, slice A — the header's plan state.
+ * Cut-list #1, slice A — the plan state the chrome speaks for (header fix v2: rendered by the Trip
+ * Strip under the nav, never inside it; the nav keeps only the `start` CTA).
  *
  * One question, four answers, and no guessing (§13):
  *
@@ -79,16 +82,12 @@ export function headerDatesLabel(startDate: string | null | undefined, endDate: 
 }
 
 /**
- * The signed-in plan the header speaks for: most recently updated, never finalized.
- *
- * Filtered on `finalizedAt` ONLY. `trips.status` is a display lifecycle that a reopen or an admin
- * action can move without touching finality, so filtering on it would silently drop a plan the
- * traveler is still working on.
+ * The signed-in plan the header and the strip speak for. ONE rule (`client/src/lib/active-plan.ts`,
+ * cut-list #1 header fix v2): an explicit binding when the caller holds one, else the most recently
+ * updated un-finalized plan. Finality is the only lifecycle filter — `trips.status` is a display label.
  */
-export function activeHeaderTrip(trips: readonly HeaderTrip[] | null | undefined): HeaderTrip | null {
-  const live = (trips ?? []).filter((t) => !t.finalizedAt);
-  if (live.length === 0) return null;
-  return [...live].sort((x, y) => String(y.updatedAt ?? "").localeCompare(String(x.updatedAt ?? "")))[0];
+export function activeHeaderTrip(trips: readonly HeaderTrip[] | null | undefined, bound: string | null = null): HeaderTrip | null {
+  return pickActivePlan(trips, bound);
 }
 
 export function headerPlanState(input: {
@@ -96,6 +95,8 @@ export function headerPlanState(input: {
   guestStatus: "idle" | "loading" | "ready" | "error";
   guestPlan: HeaderGuestPlan | null | undefined;
   trips: readonly HeaderTrip[] | null | undefined;
+  /** The explicit binding (`?tripId=`, then the pen) — rule 1 of `pickActivePlan`. */
+  bound?: string | null;
 }): HeaderPlanState {
   if (!input.isSignedIn) {
     // Nothing a guest could reopen yet, a failed read, or an expired plan: today's Start a plan.
@@ -115,7 +116,7 @@ export function headerPlanState(input: {
     };
   }
 
-  const trip = activeHeaderTrip(input.trips);
+  const trip = activeHeaderTrip(input.trips, input.bound ?? null);
   if (!trip) return { kind: "start" };
   const city = String(trip.destination ?? "").trim() || null;
   const stops = typeof trip.itemCount === "number" ? trip.itemCount : null;
@@ -155,7 +156,7 @@ export interface HeaderDatesTarget {
 
 export function headerDatesTarget(
   state: HeaderPlanState,
-  input: { guestPlan: HeaderGuestPlan | null | undefined; trips: readonly HeaderTrip[] | null | undefined },
+  input: { guestPlan: HeaderGuestPlan | null | undefined; trips: readonly HeaderTrip[] | null | undefined; bound?: string | null },
 ): HeaderDatesTarget | null {
   if (state.kind !== "chip") return null;
   if (state.guest) {
@@ -163,7 +164,7 @@ export function headerDatesTarget(
     if (!p || p.id !== state.planId) return null;
     return { guest: true, planId: p.id, startDate: p.startDate ?? null, endDate: p.endDate ?? null, datesConfirmed: !!p.datesConfirmed };
   }
-  const t = activeHeaderTrip(input.trips);
+  const t = activeHeaderTrip(input.trips, input.bound ?? null);
   if (!t || t.id !== state.planId) return null;
   return {
     guest: false,

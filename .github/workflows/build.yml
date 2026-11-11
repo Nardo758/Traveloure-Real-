@@ -679,6 +679,15 @@ jobs:
       - if: ${{ !cancelled() }}
         name: Trip-strip lead-duplication pin
         run: npx tsx --test client/src/components/__tests__/trip-strip-lead.test.tsx
+      # Cut-list #1 header fix v2 (decision-maker Nov 11, 2026): the Trip Strip is THE plan surface —
+      # sticky under the nav on the one chrome-height variable, the approved label as the link to the
+      # plan (a guest's to /plans/new, never a ProtectedRoute), "Add dates" opening the one panel, Edit
+      # signed-in-and-bound only, the lock hiding link and popover, the nav drawing "Start a plan"
+      # only with no plan; and the ONE active-plan rule (binding, then recency) every reader shares —
+      # with the picker preselecting the most recently updated of two fitting plans (TB1).
+      - if: ${{ !cancelled() }}
+        name: Trip-strip plan surface + active-plan rule pins
+        run: npx tsx --test client/src/components/__tests__/trip-strip-plan-surface.test.tsx client/src/lib/__tests__/active-plan.test.ts
       # 2026-09-03-switch-readers: migration 276's six occasion switches are nullable with NO DB
       # CHECK, so every reader meets three states and the third — NULL = NOT SET — is the one §13
       # governs. This pins that each reader falls back to the plain-plan shape in the SAFE

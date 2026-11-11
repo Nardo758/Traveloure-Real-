@@ -366,7 +366,7 @@ test("stub — an open hotel set stays open and the draft adds no accommodation"
  * "Add dates" opens it, a SAME-DAY range saves through the plan's own rail, and the slip's dates
  * panel then reads the same day; PlanEntry draws the same calendar (proven above via pickPlanDates).
  */
-test("slice B — header Add dates → a same-day range saves, and the slip agrees", async ({ page }) => {
+test("slice B — the Trip Strip's Add dates → a same-day range saves, and the slip agrees", async ({ page }) => {
   await signedInTraveler(page, "sb1");
   const tripId = await createTrip(page.request, "Kyoto day trip", KYOTO);
   await rows(`UPDATE trips SET dates_confirmed_at = NULL WHERE id = $1 RETURNING id`, [tripId]);
@@ -374,7 +374,7 @@ test("slice B — header Add dates → a same-day range saves, and the slip agre
 
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto("/");
-  const dates = testid(page, "chip-nav-plan-dates").first();
+  const dates = testid(page, "trip-strip-plan-dates").first();
   await expect(dates).toHaveText("Add dates", { timeout: 20_000 });
   await dates.click();
   const panel = testid(page, "header-dates-panel");
@@ -402,10 +402,10 @@ test("slice B — header Add dates → a same-day range saves, and the slip agre
   );
   expect(row).toEqual({ s: iso, e: iso, confirmed: true });
 
-  // The header chip now reads the saved day, and the slip reads the same plan as dated.
+  // The strip now reads the saved day (header fix v2: the chip lives in the Trip Strip), and the slip reads the same plan as dated.
   const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   await page.goto("/");
-  await expect(testid(page, "chip-nav-plan-dates").first()).toContainText(`${MON[day.getMonth()]} ${day.getDate()}`, { timeout: 20_000 });
+  await expect(testid(page, "trip-strip-plan-dates").first()).toContainText(`${MON[day.getMonth()]} ${day.getDate()}`, { timeout: 20_000 });
   await page.goto(`/plans/${tripId}`);
   await expect(page.locator('[data-dates-confirmed]').first()).toHaveAttribute("data-dates-confirmed", "true", { timeout: 20_000 });
   await expect(testid(page, "slip-dates-set-cta"), "confirmed dates: no Set your dates chip").toHaveCount(0);

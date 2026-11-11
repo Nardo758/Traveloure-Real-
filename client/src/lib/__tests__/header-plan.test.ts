@@ -67,14 +67,15 @@ describe("slice A — the header plan state", () => {
     assert.deepEqual(state, { kind: "chip", planId: "gp-1", city: "Kyoto", stops: 2, dates: "Nov 12\u201315", guest: true });
     assert.equal(headerPlanLabel(state), "Your Kyoto plan \u00b7 2");
     assert.equal(headerDatesLine(state), "Nov 12\u201315");
-    // The chip links the slip's Days view — no ?view= (it is the ruled landing).
-    const CTA = fs.readFileSync("client/src/components/HeaderPlanCTA.tsx", "utf8");
-    // A GUEST chip goes to the guest slip, never /plans/{id}: that is a ProtectedRoute and would
-    // sign-in-wall the very traveler the chip speaks for. Never /?start=1 either (a new plan).
+    // The label links the slip's Days view — no ?view= (it is the ruled landing). Header fix v2:
+    // the link is the Trip Strip's (`trip-strip-plan-link`).
+    const STRIP = fs.readFileSync("client/src/components/trip/trip-strip.tsx", "utf8");
+    // A GUEST label goes to the guest slip, never /plans/{id}: that is a ProtectedRoute and would
+    // sign-in-wall the very traveler the label speaks for. Never /?start=1 either (a new plan).
     assert.equal(GUEST_PLAN_HREF, "/plans/new");
-    assert.match(CTA, /state\.guest \? GUEST_PLAN_HREF : `\/plans\/\$\{state\.planId\}`/, "guest → /plans/new, owner → /plans/{id}");
-    const ctaHrefs = CTA.split("\n").filter((line) => line.includes("GUEST_PLAN_HREF") || line.includes("/plans/${state.planId}") || line.includes("PLAN_START_HREF"));
-    for (const line of ctaHrefs) assert.doesNotMatch(line, /\?view=/, line);
+    assert.match(STRIP, /planState\.guest\s*\?\s*GUEST_PLAN_HREF\s*:\s*planningRouteForTrip\(planState\.planId/, "guest → /plans/new, owner → the planning route");
+    const hrefLines = STRIP.split("\n").filter((line) => line.includes("GUEST_PLAN_HREF") || line.includes("planningRouteForTrip("));
+    for (const line of hrefLines) assert.doesNotMatch(line, /\?view=/, line);
   });
 
   it("H4 without a city, the label falls back", () => {
@@ -127,26 +128,27 @@ describe("slice A — the header plan state", () => {
   });
 });
 
-describe("slice A — the 375px budget and the two mounts", () => {
-  it("the chip truncates inside a bounded box", () => {
-    const CTA = fs.readFileSync("client/src/components/HeaderPlanCTA.tsx", "utf8");
-    assert.match(CTA, /min-w-0/, "it must be allowed to shrink");
-    assert.match(CTA, /max-w-\[200px\]/, "…within a real bound");
-    // Slice B: the label is its own link (min-w-0 truncate); the dates segment is a sibling control.
-    assert.match(CTA, /className="min-w-0 truncate[^"]*"[\s\S]{0,80}chip-nav-plan-label/, "the label truncates, the dates never do");
-    assert.match(CTA, /className="shrink-0[^"]*"[\s\S]{0,120}chip-nav-plan-dates/, "the dates keep their width");
-  });
-
-  it("ONE component renders both header mounts, so they cannot drift", () => {
+describe("slice A — the plan state is computed once; header fix v2 renders it in the strip", () => {
+  it("the ONE plan state feeds the strip, and the nav draws only the start CTA", () => {
     const LAYOUT = fs.readFileSync("client/src/components/layout.tsx", "utf8");
-    const mounts = LAYOUT.match(/<HeaderPlanCTA/g) ?? [];
-    assert.equal(mounts.length, 2, "desktop nav + phone menu, both this component");
-    assert.match(LAYOUT, /variant="desktop"/);
-    assert.match(LAYOUT, /variant="mobile"/);
-    // The ruled states are computed once and shared.
+    assert.doesNotMatch(LAYOUT, /HeaderPlanCTA/, "the nav chip is gone (decision-maker Nov 11, 2026)");
     assert.match(LAYOUT, /const headerState = headerPlanState\(/);
+    assert.match(LAYOUT, /<TripStrip planState=\{headerState\} datesTarget=\{headerDates\} signedIn=\{!!user\} \/>/);
     assert.match(LAYOUT, /useGuestPlan\(guestPresent && !user\)/, "the guest read is gated on the presence cookie");
     assert.match(LAYOUT, /hasGuestPresenceCookie\(document\.cookie\)/, "…by the same check shouldClaimGuestPlans uses");
+    assert.match(LAYOUT, /useActivePlan\(\)/, "the signed-in plan is the ONE active-plan rule's");
+  });
+
+  it("the binding wins over recency, and recency wins otherwise (the one rule)", () => {
+    const trips: HeaderTrip[] = [
+      { id: "older", destination: "Kyoto", updatedAt: "2026-11-01T00:00:00Z", itemCount: 3 },
+      { id: "newer", destination: "Kyoto", updatedAt: "2026-11-10T00:00:00Z", itemCount: 1 },
+    ];
+    assert.equal(activeHeaderTrip(trips)?.id, "newer");
+    assert.equal(activeHeaderTrip(trips, "older")?.id, "older", "an explicit binding wins");
+    assert.equal(activeHeaderTrip(trips, "missing")?.id, "newer", "a binding not in the list falls through to recency");
+    const state = headerPlanState({ isSignedIn: true, guestStatus: "idle", guestPlan: null, trips, bound: "older" });
+    assert.equal(state.kind === "chip" && state.planId, "older");
   });
 
   it("BETA is its own link, and the ribbon left only the traveler path", () => {

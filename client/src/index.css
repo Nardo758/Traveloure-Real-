@@ -5,6 +5,9 @@
 @tailwind utilities;
 
 :root {
+  /* Cut-list #1 header fix v2: the traveler chrome's nav height — the nav's own height AND the
+     Trip Strip's sticky offset read this one value, so the two cannot drift. */
+  --chrome-nav-h: 60px;
   /* Traveloure public tokens — the ONE site grammar (footer-pages ruling, Sep 28, 2026).
      Every shadcn semantic below resolves to an --earn-* brand token, so bg-primary,
      text-foreground, border and the rest read coral / ink / cream on every public page.

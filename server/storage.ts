@@ -1718,7 +1718,11 @@ export class DatabaseStorage implements IStorage {
       .from(trips)
       .leftJoin(occasionDrafts, eq(occasionDrafts.tripId, trips.id))
       .leftJoin(occasions, eq(occasions.id, occasionDrafts.occasionId))
-      .where(and(...conditions));
+      .where(and(...conditions))
+      // Cut-list #1 header fix v2 (the ONE active-plan rule, client/src/lib/active-plan.ts): the list
+      // is ordered at its source — most recently updated first — so no reader taking "the first row"
+      // inherits DB order. The picker's first fitting row was how TB1 preselected an older plan.
+      .orderBy(desc(trips.updatedAt));
 
     // Batched latest-final lookup (Trip Card rebuild Phase 4, ledger 2026-08-31-stage-a-dashboard):
     // ONE grouped query for the whole list — never a per-row plancard fetch — so the My Plans tile

@@ -8,6 +8,7 @@ import { useMemo } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useTrips } from "@/hooks/use-trips";
 import { isActivePlan } from "@/lib/add-target";
+import { byMostRecentlyUpdated } from "@/lib/active-plan";
 import {
   openPlansArgument,
   resolveAddPlanTarget,
@@ -18,6 +19,8 @@ import {
 
 type TripListRow = {
   id: string;
+  updatedAt?: string | null;
+  finalizedAt?: string | null;
   title?: string | null;
   destination?: string | null;
   startDate?: string | null;
@@ -31,7 +34,10 @@ export function useAddPlanResolution(search: string | null | undefined, item?: A
   const openPlans = useMemo(() => {
     if (!Array.isArray(query.data)) return [] as OpenPlanRef[];
     const now = new Date();
-    return (query.data as TripListRow[])
+    // Cut-list #1 header fix v2: ordered by the ONE active-plan rule before the picker's `find(fits)`,
+    // so with two fitting plans the most recently updated one — a just-claimed plan included — is
+    // the preselect (TB1: an older Kyoto plan was being picked off an unordered list).
+    return byMostRecentlyUpdated(query.data as TripListRow[])
       .filter((trip) => isActivePlan(trip, now))
       .map(toOpenPlanRef);
   }, [query.data]);
