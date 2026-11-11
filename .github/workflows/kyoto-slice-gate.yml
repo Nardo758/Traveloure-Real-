@@ -235,10 +235,10 @@ jobs:
       # Cut-list #1 slice C (ledger `2026-11-11-cutlist1-slice-c-add-actions`): the guest add — spinner, Retry on a
       # failed save, the first-add calendar with Skip for now, "Added to Day 1." with Undo / Change day, at 375px.
       # It sets waitlist mode for its own run (restored after), so it runs in its own step.
-      - name: Add actions (cut-list #1 slice C)
+      - name: Add actions and sign-in claim cart lines (cut-list #1 slices C and D)
         if: ${{ !cancelled() }}
         # --reporter=json: the spec-arming gate reads this run's report to tell an executed test from a skip.
-        run: npx playwright test playwright/tests/journeys/j-add-actions.spec.ts --project=chromium --workers=1 --reporter=list,json
+        run: npx playwright test playwright/tests/journeys/j-add-actions.spec.ts playwright/tests/journeys/j-claim-cart-lines.spec.ts --project=chromium --workers=1 --reporter=list,json
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-json/results.json
           BASE_URL: http://localhost:5000

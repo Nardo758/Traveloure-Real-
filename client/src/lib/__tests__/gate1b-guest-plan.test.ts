@@ -18,7 +18,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { GUEST_PLAN_COPY, guestPlanKeptLine } from "@shared/guest-plan-copy";
+import { GUEST_PLAN_COPY, guestPlanKeptLine, guestPlanNotice } from "@shared/guest-plan-copy";
 import { guestBodyForPlace, guestItemFromFeedItem, guestPlanDays, guestSaveErrorMessage } from "../waitlist-guest-plan";
 import { cityContentPlaces, placesInTab, visibleBrowseTabs } from "../browse-supply";
 import { gemCategory } from "../feed-stream";
@@ -64,6 +64,20 @@ describe("GATE-1B guest plan (client)", () => {
   it("C4 words the privacy line for set and unset retention", () => {
     assert.equal(guestPlanKeptLine(30), "This plan is kept for 30 days from your last change. Sign in to keep it.");
     assert.equal(guestPlanKeptLine(null), "This plan is kept until you sign in or clear it.");
+  });
+
+  it("C4b slice D: at 30 days the page shows the stamped notice instead of the kept line; any other value keeps it", () => {
+    assert.equal(guestPlanNotice(30), "Saved on this device for 30 days");
+    assert.equal(guestPlanNotice(7), guestPlanKeptLine(7));
+    assert.equal(guestPlanNotice(null), guestPlanKeptLine(null));
+    const page = readFileSync("client/src/pages/guest-plan-map.tsx", "utf8");
+    assert.match(page, /data-testid="guest-plan-kept">[\s\S]{0,160}\{guestPlanNotice\(view\.retentionDays\)\}/);
+    assert.doesNotMatch(page, /guestPlanKeptLine/, "never both lines");
+  });
+
+  it("C4c slice D: the claim re-reads the cart, so the badge shows the claimed lines", () => {
+    const app = readFileSync("client/src/App.tsx", "utf8");
+    assert.match(app, /claimGuestPlans\([\s\S]{0,400}if \(ids\.length === 0\) return;[\s\S]{0,400}qc\.invalidateQueries\(\{ queryKey: \["\/api\/cart"\] \}\);[\s\S]{0,200}claimLandingPath\(ids\)/);
   });
 
   it("C5 turns the city payload into tabbed places", () => {
