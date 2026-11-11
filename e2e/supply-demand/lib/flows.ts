@@ -14,6 +14,7 @@ import type { Page } from '@playwright/test';
 import { q } from './db';
 import { fileFinding } from './findings';
 import { testid, fillIfVisible, clickIfVisible, checkIfVisible, appears, actAndAwait, ok2xx, LIST_LOAD_MS } from './ui';
+import { pickPlanDates } from '../../../playwright/tests/_plan-dates-calendar';
 
 export async function selectByTrigger(page: Page, triggerTestId: string, optionText?: string): Promise<void> {
   await testid(page, triggerTestId).click();
@@ -968,8 +969,7 @@ export async function fillPlanEntryToStart(
 
   await testid(page, 'plan-entry-around-date').click().catch(() => {});
   await testid(page, 'plan-entry-date-pick').click().catch(() => {});
-  await testid(page, 'plan-entry-date-start').fill(start).catch(() => {});
-  await testid(page, 'plan-entry-date-end').fill(end).catch(() => {});
+  await pickPlanDates(testid(page, 'plan-entry-dates'), start, end).catch(() => {});
   const city = testid(page, `plan-entry-city-${marketKey}`).first();
   if (!(await appears(city, 3000))) return false;
   await city.click().catch(() => {});

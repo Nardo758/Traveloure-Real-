@@ -13,6 +13,7 @@ import {
   rows,
   closePool,
 } from "./_journey-helpers";
+import { pickPlanDates } from "../_plan-dates-calendar";
 
 /**
  * THE KYOTO TRIPS SLICE — the acceptance test (Track A step A0 item (c), ledger
@@ -258,8 +259,7 @@ test.describe("1 · entry and occasion", () => {
     const pickDates = async (start: string, end: string) => {
       await testid(page, "plan-entry-around-date").click();
       await testid(page, "plan-entry-date-pick").click();
-      await testid(page, "plan-entry-date-start").fill(start);
-      await testid(page, "plan-entry-date-end").fill(end);
+      await pickPlanDates(testid(page, "plan-entry-dates"), start, end);
       await testid(page, "plan-entry-city-kyoto").first().click();
       await testid(page, "button-plan-entry-next").click();
     };
@@ -348,8 +348,7 @@ test.describe("1 · entry and occasion", () => {
     await testid(page, "button-plan-entry-back").click();
     await testid(page, "plan-entry-around-date").click();
     await testid(page, "plan-entry-date-pick").click();
-    await testid(page, "plan-entry-date-start").fill(`${year}-11-11`);
-    await testid(page, "plan-entry-date-end").fill(`${year}-11-14`);
+    await pickPlanDates(testid(page, "plan-entry-dates"), `${year}-11-11`, `${year}-11-14`);
     await testid(page, "button-plan-entry-next").click();
     const secondId = await clickPlanStart(page);
     expect(secondId, "the door made a NEW plan").toBeTruthy();

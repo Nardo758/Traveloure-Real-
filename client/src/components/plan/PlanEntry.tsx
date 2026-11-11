@@ -17,7 +17,7 @@
  *
  * Test ids (shared by both containers): `plan-entry` (the pop-up) / `plan-entry-inline` (the page), `plan-entry-around-*`,
  * `plan-entry-city-<marketKey>`, `plan-entry-city-input`, `plan-entry-not-yet`,
- * `plan-entry-date-weekend|next-month|pick`, `plan-entry-date-start|end`, `plan-entry-event-<id>`,
+ * `plan-entry-date-weekend|next-month|pick`, `plan-entry-dates` (the one range calendar, cut-list #1 slice B), `plan-entry-event-<id>`,
  * `plan-entry-group-<key>`, `plan-entry-more-specific`, `plan-entry-night-<date>|all`,
  * `plan-entry-step-details`, `plan-entry-carried-group`, `plan-entry-party-adults|kids`,
  * `button-plan-entry-start`, `button-plan-entry-back`, `plan-entry-error`.
@@ -26,6 +26,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { OccasionPicker } from "@/components/plan/OccasionPicker";
+import { PlanDatesCalendar } from "@/components/plan/PlanDatesCalendar";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
 import { Link, useLocation } from "wouter";
 import { MARKET_STATUS_COPY, marketIsOpen, marketPickerOrder, marketStatusLabel } from "@shared/ticker";
@@ -645,11 +646,14 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
                     </div>
                   )}
                   {pickDates && (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <input type="date" aria-label="Start date" min={dateScope?.min} max={dateScope?.max} value={state.startDate ?? ""} onChange={(e) => setState((s) => ({ ...s, startDate: e.target.value || null, endDate: s.endDate && e.target.value && s.endDate < e.target.value ? e.target.value : s.endDate }))} className="rounded-md border px-2 py-1.5 text-[14px]" data-testid="plan-entry-date-start" />
-                      <span aria-hidden>–</span>
-                      <input type="date" aria-label="End date" min={state.startDate ?? dateScope?.min ?? undefined} max={dateScope?.max} value={state.endDate ?? ""} onChange={(e) => setState((s) => ({ ...s, endDate: e.target.value || null }))} className="rounded-md border px-2 py-1.5 text-[14px]" data-testid="plan-entry-date-end" />
-                    </div>
+                    <PlanDatesCalendar
+                      key={dateScope?.min ?? "any"}
+                      value={{ start: state.startDate ?? null, end: state.endDate ?? null }}
+                      onChange={(r) => setState((s) => ({ ...s, startDate: r.start, endDate: r.end }))}
+                      min={dateScope?.min}
+                      max={dateScope?.max}
+                      testId="plan-entry-dates"
+                    />
                   )}
                   {state.startDate && state.endDate && (
                     <div className="space-y-3" data-testid="plan-entry-whats-on">
@@ -732,11 +736,14 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
                     )}
                   </div>
                 )}
-                <div className="flex flex-wrap items-center gap-2">
-                  <input type="date" aria-label="Start date" min={dateScope?.min} max={dateScope?.max} value={state.startDate ?? ""} onChange={(e) => setState((s) => ({ ...s, startDate: e.target.value || null, endDate: s.endDate && e.target.value && s.endDate < e.target.value ? e.target.value : s.endDate }))} className="rounded-md border px-2 py-1.5 text-[14px]" data-testid="plan-entry-date-start" />
-                  <span aria-hidden>–</span>
-                  <input type="date" aria-label="End date" min={state.startDate ?? dateScope?.min ?? undefined} max={dateScope?.max} value={state.endDate ?? ""} onChange={(e) => setState((s) => ({ ...s, endDate: e.target.value || null }))} className="rounded-md border px-2 py-1.5 text-[14px]" data-testid="plan-entry-date-end" />
-                </div>
+                <PlanDatesCalendar
+                  key={dateScope?.min ?? "any"}
+                  value={{ start: state.startDate ?? null, end: state.endDate ?? null }}
+                  onChange={(r) => setState((s) => ({ ...s, startDate: r.start, endDate: r.end }))}
+                  min={dateScope?.min}
+                  max={dateScope?.max}
+                  testId="plan-entry-dates"
+                />
               </div>
               <div className="space-y-2" data-testid="plan-entry-party">
                 <p className="text-[13px] font-semibold" style={{ color: "var(--earn-navy, #1A1A18)" }}>{PLAN_PARTY_ASK}</p>

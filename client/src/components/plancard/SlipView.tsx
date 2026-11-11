@@ -633,6 +633,7 @@ export function SlipHeader({
           tripId={trip.id}
           startDate={trip.startDate}
           endDate={trip.endDate}
+          datesConfirmed={(trip as any)?.datesConfirmed}
           {...(guest ? { submit: (d: { startDate: string; endDate: string }) => guest.submitDates(d) } : {})}
           onSaved={() => setAnchorPanel(null)}
           onCancel={() => setAnchorPanel(null)}
@@ -2513,6 +2514,7 @@ export function SlipView({
               tripId={data.trip.id}
               startDate={data.trip.startDate}
               endDate={data.trip.endDate}
+              datesConfirmed={(data.trip as any)?.datesConfirmed}
               {...(guest ? { submit: (d: { startDate: string; endDate: string }) => guest.submitDates(d) } : {})}
               onSaved={() => setTrayChip(null)}
               onCancel={() => setTrayChip(null)}
