@@ -321,8 +321,9 @@ export async function resolvePlanItemRef(
   if (out.ok && (ref.kind === "event" || ref.kind === "city_event") && !out.source.eventDate && ref.placement?.starts_at) {
     out.source.eventDate = eventDayInMarket(ref.placement.starts_at, resolveMarketSlug(out.source.rowCity ?? ref.city));
   }
-  // QA round 3 major 1: the card's end is a hint on the same terms — used only when the row states no end AND the start
-  // came from the same place (a row start with a card end would pair two sources' clocks).
+  // QA round 3 major 1 — THE CARD-END RULE: the card's end date is used only when the row has no end AND the start also
+  // came from the card. Never a row start with a card end: the two would come from different sources, and the pair
+  // could claim an overlap neither source states. The row's own end always wins.
   if (out.ok && (ref.kind === "event" || ref.kind === "city_event") && !out.source.eventEndDate && ref.placement?.ends_at && ref.placement?.starts_at && out.source.eventDate === eventDayInMarket(ref.placement.starts_at, resolveMarketSlug(out.source.rowCity ?? ref.city))) {
     out.source.eventEndDate = eventDayInMarket(ref.placement.ends_at, resolveMarketSlug(out.source.rowCity ?? ref.city));
   }

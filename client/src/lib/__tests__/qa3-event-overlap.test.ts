@@ -8,6 +8,8 @@
  *   O4 placement: a multi-day event that starts before a confirmed window lands on its first day (Day 1); one that
  *      starts inside lands on its own day; an end before the start reads as a one-day event
  *   O5 the bare-string form (the pre-round-3 call shape) still reads as a start with no end
+ *   O6 an event that starts INSIDE a confirmed Nov 20–22 window lands on its own day: Nov 21 ⇒ Day 2, not Day 1 —
+ *      with an end inside, with an end after the window, and with no end (the first-overlap rule is for starts-before only)
  *
  * Run: npx tsx --test client/src/lib/__tests__/qa3-event-overlap.test.ts
  */
@@ -71,6 +73,14 @@ describe("QA round 3 major 1 — event overlap", () => {
     }, "an end before the start is a one-day event (no overlap, kept on its own day)");
     assert.equal(eventOutsideConfirmedDates({ start: "2026-11-17", end: "2026-11-01" }, confirmed), true);
     assert.equal(eventPlanPlacement({ start: null }, confirmed), null);
+  });
+
+  it("O6 a start inside the window lands on its own day (Nov 21 ⇒ Day 2)", () => {
+    const day2 = { scheduledDate: "2026-11-21", dayNumber: 2 };
+    assert.deepEqual(eventPlanPlacement({ start: "2026-11-21", end: "2026-11-22" }, confirmed), day2, "end inside");
+    assert.deepEqual(eventPlanPlacement({ start: "2026-11-21", end: "2026-12-06" }, confirmed), day2, "end after the window");
+    assert.deepEqual(eventPlanPlacement({ start: "2026-11-21" }, confirmed), day2, "no end");
+    assert.equal(eventOutsideConfirmedDates({ start: "2026-11-21", end: "2026-12-06" }, confirmed), false);
   });
 
   it("O5 a bare string is a start with no end", () => {
