@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import { actAndAwait, appears, ok2xx, testid } from "../../../e2e/supply-demand/lib/ui";
 import { clickPlanFinish } from "../../../e2e/supply-demand/lib/flows";
 import { assertDisposableDb, closePool, pool, registerUser, rows, uid } from "./_journey-helpers";
+import { pickPlanDates } from "../_plan-dates-calendar";
 
 /**
  * STEP 8b-2 — THE MAP LAYOUT OF THE PLAN, end to end (ledger `2026-10-06-step8b2-map-layout`; step 8
@@ -74,8 +75,7 @@ test("8b-2 — start page → modal → the map opens on Browse with the trip's 
   end.setDate(end.getDate() + 3);
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
   await testid(page, "slip-dates-set-cta").click();
-  await testid(page, "slip-dates-panel").getByTestId("input-slip-dates-start").fill(fmt(start));
-  await testid(page, "slip-dates-panel").getByTestId("input-slip-dates-end").fill(fmt(end));
+  await pickPlanDates(testid(page, "slip-dates-panel"), fmt(start), fmt(end));
   await testid(page, "button-slip-dates-save").click();
   for (const n of [1, 2, 3, 4]) await expect(testid(page, `map-day-btn-${n}-${tripId}`)).toBeVisible({ timeout: 20_000 });
   await expect(testid(page, `map-day-btn-5-${tripId}`)).toHaveCount(0);

@@ -28,6 +28,7 @@ import {
   HEADER_ADD_DATES_LABEL,
   activeHeaderTrip,
   headerDatesLabel,
+  headerDatesTarget,
   headerDatesLine,
   headerPlanLabel,
   headerPlanState,
@@ -121,6 +122,7 @@ describe("slice A — the header plan state", () => {
   it("H8 date formatting is deterministic and cannot shift a day", () => {
     assert.equal(headerDatesLabel("2026-11-12", "2026-11-15"), "Nov 12\u201315");
     assert.equal(headerDatesLabel("2026-11-28", "2026-12-03"), "Nov 28 \u2013 Dec 3");
+    assert.equal(headerDatesLabel("2026-11-12", "2026-11-12"), "Nov 12", "slice B: a same-day trip is one day");
     assert.equal(headerDatesLabel("nope", "2026-12-03"), null);
   });
 });
@@ -130,8 +132,9 @@ describe("slice A — the 375px budget and the two mounts", () => {
     const CTA = fs.readFileSync("client/src/components/HeaderPlanCTA.tsx", "utf8");
     assert.match(CTA, /min-w-0/, "it must be allowed to shrink");
     assert.match(CTA, /max-w-\[200px\]/, "…within a real bound");
-    assert.match(CTA, /<span className="truncate"/, "the label truncates, the dates never do");
-    assert.match(CTA, /className="shrink-0"[\s\S]{0,80}chip-nav-plan-dates/, "the dates keep their width");
+    // Slice B: the label is its own link (min-w-0 truncate); the dates segment is a sibling control.
+    assert.match(CTA, /className="min-w-0 truncate[^"]*"[\s\S]{0,80}chip-nav-plan-label/, "the label truncates, the dates never do");
+    assert.match(CTA, /className="shrink-0[^"]*"[\s\S]{0,120}chip-nav-plan-dates/, "the dates keep their width");
   });
 
   it("ONE component renders both header mounts, so they cannot drift", () => {
@@ -160,5 +163,25 @@ describe("slice A — the 375px budget and the two mounts", () => {
     for (const marketing of ['"/"', '"/about"', '"/pricing"', '"/how-it-works"', '"/local-experts"', '"/providers"', '"/press"', '"/blog"']) {
       assert.ok(MOUNT.includes(marketing), `${marketing} keeps the ribbon`);
     }
+  });
+});
+
+describe("slice B — the chip's dates segment re-dates the plan the chip names", () => {
+  const guestPlan = { plan: { id: "gp-1", destination: "Kyoto", startDate: "2026-11-11", endDate: "2026-11-11", datesConfirmed: false }, items: [1] };
+  it("a guest chip targets the guest plan with its own (unconfirmed) dates", () => {
+    const state = headerPlanState({ isSignedIn: false, guestStatus: "ready", guestPlan, trips: null });
+    assert.deepEqual(headerDatesTarget(state, { guestPlan, trips: null }), {
+      guest: true, planId: "gp-1", startDate: "2026-11-11", endDate: "2026-11-11", datesConfirmed: false,
+    });
+  });
+  it("a signed-in chip targets the active trip; confirmed reads from datesConfirmedAt", () => {
+    const trips = [{ id: "t1", destination: "Kyoto", startDate: "2026-11-12", endDate: "2026-11-15", datesConfirmedAt: "2026-11-01", updatedAt: "2026-11-02", itemCount: 2 }];
+    const state = headerPlanState({ isSignedIn: true, guestStatus: "idle", guestPlan: null, trips });
+    assert.deepEqual(headerDatesTarget(state, { guestPlan: null, trips }), {
+      guest: false, planId: "t1", startDate: "2026-11-12", endDate: "2026-11-15", datesConfirmed: true,
+    });
+  });
+  it("no chip, no target", () => {
+    assert.equal(headerDatesTarget({ kind: "start" }, { guestPlan: null, trips: null }), null);
   });
 });

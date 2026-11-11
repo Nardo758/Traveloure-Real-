@@ -79,7 +79,7 @@ import { TripStrip } from "@/components/trip/trip-strip";
 import { CityTickerTape } from "@/components/CityTickerTape";
 import { showsTicker } from "@/lib/ticker-mount";
 import { HeaderPlanCTA } from "@/components/HeaderPlanCTA";
-import { headerPlanState, type HeaderTrip } from "@/lib/header-plan";
+import { headerDatesTarget, headerPlanState, type HeaderTrip } from "@/lib/header-plan";
 import { hasGuestPresenceCookie } from "@shared/guest-presence";
 import { useGuestPlan } from "@/lib/waitlist-guest-plan";
 import { useExpertsLive } from "@/lib/signup-mode";
@@ -664,6 +664,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
     guestPlan: (guestPlanQuery.data ?? null) as unknown as Parameters<typeof headerPlanState>[0]["guestPlan"],
     trips: headerTrips ?? null,
   });
+  // Slice B: the plan the chip's dates segment re-dates (the same plan the chip names).
+  const headerDates = headerDatesTarget(headerState, {
+    guestPlan: (guestPlanQuery.data ?? null) as unknown as Parameters<typeof headerDatesTarget>[1]["guestPlan"],
+    trips: headerTrips ?? null,
+  });
   // QA F6 — see DesktopDropdown: the navbar, not each trigger, knows which menu is open.
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const navRef = useRef<HTMLElement>(null);
@@ -943,6 +948,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <HeaderPlanCTA
                 state={headerState}
                 variant="desktop"
+                datesTarget={headerDates}
                 onStart={planStartClick(openNewPlan)}
               />
 
@@ -997,6 +1003,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <HeaderPlanCTA
                   state={headerState}
                   variant="mobile"
+                  datesTarget={headerDates}
                   onStart={planStartClick(() => {
                     setIsMobileMenuOpen(false);
                     openNewPlan();

@@ -95,6 +95,7 @@ export function LegSheet(props: LegSheetProps) {
             tripId={tripId}
             startDate={props.planWindow?.startDate ?? null}
             endDate={props.planWindow?.endDate ?? null}
+            datesConfirmed={props.planWindow?.datesConfirmed}
             intro={planDatesGateLine("Travel options")}
             testId="leg-sheet-dates-gate"
             onSaved={() => setDatesSet(true)}

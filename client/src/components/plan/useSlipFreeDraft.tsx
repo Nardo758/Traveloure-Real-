@@ -126,6 +126,7 @@ export function useSlipFreeDraft(trip: FreeDraftTripInput, tripId: string): Slip
       tripId={tripId}
       startDate={trip.startDate as any}
       endDate={trip.endDate as any}
+      datesConfirmed={!asksDatesFirst}
       intro={planDatesGateLine(DRAFT_ACTION)}
       testId="slip-draft-dates-gate"
       onSaved={(saved) => {

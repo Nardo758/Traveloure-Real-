@@ -21,7 +21,14 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { PLAN_START_HREF } from "@/lib/plan-entry";
 import { START_PLAN_LABEL } from "@/lib/plan-vocabulary";
-import { headerDatesLine, headerPlanLabel, GUEST_PLAN_HREF, type HeaderPlanState } from "@/lib/header-plan";
+import {
+  headerDatesLine,
+  headerPlanLabel,
+  GUEST_PLAN_HREF,
+  type HeaderDatesTarget,
+  type HeaderPlanState,
+} from "@/lib/header-plan";
+import { HeaderDatesPopover } from "@/components/HeaderDatesPopover";
 
 const CHIP_CLASS =
   "inline-flex items-center gap-1.5 min-w-0 max-w-[200px] rounded-full border px-3 py-1 text-xs font-semibold " +
@@ -36,33 +43,51 @@ export function HeaderPlanCTA({
   state,
   variant,
   onStart,
+  datesTarget,
 }: {
   state: HeaderPlanState;
   variant: "desktop" | "mobile";
   onStart: (event: { preventDefault(): void }) => void;
+  /** Slice B: the plan the dates segment re-dates; absent ⇒ the segment links to the plan as before. */
+  datesTarget?: HeaderDatesTarget | null;
 }) {
   const wide = variant === "mobile" ? "w-full justify-center" : "hidden xl:inline-flex";
 
   if (state.kind === "chip") {
     const label = headerPlanLabel(state) ?? "";
     const dates = headerDatesLine(state) ?? "";
+    const planHref = state.guest ? GUEST_PLAN_HREF : `/plans/${state.planId}`;
+    // Slice B: the chip is two controls side by side, never nested — the label is the link to the
+    // plan, and the dates segment ("Add dates" or the dates) opens the ONE dates panel in a popover.
     return (
-      <Link
-        href={state.guest ? GUEST_PLAN_HREF : `/plans/${state.planId}`}
-        className={cn(CHIP_CLASS, wide)}
+      <span
+        className={cn(CHIP_CLASS, wide, "p-0")}
         style={CHIP_STYLE}
         data-testid={variant === "mobile" ? "chip-mobile-plan" : "chip-nav-plan"}
       >
-        <span className="truncate" style={{ color: "var(--earn-ink)" }} data-testid="chip-nav-plan-label">
+        <Link href={planHref} className="min-w-0 truncate py-1 pl-3" style={{ color: "var(--earn-ink)" }} data-testid="chip-nav-plan-label">
           {label}
-        </span>
+        </Link>
         <span className="shrink-0" aria-hidden="true" style={{ color: "var(--earn-faint)" }}>
           ·
         </span>
-        <span className="shrink-0" style={{ color: "var(--earn-teal-ink)" }} data-testid="chip-nav-plan-dates">
-          {dates}
-        </span>
-      </Link>
+        {datesTarget ? (
+          <HeaderDatesPopover target={datesTarget} variant={variant}>
+            <button
+              type="button"
+              className="shrink-0 py-1 pr-3 underline-offset-2 hover:underline"
+              style={{ color: "var(--earn-teal-ink)" }}
+              data-testid="chip-nav-plan-dates"
+            >
+              {dates}
+            </button>
+          </HeaderDatesPopover>
+        ) : (
+          <Link href={planHref} className="shrink-0 py-1 pr-3" style={{ color: "var(--earn-teal-ink)" }} data-testid="chip-nav-plan-dates">
+            {dates}
+          </Link>
+        )}
+      </span>
     );
   }
 

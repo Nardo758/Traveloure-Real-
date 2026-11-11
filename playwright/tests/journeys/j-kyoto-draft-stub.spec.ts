@@ -4,6 +4,7 @@ import { actAndAwait, ok2xx, appears, testid } from "../../../e2e/supply-demand/
 import { fillPlanEntryToStart, clickPlanStart } from "../../../e2e/supply-demand/lib/flows";
 import { PAYMENT_METHOD_PROMPT_DISMISS_KEY } from "../../../client/src/lib/payment-method-setup";
 import { BASE_URL, registerUser, createTrip, createItem, rows, closePool } from "./_journey-helpers";
+import { pickPlanDates } from "../_plan-dates-calendar";
 
 /**
  * The free-draft stand-in proof. Runs only where `E2E_AI_STUB=1` AND `NODE_ENV` is not
@@ -83,8 +84,7 @@ test("stub — a new plan's draft lands in that plan and leaves the first plan u
   await testid(page, "button-plan-entry-back").click();
   await testid(page, "plan-entry-around-date").click();
   await testid(page, "plan-entry-date-pick").click();
-  await testid(page, "plan-entry-date-start").fill(`${year}-11-11`);
-  await testid(page, "plan-entry-date-end").fill(`${year}-11-14`);
+  await pickPlanDates(testid(page, "plan-entry-dates"), `${year}-11-11`, `${year}-11-14`);
   await testid(page, "button-plan-entry-next").click();
   const secondId = await clickPlanStart(page);
   expect(secondId, "the door made a NEW plan").toBeTruthy();
@@ -359,4 +359,54 @@ test("stub — an open hotel set stays open and the draft adds no accommodation"
       { timeout: 10_000 },
     )
     .toEqual([{ outcome: "drafted", itemsWritten: items.length, draftBasis: "open_anchor_set", heldSlots: 1 }]);
+});
+
+/**
+ * Cut-list #1 slice B (rides this dev-server job): the ONE range calendar. The header chip's
+ * "Add dates" opens it, a SAME-DAY range saves through the plan's own rail, and the slip's dates
+ * panel then reads the same day; PlanEntry draws the same calendar (proven above via pickPlanDates).
+ */
+test("slice B — header Add dates → a same-day range saves, and the slip agrees", async ({ page }) => {
+  await signedInTraveler(page, "sb1");
+  const tripId = await createTrip(page.request, "Kyoto day trip", KYOTO);
+  await rows(`UPDATE trips SET dates_confirmed_at = NULL WHERE id = $1 RETURNING id`, [tripId]);
+  await createItem(page.request, tripId, "Fushimi Inari walk", 1);
+
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto("/");
+  const dates = testid(page, "chip-nav-plan-dates").first();
+  await expect(dates).toHaveText("Add dates", { timeout: 20_000 });
+  await dates.click();
+  const panel = testid(page, "header-dates-panel");
+  await expect(panel).toBeVisible();
+  await expect(panel.getByText("When are you going?")).toBeVisible();
+  await expect(testid(page, "header-dates-panel-calendar-summary"), "unconfirmed dates are not prefilled").toHaveText("Add dates");
+
+  const day = new Date();
+  day.setDate(day.getDate() + 45);
+  const iso = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+  await pickPlanDates(panel, iso, iso);
+  await expect(panel.getByText("Leave date can't be before")).toHaveCount(0);
+  const status = await actAndAwait(
+    page,
+    async () => {
+      await panel.getByTestId("button-slip-dates-save").click();
+    },
+    { method: "PATCH", path: new RegExp(`^/api/trips/${tripId}$`) },
+  );
+  expect(ok2xx(status), `the same-day save answered ${status}`).toBe(true);
+
+  const [row] = await rows<{ s: string; e: string; confirmed: boolean }>(
+    `SELECT start_date::text AS s, end_date::text AS e, dates_confirmed_at IS NOT NULL AS confirmed FROM trips WHERE id = $1`,
+    [tripId],
+  );
+  expect(row).toEqual({ s: iso, e: iso, confirmed: true });
+
+  // The header chip now reads the saved day, and the slip reads the same plan as dated.
+  const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  await page.goto("/");
+  await expect(testid(page, "chip-nav-plan-dates").first()).toContainText(`${MON[day.getMonth()]} ${day.getDate()}`, { timeout: 20_000 });
+  await page.goto(`/plans/${tripId}`);
+  await expect(page.locator('[data-dates-confirmed]').first()).toHaveAttribute("data-dates-confirmed", "true", { timeout: 20_000 });
+  await expect(testid(page, "slip-dates-set-cta"), "confirmed dates: no Set your dates chip").toHaveCount(0);
 });

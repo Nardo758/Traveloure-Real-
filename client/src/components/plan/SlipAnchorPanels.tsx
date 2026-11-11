@@ -18,6 +18,8 @@ import { api } from "@shared/routes";
 import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PlanDatesCalendar } from "@/components/plan/PlanDatesCalendar";
+import { initialRange, isoDay, validateRange, type DayRange } from "@/lib/plan-dates-range";
 import { Label } from "@/components/ui/label";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { writePlanAnswersToContext } from "@/lib/trip-context";
@@ -28,12 +30,7 @@ export interface PlanWindow {
   endDate: string;
 }
 
-function dayOf(value: string | Date | null | undefined): string {
-  if (!value) return "";
-  const raw = value instanceof Date ? value.toISOString() : String(value);
-  const m = raw.match(/^(\d{4}-\d{2}-\d{2})/);
-  return m ? m[1] : "";
-}
+const dayOf = isoDay;
 
 function invalidatePlan(tripId: string) {
   void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
@@ -41,41 +38,54 @@ function invalidatePlan(tripId: string) {
   void queryClient.invalidateQueries({ queryKey: [api.trips.get.path, tripId] }); // ENTRY-1: the slip header's trip read
 }
 
-/** Pure. Can this window be saved? Both days, the end not before the start. */
+/**
+ * Pure. Can this window be saved? Both days, leave ON or AFTER arrive (same-day trips allowed —
+ * cut-list #1 slice B). `inverted` is the one refusal: a leave day before the arrive day.
+ */
 export function datesPanelCanSave(start: string, end: string): { ok: boolean; inverted: boolean } {
-  const inverted = Boolean(start && end && end < start);
-  return { ok: Boolean(start && end) && !inverted, inverted };
+  const v = validateRange(start, end);
+  return { ok: v === "ok", inverted: v === "leave_before_arrive" };
 }
 
+/**
+ * The slip's dates panel. Cut-list #1 slice B: it draws THE range calendar (`PlanDatesCalendar`) —
+ * no second picker — and it no longer seeds dates nobody chose: `datesConfirmed === false` opens on
+ * an empty calendar ("Add dates") instead of the placeholder window. Confirmed dates still prefill.
+ * The write is unchanged: the ONE re-date rail (`PATCH /api/trips/:id`), or the guest's own rail.
+ */
 export function InlineDatesPanel({
   tripId,
   startDate,
   endDate,
+  datesConfirmed,
   intro,
   onSaved,
   onCancel,
+  onSkip,
   testId = "slip-dates-panel",
   submit,
 }: {
   tripId: string;
   startDate?: string | Date | null;
   endDate?: string | Date | null;
+  /** The plan's `datesConfirmed`; `false` opens empty (no prefill). Omitted reads as confirmed. */
+  datesConfirmed?: boolean | null;
   /** The sentence above the fields (the gate's line); the header's panel says nothing extra. */
   intro?: string | null;
   onSaved?: (dates: PlanWindow) => void;
   onCancel?: () => void;
+  /** Slice C's first add only: renders "Skip for now". */
+  onSkip?: () => void;
   testId?: string;
   /** GATE-1B: the guest plan saves through its own rail (PATCH /api/guest-plans/current); the slip omits this. */
   submit?: (dates: PlanWindow) => Promise<void>;
 }) {
-  const [start, setStart] = useState(() => dayOf(startDate));
-  const [end, setEnd] = useState(() => dayOf(endDate));
+  const [range, setRange] = useState<DayRange>(() => initialRange({ startDate, endDate, datesConfirmed }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { ok, inverted } = datesPanelCanSave(start, end);
 
-  const save = async () => {
-    if (!ok || saving) return;
+  const save = async ({ startDate: start, endDate: end }: PlanWindow) => {
+    if (saving || validateRange(start, end) !== "ok") return;
     setSaving(true);
     setError(null);
     try {
@@ -103,36 +113,26 @@ export function InlineDatesPanel({
           {intro}
         </p>
       ) : null}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1">
-          <Label htmlFor={`${testId}-start`}>Start</Label>
-          <Input id={`${testId}-start`} type="date" value={start} onChange={(e) => setStart(e.target.value)} data-testid="input-slip-dates-start" />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor={`${testId}-end`}>End</Label>
-          <Input id={`${testId}-end`} type="date" value={end} onChange={(e) => setEnd(e.target.value)} data-testid="input-slip-dates-end" />
-        </div>
-      </div>
-      {inverted ? (
-        <p className="text-xs text-destructive" data-testid="slip-dates-inverted">
-          The end date can't be before the start date.
-        </p>
-      ) : null}
+      <PlanDatesCalendar
+        value={range}
+        onChange={setRange}
+        onSave={(d) => void save(d)}
+        saving={saving}
+        onSkip={onSkip}
+        testId={`${testId}-calendar`}
+        trailing={
+          onCancel ? (
+            <Button type="button" size="sm" variant="ghost" onClick={onCancel} data-testid={`${testId}-cancel`}>
+              Not now
+            </Button>
+          ) : null
+        }
+      />
       {error ? (
         <p role="alert" className="text-xs text-destructive" data-testid={`${testId}-error`}>
           {error}
         </p>
       ) : null}
-      <div className="flex gap-2">
-        <Button type="button" size="sm" onClick={() => void save()} disabled={!ok || saving} data-testid="button-slip-dates-save">
-          {saving ? "Saving…" : "Save dates"}
-        </Button>
-        {onCancel ? (
-          <Button type="button" size="sm" variant="ghost" onClick={onCancel} data-testid={`${testId}-cancel`}>
-            Not now
-          </Button>
-        ) : null}
-      </div>
     </div>
   );
 }
@@ -171,6 +171,7 @@ export function DatesGate({
           tripId={trip.id}
           startDate={trip.startDate}
           endDate={trip.endDate}
+          datesConfirmed={trip.datesConfirmed}
           intro={planDatesGateLine(action)}
           testId={testId}
           onSaved={(dates) => {

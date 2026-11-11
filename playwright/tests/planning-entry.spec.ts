@@ -25,6 +25,7 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { registerAndSignIn } from "../utils/auth";
+import { pickPlanDates } from "./_plan-dates-calendar";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:5000";
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -134,12 +135,17 @@ test.describe("Single planning entry — PlanEntry", () => {
     const first = new Date(now.getFullYear(), now.getMonth() + 1, 1);
     const last = new Date(now.getFullYear(), now.getMonth() + 2, 0);
     const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    await expect(page.getByTestId("plan-entry-date-start")).toHaveAttribute("min", ymd(first));
-    await expect(page.getByTestId("plan-entry-date-start")).toHaveAttribute("max", ymd(last));
-    await expect(page.getByTestId("plan-entry-date-start")).toHaveValue("");
+    // Slice B: the one range calendar, scoped to next month — it opens on that month, nothing is picked,
+    // and it cannot be paged outside the scope.
+    const cal = page.getByTestId("plan-entry-dates");
+    const monthName = first.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    await expect(cal.locator('[aria-live="polite"]').first()).toHaveText(monthName);
+    await expect(cal.getByTestId("plan-entry-dates-summary")).toHaveText("Add dates");
+    // No enabled control pages outside the scope (the picker disables or omits both month buttons).
+    await expect(cal.locator('button[name="previous-month"]:not([disabled]), button[name="next-month"]:not([disabled])')).toHaveCount(0);
+    void last;
     await expect(page.getByTestId("plan-entry-whats-on")).toHaveCount(0);
-    await page.getByTestId("plan-entry-date-start").fill(ymd(first));
-    await page.getByTestId("plan-entry-date-end").fill(ymd(new Date(first.getFullYear(), first.getMonth(), 3)));
+    await pickPlanDates(cal, ymd(first), ymd(new Date(first.getFullYear(), first.getMonth(), 3)));
     await expect(page.getByTestId("plan-entry-whats-on")).toBeVisible();
     // CITY-1: only an open market (the marquee) is picked; Porto, not open, links to its waitlist.
     await expect(page.getByTestId("plan-entry-city-porto")).toHaveAttribute("href", "/waitlist/porto");
@@ -307,8 +313,7 @@ test.describe("Single planning entry — authed", () => {
     const end = new Date(Date.now() + 33 * 86400_000).toISOString().slice(0, 10);
     await page.getByTestId("plan-entry-around-date").click();
     await page.getByTestId("plan-entry-date-pick").click();
-    await page.getByTestId("plan-entry-date-start").fill(start);
-    await page.getByTestId("plan-entry-date-end").fill(end);
+    await pickPlanDates(page.getByTestId("plan-entry-dates"), start, end);
     await page.getByTestId("plan-entry-city-kyoto").click();
     await page.getByTestId("button-plan-entry-next").click();
     await page.getByTestId("button-plan-entry-start").click();

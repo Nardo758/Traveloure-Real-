@@ -72,6 +72,8 @@ export function headerDatesLabel(startDate: string | null | undefined, endDate: 
   const a = parseDay(startDate);
   const b = parseDay(endDate);
   if (!a || !b) return null;
+  // Slice B: a same-day trip is one day, never "Nov 12–12".
+  if (a.month === b.month && a.day === b.day) return `${MONTHS[a.month]} ${a.day}`;
   if (a.month === b.month) return `${MONTHS[a.month]} ${a.day}\u2013${b.day}`;
   return `${MONTHS[a.month]} ${a.day} \u2013 ${MONTHS[b.month]} ${b.day}`;
 }
@@ -136,4 +138,38 @@ export function headerPlanLabel(state: HeaderPlanState): string | null {
 export function headerDatesLine(state: HeaderPlanState): string | null {
   if (state.kind !== "chip") return null;
   return state.dates ?? HEADER_ADD_DATES_LABEL;
+}
+
+/**
+ * Cut-list #1 slice B: what the chip's dates segment opens the ONE dates panel on. Only the chip
+ * state has one; it names the same plan the chip names (guest plan or the active trip) and carries
+ * that plan's own dates, so the panel opens empty when they were never chosen.
+ */
+export interface HeaderDatesTarget {
+  guest: boolean;
+  planId: string;
+  startDate: string | null;
+  endDate: string | null;
+  datesConfirmed: boolean;
+}
+
+export function headerDatesTarget(
+  state: HeaderPlanState,
+  input: { guestPlan: HeaderGuestPlan | null | undefined; trips: readonly HeaderTrip[] | null | undefined },
+): HeaderDatesTarget | null {
+  if (state.kind !== "chip") return null;
+  if (state.guest) {
+    const p = input.guestPlan?.plan;
+    if (!p || p.id !== state.planId) return null;
+    return { guest: true, planId: p.id, startDate: p.startDate ?? null, endDate: p.endDate ?? null, datesConfirmed: !!p.datesConfirmed };
+  }
+  const t = activeHeaderTrip(input.trips);
+  if (!t || t.id !== state.planId) return null;
+  return {
+    guest: false,
+    planId: t.id,
+    startDate: t.startDate ?? null,
+    endDate: t.endDate ?? null,
+    datesConfirmed: !!t.datesConfirmedAt,
+  };
 }
