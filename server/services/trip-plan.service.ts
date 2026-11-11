@@ -56,7 +56,7 @@ import { rideServiceIdsAmong } from "./ride-listings";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { contentOriginFor } from "@shared/content-origin";
 import { plancardPartyCount } from "@shared/plan-vocabulary";
-import { planDatesAreConfirmed } from "@shared/plan-dates";
+import { planDatesAreConfirmed, planDayNumbers } from "@shared/plan-dates";
 import { itemBookingLabelStatus, itemBookingStatusEntry } from "@shared/booking-visibility";
 import { deriveCostFlags, deriveCostSource } from "./cost-source";
 import { outOfBandFullyRefundedBookingIds } from "./out-of-band-refund.service";
@@ -940,7 +940,13 @@ export async function assembleTripPlan(
   // RSVP-by day, read through the anchor's user_experience reference (no trip-level key dates).
   const inviteAnchorRsvpBy = await resolveInviteAnchorRsvpBy(tripId);
 
-  const dayNumbers = Array.from(new Set(items.map((i) => i.dayNumber))).sort((a, b) => a - b);
+  // QA round 3 major 8 (Leon, Nov 11, 2026): a plan with CONFIRMED dates draws every day of its window, empty days
+  // included; an unconfirmed plan draws the days its items occupy, as before. ONE rule (`planDayNumbers`).
+  const dayNumbers = planDayNumbers(items.map((i) => i.dayNumber), {
+    startDate: trip.startDate,
+    endDate: trip.endDate,
+    datesConfirmed: planDatesAreConfirmed((trip as any).datesConfirmedAt),
+  });
 
   const buildLeg = (leg: any): TripPlanLeg => buildTripPlanLegCore(leg, legBookingMap[leg.id]);
 

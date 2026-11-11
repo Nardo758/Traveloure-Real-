@@ -89,3 +89,35 @@ describe("QA round 3 major 1 — event overlap", () => {
     assert.deepEqual(eventPlanPlacement("2026-11-22", confirmed), { scheduledDate: "2026-11-22", dayNumber: 3 });
   });
 });
+
+/**
+ * QA round 3, major 8 (Leon, Nov 11, 2026): `planDayNumbers`, the ONE rule for which days a plan page draws.
+ *   P1 confirmed Dec 1–4 with every item on day 1 (TB1) ⇒ days 1–4
+ *   P2 the same window unconfirmed ⇒ the days the items hold (1)
+ *   P3 an item outside a confirmed window keeps its day (never hidden); an unparseable window draws the items' days
+ *   P4 a Date-typed start/end reads as its calendar day; a one-day confirmed plan is one day
+ */
+import { planDayNumbers } from "@shared/plan-dates";
+
+describe("QA round 3 major 8 — plan days", () => {
+  const window = { startDate: "2026-12-01", endDate: "2026-12-04" };
+  it("P1 confirmed window draws every day", () => {
+    assert.deepEqual(planDayNumbers([1, 1, 1, 1, 1, 1, 1], { ...window, datesConfirmed: true }), [1, 2, 3, 4]);
+  });
+  it("P2 unconfirmed is unchanged", () => {
+    assert.deepEqual(planDayNumbers([1, 1, 1], { ...window, datesConfirmed: false }), [1]);
+    assert.deepEqual(planDayNumbers([], { ...window, datesConfirmed: false }), []);
+  });
+  it("P3 an item outside the window keeps its day; a bad window draws the items' days", () => {
+    assert.deepEqual(planDayNumbers([3, 6], { ...window, datesConfirmed: true }), [1, 2, 3, 4, 6]);
+    assert.deepEqual(planDayNumbers([2], { startDate: "2026-12-04", endDate: "2026-12-01", datesConfirmed: true }), [2]);
+    assert.deepEqual(planDayNumbers([1, null, undefined], { startDate: null, endDate: null, datesConfirmed: true }), [1]);
+  });
+  it("P4 Date values and a one-day plan", () => {
+    assert.deepEqual(
+      planDayNumbers([], { startDate: new Date("2026-12-01T00:00:00Z"), endDate: new Date("2026-12-03T00:00:00Z"), datesConfirmed: true }),
+      [1, 2, 3],
+    );
+    assert.deepEqual(planDayNumbers([], { startDate: "2026-12-01", endDate: "2026-12-01", datesConfirmed: true }), [1]);
+  });
+});

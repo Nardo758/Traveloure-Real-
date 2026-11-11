@@ -164,6 +164,28 @@ function planNightCount(startDate: string | null | undefined, endDate: string | 
 }
 
 /**
+ * QA round 3 major 8 (Leon, Nov 11, 2026): the day numbers a plan page draws. On a plan whose dates are CONFIRMED,
+ * every day of `start_date..end_date` is drawn — empty days included — 1-based from `start_date`; an item's own day
+ * fills it. `start_date`/`end_date` are calendar DATE columns already in the plan's zone, so the window is counted in
+ * calendar days and no instant or zone conversion is involved. An item on a day outside the window keeps its day (an
+ * item is never hidden by this rule). An unconfirmed plan is unchanged: the days its items occupy (a placeholder
+ * window is not a range — LD 30 / 42 D12). Pure; ascending.
+ */
+export function planDayNumbers(
+  itemDayNumbers: Array<number | null | undefined>,
+  plan: { startDate: unknown; endDate: unknown; datesConfirmed: boolean },
+): number[] {
+  const days = new Set<number>();
+  for (const d of itemDayNumbers) if (typeof d === "number" && Number.isFinite(d)) days.add(d);
+  if (plan.datesConfirmed) {
+    const asDay = (v: unknown) => (v instanceof Date ? v.toISOString() : String(v ?? "")).slice(0, 10);
+    const nights = planNightCount(asDay(plan.startDate), asDay(plan.endDate));
+    if (nights !== null) for (let n = 1; n <= nights + 1; n++) days.add(n);
+  }
+  return Array.from(days).sort((a, b) => a - b);
+}
+
+/**
  * THE DAY COUNT ALONE — "5 days" for Nov 11–15 (smoke test 4, B5, ledger
  * `2026-10-02-smoke4-draft-fixes`). The slip header printed the range and a separator with an empty
  * slot after it; it now prints this. Same calendar-date rule as `planSpanLabel` (§18 rule 1), and
