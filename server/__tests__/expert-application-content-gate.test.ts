@@ -11,6 +11,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { insertLocalExpertFormSchema } from "@shared/schema";
+import { EXPERT_ANSWER_MIN_CHARS } from "@shared/expert-answer-length";
 
 describe("insertLocalExpertFormSchema — minimum-content gate (CC-5)", () => {
   it("rejects a bare {} body", () => {
@@ -62,7 +63,9 @@ describe("insertLocalExpertFormSchema — minimum-content gate (CC-5)", () => {
       experienceTypes: [],
       localSpecialties: ["hidden temples"],
       neighborhoods: ["Gion"],
-      knowledgeProofAnswers: [{ question: "Q1", answer: "a real fifty-plus word answer ..." }],
+      // Length is the shared character gate (shared/expert-answer-length.ts). This fixture
+      // only has to be a shape the real client can submit, so the answer meets that minimum.
+      knowledgeProofAnswers: [{ question: "Q1", answer: "a".repeat(EXPERT_ANSWER_MIN_CHARS) }],
     };
     assert.doesNotThrow(() => insertLocalExpertFormSchema.parse(payload));
   });

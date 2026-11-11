@@ -9,6 +9,13 @@ import { PLAN_PROPOSAL_STATUSES } from "./plan-proposals";
 import { PRICE_BASIS_VALUES } from "./price-basis";
 import { CANCELLATION_POLICY_TYPES, CANCELLATION_TIER_LABELS } from "./cancellation-schedule";
 import { OPTIONAL_PHONE_ERROR, optionalPhoneError } from "./supply-registration";
+import {
+  EXPERT_ANSWER_MIN_CHARS,
+  EXPERT_ANSWER_TARGET_CHARS,
+  countExpertAnswerChars,
+  expertAnswerMinimumLine,
+  expertAnswerText,
+} from "./expert-answer-length";
 // LAZY, and deliberately so — the same circularity `shared/models/chat.ts` documents from the
 // other side: this file re-exports that one (below), and that one imports `trips` from here.
 // Drizzle's `.references()` takes a CALLBACK it evaluates when the relation is built, never at
@@ -3297,6 +3304,31 @@ export const insertLocalExpertFormSchema = createInsertSchema(localExpertForms).
       path: ["destinations"],
       message:
         "Application must include at least one destination, specialty, experience type, or local specialty, or both a city and country",
+    });
+  }
+
+  // Knowledge-proof length (Leon, Nov 11, 2026, 12:16 PM ET). The wizard counter and
+  // this gate both call countExpertAnswerChars. A submitted local_expert answer under
+  // the minimum is rejected with that count. An omitted or empty array is not a new
+  // requirement: city+country fixtures (N11, K1) and the other expert tracks send no
+  // essays and stay on the content gate above. The target is the counter's aim, not a cap.
+  if (EXPERT_ANSWER_TARGET_CHARS <= EXPERT_ANSWER_MIN_CHARS) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["knowledgeProofAnswers"],
+      message: expertAnswerMinimumLine(0),
+    });
+  }
+  if (data.expertType === "local_expert" && Array.isArray(data.knowledgeProofAnswers) && data.knowledgeProofAnswers.length > 0) {
+    data.knowledgeProofAnswers.forEach((entry, index) => {
+      const count = countExpertAnswerChars(expertAnswerText(entry));
+      if (count < EXPERT_ANSWER_MIN_CHARS) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["knowledgeProofAnswers", index, "answer"],
+          message: expertAnswerMinimumLine(count),
+        });
+      }
     });
   }
 });

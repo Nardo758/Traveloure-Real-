@@ -69,6 +69,12 @@ import {
   describeSubmitError,
 } from "@/lib/application-draft";
 import { OPTIONAL_PHONE_ERROR, optionalPhoneError } from "@shared/supply-registration";
+import {
+  EXPERT_ANSWER_MIN_CHARS,
+  EXPERT_ANSWER_TARGET_CHARS,
+  countExpertAnswerChars,
+  expertAnswerCounterLine,
+} from "@shared/expert-answer-length";
 
 // Namespaced so the expert and provider funnels' drafts never collide.
 const DRAFT_KEY = "traveloure_expert_application_draft";
@@ -522,7 +528,9 @@ export default function TravelExpertsPage() {
             (neighborhoodOptions.length === 0 || formData.neighborhoodClaims.length > 0)
           );
         case 3:
-          return formData.knowledgeProofAnswers.every(a => a.trim().split(/\s+/).filter(w => w.length > 0).length >= 50);
+          return formData.knowledgeProofAnswers.every(
+            (a) => countExpertAnswerChars(a) >= EXPERT_ANSWER_MIN_CHARS,
+          );
         case 4:
           return formData.localSpecialties.length > 0;
         case 5:
@@ -1279,14 +1287,17 @@ export default function TravelExpertsPage() {
                       data-testid={`textarea-knowledge-proof-${i}`}
                     />
                     {(() => {
-                      const words = formData.knowledgeProofAnswers[i].trim().split(/\s+/).filter(w => w.length > 0).length;
-                      const hasMinimum = words >= 50;
+                      const count = countExpertAnswerChars(formData.knowledgeProofAnswers[i]);
+                      const hasMinimum = count >= EXPERT_ANSWER_MIN_CHARS;
                       return (
-                        <p className={cn("text-xs mt-1 text-right", hasMinimum ? "text-green-600" : "text-[#9CA3AF]")}>
-                          {words} words
-                          {!hasMinimum && " — minimum 50 words to continue"}
-                          {hasMinimum && words < 150 && " — aim for 150 words for best results"}
-                          {words >= 150 && " ✓ Great detail"}
+                        <p
+                          className={cn("text-xs mt-1 text-right", hasMinimum ? "text-green-600" : "text-[#9CA3AF]")}
+                          data-testid={`text-knowledge-proof-count-${i}`}
+                          data-count={count}
+                          data-min={EXPERT_ANSWER_MIN_CHARS}
+                          data-target={EXPERT_ANSWER_TARGET_CHARS}
+                        >
+                          {expertAnswerCounterLine(count)}
                         </p>
                       );
                     })()}
