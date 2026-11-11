@@ -75,7 +75,8 @@ describe("R3-2 entry and city", () => {
     const src = read("client/src/components/plan/PlanEntry.tsx");
     assert.doesNotMatch(src, /\.\.\.nextMonth\(/, "no chip spreads next month's dates into the state");
     assert.match(src, /setDateScope\(nextMonthScope\(new Date\(\)\)\)/);
-    assert.equal((src.match(/min=\{dateScope\?\.min\} max=\{dateScope\?\.max\}/g) ?? []).length, 2);
+    // Cut-list #1 slice B: both date steps are the one range calendar, scoped by the same min/max.
+    assert.equal((src.match(/min=\{dateScope\?\.min\}\s+max=\{dateScope\?\.max\}/g) ?? []).length, 2);
   });
 
   it("E9 the event drawer: date always, time when stated, image when present, reviewed text only", () => {
