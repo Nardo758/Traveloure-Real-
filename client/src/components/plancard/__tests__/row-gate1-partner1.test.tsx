@@ -2,7 +2,8 @@
  * GATE-1 + PARTNER-1 (ledger `2026-11-03-gate1-partner1`): the waitlist is the only traveler gate; partner text only
  * when reviewed.
  *
- *   T1 waitlist + signed out: a gem card, a supply card, a search result and the event drawer render "Save to plan";
+ *   T1 waitlist + signed out: a gem card, a supply card, a search result and the event drawer render "Add to plan"
+ *      (cut-list #1 slice C supersedes the Nov 6 "Save to plan" for the add);
  *      the press writes the guest plan and toasts only after that write resolves; it calls no dialog; "Sign In Required" is never drawn in waitlist mode.
  *   T2 open mode + signed out: today's labels and today's add path (the dialog) — unchanged.
  *   T3 the commission note: only with a usable partner link AND open mode; never in waitlist, even with a token.
@@ -91,7 +92,7 @@ function browseHookAnswer(mode: Mode, user: { id: string } | null) {
 }
 
 describe("GATE-1 + PARTNER-1", () => {
-  it("T1 waitlist + signed out: gem, supply, search result and event drawer read 'Save to plan'; the press opens no dialog", () => {
+  it("T1 waitlist + signed out: gem, supply, search result and event drawer read 'Add to plan'; the press opens no dialog", () => {
     assert.equal(browseSavesToPlan("waitlist", false), true);
     for (const html of [
       render(<CityFeedCardGem gem={gem} city={CITY} onAdd={() => {}} />, "waitlist"),
@@ -101,9 +102,10 @@ describe("GATE-1 + PARTNER-1", () => {
       render(<ul><CatalogueResultRow result={searchResult} timeZone={null} city={CITY} onAdd={() => {}} /></ul>, "waitlist"),
       render(<EventSheetBody data={{ id: "ev-1", title: "Gion Matsuri" }} action={{ placeable: true, savedKey: "event:ev-1", city: CITY, onAdd: () => {} }} />, "waitlist"),
     ]) {
-      assert.ok(text(html).includes(WAITLIST_COPY.saveToPlan), text(html).slice(0, 200));
+      // Cut-list #1 slice C (sanctioned edit): the one add button reads "Add to plan"; "Save to plan" is the P-1c stand-in only.
+      assert.ok(text(html).includes("Add to plan"), text(html).slice(0, 200));
       assert.ok(!text(html).includes("Sign In Required"));
-      assert.ok(!text(html).includes("Add to plan"), "no 'Add to plan' left on the card");
+      assert.ok(!text(html).includes(WAITLIST_COPY.saveToPlan), "no 'Save to plan' left on the card");
     }
     // The press: the card's add path is replaced by the "Saved to plan" toast — the dialog opener is never called.
     const hook = browseHookAnswer("waitlist", null);
@@ -120,7 +122,9 @@ describe("GATE-1 + PARTNER-1", () => {
     // GATE-1B (G-2, sanctioned edit): the press writes to the guest plan and toasts "Saved to plan" only on the
     // server's confirmation — never a bare toast (the bug G-2 names).
     // Lane 1 A-18 (sanctioned edit): the confirmed save's toast is "Saved to plan", or the not-on-the-map hint.
-    assert.match(browseSave, /saveToGuestPlan\(body, city, chosenDate\)\.then\(\s*\(result\) => toast\(\{ title: guestSavedMessage\(result\) \}\),/);
+    // Cut-list #1 slice C (sanctioned edit): through the one add runner, whose toast is the server's answer.
+    assert.match(browseSave, /void runGuestAdd\(job\)/);
+    assert.match(read("client/src/lib/plan-add-runner.ts"), /return saveToGuestPlan\(job\.ref, job\.city, job\.chosenDate\)\.then\(/);
     assert.doesNotMatch(browseSave, /return \(\) => toast\(\{ title: WAITLIST_COPY\.savedToPlan \}\);/);
     // "Sign In Required" is never reached in waitlist mode: the dialog returns before it, and the page's add path
     // and SaveToggle never open it / the sign-in modal.
@@ -131,19 +135,19 @@ describe("GATE-1 + PARTNER-1", () => {
     const saveToggle = read("client/src/components/SaveToggle.tsx");
     // Lane 1: the toast fires only after the guest-plan write resolves — never a bare claim.
     assert.match(saveToggle, /if \(saveToPlan\) void saveForGuest\(\);\s*else openSignInModal\(\);/);
-    assert.match(saveToggle, /const result = await saveToGuestPlan\(guestRef, guestRef\.city\);\s*toast\(\{ title: guestSavedMessage\(result\) \}\);/);
+    assert.match(saveToggle, /await runGuestAdd\(\{ key: addRefKey\(ref\), ref, city: guestRef\.city, chosenDate: null \}\);/);
     assert.doesNotMatch(saveToggle, /if \(saveToPlan\) toast\(\{ title: WAITLIST_COPY\.savedToPlan \}\);/);
     // Signed in, waitlist mode: today's path.
     assert.equal(browseHookAnswer("waitlist", { id: "u1" }).saveToPlan, false);
   });
 
-  // CAP-2 Phase 3 (sanctioned edit): "Add to plan" is retired (ruling, Nov 6) — the save reads "Save to plan" in open
-  // mode too. The open-mode PATH is unchanged: a signed-out viewer's press keeps the card's own add (the dialog).
-  it("T2 open mode + signed out: 'Save to plan', and the dialog path, unchanged", () => {
+  // Cut-list #1 slice C (sanctioned edit): the add reads "Add to plan" in open mode too. The open-mode PATH is
+  // unchanged: a signed-out viewer's press keeps the card's own add (the dialog).
+  it("T2 open mode + signed out: 'Add to plan', and the dialog path, unchanged", () => {
     assert.equal(browseSavesToPlan("open", false), false);
     const gemHtml = text(render(<CityFeedCardGem gem={gem} city={CITY} onAdd={() => {}} />, "open"));
-    assert.ok(gemHtml.includes(WAITLIST_COPY.saveToPlan));
-    assert.ok(!gemHtml.includes("Add to plan"));
+    assert.ok(gemHtml.includes("Add to plan"));
+    assert.ok(!gemHtml.includes(WAITLIST_COPY.saveToPlan));
     const hook = browseHookAnswer("open", null);
     assert.equal(hook.saveToPlan, false);
     const opener = () => {};
