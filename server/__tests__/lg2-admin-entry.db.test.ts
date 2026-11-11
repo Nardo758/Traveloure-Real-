@@ -64,7 +64,7 @@ before(async () => {
     ON CONFLICT (setting_key) DO UPDATE SET setting_value = '500'`);
   await db.execute(sql`INSERT INTO users (id, email, first_name, last_name, role) VALUES (${owner}, ${`${owner}@t.test`}, 'AE', 'traveler', 'traveler')`);
   await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, market_slug, timezone, start_date, end_date, status)
-    VALUES (${TRIP}, ${owner}, 'AE', 'Kyoto, Japan', 'kyoto', 'Asia/Tokyo', '2026-11-11', '2026-11-11', 'draft')`);
+    VALUES (${TRIP}, ${owner}, 'AE', 'Kyoto, Japan', 'kyoto', 'Asia/Tokyo', '2027-11-11', '2027-11-11', 'draft')`);
   await item("a", "Stop A", 0, 10.0, 10.0);
   await item("b", "Stop B Path", 1, 10.01, 10.01);
   await item("c", "Stop C", 2, 10.02, 10.02);

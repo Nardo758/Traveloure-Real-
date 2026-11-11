@@ -27,7 +27,6 @@ import {
   PlanDatesCalendar,
 } from "../plan/PlanDatesCalendar";
 import { InlineDatesPanel } from "../plan/SlipAnchorPanels";
-import { HeaderPlanCTA } from "../HeaderPlanCTA";
 
 (globalThis as any).React = React;
 
@@ -115,30 +114,14 @@ describe("C6 375px layout budget", () => {
   });
 });
 
-describe("C7 the header chip", () => {
-  const chip = (target: any) =>
-    html(
-      <HeaderPlanCTA
-        state={{ kind: "chip", planId: "p1", city: "Kyoto", stops: 2, dates: null, guest: false }}
-        variant="desktop"
-        onStart={noop}
-        datesTarget={target}
-      />,
-    );
-  it("the label links to the plan and the dates segment is a sibling button reading Add dates", () => {
-    const out = text(chip({ guest: false, planId: "p1", startDate: "2026-11-11", endDate: "2026-11-11", datesConfirmed: false }));
-    const label = out.match(/<a\b[^>]*data-testid="chip-nav-plan-label"[^>]*>([^<]*)<\/a>/);
-    assert.ok(label, "the label is a link");
-    assert.equal(label![1], "Your Kyoto plan · 2");
-    assert.match(label![0], /href="\/plans\/p1"/);
-    assert.match(out, /<button[^>]*data-testid="chip-nav-plan-dates"[^>]*>Add dates<\/button>/);
-    const inner = Array.from(out.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/g), (m) => m[1]);
-    assert.ok(inner.length > 0);
-    for (const body of inner) assert.doesNotMatch(body, /<(a|button)\b/, "no control nested in a link");
-  });
-  it("with no target the dates segment stays a link (slice A behaviour)", () => {
-    const out = text(chip(null));
-    assert.match(out, /<a[^>]*data-testid="chip-nav-plan-dates"[^>]*>Add dates<\/a>/);
+describe("C7 the strip's dates segment (header fix v2: the chip lives in the Trip Strip)", () => {
+  it("the strip's Add dates is a HeaderDatesPopover trigger beside the label link", () => {
+    const strip = readFileSync("client/src/components/trip/trip-strip.tsx", "utf8");
+    assert.match(strip, /<HeaderDatesPopover target=\{datesTarget\} variant="desktop">/);
+    assert.match(strip, /data-testid="trip-strip-plan-dates"/);
+    assert.match(strip, /headerDatesLine\(planState\)/, "the one dates line formatter");
+    assert.doesNotMatch(strip, /<Calendar\b.*mode=|<PlanDatesCalendar/, "no second picker in the strip");
+    // Render-level proofs live in trip-strip-plan-surface.test.tsx (V3).
   });
 });
 

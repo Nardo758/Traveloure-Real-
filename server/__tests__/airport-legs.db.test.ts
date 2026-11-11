@@ -59,7 +59,7 @@ before(async () => {
   await db.execute(sql`INSERT INTO users (id, email, first_name, last_name, role) VALUES (${owner}, ${`${owner}@t.test`}, 'APL', 'traveler', 'traveler')`);
   for (const t of [PAID, FREE]) {
     await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, market_slug, timezone, start_date, end_date, status, dates_confirmed_at)
-      VALUES (${t}, ${owner}, 'APL', 'Kyoto, Japan', 'kyoto', 'Asia/Tokyo', '2026-11-11', '2026-11-12', 'draft', now())`);
+      VALUES (${t}, ${owner}, 'APL', 'Kyoto, Japan', 'kyoto', 'Asia/Tokyo', '2027-11-11', '2027-11-12', 'draft', now())`);
     await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, title, item_type, day_number, sort_order, latitude, longitude, start_time, end_time, origin) VALUES
       (${`${t}-a`}, ${t}, 'Kyoto Station', 'activity', 1, 0, 34.9858, 135.7588, '16:00', '17:00', 'traveler'),
       (${`${t}-b`}, ${t}, 'Gion', 'activity', 2, 0, 35.0037, 135.7751, '10:00', '11:00', 'traveler')`);
@@ -81,20 +81,20 @@ test("A1: only an exact IATA code the table holds has a point", () => {
 });
 
 test("A2: the writer stamps from the code, never from the client; a typed name clears it", async () => {
-  const a = await storage.createTemporalAnchor({ tripId: FREE, anchorType: "flight_arrival", anchorDatetime: new Date("2026-11-11T14:00:00Z"), location: "KIX", latitude: "1", longitude: "1" } as any);
+  const a = await storage.createTemporalAnchor({ tripId: FREE, anchorType: "flight_arrival", anchorDatetime: new Date("2027-11-11T14:00:00Z"), location: "KIX", latitude: "1", longitude: "1" } as any);
   const row = await anchor(a.id);
   assert.ok(Math.abs(Number(row.latitude) - 34.43) < 0.05, "the code's point replaced the client's");
   await storage.updateTemporalAnchor(a.id, { location: "Kansai airport" } as any);
   const cleared = await anchor(a.id);
   assert.equal(cleared.latitude, null);
   assert.equal(cleared.longitude, null);
-  const other = await storage.createTemporalAnchor({ tripId: FREE, anchorType: "custom", anchorDatetime: new Date("2026-11-11T09:00:00Z"), location: "KIX", latitude: "35", longitude: "135" } as any);
+  const other = await storage.createTemporalAnchor({ tripId: FREE, anchorType: "custom", anchorDatetime: new Date("2027-11-11T09:00:00Z"), location: "KIX", latitude: "35", longitude: "135" } as any);
   assert.equal(Number((await anchor(other.id)).latitude), 35, "a non-flight anchor keeps its own point");
 });
 
 test("A3: a routed plan's coded arrival gets one airport leg; a typed departure gets none", async () => {
-  const arr = await storage.createTemporalAnchor({ tripId: PAID, anchorType: "flight_arrival", anchorDatetime: new Date("2026-11-11T13:00:00Z"), bufferAfter: 60, location: "KIX" } as any);
-  await storage.createTemporalAnchor({ tripId: PAID, anchorType: "flight_departure", anchorDatetime: new Date("2026-11-12T18:00:00Z"), bufferBefore: 90, location: "Kansai airport" } as any);
+  const arr = await storage.createTemporalAnchor({ tripId: PAID, anchorType: "flight_arrival", anchorDatetime: new Date("2027-11-11T13:00:00Z"), bufferAfter: 60, location: "KIX" } as any);
+  await storage.createTemporalAnchor({ tripId: PAID, anchorType: "flight_departure", anchorDatetime: new Date("2027-11-12T18:00:00Z"), bufferBefore: 90, location: "Kansai airport" } as any);
   await settle(); // the anchor write queued the recompute
   const rows = await legs(PAID);
   const airport = rows.filter((l) => String(l.from_activity_id).startsWith("anchor:") || String(l.to_activity_id).startsWith("anchor:"));

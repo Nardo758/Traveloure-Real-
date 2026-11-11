@@ -107,7 +107,10 @@ describe("PLAN-1 Phase 1", () => {
     assert.equal(claimLandingPath([]), null, "nothing claimed ⇒ stay put");
     assert.equal(claimLandingPath(null), null);
     const app = read("client/src/App.tsx");
-    assert.match(app, /void claimGuestPlans\(\(user as any\)\?\.id \?\? null\)\.then\(\(ids\) => \{\s*if \(ids\.length === 0\) return;\s*qc\.invalidateQueries\(\{ queryKey: \["\/api\/trips"\] \}\);\s*const to = claimLandingPath\(ids\);\s*if \(to\) setLocation\(to\);/);
+    // Cut-list #1 header fix v2: the claim binds the claimed plan into the pen (the ONE active-plan rule)
+    // between resolving and landing; the landing itself is unchanged — `claimLandingPath`, every path.
+    assert.match(app, /void claimGuestPlans\(\(user as any\)\?\.id \?\? null\)\.then\(async \(ids\) => \{\s*if \(ids\.length === 0\) return;\s*const to = claimLandingPath\(ids\);/);
+    assert.match(app, /if \(claimed\) syncActiveTripToContext\(claimed\);[\s\S]{0,400}if \(to\) setLocation\(to\);/);
     assert.doesNotMatch(app, /if \(ids\.length > 0\) qc\.invalidateQueries\(\{ queryKey: \["\/api\/trips"\] \}\);\s*\}\);/, "the no-navigation branch is retired");
   });
 

@@ -21,7 +21,6 @@ import { renderToString } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { AddToPlanButton } from "../plan/AddToPlanButton";
-import { HeaderPlanCTA } from "../HeaderPlanCTA";
 import { __planAddRunner, setAddPending } from "@/lib/plan-add-runner";
 
 (globalThis as any).React = React;
@@ -98,19 +97,13 @@ describe("B5 375px budget", () => {
   });
 });
 
-describe("B6 header View plan", () => {
-  it("a sibling link from sm: up, never nested", () => {
-    const out = html(
-      <HeaderPlanCTA state={{ kind: "chip", planId: "p1", city: "Kyoto", stops: 2, dates: null, guest: false }} variant="desktop" onStart={() => {}} />,
-    ).replace(/<!-- -->/g, "");
-    const view = out.match(/<a\b[^>]*data-testid="chip-nav-plan-view"[^>]*>([^<]*)<\/a>/);
-    assert.ok(view, "View plan is a link");
-    assert.equal(view![1], "View plan");
-    assert.match(view![0], /href="\/plans\/p1"/);
-    assert.match(view![0], /hidden[^"]*sm:inline/, "from sm: up");
-    for (const body of Array.from(out.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/g), (m) => m[1])) assert.doesNotMatch(body, /<(a|button)\b/);
-    const guest = html(<HeaderPlanCTA state={{ kind: "chip", planId: "g1", city: "Kyoto", stops: 1, dates: null, guest: true }} variant="mobile" onStart={() => {}} />);
-    assert.match(guest, /data-testid="chip-nav-plan-view"[^>]*href="\/plans\/new"|href="\/plans\/new"[^>]*data-testid="chip-nav-plan-view"/);
+describe("B6 View plan lives in the toast only (header fix v2)", () => {
+  it("the strip's label is the link to the plan; no View plan control in the chrome", () => {
+    const strip = readFileSync("client/src/components/trip/trip-strip.tsx", "utf8");
+    assert.doesNotMatch(strip, /ADD_COPY\.viewPlan/);
+    assert.match(strip, /data-testid="trip-strip-plan-link"/);
+    const layout = readFileSync("client/src/components/layout.tsx", "utf8");
+    assert.doesNotMatch(layout, /chip-nav-plan-view|HeaderPlanCTA/);
   });
 });
 

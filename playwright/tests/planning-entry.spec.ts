@@ -363,19 +363,64 @@ test.describe("Single planning entry — authed", () => {
   // speaks for the plan the traveler HAS. A plan with no stops yet is REOPENED — the chip/resume
   // lands on that plan — because minting a second empty plan is what the ruling removed. A traveler
   // with nothing still gets PlanEntry, which is the next test.
-  test("with an EMPTY plan bound, the header's Start a plan reopens that plan", async ({ page }) => {
+  test("with an EMPTY plan bound, the Trip Strip's Start a plan reopens that plan and the nav draws none", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await registerUser(page);
     await openEntryFromHero(page);
     await startPlanIn(page, "kyoto", "wedding");
     await expect(page).toHaveURL(/\/plans\/[0-9a-f-]{36}/, { timeout: 15_000 });
     const boundUrl = page.url();
-    // The plan page is a console page; the public header (and its control) is on the site's pages.
+    // The plan page is a console page; the public chrome (nav + Trip Strip) is on the site's pages.
+    // Header fix v2 (decision-maker Nov 11, 2026): the strip under the nav is the plan surface; the
+    // nav's "Start a plan" renders ONLY when there is no plan.
     await page.goto(`${BASE_URL}/about`, { waitUntil: "domcontentloaded" });
-    await page.getByTestId("button-nav-start-plan").click({ timeout: 15_000 });
+    const strip = page.getByTestId("trip-strip");
+    await expect(strip).toHaveAttribute("data-plan-state", "resume", { timeout: 15_000 });
+    await expect(page.getByTestId("button-nav-start-plan")).toHaveCount(0);
+    await expect(page.getByTestId("trip-strip-plan-label")).toHaveText("Start a plan");
+    await page.getByTestId("trip-strip-plan-link").click();
     // It navigates to the SAME plan — no second plan, and no edit window either.
     await expect(page).toHaveURL(boundUrl.replace(/\/$/, ""), { timeout: 15_000 });
     await expect(page.getByTestId("plan-modal")).toHaveCount(0);
+  });
+
+  test("the Trip Strip is sticky under the nav and prints the full label at 1280 and 375", async ({ page }) => {
+    await registerUser(page);
+    await openEntryFromHero(page);
+    await startPlanIn(page, "kyoto", "travel");
+    await expect(page).toHaveURL(/\/plans\/[0-9a-f-]{36}/, { timeout: 15_000 });
+    const tripId = page.url().match(/\/plans\/([0-9a-f-]{36})/)![1];
+    // Two stops, so the strip reads the chip state.
+    for (const title of ["Fushimi Inari", "Nishiki Market"]) {
+      const res = await page.request.post(`${BASE_URL}/api/trips/${tripId}/itinerary-items`, {
+        data: { title, dayNumber: 1 },
+      });
+      expect(res.ok(), `item ${title}: ${res.status()}`).toBeTruthy();
+    }
+    for (const width of [1280, 375]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`${BASE_URL}/about`, { waitUntil: "domcontentloaded" });
+      const strip = page.getByTestId("trip-strip");
+      await expect(strip).toHaveAttribute("data-plan-state", "chip", { timeout: 15_000 });
+      const label = page.getByTestId("trip-strip-plan-label");
+      await expect(label).toHaveText(/^Your Kyoto, Japan plan · 2$|^Your Kyoto plan · 2$/);
+      // The full label fits inside the viewport, on one line, with no truncation class.
+      const box = (await label.boundingBox())!;
+      expect(box.x + box.width, `label right edge at ${width}`).toBeLessThanOrEqual(width);
+      expect(await label.evaluate((el) => getComputedStyle(el).textOverflow)).not.toBe("ellipsis");
+      await expect(page.getByTestId("button-nav-start-plan")).toHaveCount(0);
+      // Sticky: scroll and the strip's top edge stays at the nav's bottom edge.
+      await page.evaluate(() => window.scrollTo(0, 1200));
+      const [stripTop, navBottom] = await page.evaluate(() => {
+        const s = document.querySelector('[data-testid="trip-strip"]')!.getBoundingClientRect();
+        const n = document.querySelector("nav")!.getBoundingClientRect();
+        return [Math.round(s.top), Math.round(n.bottom)];
+      });
+      // The nav's box is --chrome-nav-h plus its 1px hairline border; the strip sticks at the variable and the
+      // hairline draws over its top pixel (the nav is z-50). Equal to within that hairline, never a gap.
+      expect(Math.abs(stripTop - navBottom), `strip top ${stripTop} vs nav bottom ${navBottom} at ${width}`).toBeLessThanOrEqual(1);
+      expect(stripTop, `strip never sits below the nav at ${width}`).toBeLessThanOrEqual(navBottom);
+    }
   });
 
   // The start state keeps E2's promise for a traveler who has nothing yet: the header opens
@@ -411,9 +456,11 @@ test.describe("TripStrip continue routing (date-derived phase, ruling 2)", () =>
       );
     }, endDate);
     await page.goto(`${BASE_URL}/destinations`, { waitUntil: "domcontentloaded" });
-    const edit = page.getByTestId("trip-strip-edit");
-    await expect(edit).toBeVisible({ timeout: 15_000 });
-    return edit.getAttribute("href");
+    // Header fix v2: the strip's plan LINK is the label (the lead, for a pen whose plan state has not
+    // resolved); "Continue planning ›" is retired. The href keeps ruling 2's date-derived routing.
+    const link = page.getByTestId("trip-strip-plan-link");
+    await expect(link).toBeVisible({ timeout: 15_000 });
+    return link.getAttribute("href");
   }
 
   test("in-planning trip (future end date) continues on the slip", async ({ page }) => {

@@ -1,5 +1,8 @@
+import { pickActivePlan } from "./active-plan";
+
 /**
- * Cut-list #1, slice A — the header's plan state.
+ * Cut-list #1, slice A — the plan state the chrome speaks for (header fix v2: rendered by the Trip
+ * Strip under the nav, never inside it; the nav keeps only the `start` CTA).
  *
  * One question, four answers, and no guessing (§13):
  *
@@ -39,6 +42,8 @@ export interface HeaderTrip {
 }
 
 export type HeaderPlanState =
+  /** A read still in flight (the guest plan, or a member's list): the chrome draws NOTHING yet — never "Start a plan" (§13). */
+  | { kind: "loading" }
   | { kind: "start" }
   | { kind: "resume"; planId: string; city: string | null; guest: boolean }
   | { kind: "chip"; planId: string; city: string | null; stops: number; dates: string | null; guest: boolean };
@@ -54,6 +59,16 @@ export const HEADER_ADD_DATES_LABEL = "Add dates";
  * slip, which is the plan the chip is speaking for. No `?view=` (Days is the ruled landing).
  */
 export const GUEST_PLAN_HREF = "/plans/new";
+
+/**
+ * The label's city is the CITY, not the stored destination: `trips.destination` is routinely
+ * "Kyoto, Japan" (QA round 3, major 2 — "Your Kyoto, Japan plan"). First comma segment, trimmed;
+ * empty ⇒ null, so the label falls back to "Your plan · {n}" rather than printing a blank.
+ */
+export function headerCity(destination: string | null | undefined): string | null {
+  const city = String(destination ?? "").split(",")[0].trim();
+  return city || null;
+}
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -79,30 +94,32 @@ export function headerDatesLabel(startDate: string | null | undefined, endDate: 
 }
 
 /**
- * The signed-in plan the header speaks for: most recently updated, never finalized.
- *
- * Filtered on `finalizedAt` ONLY. `trips.status` is a display lifecycle that a reopen or an admin
- * action can move without touching finality, so filtering on it would silently drop a plan the
- * traveler is still working on.
+ * The signed-in plan the header and the strip speak for. ONE rule (`client/src/lib/active-plan.ts`,
+ * cut-list #1 header fix v2): an explicit binding when the caller holds one, else the most recently
+ * updated un-finalized plan. Finality is the only lifecycle filter — `trips.status` is a display label.
  */
-export function activeHeaderTrip(trips: readonly HeaderTrip[] | null | undefined): HeaderTrip | null {
-  const live = (trips ?? []).filter((t) => !t.finalizedAt);
-  if (live.length === 0) return null;
-  return [...live].sort((x, y) => String(y.updatedAt ?? "").localeCompare(String(x.updatedAt ?? "")))[0];
+export function activeHeaderTrip(trips: readonly HeaderTrip[] | null | undefined, bound: string | null = null): HeaderTrip | null {
+  return pickActivePlan(trips, bound);
 }
 
 export function headerPlanState(input: {
   isSignedIn: boolean;
   guestStatus: "idle" | "loading" | "ready" | "error";
   guestPlan: HeaderGuestPlan | null | undefined;
+  /** `undefined` = the list has not answered yet (loading); `null`/`[]` = answered, nothing there. */
   trips: readonly HeaderTrip[] | null | undefined;
+  /** The explicit binding (`?tripId=`, then the pen) — rule 1 of `pickActivePlan`. */
+  bound?: string | null;
 }): HeaderPlanState {
   if (!input.isSignedIn) {
+    // A read in flight is NOT "no plan": the chrome draws nothing until it answers (QA round 3,
+    // major 5 — "Start a plan" flashed before the guest plan appeared, and a second plan could start).
+    if (input.guestStatus === "loading") return { kind: "loading" };
     // Nothing a guest could reopen yet, a failed read, or an expired plan: today's Start a plan.
-    if (input.guestStatus === "error" || input.guestStatus === "loading" || input.guestStatus === "idle") return { kind: "start" };
+    if (input.guestStatus === "error" || input.guestStatus === "idle") return { kind: "start" };
     const guest = input.guestPlan;
     if (!guest) return { kind: "start" };
-    const city = String(guest.plan.destination ?? "").trim() || null;
+    const city = headerCity(guest.plan.destination);
     const stops = guest.items.length;
     if (stops === 0) return { kind: "resume", planId: guest.plan.id, city, guest: true };
     return {
@@ -115,9 +132,11 @@ export function headerPlanState(input: {
     };
   }
 
-  const trip = activeHeaderTrip(input.trips);
+  // Same rule signed in: an unanswered list (`undefined`, not an empty array) draws nothing.
+  if (input.trips === undefined) return { kind: "loading" };
+  const trip = activeHeaderTrip(input.trips, input.bound ?? null);
   if (!trip) return { kind: "start" };
-  const city = String(trip.destination ?? "").trim() || null;
+  const city = headerCity(trip.destination);
   const stops = typeof trip.itemCount === "number" ? trip.itemCount : null;
   // A genuinely missing count claims no number rather than inventing one — reopening the plan is
   // honest, "Your plan · 0" is not.
@@ -155,7 +174,7 @@ export interface HeaderDatesTarget {
 
 export function headerDatesTarget(
   state: HeaderPlanState,
-  input: { guestPlan: HeaderGuestPlan | null | undefined; trips: readonly HeaderTrip[] | null | undefined },
+  input: { guestPlan: HeaderGuestPlan | null | undefined; trips: readonly HeaderTrip[] | null | undefined; bound?: string | null },
 ): HeaderDatesTarget | null {
   if (state.kind !== "chip") return null;
   if (state.guest) {
@@ -163,7 +182,7 @@ export function headerDatesTarget(
     if (!p || p.id !== state.planId) return null;
     return { guest: true, planId: p.id, startDate: p.startDate ?? null, endDate: p.endDate ?? null, datesConfirmed: !!p.datesConfirmed };
   }
-  const t = activeHeaderTrip(input.trips);
+  const t = activeHeaderTrip(input.trips, input.bound ?? null);
   if (!t || t.id !== state.planId) return null;
   return {
     guest: false,

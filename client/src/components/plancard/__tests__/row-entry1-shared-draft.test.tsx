@@ -204,11 +204,10 @@ describe("T9 Start-a-plan controls are links", () => {
       ["client/src/components/landing/landing-hero.tsx", 4],
       ["client/src/components/landing/moments-section.tsx", 1],
       ["client/src/components/landing/events-strip.tsx", 1],
-      // Cut-list #1 slice A: the two HEADER CTAs now render through ONE component
-      // (`HeaderPlanCTA`), so layout keeps a single inline PLAN_START_HREF link — the footer's. The
-      // header's start state is still a real <a href={PLAN_START_HREF}> and still keeps its handler;
-      // both are asserted in the component, below.
-      ["client/src/components/layout.tsx", 1],
+      // Cut-list #1 header fix v2: the nav and the phone menu each draw a plain "Start a plan"
+      // link ONLY in the start state (the Trip Strip is the plan surface otherwise), plus the
+      // footer's — three inline PLAN_START_HREF links, each with its handler.
+      ["client/src/components/layout.tsx", 3],
     ];
     for (const [f, n] of sites) {
       const s = src(f);
@@ -216,10 +215,7 @@ describe("T9 Start-a-plan controls are links", () => {
       assert.ok((s.match(/onClick=\{planStartClick\(/g) ?? []).length >= n, f);
     }
     const layoutSrc = src("client/src/components/layout.tsx");
-    assert.equal((layoutSrc.match(/<HeaderPlanCTA/g) ?? []).length, 2, "both header mounts");
-    assert.ok((layoutSrc.match(/onStart=\{planStartClick\(/g) ?? []).length >= 2, "…each with its handler");
-    const cta = src("client/src/components/HeaderPlanCTA.tsx");
-    assert.match(cta, /<Link href=\{href\}>\{START_PLAN_LABEL\}<\/Link>/, "the label is a real link");
-    assert.match(cta, /state\.kind === "start" \? PLAN_START_HREF/, "the start state keeps the pop-up URL");
+    assert.doesNotMatch(layoutSrc, /HeaderPlanCTA/, "the nav chip is gone (header fix v2)");
+    assert.equal((layoutSrc.match(/\{navShowsStart && \(/g) ?? []).length, 2, "both header mounts gate on the start state");
   });
 });

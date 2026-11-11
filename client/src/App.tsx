@@ -20,6 +20,7 @@ import { PlanPageShell } from "@/components/plan-page-shell";
 import { useAuth } from "@/hooks/use-auth";
 import { claimGuestPlans } from "@/lib/waitlist-guest-plan";
 import { claimLandingPath } from "@/lib/plan-landing";
+import { syncActiveTripToContext, type TripIdentitySource } from "@/lib/trip-selection";
 import { PenBinder } from "@/components/pen-binder";
 import { useLocale } from "@/hooks/use-locale";
 import { TripQueueProvider } from "@/contexts/TripQueueContext";
@@ -1608,10 +1609,22 @@ function GuestCartMigrator() {
         // A-37: one claim request per sign-in (the plan page reuses this one).
         // PLAN-1 ruling 2: a sign-in that claimed a plan lands on it, on its map — every sign-in path (the
         // "refresh the list without navigating" branch is retired). Nothing claimed ⇒ the traveler stays put.
-        void claimGuestPlans((user as any)?.id ?? null).then((ids) => {
+        void claimGuestPlans((user as any)?.id ?? null).then(async (ids) => {
           if (ids.length === 0) return;
-          qc.invalidateQueries({ queryKey: ["/api/trips"] });
           const to = claimLandingPath(ids);
+          // Cut-list #1 header fix v2 (the ONE active-plan rule): the claimed plan is BOUND into the pen the
+          // moment the claim resolves, so the strip, the nav slot and the picker name it before the slip's own
+          // open binds it (RC-5). Read from the freshly re-fetched list — never from the ids alone — so the
+          // pen carries the plan's own identity fields (REPLACE semantics, #972). A list that cannot be read
+          // binds nothing: the landing's open still binds, a beat later.
+          try {
+            const trips = (await qc.fetchQuery<TripIdentitySource[]>({ queryKey: ["/api/trips"], staleTime: 0 })) ?? [];
+            const claimed = trips.find((t) => t.id === ids[0]);
+            if (claimed) syncActiveTripToContext(claimed);
+          } catch {
+            /* the landing binds; the list read failed, so refresh it the old way */
+            qc.invalidateQueries({ queryKey: ["/api/trips"] });
+          }
           if (to) setLocation(to);
         });
       }

@@ -105,19 +105,19 @@ async function trip(t: string, start: string, end: string, market: "edinburgh" |
 before(async () => {
   assertDisposableDb();
   await db.execute(sql`INSERT INTO users (id, email, first_name, last_name, role) VALUES (${owner}, ${`${owner}@t.test`}, 'P0L', 'traveler', 'traveler')`);
-  await trip(BRIDGE, "2026-11-11", "2026-11-11");
+  await trip(BRIDGE, "2027-11-11", "2027-11-11");
   await item(BRIDGE, "a", 1, 0, P(0, 0), "09:00", "10:00");
   await item(BRIDGE, "b", 1, 1, null, "11:00", "12:00"); // unlocated
   await item(BRIDGE, "c", 1, 2, P(0.03, 0.02), "13:00", "14:00");
-  await trip(NOTRANSIT, "2026-11-11", "2026-11-11");
+  await trip(NOTRANSIT, "2027-11-11", "2027-11-11");
   await item(NOTRANSIT, "a", 1, 0, P(0.2, 0), null, null); // no time of day
   await item(NOTRANSIT, "b", 1, 1, P(0.23, 0.02), null, null); // ~3.6 km — transit by default
-  await trip(PAST, "2026-11-11", "2026-11-12");
+  await trip(PAST, "2027-11-11", "2027-11-12");
   await item(PAST, "a", 1, 0, P(-0.2, 0), "09:00", "10:00");
   await item(PAST, "b", 1, 1, P(-0.17, 0.02), "11:00", "12:00");
   await item(PAST, "c", 2, 0, P(-0.3, 0), "09:00", "10:00");
   await item(PAST, "d", 2, 1, P(-0.27, 0.02), "11:00", "12:00");
-  await trip(LEGACY, "2026-11-11", "2026-11-11");
+  await trip(LEGACY, "2027-11-11", "2027-11-11");
   await item(LEGACY, "a", 1, 0, P(0.5, 0), "09:00", "10:00");
   await item(LEGACY, "b", 1, 1, P(0.53, 0.02), "11:00", "12:00");
   await item(LEGACY, "c", 1, 2, P(0.56, 0.04), "13:00", "14:00");
@@ -128,10 +128,10 @@ before(async () => {
       VALUES (${`${LEGACY}-${k}`}, ${LEGACY}, 1, ${k === "ab" ? 1 : 2}, ${`${LEGACY}-${from}`}, ${from.toUpperCase()}, 0, 0, ${`${LEGACY}-${to}`}, ${to.toUpperCase()}, 0, 0,
         3600, '3.6 km', 'driving', ${sel}, 14, '[]'::jsonb, 0, 'confirmed', ${owner}, now(), 'Ask for the back exit')`);
   }
-  await trip(KYOTO, "2026-11-11", "2026-11-11", "kyoto");
+  await trip(KYOTO, "2027-11-11", "2027-11-11", "kyoto");
   await item(KYOTO, "a", 1, 0, P(0.6, 0), "09:00", "10:00");
   await item(KYOTO, "b", 1, 1, P(0.627, 0), "11:00", "12:00"); // ~3 km — transit by default where the API covers it
-  await trip(GAP, "2026-11-11", "2026-11-11");
+  await trip(GAP, "2027-11-11", "2027-11-11");
   await item(GAP, "a", 1, 0, P(0.8, 0), "09:00", "10:00");
   await item(GAP, "b", 1, 1, null, "11:00", "12:00"); // unlocated
   await item(GAP, "c", 1, 2, P(0.83, 0.02), "13:00", "14:00");
@@ -203,7 +203,7 @@ test("L4: no time of day ⇒ departs 10:00 local on the trip day (01:00 UTC in K
   await db.execute(sql`DELETE FROM transport_legs WHERE trip_id = ${NOTRANSIT}`);
   const fake = new FakeAdapter();
   await computePlanLegs(NOTRANSIT, { adapter: fake });
-  assert.equal(fake.calls[0]?.departAt?.toISOString(), "2026-11-11T01:00:00.000Z");
+  assert.equal(fake.calls[0]?.departAt?.toISOString(), "2027-11-11T01:00:00.000Z");
 });
 
 test("L5: a day already over is frozen — no call, nothing recomputed, nothing deleted", async () => {
@@ -214,7 +214,7 @@ test("L5: a day already over is frozen — no call, nothing recomputed, nothing 
   await db.execute(sql`UPDATE itinerary_items SET longitude = ${String(P(-0.17, 0.03).lng)} WHERE id = ${`${PAST}-b`}`);
   await db.execute(sql`UPDATE itinerary_items SET longitude = ${String(P(-0.27, 0.03).lng)} WHERE id = ${`${PAST}-d`}`);
   const fake = new FakeAdapter();
-  await computePlanLegs(PAST, { adapter: fake, now: () => new Date("2026-11-12T03:00:00Z") });
+  await computePlanLegs(PAST, { adapter: fake, now: () => new Date("2027-11-12T03:00:00Z") });
   assert.equal(fake.calls.length, 1, "only today's moved leg is asked");
   const rows = await legs(PAST);
   assert.deepEqual(pairs(rows), ["1:a>b", "2:c>d"], "day 1's leg is kept as it was");
@@ -222,11 +222,11 @@ test("L5: a day already over is frozen — no call, nothing recomputed, nothing 
 
 test("L6: the gap count reads the desired pairs; the re-check reports it and writes nothing", async () => {
   await db.execute(sql`DELETE FROM transport_legs WHERE trip_id = ${BRIDGE}`);
-  const gaps = await planLegGapsByDay(BRIDGE, new Date("2026-11-01T00:00:00Z"));
+  const gaps = await planLegGapsByDay(BRIDGE, new Date("2027-11-01T00:00:00Z"));
   assert.equal(gaps.get(1), undefined, "Ask 6: no pair is desired across the unlocated stop — its pairs are not checked, not 'no route'");
   const fake = new FakeAdapter();
   const r = await recheckPlanLegs(
-    { tripId: BRIDGE, userId: owner, destination: "Kyoto", startDate: "2026-11-11", timezone: "Asia/Tokyo", datesConfirmed: true, since: new Date(0), checkDate: "2026-11-08", now: new Date() },
+    { tripId: BRIDGE, userId: owner, destination: "Kyoto", startDate: "2027-11-11", timezone: "Asia/Tokyo", datesConfirmed: true, since: new Date(0), checkDate: "2027-11-08", now: new Date() },
     {
       adapter: () => fake,
       qualifies: async () => true,

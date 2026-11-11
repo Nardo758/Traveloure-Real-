@@ -15,6 +15,8 @@ import { apiRequest, queryClient } from "./queryClient";
 import { refreshSavedRefs } from "./saved-refs";
 import { GUEST_PLAN_QUERY_KEY, guestSaveErrorMessage, saveToGuestPlan, type GuestItemBody, type GuestPlanView, type GuestSaveResult } from "./waitlist-guest-plan";
 import { activeHeaderTrip, type HeaderTrip } from "./header-plan";
+import { boundTripId } from "./active-plan";
+import { getTripContext } from "./trip-context";
 import { planTitle } from "./trip-slip";
 import { FIRST_ADD_DATES_KEY, shouldOpenFirstAddDates, type PlanAddRail } from "./add-to-plan";
 
@@ -128,7 +130,8 @@ export async function runSignedInRefAdd(job: Pick<QueuedAdd, "key" | "ref" | "ci
   setAddPending(job.key, true);
   try {
     const trips = await queryClient.fetchQuery<HeaderTrip[]>({ queryKey: ["/api/trips"] });
-    let trip = activeHeaderTrip(trips);
+    // The ONE active-plan rule, with the same binding the strip reads (`?tripId=`, then the pen).
+    let trip = activeHeaderTrip(trips, boundTripId(typeof window === "undefined" ? "" : window.location.search, getTripContext().tripId));
     if (!trip) {
       const res = await apiRequest("POST", "/api/trips", { destination: job.city, title: planTitle({ city: job.city.split(",")[0].trim() }) });
       trip = (await res.json()) as HeaderTrip;
