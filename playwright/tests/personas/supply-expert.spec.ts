@@ -26,6 +26,8 @@ import {
   PERSONAS,
   CI_ADMIN_EMAIL,
   CI_ADMIN_PASSWORD,
+  CI_OWNER_EMAIL,
+  CI_OWNER_PASSWORD,
   KYOTO,
   loginAs,
   driveServiceFormToSubmit,
@@ -65,10 +67,10 @@ const UNSPLASH_META = {
   profileUrl: "https://unsplash.com/@fixture?utm_source=traveloure",
 };
 
-async function adminApprove(path: string, data?: Record<string, unknown>): Promise<number> {
+async function adminApprove(path: string, data?: Record<string, unknown>, as: "admin" | "owner" = "admin"): Promise<number> {
   const adminCtx = await pwRequest.newContext({ baseURL: BASE_URL });
   const loginRes = await adminCtx.post(`${BASE_URL}/api/auth/login`, {
-    data: { email: CI_ADMIN_EMAIL, password: CI_ADMIN_PASSWORD },
+    data: as === "owner" ? { email: CI_OWNER_EMAIL, password: CI_OWNER_PASSWORD } : { email: CI_ADMIN_EMAIL, password: CI_ADMIN_PASSWORD },
   });
   if (loginRes.status() !== 200) {
     await adminCtx.dispose();
@@ -212,7 +214,7 @@ test.describe("supply-expert — Gion local expert", () => {
     // ── Admin approves; since the owner is verified, activateVerificationHeldListings goes
     //     straight to active — assert the public route + approval fields. ──────────────────────
     for (const [name, id] of Object.entries(serviceIds)) {
-      const approveStatus = await adminApprove(`/api/admin/provider-services/${id}/approve`);
+      const approveStatus = await adminApprove(`/api/admin/provider-services/${id}/approve`, undefined, "owner") // slice 0: the owner publishes;
       const [finalRow] = await rows<{ approval_status: string; status: string }>(
         `SELECT approval_status, status FROM provider_services WHERE id = $1`,
         [id],

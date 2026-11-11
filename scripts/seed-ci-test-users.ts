@@ -34,6 +34,26 @@ async function hashPassword(password: string): Promise<string> {
   });
 }
 
+// Slice 0 (ledger `2026-11-10-slice0-staff-roles`): a staff approval waits for the OWNER's sign-off, so the
+// journeys that publish a listing need an owner to confirm it. The CI owner exists ONLY on a loopback database
+// (the CI Postgres); against any other host it is skipped, so a known-password owner can never land elsewhere.
+const CI_OWNER = {
+  email: 'ci-owner@traveloure.test',
+  password: 'CITestOwner!99',
+  role: 'owner',
+  firstName: 'CI',
+  lastName: 'Owner',
+};
+
+function isLoopbackDatabase(url: string | undefined): boolean {
+  try {
+    const host = new URL(url ?? '').hostname.toLowerCase();
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
+  } catch {
+    return false;
+  }
+}
+
 const CI_USERS = [
   {
     email: 'ci-expert@traveloure.test',
@@ -170,7 +190,10 @@ async function main() {
 
   let eaUserId: string | null = null;
 
-  for (const user of CI_USERS) {
+  const users = isLoopbackDatabase(process.env.DATABASE_URL) ? [...CI_USERS, CI_OWNER] : CI_USERS;
+  if (users === CI_USERS) console.log('[seed-ci-test-users] Not a loopback database: the CI owner is not seeded.');
+
+  for (const user of users) {
     const hashed = await hashPassword(user.password);
 
     const result = await pool.query<{ id: string }>(
