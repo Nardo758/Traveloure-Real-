@@ -68,7 +68,7 @@ before(async () => {
   const admin = await registerAndSignIn({ baseUrl: BASE_URL, email: adminEmail, password: "TestPass123!", firstName: "Gap7", lastName: "Admin", extra: SUPPLY_PROVIDER_SIGNUP_EXTRA });
   adminCookie = admin.cookie;
   adminId = admin.id;
-  await pool.query(`UPDATE users SET role = 'admin' WHERE id = $1`, [adminId]);
+  await pool.query(`UPDATE users SET role = 'owner' WHERE id = $1`, [adminId]); // slice 0: the platform-settings write is owner-only
   await pool.query(`INSERT INTO users (id, email, first_name, role) VALUES ($1, $2, 'Gap7', 'user')`, [travelerId, `${travelerId}@traveloure.test`]);
   const s = await pool.query(`SELECT setting_value FROM platform_settings WHERE setting_key = $1`, [SUPPORT_FIRST_RESPONSE_HOURS_SETTING]);
   savedSetting = s.rows[0]?.setting_value ?? null;

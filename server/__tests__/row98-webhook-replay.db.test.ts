@@ -62,7 +62,7 @@ before(async () => {
   const admin = await registerAndSignIn({ baseUrl: BASE_URL, email: `r98r-${RUN}-admin@traveloure.test`, password: "TestPass123!", firstName: "Row", lastName: "Admin", extra: { intent: "supply" } });
   adminCookie = admin.cookie;
   userIds.push(admin.id);
-  await pool.query(`UPDATE users SET role = 'admin' WHERE id = $1`, [admin.id]);
+  await pool.query(`UPDATE users SET role = 'owner' WHERE id = $1`, [admin.id]); // slice 0: webhook replay is owner-only
   const user = await registerAndSignIn({ baseUrl: BASE_URL, email: `r98r-${RUN}-user@traveloure.test`, password: "TestPass123!", firstName: "Row", lastName: "User", extra: { intent: "supply" } });
   userCookie = user.cookie;
   userIds.push(user.id);
