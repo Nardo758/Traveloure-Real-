@@ -142,7 +142,7 @@ export function TripStrip({
   );
   // Visibility rule: a trip is in progress when any detail is set OR the cart has items — or (v2)
   // when the ONE plan state names a plan, which is how a guest with a saved plan sees the strip.
-  const showsPlan = planState.kind !== "start";
+  const showsPlan = planState.kind !== "start" && planState.kind !== "loading";
   if (!hasContext && cartCount === 0 && !showsPlan) return null;
 
   const vocab = classify(ctx.experienceType);

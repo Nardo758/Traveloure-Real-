@@ -24,6 +24,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import {
+  headerCity,
   GUEST_PLAN_HREF,
   HEADER_ADD_DATES_LABEL,
   activeHeaderTrip,
@@ -52,7 +53,7 @@ describe("slice A — the header plan state", () => {
   it("H1 a guest with nothing, or with a failed/expired read, gets Start a plan", () => {
     assert.deepEqual(headerPlanState({ isSignedIn: false, guestStatus: "idle", guestPlan: null, trips: null }), { kind: "start" });
     assert.deepEqual(headerPlanState({ isSignedIn: false, guestStatus: "error", guestPlan: null, trips: null }), { kind: "start" }, "404 / expired");
-    assert.deepEqual(headerPlanState({ isSignedIn: false, guestStatus: "loading", guestPlan: guest({}, 3), trips: null }), { kind: "start" }, "a read in flight claims nothing");
+    assert.deepEqual(headerPlanState({ isSignedIn: false, guestStatus: "loading", guestPlan: guest({}, 3), trips: null }), { kind: "loading" }, "a read in flight claims nothing — and is not Start a plan either (QA round 3, major 5)");
   });
 
   it("H2 a guest whose plan is EMPTY gets Start a plan that reopens it", () => {
@@ -76,6 +77,19 @@ describe("slice A — the header plan state", () => {
     assert.match(STRIP, /planState\.guest\s*\?\s*GUEST_PLAN_HREF\s*:\s*planningRouteForTrip\(planState\.planId/, "guest → /plans/new, owner → the planning route");
     const hrefLines = STRIP.split("\n").filter((line) => line.includes("GUEST_PLAN_HREF") || line.includes("planningRouteForTrip("));
     for (const line of hrefLines) assert.doesNotMatch(line, /\?view=/, line);
+  });
+
+  it("H3b the city is the first comma segment; a read in flight draws nothing (QA round 3, majors 2 and 5)", () => {
+    const state = headerPlanState({ isSignedIn: false, guestStatus: "ready", guestPlan: guest({ destination: "Kyoto, Japan" }, 2), trips: null });
+    assert.equal(headerPlanLabel(state), "Your Kyoto plan \u00b7 2", "never 'Your Kyoto, Japan plan'");
+    assert.equal(headerCity("  Porto , Portugal"), "Porto");
+    assert.equal(headerCity(", Japan"), null);
+    assert.deepEqual(headerPlanState({ isSignedIn: false, guestStatus: "loading", guestPlan: null, trips: null }), { kind: "loading" });
+    assert.deepEqual(headerPlanState({ isSignedIn: true, guestStatus: "idle", guestPlan: null, trips: undefined }), { kind: "loading" });
+    assert.deepEqual(headerPlanState({ isSignedIn: true, guestStatus: "idle", guestPlan: null, trips: [] }), { kind: "start" });
+    const LAYOUT = fs.readFileSync("client/src/components/layout.tsx", "utf8");
+    assert.match(LAYOUT, /const navReservesStart = headerState\.kind === "loading"/, "the nav reserves the slot while loading");
+    assert.match(LAYOUT, /headerTripsLoading \? undefined : \(headerTrips \?\? \[\]\)/, "undefined while the list is in flight");
   });
 
   it("H4 without a city, the label falls back", () => {

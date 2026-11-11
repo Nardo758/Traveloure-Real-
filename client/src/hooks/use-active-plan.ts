@@ -16,12 +16,14 @@ export function useActivePlan(): {
   bound: string | null;
   active: HeaderTrip | null;
   signedIn: boolean;
+  /** Signed in and the list has not answered yet. */
+  loading: boolean;
 } {
   const { user } = useAuth();
   const search = useSearch();
   const [ctx] = useTripContext();
-  const { data } = useQuery<HeaderTrip[]>({ queryKey: ["/api/trips"], enabled: !!user });
+  const { data, isLoading } = useQuery<HeaderTrip[]>({ queryKey: ["/api/trips"], enabled: !!user });
   const trips = Array.isArray(data) ? data : null;
   const bound = boundTripId(search, ctx.tripId);
-  return { trips, bound, active: pickActivePlan(trips, bound), signedIn: !!user };
+  return { trips, bound, active: pickActivePlan(trips, bound), signedIn: !!user, loading: !!user && isLoading };
 }

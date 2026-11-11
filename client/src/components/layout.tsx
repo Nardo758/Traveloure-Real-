@@ -654,7 +654,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   // picker and the pending-add flush read too.
   const guestPresent = typeof document !== "undefined" && hasGuestPresenceCookie(document.cookie);
   const guestPlanQuery = useGuestPlan(guestPresent && !user);
-  const { trips: headerTrips, bound: headerBound } = useActivePlan();
+  const { trips: headerTrips, bound: headerBound, loading: headerTripsLoading } = useActivePlan();
   const headerState = headerPlanState({
     isSignedIn: !!user,
     guestStatus: guestPlanQuery.isLoading
@@ -665,7 +665,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
           ? "ready"
           : "idle",
     guestPlan: (guestPlanQuery.data ?? null) as unknown as Parameters<typeof headerPlanState>[0]["guestPlan"],
-    trips: headerTrips ?? null,
+    // Signed in: `undefined` until /api/trips answers ⇒ `loading` (nothing drawn); signed out: null.
+    trips: user ? (headerTripsLoading ? undefined : (headerTrips ?? [])) : null,
     bound: headerBound,
   });
   // Slice B: the plan the strip's dates segment re-dates (the same plan the label names).
@@ -674,8 +675,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
     trips: headerTrips ?? null,
     bound: headerBound,
   });
-  // Header fix v2: the nav keeps ONLY the start CTA. Anything else is the strip's.
+  // Header fix v2: the nav keeps ONLY the start CTA. Anything else is the strip's. While a read is
+  // in flight (`loading`) the slot draws nothing — width reserved — so no second plan can start
+  // before the first one has been read (QA round 3, major 5).
   const navShowsStart = headerState.kind === "start";
+  const navReservesStart = headerState.kind === "loading";
   // QA F6 — see DesktopDropdown: the navbar, not each trigger, knows which menu is open.
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const navRef = useRef<HTMLElement>(null);
@@ -955,6 +959,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               {/* Header fix v2 (decision-maker Nov 11, 2026): the nav slot is the plain "Start a plan"
                   ONLY while there is no plan; with one, the Trip Strip under the nav is the plan surface
                   and this slot draws nothing. */}
+              {navReservesStart && <span className="hidden xl:inline-block w-[7.5rem]" aria-hidden="true" data-testid="nav-start-plan-reserved" />}
               {navShowsStart && (
                 <Button
                   asChild
