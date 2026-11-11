@@ -102,7 +102,7 @@ before(async () => {
   await db.execute(sql`INSERT INTO users (id, email, first_name, last_name, role) VALUES (${owner}, ${`${owner}@t.test`}, 'PLE', 'traveler', 'traveler')`);
   for (const t of [FREE, PAID, TWIN, OPT]) {
     await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, market_slug, timezone, start_date, end_date, status, dates_confirmed_at)
-      VALUES (${t}, ${owner}, 'PLE', 'Edinburgh, UK', 'edinburgh', 'Asia/Tokyo', '2026-11-11', '2026-11-12', 'draft', now())`);
+      VALUES (${t}, ${owner}, 'PLE', 'Edinburgh, UK', 'edinburgh', 'Asia/Tokyo', '2027-11-11', '2027-11-12', 'draft', now())`);
     await stops(t);
   }
   for (const t of [PAID, TWIN]) {
@@ -332,7 +332,7 @@ test("E14: after an Optimize run, the plan's legs come from its own version legs
 async function threeLegPlan(key: string): Promise<string> {
   const trip = id(key);
   await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, market_slug, timezone, start_date, end_date, status, dates_confirmed_at)
-    VALUES (${trip}, ${owner}, 'PLE', 'Edinburgh, UK', 'edinburgh', 'Asia/Tokyo', '2026-11-11', '2026-11-12', 'draft', now())`);
+    VALUES (${trip}, ${owner}, 'PLE', 'Edinburgh, UK', 'edinburgh', 'Asia/Tokyo', '2027-11-11', '2027-11-12', 'draft', now())`);
   await item(trip, "a", 1, 0, P(0, 0), "09:00", "10:00");
   await item(trip, "b", 1, 1, P(0.03, 0.02), "11:00", "12:00");
   await item(trip, "c", 1, 2, P(0.032, 0.021), "13:00", "14:00");
@@ -368,7 +368,7 @@ async function insertThenRemoveX(trip: string, restore: { calls: number }): Prom
 test("E15: a plan whose dates nobody confirmed builds no legs and says why (E1 ruling 7)", async () => {
   const UNDATED = id("undated");
   await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, market_slug, timezone, start_date, end_date, status)
-    VALUES (${UNDATED}, ${owner}, 'PLE', 'Edinburgh, UK', 'edinburgh', 'Asia/Tokyo', '2026-11-11', '2026-11-12', 'draft')`);
+    VALUES (${UNDATED}, ${owner}, 'PLE', 'Edinburgh, UK', 'edinburgh', 'Asia/Tokyo', '2027-11-11', '2027-11-12', 'draft')`);
   try {
     await stops(UNDATED);
     await db.execute(sql`INSERT INTO trip_entitlements (id, trip_id, plan_key, status, source) VALUES (${`${UNDATED}-pass`}, ${UNDATED}, 'trip_pass', 'active', 'manual')`);

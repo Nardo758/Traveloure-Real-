@@ -62,7 +62,7 @@ before(async () => {
   if (!["localhost", "127.0.0.1", "::1", ""].includes(host) && process.env.JOURNEY_DB_WRITES_OK !== "1") throw new Error(`refusing ${host}`);
   await db.execute(sql`INSERT INTO users (id, email, first_name, last_name, role) VALUES (${owner}, ${`${owner}@t.test`}, 'RK', 'traveler', 'traveler')`);
   await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, market_slug, timezone, start_date, end_date, status, dates_confirmed_at)
-    VALUES (${TRIP}, ${owner}, 'RK', 'Kyoto, Japan', 'kyoto', 'Asia/Tokyo', '2026-11-11', '2026-11-11', 'draft', now())`);
+    VALUES (${TRIP}, ${owner}, 'RK', 'Kyoto, Japan', 'kyoto', 'Asia/Tokyo', '2027-11-11', '2027-11-11', 'draft', now())`);
   await db.execute(sql`INSERT INTO trip_entitlements (id, trip_id, plan_key, status, source) VALUES (${`${TRIP}-pass`}, ${TRIP}, 'trip_pass', 'active', 'manual')`);
   // Neither item carries a Google place id — the case 389 could not key.
   await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, title, item_type, day_number, sort_order, latitude, longitude, start_time, end_time, origin) VALUES
