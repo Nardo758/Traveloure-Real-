@@ -22,6 +22,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { parseApiErrorMessage } from "@/lib/api-error";
 import { useToast } from "@/hooks/use-toast";
 import { attestationLabel } from "@shared/supply-registration";
+import { OWNER_SIGNOFF_TITLE, PROVIDER_AWAITING_OWNER_DESCRIPTION, readApprovalOutcome } from "@/lib/owner-signoff-copy";
 
 interface ProviderApplication {
   id: string;
@@ -231,9 +232,9 @@ export default function AdminProviders() {
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status, rejectionMessage }: { id: string; status: string; rejectionMessage?: string }) => {
-      return apiRequest("PATCH", `/api/admin/provider-applications/${id}/status`, { status, rejectionMessage });
+      return readApprovalOutcome(await apiRequest("PATCH", `/api/admin/provider-applications/${id}/status`, { status, rejectionMessage }));
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (outcome, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/provider-applications"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/platform-service-providers"] });
       // F-5: the admin sidebar's Providers badge is the Stripe-incomplete count
@@ -243,6 +244,11 @@ export default function AdminProviders() {
       // queue empties. Invalidated for BOTH outcomes — the mutation is one handler for approve and
       // reject, and either can move the set.
       queryClient.invalidateQueries({ queryKey: ["/api/admin/providers/stripe-incomplete-count"] });
+      // Slice 0: a staff approval that waits for the owner is not an approval yet — say what actually happened.
+      if (variables.status === "approved" && outcome.awaitingOwnerSignoff) {
+        toast({ title: OWNER_SIGNOFF_TITLE, description: PROVIDER_AWAITING_OWNER_DESCRIPTION });
+        return;
+      }
       toast({
         title: variables.status === "approved" ? "Provider Approved" : "Application Rejected",
         description: variables.status === "approved"

@@ -21,6 +21,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { CheckCircle2, XCircle, Clock, History } from "lucide-react";
+import { LISTING_AWAITING_OWNER_DESCRIPTION, OWNER_SIGNOFF_TITLE, readApprovalOutcome } from "@/lib/owner-signoff-copy";
 
 /**
  * Provenance spine move 5 (ledger 2026-08-23-provenance-audit-read): the per-listing audit timeline.
@@ -135,8 +136,13 @@ export default function ServiceApprovals() {
   };
 
   const approveMutation = useMutation({
-    mutationFn: (id: string) => apiRequest("POST", `/api/admin/provider-services/${id}/approve`, {}),
-    onSuccess: () => { toast({ title: "Service approved", description: "It's now live and bookable." }); invalidate(); },
+    mutationFn: async (id: string) => readApprovalOutcome(await apiRequest("POST", `/api/admin/provider-services/${id}/approve`, {})),
+    onSuccess: (outcome) => {
+      // Slice 0: a staff approval that waits for the owner is not "live" — say what actually happened.
+      if (outcome.awaitingOwnerSignoff) toast({ title: OWNER_SIGNOFF_TITLE, description: LISTING_AWAITING_OWNER_DESCRIPTION });
+      else toast({ title: "Service approved", description: "It's now live and bookable." });
+      invalidate();
+    },
     onError: (e: any) => toast({ title: "Approve failed", description: e.message, variant: "destructive" }),
   });
 
