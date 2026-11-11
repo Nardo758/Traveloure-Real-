@@ -8,6 +8,14 @@
  *   B4 R4b-3 ruling: two plans — the item saved on plan A is a saved key, and the same item still saves to plan B.
  *   B3 R4b-3 the signed-in read answers the keys the traveler's own plans hold; another user's plan and an ended plan
  *      are not read.
+ *   B5 QA round 3 major 1 (guest rail): Chion-in runs Nov 17 – Dec 6; a guest plan confirmed Nov 20–22 ACCEPTS it and
+ *      places it on the first overlapping day (Day 1, scheduled 2026-11-20). B1's Nov 7–8 is still refused.
+ *   B6 QA round 3 major 1 (signed-in rail): the same event on a signed-in plan confirmed Nov 20–22 is accepted on Day 1;
+ *      on one confirmed Nov 7–8 it is refused with the event's own start day. STATED LIMIT (§18d, the ap1 precedent):
+ *      `POST /api/trips/:tripId/itinerary-items` lives in the server/routes.ts MONOLITH, which no test mounts; this
+ *      drives the sequence that handler runs (resolve → refuse → place → `storage.createItineraryItem`), and
+ *      round4b-fixes.test.tsx pins that the handler passes the event's start AND end.
+ *   B7 QA round 3 major 1 ("Plan around it"): `landRefOnNewPlan` on a plan confirmed Nov 20–22 lands the event on Day 1.
  *
  * Disposable database only. Rows this file writes are removed in after().
  *
@@ -29,6 +37,9 @@ import {
   savedRefKeysForUser,
   updateGuestPlan,
 } from "../services/guest-plan.service";
+import { planMarkets, resolvePlanItemRef } from "../services/guest-item-source.service";
+import { landRefOnNewPlan } from "../services/plan-item-ref-write.service";
+import { eventOutsideConfirmedDates, eventPlanPlacement } from "@shared/plan-dates";
 
 const DISPOSABLE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0", ""]);
 function assertDisposableDb() {
@@ -146,5 +157,63 @@ describe("Round 4b", () => {
     assert.ok(onB?.id && onB.id !== onA.id, "a second plan takes its own item");
     const rows = await db.select({ tripId: itineraryItems.tripId }).from(itineraryItems).where(inArray(itineraryItems.tripId, [a, b]));
     assert.deepEqual(rows.map((r) => r.tripId).sort(), [a, b].sort());
+  });
+  it("B5 guest, confirmed Nov 20–22: Chion-in (Nov 17 – Dec 6) is accepted on the first overlapping day", async () => {
+    const { hash, tripId } = await guestPlan({ startDate: "2026-11-20", endDate: "2026-11-22" });
+    const out: any = await saveGuestPlanItem(hash, CHIONIN as any);
+    assert.equal(out.ok, true, JSON.stringify(out));
+    const [row] = await db.select().from(itineraryItems).where(eq(itineraryItems.id, out.itemId));
+    assert.equal(row.tripId, tripId);
+    assert.equal(String(row.scheduledDate).slice(0, 10), "2026-11-20", "the first day the event and the plan share");
+    assert.equal(row.dayNumber, 1);
+  });
+
+  const confirmedTrip = async (startDate: string, endDate: string) => {
+    const [t] = await db
+      .insert(trips)
+      .values({ userId: userA, title: `R4b QA3 ${tag}`, destination: "Kyoto, Japan", startDate, endDate, datesConfirmedAt: new Date() } as any)
+      .returning();
+    tripIds.add(t.id);
+    return t as any;
+  };
+
+  /** The signed-in handler's own sequence (server/routes.ts, the ref branch of POST /api/trips/:tripId/itinerary-items). */
+  const signedInSave = async (tripRow: any) => {
+    const planDays = Math.round((Date.parse(`${String(tripRow.endDate).slice(0, 10)}T00:00:00Z`) - Date.parse(`${String(tripRow.startDate).slice(0, 10)}T00:00:00Z`)) / 86_400_000) + 1;
+    const resolved = await resolvePlanItemRef(CHIONIN as any, { markets: await planMarkets(tripRow.id), planDays });
+    assert.equal(resolved.ok, true, JSON.stringify(resolved));
+    const src = (resolved as any).source;
+    const eventDays = { start: src.eventDate, end: src.eventEndDate };
+    const planWindow = { startDate: tripRow.startDate, endDate: tripRow.endDate, datesConfirmed: tripRow.datesConfirmedAt != null };
+    if (eventOutsideConfirmedDates(eventDays, planWindow)) return { refused: String(src.eventDate).slice(0, 10) } as const;
+    const placement = eventPlanPlacement(eventDays, planWindow);
+    const item: any = await storage.createItineraryItem(
+      { tripId: tripRow.id, title: src.title, dayNumber: placement?.dayNumber ?? 1, status: "planned", ...(placement ? { scheduledDate: placement.scheduledDate } : {}) } as any,
+      { contentLink: { contentType: src.contentType, contentId: src.contentId } },
+    );
+    return { item } as const;
+  };
+
+  it("B6 signed-in rail: overlap accepted on Day 1; no overlap refused with the event's start day", async () => {
+    const inside = await confirmedTrip("2026-11-20", "2026-11-22");
+    const ok: any = await signedInSave(inside);
+    assert.ok(ok.item?.id, JSON.stringify(ok));
+    const [row] = await db.select().from(itineraryItems).where(eq(itineraryItems.id, ok.item.id));
+    assert.equal(String(row.scheduledDate).slice(0, 10), "2026-11-20");
+    assert.equal(row.dayNumber, 1);
+
+    const before = await confirmedTrip("2026-11-07", "2026-11-08");
+    assert.deepEqual(await signedInSave(before), { refused: "2026-11-17" });
+    const rows = await db.select().from(itineraryItems).where(eq(itineraryItems.tripId, before.id));
+    assert.equal(rows.length, 0, "nothing written");
+  });
+
+  it("B7 Plan around it: the event lands on the first overlapping day of a confirmed plan", async () => {
+    const t = await confirmedTrip("2026-11-20", "2026-11-22");
+    const out: any = await landRefOnNewPlan(t, CHIONIN as any);
+    assert.equal(out.ok, true, JSON.stringify(out));
+    const [row] = await db.select().from(itineraryItems).where(eq(itineraryItems.id, out.itemId));
+    assert.equal(String(row.scheduledDate).slice(0, 10), "2026-11-20");
+    assert.equal(row.dayNumber, 1);
   });
 });

@@ -51,6 +51,11 @@ export interface ResolvedPlanSource {
    * kind and for an event with no stated start (§13 — never today, never a guess).
    */
   eventDate?: string | null;
+  /**
+   * QA round 3 major 1: an event's LAST day, in the same market calendar, from the row's own end. Absent when the row
+   * states no end — the save rails then keep the start-only rule (§13: never a guessed length).
+   */
+  eventEndDate?: string | null;
   /** A-29: a city event's wall-clock start ("HH:MM", market zone), only when the row says its time is known. */
   startTime?: string | null;
 }
@@ -137,7 +142,7 @@ async function event(id: string): Promise<Resolved> {
   // ONE id per kind (CAP-2 input): an event is named by its Fever event id — `fever_event_cache.event_id`, the same id
   // the public event payload carries as `id`. The cache answers first; a miss asks Fever for that same id.
   const [row] = await db
-    .select({ title: feverEventCache.title, venueName: feverEventCache.venueName, latitude: feverEventCache.latitude, longitude: feverEventCache.longitude, startDate: feverEventCache.startDate, city: feverEventCache.city })
+    .select({ title: feverEventCache.title, venueName: feverEventCache.venueName, latitude: feverEventCache.latitude, longitude: feverEventCache.longitude, startDate: feverEventCache.startDate, endDate: feverEventCache.endDate, city: feverEventCache.city })
     .from(feverEventCache)
     .where(eq(feverEventCache.eventId, id))
     .limit(1);
@@ -145,6 +150,7 @@ async function event(id: string): Promise<Resolved> {
   let venueName = clean(row?.venueName);
   let point = row ? pointOf(row.latitude, row.longitude) : null;
   let eventDate = row ? eventDayInMarket(row.startDate, resolveMarketSlug(row.city ?? "")) : null;
+  let eventEndDate = row ? eventDayInMarket(row.endDate, resolveMarketSlug(row.city ?? "")) : null;
   let rowCity: string | null = row?.city ?? null;
   if (!row || !title) {
     const live = await feverLookup(id).catch(() => null);
@@ -155,6 +161,7 @@ async function event(id: string): Promise<Resolved> {
     venueName = clean(live.venue?.name);
     point = pointOf(live.venue?.coordinates?.lat, live.venue?.coordinates?.lng);
     eventDate = eventDayInMarket((live as any).dates?.startDate ?? null, resolveMarketSlug((live as any).city?.name ?? ""));
+    eventEndDate = eventDayInMarket((live as any).dates?.endDate ?? null, resolveMarketSlug((live as any).city?.name ?? ""));
   }
   return accept({
     ...base(title, point),
@@ -164,6 +171,7 @@ async function event(id: string): Promise<Resolved> {
     contentType: "event",
     contentId: id,
     eventDate,
+    eventEndDate,
     rowCity,
   });
 }
@@ -171,7 +179,7 @@ async function event(id: string): Promise<Resolved> {
 /** Ruling 9: a city event (migration 439's Kyoto rows among them) is named by its `source_id`; exactly one row answers. */
 async function cityEvent(id: string): Promise<Resolved> {
   const rows = await db
-    .select({ title: cityEvents.title, city: cityEvents.city, venue: cityEvents.venue, venueLat: cityEvents.venueLat, venueLng: cityEvents.venueLng, startsAt: cityEvents.startsAt, startTimeKnown: cityEvents.startTimeKnown, withdrawnAt: cityEvents.withdrawnAt })
+    .select({ title: cityEvents.title, city: cityEvents.city, venue: cityEvents.venue, venueLat: cityEvents.venueLat, venueLng: cityEvents.venueLng, startsAt: cityEvents.startsAt, endsAt: cityEvents.endsAt, startTimeKnown: cityEvents.startTimeKnown, withdrawnAt: cityEvents.withdrawnAt })
     .from(cityEvents)
     .where(eq(cityEvents.sourceId, id))
     .limit(2);
@@ -190,6 +198,7 @@ async function cityEvent(id: string): Promise<Resolved> {
     contentType: "city_event",
     contentId: id,
     eventDate: eventDayInMarket(row.startsAt, market),
+    eventEndDate: eventDayInMarket(row.endsAt, market),
     startTime: row.startTimeKnown === true ? eventTimeInMarket(row.startsAt, market) : null,
     rowCity: row.city,
   });
@@ -311,6 +320,11 @@ export async function resolvePlanItemRef(
   // is used only when the row states none (a live Fever answer with no dates). It never sets a time.
   if (out.ok && (ref.kind === "event" || ref.kind === "city_event") && !out.source.eventDate && ref.placement?.starts_at) {
     out.source.eventDate = eventDayInMarket(ref.placement.starts_at, resolveMarketSlug(out.source.rowCity ?? ref.city));
+  }
+  // QA round 3 major 1: the card's end is a hint on the same terms — used only when the row states no end AND the start
+  // came from the same place (a row start with a card end would pair two sources' clocks).
+  if (out.ok && (ref.kind === "event" || ref.kind === "city_event") && !out.source.eventEndDate && ref.placement?.ends_at && ref.placement?.starts_at && out.source.eventDate === eventDayInMarket(ref.placement.starts_at, resolveMarketSlug(out.source.rowCity ?? ref.city))) {
+    out.source.eventEndDate = eventDayInMarket(ref.placement.ends_at, resolveMarketSlug(out.source.rowCity ?? ref.city));
   }
   return out;
 }

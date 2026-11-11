@@ -7,11 +7,11 @@
 import { logger } from "../infrastructure/logger";
 import { storage } from "../storage";
 import { planMarkets, resolvePlanItemRef } from "./guest-item-source.service";
-import { guestEventPlacement } from "./guest-plan.service";
+import { eventPlanPlacement } from "@shared/plan-dates";
 import type { PlanItemRef } from "@shared/plan-item-ref";
 
 export async function landRefOnNewPlan(
-  trip: { id: string; startDate: unknown; endDate: unknown },
+  trip: { id: string; startDate: unknown; endDate: unknown; datesConfirmedAt?: unknown },
   ref: PlanItemRef,
 ): Promise<{ ok: true; itemId: string } | { ok: false; reason: string }> {
   try {
@@ -24,7 +24,11 @@ export async function landRefOnNewPlan(
       return { ok: false, reason: resolved.reason };
     }
     const src = resolved.source;
-    const placement = guestEventPlacement(src.eventDate ?? null, start, end);
+    // QA round 3 major 1: the same placement rule as both save rails (first overlapping day on confirmed dates).
+    const placement = eventPlanPlacement(
+      { start: src.eventDate, end: src.eventEndDate },
+      { startDate: start, endDate: end, datesConfirmed: trip.datesConfirmedAt != null },
+    );
     const item = await storage.createItineraryItem(
       {
         tripId: trip.id,

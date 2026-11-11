@@ -61,8 +61,15 @@ describe("Round 4b fixes", () => {
     assert.equal(planSaveRefusalMessage(new Error('400: {"code":"unknown_source"}')), null);
     assert.equal(planSaveRefusalMessage(new Error("Failed")), null);
     // Both rails apply the one rule.
-    assert.match(read("server/services/guest-plan.service.ts"), /if \(eventOutsideConfirmedDates\(source\.eventDate, \{ startDate: trip\.startDate, endDate: trip\.endDate, datesConfirmed: trip\.datesConfirmedAt != null \}\)\)/);
-    assert.match(read("server/routes.ts"), /eventOutsideConfirmedDates\(src\.eventDate, \{ startDate: tripRow\.startDate, endDate: tripRow\.endDate, datesConfirmed: \(tripRow as any\)\.datesConfirmedAt != null \}\)/);
+    // QA round 3 major 1: both rails pass the event's start AND end, and the plan's confirmed window.
+    const guestRail = read("server/services/guest-plan.service.ts");
+    assert.match(guestRail, /const eventDays = \{ start: source\.eventDate, end: source\.eventEndDate \};/);
+    assert.match(guestRail, /const planWindow = \{ startDate: trip\.startDate, endDate: trip\.endDate, datesConfirmed: trip\.datesConfirmedAt != null \};/);
+    assert.match(guestRail, /if \(eventOutsideConfirmedDates\(eventDays, planWindow\)\)/);
+    const signedIn = read("server/routes.ts");
+    assert.match(signedIn, /const eventDays = \{ start: src\.eventDate, end: src\.eventEndDate \};/);
+    assert.match(signedIn, /datesConfirmed: \(tripRow as any\)\.datesConfirmedAt != null \} : null;/);
+    assert.match(signedIn, /if \(planWindow && eventOutsideConfirmedDates\(eventDays, planWindow\)\)/);
     // The signed-in dialog and the map rail show it.
     assert.match(read("client/src/components/add-to-experience-dialog.tsx"), /title: planSaveRefusalMessage\(err\) \?\? GUEST_PLAN_COPY\.saveFailed/);
     assert.match(read("client/src/components/plancard/MapControlCenter.tsx"), /const refusal = planSaveRefusalMessage\(e\);/);

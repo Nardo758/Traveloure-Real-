@@ -23,7 +23,7 @@ import { feverEventCache, itineraryItems, trips } from "@shared/schema";
 import guestPlansRoutes from "../routes/guest-plans.routes";
 import { feverService } from "../services/fever.service";
 import { setFeverEventLookupForTests } from "../services/guest-item-source.service";
-import { guestEventPlacement } from "../services/guest-plan.service";
+import { eventPlanPlacement } from "@shared/plan-dates";
 
 const DISPOSABLE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0", ""]);
 function assertDisposableDb() {
@@ -153,9 +153,10 @@ describe("Round 3 follow-ups 2 — event save", () => {
   });
 
   it("F3 outside the window the date is kept and the card's day is used; an unknown id is refused", async () => {
-    assert.deepEqual(guestEventPlacement("2026-12-01", "2026-11-07", "2026-11-09"), { scheduledDate: "2026-12-01", dayNumber: null });
-    assert.deepEqual(guestEventPlacement("2026-11-09", "2026-11-07", "2026-11-09"), { scheduledDate: "2026-11-09", dayNumber: 3 });
-    assert.equal(guestEventPlacement(null, "2026-11-07", "2026-11-09"), null);
+    const win = { startDate: "2026-11-07", endDate: "2026-11-09", datesConfirmed: false };
+    assert.deepEqual(eventPlanPlacement("2026-12-01", win), { scheduledDate: "2026-12-01", dayNumber: null });
+    assert.deepEqual(eventPlanPlacement("2026-11-09", win), { scheduledDate: "2026-11-09", dayNumber: 3 });
+    assert.equal(eventPlanPlacement(null, win), null);
     setFeverEventLookupForTests(async () => null);
     const call = guest();
     await call("POST", "/api/guest-plans", { destination: "Kyoto, Japan" });

@@ -16,7 +16,7 @@
  *   · retention — unclaimed guest plans whose last change is older than GUEST_PLAN_RETENTION_DAYS are deleted
  *               (items cascade); unset ⇒ disabled, deletes nothing (ruling 6).
  */
-import { eventOutsideConfirmedDates } from "@shared/plan-dates";
+import { eventOutsideConfirmedDates, eventPlanPlacement } from "@shared/plan-dates";
 import { occasionLabelForPlan } from "./occasion-label.service";
 import { savedRefKeyOfItem } from "@shared/plan-item-ref";
 import crypto, { createHash } from "node:crypto";
@@ -416,23 +416,6 @@ export type GuestSaveOutcome =
   | { ok: true; itemId: string; located: boolean; existing: boolean; item: GuestPlanView["items"][number] | null }
   | { ok: false; code: "no_plan" | PlanItemRejectReason; eventDate?: string };
 
-/**
- * R3-17, pure: where an event lands on a plan — its own date, and that date's day number inside the plan's window
- * (null day number when the window does not hold it). No event date ⇒ null (the item keeps the ordinary day 1).
- */
-export function guestEventPlacement(
-  eventDate: string | null,
-  planStart: string,
-  planEnd: string,
-): { scheduledDate: string; dayNumber: number | null } | null {
-  if (!eventDate || !/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) return null;
-  const start = planStart.slice(0, 10);
-  const end = planEnd.slice(0, 10);
-  if (eventDate < start || eventDate > end) return { scheduledDate: eventDate, dayNumber: null };
-  const day = Math.round((Date.parse(`${eventDate}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000) + 1;
-  return { scheduledDate: eventDate, dayNumber: day };
-}
-
 /** R3-1: where a save spends its time, in ms — sent as `Server-Timing` so a slow save names its step. */
 export type GuestSaveTimings = { plan: number; resolve: number; write: number; read: number };
 
@@ -466,13 +449,16 @@ export async function saveGuestPlanItem(
   if (!resolved.ok) return { ok: false, code: resolved.reason };
   const source = resolved.source;
   // R4b-1: an event outside the plan's CONFIRMED dates is refused; an unconfirmed plan lets the event set its own day.
-  if (eventOutsideConfirmedDates(source.eventDate, { startDate: trip.startDate, endDate: trip.endDate, datesConfirmed: trip.datesConfirmedAt != null })) {
+  // QA round 3 major 1: any overlap is inside; the placement below reads the same days through the same rule file.
+  const eventDays = { start: source.eventDate, end: source.eventEndDate };
+  const planWindow = { startDate: trip.startDate, endDate: trip.endDate, datesConfirmed: trip.datesConfirmedAt != null };
+  if (eventOutsideConfirmedDates(eventDays, planWindow)) {
     return { ok: false, code: "event_outside_dates", eventDate: String(source.eventDate).slice(0, 10) };
   }
   const located = source.latitude != null && source.longitude != null;
   // R3-17: an event lands on its own day — `scheduled_date` is the event's date, and its day number is that day's place
   // in the plan's window. A day the window does not hold keeps the date and lands on day 1 (never a guessed day).
-  const eventPlacement = guestEventPlacement(source.eventDate ?? null, String(trip.startDate), String(trip.endDate));
+  const eventPlacement = eventPlanPlacement(eventDays, planWindow);
   const out = await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"guest-plan-item:" + trip.id}))`);
     const sameSource = source.contentType && source.contentId

@@ -13559,7 +13559,10 @@ ${bannedCopyPromptLine()}`;
         const src = resolved.source;
         // R4b-1: the guest rail's rule — an event outside the plan's CONFIRMED dates is refused, naming its day.
         const { eventOutsideConfirmedDates, eventOutsideDatesMessage } = await import("@shared/plan-dates");
-        if (tripRow && eventOutsideConfirmedDates(src.eventDate, { startDate: tripRow.startDate, endDate: tripRow.endDate, datesConfirmed: (tripRow as any).datesConfirmedAt != null })) {
+        // QA round 3 major 1: any overlap is inside; the placement below reads the same days through the same rule file.
+        const eventDays = { start: src.eventDate, end: src.eventEndDate };
+        const planWindow = tripRow ? { startDate: tripRow.startDate, endDate: tripRow.endDate, datesConfirmed: (tripRow as any).datesConfirmedAt != null } : null;
+        if (planWindow && eventOutsideConfirmedDates(eventDays, planWindow)) {
           const day = String(src.eventDate).slice(0, 10);
           return res.status(400).json({ code: "event_outside_dates", eventDate: day, message: eventOutsideDatesMessage(day) });
         }
@@ -13582,8 +13585,8 @@ ${bannedCopyPromptLine()}`;
           if (src.locationName) itemData.locationName = src.locationName;
           else delete itemData.locationName;
           if (src.itemType) itemData.itemType = src.itemType;
-          const { guestEventPlacement } = await import("./services/guest-plan.service");
-          const placement = tripRow ? guestEventPlacement(src.eventDate ?? null, String(tripRow.startDate), String(tripRow.endDate)) : null;
+          const { eventPlanPlacement } = await import("@shared/plan-dates");
+          const placement = planWindow ? eventPlanPlacement(eventDays, planWindow) : null;
           const chosenDay = (parsedRef.ref as any).placement?.day_number as number | undefined;
           itemData.dayNumber = placement?.dayNumber ?? chosenDay ?? 1;
           if (placement) itemData.scheduledDate = placement.scheduledDate;
