@@ -134,9 +134,10 @@ test("8b-2 — start page → modal → the map opens on Browse with the trip's 
 
   // And it is the SAME plan in the list view.
   await testid(page, "button-slip-view-list").click();
-  // TEST EDIT (QA round 3 major 8, Leon, Nov 11, 2026): a confirmed plan now draws all four of its days, and the list
-  // opens its first day (an empty Day 1); the listing is on Day 2, so open that day. The four day blocks are the ruling.
+  // QA round 3 PR 1 (Leon, Nov 11, 2026): a confirmed plan draws all four of its days (major 8), and the list opens the
+  // first day holding an item — here Day 2, the only day with a stop — never the empty Day 1.
   for (const n of [1, 2, 3, 4]) await expect(testid(page, `slip-day-${n}`)).toBeVisible({ timeout: 15_000 });
-  await testid(page, "slip-day-toggle-2").click();
+  await expect(testid(page, "slip-day-body-2"), "Day 2 opens by default").toBeVisible();
+  await expect(testid(page, "slip-day-body-1"), "the empty Day 1 stays closed").toHaveCount(0);
   expect(await appears(page.getByText(listingName).first(), 15_000), "the list view shows the added listing").toBe(true);
 });
