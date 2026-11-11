@@ -1,0 +1,13 @@
+# Omit these workspace paths from the Replit Autoscale image.
+# Pattern syntax is .dockerignore. This file is not .gitignore:
+# tracked files under these paths stay in git.
+# None of them is an input to `npm run build:prod` or `npm start`.
+
+/.cache/
+/.local/
+/artifacts/
+/generated-artifacts/
+/journey-out/
+/playwright-report/
+/test-results/
+/.claude/
