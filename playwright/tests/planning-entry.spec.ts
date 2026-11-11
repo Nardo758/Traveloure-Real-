@@ -25,7 +25,7 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { registerAndSignIn } from "../utils/auth";
-import { pickPlanDates } from "./_plan-dates-calendar";
+import { pickPlanDates, tapPlanDay } from "./_plan-dates-calendar";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:5000";
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -183,6 +183,35 @@ test.describe("Single planning entry — PlanEntry", () => {
     await expect(page.getByTestId("plan-entry").first()).toContainText("Kyoto");
     expect(new URL(page.url()).pathname, "no plan was opened").toBe("/");
     expect(mints, "nothing is minted before Step 2 is answered").toBe(0);
+  });
+
+  test("QA round 3 option A: an earlier leave day shows the refusal; a tap while refused starts over", async ({ page }) => {
+    await openEntryFromHero(page);
+    await page.getByTestId("plan-entry-around-date").click();
+    await page.getByTestId("plan-entry-date-pick").click();
+    const cal = page.getByTestId("plan-entry-dates");
+    const now = new Date();
+    const day = (d: number) => {
+      const t = new Date(now.getFullYear(), now.getMonth() + 1, d);
+      return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+    };
+    const alert = cal.locator('[role="alert"]');
+    await tapPlanDay(cal, day(14));
+    await tapPlanDay(cal, day(11));
+    // The approved sentence shows; the range was not silently restarted on Nov 11.
+    await expect(alert).toHaveText("Leave date can't be before your arrive date.");
+    // While refused, an earlier tap starts a new range there; then the leave day completes it.
+    await tapPlanDay(cal, day(11));
+    await expect(alert).toHaveCount(0);
+    await tapPlanDay(cal, day(14));
+    await expect(alert).toHaveCount(0);
+    await expect(cal.getByTestId("plan-entry-dates-summary")).toHaveText(/11–14$/);
+    // A tap after the arrive day while refused sets the leave day and clears the refusal.
+    await tapPlanDay(cal, day(9));
+    await expect(alert).toBeVisible();
+    await tapPlanDay(cal, day(13));
+    await expect(alert).toHaveCount(0);
+    await expect(cal.getByTestId("plan-entry-dates-summary")).toHaveText(/11–13$/);
   });
 
   for (const entry of [

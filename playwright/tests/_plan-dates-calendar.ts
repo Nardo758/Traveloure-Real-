@@ -6,6 +6,12 @@
  * It works inside any container that holds one calendar: it walks the month caption to each day's
  * month with the picker's own previous/next buttons, then taps that month's day (never an outside
  * day from the neighbouring month). A same-day trip is the same day tapped twice.
+ *
+ * QA round 3 option A (Leon, Nov 11, 2026): on a calendar that already holds an arrive day, a tap before it is the
+ * LEAVE day and the pair is refused; a second tap there, while the refusal shows, starts a new range. So on a
+ * prefilled calendar `pickPlanDates` taps the new arrive day twice when the first tap was refused. STATED LIMIT: a new
+ * arrive day AFTER a prefilled one is read as a leave day (option A never moves the arrive day forward on one tap) —
+ * pick on an empty calendar, or an earlier arrive day, from this helper.
  */
 import type { Locator } from "@playwright/test";
 
@@ -30,7 +36,8 @@ async function showMonth(root: Locator, y: number, m: number): Promise<void> {
   throw new Error(`calendar never showed ${MONTHS[m]} ${y}`);
 }
 
-async function tapDay(root: Locator, day: string): Promise<void> {
+/** Tap one day (`YYYY-MM-DD`) on the one calendar inside `root`. */
+export async function tapPlanDay(root: Locator, day: string): Promise<void> {
   const { y, m, d } = parseDay(day);
   await showMonth(root, y, m);
   await root
@@ -42,6 +49,8 @@ async function tapDay(root: Locator, day: string): Promise<void> {
 
 /** Pick `start`..`end` (`YYYY-MM-DD`) on the one calendar inside `root`. */
 export async function pickPlanDates(root: Locator, start: string, end: string): Promise<void> {
-  await tapDay(root, start);
-  await tapDay(root, end);
+  await tapPlanDay(root, start);
+  // A prefilled calendar: an earlier arrive day was read as a refused leave day; tap it again to start there.
+  if (await root.locator('[role="alert"]').isVisible()) await tapPlanDay(root, start);
+  await tapPlanDay(root, end);
 }
