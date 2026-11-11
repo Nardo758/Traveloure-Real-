@@ -58,15 +58,16 @@ export function classify(experienceType?: string): VocabClass {
  * this is the only line that changes.
  */
 import { WAITLIST_COPY } from "./waitlist-copy";
+import { ADD_COPY } from "./add-to-plan";
 
 export const PLAN_NOUN = "Plan" as const;
 export const PLAN_NOUN_LOWER = "plan" as const;
 
 /**
- * Button label for an add that lands on the plan. CAP-2 Phase 3 (ruling Nov 6, "one label for one action"): "Add to
- * plan" is retired — every save reads the approved "Save to plan" (`WAITLIST_COPY`), on every surface.
+ * Button label for an add that lands on the plan. Cut-list #1 slice C (Wording approved — Leon, Nov 10): "Add to plan"
+ * on every add surface — supersedes the Nov 6 "Save to plan" for the add action (`lib/add-to-plan.ts`).
  */
-export const ADD_TO_PLAN_LABEL = WAITLIST_COPY.saveToPlan;
+export const ADD_TO_PLAN_LABEL = ADD_COPY.addToPlan;
 /** Button label for the trip-less / guest fallback, which genuinely is the cart. */
 export const ADD_TO_CART_LABEL = "Add to Cart";
 

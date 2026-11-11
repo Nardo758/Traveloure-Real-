@@ -109,7 +109,9 @@ describe("GATE-1B guest plan (client)", () => {
     const save = read("client/src/lib/browse-save.ts");
     // Lane 1 A-18 (sanctioned edit): the toast is said on the server's answer, with the hint when the place has no point.
     // CAP-2 (sanctioned edit): the save also carries the feed's chosen day.
-    assert.match(save, /saveToGuestPlan\(body, city, chosenDate\)\.then\(\s*\(result\) => toast\(\{ title: guestSavedMessage\(result\) \}\),/);
+    // Cut-list #1 slice C: the press runs through the one add runner, whose toast is the server's answer.
+    assert.match(save, /void runGuestAdd\(job\)/);
+    assert.match(read("client/src/lib/plan-add-runner.ts"), /return saveToGuestPlan\(job\.ref, job\.city, job\.chosenDate\)\.then\(/);
     const page = read("client/src/pages/guest-plan-map.tsx");
     assert.match(page, /if \(!isLoading && !user && mode === "waitlist"\) return <WaitlistGuestPlan \/>;/);
     const waitlistBody = page.slice(page.indexOf("function WaitlistGuestPlan()"));

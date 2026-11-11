@@ -29,9 +29,10 @@ import {
   type HeaderPlanState,
 } from "@/lib/header-plan";
 import { HeaderDatesPopover } from "@/components/HeaderDatesPopover";
+import { ADD_COPY } from "@/lib/add-to-plan";
 
 const CHIP_CLASS =
-  "inline-flex items-center gap-1.5 min-w-0 max-w-[200px] rounded-full border px-3 py-1 text-xs font-semibold " +
+  "inline-flex items-center gap-1.5 min-w-0 max-w-[200px] sm:max-w-[300px] rounded-full border px-3 py-1 text-xs font-semibold " +
   "hover:bg-[color:var(--earn-teal-wash)] transition-colors";
 const CHIP_STYLE = {
   fontFamily: "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
@@ -75,7 +76,7 @@ export function HeaderPlanCTA({
           <HeaderDatesPopover target={datesTarget} variant={variant}>
             <button
               type="button"
-              className="shrink-0 py-1 pr-3 underline-offset-2 hover:underline"
+              className="shrink-0 py-1 pr-3 sm:pr-0 underline-offset-2 hover:underline"
               style={{ color: "var(--earn-teal-ink)" }}
               data-testid="chip-nav-plan-dates"
             >
@@ -83,10 +84,17 @@ export function HeaderPlanCTA({
             </button>
           </HeaderDatesPopover>
         ) : (
-          <Link href={planHref} className="shrink-0 py-1 pr-3" style={{ color: "var(--earn-teal-ink)" }} data-testid="chip-nav-plan-dates">
+          <Link href={planHref} className="shrink-0 py-1 pr-3 sm:pr-0" style={{ color: "var(--earn-teal-ink)" }} data-testid="chip-nav-plan-dates">
             {dates}
           </Link>
         )}
+        {/* Cut-list #1 slice C: "View plan" from sm: up (a phone's chip is already the link to the plan). */}
+        <span className="hidden shrink-0 sm:inline" aria-hidden="true" style={{ color: "var(--earn-faint)" }}>
+          ·
+        </span>
+        <Link href={planHref} className="hidden shrink-0 py-1 pr-3 sm:inline" style={{ color: "var(--earn-teal-ink)" }} data-testid="chip-nav-plan-view">
+          {ADD_COPY.viewPlan}
+        </Link>
       </span>
     );
   }

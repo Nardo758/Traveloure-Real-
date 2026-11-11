@@ -19,7 +19,11 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { browseSavesToPlan, useSignupMode, type SignupMode } from "./signup-mode";
-import { cityFromPath, guestItemFromFeedItem, guestSavedMessage, guestSaveErrorMessage, resolveSaveCity, saveToGuestPlan } from "./waitlist-guest-plan";
+import { cityFromPath, guestItemFromFeedItem, guestSaveErrorMessage, resolveSaveCity } from "./waitlist-guest-plan";
+import { queuePlanAdd, runGuestAdd, runSignedInRefAdd } from "./plan-add-runner";
+import { useSignInModal } from "@/contexts/SignInModalContext";
+import type { PlanItemRef } from "@shared/plan-item-ref";
+import { savedRefKey } from "./saved-refs";
 
 export type BrowseSavePath = "wait" | "guest_save" | "card_add";
 
@@ -31,7 +35,10 @@ export function browseSavePath(s: { modeLoading: boolean; authLoading: boolean; 
 
 export function useBrowseSaveToPlan(): {
   saveToPlan: boolean;
-  /** A-12: either read is still in flight — the card draws its add control disabled. */
+  /**
+   * A-12: either read is still in flight. Slice C: the control stays pressable — a first tap waits in the one slot
+   * and shows the spinner — so cards no longer disable on this; it is kept for callers that lay out around it.
+   */
   pending: boolean;
   /**
    * Wraps a card's `onAdd`: in save-to-plan mode the press saves the item to the guest plan (the card's own `onAdd`
@@ -47,23 +54,34 @@ export function useBrowseSaveToPlan(): {
   const saveToPlan = browseSavesToPlan(mode, !authLoading && !!user);
   const path = browseSavePath({ modeLoading, authLoading, mode, signedIn: !!user });
 
-  const guestSave = (item: unknown) => {
-    // A-1: the card names its source row, or nothing is sent (no "Saved" on nothing).
-    // A-2: the city a first save starts the plan in — the route's, then the page's (the card's own `city`, which it
-    // puts on the payload), then the item's own. None ⇒ nothing is sent.
+  /** The card's PlanItemRef, in the press's city — or null (nothing is sent: no "Added" on nothing). */
+  const refFor = (item: unknown) => {
+    // A-1: the card names its source row. A-2: the city a first save starts the plan in — the route's, then the
+    // page's (the card's own `city`), then the item's own. None ⇒ nothing is sent.
     const city = resolveSaveCity(cityFromPath(pathname), (item as any)?.city ?? null, (item as any)?.itemCity ?? null);
-    // A-1 / CAP-2: the card's PlanItemRef, in that city.
-    const body = city ? guestItemFromFeedItem(item as any, city) : null;
-    if (!body || !city) {
+    const ref = city ? guestItemFromFeedItem(item as any, city) : null;
+    if (!ref || !city) return null;
+    // CAP-2 ruling: a day-filtered feed's day (the card's `scheduledDate`) is the traveler's chosen day.
+    const chosenDate = typeof (item as any)?.scheduledDate === "string" ? (item as any).scheduledDate : null;
+    return { ref, city, chosenDate, key: savedRefKey(ref) };
+  };
+
+  // Cut-list #1 slice C: the press runs through the ONE add runner — the button's spinner while it is in flight, then
+  // "Added to Day {n}." with Undo and Change day, or the recovery toast with Retry (plan-add-runner.ts).
+  const guestSave = (item: unknown) => {
+    const job = refFor(item);
+    if (!job) {
       toast({ variant: "destructive", title: guestSaveErrorMessage(null) });
       return;
     }
-    // CAP-2 ruling: a day-filtered feed's day (the card's `scheduledDate`) is the traveler's chosen day.
-    const chosenDate = typeof (item as any)?.scheduledDate === "string" ? (item as any).scheduledDate : null;
-    saveToGuestPlan(body, city, chosenDate).then(
-      (result) => toast({ title: guestSavedMessage(result) }),
-      (err) => toast({ variant: "destructive", title: guestSaveErrorMessage(err) }),
-    );
+    void runGuestAdd(job);
+  };
+
+  // Cut-list #1 slice C: a press made before the session and mode reads answer waits in the one slot (its button shows
+  // the spinner) and runs on the path those reads choose — the host in App runs it (PlanAddFeedbackHost).
+  const queueSave = (item: unknown) => {
+    const job = refFor(item);
+    if (job) queuePlanAdd(job);
   };
 
   return {
@@ -72,9 +90,29 @@ export function useBrowseSaveToPlan(): {
     wrapAdd: (onAdd) => {
       if (path === "card_add") return onAdd;
       if (path === "guest_save") return (item) => guestSave(item);
-      // "wait": the control is disabled; a press that still arrives decides nothing and sends nothing.
+      // "wait": the press waits in the one slot (spinner) and runs when both reads answer.
       if (!saveToPlan && !onAdd) return undefined;
-      return () => {};
+      return (item) => queueSave(item);
     },
+  };
+}
+
+/**
+ * Cut-list #1 slice C (/experiences event cards; Leon, Nov 11): an add that already holds its PlanItemRef and city —
+ * no card payload to map. Same paths as `wrapAdd`: a press before the reads answer waits in the one slot; a guest in
+ * waitlist mode writes to the guest plan; a signed-in traveler writes by ref to the active plan (or a new plan in the
+ * ref's city); a signed-out traveler in open mode is asked to sign in, as every open-mode add is.
+ */
+export function useDirectPlanAdd(): (job: { ref: PlanItemRef; city: string }) => void {
+  const { mode, isLoading: modeLoading } = useSignupMode();
+  const { user, isLoading: authLoading } = useAuth();
+  const { openSignInModal } = useSignInModal();
+  const path = browseSavePath({ modeLoading, authLoading, mode, signedIn: !!user });
+  return ({ ref, city }) => {
+    const job = { ref, city, chosenDate: null, key: savedRefKey(ref) };
+    if (path === "wait") queuePlanAdd(job);
+    else if (path === "guest_save") void runGuestAdd(job);
+    else if (user) void runSignedInRefAdd(job);
+    else openSignInModal();
   };
 }

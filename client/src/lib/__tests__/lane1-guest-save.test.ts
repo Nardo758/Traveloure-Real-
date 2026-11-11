@@ -36,7 +36,8 @@ describe("Lane 1 guest save rail (client)", () => {
   });
 
   it("L2 says the hint for an unlocated save", () => {
-    assert.equal(guestSavedMessage({ located: true }), "Saved to plan");
+    // Cut-list #1 slice C: a day-less answer (defensive) says "Added ✓"; the unlocated sentence is unchanged.
+    assert.equal(guestSavedMessage({ located: true }), "Added ✓");
     assert.equal(guestSavedMessage({ located: false }), "Saved to your plan. We don't have this spot on the map yet.");
     assert.equal(GUEST_PLAN_COPY.savedNotOnMap, "Saved to your plan. We don't have this spot on the map yet.");
   });

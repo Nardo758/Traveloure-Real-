@@ -178,6 +178,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/lane4-places.db.test.ts
       - name: Lane 7 guest plan delete — admin only, unclaimed guest plans only, audit-logged (node:test)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/lane7-guest-plan-delete.db.test.ts
+      - name: Cut-list #1 slice C — guest Undo / Change day (own item only, one 404), claim makes bookable items cart lines (node:test)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/cutlist1-slice-c-guest-items.db.test.ts
       - name: R3-15 migration 440 — six gem descriptions lose "perfect", idempotent, seeds match (node:test)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/r3-followups.db.test.ts
       - name: FU-R3-1 — /places lists the city page's gems (travel_pulse_hidden_gems, not withdrawn) (node:test)

@@ -72,14 +72,14 @@ const service = { id: "svc-1", serviceName: "Morning walk" };
 
 describe("row 302a — cards read tileActionLabel", () => {
   it("T1: each card's primary control reads its kind's label", () => {
-    // CAP-2 Phase 3 (sanctioned edit): a tile's save / book is PlanActions'. The save reads "Save to plan" everywhere
-    // ("Add to plan" retired, ruling Nov 6); a platform service's book is "Check availability" in open mode.
-    assert.equal(primaryText(render(<CityFeedCardGem gem={gem} city={CITY} density="compact" onAdd={() => {}} compactActionState="platform" />)), "Save to plan");
-    assert.equal(primaryText(render(<CityFeedCardEvent event={event} city={CITY} density="compact" onAdd={() => {}} />)), "Save to plan");
-    assert.equal(primaryText(render(<CityFeedCardSupply item={supply} kind="supply-activity" city={CITY} density="compact" onAdd={() => {}} />)), "Save to plan");
-    assert.equal(primaryText(render(<CityFeedCardSupply item={supply} kind="supply-hotel" city={CITY} density="compact" onAdd={() => {}} />)), "Save to plan");
+    // CAP-2 Phase 3 (sanctioned edit): a tile's save / book is PlanActions'. Cut-list #1 slice C: the add reads "Add to
+    // plan" everywhere (supersedes the Nov 6 "Save to plan"); a platform service's book is "Check availability" in open mode.
+    assert.equal(primaryText(render(<CityFeedCardGem gem={gem} city={CITY} density="compact" onAdd={() => {}} compactActionState="platform" />)), "Add to plan");
+    assert.equal(primaryText(render(<CityFeedCardEvent event={event} city={CITY} density="compact" onAdd={() => {}} />)), "Add to plan");
+    assert.equal(primaryText(render(<CityFeedCardSupply item={supply} kind="supply-activity" city={CITY} density="compact" onAdd={() => {}} />)), "Add to plan");
+    assert.equal(primaryText(render(<CityFeedCardSupply item={supply} kind="supply-hotel" city={CITY} density="compact" onAdd={() => {}} />)), "Add to plan");
     assert.equal(primaryText(render(<CityFeedCardVendorService service={service} city={CITY} density="compact" compactActionState="platform" onAdd={() => {}} />)), "Check availability");
-    assert.equal(primaryText(render(<CityFeedCardVendorService service={service} city={CITY} density="compact" compactActionState="not-bookable" onAdd={() => {}} />)), "Save to plan");
+    assert.equal(primaryText(render(<CityFeedCardVendorService service={service} city={CITY} density="compact" compactActionState="not-bookable" onAdd={() => {}} />)), "Add to plan");
     assert.equal(primaryText(render(<CityFeedCardExpert expert={expert} city={CITY} density="compact" />, { expertAvailable: true })), "Ask this expert");
     assert.equal(primaryText(render(<CityFeedCardExpert expert={expert} city={CITY} density="compact" />)), "View profile");
     assert.equal(primaryText(render(<ExpertCard expert={expert} variant="anchor" />, { expertAvailable: true })), "Ask this expert");

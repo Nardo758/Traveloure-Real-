@@ -1,3 +1,5 @@
+import { announceTripAdd, runGuestAdd } from "@/lib/plan-add-runner";
+import { savedRefKey as addRefKey } from "@/lib/saved-refs";
 import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { needHelpBody } from "@/lib/discover-need-help";
 import { readyMadeShelfState, READY_MADE_SHELF_COPY } from "@/lib/ready-made-shelf-state";
@@ -499,10 +501,9 @@ export function ServiceCard({
     }
     setGuestSaving(true);
     try {
-      const result = await saveToGuestPlan({ kind: "listing", source_id: String(service.id), city }, city);
-      toast({ title: guestSavedMessage(result) });
-    } catch (err) {
-      toast({ variant: "destructive", title: guestSaveErrorMessage(err) });
+      // Cut-list #1 slice C: the one add runner — "Added to Day {n}." with Undo / Change day, or Retry.
+      const ref = { kind: "listing" as const, source_id: String(service.id), city };
+      await runGuestAdd({ key: addRefKey(ref), ref, city: city, chosenDate: null });
     } finally {
       setGuestSaving(false);
     }
@@ -1434,13 +1435,16 @@ export default function DiscoverPage({ surface }: { surface: MarketplaceSurface 
         listingPlanItemBody(svc ?? { id: serviceId }),
       );
     },
-    onSuccess: (_res, { serviceId, tripId }) => {
+    onSuccess: async (res, { serviceId, tripId }) => {
       setAddedServices((prev) => new Set(prev).add(serviceId));
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
-      // R4b-3: "Saved to plan" reads the plan's items on the server.
+      // R4b-3: "Added ✓" reads the plan's items on the server.
       void refreshSavedRefs(queryClient);
-      toast({ title: ADDED_TO_PLAN_TITLE, description: "Find it on your plan." });
+      // Cut-list #1 slice C: the one add toast — "Added to Day {n}." with Undo and Change day.
+      const row = res ? await (res as Response).json().catch(() => null) : null;
+      if (row?.id) announceTripAdd(tripId, row);
+      else toast({ title: ADDED_TO_PLAN_TITLE, description: "Find it on your plan." });
       setAddingToCartId(null);
     },
     onError: (error: any) => {

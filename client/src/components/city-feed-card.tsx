@@ -1235,7 +1235,6 @@ export function CityFeedCardGem({
             } : null}
             save={{
               ...gemSave,
-              disabled: browseSave.pending,
               testId: `btn-add-gem-${gem.id}`,
               className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3"),
               style: ADD_BTN_STYLE,
@@ -1349,7 +1348,6 @@ export function CityFeedCardGem({
                 primaryAttr=""
                 save={{
                   ...gemSave,
-                  disabled: browseSave.pending,
                   testId: `btn-add-gem-${gem.id}`,
                   className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3"),
                   style: ADD_BTN_STYLE,
@@ -1460,7 +1458,6 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd: onAddProp
   const sheetAction = {
     ...eventSave,
     city,
-    disabled: browseSave.pending,
     onAdd: onAdd ? () => onAdd(eventAddPayload()) : undefined,
   };
   const { srcSet, sizes } = buildSrcSet(photoUrl);
@@ -1540,7 +1537,6 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd: onAddProp
                 primaryAttr=""
                 save={{
                   ...eventSave,
-                  disabled: browseSave.pending,
                   testId: `btn-add-event-${event.id}`,
                   className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3"),
                   style: ADD_BTN_STYLE,
@@ -1655,7 +1651,6 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd: onAddProp
               city={city}
               save={{
                 ...eventSave,
-                disabled: browseSave.pending,
                 testId: `btn-add-event-${event.id}`,
                 className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3"),
                 style: ADD_BTN_STYLE,
@@ -1873,7 +1868,6 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
                 } : null}
                 save={onAdd ? {
               ...svcSave,
-              disabled: browseSave.pending,
               testId: `btn-add-svc-${service.id}`,
               className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3"),
               style: ADD_BTN_STYLE,
@@ -1984,7 +1978,6 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
               } : null}
               save={onAdd ? {
               ...svcSave,
-              disabled: browseSave.pending,
               testId: `btn-add-svc-${service.id}`,
               className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3"),
               style: ADD_BTN_STYLE,
@@ -2198,7 +2191,6 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd: onA
                 primaryAttr=""
                 save={{
                   ...supplySave,
-                  disabled: browseSave.pending,
                   testId: `btn-add-supply-${item.id}`,
                   className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3"),
                   style: ADD_BTN_STYLE,
@@ -2328,7 +2320,6 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd: onA
               city={city}
               save={{
                 ...supplySave,
-                disabled: browseSave.pending,
                 testId: `btn-add-supply-${item.id}`,
                 className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3"),
                 style: ADD_BTN_STYLE,

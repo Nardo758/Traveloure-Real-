@@ -114,7 +114,8 @@ describe("Round 4b fixes", () => {
     qc.setQueryData(SAVED_REFS_QUERY_KEY, { keys: ["city_event:chionin-autumn-lightup-2026"] });
     const wrap = (n: React.ReactNode) => renderToString(<QueryClientProvider client={qc}>{n}</QueryClientProvider>);
     const card = wrap(<PlanActions site="bento" save={{ placeable: true, testId: "s", savedKey: "city_event:chionin-autumn-lightup-2026", onClick: () => {} }} />);
-    assert.match(card, /data-testid="s"[^>]*>Saved to plan</);
+    // Cut-list #1 slice C: PlanActions' add reads "Added ✓"; the P-1c SaveToPlanButton below keeps "Saved to plan".
+    assert.match(card, /data-testid="s"[^>]*><span[^>]*>Added ✓</);
     assert.doesNotMatch(card, /disabled=""/, "signed in: the press opens the picker for plan B");
     const btn = wrap(<SaveToPlanButton testId="b" savedKey="city_event:chionin-autumn-lightup-2026" onSave={() => {}} />);
     assert.match(btn, />Saved to plan</);
@@ -125,7 +126,7 @@ describe("Round 4b fixes", () => {
     g.setQueryData(["/api/auth/user"], null);
     g.setQueryData(GUEST_PLAN_QUERY_KEY, { plan: {}, items: [{ id: "i", contentType: "city_event", contentId: "chionin-autumn-lightup-2026" }], retentionDays: null });
     const guestCard = renderToString(<QueryClientProvider client={g}><PlanActions site="bento" save={{ placeable: true, testId: "s", savedKey: "city_event:chionin-autumn-lightup-2026", onClick: () => {} }} /></QueryClientProvider>);
-    assert.match(guestCard, /data-testid="s"[^>]*disabled=""[^>]*>Saved to plan</);
+    assert.match(guestCard, /data-testid="s"[^>]*disabled=""[^>]*><span[^>]*>Added ✓</);
   });
 
   it("R4b-4 a stated event day is that day in a US zone", () => {

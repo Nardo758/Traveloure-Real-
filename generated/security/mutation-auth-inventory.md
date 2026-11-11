@@ -1,11 +1,11 @@
 # Mounted mutation authorization inventory
 
-Generated from `server/routes.ts`. **757** raw mounted mutation registrations and **749** unique METHOD+normalizedPath pairs were found.
+Generated from `server/routes.ts`. **759** raw mounted mutation registrations and **751** unique METHOD+normalizedPath pairs were found.
 
-The unique-pair count is **+203** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
+The unique-pair count is **+205** from the historical 546 comparison clue. The generator does not read that clue: it follows the current source mount graph. Raw registrations retain currently mounted, later-shadowed registrations; duplicate registrations are listed in the JSON manifest. A changed count indicates current route additions/removals or mount-graph changes, not an automatic regression.
 
-Category totals: payments 31; admin 208; user-data 252; other 258.
-Boundary totals: admin-role 208; session-self 368; resource-owner 105; signature 7; public-or-system 61; unknown 0.
+Category totals: payments 31; admin 208; user-data 252; other 260.
+Boundary totals: admin-role 208; session-self 368; resource-owner 105; signature 7; public-or-system 63; unknown 0.
 
 | Method | Normalized path | Risk | Boundary | Ownership applicable | Expected ownership | Registrations | Fixture | Test |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -408,10 +408,12 @@ Boundary totals: admin-role 208; session-self 368; resource-owner 105; signature
 | POST | `/api/generated-itineraries` | other | session-self | no | unknown | `server/routes/content.routes.ts:697` | unknown | unknown |
 | POST | `/api/geocode` | other | session-self | no | unknown | `server/routes/content.routes.ts:4599` | unknown | unknown |
 | POST | `/api/grok/match-experts` | other | session-self | no | unknown | `server/routes/content.routes.ts:4657` | unknown | unknown |
-| POST | `/api/guest-plans` | other | public-or-system | no | unknown | `server/routes/guest-plans.routes.ts:122` | unknown | unknown |
-| POST | `/api/guest-plans/claim` | other | session-self | no | unknown | `server/routes/guest-plans.routes.ts:200` | unknown | unknown |
-| PATCH | `/api/guest-plans/current` | other | public-or-system | no | unknown | `server/routes/guest-plans.routes.ts:147` | unknown | unknown |
-| POST | `/api/guest-plans/current/items` | other | public-or-system | no | unknown | `server/routes/guest-plans.routes.ts:163` | unknown | unknown |
+| POST | `/api/guest-plans` | other | public-or-system | no | unknown | `server/routes/guest-plans.routes.ts:128` | unknown | unknown |
+| POST | `/api/guest-plans/claim` | other | session-self | no | unknown | `server/routes/guest-plans.routes.ts:235` | unknown | unknown |
+| PATCH | `/api/guest-plans/current` | other | public-or-system | no | unknown | `server/routes/guest-plans.routes.ts:153` | unknown | unknown |
+| POST | `/api/guest-plans/current/items` | other | public-or-system | no | unknown | `server/routes/guest-plans.routes.ts:169` | unknown | unknown |
+| DELETE | `/api/guest-plans/current/items/:id` | other | public-or-system | no | unknown | `server/routes/guest-plans.routes.ts:198` | unknown | unknown |
+| PATCH | `/api/guest-plans/current/items/:id` | other | public-or-system | no | unknown | `server/routes/guest-plans.routes.ts:209` | unknown | unknown |
 | POST | `/api/handoffs/:id/accept` | other | session-self | no | unknown | `server/routes/handoff.routes.ts:406` | unknown | unknown |
 | POST | `/api/handoffs/:id/approve` | other | session-self | no | unknown | `server/routes/handoff.routes.ts:261` | unknown | unknown |
 | POST | `/api/handoffs/:id/authorized` | other | session-self | no | unknown | `server/routes/handoff.routes.ts:248` | unknown | unknown |

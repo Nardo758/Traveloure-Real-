@@ -15,6 +15,7 @@
  * §13: a failed or unauthorised read says so and never renders as "you have no plans"; an empty
  * list says there are none; New plan is offered in every one of those states, and it is last.
  */
+import { announceTripAdd } from "@/lib/plan-add-runner";
 import { refreshSavedRefs } from "@/lib/saved-refs";
 import { planSaveRefusalMessage } from "@/lib/plan-save-refusal";
 import { MapPin, Plus, Plane } from "lucide-react";
@@ -236,6 +237,11 @@ export function PlanPickerDialog({
 
 /** Land one item on a plan through the ordinary item rail, and refresh that plan's two reads. */
 export async function addItemToPlan(tripId: string, body: Record<string, unknown>): Promise<number | null> {
+  return (await addItemToPlanRow(tripId, body)).dayNumber;
+}
+
+/** The same add, answering the stored row's id and day — the toast's Undo and Change day act on that row. */
+export async function addItemToPlanRow(tripId: string, body: Record<string, unknown>): Promise<{ id: string | null; dayNumber: number | null }> {
   const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, body);
   // QW-3: the item's own day, for the toast ("It's on Day 2."). Read, never assumed.
   const saved = await res.json().catch(() => null);
@@ -244,7 +250,11 @@ export async function addItemToPlan(tripId: string, body: Record<string, unknown
   // R4b-3: "Saved to plan" reads the plan's items on the server.
   void refreshSavedRefs(queryClient);
   const raw = (saved as { dayNumber?: unknown } | null)?.dayNumber;
-  return typeof raw === "number" && Number.isInteger(raw) && raw > 0 ? raw : null;
+  const id = (saved as { id?: unknown } | null)?.id;
+  return {
+    id: typeof id === "string" ? id : null,
+    dayNumber: typeof raw === "number" && Number.isInteger(raw) && raw > 0 ? raw : null,
+  };
 }
 
 /**
@@ -265,14 +275,13 @@ export function useStartPlanThenAdd(): (body: Record<string, unknown>) => void {
       onFinish: (_branch, plan) => {
         if (plan.tripId) {
           const tripId = plan.tripId;
-          addItemToPlan(tripId, body).then(
-            (day) =>
-              toast({
-                title: ADDED_TO_PLAN_TITLE,
-                // QW-3: name the day it landed on; with no day in the answer, keep the existing sentence.
-                // QW-3 (Leon): the signed-in rail says the same sentence as the guest rail.
-                description: day === null ? "It's on your new plan." : `Saved to Day ${day}.`,
-              }),
+          addItemToPlanRow(tripId, body).then(
+            (row) =>
+              // Cut-list #1 slice C: the one add toast — "Added to Day {n}." with Undo and Change day; with no row id
+              // in the answer, keep the existing sentence.
+              row.id
+                ? announceTripAdd(tripId, row)
+                : toast({ title: ADDED_TO_PLAN_TITLE, description: "It's on your new plan." }),
             (err: unknown) => {
               const refusal = planSaveRefusalMessage(err);
               toast(
